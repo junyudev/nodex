@@ -20,6 +20,7 @@ mod managed_worktree_lifecycle;
 mod managed_worktree_window;
 mod mutation;
 mod page_chat;
+mod page_create;
 mod project_activity_summary;
 mod project_window;
 mod queued_message_state;

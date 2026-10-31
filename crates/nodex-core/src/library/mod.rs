@@ -7739,6 +7739,7 @@ pub(crate) use history::{
 };
 pub(crate) use page_copy::{OccurrencePageCloneInput, clone_page_for_occurrence};
 mod mutation;
+pub(crate) use mutation::validate_uuid_v7;
 pub(crate) use mutation::{
     LibraryRootPosition, insert_library_placement, require_project_in_library,
 };

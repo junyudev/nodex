@@ -1,3 +1,4 @@
+import type { CreatePageForCommand } from "../../../shared/workspace-page-create";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
@@ -105,10 +106,27 @@ it.effect("owns Project and Project Session ingress with the Main Scope", () =>
       storeEpoch: "epoch:test",
       projectionRevision: 17,
     };
+    const pageInputs: CreatePageForCommand[] = [];
+    const pageResult = {
+      pageId: "page:created",
+      projectId: project.id,
+      placement: {
+        kind: "data_source" as const,
+        databaseId: project.databaseId!,
+        dataSourceId: "source:one",
+        viewId: "view:one",
+      },
+      pageKey: "LAB-1",
+    };
     const updateInputs: ProjectUpdateCommandInput[] = [];
     const openedInputs: ProjectSessionOpenedCommandInput[] = [];
     const pinnedOrderInputs: BuiltinSidebarReorderCommandInput[] = [];
     const workspace = ProjectWorkspace.of({
+      createPageFor: (input: CreatePageForCommand) =>
+        Effect.sync(() => {
+          pageInputs.push(input);
+          return pageResult;
+        }),
       readSessionLinkedPageSummaries: (input: SessionLinkedPageSummaryInput) =>
         Effect.sync(() => {
           linkedPageInputs.push(input);
@@ -199,7 +217,7 @@ it.effect("owns Project and Project Session ingress with the Main Scope", () =>
       scope,
     );
 
-    assert.strictEqual(handlers.size, 47);
+    assert.strictEqual(handlers.size, 48);
     assert.isTrue(handlers.has("projects:create"));
     assert.isTrue(handlers.has("projects:update"));
     assert.isTrue(handlers.has("project-sessions:fork"));
@@ -208,6 +226,16 @@ it.effect("owns Project and Project Session ingress with the Main Scope", () =>
     assert.isTrue(handlers.has("page-chats:list"));
     assert.isTrue(handlers.has("page-chats:link"));
     assert.isTrue(handlers.has("page-chats:unlink"));
+
+    const pageInput: CreatePageForCommand = {
+      for: { kind: "session", sessionId: "session:one" },
+      operationId: "operation:page",
+      pageId: "page:created",
+      documentId: "document:created",
+    };
+    const page = yield* handlers.get("workspace:page:create-for")!(rendererEvent(17), pageInput);
+    assert.deepEqual(pageInputs, [pageInput]);
+    assert.deepEqual(page, pageResult);
 
     const linkedPageInput = { sessionIds: ["session:one"] };
     const linkedPageSummary = yield* handlers.get("page-chats:session-linked-pages")!(

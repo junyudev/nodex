@@ -221,7 +221,7 @@ pub(super) fn apply(
     let context = context.clone();
     let assets_root = assets_root.to_path_buf();
     writer.call(move |connection| {
-        with_immediate_transaction(connection, |transaction| {
+        let result = with_immediate_transaction(connection, |transaction| {
             assert_identity(transaction, &profile_id, &library_id)?;
             let store_epoch = read_store_epoch(transaction)?;
             if request.store_epoch.0 != store_epoch {
@@ -311,6 +311,12 @@ pub(super) fn apply(
                 _ => None,
             };
             match admitted_intent {
+                ProjectWorkspaceIntent::CreatePageFor { target, page_id, document_id, title } => {
+                    super::page_create::create_page_for(
+                        transaction, &context, &library_id, &store_epoch,
+                        &request.operation_id, &request_hash, target, page_id, document_id, title,
+                    )
+                }
                 ProjectWorkspaceIntent::SendInboxMessage {
                     expected_store_epoch,
                     page_id,
@@ -1313,7 +1319,9 @@ pub(super) fn apply(
                     )
                 }
             }
-        })
+        });
+        // Content mutations can exhaust View ranks; preparation must survive semantic rollback.
+        crate::database::finish_order_attempt(connection, result)
     })
 }
 
@@ -1539,6 +1547,7 @@ pub(super) fn finish_no_op(
             )?;
             let committed = crate::ModuleWriterResult {
                 value: ProjectWorkspaceCommitValue {
+                    created_page: None,
                     inbox_undo_token: None,
                     affected_project_ids: project_ids.clone(),
                     affected_session_ids: session_ids.clone(),
@@ -1569,7 +1578,7 @@ pub(super) fn finish_no_op(
     workspace_commit_result(connection, result)
 }
 
-fn workspace_commit_result(
+pub(super) fn workspace_commit_result(
     connection: &Connection,
     result: CommitResult<
         crate::ModuleWriterResult<ProjectWorkspaceCommitValue, ProjectWorkspaceReceipt>,
@@ -1610,6 +1619,19 @@ fn seal_mutation(
     context: &BoundModuleContext,
     operation_id: &str,
     effects: WorkspaceMutationEffects,
+) -> Result<
+    SealedOutcome<crate::ModuleWriterResult<ProjectWorkspaceCommitValue, ProjectWorkspaceReceipt>>,
+    StoreError,
+> {
+    seal_mutation_with_created_page(scope, context, operation_id, effects, None)
+}
+
+pub(super) fn seal_mutation_with_created_page(
+    scope: &DurableMutationScope<'_>,
+    context: &BoundModuleContext,
+    operation_id: &str,
+    effects: WorkspaceMutationEffects,
+    created_page: Option<nodex_core_contracts::workspace::ProjectWorkspaceCreatedPage>,
 ) -> Result<
     SealedOutcome<crate::ModuleWriterResult<ProjectWorkspaceCommitValue, ProjectWorkspaceReceipt>>,
     StoreError,
@@ -1686,6 +1708,7 @@ fn seal_mutation(
     )?;
     let committed = crate::ModuleWriterResult {
         value: ProjectWorkspaceCommitValue {
+            created_page,
             inbox_undo_token: connection
                 .query_row(
                     "SELECT token FROM inbox_decision_undo WHERE operation_id=?1",
@@ -2327,9 +2350,9 @@ fn create_project_records(
                     document_id: &request.page.document_id,
                     title_markdown: &request.page.title_markdown,
                     markdown: &request.page.markdown,
-                    destination: &destination,
                     now: &now,
                 },
+                &destination,
             )
         })
         .transpose()?;

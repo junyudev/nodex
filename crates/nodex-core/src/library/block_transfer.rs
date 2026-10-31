@@ -4623,7 +4623,7 @@ pub(super) fn stage_fresh_page_in_library(
     body_block_id_role: &str,
     rich_title: &[RichTextItem],
     markdown: &str,
-    before_block_id: Option<&str>,
+    position: LibraryRootPosition<'_>,
     now: &str,
 ) -> Result<StagedFreshPage, StoreError> {
     let prepared = prepare_fresh_page_genesis(
@@ -4643,7 +4643,7 @@ pub(super) fn stage_fresh_page_in_library(
         store_epoch,
         page_id,
         document_id,
-        before_block_id,
+        position,
         now,
         prepared,
     )
@@ -4660,7 +4660,7 @@ pub(super) fn stage_prepared_fresh_page_in_library(
     store_epoch: &str,
     page_id: &str,
     document_id: &str,
-    before_block_id: Option<&str>,
+    position: LibraryRootPosition<'_>,
     now: &str,
     prepared: PreparedFreshPageGenesis,
 ) -> Result<StagedFreshPage, StoreError> {
@@ -4711,16 +4711,7 @@ pub(super) fn stage_prepared_fresh_page_in_library(
          ) VALUES (?1, ?2, ?3, 'library', ?2, ?4, ?4)",
         params![page_id, library_id, document_id, now],
     )?;
-    let anchor = before_block_id
-        .map(|block_id| read_library_anchor(connection, library_id, block_id))
-        .transpose()?;
-    insert_library_placement(
-        connection,
-        library_id,
-        page_id,
-        LibraryRootPosition::placed(anchor.as_ref()),
-        now,
-    )?;
+    insert_library_placement(connection, library_id, page_id, position, now)?;
 
     let authority = read_document_authority(connection, document_id)?
         .ok_or_else(|| corrupt("Created Page has no Document authority"))?;

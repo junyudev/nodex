@@ -705,6 +705,7 @@ type PlainResultCommandEndpointPolicy =
   | "mcp-app:open-external"
   | "native-context-menu:show"
   | "open-file"
+  | "workspace:page:create-for"
   | "page-chats:link"
   | "page-chats:unlink"
   | "files:pick-and-prepare"

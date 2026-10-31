@@ -3624,7 +3624,7 @@ fn validate_id(name: &str, value: &str) -> Result<(), StoreError> {
     )))
 }
 
-fn validate_uuid_v7(name: &str, value: &str) -> Result<(), StoreError> {
+pub(crate) fn validate_uuid_v7(name: &str, value: &str) -> Result<(), StoreError> {
     validate_id(name, value)?;
     let bytes = value.as_bytes();
     let valid = bytes.len() == 36

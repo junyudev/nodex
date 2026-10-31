@@ -16,7 +16,7 @@ use crate::inbox::{
 };
 use crate::{ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 51;
+pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 52;
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
@@ -1438,9 +1438,44 @@ pub struct ProjectWorkspaceStarterPage {
     pub markdown: String,
 }
 
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ProjectWorkspacePageCreationTarget {
+    Project { project_id: String },
+    Session { session_id: String },
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ProjectWorkspaceCreatedPagePlacement {
+    Library {
+        library_id: String,
+    },
+    DataSource {
+        database_id: String,
+        data_source_id: String,
+        view_id: String,
+    },
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceCreatedPage {
+    pub page_id: String,
+    pub project_id: Option<String>,
+    pub placement: ProjectWorkspaceCreatedPagePlacement,
+    pub page_key: Option<String>,
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ProjectWorkspaceIntent {
+    CreatePageFor {
+        #[serde(rename = "for")]
+        target: ProjectWorkspacePageCreationTarget,
+        page_id: String,
+        document_id: String,
+        title: String,
+    },
     SetQueuedMessageState {
         state: std::collections::BTreeMap<String, Vec<serde_json::Value>>,
     },
@@ -2013,6 +2048,8 @@ pub struct ProjectWorkspaceCodexThreadObservation {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct ProjectWorkspaceCommitValue {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_page: Option<ProjectWorkspaceCreatedPage>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub inbox_undo_token: Option<String>,
     pub affected_project_ids: Vec<String>,

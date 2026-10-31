@@ -1030,6 +1030,10 @@ export interface IpcApi
     args: [input: PageChatWindowInput];
     result: PageChatWindow;
   };
+  "workspace:page:create-for": {
+    args: [input: import("./workspace-page-create").CreatePageForCommand];
+    result: import("./workspace-page-create").CreatePageForResult;
+  };
   "page-chats:link": {
     args: [sessionId: string, input: PageChatLinkInput];
     result: void;

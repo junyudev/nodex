@@ -24,7 +24,6 @@ pub(crate) struct PageGenesisInput<'a> {
     pub(crate) document_id: &'a str,
     pub(crate) title_markdown: &'a str,
     pub(crate) markdown: &'a str,
-    pub(crate) destination: &'a PageCopyDataSourceDestination,
     pub(crate) now: &'a str,
 }
 
@@ -35,10 +34,61 @@ pub(crate) struct CreatedPageGenesis {
     pub(crate) document_head: PageDocumentHeadImpact,
 }
 
+pub(crate) struct CreatedLibraryPageGenesis {
+    pub(crate) page_create: LibraryPageCreateResult,
+    pub(crate) document_head: PageDocumentHeadImpact,
+}
+
 pub(crate) fn create_page_in_data_source(
     connection: &Connection,
     input: PageGenesisInput<'_>,
+    destination: &PageCopyDataSourceDestination,
 ) -> Result<CreatedPageGenesis, StoreError> {
+    let created = create_page_in_library(
+        connection,
+        &input,
+        super::mutation::LibraryRootPosition::Last,
+    )?;
+    let placement = place_staged_page_in_data_source(
+        connection,
+        input.library_id,
+        input.actor_project_id,
+        input.page_id,
+        destination,
+        StagedPagePlacementRevisions {
+            location_revision: 1,
+            metadata_revision: 1,
+            parent_revision: 1,
+        },
+        input.now,
+    )?;
+    let mut page_create = created.page_create;
+    page_create.page_key = current_page_key_for_page(connection, input.library_id, input.page_id)?;
+    Ok(CreatedPageGenesis {
+        page_create,
+        data_source_id: placement.data_source_id,
+        affected_view_ids: placement.affected_view_ids,
+        document_head: created.document_head,
+    })
+}
+
+/// New root content enters ahead of every existing Library root.
+pub(crate) fn create_page_at_library_start(
+    connection: &Connection,
+    input: PageGenesisInput<'_>,
+) -> Result<CreatedLibraryPageGenesis, StoreError> {
+    create_page_in_library(
+        connection,
+        &input,
+        super::mutation::LibraryRootPosition::First,
+    )
+}
+
+fn create_page_in_library(
+    connection: &Connection,
+    input: &PageGenesisInput<'_>,
+    position: super::mutation::LibraryRootPosition<'_>,
+) -> Result<CreatedLibraryPageGenesis, StoreError> {
     validate_id(input.page_id, "page_id")?;
     validate_id(input.document_id, "document_id")?;
     if input.title_markdown.len() > MAX_PAGE_TITLE_BYTES {
@@ -59,21 +109,7 @@ pub(crate) fn create_page_in_data_source(
         "page_body_block",
         &rich_title,
         input.markdown,
-        None,
-        input.now,
-    )?;
-    let expected = StagedPagePlacementRevisions {
-        location_revision: 1,
-        metadata_revision: 1,
-        parent_revision: 1,
-    };
-    let placement = place_staged_page_in_data_source(
-        connection,
-        input.library_id,
-        input.actor_project_id,
-        input.page_id,
-        input.destination,
-        expected,
+        position,
         input.now,
     )?;
     let (title_etag, body_etag) = mint_document_semantic_etags(
@@ -94,10 +130,8 @@ pub(crate) fn create_page_in_data_source(
         title_etag,
         body_etag,
     };
-    Ok(CreatedPageGenesis {
+    Ok(CreatedLibraryPageGenesis {
         page_create,
-        data_source_id: placement.data_source_id,
-        affected_view_ids: placement.affected_view_ids,
         document_head: PageDocumentHeadImpact {
             page_id: input.page_id.to_owned(),
             document_id: staged.document_id,

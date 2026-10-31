@@ -701,6 +701,12 @@ fn apply_pages(
     )
     .then(|| destination_before_id(&preflight.destination))
     .flatten();
+    let library_anchor = library_before
+        .as_deref()
+        .map(|block_id| {
+            super::block_transfer::read_library_anchor(connection, library_id, block_id)
+        })
+        .transpose()?;
     for page in &mut preflight.pages {
         let document_id = page.document_id.clone();
         let staged = super::block_transfer::stage_prepared_fresh_page_in_library(
@@ -713,7 +719,7 @@ fn apply_pages(
             store_epoch,
             &page.page_id,
             &document_id,
-            library_before.as_deref(),
+            super::mutation::LibraryRootPosition::placed(library_anchor.as_ref()),
             &now,
             page.genesis
                 .take()

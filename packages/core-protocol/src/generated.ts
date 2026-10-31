@@ -7005,6 +7005,13 @@ export interface components {
             /** Format: int32 */
             readonly contract_version: number;
             readonly intent: {
+                readonly document_id: string;
+                readonly for: components["schemas"]["ProjectWorkspacePageCreationTarget"];
+                /** @enum {string} */
+                readonly kind: "create_page_for";
+                readonly page_id: string;
+                readonly title: string;
+            } | {
                 /** @enum {string} */
                 readonly kind: "set_queued_message_state";
                 readonly state: {
@@ -9205,6 +9212,23 @@ export interface components {
             /** Format: int64 */
             readonly updated_at: number;
         };
+        readonly ProjectWorkspaceCreatedPage: {
+            readonly page_id: string;
+            readonly page_key?: string | null;
+            readonly placement: components["schemas"]["ProjectWorkspaceCreatedPagePlacement"];
+            readonly project_id?: string | null;
+        };
+        readonly ProjectWorkspaceCreatedPagePlacement: {
+            /** @enum {string} */
+            readonly kind: "library";
+            readonly library_id: string;
+        } | {
+            readonly data_source_id: string;
+            readonly database_id: string;
+            /** @enum {string} */
+            readonly kind: "data_source";
+            readonly view_id: string;
+        };
         readonly ProjectWorkspaceDynamicToolCatalog: {
             readonly namespace: string;
             /** Format: int64 */
@@ -9603,6 +9627,13 @@ export interface components {
         /** @enum {string} */
         readonly ProjectWorkspaceInboxWindowFilter: "inbox" | "processed";
         readonly ProjectWorkspaceIntent: {
+            readonly document_id: string;
+            readonly for: components["schemas"]["ProjectWorkspacePageCreationTarget"];
+            /** @enum {string} */
+            readonly kind: "create_page_for";
+            readonly page_id: string;
+            readonly title: string;
+        } | {
             /** @enum {string} */
             readonly kind: "set_queued_message_state";
             readonly state: {
@@ -10289,6 +10320,15 @@ export interface components {
              * @description Native thread status only; Runtime-bound Sessions report live status outside Core.
              */
             readonly working_count: number;
+        };
+        readonly ProjectWorkspacePageCreationTarget: {
+            /** @enum {string} */
+            readonly kind: "project";
+            readonly project_id: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "session";
+            readonly session_id: string;
         };
         readonly ProjectWorkspaceProject: {
             readonly appearance: components["schemas"]["ProjectAppearance"];
@@ -11383,6 +11423,7 @@ export interface components {
                     readonly affected_project_ids: readonly string[];
                     readonly affected_session_ids: readonly string[];
                     readonly affected_thread_ids: readonly string[];
+                    readonly created_page?: components["schemas"]["ProjectWorkspaceCreatedPage"] | null;
                     readonly inbox_undo_token?: string | null;
                 };
                 readonly receipt: components["schemas"]["ModuleMutationReceipt"] & {
@@ -11397,6 +11438,7 @@ export interface components {
                     readonly affected_project_ids: readonly string[];
                     readonly affected_session_ids: readonly string[];
                     readonly affected_thread_ids: readonly string[];
+                    readonly created_page?: components["schemas"]["ProjectWorkspaceCreatedPage"] | null;
                     readonly inbox_undo_token?: string | null;
                 };
                 readonly receipt: components["schemas"]["ModuleMutationReceipt"] & {

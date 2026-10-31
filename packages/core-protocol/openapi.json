@@ -29137,6 +29137,36 @@
               {
                 "type": "object",
                 "required": [
+                  "for",
+                  "page_id",
+                  "document_id",
+                  "title",
+                  "kind"
+                ],
+                "properties": {
+                  "document_id": {
+                    "type": "string"
+                  },
+                  "for": {
+                    "$ref": "#/components/schemas/ProjectWorkspacePageCreationTarget"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "create_page_for"
+                    ]
+                  },
+                  "page_id": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
                   "state",
                   "kind"
                 ],
@@ -38478,6 +38508,81 @@
         },
         "additionalProperties": false
       },
+      "ProjectWorkspaceCreatedPage": {
+        "type": "object",
+        "required": [
+          "page_id",
+          "placement"
+        ],
+        "properties": {
+          "page_id": {
+            "type": "string"
+          },
+          "page_key": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "placement": {
+            "$ref": "#/components/schemas/ProjectWorkspaceCreatedPagePlacement"
+          },
+          "project_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "ProjectWorkspaceCreatedPagePlacement": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "library_id",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "library"
+                ]
+              },
+              "library_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "database_id",
+              "data_source_id",
+              "view_id",
+              "kind"
+            ],
+            "properties": {
+              "data_source_id": {
+                "type": "string"
+              },
+              "database_id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "data_source"
+                ]
+              },
+              "view_id": {
+                "type": "string"
+              }
+            }
+          }
+        ]
+      },
       "ProjectWorkspaceDynamicToolCatalog": {
         "type": "object",
         "required": [
@@ -40032,6 +40137,36 @@
       },
       "ProjectWorkspaceIntent": {
         "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "for",
+              "page_id",
+              "document_id",
+              "title",
+              "kind"
+            ],
+            "properties": {
+              "document_id": {
+                "type": "string"
+              },
+              "for": {
+                "$ref": "#/components/schemas/ProjectWorkspacePageCreationTarget"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "create_page_for"
+                ]
+              },
+              "page_id": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            }
+          },
           {
             "type": "object",
             "required": [
@@ -43186,6 +43321,46 @@
             "minimum": 0
           }
         }
+      },
+      "ProjectWorkspacePageCreationTarget": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "project_id",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "project"
+                ]
+              },
+              "project_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "session_id",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "session"
+                ]
+              },
+              "session_id": {
+                "type": "string"
+              }
+            }
+          }
+        ]
       },
       "ProjectWorkspaceProject": {
         "type": "object",
@@ -48479,6 +48654,16 @@
                               "type": "string"
                             }
                           },
+                          "created_page": {
+                            "oneOf": [
+                              {
+                                "$ref": "#/components/schemas/ProjectWorkspaceCreatedPage"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "inbox_undo_token": {
                             "type": [
                               "string",
@@ -48560,6 +48745,16 @@
                             "items": {
                               "type": "string"
                             }
+                          },
+                          "created_page": {
+                            "oneOf": [
+                              {
+                                "$ref": "#/components/schemas/ProjectWorkspaceCreatedPage"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           },
                           "inbox_undo_token": {
                             "type": [

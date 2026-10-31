@@ -426,6 +426,23 @@ fn decode_position(row: &rusqlite::Row<'_>) -> rusqlite::Result<OrderPosition> {
     })
 }
 
+/// Read the first active Page from the canonical order in the requested presentation direction.
+pub(super) fn first_page_id(
+    connection: &Connection,
+    view_id: &str,
+    descending: bool,
+) -> Result<Option<String>, StoreError> {
+    let order = require_ready(connection, view_id)?;
+    Ok(seek_position(
+        connection,
+        &order,
+        None,
+        descending,
+        OrderPopulation::Active,
+    )?
+    .map(|position| position.page_id))
+}
+
 fn active_position(
     connection: &Connection,
     order: &ReadyOrder,
@@ -3030,6 +3047,37 @@ mod tests {
             ordered_ids(&connection, &sibling),
             ["page-0", "page-a", "page-b", "page-c"]
         );
+    }
+
+    #[test]
+    fn first_page_follows_direction_and_ignores_archived_positions() {
+        let connection = Connection::open_in_memory().unwrap();
+        install_order_fixture(&connection);
+        assert_eq!(
+            first_page_id(&connection, "view", false)
+                .unwrap()
+                .as_deref(),
+            Some("page-b")
+        );
+        assert_eq!(
+            first_page_id(&connection, "view", true).unwrap().as_deref(),
+            Some("page-c")
+        );
+        connection
+            .execute(
+                "UPDATE blocks SET lifecycle='archived' WHERE id='page-c'",
+                [],
+            )
+            .unwrap();
+        assert_eq!(
+            first_page_id(&connection, "view", true).unwrap().as_deref(),
+            Some("page-a")
+        );
+        connection
+            .execute("UPDATE blocks SET lifecycle='archived'", [])
+            .unwrap();
+        assert_eq!(first_page_id(&connection, "view", false).unwrap(), None);
+        assert_eq!(first_page_id(&connection, "view", true).unwrap(), None);
     }
 
     #[test]

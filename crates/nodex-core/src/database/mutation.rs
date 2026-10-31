@@ -3551,6 +3551,25 @@ pub(crate) fn resolve_page_transfer_list_destination(
     })
 }
 
+/// New Pages enter before the saved View's first manual-order Page. Other sorts retain
+/// an ascending latent manual order, using the same direction rule as Database positioning.
+pub(crate) fn page_copy_view_start_anchor(
+    connection: &Connection,
+    view_id: &str,
+) -> Result<Option<PageCopyPositionAnchor>, StoreError> {
+    let view = view_row(connection, view_id)?
+        .filter(|view| view.lifecycle == "active")
+        .ok_or_else(|| not_found("Page creation target View is unavailable"))?;
+    let definition =
+        super::view_contract::decode_definition_json(&view.config_json).map_err(corrupt)?;
+    let descending = view_fractional_direction(&definition) == DatabaseViewSortDirection::Desc;
+    super::manual_order::first_page_id(connection, view_id, descending)?
+        .map(|page_id| {
+            page_copy_position_anchor(connection, view_id, &view.data_source_id, &page_id)
+        })
+        .transpose()
+}
+
 fn page_copy_position_anchor(
     connection: &Connection,
     view_id: &str,

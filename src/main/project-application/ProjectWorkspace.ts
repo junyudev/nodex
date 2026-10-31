@@ -1,3 +1,8 @@
+import {
+  CreatePageForCommandSchema,
+  type CreatePageForCommand,
+  type CreatePageForResult,
+} from "../../shared/workspace-page-create";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -190,6 +195,9 @@ export interface ProjectWorkspaceService {
   readonly listPageChatWindow: (
     input: PageChatWindowInput,
   ) => ProjectWorkspaceEffect<PageChatWindow>;
+  readonly createPageFor: (
+    input: CreatePageForCommand,
+  ) => ProjectWorkspaceEffect<CreatePageForResult>;
   readonly linkPageToProjectSession: (
     sessionId: string,
     input: PageChatLinkInput,
@@ -1551,6 +1559,40 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
       renameProjectSession,
       ensureDefaultDraftProjectSession,
       createProjectSession,
+      createPageFor: Effect.fn("ProjectWorkspace.createPageFor")(function* (input) {
+        const parsed = yield* evaluate("page.create-for.parse", () =>
+          CreatePageForCommandSchema.parse(input),
+        );
+        const result = yield* applyWithId("page.create-for", parsed.operationId, {
+          kind: "create_page_for",
+          for:
+            parsed.for.kind === "project"
+              ? { kind: "project", project_id: parsed.for.projectId }
+              : { kind: "session", session_id: parsed.for.sessionId },
+          page_id: parsed.pageId,
+          document_id: parsed.documentId,
+          title: parsed.title ?? "Untitled",
+        });
+        return yield* evaluate("page.create-for.result", () => {
+          const created = result.outcome.created_page;
+          if (!created) throw new Error("Core omitted the created Page");
+          const placement = created.placement;
+          return {
+            pageId: created.page_id,
+            projectId: created.project_id ?? null,
+            pageKey: created.page_key ?? null,
+            placement:
+              placement.kind === "library"
+                ? { kind: "library", libraryId: placement.library_id }
+                : {
+                    kind: "data_source",
+                    databaseId: placement.database_id,
+                    dataSourceId: placement.data_source_id,
+                    viewId: placement.view_id,
+                  },
+          } satisfies CreatePageForResult;
+        });
+      }),
       linkPageToProjectSession: Effect.fn("ProjectWorkspace.linkPageToProjectSession")(
         function* (sessionId, input) {
           const parsed = yield* evaluate("page-chat.link", () => {

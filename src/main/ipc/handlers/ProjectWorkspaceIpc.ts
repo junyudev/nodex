@@ -194,6 +194,9 @@ export const live: Layer.Layer<
       projects.readPageChatActivitySummaries(input),
     );
     yield* invokeEffectQuery("page-chats:list", (_, input) => projects.listPageChatWindow(input));
+    yield* invokeEffectPlainCommand("workspace:page:create-for", (_, input) =>
+      projects.createPageFor(input),
+    );
     yield* invokeEffectPlainCommand("page-chats:link", (_, sessionId, input) =>
       projects.linkPageToProjectSession(sessionId, input),
     );

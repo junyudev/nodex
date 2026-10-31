@@ -789,9 +789,9 @@ fn capture_message_in_scope(
             document_id,
             title_markdown: &message.title_markdown,
             markdown: &message.body_markdown,
-            destination: &destination,
             now,
         },
+        &destination,
     )?;
     let seq = allocate_seq(connection, library_id, now)?;
     connection.execute(
