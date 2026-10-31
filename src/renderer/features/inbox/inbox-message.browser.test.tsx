@@ -49,11 +49,13 @@ const actions = new Proxy({} as InboxActions, { get: () => vi.fn(async () => tru
 function StreamMessage({
   item,
   selected = false,
+  awaitingIndicator = true,
   linkedChats = null,
   onOpenPage = openNothing,
 }: {
   item: InboxItem;
   selected?: boolean;
+  awaitingIndicator?: boolean;
   linkedChats?: PageChatActivitySummary | null;
   onOpenPage?: () => void;
 }) {
@@ -64,7 +66,7 @@ function StreamMessage({
         projects={[]}
         agents={inboxAgentsFixture()}
         policy={{ kind: "automatic" }}
-        awaitingIndicator
+        awaitingIndicator={awaitingIndicator}
         actions={actions}
         manualDraft={null}
         groupedWithKey={null}
@@ -114,12 +116,22 @@ const cornerEnd = () => {
   };
 };
 
-test("the waiting spinner ends where the bubble's bottom-right corner curve ends", () => {
+/** ResizeObserver queues the message's overflow measurement for the following frame. */
+async function settleMessageLayout() {
+  await act(async () => {
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    });
+  });
+}
+
+test("the waiting spinner ends where the bubble's bottom-right corner curve ends", async () => {
   render(
     <Stream>
       <StreamMessage key="page:1" item={waiting} />
     </Stream>,
   );
+  await settleMessageLayout();
   const corner = cornerEnd();
   const spinner = screen
     .getByRole("status", { name: "Finding where this goes" })
@@ -128,7 +140,21 @@ test("the waiting spinner ends where the bubble's bottom-right corner curve ends
   expect(spinner.right).toBeCloseTo(corner.x, 0);
 });
 
-test("a row of icons ends its last glyph where the bubble's corner curve ends", () => {
+test("a row of icons ends its last glyph where the bubble's corner curve ends", async () => {
+  render(
+    <Stream>
+      <StreamMessage key="page:1" item={waiting} awaitingIndicator={false} />
+    </Stream>,
+  );
+  await settleMessageLayout();
+  expect(screen.queryByRole("status", { name: "Finding where this goes" })).toBeNull();
+  const corner = cornerEnd();
+  const buttons = screen.getByTestId("inbox-actions").querySelectorAll("button");
+  const lastGlyph = buttons[buttons.length - 1]!.querySelector("svg")!.getBoundingClientRect();
+  expect(Math.abs(lastGlyph.right - corner.x)).toBeLessThanOrEqual(1);
+});
+
+test("a failed suggestion's Retry decision ends flush with the card's right edge", async () => {
   const failed = {
     ...waiting,
     suggestionState: "failed" as const,
@@ -139,10 +165,10 @@ test("a row of icons ends its last glyph where the bubble's corner curve ends", 
       <StreamMessage key="page:1" item={failed} />
     </Stream>,
   );
-  const corner = cornerEnd();
-  const buttons = screen.getByTestId("inbox-actions").querySelectorAll("button");
-  const lastGlyph = buttons[buttons.length - 1]!.querySelector("svg")!.getBoundingClientRect();
-  expect(Math.abs(lastGlyph.right - corner.x)).toBeLessThanOrEqual(1);
+  await settleMessageLayout();
+  const card = screen.getByTestId("inbox-message-unit").getBoundingClientRect();
+  const retry = screen.getByRole("button", { name: "Retry" }).getBoundingClientRect();
+  expect(Math.abs(retry.right - card.right)).toBeLessThanOrEqual(1);
 });
 
 test("a selected card's ring is never clipped, and only a message folding away clips", async () => {
