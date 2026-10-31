@@ -103,11 +103,16 @@ import {
   resolveNfmSendToThreadPreferredTarget,
   type NfmSendToThreadRequest,
 } from "./nfm-send-to-thread-menu-model";
-import { NfmPromptRuntimeProvider, type NfmPromptRuntimeValue } from "./nfm-prompt-runtime";
+import {
+  NFM_INERT_PROMPT_RUNTIME,
+  NfmPromptRuntimeProvider,
+  type NfmPromptRuntimeValue,
+} from "./nfm-prompt-runtime";
 import { findNfmPromptBlockAtCaret } from "./nfm-prompt-block-model";
 import { writeNfmPromptCollapsed } from "./nfm-prompt-collapse-store";
 import { NfmSideMenuRuntimeProvider } from "./nfm-side-menu-runtime";
 import { NfmChatSendShortcutController } from "./nfm-chat-send-shortcut-controller";
+import { ReadonlyMarkdownBlockNotePreview } from "./readonly-nfm-blocknote-preview";
 import { reportNfmChatSendFailure } from "./nfm-chat-send-feedback";
 import { resolveSendBlockSelection } from "./send-block-selection";
 import { PasteResourceDialog } from "./paste-resource-dialog";
@@ -199,6 +204,7 @@ import {
   type NfmEditorSource,
 } from "./nfm-editor-source";
 import { isEmptyParagraphBlock } from "./nfm-empty-paragraph";
+import { findToggleButtonForBlock } from "./toggle-shortcut";
 import {
   hasNfmEditorTransientInput,
   prepareNfmEditorObservation,
@@ -741,10 +747,7 @@ function NfmEditorInstance({
   }, [editor]);
 
   // Keyboard handlers subscribe once; they read the current Prompt runtime through this ref.
-  const promptRuntimeRef = useRef<NfmPromptRuntimeValue>({
-    destination: null,
-    send: async () => undefined,
-  });
+  const promptRuntimeRef = useRef<NfmPromptRuntimeValue>(NFM_INERT_PROMPT_RUNTIME);
   const restoreEditorFocus = useCallback(() => {
     requestAnimationFrame(() => {
       editor?.focus();
@@ -1828,6 +1831,29 @@ function NfmEditorInstance({
     [editor, promptDestinationTarget, recordPromptSends, sendPromptInputToChat],
   );
 
+  /** A reply lands as a Reply toggle after its Prompt, outside what the Prompt sends next time. */
+  const insertPromptReply = useCallback(
+    (promptBlockId: string, reply: string) => {
+      if (!editor.isEditable || !editor.getBlock(promptBlockId)) return;
+      const children = markdownBlocksForEditor(readMarkdown(reply));
+      if (children.length === 0) return;
+      const [inserted] = editor.insertBlocks(
+        [{ type: "toggleListItem", content: "Reply", children } as never],
+        promptBlockId,
+        "after",
+      );
+      if (inserted) {
+        // The reply was asked for to be read: show it open, as the toggle shortcut would.
+        const toggle = findToggleButtonForBlock(editor.domElement, inserted.id);
+        if (toggle?.closest(".bn-toggle-wrapper")?.getAttribute("data-show-children") !== "true")
+          toggle?.click();
+        editor.setTextCursorPosition(inserted.id, "end");
+      }
+      editor.focus();
+    },
+    [editor],
+  );
+
   const promptRuntimeValue = useMemo<NfmPromptRuntimeValue>(
     () => ({
       destination: !promptDestinationTarget
@@ -1840,8 +1866,24 @@ function NfmEditorInstance({
             }
           : { kind: "new-chat" },
       send: sendPromptBlock,
+      insertReply: insertPromptReply,
+      renderReply: (reply: string) => (
+        <ReadonlyMarkdownBlockNotePreview
+          content={reply}
+          projectId={executionProjectId ?? ""}
+          pageId={sourcePageContext?.pageId ?? ""}
+        />
+      ),
+      pageId: sourcePageContext?.pageId ?? null,
     }),
-    [promptDestinationTarget, sendPromptBlock, sessionSendToThreadPreferredTarget],
+    [
+      executionProjectId,
+      insertPromptReply,
+      promptDestinationTarget,
+      sendPromptBlock,
+      sessionSendToThreadPreferredTarget,
+      sourcePageContext?.pageId,
+    ],
   );
   useLayoutEffect(() => {
     promptRuntimeRef.current = promptRuntimeValue;

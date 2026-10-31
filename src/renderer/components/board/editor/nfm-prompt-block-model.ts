@@ -1,31 +1,71 @@
 import { formatCompactRelativeTime } from "@/lib/compact-relative-time";
-import type { AgentRuntimeSessionActivity } from "../../../../shared/agent-runtime-api";
+import type { PromptTurnPhase } from "../../../../shared/prompt-turn";
 
 /** Where a Prompt's send button goes: the chat beside the Page, or a new chat. */
 export type NfmPromptDestination =
   | { readonly kind: "beside"; readonly sessionId: string; readonly title: string }
   | { readonly kind: "new-chat" };
 
-export type NfmPromptStatusTone = "working" | "attention" | "idle";
+export type NfmPromptStatusTone = "working" | "attention" | "done" | "idle";
 
 export interface NfmPromptSentPresentation {
   readonly tone: NfmPromptStatusTone;
   readonly label: string;
 }
 
-/** The last send, as the chat that received it is doing now. */
+/** When the Prompt went, for a record whose Turn says nothing more. */
+export function describeNfmPromptSentAt(sentAt: string, nowMs?: number): string {
+  const sentAtMs = Date.parse(sentAt);
+  if (!Number.isFinite(sentAtMs)) return "Sent";
+  const elapsed = formatCompactRelativeTime(sentAtMs, nowMs);
+  return elapsed === "now" ? "Sent just now" : `Sent ${elapsed} ago`;
+}
+
+/**
+ * The last send, as its own Turn stands: what the chat does with other messages never shows here.
+ * A record without a known Turn only says when it went.
+ */
 export function resolveNfmPromptSentPresentation(input: {
-  readonly status: AgentRuntimeSessionActivity["status"] | null;
+  readonly phase: PromptTurnPhase | null;
   readonly sentAt: string;
   readonly nowMs?: number;
 }): NfmPromptSentPresentation {
-  if (input.status === "running") return { tone: "working", label: "Working…" };
-  if (input.status === "background") return { tone: "working", label: "Working in background" };
-  if (input.status === "waiting") return { tone: "attention", label: "Needs you" };
-  const sentAtMs = Date.parse(input.sentAt);
-  if (!Number.isFinite(sentAtMs)) return { tone: "idle", label: "Sent" };
-  const elapsed = formatCompactRelativeTime(sentAtMs, input.nowMs);
-  return { tone: "idle", label: elapsed === "now" ? "Sent just now" : `Sent ${elapsed} ago` };
+  switch (input.phase) {
+    case "queued":
+      return { tone: "idle", label: "Queued" };
+    case "working":
+      return { tone: "working", label: "Working…" };
+    case "waiting":
+      return { tone: "attention", label: "Needs you" };
+    case "done":
+      return { tone: "done", label: "Answered" };
+    case "failed":
+      return { tone: "attention", label: "Failed" };
+    case "interrupted":
+      return { tone: "idle", label: "Stopped" };
+    default:
+      return { tone: "idle", label: describeNfmPromptSentAt(input.sentAt, input.nowMs) };
+  }
+}
+
+/** What the Prompt's Turn is doing, for when there is no reply to show yet. */
+export function describeNfmPromptTurnState(phase: PromptTurnPhase | null): string {
+  switch (phase) {
+    case "queued":
+      return "Queued until the chat finishes its current turn.";
+    case "working":
+      return "The chat is working on this.";
+    case "waiting":
+      return "The chat needs your answer to continue.";
+    case "done":
+      return "The chat finished without a written reply.";
+    case "failed":
+      return "This turn failed. Open the chat to see why.";
+    case "interrupted":
+      return "This turn was stopped before it finished.";
+    default:
+      return "The chat no longer has a record of this send.";
+  }
 }
 
 export function describeNfmPromptSend(

@@ -4,7 +4,12 @@ import { ActivitySpinnerIcon, ChevronRightIcon, UpArrowIcon } from "@/components
 import { CornerDownRight } from "@/components/shared/icons/generic-icons";
 import { PageChatActivityGlyph } from "@/components/shared/page-chat-activity-glyph";
 import { NodexTooltip } from "@/components/ui/tooltip";
-import { useAgentRuntimeSessionStatus } from "@/lib/agent-runtime-session-activity";
+import { NodexButton } from "@/components/ui/button";
+import { NodexPopover, NodexPopoverTrigger } from "@/components/ui/popover";
+import { useOpenChatAtMessage } from "@/features/local-conversation/chat-message-navigation";
+import { usePromptTurn } from "@/lib/prompt-turn";
+import { pageChatWindowQueryOptions } from "@/lib/query-options";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 import { formatAcceleratorLabel } from "../../../../shared/command-keybindings";
 import { resolveCodexRendererCommandPlatform } from "@/lib/codex-window-runtime";
@@ -12,10 +17,13 @@ import { promptBlockConfig } from "../../../../shared/block-documents/blocknote-
 import { reportNfmChatSendFailure } from "./nfm-chat-send-feedback";
 import {
   describeNfmPromptSend,
+  describeNfmPromptSentAt,
+  describeNfmPromptTurnState,
   findNfmPromptBlockAtCaret,
   nfmPromptStartsNewTurn,
   resolveNfmPromptSentPresentation,
 } from "./nfm-prompt-block-model";
+import { NfmEditorPopoverContent } from "./nfm-editor-popover-content";
 import { NfmChatSendTooltip } from "./nfm-chat-send-tooltip";
 import { useNfmPromptCollapsed, writeNfmPromptCollapsed } from "./nfm-prompt-collapse-store";
 import { useNfmPromptRuntime } from "./nfm-prompt-runtime";
@@ -79,52 +87,117 @@ function PromptMarker({
   );
 }
 
-function PromptSentStatus({ sessionId, sentAt }: { sessionId: string; sentAt: string }) {
-  const status = useAgentRuntimeSessionStatus(sessionId);
+function PromptSentRecord({
+  promptBlockId,
+  sessionId,
+  messageId,
+  sentAt,
+  editable,
+}: {
+  promptBlockId: string;
+  sessionId: string;
+  messageId: string;
+  sentAt: string;
+  editable: boolean;
+}) {
+  const runtime = useNfmPromptRuntime();
+  const turn = usePromptTurn({ sessionId, messageId });
+  const openChatAtMessage = useOpenChatAtMessage();
   const mentions = useThreadMentionRuntime();
   const now = useMinuteNow();
+  const [open, setOpen] = useState(false);
   const thread = mentions.sessions[sessionId] ?? null;
   const resolveSession = mentions.resolveSession;
   useEffect(() => {
     if (thread || !resolveSession) return;
     void resolveSession(sessionId).catch(() => null);
   }, [resolveSession, sessionId, thread]);
+  // A sent Prompt links its Page to the chat, so the Page's Linked chats carry its live title.
+  const linkedChats = useInfiniteQuery({
+    ...pageChatWindowQueryOptions({
+      pageId: runtime.pageId ?? "",
+      includeArchived: false,
+      first: 20,
+    }),
+    enabled: Boolean(runtime.pageId),
+  });
+  const linkedTitle = linkedChats.data?.pages
+    .flatMap((window) => window.items)
+    .find((chat) => chat.sessionId === sessionId)?.displayTitle;
 
-  const presentation = resolveNfmPromptSentPresentation({ status, sentAt, nowMs: now });
-  const title = thread ? resolveNfmSendToThreadTitle(thread) : null;
-  const openSession = mentions.openSession;
+  // A record that names its message follows that message's own Turn; older ones only tell time.
+  const phase = messageId ? turn.phase : null;
+  const presentation = resolveNfmPromptSentPresentation({ phase, sentAt, nowMs: now });
+  const title = linkedTitle || (thread ? resolveNfmSendToThreadTitle(thread) : "its chat");
+  const reply = phase === "done" ? turn.reply : null;
+  const insertReply = editable ? runtime.insertReply : null;
+  const openChat = () => {
+    setOpen(false);
+    if (messageId) void openChatAtMessage({ sessionId, messageId });
+    else mentions.openSession?.(sessionId);
+  };
+
   return (
-    <NodexTooltip tooltipContent={title ? `Open ${title}` : "Open chat"} side="top" delay={0}>
-      <button
-        type="button"
-        contentEditable={false}
-        data-nfm-prompt-status={presentation.tone}
-        disabled={!openSession}
-        className={cn(
-          "inline-flex h-6 max-w-56 shrink-0 cursor-interaction select-none items-center gap-0.5 rounded-[6px] pr-1.5 text-xs text-token-description-foreground",
-          "hover:bg-token-foreground/5 hover:text-token-text-secondary disabled:cursor-default",
-          presentation.tone === "attention" && "text-token-warning-foreground",
-        )}
-        onMouseDown={keepEditorSelection}
-        onClick={() => openSession?.(sessionId)}
+    <NodexPopover open={open} onOpenChange={setOpen}>
+      <NodexPopoverTrigger>
+        <button
+          type="button"
+          contentEditable={false}
+          data-nfm-prompt-status={presentation.tone}
+          className={cn(
+            "inline-flex h-6 max-w-56 shrink-0 cursor-interaction select-none items-center gap-0.5 rounded-[6px] pr-1.5 text-xs text-token-description-foreground",
+            "hover:bg-token-foreground/5 hover:text-token-text-secondary aria-expanded:bg-token-foreground/5",
+            presentation.tone === "attention" && "text-token-warning-foreground",
+            presentation.tone === "done" && "text-token-text-secondary",
+          )}
+          onMouseDown={keepEditorSelection}
+        >
+          <PageChatActivityGlyph
+            activity={{
+              execution: phase === "working" ? "working" : phase === "waiting" ? "input" : "idle",
+              unread: false,
+            }}
+            className={presentation.tone === "attention" ? "text-current" : undefined}
+          />
+          <span className="truncate">{presentation.label}</span>
+        </button>
+      </NodexPopoverTrigger>
+      <NfmEditorPopoverContent
+        side="bottom"
+        align="end"
+        sideOffset={4}
+        aria-label="Prompt reply"
+        className="flex w-[min(30rem,calc(100vw-24px))] flex-col overflow-hidden p-0 text-sm"
       >
-        <PageChatActivityGlyph
-          activity={{
-            execution:
-              status === "running"
-                ? "working"
-                : status === "background"
-                  ? "background"
-                  : status === "waiting"
-                    ? "input"
-                    : "idle",
-            unread: false,
-          }}
-          className={presentation.tone === "attention" ? "text-current" : undefined}
-        />
-        <span className="truncate">{presentation.label}</span>
-      </button>
-    </NodexTooltip>
+        <div className="truncate px-3 pt-2.5 pb-2 text-xs text-token-description-foreground">
+          {describeNfmPromptSentAt(sentAt, now)} to {title}
+        </div>
+        {reply && runtime.renderReply ? (
+          <div className="max-h-80 overflow-auto border-y-[0.5px] border-token-border px-3 py-1">
+            {runtime.renderReply(reply)}
+          </div>
+        ) : (
+          <p className="px-3 pb-1 text-token-text-secondary">{describeNfmPromptTurnState(phase)}</p>
+        )}
+        <div className="flex justify-end gap-1 p-2">
+          <NodexButton variant="ghostSecondary" size="xs" onClick={openChat}>
+            Open in chat
+          </NodexButton>
+          {reply && insertReply ? (
+            <NodexButton
+              variant="primary"
+              size="xs"
+              onClick={() => {
+                setOpen(false);
+                insertReply(promptBlockId, reply);
+              }}
+            >
+              Insert reply
+            </NodexButton>
+          ) : null}
+        </div>
+      </NfmEditorPopoverContent>
+    </NodexPopover>
   );
 }
 
@@ -217,7 +290,13 @@ export const createPromptBlockSpec = createReactBlockSpec(promptBlockConfig, {
         <div ref={contentRef} className="min-w-0 flex-1" />
         <div contentEditable={false} className="flex h-6 shrink-0 items-center gap-1">
           {sentSessionId ? (
-            <PromptSentStatus sessionId={sentSessionId} sentAt={block.props.sentAt} />
+            <PromptSentRecord
+              promptBlockId={block.id}
+              sessionId={sentSessionId}
+              messageId={block.props.sentMessageId}
+              sentAt={block.props.sentAt}
+              editable={editor.isEditable}
+            />
           ) : null}
           {destination ? (
             <PromptSendButton

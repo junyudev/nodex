@@ -27,13 +27,23 @@ Blocks, inside one hairline-bounded surface.
 - The trailing send button uses the Composer's send glyph. It appears while the
   pointer is over the Prompt or the caret is inside it, and stays visible while a
   send is in flight. An empty Prompt cannot be sent.
-- After a send, a status chip sits before the send button. It follows the chat
-  that received the Prompt: `Working…`, `Working in background`, `Needs you`, or
-  `Sent 5m ago` once the chat is idle. Its tooltip names the chat; activating it
-  opens that chat.
+- After a send, a status chip sits before the send button. It follows the Turn
+  that this Prompt's message started, or was delivered into, and nothing else the
+  chat does: `Queued`, `Working…`, `Needs you`, `Answered`, `Failed` or `Stopped`.
+  A send record without a known message only says `Sent 5m ago`.
 
 Read-only previews and lightweight renderers show the marker, first line and
 children without the send button.
+
+## Reply
+
+Activating the status chip opens a panel under it. It says when the Prompt went and
+to which chat, then shows the reply once the Turn is answered, rendered as Page
+content, or else a sentence about the Turn's state. `Open in chat` opens that chat
+at the Prompt's message and briefly highlights it. `Insert reply` puts the reply
+into the Page as a `Reply` toggle right after the Prompt, outside the Prompt so that
+sending it again never carries the reply; it is offered only where the Page is
+editable.
 
 ## Sending
 
@@ -103,6 +113,6 @@ virtualized list and reduced-motion policy.
 
 ## Verification
 
-Pure model tests own status labels, send labels and caret resolution. The
+Pure model tests own status labels, Turn descriptions, send labels and caret resolution. The
 Electron send-to-chat scenario owns slash insertion, `⌘↵` delivery and the
 recorded status.

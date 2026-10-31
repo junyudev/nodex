@@ -301,11 +301,24 @@ respect_system_proxy = false
         await expect(promptBlock.locator("[data-nfm-prompt-status]")).toBeVisible({
           timeout: 30_000,
         });
+        // The Prompt follows its own Turn, and its reply can be read and kept in the Page.
+        const promptStatus = promptBlock.locator("[data-nfm-prompt-status]");
+        await expect(promptStatus).toHaveText("Answered", { timeout: 30_000 });
         await reopened.screenshot({ path: testInfo.outputPath("send-to-chat-prompt-block.png") });
-        await promptBlock.locator("[data-nfm-prompt-status]").click();
-        await expect(reopened.getByText(promptBlockReply, { exact: true }).last()).toBeVisible({
+        await promptStatus.click();
+        const replyPanel = reopened.getByRole("dialog", { name: "Prompt reply" });
+        await expect(replyPanel.getByText(promptBlockReply, { exact: true })).toBeVisible({
           timeout: 30_000,
         });
+        await replyPanel.getByRole("button", { name: "Insert reply", exact: true }).click();
+        // The Reply toggle opens with the reply as its children.
+        const replyToggle = reopenedEditor
+          .locator(".bn-block")
+          .filter({
+            has: reopened.locator('[data-content-type="toggleListItem"]', { hasText: "Reply" }),
+          })
+          .last();
+        await expect(replyToggle.getByText(promptBlockReply, { exact: true })).toBeVisible();
       } catch (error) {
         await testInfo.attach("runtime-logs", {
           body: await readBoundedElectronRuntimeLogs(harness.profile),

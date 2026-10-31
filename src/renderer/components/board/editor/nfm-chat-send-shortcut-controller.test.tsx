@@ -12,7 +12,7 @@ import {
   NfmTextActionMenuRuntimeProvider,
   type NfmTextActionMenuChatRuntime,
 } from "./nfm-text-action-menu-runtime";
-import { NfmPromptRuntimeProvider } from "./nfm-prompt-runtime";
+import { NFM_INERT_PROMPT_RUNTIME, NfmPromptRuntimeProvider } from "./nfm-prompt-runtime";
 
 const harness = vi.hoisted(() => ({
   editor: {
@@ -56,6 +56,7 @@ function mount(state: CommandKeymapState, contextual = true) {
         <NfmTextActionMenuRuntimeProvider value={{ chat }}>
           <NfmPromptRuntimeProvider
             value={{
+              ...NFM_INERT_PROMPT_RUNTIME,
               destination: { kind: "beside", sessionId: "session-1", title: "Current chat" },
               send: sendPrompt,
             }}

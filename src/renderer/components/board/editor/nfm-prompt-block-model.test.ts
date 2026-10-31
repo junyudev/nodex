@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vite-plus/test";
 import {
   describeNfmPromptSend,
+  describeNfmPromptTurnState,
   findNfmPromptBlockAtCaret,
   nfmPromptStartsNewTurn,
   resolveNfmPromptSentPresentation,
@@ -14,23 +15,30 @@ describe("Prompt block model", () => {
     expect(describeNfmPromptSend({ kind: "new-chat" }, false)).toBe("Send to a new chat");
   });
 
-  test("shows the receiving chat's state, then how long ago the Prompt went", () => {
+  test("shows the Prompt's own Turn, and only when it went once nothing more is known", () => {
     const sentAt = "2026-10-31T08:00:00.000Z";
     const nowMs = Date.parse("2026-10-31T08:05:00.000Z");
-    expect(resolveNfmPromptSentPresentation({ status: "running", sentAt, nowMs })).toEqual({
-      tone: "working",
-      label: "Working…",
-    });
-    expect(resolveNfmPromptSentPresentation({ status: "waiting", sentAt, nowMs }).tone).toBe(
-      "attention",
+    const label = (phase: Parameters<typeof resolveNfmPromptSentPresentation>[0]["phase"]) =>
+      resolveNfmPromptSentPresentation({ phase, sentAt, nowMs });
+    expect(label("queued")).toEqual({ tone: "idle", label: "Queued" });
+    expect(label("working")).toEqual({ tone: "working", label: "Working…" });
+    expect(label("waiting")).toEqual({ tone: "attention", label: "Needs you" });
+    expect(label("done")).toEqual({ tone: "done", label: "Answered" });
+    expect(label("failed")).toEqual({ tone: "attention", label: "Failed" });
+    expect(label("interrupted")).toEqual({ tone: "idle", label: "Stopped" });
+    expect(label("unknown")).toEqual({ tone: "idle", label: "Sent 5m ago" });
+    expect(label(null)).toEqual({ tone: "idle", label: "Sent 5m ago" });
+    expect(resolveNfmPromptSentPresentation({ phase: null, sentAt: "", nowMs }).label).toBe("Sent");
+  });
+
+  test("explains a Turn that has no reply to show", () => {
+    expect(describeNfmPromptTurnState("queued")).toBe(
+      "Queued until the chat finishes its current turn.",
     );
-    expect(resolveNfmPromptSentPresentation({ status: null, sentAt, nowMs })).toEqual({
-      tone: "idle",
-      label: "Sent 5m ago",
-    });
-    expect(resolveNfmPromptSentPresentation({ status: null, sentAt: "", nowMs }).label).toBe(
-      "Sent",
+    expect(describeNfmPromptTurnState("failed")).toBe(
+      "This turn failed. Open the chat to see why.",
     );
+    expect(describeNfmPromptTurnState(null)).toBe("The chat no longer has a record of this send.");
   });
 
   test("finds the Prompt holding the caret through its own children", () => {

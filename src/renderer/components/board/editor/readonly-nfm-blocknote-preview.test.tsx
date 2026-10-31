@@ -1,3 +1,6 @@
+// The editor loads Prompt views before this renderer, which displays Prompts too. Loading them in
+// that order here makes any import cycle between the two fail as it does in the app.
+import "./prompt-block";
 import { afterEach, describe, expect, test } from "vite-plus/test";
 import { act, fireEvent, waitFor } from "@testing-library/react";
 import {
@@ -108,6 +111,28 @@ describe("readonly NFM BlockNote preview", () => {
       view.container.querySelector('[data-testid="readonly-nfm-blocknote-preview"]'),
     ).not.toBeNull();
     expect(view.container.querySelector('[contenteditable="true"]') === null).toBe(true);
+  });
+
+  test("shows a Prompt's first line and children without its send controls", async () => {
+    const view = render(
+      <TestQueryProvider>
+        <ReadonlyMarkdownBlockNotePreview
+          content={":::prompt[Review **this change**]\n  Focus on boundaries.\n:::"}
+          projectId="alpha"
+          pageId="card-prompt"
+          historyId={0}
+        />
+      </TestQueryProvider>,
+    );
+
+    const prompt = await waitFor(() => {
+      const element = view.container.querySelector('[data-content-type="prompt"]');
+      if (!element) throw new Error("Prompt not rendered");
+      return element;
+    });
+    expect(textContent(prompt)).toContain("Review this change");
+    expect(textContent(view.container)).toContain("Focus on boundaries.");
+    expect(view.container.querySelector("[data-nfm-prompt-send]")).toBeNull();
   });
 
   test("renders live embeds as inert placeholders", async () => {
