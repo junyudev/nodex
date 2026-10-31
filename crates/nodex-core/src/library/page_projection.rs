@@ -377,7 +377,13 @@ fn render_title_markdown(rich_title: &Value) -> Result<String, StoreError> {
         .map_err(|_| corrupt("Page rich title is not title-safe"))?;
     let inline = nodex_markdown::inline_content_from_json(&json)
         .map_err(|_| corrupt("Page rich title is not representable as Markdown"))?;
-    let markdown = nodex_markdown::write_inline(&inline);
+    // A Page title stands alone; label-only escaping could turn its text into a Block.
+    let markdown = nodex_markdown::write(&[nodex_markdown::Block::new(
+        nodex_markdown::BlockKind::Paragraph {
+            text: inline,
+            colors: Default::default(),
+        },
+    )]);
     let reparsed = parse_inline_markdown_title(&markdown)
         .map_err(|_| corrupt("Page rich title cannot be represented as inline Markdown"))?;
     if reparsed != canonical {
@@ -1035,6 +1041,18 @@ fn corrupt(message: impl Into<String>) -> StoreError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn title_markdown_preserves_literal_block_syntax() {
+        let title = json!([{
+            "type": "text",
+            "text": "# *Release*  [plan](https://example.com)",
+            "styles": {},
+        }]);
+        let markdown = render_title_markdown(&title).expect("literal title Markdown");
+        let parsed = parse_inline_markdown_title(&markdown).expect("readable title Markdown");
+        assert_eq!(serde_json::to_value(parsed).unwrap(), title);
+    }
 
     #[test]
     fn canonical_yaml_preserves_schema_order_and_typed_values() {

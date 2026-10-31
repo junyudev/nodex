@@ -434,7 +434,8 @@ pub(super) fn text_paragraphs_markdown(text: &str) -> String {
 }
 
 pub(super) fn title_markdown(title: &str) -> String {
-    nodex_markdown::write_inline(&[plain_text(title)])
+    // A title stands alone, so escape Block syntax as well as inline markup.
+    text_paragraphs_markdown(title)
 }
 
 /// A label for the message until it is named: its opening words, cut to a
