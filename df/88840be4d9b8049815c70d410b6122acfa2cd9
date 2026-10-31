@@ -1,0 +1,25 @@
+docs/product-specs/workbench-shell.md
+  s_039f18d9f057b1::t_77063f8ea7acd8 20
+  s_039f18d9f057b1::t_66d4aeae332ea8 13-14
+src/renderer/components/workbench/use-workbench-panel-projection.tsx
+  s_039f18d9f057b1::t_977b0a49ef2ff0 89,380-389
+src/renderer/components/workbench/side-chat-tab-icon.tsx
+  s_039f18d9f057b1::t_977b0a49ef2ff0 16
+  s_039f18d9f057b1::t_585cce8d370cd5 1-15,17-18
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "df88840be4d9b8049815c70d410b6122acfa2cd9",
+  "prompts": {},
+  "sessions": {
+    "s_039f18d9f057b1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "22d16c9f-cb3c-4036-8365-8dc2739f0598",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
