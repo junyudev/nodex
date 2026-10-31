@@ -1,0 +1,71 @@
+CHANGELOG.md
+  s_2d7b784dacd638::t_36728002fde1cb 35-36
+docs/product-specs/agent-runtime-behavior.md
+  s_2d7b784dacd638::t_8895ea343f0d8e 325-331
+packages/agent-runtime/package.json
+  s_aba0b408ef9828::t_f95ffbec6905a8 21-22
+packages/agent-runtime/src/nodex/Rollback.test.ts
+  s_aba0b408ef9828::t_7acbfd440f81d4 15-16,55-56,62-63,142,202-243,313-315,398-399,405-406,452,458-466,489-516
+packages/agent-runtime/src/nodex/Rollback.ts
+  s_aba0b408ef9828::t_028cfdef528afe 1-5,14,46-47,49-51,57
+packages/agent-runtime/src/orchestration-v2/CheckpointRollbackService.test.ts
+  s_fa2a1bb1a9bd0d::t_4af937f23a8130 387,389-397,411-412,459-464,498-499,503,579-583,636
+packages/agent-runtime/src/orchestration-v2/CheckpointRollbackService.ts
+  s_aba0b408ef9828::t_57044162f37a6b 1-5,181-195
+packages/agent-runtime/src/orchestration-v2/Orchestrator.ts
+  s_aba0b408ef9828::t_69945b72ed8562 1-6,10686-10694,10698
+packages/agent-runtime/src/orchestration-v2/ProjectionStore.ts
+  s_fa2a1bb1a9bd0d::t_05d501bcb62279 1-8,271-277,714,7812-7821,7840-7848,8639,8868-8880,10593,11639-11650,11781-11794
+packages/agent-runtime/vendor/contracts/src/orchestrationV2.ts
+  s_fa2a1bb1a9bd0d::t_dd6ab709dbeb60 2155-2179,2181,3816
+packages/agent-runtime/vendor/shared/package.json
+  s_aba0b408ef9828::t_9e0cbbc6d26e3b 79-80
+packages/agent-runtime/vendor/shared/src/orchestrationV2Rewind.test.ts
+  s_aba0b408ef9828::t_3cd7cdcc5f28d7 1-146
+packages/agent-runtime/vendor/shared/src/orchestrationV2Rewind.ts
+  s_aba0b408ef9828::t_e9a0133a7d7392 1-186
+src/renderer/features/local-conversation/agent-runtime-conversation-owner.node.test.ts
+  s_aba0b408ef9828::t_a96540d409e908 3111-3175
+src/renderer/features/local-conversation/agent-runtime-conversation-owner.ts
+  s_aba0b408ef9828::t_a329e14573558e 1-4,1208-1294,1296,1631,1634-1637,2063-2073,2134
+src/renderer/features/local-conversation/view/local-conversation-thread-body-owner.tsx
+  s_aba0b408ef9828::t_c562920d65be2b 682-688,697-701,706-708,714
+src/renderer/features/local-conversation/view/local-conversation-thread-body.test.tsx
+  s_aba0b408ef9828::t_594bf9c620def4 1934-1968
+src/shared/testing/agent-runtime-snapshot.ts
+  s_2d7b784dacd638::t_ebb02b22864598 83
+src/shared/types.ts
+  s_aba0b408ef9828::t_d0188286c293fe 4544-4545
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "deb062f4fe00289df86c3269ee72078ee67d0c76",
+  "prompts": {},
+  "sessions": {
+    "s_2d7b784dacd638": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1914f-6e55-7af3-9446-f9507906e41f",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_aba0b408ef9828": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1916f-ade3-7732-a737-d16b88fecf5d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_fa2a1bb1a9bd0d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19159-a559-7f33-a1c4-1abdaf6954c2",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
