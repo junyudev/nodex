@@ -1,0 +1,84 @@
+CHANGELOG.md
+  s_e2f9f3a29b34ef::t_8b8054d4fb8507 12,17,27-29
+  s_e2f9f3a29b34ef::t_9dbe3681d36159 34
+  s_e2f9f3a29b34ef::t_f02ac6f6b55440 33
+  s_e2f9f3a29b34ef::t_428146e4523f3e 30
+src/renderer/features/local-conversation/local-conversation-store.test.tsx
+  s_e2f9f3a29b34ef::t_cafeb405500ae6 2607-2658
+src/renderer/components/workbench/database-view-page-context-menu-host.test.tsx
+  s_e2f9f3a29b34ef::t_d111e146581bbc 16
+docs/product-specs/nfm-editor-text-action-menu-behavior.md
+  s_e2f9f3a29b34ef::t_06d6f827861ab8 66-70
+src/renderer/lib/page-editor-selection.test.ts
+  s_e2f9f3a29b34ef::t_1c8f6e2bccd9a5 66-67,70,77,80-81
+  s_e2f9f3a29b34ef::t_6f0eae03c8ae94 68-69,71-76,78-79
+src/renderer/features/local-conversation/view/shared/user-message-page-references.test.tsx
+  s_e2f9f3a29b34ef::t_eff4d65d43c65b 17,24
+src/renderer/components/board/editor/nfm-text-action-menu.tsx
+  s_e2f9f3a29b34ef::t_737f6bed09ef77 147,157,1099,1488
+  s_e2f9f3a29b34ef::t_d111e146581bbc 1040
+src/renderer/components/board/editor/nfm-editor.tsx
+  s_e2f9f3a29b34ef::t_d111e146581bbc 1462-1464,1779-1782,2605-2675
+  s_e2f9f3a29b34ef::t_1c8f6e2bccd9a5 1175-1177,1187,1204,1765
+  s_e2f9f3a29b34ef::t_d66313bc938ba9 2107
+CONTEXT.md
+  s_e2f9f3a29b34ef::t_2b0d27643ac516 523-531
+src/renderer/components/board/editor/nfm-send-to-thread-menu.tsx
+  s_e2f9f3a29b34ef::t_8392efa821db40 12,22
+  s_e2f9f3a29b34ef::t_45a37b5643de8f 43-44,51-54,56-57,66,190,201-212,219,231,250-257,273,289,294,304,309,316
+docs/product-specs/composer-page-references-behavior.md
+  s_e2f9f3a29b34ef::t_0dcbfaeb94e350 10-11
+src/renderer/components/board/editor/nfm-chat-send-shortcuts.test.ts
+  s_e2f9f3a29b34ef::t_d111e146581bbc 33-35
+src/renderer/features/local-conversation/local-conversation-store.ts
+  s_e2f9f3a29b34ef::t_4a25727c7bc89c 2208,3559,3624-3640,8085,8095,9715
+src/renderer/components/board/editor/nfm-chat-send-feedback.ts
+  s_e2f9f3a29b34ef::t_d111e146581bbc 4
+src/renderer/components/board/editor/nfm-side-menu-model.ts
+  s_e2f9f3a29b34ef::t_d111e146581bbc 7,87-145
+src/renderer/components/board/editor/prompt-block.tsx
+  s_e2f9f3a29b34ef::t_d111e146581bbc 170-174,191
+docs/KEYBOARD_SHORTCUTS.md
+  s_e2f9f3a29b34ef::t_797fd280b6fb7f 190-203
+src/renderer/lib/page-editor-selection.ts
+  s_e2f9f3a29b34ef::t_1c8f6e2bccd9a5 33-38,50-54
+src/renderer/components/workbench/workbench-page-stage-panel.tsx
+  s_e2f9f3a29b34ef::t_d111e146581bbc 1
+src/renderer/components/board/editor/nfm-text-action-menu-model.test.ts
+  s_e2f9f3a29b34ef::t_d111e146581bbc 2
+src/renderer/components/board/editor/nfm-send-to-thread-menu-model.ts
+  s_e2f9f3a29b34ef::t_d111e146581bbc 298-300
+  s_e2f9f3a29b34ef::t_2f8a7bd16e3a12 46-47,245-246,249,280-286,302
+  s_e2f9f3a29b34ef::t_47085fdcdc6996 195,203,205,292-294
+src/renderer/components/board/editor/nfm-send-to-thread-menu-model.test.ts
+  s_e2f9f3a29b34ef::t_ea29bc5a7ac134 319-357
+src/renderer/lib/chat-session-for-thread.node.test.ts
+  s_e2f9f3a29b34ef::t_d111e146581bbc 11-12,14-16
+src/renderer/components/board/editor/nfm-text-action-menu-runtime.tsx
+  s_e2f9f3a29b34ef::t_193aa1c099e29f 10-11
+tests/e2e/nfm-send-to-chat.spec.ts
+  s_e2f9f3a29b34ef::t_d111e146581bbc 239-242
+docs/product-specs/index.md
+  s_e2f9f3a29b34ef::t_5d031287f2922a 67
+  s_e2f9f3a29b34ef::t_79d3559d266f83 57-58,68
+src/renderer/components/board/editor/nfm-side-menu.tsx
+  s_e2f9f3a29b34ef::t_737f6bed09ef77 1273
+src/renderer/components/workbench/database-view-page-context-menu.tsx
+  s_e2f9f3a29b34ef::t_737f6bed09ef77 210
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "616d9bf38f19ce34c954996c7fb54983c7d30abb",
+  "prompts": {},
+  "sessions": {
+    "s_e2f9f3a29b34ef": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "611169ac-4329-45e2-9d06-66c1d10bf996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
