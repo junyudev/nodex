@@ -1,0 +1,35 @@
+docs/product-specs/agent-runtime-behavior.md
+  s_b5c41a13e9511c::t_0eeb99ace13159 762-765
+packages/agent-runtime/src/mcp/OrchestratorMcpService.ts
+  s_b5c41a13e9511c::t_a28dc8ff083c71 1,1191
+packages/agent-runtime/src/mcp/TaskResultDelivery.ts
+  s_b5c41a13e9511c::t_11fb00c4f1bfda 1-95
+packages/agent-runtime/src/mcp/TaskToolkit.integration.test.ts
+  s_b5c41a13e9511c::t_7eca1e3b68d920 1,713-741
+packages/agent-runtime/src/mcp/toolkits/task/handlers.ts
+  s_b5c41a13e9511c::t_6b506551697372 5,37,43,48
+packages/agent-runtime/src/nodex/Mcp.ts
+  s_b5c41a13e9511c::t_e4eb638b3ac998 13,50,60
+packages/agent-runtime/src/orchestration-v2/DelegatedCompletionDelivery.test.ts
+  s_b5c41a13e9511c::t_20b76ad9296019 1-8,2179-2213,2216-2218,2220-2222,2224-2288
+packages/agent-runtime/src/orchestration-v2/DelegatedResultReceipt.ts
+  s_b5c41a13e9511c::t_c6aad12f88dd42 1,17-21,23-26,39,48-55,57-71
+packages/agent-runtime/src/orchestration-v2/ProviderEventIngestor.ts
+  s_b5c41a13e9511c::t_efb03ed83466d8 701,707-709
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3b2c9e18ff6678861d24cb50ed2bfccd2a935f41",
+  "prompts": {},
+  "sessions": {
+    "s_b5c41a13e9511c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1919a-f51e-7522-8c2b-1ee25c262243",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
