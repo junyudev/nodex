@@ -1,0 +1,208 @@
+src/main/chat-search/ChatSearch.test-support.ts
+  s_0e3af12ec46fa2::t_d87184a7eecf13 14-210
+  s_2d7b784dacd638::t_220b569119b0e7 1-13,211
+src/renderer/lib/command-palette.ts
+  s_10c9ccdba0b010::t_7c91403b3dbe7c 6,17,138-142
+src/renderer/components/workbench/command-palette.test.tsx
+  s_10c9ccdba0b010::t_69d96d1609cae4 3,451-454,707-710,1204-1207
+  s_10c9ccdba0b010::t_3335878e817efa 11,23-29,54-62,67-71,425,427-450,455-471,475-480
+  s_10c9ccdba0b010::t_8de0f03a5d6949 1314-1317
+  s_10c9ccdba0b010::t_07ed3af89c9916 1242,1244,1246-1266,1272,1280,1287,1289,1295-1296,1299,1310-1313,1318-1319,1340-1342,1345,1347-1350,1352-1358,1360-1367,1369-1381,1383-1388,1391,1393,1415,1417-1422,1424-1426,1440-1443,1446,1448-1461,1475-1478
+  s_10c9ccdba0b010::t_6de93778adddca 481
+src/renderer/components/board/editor/nfm-slash-menu.tsx
+  s_10c9ccdba0b010::t_d78211fdfb0fe5 38-45,92,1043,1047,1050-1052,1054,1079-1081,1084-1096,1100,1104-1106,1111-1113,1117-1120,1124,1342,1345-1349,1354,1357,1359-1360,1364-1391,1470-1471,1481-1482,1485-1487,1499,1510-1512,1531,1536,1538-1549,1551,1553,1555-1556,1558,1560-1562,1564,1566-1567
+  s_10c9ccdba0b010::t_cec555d9b4ac3b 550,552,642-643,1284-1288,1495-1497,1504-1508,1513-1515,1517-1529,1550,1554,1557,1559,1563,1570
+  s_10c9ccdba0b010::t_4b363cdacab7ef 1509
+src/renderer/lib/chat-search.node.test.ts
+  s_10c9ccdba0b010::t_7052495dfc224f 1,3,5-11,16-118
+  s_10c9ccdba0b010::t_8de0f03a5d6949 2,14
+  s_10c9ccdba0b010::t_c045f5d5874ffc 4,12-13,15
+tests/e2e/chat-search.spec.ts
+  s_10c9ccdba0b010::t_c045f5d5874ffc 85-87,111-113
+  s_c2dadd59d28fba::t_aaaa015292d751 1-84,88-110,114-125
+src/renderer/lib/chat-search.ts
+  s_10c9ccdba0b010::t_6733604f379fc4 2,5,10,12,218-258
+  s_10c9ccdba0b010::t_c7e7cb1df7ad37 75-76,123,125,130
+  s_10c9ccdba0b010::t_8de0f03a5d6949 214-217
+  s_10c9ccdba0b010::t_87ab2ba9dfc79f 18-19,124,129,148,191,201
+  s_10c9ccdba0b010::t_c36f83c5103abb 1,3-4,6-9,11,13-17,20-74,78-81,87-102,104,106-111,113-114,116-120,134-147,149-162,164-165,167-173,175-176,178-184,186-187,205-213,259-268
+  s_10c9ccdba0b010::t_0a03bba46adbfd 77,82-86,103,105,112,115,121-122,126-128,131-133,163,166,174,177,185,188-190,192-200,202-204
+src/main/chat-search/ChatSearch.core-scenario.node.test.ts
+  s_0e3af12ec46fa2::t_1f455de271947d 60,125,140,144-150,153-161,163
+  s_0e3af12ec46fa2::t_589c5e248d683d 1-59,61-124,126-139,141-143,151-152,162,164-176
+src/renderer/lib/command-palette-sections.ts
+  s_10c9ccdba0b010::t_c7e7cb1df7ad37 113,164
+  s_10c9ccdba0b010::t_381b73c678f50a 9,13-16,29,43-57,99-100,112,114,125-126,152-163,165-174,211-212,226,259-260
+src/renderer/features/local-conversation/view/composer/composer-add-context-menu.tsx
+  s_10c9ccdba0b010::t_fd590f991ccc23 151
+  s_10c9ccdba0b010::t_07e945535dc932 44-48,826-827,830-831,833-834,836,838-845,1058-1079,1081-1082,1084-1085,1149,1209-1210
+src/renderer/components/board/editor/nfm-slash-menu.test.tsx
+  s_10c9ccdba0b010::t_cec555d9b4ac3b 601-603,606,727,738,740,742-747,749-765,772-780,782-786,789-837,848,1165-1167,1171-1178,1180,1191-1193
+  s_cb4392fad23838::t_ca12946c1f60ce 42-43,307,309-336,1202,1211-1212
+packages/agent-runtime/package.json
+  s_10c9ccdba0b010::t_c9416b4888403c 17
+src/main/chat-search/ChatSearch.ts
+  s_10c9ccdba0b010::t_fcd498048a6f3b 442-445,458-463
+  s_0e3af12ec46fa2::t_7d4faa98fa3f26 142,144-345,348,432,476,552,568-571,573-575,577
+  s_0e3af12ec46fa2::t_775c5191ffdbd4 100-128,440-441,457,545
+  s_1f106d27429efa::t_a9c34fe0030f68 1-99,129-141,143,346-347,349-431,433-439,446-456,464-475,477-544,546-551,553-567,572,576,578-582
+src/renderer/lib/command-palette.node.test.ts
+  s_10c9ccdba0b010::t_fcd498048a6f3b 18-19,92,94-111,115-129,192,202-203,207,210-268,285,296,519
+src/main/chat-search/ChatSearchRanking.ts
+  s_0e3af12ec46fa2::t_7d4faa98fa3f26 19
+  s_2d7b784dacd638::t_7a0826b33c2650 1-18,20-122
+src/renderer/components/board/editor/nfm-send-to-thread-menu.tsx
+  s_10c9ccdba0b010::t_6c0357d66cc244 231-235,243,245-249
+  s_10c9ccdba0b010::t_d78211fdfb0fe5 262,323,336,343,352-353,362,374,385,444-445,478,480-486
+  s_10c9ccdba0b010::t_066ea84e51d129 14-15,17-19,40,46,109-110,157,159-164,188,196-199,201,203-207,223-224,265-269,272-273,275
+docs/adr/0023-rust-core-exclusive-data-authority.md
+  s_10c9ccdba0b010::t_cec555d9b4ac3b 37-41
+src/main/chat-search/ChatCatalogProjection.ts
+  s_0e3af12ec46fa2::t_da480b8abb3dcf 56-61
+  s_0e3af12ec46fa2::t_7d4faa98fa3f26 20-48
+  s_3915316a9c4493::t_ccaefca9694cc9 1-19,49-55,62-69
+docs/product-specs/nfm-editor-thread-mention-behavior.md
+  s_10c9ccdba0b010::t_cec555d9b4ac3b 55,58
+CHANGELOG.md
+  s_10c9ccdba0b010::t_0b42598349efd4 35
+src/main/codex-application/CodexAppProtocolTools.node.test.ts
+  s_0e3af12ec46fa2::t_1c3876f036aaad 29-31,68-71,218
+  s_0e3af12ec46fa2::t_1828b15434fff7 78-85,87-92,94-109,111-112,366-433
+  s_3915316a9c4493::t_d48ef088673af8 1,217,219-220,434
+src/renderer/components/board/editor/nfm-send-to-thread-menu-model.ts
+  s_10c9ccdba0b010::t_c8fc366798b7c6 4,35,42-43,174-177,181,203-204,209-211,214,217-218,255,261-262,264-265,267-274,295,305
+src/renderer/components/workbench/workbench-command-palette-host.tsx
+  s_10c9ccdba0b010::t_3905183c031fcf 348-353
+  s_10c9ccdba0b010::t_8de0f03a5d6949 48
+src/shared/chat-search.ts
+  s_10c9ccdba0b010::t_ec896f4868b4fc 5-11,14,52-69,72-80,83-84,87-94,106-110
+  s_10c9ccdba0b010::t_8de0f03a5d6949 18-23
+  s_10c9ccdba0b010::t_8bcd3aa60e160a 1-4,12-13,15-17,24-51,70-71,81-82,85-86,95-105,111-112
+src/main/chat-search/ChatSearch.node.test.ts
+  s_0e3af12ec46fa2::t_da480b8abb3dcf 13-14,39-43,100,114,194,232,287,290-291,293,302-303,322-324,327-329,331-334,342-344,346-348,350-351,354,357,362-364,367-368,388-390,393-394,402-404,441-470
+  s_0e3af12ec46fa2::t_d87184a7eecf13 15-32,203-213
+  s_0e3af12ec46fa2::t_7a6f42cb87e9d3 10,112-113,115-116
+  s_3915316a9c4493::t_563d6b964efaa5 1-9,11-12,33-38,44-99,101-111,117-193,195-202,214-231,233-286,288-289,292,294-301,304-321,325-326,330,335-341,345,349,352-353,355-356,358-361,365-366,369-387,391-392,395-401,405-440
+src/main/codex-application/CodexAppProtocolTools.ts
+  s_0e3af12ec46fa2::t_1c3876f036aaad 2,156,176,421-445,453-454
+  s_10c9ccdba0b010::t_fcd498048a6f3b 446-452
+  s_2d7b784dacd638::t_627170f4d26f07 1,471,525-532,537
+src/renderer/components/workbench/command-palette.tsx
+  s_10c9ccdba0b010::t_3905183c031fcf 19,60,66,86,194-195
+docs/product-specs/command-palette-behavior.md
+  s_10c9ccdba0b010::t_cec555d9b4ac3b 28,53-54,80,82,231,233,235,237,239,241,243-248,250,252,254,256,258-259,261,265-267,269,298,330-331
+src/renderer/components/board/editor/nfm-send-to-thread-menu-model.test.ts
+  s_10c9ccdba0b010::t_cec555d9b4ac3b 34,99,103,106-113,115-117,119-123,126-132,135,137,144-146,207,220-228,240,328-356,358-359,363-364,366-376,388
+  s_cb4392fad23838::t_428fef67246513 2,14-17,19-33,35-38,94,97-98,387,389,415,448,458
+docs/ARCHITECTURE.md
+  s_10c9ccdba0b010::t_5c5b1099b4c552 216-217
+src/renderer/components/board/editor/nfm-text-action-menu.test.tsx
+  s_10c9ccdba0b010::t_cec555d9b4ac3b 1-2,5-12,20,37-44,46-59,63-69,71,74,76-80,82-89,93-97,99-112,114-124,128-138,257-258,260,363,420,422-423,643,648-649,658-667,688,690-692,694-695,698-713,727-731,733-745,749-759,783-786,792-794,795-796,800-809,831-834,852,854-870,876-877,879-908,909-925,931-932,934-973,974-986,992-993,995-1017,1018-1035,1046-1055,1075,1113
+src/renderer/components/board/editor/nfm-slash-menu-stability.test.tsx
+  s_10c9ccdba0b010::t_cec555d9b4ac3b 51-61,72-74,81,85,89,97-103,106,108-109,111-112,117,122,124-139,141-147,150-154,158-163,166,168,170-171,175,178,181,183-184,186-189,192,194-195,197-202,205,208-214,216-224,226-232,234,237,239-269
+  s_cb4392fad23838::t_bbfe6b986d6284 2,4-15,17,27,29-47,270-289,292-305
+src/renderer/components/workbench/command-palette-surface.tsx
+  s_10c9ccdba0b010::t_043f28884b2f6b 115,669-674,1338
+  s_10c9ccdba0b010::t_c7e7cb1df7ad37 170-173
+  s_10c9ccdba0b010::t_c52e45fc46c7e0 424,429,433-450,453,458,465,469-471,474,477,480,482-490,494,496,624-625,659
+  s_10c9ccdba0b010::t_eda88c71ecf3c3 65,75-79,816-826,933-934,952-953,1059-1060,1073-1074
+  s_10c9ccdba0b010::t_d1292ab9bb49d0 1084,1088,1674
+  s_10c9ccdba0b010::t_abcb86f656b7c8 1086,1089,1352-1353,1631-1632
+  s_10c9ccdba0b010::t_269999a69e4a17 113
+src/main/app-tools/SessionDiscovery.ts
+  s_0e3af12ec46fa2::t_ee1e50a2557522 232-283
+src/main/app-tools/SessionSearch.ts
+  s_0e3af12ec46fa2::t_2d0963875c30a4 21-26,321,680
+src/main/app/ConversationApplicationLive.ts
+  s_0e3af12ec46fa2::t_8cfeaf51de8f70 537-539
+src/main/app/MainApplicationLive.ts
+  s_0e3af12ec46fa2::t_fb0a71cb1929d4 1,125
+src/main/app/RendererIngressLive.ts
+  s_0e3af12ec46fa2::t_643530b91582ce 1,127
+src/main/codex-application/CodexSidebarSectionSync.node.test.ts
+  s_0e3af12ec46fa2::t_a1c592b35e47b0 162-189
+src/main/codex-application/CodexSidebarSectionSync.ts
+  s_0e3af12ec46fa2::t_82a886eae27455 417-465
+src/main/codex-application/CodexThreadCatalog.node.test.ts
+  s_0e3af12ec46fa2::t_4ad63e7b7d2f72 8,346
+src/main/codex-application/CodexThreadCatalog.ts
+  s_0e3af12ec46fa2::t_44d7cdcbdc5f28 1,26,96,99,124-141
+src/main/codex-application/CodexThreadTargets.core-scenario.node.test.ts
+  s_0e3af12ec46fa2::t_a6e605e3e7eb7b 343
+src/main/ipc/handlers/ChatSearchIpc.node.test.ts
+  s_0e3af12ec46fa2::t_66657cbe69b00d 1-98
+src/main/ipc/handlers/ChatSearchIpc.ts
+  s_0e3af12ec46fa2::t_852ae19afed9e5 1-61
+src/renderer/components/workbench/command-palette-scope.test.tsx
+  s_10c9ccdba0b010::t_b378403556726d 137
+src/renderer/components/workbench/command-palette.browser.test.tsx
+  s_10c9ccdba0b010::t_fd4c86b3fea703 12-16,34-35,37,41-42,45,47,51-69,165
+src/shared/ipc-api.ts
+  s_0e3af12ec46fa2::t_8ba27a0b7bf483 1,2298-2300,2302-2304,2306
+src/shared/ipc-endpoint-policy.ts
+  s_0e3af12ec46fa2::t_0e8d97be4ae465 219-220
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "62e3a3f141bfc3c8f24cb4e18e7e8896a3a7dbee",
+  "prompts": {},
+  "sessions": {
+    "s_0e3af12ec46fa2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19149-cf00-72b2-b83c-d78984c90d51",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_10c9ccdba0b010": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2948dcce-9216-43f5-af71-b571fcc1fac0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_1f106d27429efa": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19153-9dcc-74f1-8dde-9f675dc31816",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_2d7b784dacd638": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1914f-6e55-7af3-9446-f9507906e41f",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_3915316a9c4493": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19153-db3f-7c12-a8e5-ed6cea9f07b5",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_c2dadd59d28fba": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19171-2390-7ce1-a461-a43bc3fdecb2",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_cb4392fad23838": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19165-57df-7da3-a976-fd0a38de9966",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
