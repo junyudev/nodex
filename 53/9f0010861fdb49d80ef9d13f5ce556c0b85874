@@ -1,0 +1,35 @@
+scripts/scenarios/registry.ts
+  s_7b92b23925bc6e::t_d0bf4d948105e8 17,40
+scripts/scenarios/contracts.ts
+  s_7b92b23925bc6e::t_d0bf4d948105e8 189
+scripts/scenarios/adapters/core-client-seed-adapter.ts
+  s_7b92b23925bc6e::t_d0bf4d948105e8 463-468
+scripts/scenarios/scenarios/sidebar-chat-status.ts
+  s_7b92b23925bc6e::t_d0bf4d948105e8 1-271
+docs/development.md
+  s_7b92b23925bc6e::t_d0bf4d948105e8 363-372
+scripts/scenarios/adapters/renderer-ipc-seed-adapter.ts
+  s_7b92b23925bc6e::t_d0bf4d948105e8 577-580
+src/main/core-client/sidebar-chat-status-scenario.node.test.ts
+  s_7b92b23925bc6e::t_2129bde7bf4998 1-107
+scripts/scenarios/scenarios/database-context-menu-performance.test.ts
+  s_7b92b23925bc6e::t_d0bf4d948105e8 140-143
+scripts/scenarios/scenarios/board-dense.test.ts
+  s_7b92b23925bc6e::t_d0bf4d948105e8 305-308
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "539f0010861fdb49d80ef9d13f5ce556c0b85874",
+  "prompts": {},
+  "sessions": {
+    "s_7b92b23925bc6e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a191f1-1028-7201-b17a-dc8cffb3674d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
