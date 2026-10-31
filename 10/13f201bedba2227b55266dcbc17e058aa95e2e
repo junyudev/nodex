@@ -1,0 +1,40 @@
+src/renderer/lib/use-clock-at.ts
+  s_3500ddfb1933ec::t_a977b4ed3ea774 1-18
+src/renderer/components/workbench/workbench-rail-usage-meter.tsx
+  s_3500ddfb1933ec::t_a977b4ed3ea774 1,19,380
+src/renderer/features/inbox/inbox-planning.node.test.ts
+  s_3500ddfb1933ec::t_f18be6f302c0a7 10,134-149,204-220
+  s_3500ddfb1933ec::t_251be97606edf6 221-222
+docs/product-specs/inbox-behavior.md
+  s_3500ddfb1933ec::t_00723d7715b059 488
+  s_3500ddfb1933ec::t_cea959b1d247b0 489-491,498-504
+src/renderer/features/inbox/inbox-planning-summary.tsx
+  s_3500ddfb1933ec::t_23c8c21d2621f2 1,305-313
+  s_3500ddfb1933ec::t_5b914675dbb19b 8,20,48-50,81-88,107,228-229,303-304,314-317,379
+src/renderer/components/workbench/workbench-testkit/workbench-shell-harness.tsx
+  s_3500ddfb1933ec::t_b4f9e9068af03d 2719,2721-2722
+src/renderer/features/inbox/inbox-planning.ts
+  s_3500ddfb1933ec::t_f18be6f302c0a7 130-132
+  s_3500ddfb1933ec::t_4fb7975d69dc1e 3,129,170-177
+  s_3500ddfb1933ec::t_9d8cbaa04380c1 178
+src/renderer/features/inbox/inbox-planning-summary.test.tsx
+  s_3500ddfb1933ec::t_f18be6f302c0a7 121-143
+  s_3500ddfb1933ec::t_a95435830df7fc 61-62
+  s_3500ddfb1933ec::t_c6371a5c3e42da 144-145
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1013f201bedba2227b55266dcbc17e058aa95e2e",
+  "prompts": {},
+  "sessions": {
+    "s_3500ddfb1933ec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a2805826-88de-4be0-aea1-fc13723372c5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
