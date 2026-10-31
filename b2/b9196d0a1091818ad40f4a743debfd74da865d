@@ -1,0 +1,338 @@
+src/shared/nodex-account.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 30-55,58-68
+crates/nodex-core/src/library/page_projection.rs
+  s_e2f9f3a29b34ef::t_a6a974bc812385 380-386,1045-1055
+  s_e2f9f3a29b34ef::t_2b7213f9e6c33a 1056
+src/renderer/components/workbench/workbench-command-palette-host.tsx
+  s_e2f9f3a29b34ef::t_a6a974bc812385 19,93-94,126,184,217,219,223
+src/renderer/components/workbench/workbench-shell.layout-panel-actions.test.tsx
+  s_e2f9f3a29b34ef::t_a6a974bc812385 554,559,563-566,1486
+src/shared/nodex-models.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 1-17
+src/renderer/lib/capture-selection.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 1-52
+src/renderer/lib/use-workbench-command-ingress.test.tsx
+  s_e2f9f3a29b34ef::t_a6a974bc812385 59,65-66
+packages/agent-runtime/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 1301,1305,8646,9647-9650,9654-9659
+src/main/platform/node/NodexAccountPlatform.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 30-31,65,330-337,364-371
+packages/agent-runtime/src/orchestration-v2/Adapters/CodexAdapterV2.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 1594-1597
+src/renderer/features/nodex-account/nodex-account-menu.test.tsx
+  s_e2f9f3a29b34ef::t_a6a974bc812385 3-14,16-19,25,53,55,61-66,68,108,157-161,198-290
+packages/agent-runtime/src/provider/ClaudeProvider.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 601-609
+src/shared/command-keybindings.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 552-560
+docs/product-specs/workbench-shell.md
+  s_e2f9f3a29b34ef::t_a6a974bc812385 22,213,226
+src/main/platform/node/NodexAccountPlatform.node.test.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 2-6,197,204-206,212,248-249,267-268
+src/main/nodex-account/managed-providers.node.test.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 1-100
+src/renderer/components/workbench/command-palette.browser.test.tsx
+  s_e2f9f3a29b34ef::t_a6a974bc812385 73-74,105
+src/main/app/AgentRuntimeApplicationLive.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 1-5,16,165,195,211,220-226,567-577,717-730,732-735
+packages/agent-runtime/src/nodex/NodexModelPolicy.test.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 1-113
+src/renderer/features/inbox/inbox-composer.test.tsx
+  s_e2f9f3a29b34ef::t_a6a974bc812385 138-214,298
+src/renderer/features/inbox/inbox-quick-capture.tsx
+  s_e2f9f3a29b34ef::t_a6a974bc812385 1-174
+src/renderer/features/nodex-account/account-settings-page.test.tsx
+  s_e2f9f3a29b34ef::t_a6a974bc812385 164-195
+src/renderer/features/usage-meters/usage-meter-settings.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 1-123
+src/shared/usage-meter-settings.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 1-26
+packages/agent-runtime/src/nodex/ProviderConfiguration.test.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 235-263
+packages/agent-runtime/src/textGeneration/ClaudeTextGeneration.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 186,192-195,203,220
+src/renderer/components/workbench/workbench-db-view-panel.tsx
+  s_e2f9f3a29b34ef::t_a6a974bc812385 532
+packages/agent-runtime/src/provider/ProviderInstanceRegistry.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 51,64,274-277,281-306
+src/renderer/components/workbench/workbench-runtime.tsx
+  s_e2f9f3a29b34ef::t_a6a974bc812385 42-43,113-119,345-346,397,2030-2047,2049-2108,2251,2254-2255,2266-2283,2302,2304-2314,3593,3604,3631,4182,5520-5527
+src/main/platform/NodexAccountPlatform.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 18
+src/main/agent-runtime/AgentRuntimeClaudeUsage.node.test.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 64,88-89,166-174,462-498
+  s_e2f9f3a29b34ef::t_c824010698a77d 499-501
+src/renderer/features/inbox/inbox-capture-state.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 21,23,28,55,57,68,92,137,153,162
+CONTEXT.md
+  s_e2f9f3a29b34ef::t_a6a974bc812385 941,945-947,949,951-953,955,957-960
+src/renderer/lib/use-workbench-shortcuts.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 4,51,90,196,244-247,257,387
+src/main/codex-application/CodexAccount.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 35-36,92,95,146,150-152,204,219-220,257-272
+  s_e2f9f3a29b34ef::t_63bd777073d748 273
+packages/agent-runtime/src/orchestration-v2/ThreadManagementService.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 419,563-572,675,686
+src/main/host-runtime/AppUpdateRuntime.test.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 108
+src/renderer/components/workbench/workbench-settings-search-catalog.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 138-155
+  s_e2f9f3a29b34ef::t_ba9083de6f3922 137
+src/main/app/CodexApplicationLive.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 26,377-389
+scripts/agent-runtime-build-cache.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 189,246-249
+src/renderer/features/inbox/inbox-capture-scope.node.test.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 1-27
+docs/product-specs/nodex-account-and-subscription-behavior.md
+  s_e2f9f3a29b34ef::t_a6a974bc812385 1,3-4,7-147
+src/main/app/RendererIngressLive.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 79
+src/renderer/components/workbench/workbench-shell.tsx
+  s_e2f9f3a29b34ef::t_a6a974bc812385 41,385-386
+src/renderer/lib/command-palette-commands.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 13,29-30,66-67,92-93,236-240,242-250,252-253
+src/shared/agent-runtime-provider.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 8-11
+src/renderer/lib/page-create-focus.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 1
+src/renderer/components/shared/agent-runtime/agent-model-picker.tsx
+  s_e2f9f3a29b34ef::t_a6a974bc812385 1-2,353-367,369-371
+src/renderer/lib/nodex-model-selection.node.test.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 1-61
+src/shared/schemas/agent-backend.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 5-8,10,12-16,19-23,28
+src/main/settings/ApplicationSettings.test-support.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 1,13,20
+src/renderer/lib/page-create-target.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 15-16
+docs/product-specs/nodex-account-login-behavior.md
+  s_e2f9f3a29b34ef::t_a6a974bc812385 4,13-17,42-43,82-83
+src/renderer/components/workbench/workbench-testkit/workbench-shell-harness.tsx
+  s_e2f9f3a29b34ef::t_a6a974bc812385 123,4529,4576-4577,4732-4733
+docs/ARCHITECTURE.md
+  s_e2f9f3a29b34ef::t_a6a974bc812385 79-83
+CHANGELOG.md
+  s_e2f9f3a29b34ef::t_a6a974bc812385 9-11,17
+  s_e2f9f3a29b34ef::t_7a4cbb3cc7a626 18
+src/renderer/components/workbench/workbench-rail-account-controls.tsx
+  s_e2f9f3a29b34ef::t_a6a974bc812385 1,4,241,262,266,269-273,329,343,390-391,400-405
+src/renderer/lib/agent-model-selection.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 9-15
+src/renderer/lib/page-create-target-registry.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 4-5,22,27-29,36-39,48,51-53,61
+src/main/host-runtime/ApplicationSchedulers.test.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 353
+tests/e2e/fixtures/nodex-oauth-http.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 1,26-29,41-44,75-83,116-157,269,277-280,295-298
+src/renderer/components/workbench/command-palette-scope.test.tsx
+  s_e2f9f3a29b34ef::t_a6a974bc812385 64-65,96
+src/renderer/components/workbench/command-palette-surface.tsx
+  s_e2f9f3a29b34ef::t_a6a974bc812385 43-44,213-214
+src/renderer/components/workbench/usage-meter-setting-rows.test.tsx
+  s_e2f9f3a29b34ef::t_a6a974bc812385 1-137
+tests/e2e/nodex-account.spec.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 1,3,5-10,200-417
+src/renderer/features/nodex-account/account-settings-page.tsx
+  s_e2f9f3a29b34ef::t_a6a974bc812385 1,10-17,27-32,61-69,165,191,195-236
+  s_e2f9f3a29b34ef::t_f8e151d792da5e 237-238
+src/main/agent-runtime/AgentRuntimeClaudeUsage.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 77-78,83,85,127,152,189,193-200,261,284-291,344-355
+src/main/platform/node/NodexModelAccessPlatform.node.test.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 1-156
+src/shared/workbench-commands.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 5,12
+src/shared/schemas/inbox.test.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 10,78-108
+  s_e2f9f3a29b34ef::t_8feadc8c80cd6c 109-110
+src/main/nodex-account/model-access-fixture.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 1-33
+src/renderer/features/nodex-account/use-nodex-account.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 1,18,36-46,51-54,83-87,91,102,115-122
+  s_e2f9f3a29b34ef::t_dadf1846515b64 123
+docs/adr/0070-optional-cloud-account-and-subscription-authority.md
+  s_e2f9f3a29b34ef::t_a6a974bc812385 1,3-4,8-63
+src/renderer/components/shared/agent-runtime/agent-model-picker.test.tsx
+  s_e2f9f3a29b34ef::t_a6a974bc812385 564-592
+src/main/nodex-account/managed-providers.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 1-128
+src/main/agent-runtime/AgentRuntimeSnapshotSources.node.test.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 114-142
+scripts/build-agent-runtime.test.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 124-125,128-130,381-396
+src/renderer/components/workbench/general-settings-page.tsx
+  s_e2f9f3a29b34ef::t_a6a974bc812385 1,72
+  s_e2f9f3a29b34ef::t_925d9eb5f73a8e 73
+src/renderer/lib/nodex-account-runtime.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 34-49,85-86
+packages/agent-runtime/src/textGeneration/StructuredImageGeneration.test.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 5-6,34-136,138-152,156-170,172-173,175-176,178,180-185,187-199
+src/shared/agent-backend.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 4,12-13
+src/shared/schemas/inbox.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 36-37,164-173
+src/renderer/lib/page-create-workflow.tsx
+  s_e2f9f3a29b34ef::t_a6a974bc812385 4,6-7,13,16,19
+src/main/codex-application/CodexAccount.node.test.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 421-509
+docs/KEYBOARD_SHORTCUTS.md
+  s_e2f9f3a29b34ef::t_a6a974bc812385 15-46,73
+src/main/app/NodexAccountLive.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 1-2,5-6,32-57
+packages/agent-runtime/src/provider/Drivers/ClaudeDriver.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 133-136
+src/renderer/components/workbench/command-palette.test.tsx
+  s_e2f9f3a29b34ef::t_a6a974bc812385 79,114-119,121-124
+src/renderer/features/nodex-account/use-nodex-account.test.tsx
+  s_e2f9f3a29b34ef::t_a6a974bc812385 7-13,288-337
+src/renderer/lib/use-workbench-shortcuts.jsdom.test.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 364,367,407,422,485,490,494
+docs/CONFIGURATION.md
+  s_e2f9f3a29b34ef::t_a6a974bc812385 25-32,85,89-102
+src/main/inbox-application/InboxApplication.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 317
+src/renderer/lib/capture-selection.jsdom.test.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 1-62
+src/renderer/features/inbox/inbox-composer.tsx
+  s_e2f9f3a29b34ef::t_a6a974bc812385 13,19-21,32-33,35,46-48,51-52,71-77,82,92-109,116,132-169,176
+src/renderer/components/board/page-create-dialog.test.tsx
+  s_e2f9f3a29b34ef::t_a6a974bc812385 183,202,399-402,416
+crates/nodex-core/src/workspace/inbox.rs
+  s_e2f9f3a29b34ef::t_a6a974bc812385 438-439
+src/renderer/features/local-conversation/agent-runtime-conversation-adapter.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 1-3,800,819-825,833,1057-1067,1090-1095,1131-1132,1588-1590
+  s_e2f9f3a29b34ef::t_45ab03c91ec256 1591
+src/renderer/features/nodex-account/nodex-credit-meter.tsx
+  s_e2f9f3a29b34ef::t_a6a974bc812385 1-234
+src/main/inbox-application/inbox-capture.node.test.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 7,11-53
+  s_e2f9f3a29b34ef::t_d501f054d7db8b 54
+src/renderer/features/nodex-account/nodex-top-up.tsx
+  s_e2f9f3a29b34ef::t_a6a974bc812385 1-116
+src/main/ipc/handlers/NodexAccountIpc.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 48-53
+packages/agent-runtime/src/nodex/NodexModelPolicy.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 1-75
+src/renderer/components/board/page-create-dialog.tsx
+  s_e2f9f3a29b34ef::t_a6a974bc812385 1,53,57,115,130
+src/shared/command-keybindings.test.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 585,587,591-592
+docs/product-specs/inbox-behavior.md
+  s_e2f9f3a29b34ef::t_a6a974bc812385 68-72,665-679
+src/renderer/features/nodex-account/nodex-account-menu.tsx
+  s_e2f9f3a29b34ef::t_a6a974bc812385 85-91
+packages/agent-runtime/src/provider/Drivers/CodexDriver.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 159-162
+src/main/ipc/handlers/ApplicationSettingsIpc.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 1-4,83,187-194,643-657,659,661
+  s_e2f9f3a29b34ef::t_fcc9673db365a0 658,660
+src/renderer/lib/command-palette.node.test.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 205
+src/renderer/lib/page-create-target-registry.node.test.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 1-14,35-37,39-41,44,46-50,52-53,55,57-58,61-65,67-68,70-71
+src/renderer/components/workbench/workbench-rail-usage-meter.tsx
+  s_e2f9f3a29b34ef::t_a6a974bc812385 88,95-96,155-159,164-171
+scripts/build-agent-runtime.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 53-72,74,134-135
+packages/agent-runtime/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 14467-14483
+src/main/agent-runtime/AgentRuntimeSnapshotSources.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 24-27
+src/renderer/lib/page-create-focus.jsdom.test.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 44,56
+src/shared/ipc-api.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 1382-1389,1512-1519,3089
+src/main/app/MainApplicationLive.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 77,121
+src/renderer/features/inbox/use-inbox-capture.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 34-36,95,102,116-117,129,135-136,138,146,152,158,162
+src/renderer/features/inbox/use-send-inbox-message.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 1-16
+src/main/ipc/handlers/ApplicationSettingsIpc.test.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 161-162,171-188
+src/renderer/features/inbox/use-inbox-actions.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 41-43,102,328
+src/main/platform/NodexModelAccessPlatform.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 1-44
+src/main/settings/application-settings-persistence.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 2-5,124,1415-1434
+  s_e2f9f3a29b34ef::t_f0e70585d4d08a 1
+src/main/settings/ApplicationSettings.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 1-6,83-84,128,166,182-183,287,351-353,373,394-396,422
+src/renderer/lib/agent-runtime-model-selection.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 1,34-38,91-94
+packages/agent-runtime/src/nodex/NodexModelAdmission.integration.test.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 1-260
+src/renderer/lib/electron-renderer-transport.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 364-371
+packages/agent-runtime/src/nodex/Service.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 908-942,1036-1040,1059,1076-1091
+src/shared/ipc-endpoint-policy.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 290,737-738,750
+packages/agent-runtime/src/orchestration-v2/RunExecutionService.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 1,955-958,1447
+src/main/nodex-account/NodexAccount.node.test.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 1-2,4-12,14,42-46,54-58,319-789
+packages/agent-runtime/src/nodex/ProviderConfiguration.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 164-168,189-191
+src/main/settings/ApplicationSettings.test.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 655-698
+src/renderer/features/inbox/inbox-capture-scope.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 1-14
+src/renderer/features/inbox/use-send-inbox-message.test.tsx
+  s_e2f9f3a29b34ef::t_a6a974bc812385 1-59
+src/renderer/features/local-conversation/agent-runtime-conversation-adapter.test.tsx
+  s_e2f9f3a29b34ef::t_a6a974bc812385 60-74,90,2686-2745
+src/renderer/components/workbench/usage-meter-setting-rows.tsx
+  s_e2f9f3a29b34ef::t_a6a974bc812385 1-46
+docs/development.md
+  s_e2f9f3a29b34ef::t_a6a974bc812385 511-514
+src/renderer/components/workbench/workbench-rail-account-controls.test.tsx
+  s_e2f9f3a29b34ef::t_a6a974bc812385 26-29
+src/shared/inbox.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 308-309
+src/renderer/features/inbox/inbox-capture-state.test.tsx
+  s_e2f9f3a29b34ef::t_a6a974bc812385 25-28,31-32,34-38,67-68,72-73,97,128-215,234,244,273,297-331,373,406,425,431,445
+src/main/agent-runtime/AgentRuntimeApplication.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 130-132,328-330,343,719,3851-3853,3858,3881-3882
+src/main/platform/node/NodexModelAccessPlatform.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 1-134
+tests/e2e/inbox-capture.spec.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 1-119
+crates/nodex-core/src/workspace/inbox_tests.rs
+  s_e2f9f3a29b34ef::t_a6a974bc812385 84-94
+src/renderer/lib/renderer-transport.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 26-28
+docs/SECURITY.md
+  s_e2f9f3a29b34ef::t_a6a974bc812385 616-623
+docs/product-specs/index.md
+  s_e2f9f3a29b34ef::t_a6a974bc812385 7,9
+src/main/nodex-account/NodexAccount.ts
+  s_e2f9f3a29b34ef::t_a6a974bc812385 6,12-16,34-41,46-60,62-71,87-94,102-201,208-209,225-254,256-266,268-270,272-282,285-292,295-305,319-324,329-394,408,441
+packages/agent-runtime/vendor/contracts/src/providerInstance.ts
+  s_e2f9f3a29b34ef::t_26b6e5af7bdc6a 129-130
+packages/agent-runtime/vendor/contracts/src/server.ts
+  s_e2f9f3a29b34ef::t_08edd7e6dedef3 247
+packages/agent-runtime/vendor/contracts/src/settings.ts
+  s_e2f9f3a29b34ef::t_eb2495a5998415 614,680
+packages/agent-runtime/vendor/provider-core/src/server/ExecutionHost.ts
+  s_e2f9f3a29b34ef::t_a76ed7b5b4f904 52,57-65
+packages/agent-runtime/vendor/shared/src/serverSettings.ts
+  s_e2f9f3a29b34ef::t_77edc537a66df5 115
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b2b9196d0a1091818ad40f4a743debfd74da865d",
+  "prompts": {},
+  "sessions": {
+    "s_e2f9f3a29b34ef": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "611169ac-4329-45e2-9d06-66c1d10bf996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
