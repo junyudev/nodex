@@ -6,6 +6,7 @@ import { SignInIcon, SignOutIcon } from "@/components/shared/icons/account-icons
 import { NodexButton } from "@/components/ui/button";
 import {
   NodexDropdownContent,
+  NodexDropdownFlyoutSubmenuItem,
   NodexDropdownItem,
   NodexDropdownMessage,
   NodexDropdownPortal,
@@ -20,6 +21,7 @@ import {
   resolveNodexAccountView,
   type NodexAccountView,
 } from "./nodex-account-identity";
+import { NodexCheckoutNotice, NodexTopUpItems } from "./nodex-top-up";
 import { useNodexAccount } from "./use-nodex-account";
 
 const TRIGGER_LABEL = "Account and settings";
@@ -83,7 +85,13 @@ export function NodexAccountMenu({
   );
 
   return (
-    <NodexDropdownRoot open={open} onOpenChange={setOpen}>
+    <NodexDropdownRoot
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (next) account.act("refreshModels");
+      }}
+    >
       <NodexTooltip
         tooltipContent={view.identity?.label ?? TRIGGER_LABEL}
         side="right"
@@ -196,19 +204,27 @@ function AccountMenuActions({
         </AccountMenuItem>
       ) : null}
       {view.signedIn ? (
-        <AccountMenuItem
-          disabled={busy}
-          keyboardShortcut={
-            account.snapshot?.credit ? (
-              <span aria-label="Remaining credit" className="text-tertiary tabular-nums">
-                {formatNodexCredit(account.snapshot.credit.balance)}
+        <>
+          <NodexDropdownFlyoutSubmenuItem
+            ariaLabel="Top up"
+            disabled={busy}
+            label={
+              <span className="flex w-full items-center justify-between gap-3">
+                <span>Top up</span>
+                <span aria-label="Remaining credit" className="text-tertiary tabular-nums">
+                  {account.snapshot?.credit
+                    ? formatNodexCredit(account.snapshot.credit.balance)
+                    : "—"}
+                </span>
               </span>
-            ) : undefined
-          }
-          onSelect={() => account.act("openTopUp")}
-        >
-          Top up
-        </AccountMenuItem>
+            }
+          >
+            <NodexTopUpItems account={account} />
+          </NodexDropdownFlyoutSubmenuItem>
+          <div className="px-2 empty:hidden">
+            <NodexCheckoutNotice snapshot={account.snapshot} />
+          </div>
+        </>
       ) : null}
       {view.signedIn || view.reauthentication ? (
         <AccountMenuItem

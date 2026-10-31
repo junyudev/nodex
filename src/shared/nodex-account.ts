@@ -27,8 +27,37 @@ export const NODEX_ACCOUNT_ERROR_CODES = [
 ] as const;
 export type NodexAccountErrorCode = (typeof NODEX_ACCOUNT_ERROR_CODES)[number];
 
+/** Public supply observations; never an authorization to spend. */
+export const NodexModelStatusSchema = z.object({
+  models: z.array(z.object({ id: z.string().min(1).max(256), available: z.boolean() })).max(100),
+  topUp: z.object({
+    available: z.boolean(),
+    currency: z.literal("USD"),
+    tiers: z
+      .array(
+        z.object({
+          amount: z.number().finite().positive(),
+          credit: z.number().finite().positive(),
+          available: z.boolean(),
+        }),
+      )
+      .max(20),
+  }),
+});
+export type NodexModelStatus = z.infer<typeof NodexModelStatusSchema>;
+export const NODEX_CHECKOUT_ERROR_CODES = [
+  "unauthenticated",
+  "forbidden_client",
+  "tier_unavailable",
+  "unavailable",
+  "browser-open",
+] as const;
+
 export const NodexAccountSnapshotSchema = z
   .object({
+    modelStatus: NodexModelStatusSchema.nullable().optional(),
+    checkoutPending: z.boolean().optional(),
+    checkoutError: z.enum(NODEX_CHECKOUT_ERROR_CODES).nullable().optional(),
     credit: z
       .object({ balance: z.number().finite(), unit: z.literal("USD") })
       .nullable()

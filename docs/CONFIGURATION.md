@@ -22,14 +22,14 @@ Profile home resolves in this order:
 
 Nodex Account has its own production identity domain and user pool:
 
-| Domain                   | Purpose                                                |
-| ------------------------ | ------------------------------------------------------ |
-| `nodex.jyu.app`          | Product website, downloads and update feeds            |
-| `accounts.nodex.jyu.app` | Clerk-hosted sign-in and account management            |
-| `clerk.nodex.jyu.app`    | Clerk OAuth issuer and Frontend API                    |
-| `api.nodex.jyu.app`      | Clerk-token exchange for per-user model gateway access |
-| `api.jyu.app`            | sub2api model gateway, prepaid wallet and usage        |
-| `console.nodex.jyu.app`  | Prepaid credit purchases and web console               |
+| Domain                   | Purpose                                         |
+| ------------------------ | ----------------------------------------------- |
+| `nodex.jyu.app`          | Product website, downloads and update feeds     |
+| `accounts.nodex.jyu.app` | Clerk-hosted sign-in and account management     |
+| `clerk.nodex.jyu.app`    | Clerk OAuth issuer and Frontend API             |
+| `api.nodex.jyu.app`      | Model access, supply status and Stripe Checkout |
+| `api.jyu.app`            | sub2api model gateway, prepaid wallet and usage |
+| `checkout.stripe.com`    | Stripe Checkout opened from in-app Top up       |
 
 The account portal is not the OAuth issuer. Other products under `jyu.app`
 do not share Nodex identities or subscription access. Development and
@@ -88,8 +88,17 @@ and content backups. The test-only `NODEX_TEST_CLERK_LOOPBACK=1` flag permits a
 `127.0.0.1` HTTP issuer in unpackaged fixtures; packaged builds always require
 HTTPS. Managed models have private account-specific homes under
 `${NODEX_HOME}/account/models/`; their configuration never changes user Agent
-settings. Credit is prepaid through the web console, with sub2api owning billing
-and usage. See [Nodex Account and Model Access](product-specs/nodex-account-and-subscription-behavior.md)
+settings. Top up stays inside Account settings and the rail account menu. Main
+reads public supply/tiers from `GET https://api.nodex.jyu.app/v1/status`, creates
+`POST /v1/checkout` with the Clerk token and selected amount, then opens the
+returned Stripe Checkout URL in the system browser. There is no web console.
+Main automatically refreshes `GET https://api.jyu.app/v1/usage` with the gateway
+key on focus, surface opening, maintenance and bounded pending-payment polling.
+sub2api owns billing and usage. Finite upstream supply can disable models or
+Top up independently of wallet credit; only the gateway's own
+`INSUFFICIENT_BALANCE` / Claude `403 insufficient balance` reports exhausted user
+credit. Upstream quota/balance errors, capacity failures, 429/5xx and network
+failures report temporary Nodex model unavailability without suggesting Top up. See [Nodex Account and Model Access](product-specs/nodex-account-and-subscription-behavior.md)
 and [Nodex Account Login](product-specs/nodex-account-login-behavior.md).
 
 ## Composer prediction assignments

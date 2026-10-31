@@ -24,14 +24,14 @@ const input = {
   },
   managed: { identity, access: modelAccessFixture },
 };
-it("declares only the three managed models with private per-account homes and credentials", () => {
+it("declares only the four managed models with private per-account homes and credentials", () => {
   const providers = managedNodexProviders(input);
   expect(Object.keys(providers)).toHaveLength(2);
   expect(
     Object.values(providers)
       .flatMap((provider) => provider.modelAllowlist)
       .sort((left, right) => String(left).localeCompare(String(right))),
-  ).toEqual(["claude-opus-5-5", "gpt-6-luna", "gpt-6.1-sol"]);
+  ).toEqual(["claude-opus-5-5", "claude-sonnet-5-5", "gpt-6-luna", "gpt-6.1-sol"]);
   for (const provider of Object.values(providers)) {
     expect(provider.source).toBe("nodex");
     const environment = Object.fromEntries(

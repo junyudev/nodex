@@ -7,6 +7,7 @@ import { NodexTooltip } from "@/components/ui/tooltip";
 import { NodexSettingsPageSurface, NodexSettingsSection } from "@/components/ui/settings";
 import { cn } from "@/lib/utils";
 import { NodexAccountAvatar, resolveNodexAccountView } from "./nodex-account-identity";
+import { NodexCheckoutNotice, NodexTopUpButton } from "./nodex-top-up";
 import { useNodexAccount } from "./use-nodex-account";
 
 export function AccountSettingsPage({ open }: { open: boolean }) {
@@ -17,6 +18,10 @@ export function AccountSettingsPage({ open }: { open: boolean }) {
 function AccountSettingsContent() {
   const account = useNodexAccount(true);
   const view = resolveNodexAccountView(account);
+  const { refreshModels } = account;
+  useEffect(() => {
+    refreshModels();
+  }, [refreshModels]);
   const [showLoading, setShowLoading] = useState(false);
 
   useEffect(() => {
@@ -188,15 +193,11 @@ function AccountSettingsContent() {
                   ? formatNodexCredit(account.snapshot.credit.balance)
                   : "—"}
               </span>
-              <NodexButton
-                variant="secondary"
-                size="sm"
-                disabled={busy}
-                onClick={() => account.act("openTopUp")}
-              >
-                Top up
-              </NodexButton>
+              <NodexTopUpButton account={account} />
             </div>
+          </div>
+          <div className="px-4 empty:hidden">
+            <NodexCheckoutNotice snapshot={account.snapshot} />
           </div>
           {modelNotice ? (
             <p role="alert" className="px-4 pb-3 text-xs text-danger">

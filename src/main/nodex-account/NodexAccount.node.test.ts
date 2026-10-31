@@ -3,8 +3,13 @@ import {
   NodexModelAccessPlatform,
   NodexModelAccessError,
 } from "../platform/NodexModelAccessPlatform";
-import { modelAccessFixture, unavailableModelAccessFixture } from "./model-access-fixture";
+import {
+  modelAccessFixture,
+  modelStatusFixture,
+  unavailableModelAccessFixture,
+} from "./model-access-fixture";
 import { it } from "@effect/vitest";
+import * as TestClock from "effect/testing/TestClock";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -325,9 +330,10 @@ it.effect(
         },
         {
           exchange: () => Effect.succeed(modelAccessFixture),
-          openTopUp: Effect.sync(() => {
-            opened++;
-          }),
+          openCheckout: () =>
+            Effect.sync(() => {
+              opened++;
+            }),
         },
       );
       const ready = yield* watch(value.owner, (state) => state.credit?.balance === 12.5);
@@ -340,7 +346,7 @@ it.effect(
         modelAccessFixture,
       );
       expect((yield* value.owner.managed)?.identity.subject).toBe("alice");
-      yield* value.owner.openTopUp;
+      yield* value.owner.openTopUp(2);
       expect(opened).toBe(1);
       let retired = false;
       yield* value.owner.onModelsChanged(
@@ -352,7 +358,7 @@ it.effect(
       yield* value.owner.signOut;
       expect(retired).toBe(true);
       expect((yield* value.owner.read).credit).toBeNull();
-      yield* value.owner.openTopUp;
+      yield* value.owner.openTopUp(2);
       expect(opened).toBe(1);
     }).pipe(Effect.scoped),
 );
@@ -444,5 +450,197 @@ it.effect("a balance response captured before sign-out cannot restore the key or
     expect(value.saves()).toBe(saves);
     expect(yield* value.owner.managed).toBeNull();
     expect((yield* value.owner.read).credit).toBeNull();
+  }).pipe(Effect.scoped),
+);
+
+it.effect(
+  "refreshes supply on startup, coalesces opening surfaces, and fails closed on status loss",
+  () =>
+    Effect.gen(function* () {
+      let reads = 0;
+      let available = true;
+      const value = yield* harness(
+        {},
+        {
+          status: Effect.suspend(() => {
+            reads++;
+            return available
+              ? Effect.succeed(modelStatusFixture)
+              : Effect.fail(new NodexModelAccessError({ code: "unavailable" }));
+          }),
+        },
+      );
+      yield* value.owner.refreshModels;
+      expect((yield* value.owner.read).modelStatus).toEqual(modelStatusFixture);
+      yield* Effect.all([value.owner.refreshModels, value.owner.refreshModels], {
+        concurrency: "unbounded",
+      });
+      expect(reads).toBe(1);
+      available = false;
+      yield* value.owner.refresh;
+      expect((yield* value.owner.read).modelStatus).toBeNull();
+      expect((yield* value.owner.read).credit).toBeUndefined();
+      yield* TestClock.adjust("60 seconds");
+      expect(reads).toBe(3);
+      yield* TestClock.adjust("60 seconds");
+      expect(reads).toBe(4);
+    }).pipe(Effect.scoped),
+);
+
+it.effect(
+  "opens the chosen tier with the Clerk token and observes payment without a renderer or manual refresh",
+  () =>
+    Effect.gen(function* () {
+      let balance = 12.5;
+      let reads = 0;
+      let checkouts = 0;
+      const value = yield* harness(
+        {},
+        {
+          exchange: () => Effect.succeed(modelAccessFixture),
+          balance: () =>
+            Effect.sync(() => {
+              reads++;
+              return balance;
+            }),
+          checkout: (token, amount) =>
+            Effect.sync(() => {
+              expect(Redacted.value(token)).toBe("private-access");
+              expect(amount).toBe(2);
+              checkouts++;
+              return "https://checkout.stripe.com/c/pay/synthetic";
+            }),
+        },
+      );
+      const ready = yield* watch(value.owner, (state) => state.credit?.balance === 12.5);
+      yield* value.owner.signIn;
+      yield* value.finish();
+      yield* Fiber.join(ready);
+      expect((yield* value.owner.openTopUp(5)).checkoutError).toBe("tier_unavailable");
+      expect((yield* value.owner.openTopUp(NaN)).checkoutError).toBe("tier_unavailable");
+      expect(checkouts).toBe(0);
+      expect((yield* value.owner.openTopUp(2)).checkoutPending).toBe(true);
+      const before = reads;
+      balance = 26.5;
+      yield* TestClock.adjust("10 seconds");
+      expect((yield* value.owner.read).credit?.balance).toBe(26.5);
+      expect((yield* value.owner.read).checkoutPending).toBe(false);
+      expect(reads).toBeGreaterThan(before);
+      expect(checkouts).toBe(1);
+      expect(JSON.stringify(yield* value.owner.read)).not.toContain("checkout.stripe.com");
+    }).pipe(Effect.scoped),
+);
+
+it.effect("stops pending payment polling after five minutes and retires it on sign-out", () =>
+  Effect.gen(function* () {
+    const value = yield* harness({}, { exchange: () => Effect.succeed(modelAccessFixture) });
+    const ready = yield* watch(value.owner, (state) => state.credit?.balance === 12.5);
+    yield* value.owner.signIn;
+    yield* value.finish();
+    yield* Fiber.join(ready);
+    yield* value.owner.openTopUp(2);
+    yield* TestClock.adjust("5 minutes");
+    expect((yield* value.owner.read).checkoutPending).toBe(false);
+    yield* value.owner.openTopUp(2);
+    yield* value.owner.signOut;
+    yield* TestClock.adjust("10 seconds");
+    expect(yield* value.owner.read).toMatchObject({
+      status: "signed-out",
+      checkoutPending: false,
+      credit: null,
+    });
+  }).pipe(Effect.scoped),
+);
+
+it.effect("ignores late checkouts after sign-out and coalesces concurrent checkout commands", () =>
+  Effect.gen(function* () {
+    const started = yield* Deferred.make<void>();
+    const finished = yield* Deferred.make<string>();
+    let opened = 0;
+    let requests = 0;
+    const value = yield* harness(
+      {},
+      {
+        exchange: () => Effect.succeed(modelAccessFixture),
+        checkout: () =>
+          Effect.sync(() => {
+            requests++;
+          }).pipe(
+            Effect.andThen(Deferred.succeed(started, undefined)),
+            Effect.andThen(Deferred.await(finished)),
+          ),
+        openCheckout: () =>
+          Effect.sync(() => {
+            opened++;
+          }),
+      },
+    );
+    const ready = yield* watch(value.owner, (state) => state.credit?.balance === 12.5);
+    yield* value.owner.signIn;
+    yield* value.finish();
+    yield* Fiber.join(ready);
+    const checkout = yield* value.owner.openTopUp(2).pipe(Effect.forkScoped);
+    yield* Deferred.await(started);
+    yield* value.owner.openTopUp(2);
+    expect(requests).toBe(1);
+    yield* value.owner.signOut;
+    yield* Deferred.succeed(finished, "https://checkout.stripe.com/c/pay/synthetic");
+    yield* Fiber.join(checkout);
+    expect(opened).toBe(0);
+    expect((yield* value.owner.read).checkoutPending).toBe(false);
+  }).pipe(Effect.scoped),
+);
+
+it.effect("reports paused supply and checkout errors without changing wallet credit", () =>
+  Effect.gen(function* () {
+    let available = false;
+    let code: "tier_unavailable" | "unavailable" = "tier_unavailable";
+    const value = yield* harness(
+      {},
+      {
+        exchange: () => Effect.succeed(modelAccessFixture),
+        status: Effect.sync(() => ({
+          ...modelStatusFixture,
+          topUp: { ...modelStatusFixture.topUp, available },
+        })),
+        checkout: () => Effect.suspend(() => Effect.fail(new NodexModelAccessError({ code }))),
+      },
+    );
+    const ready = yield* watch(value.owner, (state) => state.credit?.balance === 12.5);
+    yield* value.owner.signIn;
+    yield* value.finish();
+    yield* Fiber.join(ready);
+    expect((yield* value.owner.openTopUp(2)).checkoutError).toBe("unavailable");
+    available = true;
+    expect((yield* value.owner.openTopUp(2)).checkoutError).toBe("tier_unavailable");
+    code = "unavailable";
+    expect((yield* value.owner.openTopUp(2)).checkoutError).toBe("unavailable");
+    expect((yield* value.owner.read).credit?.balance).toBe(12.5);
+  }).pipe(Effect.scoped),
+);
+
+it.effect("renews remembered model access once per launch and keeps it when offline", () =>
+  Effect.gen(function* () {
+    const stale = { ...modelAccessFixture, models: modelAccessFixture.models.slice(0, 3) };
+    for (const online of [true, false]) {
+      let exchanges = 0;
+      const value = yield* harness(
+        { load: Effect.succeed({ ...alice, modelAccess: stale }) },
+        {
+          exchange: () =>
+            Effect.suspend(() => {
+              exchanges++;
+              return online
+                ? Effect.succeed(modelAccessFixture)
+                : Effect.fail(new NodexModelAccessError({ code: "unavailable" }));
+            }),
+        },
+      );
+      yield* value.owner.refresh;
+      const expected = online ? modelAccessFixture.models : stale.models;
+      expect((yield* value.owner.managed)?.access.models).toEqual(expected);
+      yield* value.owner.refresh;
+      expect(exchanges).toBe(online ? 1 : 2);
+    }
   }).pipe(Effect.scoped),
 );

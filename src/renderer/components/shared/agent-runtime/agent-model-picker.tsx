@@ -356,16 +356,19 @@ export function AgentModelPicker(
         ) : (
           <AgentProviderIcon kind={entry.binding.kind} className="size-3.5" />
         ),
-      label: qualifier ? (
-        <span className="flex min-w-0 items-baseline gap-1.5">
-          <span className="truncate">{entry.model.displayName}</span>
-          <span className="min-w-0 truncate text-xs text-token-description-foreground">
-            {qualifier}
+      label:
+        qualifier || entry.unavailableReason ? (
+          <span className="flex min-w-0 items-baseline gap-1.5">
+            <span className="truncate">{entry.model.displayName}</span>
+            <span className="min-w-0 truncate text-xs text-token-description-foreground">
+              {[qualifier, entry.unavailableReason ? "Unavailable" : null]
+                .filter(Boolean)
+                .join(" · ")}
+            </span>
           </span>
-        </span>
-      ) : (
-        entry.model.displayName
-      ),
+        ) : (
+          entry.model.displayName
+        ),
       searchText: `${entry.model.displayName} ${entry.model.id} ${entry.label} ${entry.binding.kind}`,
       tooltipText: entry.unavailableReason ?? (entry.model.description || entry.model.id),
       disabled: entry.unavailableReason !== undefined,

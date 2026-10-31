@@ -1,6 +1,6 @@
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 import { expect, test } from "@playwright/test";
-import { readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { openComposerModelPicker } from "./support/composer-model-picker";
 import { ElectronScenarioHarness } from "../../scripts/scenarios/harness/electron-e2e-harness";
@@ -212,13 +212,39 @@ test("offers prepaid Nodex models and credit only for the signed-in account", as
     await openNodexAccount(page);
     await completeLogin(harness, oauth, readHandoffs);
     await expect(page.getByLabel("Remaining credit")).toHaveText("$12.50");
+    const artifacts = process.env.NODEX_REVIEW_ARTIFACTS;
+    if (artifacts) {
+      await mkdir(artifacts, { recursive: true });
+      await page.getByRole("button", { name: "Back to app", exact: true }).click();
+      const setupNotice = page.getByRole("alert").filter({ hasText: "Global dictation is ready." });
+      await setupNotice.waitFor({ state: "visible", timeout: 8_000 }).catch(() => undefined);
+      if (await setupNotice.isVisible())
+        await setupNotice.getByRole("button", { name: "Dismiss notification" }).click();
+      await openNodexAccount(page);
+      await page.screencast.start({
+        path: path.join(artifacts, "review.webm"),
+        size: { width: 1280, height: 800 },
+      });
+      await page.screencast.showActions({ position: "bottom" });
+    }
     await page.getByRole("button", { name: "Top up", exact: true }).click();
-    await expect.poll(readHandoffs).toContain("https://console.nodex.jyu.app/topup");
+    await expect(
+      page.getByRole("menuitem", { name: "$5 → $35 credit", exact: true }),
+    ).toBeDisabled();
+    if (artifacts) await page.screenshot({ path: path.join(artifacts, "account-top-up.png") });
+    await page.getByRole("menuitem", { name: "$2 → $14 credit", exact: true }).click();
+    await expect.poll(readHandoffs).toContain("https://checkout.stripe.com/c/pay/synthetic-nodex");
+    expect(oauth.evidence().checkouts).toEqual([2]);
+    oauth.setBalance(26.5);
+    await expect(page.getByLabel("Remaining credit")).toHaveText("$26.50", { timeout: 20_000 });
+    await expectNodexAccount(page, { checkoutPending: false });
+    const observedCredit = (await readNodexAccount(page)).credit?.balance;
+    if (artifacts) await page.screenshot({ path: path.join(artifacts, "account-credit.png") });
     const managed = (await catalog()).filter((provider) => provider.source === "nodex");
     expect(managed).toHaveLength(2);
     expect(
       managed.flatMap((provider) => provider.models.map((model) => model.slug)).sort(),
-    ).toEqual(["claude-opus-5-5", "gpt-6-luna", "gpt-6.1-sol"]);
+    ).toEqual(["claude-opus-5-5", "claude-sonnet-5-5", "gpt-6-luna", "gpt-6.1-sol"]);
     expect(JSON.stringify(managed)).not.toContain("scenario-gateway-key");
     const encrypted = await readFile(
       path.join(harness.profile.nodexHome, "account/credentials.enc"),
@@ -235,7 +261,17 @@ test("offers prepaid Nodex models and credit only for the signed-in account", as
       .click();
     const search = await openComposerModelPicker(page);
     await search.fill("Nodex");
-    await expect(page.getByRole("listbox").getByRole("option")).toHaveCount(3);
+    await expect(page.getByRole("listbox").getByRole("option")).toHaveCount(4);
+    oauth.setModelAvailable("gpt-6-luna", false);
+    await refreshNodexAccount(page);
+    await expect(page.getByRole("option", { name: /GPT-6 Luna/u })).toBeDisabled();
+    await expect(page.getByRole("option", { name: /GPT-6 Luna/u })).toContainText("Unavailable");
+    const modelDisabled = await page.getByRole("option", { name: /GPT-6 Luna/u }).isDisabled();
+    if (artifacts)
+      await page
+        .getByRole("listbox")
+        .locator("..")
+        .screenshot({ path: path.join(artifacts, "nodex-model-picker.png") });
     await page.screenshot({ path: test.info().outputPath("nodex-model-picker.png") });
     await page.getByRole("option", { name: /GPT-6.1 Sol/u }).click();
     await expect(page.getByRole("button", { name: "Select model", exact: true })).toContainText(
@@ -243,19 +279,70 @@ test("offers prepaid Nodex models and credit only for the signed-in account", as
     );
     await openComposerModelPicker(page);
     await page.getByRole("combobox", { name: "Search models" }).fill("Nodex");
-    await page.getByRole("option", { name: /Claude Opus 5.5/u }).click();
+    await page.getByRole("option", { name: /Claude Sonnet 5.5/u }).click();
     await expect(page.getByRole("button", { name: "Select model", exact: true })).toContainText(
-      "Claude Opus 5.5",
+      "Claude Sonnet 5.5",
     );
     await page.getByRole("button", { name: "Account and settings", exact: true }).click();
     await expect(page.getByRole("menu").getByLabel("Remaining credit")).toHaveText("$0.00");
-    await page.getByRole("menuitem", { name: "Top up" }).click();
+    await page.getByRole("menuitem", { name: "Top up", exact: true }).click();
+    await page.getByRole("menuitem", { name: "$2 → $14 credit", exact: true }).click();
+    await expect.poll(() => oauth.evidence().checkouts).toEqual([2, 2]);
+    oauth.setTopUpAvailable(false);
+    await refreshNodexAccount(page);
+    await page.getByRole("button", { name: "Account and settings", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Top up", exact: true }).click();
+    await expect(page.getByText("Top up is paused.", { exact: true })).toBeVisible();
+    await expect(
+      page.getByRole("menuitem", { name: "$2 → $14 credit", exact: true }),
+    ).toBeDisabled();
+    const topUpDisabled = await page
+      .getByRole("menuitem", { name: "$2 → $14 credit", exact: true })
+      .isDisabled();
+    if (artifacts) await page.screenshot({ path: path.join(artifacts, "final.png") });
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("Escape");
+    if (artifacts) {
+      await page.screencast.stop();
+      await writeFile(
+        path.join(artifacts, "result.json"),
+        JSON.stringify(
+          {
+            status: "passed",
+            scenario: "nodex-account prepaid models",
+            claims: [
+              {
+                claim: "Checkout uses chosen amount",
+                expected: [2, 2],
+                actual: oauth.evidence().checkouts,
+              },
+              {
+                claim: "Payment is observed automatically",
+                expected: 26.5,
+                actual: observedCredit,
+              },
+              {
+                claim: "Closed Nodex catalog",
+                expected: 4,
+                actual: managed.flatMap((provider) => provider.models).length,
+              },
+              { claim: "Supply-limited model disabled", expected: true, actual: modelDisabled },
+              { claim: "Paused top-up disabled", expected: true, actual: topUpDisabled },
+            ],
+          },
+          null,
+          2,
+        ),
+      );
+    }
     await page.getByRole("button", { name: "Account and settings", exact: true }).click();
     await page.getByRole("menuitem", { name: "Sign out", exact: true }).click();
     await expectNodexAccount(page, { status: "signed-out", credit: null });
     expect((await catalog()).filter((provider) => provider.source === "nodex")).toEqual([]);
     expect(oauth.evidence().invalidRequests).toEqual([]);
   } finally {
+    if (process.env.NODEX_REVIEW_ARTIFACTS && !harness.page.isClosed())
+      await harness.page.screencast.stop().catch(() => undefined);
     await harness.close();
     await oauth.close();
   }

@@ -1,6 +1,17 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, test, vi } from "vite-plus/test";
+const modelStatusFixture = {
+  models: [],
+  topUp: {
+    available: true,
+    currency: "USD" as const,
+    tiers: [
+      { amount: 2, credit: 14, available: true },
+      { amount: 5, credit: 35, available: false },
+    ],
+  },
+};
 import type { NodexAccountSnapshot } from "../../../shared/nodex-account";
 import { WorkbenchRailAccountControls } from "@/components/workbench/workbench-rail-account-controls";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
@@ -34,14 +45,18 @@ const signedIn: NodexAccountSnapshot = {
 
 function renderAccountControls(snapshot: NodexAccountSnapshot, settingsShortcutLabel?: string) {
   const listeners = new Set<(value: unknown) => void>();
+  let observed = snapshot;
   const invoke = vi
-    .fn<(channel: string) => Promise<NodexAccountSnapshot>>()
+    .fn<(channel: string, ...args: unknown[]) => Promise<NodexAccountSnapshot>>()
     .mockResolvedValue(snapshot);
   const nativeAction = vi.fn();
   const settings = vi.fn();
   const accountSettings = vi.fn();
   installWindowApi({
-    invoke,
+    invoke: (channel: string, ...args: unknown[]) =>
+      channel === "nodex-account:refresh-models"
+        ? Promise.resolve(observed)
+        : invoke(channel, ...args),
     on: (channel: string, listener: (value: unknown) => void) => {
       if (channel !== "nodex-account:changed") throw new Error(`Unexpected event ${channel}`);
       listeners.add(listener);
@@ -82,6 +97,7 @@ function renderAccountControls(snapshot: NodexAccountSnapshot, settingsShortcutL
     settings,
     accountSettings,
     emit: async (next: NodexAccountSnapshot) => {
+      observed = next;
       await act(async () => {
         listeners.forEach((listener) => listener(next));
         await Promise.resolve();
@@ -130,11 +146,11 @@ describe("Nodex account menu", () => {
     controls.invoke.mockResolvedValue({ ...signedOut, revision: 2 });
     await selectMenuItem("Cancel sign-in");
     await screen.findByText("Not signed in");
-    expect(controls.invoke.mock.calls.map(([channel]) => channel)).toEqual([
-      "nodex-account:read",
-      "nodex-account:sign-in",
-      "nodex-account:cancel-sign-in",
-    ]);
+    expect(
+      controls.invoke.mock.calls
+        .map(([channel]) => channel)
+        .filter((channel) => channel !== "nodex-account:refresh-models"),
+    ).toEqual(["nodex-account:read", "nodex-account:sign-in", "nodex-account:cancel-sign-in"]);
     expect(controls.nativeAction).not.toHaveBeenCalled();
   });
 
@@ -173,12 +189,52 @@ describe("Nodex account menu", () => {
 });
 
 test("shows compact prepaid credit and dispatches semantic Top up from the menu", async () => {
-  const controls = renderAccountControls({ ...signedIn, credit: { balance: 7.25, unit: "USD" } });
+  const controls = renderAccountControls({
+    ...signedIn,
+    modelStatus: modelStatusFixture,
+    credit: { balance: 7.25, unit: "USD" },
+  });
   await screen.findByText("Nodex Scenario");
   await openNodexMenu(controls.trigger());
   expect(within(screen.getByRole("menu")).getByLabelText("Remaining credit").textContent).toBe(
     "$7.25",
   );
-  await selectMenuItem(/^Top up/u);
-  await waitFor(() => expect(controls.invoke).toHaveBeenCalledWith("nodex-account:open-top-up"));
+  await act(async () => {
+    fireEvent.click(screen.getByRole("menuitem", { name: "Top up" }));
+    await Promise.resolve();
+  });
+  const unavailable = await screen.findByRole("menuitem", { name: "$5 → $35 credit" });
+  expect(unavailable.getAttribute("aria-disabled")).toBe("true");
+  await selectMenuItem("$2 → $14 credit");
+  await waitFor(() => expect(controls.invoke).toHaveBeenCalledWith("nodex-account:open-top-up", 2));
+});
+
+test("disables paused top-ups and reflects payment completion while account settings stay open", async () => {
+  const state = {
+    ...signedIn,
+    modelStatus: {
+      ...modelStatusFixture,
+      topUp: { ...modelStatusFixture.topUp, available: false },
+    },
+    credit: { balance: 1, unit: "USD" as const },
+    checkoutPending: true,
+  };
+  const controls = renderAccountControls(state);
+  await screen.findByRole("status");
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Top up" }));
+    await Promise.resolve();
+  });
+  await screen.findByText("Top up is paused.");
+  expect(
+    screen.getByRole("menuitem", { name: "$2 → $14 credit" }).getAttribute("aria-disabled"),
+  ).toBe("true");
+  await controls.emit({
+    ...state,
+    revision: 2,
+    checkoutPending: false,
+    credit: { balance: 15, unit: "USD" },
+  });
+  await waitFor(() => expect(screen.getByLabelText("Remaining credit").textContent).toBe("$15.00"));
+  expect(screen.queryByText("Waiting for payment…")).toBeNull();
 });

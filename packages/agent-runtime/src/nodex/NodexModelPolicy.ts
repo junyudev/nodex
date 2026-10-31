@@ -29,21 +29,31 @@ export function constrainProviderCatalog(
   };
 }
 
+const platformUnavailable =
+  /insufficient[\s_-]*(?:account[\s_-]*)?(?:quota|balance)|exceeded your current quota|credit balance is too low|billing|payment[\s_-]*required|no available accounts?|overloaded|rate[\s_-]*limit|too many requests|service unavailable|bad gateway|gateway timeout|\b(?:429|5\d\d)\b|network|fetch failed|socket|connection|ECONN\w+|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|timed? ?out/iu;
+
 export function nodexCreditFailure(
   instanceId: string,
   failure: OrchestrationV2ProviderFailure,
 ): OrchestrationV2ProviderFailure {
   if (!instanceId.startsWith("nodex_")) return failure;
-  if (
-    !/(?:insufficient[\s_-]*(?:user[\s_-]*)?(?:balance|credit|quota)|(?:balance|credit)[\s\S]{0,40}(?:exhausted|insufficient|too low)|payment[\s_-]*required|余额不足)/iu.test(
-      `${failure.code ?? ""} ${failure.message}`,
-    )
-  )
+  if (failure.code === "nodex_credit_exhausted" || failure.code === "nodex_unavailable")
+    return failure;
+  const exhausted =
+    failure.code === "INSUFFICIENT_BALANCE" ||
+    /"code"\s*:\s*"INSUFFICIENT_BALANCE"/u.test(failure.message) ||
+    /\b403[\s:–-]+insufficient (?:account )?balance\b/iu.test(failure.message);
+  // Everything else that is ours or upstream's (supply, outage, transport) reads as unavailable;
+  // request-specific failures such as an oversized prompt keep their own message.
+  if (!exhausted && !platformUnavailable.test(`${failure.code ?? ""} ${failure.message}`))
     return failure;
   return {
     ...failure,
-    message: "Nodex credit is exhausted. Top up in Settings → Account, then retry.",
-    retryable: false,
+    code: exhausted ? "nodex_credit_exhausted" : "nodex_unavailable",
+    message: exhausted
+      ? "Nodex credit is exhausted. Top up in Settings → Account, then retry."
+      : "Nodex models are temporarily unavailable. Try again later.",
+    retryable: !exhausted,
   };
 }
 

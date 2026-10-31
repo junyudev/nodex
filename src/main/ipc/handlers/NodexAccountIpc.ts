@@ -45,8 +45,11 @@ export const live = Layer.effectDiscard(
     yield* ipc.handlePlainCommand("nodex-account:refresh", (event) =>
       trusted(event).pipe(Effect.andThen(account.refresh)),
     );
-    yield* ipc.handlePlainCommand("nodex-account:open-top-up", (event) =>
-      trusted(event).pipe(Effect.andThen(account.openTopUp)),
+    yield* ipc.handlePlainCommand("nodex-account:refresh-models", (event) =>
+      trusted(event).pipe(Effect.andThen(account.refreshModels)),
+    );
+    yield* ipc.handlePlainCommand("nodex-account:open-top-up", (event, amount) =>
+      trusted(event).pipe(Effect.andThen(account.openTopUp(amount))),
     );
     yield* account.changes.pipe(
       Stream.runForEach((snapshot) =>

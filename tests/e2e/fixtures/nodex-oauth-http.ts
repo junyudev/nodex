@@ -1,3 +1,4 @@
+import { NODEX_MODELS } from "../../../src/shared/nodex-models";
 import { createHash, randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 
@@ -24,6 +25,8 @@ export interface NodexOAuthEvidence {
   readonly refreshes: number;
   readonly modelAccesses: number;
   readonly usageReads: number;
+  readonly statusReads: number;
+  readonly checkouts: readonly number[];
   readonly revocations: number;
   readonly invalidRequests: readonly string[];
 }
@@ -35,6 +38,8 @@ export interface NodexOAuthHttpFixture {
   readonly evidence: () => NodexOAuthEvidence;
   readonly authorize: (authorizationUrl: string) => Promise<URL>;
   readonly revokeGrants: () => void;
+  readonly setModelAvailable: (id: string, available: boolean) => void;
+  readonly setTopUpAvailable: (available: boolean) => void;
   readonly setBalance: (balance: number) => void;
   readonly setModelAccessError: (code: "email_unverified" | "forbidden_client" | "unavailable" | null) => void;
   readonly setAvailable: (available: boolean) => void;
@@ -70,6 +75,11 @@ export async function startNodexOAuthHttpFixture(
   let modelAccesses = 0;
   let usageReads = 0;
   let balance = 12.5;
+  let statusReads = 0;
+  let topUpAvailable = true;
+  const modelAvailability = new Map<string, boolean>();
+  const checkouts: number[] = [];
+  const tiers = [{ amount: 2, credit: 14, available: true }, { amount: 5, credit: 35, available: false }];
   let modelAccessError: "email_unverified" | "forbidden_client" | "unavailable" | null = null;
 
   const invalid = (response: ServerResponse, reason: string): void => {
@@ -103,6 +113,26 @@ export async function startNodexOAuthHttpFixture(
         code_challenge_methods_supported: ["S256"],
       });
     }
+    if (request.method === "GET" && url.pathname === "/v1/status") {
+      statusReads++;
+      return sendJson(response, 200, {
+        models: NODEX_MODELS.map(({ id }) => ({ id, available: modelAvailability.get(id) ?? true })),
+        topUp: { available: topUpAvailable, currency: "USD", tiers },
+      });
+    }
+    if (request.method === "POST" && url.pathname === "/v1/checkout") {
+      const token = request.headers.authorization?.replace(/^Bearer /u, "") ?? "";
+      const grant = accessTokens.get(token);
+      if (!grant || grant.revoked) return sendJson(response, 401, { error: { code: "unauthenticated", message: "Sign in" } });
+      if (!topUpAvailable) return sendJson(response, 503, { error: { code: "unavailable", message: "Paused" } });
+      const chunks: Buffer[] = [];
+      for await (const chunk of request) chunks.push(Buffer.from(chunk));
+      const { amount } = JSON.parse(Buffer.concat(chunks).toString("utf8")) as { amount: number };
+      if (!tiers.some((tier) => tier.amount === amount && tier.available))
+        return sendJson(response, 409, { error: { code: "tier_unavailable", message: "Unavailable" } });
+      checkouts.push(amount);
+      return sendJson(response, 200, { url: "https://checkout.stripe.com/c/pay/synthetic-nodex" });
+    }
     if (request.method === "POST" && url.pathname === "/v1/model-access") {
       const token = request.headers.authorization?.replace(/^Bearer /u, "") ?? "";
       const grant = accessTokens.get(token);
@@ -115,8 +145,9 @@ export async function startNodexOAuthHttpFixture(
           { id: "gpt-6.1-sol", label: "GPT-6.1 Sol", protocol: "openai" },
           { id: "gpt-6-luna", label: "GPT-6 Luna", protocol: "openai" },
           { id: "claude-opus-5-5", label: "Claude Opus 5.5", protocol: "anthropic" },
+          { id: "claude-sonnet-5-5", label: "Claude Sonnet 5.5", protocol: "anthropic" },
           { id: "unapproved-model", label: "Unapproved", protocol: "openai" },
-        ], consoleUrl: "https://console.nodex.jyu.app", topUpUrl: "https://console.nodex.jyu.app/topup",
+        ],
       });
     }
     if (request.method === "GET" && url.pathname === "/v1/usage") {
@@ -245,6 +276,8 @@ export async function startNodexOAuthHttpFixture(
       refreshes,
       modelAccesses,
       usageReads,
+      statusReads,
+      checkouts: [...checkouts],
       revocations,
       invalidRequests: [...invalidRequests],
     }),
@@ -259,6 +292,8 @@ export async function startNodexOAuthHttpFixture(
     revokeGrants: () => {
       for (const grant of grants) grant.revoked = true;
     },
+    setModelAvailable: (id, next) => { modelAvailability.set(id, next); },
+    setTopUpAvailable: (next) => { topUpAvailable = next; },
     setBalance: (next) => { balance = next; },
     setModelAccessError: (next) => { modelAccessError = next; },
     setAvailable: (next) => {

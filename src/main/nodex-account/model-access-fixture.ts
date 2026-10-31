@@ -12,11 +12,22 @@ export const modelAccessFixture: NodexModelAccess = {
   openaiBaseUrl: "https://api.jyu.app/v1",
   anthropicBaseUrl: "https://api.jyu.app",
   models: NODEX_MODELS,
-  consoleUrl: "https://console.nodex.jyu.app",
-  topUpUrl: "https://console.nodex.jyu.app/topup",
+};
+export const modelStatusFixture = {
+  models: NODEX_MODELS.map(({ id }) => ({ id, available: true })),
+  topUp: {
+    available: true,
+    currency: "USD" as const,
+    tiers: [
+      { amount: 2, credit: 14, available: true },
+      { amount: 5, credit: 35, available: false },
+    ],
+  },
 };
 export const unavailableModelAccessFixture: NodexModelAccessPlatform["Service"] = {
   exchange: () => Effect.fail(new NodexModelAccessError({ code: "unavailable" })),
   balance: () => Effect.succeed(12.5),
-  openTopUp: Effect.void,
+  status: Effect.succeed(modelStatusFixture),
+  checkout: () => Effect.succeed("https://checkout.stripe.com/c/pay/synthetic"),
+  openCheckout: () => Effect.void,
 };

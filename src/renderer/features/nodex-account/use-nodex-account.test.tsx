@@ -279,3 +279,24 @@ describe("Nodex account projection", () => {
     });
   });
 });
+
+test("observes new credit on focus and accepts Main's pending-checkout completion without a manual refresh", async () => {
+  const account = prepareAccount(
+    Promise.resolve({ ...signedIn, checkoutPending: true, credit: { balance: 1, unit: "USD" } }),
+  );
+  const { result } = renderHook(() => useNodexAccount(true), { wrapper: account.wrapper });
+  await waitFor(() => expect(result.current.snapshot?.checkoutPending).toBe(true));
+  account.invoke.mockResolvedValue({
+    ...signedIn,
+    revision: 2,
+    checkoutPending: false,
+    credit: { balance: 15, unit: "USD" },
+  });
+  await act(async () => {
+    window.dispatchEvent(new Event("focus"));
+    await Promise.resolve();
+  });
+  await waitFor(() => expect(result.current.snapshot?.credit?.balance).toBe(15));
+  expect(account.invoke).toHaveBeenCalledWith("nodex-account:refresh-models");
+  expect(result.current.snapshot?.checkoutPending).toBe(false);
+});

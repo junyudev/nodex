@@ -1,4 +1,5 @@
 import { isNodexProviderId } from "../../../shared/nodex-models";
+import { useNodexAccount } from "../nodex-account/use-nodex-account";
 import { subscribeNodexAccountChanges } from "../../lib/nodex-account-runtime";
 import {
   agentRuntimeChoiceKey,
@@ -796,6 +797,7 @@ export function useAgentRuntimeConversationAdapter(input: {
   readonly commitDraft?: import("./thread-stage-types").SessionThreadCommands["onCommitMaterializedProjectDraft"];
 }) {
   const workbenchOwner = useWorkbenchWindowOwner();
+  const nodexAccount = useNodexAccount(true);
   const [catalogState, setCatalogState] = useState<{
     providers: readonly AgentRuntimeProvider[];
     loading: boolean;
@@ -1052,7 +1054,17 @@ export function useAgentRuntimeConversationAdapter(input: {
       : null;
   const entries = entriesFor(catalogState.providers).map((entry) => {
     const candidate = modelOf(entry.selection);
-    const unavailableReason = candidate ? refusalFor(candidate) : null;
+    const nodexUnavailable =
+      entry.binding.runtimeInstanceId &&
+      isNodexProviderId(entry.binding.runtimeInstanceId) &&
+      !nodexAccount.snapshot?.modelStatus?.models.some(
+        (model) => model.id === entry.model.id && model.available,
+      );
+    const unavailableReason = nodexUnavailable
+      ? "Temporarily unavailable"
+      : candidate
+        ? refusalFor(candidate)
+        : null;
     return unavailableReason ? { ...entry, unavailableReason } : entry;
   });
   // Editing rewinds the Run the chat's own Agent ran; the edited message may then change Agent.
@@ -1075,6 +1087,12 @@ export function useAgentRuntimeConversationAdapter(input: {
     requested: AgentModelSelection,
     explicitIntent?: ClaudeModelSelection,
   ) => {
+    const unavailable = entries.find(
+      (entry) =>
+        agentRuntimeProviderId(entry.binding) === agentRuntimeProviderId(requested.binding) &&
+        entry.model.id === requested.model,
+    )?.unavailableReason;
+    if (unavailable) throw new Error(unavailable);
     const chosenModel = catalogState.providers
       .find((entry) => entry.instanceId === agentRuntimeProviderId(requested.binding))
       ?.models.find((model) => model.slug === requested.model);
@@ -1567,7 +1585,10 @@ export function useAgentRuntimeConversationAdapter(input: {
         refreshCatalog();
         openCodeSetup.refresh();
       },
-      reload: reloadCatalog,
+      reload: () => {
+        nodexAccount.act("refreshModels");
+        reloadCatalog();
+      },
       configOptions,
       changeConfig,
       runtimeOptions: [],

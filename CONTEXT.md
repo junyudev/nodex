@@ -950,7 +950,7 @@ Main owns each Profile's verified connection and private credential lifecycle.
 
 The user's USD wallet balance managed by sub2api, which owns billing, usage
 accounting and model gateway admission. Desktop observes remaining credit and
-opens the web console for Top up; local state cannot authorize spending.
+offers in-app Top up through a Main-created Stripe Checkout; local state cannot authorize spending.
 
 ### Nodex models
 

@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useCallback, useEffect } from "react";
 import { useMutation, useMutationState, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { NodexAccountErrorCode, NodexAccountSnapshot } from "../../../shared/nodex-account";
 import {
@@ -15,6 +15,7 @@ const accountMutationKey = ["nodexAccount", "action"] as const;
 interface AccountMutationInput {
   action: NodexAccountAction;
   observedRevision: number;
+  amount?: number;
 }
 
 /** Projects Main's Profile account without owning credentials or login lifetime. */
@@ -32,11 +33,30 @@ export function useNodexAccount(open: boolean) {
     });
   }, [open, queryClient]);
 
+  const refreshModels = useCallback(() => {
+    void nodexAccountActions
+      .refreshModels()
+      .then((next) => {
+        queryClient.setQueryData<NodexAccountSnapshot>(nodexAccountQueryKey, (current) =>
+          selectNodexAccountSnapshot(current, next),
+        );
+      })
+      .catch(() => undefined);
+  }, [queryClient]);
+  useEffect(() => {
+    if (!open) return;
+    window.addEventListener("focus", refreshModels);
+    return () => window.removeEventListener("focus", refreshModels);
+  }, [open, refreshModels]);
+
   const query = useQuery({ ...nodexAccountQueryOptions, enabled: open });
   const mutation = useMutation({
     mutationKey: accountMutationKey,
     networkMode: "always",
-    mutationFn: ({ action }: AccountMutationInput) => nodexAccountActions[action](),
+    mutationFn: ({ action, amount }: AccountMutationInput) =>
+      action === "openTopUp"
+        ? nodexAccountActions.openTopUp(amount ?? NaN)
+        : nodexAccountActions[action](),
     retry: false,
     onSuccess: (snapshot) => {
       const current = queryClient.getQueryData<NodexAccountSnapshot>(nodexAccountQueryKey);
@@ -65,10 +85,15 @@ export function useNodexAccount(open: boolean) {
       ? "transport"
       : (query.data?.error ?? null);
 
-  const act = (action: NodexAccountAction) => {
+  const act = (action: NodexAccountAction, amount?: number) => {
+    if (action === "refreshModels") {
+      refreshModels();
+      return;
+    }
     if (queryClient.isMutating({ mutationKey: accountMutationKey, exact: true }) > 0) return;
     mutation.mutate({
       action,
+      amount,
       observedRevision:
         queryClient.getQueryData<NodexAccountSnapshot>(nodexAccountQueryKey)?.revision ?? -1,
     });
@@ -79,6 +104,7 @@ export function useNodexAccount(open: boolean) {
     loading: query.isPending && !query.isError,
     failed: query.isError && !query.data,
     failure,
+    refreshModels,
     retrying: query.isFetching,
     pending,
     act,

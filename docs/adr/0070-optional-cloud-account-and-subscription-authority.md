@@ -14,18 +14,29 @@ credentials. Local content, startup and user-configured Agents remain independen
 `api.nodex.jyu.app` exchanges the Clerk OAuth access token at
 `POST /v1/model-access` for that user's gateway API key. sub2api owns the billing,
 prepaid wallet, usage ledger and model gateway at `api.jyu.app`. Credit is
-purchased through the Nodex web console; Desktop opens its Top up page and reads
-wallet credit from `GET /v1/usage`. Desktop neither implements a ledger nor treats
+purchased inside Desktop: Main reads supply and tiers from public `GET /v1/status`,
+creates an authenticated `POST /v1/checkout` through `api.nodex.jyu.app`, and opens
+the returned Stripe Checkout in the system browser. No web console is required.
+Main automatically observes wallet credit through `GET /v1/usage`, including
+focus refresh and bounded polling while payment is pending. Desktop neither
+implements a ledger nor treats
 a checkout return, cached balance or local flag as spending authority. The
 gateway authorizes every model request and rejects exhausted credit.
 
 Two account-specific managed provider instances reuse the existing Codex
 app-server and Claude Agent SDK drivers. They appear as one Nodex source with
-GPT-6.1 Sol, GPT-6 Luna and Claude Opus 5.5. Runtime instance identity survives
+GPT-6.1 Sol, GPT-6 Luna, Claude Opus 5.5 and Claude Sonnet 5.5. Runtime instance identity survives
 picker selection; a model allowlist constrains catalog observations and request
 admission. Managed models require explicit selection and are excluded from
 automatic defaults. User-configured Codex, Claude, OpenCode and ACP instances
 retain their existing credentials and configuration.
+
+Supply is finite and independent of user credit. Unavailable models and tiers
+remain visible but disabled; a failed supply read cannot advertise availability.
+Only gateway-confirmed `INSUFFICIENT_BALANCE` (including Claude's explicit
+`403 insufficient balance`) means the user's credit is exhausted. Upstream
+quota, balance, capacity, transport and server failures mean Nodex models are
+temporarily unavailable and never suggest Top up.
 
 ## Credential tradeoff
 

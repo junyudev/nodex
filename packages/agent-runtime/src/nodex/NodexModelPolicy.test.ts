@@ -32,19 +32,46 @@ describe("Nodex model policy", () => {
     });
     expect(nodexCreditFailure("codex", failure)).toBe(failure);
   });
-  it.each(["insufficient_balance", "insufficient_user_balance", "payment_required"])(
-    "points exhausted %s credit to Top up",
-    (code) => {
-      const result = nodexCreditFailure(
-        "nodex_claude_account",
-        makeProviderFailure({ code, message: "Gateway rejected the request" }),
-      );
-      expect(result.message).toBe(
-        "Nodex credit is exhausted. Top up in Settings → Account, then retry.",
-      );
-      expect(result.retryable).toBe(false);
+  it.each([
+    { code: "INSUFFICIENT_BALANCE", message: "Insufficient account balance" },
+    {
+      code: null,
+      message: '403 {"code":"INSUFFICIENT_BALANCE","message":"Insufficient account balance"}',
     },
-  );
+    { code: null, message: "API Error: 403 insufficient balance" },
+  ])("points only confirmed gateway exhaustion to Top up: %s", (failure) => {
+    const result = nodexCreditFailure("nodex_claude_account", makeProviderFailure(failure));
+    expect(result.message).toBe(
+      "Nodex credit is exhausted. Top up in Settings → Account, then retry.",
+    );
+    expect(result.retryable).toBe(false);
+    expect(nodexCreditFailure("nodex_claude_account", result)).toEqual(result);
+  });
+  it.each([
+    ["insufficient_quota", "You exceeded your current quota"],
+    [null, "Your credit balance is too low to access the Anthropic API"],
+    ["payment_required", "Upstream payment required"],
+    [null, "No available accounts"],
+    [null, "429 Too many requests"],
+    [null, "503 Service unavailable"],
+    [null, "Network failure"],
+    [null, "Insufficient account balance"],
+  ])("keeps platform failure %s separate from the user's wallet", (code, message) => {
+    const result = nodexCreditFailure(
+      "nodex_codex_account",
+      makeProviderFailure({ code, message }),
+    );
+    expect(result.message).toBe("Nodex models are temporarily unavailable. Try again later.");
+    expect(result.retryable).toBe(true);
+    expect(nodexCreditFailure("nodex_codex_account", result)).toEqual(result);
+  });
+  it("keeps request-specific failures readable", () => {
+    const failure = makeProviderFailure({
+      code: "invalid_request_error",
+      message: "prompt is too long: 250000 tokens > 200000 maximum",
+    });
+    expect(nodexCreditFailure("nodex_claude_account", failure)).toBe(failure);
+  });
 });
 
 it("excludes managed providers from automatic utility defaults", () => {

@@ -1379,7 +1379,14 @@ export interface IpcApi
     result: import("./nodex-account").NodexAccountSnapshot;
   };
   "nodex-account:sign-out": { args: []; result: import("./nodex-account").NodexAccountSnapshot };
-  "nodex-account:open-top-up": { args: []; result: import("./nodex-account").NodexAccountSnapshot };
+  "nodex-account:refresh-models": {
+    args: [];
+    result: import("./nodex-account").NodexAccountSnapshot;
+  };
+  "nodex-account:open-top-up": {
+    args: [amount: number];
+    result: import("./nodex-account").NodexAccountSnapshot;
+  };
   "nodex-account:refresh": { args: []; result: import("./nodex-account").NodexAccountSnapshot };
   "opencode-setup:read": {
     args: [];

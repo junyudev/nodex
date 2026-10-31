@@ -57,6 +57,21 @@ function RuntimeWorkbench({ children }: PropsWithChildren) {
   return <MaitaiProvider store={store}>{children}</MaitaiProvider>;
 }
 
+// Account supply is an independent Main projection; catalog behavior uses a deterministic observation.
+const nodexSupply = vi.hoisted(() => ({ available: true }));
+vi.mock("../nodex-account/use-nodex-account", () => ({
+  useNodexAccount: () => ({
+    snapshot: {
+      modelStatus: {
+        models: ["gpt-6.1-sol", "claude-opus-5-5"].map((id) => ({
+          id,
+          available: nodexSupply.available,
+        })),
+      },
+    },
+    act: () => {},
+  }),
+}));
 const instances = [] as const;
 const provider = {
   instanceId: "codex",
@@ -72,6 +87,7 @@ const provider = {
 } as unknown as AgentRuntimeProvider;
 const snapshot = agentRuntimeSnapshotFixture();
 beforeEach(() => {
+  nodexSupply.available = true;
   // The Profile-wide activity feed is read once per attachment and shared by every adapter.
   vi.spyOn(agentRuntimeRuntime, "connection").mockResolvedValue({
     status: "ready",
@@ -2687,7 +2703,7 @@ it("keeps managed Codex and Claude choices without user-configured instances", a
     },
   ] as AgentRuntimeProvider[];
   vi.spyOn(agentRuntimeRuntime, "catalog").mockResolvedValue([provider, ...managed]);
-  const { result, unmount } = renderHook(
+  const { result, unmount, rerender } = renderHook(
     () =>
       useAgentRuntimeConversationAdapter({
         sessionId: "nodex-draft",
@@ -2716,5 +2732,14 @@ it("keeps managed Codex and Claude choices without user-configured instances", a
       ),
     );
   }
+  nodexSupply.available = false;
+  await act(async () => rerender());
+  const unavailable = result.current.provider.modelCatalog!.entries.find(
+    (entry) => entry.model.id === "gpt-6.1-sol",
+  )!;
+  expect(unavailable.unavailableReason).toBe("Temporarily unavailable");
+  await expect(result.current.provider.modelCatalog!.choose(unavailable.selection)).rejects.toThrow(
+    "Temporarily unavailable",
+  );
   await act(async () => unmount());
 });

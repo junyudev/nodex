@@ -2,6 +2,7 @@
 import * as Effect from "effect/Effect";
 import * as Redacted from "effect/Redacted";
 import { z } from "zod";
+import { NodexModelStatusSchema } from "../../../shared/nodex-account";
 import { NodexModelAccessError, NodexModelAccessPlatform } from "../NodexModelAccessPlatform";
 
 const unavailable = () => new NodexModelAccessError({ code: "unavailable" });
@@ -14,17 +15,27 @@ export const modelAccessSchema = z.object({
       z.object({ id: z.string(), label: z.string(), protocol: z.enum(["openai", "anthropic"]) }),
     )
     .max(100),
-  consoleUrl: z
-    .string()
-    .url()
-    .refine((value) => new URL(value).origin === "https://console.nodex.jyu.app"),
-  topUpUrl: z.literal("https://console.nodex.jyu.app/topup"),
 });
 const errorSchema = z.object({
   error: z.object({
-    code: z.enum(["unauthenticated", "forbidden_client", "email_unverified", "unavailable"]),
+    code: z.enum([
+      "unauthenticated",
+      "forbidden_client",
+      "email_unverified",
+      "unavailable",
+      "tier_unavailable",
+    ]),
   }),
 });
+// Checkout comes from the authenticated API, but only Stripe may be opened by this capability.
+const checkoutUrlSchema = z
+  .string()
+  .url()
+  .max(8192)
+  .refine((value) => {
+    const url = new URL(value);
+    return url.origin === "https://checkout.stripe.com" && !url.username && !url.password;
+  });
 const request = (url: string, init: RequestInit) =>
   Effect.tryPromise({
     try: async (signal) => {
@@ -91,9 +102,33 @@ export const make = (host: {
           return parsed.success ? Effect.succeed(parsed.data.balance) : unavailable();
         }),
       ),
-    openTopUp: Effect.tryPromise({
-      try: () => host.openExternal("https://console.nodex.jyu.app/topup"),
-      catch: unavailable,
-    }),
+    status: request(`${loopback ?? "https://api.nodex.jyu.app"}/v1/status`, {}).pipe(
+      Effect.flatMap((body) => {
+        const parsed = NodexModelStatusSchema.safeParse(body);
+        return parsed.success ? Effect.succeed(parsed.data) : unavailable();
+      }),
+    ),
+    checkout: (token, amount) =>
+      request(`${loopback ?? "https://api.nodex.jyu.app"}/v1/checkout`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${Redacted.value(token)}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ amount }),
+      }).pipe(
+        Effect.flatMap((body) => {
+          const parsed = z.object({ url: checkoutUrlSchema }).safeParse(body);
+          return parsed.success ? Effect.succeed(parsed.data.url) : unavailable();
+        }),
+      ),
+    openCheckout: (url) =>
+      Effect.gen(function* () {
+        if (!checkoutUrlSchema.safeParse(url).success) return yield* unavailable();
+        yield* Effect.tryPromise({
+          try: () => host.openExternal(url),
+          catch: () => new NodexModelAccessError({ code: "browser-open" }),
+        });
+      }),
   });
 };

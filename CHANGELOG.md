@@ -7,7 +7,7 @@ All notable changes to this project will be documented in this file.
 ### Added
 
 - New page in the command palette creates a page where you are and opens it beside you: in your Project's database in a Project or one of its chats, and in Space otherwise.
-- Sign in with your Nodex Account to choose GPT-6.1 Sol, GPT-6 Luna or Claude Opus 5.5 using prepaid credit. Account settings and the rail account menu show your balance and open Top up.
+- Sign in with your Nodex Account to choose GPT-6.1 Sol, GPT-6 Luna, Claude Opus 5.5 or Claude Sonnet 5.5 using prepaid credit. Buy credit from Account settings or the rail account menu through Stripe Checkout, with automatic balance updates and live model availability.
 
 ### Changed
 

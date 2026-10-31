@@ -561,3 +561,32 @@ test("shows a mode change at once without dimming, and sends a second change aft
   });
   await waitFor(() => expect(change).toHaveBeenLastCalledWith({ ultracode: true }));
 });
+
+test("keeps an unavailable Nodex model visible and prevents choosing it", async () => {
+  const choose = vi.fn();
+  const binding = {
+    kind: "claude",
+    instanceConfigId: `nodex_claude_${"a".repeat(32)}`,
+    runtimeInstanceId: `nodex_claude_${"a".repeat(32)}`,
+  } as const;
+  const unavailable = catalogModel("claude-sonnet-5-5", "Claude Sonnet 5.5");
+  const view = renderPicker(
+    presentation({
+      choose,
+      entries: [
+        {
+          binding,
+          label: "Nodex",
+          model: unavailable,
+          selection: { binding, model: unavailable.id },
+          unavailableReason: "Temporarily unavailable",
+        },
+      ],
+    }),
+  );
+  const option = await view.findByRole("option", { name: /Claude Sonnet 5.5/u });
+  expect((option as HTMLButtonElement).disabled).toBe(true);
+  expect(within(option).getByText(/Unavailable/u)).toBeDefined();
+  await click(option);
+  expect(choose).not.toHaveBeenCalled();
+});
