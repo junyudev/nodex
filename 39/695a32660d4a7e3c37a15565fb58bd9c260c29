@@ -1,0 +1,29 @@
+docs/development.md
+  s_58f50c3d6634a1::t_613f207317a046 882-890
+CHANGELOG.md
+  s_58f50c3d6634a1::t_6b4d65b7783cf7 19
+patches/prosemirror-view@1.42.8.patch
+  s_58f50c3d6634a1::t_876dd7e6d3981c 1-342
+pnpm-lock.yaml
+  s_58f50c3d6634a1::t_c4936bf07b149b 234,543,648,651,1510,1543,1561,1576,1579,1618,10714,10720,12476,13105,13112,16402,16409,16411,16418,16424,16431,16458,16466,16472,17839,17844
+pnpm-workspace.yaml
+  s_58f50c3d6634a1::t_2d45cff0e9b7d9 15
+src/renderer/components/board/editor/nfm-ime-composition.browser.test.ts
+  s_58f50c3d6634a1::t_41ef57238e74e1 1-98
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "39695a32660d4a7e3c37a15565fb58bd9c260c29",
+  "prompts": {},
+  "sessions": {
+    "s_58f50c3d6634a1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4166a46d-c1bb-4004-b5a5-b302e4d5c599",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
