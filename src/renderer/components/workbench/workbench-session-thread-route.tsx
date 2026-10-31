@@ -1,3 +1,7 @@
+import {
+  ConversationPageNavigationProvider,
+  type ConversationPageNavigation,
+} from "@/features/local-conversation/conversation-page-navigation";
 import { ConversationRuntimeContext } from "@/features/local-conversation/conversation-runtime";
 import { useAgentRuntimeConversationAdapter } from "@/features/local-conversation/agent-runtime-conversation-adapter";
 import { createRemoteCodexStageActions } from "@/features/local-conversation/remote-codex-stage-actions";
@@ -158,6 +162,8 @@ function SharedConnectedSessionThread({
   composerEnterBehavior: ComposerEnterBehavior;
   onQueueingEnabledChange: ThreadStageActions["onQueueingEnabledChange"];
   onOpenThread: ThreadStageActions["onOpenThread"];
+  /** Opens a Page a message references beside this chat. */
+  onOpenPage?: ConversationPageNavigation;
   onOpenSubagentsPanel: ThreadStageActions["onOpenSubagentsPanel"];
   onOpenTurnDiffReview: ThreadStageActions["onOpenTurnDiffReview"];
   onOpenTurnDiffFileInSidePanel: ThreadStageActions["onOpenTurnDiffFileInSidePanel"];
@@ -789,6 +795,14 @@ function ConnectedRemoteSessionThread(
 }
 
 function ConnectedSessionThread(props: ConnectedSessionThreadProps) {
+  return (
+    <ConversationPageNavigationProvider value={props.onOpenPage ?? null}>
+      <ConnectedSessionThreadBody {...props} />
+    </ConversationPageNavigationProvider>
+  );
+}
+
+function ConnectedSessionThreadBody(props: ConnectedSessionThreadProps) {
   const thread = props.session.thread;
   if (thread && !props.session.executionRef) {
     if (thread.backendBinding.kind === "codex" && thread.executionHostId !== "local")

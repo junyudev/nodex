@@ -282,3 +282,44 @@ const presentFallbackTitle = (title: string): string => title.trim() || "Untitle
 const EMPTY_SOURCE = {
   subscribe: () => () => undefined,
 };
+
+/** A bounded batch for surfaces that offer several visible Pages as message context. */
+export function usePresentedPageTitles(
+  pages: readonly { readonly pageId: string; readonly titleSnapshot: string }[],
+) {
+  const context = useContext(PageTitleProjectionContext);
+  const pageKey = JSON.stringify(pages.map(({ pageId, titleSnapshot }) => [pageId, titleSnapshot]));
+  const sources = useMemo(() => {
+    const values = JSON.parse(pageKey) as [string, string][];
+    return values.map(([pageId, fallback]) =>
+      context?.store && context.currentLibraryId
+        ? context.store.createSource(
+            makePageTitleResourceKey(context.currentLibraryId, pageId),
+            fallback,
+          )
+        : { getSnapshot: () => presentFallbackTitle(fallback), subscribe: EMPTY_SOURCE.subscribe },
+    );
+  }, [context, pageKey]);
+  const source = useMemo(
+    () => ({
+      subscribe: (listener: () => void) => {
+        const releases = sources.map((entry) => entry.subscribe(listener));
+        return () => {
+          for (const release of releases) release();
+        };
+      },
+      getSnapshot: () => JSON.stringify(sources.map((entry) => entry.getSnapshot())),
+    }),
+    [sources],
+  );
+  const snapshot = useSyncExternalStore(source.subscribe, source.getSnapshot, source.getSnapshot);
+  return {
+    titles: useMemo(() => JSON.parse(snapshot) as string[], [snapshot]),
+    readTitle(pageId: string, fallback: string) {
+      if (!context?.currentLibraryId) return presentFallbackTitle(fallback);
+      return context.store
+        .createSource(makePageTitleResourceKey(context.currentLibraryId, pageId), fallback)
+        .getSnapshot();
+    },
+  };
+}

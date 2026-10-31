@@ -1,3 +1,4 @@
+import { readPageReferencesAdditionalContext, withoutPageReferenceInput } from "./page-reference";
 import {
   EMPTY_THREAD_TEXT_SELECTION_CONTEXT,
   hasThreadTextSelections,
@@ -473,10 +474,14 @@ function projectTurnParamsUserView(input: {
 }): CodexCanonicalTurnView | null {
   const itemId = `${input.turnKey}:input`;
   const textSelections = readThreadTextSelectionAdditionalContext(input.params.additionalContext);
+  const pageReferences = readPageReferencesAdditionalContext(input.params.additionalContext);
   const rawCommentAttachments = input.params.commentAttachments ?? [];
   const commentAttachments = rawCommentAttachments.filter(isReviewDiffCommentAttachment);
   const rawMarkdownText = buildCodexSteeringCompareKey(
-    withoutThreadTextSelectionInput(input.params.input, textSelections).map((entry) => {
+    withoutPageReferenceInput(
+      withoutThreadTextSelectionInput(input.params.input, textSelections),
+      pageReferences,
+    ).map((entry) => {
       const message = decodeUntrustedAppMessage(entry);
       return entry.type === "text" && message ? { ...entry, text: message.text } : entry;
     }),
@@ -500,6 +505,7 @@ function projectTurnParamsUserView(input: {
     userAttachments.length === 0 &&
     commentAttachments.length === 0 &&
     !hasThreadTextSelections(textSelections) &&
+    pageReferences.length === 0 &&
     unavailableImages.length === 0
   ) {
     return null;
@@ -527,6 +533,7 @@ function projectTurnParamsUserView(input: {
         : {}),
     ...(commentAttachments.length === 0 ? {} : { commentAttachments: [...commentAttachments] }),
     ...(hasThreadTextSelections(textSelections) ? { textSelections } : {}),
+    ...(pageReferences.length ? { pageReferences } : {}),
     ...(userAttachments.length === 0 ? {} : { userAttachments }),
     ...(unavailableImages.length === 0 ? {} : { unavailableImages }),
     ...(input.goalProjection
@@ -1287,8 +1294,12 @@ function projectCanonicalItemViews(
       ];
     case "userMessage": {
       const textSelections = item.textSelections ?? EMPTY_THREAD_TEXT_SELECTION_CONTEXT;
+      const pageReferences = item.pageReferences ?? [];
       const rawText = projectUserMessageText(
-        withoutThreadTextSelectionInput(item.content, textSelections),
+        withoutPageReferenceInput(
+          withoutThreadTextSelectionInput(item.content, textSelections),
+          pageReferences,
+        ),
       );
       const questionReplies = questionRepliesFromUserInput(item.content, rawText);
       const markdownText = questionReplies
@@ -1300,6 +1311,7 @@ function projectCanonicalItemViews(
         markdownText.trim().length === 0 &&
         userAttachments.length === 0 &&
         !hasThreadTextSelections(textSelections) &&
+        pageReferences.length === 0 &&
         unavailableImages.length === 0
       )
         return [];
@@ -1316,6 +1328,7 @@ function projectCanonicalItemViews(
             ? { deliveryStatus: item.runtimeDelivery }
             : {}),
           ...(hasThreadTextSelections(textSelections) ? { textSelections } : {}),
+          ...(pageReferences.length ? { pageReferences } : {}),
           ...(userAttachments.length === 0 ? {} : { userAttachments }),
           ...(unavailableImages.length === 0 ? {} : { unavailableImages }),
           ...(item.origin ? { userMessageOrigin: item.origin } : {}),

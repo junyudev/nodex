@@ -2816,6 +2816,7 @@ export interface CodexPromptAgentConfigInput {
 }
 
 export interface CodexPromptInput {
+  pageReferences?: readonly import("./page-reference").PageReference[];
   text: string;
   mcpAppModelContextAttachments?: readonly import("./codex-untrusted-app-input").CodexAppModelContextAttachment[];
   /** Retained app provenance survives queued-message editing and recovery. */
@@ -3412,6 +3413,7 @@ export interface CodexItemView extends CodexCommandExecutionAttachmentFields {
   importedImages?: readonly CodexImportedMarkdownImage[];
   commentAttachments?: CodexReviewDiffCommentAttachment[];
   textSelections?: import("./thread-text-selection").ThreadTextSelectionContext;
+  pageReferences?: readonly import("./page-reference").PageReference[];
   deliveryStatus?: "not-sent" | "pending" | "unknown";
   steeringStatus?: CodexSteeringStatus;
   steeringInput?: CodexSteeringUserInput[];
@@ -3475,6 +3477,7 @@ export interface CodexTranscriptEntry extends CodexCommandExecutionAttachmentFie
   importedImages?: readonly CodexImportedMarkdownImage[];
   commentAttachments?: CodexReviewDiffCommentAttachment[];
   textSelections?: import("./thread-text-selection").ThreadTextSelectionContext;
+  pageReferences?: readonly import("./page-reference").PageReference[];
   deliveryStatus?: "not-sent" | "pending" | "unknown";
   steeringStatus?: CodexSteeringStatus;
   steeringInput?: CodexSteeringUserInput[];

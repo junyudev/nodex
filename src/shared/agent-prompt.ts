@@ -1,4 +1,9 @@
 import {
+  PAGE_REFERENCE_CONTEXT_KIND,
+  PageReferenceSchema,
+  pageReferencePayload,
+} from "./page-reference";
+import {
   THREAD_TEXT_SELECTION_CONTEXT_KIND,
   hasThreadTextSelections,
   ThreadTextSelectionContextSchema,
@@ -18,7 +23,7 @@ import { createUuidV7 } from "./uuid-v7";
 /** The kind of the context record that carries app-supplied data beside a user message. */
 const APP_CONTEXT_KIND = "nodex-app-context";
 const APP_CONTEXT_REFERENCE = new RegExp(
-  String.raw`\[[^\]\n]{0,512}\]\(t3-context://v1/(?:${APP_CONTEXT_KIND}|${THREAD_TEXT_SELECTION_CONTEXT_KIND})/[A-Za-z0-9_-]{1,128}\)`,
+  String.raw`\[[^\]\n]{0,512}\]\(t3-context://v1/(?:${APP_CONTEXT_KIND}|${THREAD_TEXT_SELECTION_CONTEXT_KIND}|${PAGE_REFERENCE_CONTEXT_KIND})/[A-Za-z0-9_-]{1,128}\)`,
   "gu",
 );
 
@@ -146,6 +151,7 @@ export function retainAgentAppContext(
     (original.context?.records ?? []).flatMap((record) =>
       isAppContextJsonObject(record) &&
       (record.kind === APP_CONTEXT_KIND ||
+        record.kind === PAGE_REFERENCE_CONTEXT_KIND ||
         (retainTextSelections && record.kind === THREAD_TEXT_SELECTION_CONTEXT_KIND)) &&
       !revisedKinds.has(record.kind) &&
       typeof record.contextId === "string"
@@ -202,6 +208,24 @@ export async function prepareAgentMessage(
     references.push(
       `[Selected text](t3-context://v1/${THREAD_TEXT_SELECTION_CONTEXT_KIND}/${contextId})`,
     );
+  }
+  for (const value of input?.pageReferences ?? []) {
+    const reference = PageReferenceSchema.parse(value);
+    const contextId = createUuidV7().replaceAll("-", "");
+    const label =
+      (reference.titleSnapshot || "Untitled")
+        .replace(/[[\]\\\r\n]/gu, " ")
+        .replace(/\s+/gu, " ")
+        .trim()
+        .slice(0, 200) || "Untitled";
+    records.push({
+      version: 1,
+      kind: PAGE_REFERENCE_CONTEXT_KIND,
+      contextId,
+      label,
+      payload: pageReferencePayload(reference),
+    });
+    references.push(`[${label}](t3-context://v1/${PAGE_REFERENCE_CONTEXT_KIND}/${contextId})`);
   }
   return {
     text: [text, ...references].filter(Boolean).join("\n\n"),

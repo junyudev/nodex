@@ -4,6 +4,8 @@ import { describe, expect, test, vi } from "vite-plus/test";
 import { resolveSubagentAvatarAsset } from "../shared/subagent-avatar";
 import {
   appendComposerDictationText,
+  parseComposerPromptMentionLink,
+  serializeComposerPromptMentionLink,
   buildPromptDoc,
   classifyComposerPaste,
   ComposerPromptEditor,
@@ -867,4 +869,19 @@ test("directory completion replaces the current trigger range and keeps suggesti
     kind: "at-mention",
     query: "src/",
   });
+});
+
+test("Page links round-trip as inline atoms with canonical ids and escaped titles", async () => {
+  const mention = {
+    kind: "page" as const,
+    name: "Plan [v2] \\ draft",
+    path: "nodex://pages/page-a",
+  };
+  const serialized = serializeComposerPromptMentionLink(mention);
+  const match = /^\[((?:\\.|[^\]\\\n])+)\]\(([^)\n]+)\)$/u.exec(serialized)!;
+  expect(parseComposerPromptMentionLink(match[1]!, match[2]!)).toMatchObject(mention);
+  const editor = renderPromptEditor({ value: serialized });
+  const atom = editor.editor.querySelector('[data-mention-kind="page"]');
+  expect(atom?.getAttribute("data-mention-display-name")).toBe(mention.name);
+  expect(editor.editorRef.current?.getPersistedText()).toBe(serialized);
 });

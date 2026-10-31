@@ -1,3 +1,4 @@
+import { selectComposerBesidePages } from "./composer-page-context";
 import { boundWorkbenchObservation } from "../../shared/nodex-app-tools/workbench-context-budget";
 import { WORKBENCH_SCENE_MAX_PANEL_SURFACES } from "../../shared/workbench-scene";
 import { WorkbenchSceneSnapshotSchema } from "../../shared/schemas/workbench-scene";
@@ -589,4 +590,59 @@ test("the maximum durable Scene plus its primary yields valid bounded observatio
   expect(WorkbenchRendererObservationSchema.safeParse(bounded).success).toBe(true);
   expect(bounded.tabs.length + (bounded.omittedTabCount ?? 0)).toBe(raw.tabs.length);
   if (bounded.omittedTabCount) expect(bounded.availability).toBe("partial");
+});
+
+test("Composer context follows selected visible right-panel Pages, deduping split leaves and respecting collapse and maximize", () => {
+  const owner = { kind: "session", sessionId: "s" } as const;
+  let scene = materializeInitialWorkbenchScene(owner);
+  const page = (id: string, pageId: string): WorkbenchSurfaceDescriptor => ({
+    id,
+    kind: "page_stage",
+    titleSnapshot: id,
+    stateKey: 0,
+    state: null,
+    config: { routingContext: { kind: "library" }, pageId },
+  });
+  for (const id of ["first", "second", "duplicate"])
+    scene = createWorkbenchSceneSurface(scene, {
+      panelId: "right",
+      surface: page(id, id === "duplicate" ? "first" : id),
+    });
+  scene = splitWorkbenchSceneLeaf(scene, {
+    panelId: "right",
+    leafId: scene.panels.right.layout.activeLeafId,
+    surfaceId: "first",
+    side: "right",
+  });
+  scene = splitWorkbenchSceneLeaf(scene, {
+    panelId: "right",
+    leafId: scene.panels.right.layout.activeLeafId,
+    surfaceId: "second",
+    side: "right",
+  });
+  scene = createWorkbenchSceneSurface(scene, {
+    panelId: "bottom",
+    surface: page("bottom", "bottom"),
+  });
+  const read = (value: WorkbenchSceneSnapshot) =>
+    selectComposerBesidePages(
+      readWorkbenchAgentContext(stateFor([value], { ...owner, projectContextId: null }), owner),
+    );
+  expect(
+    read(scene)
+      .map((item) => item.pageId)
+      .sort(),
+  ).toEqual(["first", "second"]);
+  expect(read(patchWorkbenchScenePanel(scene, "right", { collapsed: true }))).toEqual([]);
+  const leafId = findWorkbenchPanelLeafForTab(scene.panels.right.layout, "second")!.id;
+  expect(
+    read(maximizeWorkbenchSceneLeaf(scene, { panelId: "right", leafId })).map(
+      (item) => item.pageId,
+    ),
+  ).toEqual(["second"]);
+  expect(
+    selectComposerBesidePages(
+      readWorkbenchAgentContext(stateFor([scene], { kind: "library" }), owner),
+    ),
+  ).toEqual([]);
 });

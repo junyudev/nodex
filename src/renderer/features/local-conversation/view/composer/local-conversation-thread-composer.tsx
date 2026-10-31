@@ -1,3 +1,6 @@
+import type { PageReference } from "../../../../../shared/page-reference";
+import { useComposerPageContext } from "./use-composer-page-context";
+import { ComposerPageContextChips } from "./composer-page-context-chips";
 import {
   hasThreadTextSelections,
   type ThreadTextSelectionContext,
@@ -405,7 +408,10 @@ function extractComposerPromptMentions(prompt: string): {
       textParts.push(precedingText);
       documentItems.push({ type: "text", text: precedingText });
     }
-    if (mention.kind === "skill") {
+    if (mention.kind === "page") {
+      textParts.push(match[0]);
+      documentItems.push({ type: "text", text: match[0] });
+    } else if (mention.kind === "skill") {
       const skill = { name: mention.name, path: mention.path };
       skills.push(skill);
       documentItems.push({ type: "skill", ...skill });
@@ -451,6 +457,7 @@ function buildComposerPromptInput(input: {
   prompt: string;
   attachments: ComposerAttachmentState;
   executionHostId?: string | null;
+  pageReferences?: readonly PageReference[];
 }): CodexPromptInput | undefined {
   const executionHostId =
     input.executionHostId === undefined ? DEFAULT_CODEX_HOST_ID : input.executionHostId;
@@ -496,7 +503,8 @@ function buildComposerPromptInput(input: {
     browserAnnotationAttachments.length === 0 &&
     responseTextAnnotations.length === 0 &&
     selectedTextAttachments.length === 0 &&
-    agentConfigs.length === 0
+    agentConfigs.length === 0 &&
+    !input.pageReferences?.length
   ) {
     return undefined;
   }
@@ -506,6 +514,7 @@ function buildComposerPromptInput(input: {
     ...(parsedPrompt.documentItems.length > 0
       ? { documentItems: [...parsedPrompt.documentItems] }
       : {}),
+    ...(input.pageReferences?.length ? { pageReferences: input.pageReferences } : {}),
     ...(images.length > 0 ? { images } : {}),
     ...(appshots.length > 0 ? { appshots } : {}),
     ...(textAttachments.length > 0 ? { textAttachments } : {}),
@@ -1450,6 +1459,10 @@ function HydratedThreadComposer({
     useRightPanelComposerPresentation();
   const composerHandle = useScopeHandle(ComposerScope);
   const composerScopeKey = composerHandle.path;
+  const pageContext = useComposerPageContext({
+    sessionId: model.newThreadTarget?.sessionId,
+    composerScope: composerHandle,
+  });
   const maitaiStore = useMaitaiStore();
   const [globalDictationTargetId] = useState(() => `composer:${crypto.randomUUID()}`);
   const threadScopePath = useScopeHandle(ThreadScope).path;
@@ -1761,14 +1774,18 @@ function HydratedThreadComposer({
   const hasAppModelContextInput =
     hasVisibleAppModelContext ||
     appModelContext.attachments.some((entry) => entry.kind === "message");
+  // Beside Pages are ambient context: they show and travel with a message, never make one.
   const hasAttachments =
     hasComposerAttachmentStateContent(attachmentState) || hasAppModelContextInput;
   const hasVisibleAttachments =
-    hasComposerAttachmentStateContent(attachmentState) || hasVisibleAppModelContext;
+    hasComposerAttachmentStateContent(attachmentState) ||
+    hasVisibleAppModelContext ||
+    pageContext.references.length > 0;
   const hasSubmittableAttachments =
     hasSubmittableComposerAttachmentState(attachmentState) || hasAppModelContextInput;
   const hasVisibleNonImageAttachments =
     hasVisibleAppModelContext ||
+    pageContext.references.length > 0 ||
     fileAttachments.length > 0 ||
     addedFiles.length > 0 ||
     appshotContexts.length > 0 ||
@@ -2286,13 +2303,16 @@ function HydratedThreadComposer({
     }
   }, [actions, clearQueuedFollowUpEdit, model.conversation, queuedFollowUpEdit]);
 
-  const submitPrompt = useCallback(
-    async (input: {
-      prompt: string;
-      submitAction: StageThreadsComposerSubmitAction | null;
-      imageEditIntent?: ImageEditSubmissionIntent;
-      pausedQueueResolution?: "resume" | "clear";
-    }): Promise<boolean> => {
+  const submitPromptWithPageReferences = useCallback(
+    async (
+      input: {
+        prompt: string;
+        submitAction: StageThreadsComposerSubmitAction | null;
+        imageEditIntent?: ImageEditSubmissionIntent;
+        pausedQueueResolution?: "resume" | "clear";
+      },
+      pageReferences: readonly PageReference[],
+    ): Promise<boolean> => {
       if (isDraftCaptureLocked()) return false;
       if (hasPendingPastedTextAttachments) return false;
       const executionHostId = model.isCloudNewThreadTarget ? null : model.hostId;
@@ -2336,6 +2356,7 @@ function HydratedThreadComposer({
           buildComposerPromptInput({
             prompt: nextPrompt,
             attachments: effectiveAttachmentState,
+            pageReferences,
             executionHostId,
           }),
           executionHostId,
@@ -2428,6 +2449,7 @@ function HydratedThreadComposer({
             buildComposerPromptInput({
               prompt: sideChatPrompt,
               attachments: effectiveAttachmentState,
+              pageReferences,
               executionHostId: model.hostId,
             }),
             model.hostId,
@@ -2717,6 +2739,11 @@ function HydratedThreadComposer({
       setGoalModeActive,
       submitThreadGoalDraft,
     ],
+  );
+  const submitPrompt = useCallback(
+    (input: Parameters<typeof submitPromptWithPageReferences>[0]) =>
+      pageContext.submit((references) => submitPromptWithPageReferences(input, references)),
+    [pageContext, submitPromptWithPageReferences],
   );
   const isDictationSupported = useMemo(
     () =>
@@ -4526,6 +4553,10 @@ function HydratedThreadComposer({
                     hasVisibleNonImageAttachments={hasVisibleNonImageAttachments}
                     onEdit={handleEditComposerImage}
                   >
+                    <ComposerPageContextChips
+                      references={pageContext.references}
+                      onRemove={pageContext.remove}
+                    />
                     <ComposerAppModelContextAttachments
                       attachments={appModelContext.attachments}
                       onRemove={appModelContext.remove}

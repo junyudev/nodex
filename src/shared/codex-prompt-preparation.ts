@@ -1,4 +1,9 @@
 import {
+  PageReferenceSchema,
+  pageReferencesAdditionalContext,
+  serializePageReferences,
+} from "./page-reference";
+import {
   ThreadTextSelectionContextSchema,
   hasThreadTextSelections,
   serializeThreadTextSelections,
@@ -265,12 +270,20 @@ export async function prepareCodexPrompt(
       kind: "application",
       value: JSON.stringify(selections),
     };
+  const pageReferences = (promptInput?.pageReferences ?? []).map((reference) =>
+    PageReferenceSchema.parse(reference),
+  );
+  const pageReferenceItems = pageReferences.length
+    ? [createCodexTextUserInput(serializePageReferences(pageReferences))]
+    : [];
+  Object.assign(additionalContext, pageReferencesAdditionalContext(pageReferences));
   const primaryTextItems = promptText ? [createCodexTextUserInput(promptText)] : [];
   const primaryDocumentItems = documentItems ?? primaryTextItems;
   const inputItems: UserInput[] = [
     ...primaryDocumentItems,
     ...commentItems,
     ...selectionItems,
+    ...pageReferenceItems,
     ...browserAnnotationItems,
     ...browserAnnotationEvidenceItems,
     ...appshotImageItems,
@@ -283,6 +296,7 @@ export async function prepareCodexPrompt(
     ...primaryDocumentItems,
     ...commentItems,
     ...selectionItems,
+    ...pageReferenceItems,
     ...browserAnnotationItems,
     ...browserAnnotationEvidenceItems,
     ...appshotImageItems,

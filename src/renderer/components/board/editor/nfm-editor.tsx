@@ -1,3 +1,7 @@
+import {
+  createPageEditorSelectionObservation,
+  readPageEditorSelectedBlockIds,
+} from "@/lib/page-editor-selection";
 import { markdownBlocksForEditor } from "../../../../shared/nodex-markdown/blocknote";
 import { NfmStructuralRemovalPresentation } from "./nfm-structural-removal-presentation";
 import { readCodexSubmissionPresentation } from "@/lib/codex-turn-presentation";
@@ -1154,7 +1158,14 @@ function NfmEditorInstance({
   useLayoutEffect(() => {
     if (!editorSession || editorSession.descriptor.ownerType !== "page") return;
     const runtime = editorSession.runtime;
-    return registerPageEditorObservationParticipant(editorSession.key, {
+    const selection = createPageEditorSelectionObservation({
+      read: () => readPageEditorSelectedBlockIds(editor),
+      focused: () => editor.prosemirrorView?.hasFocus() === true,
+    });
+    const unsubscribeSelection = editor.onSelectionChange(selection.update);
+    const unregister = registerPageEditorObservationParticipant(editorSession.key, {
+      readSelection: selection.readSelection,
+      subscribeSelection: selection.subscribeSelection,
       read: () => ({
         mounted: containerRef.current?.isConnected === true,
         transientInput: pendingObservationInputRef.current || hasNfmEditorTransientInput(editor),
@@ -1166,6 +1177,10 @@ function NfmEditorInstance({
         return prepareNfmEditorObservation(editor, containerRef.current, runtime, options);
       },
     });
+    return () => {
+      unsubscribeSelection();
+      unregister();
+    };
   }, [editor, editorSession]);
   const removalPresentation = useMemo(() => {
     if (!editorSession) return null;

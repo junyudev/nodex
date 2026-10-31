@@ -1,3 +1,4 @@
+import { UserMessagePageReferences } from "../shared/user-message-page-references";
 import { ThreadTextSelectionAttachments } from "../thread-text-selection-attachments";
 import { ResponseAnnotationContext } from "../response-annotation-context";
 import { AssistantMessageActionsRow } from "../shared/assistant-message-actions";
@@ -1081,6 +1082,7 @@ export function UserMessageBubble({
       }
       data-content-search-unit-key={block.searchUnitKey}
     >
+      <UserMessagePageReferences references={block.entry.pageReferences ?? []} />
       {block.entry.textSelections ? (
         <div className="flex gap-2">
           <ThreadTextSelectionAttachments context={block.entry.textSelections} />

@@ -154,6 +154,7 @@ Editing a queued message rewrites only those words: the record it carried stays 
 State the user leaves in a chat's interactive responses travels the same way, with their next
 message that starts a Run and once per change; a steer, a queued message or a message that
 already carries app data leaves it for later, and a response's private content never travels.
+The Composer can send [Page references](composer-page-references-behavior.md) for Pages visible beside the chat and insert Library-wide Page links with `@`, without creating Linked chat relationships.
 Page editor submissions use that same interface. New submissions promote the chosen
 Session with its Page links, model options and workspace configuration; existing
 sections resolve a bound Session before sending. Connected read-only native history does not

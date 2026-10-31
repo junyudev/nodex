@@ -1,3 +1,4 @@
+import { buildPageDeepLink, parsePageDeepLink } from "../../../../../shared/nodex-deeplink";
 import {
   forwardRef,
   useCallback,
@@ -56,6 +57,7 @@ export type ComposerPromptMentionKind =
   | "app"
   | "chatgpt-conversation"
   | "file"
+  | "page"
   | "plugin"
   | "skill"
   | "site"
@@ -166,7 +168,12 @@ function normalizePromptMention(input: ComposerPromptMentionInput): ComposerProm
 }
 
 function mentionLabel(attrs: ComposerPromptMentionAttrs): string {
-  if (attrs.kind === "file" || attrs.kind === "site" || attrs.kind === "chatgpt-conversation") {
+  if (
+    attrs.kind === "page" ||
+    attrs.kind === "file" ||
+    attrs.kind === "site" ||
+    attrs.kind === "chatgpt-conversation"
+  ) {
     return attrs.displayName;
   }
   if (attrs.kind === "skill" && attrs.promptLinkLabel) {
@@ -231,7 +238,9 @@ function parseComposerSkillPromptLabel(label: string): {
 }
 
 /** A mention is written as a link; an image, `![…](…)`, never is. */
-export const composerMentionLinkPattern = (): RegExp => /(?<!!)\[([^\]\n]+)\]\(([^)\n]+)\)/gu;
+/** Mention labels may escape brackets, as Page titles written by the Composer do. */
+export const composerMentionLinkPattern = (): RegExp =>
+  /(?<!!)\[((?:\\.|[^\]\\\n])+)\]\(([^)\n]+)\)/gu;
 
 export function parseComposerPromptMentionLink(
   rawLabel: string,
@@ -240,6 +249,11 @@ export function parseComposerPromptMentionLink(
   const path = rawPath.trim();
   const label = rawLabel.trim();
   if (!path || !label) return null;
+  const page = parsePageDeepLink(path);
+  if (page) {
+    const title = label.replace(/\\([\\[\]])/gu, "$1");
+    return { kind: "page", name: title, displayName: title, path: buildPageDeepLink(page) };
+  }
   const prefix = label.startsWith("@") ? "@" : label.startsWith("$") ? "$" : null;
   const unprefixedLabel = prefix ? label.slice(1).trim() : label;
   if (!unprefixedLabel) return null;
@@ -280,7 +294,14 @@ export function parseComposerPromptMentionLink(
 export function serializeComposerPromptMentionLink(input: ComposerPromptMentionInput): string {
   const mention = normalizePromptMention(input);
   if (!mention.name || !mention.path) return "";
-  return `[${mentionLabel(mention)}](${mention.path})`;
+  const label =
+    mention.kind === "page"
+      ? mentionLabel(mention)
+          .replace(/[\r\n]/gu, " ")
+          .replace(/[\\[\]]/gu, "\\$&")
+      : mentionLabel(mention);
+  const page = mention.kind === "page" ? parsePageDeepLink(mention.path) : null;
+  return `[${label}](${page ? buildPageDeepLink(page) : mention.path})`;
 }
 
 function parseMentionDom(element: HTMLElement): ComposerPromptMentionAttrs | false {
@@ -935,7 +956,7 @@ export function promptTextOffsetToDocPosition(doc: ProseMirrorNode, offset: numb
         const serialized = child.isText
           ? (child.text ?? "")
           : child.type.name === "mention"
-            ? `[${mentionLabel(child.attrs as ComposerPromptMentionAttrs)}](${String(child.attrs.path)})`
+            ? serializeComposerPromptMentionLink(child.attrs as ComposerPromptMentionAttrs)
             : "";
         if (relativeOffset <= serializedOffset + serialized.length) {
           if (child.isText) {
@@ -1409,7 +1430,7 @@ export const ComposerPromptEditor = forwardRef<
                   : valueRef.current;
             }
             if (!view) {
-              const nextValue = `${valueRef.current}[${mentionLabel(normalizedMention)}](${normalizedMention.path}) `;
+              const nextValue = `${valueRef.current}${serializeComposerPromptMentionLink(normalizedMention)} `;
               onChangeRef.current(nextValue);
               return nextValue;
             }

@@ -1200,3 +1200,22 @@ describe("Runtime question history", () => {
     expect(projectAgentRuntimeItem(pending)).toBeNull();
   });
 });
+
+test("Page reference-only messages project their chips without internal context markers", async () => {
+  const pageReferences = [{ pageId: "page-a", titleSnapshot: "Plan", selectedBlockIds: ["b"] }];
+  const prepared = await prepareAgentMessage("", { text: "", pageReferences }, async () => "");
+  const canonical = projectAgentRuntimeItem(
+    message({ text: prepared.text, context: prepared.context }),
+  );
+  if (!canonical) throw new Error("Expected Page reference message");
+  const views = projectCodexCanonicalTurnItemViews({
+    threadId: "parent",
+    turnId: "parent-run",
+    items: [canonical],
+    observedAtMs: 1,
+    turnStatus: "completed",
+  });
+  const entry = projectCodexItemViewToTranscriptEntry(views[0]!, "bootstrap", 1);
+  expect(entry.markdownText).toBe("");
+  expect(entry.pageReferences).toEqual(pageReferences);
+});

@@ -1199,3 +1199,29 @@ test("selection-only input remains a user row and scopes inline response referen
   expect(views[0]?.textSelections).toEqual(textSelections);
   expect(views[1]?.textSelections).toEqual(textSelections);
 });
+
+test("Page references stay visible on user rows while the typed companion stays out of the transcript", async () => {
+  const pageReferences = [{ pageId: "page-a", titleSnapshot: "Plan", selectedBlockIds: ["b"] }];
+  const prepared = await prepareCodexPrompt(
+    "",
+    { text: "", pageReferences },
+    {
+      resolveImageInput: () => {
+        throw new Error("No image");
+      },
+    },
+  );
+  const views = projectCodexCanonicalTurnViews({
+    threadId: THREAD_ID,
+    turn: buildCanonicalTurn({
+      params: buildTurnParams({
+        input: prepared.inputItems,
+        additionalContext: prepared.additionalContext,
+      }),
+      items: [],
+    }),
+    observedAtMs: 10,
+  });
+  expect(views).toHaveLength(1);
+  expect(views[0]).toMatchObject({ role: "user", markdownText: "", pageReferences });
+});

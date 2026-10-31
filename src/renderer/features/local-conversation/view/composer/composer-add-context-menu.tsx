@@ -1,3 +1,5 @@
+import { buildPageDeepLink } from "../../../../../shared/nodex-deeplink";
+import { useComposerPageSuggestions } from "./use-composer-page-suggestions";
 import { DEFAULT_CODEX_HOST_ID } from "../../../../../shared/codex-host";
 import type { FileSearchScope } from "../../../../../shared/file-search";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
@@ -22,6 +24,7 @@ import {
 } from "@/components/shared/icons/generic-icons";
 import {
   GoalTargetIcon,
+  PageIcon,
   FileIcon,
   FolderIcon,
   SidePanelBrowserIcon,
@@ -804,6 +807,7 @@ const ComposerAddContextRootMenuContent = forwardRef<
   const open = true;
   const query = suggestion.query;
   const normalizedQuery = query.trim();
+  const pages = useComposerPageSuggestions(query);
   const appshot = useComposerAppshotTarget(open);
   const appshotTarget = appshot.target;
   const fileSearchQuery = useDebouncedValue(query, 100);
@@ -1089,12 +1093,34 @@ const ComposerAddContextRootMenuContent = forwardRef<
       ...inventoryItems.siteItems,
       ...chatGptConversationItems,
       ...(normalizedQuery ? inventoryItems.skillItems : []),
+      ...pages.items.map((page): ComposerContextItemView => ({
+        candidate: {
+          id: `page:${page.pageId}`,
+          section: "Pages",
+          label: page.title || "Untitled",
+          description: page.pageKey ?? page.locationLabel,
+          searchTerms: [page.pageKey ?? ""],
+          sourceRanked: true,
+          value: {
+            kind: "mention",
+            mention: {
+              kind: "page",
+              name: page.title || "Untitled",
+              displayName: page.title || "Untitled",
+              path: buildPageDeepLink(page),
+            },
+          },
+        },
+        icon: <PageIcon className="icon-xs shrink-0" />,
+        active: false,
+      })),
       ...agentSuggestions,
       ...threadSuggestions,
       ...fileSuggestions,
     ];
   }, [
     activeConversationId,
+    pages.items,
     backgroundAgentRows,
     activatePlugin,
     inventoryItems,
@@ -1127,6 +1153,7 @@ const ComposerAddContextRootMenuContent = forwardRef<
         candidates: items.map((item) => item.candidate),
         query,
         loadingSectionMessages: {
+          ...(pages.loading ? { Pages: "Searching Pages…" } : {}),
           ...(sitesLoading ? { Sites: "Loading sites…" } : {}),
           ...(chatGptConversationSearch.loading
             ? {
@@ -1135,7 +1162,7 @@ const ComposerAddContextRootMenuContent = forwardRef<
             : {}),
         },
       }),
-    [chatGptConversationSearch.loading, items, query, sitesLoading],
+    [chatGptConversationSearch.loading, items, pages.loading, query, sitesLoading],
   );
   const itemById = useMemo(
     () => new Map(items.map((item) => [item.candidate.id, item] as const)),
@@ -1175,7 +1202,8 @@ const ComposerAddContextRootMenuContent = forwardRef<
   });
   const searching =
     normalizedQuery.length > 0 &&
-    (fileSearch.loading ||
+    (pages.loading ||
+      fileSearch.loading ||
       fileSearchQuery !== query ||
       threadItems.loading ||
       threadSearch.loading ||

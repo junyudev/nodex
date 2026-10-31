@@ -64,6 +64,7 @@ export function projectCodexItemViewToTranscriptEntry(
     importedImages: item.importedImages,
     commentAttachments: item.commentAttachments,
     textSelections: item.textSelections,
+    pageReferences: item.pageReferences,
     deliveryStatus: item.deliveryStatus,
     steeringStatus: item.steeringStatus,
     steeringInput: item.steeringInput,

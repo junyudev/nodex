@@ -6,6 +6,7 @@ export type ComposerContextSuggestionSection =
   | "Chats"
   | "ChatGPT conversations"
   | "Files and chats"
+  | "Pages"
   | "Plugins"
   | "Sites"
   | "Skills";
@@ -29,6 +30,7 @@ export interface ComposerContextSuggestionSectionModel<T = unknown> {
 
 const EMPTY_SECTION_LIMITS: Partial<Record<ComposerContextSuggestionSection, number>> = {
   Apps: 3,
+  Pages: 5,
   "ChatGPT conversations": 5,
   Sites: 2,
   Skills: 2,
@@ -171,6 +173,7 @@ export function buildComposerContextSuggestionSections<T>(input: {
     "Sites",
     "ChatGPT conversations",
     "Chats",
+    "Pages",
     "Skills",
     "Files and chats",
   ];

@@ -499,6 +499,7 @@ export type CodexCanonicalUserMessageItem = Extract<ThreadItem, { type: "userMes
   readonly runtimeDelivery?: "pending" | "unknown" | "accepted";
   readonly inputIntent?: CodexUserMessageInputIntent;
   readonly textSelections?: import("../thread-text-selection").ThreadTextSelectionContext;
+  readonly pageReferences?: readonly import("../page-reference").PageReference[];
   readonly unavailableImages?: readonly CodexUnavailableImage[];
 };
 

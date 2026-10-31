@@ -5305,6 +5305,17 @@ export function WorkbenchRuntime({
           composerEnterBehavior,
           onQueueingEnabledChange: handleThreadQueueFollowUpsEnabledChange,
           onOpenThread: openAttachedThreadSession,
+          onOpenPage: (pageId: string, titleSnapshot?: string) => {
+            void presentLibraryTarget(
+              { kind: "page", pageId },
+              {
+                owner: { kind: "session", sessionId: activeRenderSession.id },
+                targetPanelId: "right",
+                mode: "durable",
+                ...(titleSnapshot ? { titleSnapshot } : {}),
+              },
+            );
+          },
           onOpenSubagentsPanel: () => {
             const rootThreadId =
               activeRenderSession.executionRef?.threadId ?? activeRenderSession.thread?.threadId;

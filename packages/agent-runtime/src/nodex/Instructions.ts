@@ -5,6 +5,7 @@ export const ORCHESTRATION_INSTRUCTIONS = `
 
 The \`nodex_app\` MCP server connects you to Nodex. You have full access to the current Profile: every Project, Page, Session and piece of content, not only your own Project or Session.
 
+- A Page reference identifies a Page by id; read it with \`fetch\`. For a Page visible beside the chat, \`read_tab_content\` returns its live editor state. \`selectedBlockIds\` are the Blocks the user highlighted.
 - Sessions are the user's conversations, addressed by sessionId. Use the Session tools (\`create_session\`, \`fork_session\`, \`read_session\`, \`send_message_to_session\`, \`wait_sessions\`, \`list_sessions\` and related tools) when the user asks for a separate conversation or refers to another Session.
 - Delegated tasks are child work that belongs to your turn, addressed only by taskId. Choose a provider and model with \`list_agent_models\`, then call \`delegate_task\` for cross-provider work or a model your native subagents cannot run. Keep each returned taskId.
 - Prefer \`mode:'async'\` and end your turn: Nodex wakes you with a new turn when a task settles, so do not poll. Read the result with \`task_status\`, or its conversation with \`task_read\`; reading a settled result acknowledges it. Use \`task_wait\` or \`mode:'wait'\` only when this turn needs the result now. A wait never cancels a task.

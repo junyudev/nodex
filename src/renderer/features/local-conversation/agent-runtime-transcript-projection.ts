@@ -1,4 +1,8 @@
 import {
+  readRuntimePageReferences,
+  pageReferencesAdditionalContext,
+} from "../../../shared/page-reference";
+import {
   readRuntimeThreadTextSelections,
   threadTextSelectionAdditionalContext,
 } from "../../../shared/thread-text-selection";
@@ -559,6 +563,7 @@ export function projectAgentRuntimeItem(item: AgentTurnItem, cwd = ""): CodexCan
         clientId: item.messageId,
         ...(item.delivery ? { runtimeDelivery: item.delivery } : {}),
         textSelections: readRuntimeThreadTextSelections(item.context),
+        pageReferences: readRuntimePageReferences(item.context),
         ...(origin ? { origin } : {}),
         ...(inputIntent ? { inputIntent } : {}),
         ...(missing.length ? { unavailableImages: missing } : {}),
@@ -907,9 +912,12 @@ export function projectAgentRuntimeTurnDetails(input: {
               })),
           ],
           clientUserMessageId: openingItem.messageId,
-          additionalContext: threadTextSelectionAdditionalContext(
-            readRuntimeThreadTextSelections(openingItem.context),
-          ),
+          additionalContext: {
+            ...threadTextSelectionAdditionalContext(
+              readRuntimeThreadTextSelections(openingItem.context),
+            ),
+            ...pageReferencesAdditionalContext(readRuntimePageReferences(openingItem.context)),
+          },
           cwd: thread.worktreePath ?? null,
           approvalPolicy: "never",
           approvalsReviewer: "user",

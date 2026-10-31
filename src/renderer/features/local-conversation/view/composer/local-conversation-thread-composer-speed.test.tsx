@@ -5784,3 +5784,26 @@ test("selected text intents append without replacing prose or duplicating an alr
     ),
   );
 });
+
+test("Page mentions stay ordinary text document inputs across prompt preparation", () => {
+  const prompt = "Review [Plan](nodex://pages/page-a) with [@files](/tmp/files)";
+  const prepared = __composerAddContextTestUtils.buildComposerPromptInput({
+    prompt,
+    attachments: {
+      fileAttachments: [],
+      addedFiles: [],
+      imageAttachments: [],
+      appshotContexts: [],
+      pastedTextAttachments: [],
+      commentAttachments: [],
+      browserAnnotationAttachments: [],
+    },
+  });
+  expect(prepared?.mentions).toEqual([{ name: "files", path: "/tmp/files" }]);
+  expect(prepared?.documentItems).toEqual([
+    { type: "text", text: "Review " },
+    { type: "text", text: "[Plan](nodex://pages/page-a)" },
+    { type: "text", text: " with " },
+    { type: "mention", name: "files", path: "/tmp/files" },
+  ]);
+});

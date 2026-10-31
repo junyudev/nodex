@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Chats can reference Pages beside the Composer, including highlighted Blocks, or mention any Library Page with `@`. Sent references reopen their Page without creating a Linked chat relationship.
 - New page in the command palette creates a page where you are and opens it beside you: in your Project's database in a Project or one of its chats, and in Space otherwise.
 - Choose which Claude, Codex and Nodex credit meters appear in the rail from General settings. Hidden meters stop checking usage while account and model access stay available.
 - Sign in with your Nodex Account to choose GPT-6.1 Sol, GPT-6 Luna, Claude Opus 5.5 or Claude Sonnet 5.5 using prepaid credit. Buy credit in Account settings through Stripe Checkout; the rail's credit meter shows what is left, and models follow live availability.

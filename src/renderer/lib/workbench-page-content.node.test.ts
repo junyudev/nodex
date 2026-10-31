@@ -105,6 +105,8 @@ function fixture(sceneOwner: WorkbenchSceneOwner = { kind: "library" }) {
       generation: 1,
       expectedHeadSeq: 5,
     })),
+    readSelection: () => [],
+    subscribeSelection: () => () => {},
   } satisfies PageEditorObservationParticipant;
   const key = workbenchPageEditorKey(sceneOwner, "page-tab");
   let currentParticipant: PageEditorObservationParticipant | null = participant;
