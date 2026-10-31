@@ -1,49 +1,95 @@
 src/renderer/components/board/editor/nfm-send-to-thread-menu-model.ts
   s_8a269fcdcbb297::t_67a6ca88a2f0cd 3,20,25,56-91,128-136
+  s_8a269fcdcbb297::t_927f7a2d53d01f 20,64,69-70,83-88
+  s_8a269fcdcbb297::t_b0ab5e49ef7e64 25
+  s_8a269fcdcbb297::t_fa465862c7f7b2 128-136
+  s_8a269fcdcbb297::t_4f4e64adbee358 3,56-63,65-68,71-82,89
+  s_8a269fcdcbb297::t_fc5e697a69d078 90-91
 src/renderer/components/board/editor/nfm-send-to-thread-menu-model.test.ts
   s_8a269fcdcbb297::t_67a6ca88a2f0cd 14,245-287,299,313,327,351,365,379
+  s_8a269fcdcbb297::t_b08e77fd6597ba 299,313,327,351,365,379
+  s_8a269fcdcbb297::t_d2243ad6510857 286-287
+  s_8a269fcdcbb297::t_a62b9a14645583 14,245-260,275-285
+  s_8a269fcdcbb297::t_d2db557ec4211d 261-274
 src/renderer/components/board/page-stage/properties-section.test.tsx
   s_8a269fcdcbb297::t_67a6ca88a2f0cd 314-371
+  s_8a269fcdcbb297::t_2d6789acc177b7 319-335,351
+  s_8a269fcdcbb297::t_807d484bd94d9f 314-318,336-350,352-365,370-371
+  s_8a269fcdcbb297::t_8160d227cc3b6a 366-369
 src/renderer/components/workbench/workbench-page-stage-panel.tsx
   s_8a269fcdcbb297::t_67a6ca88a2f0cd 143,172,511
+  s_8a269fcdcbb297::t_5c2637f8452e55 143,172,511
 docs/product-specs/database-pages-and-views-behavior.md
   s_8a269fcdcbb297::t_67a6ca88a2f0cd 83
+  s_8a269fcdcbb297::t_be85f3498be45c 83
 src/renderer/components/board/page-stage/properties-section.tsx
   s_8a269fcdcbb297::t_67a6ca88a2f0cd 37-38,116-123,131-132,134-139,194,226-227,229-231
+  s_8a269fcdcbb297::t_4a3535e5103ee3 116-123,131-132,134-139
+  s_8a269fcdcbb297::t_f6b3fd4e38038b 38,194,226-227
+  s_8a269fcdcbb297::t_8160d227cc3b6a 229,231
+  s_8a269fcdcbb297::t_b08e77fd6597ba 37,230
 src/renderer/components/board/page-stage/types.ts
   s_8a269fcdcbb297::t_67a6ca88a2f0cd 93-94
+  s_8a269fcdcbb297::t_927f7a2d53d01f 93-94
 src/renderer/components/board/page-stage.tsx
   s_8a269fcdcbb297::t_67a6ca88a2f0cd 84,131,261,422
+  s_8a269fcdcbb297::t_927f7a2d53d01f 84,131,261,422
 src/renderer/components/workbench/database-view-page-context-menu.tsx
   s_8a269fcdcbb297::t_67a6ca88a2f0cd 210
+  s_8a269fcdcbb297::t_8659675609337c 210
 src/renderer/components/board/editor/nfm-editor.tsx
   s_8a269fcdcbb297::t_67a6ca88a2f0cd 96-98,228,348,419-425
+  s_8a269fcdcbb297::t_4f4e64adbee358 96-98
+  s_8a269fcdcbb297::t_927f7a2d53d01f 228,348,419-425
 docs/product-specs/nfm-editor-text-action-menu-behavior.md
   s_8a269fcdcbb297::t_67a6ca88a2f0cd 48-49
+  s_8a269fcdcbb297::t_be85f3498be45c 48-49
 src/renderer/components/workbench/database-view-page-context-menu.test.tsx
   s_8a269fcdcbb297::t_67a6ca88a2f0cd 31,37,41,241-259
   s_8a269fcdcbb297::t_5ef6c6751f0ec8 260-261
+  s_8a269fcdcbb297::t_b566a2b77640ce 31,37,41,241-259
+  s_8a269fcdcbb297::t_89cd5cbfe8e6aa 260-261
 src/renderer/components/workbench/workbench-panel-surface.tsx
   s_8a269fcdcbb297::t_67a6ca88a2f0cd 35-36,153-159,237,258-263,311,322
+  s_8a269fcdcbb297::t_a8c17358630ac9 35
+  s_8a269fcdcbb297::t_5c2637f8452e55 36,262,322
+  s_8a269fcdcbb297::t_9d33db0e438689 153-159,237,258-261,263,311
 src/renderer/components/workbench/workbench-runtime.tsx
   s_8a269fcdcbb297::t_67a6ca88a2f0cd 1511,1513-1518
+  s_8a269fcdcbb297::t_330537f2cecb9d 1511,1513-1518
 src/renderer/components/workbench/workbench-db-view-panel.tsx
   s_8a269fcdcbb297::t_67a6ca88a2f0cd 62,337,357-358,1014
+  s_8a269fcdcbb297::t_9d33db0e438689 62
+  s_8a269fcdcbb297::t_8659675609337c 337,357-358,1014
 src/renderer/components/board/editor/nfm-send-to-thread-menu.tsx
   s_8a269fcdcbb297::t_67a6ca88a2f0cd 220-221
+  s_8a269fcdcbb297::t_e17d3d545d98f3 220-221
 src/renderer/lib/page-stage-related-chat-candidates.node.test.ts
   s_8a269fcdcbb297::t_67a6ca88a2f0cd 4-7,27,40,49-84
   s_8a269fcdcbb297::t_ea88e7a64eb721 85
+  s_8a269fcdcbb297::t_92b17127c61209 4-7,49-78,84
+  s_8a269fcdcbb297::t_330537f2cecb9d 27,40
+  s_8a269fcdcbb297::t_8160d227cc3b6a 79-83
+  s_8a269fcdcbb297::t_18f3ba995c1294 85
 docs/product-specs/workbench-shell.md
   s_8a269fcdcbb297::t_67a6ca88a2f0cd 156
+  s_8a269fcdcbb297::t_40918c293a8e24 156
 src/renderer/components/workbench/database-view-page-actions.ts
   s_8a269fcdcbb297::t_67a6ca88a2f0cd 1,18-19
+  s_8a269fcdcbb297::t_8659675609337c 1,18-19
 src/renderer/lib/page-chat-actions.ts
   s_8a269fcdcbb297::t_67a6ca88a2f0cd 4-6
+  s_8a269fcdcbb297::t_1d0513c443bbe1 4-6
 src/renderer/lib/page-stage-related-chat-candidates.ts
   s_8a269fcdcbb297::t_67a6ca88a2f0cd 4-14,20,22-23,27,33-61
+  s_8a269fcdcbb297::t_8160d227cc3b6a 60
+  s_8a269fcdcbb297::t_330537f2cecb9d 11-14,20,22-23
+  s_8a269fcdcbb297::t_21cd5dd3770172 33-59
+  s_8a269fcdcbb297::t_1cb0e5ec578ddf 61
+  s_8a269fcdcbb297::t_5c2637f8452e55 4-10,27
 src/renderer/components/board/editor/nfm-text-action-menu.test.tsx
   s_8a269fcdcbb297::t_67a6ca88a2f0cd 395,419,522,534,621,635,669,682
+  s_8a269fcdcbb297::t_b08e77fd6597ba 395,419,522,534,621,635,669,682
 ---
 {
   "schema_version": "authorship/3.0.0",
