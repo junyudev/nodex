@@ -1,0 +1,37 @@
+src/main/inbox-application/inbox-agent-candidates.node.test.ts
+  s_12dc3032ee94b0::t_0dd20b51032784 126-138
+src/main/inbox-application/inbox-agent-candidates.ts
+  s_1deb5b54d7eed1::t_f075e085387c13 5,107-113
+src/renderer/components/workbench/workbench-rail-usage-meter.tsx
+  s_1deb5b54d7eed1::t_cffb80ff4371fd 2,73
+src/renderer/lib/usage-meter.node.test.ts
+  s_12dc3032ee94b0::t_a12d2d307e8689 20,291-385
+src/renderer/lib/usage-meter.ts
+  s_1deb5b54d7eed1::t_024d709f0bae11 3,5,7,10-12,14,358-360,364,382-384,387-390,392,413
+src/shared/inbox.ts
+  s_1deb5b54d7eed1::t_bb2049bb1e4e8d 499-502
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "92fbd901aafd7f0673684e68174ba1e45c65b398",
+  "prompts": {},
+  "sessions": {
+    "s_12dc3032ee94b0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a192bb-6759-7342-9253-f02864e042f4",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_1deb5b54d7eed1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a192cf-d71d-7bc0-9861-94f533b7fc0c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
