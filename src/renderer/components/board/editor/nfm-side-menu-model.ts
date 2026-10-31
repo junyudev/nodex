@@ -1,8 +1,3 @@
-import {
-  NFM_ADD_TO_COMPOSER_SHORTCUT_LABEL,
-  NFM_SEND_TO_CHAT_SHORTCUT_LABEL,
-} from "./nfm-chat-send-shortcuts";
-
 export type NfmSideMenuActionKind = "action" | "submenu";
 export type NfmSideMenuVisualGroup = "code" | "block-shape" | "block-move" | "table";
 
@@ -69,6 +64,8 @@ export interface NfmSideMenuModelInput {
   /** The Page is shown beside a chat, so Send needs no picker. */
   hasContextualSendTarget?: boolean;
   canAddToComposer?: boolean;
+  sendToChatShortcut?: string;
+  addToComposerShortcut?: string;
   isTableBlock: boolean;
   canUseTableHeaders: boolean;
   codeBlock?: {
@@ -122,7 +119,6 @@ const REFERENCE_ACTIONS: readonly Omit<NfmSideMenuAction, "section" | "enabled">
     label: "Add to composer",
     kind: "action",
     visualGroup: "block-move",
-    shortcut: NFM_ADD_TO_COMPOSER_SHORTCUT_LABEL,
     keywords: ["chat", "draft", "prompt", "quote", "insert"],
   },
   {
@@ -287,9 +283,9 @@ export function buildNfmSideMenuSections(input: NfmSideMenuModelInput): NfmSideM
         ...action,
         section: "selection" as const,
         enabled: enabledForReferenceAction(action, input),
-        ...(contextualSend
-          ? { shortcut: NFM_SEND_TO_CHAT_SHORTCUT_LABEL, submenuIsSecondary: true }
-          : {}),
+        ...(action.key === "send-to-thread" ? { shortcut: input.sendToChatShortcut } : {}),
+        ...(action.key === "add-to-composer" ? { shortcut: input.addToComposerShortcut } : {}),
+        ...(contextualSend ? { submenuIsSecondary: true } : {}),
       },
     ];
   });

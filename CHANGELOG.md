@@ -15,7 +15,7 @@ All notable changes to this project will be documented in this file.
 ### Changed
 
 - Agents can retry Nodex tool calls safely with any `idempotencyKey` they choose, across turns and restarts. A rejected call now names each invalid argument and why.
-- Send to chat sends a Page selection to the chat beside the Page in one click or with `⌘⇧↵`, without choosing a chat or a mode; its chevron still opens the chat picker, which lists the Page's linked chats first. Add to composer (`⌥⌘↵`) puts the selection into that chat's draft so you can add a few words before sending.
+- Send to chat sends a Page selection to the chat beside the Page in one click or with `⌘⇧↵`, without choosing a chat or a mode; its chevron still opens the chat picker, which lists the Page's linked chats first. Add to composer (`⌥⌘↵`) puts the selection into that chat's draft so you can add a few words before sending. Both shortcuts can be changed in Settings → Keyboard shortcuts.
 - `C` now captures a thought to the Inbox where you are instead of opening the new-page form. You just write; Nodex names the message, or you can name it yourself with Add title. It lands in your Project's Inbox when you are in a Project or one of its chats, and in your main Inbox otherwise, without taking you anywhere. The full-window `V` form is gone; a board's own New page still opens the page form.
 - `⌘⇧D` in a Project's chat now opens that Project's Inbox, the same Inbox its Agents send to, instead of your main Inbox.
 - A chat in the sidebar keeps showing the status of the page it started from when more pages are linked to it, instead of showing none. The first linked page that still exists is the one it follows.

@@ -1,5 +1,6 @@
 import { useBlockNoteEditor } from "@blocknote/react";
 import { useEffect, useLayoutEffect, useRef } from "react";
+import { useResolvedCommandKeymapState } from "@/lib/use-command-keymap-state";
 import { getNfmBlockSelectionIds } from "./nfm-block-selection";
 import { resolveNfmChatSendShortcut } from "./nfm-chat-send-shortcuts";
 import { reportNfmChatSendFailure } from "./nfm-chat-send-feedback";
@@ -27,32 +28,28 @@ function resolveSelectedBlockIds(editor: ChatShortcutEditor): string[] {
   );
 }
 
-function isMacPlatform() {
-  return typeof navigator !== "undefined" && /mac/iu.test(navigator.platform);
-}
-
 /**
- * `⌘⇧↵` sends the selection to the chat this Page is shown beside, or opens Send to chat when
- * there is no such chat; with a bare caret it sends the Prompt holding it. `⌥⌘↵` adds the
- * selection to that chat's composer instead.
+ * Send targets the chat beside the Page, or opens its picker; a bare caret targets its
+ * containing Prompt. Add to composer hands the selection to the beside chat's draft.
  */
 export function NfmChatSendShortcutController() {
   const editor = useBlockNoteEditor() as unknown as ChatShortcutEditor;
   const runtime = useNfmTextActionMenuRuntime();
   const sideMenu = useNfmSideMenuOpenController();
   const prompts = useNfmPromptRuntime();
-  const latestRef = useRef({ runtime, sideMenu, prompts });
+  const keymap = useResolvedCommandKeymapState();
+  const latestRef = useRef({ runtime, sideMenu, prompts, keymap });
   useLayoutEffect(() => {
-    latestRef.current = { runtime, sideMenu, prompts };
-  }, [prompts, runtime, sideMenu]);
+    latestRef.current = { runtime, sideMenu, prompts, keymap };
+  }, [prompts, runtime, sideMenu, keymap]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      const shortcut = resolveNfmChatSendShortcut(event, isMacPlatform());
-      if (!shortcut) return;
       const editorRoot = editor.domElement;
       if (!editorRoot || !(event.target instanceof Node) || !editorRoot.contains(event.target))
         return;
+      const shortcut = resolveNfmChatSendShortcut(event, latestRef.current.keymap);
+      if (!shortcut) return;
       const {
         runtime: currentRuntime,
         sideMenu: currentSideMenu,

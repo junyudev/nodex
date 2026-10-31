@@ -79,10 +79,7 @@ import {
 } from "./nfm-send-to-thread-menu-model";
 import { useNfmSideMenuOpenController } from "./nfm-side-menu";
 import type { NfmSideMenuRect } from "./nfm-side-menu-anchor";
-import {
-  NFM_ADD_TO_COMPOSER_SHORTCUT_LABEL,
-  NFM_SEND_TO_CHAT_SHORTCUT_LABEL,
-} from "./nfm-chat-send-shortcuts";
+import { useCommandShortcutLabel } from "@/lib/use-command-keymap-state";
 import {
   isBlockLevelSelection,
   shouldUseTextActionMenu,
@@ -1052,6 +1049,8 @@ function TextActionChatSection({
   renderSendToThreadMenu?: (props: TextActionSendToThreadMenuRenderProps) => ReactNode;
   onPickerOpenChange: (open: boolean) => void;
 }) {
+  const sendToChatShortcut = useCommandShortcutLabel("pageEditorSendToChat");
+  const addToComposerShortcut = useCommandShortcutLabel("pageEditorAddToComposer");
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const anchorRef = useRef<HTMLDivElement>(null);
@@ -1118,7 +1117,7 @@ function TextActionChatSection({
             <TextActionChatRow
               icon={<TextActionSendGlyph pending={pending} />}
               label="Send to chat"
-              shortcut={NFM_SEND_TO_CHAT_SHORTCUT_LABEL}
+              shortcut={sendToChatShortcut}
               pending={pending}
               tooltip={
                 contextualTarget ? (
@@ -1163,7 +1162,7 @@ function TextActionChatSection({
         <TextActionChatRow
           icon={<MessageCirclePlusIcon className="size-4 text-token-text-secondary" />}
           label="Add to composer"
-          shortcut={NFM_ADD_TO_COMPOSER_SHORTCUT_LABEL}
+          shortcut={addToComposerShortcut}
           onActivate={() => {
             const addToComposer = chat.onAddToComposer;
             if (addToComposer) void run("add-to-composer", addToComposer);

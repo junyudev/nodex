@@ -2,6 +2,8 @@ export const COMMAND_KEYMAP_VERSION = 1;
 export const COMMAND_KEYBINDINGS_CHANGED_CHANNEL = "command-keybindings:changed";
 export const PREVIOUS_PANEL_TAB_COMMAND_ID = "previousPanelTab";
 export const NEXT_PANEL_TAB_COMMAND_ID = "nextPanelTab";
+export const PAGE_EDITOR_SEND_TO_CHAT_COMMAND_ID = "pageEditorSendToChat";
+export const PAGE_EDITOR_ADD_TO_COMPOSER_COMMAND_ID = "pageEditorAddToComposer";
 
 export type RuntimePlatform = "macOS" | "windows" | "linux";
 export type CommandShortcutScope = "app" | "electron" | "os-global" | "webview";
@@ -757,6 +759,24 @@ export const CODEX_COMMAND_REGISTRY = [
       allowsSequences: true,
       commandMenuGroupKey: "page",
     },
+  ),
+  command(
+    PAGE_EDITOR_SEND_TO_CHAT_COMMAND_ID,
+    "Send to chat",
+    "Send the Page editor selection or current Prompt to chat",
+    246,
+    "app",
+    ["CmdOrCtrl+Shift+Enter"],
+    { commandMenuGroupKey: "page" },
+  ),
+  command(
+    PAGE_EDITOR_ADD_TO_COMPOSER_COMMAND_ID,
+    "Add to composer",
+    "Add the Page editor selection to the beside chat's composer",
+    246,
+    "app",
+    ["CmdOrCtrl+Alt+Enter"],
+    { commandMenuGroupKey: "page" },
   ),
   command(
     "boardFocusNext",
@@ -1934,7 +1954,7 @@ function formatNonMacModifierLabel(modifier: string): string {
 
 function formatKeyLabel(key: string, platform: RuntimePlatform): string {
   const macOS = platform === "macOS";
-  if (key === "Enter") return "⏎";
+  if (key === "Enter") return macOS ? "⏎" : "Enter";
   if (key === "Escape") return "Esc";
   if (key === "LeftOption") return macOS ? "Left ⌥" : "Left Option";
   if (key === "RightOption") return macOS ? "Right ⌥" : "Right Option";

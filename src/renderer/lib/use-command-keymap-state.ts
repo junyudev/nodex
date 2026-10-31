@@ -3,7 +3,14 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { subscribeCommandKeymapChanges } from "./api";
 import { queryKeys } from "./query-keys";
 import { commandKeymapStateQueryOptions } from "./query-options";
-import type { CommandKeybindingUpdate, CommandKeymapState } from "../../shared/command-keybindings";
+import {
+  createCommandKeymapState,
+  formatCommandShortcutLabel,
+  type CommandId,
+  type CommandKeybindingUpdate,
+  type CommandKeymapState,
+} from "../../shared/command-keybindings";
+import { resolveCodexRendererCommandPlatform } from "./codex-window-runtime";
 import { defineRendererCommand, invokePlainCommand } from "./renderer-command";
 
 const updateCommandKeybindingCommand = defineRendererCommand({
@@ -41,4 +48,17 @@ export function useCommandKeymapState() {
   }, [queryClient]);
 
   return query;
+}
+
+/** Browser-safe platform defaults apply until the persisted keymap arrives. */
+export function useResolvedCommandKeymapState(): CommandKeymapState {
+  return (
+    useCommandKeymapState().data ??
+    createCommandKeymapState({}, resolveCodexRendererCommandPlatform())
+  );
+}
+
+/** The current platform label, or undefined when the command is unassigned. */
+export function useCommandShortcutLabel(commandId: CommandId): string | undefined {
+  return formatCommandShortcutLabel(useResolvedCommandKeymapState(), commandId);
 }

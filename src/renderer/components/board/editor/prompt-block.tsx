@@ -6,6 +6,8 @@ import { PageChatActivityGlyph } from "@/components/shared/page-chat-activity-gl
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { useAgentRuntimeSessionStatus } from "@/lib/agent-runtime-session-activity";
 import { cn } from "@/lib/utils";
+import { formatAcceleratorLabel } from "../../../../shared/command-keybindings";
+import { resolveCodexRendererCommandPlatform } from "@/lib/codex-window-runtime";
 import { promptBlockConfig } from "../../../../shared/block-documents/blocknote-schema-config";
 import { reportNfmChatSendFailure } from "./nfm-chat-send-feedback";
 import {
@@ -19,8 +21,6 @@ import { useNfmPromptCollapsed, writeNfmPromptCollapsed } from "./nfm-prompt-col
 import { useNfmPromptRuntime } from "./nfm-prompt-runtime";
 import { resolveNfmSendToThreadTitle } from "./nfm-send-to-thread-menu-model";
 import { useThreadMentionRuntime } from "./thread-mention-chip";
-
-const PROMPT_SEND_SHORTCUT_LABEL = "⌘↵";
 
 function keepEditorSelection(event: MouseEvent<HTMLElement>) {
   if (event.button === 0) event.preventDefault();
@@ -149,7 +149,10 @@ function PromptSendButton({
       tooltipContent={
         <NfmChatSendTooltip label={label} sessionId={sessionId} startsNewTurn={startsNewTurn} />
       }
-      shortcutLabel={PROMPT_SEND_SHORTCUT_LABEL}
+      shortcutLabel={formatAcceleratorLabel(
+        "CmdOrCtrl+Enter",
+        resolveCodexRendererCommandPlatform(),
+      )}
       side="top"
       delay={0}
     >

@@ -42,6 +42,12 @@ function keyboardEvent(
 }
 
 describe("command keybindings", () => {
+  test("formats the fixed block activation shortcut for each platform", () => {
+    expect(formatAcceleratorLabel("CmdOrCtrl+Enter", "macOS")).toBe("⌘⏎");
+    expect(formatAcceleratorLabel("CmdOrCtrl+Enter", "windows")).toBe("Ctrl+Enter");
+    expect(formatAcceleratorLabel("CmdOrCtrl+Enter", "linux")).toBe("Ctrl+Enter");
+  });
+
   test("preserves Windows global modifier spelling through admission and storage", () => {
     for (const key of ["Meta+K", "CommandOrControl+K", "Super+K"]) {
       expect(() =>

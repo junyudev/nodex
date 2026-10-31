@@ -109,6 +109,7 @@ import {
   type NfmSideMenuRect,
 } from "./nfm-side-menu-anchor";
 import { useNfmSideMenuRuntime } from "./nfm-side-menu-runtime";
+import { useCommandShortcutLabel } from "@/lib/use-command-keymap-state";
 import { downloadMermaidDiagram, readReadyMermaidSvg } from "./mermaid-code-preview";
 import {
   applySideMenuSelectionIntent,
@@ -773,8 +774,12 @@ function NfmSideMenuRow({
         {getActionIcon(row.key)}
       </span>
       <span className="min-w-0 flex-1 truncate text-left">{row.label}</span>
+      {/* A visual hint: the option is named by its label alone. */}
       {row.shortcut ? (
-        <span className="shrink-0 text-xs leading-4 text-token-description-foreground">
+        <span
+          aria-hidden="true"
+          className="shrink-0 text-xs leading-4 text-token-description-foreground"
+        >
           {row.shortcut}
         </span>
       ) : null}
@@ -1412,6 +1417,8 @@ function NfmSideMenuPopup({
   onClose: () => void;
 }) {
   const runtime = useNfmSideMenuRuntime();
+  const sendToChatShortcut = useCommandShortcutLabel("pageEditorSendToChat");
+  const addToComposerShortcut = useCommandShortcutLabel("pageEditorAddToComposer");
   const formattingToolbar = useExtension(FormattingToolbarExtension, {
     editor: editor as never,
   });
@@ -1499,6 +1506,8 @@ function NfmSideMenuPopup({
         canSendToThread: runtimeSnapshot.canSendToThread,
         hasContextualSendTarget: Boolean(runtimeSnapshot.sendToThreadPreferredTarget),
         canAddToComposer: Boolean(runtimeSnapshot.onAddBlocksToComposer),
+        sendToChatShortcut,
+        addToComposerShortcut,
         isTableBlock: selectedTopLevelBlock?.type === "table",
         canUseTableHeaders: editor.settings?.tables?.headers === true,
         codeBlock: isSingleCodeBlock
@@ -1525,6 +1534,8 @@ function NfmSideMenuPopup({
       runtimeSnapshot.canSendToThread,
       runtimeSnapshot.sendToThreadPreferredTarget,
       runtimeSnapshot.onAddBlocksToComposer,
+      sendToChatShortcut,
+      addToComposerShortcut,
       selectionTitle,
       topLevelSelectedBlocks.length,
     ],

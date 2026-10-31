@@ -4,9 +4,9 @@ All keyboard shortcuts in Nodex. Platform modifier: **⌘ (Cmd)** on Mac, **Ctrl
 
 ## Editable Command Shortcuts
 
-Settings -> Keyboard shortcuts edits the command-keymap registry used by the workbench shortcut hook, command-palette labels, shell panel actions, and desktop application-menu accelerators. User overrides persist in `~/.nodex/config.toml` under `[server.command_keybindings]`: a missing command id uses defaults, an empty array means explicitly unassigned, and an array of strings is the custom accelerator list.
+Settings -> Keyboard shortcuts edits the command-keymap registry used by the workbench shortcut hook, Page editor chat actions, command-palette labels, shell panel actions, and desktop application-menu accelerators. User overrides persist in `~/.nodex/config.toml` under `[server.command_keybindings]`: a missing command id uses defaults, an empty array means explicitly unassigned, and an array of strings is the custom accelerator list.
 
-The editable settings tab covers Nodex-supported command ids only. Editor-native shortcuts, text input behavior, and Page editor shortcuts remain owned by the editor surface and are documented separately below.
+The editable settings tab covers Nodex-supported command ids only. Page editor `Send to chat` (`pageEditorSendToChat`) and `Add to composer` (`pageEditorAddToComposer`) are editable commands that run only inside the Page editor. Their menus and tooltips show the current platform binding. Editor-native formatting, block activation, and text input behavior remain owned by the editor surface and are documented separately below.
 
 ## App-Wide
 
@@ -195,12 +195,14 @@ Configure the Dictation shortcut directly in Settings → Voice and the optional
 
 ### Sending to Chat
 
-These follow [Page Editor Text Action Menu Behavior](product-specs/nfm-editor-text-action-menu-behavior.md#keyboard).
+These editable commands follow [Page Editor Text Action Menu Behavior](product-specs/nfm-editor-text-action-menu-behavior.md#keyboard). The table shows their defaults; customize or unassign them in Settings → Keyboard shortcuts. macOS uses Command; Windows and Linux use Control.
 
 | Shortcut             | Action          | Notes                                                                                                                                                                    |
 | -------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `⌘/Ctrl+Shift+Enter` | Send to chat    | Sends the selected Blocks, or with a bare caret the Prompt holding it, to the chat beside the Page; without a chat beside the Page, opens Send to chat for the selection |
 | `⌘/Ctrl+Alt+Enter`   | Add to composer | Appends the selected Blocks to the draft of the chat beside the Page and focuses its Composer                                                                            |
+
+Inside a Prompt, `⌘/Ctrl+Enter` also sends that Prompt through the fixed `Modify current block` activation shortcut. It is independent of the editable `Send to chat` binding.
 
 ### Input Rules (text triggers)
 

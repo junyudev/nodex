@@ -37,8 +37,10 @@ children without the send button.
 
 ## Sending
 
-The send button, `⌘↵` with the caret anywhere inside the Prompt (including its
-children), and `⌘⇧↵` with a bare caret inside it all send the Prompt.
+The send button, `⌘/Ctrl+Enter` with the caret anywhere inside the Prompt (including
+its children), and the editable `Send to chat` command (default
+`⌘/Ctrl+Shift+Enter`) with a bare caret inside it all send the Prompt. The button's
+tooltip formats the fixed `Modify current block` shortcut for the current platform.
 
 - Beside a chat — the Page is shown in that chat's Scene — the Prompt goes to
   that chat. The button's tooltip names it.

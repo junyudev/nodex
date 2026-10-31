@@ -580,7 +580,8 @@ describe("markdown side menu surface", () => {
     const { view } = renderSideMenuSurface({ initialQuery: "duplicate", initialFocusedIndex: 0 });
 
     expect(view.getAllByRole("option").length).toBe(1);
-    expect(view.getByRole("option", { name: /Duplicate/ })).not.toBeNull();
+    // The shortcut hint is visual; the option is named by its label alone.
+    expect(view.getByRole("option", { name: "Duplicate" }).textContent).toContain("⌘D");
   });
 
   test("delegates Copy and Cut from Search actions without claiming Paste", () => {

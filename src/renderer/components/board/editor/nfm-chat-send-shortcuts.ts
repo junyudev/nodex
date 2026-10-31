@@ -1,27 +1,27 @@
-/** Page editor shortcuts that hand the selection, or the Prompt at the caret, to a chat. */
-export const NFM_SEND_TO_CHAT_SHORTCUT_LABEL = "⌘⇧↵";
-export const NFM_ADD_TO_COMPOSER_SHORTCUT_LABEL = "⌥⌘↵";
+import {
+  matchesKeyboardEventToCommand,
+  PAGE_EDITOR_ADD_TO_COMPOSER_COMMAND_ID,
+  PAGE_EDITOR_SEND_TO_CHAT_COMMAND_ID,
+  type CommandKeymapState,
+  type KeyboardShortcutEventLike,
+} from "../../../../shared/command-keybindings";
 
 export type NfmChatSendShortcut = "send" | "add-to-composer";
 
-interface ShortcutKeyEvent {
-  readonly key: string;
-  readonly metaKey: boolean;
-  readonly ctrlKey: boolean;
-  readonly shiftKey: boolean;
-  readonly altKey: boolean;
+interface ShortcutKeyEvent extends KeyboardShortcutEventLike {
   readonly isComposing?: boolean;
+  readonly keyCode?: number;
 }
 
-/** `Mod+Shift+Enter` sends; `Mod+Alt+Enter` adds to the composer. Other chords are not ours. */
+/** Editor-local chat commands use the same live bindings as Settings and their labels. */
 export function resolveNfmChatSendShortcut(
   event: ShortcutKeyEvent,
-  isMacPlatform: boolean,
+  state: CommandKeymapState,
 ): NfmChatSendShortcut | null {
-  if (event.key !== "Enter" || event.isComposing) return null;
-  const mod = isMacPlatform ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
-  if (!mod) return null;
-  if (event.shiftKey && !event.altKey) return "send";
-  if (event.altKey && !event.shiftKey) return "add-to-composer";
+  if (event.isComposing || event.keyCode === 229) return null;
+  if (matchesKeyboardEventToCommand(event, state, PAGE_EDITOR_SEND_TO_CHAT_COMMAND_ID))
+    return "send";
+  if (matchesKeyboardEventToCommand(event, state, PAGE_EDITOR_ADD_TO_COMPOSER_COMMAND_ID))
+    return "add-to-composer";
   return null;
 }

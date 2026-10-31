@@ -1,5 +1,9 @@
 import { describe, expect, test } from "vite-plus/test";
 import {
+  createCommandKeymapState,
+  formatCommandShortcutLabel,
+} from "../../../../shared/command-keybindings";
+import {
   buildNfmSideMenuSections,
   filterNfmSideMenuSections,
   flattenNfmSideMenuRows,
@@ -25,6 +29,7 @@ function buildDefaultSections() {
 
 describe("markdown side menu model", () => {
   test("sends to the chat beside the Page from the row and offers others on hover", () => {
+    const keymap = createCommandKeymapState({ pageEditorSendToChat: ["Ctrl+Alt+Y"] }, "windows");
     const rows = flattenNfmSideMenuRows(
       buildNfmSideMenuSections({
         currentBlockId: "block-1",
@@ -37,6 +42,8 @@ describe("markdown side menu model", () => {
         canSendToThread: true,
         hasContextualSendTarget: true,
         canAddToComposer: true,
+        sendToChatShortcut: formatCommandShortcutLabel(keymap, "pageEditorSendToChat"),
+        addToComposerShortcut: formatCommandShortcutLabel(keymap, "pageEditorAddToComposer"),
         isTableBlock: false,
         canUseTableHeaders: false,
       }),
@@ -54,8 +61,8 @@ describe("markdown side menu model", () => {
     const send = rows.find((row) => row.key === "send-to-thread");
     expect(send?.submenu).toBe("send-to-thread");
     expect(send?.submenuIsSecondary).toBe(true);
-    expect(send?.shortcut).toBe("⌘⇧↵");
-    expect(rows.find((row) => row.key === "add-to-composer")?.shortcut).toBe("⌥⌘↵");
+    expect(send?.shortcut).toBe("Ctrl+Alt+Y");
+    expect(rows.find((row) => row.key === "add-to-composer")?.shortcut).toBe("Ctrl+Alt+Enter");
   });
 
   test("Send to chat is a plain picker without a chat beside the Page", () => {

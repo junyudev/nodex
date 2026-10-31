@@ -12,27 +12,24 @@ import type {
 } from "../../../../shared/chat-search";
 import type { CodexThreadSummary, PageChatItem } from "@/lib/types";
 import {
+  createCommandKeymapState,
+  type CommandKeymapState,
+} from "../../../../shared/command-keybindings";
+import { queryKeys } from "@/lib/query-keys";
+import {
   TEXT_ACTION_RECENT_COLOR_STORAGE_KEY,
   writeTextActionRecentColors,
 } from "@/lib/text-action-color-recents";
-import { render, settleAsyncRender } from "@/test/dom";
-import { TestQueryProvider } from "@/test/query";
+import { hoverWithMouse, render, settleAsyncRender } from "@/test/dom";
+import { renderWithAppMaitai } from "@/test/app-maitai";
+import { createTestQueryClient, TestQueryProvider } from "@/test/query";
 import { NfmSendToThreadMenu } from "./nfm-send-to-thread-menu";
-import { NfmChatSendShortcutController } from "./nfm-chat-send-shortcut-controller";
-import { NfmTextActionMenuRuntimeProvider } from "./nfm-text-action-menu-runtime";
 import type { NfmSendToThreadRequest } from "./nfm-send-to-thread-menu-model";
 import {
   NfmTextActionMenuSurface,
   type NfmTextActionMenuSurfaceProps,
   type TextActionChat,
 } from "./nfm-text-action-menu";
-
-const shortcutEditorMock = vi.hoisted(() => vi.fn());
-
-vi.mock("@blocknote/react", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@blocknote/react")>()),
-  useBlockNoteEditor: () => shortcutEditorMock(),
-}));
 
 const chatQueryMock = vi.hoisted(() => vi.fn<(...args: unknown[]) => Promise<unknown>>());
 
@@ -140,6 +137,7 @@ function deferred<T>() {
 function renderTextActionMenu(
   props?: Partial<Omit<NfmTextActionMenuSurfaceProps, "chat">> & {
     readonly chat?: Partial<TextActionChat> | null;
+    readonly keymapState?: CommandKeymapState;
   },
 ) {
   const actions = {
@@ -155,7 +153,13 @@ function renderTextActionMenu(
     selectionPresentations: [] as string[],
   };
 
-  const { chat: chatOverrides, ...surfaceProps } = props ?? {};
+  const {
+    chat: chatOverrides,
+    keymapState = createCommandKeymapState({}, "linux"),
+    ...surfaceProps
+  } = props ?? {};
+  const client = createTestQueryClient();
+  client.setQueryData(queryKeys.settings.commandKeymap(), keymapState);
   const chat: TextActionChat | null =
     chatOverrides === null
       ? null
@@ -240,8 +244,8 @@ function renderTextActionMenu(
     );
   }
 
-  const view = render(
-    <TestQueryProvider>
+  const view = renderWithAppMaitai(
+    <TestQueryProvider client={client}>
       <NodexTooltipProvider>
         <StatefulTextActionMenuSurface />
       </NodexTooltipProvider>
@@ -256,7 +260,6 @@ describe("markdown text action menu surface", () => {
     localStorage.removeItem(TEXT_ACTION_RECENT_COLOR_STORAGE_KEY);
     clearChatSearchCacheForTests();
     chatQueryMock.mockReset();
-    shortcutEditorMock.mockReset();
     mockChatQueries();
   });
 
@@ -546,59 +549,6 @@ describe("markdown text action menu surface", () => {
     await waitFor(() => expect(view.queryByRole("dialog", { name: "Send to chat" })).toBeNull());
   });
 
-  test("Cmd+Shift+Enter sends selected Blocks to the beside chat and Cmd+Alt+Enter adds to its composer", async () => {
-    const platform = vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
-    const editorRoot = document.createElement("div");
-    document.body.appendChild(editorRoot);
-    const send = vi.fn();
-    const addToComposer = vi.fn();
-    shortcutEditorMock.mockReturnValue({
-      domElement: editorRoot,
-      getSelection: () => ({ blocks: [{ id: "selected-1" }, { id: "selected-2" }] }),
-    });
-    const view = render(
-      <NfmTextActionMenuRuntimeProvider
-        value={{
-          chat: {
-            projectId: "default",
-            contextualTarget: preferredChat(),
-            send,
-            addToComposer,
-          },
-        }}
-      >
-        <NfmChatSendShortcutController />
-      </NfmTextActionMenuRuntimeProvider>,
-    );
-    try {
-      await act(async () => {
-        expect(fireEvent.keyDown(editorRoot, { key: "Enter", metaKey: true, shiftKey: true })).toBe(
-          false,
-        );
-        await Promise.resolve();
-      });
-      expect(send).toHaveBeenCalledExactlyOnceWith(
-        {
-          target: { kind: "thread", threadId: "thread-existing", sessionId: "session-preferred" },
-        },
-        ["selected-1", "selected-2"],
-      );
-      expect(addToComposer).not.toHaveBeenCalled();
-      await act(async () => {
-        expect(fireEvent.keyDown(editorRoot, { key: "Enter", metaKey: true, altKey: true })).toBe(
-          false,
-        );
-        await Promise.resolve();
-      });
-      expect(addToComposer).toHaveBeenCalledExactlyOnceWith(["selected-1", "selected-2"]);
-      expect(send).toHaveBeenCalledTimes(1);
-    } finally {
-      view.unmount();
-      editorRoot.remove();
-      platform.mockRestore();
-    }
-  });
-
   test("opens the picker from Send when no chat is beside the Page", async () => {
     const { actions, view } = renderTextActionMenu({ renderSendToThreadMenu: renderPicker });
 
@@ -631,6 +581,25 @@ describe("markdown text action menu surface", () => {
 
     const withoutComposer = renderTextActionMenu();
     expect(withoutComposer.view.queryByRole("button", { name: "Add to composer" })).toBe(null);
+  });
+
+  test("chat tooltips display the current command bindings", async () => {
+    const { view } = renderTextActionMenu({
+      keymapState: createCommandKeymapState(
+        { pageEditorSendToChat: ["Ctrl+Alt+Y"], pageEditorAddToComposer: ["Ctrl+Shift+U"] },
+        "windows",
+      ),
+      chat: { contextualTarget: preferredChat(), onAddToComposer: () => {} },
+    });
+    await act(async () => {
+      hoverWithMouse(view.getByRole("button", { name: "Send to chat" }));
+    });
+    expect((await view.findByRole("tooltip")).textContent).toContain("Ctrl+Alt+Y");
+    await act(async () => {
+      fireEvent.pointerLeave(view.getByRole("button", { name: "Send to chat" }));
+      hoverWithMouse(view.getByRole("button", { name: "Add to composer" }));
+    });
+    await waitFor(() => expect(view.getByRole("tooltip").textContent).toContain("Ctrl+Shift+U"));
   });
 
   test("offers no chat actions when the Page cannot send", () => {

@@ -56,12 +56,14 @@ The chat actions belong to the same action group as `Duplicate`, `Move to`, and
 
 `Send to chat` follows the [text selection menu](nfm-editor-text-action-menu-behavior.md#chat-submission).
 Beside a chat, activating the row sends the retained top-level Block roots,
-including their descendants, to that chat; the row shows `⌘⇧↵`, and its submenu
+including their descendants, to that chat; the row shows the current `Send to chat` binding, and its submenu
 opens the destination picker on hover for any other chat. Without a chat beside the
 Page, the row opens the picker. New and existing chat targets establish the source
-Page relationship before submission. `Add to composer` (`⌥⌘↵`) appends the same
+Page relationship before submission. `Add to composer` appends the same
 content to the beside chat's draft. Image capture follows
 [Page Prompt Image Inputs](nfm-page-prompt-image-inputs.md).
+Both rows show their editable command's current platform shortcut, omitting the
+hint when unassigned.
 
 Table header row/column actions appear only for one selected `table` root when table headers are supported.
 
