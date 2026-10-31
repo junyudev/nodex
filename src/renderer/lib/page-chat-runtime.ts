@@ -14,6 +14,13 @@ const pageChatRelationCommandDefinitions = {
     owner: "PageChats",
     protocol: { kind: "pending_operation" },
   }),
+  handOff: defineRendererCommand({
+    key: "page.chat.hand-off",
+    channel: "page-chats:hand-off",
+    authority: "core",
+    owner: "PageChats",
+    protocol: { kind: "pending_operation" },
+  }),
   unlink: defineRendererCommand({
     key: "page.chat.unlink",
     channel: "page-chats:unlink",
@@ -23,8 +30,11 @@ const pageChatRelationCommandDefinitions = {
   }),
 } as const;
 
-const { link: linkPageChatCommand, unlink: unlinkPageChatCommand } =
-  pageChatRelationCommandDefinitions;
+const {
+  link: linkPageChatCommand,
+  handOff: handOffPageChatCommand,
+  unlink: unlinkPageChatCommand,
+} = pageChatRelationCommandDefinitions;
 
 export async function readSessionLinkedPageSummaries(input: SessionLinkedPageSummaryInput) {
   return await invokeRendererQuery("page-chats:session-linked-pages", input);
@@ -44,4 +54,9 @@ export async function linkPageChat(sessionId: string, input: PageChatLinkInput):
 
 export async function unlinkPageChat(sessionId: string, input: PageChatLinkInput): Promise<void> {
   await invokePlainCommand(unlinkPageChatCommand, sessionId, input);
+}
+
+/** Explicitly hands work to a chat; merely relating a chat uses linkPageChat instead. */
+export async function handOffPageChat(sessionId: string, input: PageChatLinkInput): Promise<void> {
+  await invokePlainCommand(handOffPageChatCommand, sessionId, input);
 }

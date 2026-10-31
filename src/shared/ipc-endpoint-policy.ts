@@ -716,6 +716,7 @@ type PlainResultCommandEndpointPolicy =
   | "open-file"
   | "workspace:page:create-for"
   | "page-chats:link"
+  | "page-chats:hand-off"
   | "page-chats:unlink"
   | "files:pick-and-prepare"
   | "files:prepare"

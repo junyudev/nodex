@@ -53,7 +53,7 @@ interface SendPageToChatDependencies {
   readonly resolveSessionById: (sessionId: string) => Promise<ResolvedPageChatSession>;
   readonly resolveSessionForThread: (threadId: string) => Promise<ResolvedPageChatSession>;
   readonly ensureDefaultSession: (projectId: string) => Promise<ResolvedPageChatSession>;
-  readonly linkPage: (input: {
+  readonly handOffPage: (input: {
     readonly pageId: string;
     readonly sessionId: string;
   }) => Promise<void>;
@@ -72,9 +72,9 @@ interface SendPageToChatDependencies {
 
 /**
  * Executes the cross-runtime Page send protocol in its durable order.
- * A successful relation intentionally survives a later app-server failure.
+ * A committed hand-off intentionally survives a later Agent failure.
  */
-export async function sendPageToChatWithRelation(
+export async function sendPageToChatWithHandoff(
   input: SendPageToChatInput,
   dependencies: SendPageToChatDependencies,
 ): Promise<void> {
@@ -85,7 +85,7 @@ export async function sendPageToChatWithRelation(
     if (!targetSession.projectId) {
       throw new Error("Page content can only be sent to a Project chat");
     }
-    await dependencies.linkPage({
+    await dependencies.handOffPage({
       pageId: input.pageId,
       sessionId: targetSession.id,
     });
@@ -103,7 +103,7 @@ export async function sendPageToChatWithRelation(
   if (!targetSession.projectId) {
     throw new Error("Page content can only be sent to a Project chat");
   }
-  await dependencies.linkPage({
+  await dependencies.handOffPage({
     pageId: input.pageId,
     sessionId: targetSession.id,
   });

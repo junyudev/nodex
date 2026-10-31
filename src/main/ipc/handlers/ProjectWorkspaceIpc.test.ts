@@ -227,12 +227,13 @@ it.effect("owns Project and Project Session ingress with the Main Scope", () =>
       scope,
     );
 
-    assert.strictEqual(handlers.size, 49);
+    assert.strictEqual(handlers.size, 50);
     assert.isTrue(handlers.has("projects:create"));
     assert.isTrue(handlers.has("projects:update"));
     assert.isTrue(handlers.has("project-sessions:fork"));
     assert.isTrue(handlers.has("project-session-threads:detach"));
     assert.isTrue(handlers.has("page-chats:activity-summaries"));
+    assert.isTrue(handlers.has("page-chats:hand-off"));
     assert.isTrue(handlers.has("page-chats:list"));
     assert.isTrue(handlers.has("page-chats:link"));
     assert.isTrue(handlers.has("page-chats:unlink"));

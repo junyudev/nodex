@@ -116,7 +116,7 @@ const materializePageFileProvenance = async (
 
   const reportChat = await port.createRelatedChat({
     projectId: project.id,
-    initialPageIds: [reportPageId],
+    relatedPageIds: [reportPageId],
     noThreadFallbackTitle: "Dashboard cold start",
     thread: {
       threadId: createUuidV7(),
@@ -129,7 +129,7 @@ const materializePageFileProvenance = async (
   });
   const mixedChat = await port.createRelatedChat({
     projectId: project.id,
-    initialPageIds: [mixedPageId],
+    relatedPageIds: [mixedPageId],
     noThreadFallbackTitle: "Settings dark mode",
   });
 

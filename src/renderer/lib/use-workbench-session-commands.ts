@@ -75,13 +75,13 @@ import type {
 import type { CodexBackgroundTerminalProcessRow } from "./codex-background-terminal-processes";
 import { loadPagePromptContext } from "./page-prompt-context";
 import {
-  sendPageToChatWithRelation,
+  sendPageToChatWithHandoff,
   type OpenPageInChatInput,
   type OpenPageInNewChatInput,
   type SendPageToChatInput,
   type ShowPagesInChatInput,
 } from "./page-chat-actions";
-import { linkPageChat } from "./page-chat-runtime";
+import { handOffPageChat, linkPageChat } from "./page-chat-runtime";
 import { subscribeCodexEvents } from "./api";
 import { queryKeys } from "./query-keys";
 import { seedProjectSessionDetail } from "./project-session-query-cache";
@@ -341,6 +341,16 @@ export function useWorkbenchSessionCommands({
     [queryClient],
   );
 
+  const handOffPageToChat = useCallback(
+    async (input: { readonly pageId: string; readonly sessionId: string }): Promise<void> => {
+      await handOffPageChat(input.sessionId, {
+        pageId: input.pageId,
+      });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.pageChats.all() });
+    },
+    [queryClient],
+  );
+
   const openPageInNewChat = useCallback(
     async (input: OpenPageInNewChatInput): Promise<void> => {
       const operationKey = `${input.projectId}:${input.pageId}`;
@@ -462,13 +472,13 @@ export function useWorkbenchSessionCommands({
       }
 
       const operation = (async () => {
-        await sendPageToChatWithRelation(input, {
+        await sendPageToChatWithHandoff(input, {
           loadPageContext: loadPagePromptContext,
           resolveSessionById: resolveChatSessionById,
           resolveSessionForThread: resolveChatSessionForThread,
           ensureDefaultSession: async (projectId) =>
             (await sessionCatalog.ensureDefaultDraft(projectId)).domain,
-          linkPage: linkPageToChat,
+          handOffPage: handOffPageToChat,
           startTurn: async ({ threadId, context }) => {
             const session = await resolveChatSessionForThread(threadId);
             if (!session.executionRef) throw new Error("This chat has no Agent Runtime execution");
@@ -538,7 +548,7 @@ export function useWorkbenchSessionCommands({
       await operation;
     },
     [
-      linkPageToChat,
+      handOffPageToChat,
       refreshProjectSessions,
       resolveChatSessionById,
       resolveChatSessionForThread,
@@ -1506,6 +1516,7 @@ export function useWorkbenchSessionCommands({
   return {
     ensureDefaultDraftSessionForProject,
     linkPageToChat,
+    handOffPageToChat,
     resolveChatSessionForThread,
     openProjectSessionById,
     openPageInNewChat,

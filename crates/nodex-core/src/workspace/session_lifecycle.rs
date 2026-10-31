@@ -7,7 +7,7 @@ use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 
 use super::ProjectWorkspaceApplyOutcome;
 use super::mutation::{
-    WorkspaceMutationEffects, finish_mutation, finish_no_op, project_session_scope,
+    WorkspaceMutationEffects, finish_no_op, project_session_scope, run_mutation,
 };
 use super::session_mutation::{
     SessionInvalidationKind, finish_session_mutation, require_session, sqlite_now, validate_id,
@@ -53,6 +53,7 @@ pub(super) fn create_session(
         Vec::new(),
         vec![project_session_scope(project_id)],
         project_id,
+        initial_page_ids,
         now,
     )
 }
@@ -141,6 +142,7 @@ pub(super) fn ensure_default_draft_session(
         Vec::new(),
         vec![project_session_scope(project_id)],
         project_id,
+        &[],
         now,
     )
 }
@@ -344,6 +346,7 @@ pub(super) fn move_session(
         authority.thread_id.iter().cloned().collect(),
         summary_scopes,
         project_id.or(authority.project_id.as_deref()),
+        &[],
         now,
     )
 }
@@ -433,6 +436,7 @@ pub(super) fn reorder_sessions(
         thread_ids,
         summary_scopes,
         project_id,
+        &[],
         now,
     )
 }
@@ -460,7 +464,7 @@ fn read_ordered_session_ids(
 #[allow(clippy::too_many_arguments)]
 pub(super) fn finish_lifecycle_mutation(
     connection: &Connection,
-    _library_id: &str,
+    library_id: &str,
     context: &BoundModuleContext,
     store_epoch: &str,
     operation_id: &str,
@@ -471,32 +475,44 @@ pub(super) fn finish_lifecycle_mutation(
     thread_ids: Vec<String>,
     session_summary_scopes: Vec<nodex_core_contracts::workspace::ProjectSessionInvalidationScope>,
     change_project_id: Option<&str>,
+    handed_off_page_ids: &[String],
     committed_at: String,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
     let change_project_id = change_project_id.map(str::to_owned);
-    finish_mutation(
+    let effects = WorkspaceMutationEffects {
+        operation_kind,
+        project_catalog_change: None,
+        change_project_id,
+        project_ids,
+        session_detail_ids: session_ids.clone(),
+        session_ids,
+        thread_ids,
+        session_summary_scopes,
+        block_ids: Vec::new(),
+        document_ids: Vec::new(),
+        database_ids: Vec::new(),
+        page_ids: Vec::new(),
+        data_source_ids: Vec::new(),
+        view_ids: Vec::new(),
+        document_heads: Vec::new(),
+        committed_at: committed_at.clone(),
+    };
+    run_mutation(
         connection,
         context,
         store_epoch,
         operation_id,
         request_hash,
-        WorkspaceMutationEffects {
-            operation_kind,
-            project_catalog_change: None,
-            change_project_id,
-            project_ids,
-            session_detail_ids: session_ids.clone(),
-            session_ids,
-            thread_ids,
-            session_summary_scopes,
-            block_ids: Vec::new(),
-            document_ids: Vec::new(),
-            database_ids: Vec::new(),
-            page_ids: Vec::new(),
-            data_source_ids: Vec::new(),
-            view_ids: Vec::new(),
-            document_heads: Vec::new(),
-            committed_at,
+        &committed_at,
+        |_| {
+            super::page_chat::advance_handed_off_pages(
+                connection,
+                library_id,
+                context,
+                operation_id,
+                handed_off_page_ids,
+                effects,
+            )
         },
     )
 }

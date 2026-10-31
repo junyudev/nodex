@@ -67,6 +67,7 @@ export function WorkbenchTabProjectionPanel({
   onOpenPageInNewChat,
   onOpenRelatedChat,
   onLinkPageToChat,
+  onHandOffPageToChat,
   onResolveChatSessionForThread,
   onSendPageToChat,
   onAddToChatComposer,
@@ -109,6 +110,10 @@ export function WorkbenchTabProjectionPanel({
   onOpenPageInNewChat?: (input: OpenPageInNewChatInput) => Promise<void> | void;
   onOpenRelatedChat?: (sessionId: string) => Promise<void> | void;
   onLinkPageToChat: (input: {
+    readonly pageId: string;
+    readonly sessionId: string;
+  }) => Promise<void>;
+  onHandOffPageToChat: (input: {
     readonly pageId: string;
     readonly sessionId: string;
   }) => Promise<void>;
@@ -186,7 +191,7 @@ export function WorkbenchTabProjectionPanel({
             onEnsureDefaultDraftSessionForProject,
             onRefreshSessions,
             onResolveChatSessionForThread,
-            onLinkPageToChat,
+            onHandOffPageToChat,
             onAddToChatComposer: (promptInput: CodexPromptInput) =>
               onAddToChatComposer({
                 sessionId: activeSession.id,
@@ -422,6 +427,7 @@ export function WorkbenchTabProjectionPanel({
         onOpenRelatedChat={onOpenRelatedChat}
         onOpenPageInNewChat={onOpenPageInNewChat}
         onLinkPageToChat={onLinkPageToChat}
+        onHandOffPageToChat={onHandOffPageToChat}
         relatedChatCandidates={relatedChatCandidates}
         onResolveChatSessionForThread={onResolveChatSessionForThread}
         historyPanelActive={Boolean(

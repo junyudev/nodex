@@ -263,7 +263,7 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
 
           const shellSession = await seed.createRelatedChat({
             projectId: relocation.sourceProjectId,
-            initialPageIds: [],
+            relatedPageIds: [],
             noThreadFallbackTitle: "Shell tabs fixture",
           });
 

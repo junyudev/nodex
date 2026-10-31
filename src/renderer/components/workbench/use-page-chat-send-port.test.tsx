@@ -6,6 +6,7 @@ import { usePageChatSendPort } from "./use-page-chat-send-port";
 
 const mocks = vi.hoisted(() => ({
   launch: vi.fn(),
+  handOff: vi.fn(),
   message: vi.fn(),
   queue: vi.fn(),
   queued: false,
@@ -61,7 +62,7 @@ function setup() {
           projectId: "project",
           executionRef: { runtimeId: "runtime", threadId: "root" },
         }),
-        onLinkPageToChat: vi.fn(),
+        onHandOffPageToChat: mocks.handOff,
       }),
     { wrapper: ({ children }) => <TestMaitaiRoot store={store}>{children}</TestMaitaiRoot> },
   );
@@ -74,6 +75,9 @@ it("returns the launch's accepted user message identity", async () => {
       targetSessionId: "chat",
       prompt: "Review",
     });
+    expect(mocks.launch).toHaveBeenCalledWith(
+      expect.objectContaining({ initialPageIds: ["page"] }),
+    );
     expect(accepted).toEqual({
       sessionId: "chat",
       threadId: "root",
@@ -93,12 +97,16 @@ it.each([false, true])(
         threadId: "root",
         prompt: "Review",
       });
+      expect(mocks.handOff).toHaveBeenCalledWith({ pageId: "page", sessionId: "chat" });
       const deliver = queued ? mocks.queue : mocks.message;
       expect(accepted).toEqual({
         sessionId: "chat",
         threadId: "root",
         messageId: deliver.mock.calls[0]![0].message.messageId,
       });
+      expect(mocks.handOff.mock.invocationCallOrder[0]).toBeLessThan(
+        deliver.mock.invocationCallOrder[0]!,
+      );
       expect(deliver.mock.calls[0]![0].message.text).toBe("Review");
     });
     view.unmount();
@@ -116,5 +124,22 @@ it("rejects a failed send instead of returning a send record", async () => {
       }),
     ).rejects.toThrow("Rejected");
   });
+  view.unmount();
+});
+
+it("does not deliver a Page when its hand-off is rejected", async () => {
+  mocks.handOff.mockRejectedValueOnce(new Error("Page unavailable"));
+  const view = setup();
+  await act(async () => {
+    await expect(
+      view.result.current.onSendPagePrompt({
+        projectId: "project",
+        threadId: "root",
+        prompt: "Review",
+      }),
+    ).rejects.toThrow("Page unavailable");
+  });
+  expect(mocks.message).not.toHaveBeenCalled();
+  expect(mocks.queue).not.toHaveBeenCalled();
   view.unmount();
 });

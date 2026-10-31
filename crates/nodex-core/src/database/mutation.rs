@@ -295,6 +295,38 @@ pub(crate) fn apply_as_collaborator(
     })
 }
 
+/// Advances explicitly handed-off Pages, preserving every stage already in progress or later.
+/// Stage identities, rather than their user-defined labels, determine forward movement.
+pub(crate) fn advance_handed_off_pages(
+    connection: &Connection,
+    library_id: &str,
+    context: &BoundModuleContext,
+    operation_id: &str,
+    page_ids: &[String],
+    committed_at: &str,
+) -> Result<Option<DatabaseReceipt>, StoreError> {
+    let steps = page_ids
+        .iter()
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .flat_map(|page_id| {
+            ["triage", "plan"].map(|from| WorkflowStatusStep {
+                page_id,
+                from,
+                to: super::property_semantics::IN_PROGRESS_STATUS_OPTION_ID,
+            })
+        })
+        .collect::<Vec<_>>();
+    follow_workflow_status(
+        connection,
+        library_id,
+        context,
+        operation_id,
+        &steps,
+        committed_at,
+    )
+}
+
 /// One Page's workflow status moving from what another Module's state implied to what it
 /// implies now.
 pub(crate) struct WorkflowStatusStep<'a> {

@@ -22,6 +22,8 @@ mod managed_worktree_window;
 mod mutation;
 mod page_chat;
 mod page_create;
+#[cfg(test)]
+mod page_handoff_tests;
 mod project_activity_summary;
 mod project_window;
 mod queued_message_state;

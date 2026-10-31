@@ -838,7 +838,7 @@ describe("workbench session shell / library-shell-navigation", () => {
     ]);
   });
 
-  test("page-stage Page prompts durably relate their target Chat before sending", async () => {
+  test("page-stage Page prompts durably hand the Page to their target Chat before sending", async () => {
     const session = makeAttachedSession({
       id: "session:alpha:card-page-prompt",
       threadId: "page-prompt-target",
@@ -888,12 +888,12 @@ describe("workbench session shell / library-shell-navigation", () => {
       await Promise.resolve();
     });
 
-    const linkIndex = invokeCalls.findIndex((call) => call[0] === "page-chats:link");
+    const handOffIndex = invokeCalls.findIndex((call) => call[0] === "page-chats:hand-off");
     const sendIndex = invokeCalls.findIndex((call) => call[0] === "agent-runtime:session:message");
-    expect(linkIndex).toBeGreaterThanOrEqual(0);
-    expect(sendIndex).toBeGreaterThan(linkIndex);
-    expect(invokeCalls[linkIndex]).toEqual([
-      "page-chats:link",
+    expect(handOffIndex).toBeGreaterThanOrEqual(0);
+    expect(sendIndex).toBeGreaterThan(handOffIndex);
+    expect(invokeCalls[handOffIndex]).toEqual([
+      "page-chats:hand-off",
       "session:alpha:card-page-prompt",
       { pageId: "card-1" },
     ]);

@@ -1044,6 +1044,10 @@ export interface IpcApi
     args: [sessionId: string, input: PageChatLinkInput];
     result: void;
   };
+  "page-chats:hand-off": {
+    args: [sessionId: string, input: PageChatLinkInput];
+    result: void;
+  };
   "page-chats:unlink": {
     args: [sessionId: string, input: PageChatLinkInput];
     result: void;

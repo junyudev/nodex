@@ -115,7 +115,7 @@ const materializePageRelatedChatActivity = async (
   const workingThreadId = createUuidV7();
   const attached = await port.createRelatedChat({
     projectId: project.id,
-    initialPageIds: [activityPageId],
+    relatedPageIds: [activityPageId],
     noThreadFallbackTitle: "Implement activity projection",
     thread: {
       threadId: workingThreadId,
@@ -128,7 +128,7 @@ const materializePageRelatedChatActivity = async (
   });
   const threadless = await port.createRelatedChat({
     projectId: project.id,
-    initialPageIds: [activityPageId],
+    relatedPageIds: [activityPageId],
     noThreadFallbackTitle: "Review relationship model",
   });
 

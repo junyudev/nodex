@@ -410,7 +410,8 @@ decided; `plan`, decided but not started; `doing`, in progress, including every
 round of checking and redirecting an Agent's work; `review`, waiting on someone
 else's verdict; and `done`, accepted. Their default names are Triage, Plan,
 Doing, Review, and Done. A Data Source may rename them.
-Status moves only on intent: a person's edit or an Inbox decision. Agent
+Status moves only on intent: a person's edit, an Inbox decision, or handing the
+Page to a chat, which moves it from `triage` or `plan` to `doing`. Agent
 execution never moves it; whose turn it is belongs to Page Chat activity.
 Nothing enters or leaves `review` on its own, and only a person's decision
 completes a Page.
@@ -540,6 +541,11 @@ Session's Scene creates its Page and edge in one transaction. Confirming an Inbo
 dispatch links its message Pages to the receiving chat in the same transaction.
 Page navigation, Scenes, mentions, references, links, and prompt text do not
 infer one.
+
+Open in new chat, Send to chat, and Prompt sends hand the Page to the chat: the
+same transaction moves its Status from Triage or Plan to Doing. Linking an
+existing chat as related, New page in a Session's Scene, and a Runbook's link
+only associate. The Inbox moves its message Pages through its own handling.
 
 A Session rests on its earliest-linked live Page, the Page it started from; later
 links never displace it.

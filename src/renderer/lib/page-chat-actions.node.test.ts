@@ -1,7 +1,7 @@
 import { describe, expect, test, vi } from "vite-plus/test";
 
 import {
-  sendPageToChatWithRelation,
+  sendPageToChatWithHandoff,
   type PagePromptContext,
   type SendPageToChatInput,
 } from "./page-chat-actions";
@@ -23,7 +23,7 @@ const context: PagePromptContext = {
   promptInput: { text: "Page: Release plan" },
 };
 
-type SendDependencies = Parameters<typeof sendPageToChatWithRelation>[1];
+type SendDependencies = Parameters<typeof sendPageToChatWithHandoff>[1];
 
 function dependencies(overrides: Partial<SendDependencies> = {}) {
   const calls: string[] = [];
@@ -46,8 +46,8 @@ function dependencies(overrides: Partial<SendDependencies> = {}) {
         calls.push("ensure-default");
         return { id: "session-default", projectId: "project-page" };
       }),
-      linkPage: vi.fn(async () => {
-        calls.push("link");
+      handOffPage: vi.fn(async () => {
+        calls.push("hand-off");
       }),
       startTurn: vi.fn(async () => {
         calls.push("start-turn");
@@ -64,15 +64,15 @@ function dependencies(overrides: Partial<SendDependencies> = {}) {
   };
 }
 
-describe("sendPageToChatWithRelation", () => {
-  test("orders canonical snapshot, target resolution, durable link, then existing Turn", async () => {
+describe("sendPageToChatWithHandoff", () => {
+  test("orders canonical snapshot, target resolution, durable hand-off, then existing Turn", async () => {
     const runtime = dependencies();
-    await sendPageToChatWithRelation(
+    await sendPageToChatWithHandoff(
       pageInput({ kind: "thread", threadId: "thread-target", sessionId: "session-target" }),
       runtime.value,
     );
-    expect(runtime.calls).toEqual(["snapshot", "resolve-thread", "link", "start-turn"]);
-    expect(runtime.value.linkPage).toHaveBeenCalledWith({
+    expect(runtime.calls).toEqual(["snapshot", "resolve-thread", "hand-off", "start-turn"]);
+    expect(runtime.value.handOffPage).toHaveBeenCalledWith({
       pageId: "page-1",
       sessionId: "session-target",
     });
@@ -81,7 +81,7 @@ describe("sendPageToChatWithRelation", () => {
     );
   });
 
-  test("does not link or send when the Page snapshot fails", async () => {
+  test("does not hand off or send when the Page snapshot fails", async () => {
     const runtime = dependencies({
       loadPageContext: vi.fn(async () => {
         runtime.calls.push("snapshot");
@@ -89,7 +89,7 @@ describe("sendPageToChatWithRelation", () => {
       }),
     });
     await expect(
-      sendPageToChatWithRelation(
+      sendPageToChatWithHandoff(
         pageInput({ kind: "thread", threadId: "thread-target", sessionId: "session-target" }),
         runtime.value,
       ),
@@ -97,7 +97,7 @@ describe("sendPageToChatWithRelation", () => {
     expect(runtime.calls).toEqual(["snapshot"]);
   });
 
-  test("does not link or send when target Session resolution fails", async () => {
+  test("does not hand off or send when target Session resolution fails", async () => {
     const runtime = dependencies({
       resolveSessionForThread: vi.fn(async () => {
         runtime.calls.push("resolve-thread");
@@ -105,7 +105,7 @@ describe("sendPageToChatWithRelation", () => {
       }),
     });
     await expect(
-      sendPageToChatWithRelation(
+      sendPageToChatWithHandoff(
         pageInput({ kind: "thread", threadId: "thread-target", sessionId: "session-target" }),
         runtime.value,
       ),
@@ -113,23 +113,23 @@ describe("sendPageToChatWithRelation", () => {
     expect(runtime.calls).toEqual(["snapshot", "resolve-thread"]);
   });
 
-  test("does not start a Turn when the durable link fails", async () => {
+  test("does not start a Turn when the durable hand-off fails", async () => {
     const runtime = dependencies({
-      linkPage: vi.fn(async () => {
-        runtime.calls.push("link");
+      handOffPage: vi.fn(async () => {
+        runtime.calls.push("hand-off");
         throw new Error("Store unavailable");
       }),
     });
     await expect(
-      sendPageToChatWithRelation(
+      sendPageToChatWithHandoff(
         pageInput({ kind: "thread", threadId: "thread-target", sessionId: "session-target" }),
         runtime.value,
       ),
     ).rejects.toThrow("Store unavailable");
-    expect(runtime.calls).toEqual(["snapshot", "resolve-thread", "link"]);
+    expect(runtime.calls).toEqual(["snapshot", "resolve-thread", "hand-off"]);
   });
 
-  test("keeps the durable relation when app-server Turn start fails", async () => {
+  test("keeps the durable hand-off when Agent start fails", async () => {
     const runtime = dependencies({
       startTurn: vi.fn(async () => {
         runtime.calls.push("start-turn");
@@ -137,25 +137,25 @@ describe("sendPageToChatWithRelation", () => {
       }),
     });
     await expect(
-      sendPageToChatWithRelation(
+      sendPageToChatWithHandoff(
         pageInput({ kind: "thread", threadId: "thread-target", sessionId: "session-target" }),
         runtime.value,
       ),
     ).rejects.toThrow("Agent unavailable");
-    expect(runtime.calls).toEqual(["snapshot", "resolve-thread", "link", "start-turn"]);
-    expect(runtime.value.linkPage).toHaveBeenCalledTimes(1);
+    expect(runtime.calls).toEqual(["snapshot", "resolve-thread", "hand-off", "start-turn"]);
+    expect(runtime.value.handOffPage).toHaveBeenCalledTimes(1);
   });
 
-  test("links a resolved blank Chat before starting its first Thread", async () => {
+  test("hands the Page to a resolved blank Chat before starting its first Thread", async () => {
     const runtime = dependencies();
-    await sendPageToChatWithRelation(
+    await sendPageToChatWithHandoff(
       pageInput({ kind: "new-thread", sessionId: "session-target" }),
       runtime.value,
     );
     expect(runtime.calls).toEqual([
       "snapshot",
       "resolve-session",
-      "link",
+      "hand-off",
       "start-thread",
       "refresh",
     ]);

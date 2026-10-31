@@ -116,6 +116,7 @@ type SessionCommands = Pick<
   | "openPageInNewChat"
   | "openProjectSessionById"
   | "linkPageToChat"
+  | "handOffPageToChat"
   | "resolveChatSessionForThread"
   | "openAttachedThreadSession"
   | "openAttachedThreadSessionById"
@@ -267,6 +268,7 @@ export function useWorkbenchPanelProjection({
     openPageInNewChat,
     openProjectSessionById,
     linkPageToChat,
+    handOffPageToChat,
     resolveChatSessionForThread,
     openAttachedThreadSession,
     openAttachedThreadSessionById,
@@ -726,6 +728,7 @@ export function useWorkbenchPanelProjection({
                 onOpenPageInNewChat={openPageInNewChat}
                 onOpenRelatedChat={openProjectSessionById}
                 onLinkPageToChat={linkPageToChat}
+                onHandOffPageToChat={handOffPageToChat}
                 onResolveChatSessionForThread={resolveChatSessionForThread}
                 onSendPageToChat={sendPageToChat}
                 onAddToChatComposer={addToChatComposer}
@@ -822,6 +825,7 @@ export function useWorkbenchPanelProjection({
       openPageInNewChat,
       openProjectSessionById,
       linkPageToChat,
+      handOffPageToChat,
       resolveChatSessionForThread,
       sendPageToChat,
       openSubagentsPanelTab,

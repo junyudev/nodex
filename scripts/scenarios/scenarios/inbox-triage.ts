@@ -210,7 +210,7 @@ const materializeInboxTriage = async (
   const workingThreadId = createUuidV7();
   const working = await port.createRelatedChat({
     projectId: project.id,
-    initialPageIds: [],
+    relatedPageIds: [],
     noThreadFallbackTitle: "Sidebar polish",
     thread: {
       threadId: workingThreadId,
@@ -457,7 +457,7 @@ const materializeInboxTriage = async (
 
   const movedChat = await port.createRelatedChat({
     projectId: project.id,
-    initialPageIds: [inboxMovedWithChat.pageId, libraryInboxMovedWithChat.pageId],
+    relatedPageIds: [inboxMovedWithChat.pageId, libraryInboxMovedWithChat.pageId],
     noThreadFallbackTitle: "Block drag handle",
     thread: {
       threadId: createUuidV7(),
@@ -470,7 +470,7 @@ const materializeInboxTriage = async (
   });
   const idleChat = await port.createRelatedChat({
     projectId: project.id,
-    initialPageIds: [inboxTriageTwoChats.pageId],
+    relatedPageIds: [inboxTriageTwoChats.pageId],
     noThreadFallbackTitle: "Search keyboard review",
     thread: {
       threadId: createUuidV7(),
@@ -483,7 +483,7 @@ const materializeInboxTriage = async (
   });
   const waitingChat = await port.createRelatedChat({
     projectId: project.id,
-    initialPageIds: [inboxTriageTwoChats.pageId],
+    relatedPageIds: [inboxTriageTwoChats.pageId],
     noThreadFallbackTitle: "Search focus behavior",
     thread: {
       threadId: createUuidV7(),
@@ -496,7 +496,7 @@ const materializeInboxTriage = async (
   });
   const singleChat = await port.createRelatedChat({
     projectId: project.id,
-    initialPageIds: [inboxTriageOneIdleChat.pageId],
+    relatedPageIds: [inboxTriageOneIdleChat.pageId],
     noThreadFallbackTitle: "Export preview review",
     thread: {
       threadId: createUuidV7(),

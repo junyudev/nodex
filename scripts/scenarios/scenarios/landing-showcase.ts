@@ -54,7 +54,7 @@ const createLandingScenario = (sharedPages: boolean): ScenarioDomainRecipe => {
       const chat = sharedPages
         ? await port.createRelatedChat({
             projectId: project.id,
-            initialPageIds: [briefPageId],
+            relatedPageIds: [briefPageId],
             noThreadFallbackTitle: "Update implementation notes",
           })
         : null;

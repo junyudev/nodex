@@ -200,6 +200,9 @@ export const live: Layer.Layer<
     yield* invokeEffectPlainCommand("page-chats:link", (_, sessionId, input) =>
       projects.linkPageToProjectSession(sessionId, input),
     );
+    yield* invokeEffectPlainCommand("page-chats:hand-off", (_, sessionId, input) =>
+      projects.handOffPageToProjectSession(sessionId, input),
+    );
     yield* invokeEffectPlainCommand("page-chats:unlink", (_, sessionId, input) =>
       projects.unlinkPageFromProjectSession(sessionId, input),
     );

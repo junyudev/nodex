@@ -12,6 +12,7 @@ use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 pub(crate) const PRIORITY_PROPERTY_ID: &str = "priority";
 pub(crate) const STATUS_PROPERTY_ID: &str = "status";
 pub(crate) const TASK_PARENT_PROPERTY_ID: &str = "task_parent";
+pub(crate) const IN_PROGRESS_STATUS_OPTION_ID: &str = "doing";
 pub(crate) const COMPLETED_STATUS_OPTION_ID: &str = "done";
 const BUILT_IN_PROPERTY_IDS: [&str; 9] = [
     STATUS_PROPERTY_ID,

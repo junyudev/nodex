@@ -119,10 +119,10 @@ export interface ScenarioBoardObservation {
   readonly groups: Readonly<Record<WorkflowStatus, number>>;
 }
 
-/** A production-shaped Chat seed. Page links are committed with Session creation. */
+/** A Chat with related Pages, linked through the manual association command without a hand-off. */
 export interface ScenarioRelatedChatSeed {
   readonly projectId: string;
-  readonly initialPageIds: readonly string[];
+  readonly relatedPageIds: readonly string[];
   readonly noThreadFallbackTitle: string;
   readonly pinned?: boolean;
   readonly thread?: {

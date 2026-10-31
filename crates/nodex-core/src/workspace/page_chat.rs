@@ -20,7 +20,7 @@ use crate::infrastructure::cursor::{
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 
 use super::ProjectWorkspaceApplyOutcome;
-use super::mutation::finish_no_op;
+use super::mutation::{WorkspaceMutationEffects, finish_no_op, project_session_scope};
 use super::session_mutation::{
     SessionAuthority, SessionInvalidationKind, finish_session_mutation, sqlite_now, validate_id,
 };
@@ -89,6 +89,47 @@ pub(crate) fn link_pages(
     Ok(())
 }
 
+/// Edge creation alone never implies a hand-off (Scene Pages, Runbooks and Inbox own theirs).
+#[derive(Clone, Copy)]
+pub(super) enum PageLinkIntent {
+    Related,
+    HandOff,
+}
+
+pub(super) fn advance_handed_off_pages(
+    connection: &Connection,
+    library_id: &str,
+    context: &BoundModuleContext,
+    operation_id: &str,
+    page_ids: &[String],
+    mut effects: WorkspaceMutationEffects,
+) -> Result<WorkspaceMutationEffects, StoreError> {
+    let Some(receipt) = crate::database::advance_handed_off_pages(
+        connection,
+        library_id,
+        context,
+        operation_id,
+        page_ids,
+        &effects.committed_at,
+    )?
+    else {
+        return Ok(effects);
+    };
+    effects
+        .block_ids
+        .extend(receipt.affected_page_ids.iter().cloned());
+    effects
+        .block_ids
+        .extend(receipt.affected_database_ids.iter().cloned());
+    effects.page_ids.extend(receipt.affected_page_ids);
+    effects.database_ids.extend(receipt.affected_database_ids);
+    effects
+        .data_source_ids
+        .extend(receipt.affected_data_source_ids);
+    effects.view_ids.extend(receipt.affected_view_ids);
+    Ok(effects)
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(super) fn link_page(
     connection: &Connection,
@@ -100,6 +141,7 @@ pub(super) fn link_page(
     session_id: &str,
     authority: &SessionAuthority,
     page_id: &str,
+    intent: PageLinkIntent,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
     require_page_access(connection, library_id, page_id)?;
     if authority.archived {
@@ -118,7 +160,7 @@ pub(super) fn link_page(
         )
         .optional()?
         .is_some();
-    if exists {
+    if exists && matches!(intent, PageLinkIntent::Related) {
         return finish_no_op(
             connection,
             context,
@@ -131,13 +173,24 @@ pub(super) fn link_page(
             &now,
         );
     }
-    let changed = connection.execute(
-        "INSERT INTO project_session_pages(session_id, page_id, linked_at) \
-         VALUES (?1, ?2, ?3)",
-        params![session_id, page_id, now],
-    )?;
-    if changed != 1 {
-        return Err(corrupt("Linked chat edge was not inserted"));
+    link_pages(connection, session_id, &[page_id.to_owned()], &now)?;
+    if matches!(intent, PageLinkIntent::HandOff) {
+        return super::session_lifecycle::finish_lifecycle_mutation(
+            connection,
+            library_id,
+            context,
+            store_epoch,
+            operation_id,
+            request_hash,
+            "hand_off_session_page",
+            authority.project_id.iter().cloned().collect(),
+            vec![session_id.to_owned()],
+            authority.thread_id.iter().cloned().collect(),
+            vec![project_session_scope(authority.project_id.as_deref())],
+            authority.project_id.as_deref(),
+            &[page_id.to_owned()],
+            now,
+        );
     }
     finish_session_mutation(
         connection,

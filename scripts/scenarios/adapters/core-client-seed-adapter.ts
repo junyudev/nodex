@@ -415,10 +415,13 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
             input: {
               projectId: input.projectId,
               noThreadFallbackTitle: input.noThreadFallbackTitle,
-              initialPageIds: [...input.initialPageIds],
+              initialPageIds: [],
             },
           },
         });
+        for (const pageId of input.relatedPageIds) {
+          yield* workspace.linkPageToProjectSession(session.id, { pageId });
+        }
         if (input.pinned) {
           yield* workspace.setProjectSessionPinned({
             operationId: createBoundedOperationId("scenario.session.pin"),

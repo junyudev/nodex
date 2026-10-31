@@ -34,7 +34,7 @@ export interface PageChatSendPortInput {
     readonly projectId: string | null;
     readonly executionRef?: { readonly runtimeId: string; readonly threadId: string } | null;
   }>;
-  readonly onLinkPageToChat: (input: {
+  readonly onHandOffPageToChat: (input: {
     readonly pageId: string;
     readonly sessionId: string;
   }) => Promise<void>;
@@ -52,7 +52,7 @@ export function usePageChatSendPort({
   onEnsureDefaultDraftSessionForProject,
   onRefreshSessions,
   onResolveChatSessionForThread,
-  onLinkPageToChat,
+  onHandOffPageToChat,
   onAddToChatComposer,
 }: PageChatSendPortInput) {
   const workbenchOwner = useWorkbenchWindowOwner();
@@ -174,7 +174,7 @@ export function usePageChatSendPort({
         { kind: "thread", threadId },
         submittedPresentation,
       );
-      await onLinkPageToChat({ pageId, sessionId: targetSession.id });
+      await onHandOffPageToChat({ pageId, sessionId: targetSession.id });
       // A Page send into a running chat follows the Composer's own Queue/Steer default,
       // the same one its send controls describe.
       const deliver = queueFollowUps
@@ -201,7 +201,7 @@ export function usePageChatSendPort({
       return { ...target, messageId };
     },
     [
-      onLinkPageToChat,
+      onHandOffPageToChat,
       onResolveChatSessionForThread,
       pageId,
       queueFollowUps,

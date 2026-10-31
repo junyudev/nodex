@@ -13,12 +13,12 @@ export const agentCrossProviderDelegationScenario: ScenarioDomainRecipe = {
     if (!project.defaultDatabaseViewId) throw new Error("Lumen needs its default View");
     const parent = await port.createRelatedChat({
       projectId: project.id,
-      initialPageIds: [],
+      relatedPageIds: [],
       noThreadFallbackTitle: CROSS_PROVIDER_PARENT_TITLE,
     });
     const release = await port.createRelatedChat({
       projectId: project.id,
-      initialPageIds: [],
+      relatedPageIds: [],
       noThreadFallbackTitle: CROSS_PROVIDER_RELEASE_TITLE,
     });
     const pageId = createUuidV7();

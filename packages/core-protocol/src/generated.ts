@@ -7252,6 +7252,7 @@ export interface components {
                 readonly kind: "delete_sidebar_section_host_link";
                 readonly section_id: string;
             } | {
+                /** @description Explicit Page hand-offs: link atomically and advance Triage/Plan to in progress. */
                 readonly initial_page_ids: readonly string[];
                 /** @enum {string} */
                 readonly kind: "create_session";
@@ -7259,6 +7260,7 @@ export interface components {
                 readonly session_id: string;
                 readonly title: string;
             } | {
+                /** @description Explicit Page hand-offs: link atomically and advance Triage/Plan to in progress. */
                 readonly initial_page_ids: readonly string[];
                 /** @enum {string} */
                 readonly kind: "create_agent_runtime_session";
@@ -7286,6 +7288,7 @@ export interface components {
                 readonly session_id: string;
                 readonly thread_id: string;
             } | {
+                /** @description Explicit Page hand-offs: link atomically and advance Triage/Plan to in progress. */
                 readonly initial_page_ids: readonly string[];
                 /** @enum {string} */
                 readonly kind: "create_session_in_sidebar_section";
@@ -9203,6 +9206,10 @@ export interface components {
             readonly page_id: string;
         } | {
             /** @enum {string} */
+            readonly kind: "hand_off_page";
+            readonly page_id: string;
+        } | {
+            /** @enum {string} */
             readonly kind: "unlink_page";
             readonly page_id: string;
         };
@@ -9878,6 +9885,7 @@ export interface components {
             readonly kind: "delete_sidebar_section_host_link";
             readonly section_id: string;
         } | {
+            /** @description Explicit Page hand-offs: link atomically and advance Triage/Plan to in progress. */
             readonly initial_page_ids: readonly string[];
             /** @enum {string} */
             readonly kind: "create_session";
@@ -9885,6 +9893,7 @@ export interface components {
             readonly session_id: string;
             readonly title: string;
         } | {
+            /** @description Explicit Page hand-offs: link atomically and advance Triage/Plan to in progress. */
             readonly initial_page_ids: readonly string[];
             /** @enum {string} */
             readonly kind: "create_agent_runtime_session";
@@ -9912,6 +9921,7 @@ export interface components {
             readonly session_id: string;
             readonly thread_id: string;
         } | {
+            /** @description Explicit Page hand-offs: link atomically and advance Triage/Plan to in progress. */
             readonly initial_page_ids: readonly string[];
             /** @enum {string} */
             readonly kind: "create_session_in_sidebar_section";

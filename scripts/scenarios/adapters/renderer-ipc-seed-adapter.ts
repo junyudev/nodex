@@ -531,12 +531,15 @@ export class RendererIpcSeedAdapter implements ScenarioSeedPort {
           input: {
             projectId: input.projectId,
             noThreadFallbackTitle: input.noThreadFallbackTitle,
-            initialPageIds: [...input.initialPageIds],
+            initialPageIds: [],
           },
         },
       }),
       "Session creation",
     );
+    for (const pageId of input.relatedPageIds) {
+      await this.#invoke("page-chats:link", session.id, { pageId });
+    }
     if (input.pinned) {
       unwrapCoreResult(
         await this.#invoke("project-sessions:set-pinned", {

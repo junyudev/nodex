@@ -80,7 +80,7 @@ const materialize = async (
   });
   const inbox = await port.createRelatedChat({
     projectId: inboxProject.id,
-    initialPageIds: [],
+    relatedPageIds: [],
     noThreadFallbackTitle: "Inbox chat",
     thread: {
       threadId: createUuidV7(),
@@ -94,7 +94,7 @@ const materialize = async (
   const runningThreadId = createUuidV7();
   const running = await port.createRelatedChat({
     projectId: project.id,
-    initialPageIds: [],
+    relatedPageIds: [],
     noThreadFallbackTitle: "Running Section task",
     thread: {
       threadId: runningThreadId,

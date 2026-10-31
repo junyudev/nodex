@@ -200,7 +200,7 @@ const materialize = async (
   for (const [key, recipe] of Object.entries(CHATS)) {
     const chat = await port.createRelatedChat({
       projectId: project.id,
-      initialPageIds: recipe.pageKeys.map((pageKey) => requireId(pageIdsByKey, pageKey)),
+      relatedPageIds: recipe.pageKeys.map((pageKey) => requireId(pageIdsByKey, pageKey)),
       noThreadFallbackTitle: recipe.title,
       pinned: recipe.pinned,
     });

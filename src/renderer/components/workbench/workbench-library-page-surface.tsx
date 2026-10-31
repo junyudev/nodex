@@ -49,7 +49,7 @@ const UNAVAILABLE_CHAT_COMMANDS: WorkbenchBesideChat["commands"] = {
   onResolveChatSessionForThread: async () => {
     throw new Error("This Page is not shown beside a chat.");
   },
-  onLinkPageToChat: async () => undefined,
+  onHandOffPageToChat: async () => undefined,
 };
 
 const ignoreLibraryPageClose = (): void => undefined;

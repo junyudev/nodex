@@ -134,6 +134,7 @@ export function PageStageSessionTab({
   onOpenRelatedChat,
   onOpenPageInNewChat,
   onLinkPageToChat,
+  onHandOffPageToChat,
   relatedChatCandidates,
   onResolveChatSessionForThread,
   historyPanelActive,
@@ -168,6 +169,10 @@ export function PageStageSessionTab({
   onOpenRelatedChat?: (sessionId: string) => Promise<void> | void;
   onOpenPageInNewChat?: (input: OpenPageInNewChatInput) => Promise<void> | void;
   onLinkPageToChat: (input: {
+    readonly pageId: string;
+    readonly sessionId: string;
+  }) => Promise<void>;
+  onHandOffPageToChat: (input: {
     readonly pageId: string;
     readonly sessionId: string;
   }) => Promise<void>;
@@ -259,7 +264,7 @@ export function PageStageSessionTab({
     onEnsureDefaultDraftSessionForProject,
     onRefreshSessions,
     onResolveChatSessionForThread,
-    onLinkPageToChat,
+    onHandOffPageToChat,
     onAddToChatComposer,
   });
 

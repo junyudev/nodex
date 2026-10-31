@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { installWindowApi } from "../test/browser-globals";
 import {
+  handOffPageChat,
   linkPageChat,
   readPageChatActivitySummaries,
   readPageChatWindow,
@@ -101,10 +102,12 @@ describe("Page coordination runtimes", () => {
     const relation = { pageId: "page-1" };
 
     await linkPageChat("session-1", relation);
+    await handOffPageChat("session-1", relation);
     await unlinkPageChat("session-1", relation);
 
     expect(invoke.mock.calls).toEqual([
       ["page-chats:link", "session-1", relation],
+      ["page-chats:hand-off", "session-1", relation],
       ["page-chats:unlink", "session-1", relation],
     ]);
   });

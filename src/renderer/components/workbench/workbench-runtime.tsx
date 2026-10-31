@@ -4643,6 +4643,7 @@ export function WorkbenchRuntime({
             onOpenRelatedChat={sessionCommands.openProjectSessionById}
             onOpenPageInNewChat={sessionCommands.openPageInNewChat}
             onLinkPageToChat={sessionCommands.linkPageToChat}
+            onHandOffPageToChat={sessionCommands.handOffPageToChat}
             relatedChatCandidates={pageStageRelatedChatCandidates}
             onResolveChatSessionForThread={sessionCommands.resolveChatSessionForThread}
             historyPanelActive={Boolean(
@@ -4795,6 +4796,7 @@ export function WorkbenchRuntime({
       sessionCommands.openProjectSessionById,
       sessionCommands.showPagesInChat,
       sessionCommands.linkPageToChat,
+      sessionCommands.handOffPageToChat,
       sessionCommands.resolveChatSessionForThread,
       sessionCommands.sendPageToChat,
       pageStageCloseRef,

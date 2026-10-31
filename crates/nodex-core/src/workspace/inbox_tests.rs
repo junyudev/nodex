@@ -4167,6 +4167,17 @@ fn a_messages_status_follows_its_handling_until_someone_else_sets_it() {
         );
     }
 
+    let status_revision = || {
+        workspace.kernel.readers().read_default(|c| {
+        Ok(c.query_row(
+            "SELECT value.revision FROM data_source_property_values value \
+             JOIN data_source_page_memberships member ON member.id=value.membership_id \
+             WHERE member.page_block_id='page:chat' AND member.removed_at IS NULL AND value.property_id='status'",
+            [], |r| r.get::<_, i64>(0),
+        )?)
+    }).unwrap()
+    };
+    let initial_status_revision = status_revision();
     // Work handed to a chat is being built, and stays so when its delivery completes.
     dispatch(
         module,
@@ -4182,6 +4193,7 @@ fn a_messages_status_follows_its_handling_until_someone_else_sets_it() {
         Some("session:chat"),
     );
     assert_eq!(status_of(&workspace, "page:chat").as_deref(), Some("doing"));
+    assert_eq!(status_revision(), initial_status_revision + 1);
     let ProjectWorkspaceReadValue::InboxDispatchOutbox { dispatches } = read_host(
         module,
         ProjectWorkspaceRead::InboxDispatchOutbox { limit: 8 },
@@ -4199,6 +4211,7 @@ fn a_messages_status_follows_its_handling_until_someone_else_sets_it() {
         },
     );
     assert_eq!(status_of(&workspace, "page:chat").as_deref(), Some("doing"));
+    assert_eq!(status_revision(), initial_status_revision + 1);
 
     // Closing the chat's work completes it, and the message still says which chat did it.
     set_state(
@@ -5517,6 +5530,29 @@ mod scheduled {
         let mut input = task_input();
         input.runbook_page_id = Some("page:runbook".into());
         setup(&workspace, input);
+        let source = page_parent(&workspace, "page:firing");
+        crate::database::DatabaseModule::new("profile-1", "library-1", &workspace.kernel)
+            .apply(
+                &host(),
+                ModuleApplyRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    operation_id: "place-runbook".into(),
+                    store_epoch: StoreEpoch("epoch-1".into()),
+                    intent: vec![DatabaseIntent::TransferPage {
+                        page_id: "page:runbook".into(),
+                        expected_parent_revision: 1,
+                        expected_active_membership_revision: 0,
+                        target:
+                            nodex_core_contracts::database::DatabaseTransferTarget::DataSource {
+                                data_source_id: source,
+                            },
+                    }],
+                },
+            )
+            .unwrap();
+        let runbook_status = status_of(&workspace, "page:runbook");
+        assert_eq!(runbook_status.as_deref(), Some("triage"));
+
         confirm(&workspace);
         let lease = claim(&workspace, "claim-execution");
         automation(
@@ -5548,6 +5584,7 @@ mod scheduled {
                 expected_revision: 1,
             },
         );
+        assert_eq!(status_of(&workspace, "page:runbook"), runbook_status);
         assert_eq!(
             count(
                 &workspace,

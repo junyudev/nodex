@@ -146,7 +146,7 @@ describe("Nodex per-Turn CLI connection", () => {
         const pageId = current.manifest.pageIdsByKey.sharedImageA!;
         const chat = await current.seed.createRelatedChat({
           projectId,
-          initialPageIds: [pageId],
+          relatedPageIds: [pageId],
           noThreadFallbackTitle: "Dashboard cold start",
         });
         const authority: NodexAgentTurnContext = {

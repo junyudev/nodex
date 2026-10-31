@@ -153,9 +153,7 @@ pub(super) fn create_session(
         let now = sqlite_now(connection)?;
         // Launch graduates a default draft like a native first send; the next New Chat ensures another.
         connection.execute("UPDATE project_sessions SET is_default_draft = 0, no_thread_fallback_title = ?1, updated_at = ?2 WHERE id = ?3", params![title, now, session_id])?;
-        for page_id in initial_page_ids {
-            connection.execute("INSERT OR IGNORE INTO project_session_pages(session_id, page_id, linked_at) VALUES (?1, ?2, ?3)", params![session_id, page_id, now])?;
-        }
+        super::page_chat::link_pages(connection, session_id, initial_page_ids, &now)?;
         now
     } else {
         prepare_session(
@@ -202,6 +200,7 @@ pub(super) fn create_session(
             .collect(),
         vec![project_session_scope(project_id)],
         project_id,
+        initial_page_ids,
         now,
     )
 }

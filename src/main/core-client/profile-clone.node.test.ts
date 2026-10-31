@@ -281,7 +281,7 @@ const verifyClone = async (binaryPath?: string) => {
     const pageId = Object.values(manifest.pageIdsByKey)[0]!;
     const link = await context.seed.createRelatedChat({
       projectId: manifest.projectId,
-      initialPageIds: [pageId],
+      relatedPageIds: [pageId],
       noThreadFallbackTitle: "Copied conversation",
       thread: {
         threadId: selectedId,

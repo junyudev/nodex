@@ -119,6 +119,7 @@ pub(super) fn acknowledge(
         Vec::new(),
         Vec::new(),
         None,
+        &[],
         now,
     )
 }

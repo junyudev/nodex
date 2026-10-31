@@ -16,7 +16,7 @@ use crate::inbox::{
 };
 use crate::{ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 54;
+pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 55;
 
 /// Host-only admission: the model chooses an opaque key, never a clock or operation envelope.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -1632,6 +1632,7 @@ pub enum ProjectWorkspaceIntent {
         session_id: String,
         project_id: Option<String>,
         title: String,
+        /// Explicit Page hand-offs: link atomically and advance Triage/Plan to in progress.
         initial_page_ids: Vec<String>,
     },
     /// Atomically binds an unstarted Session (or creates one), authorized Linked chats, and runtime launch identity.
@@ -1640,6 +1641,7 @@ pub enum ProjectWorkspaceIntent {
         session_id: String,
         project_id: Option<String>,
         title: String,
+        /// Explicit Page hand-offs: link atomically and advance Triage/Plan to in progress.
         initial_page_ids: Vec<String>,
         runtime_id: String,
         runtime_thread_id: String,
@@ -1669,6 +1671,7 @@ pub enum ProjectWorkspaceIntent {
         session_id: String,
         section_id: String,
         title: String,
+        /// Explicit Page hand-offs: link atomically and advance Triage/Plan to in progress.
         initial_page_ids: Vec<String>,
     },
     EnsureDefaultDraftSession {
@@ -2047,7 +2050,12 @@ pub enum ProjectSessionIntent {
     UnlinkThread {
         thread_id: String,
     },
+    /// Associates a related chat without changing the Page's workflow Status.
     LinkPage {
+        page_id: String,
+    },
+    /// Explicitly hands a Page to this chat, linking it and advancing only Triage/Plan.
+    HandOffPage {
         page_id: String,
     },
     UnlinkPage {

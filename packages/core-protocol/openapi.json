@@ -30196,7 +30196,8 @@
                     "type": "array",
                     "items": {
                       "type": "string"
-                    }
+                    },
+                    "description": "Explicit Page hand-offs: link atomically and advance Triage/Plan to in progress."
                   },
                   "kind": {
                     "type": "string",
@@ -30235,7 +30236,8 @@
                     "type": "array",
                     "items": {
                       "type": "string"
-                    }
+                    },
+                    "description": "Explicit Page hand-offs: link atomically and advance Triage/Plan to in progress."
                   },
                   "kind": {
                     "type": "string",
@@ -30358,7 +30360,8 @@
                     "type": "array",
                     "items": {
                       "type": "string"
-                    }
+                    },
+                    "description": "Explicit Page hand-offs: link atomically and advance Triage/Plan to in progress."
                   },
                   "kind": {
                     "type": "string",
@@ -38422,6 +38425,7 @@
           },
           {
             "type": "object",
+            "description": "Associates a related chat without changing the Page's workflow Status.",
             "required": [
               "page_id",
               "kind"
@@ -38431,6 +38435,25 @@
                 "type": "string",
                 "enum": [
                   "link_page"
+                ]
+              },
+              "page_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Explicitly hands a Page to this chat, linking it and advancing only Triage/Plan.",
+            "required": [
+              "page_id",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "hand_off_page"
                 ]
               },
               "page_id": {
@@ -41221,7 +41244,8 @@
                 "type": "array",
                 "items": {
                   "type": "string"
-                }
+                },
+                "description": "Explicit Page hand-offs: link atomically and advance Triage/Plan to in progress."
               },
               "kind": {
                 "type": "string",
@@ -41260,7 +41284,8 @@
                 "type": "array",
                 "items": {
                   "type": "string"
-                }
+                },
+                "description": "Explicit Page hand-offs: link atomically and advance Triage/Plan to in progress."
               },
               "kind": {
                 "type": "string",
@@ -41383,7 +41408,8 @@
                 "type": "array",
                 "items": {
                   "type": "string"
-                }
+                },
+                "description": "Explicit Page hand-offs: link atomically and advance Triage/Plan to in progress."
               },
               "kind": {
                 "type": "string",

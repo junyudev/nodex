@@ -834,6 +834,9 @@ it.effect("creates and mutates Page Chat relations through typed Core intents", 
     yield* workspace.linkPageToProjectSession(created.id, {
       pageId: "page:two",
     });
+    yield* workspace.handOffPageToProjectSession(created.id, {
+      pageId: "page:two",
+    });
     yield* workspace.unlinkPageFromProjectSession(created.id, {
       pageId: "page:one",
     });
@@ -854,6 +857,14 @@ it.effect("creates and mutates Page Chat relations through typed Core intents", 
           session_id: createdSessionId,
           intent: {
             kind: "link_page",
+            page_id: "page:two",
+          },
+        },
+        {
+          kind: "mutate_session",
+          session_id: createdSessionId,
+          intent: {
+            kind: "hand_off_page",
             page_id: "page:two",
           },
         },

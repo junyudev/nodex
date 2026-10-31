@@ -153,7 +153,7 @@ const materialize = async (
     if (!projectId) throw new Error(`sidebar/chat-status Project ${recipe.projectKey} is missing`);
     const chat = await port.createRelatedChat({
       projectId,
-      initialPageIds: [],
+      relatedPageIds: [],
       noThreadFallbackTitle: recipe.title,
       ...(recipe.thread
         ? {

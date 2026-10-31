@@ -204,6 +204,10 @@ export interface ProjectWorkspaceService {
     sessionId: string,
     input: PageChatLinkInput,
   ) => ProjectWorkspaceEffect<void>;
+  readonly handOffPageToProjectSession: (
+    sessionId: string,
+    input: PageChatLinkInput,
+  ) => ProjectWorkspaceEffect<void>;
   readonly unlinkPageFromProjectSession: (
     sessionId: string,
     input: PageChatLinkInput,
@@ -495,6 +499,11 @@ const sidebarSectionItemPlacementToCore = (
   };
 };
 
+type CorePageChatIntent = Extract<
+  Extract<ProjectWorkspaceApplyInput["intent"], { kind: "mutate_session" }>["intent"],
+  { page_id: string }
+>;
+
 export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | Scope.Scope> =
   Effect.gen(function* () {
     const core = yield* CoreModules;
@@ -528,6 +537,23 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
 
     const apply = (operation: string, intent: ProjectWorkspaceApplyInput["intent"]) =>
       applyWithId(operation, createOperationId(`workspace.${operation}`), intent);
+
+    const mutatePageChat = Effect.fn("ProjectWorkspace.mutatePageChat")(function* (
+      operation: string,
+      kind: CorePageChatIntent["kind"],
+      sessionId: string,
+      input: PageChatLinkInput,
+    ) {
+      const parsed = yield* evaluate(operation, () => {
+        if (sessionId.trim().length === 0) throw new Error("Project Session ID is required");
+        return PageChatLinkInputSchema.parse(input);
+      });
+      yield* apply(operation, {
+        kind: "mutate_session",
+        session_id: sessionId,
+        intent: { kind, page_id: parsed.pageId },
+      });
+    });
 
     const runOwned = <A, E>(operation: Effect.Effect<A, E>): Effect.Effect<A, E> =>
       Effect.acquireUseRelease(
@@ -1613,38 +1639,12 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
           } satisfies CreatePageForResult;
         });
       }),
-      linkPageToProjectSession: Effect.fn("ProjectWorkspace.linkPageToProjectSession")(
-        function* (sessionId, input) {
-          const parsed = yield* evaluate("page-chat.link", () => {
-            if (sessionId.trim().length === 0) throw new Error("Project Session ID is required");
-            return PageChatLinkInputSchema.parse(input);
-          });
-          yield* apply("page-chat.link", {
-            kind: "mutate_session",
-            session_id: sessionId,
-            intent: {
-              kind: "link_page",
-              page_id: parsed.pageId,
-            },
-          });
-        },
-      ),
-      unlinkPageFromProjectSession: Effect.fn("ProjectWorkspace.unlinkPageFromProjectSession")(
-        function* (sessionId, input) {
-          const parsed = yield* evaluate("page-chat.unlink", () => {
-            if (sessionId.trim().length === 0) throw new Error("Project Session ID is required");
-            return PageChatLinkInputSchema.parse(input);
-          });
-          yield* apply("page-chat.unlink", {
-            kind: "mutate_session",
-            session_id: sessionId,
-            intent: {
-              kind: "unlink_page",
-              page_id: parsed.pageId,
-            },
-          });
-        },
-      ),
+      linkPageToProjectSession: (sessionId, input) =>
+        mutatePageChat("page-chat.link", "link_page", sessionId, input),
+      handOffPageToProjectSession: (sessionId, input) =>
+        mutatePageChat("page-chat.hand-off", "hand_off_page", sessionId, input),
+      unlinkPageFromProjectSession: (sessionId, input) =>
+        mutatePageChat("page-chat.unlink", "unlink_page", sessionId, input),
       deleteProjectSession,
       reorderProjectSessions,
       setProjectSessionPinned,

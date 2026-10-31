@@ -78,6 +78,9 @@ presentation route rather than a visible View projection. `Open in` contains `Op
 in new chat` and `Send to chat…`. Open in new chat atomically creates an
 ordinary Project Session and its Linked chat edge before Window Scene
 presentation; a presentation failure preserves that durable Chat and relation.
+Both hand the Page to the chat, so a Page still in Triage or Plan moves to Doing
+in the same transaction; a Page already in Doing, Review, or Done keeps its
+stage.
 `Send to chat…` hands off to a Window-owned chooser after the context menu
 closes. The chooser retains the selected Page and remains usable if its source
 View unmounts. In a chat's Scene it lists that chat first, labeled `This chat`. Page image inputs follow the verified exact-version byte-snapshot contract
