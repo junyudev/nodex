@@ -110,7 +110,7 @@ export const PANEL_NEW_TAB_ACTIONS: PanelNewTabAction[] = [
     kind: "new_page",
     defaultPanelId: "right",
     label: "New page",
-    description: "Create a Page in Space",
+    description: "Create a Page where this Scene's work lives",
     Icon: NewPageIcon,
   },
   {

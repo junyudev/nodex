@@ -468,7 +468,9 @@ Scenes through which one app window presents a Project, a Session, the Library
 Inbox, or Library content;
 Terminal and Browser Modules own their live runtimes.
 It binds exactly one primary Database and has lifecycle `active | inactive |
-archived`. One Database has at most one active Project.
+archived`. One Database has at most one active Project. A Page created for the
+Project, from its Scene or one of its Sessions, becomes a row of that Database;
+a projectless Session's Page enters the Library root.
 
 Project settings expose the primary Database namespace prefix as the Project
 key. Project creation always enables that namespace; Project rename does not
@@ -504,7 +506,8 @@ The edge targets Project Session rather than Codex Thread because a Chat may be
 threadless and Thread attachment may change independently. It also never
 targets a Window Session, Scene, or surface. Open in new chat can create a
 Session and its initial Page edges atomically; explicit Send to chat and Page
-Run Section actions may add the same idempotent edge. Confirming an Inbox chat
+Run Section actions may add the same idempotent edge, and New page in a
+Session's Scene creates its Page and edge in one transaction. Confirming an Inbox chat
 dispatch links its message Pages to the receiving chat in the same transaction.
 Page navigation, Scenes, mentions, references, links, and prompt text do not
 infer one.

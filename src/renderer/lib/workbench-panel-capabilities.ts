@@ -6,7 +6,7 @@ import {
 
 /**
  * Panel actions are either surface kinds or intents that produce a surface: `side_chat`
- * forks the attached Thread, and `new_page` creates a Space Page and opens it.
+ * forks the attached Thread, and `new_page` creates a Page for the owner and opens it.
  */
 export type WorkbenchPanelActionKind =
   | Exclude<WorkbenchTabKind, "image_editor">

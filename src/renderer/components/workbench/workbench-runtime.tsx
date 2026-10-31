@@ -46,7 +46,10 @@ import { WorkbenchThreadSummaryHeader } from "./workbench-thread-summary-header"
 import { ToolbarIconButton, WindowNavigationToolbarButton } from "./workbench-panel-controls";
 import { ContentIssuesControl } from "@/components/shared/content-issues-control";
 import { contentEditIssues, type ContentEditLocation } from "@/lib/content-edit-issues";
-import type { ContentRoutingIdentity } from "../../../shared/content-routing-context";
+import type {
+  ContentRoutingContext,
+  ContentRoutingIdentity,
+} from "../../../shared/content-routing-context";
 import { ContentRecoveryObserver } from "@/features/document-recovery/recovery-entry";
 import {
   PageStageSessionTab,
@@ -333,7 +336,8 @@ import {
   PANEL_NEW_TAB_ACTIONS,
   type PanelNewTabActionKind,
 } from "@/lib/workbench-panel-actions";
-import { useLibraryCreateCommands } from "../library/library-new-menu";
+import { requestPageTitleFocus } from "@/lib/page-title-focus-intent";
+import { createPageFor, type CreatePageForResult } from "@/lib/workspace-page-create";
 import type { PanelDestination } from "./panel-destination-picker-model";
 import { WorkbenchBrowserSidebarPanel } from "./workbench-new-tab-page";
 import {
@@ -2101,6 +2105,8 @@ export function WorkbenchRuntime({
       target: LibraryRouteTarget,
       options: {
         readonly owner?: WorkbenchSceneOwner;
+        /** The Project presentation a Page opens in; Library content opens as Space content. */
+        readonly pageRoutingContext?: ContentRoutingContext;
         readonly titleSnapshot?: string;
         readonly placement?: PresentWorkbenchPanelSurfaceInput["target"]["placement"];
         readonly targetLeafId?: string;
@@ -2115,7 +2121,7 @@ export function WorkbenchRuntime({
             ? {
                 kind: "page_stage",
                 config: {
-                  routingContext: { kind: "library" },
+                  routingContext: options.pageRoutingContext ?? libraryContentRoute,
                   pageId: target.pageId,
                   ...(options.titleSnapshot ? { titleSnapshot: options.titleSnapshot } : {}),
                 },
@@ -2180,10 +2186,12 @@ export function WorkbenchRuntime({
     },
     [presentLibraryTarget],
   );
-  const libraryCreateCommands = useLibraryCreateCommands();
-  const { createPage: createSpacePage } = libraryCreateCommands;
-  /** Creates an Untitled Space Page and opens it in the owner's panel group, title first. */
-  const openNewSpacePage = useCallback(
+  /**
+   * Creates an Untitled Page where the owner's work lives and opens it in the owner's panel
+   * group, title first: a Project's Pages join its primary Database, a projectless chat's join
+   * Space, and a chat's Page is linked to it.
+   */
+  const openNewPage = useCallback(
     async (
       owner: WorkbenchSceneOwner,
       placement: {
@@ -2192,18 +2200,37 @@ export function WorkbenchRuntime({
         readonly isCurrent?: () => boolean;
       },
     ): Promise<boolean> => {
-      const target = await createSpacePage();
-      // The Page stays in Space when the user moved on while it was being created.
-      if (!target || placement.isCurrent?.() === false) return false;
-      return await presentLibraryTarget(target, {
-        owner,
-        titleSnapshot: "Untitled",
-        targetPanelId: placement.panelId,
-        ...(placement.leafId ? { targetLeafId: placement.leafId } : {}),
-        ...(placement.isCurrent ? { isCurrent: placement.isCurrent } : {}),
-      });
+      if (owner.kind !== "project" && owner.kind !== "session") return false;
+      let created: CreatePageForResult;
+      try {
+        created = await createPageFor({
+          for:
+            owner.kind === "project"
+              ? { kind: "project", projectId: owner.projectId }
+              : { kind: "session", sessionId: owner.sessionId },
+        });
+      } catch (error) {
+        toast.danger(error instanceof Error ? error.message : "Could not create Page");
+        return false;
+      }
+      // The Page stays where it was created when the user moved on in the meantime.
+      if (placement.isCurrent?.() === false) return false;
+      requestPageTitleFocus(created.pageId);
+      return await presentLibraryTarget(
+        { kind: "page", pageId: created.pageId },
+        {
+          owner,
+          pageRoutingContext: created.projectId
+            ? projectContentRoute(created.projectId)
+            : libraryContentRoute,
+          titleSnapshot: "Untitled",
+          targetPanelId: placement.panelId,
+          ...(placement.leafId ? { targetLeafId: placement.leafId } : {}),
+          ...(placement.isCurrent ? { isCurrent: placement.isCurrent } : {}),
+        },
+      );
     },
-    [createSpacePage, presentLibraryTarget],
+    [presentLibraryTarget],
   );
 
   useRegisterFileLocationNavigator(presentLibraryTarget);
@@ -2461,7 +2488,7 @@ export function WorkbenchRuntime({
     ): Promise<boolean> => {
       const panelOptions = { panelId: placement.panelId, targetLeafId: placement.leafId };
       if (action === "new_page") {
-        return await openNewSpacePage({ kind: "project", projectId }, placement);
+        return await openNewPage({ kind: "project", projectId }, placement);
       }
       if (action === "canvas_stage") {
         return await openProjectSceneCanvas(projectId, primaryCanvasBlockId(projectId), "Canvas", {
@@ -2489,7 +2516,7 @@ export function WorkbenchRuntime({
       );
     },
     [
-      openNewSpacePage,
+      openNewPage,
       openProjectSceneCanvas,
       openProjectSceneManualSurface,
       presentProjectSceneSurface,
@@ -2816,7 +2843,7 @@ export function WorkbenchRuntime({
     commandKeymapState,
     openNewPage: async (placement) =>
       activeSession
-        ? await openNewSpacePage({ kind: "session", sessionId: activeSession.id }, placement)
+        ? await openNewPage({ kind: "session", sessionId: activeSession.id }, placement)
         : false,
     focusedPanelGroupRef,
     panelTabShortcutStateRef,
@@ -3359,7 +3386,7 @@ export function WorkbenchRuntime({
       { owner, panelId, leafId, isCurrent }: WorkbenchNewTabPlacement,
     ) => {
       if (action === "new_page") {
-        return await openNewSpacePage(owner, { panelId, leafId, isCurrent });
+        return await openNewPage(owner, { panelId, leafId, isCurrent });
       }
       if (owner.kind === "project") {
         return await openProjectScenePanelAction(owner.projectId, action, { panelId, leafId });
@@ -3373,7 +3400,7 @@ export function WorkbenchRuntime({
       activeSession?.id,
       createSessionManualTab,
       dispatchPanelAction,
-      openNewSpacePage,
+      openNewPage,
       openProjectScenePanelAction,
     ],
   );

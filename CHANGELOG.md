@@ -8,6 +8,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- New page in a New tab now creates the page in its Project's database instead of Space, where it gets a key and a status and sits with the Project's other pages. A page made from a chat is also linked to that chat, so the page keeps a way back to the chat after its tab closes. Chats without a Project still put new pages in Space.
 - Editing an Inbox message no longer asks for a new suggestion every time you pause. The suggestion stays beside the message, marked as written before it changed, and you can still confirm it or choose Suggest again. Opening, moving or renaming a message's Page leaves its suggestion as it was.
 - Inbox suggestions read each message whole: its formatting, links and lists as you wrote them, and its images as images. A screenshot with a single line of text is understood for what it shows, and a chat started from the Inbox receives the message the same way.
 - Images in a message you send to the Inbox now come first on its Page, matching how the stream shows them above the text.

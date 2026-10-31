@@ -1,6 +1,13 @@
 import type { WorkbenchSubmitPresentation } from "../../../shared/nodex-app-tools/workbench";
 import { materializePagePromptInput } from "@/lib/page-prompt-input";
-import { useCallback, useMemo, type MutableRefObject, type ReactNode, type RefObject } from "react";
+import {
+  useCallback,
+  useMemo,
+  useState,
+  type MutableRefObject,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { createUuidV7 } from "../../../shared/uuid-v7";
 import { OwnedBlockDocumentBoundary } from "@/components/block-documents/owned-block-document-boundary";
@@ -32,6 +39,7 @@ import { pageStageSemanticValues, type PageStageSemanticValues } from "@/lib/pag
 import { requestPageBlockFocus } from "@/lib/page-block-focus-intents";
 import { fetchPageDetail, usePageDetail } from "@/lib/page-detail-store";
 import { usePublishCanonicalPageTitle } from "@/lib/page-title-projection-context";
+import { consumePageTitleFocus } from "@/lib/page-title-focus-intent";
 import { projectContentRoute } from "../../../shared/content-routing-context";
 import type {
   CodexPromptInput,
@@ -193,6 +201,8 @@ export function PageStageSessionTab({
   if (tab.config.routingContext.kind !== "project")
     throw new Error("Project Page Stage requires a Project route");
   const pageAccessProjectId = tab.config.routingContext.projectId;
+  // A Page created a moment ago opens ready to be named; reopening one never moves focus.
+  const [focusTitle] = useState(() => consumePageTitleFocus(tab.config.pageId));
   const workbenchOwner = useWorkbenchWindowOwner();
   const launchAgentRuntimeSession = useAgentRuntimeSessionLaunch();
   const queryClient = useQueryClient();
@@ -461,6 +471,7 @@ export function PageStageSessionTab({
             retainEditorSession={tab.preview !== true}
             documentAuthority={documentAuthority}
             page={page}
+            autoFocusTitle={focusTitle}
             projectName={project.name}
             projectWorkspacePath={projectWorkspaceRootOrNull(project)}
             closeRef={closeRef as MutableRefObject<(() => Promise<void>) | null>}
