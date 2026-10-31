@@ -1,0 +1,63 @@
+docs/product-specs/agent-runtime-behavior.md
+  s_03d9ba21390430::t_04d3296f35db2d 267
+docs/product-specs/command-palette-behavior.md
+  s_03d9ba21390430::t_44eda8ba85147b 50,69
+docs/product-specs/new-chat-home-behavior.md
+  s_03d9ba21390430::t_8a36c5105f325d 24-29
+docs/product-specs/settings-route-behavior.md
+  s_03d9ba21390430::t_01d5d43a0e4928 49-50
+src/renderer/components/workbench/command-palette-scope.test.tsx
+  s_03d9ba21390430::t_6e1a73b77b7543 91
+src/renderer/components/workbench/command-palette-surface.tsx
+  s_03d9ba21390430::t_f0e5fa440be572 219,238,240,262
+src/renderer/components/workbench/command-palette.browser.test.tsx
+  s_03d9ba21390430::t_622206f7ba2f30 100
+src/renderer/components/workbench/command-palette.test.tsx
+  s_03d9ba21390430::t_5a29b13d0b5ca7 37
+src/renderer/components/workbench/command-palette.tsx
+  s_03d9ba21390430::t_6ff2530b06754f 58
+src/renderer/components/workbench/workbench-command-palette-host.tsx
+  s_03d9ba21390430::t_19af1a1cec6556 176
+src/renderer/components/workbench/workbench-settings-route-shell.tsx
+  s_03d9ba21390430::t_f6ba3e6d66391d 298,338
+src/renderer/components/workbench/workbench-testkit/workbench-shell-harness.tsx
+  s_03d9ba21390430::t_8484eadf102523 2040
+src/renderer/features/local-conversation/projection/build-thread-body-model.ts
+  s_03d9ba21390430::t_4ebe6c449f5e97 7,22,208
+src/renderer/features/local-conversation/thread-stage-types.ts
+  s_03d9ba21390430::t_e0948102ed1104 372
+src/renderer/features/local-conversation/view/composer/composer-add-context-menu.tsx
+  s_03d9ba21390430::t_ee1e2ff50e11f1 920,1232,1487
+src/renderer/features/local-conversation/view/composer/local-conversation-thread-composer.tsx
+  s_03d9ba21390430::t_f998a99a767735 1231,1978,2154,2312,2836-2837,2848-2855,2878,3826,3913
+src/renderer/features/local-conversation/view/local-conversation-footer.test.tsx
+  s_03d9ba21390430::t_23913e2bffeed5 10
+src/renderer/features/local-conversation/view/local-conversation-thread-body.test.tsx
+  s_03d9ba21390430::t_9aa4055321a7c2 1388-1390
+src/renderer/lib/command-palette-commands.ts
+  s_03d9ba21390430::t_8916769879a6d4 136
+src/renderer/lib/command-palette-sections.ts
+  s_03d9ba21390430::t_34f0345a53df4e 185
+src/renderer/lib/new-chat-start-in-selector.ts
+  s_03d9ba21390430::t_6f7c14b4c98572 5
+src/renderer/lib/workspace-search-context.node.test.ts
+  s_03d9ba21390430::t_2b2e9d35f10d05 27
+src/renderer/lib/workspace-search-context.ts
+  s_03d9ba21390430::t_e2571b38eb3771 15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0c858a84585906760c6ba3db9937efc96bee5bc9",
+  "prompts": {},
+  "sessions": {
+    "s_03d9ba21390430": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19154-03f8-7c03-922f-31e2c81efe43",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
