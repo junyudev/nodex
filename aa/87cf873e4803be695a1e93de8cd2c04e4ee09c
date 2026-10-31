@@ -1,0 +1,21 @@
+src/main/agent-runtime/AgentRuntimeClaudeUsage.ts
+  s_a511629060f414::t_5a3f16a96654fc 81,83
+src/main/agent-runtime/AgentRuntimeClaudeUsage.node.test.ts
+  s_a511629060f414::t_fb2ba66fc862d4 163-171
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "aa87cf873e4803be695a1e93de8cd2c04e4ee09c",
+  "prompts": {},
+  "sessions": {
+    "s_a511629060f414": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8c3b5423-b1a8-4408-9e0b-0c21625f459b",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
