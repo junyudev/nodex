@@ -94,6 +94,7 @@ const fixture = (
     const broadcasts: unknown[] = [];
     const followerRequests: unknown[] = [];
     const events: unknown[] = [];
+    const capturedLocalExecution: boolean[] = [];
     const manager = {
       hostId,
       get generation() {
@@ -188,7 +189,10 @@ const fixture = (
       }),
       Effect.provideService(CodexInputAssets, {
         retainPrepared: (_thread, _id, prepared) => Effect.succeed(prepared),
-        retainCaptured: (_thread, _id, input) => Effect.succeed(input),
+        retainCaptured: (_thread, _id, input, localExecution) => {
+          capturedLocalExecution.push(localExecution);
+          return Effect.succeed(input);
+        },
       }),
       Effect.provideService(CodexTurnPresentation, {} as CodexTurnPresentation["Service"]),
       Effect.provideService(CodexApplicationEventHub, {
@@ -204,6 +208,7 @@ const fixture = (
       broadcasts,
       followerRequests,
       events,
+      capturedLocalExecution,
       state: () => state,
       native: () => native,
       setDeleteFails: (next: boolean) => {
@@ -781,6 +786,27 @@ it.effect(
       }),
     ).pipe(Effect.provide(callbackLayer)),
 );
+
+for (const hostId of ["local", "remote"] as const) {
+  it.effect(`captures queued images on their ${hostId} execution host`, () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const f = yield* fixture({}, { hostId });
+        const images = [{ source: "/execution-host/screenshot.png", caption: "Screenshot" }];
+        const captured = yield* f.service.prepareMessage({
+          threadId: "thread",
+          prompt: "Inspect",
+          promptInput: { text: "Inspect", images },
+        });
+        assert.deepEqual(f.capturedLocalExecution, [hostId === "local"]);
+        assert.strictEqual(captured.submissionOptions?.executionHostId, hostId);
+        yield* f.service.acceptFromFollower("thread", [captured]);
+        const restored = JSON.parse(JSON.stringify(f.state())) as CodexQueuedMessageState;
+        assert.deepEqual(queuedMessagePromptInput(restored.thread![0]!).images, images);
+      }),
+    ).pipe(Effect.provide(callbackLayer)),
+  );
+}
 
 it.effect("retains explicit visualization annotations across queue persistence and editing", () =>
   Effect.scoped(

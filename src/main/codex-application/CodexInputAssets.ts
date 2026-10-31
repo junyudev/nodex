@@ -28,6 +28,7 @@ const MAX_TOTAL_BYTES = 512 * 1024 * 1024;
 interface FreezeContext {
   readonly stagingRootPath: string;
   readonly sourceAssetsRootPath: string;
+  readonly localExecution: boolean;
   readonly references: Map<string, QueuedFollowUpAssetReference>;
 }
 
@@ -59,6 +60,7 @@ export class CodexInputAssets extends Context.Service<
       threadId: string,
       submissionId: string,
       input: CodexPromptInput,
+      localExecution: boolean,
     ) => Effect.Effect<CodexPromptInput, CodexInputAssetsError>;
   }
 >()("nodex/main/codex-application/CodexInputAssets") {}
@@ -141,6 +143,8 @@ function materializeSource(
   const localPath = normalized.startsWith("file:") ? fileURLToPath(normalized) : normalized;
   if (!path.isAbsolute(localPath))
     throw new Error("Queued payload contains a non-portable relative file source");
+  // Absolute paths belong to the execution host, even if the same path exists here.
+  if (!context.localExecution) return localPath;
   return publishPortableAsset(
     context,
     readBoundedFile(localPath),
@@ -230,11 +234,7 @@ function freezePromptInput(input: CodexPromptInput, context: FreezeContext): Cod
   };
 }
 
-function stagePreparedInput(
-  prepared: CodexPreparedPrompt,
-  context: FreezeContext,
-  localExecution: boolean,
-) {
+function stagePreparedInput(prepared: CodexPreparedPrompt, context: FreezeContext) {
   const replacements = new Map<string, string>();
   const within = (root: string, file: string) => {
     const relative = path.relative(root, file);
@@ -246,7 +246,7 @@ function stagePreparedInput(
     );
   };
   const attachment = (value: CodexLiveFileAttachment): CodexLiveFileAttachment => {
-    if (!localExecution) return value;
+    if (!context.localExecution) return value;
     const source = value.fsPath || value.path;
     const managed = parseAssetSource(source);
     if (
@@ -275,7 +275,7 @@ function stagePreparedInput(
     if ("fileId" in value) return value;
     const source =
       "path" in value
-        ? localExecution
+        ? context.localExecution
           ? value.path
           : null
         : value.url.startsWith("data:")
@@ -356,15 +356,12 @@ export function makeCodexInputAssets(input: {
     retainPrepared: Effect.fn("CodexInputAssets.retainPrepared")(
       function* (threadId, submissionId, prepared, localExecution) {
         const captured = yield* attempt("retain", () =>
-          stagePreparedInput(
-            prepared,
-            {
-              stagingRootPath: root,
-              sourceAssetsRootPath: input.sourceAssetsRootPath,
-              references: new Map(),
-            },
+          stagePreparedInput(prepared, {
+            stagingRootPath: root,
+            sourceAssetsRootPath: input.sourceAssetsRootPath,
             localExecution,
-          ),
+            references: new Map(),
+          }),
         );
         if (captured.references.length === 0) return captured.prepared;
         const operationId = `thread-input:${sha256(Buffer.from(JSON.stringify([threadId, submissionId])))}`;
@@ -391,11 +388,12 @@ export function makeCodexInputAssets(input: {
       },
       Effect.mapError((cause) => new CodexInputAssetsError({ operation: "retain", cause })),
     ),
-    retainCaptured: (threadId, submissionId, promptInput) =>
+    retainCaptured: (threadId, submissionId, promptInput, localExecution) =>
       Effect.gen(function* () {
         const context: FreezeContext = {
           stagingRootPath: root,
           sourceAssetsRootPath: input.sourceAssetsRootPath,
+          localExecution,
           references: new Map(),
         };
         const captured = yield* attempt("retain", () => freezePromptInput(promptInput, context));

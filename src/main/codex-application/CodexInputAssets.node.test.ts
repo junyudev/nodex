@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { pathToFileURL } from "node:url";
 import { afterAll } from "vite-plus/test";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -11,7 +12,7 @@ import { coreRuntimeError } from "../core-runtime/CoreRuntimeError";
 import { createFakeCoreHandshake, FakeCoreClient } from "../core-client/testing/fake-core-client";
 import type { CoreGenerationClient } from "../core-client/core-generation-client";
 import type { CoreClientPort } from "../core-client/types";
-import type { CodexPreparedPrompt } from "../../shared/types";
+import type { CodexPreparedPrompt, CodexPromptInput } from "../../shared/types";
 import { makeCodexInputAssets } from "./CodexInputAssets";
 
 const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-queue-payload-"));
@@ -81,11 +82,16 @@ it.effect(
       const localFile = path.join(fixtureRoot, "notes.txt");
       fs.writeFileSync(localFile, "captured notes");
       const { store, blobs, retained } = fixture();
-      const captured = yield* store.retainCaptured("thread-1", "message-1", {
-        text: "Inspect",
-        images: [{ source: "data:image/png;base64,cXVldWUtaW1hZ2U=" }],
-        fileAttachments: [{ label: "notes", path: localFile, fsPath: localFile }],
-      });
+      const captured = yield* store.retainCaptured(
+        "thread-1",
+        "message-1",
+        {
+          text: "Inspect",
+          images: [{ source: "data:image/png;base64,cXVldWUtaW1hZ2U=" }],
+          fileAttachments: [{ label: "notes", path: localFile, fsPath: localFile }],
+        },
+        true,
+      );
       assert.strictEqual(captured.text, "Inspect");
       assert.strictEqual(retained[0]?.intent.kind, "retain_thread_assets");
       assert.strictEqual(blobs.size, 2);
@@ -175,6 +181,37 @@ it.effect("never probes a remote host's local media path", () =>
   }),
 );
 
+it.effect("captures inline queue images without reading remote absolute paths or file URLs", () =>
+  Effect.gen(function* () {
+    const { store, retained, blobs } = fixture();
+    const collidingPath = path.join(fixtureRoot, "remote-image.png");
+    fs.writeFileSync(collidingPath, "private local bytes");
+    const input: CodexPromptInput = {
+      text: "Inspect",
+      images: [
+        { source: collidingPath, caption: "Remote image" },
+        { source: pathToFileURL(collidingPath).href },
+        { source: path.join(fixtureRoot, "remote-only.png") },
+        { source: "data:image/png;base64,cXVldWUtaW1hZ2U=" },
+      ],
+      fileAttachments: [{ label: "remote image", path: collidingPath, fsPath: collidingPath }],
+    };
+    const captured = yield* store.retainCaptured("thread-1", "remote-queue", input, false);
+    assert.deepStrictEqual(captured.images?.slice(0, 3), [
+      { source: collidingPath, caption: "Remote image" },
+      { source: collidingPath },
+      { source: path.join(fixtureRoot, "remote-only.png") },
+    ]);
+    assert.deepStrictEqual(captured.fileAttachments, input.fileAttachments);
+    assert.match(captured.images![3]!.source, /^nodex:\/\/assets\//u);
+    assert.strictEqual(retained.length, 1);
+    assert.deepStrictEqual(
+      [...blobs.values()].map((bytes) => bytes.toString("utf8")),
+      ["queue-image"],
+    );
+  }),
+);
+
 it.effect("retains hosted image identity without creating a local Blob", () =>
   Effect.gen(function* () {
     const { store, retained, blobs } = fixture();
@@ -182,10 +219,15 @@ it.effect("retains hosted image identity without creating a local Blob", () =>
     prepared.inputItems = [{ type: "image", fileId: "file-123", detail: "original" }];
     const captured = yield* store.retainPrepared("thread-1", "hosted-input", prepared, true);
     assert.deepStrictEqual(captured, prepared);
-    const prompt = yield* store.retainCaptured("thread-1", "hosted-queue", {
-      text: "Inspect",
-      images: [{ source: "file-service://file-123" }],
-    });
+    const prompt = yield* store.retainCaptured(
+      "thread-1",
+      "hosted-queue",
+      {
+        text: "Inspect",
+        images: [{ source: "file-service://file-123" }],
+      },
+      true,
+    );
     assert.deepStrictEqual(prompt.images, [{ source: "file-service://file-123" }]);
     assert.strictEqual(retained.length, 0);
     assert.strictEqual(blobs.size, 0);

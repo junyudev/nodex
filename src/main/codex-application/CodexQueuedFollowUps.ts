@@ -34,6 +34,7 @@ import {
 } from "../../shared/codex-queued-message";
 
 import { CoreModules } from "../core-runtime/CoreModules";
+import { CODEX_APP_LOCAL_HOST_ID } from "../codex/codex-app-meta-thread-tools";
 import { createOperationId } from "../core-runtime/operation-identity";
 import { ScopedCallbackRuntime } from "../app/ScopedCallbackRuntime";
 import { CodexGateway, CodexThreadHostResolver } from "../codex-runtime/CodexGateway";
@@ -510,6 +511,7 @@ export const make = Effect.gen(function* () {
         input.threadId,
         id,
         input.promptInput ?? { text: input.prompt },
+        hostId === CODEX_APP_LOCAL_HOST_ID,
       );
       const sourceMessage = input.untrustedAppMessage ?? prompt.untrustedAppMessage;
       const untrustedAppMessage = sourceMessage
