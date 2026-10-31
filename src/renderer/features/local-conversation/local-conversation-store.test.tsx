@@ -2606,6 +2606,58 @@ describe("local-conversation-store", () => {
     }
   });
 
+  test("chats without a loaded conversation still observe their composer intent", async () => {
+    invokeCalls = [];
+    invokeRecords = [];
+    hostMessageListener = null;
+    threadListByProject = {};
+    const {
+      __resetLocalConversationStoreForTests,
+      LocalConversationProvider,
+      consumeLocalConversationComposerIntent,
+      setLocalConversationComposerIntent,
+      useComposerIntent,
+    } = await import("./local-conversation-store");
+    const { createMaitaiStore, MaitaiProvider } = await import("../../lib/maitai");
+    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+
+    // An Agent Runtime chat owns its own conversation; this manager never loads one for it.
+    const threadId = "nodex:thread:runtime-chat";
+    function Probe() {
+      return createElement("output", null, useComposerIntent(threadId)?.prompt ?? "none");
+    }
+    const view = render(
+      createElement(MaitaiProvider, {
+        store: createMaitaiStore(),
+        children: createElement(
+          LocalConversationProvider,
+          null,
+          createElement(NativeFixtureRegistration),
+          createElement(Probe),
+        ),
+      }),
+    );
+    try {
+      await settleAsyncRender();
+      expect(view.container.querySelector("output")?.textContent).toBe("none");
+
+      await act(async () => {
+        setLocalConversationComposerIntent(threadId, { prompt: "From the Page", focusNonce: 1 });
+        await Promise.resolve();
+      });
+      expect(view.container.querySelector("output")?.textContent).toBe("From the Page");
+
+      await act(async () => {
+        consumeLocalConversationComposerIntent(threadId, 1);
+        await Promise.resolve();
+      });
+      expect(view.container.querySelector("output")?.textContent).toBe("none");
+    } finally {
+      view.unmount();
+      resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+    }
+  });
+
   test("control actions follow the conversation owner host instead of the default manager", async () => {
     invokeCalls = [];
     invokeRecords = [];

@@ -2205,6 +2205,7 @@ export class CodexAppServerManager {
     }
   >();
   private readonly composerIntentsByThread = new Map<string, CodexComposerIntent>();
+  private readonly composerIntentCallbacks = new Map<string, Set<StoreListener>>();
 
   private readonly threadStartProgressByTarget = new Map<string, CodexThreadStartProgressState>();
   private readonly threadTitlesById = new Map<string, string>();
@@ -3555,6 +3556,7 @@ export class CodexAppServerManager {
     this.conversationRemovedCallbacks.clear();
     this.attachmentStateByThreadId.clear();
     this.attachmentCallbacks.clear();
+    this.composerIntentCallbacks.clear();
     this.interruptedTurnResumesInFlightByThreadId.clear();
     this.failedTurnContinuationsInFlightByThreadId.clear();
     this.ownerHiddenLifecycleItemTypesByConversationId.clear();
@@ -3617,6 +3619,23 @@ export class CodexAppServerManager {
 
   readComposerIntent(threadId: string): CodexComposerIntent | null {
     return this.composerIntentsByThread.get(threadId) ?? null;
+  }
+
+  /**
+   * A composer intent belongs to the chat's draft, not to a conversation record this manager
+   * holds, so chats of every runtime observe it without a loaded conversation.
+   */
+  subscribeComposerIntent(threadId: string, listener: StoreListener): () => void {
+    const listeners = getOrCreateListenerSet(this.composerIntentCallbacks, threadId);
+    const unsubscribe = subscribeSet(listeners, listener);
+    return () => {
+      unsubscribe();
+      cleanupListenerSet(this.composerIntentCallbacks, threadId);
+    };
+  }
+
+  private notifyComposerIntentCallbacks(threadId: string): void {
+    for (const listener of this.composerIntentCallbacks.get(threadId) ?? []) listener();
   }
 
   readThreadStartProgress(
@@ -8061,7 +8080,7 @@ export class CodexAppServerManager {
     }
 
     this.composerIntentsByThread.set(threadId, composerIntent);
-    this.notifyConversationCallbacks(threadId);
+    this.notifyComposerIntentCallbacks(threadId);
   }
 
   consumeComposerIntent(threadId: string, focusNonce: number): void {
@@ -8071,7 +8090,7 @@ export class CodexAppServerManager {
     }
 
     this.composerIntentsByThread.delete(threadId);
-    this.notifyConversationCallbacks(threadId);
+    this.notifyComposerIntentCallbacks(threadId);
   }
 
   async removePlanImplementationRequest(threadId: string, turnId: string): Promise<boolean> {
@@ -9691,12 +9710,7 @@ export function useThreadSummarySubset(
 export function useComposerIntent(threadId: string | null): CodexComposerIntent | null {
   const manager = useCodexAppServerManagerForConversationId(threadId);
   return useExternalSelector(
-    (listener) =>
-      threadId
-        ? manager.addConversationCallback(threadId, () => {
-            listener();
-          })
-        : () => {},
+    (listener) => (threadId ? manager.subscribeComposerIntent(threadId, listener) : () => {}),
     () => (threadId ? manager.readComposerIntent(threadId) : null),
   );
 }
