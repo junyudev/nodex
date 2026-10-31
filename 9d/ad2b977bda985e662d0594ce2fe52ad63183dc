@@ -1,0 +1,23 @@
+docs/product-specs/agent-runtime-behavior.md
+  s_b5c41a13e9511c::t_b7661a10b03e02 747-748
+packages/agent-runtime/src/mcp/ToolOperation.test.ts
+  s_b5c41a13e9511c::t_fb2c587c2a896d 59-80
+packages/agent-runtime/src/mcp/ToolOperation.ts
+  s_b5c41a13e9511c::t_045cd7f9ada4a1 51-53,56-62
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9dad2b977bda985e662d0594ce2fe52ad63183dc",
+  "prompts": {},
+  "sessions": {
+    "s_b5c41a13e9511c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1919a-f51e-7522-8c2b-1ee25c262243",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
