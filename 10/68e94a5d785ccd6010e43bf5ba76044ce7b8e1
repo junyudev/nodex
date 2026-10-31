@@ -1,0 +1,39 @@
+crates/nodex-core/src/workspace/inbox_content.rs
+  s_43aa7cbfb833ed::t_ddf9902883222f 128,130,133,135
+  s_43aa7cbfb833ed::t_06b3a7772f9723 214-217
+docs/product-specs/inbox-behavior.md
+  s_43aa7cbfb833ed::t_fabbdb58d9391e 311
+  s_43aa7cbfb833ed::t_058c415d622986 313-314
+  s_43aa7cbfb833ed::t_f2e26fa0ec7348 312
+  s_43aa7cbfb833ed::t_ddf9902883222f 310,315
+crates/nodex-core/src/workspace/inbox_tests.rs
+  s_43aa7cbfb833ed::t_36f3593e3bbfe1 2351-2352,6483,6487,6670,6791,6794,6896
+src/main/core-client/inbox-suggestion-spend-scenario.node.test.ts
+  s_43aa7cbfb833ed::t_c8c31b9a8637bb 63
+src/main/inbox-application/InboxDispatchRuntime.ts
+  s_43aa7cbfb833ed::t_1a61537fa271af 86,93
+src/main/inbox-application/InboxRuntime.node.test.ts
+  s_43aa7cbfb833ed::t_a57cb5720438ad 484,488,492,497,532,705,736,748,989,995,1019-1022,1034,1058,1075,1122,1127
+src/main/inbox-application/inbox-suggestions.node.test.ts
+  s_43aa7cbfb833ed::t_4023d8b8fb0984 341,350,365-367
+src/main/inbox-application/inbox-suggestions.ts
+  s_43aa7cbfb833ed::t_ef2e80146dcafe 204,207,249
+tests/e2e/paid-agent-smoke.spec.ts
+  s_43aa7cbfb833ed::t_00f1a03de9c794 879-883
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1068e94a5d785ccd6010e43bf5ba76044ce7b8e1",
+  "prompts": {},
+  "sessions": {
+    "s_43aa7cbfb833ed": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19034-bca6-7c90-82c1-62a60e70968b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
