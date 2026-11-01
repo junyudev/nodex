@@ -1,0 +1,133 @@
+.gitattributes
+  s_96ff75d3bdf36b::t_770dcd1ef971a7 1-2
+.github/actions/setup-windows-rust/action.yml
+  s_9ad21099c264dd::t_52c5bd1b6b0766 1-33
+.github/workflows/windows.yml
+  s_9ad21099c264dd::t_385986be83d554 7-25,38,53,55,57,61,81-130
+docs/CI.md
+  s_96ff75d3bdf36b::t_6b513839ae76b8 43-69
+docs/development.md
+  s_96ff75d3bdf36b::t_11a84f67b5bd22 89-141,655,679
+docs/release-windows.md
+  s_96ff75d3bdf36b::t_d5783bfc94037b 1-107
+electron-builder.yml
+  s_9ad21099c264dd::t_c57d95ac5387a2 28,65-104,155-177,179-187
+package.json
+  s_9ad21099c264dd::t_fcf1718433e7ce 24-28,79-80,85-86,88,116,119-125,169-172,178,182,195-204
+resources/agent-runtime/codex-app-server.lock.json
+  s_9ad21099c264dd::t_58a0e5aa95e109 32-81,88-137
+resources/agent-runtime/node-runtime.lock.json
+  s_9ad21099c264dd::t_ae19db422a3850 1-15
+resources/third-party/node/LICENSE
+  s_9ad21099c264dd::t_0845a26a1a58d4 1-2946
+scripts/agent-runtime-native.ts
+  s_3dc0b7647fcf0b::t_630edde73323e3 18-19,48-56,61-63,78-80,184-188,225-245,247,249-282
+scripts/agent-runtime-release-lock.test.ts
+  s_3dc0b7647fcf0b::t_12c378f3f299b6 34-47
+scripts/build-agent-runtime.ts
+  s_9ad21099c264dd::t_82ace1638ea5d8 28,109,111
+scripts/build-native-bridge.test.ts
+  s_9ad21099c264dd::t_66d1177884d49e 210-221,223-234,236-249,251-265
+scripts/build-sparkle-bridge.ts
+  s_9ad21099c264dd::t_e7aa9fcb0ee0ea 273
+scripts/ci/probe-windows-installer.ts
+  s_3dc0b7647fcf0b::t_c6bf2b465dedd8 1-233
+scripts/desktop-build-target.ts
+  s_3dc0b7647fcf0b::t_785dc8ef667a7d 1-53
+scripts/desktop-build.ts
+  s_3dc0b7647fcf0b::t_5dcc095f1fa2b6 1-141
+scripts/dev-launcher.test.ts
+  s_96ff75d3bdf36b::t_16e1388977aa49 5,155-158,160-161,172-173,335,489-503
+scripts/dev-launcher.ts
+  s_3dc0b7647fcf0b::t_a5756e290ff79e 1-2,259,294,300-303,305-306,326-328,338,342,396,399,401,419,424,426,536-541
+scripts/generate-third-party-notices.ts
+  s_3dc0b7647fcf0b::t_b2152b849cd685 1,53,108-113,127,199,204-227,290-293,295-298
+scripts/immutable-artifact-cache.ts
+  s_9ad21099c264dd::t_800abcabfd2ced 31
+scripts/install-local-macos.test.ts
+  s_96ff75d3bdf36b::t_3858b54c027933 22
+scripts/isolated-run/NodeIsolatedRun.ts
+  s_9ad21099c264dd::t_3756ad878337d6 1,18,30-36,42-47
+scripts/materialize-browser-runtime.test.ts
+  s_96ff75d3bdf36b::t_6602953df82ce2 25
+scripts/materialize-workspace-runtime.test.ts
+  s_9ad21099c264dd::t_a4a108b3101625 85-104,106-136,138-167
+scripts/package-provenance.test.ts
+  s_96ff75d3bdf36b::t_c6b322afa95466 407
+scripts/prepared-electron-build.ts
+  s_3dc0b7647fcf0b::t_337b2f3e8eccaa 1,19,392-397,548,555,564,570,582,586,598
+scripts/relock-agent-runtime.test.ts
+  s_9ad21099c264dd::t_baba3070aed71e 105-114,116-122,124-126,128-141,143-145,147-167
+scripts/restore-packaged-runtime-closure.mjs
+  s_3dc0b7647fcf0b::t_e676cbf3c2a509 6-7,120,122-129,133-134,137-144
+scripts/run-with-environment.ts
+  s_3dc0b7647fcf0b::t_49b47bed029c55 1-14
+scripts/rust-dev-runtime.ts
+  s_3dc0b7647fcf0b::t_3e3c967cd1def9 27,99,425-432
+scripts/sign-macos-runtime.test.ts
+  s_9ad21099c264dd::t_e8cb82aa47dae0 76,139,175-179,181-188,190-211,213,247,324
+scripts/stage-browser-runtime.test.ts
+  s_96ff75d3bdf36b::t_45c3cd6c4d327c 102
+scripts/stage-codex-runtime.test.ts
+  s_96ff75d3bdf36b::t_6708e246687065 132-145,278
+scripts/stage-codex-runtime.ts
+  s_9ad21099c264dd::t_6a92e2e3620de5 46-47,60-63,80-81,87-89,94-95,97-112,114-116,120-140,250,309,347,629-631,655-661,667-668,706-709,729,750-755,794,800-801,831-832,843,851
+scripts/stage-rust-core.ts
+  s_3dc0b7647fcf0b::t_cbe225dc92ddde 14-15,27,32,35-36,43,48-52,71,109,111,120-153,277
+scripts/stage-windows-runtime.test.ts
+  s_9ad21099c264dd::t_1bee1802e3103f 1-110
+scripts/standalone-node-runtime.ts
+  s_96ff75d3bdf36b::t_73872109cea7e6 1-86
+scripts/sync-app-icons.ts
+  s_3dc0b7647fcf0b::t_33d5d55cc79389 3,122,130,137,140-167
+scripts/verify-native-runtime.test.ts
+  s_96ff75d3bdf36b::t_3d3b6ed4f7befb 42
+scripts/verify-windows-runtime.ts
+  s_3dc0b7647fcf0b::t_1cbad4c75ad68a 1-10
+scripts/vite-plus-command.ts
+  s_3dc0b7647fcf0b::t_235e471d8ed67a 1-25
+scripts/windows-pe.d.mts
+  s_3dc0b7647fcf0b::t_07a134c782a1f7 1-6
+scripts/windows-pe.mjs
+  s_3dc0b7647fcf0b::t_9baea3a7e64217 1-57
+scripts/windows-pe.test.ts
+  s_3dc0b7647fcf0b::t_c7e0bcd091ae5f 1-78
+scripts/windows-signing.ts
+  s_3dc0b7647fcf0b::t_6a40d6019ccad5 1-10
+src/shared/codex-app-server-release-lock.d.mts
+  s_9ad21099c264dd::t_7f74da47cc857f 28-31,44-45
+src/shared/codex-app-server-release-lock.mjs
+  s_3dc0b7647fcf0b::t_4bb22502967b2d 52-67,177-178,186,219-221
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5e14d32db5172fef6c8466c6a99eef98ea05b48c",
+  "prompts": {},
+  "sessions": {
+    "s_3dc0b7647fcf0b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1964e-690a-72d0-a5e2-1468f0931284",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_96ff75d3bdf36b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19650-f065-71b3-84a9-bed1ca4b5a2a",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_9ad21099c264dd": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1964f-2f03-7680-8da9-7c6d6ce01903",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
