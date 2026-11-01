@@ -317,9 +317,12 @@ it.effect("starts an attachment-only draft in place with the authorized immutabl
       sessionId: string;
       message: { text: string };
       resources: unknown;
+      sender: unknown;
     };
     assert.equal(launched.sessionId, "target");
     assert.equal(launched.message.text, "");
+    // The chat it starts names the conversation that sent its first message.
+    assert.deepEqual(launched.sender, { threadId: "caller-thread", runId: "caller-run" });
     assert.deepEqual(launched.resources, [
       {
         name: "evidence.txt",

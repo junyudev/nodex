@@ -52,6 +52,8 @@ export interface AgentRuntimeLaunch {
   readonly branch?: string | null;
   readonly worktreePath?: string | null;
   readonly message: AgentRuntimeMessage;
+  /** The Agent conversation whose message starts this chat; Main sets it, never a window. */
+  readonly sender?: { readonly threadId: string; readonly runId?: string | null };
 }
 
 const AGENT_EXECUTION_THREAD_PREFIX = "nodex:thread:";

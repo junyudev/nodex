@@ -926,6 +926,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     deliveryIntent: DispatchMessage["deliveryIntent"] = "auto",
     agent = false,
     queueAfterActive = false,
+    sender?: AgentRuntimeLaunch["sender"],
   ): DispatchMessage => ({
     type: "message.dispatch",
     commandId: commandId("message", { threadId, messageId: message.messageId }),
@@ -938,6 +939,8 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     ...(message.interactionMode === undefined ? {} : { interactionMode: message.interactionMode }),
     createdBy: agent ? "agent" : "user",
     creationSource: agent ? "mcp" : "web",
+    ...(sender ? { senderThreadId: sender.threadId } : {}),
+    ...(sender?.runId ? { senderRunId: sender.runId } : {}),
     ...(queueAfterActive ? {} : { deliveryIntent }),
     dispatchMode: { type: queueAfterActive ? "queue_after_active" : "start_immediately" },
   });
@@ -1324,7 +1327,14 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         }
       : prepared.message;
     const message = yield* prepareMessage(connection, threadId, outgoing);
-    const command = messageCommand(threadId, message, undefined, provenance !== null);
+    const command = messageCommand(
+      threadId,
+      message,
+      undefined,
+      provenance !== null,
+      false,
+      input.sender,
+    );
     const firstLaunch = !existing && !previousBinding;
     yield* dispatch(
       connection,

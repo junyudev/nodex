@@ -5012,6 +5012,21 @@ it.effect(
     }),
 );
 
+it.effect("records the conversation whose message starts a chat as that message's sender", () =>
+  Effect.gen(function* () {
+    const fixture = setup();
+    const owner = yield* fixture.owner;
+    yield* owner.launch({
+      ...launch,
+      sender: { threadId: "nodex:thread:caller", runId: "run:caller" },
+    });
+    const first = [...fixture.commands.values()].find(
+      (command) => command.type === "message.dispatch",
+    );
+    assert.deepInclude(first, { senderThreadId: "nodex:thread:caller", senderRunId: "run:caller" });
+  }),
+);
+
 it.effect(
   "routes resource-only sends to a verified child and returns the canonical delivery result",
   () =>

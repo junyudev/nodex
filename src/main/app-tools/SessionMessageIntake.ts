@@ -233,6 +233,7 @@ export const make = Effect.gen(function* () {
       resources: attachments,
       messageFingerprint: fingerprint,
       message: { messageId, text: input.request.prompt, attachments: [] },
+      sender: { threadId: input.sourceThreadId, runId: input.sourceRunId ?? null },
     });
     const outcome = yield* application.execution({ sessionId: target.session.id, messageId });
     return {
