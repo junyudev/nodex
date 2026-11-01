@@ -8,7 +8,7 @@ import type { StdioFailureResult } from "./testing/stdio-failure-process";
 
 const MAX_LOG_BYTES = 16 * 1024;
 
-async function runStdioFixture(mode: "closed" | "blocked") {
+async function runStdioFixture(mode: "closed" | "blocked" | "drained") {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-stdio-failure-"));
   const child = fork(
     path.resolve(import.meta.dirname, "testing/stdio-failure-process.ts"),
@@ -29,6 +29,7 @@ async function runStdioFixture(mode: "closed" | "blocked") {
     child.on("message", (message: { kind?: string }) => {
       if (message.kind === "ready") {
         if (mode === "closed") child.stderr?.destroy();
+        if (mode === "drained") child.stderr?.resume();
         child.send("write");
         return;
       }
@@ -85,18 +86,34 @@ describe("terminal logging process boundary", () => {
     expect(records.some((record) => record.msg === "durable after terminal failure")).toBe(true);
   });
 
-  test("bounds real stderr buffering when its reader stops consuming output", async () => {
-    const { result, bytes, records } = await runStdioFixture("blocked");
+  // Node process stderr uses synchronous Windows pipes, so a blocked child cannot report over IPC.
+  // terminal-sink.test.ts covers Writable backpressure on every OS; the Windows native case drains it.
+  test.skipIf(process.platform === "win32")(
+    "bounds real stderr buffering when its reader stops consuming output",
+    async () => {
+      const { result, bytes, records } = await runStdioFixture("blocked");
 
-    expect(result.uncaughtExceptions).toBe(0);
-    expect(result.stderrErrors).toBe(0);
-    // The OS may accept queued bytes during file-log shutdown even with an unread pipe.
-    // The contract bounds peak Node buffering while pressure is actually being applied.
-    expect(result.stderrBackpressureObserved).toBe(true);
-    expect(result.peakPendingStderrBytes).toBeGreaterThan(0);
-    expect(result.peakPendingStderrBytes).toBeLessThanOrEqual(result.stderrHighWaterMark + 2_048);
-    expect(result.pendingStderrBytes).toBeLessThanOrEqual(result.peakPendingStderrBytes);
-    expect(bytes).toBeLessThanOrEqual(MAX_LOG_BYTES);
-    expect(records.some((record) => record.msg === "durable after terminal failure")).toBe(true);
-  });
+      expect(result.uncaughtExceptions).toBe(0);
+      expect(result.stderrErrors).toBe(0);
+      // The OS may accept queued bytes during file-log shutdown even with an unread pipe.
+      // The contract bounds peak Node buffering while pressure is actually being applied.
+      expect(result.stderrBackpressureObserved).toBe(true);
+      expect(result.peakPendingStderrBytes).toBeGreaterThan(0);
+      expect(result.peakPendingStderrBytes).toBeLessThanOrEqual(result.stderrHighWaterMark + 2_048);
+      expect(result.pendingStderrBytes).toBeLessThanOrEqual(result.peakPendingStderrBytes);
+      expect(bytes).toBeLessThanOrEqual(MAX_LOG_BYTES);
+      expect(records.some((record) => record.msg === "durable after terminal failure")).toBe(true);
+    },
+  );
+  test.runIf(process.platform === "win32")(
+    "drains native stderr while preserving durable diagnostics",
+    async () => {
+      const { result, bytes, records } = await runStdioFixture("drained");
+      expect(result.uncaughtExceptions).toBe(0);
+      expect(result.stderrErrors).toBe(0);
+      expect(result.pendingStderrBytes).toBe(0);
+      expect(bytes).toBeLessThanOrEqual(MAX_LOG_BYTES);
+      expect(records.some((record) => record.msg === "durable after terminal failure")).toBe(true);
+    },
+  );
 });

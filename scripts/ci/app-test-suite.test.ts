@@ -5,7 +5,7 @@ import { parseAppTestSuite, planAppTestSuite } from "./app-test-suite";
 
 describe("application CI suite planning", () => {
   test("maps every suite to one canonical package script", () => {
-    expect(APP_TEST_SUITES.map((suite) => [suite, planAppTestSuite(suite)])).toEqual([
+    expect(APP_TEST_SUITES.map((suite) => [suite, planAppTestSuite(suite, "linux")])).toEqual([
       [
         "unit",
         {
@@ -44,16 +44,6 @@ describe("application CI suite planning", () => {
           needsXvfb: false,
           packageScript: "test:core-client",
           relatedPackageScript: "test:core-client:related",
-        },
-      ],
-      [
-        "host",
-        {
-          needsPlaywright: false,
-          needsRust: false,
-          needsXvfb: true,
-          packageScript: "test:host",
-          relatedPackageScript: "test:host:related",
         },
       ],
       [
@@ -97,6 +87,15 @@ describe("application CI suite planning", () => {
         },
       ],
     ]);
+  });
+
+  test.each(["win32", "darwin"] as const)("uses the native desktop on %s", (platform) => {
+    for (const suite of ["main", "integration"] as const) {
+      expect(planAppTestSuite(suite, platform)).toMatchObject({
+        needsRust: true,
+        needsXvfb: false,
+      });
+    }
   });
 
   test("rejects unknown matrix values", () => {

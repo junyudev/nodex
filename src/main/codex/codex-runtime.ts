@@ -64,6 +64,7 @@ async function validateRuntimeArtifacts(
       if (
         artifact.executable &&
         metadata.targetPlatform !== "win32" &&
+        process.platform !== "win32" &&
         (stats.mode & 0o111) === 0
       ) {
         throw new Error(`Agent runtime artifact is not executable: ${artifact.path}`);

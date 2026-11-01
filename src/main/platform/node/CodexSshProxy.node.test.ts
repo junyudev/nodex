@@ -9,15 +9,19 @@ import {
   createCodexSshProxy,
 } from "./CodexSshProxy";
 
-test("login wrapper preserves binary marker, payload quoting and explicit Codex home", () => {
-  const marker = Buffer.from([0, 255, 39, 92, 10, 13, 65, 128]);
-  const command = codexRemoteLoginCommand('printf "%s" "value with spaces"', marker);
-  const result = execFileSync("/bin/sh", ["-c", command], {
-    env: { ...process.env, SHELL: "/bin/sh" },
-    stdio: ["ignore", "pipe", "ignore"],
-  });
-  expect(result).toEqual(Buffer.concat([marker, Buffer.from("value with spaces")]));
-});
+// This executes the remote POSIX login-shell payload; Windows exercises the proxy framing below.
+test.skipIf(process.platform === "win32")(
+  "login wrapper preserves binary marker, payload quoting and explicit Codex home",
+  () => {
+    const marker = Buffer.from([0, 255, 39, 92, 10, 13, 65, 128]);
+    const command = codexRemoteLoginCommand('printf "%s" "value with spaces"', marker);
+    const result = execFileSync("/bin/sh", ["-c", command], {
+      env: { ...process.env, SHELL: "/bin/sh" },
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    expect(result).toEqual(Buffer.concat([marker, Buffer.from("value with spaces")]));
+  },
+);
 
 test("alias selection takes precedence over direct SSH connection fields", () => {
   const args = codexSshConnectionArguments(

@@ -600,12 +600,20 @@ pub fn sync_file(path: &Path) -> io::Result<()> {
 }
 /// Secure the Profile before SQLite or Desktop can create inheriting artifacts.
 pub fn prepare_profile_root(path: &Path) -> io::Result<()> {
-    let metadata = super::entry_metadata(path, super::EntryKind::Directory)?;
+    super::prepare_private_path(path, super::EntryKind::Directory)
+}
+
+pub(super) fn initialize_private_entry(
+    path: &Path,
+    kind: super::EntryKind,
+    mode: u32,
+) -> io::Result<()> {
+    let metadata = super::entry_metadata(path, kind)?;
     if require_owned(path, &metadata).is_ok() {
-        if has_mode(path, &metadata, 0o700)? {
+        if has_mode(path, &metadata, mode)? {
             return Ok(());
         }
-        return set_mode(path, 0o700);
+        return set_mode(path, mode);
     }
     // Elevated tokens can default newly created directories to the Administrators
     // owner. Initialization replaces only this token's default owner, before any
@@ -632,7 +640,7 @@ pub fn prepare_profile_root(path: &Path) -> io::Result<()> {
     if sid_string(owner)? != crate::windows::default_owner_sid()? {
         return Err(io::Error::new(
             io::ErrorKind::PermissionDenied,
-            "Profile home belongs to another user",
+            "Private filesystem entry belongs to another user",
         ));
     }
     let file = handle(unsafe {
@@ -650,7 +658,7 @@ pub fn prepare_profile_root(path: &Path) -> io::Result<()> {
     if is_reparse_point(&file.metadata()?) {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            "Profile home must not be a reparse point",
+            "Private filesystem entry must not be a reparse point",
         ));
     }
     let security = PrivateSecurity::new(false)?;
@@ -686,7 +694,7 @@ pub fn prepare_profile_root(path: &Path) -> io::Result<()> {
     if status != 0 {
         return Err(io::Error::from_raw_os_error(status as i32));
     }
-    super::checked_metadata(path, super::EntryKind::Directory, Some(0o700)).map(|_| ())
+    super::checked_metadata(path, kind, Some(mode)).map(|_| ())
 }
 
 /// A private readable handle may be sealed; cleanup owners restore write access later.

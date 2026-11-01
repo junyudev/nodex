@@ -1,5 +1,5 @@
+import { syncDirectorySync } from "./platform/node/filesystem-durability";
 import fs from "node:fs";
-import { syncDirectorySync } from "./durable-json-file";
 import path from "node:path";
 import type { RemoteHostedPipTaskVisibility } from "../shared/remote-hosted-pip";
 

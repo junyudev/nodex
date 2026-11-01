@@ -90,12 +90,12 @@ impl Relocation<'_> {
                 "Managed attachment reference exceeds its path byte limit",
             ));
         }
-        let normalized = nodex_platform::private_fs::normalize_path(Path::new(raw));
-        let path = normalized.as_ref();
-        if !path.starts_with(nodex_platform::private_fs::normalize_path(&self.source).as_ref()) {
+        let path = local_reference_path(Path::new(raw))?;
+        let source = local_reference_path(&self.source)?;
+        if !path.starts_with(&source) {
             return Ok(None);
         }
-        let relative = files::relative_path(&self.source, path)?;
+        let relative = files::relative_path(&source, &path)?;
         let mut parts = relative.iter();
         let (Some(directory), Some(filename), None) = (parts.next(), parts.next(), parts.next())
         else {
@@ -112,12 +112,11 @@ impl Relocation<'_> {
         files::require_directory(&staging_root.join(directory))?;
         let copied = staging_root.join(directory).join(filename);
         files::fingerprint(&copied)?;
-        let relocated = self
-            .target
-            .join(relative)
-            .into_os_string()
-            .into_string()
-            .map_err(|_| invalid("Managed attachment destination is not UTF-8"))?;
+        let destination = local_reference_path(&self.target.join(relative))?;
+        let relocated = destination
+            .to_str()
+            .ok_or_else(|| invalid("Managed attachment destination is not UTF-8"))?
+            .to_owned();
         if relocated.len() > MAX_PATH_BYTES {
             return Err(invalid(
                 "Managed attachment destination exceeds its path byte limit",
@@ -290,6 +289,12 @@ impl Relocation<'_> {
         registry.text_excerpts_by_path = excerpts;
         write_text(&path, &serde_json::to_string(&registry)?)
     }
+}
+
+/// Node references omit Windows' verbatim prefix; compare and publish the same native spelling.
+fn local_reference_path(path: &Path) -> Result<PathBuf> {
+    let key = nodex_platform::private_fs::path_key(path)?;
+    Ok(nodex_platform::private_fs::normalize_path(Path::new(&key)).into_owned())
 }
 
 #[derive(Deserialize, Serialize)]

@@ -122,8 +122,8 @@ test.skipIf(process.platform === "win32")(
       const executable = "python/bin/python3.13";
       expect(readFileSync(path.join(second, executable), "utf8")).toBe("python executable\n");
       expect(lstatSync(path.join(second, "python/bin/python3")).isSymbolicLink()).toBe(false);
-      expect(lstatSync(path.join(first, executable)).ino).not.toBe(
-        lstatSync(path.join(second, executable)).ino,
+      expect(lstatSync(path.join(first, executable), { bigint: true }).ino).not.toBe(
+        lstatSync(path.join(second, executable), { bigint: true }).ino,
       );
       writeFileSync(path.join(first, executable), "changed by signing\n");
       expect(readFileSync(path.join(second, executable), "utf8")).toBe("python executable\n");

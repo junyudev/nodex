@@ -850,7 +850,12 @@ fn wait_for_core(
     let deadline = Instant::now() + STARTUP_TIMEOUT;
     loop {
         let error = match CoreClient::connect(home, build_id) {
-            Ok(client) if client.descriptor == selection.descriptor => return Ok(client),
+            Ok(client) if client.descriptor == selection.descriptor => {
+                if matches!(selection.disposition, CoreSelectionDisposition::Reused) {
+                    wait_for_reused_launcher(child, deadline)?;
+                }
+                return Ok(client);
+            }
             Ok(_) => {
                 ClientError::Startup("runtime generation changed after Core selection".to_owned())
             }
@@ -880,6 +885,32 @@ fn wait_for_core(
             return Err(ClientError::Startup(format!(
                 "readiness timed out: {error}"
             )));
+        }
+        thread::sleep(Duration::from_millis(20));
+    }
+}
+
+// A reuse candidate has no daemon lifetime. Reap it before handing its caller
+// ownership, so Windows can release the executable and no launcher is orphaned.
+fn wait_for_reused_launcher(child: &mut Child, deadline: Instant) -> Result<(), ClientError> {
+    loop {
+        if let Some(status) = child.try_wait()? {
+            if status.success() {
+                return Ok(());
+            }
+            let mut stderr = String::new();
+            if let Some(mut pipe) = child.stderr.take() {
+                pipe.read_to_string(&mut stderr)?;
+            }
+            return Err(ClientError::Startup(format!(
+                "Core reuse launcher exited with {status}: {}",
+                stderr.trim()
+            )));
+        }
+        if Instant::now() >= deadline {
+            return Err(ClientError::Startup(
+                "Core reuse launcher did not exit within the startup window".to_owned(),
+            ));
         }
         thread::sleep(Duration::from_millis(20));
     }
@@ -1334,6 +1365,51 @@ fn random_hex(bytes: usize) -> Result<String, ClientError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reused_launcher_completion_waits_for_the_native_process_to_exit() {
+        #[cfg(windows)]
+        let mut command = {
+            let mut command = Command::new("cmd.exe");
+            command.args(["/d", "/c", "set /p finish="]);
+            command
+        };
+        #[cfg(unix)]
+        let mut command = {
+            let mut command = Command::new("/bin/sh");
+            command.args(["-c", "read finish"]);
+            command
+        };
+        let mut child = command
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("native launcher fixture");
+        let mut input = child.stdin.take().unwrap();
+        let (sender, receiver) = mpsc::sync_channel(1);
+        let waiter = thread::spawn(move || {
+            let result =
+                wait_for_reused_launcher(&mut child, Instant::now() + Duration::from_secs(10));
+            sender.send(result).unwrap();
+            child.wait().unwrap()
+        });
+        let early = receiver.recv_timeout(Duration::from_millis(50));
+        let returned_early = early.is_ok();
+        input.write_all(b"finished\n").unwrap();
+        drop(input);
+        let result = early.unwrap_or_else(|_| {
+            receiver
+                .recv_timeout(Duration::from_secs(10))
+                .expect("completed launcher")
+        });
+        assert!(waiter.join().unwrap().success());
+        assert!(
+            !returned_early,
+            "reuse returned while its launcher was alive"
+        );
+        result.expect("successful reused launcher");
+    }
 
     #[test]
     fn context_headers_carry_only_optional_project_routing() {

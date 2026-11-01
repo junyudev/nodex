@@ -1,3 +1,4 @@
+import { syncEffectDirectory } from "../platform/node/filesystem-durability";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -157,14 +158,7 @@ export const makeBrowserPageRuntime = (
           ),
         ),
         Effect.andThen(fs.rename(temporaryPath, filePath)),
-        Effect.andThen(
-          Effect.scoped(
-            Effect.gen(function* () {
-              const directory = yield* fs.open(directoryPath, { flag: "r" });
-              yield* directory.sync;
-            }),
-          ),
-        ),
+        Effect.andThen(syncEffectDirectory(fs, directoryPath)),
         Effect.ensuring(fs.remove(temporaryPath, { force: true }).pipe(Effect.ignore)),
         Effect.mapError((cause) => runtimeError("persist", cause)),
       );

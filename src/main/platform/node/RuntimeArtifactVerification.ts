@@ -1,7 +1,6 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { constants } from "node:fs";
-import { open } from "node:fs/promises";
+import { openRegularFile } from "./open-regular-file";
 
 // Bound both open files and native inspectors. Every started operation settles before its
 // caller completes, including cancellation, so startup owns no detached verification work.
@@ -38,7 +37,7 @@ export async function readRuntimeArtifactSha256(
   signal?: AbortSignal,
 ): Promise<string> {
   signal?.throwIfAborted();
-  const file = await open(filePath, constants.O_RDONLY | constants.O_NOFOLLOW);
+  const file = await openRegularFile(filePath);
   try {
     const hash = createHash("sha256");
     const buffer = Buffer.allocUnsafe(1024 * 1024);

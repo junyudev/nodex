@@ -164,7 +164,7 @@ export default defineConfig(async ({ command, mode }): Promise<UserConfig> => {
           ? Number(process.env.NODEX_DEV_RENDERER_PORT)
           : 51284,
         strictPort: true,
-        // Generic app/icon surfaces intentionally use Vite's /@fs route in development.
+        // POSIX app/icon resources use /@fs; Windows resources use app://fs across drives.
         fs: { strict: false },
         headers: {
           "Content-Security-Policy": buildTopLevelRendererCsp({

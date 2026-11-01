@@ -110,11 +110,14 @@ export async function readClaudeHistoryRecords(input: {
   const path = await locate(input.home, input.sessionId);
   const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
-    const stat = await file.stat();
+    const stat = await file.stat({ bigint: true });
+    const size = Number(stat.size);
+    if (!Number.isSafeInteger(size))
+      throw new Error("Native history exceeds the supported file size");
     const identity = `${stat.dev}:${stat.ino}`;
     const cursor = input.before ? decodeCursor(input.before) : null;
-    const end = cursor?.end ?? stat.size;
-    if (!stat.isFile() || (cursor && cursor.file !== identity) || end > stat.size)
+    const end = cursor?.end ?? size;
+    if (!stat.isFile() || (cursor && cursor.file !== identity) || end > size)
       throw new Error("The native history file changed");
     const entries: SessionStoreEntry[] = [];
     let messages = 0;
@@ -164,8 +167,8 @@ export async function readClaudeHistoryRecords(input: {
     }
     if (position > 0 && !entries.some(prompt))
       throw new Error("The native Turn exceeds its history page bound");
-    const current = await lstat(path);
-    if (`${current.dev}:${current.ino}` !== identity || current.size < end)
+    const current = await lstat(path, { bigint: true });
+    if (`${current.dev}:${current.ino}` !== identity || current.size < BigInt(end))
       throw new Error("The native history file changed");
     return {
       entries,

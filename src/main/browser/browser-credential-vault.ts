@@ -1,3 +1,4 @@
+import { syncDirectorySync } from "../platform/node/filesystem-durability";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -320,7 +321,7 @@ export class BrowserCredentialVault {
     if (!metadata.isFile() || metadata.isSymbolicLink()) {
       throw new Error("Browser credential path is not a regular file");
     }
-    if ((metadata.mode & 0o077) !== 0) {
+    if (process.platform !== "win32" && (metadata.mode & 0o077) !== 0) {
       throw new Error("Browser credential file permissions are too broad");
     }
     const parsed: unknown = JSON.parse(fs.readFileSync(this.filePath, "utf8"));
@@ -365,12 +366,7 @@ export class BrowserCredentialVault {
       }
       fs.renameSync(temporaryPath, this.filePath);
       fs.chmodSync(this.filePath, 0o600);
-      const directoryDescriptor = fs.openSync(directory, "r");
-      try {
-        fs.fsyncSync(directoryDescriptor);
-      } finally {
-        fs.closeSync(directoryDescriptor);
-      }
+      syncDirectorySync(directory);
     } finally {
       try {
         fs.rmSync(temporaryPath, { force: true });

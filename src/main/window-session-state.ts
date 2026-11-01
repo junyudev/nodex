@@ -1,3 +1,4 @@
+import { syncDirectorySync } from "./platform/node/filesystem-durability";
 import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -32,7 +33,6 @@ import {
 import { resolveBrowserTabTitle } from "../shared/browser-url";
 import { createSecureRuntimeId } from "../shared/secure-runtime-id";
 import { getLogger } from "./logging/logger";
-import { syncDirectorySync } from "./durable-json-file";
 
 const WINDOW_SESSIONS_V3_FILE_NAME = "window-sessions-v3.json";
 const WINDOW_SESSIONS_V2_FILE_NAME = "window-sessions-v2.json";

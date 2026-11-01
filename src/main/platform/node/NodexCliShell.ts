@@ -47,6 +47,7 @@ export async function prepareNodexCliShell(
         "$bindings = Join-Path (Split-Path $PSScriptRoot -Parent) 'bindings'",
         "$file = Join-Path $bindings $id",
         "if (!(Test-Path -LiteralPath $file) -and $env:CODEX_SESSION_ID -match '^[a-zA-Z0-9_-]+$') { $file = Join-Path $bindings $env:CODEX_SESSION_ID }",
+        "if (!(Test-Path -LiteralPath $file -PathType Leaf)) { throw 'Nodex CLI unavailable for this task. Refresh the task context in Nodex.' }",
         "$binding = Get-Content -Raw -LiteralPath $file -Encoding UTF8 | ConvertFrom-Json",
         "if (!$binding.executable) { throw 'Nodex CLI unavailable for this task. Refresh the task context in Nodex.' }",
         "$env:NODEX_HOME = $binding.nodexHome",
@@ -126,7 +127,7 @@ export async function composeNodexCliShellEnvironment(
   const inherited = input.inheritedEnvironment;
   const configured = input.configuredEnvironment ?? {};
   const paths = nodexCliShellPaths(input.nodexHome);
-  const windows = input.platform === "win32";
+  const windows = (input.platform ?? process.platform) === "win32";
   const inheritedPath = Object.entries(inherited).find(([key]) =>
     windows ? key.toUpperCase() === "PATH" : key === "PATH",
   )?.[1];
@@ -241,7 +242,7 @@ export async function bindNodexCliShell(input: {
 }): Promise<void> {
   const file = bindingPath(input.nodexHome, input.threadId);
   await mkdir(nodexCliShellPaths(input.nodexHome).bindings, { recursive: true, mode: 0o700 });
-  if (input.platform === "win32") {
+  if ((input.platform ?? process.platform) === "win32") {
     await writeExecutable(
       file,
       JSON.stringify({

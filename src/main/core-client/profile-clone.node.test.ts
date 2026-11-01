@@ -190,7 +190,11 @@ const cloneWithOpenDesktop = (
         const endpoint = Context.get(context, CodexEndpoint);
         const original = yield* endpoint.session;
         yield* original.client.request("thread/resume", { threadId, excludeTurns: true });
-        yield* serveProfileSnapshotControl(source, endpoint.withProfileSnapshot);
+        yield* serveProfileSnapshotControl(
+          source,
+          requiredNativeExecutable("core-server"),
+          endpoint.withProfileSnapshot,
+        );
         const receipt = yield* Effect.tryPromise(() => clone(source, target));
         const recovered = yield* endpoint.session;
         expect(recovered.generation).toBeGreaterThan(original.generation);

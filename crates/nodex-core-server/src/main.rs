@@ -54,6 +54,17 @@ async fn run(
 }
 
 fn main() {
+    if env::args().nth(1).as_deref() == Some("--private-filesystem") {
+        if env::args().count() != 2 {
+            eprintln!("usage: nodex-core --private-filesystem < bounded-request.json");
+            std::process::exit(2);
+        }
+        if let Err(error) = nodex_core_server::private_filesystem::run(std::io::stdin().lock()) {
+            eprintln!("nodex-core private filesystem failed: {error}");
+            std::process::exit(1);
+        }
+        return;
+    }
     let (home, policy, launcher) = match parse_arguments() {
         Ok(arguments) => arguments,
         Err(message) => {

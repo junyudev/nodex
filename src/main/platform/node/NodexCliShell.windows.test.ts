@@ -26,10 +26,9 @@ test.runIf(process.platform === "win32")(
         executable,
         "@{ home = $env:NODEX_HOME; attribution = $env:NODEX_AGENT_ATTRIBUTION; arguments = @($args) } | ConvertTo-Json -Compress\n",
       );
-      await prepareNodexCliShell(root, "win32");
+      await prepareNodexCliShell(root);
       await bindNodexCliShell({
         nodexHome: root,
-        platform: "win32",
         threadId: "parent",
         executable,
         profileId: "profile",
@@ -38,7 +37,6 @@ test.runIf(process.platform === "win32")(
       });
       const routing = await composeNodexCliShellEnvironment({
         nodexHome: root,
-        platform: "win32",
         homeDirectory: root,
         inheritedEnvironment: process.env,
         searchPaths: [],
@@ -86,7 +84,7 @@ test.runIf(process.platform === "win32")(
           ],
         });
       }
-      await unbindNodexCliShell(root, "child", "win32");
+      await unbindNodexCliShell(root, "child");
       await expect(execute("powershell.exe", [...shells[0][1]], { env })).rejects.toThrow();
     } finally {
       await rm(root, { recursive: true, force: true });

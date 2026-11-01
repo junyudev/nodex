@@ -2,7 +2,7 @@
 // @effect-diagnostics asyncFunction:off - The disposable child process is an actual Node boundary.
 import { mkdtemp, mkdir, readFile, writeFile, chmod, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import { setTimeout as waitForChild } from "node:timers/promises";
 import { it } from "@effect/vitest";
 import { expect } from "vite-plus/test";
@@ -18,7 +18,7 @@ import { testLayer as mainConfigLayer } from "../../app/MainConfig";
 import { live as shellEnvironmentLive } from "../../host-runtime/WorktreeShellEnvironmentRuntime";
 
 const sdkLayer = live.pipe(
-  Layer.provide(mainConfigLayer()),
+  Layer.provide(mainConfigLayer({ platform: process.platform })),
   Layer.provide(
     shellEnvironmentLive({
       baseEnvironment: { PATH: "/usr/bin:/bin" },
@@ -41,20 +41,18 @@ it.effect("installed SDK discovery reads native intelligence without sending exe
     yield* Effect.promise(() => mkdir(cwd));
     const nativeBin = join(root, ".local", "bin");
     yield* Effect.promise(() => mkdir(nativeBin, { recursive: true }));
-    const executable = join(nativeBin, "claude");
-    const script = join(root, "fake-claude.mjs");
+    const script = join(nativeBin, "node_modules", "@anthropic-ai", "claude-code", "cli.js");
+    yield* Effect.promise(() =>
+      mkdir(join(nativeBin, "node_modules", "@anthropic-ai", "claude-code"), { recursive: true }),
+    );
     const invocation = join(root, "invocation.json");
     const messages = join(root, "messages.jsonl");
-    yield* Effect.promise(() =>
-      writeFile(executable, '#!/bin/sh\nexec "$NODEX_TEST_NODE" "$NODEX_TEST_CLI" "$@"\n'),
-    );
-    yield* Effect.promise(() => chmod(executable, 0o700));
     yield* Effect.promise(() =>
       writeFile(
         script,
         `
-      import {writeFileSync,appendFileSync,existsSync,readFileSync} from "node:fs";
-      import {createInterface} from "node:readline";
+      const {writeFileSync,appendFileSync,existsSync,readFileSync} = require("node:fs");
+      const {createInterface} = require("node:readline");
       const args=process.argv.slice(2);
       const decode=(flag)=>{const inline=args.find((arg)=>arg.startsWith(flag+"="));const index=args.indexOf(flag);const value=inline===undefined?(index<0?undefined:args[index+1]):inline.slice(flag.length+1);if(value===undefined)return undefined;try{return JSON.parse(existsSync(value)?readFileSync(value,"utf8"):value);}catch{return value;}};
       writeFileSync(process.env.NODEX_TEST_INVOCATION,JSON.stringify({args,cwd:process.cwd(),settings:decode("--settings"),mcp:decode("--mcp-config"),connector:process.env.ENABLE_CLAUDEAI_MCP_SERVERS,ide:process.env.CLAUDE_CODE_AUTO_CONNECT_IDE,forceTerminal:process.env.FORCE_CODE_TERMINAL}));
@@ -71,12 +69,14 @@ it.effect("installed SDK discovery reads native intelligence without sending exe
     `,
       ),
     );
+    yield* Effect.promise(() => chmod(script, 0o700));
     yield* Effect.scoped(
       Effect.gen(function* () {
         const sdk = yield* ClaudeSdk;
         const session = yield* sdk.discover({
           instance: {
             ...defaultClaudeInstance(),
+            binaryPath: script,
             customModels: [
               {
                 id: "gateway/private[1m]",
@@ -87,7 +87,7 @@ it.effect("installed SDK discovery reads native intelligence without sending exe
           },
           environment: {
             HOME: root,
-            PATH: "/usr/bin:/bin",
+            PATH: [dirname(process.execPath), process.env.PATH].filter(Boolean).join(delimiter),
             NODEX_TEST_NODE: process.execPath,
             NODEX_TEST_CLI: script,
             NODEX_TEST_INVOCATION: invocation,
@@ -151,19 +151,15 @@ it.effect("consumer interruption kills a real SDK child still waiting for initia
           rm(directory, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 }),
         ),
     );
-    const executable = join(root, "fake-claude");
     const script = join(root, "fake-claude.mjs");
     const invocation = join(root, "pid");
-    yield* Effect.promise(() =>
-      writeFile(executable, '#!/bin/sh\nexec "$NODEX_TEST_NODE" "$NODEX_TEST_CLI" "$@"\n'),
-    );
-    yield* Effect.promise(() => chmod(executable, 0o700));
     yield* Effect.promise(() =>
       writeFile(
         script,
         `import {writeFileSync} from "node:fs"; writeFileSync(process.env.NODEX_TEST_PID,String(process.pid)); process.stdin.resume();`,
       ),
     );
+    yield* Effect.promise(() => chmod(script, 0o700));
     const sdk = yield* ClaudeSdk;
     const requests = yield* makeAgentDiscoveryRequests;
     const request = yield* Effect.forkChild(
@@ -171,10 +167,10 @@ it.effect("consumer interruption kills a real SDK child still waiting for initia
         1,
         "fixture",
         sdk.discover({
-          instance: { ...defaultClaudeInstance(), binaryPath: executable },
+          instance: { ...defaultClaudeInstance(), binaryPath: script },
           environment: {
             HOME: root,
-            PATH: "/usr/bin:/bin",
+            PATH: [dirname(process.execPath), process.env.PATH].filter(Boolean).join(delimiter),
             NODEX_TEST_NODE: process.execPath,
             NODEX_TEST_CLI: script,
             NODEX_TEST_PID: invocation,

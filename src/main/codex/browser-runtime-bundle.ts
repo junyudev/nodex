@@ -145,7 +145,7 @@ async function validateArtifact(
       `Browser runtime artifact is not a regular file: ${artifact.path}`,
     );
   }
-  if (artifact.executable && (stats.mode & 0o111) === 0) {
+  if (artifact.executable && process.platform !== "win32" && (stats.mode & 0o111) === 0) {
     return unavailable(
       "artifact-invalid",
       `Browser runtime artifact is not executable: ${artifact.path}`,

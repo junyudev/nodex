@@ -14,7 +14,7 @@ interactive stdin before starting runtime threads. This guarantee belongs to
 Core itself, including when a CLI starts it before Desktop connects. Exiting or
 cancelling that client, closing its terminal, or cleaning its process group
 cannot terminate the shared Core. The bounded startup selection response and
-authenticated explicit shutdown remain separate from caller lifetime.
+authenticated explicit shutdown remain separate from caller lifetime. A native client that reuses an existing authority waits for its short-lived selection launcher to exit before returning the connection; that launcher never becomes a second daemon.
 
 Core is a detached per-Profile process. An active authenticated Host connection,
 event stream, CLI client, Document subscription, Store operation, or due
@@ -82,7 +82,8 @@ requires the capability before either capture owner pauses. Release or disconnec
 ends the connection-bound lease. Windows Node pipes cannot install an explicit
 DACL, so this endpoint relies on its unguessable name, private rendezvous, server
 identity verification by the native client and authenticated protocol. Main protects
-the rendezvous DACL using the operating system ACL tools.
+the rendezvous owner and DACL through the bundled Core's bounded one-shot native
+filesystem command, without starting a daemon or invoking a shell.
 
 Windows CLI defaults to `%USERPROFILE%\.nodex`, independently of `HOME`.
 Desktop links use the registered URI handler on Windows and macOS; launcher

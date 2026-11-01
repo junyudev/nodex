@@ -13,7 +13,7 @@ import {
   rmSync,
   writeFileSync,
   statSync,
-  type Stats,
+  type BigIntStats,
 } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 import * as Schema from "effect/Schema";
@@ -33,9 +33,9 @@ const canonicalHome = (home: string): string => {
 
 export function readCodexHomeReceipt(profileHome: string): string | null {
   const file = receiptPath(profileHome);
-  let original: Stats;
+  let original: BigIntStats;
   try {
-    original = lstatSync(file);
+    original = lstatSync(file, { bigint: true });
   } catch (cause) {
     if (typeof cause === "object" && cause !== null && "code" in cause && cause.code === "ENOENT")
       return null;
@@ -45,10 +45,11 @@ export function readCodexHomeReceipt(profileHome: string): string | null {
     throw new Error("Codex home receipt must be a regular file.");
   const descriptor = openSync(file, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
-    const opened = fstatSync(descriptor);
+    const opened = fstatSync(descriptor, { bigint: true });
     if (!opened.isFile() || opened.ino !== original.ino || opened.dev !== original.dev)
       throw new Error("Codex home receipt changed while it was opened.");
-    if (opened.size > MAX_RECEIPT_BYTES) throw new Error("Codex home receipt is too large.");
+    if (opened.size > BigInt(MAX_RECEIPT_BYTES))
+      throw new Error("Codex home receipt is too large.");
     const buffer = Buffer.alloc(MAX_RECEIPT_BYTES + 1);
     let length = 0;
     while (length < buffer.length) {

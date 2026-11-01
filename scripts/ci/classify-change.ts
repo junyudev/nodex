@@ -163,11 +163,11 @@ const testSuitesForPaths = (paths: readonly string[]): readonly AppTestSuite[] =
       continue;
     }
     if (path.startsWith("src/main/core-client/")) {
-      add("core-client", "host", "main", "integration");
+      add("core-client", "main", "integration");
       continue;
     }
     if (path.startsWith("src/main/") || path.startsWith("src/preload/")) {
-      add("core-client", "host", "main", "integration");
+      add("core-client", "main", "integration");
       continue;
     }
     if (path.startsWith("src/renderer/")) {
@@ -175,11 +175,11 @@ const testSuitesForPaths = (paths: readonly string[]): readonly AppTestSuite[] =
       continue;
     }
     if (path.startsWith("packages/agent-runtime/")) {
-      add("agent-runtime", "unit", "core-client", "host", "main", "renderer", "integration");
+      add("agent-runtime", "unit", "core-client", "main", "renderer", "integration");
       continue;
     }
     if (path.startsWith("packages/effect-codex-app-server/")) {
-      add("effect-codex", "core-client", "host", "main", "integration");
+      add("effect-codex", "core-client", "main", "integration");
       continue;
     }
     if (path.startsWith("packages/landing/")) {
@@ -191,7 +191,7 @@ const testSuitesForPaths = (paths: readonly string[]): readonly AppTestSuite[] =
       continue;
     }
     if (path === "electron.vite.config.ts" || path === "electron-builder.yml") {
-      add("host", "main", "integration");
+      add("main", "integration");
       continue;
     }
     if (path.startsWith("vitest.")) {

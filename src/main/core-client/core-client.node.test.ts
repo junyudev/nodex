@@ -543,14 +543,17 @@ describe("CoreClient over a private local endpoint", () => {
       const client = rootClient.forProject("project:default");
       expect(client.handshake.generation.pid).toBe(winnerPid);
 
-      const descriptorPath = path.join(nodexHome, "run/core/core.json");
-      chmodSync(descriptorPath, 0o644);
-      try {
-        expect(() => readCoreRuntimeConnection(nodexHome)).toThrow(
-          "Core runtime descriptor has mode 644; expected 600",
-        );
-      } finally {
-        chmodSync(descriptorPath, 0o600);
+      // Windows privacy uses the Profile DACL, not POSIX mode bits.
+      if (process.platform !== "win32") {
+        const descriptorPath = path.join(nodexHome, "run/core/core.json");
+        chmodSync(descriptorPath, 0o644);
+        try {
+          expect(() => readCoreRuntimeConnection(nodexHome)).toThrow(
+            "Core runtime descriptor has mode 644; expected 600",
+          );
+        } finally {
+          chmodSync(descriptorPath, 0o600);
+        }
       }
 
       let resolveEvent: ((event: CoreEventEnvelope) => void) | undefined;

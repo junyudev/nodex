@@ -1,9 +1,9 @@
 /* oxlint-disable nodex/no-manual-effect-runtime-in-tests -- This Node integration test bridges the existing Promise-based isolated Core scenario harness and real shell subprocesses. */
 /* @effect-diagnostics asyncFunction:off -- This Node integration test bridges the existing Promise-based isolated Core scenario harness and real shell subprocesses. */
-import { execFile } from "node:child_process";
-import { mkdtemp, mkdir, symlink, rm, writeFile } from "node:fs/promises";
+import { execFile, type ExecFileOptions } from "node:child_process";
+import { copyFile, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { delimiter, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import * as Effect from "effect/Effect";
 import { describe, expect, test } from "vite-plus/test";
@@ -26,6 +26,38 @@ import {
 
 const exec = promisify(execFile);
 
+const cliName = process.platform === "win32" ? "nodex.exe" : "nodex";
+const runShell = (command: string, options: ExecFileOptions) => {
+  if (process.platform !== "win32")
+    return exec("/bin/sh", ["-c", command], { ...options, encoding: "utf8" });
+  const inherited = Object.fromEntries(
+    Object.entries(process.env).filter(([key]) => key.toUpperCase() !== "PATH"),
+  );
+  return exec(
+    "powershell.exe",
+    ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", command],
+    {
+      ...options,
+      env: { ...inherited, ...options?.env },
+      windowsHide: true,
+      encoding: "utf8",
+    },
+  );
+};
+const commandPrefix = (context: string) =>
+  process.platform === "win32"
+    ? context
+        .split("including after changing directories: ")[1]!
+        .split(". Read the bundled Skill")[0]!
+    : context.split("For shell content work, use ")[1]!.split(" followed by the command")[0]!;
+const shellPath = (bin: string) =>
+  [
+    bin,
+    ...(process.platform === "win32"
+      ? [process.env.PATH ?? process.env.Path ?? ""]
+      : ["/usr/bin", "/bin"]),
+  ].join(delimiter);
+
 const task: NodexCliTaskContext = {
   threadId: "thread-a",
   hostId: "local",
@@ -33,7 +65,9 @@ const task: NodexCliTaskContext = {
   agentAttribution: null,
 };
 const identity = { profileId: "profile:test", libraryId: "library:test", storeEpoch: "epoch:test" };
-const config = Effect.runSync(MainConfig.pipe(Effect.provide(testLayer())));
+const config = Effect.runSync(
+  MainConfig.pipe(Effect.provide(testLayer({ platform: process.platform }))),
+);
 
 describe("Nodex per-Turn CLI connection", () => {
   test("routes Agent shell work through the exact build, Profile and Project", async () => {
@@ -43,8 +77,12 @@ describe("Nodex per-Turn CLI connection", () => {
       const skill = join(root, ".generated/official-agent-skills/skills/nodex");
       await mkdir(bin, { recursive: true });
       await mkdir(skill, { recursive: true });
-      await symlink(requiredNativeExecutable("cli"), join(bin, "nodex"));
-      await symlink(resolve("agent-skills/nodex/SKILL.md"), join(skill, "SKILL.md"));
+      await copyFile(requiredNativeExecutable("cli"), join(bin, cliName));
+      await copyFile(
+        requiredNativeExecutable("core-server"),
+        join(bin, process.platform === "win32" ? "nodex-core.exe" : "nodex-core"),
+      );
+      await copyFile(resolve("agent-skills/nodex/SKILL.md"), join(skill, "SKILL.md"));
       await withCoreScenario({ scenarioId: "library/files" }, async (current) => {
         const selected = {
           ...config,
@@ -66,12 +104,10 @@ describe("Nodex per-Turn CLI connection", () => {
           buildAgentRuntimeCliContext(selected, current.runtime.identity, authority, null, null),
         );
         expect(context).not.toBeNull();
-        const command = context!
-          .split("For shell content work, use ")[1]!
-          .split(" followed by the command")[0]!;
-        const result = await exec("/bin/sh", ["-c", `${command} --json context`], {
+        const command = commandPrefix(context!);
+        const result = await runShell(`${command} --json context`, {
           cwd: tmpdir(),
-          env: { PATH: "/usr/bin:/bin", NODEX_HOME: join(root, "wrong-profile") },
+          env: { PATH: shellPath(""), NODEX_HOME: join(root, "wrong-profile") },
         });
         const actual = JSON.parse(result.stdout).result;
         expect(actual.profile.id).toBe(current.runtime.identity.profileId);
@@ -89,7 +125,10 @@ describe("Nodex per-Turn CLI connection", () => {
         expect(
           await Effect.runPromise(
             buildAgentRuntimeCliContext(
-              { ...selected, platform: "win32" },
+              {
+                ...selected,
+                environment: { NODEX_CORE_EXECUTABLE: join(root, "missing", "nodex-core") },
+              },
               current.runtime.identity,
               authority,
               "codex-task",
@@ -109,10 +148,10 @@ describe("Nodex per-Turn CLI connection", () => {
           ),
         );
         expect(bound).toContain("Use nodex directly");
-        const plain = await exec("/bin/sh", ["-c", "nodex context"], {
+        const plain = await runShell("nodex context", {
           cwd: tmpdir(),
           env: {
-            PATH: `${nodexCliShellPaths(current.profile.nodexHome).bin}:/usr/bin:/bin`,
+            PATH: shellPath(nodexCliShellPaths(current.profile.nodexHome).bin),
             CODEX_THREAD_ID: "codex-task",
             NODEX_HOME: join(root, "wrong-profile"),
           },
@@ -132,8 +171,12 @@ describe("Nodex per-Turn CLI connection", () => {
       const skill = join(root, ".generated/official-agent-skills/skills/nodex");
       await mkdir(bin, { recursive: true });
       await mkdir(skill, { recursive: true });
-      await symlink(requiredNativeExecutable("cli"), join(bin, "nodex"));
-      await symlink(resolve("agent-skills/nodex/SKILL.md"), join(skill, "SKILL.md"));
+      await copyFile(requiredNativeExecutable("cli"), join(bin, cliName));
+      await copyFile(
+        requiredNativeExecutable("core-server"),
+        join(bin, process.platform === "win32" ? "nodex-core.exe" : "nodex-core"),
+      );
+      await copyFile(resolve("agent-skills/nodex/SKILL.md"), join(skill, "SKILL.md"));
       await writeFile(join(root, "report.html"), "<h1>Cold start</h1>");
       await withCoreScenario({ scenarioId: "library/files" }, async (current) => {
         const selected = {
@@ -168,17 +211,11 @@ describe("Nodex per-Turn CLI connection", () => {
               credential,
             ),
           );
-          const command = context!
-            .split("For shell content work, use ")[1]!
-            .split(" followed by the command")[0]!;
+          const command = commandPrefix(context!);
           const { revision } = await current.seed.readPageFileInventory(projectId, pageId);
-          await exec(
-            "/bin/sh",
-            [
-              "-c",
-              `${command} --json page file put '${pageId}' --path ${path} --from report.html --if-manifest ${revision}`,
-            ],
-            { cwd: root, env: { PATH: "/usr/bin:/bin" } },
+          await runShell(
+            `${command} --json page file put '${pageId}' --path ${path} --from report.html --if-manifest ${revision}`,
+            { cwd: root, env: { PATH: shellPath("") } },
           );
           const inventory = await current.seed.readPageFileInventory(projectId, pageId);
           return inventory.files.find((item) => item.logical_path === path)?.attachment;
@@ -228,8 +265,12 @@ describe("Nodex per-Turn CLI connection", () => {
       const skillRoot = join(root, ".generated/official-agent-skills/skills/nodex");
       await mkdir(bin, { recursive: true });
       await mkdir(skillRoot, { recursive: true });
-      await symlink(requiredNativeExecutable("cli"), join(bin, "nodex"));
-      await symlink(resolve("agent-skills/nodex/SKILL.md"), join(skillRoot, "SKILL.md"));
+      await copyFile(requiredNativeExecutable("cli"), join(bin, cliName));
+      await copyFile(
+        requiredNativeExecutable("core-server"),
+        join(bin, process.platform === "win32" ? "nodex-core.exe" : "nodex-core"),
+      );
+      await copyFile(resolve("agent-skills/nodex/SKILL.md"), join(skillRoot, "SKILL.md"));
       await withCoreScenario({ scenarioId: "library/files" }, async (first) => {
         await withCoreScenario({ scenarioId: "library/files" }, async (second) => {
           await prepareNodexCliShell(first.profile.nodexHome);
@@ -245,10 +286,10 @@ describe("Nodex per-Turn CLI connection", () => {
             environment: { NODEX_CORE_EXECUTABLE: join(bin, "nodex-core") },
           };
           const runContext = (threadId: string, sessionId?: string) =>
-            exec("/bin/sh", ["-c", "nodex context"], {
+            runShell("nodex context", {
               cwd: root,
               env: {
-                PATH: nodexCliShellPaths(first.profile.nodexHome).bin,
+                PATH: shellPath(nodexCliShellPaths(first.profile.nodexHome).bin),
                 CODEX_THREAD_ID: threadId,
                 ...(sessionId ? { CODEX_SESSION_ID: sessionId } : {}),
               },
@@ -268,53 +309,59 @@ describe("Nodex per-Turn CLI connection", () => {
               }),
             ),
           ]);
-          const userShellHome = join(root, "user-shell");
-          const otherBin = join(root, "old-cli");
-          await mkdir(userShellHome);
-          await mkdir(otherBin);
-          await writeFile(join(otherBin, "nodex"), "#!/bin/sh\nprintf old-cli\n", { mode: 0o700 });
-          const startup = `export PATH='${otherBin.replaceAll("'", "'\\''")}':"$PATH"\nexport NODEX_STARTUP_MARKER=configured\n`;
-          await writeFile(join(userShellHome, ".zshenv"), startup);
-          await writeFile(join(userShellHome, "bash-env"), startup);
-          const shellArgs = await nodexCliShellLaunchArgs({
-            nodexHome: first.profile.nodexHome,
-            codexHome: first.profile.codexHome,
-            homeDirectory: userShellHome,
-            inheritedEnvironment: {
-              ZDOTDIR: userShellHome,
-              BASH_ENV: join(userShellHome, "bash-env"),
-              PATH: "/usr/bin:/bin",
-            },
-            searchPaths: [],
-          });
-          const shellEnvironment = Object.fromEntries(
-            shellArgs
-              .filter((_, i) => i % 2 === 1)
-              .map((value) => {
-                const equal = value.indexOf("=");
-                return [
-                  value.slice("shell_environment_policy.set.".length, equal),
-                  JSON.parse(value.slice(equal + 1)) as string,
-                ];
-              }),
-          );
-          const shells = process.platform === "darwin" ? ["/bin/zsh", "/bin/bash"] : ["/bin/bash"];
-          for (const shell of shells) {
-            for (const mode of ["-c", "-lc"]) {
-              const result = await exec(
-                shell,
-                [mode, 'test "$NODEX_STARTUP_MARKER" = configured && nodex context'],
-                {
-                  cwd: root,
-                  env: {
-                    ...process.env,
-                    ...shellEnvironment,
-                    HOME: userShellHome,
-                    CODEX_THREAD_ID: task.threadId,
+          // Unix startup files are separate from the PowerShell/cmd dispatch contract.
+          if (process.platform !== "win32") {
+            const userShellHome = join(root, "user-shell");
+            const otherBin = join(root, "old-cli");
+            await mkdir(userShellHome);
+            await mkdir(otherBin);
+            await writeFile(join(otherBin, "nodex"), "#!/bin/sh\nprintf old-cli\n", {
+              mode: 0o700,
+            });
+            const startup = `export PATH='${otherBin.replaceAll("'", "'\\''")}':"$PATH"\nexport NODEX_STARTUP_MARKER=configured\n`;
+            await writeFile(join(userShellHome, ".zshenv"), startup);
+            await writeFile(join(userShellHome, "bash-env"), startup);
+            const shellArgs = await nodexCliShellLaunchArgs({
+              nodexHome: first.profile.nodexHome,
+              codexHome: first.profile.codexHome,
+              homeDirectory: userShellHome,
+              inheritedEnvironment: {
+                ZDOTDIR: userShellHome,
+                BASH_ENV: join(userShellHome, "bash-env"),
+                PATH: shellPath(""),
+              },
+              searchPaths: [],
+            });
+            const shellEnvironment = Object.fromEntries(
+              shellArgs
+                .filter((_, i) => i % 2 === 1)
+                .map((value) => {
+                  const equal = value.indexOf("=");
+                  return [
+                    value.slice("shell_environment_policy.set.".length, equal),
+                    JSON.parse(value.slice(equal + 1)) as string,
+                  ];
+                }),
+            );
+            const shells =
+              process.platform === "darwin" ? ["/bin/zsh", "/bin/bash"] : ["/bin/bash"];
+            for (const shell of shells) {
+              for (const mode of ["-c", "-lc"]) {
+                const result = await exec(
+                  shell,
+                  [mode, 'test "$NODEX_STARTUP_MARKER" = configured && nodex context'],
+                  {
+                    cwd: root,
+                    env: {
+                      ...process.env,
+                      ...shellEnvironment,
+                      HOME: userShellHome,
+                      CODEX_THREAD_ID: task.threadId,
+                    },
                   },
-                },
-              );
-              expect(JSON.parse(result.stdout).result.project.id).toBe(first.manifest.projectId);
+                );
+                expect(JSON.parse(result.stdout).result.project.id).toBe(first.manifest.projectId);
+              }
             }
           }
           const concurrent = await Promise.all([runContext(task.threadId), runContext("thread-b")]);
@@ -375,11 +422,11 @@ describe("Nodex per-Turn CLI connection", () => {
             expect(entry.value).toContain(shellQuote(projectId));
             expect(entry.value).toContain(shellQuote(join(skillRoot, "SKILL.md")));
             const env = {
-              PATH: nodexCliShellPaths(current.profile.nodexHome).bin,
+              PATH: shellPath(nodexCliShellPaths(current.profile.nodexHome).bin),
               CODEX_THREAD_ID: task.threadId,
               NODEX_HOME: second.profile.nodexHome,
             };
-            const result = await exec("/bin/sh", ["-c", "nodex --json context"], {
+            const result = await runShell("nodex --json context", {
               cwd: root,
               env,
               maxBuffer: 1024 * 1024,
@@ -389,7 +436,7 @@ describe("Nodex per-Turn CLI connection", () => {
             expect(context.project.id).toBe(projectId);
             if (projectId === otherProject.id) continue;
             const pageId = current.manifest.pageIdsByKey.sharedImageA;
-            const body = await exec("/bin/sh", ["-c", `nodex read '@${pageId}'`], {
+            const body = await runShell(`nodex read '@${pageId}'`, {
               cwd: root,
               env,
             });
@@ -397,14 +444,13 @@ describe("Nodex per-Turn CLI connection", () => {
             await bindNodexCliShell({
               nodexHome: current.profile.nodexHome,
               threadId: task.threadId,
-              executable: join(bin, "nodex"),
+              executable: join(bin, cliName),
               profileId: "wrong-profile",
               projectId,
               agentAttribution: null,
             });
-            const rejected = await exec(
-              "/bin/sh",
-              ["-c", `nodex page rename '${pageId}' --if-match unused 'Unexpected title'`],
+            const rejected = await runShell(
+              `nodex page rename '${pageId}' --if-match unused 'Unexpected title'`,
               {
                 cwd: root,
                 env,
@@ -426,12 +472,12 @@ describe("Nodex per-Turn CLI connection", () => {
             await bindNodexCliShell({
               nodexHome: current.profile.nodexHome,
               threadId: task.threadId,
-              executable: join(bin, "nodex"),
+              executable: join(bin, cliName),
               profileId: current.runtime.identity.profileId,
               projectId,
               agentAttribution: null,
             });
-            const unchanged = await exec("/bin/sh", ["-c", `nodex read '${pageId}'`], {
+            const unchanged = await runShell(`nodex read '${pageId}'`, {
               cwd: root,
               env,
             });

@@ -3,22 +3,25 @@ import path from "node:path";
 import { resolveBootstrapConfig } from "./bootstrap-config";
 
 function makeVirtualFs(files: Record<string, string>) {
+  const entries = Object.fromEntries(
+    Object.entries(files).map(([file, body]) => [path.resolve(file), body]),
+  );
   return {
-    exists: (filePath: string) => Object.prototype.hasOwnProperty.call(files, filePath),
-    readFile: (filePath: string) => files[filePath] ?? "",
+    exists: (filePath: string) => Object.prototype.hasOwnProperty.call(entries, filePath),
+    readFile: (filePath: string) => entries[filePath] ?? "",
   };
 }
 
 describe("resolveBootstrapConfig", () => {
   test("prefers NODEX_HOME and resolves relative env paths from cwd", () => {
-    const cwd = "/workspace/project";
+    const cwd = path.resolve("/workspace/project");
 
     expect(
       resolveBootstrapConfig({
         isPackaged: false,
         cwd,
         env: { NODEX_HOME: "relative-data" },
-        homeDir: "/home/user",
+        homeDir: path.resolve("/home/user"),
       }),
     ).toMatchObject({
       nodexHome: path.join(cwd, "relative-data"),
@@ -34,9 +37,9 @@ describe("resolveBootstrapConfig", () => {
     expect(() =>
       resolveBootstrapConfig({
         isPackaged: false,
-        cwd: "/workspace/project",
+        cwd: path.resolve("/workspace/project"),
         env: {},
-        homeDir: "/home/user",
+        homeDir: path.resolve("/home/user"),
         exists: files.exists,
         readFile: files.readFile,
       }),
@@ -46,7 +49,7 @@ describe("resolveBootstrapConfig", () => {
   });
 
   test("merges user and project config with project home taking precedence", () => {
-    const cwd = "/workspace/project/subdir";
+    const cwd = path.resolve("/workspace/project/subdir");
     const files = makeVirtualFs({
       "/home/user/.nodex/config.toml": '[server]\nhome = "~/user-data"\n',
       "/workspace/project/.nodex/config.toml": '[server]\nhome = "project-data"\n',
@@ -57,14 +60,14 @@ describe("resolveBootstrapConfig", () => {
         isPackaged: true,
         cwd,
         env: {},
-        homeDir: "/home/user",
+        homeDir: path.resolve("/home/user"),
         exists: files.exists,
         readFile: files.readFile,
       }),
     ).toMatchObject({
       nodexHome: path.join(cwd, "project-data"),
-      projectBootstrapConfigPath: "/workspace/project/.nodex/config.toml",
-      userBootstrapConfigPath: "/home/user/.nodex/config.toml",
+      projectBootstrapConfigPath: path.resolve("/workspace/project/.nodex/config.toml"),
+      userBootstrapConfigPath: path.resolve("/home/user/.nodex/config.toml"),
     });
   });
 
@@ -76,28 +79,28 @@ describe("resolveBootstrapConfig", () => {
     expect(
       resolveBootstrapConfig({
         isPackaged: true,
-        cwd: "/workspace/project",
+        cwd: path.resolve("/workspace/project"),
         env: {},
-        homeDir: "/home/user",
+        homeDir: path.resolve("/home/user"),
         exists: files.exists,
         readFile: files.readFile,
       }),
     ).toMatchObject({
-      nodexHome: "/home/user/custom-nodex",
-      profileSettingsPath: "/home/user/custom-nodex/config.toml",
+      nodexHome: path.resolve("/home/user/custom-nodex"),
+      profileSettingsPath: path.resolve("/home/user/custom-nodex/config.toml"),
     });
 
     expect(
       resolveBootstrapConfig({
         isPackaged: true,
-        cwd: "/workspace/project",
+        cwd: path.resolve("/workspace/project"),
         env: {},
-        homeDir: "/home/user",
+        homeDir: path.resolve("/home/user"),
         exists: () => false,
       }),
     ).toMatchObject({
-      nodexHome: "/home/user/.nodex",
-      profileSettingsPath: "/home/user/.nodex/config.toml",
+      nodexHome: path.resolve("/home/user/.nodex"),
+      profileSettingsPath: path.resolve("/home/user/.nodex/config.toml"),
     });
   });
 
@@ -109,9 +112,9 @@ describe("resolveBootstrapConfig", () => {
     expect(() =>
       resolveBootstrapConfig({
         isPackaged: true,
-        cwd: "/workspace/project",
+        cwd: path.resolve("/workspace/project"),
         env: {},
-        homeDir: "/home/user",
+        homeDir: path.resolve("/home/user"),
         exists: files.exists,
         readFile: files.readFile,
       }),

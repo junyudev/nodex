@@ -11,7 +11,7 @@ import {
   realpathSync,
   statSync,
   symlinkSync,
-  type Stats,
+  type BigIntStats,
 } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
@@ -51,14 +51,14 @@ export interface CodexAccountHome {
   readonly mode: "direct" | "overlay";
   readonly sharedHome: string;
   readonly effectiveHome: string;
-  readonly directoryIdentity: { readonly device: number; readonly inode: number } | null;
-  readonly sharedDirectoryIdentity: { readonly device: number; readonly inode: number } | null;
+  readonly directoryIdentity: { readonly device: bigint; readonly inode: bigint } | null;
+  readonly sharedDirectoryIdentity: { readonly device: bigint; readonly inode: bigint } | null;
   readonly sharedEntryNames: readonly string[];
 }
 
-function statIfPresent(file: string): Stats | null {
+function statIfPresent(file: string): BigIntStats | null {
   try {
-    return lstatSync(file);
+    return lstatSync(file, { bigint: true });
   } catch (cause) {
     if (typeof cause === "object" && cause !== null && "code" in cause && cause.code === "ENOENT")
       return null;
@@ -91,19 +91,19 @@ function contains(parent: string, child: string): boolean {
 function assertPrivateFile(file: string, bound?: number): void {
   const entry = statIfPresent(file);
   if (entry === null) return;
-  if (!entry.isFile() || entry.isSymbolicLink() || entry.nlink !== 1)
+  if (!entry.isFile() || entry.isSymbolicLink() || entry.nlink !== 1n)
     throw new Error(`Codex account file must be a private regular file: ${file}`);
   const descriptor = openSync(file, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
-    const opened = fstatSync(descriptor);
+    const opened = fstatSync(descriptor, { bigint: true });
     if (
       !opened.isFile() ||
       opened.ino !== entry.ino ||
       opened.dev !== entry.dev ||
-      opened.nlink !== 1
+      opened.nlink !== 1n
     )
       throw new Error(`Codex account file changed while it was validated: ${file}`);
-    if (bound !== undefined && opened.size > bound)
+    if (bound !== undefined && opened.size > BigInt(bound))
       throw new Error(`Codex account file exceeds ${bound} bytes: ${file}`);
   } finally {
     closeSync(descriptor);
@@ -159,8 +159,8 @@ function assertSharedEntry(
   )
     return;
   if (platform === "win32" && existing.isSymbolicLink() && shared) {
-    const actual = statSync(link);
-    const expected = statSync(target);
+    const actual = statSync(link, { bigint: true });
+    const expected = statSync(target, { bigint: true });
     if (actual.dev === expected.dev && actual.ino === expected.ino) return;
   }
   if (!existing.isSymbolicLink())
@@ -232,7 +232,8 @@ export function prepareCodexAccountHome(
   mkdirSync(home.effectiveHome, { recursive: true, mode: 0o700 });
   if (
     input.platform === "win32" &&
-    statSync(home.sharedHome).dev !== statSync(home.effectiveHome).dev
+    statSync(home.sharedHome, { bigint: true }).dev !==
+      statSync(home.effectiveHome, { bigint: true }).dev
   )
     throw new Error("Codex account and shared directories must be on the same Windows volume.");
   for (const entry of SHARED_DIRECTORIES)
@@ -255,11 +256,11 @@ export function prepareCodexAccountHome(
     }
     // Junctions need no Developer Mode or symlink privilege. Shared config uses
     // same-volume file links; identity checks refuse diverged/replaced files.
-    if (statSync(target).isDirectory()) symlinkSync(target, link, "junction");
+    if (statSync(target, { bigint: true }).isDirectory()) symlinkSync(target, link, "junction");
     else linkSync(target, link);
   }
-  const directory = statSync(home.effectiveHome);
-  const sharedDirectory = statSync(home.sharedHome);
+  const directory = statSync(home.effectiveHome, { bigint: true });
+  const sharedDirectory = statSync(home.sharedHome, { bigint: true });
   return {
     ...home,
     directoryIdentity: { device: directory.dev, inode: directory.ino },
@@ -276,8 +277,8 @@ export function assertCodexAccountHomeIdentity(home: CodexAccountHome, platform:
     accountHome: home.effectiveHome,
     platform,
   });
-  const account = statSync(checked.effectiveHome);
-  const shared = statSync(checked.sharedHome);
+  const account = statSync(checked.effectiveHome, { bigint: true });
+  const shared = statSync(checked.sharedHome, { bigint: true });
   if (
     account.dev !== home.directoryIdentity.device ||
     account.ino !== home.directoryIdentity.inode ||

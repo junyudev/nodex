@@ -1,3 +1,4 @@
+import path from "node:path";
 import { expect, it } from "vite-plus/test";
 import { managedNodexProviders, projectManagedNodexCatalog } from "./managed-providers";
 import { modelAccessFixture } from "./model-access-fixture";
@@ -43,9 +44,15 @@ it("declares only the four managed models with private per-account homes and cre
       HTTPS_PROXY: "http://127.0.0.1:7890",
       SSH_AUTH_SOCK: "/tmp/agent.sock",
     });
-    expect(environment.CODEX_HOME ?? environment.CLAUDE_CONFIG_DIR).toMatch(
-      /^\/profile\/account\/models\//u,
-    );
+    expect(
+      path
+        .relative(
+          path.join("/profile", "account", "models"),
+          environment.CODEX_HOME ?? environment.CLAUDE_CONFIG_DIR!,
+        )
+        .split(path.sep)
+        .join("/"),
+    ).toMatch(/^[a-f0-9]{32}\/(?:codex|claude)$/u);
     expect(environment.OPENAI_API_KEY).toBeUndefined();
     expect(JSON.stringify(provider)).not.toContain("native-openai");
     expect(JSON.stringify(provider)).not.toContain("native-claude");

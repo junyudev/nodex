@@ -9,7 +9,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import { afterEach, describe, expect, test } from "vite-plus/test";
 
 import { installCliCommand } from "./cli-command-installer";
@@ -43,7 +43,7 @@ describe("installCliCommand", () => {
     const targetPath = join(root, ".local/bin/nodex");
 
     const result = installCliCommand({
-      environmentPath: `${join(root, ".local/bin")}:/usr/bin`,
+      environmentPath: [join(root, ".local/bin"), "/usr/bin"].join(delimiter),
       sourcePath,
       targetPath,
     });

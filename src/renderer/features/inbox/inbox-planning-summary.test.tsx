@@ -1,11 +1,17 @@
 import { act, fireEvent, screen, within } from "@testing-library/react";
-import { describe, expect, test, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { render, settleAsyncRender } from "@/test/dom";
 import { DEFAULT_INBOX_SETTINGS, type InboxSettings } from "../../../shared/inbox";
 import { claudeProvider, codexProvider, inboxAgentsFixture } from "./inbox-agents.test-support";
 import { InboxPlanningSummary } from "./inbox-planning-summary";
 
 const NOW = Date.parse("2026-11-01T12:00:00.000Z");
+beforeEach(() => {
+  vi.spyOn(Date, "now").mockReturnValue(NOW);
+});
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 /** Codex has 71% of its week left, read a few minutes ago. */
 const codex = () => ({

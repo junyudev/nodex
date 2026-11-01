@@ -10,6 +10,7 @@ mod lifecycle;
 mod lifecycle_summary;
 mod logging;
 mod metrics;
+pub mod private_filesystem;
 mod request_execution;
 mod runtime_files;
 mod transport_bounds;

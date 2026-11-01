@@ -1,3 +1,4 @@
+import { syncDirectorySync } from "../platform/node/filesystem-durability";
 import {
   closeSync,
   existsSync,
@@ -11,7 +12,6 @@ import {
 } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { basename, dirname, join } from "node:path";
-import { syncDirectorySync } from "../durable-json-file";
 import type {
   PersistedAtomEvent,
   PersistedAtomMutation,

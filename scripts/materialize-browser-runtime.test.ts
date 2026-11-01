@@ -96,7 +96,9 @@ describe.skipIf(process.platform === "win32")("materializeBrowserRuntime", () =>
     });
     const clientPath = path.join(outputPath, manifest.browserPlugin.client);
     const secondClientPath = path.join(secondOutput, manifest.browserPlugin.client);
-    expect(fs.statSync(clientPath).ino).not.toBe(fs.statSync(secondClientPath).ino);
+    expect(fs.statSync(clientPath, { bigint: true }).ino).not.toBe(
+      fs.statSync(secondClientPath, { bigint: true }).ino,
+    );
     const originalClient = fs.readFileSync(secondClientPath);
     fs.appendFileSync(clientPath, "tampered");
     expect(fs.readFileSync(secondClientPath)).toEqual(originalClient);

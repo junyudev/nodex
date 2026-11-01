@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { listenAppToolsPipe } from "@nodex/app-tools-mcp/pipe";
+import { appToolsPipePath, listenAppToolsPipe } from "@nodex/app-tools-mcp/pipe";
 import { build } from "esbuild";
 import { expect, it } from "vitest";
 import { parse as parseToml } from "smol-toml";
@@ -22,7 +22,7 @@ it("launches the packaged MCP layout through its private generation descriptor",
     resourcesPath: join(directory, "Resources with spaces"),
   });
   const pipe = {
-    path: join(directory, "host.sock"),
+    path: appToolsPipePath(directory, process.platform),
     instanceId: randomUUID(),
     token: randomUUID(),
   };

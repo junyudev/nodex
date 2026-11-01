@@ -6,10 +6,15 @@ describe("Codex dynamic first-turn context", () => {
   test("derives the exact UTC visualization directory from a UUIDv7 thread id", () => {
     const threadId = "0197f6e8-8c00-7000-8000-000000000000";
 
-    const directory = resolveCodexThreadVisualizationDirectory("/home/.codex", threadId);
+    const directory = resolveCodexThreadVisualizationDirectory(
+      path.resolve("/home/.codex"),
+      threadId,
+    );
 
-    expect(directory).toBe(`/home/.codex/visualizations/2025/07/11/${threadId}`);
-    expect(resolveCodexThreadVisualizationDirectory("/home/.codex", "thread-test")).toBe(null);
+    expect(directory).toBe(path.resolve("/home/.codex/visualizations/2025/07/11", threadId));
+    expect(
+      resolveCodexThreadVisualizationDirectory(path.resolve("/home/.codex"), "thread-test"),
+    ).toBe(null);
   });
 
   test("supports second-based UUIDv8 identities and uses the selected host path grammar", () => {
@@ -23,7 +28,7 @@ describe("Codex dynamic first-turn context", () => {
     );
     expect(
       resolveCodexThreadVisualizationDirectory(
-        "/home/.codex",
+        path.resolve("/home/.codex"),
         threadId.replace("-0004-", "-0001-"),
       ),
     ).toBeNull();

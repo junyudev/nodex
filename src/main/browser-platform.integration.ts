@@ -257,7 +257,7 @@ describe("Browser Platform Electron substrate", () => {
           const guest = webContents.fromId(guestId);
           return guest?.session.getStoragePath() ?? null;
         }, secondGuestId),
-      ).resolves.toContain("Partitions/nodex-browser-integration");
+      ).resolves.toContain(path.join("Partitions", "nodex-browser-integration"));
     } finally {
       if (application) await stopApplication(application);
       await closeServer(server);

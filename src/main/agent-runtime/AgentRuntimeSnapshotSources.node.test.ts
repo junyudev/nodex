@@ -1,3 +1,4 @@
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { nativeHistorySources } from "./AgentRuntimeSnapshotSources";
 
@@ -32,7 +33,7 @@ describe("native snapshot history sources", () => {
     });
     expect(sources).toEqual([
       { providerInstanceId: "codex", driver: "codex", homePath: "/physical/shared-home" },
-      { providerInstanceId: "claude", driver: "claudeAgent", homePath: "/user/work" },
+      { providerInstanceId: "claude", driver: "claudeAgent", homePath: path.resolve("/user/work") },
       { providerInstanceId: "acp", driver: "acpRegistry", homePath: null },
       { providerInstanceId: "remote", driver: "opencode", homePath: null },
     ]);
@@ -49,7 +50,7 @@ describe("native snapshot history sources", () => {
               driver: "codex",
               enabled: true,
               config: {
-                homePath: "/profile/agent-runtime/native-history/codex",
+                homePath: path.resolve("/profile/agent-runtime/native-history/codex"),
                 hostAuthentication: true,
               },
             },
@@ -58,7 +59,7 @@ describe("native snapshot history sources", () => {
               enabled: true,
               config: {
                 homePath: "/private/claude-account",
-                restoredHistoryPath: "/profile/agent-runtime/native-history/claude",
+                restoredHistoryPath: path.resolve("/profile/agent-runtime/native-history/claude"),
               },
             },
           },
@@ -71,12 +72,12 @@ describe("native snapshot history sources", () => {
       {
         providerInstanceId: "codex",
         driver: "codex",
-        homePath: "/profile/agent-runtime/native-history/codex",
+        homePath: path.resolve("/profile/agent-runtime/native-history/codex"),
       },
       {
         providerInstanceId: "claude",
         driver: "claudeAgent",
-        homePath: "/profile/agent-runtime/native-history/claude",
+        homePath: path.resolve("/profile/agent-runtime/native-history/claude"),
       },
     ]);
   });
@@ -106,9 +107,11 @@ describe("native snapshot history sources", () => {
         homeDirectory: "/fallback",
         codexHome: "/codex",
       })[0]?.homePath;
-    expect(read("/instance", "/inherited")).toBe("/instance");
-    expect(read(undefined, "/inherited")).toBe("/inherited");
-    expect(read()).toBe("/fallback/.claude");
+    expect(read(path.resolve("/instance"), path.resolve("/inherited"))).toBe(
+      path.resolve("/instance"),
+    );
+    expect(read(undefined, path.resolve("/inherited"))).toBe(path.resolve("/inherited"));
+    expect(read()).toBe(path.resolve("/fallback/.claude"));
   });
 });
 

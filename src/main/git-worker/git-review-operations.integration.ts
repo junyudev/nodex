@@ -1,7 +1,8 @@
+import { rm } from "node:fs/promises";
 import { it } from "@effect/vitest";
 import { afterEach, expect } from "vite-plus/test";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import * as Effect from "effect/Effect";
@@ -74,11 +75,11 @@ function expectSuccessfulSearch(
   if (result.type !== "success") throw new Error("Expected search result.");
 }
 
-afterEach(() => {
+afterEach(async () => {
   while (tempDirs.length > 0) {
     const dir = tempDirs.pop();
     if (!dir) continue;
-    rmSync(dir, {
+    await rm(dir, {
       recursive: true,
       force: true,
       maxRetries: 10,
@@ -415,7 +416,7 @@ it.layer(GitCommandPlatformNode.nodeLive)("git review service", (it) => {
     initializeRepository(cwd);
     writeFileSync(path.join(cwd, "README.md"), "alpha\n", "utf8");
     commitAll(cwd, "initial");
-    const quotedPath = 'quote"needle.ts';
+    const quotedPath = process.platform === "win32" ? "汉字-needle.ts" : 'quote"needle.ts';
     writeFileSync(path.join(cwd, quotedPath), "export const quotedPath = true;\n", "utf8");
     runGit(cwd, ["add", quotedPath]);
 

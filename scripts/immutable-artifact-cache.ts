@@ -567,11 +567,12 @@ export async function ensureImmutableDirectory(
 
 /** Makes independent files using a filesystem clone where available, with an ordinary-copy fallback. */
 export function cloneImmutableFile(sourcePath: string, destinationPath: string): void {
-  const source = statSync(sourcePath);
+  // NTFS file IDs exceed Number.MAX_SAFE_INTEGER; rounded identities can alias distinct files.
+  const source = statSync(sourcePath, { bigint: true });
   if (!source.isFile())
     throw new Error(`Immutable file source must be a regular file: ${sourcePath}`);
   try {
-    const destination = statSync(destinationPath);
+    const destination = statSync(destinationPath, { bigint: true });
     if (source.dev === destination.dev && source.ino === destination.ino) {
       throw new Error("Immutable file source and destination must be different files");
     }

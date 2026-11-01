@@ -92,8 +92,9 @@ function makeHost(overrides: Partial<ComputerUseHostPlatform> = {}): HostHarness
     materializeApp: () =>
       Effect.succeed({
         appPath: "/runtime/Codex Computer Use.app",
-        serviceExecutablePath:
+        serviceExecutablePath: path.resolve(
           "/runtime/Codex Computer Use.app/Contents/MacOS/SkyComputerUseService",
+        ),
       }),
     platform: "darwin",
     processMatchesExecutable: () => true,
@@ -154,7 +155,9 @@ it.effect("owns readiness, native requests, managed service, and release in one 
     const expected = {
       appPath: "/runtime/Codex Computer Use.app",
       hostServicesPipePath: "/tmp/host-services.sock",
-      serviceExecutablePath: "/runtime/Codex Computer Use.app/Contents/MacOS/SkyComputerUseService",
+      serviceExecutablePath: path.resolve(
+        "/runtime/Codex Computer Use.app/Contents/MacOS/SkyComputerUseService",
+      ),
       status: "available" as const,
     };
     const results = yield* Effect.all([runtime.ensureReady, runtime.ensureReady], {
@@ -209,12 +212,16 @@ it.effect("publishes generation-fenced managed-service transitions", () =>
     assert.deepEqual(yield* Fiber.join(transitions), [
       { generation: 0, status: "pending" },
       {
-        executablePath: "/runtime/Codex Computer Use.app/Contents/MacOS/SkyComputerUseService",
+        executablePath: path.resolve(
+          "/runtime/Codex Computer Use.app/Contents/MacOS/SkyComputerUseService",
+        ),
         generation: 0,
         status: "ready",
       },
       {
-        executablePath: "/runtime/Codex Computer Use.app/Contents/MacOS/SkyComputerUseService",
+        executablePath: path.resolve(
+          "/runtime/Codex Computer Use.app/Contents/MacOS/SkyComputerUseService",
+        ),
         generation: 1,
         pid: 8123,
         status: "running",
@@ -245,7 +252,9 @@ it.effect("respawns an invalid exact process and fences stale loss reconciliatio
     const reconciled = yield* runtime.reconcileManagedService({ generation: 1, pid: 5001 });
     assert.deepEqual(pids, []);
     assert.deepEqual(reconciled, {
-      executablePath: "/runtime/Codex Computer Use.app/Contents/MacOS/SkyComputerUseService",
+      executablePath: path.resolve(
+        "/runtime/Codex Computer Use.app/Contents/MacOS/SkyComputerUseService",
+      ),
       generation: 2,
       pid: 5002,
       status: "running",

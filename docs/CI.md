@@ -42,7 +42,7 @@ Electron E2E, stress, performance, or macOS runtime in the merge loop.
 
 ## Windows tier
 
-`.github/workflows/windows.yml` runs Rust workspace and application unit/host/renderer
+`.github/workflows/windows.yml` runs Rust workspace and application unit, Core-client, Main, renderer and integration
 suites natively on `windows-latest` (x64) and `windows-11-arm` (arm64). Pull requests
 with affected Rust, application, build, runtime, dependency, or Windows workflow
 paths select this deterministic tier. It is independent of the existing `required`
@@ -66,9 +66,10 @@ uninstalls, and rejects remaining installation files, protocol registration or
 shortcuts. Startup diagnostics remain a separate artifact from the installer.
 See [the Windows release runbook](release-windows.md).
 
-The typed `host` suite owns Core-independent Electron/OS contracts and requires no
-Rust artifacts. Test ownership, discovery and native prerequisites live together in
-`config/test-suites.ts`; workflows name the suite rather than selecting test files.
+Test ownership, discovery and prerequisites live together in `config/test-suites.ts`.
+The typed suite planner selects Rust setup; each suite prepares its own native
+artifacts before execution. Main and integration use Electron's Node ABI on both
+Windows CPUs and the runners' interactive desktop; Xvfb is Linux-only.
 
 The native Rust setup verifies the MSVC host CPU and caches Cargo dependency
 sources by runner architecture, toolchain and lockfile. Writable Cargo targets
@@ -88,7 +89,7 @@ or test. Application installs use the shared Vite+ dependency cache.
   changes run every selected suite. Deleted paths fail closed because they
   cannot participate in Vitest's import graph.
 
-The reusable application matrix owns `unit`, `core-client`, `host`, `main`, `renderer`,
+The reusable application matrix owns `unit`, `core-client`, `main`, `renderer`,
 `integration`, and `browser`. Browser is a normal Vitest suite with a managed
 Chromium prerequisite; it is not a Playwright UI workflow. Main and integration
 continue to run through Electron's Node ABI so native addons are exercised by

@@ -7,7 +7,7 @@ describe("environment-aware generic app resources", () => {
       "/@fs/tmp/icon.png",
     );
     expect(normalizeEnvironmentAwareAppResourceSource("C:\\Apps\\icon.png", "https:")).toBe(
-      "/@fs/C:/Apps/icon.png",
+      "app://fs/@fs/C:/Apps/icon.png",
     );
     expect(normalizeEnvironmentAwareAppResourceSource("/tmp/icon.png", "app:")).toBe(
       "app://fs/@fs/tmp/icon.png",

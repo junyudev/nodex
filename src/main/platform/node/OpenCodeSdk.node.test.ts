@@ -1,3 +1,4 @@
+import { join } from "node:path";
 // @effect-diagnostics strictEffectProvide:off
 import { createServer } from "node:http";
 import { it } from "@effect/vitest";
@@ -93,11 +94,11 @@ it.effect(
     Effect.sync(() => {
       const environment = openCodeEnvironment(launch);
       expect(environment).toMatchObject({
-        XDG_DATA_HOME: "/profile/agent/data",
-        XDG_CONFIG_HOME: "/profile/agent/config",
-        XDG_CACHE_HOME: "/profile/agent/cache",
-        XDG_STATE_HOME: "/profile/agent/state",
-        OPENCODE_CONFIG_DIR: "/profile/agent/config/opencode",
+        XDG_DATA_HOME: join("/profile/agent", "data"),
+        XDG_CONFIG_HOME: join("/profile/agent", "config"),
+        XDG_CACHE_HOME: join("/profile/agent", "cache"),
+        XDG_STATE_HOME: join("/profile/agent", "state"),
+        OPENCODE_CONFIG_DIR: join("/profile/agent", "config", "opencode"),
         OPENCODE_TEST_HOME: "/profile/agent",
         HOME: "/host-home",
         MOONSHOT_API_KEY: "configured-key",

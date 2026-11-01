@@ -68,8 +68,8 @@ describe("file link openers", () => {
     ["file:///workspace/my%20doc.md", "/workspace/my doc.md"],
     ["file://localhost/workspace/my%20doc.md", "/workspace/my doc.md"],
     ["file://LOCALHOST/workspace/my%20doc.md", "/workspace/my doc.md"],
-    ["file:///C:/workspace/my%20doc.md", "/C:/workspace/my doc.md"],
-    ["file://localhost/C:/workspace/my%20doc.md", "/C:/workspace/my doc.md"],
+    ["file:///C:/workspace/my%20doc.md", "C:/workspace/my doc.md"],
+    ["file://localhost/C:/workspace/my%20doc.md", "C:/workspace/my doc.md"],
   ])("keeps %s local", (href, path) => {
     expect(parseLocalFileLinkHref(href)).toEqual({ path });
   });
@@ -110,4 +110,20 @@ describe("file link openers", () => {
     expect(formatFileLinkLocation(target)).toBe(`${EXAMPLE_PARSER_PATH}:71:4`);
     expect(buildFileUrl(target)).toBe(`file://${EXAMPLE_PARSER_PATH}#L71C4`);
   });
+});
+
+test.each(["C:\\workspace\\我的 #1%.ts", "\\\\server\\share\\我的 #1%.ts"])(
+  "round-trips native Windows file URLs and line fragments: %s",
+  (path) => {
+    expect(parseLocalFileLinkHref(buildFileUrl({ path, line: 7, column: 3 }))).toEqual({
+      path: path.replaceAll("\\", "/"),
+      line: 7,
+      column: 3,
+    });
+  },
+);
+
+test("preserves literal POSIX filename characters in a file URL", () => {
+  const path = String.raw`/workspace/notes\#?.md`;
+  expect(parseLocalFileLinkHref(buildFileUrl({ path, line: 7 }))).toEqual({ path, line: 7 });
 });

@@ -44,6 +44,21 @@ pub fn checked_metadata(path: &Path, kind: EntryKind, mode: Option<u32>) -> io::
     Ok(metadata)
 }
 
+/// Admit only an owned, non-aliased entry, then protect it with native private permissions.
+pub fn prepare_private_path(path: &Path, kind: EntryKind) -> io::Result<()> {
+    let mode = match kind {
+        EntryKind::Directory => 0o700,
+        EntryKind::File | EntryKind::Socket => 0o600,
+    };
+    #[cfg(windows)]
+    return windows::initialize_private_entry(path, kind, mode);
+    #[cfg(unix)]
+    {
+        checked_metadata(path, kind, None)?;
+        set_mode(path, mode)
+    }
+}
+
 pub fn require_mode(path: &Path, metadata: &Metadata, mode: u32) -> io::Result<()> {
     if has_mode(path, metadata, mode)? {
         return Ok(());

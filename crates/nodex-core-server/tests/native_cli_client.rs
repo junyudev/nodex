@@ -43,7 +43,8 @@ fn native_client_cold_starts_reuses_and_reads_the_authenticated_core() {
     assert_eq!(client.descriptor.pid, client.handshake.generation.pid);
     assert_eq!(client.handshake.schema_version, expected_schema_version);
 
-    let second = CoreClient::connect(&home, "native-client-test").expect("reuse running Core");
+    let second = connect_or_launch(&home, "native-client-test", Some(executable))
+        .expect("reuse running Core through a completed launcher");
     assert_eq!(
         second.handshake.generation.pid,
         client.handshake.generation.pid

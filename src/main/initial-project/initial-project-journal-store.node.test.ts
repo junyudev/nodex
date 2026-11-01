@@ -102,7 +102,7 @@ describe("resolveInitialProjectProjectsDirectory", () => {
       resolveInitialProjectProjectsDirectory({
         documentsDirectory: "/Users/alex/Documents",
       }),
-    ).toBe("/Users/alex/Documents/Nodex");
+    ).toBe(join("/Users/alex/Documents", "Nodex"));
     expect(
       resolveInitialProjectProjectsDirectory({
         configuredDirectory: "/tmp/nodex-profile/workspace",

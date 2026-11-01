@@ -39,7 +39,7 @@ it.live.each([false, true])("Windows cleanup skips an exited child's PID (signal
           // Spawn natively, then exercise the Windows exit and release paths.
           Object.defineProperty(process, "platform", { value: "win32" });
           const exit = yield* Effect.exit(handle.exitCode);
-          if (signal) assert.isTrue(Exit.isFailure(exit));
+          if (signal && platform.value !== "win32") assert.isTrue(Exit.isFailure(exit));
           else assert.strictEqual(Exit.isSuccess(exit) ? Number(exit.value) : undefined, 1);
           yield* handle.kill();
         }),

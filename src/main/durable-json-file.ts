@@ -1,4 +1,5 @@
-import { closeSync, fsyncSync, openSync } from "node:fs";
+import { syncDirectory } from "./platform/node/filesystem-durability";
+export { syncDirectory };
 import { randomUUID } from "node:crypto";
 import { mkdir, open, rename, rm } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
@@ -29,36 +30,6 @@ export async function writeDurableJson(
     await syncDirectory(dirname(filePath));
   } finally {
     await rm(temporaryPath, { force: true });
-  }
-}
-
-// Node cannot flush Windows directory handles. Every publisher must flush its
-// staged file before the atomic rename; POSIX hosts also flush the parent entry.
-export async function syncDirectory(directoryPath: string): Promise<void> {
-  if (process.platform === "win32") return;
-  try {
-    const handle = await open(directoryPath, "r");
-    try {
-      await handle.sync();
-    } finally {
-      await handle.close();
-    }
-  } catch (error) {
-    if (!isMissingPathError(error)) throw error;
-  }
-}
-
-export function syncDirectorySync(directoryPath: string): void {
-  if (process.platform === "win32") return;
-  try {
-    const descriptor = openSync(directoryPath, "r");
-    try {
-      fsyncSync(descriptor);
-    } finally {
-      closeSync(descriptor);
-    }
-  } catch (error) {
-    if (!isMissingPathError(error)) throw error;
   }
 }
 
