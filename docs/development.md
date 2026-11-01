@@ -394,6 +394,15 @@ Sessions so they remain unread without Agent authentication. No Agent is started
 vp run dev --home "$HOME/repo/nodex/runs.local/chat-status" --seed sidebar/chat-status
 ```
 
+`sidebar/pagination` lists Paged Project first among twelve Projects, with 23
+threadless chats from Chat 01 down. Expand it to step its chats through Show more
+and Show less five rows at a time; the Projects list pages the other Projects the
+same way:
+
+```bash
+vp run dev --home "$HOME/repo/nodex/runs.local/sidebar-pagination" --seed sidebar/pagination
+```
+
 `scheduled/ask-in-inbox` creates five scheduled tasks, a Dependency policy runbook,
 and Inbox messages for waiting, skipped, and failed runs. The dependency task has
 fallen due three times while waiting; a projectless reading list waits in the

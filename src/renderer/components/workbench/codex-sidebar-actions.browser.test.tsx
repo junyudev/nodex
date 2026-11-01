@@ -101,7 +101,7 @@ test.each([240, 320])("aligns project pagination text with Session titles at %ip
         <NodexTooltipProvider>
           <div style={{ width }}>
             <SidebarPaginatedItems
-              items={[THREAD, { ...THREAD, key: "second" }]}
+              items={[THREAD, { ...THREAD, key: "second" }, { ...THREAD, key: "third" }]}
               getKey={(item) => item.key}
               maxItems={1}
               extraPages={0}

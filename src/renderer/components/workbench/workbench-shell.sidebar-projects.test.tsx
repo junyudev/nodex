@@ -709,7 +709,7 @@ describe("workbench session shell / sidebar-projects", () => {
     expect(newThreadIndex < olderThreadIndex).toBe(true);
   });
 
-  test("project chat list follows Codex Show more and Show less paging", async () => {
+  test("project chat list pages five chats at a time with Show more and Show less", async () => {
     const projectChats = Array.from({ length: 16 }, (_, index) =>
       makeAttachedSession({
         id: `session:alpha:paged-${index + 1}`,
@@ -753,11 +753,11 @@ describe("workbench session shell / sidebar-projects", () => {
     await settleAsyncRender();
 
     expect(
-      screen.container.querySelector('[data-app-action-sidebar-thread-title="Paged chat 15"]') !==
+      screen.container.querySelector('[data-app-action-sidebar-thread-title="Paged chat 10"]') !==
         null,
     ).toBe(true);
     expect(
-      screen.container.querySelector('[data-app-action-sidebar-thread-title="Paged chat 16"]'),
+      screen.container.querySelector('[data-app-action-sidebar-thread-title="Paged chat 11"]'),
     ).toBe(null);
 
     await act(async () => {

@@ -16,6 +16,7 @@ import { nfmEquationAndMermaidScenario } from "./scenarios/nfm-equation-and-merm
 import { pageRelatedChatActivityScenario } from "./scenarios/page-related-chat-activity";
 import { sidebarCustomSectionsScenario } from "./scenarios/sidebar-custom-sections";
 import { sidebarChatStatusScenario } from "./scenarios/sidebar-chat-status";
+import { sidebarPaginationScenario } from "./scenarios/sidebar-pagination";
 import { sidebarLinkedPageStatusScenario } from "./scenarios/sidebar-linked-page-status";
 import { libraryFilesScenario } from "./scenarios/library-files";
 import { pageFileProvenanceScenario } from "./scenarios/page-file-provenance";
@@ -41,6 +42,7 @@ const scenarios = new Map<string, ScenarioDomainRecipe>([
   [nfmEquationAndMermaidScenario.id, nfmEquationAndMermaidScenario],
   [sidebarCustomSectionsScenario.id, sidebarCustomSectionsScenario],
   [sidebarChatStatusScenario.id, sidebarChatStatusScenario],
+  [sidebarPaginationScenario.id, sidebarPaginationScenario],
   [sidebarLinkedPageStatusScenario.id, sidebarLinkedPageStatusScenario],
   [libraryFilesScenario.id, libraryFilesScenario],
   [pageFileProvenanceScenario.id, pageFileProvenanceScenario],

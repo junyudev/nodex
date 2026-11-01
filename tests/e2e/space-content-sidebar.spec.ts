@@ -56,10 +56,11 @@ test("Space Content keeps its order and depth while content opens, and new conte
       await openSpace(page);
       await expect.poll(() => readContentTitles(page)).toEqual(PAGE_TITLES.slice(0, 5));
 
-      await showMore(page);
-      await expect(contentRows(page)).toHaveCount(15);
-      await showMore(page);
-      await expect(contentRows(page)).toHaveCount(25);
+      // Each Show more reveals five more rows.
+      for (const count of [10, 15, 20]) {
+        await showMore(page);
+        await expect(contentRows(page)).toHaveCount(count);
+      }
       const revealed = await readContentTitles(page);
       const revealedPages = revealed.filter((title) => PAGE_TITLES.includes(title));
       expect(revealedPages).toEqual(PAGE_TITLES.slice(0, revealedPages.length));
@@ -89,14 +90,17 @@ test("Space Content keeps its order and depth while content opens, and new conte
       await openSpace(page);
       await expect.poll(() => readContentTitles(page)).toEqual(revealed);
 
-      await page
-        .getByRole("navigation", { name: "Space", exact: true })
-        .getByRole("button", { name: "Show less", exact: true })
-        .click();
-      // The open Page beyond the first page stays listed as one extra row in Library order.
-      await expect
-        .poll(() => readContentTitles(page))
-        .toEqual([...revealed.slice(0, 5), "Retrospectives"]);
+      // Each Show less hides the last five rows revealed. The open Page beyond the revealed
+      // rows stays listed as one extra row in Library order.
+      for (const count of [15, 10, 5]) {
+        await page
+          .getByRole("navigation", { name: "Space", exact: true })
+          .getByRole("button", { name: "Show less", exact: true })
+          .click();
+        await expect
+          .poll(() => readContentTitles(page))
+          .toEqual([...revealed.slice(0, count), "Retrospectives"]);
+      }
 
       // New content enters at the top, where the first page keeps it visible.
       await page

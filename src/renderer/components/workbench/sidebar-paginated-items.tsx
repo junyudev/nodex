@@ -17,7 +17,7 @@ export interface SidebarPaginatedSource {
 }
 
 export interface SidebarPaginatedItemsProps<T> {
-  readonly items: T[];
+  readonly items: readonly T[];
   readonly getKey: (item: T) => string;
   readonly maxItems?: number | null;
   /** Show more steps beyond the first page. The owner decides how long it is remembered. */
@@ -43,7 +43,6 @@ export function SidebarPaginatedItems<T>({
   children,
 }: SidebarPaginatedItemsProps<T>) {
   const focusRestoreTargetRef = useRef<HTMLButtonElement | null>(null);
-  const expanded = extraPages > 0;
   const hasMoreAtSource = source?.hasMore ?? false;
 
   const pagination = useMemo(
@@ -56,8 +55,18 @@ export function SidebarPaginatedItems<T>({
         forcedVisibleKey,
         suppressedKeys,
         pagerEnabled: Boolean(onExtraPagesChange),
+        moreAtSource: hasMoreAtSource,
       }),
-    [extraPages, forcedVisibleKey, getKey, items, maxItems, onExtraPagesChange, suppressedKeys],
+    [
+      extraPages,
+      forcedVisibleKey,
+      getKey,
+      hasMoreAtSource,
+      items,
+      maxItems,
+      onExtraPagesChange,
+      suppressedKeys,
+    ],
   );
 
   // Keep one row beyond the revealed depth loaded, so a remembered depth refills itself
@@ -78,9 +87,11 @@ export function SidebarPaginatedItems<T>({
     if (fillRequest !== null) loadMore();
   }, [fillRequest]);
 
+  // The pressed button can unmount when its direction runs out; keep focus on the pager
+  // without scrolling the sidebar to it.
   const restorePagerFocus = useCallback(() => {
     queueMicrotask(() => {
-      focusRestoreTargetRef.current?.focus();
+      focusRestoreTargetRef.current?.focus({ preventScroll: true });
     });
   }, []);
 
@@ -89,10 +100,12 @@ export function SidebarPaginatedItems<T>({
     restorePagerFocus();
   }, [extraPages, onExtraPagesChange, restorePagerFocus]);
 
+  const { lessExtraPages } = pagination;
   const showLess = useCallback(() => {
-    onExtraPagesChange?.(0);
+    if (lessExtraPages === null) return;
+    onExtraPagesChange?.(lessExtraPages);
     restorePagerFocus();
-  }, [onExtraPagesChange, restorePagerFocus]);
+  }, [lessExtraPages, onExtraPagesChange, restorePagerFocus]);
 
   const hasOverflow = pagination.hasOverflow || hasMoreAtSource;
   const pager =
@@ -103,7 +116,7 @@ export function SidebarPaginatedItems<T>({
             Show more
           </CodexSidebarPagerButton>
         ) : null}
-        {expanded ? (
+        {lessExtraPages !== null ? (
           <CodexSidebarPagerButton
             ref={hasOverflow ? undefined : focusRestoreTargetRef}
             onClick={showLess}

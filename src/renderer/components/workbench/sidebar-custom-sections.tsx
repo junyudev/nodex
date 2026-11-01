@@ -61,9 +61,9 @@ import {
 import {
   CODEX_SIDEBAR_GROUP_ACTION_BUTTON_CLASS,
   CodexSidebarActionButton,
-  CodexSidebarPagerButton,
   CodexSidebarSection,
 } from "./codex-sidebar";
+import { SidebarPaginatedItems } from "./sidebar-paginated-items";
 import type { SidebarGroupDndController } from "./sidebar-project-group-dnd";
 import {
   getSidebarSectionRootDndId,
@@ -278,21 +278,10 @@ export interface SidebarSectionProjectRowRenderInput {
   readonly sectionId: string;
 }
 
-/** Rows a Section shows first and reveals with each Show more. */
-const SECTION_PAGE_ITEMS = 50;
+/** Rows a Section shows before its first Show more. */
+const SECTION_FIRST_PAGE_ITEMS = 50;
 
-function SectionDirectItems({
-  catalog,
-  extraPages,
-  getThreadKey,
-  items,
-  loading,
-  onExtraPagesChange,
-  onThreadsChanged,
-  renderProject,
-  renderSession,
-  section,
-}: {
+interface SectionDirectItemsProps {
   readonly catalog: SidebarSectionsCatalog;
   readonly extraPages: number;
   readonly onExtraPagesChange: (extraPages: number) => void;
@@ -303,9 +292,41 @@ function SectionDirectItems({
   readonly renderProject: (input: SidebarSectionProjectRowRenderInput) => ReactNode;
   readonly renderSession: (session: ProjectSessionSummary) => ReactNode;
   readonly section: SidebarSectionSummary;
+}
+
+function SectionDirectItems({ extraPages, onExtraPagesChange, ...props }: SectionDirectItemsProps) {
+  return (
+    <SidebarPaginatedItems
+      items={props.items}
+      getKey={sectionItemKey}
+      maxItems={SECTION_FIRST_PAGE_ITEMS}
+      extraPages={extraPages}
+      onExtraPagesChange={onExtraPagesChange}
+    >
+      {(pagination, pager) => (
+        <SectionDirectItemRows {...props} visibleItems={pagination.visibleItems} pager={pager} />
+      )}
+    </SidebarPaginatedItems>
+  );
+}
+
+const sectionItemKey = (item: SidebarSectionItem): string => item.placementId;
+
+function SectionDirectItemRows({
+  catalog,
+  getThreadKey,
+  items,
+  loading,
+  onThreadsChanged,
+  pager,
+  renderProject,
+  renderSession,
+  section,
+  visibleItems,
+}: Omit<SectionDirectItemsProps, "extraPages" | "onExtraPagesChange"> & {
+  readonly visibleItems: readonly SidebarSectionItem[];
+  readonly pager: ReactNode;
 }) {
-  const visibleItemCount = SECTION_PAGE_ITEMS * (extraPages + 1);
-  const visibleItems = items.slice(0, visibleItemCount);
   const allItemIds = items.map((item) => item.placementId);
   const visibleItemIds = visibleItems.map((item) => item.placementId);
   const itemById = new Map(items.map((item) => [item.placementId, item]));
@@ -377,20 +398,7 @@ function SectionDirectItems({
           </div>
         )}
         {reorder.dropIndicatorTarget?.beforeThreadKey === null ? <SidebarDropIndicator /> : null}
-        {items.length > SECTION_PAGE_ITEMS ? (
-          <div className="flex items-center gap-2 px-row-x py-1" role="listitem">
-            {visibleItemCount < items.length ? (
-              <CodexSidebarPagerButton onClick={() => onExtraPagesChange(extraPages + 1)}>
-                Show more
-              </CodexSidebarPagerButton>
-            ) : null}
-            {extraPages > 0 ? (
-              <CodexSidebarPagerButton onClick={() => onExtraPagesChange(0)}>
-                Show less
-              </CodexSidebarPagerButton>
-            ) : null}
-          </div>
-        ) : null}
+        {pager}
       </div>
     </SortableContext>
   );
