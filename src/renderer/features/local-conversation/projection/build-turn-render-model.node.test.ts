@@ -1483,6 +1483,60 @@ test("a working sibling keeps a delegated group active after its first task fini
   expect(model.agentBodyUnits).toHaveLength(1);
 });
 
+describe("closing message action visibility", () => {
+  const selectTurnRenderModel = createTurnRenderModelSelector();
+  const render = (
+    turn: CodexConversationTurn,
+    options: { isMostRecentTurn?: boolean; surface?: "main" | "preview" } = {},
+  ) =>
+    selectTurnRenderModel({
+      entry: buildVisibleEntry(turn, options.isMostRecentTurn ?? true),
+      surface: options.surface,
+      canForkTurn: true,
+      canEditTurnUserPrefix: true,
+    });
+  const readVisibility = (model: ThreadTurnModel) => ({
+    reply: model.buckets.assistantItem?.assistantMessageActions?.alwaysVisible === true,
+    prompt: model.buckets.userItems.at(-1)?.userMessageActions?.alwaysVisible === true,
+  });
+  const answered = buildTurn({
+    status: "completed",
+    items: [buildUserItem(), buildAssistantItem()],
+  });
+
+  test("keeps the settled latest reply's actions visible and leaves its prompt on hover", () => {
+    expect(readVisibility(render(answered))).toEqual({ reply: true, prompt: false });
+  });
+
+  test("returns earlier replies to hover-only actions once a newer turn exists", () => {
+    expect(readVisibility(render(answered, { isMostRecentTurn: false }))).toEqual({
+      reply: false,
+      prompt: false,
+    });
+  });
+
+  test("pins the prompt's actions when the settled latest turn has no reply actions", () => {
+    const unanswered = buildTurn({ status: "interrupted", items: [buildUserItem()] });
+    expect(readVisibility(render(unanswered))).toEqual({ reply: false, prompt: true });
+    expect(readVisibility(render(unanswered, { isMostRecentTurn: false }))).toEqual({
+      reply: false,
+      prompt: false,
+    });
+  });
+
+  test("does not pin anything while the latest turn is still running", () => {
+    const running = buildTurn({ status: "inProgress", items: [buildUserItem()] });
+    expect(readVisibility(render(running))).toEqual({ reply: false, prompt: false });
+  });
+
+  test("previews keep the latest reply's actions on hover", () => {
+    expect(readVisibility(render(answered, { surface: "preview" }))).toEqual({
+      reply: false,
+      prompt: false,
+    });
+  });
+});
+
 test.each([100_000, -100_000])(
   "worked duration stays on one clock with execution-host skew of %sms",
   (skew) => {

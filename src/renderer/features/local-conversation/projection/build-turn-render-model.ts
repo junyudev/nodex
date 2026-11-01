@@ -445,6 +445,7 @@ export function buildTurnRenderModel(input: BuildTurnRenderModelInput): ThreadTu
     allowCopyWhileStreaming: input.surface === "preview",
     showTimestampWithoutActions: input.surface === "preview",
     timestampHoverOnly: input.timestampHoverOnly ?? false,
+    pinLatestTurnActions: input.surface !== "preview",
     goalTimeUsedSeconds: input.goalTimeUsedSeconds,
     cwd: input.cwd,
     hostId: input.hostId,

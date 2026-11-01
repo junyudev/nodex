@@ -668,11 +668,15 @@ export interface ThreadUserMessageActionsModel {
   hookStats?: HookStats | null;
   canEdit: boolean;
   sentAtMs: number | null;
+  /** The settled latest turn's closing message keeps its actions visible without hover. */
+  alwaysVisible?: boolean;
 }
 
 export interface ThreadAssistantMessageActionsModel {
   showTimestampWithoutActions?: boolean;
   timestampHoverOnly?: boolean;
+  /** The settled latest turn's closing message keeps its actions visible without hover. */
+  alwaysVisible?: boolean;
   metadata?: import("./projection/turn-footer-metadata").TurnFooterMetadata;
   hookStats?: HookStats | null;
   copyText: string | null;

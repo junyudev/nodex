@@ -54,6 +54,8 @@ interface BuildTurnViewModelInput {
   allowCopyWhileStreaming?: boolean;
   showTimestampWithoutActions?: boolean;
   timestampHoverOnly?: boolean;
+  /** Keep the settled latest turn's closing actions visible; hosts like previews keep them on hover. */
+  pinLatestTurnActions?: boolean;
   cwd?: string | null;
   hostId?: string;
   goalTimeUsedSeconds?: number;
@@ -76,7 +78,15 @@ type TurnActionInput = Pick<
 > & {
   hookStats: HookStats | null;
   metadata?: TurnFooterMetadata;
+  pinned: boolean;
 };
+
+/** Whether the turn's closing message actions stay visible without hover. */
+function resolvePinnedTurnActions(
+  input: Pick<BuildTurnViewModelInput, "pinLatestTurnActions" | "isLatestTurn" | "isStreamingTurn">,
+): boolean {
+  return input.pinLatestTurnActions === true && input.isLatestTurn && !input.isStreamingTurn;
+}
 
 const EMPTY_SUBAGENT_ACTIVITY_STATE: ThreadTurnSubagentActivityState = {
   hasActivity: false,
@@ -199,6 +209,8 @@ function applyUserMessageActions(
     hookStats: HookStats | null;
     fallbackHookStats: HookStats | null;
     isTurnPrefix?: boolean;
+    /** Pins the prompt's actions when it closes the turn without a reply action row. */
+    pinLastMessage?: boolean;
   },
 ): ThreadTranscriptBlockModel[] {
   if (userItems.length === 0) return userItems;
@@ -223,6 +235,9 @@ function applyUserMessageActions(
         block.entry.deliveryStatus === "not-sent" || input.isTurnPrefix === false
           ? null
           : resolveUserMessageSentAt(input.turn, index),
+      ...(input.pinLastMessage === true && index === userItems.length - 1
+        ? { alwaysVisible: true }
+        : {}),
     },
   }));
 }
@@ -307,7 +322,12 @@ function buildAssistantMessageActionsModel(
     canFork,
     ...(input.showTimestampWithoutActions ? { showTimestampWithoutActions: true } : {}),
     ...(input.timestampHoverOnly ? { timestampHoverOnly: true } : {}),
+    ...(input.pinned ? { alwaysVisible: true } : {}),
   };
+}
+
+function hasAssistantActionRow(block: ThreadTranscriptBlockModel | null): boolean {
+  return block?.type === "assistantMessage" && block.assistantMessageActions != null;
 }
 
 function applyAssistantMessageActions(
@@ -380,6 +400,7 @@ function buildGeneratedImageActionsBlock(
       sentAtMs: resolveAssistantMessageSentAt(input.turn),
       ...(input.showTimestampWithoutActions ? { showTimestampWithoutActions: true } : {}),
       ...(input.timestampHoverOnly ? { timestampHoverOnly: true } : {}),
+      ...(input.pinned ? { alwaysVisible: true } : {}),
       canFork,
       ...(input.metadata ? { metadata: input.metadata } : {}),
       ...(input.hookStats ? { hookStats: input.hookStats } : {}),
@@ -516,6 +537,7 @@ export function buildTurnViewModel(input: BuildTurnViewModelInput): ThreadTurnMo
     ...input,
     metadata: completedMetadata,
     hookStats: input.isStreamingTurn ? null : buildHookStats(input.turn?.hookRuns),
+    pinned: resolvePinnedTurnActions(input),
   };
   const workedForItem = input.workedForItem ?? null;
   const workedForTiming = input.workedForTiming ?? null;
@@ -645,6 +667,10 @@ export function buildTurnViewModel(input: BuildTurnViewModelInput): ThreadTurnMo
         hookStats: actionInput.hookStats,
         fallbackHookStats:
           !nextAssistantItem && !generatedImageGalleryBlock ? actionInput.hookStats : null,
+        pinLastMessage:
+          actionInput.pinned &&
+          !hasAssistantActionRow(nextAssistantItem) &&
+          deferredAssistantActionsBlock === null,
       },
     ),
     assistantItem: nextAssistantItem,

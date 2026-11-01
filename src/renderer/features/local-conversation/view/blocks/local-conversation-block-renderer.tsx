@@ -69,10 +69,8 @@ interface ThreadBlockRendererProps {
   planSidePanelState?: ThreadPlanSidePanelState | null;
   allowInProgressTurnDiff?: boolean;
   turnDiffHoverPreviewDisabled?: boolean;
-  alwaysShowAssistantMessageActions?: boolean;
   compactUserMessageActions?: boolean;
   hideUserMessageActions?: boolean;
-  alwaysShowUserMessageActions?: boolean;
 }
 
 export function ThreadBlockRenderer({
@@ -101,10 +99,8 @@ export function ThreadBlockRenderer({
   planSidePanelState,
   allowInProgressTurnDiff = false,
   turnDiffHoverPreviewDisabled = false,
-  alwaysShowAssistantMessageActions = false,
   compactUserMessageActions = false,
   hideUserMessageActions = false,
-  alwaysShowUserMessageActions = false,
 }: ThreadBlockRendererProps) {
   if (block.type === "agentActivityGroup") {
     return (
@@ -249,7 +245,6 @@ export function ThreadBlockRenderer({
         threadCwd={threadCwd}
         compactUserMessageActions={compactUserMessageActions}
         hideUserMessageActions={hideUserMessageActions}
-        alwaysShowUserMessageActions={alwaysShowUserMessageActions}
       />
     );
   }
@@ -314,7 +309,6 @@ export function ThreadBlockRenderer({
               planSidePanelState={planSidePanelState}
               allowInProgressTurnDiff={allowInProgressTurnDiff}
               turnDiffHoverPreviewDisabled={turnDiffHoverPreviewDisabled}
-              alwaysShowAssistantMessageActions={alwaysShowAssistantMessageActions}
             />
           ))}
         </div>
@@ -334,7 +328,6 @@ export function ThreadBlockRenderer({
         onForkFromTurn={onForkFromTurn}
         onOpenSideChat={onOpenSideChat}
         assistantAfter={assistantAfter}
-        alwaysShowAssistantMessageActions={alwaysShowAssistantMessageActions}
       />
     );
 
@@ -371,7 +364,6 @@ export function ThreadBlockRenderer({
         projectlessOutputDirectory={projectlessOutputDirectory}
         onForkFromTurn={onForkFromTurn}
         onOpenSideChat={onOpenSideChat}
-        alwaysShowAssistantMessageActions={alwaysShowAssistantMessageActions}
       />
     );
   }
