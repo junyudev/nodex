@@ -1,0 +1,32 @@
+packages/landing/src/demos/PagesDemo.tsx
+  s_a5bb892838ce25::t_e403914ac27168 27,134-136,138,172-177,289,300,303,306-307,310
+packages/landing/src/replica/Window.tsx
+  s_a5bb892838ce25::t_e403914ac27168 312,318-319,348-353
+docs/landing-site.md
+  s_a5bb892838ce25::t_e403914ac27168 177,193-196
+packages/landing/src/replica/icons/shell.tsx
+  s_a5bb892838ce25::t_e403914ac27168 534-557
+packages/landing/src/demos/HeroDemo.tsx
+  s_a5bb892838ce25::t_e403914ac27168 17-23,26,187,298-312,395,401-402,406,774
+packages/landing/src/replica/Viewers.tsx
+  s_a5bb892838ce25::t_e403914ac27168 3,8,10-15,17,20-21,23,28-36,39-54,71,73
+packages/landing/src/replica/Page.tsx
+  s_a5bb892838ce25::t_1f593de8815323 155-156,168
+  s_a5bb892838ce25::t_e403914ac27168 18,140-154,158-160,164,171-172,174,178-179,182,184-209,211,219,222-223,229,234,239-244,252-253,260
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a04fe931aeaf0c1b6bc3b7b83b30179fe56d0314",
+  "prompts": {},
+  "sessions": {
+    "s_a5bb892838ce25": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e15d53ef-531c-43aa-afdd-245a08fa0ce0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
