@@ -241,17 +241,32 @@ const waitForChildExit = async (exit: ChildExitState, timeoutMs: number): Promis
   return exit.exited;
 };
 
-const posixCandidateGroupExists = (child: ReturnType<typeof spawn>): boolean => {
-  const pid = child.pid;
-  if (!pid) return false;
+/**
+ * Classifies a failed signal to a candidate's process group. ESRCH means the group is gone.
+ * macOS answers EPERM, not ESRCH, while the group's last members are exiting but not yet
+ * reaped, so that group is still present and has nothing left to signal.
+ */
+const exitedProcessGroup = (error: unknown): "gone" | "exiting" => {
+  const code = (error as NodeJS.ErrnoException).code;
+  if (code === "ESRCH") return "gone";
+  if (code === "EPERM") return "exiting";
+  throw error;
+};
+
+export const processGroupPresent = (
+  groupId: number,
+  kill: (pid: number, signal: 0) => unknown = process.kill,
+): boolean => {
   try {
-    process.kill(-pid, 0);
+    kill(-groupId, 0);
     return true;
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ESRCH") return false;
-    throw error;
+    return exitedProcessGroup(error) === "exiting";
   }
 };
+
+const posixCandidateGroupExists = (child: ReturnType<typeof spawn>): boolean =>
+  child.pid ? processGroupPresent(child.pid) : false;
 
 const runWindowsTaskkill = async (pid: number, force: boolean): Promise<void> => {
   const taskkill = spawn("taskkill.exe", ["/pid", String(pid), "/t", ...(force ? ["/f"] : [])], {
@@ -275,8 +290,7 @@ const signalPosixCandidateGroup = (
   try {
     process.kill(-pid, signal);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ESRCH") return;
-    throw error;
+    exitedProcessGroup(error);
   }
 };
 

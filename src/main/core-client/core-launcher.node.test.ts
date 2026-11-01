@@ -17,6 +17,7 @@ import { describe, expect, test } from "vite-plus/test";
 import {
   connectOrStartCore,
   parseCoreStartupEventFrame,
+  processGroupPresent,
   resolveCoreExecutable,
 } from "./core-launcher";
 
@@ -245,6 +246,20 @@ describe("native Core launcher", () => {
       }
     },
   );
+
+  test("keeps waiting on a candidate group whose last members are still exiting", () => {
+    const answering =
+      (code?: string) =>
+      (pid: number): void => {
+        expect(pid).toBe(-42);
+        if (code) throw Object.assign(new Error(code), { code });
+      };
+    expect(processGroupPresent(42, answering())).toBe(true);
+    // macOS reports a group whose members are exiting but not yet reaped as EPERM.
+    expect(processGroupPresent(42, answering("EPERM"))).toBe(true);
+    expect(processGroupPresent(42, answering("ESRCH"))).toBe(false);
+    expect(() => processGroupPresent(42, answering("EINVAL"))).toThrow("EINVAL");
+  });
 
   test.runIf(process.platform !== "win32")("aborts and awaits a pre-ready candidate", async () => {
     const directory = mkdtempSync(path.join(tmpdir(), "nodex-core-launcher-abort-"));
