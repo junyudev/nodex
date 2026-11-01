@@ -2855,7 +2855,6 @@ export function WorkbenchRuntime({
     openProcessOutputInCurrentSession,
     openProcessManagerOutput,
     openTurnDiffFileInSidePanel,
-    openSummaryOutputInSidePanel,
     forkSessionFromTurn,
     forkSessionFromTurnIntoWorktree,
   } = sessionCommands;
@@ -3329,7 +3328,6 @@ export function WorkbenchRuntime({
       setPanelCollapsed: setActivePanelCollapsed,
       openAutomationSidePanel,
       openAutomations,
-      openSummaryOutputInSidePanel,
       openProcessOutput: openProcessOutputInCurrentSession,
       openProcessManager: () => {
         setProcessManagerOpen(true);
@@ -3340,7 +3338,6 @@ export function WorkbenchRuntime({
       openAutomationSidePanel,
       openAutomations,
       openProcessOutputInCurrentSession,
-      openSummaryOutputInSidePanel,
       browserUsePresentation.presentBrowserTab,
       selectPanelTab,
       setActivePanelCollapsed,
@@ -5470,7 +5467,6 @@ export function WorkbenchRuntime({
           onOpenSummarySideChatRow: openSummarySideChatRow,
           onOpenSummaryBrowserRow: openSummaryBrowserRow,
           onOpenSummaryScheduledAutomation: openSummaryScheduledAutomation,
-          onOpenSummaryOutputInSidePanel: openSummaryOutputInSidePanel,
           onOpenProcessManager: openSummaryProcessManager,
           onOpenBackgroundTerminalOutput: openSummaryBackgroundTerminalOutput,
           onToggleSummaryComputerUsePip: threadSummary.onToggleSummaryComputerUsePip,

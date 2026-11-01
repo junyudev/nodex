@@ -183,6 +183,7 @@ function LocalConversationTurnEntryComponent({
             mcpApps: mcpApps ?? [],
             mcpServerStatuses: mcpServerStatuses ?? null,
             endResourcePaths,
+            endResources: isTimelineEntry ? undefined : resources,
             workSegment: isTimelineEntry ? entry.timelineSlice.work : undefined,
           })
         : null,
@@ -201,6 +202,7 @@ function LocalConversationTurnEntryComponent({
       projectlessOutputDirectory,
       threadCwd,
       endResourcePaths,
+      resources,
       isTimelineEntry,
       entry,
     ],
@@ -265,7 +267,6 @@ function LocalConversationTurnEntryComponent({
                 </div>
               ) : null
             }
-            endResources={isTimelineEntry ? undefined : resources}
             hostId={hostId}
             mcpApps={mcpApps ?? []}
             agentBodyCollapsed={persistedCollapsed ?? turnModel.defaultAgentBodyCollapsed}

@@ -19,7 +19,6 @@ describe("buildThreadSummaryPanelSectionModel", () => {
       hasEnvironment: true,
       hasPlan: true,
       outputCount: 2,
-      suppressOutputs: false,
       sideChatCount: 1,
       backgroundSubagentRows: [
         { displayName: "Scout", showInlineActivity: false, status: "active" },
@@ -35,14 +34,13 @@ describe("buildThreadSummaryPanelSectionModel", () => {
     );
   });
 
-  test("suppresses outputs behind the git environment summary gate", () => {
+  test("shows deliverables alongside the Git environment summary", () => {
     const sections = buildThreadSummaryPanelSectionModel({
       activeThreadId: "thread-1",
       hasScheduledAutomation: false,
       hasEnvironment: true,
       hasPlan: false,
       outputCount: 1,
-      suppressOutputs: true,
       sideChatCount: 0,
       backgroundSubagentRows: [],
       taskCount: 0,
@@ -51,8 +49,8 @@ describe("buildThreadSummaryPanelSectionModel", () => {
       sourceCount: 0,
     });
 
-    expect(hasThreadSummaryPanelSection(sections, "outputs")).toBe(false);
-    expect(sections.map((section) => section.kind).join(",")).toBe("environment,sources");
+    expect(hasThreadSummaryPanelSection(sections, "outputs")).toBe(true);
+    expect(sections.map((section) => section.kind).join(",")).toBe("environment,outputs,sources");
   });
 
   test("hides the Environment section when no git environment summary is available", () => {
@@ -62,7 +60,6 @@ describe("buildThreadSummaryPanelSectionModel", () => {
       hasEnvironment: false,
       hasPlan: false,
       outputCount: 1,
-      suppressOutputs: false,
       sideChatCount: 0,
       backgroundSubagentRows: [],
       taskCount: 0,
@@ -82,7 +79,6 @@ describe("buildThreadSummaryPanelSectionModel", () => {
       hasEnvironment: false,
       hasPlan: false,
       outputCount: 0,
-      suppressOutputs: false,
       sideChatCount: 0,
       backgroundSubagentRows: [
         { displayName: "Scout", showInlineActivity: false, status: "done" },
@@ -106,7 +102,6 @@ describe("buildThreadSummaryPanelSectionModel", () => {
       hasEnvironment: false,
       hasPlan: false,
       outputCount: 0,
-      suppressOutputs: false,
       sideChatCount: 0,
       backgroundSubagentRows: [
         { displayName: "Scout", showInlineActivity: true, status: "done" },
@@ -130,7 +125,6 @@ describe("buildThreadSummaryPanelSectionModel", () => {
       hasEnvironment: false,
       hasPlan: false,
       outputCount: 0,
-      suppressOutputs: false,
       sideChatCount: 0,
       backgroundSubagentRows: [],
       taskCount: 0,

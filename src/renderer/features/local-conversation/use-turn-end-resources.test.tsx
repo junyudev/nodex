@@ -2,17 +2,14 @@ import { useLayoutEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vite-plus/test";
-import { useTurnEndResources } from "./use-turn-end-resources";
-import { LocalConversationEndResources } from "./view/local-conversation-end-resources";
+import { useTurnEndResources, useThreadSummaryOutputRows } from "./use-turn-end-resources";
 import { buildTurnRenderModel } from "./projection/build-turn-render-model";
 import { resolveGeneratedImageOutputState } from "./projection/generated-image-output";
+import type { WorkspacePathStatesResult } from "../../../shared/types";
 import type { CodexConversationTurn } from "../../lib/types";
 
-const ports = vi.hoisted(() => ({ exists: vi.fn(), open: vi.fn() }));
-vi.mock("../../lib/workspace-file-operations", () => ({ readWorkspacePathsExist: ports.exists }));
-vi.mock("@/lib/file-reference-router", () => ({
-  useFileReferenceRouter: () => ({ open: ports.open }),
-}));
+const ports = vi.hoisted(() => ({ exists: vi.fn() }));
+vi.mock("../../lib/workspace-file-operations", () => ({ readWorkspacePathStates: ports.exists }));
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
@@ -47,6 +44,11 @@ const turn: CodexConversationTurn = {
       kind: "systemEvent",
       semanticKind: "generatedImage",
       generatedImage: { src: "/workspace/preview.png", status: "completed" },
+      rawItem: {
+        type: "imageGeneration",
+        savedPath: "/workspace/preview.png",
+        status: "completed",
+      },
       createdAt: 1,
       updatedAt: 1,
     },
@@ -86,7 +88,11 @@ function Fixture({
       hasImage: images.shouldRender,
     }),
   );
-  return <LocalConversationEndResources resources={result.resources} hostId="ssh:remote" />;
+  return (
+    <output aria-label="resource labels">
+      {result.resources.map(({ label }) => label).join(",")}
+    </output>
+  );
 }
 function mount(report: (value: Result) => void, includeResources = true) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -99,20 +105,22 @@ function mount(report: (value: Result) => void, includeResources = true) {
 }
 
 test("loading and resolved existence results control cards, diff and images together", async () => {
-  const pending = { resolve: (_value: { existingPaths: string[] }) => {} };
-  const promise = new Promise<{ existingPaths: string[] }>((resolve) => {
+  const pending = { resolve: (_value: WorkspacePathStatesResult) => {} };
+  const promise = new Promise<WorkspacePathStatesResult>((resolve) => {
     pending.resolve = resolve;
   });
   ports.exists.mockReturnValue(promise);
   const report = vi.fn();
   const fixture = mount(report);
   expect(report).toHaveBeenLastCalledWith({ paths: [], hasDiff: true, hasImage: true });
-  expect(screen.queryByRole("button", { name: "deck.pptx" })).toBeNull();
+  expect(screen.queryByText("deck.pptx")).toBeNull();
   await act(async () => {
-    pending.resolve({ existingPaths: ["/workspace/deck.pptx"] });
+    pending.resolve({
+      states: [{ path: "/workspace/deck.pptx", exists: true, isGitSourcePath: true }],
+    });
     await promise;
   });
-  await screen.findByRole("button", { name: "deck.pptx" });
+  await screen.findByText("deck.pptx");
   await waitFor(() =>
     expect(report).toHaveBeenLastCalledWith({
       paths: ["/workspace/deck.pptx"],
@@ -122,6 +130,7 @@ test("loading and resolved existence results control cards, diff and images toge
   );
   expect(ports.exists).toHaveBeenCalledWith({
     hostId: "ssh:remote",
+    cwd: "/workspace",
     paths: ["/workspace/deck.pptx"],
   });
   fixture.unmount();
@@ -129,12 +138,14 @@ test("loading and resolved existence results control cards, diff and images toge
 });
 
 test("a missing file restores the ordinary diff and image presentation", async () => {
-  ports.exists.mockResolvedValue({ existingPaths: [] });
+  ports.exists.mockResolvedValue({
+    states: [{ path: "/workspace/deck.pptx", exists: false, isGitSourcePath: null }],
+  });
   const report = vi.fn();
   const fixture = mount(report);
   await waitFor(() => expect(ports.exists).toHaveBeenCalledOnce());
   expect(report).toHaveBeenLastCalledWith({ paths: [], hasDiff: true, hasImage: true });
-  expect(screen.queryByRole("button", { name: "deck.pptx" })).toBeNull();
+  expect(screen.queryByText("deck.pptx")).toBeNull();
   fixture.unmount();
   fixture.client.clear();
 });
@@ -143,7 +154,7 @@ test("query failure retains the candidate and uses it for duplicate-output suppr
   ports.exists.mockRejectedValue(new Error("Host connection changed"));
   const report = vi.fn();
   const fixture = mount(report);
-  await screen.findByRole("button", { name: "deck.pptx" });
+  await screen.findByText("deck.pptx");
   await waitFor(() =>
     expect(report).toHaveBeenLastCalledWith({
       paths: ["/workspace/deck.pptx"],
@@ -162,4 +173,66 @@ test("a non-owning timeline fragment neither queries nor suppresses completed ou
   expect(report).toHaveBeenLastCalledWith({ paths: [], hasDiff: true, hasImage: true });
   fixture.unmount();
   fixture.client.clear();
+});
+
+function SharedFixture({ cwd = "/workspace" }: { cwd?: string }) {
+  const end = useTurnEndResources({ turn, hostId: "local", cwd, includeResources: true });
+  const summary = useThreadSummaryOutputRows({ turns: [turn], hostId: "local", cwd });
+  return (
+    <>
+      <output aria-label="turn outputs">
+        {JSON.stringify(end.resources.map(({ kind }) => kind))}
+      </output>
+      <output aria-label="summary outputs">
+        {JSON.stringify(summary.map(({ kind }) => kind))}
+      </output>
+    </>
+  );
+}
+
+test("turn end and summary share batched path results while protocol images stay in the gallery", async () => {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  ports.exists.mockImplementation(async ({ paths }: { paths: string[] }) => ({
+    states: paths.map((path) => ({ path, exists: true, isGitSourcePath: true })),
+  }));
+  const fixture = render(
+    <QueryClientProvider client={client}>
+      <SharedFixture />
+    </QueryClientProvider>,
+  );
+  await waitFor(() =>
+    expect(screen.getByLabelText("summary outputs").textContent).toBe('["generated-image","file"]'),
+  );
+  expect(screen.getByLabelText("turn outputs").textContent).toBe('["file"]');
+  expect(ports.exists).toHaveBeenCalledOnce();
+  expect(ports.exists).toHaveBeenCalledWith({
+    hostId: "local",
+    cwd: "/workspace",
+    paths: ["/workspace/deck.pptx", "/workspace/preview.png"],
+  });
+  fixture.rerender(
+    <QueryClientProvider client={client}>
+      <SharedFixture cwd="/other-repository" />
+    </QueryClientProvider>,
+  );
+  await waitFor(() => expect(ports.exists).toHaveBeenCalledTimes(2));
+  fixture.unmount();
+  client.clear();
+});
+
+test("summary removes missing files and protocol images with the same path confirmation", async () => {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  ports.exists.mockImplementation(async ({ paths }: { paths: string[] }) => ({
+    states: paths.map((path) => ({ path, exists: false, isGitSourcePath: null })),
+  }));
+  const fixture = render(
+    <QueryClientProvider client={client}>
+      <SharedFixture />
+    </QueryClientProvider>,
+  );
+  await waitFor(() => expect(ports.exists).toHaveBeenCalledOnce());
+  expect(screen.getByLabelText("summary outputs").textContent).toBe("[]");
+  expect(screen.getByLabelText("turn outputs").textContent).toBe("[]");
+  fixture.unmount();
+  client.clear();
 });

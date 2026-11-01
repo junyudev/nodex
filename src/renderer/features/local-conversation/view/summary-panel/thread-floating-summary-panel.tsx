@@ -3,7 +3,6 @@ import { PictureInPicture2, Slash } from "@/components/shared/icons/generic-icon
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BranchStatusIcon,
-  FileIcon,
   ChevronDownIcon,
   ClockIcon,
   CloseIcon,
@@ -16,7 +15,6 @@ import {
   ThreadSummaryCreatePullRequestIcon,
   ThreadSummaryPushIcon,
   OpenInIcon,
-  ImageBlockIcon,
 } from "@/components/shared/icons";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { BranchSelectorPopover } from "../shared/branch-selector-popover";
@@ -33,10 +31,7 @@ import {
   type BranchSelectorState,
 } from "../shared/branch-selector-state";
 import { DiffStats } from "../shared/tools/diff-file-shared";
-import { ConnectorFallbackIcon, ConnectorGlobeIcon, PluginsIcon } from "@/components/shared/icons";
-import { openFileLink } from "../../../../lib/file-system-operations";
-import { ImagePreviewDialog } from "@/features/user-attachment-image-editor";
-import { resolveImageDisplaySource } from "@/lib/content-image";
+import { ConnectorGlobeIcon } from "@/components/shared/icons";
 import { useMcpResource, useMcpServerStatuses } from "../../../../lib/use-mcp-queries";
 import { useCodexMcpApps } from "../../use-codex-mcp-apps";
 import { useGitBranchState } from "../../../../lib/use-git-branch-state";
@@ -59,12 +54,17 @@ import {
   getBackgroundSubagentListRows,
   type BackgroundSubagentCompactStripModel,
 } from "../../projection/background-subagent-summary-model";
+import { useThreadSummaryOutputRows } from "../../use-turn-end-resources";
 import {
-  buildThreadSummaryPanelOutputRows,
-  isThreadSummaryPanelImagePreviewableOutput,
-  resolveThreadSummaryPanelOutputOpenTarget,
-  type ThreadSummaryPanelOutputRow,
-} from "../../projection/thread-summary-panel-output-model";
+  describeThreadOutput,
+  isExternalThreadOutputOpen,
+} from "../../projection/thread-output-presentation";
+import {
+  isContextMenuKey,
+  ThreadOutputIcon,
+  useThreadOutputOpener,
+} from "../use-thread-output-opener";
+import { type ThreadSummaryPanelOutputRow } from "../../projection/thread-summary-panel-output-model";
 import {
   buildThreadSummaryPanelPlanRow,
   type ThreadSummaryPanelPlanRow,
@@ -186,15 +186,6 @@ const EMPTY_PULL_REQUEST_STATUS: SummaryPullRequestStatusState = {
   cwd: null,
   status: null,
 };
-
-function resolveSummaryOutputImagePreviewSrc(row: ThreadSummaryPanelOutputRow): string | null {
-  if (!isThreadSummaryPanelImagePreviewableOutput(row)) return null;
-
-  if (!("path" in row)) return null;
-  const source = row.path.trim();
-  if (!source) return null;
-  return resolveImageDisplaySource(source, { allowLocalPath: true });
-}
 
 type SummaryCommitOrPushMode = "commit" | "push";
 type SummaryBranchSetupNextAction = SummaryGitActionDialogMode | "create-pull-request";
@@ -601,40 +592,6 @@ function BackgroundSubagentRowTrailing({
   );
 }
 
-function SummaryOutputIcon({ row }: { row: ThreadSummaryPanelOutputRow }) {
-  if (row.kind === "generated-image" || row.kind === "image") {
-    return <ImageBlockIcon className="size-3.5" />;
-  }
-
-  if (row.kind === "website") {
-    return <ConnectorGlobeIcon className="size-3.5" aria-hidden={true} />;
-  }
-
-  if (row.kind === "google-drive") {
-    return <ConnectorFallbackIcon className="size-3.5" aria-hidden={true} />;
-  }
-
-  if (row.kind === "appgen-app") {
-    return <PluginsIcon className="size-3.5" aria-hidden={true} />;
-  }
-
-  return <FileIcon className="size-3.5" />;
-}
-
-function SummaryOutputLabel({ row }: { row: ThreadSummaryPanelOutputRow }) {
-  if (row.kind !== "appgen-app") return row.label;
-
-  return (
-    <span className="flex min-w-0 items-center gap-1">
-      <span className="truncate">{row.label}</span>
-      <OpenInIcon
-        className="icon-xs shrink-0 opacity-0 group-focus-visible/summary-panel-row:opacity-100 group-hover/summary-panel-row:opacity-100"
-        aria-hidden={true}
-      />
-    </span>
-  );
-}
-
 function BackgroundSubagentCompactStrip({
   model,
   onOpenSubagentsPanel,
@@ -938,10 +895,6 @@ export function ThreadSummaryPanelSurface({
     () => resolveBranchSelectorCwd(cwd, projectWorkspacePath),
     [cwd, projectWorkspacePath],
   );
-  const [previewImage, setPreviewImage] = useState<{
-    row: ThreadSummaryPanelOutputRow;
-    src: string;
-  } | null>(null);
   const [gitActionDialogMode, setGitActionDialogMode] = useState<SummaryGitActionDialogMode | null>(
     null,
   );
@@ -953,7 +906,6 @@ export function ThreadSummaryPanelSurface({
   const [branchSetupNextAction, setBranchSetupNextAction] =
     useState<SummaryBranchSetupNextAction | null>(null);
   const [gitActionRefreshKey, setGitActionRefreshKey] = useState(0);
-  const previewReturnFocusRef = useRef<HTMLDivElement | null>(null);
   const gitSummary = useSummaryGitState(branchCwd, isVisible);
   const gitActionStatus = useSummaryGitActionStatus(branchCwd, isVisible, gitActionRefreshKey);
   const {
@@ -985,10 +937,12 @@ export function ThreadSummaryPanelSurface({
     () => buildThreadSummaryPanelPlanRow({ activeThreadId, cwd, turns }),
     [activeThreadId, cwd, turns],
   );
-  const outputRows = useMemo(
-    () => buildThreadSummaryPanelOutputRows(turns, { cwd, projectlessOutputDirectory }),
-    [cwd, projectlessOutputDirectory, turns],
-  );
+  const outputRows = useThreadSummaryOutputRows({
+    turns,
+    hostId: sourceRoot?.hostId ?? "local",
+    cwd,
+    projectlessOutputDirectory,
+  });
   const backgroundSubagentRows = useMemo(
     () =>
       (
@@ -1125,7 +1079,6 @@ export function ThreadSummaryPanelSurface({
         hasEnvironment: hasGitEnvironmentSummary,
         hasPlan: planRow !== null,
         outputCount: outputRows.length,
-        suppressOutputs: hasGitEnvironmentSummary,
         sideChatCount: sideChatRows.length,
         backgroundSubagentRows,
         taskCount: backgroundTasks?.tasks.length ?? 0,
@@ -1218,57 +1171,17 @@ export function ThreadSummaryPanelSurface({
       setGitActionDialogMode(null);
     });
   }, []);
-  const handlePreviewOpenChange = useCallback((nextOpen: boolean) => {
-    if (nextOpen) return;
-
-    setPreviewImage(null);
-  }, []);
-  const openSummaryOutputInSidePanel = actions?.onOpenSummaryOutputInSidePanel;
-  const handleOpenOutput = useCallback(
-    (row: ThreadSummaryPanelOutputRow, returnFocusTarget: HTMLDivElement) => {
-      onErrorMessage(null);
-      const previewSrc = resolveSummaryOutputImagePreviewSrc(row);
-      if (previewSrc) {
-        previewReturnFocusRef.current = returnFocusTarget;
-        setPreviewImage({ row, src: previewSrc });
-        return;
-      }
-
-      const target = resolveThreadSummaryPanelOutputOpenTarget(row);
-      if (target.type === "url") {
-        window.open(target.url, "_blank", "noopener,noreferrer");
-        return;
-      }
-
-      const openDesktopFile = () =>
-        openFileLink({ path: target.path }, "fileManager")
-          .then((opened) => {
-            if (opened) return;
-            onErrorMessage("Could not open output");
-          })
-          .catch((error: unknown) => {
-            onErrorMessage(error instanceof Error ? error.message : "Could not open output");
-          });
-
-      if (!openSummaryOutputInSidePanel) {
-        void openDesktopFile();
-        return;
-      }
-
-      void Promise.resolve(
-        openSummaryOutputInSidePanel({
-          path: target.path,
-          title: row.label,
-        }),
-      )
-        .then((opened) => {
-          if (opened) return;
-          return openDesktopFile();
-        })
-        .catch(() => openDesktopFile());
-    },
-    [onErrorMessage, openSummaryOutputInSidePanel],
-  );
+  const outputs = useThreadOutputOpener({
+    hostId: sourceRoot?.hostId ?? "local",
+    cwd,
+    workspaceRoot: projectWorkspacePath,
+  });
+  const handleOpenOutput = (row: ThreadSummaryPanelOutputRow, origin: HTMLElement) => {
+    onErrorMessage(null);
+    void outputs.open(row, origin).then((opened) => {
+      if (!opened) onErrorMessage("Could not open output");
+    });
+  };
   const onOpenPlanInSidePanel = actions?.onOpenPlanInSidePanel;
   const handleOpenPlan = useCallback(
     (row: ThreadSummaryPanelPlanRow) => {
@@ -1577,12 +1490,20 @@ export function ThreadSummaryPanelSurface({
                       {outputRows.map((row) => (
                         <ThreadSummaryPanelRow
                           key={row.id}
-                          label={<SummaryOutputLabel row={row} />}
-                          labelClassName={row.kind === "appgen-app" ? "min-w-0" : undefined}
+                          label={describeThreadOutput(row, cwd).title}
                           title={row.title}
-                          icon={<SummaryOutputIcon row={row} />}
+                          icon={<ThreadOutputIcon row={row} className="size-4" />}
+                          trailing={
+                            isExternalThreadOutputOpen(row, sourceRoot?.hostId ?? "local") ? (
+                              <OpenInIcon className="icon-xs" aria-hidden />
+                            ) : undefined
+                          }
                           interactive
                           onClick={(event) => handleOpenOutput(row, event.currentTarget)}
+                          onContextMenu={(event) => outputs.openContextMenu(row, event)}
+                          onKeyDown={(event) => {
+                            if (isContextMenuKey(event)) outputs.openContextMenu(row, event);
+                          }}
                         />
                       ))}
                     </ThreadSummaryPanelSection>
@@ -1776,20 +1697,7 @@ export function ThreadSummaryPanelSurface({
           </div>
         </div>
       </div>
-      {previewImage ? (
-        <ImagePreviewDialog
-          open
-          onOpenChange={handlePreviewOpenChange}
-          src={previewImage.src}
-          alt={previewImage.row.label}
-          allowLocalPath
-          finalFocus={() => {
-            previewReturnFocusRef.current?.focus();
-            previewReturnFocusRef.current = null;
-            return false;
-          }}
-        />
-      ) : null}
+      {outputs.preview}
       <ThreadSummaryGitActionDialog
         open={gitActionDialogMode !== null}
         cwd={branchCwd}

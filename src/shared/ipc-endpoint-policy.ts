@@ -305,7 +305,7 @@ type QueryEndpointPolicy =
   | "thread-terminal-snapshot"
   | "window-sessions:bootstrap"
   | "workspace-directory-entries"
-  | "workspace-paths-exist"
+  | "workspace-path-states"
   | "workspace:tasks:list"
   | "worktrees:environments:config:read"
   | "worktrees:environments:configs:list"

@@ -1,3 +1,4 @@
+import { readGitPathSourceStates } from "./git-path-source-states";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import type * as Scope from "effect/Scope";
@@ -38,6 +39,7 @@ import {
 import {
   gitPerformancePromise,
   makeGitCommandRunner,
+  type GitCommandRunner,
   runGitPerformanceOperationEffect,
 } from "./git-command-runner";
 import type { GitCommandPlatform } from "./git-command-platform";
@@ -119,17 +121,20 @@ export interface GitWorkerModuleOptions {
 }
 
 class GitWorkerModuleState implements GitWorkerModule {
+  readonly #runner: GitCommandRunner;
   readonly #registry: GitRepositoryRegistry;
   readonly #reviewRuntime: GitReviewRuntime;
   readonly #publish: (event: GitWorkerLiveQueryEvent | GitWorkerPerformanceOperationEvent) => void;
   readonly #liveQueries: GitLiveQueryRegistry;
 
   constructor(options: {
+    runner: GitCommandRunner;
     liveQueries: GitLiveQueryRegistry;
     publish: (event: GitWorkerLiveQueryEvent | GitWorkerPerformanceOperationEvent) => void;
     registry: GitRepositoryRegistry;
     reviewRuntime: GitReviewRuntime;
   }) {
+    this.#runner = options.runner;
     this.#reviewRuntime = options.reviewRuntime;
     this.#registry = options.registry;
     this.#publish = options.publish;
@@ -160,6 +165,10 @@ class GitWorkerModuleState implements GitWorkerModule {
     request: GitWorkerRequest["request"],
   ) {
     switch (request.method) {
+      case "path-source-states":
+        return yield* gitPerformancePromise((signal) =>
+          readGitPathSourceStates(this.#runner, request.params.cwd, request.params.paths, signal),
+        );
       case "probe":
         return { nonce: request.params.nonce, protocolVersion: GIT_WORKER_PROTOCOL_VERSION };
       case "stable-metadata":
@@ -961,6 +970,6 @@ export const makeGitWorkerModule = (
           enqueuedAtMs: Date.now(),
         } as GitWorkerRequest["request"]),
     });
-    module = new GitWorkerModuleState({ liveQueries, publish, registry, reviewRuntime });
+    module = new GitWorkerModuleState({ runner, liveQueries, publish, registry, reviewRuntime });
     return module;
   });

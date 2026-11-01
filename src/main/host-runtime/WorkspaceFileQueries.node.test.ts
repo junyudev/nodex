@@ -1,3 +1,8 @@
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import * as GitCommandPlatformNode from "../platform/node/GitCommandPlatformNode";
+import { makeGitWorkerModule } from "../git-worker/git-worker-module";
+import type { GitWorkerRequest } from "../../shared/git-worker-protocol";
 import { assert, it } from "@effect/vitest";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
@@ -34,6 +39,7 @@ function fixture(
     readonly retire?: "generation" | "epoch";
     readonly invalidBase64?: boolean;
     readonly gitMetadata?: boolean;
+    readonly gitRequest?: (input: { method: string; params: unknown }) => Effect.Effect<unknown>;
   } = {},
 ) {
   let generation = 7;
@@ -155,12 +161,14 @@ function fixture(
         Layer.succeed(CodexGateway, gateway),
         Layer.succeed(CodexAppServerCapabilities, capabilities),
         Layer.succeed(GitWorkerRuntime, {
-          request: () =>
-            Effect.succeed({
-              root: "/repo",
-              currentBranch: "main",
-              originUrl: "git@github.com:team/project.git",
-            }),
+          request:
+            options.gitRequest ??
+            (() =>
+              Effect.succeed({
+                root: "/repo",
+                currentBranch: "main",
+                originUrl: "git@github.com:team/project.git",
+              })),
         } as unknown as GitWorkerRuntime["Service"]),
       ),
     ),
@@ -241,9 +249,13 @@ it.effect("checks real local files and directories without entering a native hos
       yield* Effect.promise(() => mkdir(directory));
       const queries = yield* WorkspaceFileQueries;
       assert.deepStrictEqual(
-        yield* queries.pathsExist({ paths: [directory, path.join(root, "missing"), file] }),
+        yield* queries.pathStates({ paths: [directory, path.join(root, "missing"), file] }),
         {
-          existingPaths: [directory, file],
+          states: [directory, path.join(root, "missing"), file].map((filePath) => ({
+            path: filePath,
+            exists: filePath !== path.join(root, "missing"),
+            isGitSourcePath: false,
+          })),
         },
       );
       assert.deepStrictEqual(f.requests, []);
@@ -251,14 +263,18 @@ it.effect("checks real local files and directories without entering a native hos
   );
 });
 
-it.effect("keeps remote existence order, includes directories and omits per-path failures", () => {
+it.effect("keeps remote path order and reports unknown Git visibility", () => {
   const f = fixture();
   return Effect.gen(function* () {
     const queries = yield* WorkspaceFileQueries;
     assert.deepStrictEqual(
-      yield* queries.pathsExist({ hostId, paths: [directoryPath, deniedPath, textPath] }),
+      yield* queries.pathStates({ hostId, paths: [directoryPath, deniedPath, textPath] }),
       {
-        existingPaths: [directoryPath, textPath],
+        states: [directoryPath, deniedPath, textPath].map((filePath) => ({
+          path: filePath,
+          exists: filePath !== deniedPath,
+          isGitSourcePath: null,
+        })),
       },
     );
     assert.isTrue(f.requests.every((request) => request.method === "fs/getMetadata"));
@@ -330,7 +346,7 @@ for (const option of [{ disconnected: true }, { missingEpoch: true }]) {
     return Effect.gen(function* () {
       const queries = yield* WorkspaceFileQueries;
       assert.isTrue(
-        (yield* Effect.result(queries.pathsExist({ hostId, paths: [textPath] })))._tag ===
+        (yield* Effect.result(queries.pathStates({ hostId, paths: [textPath] })))._tag ===
           "Failure",
       );
       assert.deepStrictEqual(f.requests, []);
@@ -456,3 +472,83 @@ it.effect(
     }).pipe(Effect.provide(f.layer));
   },
 );
+
+it.effect(
+  "classifies ignored, tracked, untracked, outside and non-repository paths through the Git worker",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const root = yield* Effect.acquireRelease(
+          Effect.promise(() => mkdtemp(path.join(tmpdir(), "nodex-output-path-state-"))),
+          (root) => Effect.promise(() => rm(root, { recursive: true, force: true })),
+        );
+        const repo = path.join(root, "repo");
+        const paths = [
+          "src/index.html",
+          "notes.local/report/index.html",
+          "docs/x.md",
+          "notes.local/tracked.pdf",
+        ].map((relative) => path.join(repo, relative));
+        const outside = path.join(root, "outside.pdf");
+        const exec = promisify(execFile);
+        yield* Effect.promise(async () => {
+          await mkdir(repo);
+          await exec("git", ["init", "-q", repo]);
+          for (const filePath of [...paths, outside]) {
+            await mkdir(path.dirname(filePath), { recursive: true });
+            await writeFile(filePath, "output");
+          }
+          await exec("git", ["-C", repo, "add", "src/index.html", "notes.local/tracked.pdf"]);
+          await writeFile(path.join(repo, ".gitignore"), "notes.local/\n");
+        });
+        const worker = yield* makeGitWorkerModule({ environment: process.env }).pipe(
+          Effect.provide(GitCommandPlatformNode.nodeLive),
+        );
+        const f = fixture({
+          gitRequest: (input) =>
+            Effect.scoped(
+              worker.execute({
+                ...input,
+                id: "paths",
+                enqueuedAtMs: Date.now(),
+              } as GitWorkerRequest["request"]),
+            ),
+        });
+        yield* Effect.gen(function* () {
+          const queries = yield* WorkspaceFileQueries;
+          const missing = path.join(repo, "missing.pdf");
+          const requested = [...paths, outside, missing];
+          assert.deepStrictEqual(
+            yield* queries.pathStates({ cwd: path.join(repo, "src"), paths: requested }),
+            {
+              states: requested.map((filePath, index) => ({
+                path: filePath,
+                exists: filePath !== missing,
+                isGitSourcePath: [true, false, true, true, false, true][index],
+              })),
+            },
+          );
+          assert.deepStrictEqual(yield* queries.pathStates({ cwd: root, paths: [outside] }), {
+            states: [{ path: outside, exists: true, isGitSourcePath: false }],
+          });
+          for (const input of [
+            { cwd: repo, paths: ["relative.pdf"] },
+            { cwd: "relative", paths: [outside] },
+            { cwd: repo, paths: [`${outside}\0`] },
+          ])
+            assert.strictEqual((yield* Effect.result(queries.pathStates(input)))._tag, "Failure");
+        }).pipe(Effect.provide(f.layer));
+      }),
+    ),
+);
+
+it.effect("retains existence with unknown Git visibility when the worker is unavailable", () => {
+  const f = fixture({ gitRequest: () => Effect.succeed([]) });
+  return Effect.gen(function* () {
+    const queries = yield* WorkspaceFileQueries;
+    const result = yield* queries.pathStates({ cwd: process.cwd(), paths: [process.cwd()] });
+    assert.deepStrictEqual(result.states, [
+      { path: process.cwd(), exists: true, isGitSourcePath: null },
+    ]);
+  }).pipe(Effect.provide(f.layer));
+});

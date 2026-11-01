@@ -30,6 +30,17 @@ import type { ThreadPlanSidePanelTarget, ThreadStageActions } from "../../thread
 import { projectNativeTaskRows } from "../../native-task-presentation";
 import { buildThreadHandoffOperation } from "../../../../test/thread-handoff-fixture";
 
+const outputOpeners = vi.hoisted(() => ({
+  openFile: vi.fn(),
+  openDefault: vi.fn(),
+}));
+vi.mock("@/lib/file-reference-router", () => ({
+  useFileReferenceRouter: () => ({ open: outputOpeners.openFile }),
+}));
+vi.mock("@/lib/file-system-operations", () => ({
+  openPathWithDefaultApplication: outputOpeners.openDefault,
+}));
+
 let invokeCalls: unknown[][] = [];
 let gitWorkerCalls: Array<{ method: string; params: unknown }> = [];
 let mockInvokeImpl: ((channel: string, ...args: unknown[]) => Promise<unknown>) | null = null;
@@ -46,6 +57,15 @@ const pendingByDefaultInvokeChannels = new Set([
 
 async function invokeForTest(channel: string, ...args: unknown[]): Promise<unknown> {
   invokeCalls.push([channel, ...args]);
+  if (channel === "workspace-path-states") {
+    return {
+      states: (args[0] as { paths: string[] }).paths.map((path) => ({
+        path,
+        exists: true,
+        isGitSourcePath: true,
+      })),
+    };
+  }
   if (mockInvokeImpl) {
     const result = await mockInvokeImpl(channel, ...args);
     if (channel === "codex:app-server:request" && result == null) {
@@ -211,6 +231,23 @@ async function clickAndAct(target: Element): Promise<void> {
   });
 }
 
+function makeFileOutputTurns(path: string): CodexConversationTurn[] {
+  const text = `:codex-file-citation{path="${path}"}`;
+  return [
+    {
+      items: [
+        {
+          itemId: "assistant",
+          type: "agentMessage",
+          markdownText: text,
+          rawItem: { id: "assistant", type: "agentMessage", text },
+        },
+      ],
+      status: "completed",
+    },
+  ] as unknown as CodexConversationTurn[];
+}
+
 async function expectTooltipContent(trigger: HTMLElement, expected: string): Promise<void> {
   expect(trigger.hasAttribute("title")).toBe(false);
   await act(async () => {
@@ -363,6 +400,8 @@ describe("ThreadFloatingSummaryPanel", () => {
     invokeCalls = [];
     gitWorkerCalls = [];
     mockInvokeImpl = null;
+    outputOpeners.openFile.mockReset().mockResolvedValue(true);
+    outputOpeners.openDefault.mockReset().mockResolvedValue(true);
     Object.defineProperty(window, "api", {
       configurable: true,
       value: { invoke: invokeForTest, on: () => () => undefined },
@@ -2114,7 +2153,7 @@ describe("ThreadFloatingSummaryPanel", () => {
             type: "webSearch",
           },
         ],
-        status: "inProgress",
+        status: "completed",
       },
     ] as unknown as CodexConversationTurn[];
 
@@ -2171,6 +2210,7 @@ describe("ThreadFloatingSummaryPanel", () => {
       />,
     );
 
+    await view.findByText("Generated image 1");
     const content = textContent(view.container);
     const orderedTitles = [
       "Scheduled",
@@ -3046,7 +3086,7 @@ describe("ThreadFloatingSummaryPanel", () => {
     expect(call?.hideCodeBlocks).toBe(false);
   });
 
-  test("suppresses outputs when the active thread is in a git environment", async () => {
+  test("shows deliverable outputs alongside the Git environment", async () => {
     const { ThreadFloatingSummaryPanel } = await import("./thread-floating-summary-panel");
     mockInvokeImpl = async (channel: string, input?: unknown) => {
       if (channel !== "review-summary") return null;
@@ -3095,8 +3135,9 @@ describe("ThreadFloatingSummaryPanel", () => {
       expect(invokeCalls.some((call) => call[0] === "review-summary")).toBe(false);
       const content = textContent(view.container);
       expect(content.includes("Clean")).toBe(false);
-      expect(content.includes("Outputs")).toBe(false);
-      expect(content.includes("Generated image 1")).toBe(false);
+      expect(view.getByText("Environment")).toBeDefined();
+      expect(view.getByText("Outputs")).toBeDefined();
+      expect(view.getByText("Generated image 1")).toBeDefined();
     });
   });
 
@@ -3191,9 +3232,9 @@ describe("ThreadFloatingSummaryPanel", () => {
       />,
     );
 
-    const outputRow = view
-      .getByText("Generated image 1")
-      .closest("[role='button']") as HTMLElement | null;
+    const outputRow = (await view.findByText("Generated image 1")).closest(
+      "[role='button']",
+    ) as HTMLElement | null;
     expect(Boolean(outputRow)).toBe(true);
     await act(async () => {
       fireEvent.click(outputRow as HTMLElement);
@@ -3209,88 +3250,67 @@ describe("ThreadFloatingSummaryPanel", () => {
     expect(invokeCalls.some((call) => call[0] === "shell:open-file-link")).toBe(false);
   });
 
-  test("opens non-image summary panel output rows through the side panel opener first", async () => {
-    const { ThreadFloatingSummaryPanel } = await import("./thread-floating-summary-panel");
-    mockInvokeImpl = async (channel: string) => channel === "shell:open-file-link";
-    const openedOutputs: unknown[] = [];
-    const actions = {
-      onOpenSummaryOutputInSidePanel: async (target) => {
-        openedOutputs.push(target);
-        return true;
-      },
-    } as Partial<ThreadStageActions> as ThreadStageActions;
-    const turns = [
-      {
-        items: [
-          {
-            itemId: "assistant",
-            type: "agentMessage",
-            markdownText: "Saved report at 【/repo/project/dist/report.txt†L1】.",
-            rawItem: {
-              id: "assistant",
-              type: "agentMessage",
-              text: "Saved report at 【/repo/project/dist/report.txt†L1】.",
-            },
-          },
-        ],
-        status: "completed",
-      },
-    ] as unknown as CodexConversationTurn[];
+  for (const extension of ["md", "pdf"]) {
+    test(`opens ${extension} summary outputs through the file router on the Chat's host`, async () => {
+      const { ThreadFloatingSummaryPanel } = await import("./thread-floating-summary-panel");
+      const path = `/repo/project/dist/report.${extension}`;
+      const view = renderSummary(
+        <ThreadFloatingSummaryPanel
+          mounted
+          open
+          sourceRoot={{ hostId: "ssh:remote", threadId: "thread-1" }}
+          activeThreadId="thread-1"
+          cwd="/repo/project/dist"
+          projectWorkspacePath="/repo/project"
+          turns={makeFileOutputTurns(path)}
+          onErrorMessage={() => undefined}
+        />,
+      );
 
+      const row = await view.findByRole("button", { name: `report.${extension}` });
+      await clickAndAct(row);
+
+      await waitFor(() =>
+        expect(outputOpeners.openFile).toHaveBeenCalledWith(
+          { path },
+          {
+            hostId: "ssh:remote",
+            cwd: "/repo/project/dist",
+            workspaceRoot: "/repo/project",
+            title: `report.${extension}`,
+          },
+        ),
+      );
+      expect(outputOpeners.openDefault).not.toHaveBeenCalled();
+    });
+  }
+
+  test("opens a local HTML summary output with the default application", async () => {
+    const { ThreadFloatingSummaryPanel } = await import("./thread-floating-summary-panel");
+    const path = "/repo/project/dist/report.html";
     const view = renderSummary(
       <ThreadFloatingSummaryPanel
         mounted
         open
         activeThreadId="thread-1"
-        cwd={null}
-        projectWorkspacePath={null}
-        turns={turns}
-        actions={actions}
+        cwd="/repo/project"
+        projectWorkspacePath="/repo/project"
+        turns={makeFileOutputTurns(path)}
         onErrorMessage={() => undefined}
       />,
     );
 
-    const outputRow = view.getByText("report.txt").closest("[role='button']") as HTMLElement | null;
-    expect(Boolean(outputRow)).toBe(true);
-    await act(async () => {
-      fireEvent.click(outputRow as HTMLElement);
-    });
+    const row = await view.findByRole("button", { name: "report.html" });
+    await clickAndAct(row);
 
-    expect(JSON.stringify(openedOutputs)).toBe(
-      JSON.stringify([
-        {
-          path: "/repo/project/dist/report.txt",
-          title: "report.txt",
-        },
-      ]),
-    );
-    expect(invokeCalls.some((call) => call[0] === "shell:open-file-link")).toBe(false);
+    await waitFor(() => expect(outputOpeners.openDefault).toHaveBeenCalledWith(path));
+    expect(outputOpeners.openFile).not.toHaveBeenCalled();
   });
 
-  test("falls back to the desktop file opener when summary output side panel open is unavailable", async () => {
+  test("reports when a summary output cannot be opened", async () => {
     const { ThreadFloatingSummaryPanel } = await import("./thread-floating-summary-panel");
-    mockInvokeImpl = async (channel: string) => channel === "shell:open-file-link";
-    const actions = {
-      onOpenSummaryOutputInSidePanel: async () => false,
-    } as Partial<ThreadStageActions> as ThreadStageActions;
-    const turns = [
-      {
-        items: [
-          {
-            itemId: "assistant",
-            type: "agentMessage",
-            markdownText: "Saved report at 【/repo/project/dist/report.txt†L1】.",
-            rawItem: {
-              id: "assistant",
-              type: "agentMessage",
-              text: "Saved report at 【/repo/project/dist/report.txt†L1】.",
-            },
-          },
-        ],
-        status: "completed",
-      },
-    ] as unknown as CodexConversationTurn[];
-
+    outputOpeners.openFile.mockResolvedValue(false);
+    const onErrorMessage = vi.fn();
     const view = renderSummary(
       <ThreadFloatingSummaryPanel
         mounted
@@ -3298,26 +3318,15 @@ describe("ThreadFloatingSummaryPanel", () => {
         activeThreadId="thread-1"
         cwd={null}
         projectWorkspacePath={null}
-        turns={turns}
-        actions={actions}
-        onErrorMessage={() => undefined}
+        turns={makeFileOutputTurns("/repo/project/dist/report.pdf")}
+        onErrorMessage={onErrorMessage}
       />,
     );
 
-    const outputRow = view.getByText("report.txt").closest("[role='button']") as HTMLElement | null;
-    expect(Boolean(outputRow)).toBe(true);
-    await act(async () => {
-      fireEvent.click(outputRow as HTMLElement);
-    });
+    const row = await view.findByRole("button", { name: "report.pdf" });
+    await clickAndAct(row);
 
-    expect(
-      invokeCalls.some(
-        (call) =>
-          call[0] === "shell:open-file-link" &&
-          JSON.stringify(call).includes("/repo/project/dist/report.txt") &&
-          JSON.stringify(call).includes("fileManager"),
-      ),
-    ).toBe(true);
+    await waitFor(() => expect(onErrorMessage).toHaveBeenLastCalledWith("Could not open output"));
   });
 
   test("opens URL summary panel output rows through the browser opener", async () => {

@@ -1626,9 +1626,9 @@ export interface IpcApi
     args: [input: WorkspaceDirectoryEntriesInput];
     result: WorkspaceDirectoryEntriesResult;
   };
-  "workspace-paths-exist": {
-    args: [import("./types").WorkspacePathsExistInput];
-    result: import("./types").WorkspacePathsExistResult;
+  "workspace-path-states": {
+    args: [import("./types").WorkspacePathStatesInput];
+    result: import("./types").WorkspacePathStatesResult;
   };
   "workspace-text-search:start": {
     args: [input: import("./workspace-text-search").WorkspaceTextSearchRequest];

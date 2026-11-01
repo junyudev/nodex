@@ -64,9 +64,9 @@ is specified in [Scheduled Route Behavior](scheduled-route-behavior.md).
 ## Environment and Git actions
 
 Environment is visible only for a non-projectless attached Chat with a
-resolvable Git working directory. It is mutually exclusive with Outputs:
-projectless Chats keep deliverable artifacts in Outputs even when their working
-directory happens to be a Git repository.
+resolvable Git working directory. Environment shows Git source changes and may
+appear alongside Outputs, which shows deliverables. Projectless Chats keep
+deliverables in Outputs even when their working directory is a Git repository.
 
 `Changes` aggregates staged, unstaged, and branch-review state. It shows only a
 loading state, non-zero additions/deletions, or no trailing value. Activating it
@@ -120,21 +120,39 @@ See [Moving a Chat](codex-managed-worktree-lifecycle-behavior.md#moving-a-chat).
 Plan renders the current structured task plan from the conversation projection.
 It does not reconstruct a plan by scraping transcript prose.
 
-Outputs contains user-facing artifacts and resources:
+Outputs lists what the Chat's Agents produced for you to open, newest turn
+first and at most five rows; a resource several turns produced appears once, at
+its most recent turn. One deliverable model per completed turn feeds both this
+section and the cards after that turn's response (see
+[Codex Thread Transcript Behavior](codex-thread-transcript-behavior.md)):
 
+- files the Agent cites as output, or links as a document in its last message;
+- documents, web pages, spreadsheets and images the Agent created or edited that
+  Git does not see: ignored by the Chat's repository, outside it, or with no
+  repository at all;
 - generated images and image views;
-- assistant file references and Markdown file links;
-- completed-turn edited-document artifacts;
-- Google Drive links, website previews, and app-generated resources.
+- Google Drive resources, a single local website URL, and app-generated resources.
 
-Ordinary source edits remain in Review or Environment. A source path enters
-Outputs only when the completed-turn artifact model classifies it as a supported
-deliverable. For projectless Chats, the persisted output-directory hint limits
-filesystem artifacts to that deliverable directory.
+Outputs and Environment divide a turn's files. A tracked file, or an untracked
+one Git would show in Review, is a source change owned by Review and
+Environment unless the Agent explicitly cites or links it as an output. A
+projectless Chat's filesystem deliverables are the files inside its output
+directory, whatever their Git state. Deleted files, source citations, scratch
+paths and inline visualization sources are never outputs.
 
-URL outputs open through the browser route, images open the local image preview,
-and files or local websites open a renderer-local Files preview before falling
-back to the desktop file opener.
+Every file is confirmed on the Chat's execution host: unconfirmed files stay
+hidden while loading and missing files disappear. When confirmation fails,
+explicit outputs and projectless deliverables remain, but an edited Project
+file whose Git state is unknown is not promoted.
+
+Rows and turn cards show file-type artwork and name a generic entry file by its
+folder, such as `report/index.html`. Opening is the same on both surfaces:
+images open in the image viewer, HTML on this device opens rendered in the
+default browser, web resources open as links, and other files open in Files on
+the Chat's execution host, falling back to the desktop opener for local files.
+Destinations outside Nodex show an open-in mark on hover. The context menu, or
+Shift+F10, offers the file's destinations (Open file, Open in an app, Copy path,
+Reveal) or the link's actions.
 
 Sources is an icon-only accessible list. It does not add a duplicate text-pill
 representation of the same integrations, and it shows `No sources yet` when no

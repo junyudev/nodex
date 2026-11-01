@@ -43,8 +43,14 @@ beforeEach(async () => {
         ? { revision: 0, values: {} }
         : channel === "codex:app-server:request"
           ? { type: "result", result: { data: [], nextCursor: null } }
-          : channel === "workspace-paths-exist"
-            ? { existingPaths: (args[0] as { paths: string[] }).paths }
+          : channel === "workspace-path-states"
+            ? {
+                states: (args[0] as { paths: string[] }).paths.map((path) => ({
+                  path,
+                  exists: true,
+                  isGitSourcePath: path !== "/workspace/report/index.html",
+                })),
+              }
             : undefined,
   };
 });
@@ -501,7 +507,7 @@ describe("completed runtime response scroll intent", () => {
         fixture.complete();
         await frames(15);
       });
-      await view.findByRole("button", { name: "index.html" });
+      await view.findByRole("button", { name: "Open report/index.html" });
       const viewport = view.scroll().getScrollElement()!;
       expect(viewport.scrollHeight).toBeGreaterThan(viewport.clientHeight + 500);
       const bounds = viewport.getBoundingClientRect();
@@ -599,7 +605,7 @@ describe("completed runtime response scroll intent", () => {
         fixture.complete();
         await frames(12);
       });
-      await view.findByRole("button", { name: "index.html" });
+      await view.findByRole("button", { name: "Open report/index.html" });
       await act(async () => {
         view.getByRole("button", { name: "Edited a file, ran commands" }).click();
         await frames(10);

@@ -15,8 +15,8 @@ import type {
   WorkspaceFileReadResult,
   WorkspaceFileBinaryReadInput,
   WorkspaceFileTextReadInput,
-  WorkspacePathsExistInput,
-  WorkspacePathsExistResult,
+  WorkspacePathStatesInput,
+  WorkspacePathStatesResult,
   WorkspaceFileRequest,
 } from "../../shared/types";
 import type { FsGetMetadataResponse } from "@nodex/codex-app-server-protocol/v2";
@@ -56,7 +56,7 @@ export class WorkspaceFileQueries extends Context.Service<
     readonly directory: (
       input: WorkspaceDirectoryEntriesInput,
     ) => Query<WorkspaceDirectoryEntriesResult>;
-    readonly pathsExist: (input: WorkspacePathsExistInput) => Query<WorkspacePathsExistResult>;
+    readonly pathStates: (input: WorkspacePathStatesInput) => Query<WorkspacePathStatesResult>;
     readonly metadata: (input: WorkspaceFileMetadataInput) => Query<WorkspaceFileMetadata>;
     readonly text: (input: WorkspaceFileTextReadInput) => Query<WorkspaceFileReadResult>;
     readonly binary: (input: WorkspaceFileBinaryReadInput) => Query<WorkspaceFileBinaryReadResult>;
@@ -366,39 +366,56 @@ export const live: Layer.Layer<
           listWorkspaceDirectoryEntries({ ...input, workspaceRoot }),
         ).pipe(Effect.map((result) => ({ ...result, workspaceRoot })));
       },
-      pathsExist: (input) => {
+      pathStates: (input) => {
         const hostId = input.hostId ?? "local";
-        if (hostId === "local") {
-          return Effect.all(
-            input.paths.map((filePath) =>
-              local("path-exists", async () =>
-                path.isAbsolute(filePath) && (await stat(filePath).catch(() => null))
-                  ? filePath
-                  : null,
+        if (input.paths.some((filePath) => filePath.includes("\0")) || input.cwd?.includes("\0"))
+          return Effect.fail(invalid("File paths must not contain NUL"));
+        if (hostId !== "local")
+          return remote("path-states", hostId, (reader) =>
+            Effect.all(
+              input.paths.map((filePath) =>
+                reader.metadata(filePath).pipe(
+                  Effect.as({ path: filePath, exists: true, isGitSourcePath: null }),
+                  Effect.catch(() =>
+                    Effect.succeed({ path: filePath, exists: false, isGitSourcePath: null }),
+                  ),
+                ),
               ),
-            ),
-            { concurrency: 4 },
-          ).pipe(
-            Effect.map((paths) => ({
-              existingPaths: paths.filter((value): value is string => value !== null),
-            })),
+              { concurrency: 4 },
+            ).pipe(Effect.map((states) => ({ states }))),
           );
-        }
-        return remote("paths-exist", hostId, (reader) =>
-          Effect.all(
+        if (
+          input.paths.some((filePath) => !path.isAbsolute(filePath)) ||
+          (input.cwd != null && !path.isAbsolute(input.cwd))
+        )
+          return Effect.fail(invalid("File paths and working directory must be absolute"));
+        return Effect.gen(function* () {
+          const states = yield* Effect.all(
             input.paths.map((filePath) =>
-              reader.metadata(filePath).pipe(
-                Effect.as(filePath),
-                Effect.catch(() => Effect.succeed(null)),
-              ),
+              local("path-states", async () => ({
+                path: filePath,
+                exists: (await stat(filePath).catch(() => null)) !== null,
+                isGitSourcePath: null as boolean | null,
+              })),
             ),
             { concurrency: 4 },
-          ).pipe(
-            Effect.map((paths) => ({
-              existingPaths: paths.filter((value): value is string => value !== null),
+          );
+          if (!input.cwd || input.paths.length === 0)
+            return { states: states.map((state) => ({ ...state, isGitSourcePath: false })) };
+          const visibility = yield* gitWorker
+            .request({
+              method: "path-source-states",
+              params: { cwd: input.cwd, paths: input.paths },
+            })
+            .pipe(Effect.catch(() => Effect.succeed([])));
+          const byPath = new Map(visibility.map((state) => [state.path, state.isGitSourcePath]));
+          return {
+            states: states.map((state) => ({
+              ...state,
+              isGitSourcePath: byPath.get(state.path) ?? null,
             })),
-          ),
-        );
+          };
+        });
       },
       metadata: (input) => {
         const hostId = input.hostId ?? "local";

@@ -47,9 +47,6 @@ export interface WorkbenchThreadSummaryCommands {
     input: ThreadSummaryPanelScheduledAutomationOpenInput,
   ) => Promise<void>;
   readonly openAutomations: (path: string) => void;
-  readonly openSummaryOutputInSidePanel: NonNullable<
-    ThreadStageActions["onOpenSummaryOutputInSidePanel"]
-  >;
   readonly openProcessOutput: (
     target: ReturnType<typeof buildProcessOutputTargetFromSummaryRow>,
   ) => Promise<boolean>;
@@ -96,10 +93,7 @@ export interface WorkbenchThreadSummaryModel {
   readonly onOpenBackgroundTerminalOutput: NonNullable<
     ThreadStageActions["onOpenBackgroundTerminalOutput"]
   >;
-  readonly headerActions: Pick<
-    ThreadStageActions,
-    "onOpenSummaryOutputInSidePanel" | "onOpenSummaryScheduledAutomation"
-  >;
+  readonly headerActions: Pick<ThreadStageActions, "onOpenSummaryScheduledAutomation">;
 }
 
 /**
@@ -277,10 +271,9 @@ export function useWorkbenchThreadSummary({
   );
   const headerActions = useMemo<WorkbenchThreadSummaryModel["headerActions"]>(
     () => ({
-      onOpenSummaryOutputInSidePanel: commands.openSummaryOutputInSidePanel,
       onOpenSummaryScheduledAutomation: onOpenScheduledAutomation,
     }),
-    [commands.openSummaryOutputInSidePanel, onOpenScheduledAutomation],
+    [onOpenScheduledAutomation],
   );
 
   return {

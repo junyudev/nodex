@@ -22,9 +22,11 @@ import type {
   ThreadTranscriptBlockModel,
   ThreadTurnModel,
   ThreadTurnRenderBuckets,
+  ThreadTurnOutputsBlockModel,
   ThreadTurnSubagentActivityState,
   ThreadWorkedForBlockModel,
 } from "../thread-stage-types";
+import type { ThreadSummaryPanelOutputRow } from "./thread-summary-panel-output-model";
 import { projectThreadActivityPresentation } from "./thread-activity-presentation";
 import {
   countAgentBodyUnits,
@@ -58,6 +60,8 @@ interface BuildTurnViewModelInput {
   mcpApps?: readonly ProtocolAppInfo[];
   mcpServerStatuses?: ProtocolListMcpServerStatusResponse | null;
   endResourcePaths?: readonly string[];
+  /** Confirmed deliverables shown with the reply; timeline turns place them on their own row. */
+  endResources?: readonly ThreadSummaryPanelOutputRow[];
   subagentActivityState?: ThreadTurnSubagentActivityState;
 }
 
@@ -255,6 +259,26 @@ function buildGeneratedImageGalleryBlock(
     type: "generatedImageGallery",
     images,
     pendingImageCount: output.pendingImageCount,
+  };
+}
+
+function buildTurnOutputsBlock(
+  turnId: string | null,
+  turnKey: string,
+  turn: CodexConversationTurn | null,
+  resources: readonly ThreadSummaryPanelOutputRow[] | undefined,
+): ThreadTurnOutputsBlockModel | null {
+  if (!resources || resources.length === 0) return null;
+  const timestamps = (turn?.items ?? []).flatMap((item) => [item.createdAt, item.updatedAt]);
+  const updatedAt = timestamps.length === 0 ? 0 : Math.max(...timestamps);
+  return {
+    id: `${turnKey}:outputs`,
+    turnId,
+    createdAt: updatedAt,
+    updatedAt,
+    searchableText: "",
+    type: "turnOutputs",
+    resources,
   };
 }
 
@@ -532,6 +556,13 @@ export function buildTurnViewModel(input: BuildTurnViewModelInput): ThreadTurnMo
     input.includeGeneratedImages === false
       ? null
       : buildGeneratedImageGalleryBlock(input.turnId, turnKey, buckets, input);
+  // Outputs belong to the reply: beneath its text and images, above its actions.
+  const turnOutputsBlock = buildTurnOutputsBlock(
+    input.turnId,
+    turnKey,
+    input.turn,
+    input.endResources,
+  );
   const nextAssistantItem =
     buckets.assistantItem === null
       ? null
@@ -544,6 +575,7 @@ export function buildTurnViewModel(input: BuildTurnViewModelInput): ThreadTurnMo
             includeActions: input.voiceWorkActivity === undefined,
             assistantAfterBlocks: [
               ...(generatedImageGalleryBlock ? [generatedImageGalleryBlock] : []),
+              ...(turnOutputsBlock ? [turnOutputsBlock] : []),
               ...buckets.postAssistantItems,
               ...(buckets.unifiedDiffItem ? [buckets.unifiedDiffItem] : []),
             ].filter((block) => !turnOwnerHiddenBlockIds.has(block.id)),
@@ -657,6 +689,7 @@ export function buildTurnViewModel(input: BuildTurnViewModelInput): ThreadTurnMo
     ...(buckets.systemEventItem ? [buckets.systemEventItem] : []),
     ...(buckets.assistantItem ? [buckets.assistantItem] : []),
     ...(!buckets.assistantItem && generatedImageGalleryBlock ? [generatedImageGalleryBlock] : []),
+    ...(turnOutputsBlock ? [turnOutputsBlock] : []),
     ...(deferredAssistantActionsBlock ? [deferredAssistantActionsBlock] : []),
     ...buckets.postAssistantItems,
     ...buckets.mcpServerElicitationItems,

@@ -1,4 +1,5 @@
 import { AsyncQuestionTranscript } from "../composer/async-question-surface";
+import { LocalConversationEndResources } from "../local-conversation-end-resources";
 import {
   ThreadAutomaticApprovalReviewBlock,
   ThreadAgentActivityGroupBlock,
@@ -401,6 +402,17 @@ export function ThreadBlockRenderer({
         block={block}
         isLatestTurn={isLatestTurn}
         isStreamingTurn={isStreamingTurn}
+      />
+    );
+  }
+
+  if (block.type === "turnOutputs") {
+    return (
+      <LocalConversationEndResources
+        resources={block.resources}
+        hostId={hostId ?? "local"}
+        cwd={threadCwd}
+        workspaceRoot={projectWorkspacePath}
       />
     );
   }

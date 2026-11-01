@@ -4,6 +4,11 @@ import type { CodexCreatedThreadResult } from "../../../../shared/codex-created-
 import type { ThreadStageActions } from "../thread-stage-types";
 import { useCreatedThreadCardState } from "../use-created-thread-card-state";
 import { CodexShimmerText } from "./shared/codex-shimmer-text";
+import {
+  ThreadResourceCard,
+  ThreadResourceCardGrid,
+  ThreadResourceCardMore,
+} from "./shared/thread-resource-card";
 
 function CreatedThreadCard({
   result,
@@ -18,22 +23,19 @@ function CreatedThreadCard({
   const id = "threadId" in result ? result.threadId : result.clientThreadId;
   const title = state.title || ("clientThreadId" in result ? "Worktree chat" : "Created chat");
   return (
-    <button
-      type="button"
+    <ThreadResourceCard
       aria-label={`Open chat: ${title}`}
-      className="flex min-w-0 items-center gap-3 rounded-lg border-[0.5px] border-token-border p-3 text-left hover:bg-token-list-hover-background focus-visible:outline-2 focus-visible:outline-token-focus-border"
-      onClick={() => void onOpenThread?.(id, { createdTarget: result, sourceRoot })}
-    >
-      <CreatedTaskIcon className="icon-sm shrink-0 text-token-text-secondary" aria-hidden />
-      <span className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate font-medium text-token-foreground">{title}</span>
-        {state.isWorking ? (
+      icon={<CreatedTaskIcon className="icon-sm" aria-hidden />}
+      title={title}
+      detail={
+        state.isWorking ? (
           <CodexShimmerText className="text-sm">Working</CodexShimmerText>
         ) : state.text ? (
           <span className="line-clamp-2 text-sm text-token-text-secondary">{state.text}</span>
-        ) : null}
-      </span>
-    </button>
+        ) : null
+      }
+      onClick={() => void onOpenThread?.(id, { createdTarget: result, sourceRoot })}
+    />
   );
 }
 
@@ -54,7 +56,7 @@ export function LocalConversationCreatedThreadCards({
   const hidden = supported.length - visible.length;
   return (
     <div data-content-search-skip="true" className="flex flex-col gap-2">
-      <div className="grid grid-cols-1 gap-2 @lg/thread-content:grid-cols-2">
+      <ThreadResourceCardGrid>
         {visible.map((result, index) => (
           <CreatedThreadCard
             key={`${"threadId" in result ? result.threadId : result.clientThreadId}:${index}`}
@@ -63,16 +65,13 @@ export function LocalConversationCreatedThreadCards({
             sourceRoot={sourceRoot}
           />
         ))}
-      </div>
+      </ThreadResourceCardGrid>
       {supported.length > 4 ? (
-        <button
-          type="button"
-          aria-expanded={expanded}
-          className="self-start text-sm text-token-text-secondary hover:text-token-foreground"
+        <ThreadResourceCardMore
+          expanded={expanded}
+          label={expanded ? "Show fewer chats" : `Show ${hidden} more chats`}
           onClick={() => setExpanded((current) => !current)}
-        >
-          {expanded ? "Show fewer chats" : `Show ${hidden} more chats`}
-        </button>
+        />
       ) : null}
     </div>
   );

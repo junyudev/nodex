@@ -960,13 +960,21 @@ export interface WorkspaceFileRequest {
   path: string;
 }
 
-export interface WorkspacePathsExistInput {
+export interface WorkspacePathStatesInput {
   hostId?: string;
+  cwd?: string | null;
   paths: string[];
 }
 
-export interface WorkspacePathsExistResult {
-  existingPaths: string[];
+export interface WorkspacePathState {
+  path: string;
+  exists: boolean;
+  /** null when the execution host cannot establish Git visibility. */
+  isGitSourcePath: boolean | null;
+}
+
+export interface WorkspacePathStatesResult {
+  states: WorkspacePathState[];
 }
 
 export interface WorkspaceFileTextReadInput extends WorkspaceFileRequest {

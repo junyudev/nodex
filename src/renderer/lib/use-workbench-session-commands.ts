@@ -1395,31 +1395,6 @@ export function useWorkbenchSessionCommands({
     },
     [openWorkspaceFileTab],
   );
-  const openSummaryOutputInSidePanel = useCallback<
-    NonNullable<ThreadStageActions["onOpenSummaryOutputInSidePanel"]>
-  >(
-    async (target) => {
-      if (!activeSession) return false;
-      return await openWorkspaceFileTab({
-        cwd: target.cwd,
-        path: target.path,
-        title: target.title,
-        panelId: "right",
-        workspaceRoot: target.workspaceRoot,
-        ...(target.line
-          ? {
-              location: {
-                line: target.line,
-                ...(target.column ? { column: target.column } : {}),
-                ...(target.endLine ? { endLine: target.endLine } : {}),
-                ...(target.endColumn ? { endColumn: target.endColumn } : {}),
-              },
-            }
-          : {}),
-      });
-    },
-    [activeSession, openWorkspaceFileTab],
-  );
   const forkSessionFromTurn = useCallback(
     async (input: {
       threadId: string;
@@ -1550,7 +1525,6 @@ export function useWorkbenchSessionCommands({
     openProcessOutputInCurrentSession,
     openProcessManagerOutput,
     openTurnDiffFileInSidePanel,
-    openSummaryOutputInSidePanel,
     forkSessionFromTurn,
     forkSessionFromTurnIntoWorktree,
   };
