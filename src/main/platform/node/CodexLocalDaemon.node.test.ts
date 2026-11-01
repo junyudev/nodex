@@ -28,7 +28,8 @@ import {
   parseCodexCliVersion,
 } from "../../../shared/codex-app-server-version";
 
-it.live(
+// The local daemon publishes a Unix socket; Windows uses the stdio session transport.
+it.live.skipIf(process.platform === "win32")(
   "a physical Unix WebSocket reconnect rejects old requests and reinitializes the stable Endpoint",
   () =>
     Effect.gen(function* () {
@@ -166,6 +167,14 @@ it.effect(
     Effect.gen(function* () {
       const config = { codexHome: "/unused", platform: "darwin", configOverrides: [] };
       expect(canUseCodexLocalDaemon(config, {})).toBe(false);
+      expect(
+        canUseCodexLocalDaemon(
+          { ...config, platform: "win32" },
+          {
+            CODEX_APP_SERVER_USE_LOCAL_DAEMON: "1",
+          },
+        ),
+      ).toBe(false);
       expect(canUseCodexLocalDaemon(config, { CODEX_APP_SERVER_USE_LOCAL_DAEMON: "1" })).toBe(true);
       expect(
         canUseCodexLocalDaemon(

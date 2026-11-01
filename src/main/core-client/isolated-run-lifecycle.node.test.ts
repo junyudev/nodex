@@ -61,7 +61,6 @@ describe("isolated run Core lifecycle", () => {
       });
       lease = null;
 
-      expect(existsSync(path.join(nodexHome, "run/core/core.sock"))).toBe(false);
       expect(existsSync(path.join(nodexHome, "run/core/core.json"))).toBe(false);
       expect(existsSync(path.join(nodexHome, "run/core/core.auth"))).toBe(false);
       expect(readIsolatedRunLeaseOwner(nodexHome)).toBeNull();
@@ -73,11 +72,11 @@ describe("isolated run Core lifecycle", () => {
       });
       nextLease.release();
     } finally {
-      if (existsSync(path.join(nodexHome, "run/core/core.sock"))) {
+      if (existsSync(path.join(nodexHome, "run/core/core.json"))) {
         await launched.client.shutdown().catch(() => undefined);
         await waitUntil(
-          () => !existsSync(path.join(nodexHome, "run/core/core.sock")),
-          "Core socket remained during integration-test cleanup",
+          () => !existsSync(path.join(nodexHome, "run/core/core.json")),
+          "Core descriptor remained during integration-test cleanup",
         ).catch(() => undefined);
       }
       lease?.release();
@@ -119,8 +118,8 @@ describe("isolated run Core lifecycle", () => {
     } finally {
       await launched.client.shutdown().catch(() => undefined);
       await waitUntil(
-        () => !existsSync(path.join(nodexHome, "run/core/core.sock")),
-        "Core socket remained during non-owner test cleanup",
+        () => !existsSync(path.join(nodexHome, "run/core/core.json")),
+        "Core descriptor remained during non-owner test cleanup",
       ).catch(() => undefined);
       lease.release();
       rmSync(nodexHome, { recursive: true, force: true });

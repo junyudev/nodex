@@ -1,4 +1,5 @@
 /* @effect-diagnostics asyncFunction:off newPromise:off -- These tests exercise real Node sockets and their native completion callbacks. */
+import { randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -20,7 +21,10 @@ afterEach(async () => {
 
 async function network() {
   const directory = await mkdtemp(join(tmpdir(), "nodex-peer-"));
-  const endpoint = join(directory, "ipc.sock");
+  const endpoint =
+    process.platform === "win32"
+      ? `\\\\.\\pipe\\nodex-peer-test-${randomUUID()}`
+      : join(directory, "ipc.sock");
   const server = createServer();
   const errors = vi.fn();
   const router = new CodexPeerRouter(server, errors);

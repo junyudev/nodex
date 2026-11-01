@@ -49,10 +49,13 @@ describe("isolated run ownership", () => {
     });
 
     expect(readIsolatedRunLeaseOwner(nodexHome)).toEqual(lease.owner);
-    expect(lstatSync(isolatedRunLeaseDirectory(nodexHome)).mode & 0o777).toBe(0o700);
-    expect(
-      lstatSync(path.join(isolatedRunLeaseDirectory(nodexHome), "owner.json")).mode & 0o777,
-    ).toBe(0o600);
+    // Windows privacy is expressed by inherited user ACLs, not mode bits.
+    if (process.platform !== "win32") {
+      expect(lstatSync(isolatedRunLeaseDirectory(nodexHome)).mode & 0o777).toBe(0o700);
+      expect(
+        lstatSync(path.join(isolatedRunLeaseDirectory(nodexHome), "owner.json")).mode & 0o777,
+      ).toBe(0o600);
+    }
     expect(() =>
       acquireIsolatedRunLease({
         nodexHome,
@@ -201,7 +204,7 @@ describe("isolated run ownership", () => {
     expect(() => lease.release()).toThrow("unexpected entry");
   });
 
-  test("rejects symlinked lease metadata and non-private modes", () => {
+  test("rejects symlinked lease metadata", () => {
     const symlinkHome = createNodexHome();
     const leaseDirectory = isolatedRunLeaseDirectory(symlinkHome);
     mkdirSync(path.dirname(leaseDirectory), { mode: 0o700 });
@@ -210,7 +213,10 @@ describe("isolated run ownership", () => {
     writeFileSync(external, "{}", { mode: 0o600 });
     symlinkSync(external, path.join(leaseDirectory, "owner.json"));
     expect(() => readIsolatedRunLeaseOwner(symlinkHome)).toThrow("symlink");
+  });
 
+  // POSIX permissions have no Windows chmod equivalent.
+  test.skipIf(process.platform === "win32")("rejects non-private lease modes", () => {
     const modeHome = createNodexHome();
     const lease = acquireIsolatedRunLease({
       nodexHome: modeHome,

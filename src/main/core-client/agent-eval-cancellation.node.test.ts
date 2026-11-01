@@ -27,14 +27,14 @@ it.effect(
       const release = deferred();
       let profileRoot = "";
       let credentialPath = "";
-      let socketPath = "";
+      let descriptorPath = "";
       let settled = false;
       const running = yield* Effect.forkChild(
         withCancelableProbeOperation((signal) =>
           withCoreScenario({ scenarioId: "agent/cli-workflow" }, async ({ profile }) => {
             profileRoot = profile.runRoot;
             credentialPath = path.join(profile.codexHome, "auth.json");
-            socketPath = path.join(profile.nodexHome, "run/core/core.sock");
+            descriptorPath = path.join(profile.nodexHome, "run/core/core.json");
             await mkdir(profile.codexHome, { recursive: true });
             await writeFile(credentialPath, "synthetic test credential", { mode: 0o600 });
             const aborted = new Promise<void>((resolve) =>
@@ -52,7 +52,7 @@ it.effect(
       );
       try {
         yield* Effect.promise(() => ready.promise);
-        expect(existsSync(socketPath)).toBe(true);
+        expect(existsSync(descriptorPath)).toBe(true);
         expect(existsSync(credentialPath)).toBe(true);
         const interruption = yield* Effect.forkChild(
           Fiber.interrupt(running).pipe(
@@ -66,11 +66,11 @@ it.effect(
         yield* Effect.promise(() => cleaning.promise);
         yield* Effect.yieldNow;
         expect(settled).toBe(false);
-        expect(existsSync(socketPath)).toBe(true);
+        expect(existsSync(descriptorPath)).toBe(true);
         release.resolve();
         yield* Fiber.join(interruption);
         expect(settled).toBe(true);
-        expect(existsSync(socketPath)).toBe(false);
+        expect(existsSync(descriptorPath)).toBe(false);
         expect(existsSync(credentialPath)).toBe(false);
         expect(existsSync(profileRoot)).toBe(false);
       } finally {

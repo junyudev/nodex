@@ -27,11 +27,20 @@ test("ordinary shell pipelines, redirects, jq and Python preserve development CL
         agentAttribution: null,
       });
       const result = await promisify(execFile)(
-        "/bin/bash",
-        [
-          "-c",
-          "set -euo pipefail\nnodex context | jq -r '.result.project.id' > selected-project.txt\npython3 -c 'import pathlib; print(pathlib.Path(\"selected-project.txt\").read_text().strip())'",
-        ],
+        process.platform === "win32" ? "powershell.exe" : "/bin/bash",
+        process.platform === "win32"
+          ? [
+              "-NoProfile",
+              "-NonInteractive",
+              "-ExecutionPolicy",
+              "Bypass",
+              "-Command",
+              "$ErrorActionPreference='Stop'; nodex context | ConvertFrom-Json | ForEach-Object { $_.result.project.id } | Set-Content -Encoding utf8 selected-project.txt; python -c 'import pathlib; print(pathlib.Path(\"selected-project.txt\").read_text(encoding=\"utf-8-sig\").strip())'",
+            ]
+          : [
+              "-c",
+              "set -euo pipefail\nnodex context | jq -r '.result.project.id' > selected-project.txt\npython3 -c 'import pathlib; print(pathlib.Path(\"selected-project.txt\").read_text().strip())'",
+            ],
         {
           cwd: profile.initialProjectsDirectory,
           env: {

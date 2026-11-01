@@ -1,3 +1,4 @@
+import { nativeExecutableName } from "../desktop-build-target";
 import { writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -11,7 +12,7 @@ export async function prepareDesktopEnvironment(input: {
   codexHome: string;
   projectId: string;
 }) {
-  const binary = path.join(input.repository, "target/debug/nodex");
+  const binary = path.join(input.repository, "target/debug", nativeExecutableName("nodex"));
   const environment = {
     ...(await composeNodexCliShellEnvironment({
       nodexHome: input.nodexHome,
@@ -19,10 +20,15 @@ export async function prepareDesktopEnvironment(input: {
       inheritedEnvironment: process.env,
       searchPaths: [],
     })),
-    NODEX_CORE_BINARY: path.join(input.repository, "target/debug/nodex-core"),
+    NODEX_CORE_BINARY: path.join(
+      input.repository,
+      "target/debug",
+      nativeExecutableName("nodex-core"),
+    ),
     NODEX_RG_BINARY: path.join(
       input.repository,
-      ".generated/codex-runtime/agent-runtime/codex-path/rg",
+      ".generated/codex-runtime/agent-runtime/codex-path",
+      nativeExecutableName("rg"),
     ),
   };
   await writeFile(
