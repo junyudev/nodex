@@ -1,0 +1,19 @@
+scripts/publish-official-agent-skills.ts
+  s_9ad21099c264dd::t_e1b03056e1ac14 378-380,384-388
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ae69de24df4968575337c939cb7274950125a73b",
+  "prompts": {},
+  "sessions": {
+    "s_9ad21099c264dd": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1964f-2f03-7680-8da9-7c6d6ce01903",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
