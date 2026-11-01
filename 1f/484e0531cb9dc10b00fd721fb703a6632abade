@@ -1,0 +1,31 @@
+config/test-suites.ts
+  s_ef93f85750414a::t_7a8bdd8b3e602a 122,130
+src/main/durable-json-file.ts
+  s_ef93f85750414a::t_4c3175d9f39ba7 1-2
+src/main/local-store/persisted-atoms.ts
+  s_ef93f85750414a::t_d60f18a39dbbea 1
+src/main/platform/node/MainFatalIncidentStore.node.test.ts
+  s_ef93f85750414a::t_9781774ee30b07 1-2,45-91,107,122
+src/main/platform/node/MainFatalIncidentStore.ts
+  s_ef93f85750414a::t_72e054d83f1102 2-4,51-55,82-97,120-123,129,136-146
+src/main/remote-hosted-pip-preference-store.ts
+  s_ef93f85750414a::t_3cba62c2957fa2 1
+src/main/window-session-state.ts
+  s_ef93f85750414a::t_7df193047356fe 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1f484e0531cb9dc10b00fd721fb703a6632abade",
+  "prompts": {},
+  "sessions": {
+    "s_ef93f85750414a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1975c-d042-74f3-8106-b6eb6f221778",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
