@@ -320,8 +320,9 @@ export function ChatComposer({
 
 /**
  * One subagent's own conversation, opened from its parent chat into the Subagents tab: who it is
- * and what it runs on, the task its parent sent, then its work. It names the sending chat and
- * marks each side's provider, so a task handed from one harness to another reads as such.
+ * and what it runs on, the task its parent sent, then its work. Its task reads "Sent by" with the
+ * sending chat's mark beside its title, as the app names another conversation, so a task handed
+ * from one harness to another reads as such.
  */
 export function SubagentThread({
   subagent,
@@ -357,9 +358,12 @@ export function SubagentThread({
       <div className="flex min-h-0 flex-1 flex-col px-5 pb-4">
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden pt-4">
           <div className="flex flex-col gap-1.5">
-            <span className="me-1 flex items-center justify-end gap-1.5 text-[12px] text-app-faint">
-              <ProviderMark kind={sentBy.agent.provider} className="size-3" />
-              Sent by {sentBy.chat}
+            <span className="me-1 flex items-center justify-end gap-1 text-[12px] text-app-faint">
+              Sent by
+              <span className="inline-flex items-center gap-1">
+                <ProviderMark kind={sentBy.agent.provider} className="size-3" />
+                {sentBy.chat}
+              </span>
             </span>
             <UserBubble>{prompt}</UserBubble>
           </div>

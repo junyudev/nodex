@@ -196,9 +196,11 @@ Product demos are scripted re-enactments built from replicas of the interface, n
   each Model guide family beside what is left of its plan's weekly budget, and the reader's
   Routing preferences, in the app's labels and with the guide's one-line notes from
   `src/shared/inbox-model-guide.ts`; change the replica when the app changes them.
-- Pointing at a chat's model button shows the model that leads it, and a subagent's card marks
-  its provider, so a Claude lead with Codex subagents reads at a glance. A subagent opened in the
-  Subagents tab names the chat that sent its task and marks the provider on both sides.
+- Pointing at a chat's model button shows the model that leads it.
+- Subagents follow the app's Agent identity: a subagent's card names its Agent and model beside
+  the harness mark, the Subagents tab header marks the child's Agent beside its model and effort,
+  and its task reads "Sent by" with the sending chat's mark and title, so a Claude lead with
+  Codex subagents reads at a glance.
 - Every demo shares the fictional Lumen workspace in `src/demos/lumen.ts`; never show real
   user data, account names, or paths.
 - Replicas read the app's own artwork where it has some: subagent avatars are loaded from
