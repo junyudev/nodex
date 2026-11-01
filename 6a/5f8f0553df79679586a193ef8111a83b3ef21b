@@ -1,0 +1,107 @@
+CHANGELOG.md
+  s_693b7521d81978::t_0092a666e2496c 47,73
+agent-skills/nodex/references/markdown.md
+  s_693b7521d81978::t_faf602b1963602 4,13
+crates/nodex-cli/src/agent_interface.rs
+  s_693b7521d81978::t_db13ddbe076766 15
+crates/nodex-core/schema/current.sql
+  s_693b7521d81978::t_8a44794a647dd2 4543
+crates/nodex-core/src/administration/profile_clone.rs
+  s_693b7521d81978::t_649977ecc1d55e 588,591-592
+crates/nodex-core/src/document/integrity.rs
+  s_693b7521d81978::t_da39e48300094f 24-26,62-76,84,217-231,249,252-255,257-264
+crates/nodex-core/src/document/materialization.rs
+  s_693b7521d81978::t_ae967a417fc5af 33
+crates/nodex-core/src/document/persistence.rs
+  s_693b7521d81978::t_ebeb040ea0a984 1495-1515
+crates/nodex-core/src/infrastructure/migration.rs
+  s_693b7521d81978::t_a8018c91623d25 51,414-418,682-684,2602-2621,3551-3553,4782-4790,8608-8610,8643-8644,8886-8892,9225
+crates/nodex-core/src/infrastructure/migration_serializer_tests.rs
+  s_693b7521d81978::t_0d526a8430e4d3 1-441
+crates/nodex-core/src/infrastructure/store_validation.rs
+  s_693b7521d81978::t_5bddbed4619c07 34,1254-1255
+crates/nodex-core/src/infrastructure/workflow_status_migration_tests.rs
+  s_693b7521d81978::t_e4a8ded0e76ec2 60-64,355-356
+crates/nodex-core/src/workspace/inbox_content.rs
+  s_693b7521d81978::t_71b93797d664c0 116-162,189-192
+crates/nodex-core/src/workspace/inbox_serialization.rs
+  s_693b7521d81978::t_dde9ae0cf42e5f 1-198
+crates/nodex-core/src/workspace/inbox_tests.rs
+  s_693b7521d81978::t_4d0c42f52a28e2 3965
+crates/nodex-core/src/workspace/mod.rs
+  s_693b7521d81978::t_a99825cba0b2a8 13,19-21
+crates/nodex-markdown/src/lib.rs
+  s_693b7521d81978::t_24577faa64f3f7 93-97
+crates/nodex-markdown/src/read.rs
+  s_693b7521d81978::t_1c923d4078c47a 3,83-84
+crates/nodex-markdown/src/read/addresses.rs
+  s_693b7521d81978::t_0e8ac2437ee9c9 1-328
+crates/nodex-markdown/src/read/syntax.rs
+  s_693b7521d81978::t_fa4e70a68be925 109,828-829,900
+crates/nodex-markdown/src/read/tests.rs
+  s_693b7521d81978::t_67455137894cf9 111,129-150
+crates/nodex-markdown/src/wasm.rs
+  s_693b7521d81978::t_049935c52902c1 52-57
+crates/nodex-markdown/src/write/blocks.rs
+  s_693b7521d81978::t_af54467e8fa89d 212,331-335,617,627
+crates/nodex-markdown/src/write/escapes.rs
+  s_693b7521d81978::t_a5186c316d522d 122-140,186-194,213-216,218-226,236-255,257-258,261-262,324-333,340-341,390-391,398-549,837-838,860-865,875,886
+crates/nodex-markdown/src/write/escapes/literal.rs
+  s_693b7521d81978::t_d780afad231b25 3,25-27,106-144,150-152,185,236,395-396
+crates/nodex-markdown/src/write/escapes/performance.rs
+  s_693b7521d81978::t_2d3425300eb497 65
+crates/nodex-markdown/src/write/escapes/properties.rs
+  s_693b7521d81978::t_9681eea200407f 1-246
+crates/nodex-markdown/src/write/inline.rs
+  s_693b7521d81978::t_589ecc65c8e7c1 3,240-253,357-363
+crates/nodex-markdown/src/write/portable.rs
+  s_693b7521d81978::t_c1fda5f48cdca7 207-226
+crates/nodex-markdown/src/write/tests.rs
+  s_693b7521d81978::t_0973e091ce995d 40-61,804-854
+crates/nodex-markdown/tests/fixtures/cases.json
+  s_693b7521d81978::t_4d02edb7f64542 2,4-18
+crates/nodex-markdown/tests/fixtures/portable-cases.json
+  s_693b7521d81978::t_c8d0ce8501490c 1-131
+crates/nodex-store-format/src/lib.rs
+  s_693b7521d81978::t_a42d2999565715 269-272
+docs/references/markdown-interchange.md
+  s_693b7521d81978::t_b2afaa5abee824 86-91
+docs/references/nodex-markdown.md
+  s_693b7521d81978::t_1350a4eeccee55 96-100,161-170,172-173,189-192
+docs/reliability/core-lifecycle-and-store.md
+  s_693b7521d81978::t_6febc409494c7e 246-251
+packages/core-protocol/src/compatibility.generated.ts
+  s_693b7521d81978::t_ee871748bd35d6 42
+src/main/core-client/project-workspace-adapter.node.test.ts
+  s_693b7521d81978::t_eea40373f8e94d 40-47,58
+src/renderer/components/board/editor/special-block-copy.test.ts
+  s_693b7521d81978::t_ca71ec8f68ddbd 741
+src/shared/generated/nodex-markdown-wasm/nodex_markdown.d.ts
+  s_693b7521d81978::t_27574eb985fe46 9-13,57
+src/shared/generated/nodex-markdown-wasm/nodex_markdown.js
+  s_693b7521d81978::t_800f9b00bcbe02 30-49
+src/shared/generated/nodex-markdown-wasm/nodex_markdown_bg.wasm.d.ts
+  s_693b7521d81978::t_be1b8a1d5dc7fb 5
+src/shared/nodex-markdown/agent-guide.ts
+  s_693b7521d81978::t_e53ee83294c709 12,22
+src/shared/nodex-markdown/facade.test.ts
+  s_693b7521d81978::t_30565bcc9a5fab 4,6,17-29
+src/shared/nodex-markdown/index.ts
+  s_693b7521d81978::t_1b636e1105b481 101-103
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6a5f8f0553df79679586a193ef8111a83b3ef21b",
+  "prompts": {},
+  "sessions": {
+    "s_693b7521d81978": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19523-5249-7b21-99b6-72950d66e89e",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
