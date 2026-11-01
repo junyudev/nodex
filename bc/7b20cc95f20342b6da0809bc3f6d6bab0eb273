@@ -1,0 +1,21 @@
+src/main/platform/node/private-filesystem.ts
+  s_61ededb051faa8::t_7806cf21dc76e6 16-19
+src/main/platform/node/MainFatalIncidentStore.node.test.ts
+  s_61ededb051faa8::t_31ed5b68b373df 90-96
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bc7b20cc95f20342b6da0809bc3f6d6bab0eb273",
+  "prompts": {},
+  "sessions": {
+    "s_61ededb051faa8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19725-1673-78a3-85e3-bdba96788967",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
