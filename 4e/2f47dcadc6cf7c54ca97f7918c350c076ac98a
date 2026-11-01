@@ -1,0 +1,37 @@
+.github/workflows/windows.yml
+  s_9ad21099c264dd::t_020a9a9a08834b 72
+packages/agent-runtime/src/nodex/NodePtyAdapter.test.ts
+  s_3dc0b7647fcf0b::t_204fd142fe1db1 220-242
+packages/agent-runtime/src/nodex/NodePtyAdapter.ts
+  s_3dc0b7647fcf0b::t_ceef8f35406bff 193-195
+packages/agent-runtime/src/nodex/WindowsPty.ts
+  s_9ad21099c264dd::t_72c3af44d01d8e 16-22,43-46,70
+src/main/platform/node/TerminalPty.test.ts
+  s_9ad21099c264dd::t_ff7fb1818c8856 1-44
+src/main/platform/node/TerminalPty.ts
+  s_9ad21099c264dd::t_d6945695b1453a 61-67,70-134,136-138,143,148,152,155-156
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4e2f47dcadc6cf7c54ca97f7918c350c076ac98a",
+  "prompts": {},
+  "sessions": {
+    "s_3dc0b7647fcf0b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1964e-690a-72d0-a5e2-1468f0931284",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_9ad21099c264dd": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1964f-2f03-7680-8da9-7c6d6ce01903",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
