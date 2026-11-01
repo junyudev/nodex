@@ -38,6 +38,8 @@ The runtime descriptor records an `endpoint`: the fixed Profile-private
 Windows names contain 128 random bits per Core start. Descriptor readers reject
 foreign Unix paths, remote pipe names, alternate prefixes, and malformed names.
 HTTP/1.1 and SSE use the same authenticated byte-stream contract on both systems.
+Windows response shutdown drains buffered bytes before closing, with a five-second
+bound and native cancellation for stalled readers.
 
 Unix authenticates the socket's peer credentials. Windows creates the first pipe
 instance exclusively, rejects remote clients, and grants access only to the current

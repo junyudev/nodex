@@ -138,24 +138,10 @@ impl AsyncWrite for Connection {
                 Ok(handle) => handle,
                 Err(error) => return Poll::Ready(Err(error)),
             };
-            self.drain = Some(tokio::task::spawn_blocking(move || {
-                if unsafe {
-                    windows_sys::Win32::Storage::FileSystem::FlushFileBuffers(
-                        handle.as_raw_handle(),
-                    )
-                } != 0
-                {
-                    return Ok(());
-                }
-                let error = io::Error::last_os_error();
-                if matches!(
-                    error.raw_os_error().map(|code| code as u32),
-                    Some(ERROR_BROKEN_PIPE | ERROR_PIPE_NOT_CONNECTED)
-                ) {
-                    return Ok(());
-                }
-                Err(error)
-            }));
+            self.drain = match drain_pipe(handle) {
+                Ok(drain) => Some(drain),
+                Err(error) => return Poll::Ready(Err(error)),
+            };
         }
         match Pin::new(self.drain.as_mut().expect("drain initialized")).poll(cx) {
             Poll::Ready(Ok(result)) => Poll::Ready(result),
@@ -163,6 +149,57 @@ impl AsyncWrite for Connection {
             Poll::Pending => Poll::Pending,
         }
     }
+}
+
+const DRAIN_TIMEOUT: Duration = Duration::from_secs(5);
+
+fn drain_pipe(handle: OwnedHandle) -> io::Result<tokio::task::JoinHandle<io::Result<()>>> {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    let cancelled = Arc::new(AtomicBool::new(false));
+    let worker_cancelled = cancelled.clone();
+    let (sender, receiver) = tokio::sync::oneshot::channel();
+    // A blocked native flush must not keep Tokio's runtime teardown waiting.
+    let worker = std::thread::Builder::new()
+        .name("local-pipe-drain".into())
+        .spawn(move || {
+            if worker_cancelled.load(Ordering::Acquire) {
+                return;
+            }
+            let result = if unsafe {
+                windows_sys::Win32::Storage::FileSystem::FlushFileBuffers(handle.as_raw_handle())
+            } != 0
+            {
+                Ok(())
+            } else {
+                let error = io::Error::last_os_error();
+                if matches!(
+                    error.raw_os_error().map(|code| code as u32),
+                    Some(ERROR_BROKEN_PIPE | ERROR_PIPE_NOT_CONNECTED)
+                ) {
+                    Ok(())
+                } else {
+                    Err(error)
+                }
+            };
+            let _ = sender.send(result);
+        })?;
+    Ok(tokio::spawn(async move {
+        match tokio::time::timeout(DRAIN_TIMEOUT, receiver).await {
+            Ok(Ok(result)) => result,
+            Ok(Err(error)) => Err(io::Error::other(error)),
+            Err(_) => {
+                cancelled.store(true, Ordering::Release);
+                unsafe {
+                    windows_sys::Win32::System::IO::CancelSynchronousIo(worker.as_raw_handle());
+                }
+                Err(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    "local endpoint response drain timed out",
+                ))
+            }
+        }
+    }))
 }
 
 #[derive(Debug)]
@@ -433,6 +470,24 @@ mod tests {
         .unwrap();
         server.await.unwrap();
         assert_eq!(received, vec![42; 256 * 1024]);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_stalled_reader_cannot_hold_shutdown_open() {
+        use tokio::io::AsyncWriteExt;
+        let endpoint = super::super::random_endpoint("nodex-core").unwrap();
+        let mut listener = LocalListener::bind(&endpoint).unwrap();
+        let (release, hold) = std::sync::mpsc::channel::<()>();
+        let client = tokio::task::spawn_blocking(move || {
+            let _client = connect(Path::new(&endpoint), Some(std::process::id())).unwrap();
+            let _ = hold.recv_timeout(Duration::from_secs(10));
+        });
+        let (mut connection, _) = listener.accept().await;
+        connection.write_all(b"unread response").await.unwrap();
+        let error = connection.shutdown().await.unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::TimedOut);
+        drop(release);
+        client.await.unwrap();
     }
 
     #[tokio::test]
