@@ -78,6 +78,8 @@ src/renderer/components/block-documents/reference-block-surfaces.test.tsx
   s_5a199af1eba36e::t_aa04add9e6723c 14
 crates/nodex-store-format/src/lib.rs
   s_a4d65a7155d5da::t_1a0757766d3b32 253-254,260
+  s_7095a5752114b9::t_b310a9bba19489 257
+  s_7095a5752114b9::t_d6e59205d497a9 258-259
 src/renderer/lib/use-project-page-destination-search.node.test.ts
   s_8df07eefe56282::t_2ac296097ac760 93,97
 packages/core-protocol/openapi.json
@@ -228,8 +230,12 @@ tests/e2e/structural-interaction-latency.spec.ts
   s_5a199af1eba36e::t_b80f83c295006b 466
 crates/nodex-core/src/infrastructure/workflow_status_migration.rs
   s_978b14a8dbf3ad::t_1160e09c18cf3e 2-325
+  s_7095a5752114b9::t_b310a9bba19489 1
 crates/nodex-core/src/infrastructure/workflow_status_migration_tests.rs
   s_5a199af1eba36e::t_9c3649a66e4b57 1-43,45-71,73-134,136,139-257,259-260,262-279,281,283-297,299-339,341,343-390
+  s_7095a5752114b9::t_3078098bf41624 44,72,135,137,258,261,280,282,340,342
+  s_7095a5752114b9::t_7ad0bf95026f6f 298
+  s_7095a5752114b9::t_7ff90639436c7e 138
 scripts/scenarios/scenarios/page-relocation.ts
   s_5a199af1eba36e::t_27fc2ab70ebe67 71
 src/renderer/lib/database-option-registry-requirements.node.test.ts
@@ -284,6 +290,7 @@ src/renderer/components/board/page-stage/use-page-stage-controller.test.tsx
   s_5a199af1eba36e::t_33ea5200f9e44f 24
 crates/nodex-core-contracts/src/library.rs
   s_5a199af1eba36e::t_3aa68257b5915d 2439,2441
+  s_7095a5752114b9::t_b310a9bba19489 17
 src/renderer/features/inbox/inbox-presentation.node.test.ts
   s_8df07eefe56282::t_0fe53b3f398e58 576-578
 src/renderer/lib/command-palette.node.test.ts
@@ -298,6 +305,8 @@ crates/nodex-core/src/workspace/inbox_tests.rs
   s_5a199af1eba36e::t_d102fa6445d379 4058-4059,4184,4201,4203,4210,4221,4256,4812
 crates/nodex-core/src/infrastructure/migration.rs
   s_f7fa97ab093d49::t_74c24579c6baed 393-397,2569-2571,2587-2598,3483-3486
+  s_7095a5752114b9::t_11b30ace5f2d3c 398-402,2584-2586,8516
+  s_7095a5752114b9::t_c0a0f2038830fa 8779
 packages/landing/src/demos/PagesDemo.tsx
   s_5a199af1eba36e::t_17ae789ec54e8a 60,67,74,87
 scripts/scenarios/scenarios/board-dense.test.ts
@@ -356,6 +365,10 @@ crates/nodex-core/src/workspace/inbox.rs
   s_5a199af1eba36e::t_f94a39f70f56bc 905,908,912
 src/renderer/lib/use-board.test.tsx
   s_e17141fc7a66d9::t_45cbc7b11ceff0 411,420
+crates/nodex-core/schema/current.sql
+  s_7095a5752114b9::t_b310a9bba19489 4524
+crates/nodex-core/src/document/integrity.rs
+  s_7095a5752114b9::t_b310a9bba19489 67
 ---
 {
   "schema_version": "authorship/3.0.0",
