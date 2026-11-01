@@ -1,0 +1,63 @@
+src/shared/codex-conversation-state/codex-provider-recovery.ts
+  s_8b58b89ca1a92a::t_2cb206d4ac0e39 5,31-33
+src/renderer/features/local-conversation/agent-runtime-transcript-projection.node.test.ts
+  s_8b58b89ca1a92a::t_657773aa3cff6c 166-169,191-223
+src/renderer/features/local-conversation/projection/conversation-recovery-presentation.ts
+  s_8b58b89ca1a92a::t_2cb206d4ac0e39 39-40,49-51
+src/shared/conversation-recovery.ts
+  s_8b58b89ca1a92a::t_8cb6bd8beb9653 11-12,26-32,50-52,55-56
+src/shared/conversation-recovery.test.ts
+  s_8b58b89ca1a92a::t_657773aa3cff6c 5,27-29,116-125
+  s_8b58b89ca1a92a::t_e92aadeb63727a 126-127
+src/renderer/features/local-conversation/projection/conversation-recovery-presentation.test.ts
+  s_8b58b89ca1a92a::t_657773aa3cff6c 70-76
+src/shared/codex-conversation-state/codex-conversation-reducer.test.ts
+  s_8b58b89ca1a92a::t_81a9e58d0f9503 242-253
+src/renderer/features/local-conversation/agent-runtime-transcript-projection.ts
+  s_8b58b89ca1a92a::t_6e48016681deaa 45
+  s_8b58b89ca1a92a::t_3b1c07764f6b92 470-474,496-498,509,511
+docs/product-specs/agent-runtime-behavior.md
+  s_5abe0c82cde94d::t_1c6282409a8c5d 82-86
+packages/agent-runtime/src/orchestration-v2/Adapters/CodexAdapterV2.test.ts
+  s_5abe0c82cde94d::t_1a82fd818d4453 2353-2420,2478-2484,2489-2521
+packages/agent-runtime/src/orchestration-v2/Adapters/CodexAdapterV2.ts
+  s_5abe0c82cde94d::t_c60174206778aa 99,8662-8677
+packages/agent-runtime/src/orchestration-v2/ProjectionRecovery.test.ts
+  s_5abe0c82cde94d::t_d802fde60c0af2 15-16,31-35,128-257,810-815,820-834
+packages/agent-runtime/src/orchestration-v2/ProjectionRecoveryQueries.ts
+  s_5abe0c82cde94d::t_757ec9f589d579 19-60,134-135,140
+packages/agent-runtime/src/orchestration-v2/ProjectionStore.ts
+  s_5abe0c82cde94d::t_a7d4d9d3c44c2f 64-66,127-128,368-380,1346-1349,1401-1415,1484,5453-5472,9955,10034,10282-10306
+packages/agent-runtime/src/orchestration-v2/ProviderTurnControlService.test.ts
+  s_5abe0c82cde94d::t_61a090b636ed89 292
+packages/agent-runtime/src/orchestration-v2/RunExecutionService.ts
+  s_5abe0c82cde94d::t_5c340900a25e98 1498-1508
+packages/agent-runtime/src/orchestration-v2/RunLivenessService.test.ts
+  s_5abe0c82cde94d::t_fd95ae301e127e 137,193,196-217,273,383-401
+packages/agent-runtime/src/orchestration-v2/RunLivenessService.ts
+  s_5abe0c82cde94d::t_5307eb73ed9402 75-88,173-179
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "61d1f8b5bed6fc81cc0d7ad7dbaec752d4509c71",
+  "prompts": {},
+  "sessions": {
+    "s_5abe0c82cde94d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a194ac-e340-7f22-8d0f-cf3f8e52a5bf",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_8b58b89ca1a92a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c075d5c4-0b38-4f3d-8c6c-e4a048a9b857",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
