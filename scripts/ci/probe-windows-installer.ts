@@ -182,12 +182,25 @@ exit $uninstaller.ExitCode
       expectedCoreSha256
     )
       throw new Error("Installed Core differs from its staged runtime identity");
+    const launchEnvironment = { ...process.env };
+    delete launchEnvironment.NODE_OPTIONS;
+    delete launchEnvironment.ELECTRON_RUN_AS_NODE;
+    evidence = {
+      target: target.key,
+      installer: installers[0],
+      images: images.length,
+      protocolRegistered: true,
+      coreSha256: expectedCoreSha256,
+    };
     child = spawn(executable, [`--user-data-dir=${join(root, "electron-user-data")}`], {
       cwd: root,
       windowsHide: true,
       stdio: ["ignore", "pipe", "pipe"],
       env: {
-        ...process.env,
+        ...launchEnvironment,
+        NODEX_LOG_CONSOLE: "true",
+        NODEX_LOG_FILE: "true",
+        NODEX_LOG_LEVEL: "debug",
         NODEX_HOME: profile,
         CODEX_HOME: join(profile, "agent"),
         NODEX_INITIAL_PROJECTS_DIR: join(root, "workspace"),
@@ -209,11 +222,11 @@ exit $uninstaller.ExitCode
     });
     const deadline = Date.now() + 60_000;
     while (true) {
+      const claim = readIsolatedRunClaim(profile);
       if (child.exitCode !== null || child.signalCode !== null)
         throw new Error(
-          `Installed Nodex exited before Core and Agent readiness (exit ${child.exitCode})`,
+          `Installed Nodex exited before Core and Agent readiness (exit ${child.exitCode}, host phase: ${claim?.phase ?? "unclaimed"})`,
         );
-      const claim = readIsolatedRunClaim(profile);
       const agentFile = join(profile, "run", AGENT_RUNTIME_STARTUP_EVIDENCE_FILE);
       if (existsSync(agentFile) && statSync(agentFile).size > 4_096)
         throw new Error("Agent Runtime startup diagnostic exceeds its bounded size");

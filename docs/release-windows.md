@@ -100,6 +100,15 @@ the relocated TEMP uninstaller; directory removal alone is not uninstall complet
 The probe retains its disposable Profile locally for diagnosis; CI uploads only
 the fresh probe's logs and result. It never uses credentials or a real Profile.
 
+The probe enables logs only for its disposable Profile and excludes build-only
+`NODE_OPTIONS` and Electron's Node-mode override from the installed application's
+environment. Partial results retain the completed installation checks.
+
+For a diagnostic rerun of an existing installer, dispatch the Windows workflow on
+the probe's branch with `installer_run_id` set to the source run ID. It downloads
+that run's architecture-qualified installers and skips builds and source suites.
+This is diagnostic evidence for those existing artifacts, not proof of a new build.
+
 For branch feedback, push only the intended Windows development branch and read
 its run. A failing Rust build or missing named-pipe Core is a dependency failure,
 not evidence that the packaged app starts. Installer artifacts are uploaded before
