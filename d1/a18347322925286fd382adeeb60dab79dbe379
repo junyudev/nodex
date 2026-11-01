@@ -1,0 +1,25 @@
+.github/workflows/windows.yml
+  s_3dc0b7647fcf0b::t_0575e602862acf 42-43
+crates/nodex-platform/src/private_fs/windows.rs
+  s_3dc0b7647fcf0b::t_a219352320d416 319-333,335-337,339-340,345-352,365-416
+crates/nodex-platform/tests/platform.rs
+  s_3dc0b7647fcf0b::t_5b842da5bac539 185-205
+docs/reliability/core-lifecycle-and-store.md
+  s_3dc0b7647fcf0b::t_21c6dbeb75a9fc 61-64
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d1a18347322925286fd382adeeb60dab79dbe379",
+  "prompts": {},
+  "sessions": {
+    "s_3dc0b7647fcf0b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1964e-690a-72d0-a5e2-1468f0931284",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
