@@ -41,7 +41,8 @@ it.layer(NodeServices.layer)("Browser local server preferences runtime", (it) =>
       });
       const replacement = yield* makeBrowserLocalServerPreferencesRuntime(filePath);
       assert.deepEqual(yield* replacement.snapshot, yield* runtime.snapshot);
-      assert.strictEqual((yield* fs.stat(filePath)).mode & 0o777, 0o600);
+      if (process.platform !== "win32")
+        assert.strictEqual((yield* fs.stat(filePath)).mode & 0o777, 0o600);
     }),
   );
 

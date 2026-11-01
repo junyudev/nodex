@@ -1,3 +1,5 @@
+import { syncDirectory } from "./platform/node/filesystem-durability";
+export { syncDirectory };
 import { randomUUID } from "node:crypto";
 import { mkdir, open, rename, rm } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
@@ -28,19 +30,6 @@ export async function writeDurableJson(
     await syncDirectory(dirname(filePath));
   } finally {
     await rm(temporaryPath, { force: true });
-  }
-}
-
-export async function syncDirectory(directoryPath: string): Promise<void> {
-  try {
-    const handle = await open(directoryPath, "r");
-    try {
-      await handle.sync();
-    } finally {
-      await handle.close();
-    }
-  } catch (error) {
-    if (!isMissingPathError(error)) throw error;
   }
 }
 
