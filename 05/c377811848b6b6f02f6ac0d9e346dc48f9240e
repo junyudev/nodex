@@ -1,0 +1,21 @@
+AGENTS.md
+  s_3022e59a160914::t_2de7451f82bd30 131
+docs/ARCHITECTURE.md
+  s_3022e59a160914::t_2de7451f82bd30 1273,1370,1396-1408
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "05c377811848b6b6f02f6ac0d9e346dc48f9240e",
+  "prompts": {},
+  "sessions": {
+    "s_3022e59a160914": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1def126e-fd62-476f-9393-67b0835f01b6",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
