@@ -408,14 +408,19 @@ export const make = Effect.gen(function* () {
     threadId: ThreadId,
   ) {
     yield* legacyImporter.ensureTranscript(threadId);
-    const projection = yield* threadProjections.getThreadRecords(threadId, [
-      "runs",
-      "attempts",
-      "nodes",
-      "runtimeRequests",
-      "subagents",
-      "providerSessions",
-    ]);
+    const projection = yield* threadProjections.getThreadRecords(
+      threadId,
+      [
+        "runs",
+        "attempts",
+        "nodes",
+        "runtimeRequests",
+        "subagents",
+        "providerSessions",
+        "turnItems",
+      ],
+      { turnItemTypes: ["error"], turnItemStatuses: ["running"] },
+    );
     if (projection.thread.deletedAt !== null || projection.thread.projectId !== input.projectId) {
       return;
     }
@@ -439,6 +444,7 @@ export const make = Effect.gen(function* () {
       acceptedAt: now,
       events: plan.events,
       effects: plan.effects,
+      cancelUnsettledEffects: plan.cancelUnsettledEffects,
     });
     if (
       committed.receipt.threadId !== command.threadId ||

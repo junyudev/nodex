@@ -230,6 +230,19 @@ describe("ClaudeAdapterV2 API retry notices", () => {
     ...overrides,
   });
 
+  it("keeps transient HTTP 429 distinct from billing exhaustion and retains retry timing", () => {
+    const throttle = ClaudeAdapterV2.providerFailureFromApiRetry(
+      retry({ error_status: 429, error: "rate_limit" }),
+    );
+    assert.equal(throttle.class, "provider_error");
+    assert.equal(throttle.httpStatusCode, 429);
+    assert.equal(throttle.retryAfterMs, 1_500);
+    const billing = ClaudeAdapterV2.providerFailureFromApiRetry(
+      retry({ error_status: 429, error: "billing_error" }),
+    );
+    assert.equal(billing.class, "usage_limit");
+  });
+
   it("describes the failed attempt as a sentence", () => {
     assert.equal(
       ClaudeAdapterV2.claudeApiRetryFailureMessage(retry()),
@@ -4409,7 +4422,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       const terminal = yield* Queue.take(harness.terminalReceipts);
       assert.equal(terminal.status, "failed");
       if (terminal.status !== "failed") return;
-      assert.equal(terminal.failure.class, input.seconds > 0 ? "usage_limit" : "provider_error");
+      assert.equal(terminal.failure.class, "provider_error");
       if (input.seconds > 0) {
         assert.equal(terminal.failure.retryable, true);
         assert.equal(
@@ -4426,6 +4439,46 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
       ),
     ),
+  );
+
+  it.effect.each(["api_error", "blocking_limit"] as const)(
+    "distinguishes Claude 429 with %s evidence",
+    (reason) =>
+      Effect.gen(function* () {
+        const harness = yield* makeWakeHarness;
+        yield* harness.runtime.startTurn(
+          makeClaudeTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now: yield* DateTime.now,
+            attemptId: RunAttemptId.make(`attempt-429-${reason}`),
+            text: "Continue.",
+            attachments: [],
+          }),
+        );
+        yield* Queue.offer(
+          harness.sdkMessages,
+          makeResultFrame({
+            uuid: "00000000-0000-4000-8000-000000000659",
+            result: "Request rate limited",
+            terminalReason: reason,
+            isError: true,
+            apiErrorStatus: 429,
+          }),
+        );
+        const terminal = yield* Queue.take(harness.terminalReceipts);
+        assert.equal(terminal.status, "failed");
+        if (terminal.status !== "failed") return;
+        assert.equal(
+          terminal.failure.class,
+          reason === "blocking_limit" ? "usage_limit" : "provider_error",
+        );
+        assert.equal(terminal.failure.httpStatusCode, 429);
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
   );
 
   it.effect.each([429, 401, 503, 529])(
@@ -5536,6 +5589,55 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
       ),
     ),
+  );
+
+  it.effect.each(["unknown", "billing_error"] as const)(
+    "retains %s retry evidence when the terminal result omits HTTP details",
+    (error) =>
+      Effect.gen(function* () {
+        const harness = yield* makeWakeHarness;
+        yield* harness.runtime.startTurn(
+          makeClaudeTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now: yield* DateTime.now,
+            attemptId: RunAttemptId.make(`attempt-terminal-${error}`),
+            text: "Continue.",
+            attachments: [],
+          }),
+        );
+        yield* Queue.offerAll(harness.sdkMessages, [
+          claudeSdkFrame({
+            type: "system",
+            subtype: "api_retry",
+            attempt: 2,
+            max_retries: 2,
+            retry_delay_ms: 1_500,
+            error_status: null,
+            error,
+            uuid: "00000000-0000-4000-8000-000000000657",
+            session_id: WAKE_NATIVE_SESSION,
+          }),
+          makeResultFrame({
+            uuid: "00000000-0000-4000-8000-000000000658",
+            result: "API error",
+            isError: true,
+            terminalReason: "api_error",
+          }),
+        ]);
+        const terminal = yield* Queue.take(harness.terminalReceipts);
+        assert.equal(terminal.status, "failed");
+        if (terminal.status !== "failed") return;
+        assert.equal(
+          terminal.failure.class,
+          error === "billing_error" ? "usage_limit" : "transport_error",
+        );
+        if (error !== "billing_error") assert.equal(terminal.failure.retryAfterMs, 1_500);
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
   );
 
   it.effect("resolves API retries on resumed assistant activity", () =>

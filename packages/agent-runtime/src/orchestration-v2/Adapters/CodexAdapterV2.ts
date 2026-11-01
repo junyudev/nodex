@@ -1,3 +1,4 @@
+import type { CodexErrorInfo } from "../../../../codex-app-server-protocol/src/v2/CodexErrorInfo.ts";
 import * as BoundedQueue from "@t3tools/shared/BoundedQueue";
 import * as PubSub from "effect/PubSub";
 import { revertCodexThread, revertCodexThreadTurns } from "../../provider/CodexThreadRevert.ts";
@@ -347,6 +348,7 @@ export const CodexProviderCapabilitiesV2 = {
     supportsActiveSteering: true,
     supportsSteeringByInterruptRestart: true,
     supportsQueuedMessages: true,
+    supportsEmptyContinuation: true,
     terminalStatusQuality: "strong",
   },
   streaming: {
@@ -1134,6 +1136,40 @@ function codexErrorInfoCode(value: unknown): string | null {
     return null;
   }
   return Object.keys(value)[0] ?? null;
+}
+
+/** Keep the native error evidence identical for notifications, completion and reconciliation. */
+export function codexProviderFailure(input: {
+  readonly message?: string | undefined;
+  readonly codexErrorInfo?: CodexErrorInfo | null | undefined;
+  readonly additionalDetails?: string | null | undefined;
+  readonly retryable?: boolean | null;
+  readonly resetAt?: string | null;
+}): OrchestrationV2ProviderFailure {
+  const code = codexErrorInfoCode(input.codexErrorInfo);
+  const variant: unknown =
+    typeof input.codexErrorInfo === "object" && input.codexErrorInfo !== null && code !== null
+      ? Object.values(input.codexErrorInfo)[0]
+      : null;
+  const status =
+    typeof variant === "object" &&
+    variant !== null &&
+    "httpStatusCode" in variant &&
+    typeof variant.httpStatusCode === "number"
+      ? variant.httpStatusCode
+      : null;
+  return makeProviderFailure({
+    message: input.message,
+    cause: input.additionalDetails,
+    code,
+    class: code === "usageLimitExceeded" ? "usage_limit" : "provider_error",
+    httpStatusCode: status,
+    retryable: input.retryable,
+    resetAt:
+      code === "usageLimitExceeded" || code === "rateLimitExceeded" || status === 429
+        ? input.resetAt
+        : null,
+  });
 }
 
 interface ActiveCodexTurnContext {
@@ -5626,18 +5662,12 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             if (context === undefined) {
               return;
             }
-            const notificationCode = codexErrorInfoCode(payload.error.codexErrorInfo);
             if (!payload.willRetry) {
               context.latestProviderFailure = {
                 nativeMessage: payload.error.message,
-                failure: makeProviderFailure({
-                  message: payload.error.additionalDetails?.trim() || payload.error.message,
-                  code: notificationCode,
-                  class:
-                    notificationCode === "usageLimitExceeded" ||
-                    notificationCode === "rateLimitExceeded"
-                      ? "usage_limit"
-                      : "provider_error",
+                failure: codexProviderFailure({
+                  ...payload.error,
+                  resetAt: codexUsageLimitResetAt(yield* Ref.get(rateLimitSnapshot)),
                 }),
               };
               return;
@@ -5650,21 +5680,10 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               maxAttempts: progress?.maxAttempts ?? previous?.retry.maxAttempts ?? null,
               retryDelayMs: null,
             };
-            const code = codexErrorInfoCode(payload.error.codexErrorInfo);
-            const additionalDetails = payload.error.additionalDetails?.trim();
-            const failure = makeProviderFailure({
-              message:
-                additionalDetails === undefined || additionalDetails.length === 0
-                  ? payload.error.message
-                  : additionalDetails,
-              code,
-              class:
-                code === "usageLimitExceeded" || code === "rateLimitExceeded"
-                  ? "usage_limit"
-                  : code?.startsWith("http") === true || code?.startsWith("responseStream") === true
-                    ? "transport_error"
-                    : "provider_error",
+            const failure = codexProviderFailure({
+              ...payload.error,
               retryable: true,
+              resetAt: codexUsageLimitResetAt(yield* Ref.get(rateLimitSnapshot)),
             });
             const itemOrdinal =
               previous?.itemOrdinal ??
@@ -6539,27 +6558,44 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             readonly status: OrchestrationV2ProviderTurn["status"];
             readonly failureMessage?: string;
             readonly failureCode?: string | null;
+            readonly failureInfo?: CodexErrorInfo | null;
+            readonly additionalDetails?: string | null | undefined;
             readonly providerRetry?: ActiveCodexProviderRetry;
           }): Effect.fn.Return<CodexRootTerminalEvent> {
             const terminalStatus = providerTurnStatusToTerminal(input.status);
             if (terminalStatus === "failed") {
               const previousFailure = input.context.latestProviderFailure ?? input.providerRetry;
+              const nativeFailure = codexProviderFailure({
+                message: input.failureMessage,
+                codexErrorInfo: input.failureInfo ?? input.failureCode,
+                additionalDetails: input.additionalDetails,
+                resetAt: codexUsageLimitResetAt(yield* Ref.get(rateLimitSnapshot)),
+              });
               const failure =
                 previousFailure !== undefined &&
                 (input.failureMessage === undefined ||
-                  input.failureMessage === previousFailure.nativeMessage) &&
-                (input.failureCode === undefined ||
-                  input.failureCode === previousFailure.failure.code)
-                  ? previousFailure.failure
-                  : makeProviderFailure({
-                      message: input.failureMessage,
-                      code: input.failureCode,
-                      class:
-                        input.failureCode === "usageLimitExceeded" ||
-                        input.failureCode === "rateLimitExceeded"
-                          ? "usage_limit"
-                          : "provider_error",
-                    });
+                  input.failureMessage === previousFailure.nativeMessage)
+                  ? {
+                      ...(input.failureInfo == null && input.failureCode == null
+                        ? previousFailure.failure
+                        : nativeFailure),
+                      ...((nativeFailure.diagnostic ?? previousFailure.failure.diagnostic) ===
+                      undefined
+                        ? {}
+                        : {
+                            diagnostic:
+                              nativeFailure.diagnostic ?? previousFailure.failure.diagnostic,
+                          }),
+                      ...((nativeFailure.httpStatusCode ??
+                        previousFailure.failure.httpStatusCode) === undefined
+                        ? {}
+                        : {
+                            httpStatusCode:
+                              nativeFailure.httpStatusCode ??
+                              previousFailure.failure.httpStatusCode,
+                          }),
+                    }
+                  : nativeFailure;
               return {
                 type: "turn.terminal",
                 driver: CODEX_PROVIDER,
@@ -6652,6 +6688,8 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             readonly status: OrchestrationV2ProviderTurn["status"];
             readonly failureMessage?: string;
             readonly failureCode?: string | null;
+            readonly failureInfo?: CodexErrorInfo | null;
+            readonly additionalDetails?: string | null | undefined;
             readonly providerRetry?: ActiveCodexProviderRetry;
             readonly goalHoldTurn?: OrchestrationV2ProviderTurn;
           }) {
@@ -6755,6 +6793,8 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
           readonly completedAt: DateTime.Utc;
           readonly failureMessage?: string;
           readonly failureCode?: string | null;
+          readonly failureInfo?: CodexErrorInfo | null;
+          readonly additionalDetails?: string | null | undefined;
         }) =>
           turnTerminalizationPermit.withPermits(1)(
             Effect.gen(function* () {
@@ -7044,10 +7084,12 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                 ? {}
                 : {
                     failureMessage: payload.turn.error.message,
+                    additionalDetails: payload.turn.error.additionalDetails,
                     ...(payload.turn.error.codexErrorInfo == null
                       ? {}
                       : {
-                          failureCode: codexErrorInfoCode(payload.turn.error.codexErrorInfo),
+                          failureInfo: payload.turn.error.codexErrorInfo,
+                          additionalDetails: payload.turn.error.additionalDetails,
                         }),
                   }),
             });
@@ -8002,9 +8044,10 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               if (goalCommand !== null) return yield* runGoalCommand(turnInput, goalCommand);
               yield* startNativeTurn(
                 turnInput,
-                turnInput.restartContinuationOfRunId === undefined
-                  ? yield* toCodexInput(turnInput)
-                  : [],
+                turnInput.continuation === "empty" ||
+                  turnInput.restartContinuationOfRunId !== undefined
+                  ? []
+                  : yield* toCodexInput(turnInput),
               );
             }).pipe(
               Effect.mapError((cause) =>
@@ -8715,10 +8758,8 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                       ? {}
                       : {
                           failureMessage: turn.error.message,
-                          failureCode:
-                            turn.error.codexErrorInfo == null
-                              ? null
-                              : codexErrorInfoCode(turn.error.codexErrorInfo),
+                          failureInfo: turn.error.codexErrorInfo,
+                          additionalDetails: turn.error.additionalDetails,
                         }),
                   }),
                 );

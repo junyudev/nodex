@@ -1,3 +1,4 @@
+import { hasPendingRunRecovery, withoutRunRecovery } from "./RunRecovery.ts";
 import { runRanAfter } from "@t3tools/shared/orchestrationV2ThreadError";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import {
@@ -8,6 +9,7 @@ import {
   type OrchestrationV2Subagent,
   type OrchestrationV2ThreadProjection,
   ThreadId,
+  type RunId,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
@@ -193,7 +195,23 @@ export const make = Effect.gen(function* () {
     ) {
       const now = yield* DateTime.now;
       const runs = [] as Array<OrchestrationV2ThreadProjection["runs"][number]>;
+      const pendingRecoveryRunIds = new Set<RunId>();
       for (const run of nonterminalRuns(projection)) {
+        if (
+          yield* hasPendingRunRecovery(run, projection.attempts ?? [], outbox).pipe(
+            Effect.mapError(
+              (cause) =>
+                new ProviderRuntimeRecoveryError({
+                  operation: "reconcile",
+                  threadId: projection.thread.id,
+                  cause,
+                }),
+            ),
+          )
+        ) {
+          pendingRecoveryRunIds.add(run.id);
+          continue;
+        }
         if (run.status === "waiting") {
           const checkpointEffects = yield* outbox
             .listByCommandId(CommandId.make(`command:effect:checkpoint.capture:${run.id}`))
@@ -341,6 +359,7 @@ export const make = Effect.gen(function* () {
       const requestNodeIds = new Set(requests.map((request) => request.nodeId));
       for (const node of projection.nodes) {
         if (
+          (node.runId !== null && pendingRecoveryRunIds.has(node.runId)) ||
           !requestNodeIds.has(node.id) ||
           (node.runId !== null && recoveringRunIds.has(node.runId)) ||
           !isNonterminalTurnItemStatus(node.status)
@@ -357,6 +376,7 @@ export const make = Effect.gen(function* () {
       }
       for (const item of projection.turnItems ?? []) {
         if (
+          (item.runId !== null && pendingRecoveryRunIds.has(item.runId)) ||
           item.nodeId === null ||
           !requestNodeIds.has(item.nodeId) ||
           (item.runId !== null && recoveringRunIds.has(item.runId)) ||
@@ -380,7 +400,12 @@ export const make = Effect.gen(function* () {
           runId: run.id,
           providerInstanceId: run.providerInstanceId,
           occurredAt: now,
-          payload: { ...run, status: "cancelled", queuePosition: null, completedAt: now },
+          payload: {
+            ...withoutRunRecovery(run),
+            status: "cancelled",
+            queuePosition: null,
+            completedAt: now,
+          },
         });
         for (const attempt of projection.attempts.filter(
           (candidate) =>
@@ -482,7 +507,10 @@ export const make = Effect.gen(function* () {
       const recoveredNonterminalRunIds = new Set(runs.map((run) => run.id));
       const cancelledStaleNodeIds = new Set<string>();
       for (const item of projection.turnItems ?? []) {
-        if (item.runId !== null && recoveredNonterminalRunIds.has(item.runId)) {
+        if (
+          item.runId !== null &&
+          (recoveredNonterminalRunIds.has(item.runId) || pendingRecoveryRunIds.has(item.runId))
+        ) {
           continue;
         }
         if (!isBackgroundCapableTurnItemType(item.type)) {
@@ -615,9 +643,13 @@ export const make = Effect.gen(function* () {
           },
         });
       }
-      const continuationRun =
+      const continuationCandidate =
         continueAfterRestart && trigger === "startup"
           ? restartContinuationRun(projection, now)
+          : undefined;
+      const continuationRun =
+        continuationCandidate !== undefined && !pendingRecoveryRunIds.has(continuationCandidate.id)
+          ? continuationCandidate
           : undefined;
       const effects: Array<EffectOutbox.PendingOrchestrationEffectV2> = continuationRun
         ? [
@@ -754,7 +786,7 @@ export const make = Effect.gen(function* () {
         )
           return;
         const run = restartContinuationRun(projection, yield* DateTime.now);
-        if (!run) return;
+        if (!run || (yield* hasPendingRunRecovery(run, projection.attempts ?? [], outbox))) return;
         const commandId = CommandId.make(`command:restart-prepare:${run.id}`);
         yield* eventSink.writeWithEffects({
           commandId,

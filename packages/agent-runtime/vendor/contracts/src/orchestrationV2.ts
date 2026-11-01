@@ -236,6 +236,11 @@ export const OrchestrationV2TurnCapabilities = Schema.Struct({
   // Some native steering mechanisms cancel pending tools before consuming the message.
   activeSteeringInterruptsTools: Schema.optional(Schema.Boolean),
   supportsSteeringByInterruptRestart: Schema.Boolean,
+  /** Omitted capabilities conservatively disable empty continuation. */
+  supportsEmptyContinuation: Schema.Boolean.pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed(false)),
+    Schema.optionalKey,
+  ),
   supportsQueuedMessages: Schema.Boolean,
   terminalStatusQuality: Schema.Literals(["strong", "weak", "none"]),
 });
@@ -642,6 +647,8 @@ export const OrchestrationV2NativeInput = Schema.Struct({
   nativeTurnId: Schema.String,
 });
 export const OrchestrationV2Run = Schema.Struct({
+  /** Durable recovery keeps the reply running between failed provider attempts. */
+  recovery: Schema.optional(Schema.suspend(() => OrchestrationV2RunRecovery)),
   /** Maintenance and retry remain bound to the failed request and native conversation. */
   contextRecovery: Schema.optional(Schema.Struct({
     failedRunId: RunId,
@@ -723,6 +730,7 @@ export const OrchestrationV2RunAttempt = Schema.Struct({
   providerThreadId: ProviderThreadId,
   providerTurnId: Schema.NullOr(ProviderTurnId),
   reason: Schema.Literals(["initial", "steering_restart", "retry", "provider_recovery"]),
+  continuation: Schema.optional(Schema.Literals(["resend", "empty", "prompt"])),
   status: Schema.Literals([
     "pending",
     "running",
@@ -858,6 +866,21 @@ export const OrchestrationV2SubagentWorkflow = Schema.Struct({
 });
 export type OrchestrationV2SubagentWorkflow = typeof OrchestrationV2SubagentWorkflow.Type;
 
+/** Presentation copied from the child Run; it never owns task settlement. */
+export const OrchestrationV2RunRecoverySummary = Schema.Struct({
+  kind: Schema.suspend(() => OrchestrationV2RunRecoveryKind),
+  attempt: PositiveInt,
+  maxAttempts: Schema.NullOr(PositiveInt),
+  nextAttemptAt: Schema.DateTimeUtc,
+});
+export type OrchestrationV2RunRecoverySummary = typeof OrchestrationV2RunRecoverySummary.Type;
+export const OrchestrationV2RunRecoverySummaryJson = OrchestrationV2RunRecoverySummary.mapFields(
+  (fields) => ({
+    ...fields,
+    nextAttemptAt: Schema.DateTimeUtcFromString,
+  }),
+);
+
 export const OrchestrationV2Subagent = Schema.Struct({
   id: NodeId,
   threadId: ThreadId,
@@ -892,6 +915,7 @@ export const OrchestrationV2Subagent = Schema.Struct({
     "interrupted",
   ]),
   progress: Schema.optional(Schema.String),
+  recovery: Schema.optional(Schema.NullOr(OrchestrationV2RunRecoverySummary)),
   /** Present only on a workflow coordinator task; absent on ordinary subagents. */
   workflow: Schema.optional(OrchestrationV2SubagentWorkflow),
   result: Schema.NullOr(Schema.String),
@@ -1559,6 +1583,25 @@ export const OrchestrationV2ProviderFailure = Schema.Struct({
 });
 export type OrchestrationV2ProviderFailure = typeof OrchestrationV2ProviderFailure.Type;
 
+export const OrchestrationV2RunRecoveryKind = Schema.Literals([
+  "connection",
+  "overloaded",
+  "rate_limit",
+  "process_lost",
+]);
+export type OrchestrationV2RunRecoveryKind = typeof OrchestrationV2RunRecoveryKind.Type;
+
+export const OrchestrationV2RunRecovery = Schema.Struct({
+  kind: OrchestrationV2RunRecoveryKind,
+  failure: OrchestrationV2ProviderFailure,
+  streakStartedAt: Schema.DateTimeUtc,
+  /** One-based retry within the current streak, distinct from the RunAttempt ordinal. */
+  attempt: PositiveInt,
+  maxAttempts: Schema.NullOr(PositiveInt),
+  nextAttemptAt: Schema.DateTimeUtc,
+});
+export type OrchestrationV2RunRecovery = typeof OrchestrationV2RunRecovery.Type;
+
 /**
  * Provider-reported retry progress. Some providers expose all fields (Claude),
  * while others only expose `willRetry` and encode counters in display text
@@ -1964,6 +2007,7 @@ export const OrchestrationV2TurnItem = Schema.Union([
     childThreadId: Schema.NullOr(ThreadId),
     prompt: Schema.String,
     progress: Schema.optional(Schema.String),
+    recovery: Schema.optional(Schema.NullOr(OrchestrationV2RunRecoverySummary)),
     result: Schema.NullOr(Schema.String),
   }),
   Schema.Struct({
@@ -2474,6 +2518,13 @@ export type OrchestrationV2AppThreadJson = typeof OrchestrationV2AppThreadJson.T
 
 export const OrchestrationV2RunJson = OrchestrationV2Run.mapFields((fields) => ({
   ...fields,
+  recovery: Schema.optional(
+    OrchestrationV2RunRecovery.mapFields((recovery) => ({
+      ...recovery,
+      streakStartedAt: Schema.DateTimeUtcFromString,
+      nextAttemptAt: Schema.DateTimeUtcFromString,
+    })),
+  ),
   requestedAt: Schema.DateTimeUtcFromString,
   startedAt: Schema.NullOr(Schema.DateTimeUtcFromString),
   completedAt: Schema.NullOr(Schema.DateTimeUtcFromString),
@@ -2499,6 +2550,7 @@ export type OrchestrationV2ExecutionNodeJson = typeof OrchestrationV2ExecutionNo
 
 export const OrchestrationV2SubagentJson = OrchestrationV2Subagent.mapFields((fields) => ({
   ...fields,
+  recovery: Schema.optional(Schema.NullOr(OrchestrationV2RunRecoverySummaryJson)),
   startedAt: Schema.NullOr(Schema.DateTimeUtcFromString),
   completedAt: Schema.NullOr(Schema.DateTimeUtcFromString),
   updatedAt: Schema.DateTimeUtcFromString,
@@ -2815,6 +2867,7 @@ export const OrchestrationV2TurnItemJson = Schema.Union([
     childThreadId: Schema.NullOr(ThreadId),
     prompt: Schema.String,
     progress: Schema.optional(Schema.String),
+    recovery: Schema.optional(Schema.NullOr(OrchestrationV2RunRecoverySummaryJson)),
     result: Schema.NullOr(Schema.String),
   }),
   Schema.Struct({
@@ -3396,6 +3449,13 @@ export const OrchestrationV2Command = Schema.Union([
       Schema.Struct({ type: Schema.Literal("queue_after_active") }),
       Schema.Struct({ type: Schema.Literal("start_immediately") }),
     ]),
+  }),
+  Schema.Struct({
+    type: Schema.Literal("run.recover"),
+    commandId: CommandId,
+    threadId: ThreadId,
+    runId: RunId,
+    attemptOrdinal: PositiveInt,
   }),
   Schema.Struct({
     type: Schema.Literal("run.context-recover"),

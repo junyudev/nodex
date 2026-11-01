@@ -64,6 +64,15 @@ describe("conversation recovery presentation", () => {
     expect(recoveryRetrySeconds({ ...scheduled, state: "recovered" }, 1000)).toBeNull();
   });
 
+  test("long automatic waits count down in minutes and hours", () => {
+    const at = (seconds: number) => ({ ...retrying, retryAt: seconds * 1000 });
+    expect(recoveryProgressLabel(at(59), 0)).toBe("Retrying in 59s · 2/5");
+    expect(recoveryProgressLabel(at(61), 0)).toBe("Retrying in 2m · 2/5");
+    expect(recoveryProgressLabel(at(300), 0)).toBe("Retrying in 5m · 2/5");
+    expect(recoveryProgressLabel(at(3600), 0)).toBe("Retrying in 1h · 2/5");
+    expect(recoveryProgressLabel(at(3900), 0)).toBe("Retrying in 1h 5m · 2/5");
+  });
+
   test("does not invent a network diagnosis or a retry budget", () => {
     expect(recoveryStatusLabel(retrying)).toBe("Retrying request");
     expect(recoveryStatusLabel({ ...retrying, reason: "connection" })).toBe("Reconnecting");

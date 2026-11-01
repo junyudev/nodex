@@ -497,6 +497,8 @@ export interface CodexCanonicalDelegatedTaskItem {
   readonly prompt: string;
   /** Latest bounded progress or result preview. */
   readonly summary: string | null;
+  /** Present while the running task waits to recover from a transient provider failure. */
+  readonly recovery?: ConversationRecovery;
 }
 
 /** Who sent user-role input that the user did not type. */

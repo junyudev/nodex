@@ -126,7 +126,7 @@ const createRun = Effect.fn(function* (
 });
 
 it.effect.each(["SQLite", "memory"] as const)(
-  "selects live Run bindings and orphaned turns without queued work (%s)",
+  "selects live Run bindings, including in-flight recovery, and orphaned turns without queued work (%s)",
   (storage) =>
     Effect.gen(function* () {
       const projections = yield* ProjectionStore.ProjectionStoreV2;
@@ -134,7 +134,15 @@ it.effect.each(["SQLite", "memory"] as const)(
       const threadIds = new Map<string, ThreadId>();
       const expectedRuns: ProjectionStore.ProjectionRunLivenessCandidate[] = [];
       const expectedOrphans: ThreadId[] = [];
-      for (const name of ["bound", "unbound", "held", "terminal", "superseded", "deleted"]) {
+      for (const name of [
+        "bound",
+        "unbound",
+        "recovery",
+        "held",
+        "terminal",
+        "superseded",
+        "deleted",
+      ]) {
         const threadId = yield* createThread(
           `liveness-${name}`,
           name === "deleted" ? { deletedAt: now } : {},
@@ -150,6 +158,23 @@ it.effect.each(["SQLite", "memory"] as const)(
           {
             activeAttemptId: name === "superseded" ? RunAttemptId.make("attempt:newer") : attemptId,
             queueHeld: name === "held",
+            ...(name === "recovery"
+              ? {
+                  recovery: {
+                    kind: "connection" as const,
+                    failure: {
+                      class: "transport_error" as const,
+                      message: "Connection lost.",
+                      code: null,
+                      retryable: true,
+                    },
+                    streakStartedAt: now,
+                    attempt: 1,
+                    maxAttempts: 3,
+                    nextAttemptAt: DateTime.add(now, { seconds: 5 }),
+                  },
+                }
+              : {}),
           },
         );
         yield* projections.apply({
@@ -171,7 +196,7 @@ it.effect.each(["SQLite", "memory"] as const)(
             completedAt: null,
           },
         });
-        if (name !== "unbound" && name !== "held")
+        if (name !== "unbound" && name !== "recovery" && name !== "held")
           yield* projections.apply({
             id: EventId.make(`event:${turnId}`),
             type: "provider-turn.updated",
@@ -189,13 +214,13 @@ it.effect.each(["SQLite", "memory"] as const)(
               completedAt: null,
             },
           });
-        if (name === "bound" || name === "unbound")
+        if (name === "bound" || name === "unbound" || name === "recovery")
           expectedRuns.push({
             threadId,
             runId,
             activeAttemptId: attemptId,
             attemptStartedAt: now,
-            providerTurnId: name === "unbound" ? null : turnId,
+            providerTurnId: name === "bound" ? turnId : null,
           });
         if (name === "terminal" || name === "superseded") expectedOrphans.push(threadId);
       }

@@ -9,7 +9,7 @@ type TerminalTaskStatus = "completed" | "failed" | "cancelled" | "interrupted";
 export type DelegatedTaskStatus = TerminalTaskStatus | "queued" | "waiting" | "running";
 
 export function taskStatusForRun(
-  run: Pick<OrchestrationV2Run, "status"> | undefined,
+  run: Pick<OrchestrationV2Run, "status" | "recovery"> | undefined,
 ): DelegatedTaskStatus {
   switch (run?.status) {
     case "queued":
@@ -84,11 +84,13 @@ export function delegatedTaskExecutionState(input: {
   readonly resultPending: boolean;
 }): {
   readonly status: DelegatedTaskStatus;
-  readonly workState: "working" | "waiting_for_children" | "result_available";
+  readonly workState: "working" | "recovering" | "waiting_for_children" | "result_available";
 } {
   const { task, childRun, latestRun, resultPending } = input;
   const taskWorkState = !isTerminalTaskStatus(taskStatusForRun(latestRun))
-    ? "working"
+    ? (latestRun ?? childRun)?.recovery !== undefined
+      ? "recovering"
+      : "working"
     : resultPending
       ? "waiting_for_children"
       : "result_available";

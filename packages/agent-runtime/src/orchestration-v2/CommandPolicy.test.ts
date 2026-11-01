@@ -1,3 +1,4 @@
+import * as DateTime from "effect/DateTime";
 import { assert, it } from "@effect/vitest";
 import {
   CommandId,
@@ -137,6 +138,50 @@ it("targets the latest active run for explicit steer and restart intent", () => 
     ),
     { type: "start_immediately" },
   );
+});
+
+it("routes recovering work to restart while preserving explicit queue and deferred intent", () => {
+  const projection = dispatchProjection(baseCapabilities);
+  const run = projection.runs[0]!;
+  const recovering = {
+    ...projection,
+    runs: [
+      {
+        ...run,
+        recovery: {
+          kind: "overloaded" as const,
+          failure: {
+            class: "provider_error" as const,
+            message: "Busy",
+            code: "serverOverloaded",
+            retryable: true,
+          },
+          streakStartedAt: DateTime.makeUnsafe(0),
+          attempt: 1,
+          maxAttempts: 4,
+          nextAttemptAt: DateTime.makeUnsafe(10_000),
+        },
+      },
+    ],
+  };
+  for (const intent of [undefined, "auto", "steer", "restart"] as const) {
+    assert.deepEqual(
+      CommandPolicy.resolveMessageDispatchIntent(recovering, { type: "start_immediately" }, intent),
+      { type: "restart_active", targetRunId: run.id },
+    );
+    assert.deepEqual(
+      CommandPolicy.resolveMessageDispatchIntent(
+        recovering,
+        { type: "queue_after_active" },
+        intent,
+      ),
+      { type: "queue_after_active" },
+    );
+    assert.deepEqual(
+      CommandPolicy.resolveMessageDispatchIntent(recovering, { type: "defer_start" }, intent),
+      { type: "defer_start" },
+    );
+  }
 });
 
 const layer = it.layer(CommandPolicy.layer);

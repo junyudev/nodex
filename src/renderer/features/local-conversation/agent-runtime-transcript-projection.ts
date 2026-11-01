@@ -749,6 +749,19 @@ export function projectAgentRuntimeItem(
             ? (item.progress ?? item.result)
             : (item.result ?? item.progress)
           )?.trim() || null,
+        ...(isLive(item.status) && item.recovery
+          ? {
+              recovery: {
+                state: "retrying",
+                // Recovery kinds are the transcript's own recovery reasons.
+                reason: item.recovery.kind,
+                attempt: item.recovery.attempt,
+                maxAttempts: item.recovery.maxAttempts,
+                retryAt: agentRuntimeTime(item.recovery.nextAttemptAt),
+                updatedAt: agentRuntimeTime(item.updatedAt),
+              },
+            }
+          : {}),
       };
     }
     case "thread_created":

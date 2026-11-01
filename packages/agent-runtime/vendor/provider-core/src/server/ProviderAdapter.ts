@@ -433,6 +433,8 @@ export interface ProviderAdapterV2EnsureThreadInput {
 
 export interface ProviderAdapterV2TurnInput {
   /** Durable ownership probe; absent means another Run must be treated as live. */
+  /** Automatic same-Run recovery input; separate from runtime restart continuation. */
+  readonly continuation?: "resend" | "empty" | "prompt";
   readonly isRunTerminal?: (runId: RunId) => Effect.Effect<boolean, unknown>;
   readonly nativeInput?: import("@t3tools/contracts").OrchestrationV2Run["nativeInput"];
   readonly hostExecutionIdentity?: import("./ExecutionHost.ts").HostTurnIdentity;

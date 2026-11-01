@@ -17,6 +17,7 @@ import { useConversationRuntimeOverride } from "../../conversation-runtime";
 import {
   canStopDelegatedTask,
   delegatedTaskGroupStatusLabel,
+  delegatedTaskRecoveryLabel,
   delegatedTaskStatusLabel,
   isDelegatedTaskLive,
   resolveDelegatedTaskRowStatus,
@@ -26,6 +27,7 @@ import {
 import type { ThreadStageActions } from "../../thread-stage-types";
 import { SubagentAvatar, SubagentGlyphIcon } from "./subagent-avatar";
 import { SubagentActivityDetails, SubagentActivityInline } from "./subagent-activity-inline";
+import { useRecoveryNow } from "./use-recovery-now";
 
 const noSubscription = () => () => {};
 const actionClassName =
@@ -81,13 +83,18 @@ function DelegatedTaskDetails({
   membership: CodexConversationChildMembership | undefined;
   onStop: (() => void) | undefined;
 }) {
+  const now = useRecoveryNow(task.recovery);
   const details = task.childThreadId
     ? [task.summary?.trim() || task.prompt.trim()].filter(Boolean)
     : [...new Set([task.prompt.trim(), task.summary?.trim()].filter(Boolean))];
   return (
     <SubagentActivityDetails
       name={task.title}
-      status={delegatedTaskStatusLabel(status)}
+      status={
+        status === "retrying" && task.recovery
+          ? delegatedTaskRecoveryLabel(task.recovery, now)
+          : delegatedTaskStatusLabel(status)
+      }
       statusTone={status === "failed" ? "danger" : "neutral"}
       description={
         details.length > 0 ? (
@@ -151,7 +158,7 @@ export function DelegatedTaskGroup({
     });
   }, [port, stopping, tasks]);
   const statuses = tasks.map((task, index) =>
-    resolveDelegatedTaskRowStatus(task.status, stopping[index] === "1"),
+    resolveDelegatedTaskRowStatus(task, stopping[index] === "1"),
   );
   const memberships = new Map(
     childMemberships?.map((membership) => [membership.threadId, membership]),

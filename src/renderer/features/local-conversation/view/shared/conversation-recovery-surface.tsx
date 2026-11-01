@@ -16,6 +16,7 @@ import {
 } from "../../projection/conversation-recovery-presentation";
 import { ThreadActionIconButton } from "./thread-message-actions";
 import { ThreadActivityHeader, ThreadActivityShell } from "./tools/tool-primitives";
+import { useRecoveryNow } from "./use-recovery-now";
 
 export interface ConversationRecoverySurfaceProps {
   entry: CodexTranscriptEntry;
@@ -116,7 +117,7 @@ export function ConversationRecoverySurface({
     visible: state !== "retrying" && state !== "recovered",
     expanded: false,
   }));
-  const [now, setNow] = useState(Date.now);
+  const now = useRecoveryNow(recovery);
   const { copied, copy } = useCopyFeedback(1500);
 
   // Only a recovery observed in this mounted row receives transient confirmation.
@@ -147,19 +148,6 @@ export function ConversationRecoverySurface({
     );
     return () => window.clearTimeout(timeout);
   }, [identity, state]);
-
-  const retryAt = recovery?.retryAt;
-  useEffect(() => {
-    if (state !== "retrying" || retryAt == null || !Number.isFinite(retryAt)) return;
-    const update = () => {
-      const currentTime = Date.now();
-      setNow(currentTime);
-      if (currentTime >= retryAt) window.clearInterval(interval);
-    };
-    const interval = window.setInterval(update, 1000);
-    update();
-    return () => window.clearInterval(interval);
-  }, [retryAt, state]);
 
   const visible = presence.visible || presence.expanded;
   if (!visible) return null;

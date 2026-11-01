@@ -81,6 +81,34 @@ describe("Delegated task row", () => {
     expect(screen.getByRole("status", { name: "Subagents finished" })).toBeTruthy();
   });
 
+  test("a task recovering from a provider failure says it is retrying and can still be stopped", async () => {
+    const { wrap } = setup();
+    const recovering: CodexDelegatedTaskView = {
+      ...task,
+      recovery: {
+        state: "retrying",
+        reason: "overloaded",
+        attempt: 2,
+        maxAttempts: 4,
+        retryAt: Date.now() + 120_000,
+        updatedAt: Date.now(),
+      },
+    };
+    const row = (current: CodexDelegatedTaskView) =>
+      wrap(<DelegatedTaskGroup tasks={[current]} parentThreadId="root" onOpenThread={vi.fn()} />);
+    const view = render(row(recovering));
+    expect(screen.getByRole("status", { name: "Subagents is retrying" })).toBeTruthy();
+    await act(async () => {
+      screen.getByRole("button", { name: "Audit auth" }).focus();
+      await Promise.resolve();
+    });
+    const details = await screen.findByRole("dialog", { name: "Audit auth details" });
+    expect(within(details).getByText("Service is busy · Retrying in 2m · 2/4")).toBeTruthy();
+    expect(within(details).getByRole("button", { name: "Stop Audit auth" })).toBeTruthy();
+    view.rerender(row({ ...task, status: "completed" }));
+    expect(await screen.findByRole("status", { name: "Subagents finished" })).toBeTruthy();
+  });
+
   test("reveals metadata on focus and keeps Stopping until the task settles", async () => {
     const { transport, wrap, finishStop } = setup();
     const onOpenThread = vi.fn();

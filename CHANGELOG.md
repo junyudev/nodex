@@ -19,6 +19,7 @@ All notable changes to this project will be documented in this file.
 - Chats can reference Pages beside the Composer, including highlighted Blocks, or mention any Library Page with `@`. Sent references reopen their Page without creating a Linked chat relationship.
 - An empty Inbox shows how it will plan your next messages: the model that writes suggestions, Nodex's model guide beside what is left of each Agent's weekly budget, and your routing preferences. Change the suggestion model or write your routing preferences right there.
 - Inbox suggestions know which OpenCode models are free, so routine work such as docs and notes can go to them without spending a plan's budget.
+- Agent replies recover on their own when the Agent gives up for a transient reason. After a dropped connection, a busy or overloaded model, a request rate limit or an Agent process that stopped mid-reply, the reply shows what happened and when it will retry, then continues where it left off in the same conversation without resending your request. Lost connections keep retrying for as long as you are offline, so work resumes when you reconnect. Stop, a new message or another model takes over at once, and delegated tasks show Retrying instead of failing their Agent.
 
 ### Changed
 

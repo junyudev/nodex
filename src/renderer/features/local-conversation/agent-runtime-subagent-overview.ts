@@ -11,6 +11,7 @@ import {
   projectAgentRuntimeSubagentDisplay,
 } from "../../../shared/agent-runtime-subagent-display";
 import { agentRuntimeTime } from "./agent-runtime-transcript-projection";
+import { recoveryStatusLabel } from "./projection/conversation-recovery-presentation";
 
 /** A task record as its metadata event reports it. */
 export type AgentRuntimeTaskRecord = Extract<
@@ -55,13 +56,22 @@ export const projectAgentRuntimeSubagent = (
           : "done",
     statusSummary: waitingOnApproval
       ? "Needs approval"
-      : task.status === "failed"
-        ? "Failed"
-        : task.status === "interrupted"
-          ? "Stopped"
-          : task.status === "cancelled"
-            ? "Cancelled"
-            : null,
+      : isLive(task.status) && task.recovery
+        ? recoveryStatusLabel({
+            state: "retrying",
+            reason: task.recovery.kind,
+            attempt: task.recovery.attempt,
+            maxAttempts: task.recovery.maxAttempts,
+            retryAt: null,
+            updatedAt: null,
+          })
+        : task.status === "failed"
+          ? "Failed"
+          : task.status === "interrupted"
+            ? "Stopped"
+            : task.status === "cancelled"
+              ? "Cancelled"
+              : null,
     startedAtMs: agentRuntimeTime(task.startedAt),
     lastActivityAtMs: agentRuntimeTime(task.updatedAt),
     completedAtMs: agentRuntimeTime(task.completedAt),

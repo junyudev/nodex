@@ -277,3 +277,20 @@ it("labels a waiting child approval without turning an information question into
     statusSummary: null,
   });
 });
+
+it("names the cause of a live child's automatic recovery and drops it once settled", () => {
+  const recovery = {
+    kind: "connection" as const,
+    attempt: 3,
+    maxAttempts: null,
+    nextAttemptAt: "2026-10-13T20:01:00Z",
+  };
+  expect(projectAgentRuntimeSubagent({ ...task, recovery })).toMatchObject({
+    status: "active",
+    statusSummary: "Reconnecting",
+  });
+  expect(projectAgentRuntimeSubagent({ ...task, status: "failed", recovery })).toMatchObject({
+    status: "done",
+    statusSummary: "Failed",
+  });
+});

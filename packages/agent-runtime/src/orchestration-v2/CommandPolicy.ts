@@ -28,7 +28,7 @@ export const MessageDispatchDecisionV2 = Schema.Union([
   Schema.Struct({
     type: Schema.Literal("restart_active"),
     targetRunId: RunId,
-    interruptProviderTurnId: ProviderTurnId,
+    interruptProviderTurnId: Schema.NullOr(ProviderTurnId),
   }),
   Schema.Struct({
     type: Schema.Literal("queue_after_active"),
@@ -123,7 +123,8 @@ export function resolveMessageDispatchIntent(
   deliveryIntent?: "auto" | "steer" | "restart",
 ): MessageDispatchMode {
   // A Run deferred for its workspace waits for it; how a message is delivered never cancels that.
-  if (deliveryIntent === undefined || requestedMode.type === "defer_start") return requestedMode;
+  if (requestedMode.type === "defer_start" || requestedMode.type === "queue_after_active")
+    return requestedMode;
 
   const activeRun = projection.runs.findLast(
     (run) =>
@@ -132,6 +133,9 @@ export function resolveMessageDispatchIntent(
       run.status === "running" ||
       run.status === "waiting",
   );
+  if (activeRun?.recovery !== undefined)
+    return { type: "restart_active", targetRunId: activeRun.id };
+  if (deliveryIntent === undefined) return requestedMode;
   if (activeRun === undefined) return { type: "start_immediately" };
   if (deliveryIntent === "steer") {
     return { type: "steer_active", targetRunId: activeRun.id };
@@ -444,7 +448,7 @@ const decideMessageDispatch: CommandPolicyV2Shape["decideMessageDispatch"] = (in
       const providerTurnId = input.projection.providerTurns.find(
         (turn) => turn.runAttemptId === activeRun.activeAttemptId && turn.status === "running",
       )?.id;
-      return providerTurnId === undefined
+      return providerTurnId === undefined && activeRun.recovery === undefined
         ? Effect.fail(
             new CommandPolicyMessageDispatchError({
               commandId: input.commandId,
@@ -455,7 +459,7 @@ const decideMessageDispatch: CommandPolicyV2Shape["decideMessageDispatch"] = (in
         : Effect.succeed({
             type: "restart_active",
             targetRunId: activeRun.id,
-            interruptProviderTurnId: providerTurnId,
+            interruptProviderTurnId: providerTurnId ?? null,
           });
     }
     case "queue_after_active":

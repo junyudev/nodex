@@ -1,3 +1,4 @@
+import { readRunRecoveryContext, withoutRunRecovery } from "./RunRecovery.ts";
 import { modelSelectionsEqual } from "@t3tools/shared/model";
 import { projectComposerContextForProvider } from "@t3tools/shared/composerContextReferences";
 import { readExecutionHandoff } from "./ExecutionHandoff.ts";
@@ -159,6 +160,7 @@ export const layer: Layer.Layer<
     const makeRunControls = (input: {
       readonly threadId: ThreadId;
       readonly runId: RunId;
+      readonly userMessageId: import("@t3tools/contracts").MessageId;
       readonly attemptId: OrchestrationV2RunAttempt["id"];
       readonly providerThreadId: OrchestrationV2ProviderThread["id"];
       readonly runOrdinal: number;
@@ -186,6 +188,22 @@ export const layer: Layer.Layer<
           ),
         );
       return {
+        isRunTerminal: (ownerRunId: RunId) =>
+          projectionStore
+            .getRunOutcome({ threadId: input.threadId, runId: ownerRunId })
+            .pipe(
+              Effect.map(
+                (owner) =>
+                  owner !== null &&
+                  ["completed", "failed", "interrupted", "cancelled", "rolled_back"].includes(
+                    owner.status,
+                  ),
+              ),
+            ),
+        recoveryControls: {
+          read: () => readRunRecoveryContext(projectionStore, input),
+          withLock: threadCommands.withLock,
+        },
         isCurrentAttemptInStatus,
         loadInheritedBackgroundTurnItems: () =>
           projectionStore.getRuntimeRecoveryProjection(input.threadId).pipe(
@@ -286,7 +304,9 @@ export const layer: Layer.Layer<
       const providerThread = projection.providerThreads.find(
         (candidate) => candidate.id === run.providerThreadId,
       );
-      const message = projection.messages.find((candidate) => candidate.id === run.userMessageId);
+      const originalMessage = projection.messages.find(
+        (candidate) => candidate.id === run.userMessageId,
+      );
       if (
         run.contextRecovery !== undefined &&
         (providerThread?.id !== run.contextRecovery.providerThreadId ||
@@ -333,7 +353,7 @@ export const layer: Layer.Layer<
         attempt === undefined ||
         providerThread === undefined ||
         providerThread.providerSessionId === null ||
-        message === undefined ||
+        originalMessage === undefined ||
         checkpointScope === undefined
       ) {
         return yield* new ProviderTurnStartError({
@@ -341,6 +361,7 @@ export const layer: Layer.Layer<
           cause: `Run ${runId} is missing its execution projection state.`,
         });
       }
+      const message = originalMessage;
       // Settles a run that never reached the provider: one signal turn item plus
       // terminal run, attempt and root node, written only while the run is still
       // the current starting attempt.
@@ -385,7 +406,10 @@ export const layer: Layer.Layer<
           };
           const eventPayloads = [
             { type: "turn-item.updated", payload: item },
-            { type: "run.updated", payload: { ...run, status, ...started, completedAt: now } },
+            {
+              type: "run.updated",
+              payload: { ...withoutRunRecovery(run), status, ...started, completedAt: now },
+            },
             {
               type: "run-attempt.updated",
               payload: { ...attempt, status, ...started, completedAt: now },
@@ -403,19 +427,50 @@ export const layer: Layer.Layer<
                   },
                 ]),
           ] as const;
-          const events = yield* Effect.forEach(eventPayloads, (event) =>
-            Effect.gen(function* () {
-              return {
-                ...event,
+          const events: Array<OrchestrationV2DomainEvent> = yield* Effect.forEach(
+            eventPayloads,
+            (event) =>
+              Effect.gen(function* () {
+                return {
+                  ...event,
+                  id: yield* idAllocator.allocate.event({ threadId: projection.thread.id }),
+                  threadId: projection.thread.id,
+                  runId,
+                  nodeId: rootNode.id,
+                  providerInstanceId: input.providerInstanceId,
+                  occurredAt: now,
+                } satisfies OrchestrationV2DomainEvent;
+              }),
+          );
+          if (run.recovery !== undefined) {
+            const retries = yield* projectionStore.getThreadRecords(
+              projection.thread.id,
+              ["turnItems"],
+              {
+                turnItemRunId: run.id,
+                turnItemTypes: ["error"],
+                turnItemStatuses: ["running"],
+              },
+            );
+            for (const retry of retries.turnItems) {
+              if (retry.type !== "error" || retry.retry === undefined) continue;
+              events.push({
                 id: yield* idAllocator.allocate.event({ threadId: projection.thread.id }),
+                type: "turn-item.updated",
                 threadId: projection.thread.id,
                 runId,
-                nodeId: rootNode.id,
+                ...(retry.nodeId === null ? {} : { nodeId: retry.nodeId }),
                 providerInstanceId: input.providerInstanceId,
                 occurredAt: now,
-              } satisfies OrchestrationV2DomainEvent;
-            }),
-          );
+                payload: {
+                  ...retry,
+                  status: status === "failed" ? "failed" : "completed",
+                  completedAt: now,
+                  updatedAt: now,
+                },
+              });
+            }
+          }
           yield* eventSink.writeIfRunCurrent({
             threadId: projection.thread.id,
             runId,
@@ -566,6 +621,7 @@ export const layer: Layer.Layer<
       const runControls = makeRunControls({
         threadId: projection.thread.id,
         runId: run.id,
+        userMessageId: run.userMessageId,
         attemptId: attempt.id,
         providerThreadId: providerThread.id,
         runOrdinal: run.ordinal,
@@ -983,7 +1039,11 @@ export const layer: Layer.Layer<
         if (resumed._tag === "Success") {
           return resumed.success;
         }
-        if (session.nativeResumeFailurePolicy === "fail" || run.contextRecovery !== undefined) {
+        if (
+          session.nativeResumeFailurePolicy === "fail" ||
+          run.contextRecovery !== undefined ||
+          attempt.reason === "provider_recovery"
+        ) {
           if (input.willRetry === true && !permanentNativeRecoveryFailure(resumed.failure))
             return yield* resumed.failure;
           yield* settleStartFailure({
@@ -1022,6 +1082,36 @@ export const layer: Layer.Layer<
       // The last attempt already failed the run.
       if (loadedProviderThread === undefined) return;
       if (!(yield* isCurrentAttemptInStatus("starting"))) {
+        return;
+      }
+      // Resume may reconcile a receipt; continuation uses that receipt, not the startup copy.
+      const inputMessage =
+        attempt.reason === "provider_recovery"
+          ? ((yield* projectionStore.getRunMessage(input.threadId, run.id)) ?? message)
+          : message;
+      if (
+        attempt.reason === "provider_recovery" &&
+        inputMessage.delivery !== "accepted" &&
+        inputMessage.delivery !== "pending"
+      ) {
+        yield* settleRunBeforeStart({
+          signal: "recovery-delivery-unknown",
+          status: "failed",
+          now: yield* DateTime.now,
+          providerInstanceId: run.providerInstanceId,
+          itemProviderThreadId: providerThread.id,
+          item: {
+            type: "error",
+            title: "Message delivery unconfirmed",
+            failure: makeProviderFailure({
+              message:
+                "Nodex could not confirm delivery of the original message. Continue manually to avoid sending it twice.",
+              code: "recovery_delivery_unknown",
+              retryable: false,
+              class: "provider_error",
+            }),
+          },
+        });
         return;
       }
       // The first native restoration already collected replay in the adapter.
@@ -1102,7 +1192,7 @@ export const layer: Layer.Layer<
       const runningRun: OrchestrationV2Run = {
         ...run,
         status: "running",
-        startedAt: now,
+        startedAt: run.startedAt ?? now,
       };
       const runningAttempt: OrchestrationV2RunAttempt = {
         ...attempt,
@@ -1209,10 +1299,23 @@ export const layer: Layer.Layer<
       if (!runningWrite.committed) {
         return;
       }
-      const userText = projectComposerContextForProvider({
-        text: message.text,
-        records: message.context?.records ?? [],
-      });
+      const continuation =
+        attempt.reason === "provider_recovery"
+          ? inputMessage.delivery === "accepted"
+            ? session.providerSession.capabilities.turns.supportsEmptyContinuation === true
+              ? "empty"
+              : "prompt"
+            : "resend"
+          : attempt.continuation;
+      const syntheticContinuation = continuation === "empty" || continuation === "prompt";
+      const userText = syntheticContinuation
+        ? continuation === "empty"
+          ? ""
+          : "Continue where you left off."
+        : projectComposerContextForProvider({
+            text: inputMessage.text,
+            records: inputMessage.context?.records ?? [],
+          });
       // Delivered once: this run's provider turn marks the work as told. A
       // restart continuation is prompted by its own text or resumes natively.
       const noteContinuation = projection.restartNoteState.continuation;
@@ -1285,7 +1388,7 @@ export const layer: Layer.Layer<
                 tokenCap,
                 modelContextWindow,
                 userText: restartNote === "" ? userText : `${restartNote}\n\n${userText}`,
-                attachments: message.attachments,
+                attachments: inputMessage.attachments,
                 providerThread: budgetProviderThread,
                 nativeContextEstimate:
                   budgetProviderThread.contextUsage?.usedTokens === undefined
@@ -1345,7 +1448,7 @@ export const layer: Layer.Layer<
                 modelContextWindow,
                 // The note is sent with the user text, so it spends the same allowance.
                 userText: restartNote === "" ? userText : `${restartNote}\n\n${userText}`,
-                attachments: message.attachments,
+                attachments: inputMessage.attachments,
                 providerThread: budgetProviderThread,
                 nativeContextEstimate:
                   budgetProviderThread.contextUsage?.usedTokens === undefined
@@ -1437,28 +1540,19 @@ export const layer: Layer.Layer<
           ),
         );
       const deliverySession =
-        effectiveHandoffs.length === 0 &&
-        projection.omittedHandoffCount === 0 &&
-        missedHistoricalCount === 0 &&
-        restartNote === "" &&
-        !noteContinuation
+        continuation === "empty"
           ? session
-          : makeDeliverySession(session, startWithHandoffs);
+          : effectiveHandoffs.length === 0 &&
+              projection.omittedHandoffCount === 0 &&
+              missedHistoricalCount === 0 &&
+              restartNote === "" &&
+              !noteContinuation
+            ? session
+            : makeDeliverySession(session, startWithHandoffs);
       yield* runExecution.startRootRun({
         commandId: CommandId.make(`command:effect:provider-turn.start:${run.id}`),
         appThread: projection.thread,
-        isRunTerminal: (ownerRunId) =>
-          projectionStore
-            .getRunOutcome({ threadId: input.threadId, runId: ownerRunId })
-            .pipe(
-              Effect.map(
-                (owner) =>
-                  owner !== null &&
-                  ["completed", "failed", "interrupted", "cancelled", "rolled_back"].includes(
-                    owner.status,
-                  ),
-              ),
-            ),
+        isRunTerminal: runControls.isRunTerminal,
         providerSessionId,
         session: deliverySession,
         run: runningRun,
@@ -1467,6 +1561,8 @@ export const layer: Layer.Layer<
         providerThread: runningProviderThread,
         attempt: runningAttempt,
         attemptId: attempt.id,
+        ...(continuation === undefined ? {} : { continuation }),
+        recoveryControls: runControls.recoveryControls,
         loadInheritedBackgroundTurnItems: runControls.loadInheritedBackgroundTurnItems,
         resolveRelatedNativeThread: makeRelatedNativeResolver({
           threadId: input.threadId,
@@ -1487,18 +1583,18 @@ export const layer: Layer.Layer<
         shouldFinalizeRun: runControls.shouldFinalizeRun,
         hasUnpairedRunInterruptRequest: runControls.hasUnpairedRunInterruptRequest,
         message: {
-          messageId: message.id,
-          ...(message.delivery === undefined ? {} : { delivery: message.delivery }),
+          messageId: inputMessage.id,
+          ...(inputMessage.delivery === undefined ? {} : { delivery: inputMessage.delivery }),
           text: userText,
-          attachments: message.attachments,
-          createdBy: message.createdBy,
-          creationSource: message.creationSource,
-          ...(message.scheduledTaskId === undefined
+          attachments: syntheticContinuation ? [] : inputMessage.attachments,
+          createdBy: inputMessage.createdBy,
+          creationSource: inputMessage.creationSource,
+          ...(inputMessage.scheduledTaskId === undefined
             ? {}
-            : { scheduledTaskId: message.scheduledTaskId }),
-          ...(message.senderThreadId === undefined
+            : { scheduledTaskId: inputMessage.scheduledTaskId }),
+          ...(inputMessage.senderThreadId === undefined
             ? {}
-            : { senderThreadId: message.senderThreadId }),
+            : { senderThreadId: inputMessage.senderThreadId }),
         },
         modelSelection: run.modelSelection,
         runtimePolicy: resolvedRuntimePolicy,

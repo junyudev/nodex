@@ -605,6 +605,7 @@ export type ProjectionSubagentOverviewItem = Pick<
   | "title"
   | "model"
   | "modelSelection"
+  | "recovery"
   | "status"
   | "startedAt"
   | "completedAt"
@@ -2274,6 +2275,7 @@ const decodeSubagentOverview = Schema.decodeUnknownEffect(
       title: fields.title,
       model: fields.model,
       modelSelection: fields.modelSelection,
+      recovery: fields.recovery,
       status: fields.status,
       startedAt: fields.startedAt,
       completedAt: fields.completedAt,
@@ -7509,6 +7511,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             'providerInstanceId', task.provider_instance_id, 'providerThreadId', task.provider_thread_id,
             'childThreadId', task.child_thread_id, 'title', substr(json_extract(task.payload_json, '$.title'), 1, 512),
             'model', substr(json_extract(task.payload_json, '$.model'), 1, 256), 'status', task.status,
+            'recovery', json_extract(task.payload_json, '$.recovery'),
             'startedAt', task.started_at, 'completedAt', task.completed_at, 'updatedAt', task.updated_at,
             'childRunId', (SELECT run_id FROM orchestration_v2_projection_runs AS run
               WHERE run.thread_id = task.child_thread_id ORDER BY ordinal DESC LIMIT 1),
@@ -7695,11 +7698,22 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                 return [derive.userTurnItem({ messageId }), messageId] as const;
               }),
             );
+            // New input is pending before resume/start. Reconcile only input that
+            // may already have reached this native thread, not the next unsent request.
             const items = yield* sql<{
               turn_item_id: string;
             }>`SELECT turn_item_id FROM orchestration_v2_projection_turn_items
           WHERE thread_id = ${threadId} AND provider_thread_id = ${providerThreadId}
-            AND turn_item_id IN (SELECT value FROM json_each(${encodeIdList([...byItemId.keys()])}))`;
+            AND turn_item_id IN (SELECT value FROM json_each(${encodeIdList([...byItemId.keys()])}))
+            AND (provider_turn_id IS NOT NULL
+              OR EXISTS (SELECT 1 FROM orchestration_v2_projection_messages message
+                WHERE message.message_id = json_extract(orchestration_v2_projection_turn_items.payload_json, '$.messageId')
+                  AND json_extract(message.payload_json, '$.delivery') = 'unknown')
+              OR EXISTS (SELECT 1 FROM orchestration_v2_projection_run_attempts attempt
+                WHERE attempt.thread_id = ${threadId}
+                  AND attempt.run_id = orchestration_v2_projection_turn_items.run_id
+                  AND attempt.root_node_id = orchestration_v2_projection_turn_items.node_id
+                  AND json_extract(attempt.payload_json, '$.startedAt') IS NOT NULL))`;
             return items.flatMap((item) => {
               const id = byItemId.get(TurnItemId.make(item.turn_item_id));
               return id === undefined ? [] : [id];
@@ -10620,7 +10634,18 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
           Effect.map((projection) => {
             const sourceMessages = new Set(
               projection.turnItems.flatMap((item) =>
-                item.type === "user_message" && item.providerThreadId === providerThreadId
+                item.type === "user_message" &&
+                item.providerThreadId === providerThreadId &&
+                (item.providerTurnId !== null ||
+                  projection.messages.some(
+                    (message) => message.id === item.messageId && message.delivery === "unknown",
+                  ) ||
+                  projection.attempts.some(
+                    (attempt) =>
+                      attempt.runId === item.runId &&
+                      attempt.rootNodeId === item.nodeId &&
+                      attempt.startedAt !== null,
+                  ))
                   ? [item.messageId]
                   : [],
               ),
@@ -11681,6 +11706,7 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
                         model: task.modelSelection.model.slice(0, 256),
                       },
                     }),
+                recovery: task.recovery ?? null,
                 status: task.status,
                 startedAt: task.startedAt,
                 completedAt: task.completedAt,

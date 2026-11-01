@@ -37,6 +37,12 @@ export const liveRunLivenessCandidates = (sql: SqlClient.SqlClient) => sql<{
   JOIN orchestration_v2_projection_threads AS thread ON thread.thread_id = run.thread_id
   WHERE run.status IN ('queued', 'preparing', 'starting', 'running', 'waiting')
     AND run.status = 'running' AND thread.deleted_at IS NULL
+    AND NOT (COALESCE(json_type(run.payload_json, '$.recovery') = 'object', 0) AND attempt.status = 'failed'
+      AND EXISTS (SELECT 1 FROM orchestration_v2_effect_outbox AS recovery
+        WHERE recovery.effect_id = 'effect:run.recover:' || run.run_id || ':' || (attempt.attempt_ordinal + 1)
+          AND recovery.thread_id = run.thread_id AND recovery.effect_type = 'run.recover'
+          AND recovery.status IN ('pending', 'running')))
+
 `;
 
 /** Start from the live-turn index, then inspect only those turns' owners. */

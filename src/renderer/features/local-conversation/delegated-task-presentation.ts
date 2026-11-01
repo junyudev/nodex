@@ -1,25 +1,36 @@
+import type { ConversationRecovery } from "../../../shared/conversation-recovery";
 import type {
   CodexDelegatedTaskStatus,
   CodexDelegatedTaskView,
   CodexRuntimeNotice,
 } from "../../../shared/types";
+import {
+  recoveryProgressLabel,
+  recoveryStatusLabel,
+} from "./projection/conversation-recovery-presentation";
 
-/** The row additionally shows a Stop request that the task has not settled yet. */
-export type DelegatedTaskRowStatus = CodexDelegatedTaskStatus | "stopping";
+/**
+ * The row additionally shows a Stop request that the task has not settled yet, and a running
+ * task that is waiting to recover from a transient provider failure.
+ */
+export type DelegatedTaskRowStatus = CodexDelegatedTaskStatus | "stopping" | "retrying";
 
 export const isDelegatedTaskLive = (status: CodexDelegatedTaskStatus): boolean =>
   status === "running" || status === "waiting";
 
 export function resolveDelegatedTaskRowStatus(
-  status: CodexDelegatedTaskStatus,
+  task: Pick<CodexDelegatedTaskView, "status" | "recovery">,
   stopRequested: boolean,
 ): DelegatedTaskRowStatus {
-  return stopRequested && isDelegatedTaskLive(status) ? "stopping" : status;
+  if (!isDelegatedTaskLive(task.status)) return task.status;
+  if (stopRequested) return "stopping";
+  return task.recovery ? "retrying" : task.status;
 }
 
 const STATUS_LABEL: Record<DelegatedTaskRowStatus, string> = {
   running: "Running",
   waiting: "Waiting",
+  retrying: "Retrying",
   stopping: "Stopping…",
   stopped: "Stopped",
   cancelled: "Cancelled",
@@ -33,6 +44,7 @@ export const delegatedTaskStatusLabel = (status: DelegatedTaskRowStatus): string
 const SUMMARY_STATUS_ORDER: readonly DelegatedTaskRowStatus[] = [
   "failed",
   "stopping",
+  "retrying",
   "waiting",
   "running",
   "cancelled",
@@ -51,6 +63,8 @@ export function delegatedTaskGroupStatusLabel(statuses: readonly DelegatedTaskRo
         return `${are} working`;
       case "waiting":
         return `${are} waiting`;
+      case "retrying":
+        return `${are} retrying`;
       case "stopping":
         return `${are} stopping…`;
       case "completed":
@@ -75,6 +89,13 @@ export function delegatedTaskGroupStatusLabel(statuses: readonly DelegatedTaskRo
 /** Only an open task can be stopped, and only through its exact owning Run. */
 export const canStopDelegatedTask = (task: CodexDelegatedTaskView): boolean =>
   isDelegatedTaskLive(task.status) && task.ownerRunId !== null;
+
+/** A recovering task's detail names its cause and progress, like the transcript's recovery row. */
+export function delegatedTaskRecoveryLabel(recovery: ConversationRecovery, now: number): string {
+  return [recoveryStatusLabel(recovery), recoveryProgressLabel(recovery, now)]
+    .filter(Boolean)
+    .join(" · ");
+}
 
 /** Markdown export mirrors the row: title, who ran it and how it ended. */
 export function delegatedTaskMarkdownLines(

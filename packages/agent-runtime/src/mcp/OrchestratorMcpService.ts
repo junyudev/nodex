@@ -1043,6 +1043,7 @@ export const make = Effect.gen(function* () {
             null);
       const resultTransfer = taskResultTransfer(parentWithTransfers, childProjection, task) ?? null;
       const terminalStatus = terminalRun === undefined ? null : taskStatusForRun(terminalRun);
+      const recovery = (taskResultRun ?? childRun)?.recovery;
       const response = {
         taskId: task.id,
         childThreadId: task.childThreadId,
@@ -1050,6 +1051,16 @@ export const make = Effect.gen(function* () {
         childNodeId: task.id,
         status,
         workState,
+        recovery:
+          workState !== "recovering" || recovery === undefined
+            ? null
+            : {
+                kind: recovery.kind,
+                attempt: recovery.attempt,
+                maxAttempts: recovery.maxAttempts,
+                nextAttemptAt: DateTime.formatIso(recovery.nextAttemptAt),
+                failureMessage: recovery.failure.message,
+              },
         hasPendingChildRuns: hasPendingChildRuns(childProjection, childRun),
         providerInstanceId: task.providerInstanceId,
         model: task.model,

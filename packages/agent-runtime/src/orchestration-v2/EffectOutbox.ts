@@ -4,6 +4,7 @@ import {
   CommandId,
   MessageId,
   NodeId,
+  PositiveInt,
   ProviderApprovalDecision,
   ProviderSessionId,
   RunAttemptId,
@@ -30,6 +31,12 @@ import * as SqlClient from "effect/sql/SqlClient";
 import { forkParked } from "../serverActivation.ts";
 
 export const OrchestrationEffectRequestV2 = Schema.Union([
+  Schema.Struct({
+    type: Schema.Literal("run.recover"),
+    runId: RunId,
+    /** Next RunAttempt ordinal: never reuse an effect identity when a streak resets. */
+    attemptOrdinal: PositiveInt,
+  }),
   Schema.Struct({ type: Schema.Literal("side-chat.discard-native") }),
   Schema.Struct({
     type: Schema.Literal("provider-runtime.continue"),
@@ -134,6 +141,7 @@ export const OrchestrationEffectRequestV2 = Schema.Union([
 export type OrchestrationEffectRequestV2 = typeof OrchestrationEffectRequestV2.Type;
 
 export const REPLAY_SAFE_EFFECT_TYPES_AFTER_PROCESS_LOSS = [
+  "run.recover",
   "provider-runtime.continue",
   "provider-session.detach",
   "side-chat.discard-native",

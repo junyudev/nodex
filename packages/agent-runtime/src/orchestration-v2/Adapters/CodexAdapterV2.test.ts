@@ -9890,7 +9890,24 @@ describe("CodexAdapterV2 post-settle continuation", () => {
       notification: false,
       expectedClass: "usage_limit",
     },
-    { name: "rate", code: "rateLimitExceeded", notification: false, expectedClass: "usage_limit" },
+    {
+      name: "rate",
+      code: "rateLimitExceeded",
+      notification: false,
+      expectedClass: "provider_error",
+    },
+    {
+      name: "http-rate",
+      code: { responseTooManyFailedAttempts: { httpStatusCode: 429 } },
+      notification: true,
+      expectedClass: "provider_error",
+    },
+    {
+      name: "http-gateway",
+      code: { httpConnectionFailed: { httpStatusCode: 502 } },
+      notification: false,
+      expectedClass: "provider_error",
+    },
     {
       name: "ordinary",
       code: "contextWindowExceeded",
@@ -10032,6 +10049,9 @@ describe("CodexAdapterV2 post-settle continuation", () => {
                     ...makeCodexReplayTurn({ id: nativeTurnId, status: "failed" }),
                     error: {
                       message: scenario.name === "replacement" ? "A different failure." : message,
+                      ...(scenario.name === "http-gateway"
+                        ? { additionalDetails: "Proxy connection lost: token=private-value" }
+                        : {}),
                       ...(scenario.notification && scenario.name !== "matching-details"
                         ? {}
                         : { codexErrorInfo: scenario.code }),
@@ -10102,8 +10122,16 @@ describe("CodexAdapterV2 post-settle continuation", () => {
         assert.equal(terminal.threadDisposition, "reusable");
         if (scenario.name === "known-reset" || scenario.name === "deferred-reset")
           assert.equal(terminal.failure.resetAt, resetAt);
-        if (scenario.name === "matching-details")
-          assert.equal(terminal.failure.message, "Detailed provider allowance explanation.");
+        if (scenario.name === "matching-details") {
+          assert.equal(terminal.failure.message, message);
+          assert.equal(terminal.failure.diagnostic, "Detailed provider allowance explanation.");
+        }
+        if (scenario.name === "http-rate") assert.equal(terminal.failure.httpStatusCode, 429);
+        if (scenario.name === "http-gateway") {
+          assert.equal(terminal.failure.httpStatusCode, 502);
+          assert.include(terminal.failure.diagnostic!, "Proxy connection lost");
+          assert.notInclude(terminal.failure.diagnostic!, "private-value");
+        }
         if (scenario.name === "late-reset") {
           yield* Deferred.await(resetReceipt);
           const item = harness.events.find(

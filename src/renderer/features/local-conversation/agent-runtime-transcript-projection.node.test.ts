@@ -227,6 +227,67 @@ describe("Runtime request recovery", () => {
   });
 });
 
+describe("Runtime delegated task recovery", () => {
+  const subagent = {
+    id: "turn-item:subagent",
+    threadId: "thread:parent",
+    runId: "run:parent",
+    nodeId: null,
+    providerThreadId: null,
+    providerTurnId: null,
+    nativeItemRef: null,
+    parentItemId: null,
+    ordinal: 3,
+    status: "running",
+    title: "Trace sidebar",
+    startedAt: at,
+    completedAt: null,
+    updatedAt: at,
+    type: "subagent",
+    subagentId: "node:task:one",
+    origin: "app_owned",
+    driver: "codex",
+    providerInstanceId: "codex",
+    childThreadId: "thread:task:one",
+    prompt: "Trace the sidebar",
+    result: null,
+  } as const satisfies AgentTurnItem;
+
+  test("a running child waiting to recover carries its schedule to the card", () => {
+    const nextAttemptAt = "2026-11-01T00:02:00.000Z";
+    expect(
+      projectAgentRuntimeItem({
+        ...subagent,
+        recovery: { kind: "overloaded", attempt: 2, maxAttempts: 4, nextAttemptAt },
+      }),
+    ).toMatchObject({
+      status: "running",
+      recovery: {
+        state: "retrying",
+        reason: "overloaded",
+        attempt: 2,
+        maxAttempts: 4,
+        retryAt: Date.parse(nextAttemptAt),
+      },
+    });
+  });
+
+  test("a settled child shows its outcome, never a stale recovery", () => {
+    const settled = projectAgentRuntimeItem({
+      ...subagent,
+      status: "failed",
+      recovery: {
+        kind: "overloaded",
+        attempt: 4,
+        maxAttempts: 4,
+        nextAttemptAt: "2026-11-01T00:02:00.000Z",
+      },
+    });
+    expect(settled).toMatchObject({ status: "failed" });
+    expect(settled).not.toHaveProperty("recovery");
+  });
+});
+
 describe("Runtime application tool presentation", () => {
   test("every provider spelling of the application server resolves to nodex_app", () => {
     expect(parseAgentRuntimeToolName("mcp__nodex_app__search")).toEqual({

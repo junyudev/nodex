@@ -2874,7 +2874,7 @@ function isClaudeTaskNotificationOriginResult(message: SDKMessage): message is S
   return message.type === "result" && message.origin?.kind === "task-notification";
 }
 
-function providerFailureFromResult(
+export function providerFailureFromResult(
   message: SDKResultMessage,
   completedAt: DateTime.Utc,
   failureHint?: string,
@@ -2899,7 +2899,8 @@ function providerFailureFromResult(
     const resetMs = DateTime.toEpochMillis(completedAt) + seconds * 1_000;
     if (seconds > 0 && resetMs < 8.64e15) {
       return makeProviderFailure({
-        class: "usage_limit",
+        class: "provider_error",
+        httpStatusCode: 429,
         message: "Claude API rate limit reached. Try again later.",
         code: "api_error_429",
         retryable: true,
@@ -2908,11 +2909,7 @@ function providerFailureFromResult(
     }
   }
   const failureClass =
-    message.terminal_reason === "blocking_limit" ||
-    (message.subtype === "success" && message.api_error_status === 429) ||
-    usageLimited
-      ? "usage_limit"
-      : "provider_error";
+    message.terminal_reason === "blocking_limit" || usageLimited ? "usage_limit" : "provider_error";
   const listedError = resultUserFacingError(message);
   const structuredError = isOverloadedResult(message)
     ? "Claude API is overloaded (529). Try again shortly."
@@ -2937,7 +2934,13 @@ function providerFailureFromResult(
         ? (message.terminal_reason ?? "sdk_result_error")
         : `api_error_${apiErrorStatus}`,
     class: failureClass,
-    retryable: apiErrorStatus === 429 || apiErrorStatus === 529 ? true : null,
+    httpStatusCode: apiErrorStatus,
+    retryable:
+      failureClass === "usage_limit"
+        ? false
+        : apiErrorStatus === 429 || apiErrorStatus === 529
+          ? true
+          : null,
   });
 }
 
@@ -2972,15 +2975,19 @@ export function claudeApiRetryFailureMessage(message: SDKAPIRetryMessage): strin
   }.`;
 }
 
-function providerFailureFromApiRetry(message: SDKAPIRetryMessage): OrchestrationV2ProviderFailure {
+export function providerFailureFromApiRetry(
+  message: SDKAPIRetryMessage,
+): OrchestrationV2ProviderFailure {
   return makeProviderFailure({
     message: claudeApiRetryFailureMessage(message),
     code:
       message.error_status === null
         ? message.error
         : `api_error_${Math.trunc(message.error_status)}`,
+    httpStatusCode: message.error_status,
+    retryAfterMs: message.retry_delay_ms,
     class:
-      message.error_status === 429
+      message.error === "billing_error"
         ? "usage_limit"
         : message.error_status === null
           ? "transport_error"
@@ -3168,6 +3175,7 @@ interface ActiveClaudeTurnContext {
   readonly rejectedRateLimitTypes: Set<string>;
   readonly rateLimitResetTimes: Map<string, string | null>;
   latestAssistantRateLimited: boolean;
+  billingLimited: boolean;
   readonly subagentsByTaskId: Map<string, ActiveClaudeSubagent>;
   readonly subagentsByToolUseId: Map<string, ActiveClaudeSubagent>;
   readonly subagentNodesByTaskId: Map<string, OrchestrationV2ExecutionNode["id"]>;
@@ -6446,6 +6454,19 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           }
 
           const threadDisposition = input.threadDisposition ?? "reusable";
+          const reportedFailure = input.failure;
+          const retryFailure = providerRetry?.failure;
+          const terminalFailure =
+            reportedFailure !== undefined &&
+            retryFailure !== undefined &&
+            reportedFailure.class !== "usage_limit" &&
+            (reportedFailure.code === "api_error" || reportedFailure.code === "sdk_result_error")
+              ? { ...retryFailure, message: reportedFailure.message }
+              : reportedFailure !== undefined &&
+                  retryFailure !== undefined &&
+                  reportedFailure.code === retryFailure.code
+                ? { ...retryFailure, ...reportedFailure }
+                : reportedFailure;
           const terminalEvent: ProviderAdapter.ProviderAdapterV2Event =
             input.status === "failed"
               ? {
@@ -6460,7 +6481,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                   ),
                   status: input.status,
                   failure:
-                    input.failure ??
+                    terminalFailure ??
                     makeProviderFailure({
                       class: "provider_error",
                       message: "Claude ended the turn with a provider error.",
@@ -7644,6 +7665,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             context.nativeMessageCursor = message.uuid;
             if (message.parent_tool_use_id === null) {
               context.latestAssistantRateLimited = message.error === "rate_limit";
+              context.billingLimited = message.error === "billing_error";
               if (message.error === "authentication_failed") {
                 context.authenticationFailureMessage = claudeSignedOutMessage({
                   configDir: adapterOptions.environment.CLAUDE_CONFIG_DIR,
@@ -7792,6 +7814,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               retryDelayMs: Math.max(0, Math.trunc(message.retry_delay_ms)),
             };
             const failure = providerFailureFromApiRetry(message);
+            if (message.error === "billing_error") context.billingLimited = true;
             const itemOrdinal =
               previous?.itemOrdinal ??
               (yield* resolveItemOrdinal(context, `terminal-failure:${context.providerTurnId}`));
@@ -8323,7 +8346,9 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             });
             const usageLimited =
               context.authenticationFailureMessage === undefined &&
-              (context.rejectedRateLimitTypes.size > 0 || context.latestAssistantRateLimited) &&
+              (context.rejectedRateLimitTypes.size > 0 ||
+                context.latestAssistantRateLimited ||
+                context.billingLimited) &&
               (message.subtype !== "success" ||
                 message.api_error_status == null ||
                 message.api_error_status === 429) &&
@@ -9539,6 +9564,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               rejectedRateLimitTypes: new Set(),
               rateLimitResetTimes: new Map(),
               latestAssistantRateLimited: false,
+              billingLimited: false,
               subagentsByTaskId: new Map(),
               subagentsByToolUseId: new Map(),
               subagentNodesByTaskId: new Map(),

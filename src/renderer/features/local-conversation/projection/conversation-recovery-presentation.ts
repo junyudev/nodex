@@ -58,10 +58,20 @@ export function recoveryStatusLabel(recovery: ConversationRecovery): string {
   }
 }
 
+/** Waits read in the largest whole unit that still counts down: 45s, 2m, 1h 5m. */
+function retryWaitLabel(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.ceil(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest === 0 ? `${hours}h` : `${hours}h ${rest}m`;
+}
+
 export function recoveryProgressLabel(recovery: ConversationRecovery, now: number): string | null {
   if (recovery.state !== "retrying") return null;
   const seconds = recoveryRetrySeconds(recovery, now);
-  const wait = seconds !== null && seconds > 0 ? `Retrying in ${seconds}s` : null;
+  const wait = seconds !== null && seconds > 0 ? `Retrying in ${retryWaitLabel(seconds)}` : null;
   const activeAttempt =
     wait === null && (recovery.reason === "overloaded" || recovery.reason === "rate_limit")
       ? "Retrying"

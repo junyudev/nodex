@@ -1,3 +1,5 @@
+import * as ThreadCommandExecutor from "./ThreadCommandExecutor.ts";
+import * as EffectOutbox from "./EffectOutbox.ts";
 import { assert, it } from "@effect/vitest";
 import {
   CheckpointScopeId,
@@ -210,6 +212,17 @@ const withLiveness = <A>(input: {
           orphanedTurnThreadIds:
             input.terminalOwner || input.supersededAttempt ? [f.thread.id] : [],
         }),
+      getThreadRecords: () =>
+        Effect.succeed<import("@t3tools/contracts").OrchestrationV2ThreadProjection>({
+          ...state,
+          checkpointScopes: [f.scope],
+          checkpoints: [],
+          contextTransfers: [],
+          contextHandoffs: [],
+          plans: [],
+          visibleTurnItems: [],
+          updatedAt: f.run.requestedAt,
+        }),
       getRuntimeRecoveryProjection: () =>
         Effect.sync(() => {
           projectionLoads++;
@@ -241,6 +254,7 @@ const withLiveness = <A>(input: {
           Layer.mock(CheckpointService.CheckpointServiceV2)({ captureBaseline: () => Effect.void }),
           Layer.mock(ProviderEventIngestor.ProviderEventIngestorV2)({
             ingestNormalized: () => Effect.succeed([]),
+            normalize: () => Effect.succeed([]),
           }),
         ),
       ),
@@ -250,6 +264,8 @@ const withLiveness = <A>(input: {
         Layer.mergeAll(
           execution,
           projections,
+          ThreadCommandExecutor.layer,
+          Layer.mock(EffectOutbox.EffectOutboxV2)({ get: () => Effect.succeed(Option.none()) }),
           sink,
           IdAllocator.layer,
           RuntimePolicy.layer,

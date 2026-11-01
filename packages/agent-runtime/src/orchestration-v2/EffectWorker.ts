@@ -1,3 +1,4 @@
+import { recoveryCommandId } from "./RunRecovery.ts";
 import { CommandId } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
@@ -110,6 +111,26 @@ export const layerExecutor: Layer.Layer<
       execute: (effect, options) => {
         const willRetry = options?.willRetry ?? false;
         switch (effect.request.type) {
+          case "run.recover":
+            return threads
+              .dispatch({
+                type: "run.recover",
+                threadId: effect.threadId,
+                runId: effect.request.runId,
+                attemptOrdinal: effect.request.attemptOrdinal,
+                commandId: recoveryCommandId(effect.request.runId, effect.request.attemptOrdinal),
+              })
+              .pipe(
+                Effect.asVoid,
+                Effect.mapError(
+                  (cause) =>
+                    new OrchestrationEffectExecutionError({
+                      effectId: effect.id,
+                      effectType: effect.request.type,
+                      cause,
+                    }),
+                ),
+              );
           case "provider-runtime.continue": {
             const sourceRunId = effect.request.sourceRunId;
             return continueRestartedRun({ threadId: effect.threadId, sourceRunId }).pipe(

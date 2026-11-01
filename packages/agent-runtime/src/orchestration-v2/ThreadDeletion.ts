@@ -1,3 +1,4 @@
+import { withoutRunRecovery } from "./RunRecovery.ts";
 import type {
   OrchestrationV2Command,
   OrchestrationV2DomainEvent,
@@ -6,13 +7,17 @@ import type {
 import type * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 
-import type { PendingOrchestrationEffectV2 } from "./EffectOutbox.ts";
+import type { PendingOrchestrationEffectV2, OrchestrationEffectRequestV2 } from "./EffectOutbox.ts";
 import type * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import { NATIVE_THREAD_IMPORT_OPERATION_PREFIX } from "../nodex/NativeImportLimits.ts";
 
 export interface ThreadDeletionPlan {
   readonly events: ReadonlyArray<OrchestrationV2DomainEvent>;
   readonly effects: ReadonlyArray<PendingOrchestrationEffectV2>;
+  readonly cancelUnsettledEffects: {
+    readonly effectTypes: ReadonlyArray<OrchestrationEffectRequestV2["type"]>;
+    readonly reason: string;
+  };
 }
 
 /** Plan the same durable cleanup for direct thread deletion and project removal. */
@@ -20,7 +25,14 @@ export const planThreadDeletion = Effect.fn("ThreadDeletion.planThreadDeletion")
   readonly command: Extract<OrchestrationV2Command, { readonly type: "thread.delete" }>;
   readonly projection: Pick<
     OrchestrationV2ThreadProjection,
-    "thread" | "runs" | "attempts" | "nodes" | "runtimeRequests" | "subagents" | "providerSessions"
+    | "thread"
+    | "runs"
+    | "attempts"
+    | "nodes"
+    | "runtimeRequests"
+    | "subagents"
+    | "providerSessions"
+    | "turnItems"
   >;
   readonly attachmentIds: ReadonlyArray<string>;
   readonly now: DateTime.Utc;
@@ -80,6 +92,24 @@ export const planThreadDeletion = Effect.fn("ThreadDeletion.planThreadDeletion")
     ["preparing", "queued", "starting", "running", "waiting"].includes(run.status),
   );
   const activeRunById = new Map(activeRuns.map((run) => [run.id, run]));
+  for (const item of projection.turnItems) {
+    if (
+      item.type !== "error" ||
+      item.retry === undefined ||
+      item.status !== "running" ||
+      item.runId === null ||
+      activeRunById.get(item.runId)?.recovery === undefined
+    )
+      continue;
+    yield* emitEvent({
+      type: "turn-item.updated",
+      threadId: command.threadId,
+      runId: item.runId,
+      ...(item.nodeId === null ? {} : { nodeId: item.nodeId }),
+      occurredAt: now,
+      payload: { ...item, status: "cancelled", completedAt: now, updatedAt: now },
+    });
+  }
   for (const run of activeRuns) {
     yield* emitEvent({
       type: "run.updated",
@@ -87,7 +117,12 @@ export const planThreadDeletion = Effect.fn("ThreadDeletion.planThreadDeletion")
       runId: run.id,
       providerInstanceId: run.providerInstanceId,
       occurredAt: now,
-      payload: { ...run, status: "cancelled", queuePosition: null, completedAt: now },
+      payload: {
+        ...withoutRunRecovery(run),
+        status: "cancelled",
+        queuePosition: null,
+        completedAt: now,
+      },
     });
   }
   for (const attempt of projection.attempts) {
@@ -246,5 +281,9 @@ export const planThreadDeletion = Effect.fn("ThreadDeletion.planThreadDeletion")
       request: { type: "attachment.cleanup", attachmentIds },
     });
   }
-  return { events, effects };
+  return {
+    events,
+    effects,
+    cancelUnsettledEffects: { effectTypes: ["run.recover"], reason: "Thread deleted." },
+  };
 });

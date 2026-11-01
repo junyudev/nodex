@@ -12,6 +12,7 @@ export const taskView = (task: OrchestratorMcpDelegateTaskResult): TaskView => (
   taskId: task.taskId,
   status: task.status,
   workState: task.workState,
+  recovery: task.recovery ?? null,
   providerInstanceId: task.providerInstanceId,
   model: task.model,
   summary: task.summary,

@@ -327,6 +327,55 @@ it.effect.each(storageCases)(
         yield* store.getPendingMessageDeliveryIds(threadId, ProviderThreadId.make("other-source")),
         [],
       );
+      const attempt = events.find((event) => event.type === "run-attempt.created")!;
+      assert.ok(attempt.type === "run-attempt.created");
+      const sourceItem = yield* store.getTurnItem({
+        threadId,
+        itemId: derive.userTurnItem({ messageId }),
+      });
+      assert.ok(sourceItem?.type === "user_message");
+      yield* store.apply({
+        ...message,
+        id: EventId.make("receipt:unsent-message"),
+        payload: { ...message.payload, delivery: "pending" },
+      });
+      yield* store.apply({
+        id: EventId.make("receipt:unsent-item"),
+        type: "turn-item.updated",
+        threadId,
+        occurredAt: now,
+        payload: { ...sourceItem, providerTurnId: null },
+      });
+      yield* store.apply({
+        ...attempt,
+        id: EventId.make("receipt:unstarted-attempt"),
+        type: "run-attempt.updated",
+        payload: { ...attempt.payload, status: "pending", providerTurnId: null, startedAt: null },
+      });
+      assert.deepEqual(yield* store.getPendingMessageDeliveryIds(threadId, providerThreadId), []);
+      yield* store.apply({
+        ...attempt,
+        id: EventId.make("receipt:attempted-message"),
+        type: "run-attempt.updated",
+        payload: { ...attempt.payload, status: "failed", providerTurnId: null },
+      });
+      assert.deepEqual(yield* store.getPendingMessageDeliveryIds(threadId, providerThreadId), [
+        messageId,
+      ]);
+      yield* store.apply({
+        ...attempt,
+        id: EventId.make("receipt:unconfirmed-attempt"),
+        type: "run-attempt.updated",
+        payload: { ...attempt.payload, status: "pending", providerTurnId: null, startedAt: null },
+      });
+      yield* store.apply({
+        ...message,
+        id: EventId.make("receipt:uncertain-message"),
+        payload: { ...message.payload, delivery: "unknown" },
+      });
+      assert.deepEqual(yield* store.getPendingMessageDeliveryIds(threadId, providerThreadId), [
+        messageId,
+      ]);
       yield* store.apply({
         id: EventId.make("receipt:accepted"),
         type: "message.delivery.updated",

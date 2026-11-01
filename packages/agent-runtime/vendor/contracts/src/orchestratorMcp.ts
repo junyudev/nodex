@@ -30,6 +30,7 @@ import {
   OrchestrationV2Actor,
   OrchestrationV2CreationSource,
   OrchestrationV2RunStatus,
+  OrchestrationV2RunRecoverySummaryJson,
   OrchestrationV2TurnItemStatus,
 } from "./orchestrationV2.ts";
 import {
@@ -207,13 +208,22 @@ export const OrchestratorMcpPendingTaskApproval = Schema.NullOr(
   description: "Oldest pending approval, or null. Ends a wait. Grants no approval rights.",
 });
 
+export const OrchestratorMcpTaskRecovery = Schema.Struct({
+  kind: OrchestrationV2RunRecoverySummaryJson.fields.kind,
+  attempt: PositiveInt,
+  maxAttempts: Schema.NullOr(PositiveInt),
+  nextAttemptAt: IsoDateTime,
+  failureMessage: Schema.String,
+});
+
 export const OrchestratorMcpDelegateTaskResult = Schema.Struct({
   taskId: NodeId,
   childThreadId: ThreadId,
   childRunId: Schema.NullOr(RunId),
   childNodeId: NodeId,
   status: OrchestratorMcpDelegatedTaskStatus,
-  workState: Schema.Literals(["working", "waiting_for_children", "result_available"]),
+  workState: Schema.Literals(["working", "recovering", "waiting_for_children", "result_available"]),
+  recovery: Schema.optional(Schema.NullOr(OrchestratorMcpTaskRecovery)),
   hasPendingChildRuns: Schema.Boolean,
   latestTerminalRunId: Schema.NullOr(RunId),
   latestTerminalStatus: Schema.NullOr(OrchestratorMcpTerminalDelegatedTaskStatus),

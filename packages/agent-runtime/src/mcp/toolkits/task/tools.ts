@@ -5,6 +5,7 @@ import {
   OrchestrationV2UserInputQuestion,
   OrchestrationV2DispatchCommandResult,
   OrchestratorMcpCapabilitiesResult,
+  OrchestratorMcpTaskRecovery,
   OrchestratorMcpDelegatedTaskStatus,
   OrchestratorMcpDelegateTaskInput,
   OrchestratorMcpIdempotencyKey,
@@ -50,9 +51,18 @@ const TaskResult = Schema.Struct({
 export const TaskView = Schema.Struct({
   taskId: NodeId,
   status: OrchestratorMcpDelegatedTaskStatus,
-  workState: Schema.Literals(["working", "waiting_for_children", "result_available"]).annotate({
+  workState: Schema.Literals([
+    "working",
+    "recovering",
+    "waiting_for_children",
+    "result_available",
+  ]).annotate({
     description:
-      "result_available only when the task and every task it delegated have settled; a finished turn with live nested work is waiting_for_children.",
+      "result_available only when the task and every task it delegated have settled; a finished turn with live nested work is waiting_for_children. recovering means Nodex is automatically continuing the task after a transient provider failure: keep waiting, do not send it a message to resume it.",
+  }),
+  recovery: Schema.optional(Schema.NullOr(OrchestratorMcpTaskRecovery)).annotate({
+    description:
+      "While recovering: the cause kind, attempt, attempt limit (null when it keeps retrying until the connection returns), next attempt time and the failure message.",
   }),
   providerInstanceId: ProviderInstanceId,
   model: Schema.NullOr(Schema.String),

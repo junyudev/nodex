@@ -222,15 +222,17 @@ const stopEarlierBackgroundWork = ({
           const attempt = before.attempts[0]!;
           if (stalledRun === "missing-session" || stalledRun === "missing-session-terminal") {
             const sessions = yield* ProviderSessionManager.ProviderSessionManagerV2;
-            const failed = yield* watch(
-              (event) => event.type === "run.updated" && event.payload.status === "failed",
+            const releasedRun = yield* watch(
+              (event) =>
+                event.type === "run.updated" &&
+                (event.payload.status === "failed" || event.payload.recovery !== undefined),
             );
             yield* sessions.release({
               providerSessionId: first.providerThread.providerSessionId!,
               reason: "runtime_error",
             });
-            yield* Fiber.join(failed);
-            // Disk exhaustion can lose these terminal writes. Restore that stale state.
+            yield* Fiber.join(releasedRun);
+            // Restore a lost settlement/recovery transaction's stale running execution.
             yield* sink.write({
               events: [
                 {
@@ -253,6 +255,13 @@ const stopEarlierBackgroundWork = ({
                   threadId,
                   occurredAt: now,
                   payload: attempt,
+                },
+                {
+                  id: EventId.make("stale-provider-turn"),
+                  type: "provider-turn.updated",
+                  threadId,
+                  occurredAt: now,
+                  payload: codexTurn,
                 },
               ],
             });

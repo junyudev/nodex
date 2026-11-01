@@ -82,7 +82,7 @@ native turn and report that it lost contact with the reply. A failure that origi
 Nodex says what happened instead of a generic provider error, and keeps a short redacted
 diagnostic for Copy diagnostics.
 
-Every running reply is backed by a live native turn.
+Every running reply is backed either by a live native turn or by a scheduled recovery.
 Nodex checks this periodically and whenever an Agent process or connection is lost: a
 reply nobody is observing is reattached and reconciled, and a reply whose Agent never
 confirmed a turn within two minutes is resolved instead of staying "running". A native
@@ -99,6 +99,29 @@ request retrying. Unknown provider errors do not establish a network failure, an
 retryability alone does not establish an active retry. A retry's message describes the
 failed attempt in a sentence, such as "Claude API request failed."; its HTTP status
 travels with the failure instead of being repeated in the message.
+
+When an Agent gives up on a reply for a transient reason, Nodex recovers it
+automatically inside the same reply. The failed attempt stays in the transcript as a
+recovery row, the reply stays running, and after a delay Nodex continues the same native
+conversation from where it stopped, without resending the original request; a request
+the Agent never received is sent again unchanged, and a delivery Nodex cannot confirm is
+never retried automatically. Lost connections, including gateway errors from a proxy
+while offline, retry after 5, 10, 20 and 40 seconds and then every minute, every five
+minutes after the first hour, for as long as it takes. A busy or overloaded service
+retries after 10 seconds, 30 seconds, 2 minutes and 5 minutes. A request rate limit waits
+for the reset time the Agent reports, up to an hour, or retries after 1, 5 and 15 minutes.
+An Agent process that stopped mid-reply resumes after 5 seconds, 30 seconds and 2
+minutes. Sign-in, usage limits, context allowance, policy and invalid requests never
+retry automatically. Each recovery streak has its own budget and ends when the Agent
+produces output again; a reply that runs out of budget fails with the last cause. The
+schedule survives restarting Nodex.
+
+Stop ends a recovering reply immediately. A new message, a steer or a change of model or
+Agent while a reply is recovering starts the next attempt at once with that input,
+replacing the scheduled continuation. Archiving or deleting the chat ends recovery. A
+delegated task that is recovering stays running for its delegating Agent: its card and
+`task_status` say it is retrying, and the delegating Agent is woken only once the task
+finally succeeds or fails.
 
 Continue on the latest failed reply submits a new follow-up asking the Agent to
 continue from where it left off, with the existing conversation context. It does not
@@ -616,8 +639,10 @@ overflow opens the Subagents overview.
 Names, avatars and overview entries share the same task identity. Provider-supplied names
 and user titles retain their wording; a Codex-native agent path supplies a readable final
 segment while the full path stays in details. Names never change merely because a task's
-status changes. The row reports running, waiting, stopping, stopped, cancelled, failed or
-done, with a compact count summary when states differ. Failure and stopping remain visible
+status changes. The row reports running, retrying, waiting, stopping, stopped, cancelled,
+failed or done, with a compact count summary when states differ. Retrying means the task
+is recovering from a transient Agent failure; its details name the cause and the next
+attempt. Failure and stopping remain visible
 without hover and are not presented as successful completion.
 
 Hovering or focusing a task reveals its full name, current status, available task description
@@ -817,7 +842,9 @@ replay their accepted operation without answering twice. Informational elicitati
 normalized to user questions are included, while approvals and permission elicitations
 remain excluded. Partial asynchronous responses retain unanswered siblings.
 
-Task status and wait results report `hasPendingQuestion` for a live question that blocks
+Task status and wait results report `workState: "recovering"` and the recovery's kind,
+attempt, limit, next attempt time and failure message while a task's reply is recovering;
+a wait does not return for recovery alone. They report `hasPendingQuestion` for a live question that blocks
 an unfinished task, and `pendingApproval` for its oldest live approval on an active task
 Run (requestId, kind and runId), or null. A blocking delegation or `task_wait` returns
 on a result, live question, approval or timeout; only a timeout sets `waitTimedOut`.

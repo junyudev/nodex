@@ -131,6 +131,7 @@ function makeTestAdapter(input: {
   >;
   readonly compactBoundary?: boolean;
   readonly failureClass?: import("@t3tools/contracts").OrchestrationV2ProviderFailureClass;
+  readonly failureRetryable?: boolean;
   readonly failedRunOrdinals?: ReadonlySet<number>;
   readonly interruptedRunOrdinals?: ReadonlySet<number>;
   readonly holdRunOrdinal?: number;
@@ -401,6 +402,7 @@ function makeTestAdapter(input: {
                           message: "Simulated provider failure.",
                           code: "simulated_failure",
                           class: input.failureClass ?? "provider_error",
+                          retryable: input.failureRetryable,
                         }),
                       }
                     : { status: terminalStatus, failure: null }),
@@ -4930,6 +4932,8 @@ describe("context recovery in the same native conversation", () => {
             ...(outcome === "no-usage" ? {} : { 3: { usedTokens: 4_000, maxTokens: 1_000_000 } }),
           },
           failureClass: "transport_error",
+          // These scenarios require a terminal failure before explicit context recovery.
+          failureRetryable: false,
           compactBoundary: outcome !== "no-boundary",
           failedRunOrdinals: new Set(outcome === "failed" || outcome === "restart" ? [1, 3] : [1]),
           holdRunOrdinal: 3,
@@ -5166,6 +5170,8 @@ it.live.each(["idle-unload", "process-restart"] as const)(
           getModelContextWindow: () => 1_000_000,
           failedRunOrdinals: new Set([1]),
           failureClass: "transport_error",
+          // Exercise manual continuation after a terminal failure, rather than automatic recovery.
+          failureRetryable: false,
           tokenUsageByRunOrdinal: { 1: { usedTokens: 804_183, maxTokens: 1_000_000 } },
         }),
       ]);

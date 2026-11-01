@@ -670,6 +670,7 @@ const OverviewItem = Schema.Struct({
   title: overviewFields.title,
   model: overviewFields.model,
   modelSelection: overviewFields.modelSelection,
+  recovery: overviewFields.recovery,
   status: overviewFields.status,
   startedAt: overviewFields.startedAt,
   completedAt: overviewFields.completedAt,

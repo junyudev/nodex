@@ -106,6 +106,7 @@ export type AgentSubagentOverviewItem = AgentWire<
     | "title"
     | "model"
     | "modelSelection"
+    | "recovery"
     | "status"
     | "startedAt"
     | "completedAt"

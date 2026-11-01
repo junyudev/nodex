@@ -287,6 +287,8 @@ const layerRunLivenessProvided = RunLivenessService.layer.pipe(
   Layer.provide(
     Layer.mergeAll(
       ProjectionStore.layer,
+      EffectOutbox.layer,
+      ThreadCommandExecutor.layer,
       layerProviderSessionManagerProvided,
       layerRunExecutionServiceProvided,
       layerEventSinkProvided,

@@ -1,3 +1,6 @@
+import { hasPendingRunRecovery, readRunRecoveryContext } from "./RunRecovery.ts";
+import { EffectOutboxV2 } from "./EffectOutbox.ts";
+import { ThreadCommandExecutor } from "./ThreadCommandExecutor.ts";
 import {
   CommandId,
   latestProviderTurnForAttempt,
@@ -25,9 +28,9 @@ import * as RuntimePolicy from "./RuntimePolicy.ts";
 import { forkParked } from "../serverActivation.ts";
 import { retryObservation, reconcileProviderTurn } from "./ProviderObservation.ts";
 
-/** A running reply must be bound to a live native turn. */
-export function needsLivenessCheck(run: OrchestrationV2Run): boolean {
-  return run.status === "running";
+/** Scheduled recovery is an intentional absence of a live turn. */
+export function needsLivenessCheck(run: OrchestrationV2Run, pendingRecovery = false): boolean {
+  return run.status === "running" && !pendingRecovery;
 }
 
 export function isOrphanedProviderTurn(
@@ -60,6 +63,8 @@ export const layer = Layer.effect(
   RunLivenessService,
   Effect.gen(function* () {
     const projections = yield* ProjectionStore.ProjectionStoreV2;
+    const outbox = yield* EffectOutboxV2;
+    const threadCommands = yield* ThreadCommandExecutor;
     const sessions = yield* ProviderSessionManager.ProviderSessionManagerV2;
     const execution = yield* RunExecutionService.RunExecutionServiceV2;
     const sink = yield* EventSink.EventSinkV2;
@@ -163,7 +168,9 @@ export const layer = Layer.effect(
               ),
             );
           }
-          for (const run of state.runs.filter(needsLivenessCheck)) {
+          for (const run of state.runs) {
+            if (!needsLivenessCheck(run, yield* hasPendingRunRecovery(run, state.attempts, outbox)))
+              continue;
             const attempt = state.attempts.find((attempt) => attempt.id === run.activeAttemptId);
             if (attempt === undefined) continue;
             const boundTurn = latestProviderTurnForAttempt(state.providerTurns, attempt.id);
@@ -208,6 +215,16 @@ export const layer = Layer.effect(
               yield* execution.stopObserving(run.id, attempt.id);
             yield* execution.startRootRun({
               observeOnly: true,
+              recoveryControls: {
+                read: () =>
+                  readRunRecoveryContext(projections, {
+                    threadId,
+                    runId: run.id,
+                    userMessageId: run.userMessageId,
+                    attemptId: attempt.id,
+                  }),
+                withLock: threadCommands.withLock,
+              },
               commandId: CommandId.make(`command:liveness:${attempt.id}`),
               appThread: state.thread,
               run,
