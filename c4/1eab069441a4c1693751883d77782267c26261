@@ -1,0 +1,35 @@
+src/renderer/features/local-conversation/projection/build-turn-render-model.node.test.ts
+  s_623cc4150dd212::t_2a0a83a088aee3 1486-1535
+  s_623cc4150dd212::t_10901239b1ffe8 1536-1539
+src/renderer/features/local-conversation/thread-stage-types.ts
+  s_623cc4150dd212::t_c5110c99e09104 671-672,678-679
+src/renderer/features/local-conversation/view/shared/assistant-message-actions.tsx
+  s_623cc4150dd212::t_820b5a1aad6c46 94
+docs/product-specs/codex-thread-transcript-behavior.md
+  s_623cc4150dd212::t_332404722ce19f 494
+  s_623cc4150dd212::t_10d2541fdfa1bb 497
+src/renderer/features/local-conversation/view/blocks/local-conversation-block-leaves.tsx
+  s_623cc4150dd212::t_0be2a562196bda 1124,1165
+src/renderer/features/local-conversation/view/shared/assistant-message-actions.browser.test.tsx
+  s_623cc4150dd212::t_ee5902297cc05f 1-74
+src/renderer/features/local-conversation/projection/build-turn-view-model.ts
+  s_623cc4150dd212::t_ea50e4b2ae91db 57-58,81,84-90,212-213,238-240,325,329-332,403,540,670-673
+src/renderer/features/local-conversation/projection/build-turn-render-model.ts
+  s_623cc4150dd212::t_809996e61b8f6f 448
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c41eab069441a4c1693751883d77782267c26261",
+  "prompts": {},
+  "sessions": {
+    "s_623cc4150dd212": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e6f5fa0f-e628-4229-a0a3-5f544be52c08",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
