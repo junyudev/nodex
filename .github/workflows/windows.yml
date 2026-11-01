@@ -6,6 +6,10 @@ on:
       - "codex/windows-**"
   pull_request:
     paths:
+      - ".gitattributes"
+      - ".node-version"
+      - ".cargo/**"
+      - "agent-skills/**"
       - "crates/**"
       - "Cargo.*"
       - "rust-toolchain.toml"
