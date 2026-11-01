@@ -1,0 +1,749 @@
+packages/agent-runtime/vendor/effect-codex-app-server/src/protocol.test.ts
+  s_b131a2496677d4::t_496807e2729f8d 1-74
+src/shared/ipc-endpoint-policy.ts
+  s_ba8680edf12f2c::t_8eb2114493f984 292,756
+packages/agent-runtime/src/orchestration-v2/RuntimeRequestService.ts
+  s_df8eaebacb15fb::t_df73bad131accd 2-5,11-13,36,63-65,78-80,86,111,122-136,146-217
+src/renderer/lib/project-agent-dock-model.ts
+  s_e28d97ebe07404::t_51572d4d62ce9e 15,110,120-121
+packages/agent-runtime/src/mcp/delegatedTaskModes.test.ts
+  s_317228772f9f07::t_a47794626fe376 6-8,29-32
+  s_317228772f9f07::t_e536fd48a511dd 1-5,9-28,33-36
+docs/adr/0055-acp-session-runtime-boundary.md
+  s_317228772f9f07::t_d89cde0b65e33f 10-12
+src/renderer/features/local-conversation/agent-runtime-transcript-projection.ts
+  s_317228772f9f07::t_2498e8cd947436 871,886,888-893,980-981,995-996,1053-1071,1082,1111
+  s_317228772f9f07::t_7837c805a7df5d 1,887,1072-1080,1083,1098,1100-1101,1103-1110
+  s_317228772f9f07::t_43485d855f1048 41
+  s_317228772f9f07::t_10f61550c9f8d3 1084-1097,1099,1102
+  s_317228772f9f07::t_26c760bacde655 376-378,867-870,872-876,884-885
+  s_317228772f9f07::t_53e312ba08a9ab 1081
+packages/agent-runtime/src/mcp/OrchestratorMcpService.ts
+  s_95128a5d45f083::t_99cd876cb7083d 1656-1657,1659-1663
+  s_c308b770a17d41::t_23b6e3686e3dde 1561,1563
+  s_95128a5d45f083::t_17308b8594f407 36,71-74,82,101,165,597,605,640-647,834,1390-1396,1422,1447,1461,1520,1536,1542-1543,1557,1559-1560,1655
+  s_5cd527886c6c64::t_933ae65fd91f6d 1562,1564-1567,1666-1667,1669-1670,1674,1715,1719
+  s_95128a5d45f083::t_d2bf311aee278e 1658
+  s_95128a5d45f083::t_46025df01c4ffd 1568,1664-1665
+src/renderer/features/inbox/inbox-presentation.ts
+  s_e28d97ebe07404::t_f9a747b54fe275 527-528,534-536
+packages/agent-runtime/src/orchestration-v2/ProviderSessionManager.test.ts
+  s_4c9e60661f96d9::t_3b30faadd35f0c 5637-5782
+docs/product-specs/agent-backend-behavior.md
+  s_317228772f9f07::t_36f23d89404d3b 30-32
+src/renderer/features/local-conversation/view/shared/delegated-task-row.tsx
+  s_317228772f9f07::t_9b81caafd5bc33 3-8
+  s_317228772f9f07::t_26c760bacde655 183
+src/renderer/features/local-conversation/thread-stage-types.ts
+  s_e28d97ebe07404::t_64472ad7500e24 299-301,428-434,1307-1309
+src/renderer/lib/thread-status-display.ts
+  s_e28d97ebe07404::t_a89a9aff50a9d4 5,18
+packages/agent-runtime/src/mcp/TaskToolkit.integration.test.ts
+  s_95128a5d45f083::t_b7aa6f8ce9900d 24,128,247,595,758-761,763,765
+  s_95128a5d45f083::t_bcce44c2d24736 762,764
+packages/agent-runtime/src/orchestration-v2/ProviderEventIngestor.ts
+  s_4c9e60661f96d9::t_30b033083fef14 378,384,393-401,648,775,836,847,855
+src/renderer/lib/agent-runtime-settings.ts
+  s_e28d97ebe07404::t_d0eef9023be0d1 1-21
+src/shared/agent-runtime-settings.ts
+  s_317228772f9f07::t_020c1863f1d202 1-9
+  s_317228772f9f07::t_7974050ec4c50f 10,12,14
+  s_317228772f9f07::t_1456fbfd72b323 11,13
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/opencode_child_approval/input.ts
+  s_12dc3032ee94b0::t_a12a13e0651af7 7
+src/main/codex-application/CodexThreadHandoffRuntime.node.test.ts
+  s_df8eaebacb15fb::t_6eb41fb0055a97 125,229,232,859-876
+  s_df8eaebacb15fb::t_f0e35bb5ecfbef 877-878
+src/renderer/components/workbench/codex-sidebar.tsx
+  s_e28d97ebe07404::t_9089ca92b9266b 79-82,1791,1830-1832
+  s_e28d97ebe07404::t_65f6600eef1f39 78
+src/renderer/features/local-conversation/agent-runtime-stage-actions.node.test.ts
+  s_df8eaebacb15fb::t_250897e31fdbb9 859-914
+packages/agent-runtime/src/orchestration-v2/Adapters/CodexAdapterV2.ts
+  s_df8eaebacb15fb::t_9e16f157dffbf5 66-69,114-115,175-179,181-183,196,8053,8513-8535
+  s_317228772f9f07::t_e2f7c2c1e40e4c 707-729,737-738,747-752,1163,1255-1258,1261-1362,2224-2247,2679,2686,3301,3303,4796-4992,5702-5709,6221-6245,6254-6268,6277-6285,6287-6289,6296-6297,6302-6320,6379-6391,6400-6416,6714-6717,7034,7194-7197,8536
+  s_317228772f9f07::t_c74f815563a661 327
+src/main/app-tools/SessionControlAppTools.ts
+  s_df8eaebacb15fb::t_c89e493b46f5a0 24,86-90,99-101,153,178
+src/shared/agent-runtime-settings.node.test.ts
+  s_317228772f9f07::t_2752cd4ac4072b 1-7
+src/shared/codex-conversation-state/codex-conversation-state.ts
+  s_317228772f9f07::t_26c760bacde655 452-453
+src/main/codex/codex-thread-notification-handler.ts
+  s_4514d537919adb::t_38c514685ee5f8 10,18-19,99-101,117-120,152,223-234
+  s_7868a9bfa6f4d4::t_a164be94e6414f 235-238
+packages/agent-runtime/vendor/provider-opencode/src/server/v2/adapter.ts
+  s_12dc3032ee94b0::t_d0bba85d9fe4af 13-14,54,78,110,368-369,428,431,443-451,476-516,593-600,903-910,921,981-982,1572,1767-1768,1918,2012-2028,2046,2084-2101,2123-2151,2198-2203,2217-2235,2238-2244,2720,3130-3199,3889-3893,3933,3969,4083-4084,4092,4226-4246,4331,4336,4349,4351-4366,4368-4422,4581
+CONTEXT.md
+  s_317228772f9f07::t_275b4d1ef7a177 19-20,804
+  s_317228772f9f07::t_a65d2ef56d7917 91-98
+packages/agent-runtime/src/orchestration-v2/Adapters/CodexAdapterV2.testkit.ts
+  s_8f42fc760f1115::t_4b997ec59d1687 273,298-304,355-388,390,398
+src/main/codex/codex-thread-handoff-journal.ts
+  s_df8eaebacb15fb::t_0400b5e2452cdb 1-2,95,219-224
+packages/agent-runtime/src/provider/CodexMcpElicitation.test.ts
+  s_df8eaebacb15fb::t_eaab11c96ccf4c 4-5,105-106,109-164,176
+  s_df8eaebacb15fb::t_cb3ee6c421e0a9 107-108,165-175,177-178
+packages/agent-runtime/src/orchestration-v2/DispatchModeLimit.ts
+  s_317228772f9f07::t_2228de611e95ae 1,6,18
+packages/agent-runtime/src/orchestration-v2/RuntimeApprovals.test.ts
+  s_df8eaebacb15fb::t_8cf29233b4f021 1-697
+packages/agent-runtime/vendor/provider-acp/src/server/clientPolicy.ts
+  s_df8eaebacb15fb::t_de5d8eda57a17d 1-317
+packages/agent-runtime/src/orchestration-v2/ProviderRuntimeRecoveryService.ts
+  s_4c9e60661f96d9::t_cf7910d8ec5e35 319-354
+packages/agent-runtime/src/mcp/McpInvocationContext.test.ts
+  s_95128a5d45f083::t_a37b57af35f340 120-129
+  s_95128a5d45f083::t_3b210ad5de8fa7 99-119
+src/renderer/components/workbench/workbench-agent-runtime-panels.test.tsx
+  s_e28d97ebe07404::t_0ef334930c80ef 1-3,17-18,351-386
+  s_e28d97ebe07404::t_9b01ec56d652c1 387
+packages/agent-runtime/src/mcp/toolkits/task/tools.ts
+  s_95128a5d45f083::t_aadd8f85fb2afa 250
+packages/agent-runtime/src/nodex/SessionQueue.ts
+  s_df8eaebacb15fb::t_7e8aa4e1a88738 6-9,21,102-106
+packages/agent-runtime/src/nodex/ProviderRuntimeModes.test.ts
+  s_7868a9bfa6f4d4::t_c753b6503a1a31 1-28
+docs/adr/0068-agent-runtime-execution-authority.md
+  s_317228772f9f07::t_8372fa05e09ac1 7,43-45
+src/main/app-tools/RuntimeSessionMessageIntake.ts
+  s_317228772f9f07::t_ac98f1c3504d3d 19,70
+src/main/host-runtime/ThreadExecution.ts
+  s_df8eaebacb15fb::t_64e41b6069e1a7 1,51,137,141-142
+packages/agent-runtime/src/orchestration-v2/RuntimePolicy.ts
+  s_4c9e60661f96d9::t_8e20be27401194 3-4,17,65,71-84,86-88,92,97,100-104,131
+  s_317228772f9f07::t_1456fbfd72b323 2,85
+src/main/ipc/handlers/ApplicationSettingsIpc.ts
+  s_7868a9bfa6f4d4::t_32835bca327419 1,85,624-638,640,642
+  s_7868a9bfa6f4d4::t_42cc143c54ccad 639,641
+src/shared/nodex-app-tools/session-launch-schema.ts
+  s_317228772f9f07::t_ac98f1c3504d3d 3,58
+src/renderer/features/local-conversation/agent-approval.node.test.ts
+  s_317228772f9f07::t_547bc1d4679267 1-36,38-39,41,43-44,49-51,63-66,78-98,100-102,104-105,113,115-116,120-121,123-143,145-147
+  s_317228772f9f07::t_76d6fae9fe4807 37,40,45-46,67-77
+  s_317228772f9f07::t_6e23a261b5c245 99,103,106-112,114,117-119,122,144
+  s_317228772f9f07::t_15274abbddb168 42,47-48
+  s_317228772f9f07::t_0a1e0269a4c569 52-62
+packages/agent-runtime/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
+  s_df8eaebacb15fb::t_90006611f4f6c0 48,384,396,398,407,419,427,438-440,451,453,468-469,476,490,498-518,521-547,550-556,1017-1018,1024,1037,1043,2362,2434-2435,2630-2649,2652-2654,2656,2658-2671,2673-2686,2689-2701,2704-2713,2715-2725,2728-2734,2737-2742,2744-2751,2753-2754,2757-2765,2768-2775,2778-2780,2782-2791,2794-2803,2805-2816,2819-2826,2828-2834,2836-2849,2851-2864,2867-2881,2884-2888,2890-2891,2893-2895,2897,2899-2900,2902-2912,2914-2925,2928-2932,2935-2936,2938-2945,2948-2955,2957-2970,2972-2979,2982-2989,2992,2994-2995,2997-3002,3004-3019,3021-3032,3035-3045,3048-3060,3063-3065,3067-3077,3299,3309-3314,3316,15219-15224,15229-15231,15233,15235-15237,15239-15252,15254-15258
+  s_317228772f9f07::t_ac98f1c3504d3d 296-299,369-383,385-395,397,399-406,408-418,420-426,428-437,441-450,452,454-467,470-475,477-489,491-497,519-520,548-549,557-558,639,651,660,720,931,1015-1016,1020-1023,1025,1029,1035-1036,1038-1039,1041-1042,1044-1049,2430-2433,2460-2462,2480,2490,2526,2534,2567-2568,2610-2611,2650-2651,2655,2657,2672,2687-2688,2702-2703,2714,2726-2727,2735-2736,2743,2752,2755-2756,2766-2767,2776-2777,2781,2792-2793,2804,2817-2818,2827,2835,2850,2865-2866,2882-2883,2889,2892,2896,2898,2901,2913,2926-2927,2933-2934,2937,2946-2947,2956,2971,2980-2981,2990-2991,2993,2996,3003,3020,3033-3034,3046-3047,3061-3062,3066,3078,3315,15225-15228,15232,15234,15238,15253
+  s_df8eaebacb15fb::t_ca737a319adb60 3079
+docs/CONFIGURATION.md
+  s_317228772f9f07::t_36f23d89404d3b 256-257
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/opencode2_fork/opencode_transcript.ndjson
+  s_df8eaebacb15fb::t_1ffff312c08dd9 50
+packages/agent-runtime/vendor/contracts/src/server.ts
+  s_317228772f9f07::t_9bd74255950f77 262-263
+packages/agent-runtime/src/orchestration-v2/ProviderTurnControlService.test.ts
+  s_a61507bb97d204::t_de058e1a3025d1 272
+src/renderer/features/local-conversation/agent-runtime-composer-choices.ts
+  s_95128a5d45f083::t_df67ee50fd3809 1-2,18,42
+src/main/app-tools/session-message-policy.ts
+  s_317228772f9f07::t_ac98f1c3504d3d 2-3,9,87
+src/renderer/lib/session-execution.test.ts
+  s_e28d97ebe07404::t_586ebf7b83f37b 174-179
+packages/agent-runtime/src/orchestration-v2/testkit/OrchestratorScenario.ts
+  s_4c9e60661f96d9::t_6ae16c0bdaed3f 161
+src/renderer/features/local-conversation/agent-runtime-conversation-owner.node.test.ts
+  s_317228772f9f07::t_de867fcb4ee9ca 2113-2114,2116-2119,3331-3332,3334-3391
+  s_317228772f9f07::t_c14e4a8759383f 3333
+src/main/app-tools/NativeSessionPermissionFacts.ts
+  s_317228772f9f07::t_ac98f1c3504d3d 63-64
+docs/product-specs/index.md
+  s_317228772f9f07::t_f3e8290591caef 36
+packages/agent-runtime/src/orchestration-v2/Adapters/AcpAdapterV2.test.ts
+  s_317228772f9f07::t_ac98f1c3504d3d 606-607,3467-3494,3505-3508,3511-3513,3519-3520,3523-3531,3534-3538,3540,3544-3547,3550,3574-3577,3579-3581,3583-3591,13967-13979,13982-14087,14089-14090,14092-14188,14190,14194,14196-14211,14216,14218-14305,14308-14348,14354,14358-14359,14363,14368,14378,14388,14395,14406
+  s_df8eaebacb15fb::t_62e477d7137e2b 31,3496-3504,3509-3510,3514-3518,3521-3522,3532-3533,3539,3541-3543,3548-3549,3551-3555,3557-3564,3566-3573,3578,13980-13981,14088,14091,14189,14191-14193,14195,14212-14215,14217,14306-14307,14349-14353,14355-14357,14360-14362,14364-14367,14369-14377,14379-14387,14389-14394,14396-14405,14407-14411
+src/renderer/features/local-conversation/view/shared/full-access-permission-confirmation-dialog.tsx
+  s_317228772f9f07::t_c880d6c895e531 1-112
+packages/agent-runtime/src/orchestration-v2/EventSink.ts
+  s_4c9e60661f96d9::t_c0c58a311d54a0 3,76,81,87,109,265-266,271,276-290,292-313,315-325,474-475,532-533,597-598
+packages/agent-runtime/vendor/contracts/src/orchestrationV2.ts
+  s_df8eaebacb15fb::t_01578e7042654f 59,209-212,1244-1249,1260-1261,1843-1848,2079,2702-2707,2980,3318-3323,3518-3521
+src/main/settings/application-settings-persistence.ts
+  s_317228772f9f07::t_2752cd4ac4072b 3
+  s_317228772f9f07::t_7974050ec4c50f 1409
+  s_317228772f9f07::t_73bf7424ac9995 2,4-5,129,1403-1408,1410-1422
+  s_317228772f9f07::t_4ed1585d9786e9 1,1423
+packages/agent-runtime/src/mcp/delegatedTaskModes.ts
+  s_95128a5d45f083::t_2be8d481cd3b8c 1,3-47,49-66
+  s_317228772f9f07::t_1456fbfd72b323 2,48
+packages/agent-runtime/src/nodex/Interface.ts
+  s_317228772f9f07::t_ac98f1c3504d3d 229-230
+  s_df8eaebacb15fb::t_609373f3af3d22 250,615
+src/main/agent-runtime/AgentRuntimeThreadExecution.node.test.ts
+  s_df8eaebacb15fb::t_9eaf44966d4b31 468-475,477-480
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/opencode_child_approval/output.ts
+  s_12dc3032ee94b0::t_d94e610af4a58b 8-9,24-25
+packages/agent-runtime/src/mcp/McpSessionRegistry.test.ts
+  s_df8eaebacb15fb::t_12338dbcc3398f 1-31
+docs/product-specs/desktop-notification-behavior.md
+  s_317228772f9f07::t_8f8a6ed8842ff7 22-25,292-295
+  s_317228772f9f07::t_275b4d1ef7a177 15
+src/renderer/features/local-conversation/view/composer/local-conversation-thread-composer.tsx
+  s_317228772f9f07::t_1e36483bf17d84 1-2
+  s_317228772f9f07::t_c11135118cf861 203,1508-1512,2538,2706,3781,3920-3934,4275-4280,4282-4335,4353
+src/renderer/features/local-conversation/agent-runtime-transcript-projection.node.test.ts
+  s_317228772f9f07::t_29ab85837cd96e 698-723,1340-1342,1368
+  s_317228772f9f07::t_14709e0370e093 1414-1427,1429,1431-1432,1435-1436
+  s_317228772f9f07::t_ccd7b14c341e1b 1374
+  s_317228772f9f07::t_652ad7cd28e2ea 1332-1339,1343-1367,1369-1373,1375-1413,1428,1430,1433-1434,1437
+src/main/agent-runtime/AgentRuntimeThreadExecution.ts
+  s_df8eaebacb15fb::t_70cfe267c39eba 1,262,270
+packages/agent-runtime/src/orchestration-v2/ExecutionActivity.test.ts
+  s_4c9e60661f96d9::t_089d10ba0a28d0 238,785-836
+  s_4c9e60661f96d9::t_d6cb199a0848aa 837-838
+packages/agent-runtime/src/orchestration-v2/Adapters/CodexAdapterV2.test.ts
+  s_317228772f9f07::t_ac98f1c3504d3d 17,53,142,157,449-456,458-467,471-475,2128,2133-2135,2253-2681,2683-2687,2689-2695,2697-2702,2704-2706,2708-2719,2722-2729,2733-2737,2741-2754,2756-2768,2770-2777,2779-2790,2792-2796,2798-2817,2824-2829,2846-2853,2857,2859-2863,2865-2871,2874-2878,2880-2881,2883-2886,2888-2890,2892-2908,2913-2944,2946-2947,2950-2953,10999,11002,11007,11025,11029,11081,11084,11098,11109
+  s_317228772f9f07::t_45be8aee0e399b 457,468
+  s_df8eaebacb15fb::t_947100da6719d9 469-470,2682,2688,2696,2703,2707,2720-2721,2730-2732,2738-2740,2755,2769,2778,2791,2797,2818-2823,2830-2845,2854-2856,2858,2864,2872-2873,2879,2882,2887,2891,2909-2912,2945,2948-2949,10981-10990,10997-10998,11000-11001,11003-11006,11008-11024,11026-11028,11033,11040,11078-11080,11082-11083,11085-11097,11100-11101,11108
+  s_df8eaebacb15fb::t_969cfc830aee51 2954
+packages/agent-runtime/src/nodex/HostInstructions.test.ts
+  s_317228772f9f07::t_ac98f1c3504d3d 19-49
+  s_4514d537919adb::t_103637e093b786 52-55,57-64,68-80
+  s_4514d537919adb::t_a7b58be1cf403a 16-18
+  s_4514d537919adb::t_4bc65c5eef8074 50-51
+packages/agent-runtime/src/nodex/NativeImport.ts
+  s_9e22704774f608::t_f85d65f39efbd8 13-14,60,169
+packages/agent-runtime/vendor/provider-core/src/server/mcpSession.ts
+  s_df8eaebacb15fb::t_eaa44c558be90b 17-18
+src/main/codex-application/CodexThreadHandoffRuntime.ts
+  s_df8eaebacb15fb::t_944ba144513bb0 1,44,877-882,1190
+src/renderer/features/local-conversation/agent-runtime-conversation-owner.ts
+  s_317228772f9f07::t_10f61550c9f8d3 2162-2164
+  s_317228772f9f07::t_5da823420cc95a 1371,2177
+  s_317228772f9f07::t_8764442c41479c 1-5,108-109,130-132,283-288,335-343,505-507,734-735,1409-1411,1849-1850,2152-2161,2165,2176,2192-2195
+  s_317228772f9f07::t_cb7aab7e80b50c 2166-2175
+packages/agent-runtime/vendor/provider-opencode/src/server/OpenCodeRuntime.ts
+  s_12dc3032ee94b0::t_619fc93dfa208e 4,517-527
+  s_12dc3032ee94b0::t_db3f6597f1f918 528-529
+packages/agent-runtime/vendor/provider-acp/src/server/runtimeModel.test.ts
+  s_3500ddfb1933ec::t_023ad20a4f5df6 14,539-571
+  s_3500ddfb1933ec::t_0fbf76c4314a61 572
+src/renderer/features/local-conversation/view/shared/permission-mode-dropdown.tsx
+  s_317228772f9f07::t_c34ac7b70f5161 1-25,27,30-42,44,46-110,112-132,134-148,151-152,154-188
+  s_317228772f9f07::t_d5ee66ebe8b6fd 26,28-29,153
+  s_317228772f9f07::t_907f55d75a39dc 43,45,111
+  s_317228772f9f07::t_fd128e601dc168 133,149-150
+docs/product-specs/nodex-product-spec.md
+  s_317228772f9f07::t_275b4d1ef7a177 40-42,201
+packages/agent-runtime/vendor/provider-acp/src/server/adapter.ts
+  s_df8eaebacb15fb::t_bf8d2b39ecb048 24-26,79-80,93-100,300-306,310,585,697,1110-1126,1154-1173,1178-1179,1530-1542,1631-1640,1831-1832,2065-2079,5457-5618,5812-5830,5838-5840,5850-5853,6298-6337,6352-6357,6458,6460-6467,6488-6494,6497-6499,6501-6606,6609-6611,6626-6635,6638-6666,6669,6673-6703,6753-6777,6798-6799,6805,6808-6817,7036,7382,7411,7732-7734,7748,8147-8151,8292-8295,8695-8723
+src/shared/schemas/agent-runtime-api.ts
+  s_df8eaebacb15fb::t_6fecf5b8e37130 3,22-23,40-44,93,127-129,135
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/subagent_v2_approval/codex_transcript.ndjson
+  s_8f42fc760f1115::t_0716b72742f17f 10
+packages/agent-runtime/src/orchestration-v2/EffectWorker.ts
+  s_df8eaebacb15fb::t_851339d737fd88 479-484,495
+packages/agent-runtime/src/nodex/SessionStop.ts
+  s_df8eaebacb15fb::t_d6b802a3f463df 3,15,19-29
+packages/agent-runtime/src/nodex/RuntimeMessageReceipts.test.ts
+  s_9e22704774f608::t_a896d99627b3e3 134,143
+packages/agent-runtime/vendor/provider-opencode/src/server/adapter.ts
+  s_12dc3032ee94b0::t_e51a524814fb81 35,129,402-403,429-431,444,446-448,569-712,965,1450-1453,1475-1476,1831-1843,1846-1847,1849-1858,1865-1867,1879-1890,1902-1904,1932,1964,1990,2062-2074,2096-2107,2932-2933,2949-2951,2957-2986,3184,3191,3194,3222-3229,3255-3256,3291,3588-3591,3607-3613,3666-3703,3711,3720-3730,3805,3869-3876
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/subagent_v2_approval/codex_output.ts
+  s_317228772f9f07::t_ac98f1c3504d3d 12,14-15,34-82
+packages/agent-runtime/src/orchestration-v2/ProjectionControlReads.test.ts
+  s_b131a2496677d4::t_5efa1b394827ca 31,847
+src/renderer/components/workbench/workbench-settings-search-catalog.ts
+  s_317228772f9f07::t_9b81caafd5bc33 377-383
+  s_317228772f9f07::t_46edd4629ab20a 374-376,384-385
+  s_317228772f9f07::t_d694c4272e6706 373
+src/renderer/lib/page-chat-activity-presentation.node.test.ts
+  s_e28d97ebe07404::t_6b2612b96913c9 107-110
+src/renderer/components/workbench/agent-settings-page.tsx
+  s_317228772f9f07::t_82670b69ef3a33 27
+  s_317228772f9f07::t_539915bc13ed64 5-6,10,24-26,28-31
+src/renderer/features/local-conversation/agent-approval-runtime.node.test.ts
+  s_317228772f9f07::t_cb542cc91c834e 2,59,63,65-84
+  s_df8eaebacb15fb::t_325c4e95bb485d 32-55
+  s_317228772f9f07::t_0bd85b41057742 1,3-31,56-58,60-62,64
+packages/agent-runtime/vendor/provider-opencode/src/server/adapter.test.ts
+  s_12dc3032ee94b0::t_ed65775bbaf5cb 45-47,122,194-199,294-320,322-466,780,933-941,955-983,985-1030,1032-1049,1053-1057,1084-1194,3007-3019,3102-3400
+docs/adr/0074-content-access-and-native-execution-permissions.md
+  s_317228772f9f07::t_1f8fbae785df3a 1-57
+src/main/app-tools/session-message-policy.node.test.ts
+  s_317228772f9f07::t_0562fec2ecdce1 16
+packages/agent-runtime/src/nodex/Instructions.ts
+  s_4514d537919adb::t_40429cd208fae2 8-9
+src/renderer/lib/agent-runtime-mode.ts
+  s_317228772f9f07::t_94b6c7867256ed 1-3
+  s_317228772f9f07::t_d5ee66ebe8b6fd 4-25,27-33
+  s_317228772f9f07::t_1456fbfd72b323 26
+docs/adr/0067-inbox-entries-and-dispatch-proposals.md
+  s_317228772f9f07::t_d89cde0b65e33f 5
+src/renderer/features/inbox/inbox-triage.test.tsx
+  s_df8eaebacb15fb::t_25e8e82f5f11c4 985
+packages/agent-runtime/src/orchestration-v2/Adapters/OpenCode2AdapterV2.test.ts
+  s_12dc3032ee94b0::t_7b95d5c885518a 52,96-101,223,250,274-294,332,342-349,364,373,377,3527,3629-3632,4575-4582,4686-4693,5464-5573,5576-5641,5643-5699,5701-5757,5759-5764,5766-5794,5796-5806,5808-5836,5838
+  s_317228772f9f07::t_ac98f1c3504d3d 369-372,374-376,378-383,836-861,2757,2759-2762,2764,2798,2800-2803,2806,2848,2885,2887-2890,2892,2948,2956,2961-2964,2966,3501,3520,3522-3525,5575,5642,5700,5758,5765,5795,5807,5837
+  s_12dc3032ee94b0::t_01fd675987b1a4 5574
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/opencode2_switch/opencode_transcript.ndjson
+  s_df8eaebacb15fb::t_775d670672e647 54
+packages/agent-runtime/src/nodex/AcpManagementContract.ts
+  s_9e22704774f608::t_b6156bbc618066 162
+packages/agent-runtime/src/nodex/SessionQueue.test.ts
+  s_df8eaebacb15fb::t_08d7d637e0b058 297-298
+  s_df8eaebacb15fb::t_d7f3b20589864c 289-293,295
+  s_df8eaebacb15fb::t_d0c2ae1a4a0c25 277-284,286-288,294,296,299-303
+  s_df8eaebacb15fb::t_e4a3d2507d6a17 285,316,338-340,342,349,355
+  s_df8eaebacb15fb::t_83e05df0ccc465 5,12-14,30-31,304-315,317-337,341,343-348,350-354,356-373
+src/main/app-tools/RuntimeSessionCommands.ts
+  s_7868a9bfa6f4d4::t_9d33bd9f5cf19d 188
+  s_317228772f9f07::t_ac98f1c3504d3d 1,118,120-123,156-159,184,186-187,189
+src/main/app-tools/SessionMessageIntake.ts
+  s_317228772f9f07::t_ac98f1c3504d3d 104,204-205,207,227,229-230,232
+  s_7868a9bfa6f4d4::t_fd55a785f209a7 206,231
+src/shared/codex-thread-notification.test.ts
+  s_4514d537919adb::t_f7ec91467aa087 3,10-11,49,53-54,58,65-66
+  s_317228772f9f07::t_ac98f1c3504d3d 50-52,55-57,59-64
+packages/agent-runtime/vendor/effect-codex-app-server/src/protocol.ts
+  s_039f18d9f057b1::t_cb2cc15fc450cc 6,199,395,404-409,411-412
+packages/agent-runtime/vendor/provider-core/src/server/ProviderAdapter.ts
+  s_df8eaebacb15fb::t_8aa93c52a64c8d 470-472,608-611
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/subagent_v2_approval/input.ts
+  s_317228772f9f07::t_ac98f1c3504d3d 10
+  s_8f42fc760f1115::t_fbe015b7521cd9 7
+packages/agent-runtime/src/orchestration-v2/ExecutionActivity.ts
+  s_317228772f9f07::t_ac98f1c3504d3d 1,11,49-50,147-149,155-156,159,163,166,169,177,180,184,195-196,200,208,212-214,252-262,303-307
+src/main/app-tools/RuntimeSessionQuestions.node.test.ts
+  s_7868a9bfa6f4d4::t_796ff51aed94dc 109
+  s_317228772f9f07::t_0562fec2ecdce1 108,110,147
+packages/agent-runtime/vendor/contracts/src/orchestratorMcp.ts
+  s_317228772f9f07::t_a85b36dda75a27 133-135,194-199,259
+packages/agent-runtime/src/nodex/AcpManagement.ts
+  s_9e22704774f608::t_76c4ba8a470b44 1,104,826
+src/renderer/features/local-conversation/agent-runtime-conversation-adapter.test.tsx
+  s_e28d97ebe07404::t_a54c7ba72b9abc 55-61,64-68,507-511,519,2763-3020
+packages/agent-runtime/src/orchestration-v2/Orchestrator.ts
+  s_df8eaebacb15fb::t_325c4e95bb485d 8184-8192,8206
+  s_df8eaebacb15fb::t_a65561e489cea0 1,502,2586,3412-3413,3462-3463,7953,7955-7957,7963-7989,8019-8024,8034-8062,8133-8134,8323-8324,8329-8360,10228-10313,10704,10789,12247,12575-12576,12584-12586,12588-12595,12625
+src/renderer/lib/sidebar-thread-row-live-view.ts
+  s_e28d97ebe07404::t_ee8521395498c9 22,45,66-70
+src/main/app-tools/SessionMessageIntake.node.test.ts
+  s_7868a9bfa6f4d4::t_3645e0d2a1e65b 29,166-167,391-414
+packages/agent-runtime/src/orchestration-v2/EffectOutbox.ts
+  s_df8eaebacb15fb::t_09cdb6e57cf8b7 7,92-94
+packages/agent-runtime/src/mcp/TaskQuestions.test.ts
+  s_95128a5d45f083::t_4d018e475c4f26 448-454,459-463,470-473,569-611,618-629,631-648,652-654,656-661,663-666,687-694,705-707,714-716,730-740,742,761-769,771-782,786-791,797-847,854,884,900,902
+  s_95128a5d45f083::t_06b2792f9fef78 901
+  s_95128a5d45f083::t_85b2bb91ed6356 19,43-44,145,160,189,455-458,464-469,474-475,477
+  s_95128a5d45f083::t_cb4177e182e920 12-13,31,49-50,614-617,630,649-651,655,662,667-677
+  s_95128a5d45f083::t_edb2b92283b6c8 29
+  s_95128a5d45f083::t_81a249fcc7dccc 560-568,612-613,678-686,695-704,708-713,717-729,741,743-760,770,783-785,792-796,848
+  s_95128a5d45f083::t_488359fecf9b42 849
+src/renderer/components/workbench/project-agent-dock-target-selector.tsx
+  s_b131a2496677d4::t_fa1a11422916da 43,90
+packages/agent-runtime/src/nodex/CodexImportSource.ts
+  s_9e22704774f608::t_3040b27d6c2d6d 11,34
+packages/agent-runtime/src/mcp/McpSessionRegistry.ts
+  s_df8eaebacb15fb::t_b3ed0e50a39312 65,163-165,227-236,238-240,242,244-246
+packages/agent-runtime/src/nodex/NativeImport.test.ts
+  s_7868a9bfa6f4d4::t_c6dcc5a529a710 189,277,303,1344-1363
+packages/agent-runtime/src/orchestration-v2/OpenCode2OrchestratorV2.integration.test.ts
+  s_df8eaebacb15fb::t_9c025cb06d8ac7 80-124,201-205,215,220,223,369,422,451-480,482-510
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/subagent_v2_nested_approval/input.ts
+  s_317228772f9f07::t_ac98f1c3504d3d 10
+  s_8f42fc760f1115::t_ffd92bb01ca661 7
+src/renderer/lib/use-page-chat-activity.ts
+  s_e28d97ebe07404::t_8ce353e20bb1bb 55,64-69
+src/renderer/lib/agent-approval-typing-guard.node.test.ts
+  s_e28d97ebe07404::t_16916847381906 1-44
+packages/agent-runtime/src/orchestration-v2/ProviderSessionManager.ts
+  s_4c9e60661f96d9::t_f80c310b9c4a0b 237,2457,2504-2520,2525-2535,2538,2686
+src/shared/agent-runtime-api.ts
+  s_df8eaebacb15fb::t_84b80a8c209783 9-10,13-14,34,47,118,149-150,160,164,248
+  s_317228772f9f07::t_ac98f1c3504d3d 304-305
+src/renderer/lib/project-agent-dock-model.node.test.ts
+  s_2c9c3d4ca0d7f9::t_0d67187e325fe7 144
+src/main/settings/ApplicationSettings.ts
+  s_ba8680edf12f2c::t_bc5f434b9eaabb 1,84-85,131,169,292,354-355
+  s_ba8680edf12f2c::t_08da7ecd63a59e 356
+src/main/agent-runtime/AgentRuntimeSessionActivity.ts
+  s_317228772f9f07::t_ac98f1c3504d3d 97-98,125-126
+packages/agent-runtime/vendor/provider-acp/src/server/clientPolicy.test.ts
+  s_df8eaebacb15fb::t_77c67cadcd5f06 1-401
+packages/agent-runtime/src/nodex/Service.ts
+  s_df8eaebacb15fb::t_522d57677c7c99 1,164,600-604
+src/main/app-tools/NativeSessionMessageIntake.ts
+  s_317228772f9f07::t_0562fec2ecdce1 207-208
+src/renderer/features/local-conversation/agent-approval-runtime.ts
+  s_317228772f9f07::t_9b81caafd5bc33 30-31
+  s_317228772f9f07::t_601fabcfdc401c 88-94
+  s_317228772f9f07::t_2b371ef9d058d1 1-29,32-87,95-117
+src/shared/ipc-api.ts
+  s_ba8680edf12f2c::t_8822f004357195 1522-1529
+src/renderer/features/local-conversation/view/subagents-panel/subagents-panel.tsx
+  s_e28d97ebe07404::t_0fac744c537eee 78,98-100
+docs/ARCHITECTURE.md
+  s_317228772f9f07::t_36f23d89404d3b 1047-1048
+  s_317228772f9f07::t_275b4d1ef7a177 37-39
+src/main/codex-application/CodexThreadExecution.ts
+  s_df8eaebacb15fb::t_78f0341eca6189 1,76,423-424
+packages/agent-runtime/src/nodex/ProviderRuntimeModes.ts
+  s_7868a9bfa6f4d4::t_c5a290e49b622d 1-15
+src/renderer/features/local-conversation/agent-runtime-conversation-adapter.ts
+  s_317228772f9f07::t_15274abbddb168 391
+  s_df8eaebacb15fb::t_a49eff05924f54 1-6,202,340-342,388-390,392-402,412-417,821-826,970-973,1093,1363,1460-1466,1618-1623,1767-1769
+docs/product-specs/agent-runtime-behavior.md
+  s_317228772f9f07::t_36f23d89404d3b 118-120,131-132
+src/shared/codex-thread-notification.ts
+  s_4514d537919adb::t_38c514685ee5f8 46-54,60,92,206-214,234-240,242
+packages/agent-runtime/vendor/contracts/src/orchestrationV2.test.ts
+  s_1a0c6130ab27a5::t_f368abbfff984c 510,514,518
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/opencode_running_child_approval/output.ts
+  s_12dc3032ee94b0::t_65d453c58a25e0 8-9,24-25
+src/main/agent-runtime/AgentRuntimeSessionActivity.node.test.ts
+  s_7868a9bfa6f4d4::t_c9113cf79294d0 406-436
+src/main/agent-runtime/AgentRuntimeSessionNotifications.ts
+  s_4514d537919adb::t_a7b58be1cf403a 11,39,43-47,50,87-95,101,104,143,149-151
+packages/agent-runtime/src/mcp/threadAccess.ts
+  s_95128a5d45f083::t_2be8d481cd3b8c 15-18,31-46,53,76,92,96-104
+  s_95128a5d45f083::t_9c567c60962ed0 105-109
+  s_95128a5d45f083::t_deffcad1761245 110
+src/main/agent-runtime/AgentRuntimeApplication.node.test.ts
+  s_317228772f9f07::t_0562fec2ecdce1 3242,5113,5167,5193,5196,5672,5683,5700,5709
+  s_9e22704774f608::t_73052f48ae77bc 1-5,1075-1086,1338,6497,6547,6688-6957
+docs/product-specs/codex-thread-transcript-behavior.md
+  s_317228772f9f07::t_f3e8290591caef 9
+src/renderer/features/local-conversation/view/connected-thread-stage.tsx
+  s_e28d97ebe07404::t_8cef302d791656 834-836
+src/main/agent-runtime/AgentRuntimeApplication.ts
+  s_317228772f9f07::t_0562fec2ecdce1 2488-2493,2522,2570,2655-2656,2713,2776-2785,2795-2810,2814,2816,2820,2822,2826,2828,2834
+  s_df8eaebacb15fb::t_d8bc3f351ccce3 1,7-11,23-24,130,342-349,781,850-851,1131-1136,1148,1170,1271-1291,1346,1675,1832,2081,2172-2178,2254-2274,2480,2811-2813,2815,2817-2819,2821,2823-2825,2827,2829-2833,2835-2839,2852-2853,2862,2867,2869-2872,2876-2885,3408-3412,3426
+src/renderer/lib/agent-runtime-mode.node.test.ts
+  s_317228772f9f07::t_e8b0bf0ead9342 30
+  s_317228772f9f07::t_9b81caafd5bc33 22
+  s_317228772f9f07::t_d5ee66ebe8b6fd 1-21,23-29
+docs/product-specs/agent-permissions-behavior.md
+  s_317228772f9f07::t_8c1204d1cdd591 56
+  s_df8eaebacb15fb::t_0354552f5e8331 16,57,89-92,107-109
+  s_317228772f9f07::t_eb41c9680e6582 1-15,17-21,23-55,58-88,93-106,110-142
+  s_317228772f9f07::t_c523fe05f121bf 22
+src/main/app-tools/RuntimeSessionCommands.node.test.ts
+  s_7868a9bfa6f4d4::t_fa4d720b366b76 555,560,841-866
+  s_317228772f9f07::t_0562fec2ecdce1 553-554,556,558-559,561,719
+packages/agent-runtime/src/orchestration-v2/ThreadForkService.test.ts
+  s_4c9e60661f96d9::t_7b786c109a4956 223-237
+docs/product-specs/workbench-shell.md
+  s_317228772f9f07::t_f3e8290591caef 7
+src/main/app-tools/SessionHandoffAppTools.ts
+  s_df8eaebacb15fb::t_c132646ed3b563 10-13,32-33,65-91,116,183
+tests/e2e/claude-backend-lifecycle.spec.ts
+  s_317228772f9f07::t_ac98f1c3504d3d 276,297,317
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/subagent_v2_nested_approval/codex_output.ts
+  s_317228772f9f07::t_ac98f1c3504d3d 12,41-99
+src/renderer/components/workbench/workbench-settings-search-catalog.node.test.ts
+  s_317228772f9f07::t_46edd4629ab20a 149-154
+CHANGELOG.md
+  s_317228772f9f07::t_c523fe05f121bf 9
+src/main/app-tools/SessionHandoffAppTools.node.test.ts
+  s_df8eaebacb15fb::t_33e964f7eda3ea 18-19,47-86,105-159,161-162,260-264,287-301,303-324,326-342,358-366,402-418
+  s_df8eaebacb15fb::t_70325711cfafa2 419-420
+packages/agent-runtime/src/mcp/McpInvocationContext.ts
+  s_95128a5d45f083::t_2be8d481cd3b8c 9-10,57-63
+  s_95128a5d45f083::t_358086b5c0db83 65-66
+  s_317228772f9f07::t_1456fbfd72b323 3,64
+  s_317228772f9f07::t_ec43ce44a05646 67
+packages/agent-runtime/vendor/provider-acp-registry/src/server/driver.ts
+  s_3500ddfb1933ec::t_2977a845e7b255 220
+packages/agent-runtime/vendor/provider-opencode/src/server/status.ts
+  s_12dc3032ee94b0::t_86e7f96da0d5e3 32
+packages/agent-runtime/src/orchestration-v2/Adapters/ClaudeAdapterV2.testkit.ts
+  s_b131a2496677d4::t_ad83bae710feb2 208-209,381-384,1018-1020,1022-1023,1047-1052,1488-1489,1513,1677-1678,1702,1781,1874,1944,2057,2165,2223,2314,2495
+src/renderer/features/inbox/inbox-presentation.node.test.ts
+  s_e28d97ebe07404::t_0e794ab72cabbc 413,422,441-445
+packages/agent-runtime/src/orchestration-v2/runtimeLayer.ts
+  s_4c9e60661f96d9::t_ebb66fdffcaeb1 173-179
+src/renderer/lib/page-chat-activity-presentation.ts
+  s_e28d97ebe07404::t_0aca294b854c37 28,35,41,48,59-60
+src/renderer/features/local-conversation/agent-runtime-subagent-overview.ts
+  s_e28d97ebe07404::t_13610364daf2b6 1-2,34,54-56,80,83-87,248-292
+  s_e28d97ebe07404::t_f1fc6bc790c776 293
+src/renderer/components/workbench/workbench-agent-runtime-panels.tsx
+  s_e28d97ebe07404::t_46bacd4b82caab 1,307-309,503-512
+packages/agent-runtime/README.md
+  s_317228772f9f07::t_36f23d89404d3b 110-114
+src/renderer/features/local-conversation/view/local-conversation-turn-entry.tsx
+  s_317228772f9f07::t_21d2941d7a86dc 1-3,114-118,120-132,241-249,253-263
+  s_317228772f9f07::t_601fabcfdc401c 250-252
+packages/agent-runtime/src/orchestration-v2/testkit/ProviderReplayHarness.ts
+  s_4c9e60661f96d9::t_0a537b67d02211 395-397
+src/main/codex-application/CodexTurnCommands.node.test.ts
+  s_df8eaebacb15fb::t_7703cfa9aab3d7 3780-3796
+packages/agent-runtime/vendor/contracts/src/settings.test.ts
+  s_317228772f9f07::t_a54b96c91fafec 136,141,153
+src/main/ipc/handlers/ApplicationSettingsIpc.test.ts
+  s_317228772f9f07::t_0562fec2ecdce1 133-134,213,215-217,219-222,225,227-230,233,235
+  s_317228772f9f07::t_7c54f843212ae2 214
+  s_7868a9bfa6f4d4::t_cd02a64e63fbfe 218,223-224,226,231-232,234
+packages/agent-runtime/src/nodex/Host.ts
+  s_df8eaebacb15fb::t_d174fab46173ca 1,29-34
+src/renderer/features/local-conversation/view/shared/pending-approval-row.tsx
+  s_317228772f9f07::t_601fabcfdc401c 19,23,47,67-71,149,160
+  s_317228772f9f07::t_ce99b73144ddee 1-18,20-22,24-46,48-66,72-148,150-159,161-180
+packages/agent-runtime/src/orchestration-v2/RuntimePolicy.test.ts
+  s_4c9e60661f96d9::t_b724c625a24159 15,83-87,115,120-123,126,132-186
+  s_4c9e60661f96d9::t_16aeab69ade61e 187
+src/main/app-tools/SessionQuestionIntake.ts
+  s_317228772f9f07::t_ac98f1c3504d3d 92-94,96-97
+  s_7868a9bfa6f4d4::t_c03da4638f3c38 95
+src/main/codex-application/CodexTurnCommands.ts
+  s_df8eaebacb15fb::t_069b0ff494df54 1-2,164-185,187,2130-2142,2186-2214
+src/renderer/features/local-conversation/use-agent-approvals.ts
+  s_e28d97ebe07404::t_ea3980c7a9282e 1-13
+src/renderer/features/local-conversation/conversation-runtime.ts
+  s_4514d537919adb::t_ae7dad8204cb58 99
+src/renderer/features/local-conversation/agent-runtime-subagent-overview.node.test.ts
+  s_e28d97ebe07404::t_c91c5dbc6d5d32 255-266
+packages/agent-runtime/src/orchestration-v2/ProjectionStore.ts
+  s_4c9e60661f96d9::t_9255684d983493 1,408,1265,1268,1713,3050,4194,6691-6694,6838-6841,7491,7501,7518,7525-7527,9874,9957,10242,10249,10259-10261
+docs/adr/0065-native-claude-code-backend.md
+  s_317228772f9f07::t_275b4d1ef7a177 3
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/opencode_running_child_approval/input.ts
+  s_12dc3032ee94b0::t_afbd84c93b82eb 7
+src/main/app-tools/SessionControlAppTools.node.test.ts
+  s_df8eaebacb15fb::t_0459a06e9bc60a 486-502
+src/renderer/lib/session-execution.ts
+  s_e28d97ebe07404::t_badcbe21f878d1 240,244-248,250-252,258
+packages/agent-runtime/vendor/contracts/src/providerPolicy.ts
+  s_df8eaebacb15fb::t_810f65901553d6 25-32,34,36-42,69,77-82
+  s_317228772f9f07::t_018effe94af9fc 83
+src/main/settings/ApplicationSettings.test.ts
+  s_7868a9bfa6f4d4::t_ba139a942d733b 699-705,707,709-726
+  s_317228772f9f07::t_7c54f843212ae2 706,708
+packages/agent-runtime/vendor/provider-opencode/src/server/status.test.ts
+  s_12dc3032ee94b0::t_c53a5d0ba62c0a 542,562
+docs/SECURITY.md
+  s_317228772f9f07::t_36f23d89404d3b 62
+  s_317228772f9f07::t_79095bb4d91342 217-218,238,257-258
+packages/agent-runtime/src/orchestration-v2/DispatchModeLimit.test.ts
+  s_df8eaebacb15fb::t_43b45186b0ece3 156-157,160,163-164,166,168-169,176-179,181-193,195-211,254-255,257
+  s_df8eaebacb15fb::t_8b0eea0c41828a 158-159,161-162,165,167,170-175,180,194,212-253,256,258-287
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/subagent_v2_nested_approval/codex_transcript.ndjson
+  s_8f42fc760f1115::t_beae71f3100fd6 9
+packages/agent-runtime/src/orchestration-v2/RuntimeRequestService.test.ts
+  s_95128a5d45f083::t_305b891391867b 16,56,104,169
+src/shared/schemas/agent-runtime-api.test.ts
+  s_689e251f08b905::t_1eca6e1b0371b8 3-7,30-71
+packages/agent-runtime/src/nodex/contracts.ts
+  s_ba8680edf12f2c::t_2bd966b0def377 7-8,21-22
+packages/agent-runtime/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
+  s_317228772f9f07::t_c74f815563a661 257
+  s_df8eaebacb15fb::t_3ce23698b0ede4 1-3,46-48,97-99,136,1245-1246,1248,1297-1300,1312,1380-1389,1391-1393,1395,1905-1907,1909-1910,1912-1913,1915-1930,1932-1940,1942-1960,1962-1983,1985,3400,3408,3418-3419,3794,3802,9386-9387,10109-10122
+  s_317228772f9f07::t_ac98f1c3504d3d 1390,1908,1931,1941,1961,1984,3246-3248,3375-3377,3380-3399,3401-3407,3409-3417,3420-3574,3767,3792-3793,3795-3801,3803-3847,6069,6073-6080,6109-6114,6116,6136,6141-6143,6163-6177,6299-6315,8573-8598,8635,8653,8657,8739-8806,8808-8811,8817-8942,9199,9234-9239,9241-9242,9313-9316,9325
+packages/agent-runtime/src/nodex/RuntimeMessageReceipts.ts
+  s_9e22704774f608::t_3723c79e3bcb90 9,41
+src/renderer/components/workbench/default-permissions-setting-control.tsx
+  s_317228772f9f07::t_2752cd4ac4072b 2,16
+  s_317228772f9f07::t_17b00ec5ea096f 1,3-15,17-23
+src/renderer/features/local-conversation/view/local-conversation-thread-turn.tsx
+  s_317228772f9f07::t_7407b9c2663889 510-521
+  s_317228772f9f07::t_0ae6bb47d9cbb9 60,250
+src/main/app-tools/RuntimeSessionQuestions.ts
+  s_7868a9bfa6f4d4::t_ef4fa03c919775 22
+  s_317228772f9f07::t_ac98f1c3504d3d 21,23,71
+src/main/agent-runtime/AgentRuntimeSessionNotifications.node.test.ts
+  s_4514d537919adb::t_f7ec91467aa087 209,211-222,227-235,300-301,356,369
+  s_4514d537919adb::t_c24d05ec01ee77 208,210
+  s_317228772f9f07::t_ac98f1c3504d3d 204-207,223-226,239-299
+src/main/codex/codex-thread-notification-handler.test.ts
+  s_4514d537919adb::t_2347be31116689 129
+  s_4514d537919adb::t_f7ec91467aa087 98-128,130-169
+packages/agent-runtime/src/orchestration-v2/ProviderEventIngestor.test.ts
+  s_4c9e60661f96d9::t_6aa2efd5ebf977 998,1144-1145,1153,1167,1170,1180,1187-1189,1217,1229,1256-1258,1343-1366
+src/renderer/lib/agent-approval-typing-guard.ts
+  s_e28d97ebe07404::t_ab5cc149aa946a 1-45
+packages/agent-runtime/vendor/provider-acp/src/server/runtimeModel.ts
+  s_7868a9bfa6f4d4::t_4339d8998d4a00 397-400,1249-1268
+  s_7868a9bfa6f4d4::t_3dbd18ca81121d 1269-1270
+src/renderer/features/local-conversation/view/shared/permission-mode.ts
+  s_317228772f9f07::t_3018adf8176492 1-13,15-18,20-23,25-30
+  s_317228772f9f07::t_d2d1167da448d1 14,19,24
+src/renderer/features/local-conversation/agent-approval.ts
+  s_317228772f9f07::t_15274abbddb168 67-69,80-84,91
+  s_317228772f9f07::t_093a5f9dd3aede 140-142,150-151,154-157,163,165-167,170,173,177,182
+  s_df8eaebacb15fb::t_325c4e95bb485d 133-134,158-162
+  s_317228772f9f07::t_39826213861043 1-18,21-42,44-46,52-65,71-74,76,92-94,99-102,109-132,135-139,143-149,152-153,164,168-169,171-172,174-176,178-181,183-184
+  s_317228772f9f07::t_43485d855f1048 66,70,95-98,103-108
+  s_317228772f9f07::t_fb32863c5a76e8 19-20,43,47-51,75,77-79,85-90
+src/renderer/lib/sidebar-runtime-group-activity.ts
+  s_e28d97ebe07404::t_0266b3338ecf9e 45-56
+docs/adr/0071-configured-acp-agents-and-explicit-management.md
+  s_317228772f9f07::t_275b4d1ef7a177 7
+packages/agent-runtime/src/mcp/McpToolAccess.ts
+  s_95128a5d45f083::t_ea1b763898bfa9 4-5,17-26,104
+  s_5cd527886c6c64::t_e466c57233e627 105-106,112-118,130,132-146,154,157-158,164,167-171,173
+packages/agent-runtime/src/provider/CodexMcpElicitation.ts
+  s_df8eaebacb15fb::t_5098e403795045 1-5,10,25-30,32-37,40,144-221
+docs/product-specs/acp-agent-behavior.md
+  s_317228772f9f07::t_36f23d89404d3b 95-96
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fab347d96297a0bc5b362e8275ced8629381b643",
+  "prompts": {},
+  "sessions": {
+    "s_039f18d9f057b1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "22d16c9f-cb3c-4036-8365-8dc2739f0598",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_12dc3032ee94b0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a192bb-6759-7342-9253-f02864e042f4",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_1a0c6130ab27a5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19301-59ff-7f00-9923-bb5334841ebc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_2c9c3d4ca0d7f9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a192c9-de53-7f11-a58c-38cf18ff2bd3",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_317228772f9f07": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "aec7e6e5-6ad7-4199-8918-55a3896ab392",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": null
+    },
+    "s_3500ddfb1933ec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a2805826-88de-4be0-aea1-fc13723372c5",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_4514d537919adb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a192bc-0bff-7442-b947-8b47b5b6d00b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_4c9e60661f96d9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a192ba-8fc5-7961-8780-d430d9e3ca4f",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_5cd527886c6c64": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a133d3-2428-7f03-89e7-aa68fbea7e5c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_689e251f08b905": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a192a9-c663-7cc3-b0b7-1ae53e0a8e60",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_7868a9bfa6f4d4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a192bb-384b-7111-aaac-a28afe2ebf8f",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_8f42fc760f1115": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a192ba-ca28-7411-9c7c-553e03044b10",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_95128a5d45f083": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a192bb-98a3-7fd1-a6d2-fb9e8104c0a0",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_9e22704774f608": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a192bb-dcc9-7cb3-a85c-73a923bd10eb",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_a61507bb97d204": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a192b9-28da-7750-b5cf-c3fb8deba4a4",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_b131a2496677d4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a192bb-067f-7143-a8cf-320936e5d098",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_ba8680edf12f2c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a192b9-6000-7422-83f1-7b1d7e761e04",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_c308b770a17d41": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d99b3b35-7cb1-4ef6-9ebd-c9534cf0280b",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": null
+    },
+    "s_df8eaebacb15fb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19300-7fcc-7ef3-919e-a73afb162bbf",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_e28d97ebe07404": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a192c0-abd1-7062-988f-8855ddd32411",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
