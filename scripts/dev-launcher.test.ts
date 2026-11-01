@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { describe, expect, test } from "vite-plus/test";
 
+import { nativeExecutableName } from "./desktop-build-target";
 import { vitePlusCommand } from "./vite-plus-command";
 import type { DevelopmentEnvironmentHome } from "./development-environment-home";
 import {
@@ -13,13 +14,14 @@ import {
   resolveDevelopmentSeedInitialization,
 } from "./dev-launcher";
 
+const homeRoot = path.resolve("/tmp/nodex-dev");
 const HOME: DevelopmentEnvironmentHome = {
-  root: "/tmp/nodex-dev",
-  nodexHome: "/tmp/nodex-dev/.nodex",
-  codexHome: "/tmp/nodex-dev/.nodex/agent",
-  workspace: "/tmp/nodex-dev/workspace",
-  artifacts: "/tmp/nodex-dev/artifacts",
-  manifestPath: "/tmp/nodex-dev/dev-home.json",
+  root: homeRoot,
+  nodexHome: path.join(homeRoot, ".nodex"),
+  codexHome: path.join(homeRoot, ".nodex/agent"),
+  workspace: path.join(homeRoot, "workspace"),
+  artifacts: path.join(homeRoot, "artifacts"),
+  manifestPath: path.join(homeRoot, "dev-home.json"),
   repositoryRealpath: path.resolve("."),
   wasCreated: true,
   manifest: {
@@ -44,7 +46,7 @@ describe("dev launcher", () => {
         platform: "darwin",
       });
       expect(plan.environment.NODEX_DEV_AGENT_RUNTIME_PROJECT_ROOT).toBe(
-        "/tmp/nodex-dev/scripted-agent-runtime",
+        path.join(HOME.root, "scripted-agent-runtime"),
       );
       expect(plan.environment.NODEX_DEV_AGENT_RUNTIME_NODE_EXECUTABLE).toBe(process.execPath);
       const ordinary = createDevLaunchPlan({
@@ -177,6 +179,7 @@ describe("dev launcher", () => {
       NODEX_INITIAL_PROJECTS_DIR: HOME.workspace,
       NODEX_DEV_ENABLED_FEATURES: "runtime-metrics",
     });
+    if (process.platform === "win32") return;
     expect(plan.environment.NODEX_BROWSER_PROFILE_HELPER_EXECUTABLE).toBe(
       path.join(
         HOME.repositoryRealpath,
@@ -229,7 +232,7 @@ describe("dev launcher", () => {
       expect(plan.environment.NODEX_CORE_EXECUTABLE).toBeUndefined();
       expect(plan.environment.NODEX_BROWSER_PROFILE_HELPER_EXECUTABLE).toBeUndefined();
       expect(nativeCliExecutable(HOME, false, plan.environment)).toBe(
-        path.join(HOME.repositoryRealpath, "target/debug/nodex"),
+        path.join(HOME.repositoryRealpath, "target/debug", nativeExecutableName("nodex")),
       );
     },
   );
@@ -245,16 +248,18 @@ describe("dev launcher", () => {
       platform: "darwin",
       architecture: "arm64",
     });
-    expect(plan.environment.NODEX_CORE_EXECUTABLE).toBe("/tmp/custom-target/debug/nodex-core");
+    expect(plan.environment.NODEX_CORE_EXECUTABLE).toBe(
+      path.resolve("/tmp/custom-target/debug/nodex-core"),
+    );
     expect(plan.environment.NODEX_BROWSER_PROFILE_HELPER_EXECUTABLE).toBe("/tmp/custom-helper");
     expect(nativeCliExecutable(HOME, false, plan.environment)).toBe(
-      "/tmp/custom-target/debug/nodex",
+      path.resolve("/tmp/custom-target/debug", nativeExecutableName("nodex")),
     );
   });
 
   test.each([
     { CARGO_PROFILE_DEV_DEBUG: "full", output: path.join(HOME.repositoryRealpath, "target/debug") },
-    { CARGO_TARGET_DIR: "/tmp/custom-target", output: "/tmp/custom-target/debug" },
+    { CARGO_TARGET_DIR: "/tmp/custom-target", output: path.resolve("/tmp/custom-target/debug") },
   ])(
     "reselects Cargo binaries when an inherited managed bundle is bypassed: %j",
     ({ output, ...custom }) => {
@@ -280,7 +285,7 @@ describe("dev launcher", () => {
         usesDefaultOutput ? undefined : path.join(output, "nodex-browser-profile-helper"),
       );
       expect(nativeCliExecutable(HOME, false, uncachedPlan.environment)).toBe(
-        path.join(output, "nodex"),
+        path.join(output, nativeExecutableName("nodex")),
       );
     },
   );

@@ -105,13 +105,15 @@ async function main(): Promise<void> {
     task("renderer-bootstrap:verify-build");
     return;
   }
-  if (operation === "package") {
+  if (operation === "package" || operation === "package-prepared") {
     if (target.platform !== process.platform || target.arch !== process.arch)
       throw new Error(
         `Package ${target.key} natively on the matching host; cross-packaging is unsupported`,
       );
-    task("build");
-    await stageNative(target);
+    if (operation === "package") {
+      task("build");
+      await stageNative(target);
+    }
     tsx("prepared-electron-build", "verify");
     const signing =
       target.platform === "win32" ? windowsSigningConfiguration({ kind: "unsigned" }) : {};
@@ -130,8 +132,9 @@ async function main(): Promise<void> {
     );
     return;
   }
+
   throw new Error(
-    "Usage: desktop-build.ts <build|core-dev|rust-dev|rust-release|stage-codex|stage-native|package> [darwin|win32] [arm64|x64] [--cached]",
+    "Usage: desktop-build.ts <build|core-dev|rust-dev|rust-release|stage-codex|stage-native|package|package-prepared> [darwin|win32] [arm64|x64] [--cached]",
   );
 }
 

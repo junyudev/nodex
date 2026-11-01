@@ -1,5 +1,13 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  rmdirSync,
+  rmSync,
+  symlinkSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -47,7 +55,12 @@ describe("source type ownership", () => {
       writeFileSync(join(directory, "new-untracked.mts"), "export const untracked = 2;\n");
       expect(() => verifySourceTypeOwnership(directory)).toThrow("new-untracked.mts");
     } finally {
-      rmSync(directory, { recursive: true, force: true });
+      const link = join(directory, "node_modules");
+      if (existsSync(link)) {
+        if (process.platform === "win32") rmdirSync(link);
+        else unlinkSync(link);
+      }
+      rmSync(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
     }
   });
 });

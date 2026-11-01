@@ -1,6 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { parse } from "node-html-parser";
@@ -8,7 +7,9 @@ import { vitePlusCommand } from "../../../scripts/vite-plus-command";
 import { afterAll, beforeAll, expect, test } from "vite-plus/test";
 
 const landingRoot = resolve(import.meta.dirname, "..");
-const outputDir = mkdtempSync(join(tmpdir(), "nodex-landing-build-"));
+const generated = resolve(landingRoot, "../../.generated");
+mkdirSync(generated, { recursive: true });
+const outputDir = mkdtempSync(join(generated, "landing-build-"));
 const execFileAsync = promisify(execFile);
 
 beforeAll(async () => {

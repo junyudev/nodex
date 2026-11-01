@@ -201,7 +201,8 @@
     "package:win": "tsx scripts/desktop-build.ts package win32",
     "package:win:x64": "tsx scripts/desktop-build.ts package win32 x64",
     "package:win:arm64": "tsx scripts/desktop-build.ts package win32 arm64",
-    "verify:runtime:win": "tsx scripts/verify-windows-runtime.ts"
+    "verify:runtime:win": "tsx scripts/verify-windows-runtime.ts",
+    "package:win:prepared": "tsx scripts/desktop-build.ts package-prepared win32"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "2.0.2",

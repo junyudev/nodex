@@ -18,6 +18,9 @@ vp run package:win:arm64
 
 `package:win` selects the host CPU. Packaging builds the application, stages the
 native runtime, verifies the prepared output, then invokes electron-builder NSIS.
+CI exposes build, staging, architecture verification and packaging as separate
+steps. Its `package:win:prepared <arch>` entrypoint verifies the existing prepared
+build before packaging; it does not rebuild or restage source.
 A target CPU different from the build host is rejected. The artifacts are:
 
 | Architecture | Installer                                  |

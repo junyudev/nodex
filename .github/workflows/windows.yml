@@ -104,12 +104,16 @@ jobs:
       - run: vp install --frozen-lockfile
       - name: Require native Node
         run: node -e "if (process.platform !== 'win32' || process.arch !== '${{ matrix.arch }}') throw new Error('Packaging requires native Windows Node')"
-      - name: Build, stage, and package NSIS installer
-        run: vp run package:win:${{ matrix.arch }}
+      - name: Build Windows application
+        run: vp run build
+      - name: Stage Windows native runtime
+        run: vp run stage:native-runtime:win:${{ matrix.arch }}
       - name: Verify staged runtime architecture
         run: |
           vp run verify:runtime:win .generated/codex-runtime ${{ matrix.arch }}
           vp run verify:runtime:win .generated/node-runtime/win32-${{ matrix.arch }} ${{ matrix.arch }}
+      - name: Package prepared NSIS installer
+        run: vp run package:win:prepared ${{ matrix.arch }}
       - name: Upload installer
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

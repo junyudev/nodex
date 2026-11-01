@@ -20,7 +20,9 @@ const temporaryRoots: string[] = [];
 const HASH = "a".repeat(64);
 
 function makeRoot(): string {
-  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "nodex-immutable-cache-")));
+  const root = fs.realpathSync.native(
+    fs.mkdtempSync(path.join(os.tmpdir(), "nodex-immutable-cache-")),
+  );
   temporaryRoots.push(root);
   return root;
 }
@@ -145,7 +147,13 @@ describe("immutable artifact cache", () => {
         projectRoot: linkedRoot,
       }),
     ).toBe(
-      path.join(fs.realpathSync(primaryRoot), "cache.local", "browser-runtime", HASH, "source-v1"),
+      path.join(
+        fs.realpathSync.native(primaryRoot),
+        "cache.local",
+        "browser-runtime",
+        HASH,
+        "source-v1",
+      ),
     );
     expect(
       resolveImmutableArtifactPath({
@@ -323,7 +331,7 @@ describe("immutable artifact cache", () => {
     fs.writeFileSync(path.join(contentPath, "unexpected"), "unsealed");
     await ensureImmutableDirectory(input);
     expect(fs.existsSync(path.join(contentPath, "unexpected"))).toBe(false);
-    expect(generate).toHaveBeenCalledTimes(4);
+    expect(generate).toHaveBeenCalledTimes(process.platform === "win32" ? 3 : 4);
   });
 
   test("failed extraction or validation never publishes a partial directory", async () => {

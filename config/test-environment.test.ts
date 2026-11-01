@@ -13,7 +13,7 @@ test("git fixtures read only the repository's test configuration", () => {
     // A developer's commit signing never reaches a fixture commit.
     expect(
       git("config", "--show-origin", "--get", "commit.gpgsign")
-        .replaceAll("\\", "/")
+        .replace(/\\+/gu, "/")
         .replaceAll('"', ""),
     ).toMatch(/config\/test\.gitconfig\tfalse$/);
     expect(git("symbolic-ref", "--short", "HEAD")).toBe("main");
