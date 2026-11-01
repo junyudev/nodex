@@ -1270,7 +1270,7 @@ Electron keeps one process-scoped Effect `CoreAuthority` for its lifetime. A dis
 
 Whole-store restore is an exclusive Core maintenance operation. It drains admitted work, validates and journals the database/assets replacement, rotates the Store epoch, resets native caches and streams, and returns a committed receipt. Electron then performs a controlled relaunch so every Adapter binds the new authority.
 
-The operational contract belongs in [Reliability](RELIABILITY.md); release and packaged-runtime recovery belong in [the macOS release runbook](release-macos.md).
+The operational contract belongs in [Reliability](RELIABILITY.md); release and packaged-runtime recovery belong in [the macOS release runbook](release-macos.md) and [the Windows packaging runbook](release-windows.md).
 
 The Query Module owns the public SQL read boundary and one pinned Store observation
 for its lifetime. Library and Database expose internal canonical projection seams
@@ -1367,7 +1367,7 @@ The repository-owned Release Module under [`scripts/release`](../scripts/release
 
 The [`scripts/build-resources.ts`](../scripts/build-resources.ts) Build Resources Module owns the derived third-party notices and their canonical manifest. It derives a deterministic, exact-inventory tree under `.generated/build-resources/` from the repository dependency graph and exposes one resolver for development, tests, packaging, and release. Generated files are never source-review inputs or PR branch mutations. CI verifies two independent staging builds and keeps the existing read-only PR permission model.
 
-Prepared Electron output, signed package provenance, and public Release Bundle identity remain distinct evidence. Production artifacts are built natively for each supported macOS architecture, signed and notarized, smoke-tested as packaged applications, assembled into one verified release, and only then published to update and package-manager channels. The complete workflow belongs in [the macOS release runbook](release-macos.md).
+Prepared Electron output, signed package provenance, and public Release Bundle identity remain distinct evidence. Production artifacts are built natively for each supported macOS architecture, signed and notarized, smoke-tested as packaged applications, assembled into one verified release, and only then published to update and package-manager channels. The complete workflow belongs in [the macOS release runbook](release-macos.md). Windows installers are likewise built natively per architecture, closure-verified, and smoke-tested after installation; they remain validation artifacts outside public promotion, as described in [the Windows packaging runbook](release-windows.md).
 
 ### Test runtimes
 
@@ -1393,17 +1393,18 @@ Update this file only when at least one of these changes:
 
 Do not add implementation chronology, current version inventories, individual file behavior, UI interaction detail, failure runbooks, or feature acceptance rules here. Replace obsolete architectural statements instead of appending a historical layer. Link to the narrow owner rather than restating its contract.
 
-| Information                                                                                                        | Source of truth                                                  |
-| ------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------- |
-| Domain vocabulary and ownership invariants                                                                         | [CONTEXT.md](../CONTEXT.md)                                      |
-| Significant decisions and tradeoffs                                                                                | [ADRs](adr/)                                                     |
-| User-visible behavior and public contracts                                                                         | [Product specifications](product-specs/index.md)                 |
-| Reliability, sync, recovery, backup, retention                                                                     | [RELIABILITY.md](RELIABILITY.md)                                 |
-| Security model and hardening                                                                                       | [SECURITY.md](SECURITY.md)                                       |
-| Cross-feature renderer construction, state ownership, shared UI/editor primitives, and UI verification conventions | [FRONTEND.md](FRONTEND.md)                                       |
-| Cross-cutting engineering principles                                                                               | [ENGINEERING_LEARNINGS.md](ENGINEERING_LEARNINGS.md)             |
-| Build, signing, notarization, distribution recovery                                                                | [release-macos.md](release-macos.md)                             |
-| Executable migration and protocol versions                                                                         | Source contracts, migration code, generated artifacts, and tests |
-| Temporary implementation sequence and evidence                                                                     | `notes.local/living-plans/`; see [plan requirements](PLANS.md)   |
+| Information                                                                                                        | Source of truth                                                                              |
+| ------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
+| Domain vocabulary and ownership invariants                                                                         | [CONTEXT.md](../CONTEXT.md)                                                                  |
+| Significant decisions and tradeoffs                                                                                | [ADRs](adr/)                                                                                 |
+| User-visible behavior and public contracts                                                                         | [Product specifications](product-specs/index.md)                                             |
+| Reliability, sync, recovery, backup, retention                                                                     | [RELIABILITY.md](RELIABILITY.md)                                                             |
+| Security model and hardening                                                                                       | [SECURITY.md](SECURITY.md)                                                                   |
+| Cross-feature renderer construction, state ownership, shared UI/editor primitives, and UI verification conventions | [FRONTEND.md](FRONTEND.md)                                                                   |
+| Cross-cutting engineering principles                                                                               | [ENGINEERING_LEARNINGS.md](ENGINEERING_LEARNINGS.md)                                         |
+| Build, signing, notarization, distribution recovery                                                                | [release-macos.md](release-macos.md)                                                         |
+| Windows packaging, installer probes, and verification layers                                                       | [release-windows.md](release-windows.md), [windows-verification.md](windows-verification.md) |
+| Executable migration and protocol versions                                                                         | Source contracts, migration code, generated artifacts, and tests                             |
+| Temporary implementation sequence and evidence                                                                     | `notes.local/living-plans/`; see [plan requirements](PLANS.md)                               |
 
 When two documents disagree, fix the narrow authoritative document first and then replace or remove the stale summary here.

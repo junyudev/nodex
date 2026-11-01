@@ -128,6 +128,7 @@ Use these docs as the source of truth:
 - Cross-cutting engineering principles and knowledge routing: `docs/ENGINEERING_LEARNINGS.md`
 - User-visible feature behavior and public contracts: `docs/product-specs/`
 - Native CLI overview: `docs/CLI.md`
+- Windows packaging and verification layers (CI, interactive VM checklist, hardware acceptance): `docs/release-windows.md`, `docs/windows-verification.md`
 - Profile and Desktop configuration: `docs/CONFIGURATION.md`
 - External/reference specs (Nodex Markdown and clipboard behavior): `docs/references/`
 
