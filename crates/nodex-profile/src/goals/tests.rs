@@ -475,6 +475,6 @@ fn rejects_inline_expansion_past_native_limit_and_accepts_exactly_4000_code_poin
     assert_eq!(updated.chars().count(), 4000);
     assert!(updated.ends_with(&format!(
         "{}. Read this file before continuing.",
-        fixture.target_path(&pasted)
+        fixture.target_path(pasted)
     )));
 }
