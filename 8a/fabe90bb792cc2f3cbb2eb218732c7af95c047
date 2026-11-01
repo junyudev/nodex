@@ -1,0 +1,203 @@
+src/renderer/features/browser-sidebar/browser-sidebar-ui-model.ts
+  s_c95bc4214613a4::t_acf2c77211dfe4 11-12,55,57
+src/renderer/features/browser-sidebar/browser-sidebar-ui-model.jsdom.test.ts
+  s_c95bc4214613a4::t_67e5c8bc66208d 29-31
+src/renderer/features/browser-sidebar/browser-sidebar-webview-manager.jsdom.test.ts
+  s_c95bc4214613a4::t_919e952f34f556 90-111
+src/main/host-runtime/ApplicationSchedulers.test.ts
+  s_f7a266529d0a87::t_3ce06a1f426cff 355
+src/main/host-runtime/AppUpdateRuntime.test.ts
+  s_f7a266529d0a87::t_3ce06a1f426cff 110
+src/renderer/features/browser-sidebar/browser-address-suggestions.test.tsx
+  s_c95bc4214613a4::t_67e5c8bc66208d 86-105,218
+src/renderer/features/browser-sidebar/browser-sidebar-panel.tsx
+  s_c95bc4214613a4::t_7c6864e42a4b69 73,1196,1237-1255
+  s_c95bc4214613a4::t_a7b03a98346e95 74-75,357,938-939,957,968,3348-3349
+src/renderer/features/browser-sidebar/browser-address-suggestions.ts
+  s_c95bc4214613a4::t_acf2c77211dfe4 1,43,46-49
+src/renderer/features/browser-sidebar/browser-sidebar-webview-manager.ts
+  s_c95bc4214613a4::t_acf2c77211dfe4 17,952
+src/shared/browser-address-input.ts
+  s_c95bc4214613a4::t_9be45b38d6fdee 80
+  s_c95bc4214613a4::t_acf2c77211dfe4 1-79,81-99
+src/renderer/features/browser-sidebar/browser-sidebar-hidden-webview-hosts.tsx
+  s_c95bc4214613a4::t_acf2c77211dfe4 16,261
+src/shared/browser-address-input.test.ts
+  s_c95bc4214613a4::t_67e5c8bc66208d 1-39,41-91
+  s_c95bc4214613a4::t_2327a6f04b7e1a 40
+src/renderer/features/browser-sidebar/browser-sidebar-panel.test.tsx
+  s_c95bc4214613a4::t_919e952f34f556 80-94,97-153
+  s_c95bc4214613a4::t_59f10b88080e97 95-96
+src/renderer/features/browser-sidebar/browser-address-suggestions.node.test.ts
+  s_c95bc4214613a4::t_67e5c8bc66208d 88-98
+docs/CONFIGURATION.md
+  s_305b2dde7b2b5c::t_0346390d8e2d0a 378-396
+docs/SECURITY.md
+  s_c95bc4214613a4::t_58f2a8ac585161 437-462
+docs/product-specs/workbench-shell.md
+  s_305b2dde7b2b5c::t_a11bfbf220e891 164-205
+src/main/browser-application/BrowserApplication.ts
+  s_d21324d71a938d::t_a36720034d41c7 28-32,98-103,145-148,150,306-309,327-329,331
+src/main/browser-application/BrowserState.test.ts
+  s_d21324d71a938d::t_18be1662d9a548 116-127,164,175-177,195,264,296,740-1021
+src/main/browser-application/BrowserState.ts
+  s_d21324d71a938d::t_cd3f09e1876a44 37,39-44,147-179,326,409-413,650,687-789,860,1009,1044,1051,1145-1149,1546,1577,1581,1587-1596,1605-1610,1955,1960,1966-1972,2070-2073,2075,2106,2170,2189,2214,2264,2270,2320-2326,2331,2339-2347,2378-2380,2382-2394,2396-2398,2551,2667,2864,3002-3010,3021-3022,3042-3044,3065-3071,3181-3186
+src/main/browser-use/browser-use-iab-api.test.ts
+  s_d21324d71a938d::t_848d68eac725d5 12,138,140,193-196,201-218,792,807-822,859-893
+src/main/browser-use/browser-use-iab-api.ts
+  s_d21324d71a938d::t_027a47c0983f30 14,82-86,228,263,283-299,444,534-537,702-705,720-723,867,875-878,1050-1054,1058-1062
+src/main/browser-use/browser-use-policy-store.test.ts
+  s_c95bc4214613a4::t_8479f8f50605eb 81,90-91
+src/main/browser-use/browser-use-policy-store.ts
+  s_d21324d71a938d::t_a972a471e114bd 235
+src/main/browser/browser-context-menu.test.ts
+  s_3dc0b7647fcf0b::t_c9fa78eb5902ae 37,115-116,126,129,142-144
+src/main/browser/browser-context-menu.ts
+  s_3dc0b7647fcf0b::t_ac7a35d721f4fc 2,30,107-117,119
+src/main/browser/browser-download-service.test.ts
+  s_d21324d71a938d::t_df57aa6d49d5a3 32-36,38,64-69,85,87,150-153,167-216
+src/main/browser/browser-download-service.ts
+  s_d21324d71a938d::t_aead5590ae3caa 31,53,61,89,106,304-311,314-315,318,320-325,350,352-357,430-431,437
+src/main/browser/browser-history-store.test.ts
+  s_c95bc4214613a4::t_694f9a8fa34e3b 54,63-65
+src/main/browser/browser-history-store.ts
+  s_c95bc4214613a4::t_0f79c318e81e51 20,237
+src/main/browser/browser-local-server-runtime.ts
+  s_d21324d71a938d::t_d6aa1fb91f5d3b 322,337
+src/main/browser/browser-page-store.test.ts
+  s_d21324d71a938d::t_5619c21b3c8395 67-89
+src/main/browser/browser-page-store.ts
+  s_d21324d71a938d::t_a0f0d60d0a5118 24,35,37
+src/main/browser/browser-session-request-policy.test.ts
+  s_d21324d71a938d::t_92457363ccbeb1 1-61
+src/main/browser/browser-session-request-policy.ts
+  s_3dc0b7647fcf0b::t_32800c8944e592 1-44
+src/main/browser/browser-webview-attachment-policy.test.ts
+  s_c95bc4214613a4::t_982e5e43441478 62,83-84,86
+src/main/external-navigation.node.test.ts
+  s_3dc0b7647fcf0b::t_948ae4d3ee5399 4,8-17,19-28
+src/main/external-navigation.ts
+  s_d21324d71a938d::t_9c05cae5817e5a 1,3,5-6
+src/main/host-runtime/SessionPolicyRuntime.test.ts
+  s_d21324d71a938d::t_b114ad446253f2 5-7,35-43,63-76,88-167
+src/main/host-runtime/SessionPolicyRuntime.ts
+  s_305b2dde7b2b5c::t_0e19f6e5ce025f 4-11,24-63,65-79,84,86-87,90-106,108,113-119,121-143,145-147
+src/main/ipc/handlers/ApplicationSettingsIpc.ts
+  s_305b2dde7b2b5c::t_a394262ebc38c1 1-4,88,202-209,696-714
+src/main/ipc/handlers/NativeShellIpc.ts
+  s_d21324d71a938d::t_52fe16e9024a81 298-299
+src/main/settings/ApplicationSettings.test-support.ts
+  s_c95bc4214613a4::t_3ce176ef728909 1,14,22
+src/main/settings/ApplicationSettings.test.ts
+  s_305b2dde7b2b5c::t_e7ca7579e87dc3 42-83
+src/main/settings/ApplicationSettings.ts
+  s_305b2dde7b2b5c::t_3853062fef9f19 1-5,92-93,140,179,197,304,371-373,397,421-423,450
+src/main/settings/application-settings-persistence.ts
+  s_305b2dde7b2b5c::t_bd18baf8592b5e 1-5,136-138,1470-1502
+src/main/window-runtime/ApplicationWindowRuntime.ts
+  s_305b2dde7b2b5c::t_609babda28a0f5 5,8-11,44-48,90-94,100,115-155,160-161,226-228,240-241
+src/main/window-runtime/application-window-link-opening.test.ts
+  s_305b2dde7b2b5c::t_9d4d1c4cb3b777 1-77
+src/main/window-runtime/application-window-link-opening.ts
+  s_305b2dde7b2b5c::t_d374d1c8ef2acb 1-37
+src/renderer/components/workbench/workbench-link-opening.node.test.ts
+  s_b708cefbbd2f84::t_68f7a707b71682 1-166
+src/renderer/components/workbench/workbench-link-opening.ts
+  s_b708cefbbd2f84::t_a3925d9183ca7f 1-144
+src/renderer/components/workbench/workbench-runtime.tsx
+  s_305b2dde7b2b5c::t_23593a4114599d 1-4,74-77,185-188,2714-2746,2748-2762,5980-5982
+src/renderer/lib/electron-renderer-transport.ts
+  s_305b2dde7b2b5c::t_a6b56b519a7af6 369-382
+src/renderer/lib/link-opening-settings.test.tsx
+  s_305b2dde7b2b5c::t_1e619c5ba56e10 1-88
+src/renderer/lib/link-opening-settings.ts
+  s_305b2dde7b2b5c::t_e035f8aa4da62f 1-124
+src/renderer/lib/link-opening.node.test.ts
+  s_d21324d71a938d::t_82a31cf26da4c6 1-57
+src/renderer/lib/link-opening.ts
+  s_d21324d71a938d::t_4a6e98b6df9e88 1-66
+src/renderer/lib/renderer-transport.ts
+  s_305b2dde7b2b5c::t_a073f325e2ead8 12-17
+src/renderer/lib/web-link-context-menu.jsdom.test.ts
+  s_305b2dde7b2b5c::t_682ec3d6483e01 81-98
+src/renderer/lib/web-link-context-menu.ts
+  s_305b2dde7b2b5c::t_a315c794b1e553 3,8,85-89
+src/renderer/lib/web-link-navigation.test.tsx
+  s_305b2dde7b2b5c::t_f3092e0f46c8aa 1-79
+src/renderer/lib/web-link-navigation.tsx
+  s_d21324d71a938d::t_0b12d2eb4e8902 1-2,14-27,33-73
+src/shared/browser-sidebar.ts
+  s_3dc0b7647fcf0b::t_ea710e3ad61d95 29-32,541-546
+src/shared/browser-url.test.ts
+  s_c95bc4214613a4::t_49aa758f7f4966 2,4-5,7-9
+src/shared/browser/browser-schemas.test.ts
+  s_3dc0b7647fcf0b::t_8db23e684041a7 32-50
+src/shared/browser/browser-schemas.ts
+  s_3dc0b7647fcf0b::t_1897e225abea08 23,46-47,269,275,440-452
+src/shared/ipc-api.ts
+  s_c95bc4214613a4::t_ce2234f3b3784e 1531-1538,3134-3135
+src/shared/ipc-endpoint-policy.ts
+  s_c95bc4214613a4::t_684d9773fff0a9 292,761
+src/shared/link-opening-settings.ts
+  s_305b2dde7b2b5c::t_11c29bb111cfe7 1-33
+src/shared/link-opening.test.ts
+  s_305b2dde7b2b5c::t_a8e151293344ed 1-193
+src/shared/link-opening.ts
+  s_d21324d71a938d::t_a0759c16328774 1-158
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8afabe90bb792cc2f3cbb2eb218732c7af95c047",
+  "prompts": {},
+  "sessions": {
+    "s_305b2dde7b2b5c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a196cc-6591-79d2-9561-0adbbb75ae39",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_3dc0b7647fcf0b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1964e-690a-72d0-a5e2-1468f0931284",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_b708cefbbd2f84": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1964e-d1d0-7381-9ea9-cb7cf0748ec9",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_c95bc4214613a4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a196cb-d7b6-7b12-8b6e-9689ec57acc2",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_d21324d71a938d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a196cb-8771-75a2-aad0-adda768ac82a",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_f7a266529d0a87": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6d174a31-7abb-4dcf-bdf5-e5129be4ca4a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
