@@ -81,6 +81,7 @@ src/main/project-application/ProjectWorkspace.node.test.ts
   s_4b207bbe152280::t_78390f2c5def53 837-839,867-874
 packages/core-protocol/src/compatibility.generated.ts
   s_5a199af1eba36e::t_8bd7ed511c543d 24
+  s_693b7521d81978::t_4d51d2347a072e 42
 crates/nodex-core/src/workspace/page_handoff_tests.rs
   s_4b207bbe152280::t_1260873236b08c 1-396
 scripts/scenarios/adapters/renderer-ipc-seed-adapter.ts
@@ -105,6 +106,12 @@ crates/nodex-core/src/workspace/session_lifecycle.rs
   s_e17141fc7a66d9::t_338dff7c002da4 10,56,145,349,439,467,478,482-500,506-515
 src/renderer/components/workbench/use-workbench-panel-projection.tsx
   s_5a199af1eba36e::t_aebd657839d6c6 119,271,731,828
+crates/nodex-core/schema/current.sql
+  s_693b7521d81978::t_699a958a7d898c 4524
+crates/nodex-core/src/infrastructure/migration.rs
+  s_693b7521d81978::t_a8ee9352320c60 398-402,2584-2587,2589-2592,2594-2597,3483,8516,8779
+crates/nodex-store-format/src/lib.rs
+  s_693b7521d81978::t_00bfcd68656903 257-260
 ---
 {
   "schema_version": "authorship/3.0.0",
@@ -132,6 +139,14 @@ src/renderer/components/workbench/use-workbench-panel-projection.tsx
       "agent_id": {
         "tool": "codex",
         "id": "01a192d6-975e-7d61-a4a2-907ce1bb9490",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_693b7521d81978": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19523-5249-7b21-99b6-72950d66e89e",
         "model": "gpt-6.1-sol"
       },
       "human_author": "Jun Yu <junyu.dev@gmail.com>"
