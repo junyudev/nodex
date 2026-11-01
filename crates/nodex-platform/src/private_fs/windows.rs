@@ -332,8 +332,9 @@ pub fn atomic_replace(source: impl AsRef<Path>, target: impl AsRef<Path>) -> io:
     let source_name = wide(source)?;
     let target_name = wide(target)?;
     for attempt in 0..11 {
+        let mut phase = "rename";
         let result = if sealed_target {
-            replace_sealed_file(&source_name, &target_name)
+            replace_sealed_file(&source_name, &target_name, &mut phase)
         } else if unsafe {
             MoveFileExW(
                 source_name.as_ptr(),
@@ -356,7 +357,14 @@ pub fn atomic_replace(source: impl AsRef<Path>, target: impl AsRef<Path>) -> io:
                 Some(ERROR_ACCESS_DENIED | ERROR_SHARING_VIOLATION | ERROR_LOCK_VIOLATION)
             )
         {
-            return Err(error);
+            return Err(if sealed_target {
+                io::Error::new(
+                    error.kind(),
+                    format!("Could not replace a sealed file during {phase}: {error}"),
+                )
+            } else {
+                error
+            });
         }
         std::thread::sleep(Duration::from_millis(100));
     }
@@ -365,9 +373,11 @@ pub fn atomic_replace(source: impl AsRef<Path>, target: impl AsRef<Path>) -> io:
 
 // FileRenameInfoEx can replace a read-only target without briefly weakening its
 // attributes or protected DACL. The flags are part of the Windows 11 rename contract.
-fn replace_sealed_file(source: &[u16], target: &[u16]) -> io::Result<()> {
+fn replace_sealed_file(source: &[u16], target: &[u16], phase: &mut &'static str) -> io::Result<()> {
     const REPLACE_IF_EXISTS: u32 = 0x1;
+    const POSIX_SEMANTICS: u32 = 0x2;
     const IGNORE_READONLY_ATTRIBUTE: u32 = 0x40;
+    *phase = "opening the replacement";
     let file = handle(unsafe {
         CreateFileW(
             source.as_ptr(),
@@ -380,6 +390,7 @@ fn replace_sealed_file(source: &[u16], target: &[u16]) -> io::Result<()> {
         )
     })?;
     let file: File = file.into();
+    *phase = "checking replacement privacy";
     security(&file, true, None)?;
     if !file.metadata()?.is_file() {
         return Err(io::Error::new(
@@ -394,13 +405,15 @@ fn replace_sealed_file(source: &[u16], target: &[u16]) -> io::Result<()> {
     let information = storage.as_mut_ptr().cast::<FILE_RENAME_INFO>();
     // SAFETY: aligned zeroed storage holds the header plus the complete UTF-16 name.
     unsafe {
-        (*information).Anonymous.Flags = REPLACE_IF_EXISTS | IGNORE_READONLY_ATTRIBUTE;
+        (*information).Anonymous.Flags =
+            REPLACE_IF_EXISTS | POSIX_SEMANTICS | IGNORE_READONLY_ATTRIBUTE;
         (*information).FileNameLength = std::mem::size_of_val(filename) as u32;
         std::ptr::copy_nonoverlapping(
             filename.as_ptr(),
             (*information).FileName.as_mut_ptr(),
             filename.len(),
         );
+        *phase = "publishing the replacement";
         if SetFileInformationByHandle(
             file.as_raw_handle(),
             FileRenameInfoEx,
