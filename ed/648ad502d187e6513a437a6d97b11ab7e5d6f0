@@ -1,0 +1,76 @@
+src/main/app/HostApplicationLive.ts
+  s_b708cefbbd2f84::t_6e37788fde8ceb 235
+src/main/app/ApplicationOperationsLive.ts
+  s_b708cefbbd2f84::t_6e37788fde8ceb 44,52,54-55
+src/main/host-runtime/DesktopToolRuntime.ts
+  s_b708cefbbd2f84::t_6e37788fde8ceb 17,63,214-215
+docs/development.md
+  s_b708cefbbd2f84::t_970c63e175716b 305-310
+docs/product-specs/windows-host-behavior.md
+  s_b708cefbbd2f84::t_970c63e175716b 35-38
+src/main/app/AgentRuntimeApplicationLive.ts
+  s_b708cefbbd2f84::t_d41497d71be3ef 113-114,839-841,844-845,847-848,858-860
+  s_b708cefbbd2f84::t_e65c3a1a135bfc 111-112,115-116,431,826-838,842-843,846,849-851
+  s_b708cefbbd2f84::t_a2c991089a4977 861-867
+docs/ARCHITECTURE.md
+  s_b708cefbbd2f84::t_970c63e175716b 600-602
+  s_b708cefbbd2f84::t_a653b75c98e4a9 599
+scripts/standalone-node-runtime.ts
+  s_b708cefbbd2f84::t_3195786cb1a239 11,18,83-86
+  s_b708cefbbd2f84::t_a5275325d191b2 87-89
+src/main/platform/node/NodeExecutionRuntime.ts
+  s_b708cefbbd2f84::t_6e37788fde8ceb 1-52
+  s_b708cefbbd2f84::t_630888c13704a4 53-75
+src/shared/agent-runtime-startup-evidence.ts
+  s_b708cefbbd2f84::t_e65c3a1a135bfc 1-26
+  s_b708cefbbd2f84::t_fa665293ccb5bc 27-28
+docs/windows-verification.md
+  s_b708cefbbd2f84::t_970c63e175716b 9
+  s_b708cefbbd2f84::t_d671256d4ee012 7-8,10-11
+scripts/dev-launcher.test.ts
+  s_b708cefbbd2f84::t_970c63e175716b 495-508
+  s_b708cefbbd2f84::t_68aab2a96eea56 509-515
+src/shared/agent-runtime-startup-evidence.test.ts
+  s_b708cefbbd2f84::t_e65c3a1a135bfc 1-14
+  s_b708cefbbd2f84::t_7e8f62bc4199b5 15-33
+scripts/ci/probe-windows-installer.ts
+  s_b708cefbbd2f84::t_e65c3a1a135bfc 3,16-20,174,189-191,193-197
+  s_b708cefbbd2f84::t_5dc5fccd240e4d 198-204,228,234,245
+src/shared/node-runtime-metadata.ts
+  s_b708cefbbd2f84::t_6e37788fde8ceb 1-29
+  s_b708cefbbd2f84::t_647289f1343b9b 30-35
+src/main/codex/artifact-template-picker.test.ts
+  s_b708cefbbd2f84::t_6e37788fde8ceb 95
+src/main/platform/node/NodeExecutionRuntime.test.ts
+  s_b708cefbbd2f84::t_970c63e175716b 10-11,14-16,22-47,49-69,72-84,86,88-95,97,99-100,103-122
+  s_b708cefbbd2f84::t_3195786cb1a239 1-9,12-13,17-21,48,70-71,85,87,96,98,101-102,123
+  s_b708cefbbd2f84::t_5e962e6cc79ae3 124-139
+src/main/codex/codex-runtime.ts
+  s_b708cefbbd2f84::t_6e37788fde8ceb 22,151-153
+  s_b708cefbbd2f84::t_3195786cb1a239 148-150
+  s_b708cefbbd2f84::t_532a98d2cb12d4 23-25,33,116,154-157,163,209,227
+src/main/codex/artifact-template-picker.ts
+  s_b708cefbbd2f84::t_6e37788fde8ceb 97,102,108
+docs/release-windows.md
+  s_b708cefbbd2f84::t_3144563323e238 75-80
+src/main/platform/node/AgentRuntimeEntrypoint.node.test.ts
+  s_b708cefbbd2f84::t_5148ffb374a5ea 1,9-16,24,28,48,54,67,80,89,96
+src/main/platform/node/AgentRuntimeEntrypoint.ts
+  s_b708cefbbd2f84::t_98a842351bb5c7 1,32,45
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ed648ad502d187e6513a437a6d97b11ab7e5d6f0",
+  "prompts": {},
+  "sessions": {
+    "s_b708cefbbd2f84": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1964e-d1d0-7381-9ea9-cb7cf0748ec9",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
