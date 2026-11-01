@@ -30,6 +30,7 @@ src/renderer/components/workbench/sidebar-thread-reorder.tsx
   s_54a6cd859fdcee::t_0787c9bf177a25 169-170,942-945,1395
 CHANGELOG.md
   s_54a6cd859fdcee::t_d204ec3bab9168 9
+  s_54a6cd859fdcee::t_0133a39549b396 30
 src/renderer/components/workbench/use-workbench-sidebar-controller.ts
   s_54a6cd859fdcee::t_defe51fd556c5c 97,283
 src/renderer/components/workbench/workbench-runtime.tsx
@@ -60,6 +61,7 @@ src/renderer/components/workbench/workbench-shell.sidebar-projects.test.tsx
 crates/nodex-core/src/workspace/session_order.rs
   s_54a6cd859fdcee::t_4054ca41ab7e53 1-10,12-27,29-34,36-54,56-66,68-101,103-110,112-116,131-150,157,161,164,176-177,195,200,225,232,257,274,289,354,432,451,499,524,528,573-575
   s_c7a9a5bf2c2cd4::t_e963fa1248c075 11,28,35,55,67,102,111,151-156,158-160,162-163,165-175,178-194,196-199,201-224,226-231,233-256,258-273,275-288,290-353,355-431,433-450,452-498,500-523,525-527,529-572
+  s_54a6cd859fdcee::t_a531808bb0dda2 117-130
 src/renderer/components/workbench/workbench-testkit/panel-fixtures.ts
   s_54a6cd859fdcee::t_ef4341af1d64ea 160
 src/renderer/lib/types.ts
@@ -78,14 +80,18 @@ src/renderer/lib/use-workbench-profile-preferences.ts
   s_54a6cd859fdcee::t_5368ae37a8cff4 361-365
 docs/product-specs/workbench-shell.md
   s_54a6cd859fdcee::t_5c9538f687b22e 242,252
+  s_54a6cd859fdcee::t_0133a39549b396 15,251
 src/renderer/lib/sidebar-session-placement.node.test.ts
   s_54a6cd859fdcee::t_b7b9255c700fd6 1-54
 crates/nodex-core-contracts/src/workspace.rs
   s_c7a9a5bf2c2cd4::t_1bac90f97ba576 107-108,440-460,1365,1726-1727,1729-1734
+  s_54a6cd859fdcee::t_14d8cdaaeed504 19
 crates/nodex-core/schema/current.sql
   s_c7a9a5bf2c2cd4::t_99b82c164770f9 981,992-994,4955-4996
+  s_54a6cd859fdcee::t_5bbfa41759acb3 4513
 crates/nodex-core/schema/migrations/v200_to_v201.sql
   s_c7a9a5bf2c2cd4::t_756be72245728c 1-5,7-10,12-21,23-29,32-37,45-103
+  s_54a6cd859fdcee::t_a5135224fcc7d3 6,11,22,30-31,38-44
 crates/nodex-core/src/automation/mutation.rs
   s_c7a9a5bf2c2cd4::t_d0d204fb51a452 2942
 crates/nodex-core/src/document/module/tests/reference_lifecycle.rs
@@ -96,6 +102,9 @@ crates/nodex-core/src/document/retention.rs
   s_c7a9a5bf2c2cd4::t_dcd9af3701c47e 3056,3058
 crates/nodex-core/src/infrastructure/migration.rs
   s_c7a9a5bf2c2cd4::t_140d19ee9c4827 399-403,2594-2596,2633-2642,8945,9305-9314,9316-9331,9338-9340,9342-9351,9363-9374
+  s_54a6cd859fdcee::t_ba399bd16b1cbe 9332-9333,9352-9362
+  s_54a6cd859fdcee::t_c6ac44e6386f54 3568-3575,9280-9302
+  s_54a6cd859fdcee::t_32695a3e86b9f9 419-423,2628-2632,8672-8673,9303-9304,9315,9334-9337,9341
 crates/nodex-core/src/read_budget_gate.rs
   s_c7a9a5bf2c2cd4::t_83c6fba4494579 133,136,688,721
 crates/nodex-core/src/workspace/agent_runtime_authority.rs
@@ -114,6 +123,7 @@ crates/nodex-core/src/workspace/read.rs
   s_c7a9a5bf2c2cd4::t_28d815f4b3498c 38,325,335,779,805,840,1021,1024,1026,1029,1032,1035,1145,1177
 crates/nodex-core/src/workspace/session_lifecycle.rs
   s_c7a9a5bf2c2cd4::t_30a5e305ba022f 3-7,23,184,191,194,259,268,307,321-323,354,362,364-365,367-369,371-372,374-376,378-383,386-387,395,397-399,406-407,409-436,438-496,498-499
+  s_54a6cd859fdcee::t_874f3a2ef45e3b 437,497
 crates/nodex-core/src/workspace/session_listing.rs
   s_c7a9a5bf2c2cd4::t_b976a66fa0a1f7 79,144
 crates/nodex-core/src/workspace/sidebar_builtin_tests.rs
@@ -124,6 +134,8 @@ crates/nodex-core/src/workspace/test_support.rs
   s_c7a9a5bf2c2cd4::t_3e5caa6f8493ad 240-244
 crates/nodex-store-format/src/lib.rs
   s_c7a9a5bf2c2cd4::t_07e785b144f567 257-258,276
+  s_54a6cd859fdcee::t_13dd2e6d40475e 273-274
+  s_54a6cd859fdcee::t_9f0c4332764bb0 275
 packages/core-protocol/openapi.json
   s_c7a9a5bf2c2cd4::t_7c1504e2f56dd7 30458-30467,30482-30483,30490,30493-30494,30496-30508,30511,30513-30518,36234-36236,41632-41641,41656-41657,41664,41667-41668,41670-41682,41685,41687-41692,44026-44041,44143-44182,44238,44246-44249,44814-44820
 packages/core-protocol/src/generated.ts
@@ -132,8 +144,11 @@ src/main/agent-runtime/AgentRuntimeApplication.ts
   s_c7a9a5bf2c2cd4::t_7368192f4c1dab 2,349,3295,3544,3564-3571
 src/main/agent-runtime/AgentRuntimeSessionOrdering.node.test.ts
   s_c7a9a5bf2c2cd4::t_9ce99799a39370 1-2,4-9,11-31,32-82,83-106,120-121
+  s_54a6cd859fdcee::t_3cefbd37196990 3,10,107-119
 src/main/agent-runtime/AgentRuntimeSessionOrdering.ts
   s_c7a9a5bf2c2cd4::t_ae469b1cd5e59d 1-7,14-39,40,41-42,68-70
+  s_54a6cd859fdcee::t_3cefbd37196990 8-13,43-62,67
+  s_54a6cd859fdcee::t_80dffbfe88cd5f 63-66
 src/main/app-tools/SessionDiscovery.node.test.ts
   s_c7a9a5bf2c2cd4::t_caae6715c64730 23
 src/main/app-tools/SessionDiscovery.ts
@@ -228,6 +243,30 @@ src/shared/workspace-catalog-commands.ts
   s_c7a9a5bf2c2cd4::t_29042f8936c7ea 9,92-94,111-112
 tests/e2e/large-content-fixture/main.tsx
   s_c7a9a5bf2c2cd4::t_ca6eb24792fc4a 54
+crates/nodex-core/tests/fixtures/rewind-v201-to-v200.sql
+  s_54a6cd859fdcee::t_5dce407e04480a 1-99
+crates/nodex-core/src/workspace/session_reminder_tests.rs
+  s_54a6cd859fdcee::t_02e20242e8a840 402-451
+crates/nodex-core/src/document/integrity.rs
+  s_54a6cd859fdcee::t_3c32cfa19abefe 84
+docs/ARCHITECTURE.md
+  s_54a6cd859fdcee::t_0133a39549b396 118-119,853-856
+crates/nodex-core/src/workspace/queued_message_state.rs
+  s_54a6cd859fdcee::t_a531808bb0dda2 38,76-82
+crates/nodex-core/src/infrastructure/migration_serializer_tests.rs
+  s_54a6cd859fdcee::t_27875dfb55df6f 131-135,137,149-153,156
+  s_54a6cd859fdcee::t_c6ac44e6386f54 233
+src/main/host-runtime/SessionReminderRuntime.node.test.ts
+  s_54a6cd859fdcee::t_1886cf6564dd41 19
+crates/nodex-core/src/workspace/session_mutation.rs
+  s_54a6cd859fdcee::t_a531808bb0dda2 156-157,169-174,950-975
+  s_54a6cd859fdcee::t_02e20242e8a840 530-533
+crates/nodex-core/src/infrastructure/workflow_status_migration_tests.rs
+  s_54a6cd859fdcee::t_c6ac44e6386f54 347
+crates/nodex-core/src/document/schema_migration.rs
+  s_54a6cd859fdcee::t_d6f0774ce8b1de 1582
+CONTEXT.md
+  s_54a6cd859fdcee::t_0133a39549b396 46-51
 ---
 {
   "schema_version": "authorship/3.0.0",
