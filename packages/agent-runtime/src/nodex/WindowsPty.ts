@@ -13,7 +13,13 @@ export class WindowsPtyStartupError extends Schema.TaggedError<WindowsPtyStartup
  * readiness event. The private ready_datapipe handler sets pid before our
  * listener runs.
  */
-export const waitForWindowsPtyPid = (process: import("node-pty").IPty) =>
+export const waitForWindowsPtyPid = (
+  process: import("node-pty").IPty,
+  observeExit: (listener: (event: { exitCode: number }) => void) => () => void = (listener) => {
+    const subscription = process.onExit(listener);
+    return () => subscription.dispose();
+  },
+) =>
   Effect.callback<void, WindowsPtyStartupError>((resume) => {
     const hasPid = () => Number.isInteger(process.pid) && process.pid > 0;
     const failure = (cause: unknown) =>
@@ -34,6 +40,10 @@ export const waitForWindowsPtyPid = (process: import("node-pty").IPty) =>
     }
 
     const socket = process._socket;
+    if (socket.destroyed) {
+      resume(failure(new Error("Windows PTY closed before its PID was available.")));
+      return;
+    }
     const onReady = () => {
       cleanup();
       resume(
@@ -57,12 +67,11 @@ export const waitForWindowsPtyPid = (process: import("node-pty").IPty) =>
     socket.once("ready_datapipe", onReady);
     socket.once("error", onError);
     socket.once("close", onClose);
-    const exit = process.onExit(({ exitCode }) =>
+    stopExit = observeExit(({ exitCode }) =>
       onError(
         new Error(`Windows PTY exited before its PID was available (exit code ${exitCode}).`),
       ),
     );
-    stopExit = () => exit.dispose();
     return Effect.sync(cleanup);
   });
 

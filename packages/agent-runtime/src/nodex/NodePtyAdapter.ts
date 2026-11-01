@@ -190,7 +190,9 @@ const make = Effect.fn("NodePtyAdapter.make")(function* () {
           }),
       });
       if (platform === "win32") {
-        yield* waitForWindowsPtyPid(ptyProcess.nativeProcess).pipe(
+        yield* waitForWindowsPtyPid(ptyProcess.nativeProcess, (listener) =>
+          ptyProcess.process.onExit(listener),
+        ).pipe(
           Effect.mapError(
             (cause) =>
               new PtyAdapter.PtySpawnError({ adapter: "node-pty", shell: input.shell, cause }),

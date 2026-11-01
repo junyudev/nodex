@@ -58,90 +58,102 @@ export const live = Layer.effect(
   TerminalPty,
   Effect.gen(function* () {
     const hostConfig = yield* MainConfig;
+    const terminate = (process: pty.IPty) => {
+      if (hostConfig.platform === "win32") {
+        killWindowsPty(process);
+        return;
+      }
+      process.kill();
+    };
     return TerminalPty.of({
       spawn: (config) =>
-        Effect.acquireRelease(
-          Effect.gen(function* () {
-            const output = yield* Queue.sliding<string>(TERMINAL_OUTPUT_CHUNK_CAPACITY);
-            const exit = yield* Deferred.make<TerminalPtyExit>();
-            const runCallback = yield* FiberSet.makeRuntime();
-            const process = yield* Effect.acquireRelease(
-              Effect.try({
-                try: () =>
-                  pty.spawn(config.command, [...config.args], {
-                    name: "xterm-256color",
-                    cols: config.cols,
-                    rows: config.rows,
-                    cwd: config.cwd,
-                    env: { ...config.env },
-                  }),
-                catch: (cause) => ptyError("spawn", cause),
-              }),
-              (process) =>
-                Effect.sync(() => {
-                  try {
-                    if (hostConfig.platform === "win32") killWindowsPty(process);
-                    else process.kill();
-                  } catch {
-                    /* The process may already have exited. */
-                  }
-                }),
-            );
-            const dataSubscription = process.onData((data) => {
-              const bounded = data.slice(-TERMINAL_OUTPUT_CHUNK_CHAR_LIMIT);
-              runCallback(Queue.offer(output, bounded).pipe(Effect.asVoid));
-            });
-            const exitSubscription = process.onExit(({ exitCode, signal }) => {
-              const normalizedSignal =
-                typeof signal === "number" && Number.isFinite(signal) ? signal : null;
-              runCallback(
-                Deferred.succeed(exit, {
-                  exitCode: Number.isFinite(exitCode) ? exitCode : null,
-                  signal: normalizedSignal,
-                }).pipe(Effect.asVoid),
-              );
-            });
-            if (hostConfig.platform === "win32")
-              yield* waitForWindowsPtyPid(process).pipe(
-                Effect.mapError((cause) => ptyError("spawn", cause)),
-              );
-            return { process, output, exit, dataSubscription, exitSubscription };
-          }),
-          ({ output, exit, dataSubscription, exitSubscription }) =>
-            Effect.sync(() => {
-              dataSubscription.dispose();
-              exitSubscription.dispose();
-            }).pipe(
-              Effect.andThen(Queue.shutdown(output)),
-              Effect.andThen(
-                Deferred.succeed(exit, {
-                  exitCode: null,
-                  signal: null,
-                }),
+        Effect.gen(function* () {
+          const output = yield* Queue.sliding<string>(TERMINAL_OUTPUT_CHUNK_CAPACITY);
+          const exit = yield* Deferred.make<TerminalPtyExit>();
+          const runCallback = yield* FiberSet.makeRuntime();
+          const process = yield* Effect.acquireRelease(
+            Effect.try({
+              try: () => {
+                const native = pty.spawn(config.command, [...config.args], {
+                  name: "xterm-256color",
+                  cols: config.cols,
+                  rows: config.rows,
+                  cwd: config.cwd,
+                  env: { ...config.env },
+                });
+                // Install callbacks in the same native acquisition so an immediate exit is retained.
+                const dataSubscription = native.onData((data) =>
+                  runCallback(
+                    Queue.offer(output, data.slice(-TERMINAL_OUTPUT_CHUNK_CHAR_LIMIT)).pipe(
+                      Effect.asVoid,
+                    ),
+                  ),
+                );
+                const exitSubscription = native.onExit(({ exitCode, signal }) =>
+                  runCallback(
+                    Deferred.succeed(exit, {
+                      exitCode: Number.isFinite(exitCode) ? exitCode : null,
+                      signal: typeof signal === "number" && Number.isFinite(signal) ? signal : null,
+                    }).pipe(Effect.asVoid),
+                  ),
+                );
+                return { native, dataSubscription, exitSubscription };
+              },
+              catch: (cause) => ptyError("spawn", cause),
+            }),
+            ({ native, dataSubscription, exitSubscription }) =>
+              Effect.sync(() => {
+                dataSubscription.dispose();
+                exitSubscription.dispose();
+                try {
+                  terminate(native);
+                } catch {
+                  /* The process may already have exited. */
+                }
+              }).pipe(
+                Effect.andThen(Queue.shutdown(output)),
+                Effect.andThen(Deferred.succeed(exit, { exitCode: null, signal: null })),
+                Effect.asVoid,
               ),
-              Effect.asVoid,
-            ),
-        ).pipe(
-          Effect.map(({ process, output, exit }) => ({
-            pid: process.pid,
+          );
+          if (hostConfig.platform === "win32")
+            yield* waitForWindowsPtyPid(process.native).pipe(
+              Effect.mapError((cause) => ptyError("spawn", cause)),
+              Effect.raceFirst(
+                Deferred.await(exit).pipe(
+                  Effect.flatMap(({ exitCode }) =>
+                    Effect.fail(
+                      ptyError(
+                        "spawn",
+                        new Error(
+                          `Windows PTY exited before its PID was available (exit code ${exitCode}).`,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            );
+          return {
+            pid: process.native.pid,
             output: Stream.fromQueue(output),
             exit: Deferred.await(exit),
             write: (data) =>
               Effect.try({
-                try: () => process.write(data),
+                try: () => process.native.write(data),
                 catch: (cause) => ptyError("write", cause),
               }),
             resize: (cols, rows) =>
               Effect.try({
-                try: () => process.resize(cols, rows),
+                try: () => process.native.resize(cols, rows),
                 catch: (cause) => ptyError("resize", cause),
               }),
             kill: Effect.try({
-              try: () => process.kill(),
+              try: () => terminate(process.native),
               catch: (cause) => ptyError("kill", cause),
             }),
-          })),
-        ),
+          };
+        }),
     });
   }),
 );

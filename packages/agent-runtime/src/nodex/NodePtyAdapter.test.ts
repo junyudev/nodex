@@ -217,3 +217,26 @@ it.effect("cancels the owned Unix process group and never signals after observed
     assert.equal(signal.mock.calls.length, 1);
   }),
 );
+
+it.live("fails if a Windows child exits before the readiness subscription", () =>
+  Effect.gen(function* () {
+    const nativeProcess = makeNativeProcess(0);
+    const socket = nativeProcess._socket;
+    let exited = false;
+    Object.defineProperty(nativeProcess, "_socket", {
+      get: () => {
+        if (!exited) {
+          exited = true;
+          nativeProcess.events.emit("exit", { exitCode: 1 });
+        }
+        return socket;
+      },
+    });
+    spawn.mockReturnValueOnce(nativeProcess);
+    const adapter = yield* PtyAdapter.PtyAdapter;
+    const error = yield* adapter.spawn(spawnInput).pipe(Effect.timeout("2 seconds"), Effect.flip);
+    assert.instanceOf(error, PtyAdapter.PtySpawnError);
+    assert.equal(nativeProcess._agent.kill.mock.calls.length, 1);
+    assert.equal(socket.listenerCount("ready_datapipe"), 0);
+  }).pipe(Effect.provide(layerTest)),
+);

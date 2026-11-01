@@ -69,7 +69,7 @@ jobs:
           node --import tsx --input-type=module -e '
           import { vitestCommand } from "./scripts/testing/runtime.ts";
           import { runCommand } from "./scripts/tooling/process.ts";
-          const files = ["src/main/platform/host-capabilities.test.ts", "src/main/platform/electron/ElectronClipboard.test.ts", "src/main/platform/electron/ElectronClipboardFallback.test.ts", "src/main/platform/node/CodexAccountHome.test.ts", "src/main/platform/node/NodexCliShell.windows.test.ts", "src/main/platform/node/OpenCodeInstallPlatform.windows.test.ts", "src/main/platform/node/TerminalEnvironment.test.ts", "src/main/platform/node/TerminalPty.windows.test.ts", "src/main/host-runtime/ApplicationHostRuntime.test.ts", "src/main/nodex-home.test.ts", "src/main/process-tree.test.ts"];
+          const files = ["src/main/platform/host-capabilities.test.ts", "src/main/platform/electron/ElectronClipboard.test.ts", "src/main/platform/electron/ElectronClipboardFallback.test.ts", "src/main/platform/node/CodexAccountHome.test.ts", "src/main/platform/node/NodexCliShell.windows.test.ts", "src/main/platform/node/OpenCodeInstallPlatform.windows.test.ts", "src/main/platform/node/TerminalEnvironment.test.ts", "src/main/platform/node/TerminalPty.windows.test.ts", "src/main/platform/node/TerminalPty.test.ts", "src/main/host-runtime/ApplicationHostRuntime.test.ts", "src/main/nodex-home.test.ts", "src/main/process-tree.test.ts"];
           process.exitCode = (await runCommand(vitestCommand("main", files, false, {cwd: process.cwd(), env: process.env, signal: new AbortController().signal}))).exitCode;'
       - name: Run application suite
         run: vp run test:${{ matrix.suite }}
