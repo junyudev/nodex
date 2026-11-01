@@ -20,10 +20,18 @@ export const CODEX_SUMMARY_PANEL_TRANSITION = {
   bounce: 0.01,
 } as const;
 
-export const CODEX_SIDEBAR_PROJECT_FOLDER_TRANSITION: Transition = {
-  duration: 0.5,
+/** One sidebar motion: folders and sections fold, and Show more and Show less resize lists. */
+export const CODEX_SIDEBAR_DISCLOSURE_TRANSITION: Transition = {
+  duration: 0.3,
   ease: [0.19, 1, 0.22, 1],
 };
+
+const INSTANT_TRANSITION: Transition = { duration: 0 };
+
+/** The sidebar disclosure transition, settling at once when motion is reduced. */
+export function resolveCodexSidebarDisclosureTransition(reducedMotion: boolean): Transition {
+  return reducedMotion ? INSTANT_TRANSITION : CODEX_SIDEBAR_DISCLOSURE_TRANSITION;
+}
 
 export const CODEX_SUMMARY_PANEL_WIDTH = 300;
 export const CODEX_SUMMARY_PANEL_GAP = 8;

@@ -63,7 +63,7 @@ import {
   CodexSidebarActionButton,
   CodexSidebarSection,
 } from "./codex-sidebar";
-import { SidebarPaginatedItems } from "./sidebar-paginated-items";
+import { SidebarPaginatedItems, SidebarPaginatedRows } from "./sidebar-paginated-items";
 import type { SidebarGroupDndController } from "./sidebar-project-group-dnd";
 import {
   getSidebarSectionRootDndId,
@@ -359,45 +359,47 @@ function SectionDirectItemRows({
       strategy={verticalListSortingStrategy}
     >
       <div role="list" aria-label={`${section.name ?? "Section"} items`}>
-        {displayedItems.length > 0 ? (
-          displayedItems.map((item) => {
-            const nextItemId = allItemIds[items.indexOf(item) + 1] ?? null;
-            return (
-              <Fragment key={item.placementId}>
-                {reorder.dropIndicatorTarget?.beforeThreadKey === item.placementId ? (
-                  <SidebarDropIndicator />
-                ) : null}
-                {item.kind === "project" ? (
-                  renderProject({
-                    controller: reorder.controller,
-                    item,
-                    itemIds: allItemIds,
-                    nextItemId,
-                    sectionId: section.sectionId,
-                  })
-                ) : (
-                  <SectionSessionDraggable
-                    controller={reorder.controller}
-                    itemId={item.placementId}
-                    itemIds={allItemIds}
-                    nextItemId={nextItemId}
-                    sectionId={section.sectionId}
-                    sessionId={item.session.id}
-                    threadId={sessionExecutionThreadId(item.session)}
-                    threadKey={getThreadKey(item.session.id)}
-                  >
-                    {renderSession(item.session)}
-                  </SectionSessionDraggable>
-                )}
-              </Fragment>
-            );
-          })
-        ) : (
-          <div className="px-row-x py-row-y text-sm text-token-description-foreground">
-            {loading ? "Loading section…" : "Drop projects or chats here"}
-          </div>
-        )}
-        {reorder.dropIndicatorTarget?.beforeThreadKey === null ? <SidebarDropIndicator /> : null}
+        <SidebarPaginatedRows>
+          {displayedItems.length > 0 ? (
+            displayedItems.map((item) => {
+              const nextItemId = allItemIds[items.indexOf(item) + 1] ?? null;
+              return (
+                <Fragment key={item.placementId}>
+                  {reorder.dropIndicatorTarget?.beforeThreadKey === item.placementId ? (
+                    <SidebarDropIndicator />
+                  ) : null}
+                  {item.kind === "project" ? (
+                    renderProject({
+                      controller: reorder.controller,
+                      item,
+                      itemIds: allItemIds,
+                      nextItemId,
+                      sectionId: section.sectionId,
+                    })
+                  ) : (
+                    <SectionSessionDraggable
+                      controller={reorder.controller}
+                      itemId={item.placementId}
+                      itemIds={allItemIds}
+                      nextItemId={nextItemId}
+                      sectionId={section.sectionId}
+                      sessionId={item.session.id}
+                      threadId={sessionExecutionThreadId(item.session)}
+                      threadKey={getThreadKey(item.session.id)}
+                    >
+                      {renderSession(item.session)}
+                    </SectionSessionDraggable>
+                  )}
+                </Fragment>
+              );
+            })
+          ) : (
+            <div className="px-row-x py-row-y text-sm text-token-description-foreground">
+              {loading ? "Loading section…" : "Drop projects or chats here"}
+            </div>
+          )}
+          {reorder.dropIndicatorTarget?.beforeThreadKey === null ? <SidebarDropIndicator /> : null}
+        </SidebarPaginatedRows>
         {pager}
       </div>
     </SortableContext>

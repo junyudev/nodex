@@ -46,7 +46,8 @@ import { ShortcutKeycaps } from "@/components/ui/shortcut-keycaps";
 import { toast } from "@/components/ui/toast";
 import { getGitWorkerClient } from "@/lib/api";
 import { openFileLink } from "@/lib/file-system-operations";
-import { CODEX_SIDEBAR_PROJECT_FOLDER_TRANSITION } from "@/lib/codex-panel-motion";
+import { resolveCodexSidebarDisclosureTransition } from "@/lib/codex-panel-motion";
+import { useResolvedReducedMotion } from "@/lib/use-reduced-motion";
 import { formatElapsedSince, getNextElapsedTimeUpdateDelay } from "@/lib/elapsed-time";
 import { CODEX_SIDEBAR_PAGER_BUTTON_CLASS } from "@/lib/codex-sidebar-pagination";
 import {
@@ -375,6 +376,7 @@ export function CodexSidebarSection({
   actions?: ReactNode;
   children: ReactNode;
 }) {
+  const disclosureTransition = resolveCodexSidebarDisclosureTransition(useResolvedReducedMotion());
   return (
     <div
       className="px-row-x"
@@ -437,7 +439,7 @@ export function CodexSidebarSection({
                 },
               }}
               exit={{ height: 0, opacity: 0, overflow: "hidden" }}
-              transition={CODEX_SIDEBAR_PROJECT_FOLDER_TRANSITION}
+              transition={disclosureTransition}
               className="overflow-hidden"
               data-app-action-sidebar-section-body-motion=""
             >
@@ -1379,6 +1381,7 @@ function CodexProjectChildrenDisclosure({
   motionKey: string;
   children: ReactNode;
 }) {
+  const disclosureTransition = resolveCodexSidebarDisclosureTransition(useResolvedReducedMotion());
   if (!animate) {
     if (!expanded) return null;
 
@@ -1403,7 +1406,7 @@ function CodexProjectChildrenDisclosure({
             },
           }}
           exit={{ height: 0, opacity: 0, overflow: "hidden" }}
-          transition={CODEX_SIDEBAR_PROJECT_FOLDER_TRANSITION}
+          transition={disclosureTransition}
           className="overflow-hidden"
           data-app-action-sidebar-project-list-motion=""
         >

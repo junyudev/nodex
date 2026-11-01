@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vite-plus/test";
 import {
-  CODEX_SIDEBAR_PROJECT_FOLDER_TRANSITION,
+  CODEX_SIDEBAR_DISCLOSURE_TRANSITION,
   CODEX_SUMMARY_SHIFT_X,
   clampCodexPanelProgress,
   resolveCodexAnimatedPanelSize,
@@ -12,11 +12,11 @@ import {
 } from "./codex-panel-motion";
 
 describe("Codex panel motion helpers", () => {
-  test("matches the Codex project folder fold transition", () => {
-    expect(CODEX_SIDEBAR_PROJECT_FOLDER_TRANSITION.duration).toBe(0.5);
+  test("matches the Codex sidebar disclosure transition", () => {
+    expect(CODEX_SIDEBAR_DISCLOSURE_TRANSITION.duration).toBe(0.3);
     expect(
-      Array.isArray(CODEX_SIDEBAR_PROJECT_FOLDER_TRANSITION.ease)
-        ? CODEX_SIDEBAR_PROJECT_FOLDER_TRANSITION.ease.join(",")
+      Array.isArray(CODEX_SIDEBAR_DISCLOSURE_TRANSITION.ease)
+        ? CODEX_SIDEBAR_DISCLOSURE_TRANSITION.ease.join(",")
         : "",
     ).toBe("0.19,1,0.22,1");
   });

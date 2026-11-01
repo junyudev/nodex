@@ -5,7 +5,7 @@ export const CODEX_SIDEBAR_PROJECTLESS_THREAD_MAX_ITEMS = 50;
 export const CODEX_SIDEBAR_PROJECT_GROUP_MAX_GROUPS = 5;
 
 export const CODEX_SIDEBAR_PAGER_BUTTON_CLASS =
-  "border-token-border no-drag cursor-interaction flex items-center gap-1 border whitespace-nowrap select-none focus:outline-none disabled:cursor-not-allowed disabled:opacity-40 rounded-full text-token-muted-foreground enabled:hover:bg-transparent data-[state=open]:bg-transparent hover:text-token-foreground border-transparent px-2 py-0.5 text-sm leading-[18px] -ml-[9px] text-token-description-foreground hover:text-token-foreground";
+  "border-token-border no-drag cursor-interaction flex items-center gap-1 border whitespace-nowrap select-none focus:outline-none disabled:cursor-not-allowed disabled:opacity-40 rounded-full text-token-muted-foreground enabled:hover:bg-transparent data-[state=open]:bg-transparent hover:text-token-foreground border-transparent px-2 py-0.5 text-sm leading-[18px] -ml-[9px] text-token-description-foreground hover:text-token-foreground transition-[color,opacity] duration-basic ease-basic";
 export const CODEX_SIDEBAR_DEFAULT_PAGER_ROW_CLASS = "flex items-center gap-1 px-row-x py-0.5";
 // Match grouped Session titles: 8px row inset + 16px status slot + 8px title gap.
 // The pager button cancels its own 9px border/padding inset.

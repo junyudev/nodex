@@ -27,7 +27,7 @@ import {
   useSidebarLibraryResourceDnd,
   useSidebarLibraryRootDropTarget,
 } from "./sidebar-library-dnd";
-import { SidebarPaginatedItems } from "./sidebar-paginated-items";
+import { SidebarPaginatedItems, SidebarPaginatedRows } from "./sidebar-paginated-items";
 import { cn } from "@/lib/utils";
 import { usePresentedPageTitle } from "@/lib/page-title-projection-context";
 
@@ -347,18 +347,20 @@ export function SidebarPagesSection({
           >
             {(pagination, pager) => (
               <div role="list" aria-label="Content">
-                {pagination.visibleItems.map((node) => (
-                  <SidebarPageRootRow
-                    key={nodeKey(node)}
-                    node={node}
-                    active={nodeKey(node) === activeKey}
-                    projects={projects}
-                    mutationsEnabled={mutationsEnabled}
-                    onOpen={onOpenRoot}
-                    onOpenInProject={onOpenInProject}
-                    onHoverSurfaceOpenChange={onHoverSurfaceOpenChange}
-                  />
-                ))}
+                <SidebarPaginatedRows>
+                  {pagination.visibleItems.map((node) => (
+                    <SidebarPageRootRow
+                      key={nodeKey(node)}
+                      node={node}
+                      active={nodeKey(node) === activeKey}
+                      projects={projects}
+                      mutationsEnabled={mutationsEnabled}
+                      onOpen={onOpenRoot}
+                      onOpenInProject={onOpenInProject}
+                      onHoverSurfaceOpenChange={onHoverSurfaceOpenChange}
+                    />
+                  ))}
+                </SidebarPaginatedRows>
                 {pager}
               </div>
             )}
