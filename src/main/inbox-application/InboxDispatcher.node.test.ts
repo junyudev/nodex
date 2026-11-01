@@ -89,8 +89,6 @@ const harness = Effect.fn("InboxDispatcher.testHarness")(function* (mode: Mode) 
         chat_instance_id: null,
         chat_model: null,
         chat_effort: null,
-        delegates: [],
-        plan: null,
         summary: "Keep this reference",
         rationale: null,
       })),

@@ -18,10 +18,9 @@ use std::collections::BTreeSet;
 
 use nodex_core_contracts::agent::AgentTurnProvenance;
 use nodex_core_contracts::inbox::{
-    ProjectWorkspaceInboxChatAgent, ProjectWorkspaceInboxDelegate,
-    ProjectWorkspaceInboxDispatchAction, ProjectWorkspaceInboxEntryKind,
-    ProjectWorkspaceInboxEntryState, ProjectWorkspaceInboxPageBasis,
-    ProjectWorkspaceInboxProposalOrigin,
+    ProjectWorkspaceInboxChatAgent, ProjectWorkspaceInboxDispatchAction,
+    ProjectWorkspaceInboxEntryKind, ProjectWorkspaceInboxEntryState,
+    ProjectWorkspaceInboxPageBasis, ProjectWorkspaceInboxProposalOrigin,
 };
 use nodex_core_contracts::workspace::ProjectWorkspaceAgentRuntimeTurnKind;
 use nodex_core_contracts::{AdapterKind, BoundModuleContext};
@@ -2151,10 +2150,6 @@ fn require_one_scope(
     Ok(scopes.into_iter().next().flatten())
 }
 
-/// Bounds what a stored decision may carry; how many parts to delegate is the Agent's judgment.
-const MAX_INBOX_DELEGATES: usize = 8;
-const MAX_INBOX_DELEGATE_WORK_CHARS: usize = 500;
-const MAX_INBOX_PLAN_CHARS: usize = 4_000;
 const MAX_INBOX_CHOICE_CHARS: usize = 256;
 
 /// An Agent choice names a real-looking instance and bounded option values. Whether it can
@@ -2208,8 +2203,6 @@ fn normalize_action(
             project_id,
             prompt,
             agent,
-            delegates,
-            plan,
         } => {
             if scope.is_some() && project_id.as_deref() != scope {
                 return Err(invalid(
@@ -2222,40 +2215,10 @@ fn normalize_action(
                     connection, library_id, project_id, true,
                 )?;
             }
-            if delegates.len() > MAX_INBOX_DELEGATES {
-                return Err(invalid("A new chat names too many delegated parts"));
-            }
-            let delegates = delegates
-                .iter()
-                .map(|delegate| {
-                    let work = delegate.work.trim();
-                    if work.is_empty() || work.chars().count() > MAX_INBOX_DELEGATE_WORK_CHARS {
-                        return Err(invalid("A delegated part needs a short description"));
-                    }
-                    Ok(ProjectWorkspaceInboxDelegate {
-                        work: work.to_owned(),
-                        agent: normalize_chat_agent(&delegate.agent)?,
-                    })
-                })
-                .collect::<Result<Vec<_>, StoreError>>()?;
-            let plan = plan
-                .as_deref()
-                .map(str::trim)
-                .filter(|plan| !plan.is_empty())
-                .map(|plan| {
-                    if plan.chars().count() > MAX_INBOX_PLAN_CHARS {
-                        Err(invalid("The chat's plan is too long"))
-                    } else {
-                        Ok(plan.to_owned())
-                    }
-                })
-                .transpose()?;
             Ok(ProjectWorkspaceInboxDispatchAction::NewChat {
                 project_id: project_id.clone(),
                 prompt: normalize_prompt(prompt)?,
                 agent: agent.as_ref().map(normalize_chat_agent).transpose()?,
-                delegates,
-                plan,
             })
         }
         ProjectWorkspaceInboxDispatchAction::SendToChat { session_id, prompt } => {

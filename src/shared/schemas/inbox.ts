@@ -4,7 +4,6 @@ import {
   MAX_INBOX_INSTRUCTIONS_CHARS,
   type InboxAgentBinding,
   type InboxChatAgent,
-  type InboxDelegate,
   type UpdateInboxSettingsInput,
 } from "../inbox";
 import type {
@@ -76,12 +75,6 @@ export const InboxChatAgentSchema = z
   })
   .strict() satisfies z.ZodType<InboxChatAgent>;
 
-/** Bounds what a decision may carry; how much to delegate is the suggestion's judgment. */
-export const MAX_INBOX_DELEGATES = 8;
-const InboxDelegateSchema = z
-  .object({ work: z.string().trim().min(1).max(500), agent: InboxChatAgentSchema })
-  .strict() satisfies z.ZodType<InboxDelegate>;
-
 export const InboxDispatchActionSchema = z.discriminatedUnion("type", [
   z
     .object({
@@ -97,10 +90,7 @@ export const InboxDispatchActionSchema = z.discriminatedUnion("type", [
       type: z.literal("new_chat"),
       projectId: id.nullable(),
       prompt,
-      // A decision saved before new chats could be planned carries none of these.
       agent: InboxChatAgentSchema.nullable().default(null),
-      delegates: z.array(InboxDelegateSchema).max(MAX_INBOX_DELEGATES).default([]),
-      plan: z.string().trim().max(4_000).nullable().default(null),
     })
     .strict(),
   z.object({ type: z.literal("send_to_chat"), sessionId: id, prompt }).strict(),
@@ -127,7 +117,6 @@ export const InboxExecutionSelectionSchema = z
   .object({
     modelSelection: AgentRuntimeModelSelectionSchema,
     interactionMode: z.enum(["default", "plan"]),
-    orchestration: z.string().max(8_000).nullable().optional(),
   })
   .strict() satisfies z.ZodType<InboxExecutionSelection>;
 

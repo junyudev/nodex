@@ -3,7 +3,6 @@ import type {
   InboxDispatchAction,
   InboxChat,
   InboxChatAgent,
-  InboxDelegate,
   InboxItem,
   InboxProposal,
   InboxPageBasis,
@@ -19,7 +18,6 @@ import { cn } from "@/lib/utils";
 import { INBOX_ACTION_ICONS } from "./inbox-icon-action";
 import { InboxAgentPicker, type InboxAgents } from "./inbox-agent-picker";
 import { sameInboxChatAgent } from "./inbox-agent-model";
-import { InboxChatPlan } from "./inbox-chat-plan";
 
 type ActionType = InboxDispatchAction["type"];
 
@@ -68,10 +66,6 @@ export interface InboxDispatchDraft {
   readonly prompt: string;
   /** What a new chat runs on when chosen for this decision; the Inbox's own when unset. */
   readonly agent?: InboxChatAgent | null;
-  /** Parts of a new chat's work its Agent hands to other Agents. */
-  readonly delegates?: readonly InboxDelegate[];
-  /** How a new chat's Agent should run the work. */
-  readonly plan?: string | null;
   /** Present for a scheduled task's waiting run, which can run its task. */
   readonly firing?: InboxDispatchFiring | null;
 }
@@ -90,8 +84,6 @@ export function draftFromAction(
         sessionId: null,
         prompt: action.prompt,
         agent: action.agent,
-        delegates: action.delegates,
-        plan: action.plan,
       };
     case "send_to_chat":
       return {
@@ -155,8 +147,6 @@ export function actionFromDraft(draft: InboxDispatchDraft): InboxDispatchAction 
             projectId: draft.projectId,
             prompt,
             agent: draft.agent ?? null,
-            delegates: draft.delegates ?? [],
-            plan: draft.plan?.trim() || null,
           }
         : null;
     case "send_to_chat":
@@ -407,17 +397,6 @@ export function InboxDispatchEditor({
             setDraft((current) => ({ ...current, prompt }));
           }}
           className="w-full resize-y rounded-xl bg-token-main-surface-primary px-3 py-2 text-sm leading-relaxed text-token-foreground outline-none shadow-[0_0_0_0.5px_var(--color-token-border)] focus-visible:shadow-[0_0_0_1px_var(--color-token-focus-border)]"
-        />
-      ) : null}
-
-      {draft.type === "new_chat" ? (
-        <InboxChatPlan
-          agents={agents}
-          delegates={draft.delegates ?? []}
-          plan={draft.plan ?? null}
-          onChange={({ delegates, plan }) =>
-            setDraft((current) => ({ ...current, delegates, plan }))
-          }
         />
       ) : null}
 

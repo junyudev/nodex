@@ -464,8 +464,6 @@ describe("Inbox capture ownership", () => {
         projectId: null,
         prompt: "The edited prompt",
         agent: null,
-        delegates: [],
-        plan: null,
       };
       vi.mocked(prepareInboxConfirmation).mockImplementation(async (draft) => ({
         ...draft,

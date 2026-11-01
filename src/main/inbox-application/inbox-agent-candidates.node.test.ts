@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 import { inboxAgentCandidates, inboxDefaultChatCandidate } from "./inbox-agent-candidates";
-import { renderInboxOrchestration } from "./inbox-orchestration";
 
 type Provider = AgentRuntimeOperations["providers.read"]["output"][number];
 
@@ -231,70 +230,5 @@ describe("what a suggestion may run chats on", () => {
         serviceTier: null,
       }),
     ).toEqual({ instance_id: "codex", model: "gpt-6.1-sol", effort: "medium" });
-  });
-});
-
-describe("how a planned chat's Agent is told to run the work", () => {
-  it("writes the plan, then each part with its exact delegate_task target", () => {
-    const text = renderInboxOrchestration([codex, claude], {
-      plan: "Settle the API contract first, then build the UI on it.",
-      delegates: [
-        {
-          work: "The onboarding API and its migrations",
-          agent: {
-            instanceId: "codex",
-            model: "gpt-6.1-sol",
-            reasoningEffort: "xhigh",
-            serviceTier: null,
-          },
-        },
-      ],
-    });
-    expect(text).toContain("How to run this work:\nSettle the API contract first");
-    expect(text).toContain(
-      'target: {"providerInstanceId":"codex","model":"gpt-6.1-sol","options":[{"id":"reasoningEffort","value":"xhigh"}]} (Codex · GPT-6.1 Sol · xhigh)',
-    );
-    expect(text).not.toContain("unavailable");
-  });
-
-  it("still hands over a part whose target cannot run now, saying so", () => {
-    const text = renderInboxOrchestration([codex], {
-      plan: null,
-      delegates: [
-        {
-          work: "Visual polish",
-          agent: {
-            instanceId: "claude:gone",
-            model: "claude-opus-5-5",
-            reasoningEffort: null,
-            serviceTier: null,
-          },
-        },
-      ],
-    });
-    expect(text).toContain('{"providerInstanceId":"claude:gone","model":"claude-opus-5-5"}');
-    expect(text).toContain("unavailable when the chat started");
-  });
-
-  it("lets a chat's own Agent run a part through its own subagents", () => {
-    const part = {
-      work: "Benchmark the scoring",
-      agent: {
-        instanceId: "codex",
-        model: "gpt-6.1-sol",
-        reasoningEffort: "xhigh",
-        serviceTier: null,
-      },
-    };
-    expect(renderInboxOrchestration([codex], { plan: null, delegates: [part] }, "codex")).toContain(
-      "your own subagents may run it",
-    );
-    expect(
-      renderInboxOrchestration([codex], { plan: null, delegates: [part] }, "claude:work"),
-    ).not.toContain("subagents");
-  });
-
-  it("writes nothing for a chat with no plan", () => {
-    expect(renderInboxOrchestration([codex], { plan: null, delegates: [] })).toBeNull();
   });
 });

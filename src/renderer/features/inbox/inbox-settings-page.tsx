@@ -134,7 +134,7 @@ export function InboxSettingsPage() {
         </SettingRow>
         <SettingRow
           label="Suggestions choose models"
-          description="Each suggestion picks its new chat's Agent, model and effort, and which Agents help it, weighing what each does well and how much of each weekly budget is left."
+          description="Each suggestion picks its new chat's Agent, model and effort, weighing what each does well and how much of each weekly budget is left. When another model suits part of the work, its prompt says so."
         >
           <NodexSwitch
             ariaLabel="Suggestions choose models"

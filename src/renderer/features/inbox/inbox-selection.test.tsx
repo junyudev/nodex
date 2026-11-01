@@ -207,8 +207,6 @@ describe("Inbox destination and Agent selection", () => {
             projectId: null,
             prompt: "Compare both",
             agent: null,
-            delegates: [],
-            plan: null,
           },
           "Compare both",
         )}
@@ -230,8 +228,6 @@ describe("Inbox destination and Agent selection", () => {
         projectId: null,
         prompt: "Compare both",
         agent: { instanceId: "codex", model: null, reasoningEffort: "high", serviceTier: null },
-        delegates: [],
-        plan: null,
       },
       null,
     );

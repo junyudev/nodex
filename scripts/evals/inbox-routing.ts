@@ -22,10 +22,10 @@ interface Decision {
   readonly project?: string | null;
   readonly session?: string;
   readonly promptIncludes?: readonly string[];
-  /** The Agent a planned chat should lead on; `default` expects the Inbox's own. */
+  /** The Agent a new chat should lead on; `default` expects the Inbox's own. */
   readonly lead?: "codex" | "claude" | "default";
-  /** An Agent at least one delegated part should run on. */
-  readonly delegatesTo?: "codex" | "claude";
+  /** An Agent whose model the prompt should offer part of the work to, in prose. */
+  readonly handsOffTo?: "codex" | "claude";
 }
 interface RoutingCase {
   readonly id: string;
@@ -282,7 +282,7 @@ const cases: readonly RoutingCase[] = [
         action: "new_chat",
         project: "nodex",
         lead: "claude",
-        delegatesTo: "codex",
+        handsOffTo: "codex",
       },
     ],
   },
@@ -366,7 +366,13 @@ const exampleOutput = (value: RoutingCase) => ({
     session_id: decision.session ?? null,
     prompt:
       decision.action === "new_chat" || decision.action === "send_to_chat"
-        ? `Research the supplied scope; ${(decision.promptIncludes ?? []).join("; ")}`
+        ? `Research the supplied scope; ${(decision.promptIncludes ?? []).join("; ")}${
+            decision.handsOffTo === "codex"
+              ? " You may hand the backend to GPT-6.1 Sol."
+              : decision.handsOffTo === "claude"
+                ? " You may hand the visual design to Opus 5.5."
+                : ""
+          }`
         : null,
     chat_instance_id:
       decision.lead === "claude" ? CLAUDE : decision.lead === "codex" ? "codex" : null,
@@ -377,17 +383,6 @@ const exampleOutput = (value: RoutingCase) => ({
           ? "gpt-6.1-sol"
           : null,
     chat_effort: decision.lead === "claude" || decision.lead === "codex" ? "high" : null,
-    delegates: decision.delegatesTo
-      ? [
-          {
-            work: "The backend part",
-            instance_id: decision.delegatesTo === "claude" ? CLAUDE : "codex",
-            model: decision.delegatesTo === "claude" ? "claude-opus-5-5" : "gpt-6.1-sol",
-            effort: "high",
-          },
-        ]
-      : [],
-    plan: null,
     summary:
       decision.action === "keep"
         ? "Keep the captured notes for later"
@@ -439,14 +434,13 @@ function grade(value: RoutingCase, response: unknown): readonly string[] {
         errors.push(`lead ${lead}`);
     }
     if (
-      expected.delegatesTo &&
+      expected.handsOffTo &&
       (actual.action.type !== "new_chat" ||
-        !actual.action.delegates.some(
-          (delegate) =>
-            delegate.agent.instanceId === (expected.delegatesTo === "claude" ? CLAUDE : "codex"),
+        !(expected.handsOffTo === "claude" ? /opus|claude/i : /sol|gpt/i).test(
+          actual.action.prompt,
         ))
     )
-      errors.push("delegation");
+      errors.push("hand-off");
     for (const text of expected.promptIncludes ?? [])
       if (
         !("prompt" in actual.action) ||

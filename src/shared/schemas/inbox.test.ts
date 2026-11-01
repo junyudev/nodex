@@ -51,8 +51,6 @@ describe("Inbox boundary contracts", () => {
       projectId: null,
       prompt: "Research only; do not change code.",
       agent: null,
-      delegates: [],
-      plan: null,
     });
   });
 

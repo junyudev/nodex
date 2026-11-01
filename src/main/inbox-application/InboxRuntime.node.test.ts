@@ -826,8 +826,6 @@ const suggestionOutput = (pageIds: string[], action = "send_to_chat") => ({
       chat_instance_id: null,
       chat_model: null,
       chat_effort: null,
-      delegates: [],
-      plan: null,
       summary: action === "keep" ? "Keep these thoughts for later" : "Continue the investigation",
       rationale: null,
     },
@@ -914,7 +912,7 @@ it.effect("settles a 16-message explicit group atomically with the actual resolv
     assert.deepEqual(request.modelSelection, {
       instanceId: claude.instanceId,
       model: "default-model",
-      // Suggestions also choose models and plan delegation, so Claude suggests at medium effort.
+      // Suggestions also look things up and choose models, so Claude suggests at medium effort.
       options: [{ id: "reasoningEffort", value: "medium" }],
     });
     // The suggestion is offered the live Agents and the Inbox's own chat Agent to choose among.

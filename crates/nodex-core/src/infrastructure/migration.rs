@@ -405,6 +405,11 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 198,
         apply: migrate_v197_to_v198,
     },
+    MigrationStep {
+        from_revision: 198,
+        to_revision: 199,
+        apply: migrate_v198_to_v199,
+    },
 ];
 
 fn resolve_migration_path(
@@ -2611,6 +2616,21 @@ fn migrate_v197_to_v198(
         params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
             context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
             r#"{"session_reminders":true}"#],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
+fn migrate_v198_to_v199(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v198_to_v199.sql"))?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            r#"{"inbox_prompt_advice":true}"#],
     )?;
     connection.pragma_update(None, "user_version", context.target_revision)?;
     Ok(())
@@ -8570,7 +8590,14 @@ mod tests {
             .unwrap();
         assert_eq!(
             steps,
-            vec![(193, 194), (194, 195), (195, 196), (196, 197), (197, 198)]
+            vec![
+                (193, 194),
+                (194, 195),
+                (195, 196),
+                (196, 197),
+                (197, 198),
+                (198, 199)
+            ]
         );
         let states = connection
             .prepare("SELECT page_id,suggestion_state FROM inbox_entries ORDER BY page_id")
@@ -8863,6 +8890,141 @@ mod tests {
                 .unwrap()
                 .count(),
             1
+        );
+    }
+
+    #[test]
+    fn inbox_chat_advice_migration_preserves_dispatch_payloads_without_structured_delegation() {
+        use nodex_core_contracts::inbox::{
+            ProjectWorkspaceInboxDispatchAction, ProjectWorkspaceInboxExecutionSelection,
+        };
+
+        let profile = tempdir().unwrap();
+        install_intermediate_fixture(profile.path(), 198);
+        let mut connection = open_writer(&profile.path().join("nodex.db")).unwrap();
+        let library_id: String = connection
+            .query_row("SELECT id FROM libraries LIMIT 1", [], |row| row.get(0))
+            .unwrap();
+        let action = json!({
+            "type": "new_chat",
+            "project_id": null,
+            "prompt": "Review onboarding. Delegate the API to Codex, then build the UI.",
+            "agent": {
+                "instance_id": "claude:work",
+                "model": "claude-opus-5-5",
+                "reasoning_effort": "high",
+                "service_tier": "fast"
+            }
+        });
+        let selection = json!({
+            "model_selection": {
+                "instanceId": "claude:work",
+                "model": "claude-opus-5-5",
+                "options": [{"id": "reasoning_effort", "value": "high"}]
+            },
+            "interaction_mode": "plan"
+        });
+        let mut populated_action = action.clone();
+        populated_action["delegates"] = json!([{
+            "work": "The onboarding API and its migrations",
+            "agent": {"instance_id": "codex", "model": "gpt-6.1-sol", "reasoning_effort": "xhigh", "service_tier": null}
+        }]);
+        populated_action["plan"] = json!("Settle the API contract first.");
+        let mut populated_selection = selection.clone();
+        populated_selection["orchestration"] = json!("Delegate the onboarding API to Codex.");
+        assert!(
+            serde_json::from_value::<ProjectWorkspaceInboxExecutionSelection>(
+                populated_selection.clone()
+            )
+            .is_err()
+        );
+        let mut empty_action = action.clone();
+        empty_action["delegates"] = json!([]);
+        empty_action["plan"] = Value::Null;
+        let mut empty_selection = selection.clone();
+        empty_selection["orchestration"] = Value::Null;
+
+        let fixtures = [
+            (
+                "open",
+                populated_action.clone(),
+                Some(populated_selection.clone()),
+            ),
+            ("superseded", empty_action, Some(empty_selection)),
+            ("dismissed", action.clone(), Some(selection.clone())),
+            (
+                "dispatching",
+                populated_action.clone(),
+                Some(populated_selection.clone()),
+            ),
+            ("completed", populated_action.clone(), None),
+            ("failed", populated_action, Some(populated_selection)),
+        ];
+        for (state, stored_action, stored_selection) in &fixtures {
+            connection.execute(
+                "INSERT INTO inbox_proposals(proposal_id,library_id,origin,state,action_json,summary,basis_json,dispatch_session_id,confirmed_at,failure_message,created_at,updated_at) \
+                 VALUES (?1,?2,'agent',?1,?3,'Review onboarding','[]','session:legacy','2026-11-01T00:00:00.000Z',?4,'2026-11-01T00:00:00.000Z','2026-11-01T00:00:00.000Z')",
+                params![state, library_id, stored_action.to_string(), (*state == "failed").then_some("Delivery failed")],
+            ).unwrap();
+            connection.execute(
+                "INSERT INTO inbox_handoffs(proposal_id,store_epoch,final_text,launch_id,message_id,execution_selection_json) \
+                 VALUES (?1,'epoch','Reviewed prompt with delegation advice',?2,?3,?4)",
+                params![state, format!("launch:{state}"), format!("message:{state}"), stored_selection.as_ref().map(Value::to_string)],
+            ).unwrap();
+        }
+        validate_schema_identity(&connection, 198).unwrap();
+        let preparation = prepare_profile_store(&mut connection, profile.path()).unwrap();
+        assert_eq!(preparation.migrated_from_version, Some(198));
+        assert_eq!(preparation.schema_version, CURRENT_STORE_REVISION);
+        validate_schema_identity(&connection, CURRENT_STORE_REVISION).unwrap();
+
+        for (state, _, stored_selection) in &fixtures {
+            let (encoded_action, encoded_selection, final_text, launch_id, message_id): (
+                String, Option<String>, String, String, String,
+            ) = connection.query_row(
+                "SELECT proposal.action_json,handoff.execution_selection_json,handoff.final_text,handoff.launch_id,handoff.message_id \
+                 FROM inbox_proposals proposal JOIN inbox_handoffs handoff USING(proposal_id) WHERE proposal.proposal_id=?1",
+                [state],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+            ).unwrap();
+            assert_eq!(
+                serde_json::from_str::<Value>(&encoded_action).unwrap(),
+                action
+            );
+            let decoded_action: ProjectWorkspaceInboxDispatchAction =
+                serde_json::from_str(&encoded_action).unwrap();
+            assert_eq!(serde_json::to_value(decoded_action).unwrap(), action);
+            let expected_selection = stored_selection.as_ref().map(|_| selection.clone());
+            assert_eq!(
+                encoded_selection
+                    .as_deref()
+                    .map(|encoded| serde_json::from_str::<Value>(encoded).unwrap()),
+                expected_selection
+            );
+            let decoded_selection = encoded_selection.as_deref().map(|encoded| {
+                serde_json::from_str::<ProjectWorkspaceInboxExecutionSelection>(encoded).unwrap()
+            });
+            assert_eq!(
+                decoded_selection.map(|value| serde_json::to_value(value).unwrap()),
+                expected_selection
+            );
+            assert_eq!(final_text, "Reviewed prompt with delegation advice");
+            assert_eq!(launch_id, format!("launch:{state}"));
+            assert_eq!(message_id, format!("message:{state}"));
+        }
+        let history: String = connection.query_row(
+            "SELECT evidence_json FROM core_store_migration_history WHERE source_revision=198 AND target_revision=199",
+            [], |row| row.get(0),
+        ).unwrap();
+        assert_eq!(
+            serde_json::from_str::<Value>(&history).unwrap(),
+            json!({"inbox_prompt_advice": true})
+        );
+        assert_eq!(
+            prepare_profile_store(&mut connection, profile.path())
+                .unwrap()
+                .migrated_from_version,
+            None
         );
     }
 

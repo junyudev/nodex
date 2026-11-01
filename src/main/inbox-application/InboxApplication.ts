@@ -76,7 +76,6 @@ import type { ProjectWorkspaceCommandResult } from "../project-application/Proje
 import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
 import { resolveInboxModel } from "./InboxRuntimeSelection";
-import { renderInboxOrchestration } from "./inbox-orchestration";
 import { createOperationId } from "../core-runtime/operation-identity";
 import { scheduledFiringCapture, scheduledFiringTitle } from "./scheduled-firing";
 import type { AutomationDefinitionClaim } from "../automation-application/AutomationApplication";
@@ -384,8 +383,7 @@ export const make = Effect.gen(function* () {
       yield* resolveInboxModel(runtime, action.agent).pipe(
         Effect.mapError(fail("prepare-confirmation")),
       );
-    // A new chat runs on the Agent its decision chose, or else the Inbox's own. Its delegation
-    // instructions are written now, against the catalog that resolved it, and frozen with it.
+    // A new chat runs on the Agent its decision chose, or else the Inbox's own, frozen now.
     const modelSelection =
       action.type === "new_chat"
         ? yield* resolveInboxModel(
@@ -397,18 +395,7 @@ export const make = Effect.gen(function* () {
         : null;
     const executionSelection =
       action.type === "new_chat" && modelSelection
-        ? {
-            modelSelection,
-            interactionMode: "default" as const,
-            orchestration:
-              action.delegates.length > 0 || action.plan
-                ? renderInboxOrchestration(
-                    yield* runtime.catalog().pipe(Effect.mapError(fail("prepare-confirmation"))),
-                    action,
-                    modelSelection.instanceId,
-                  )
-                : null,
-          }
+        ? { modelSelection, interactionMode: "default" as const }
         : null;
     const prepared = {
       ...draft,

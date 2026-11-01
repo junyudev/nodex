@@ -311,19 +311,28 @@ fails with that reason, and a selection with more is refused. It also receives
 eligible routing candidates: Projects with their source directories, and
 relevant chat previews.
 
-Before proposing, it takes a short look where that makes a proposal better
-informed: it reads files in a Project's sources or searches the web. It looks
-for what shapes the proposal, such as what an unfamiliar name refers to, which
-Project or chat already owns the work, or where in a Project's sources the work
-lives and how large it is. Notes, reminders and messages whose handling is already plain need
-no look, and it stops after a few reads or searches, as soon as more would not
-change the proposal. It decides where and how work runs and never does the
-work: it answers no question, investigates no cause, runs no build or test, and
-changes no file, Nodex content or other state. What a lookup finds that the
-chat needs goes into the proposed prompt with its file paths or links, and the
-rationale says what it checked. A Project's Inbox looks from
+Before proposing, it looks things up whenever that lets the prompt point the
+chat at something concrete or fit its model to the work: it reads files in a
+Project's sources or searches the web. It might search the web for an
+unfamiliar product or library, find where in a Project's sources the work lives
+and how large it is, or check which Project or chat already owns it. Notes and
+reminders get no look, and it stops after a few reads or searches, as soon as
+more would not change the proposal. It decides where and how work runs and
+never does the work: it answers no question, investigates no cause, runs no
+build or test, and changes no file, Nodex content or other state. What a lookup
+finds that the chat needs goes into the proposed prompt with its file paths or
+links, and the rationale says what it checked. A Project's Inbox looks from
 that Project's primary source directory when it exists; anything else looks
 from the Profile's home.
+
+A suggestion sees only what Nodex gives it: its prompt, the messages' images,
+and those two ways to look things up. It does not load the user's personal
+Agent setup (global instructions, skills, MCP servers, plugins, hooks or the
+Agent's own configuration file), and a Project's agent instruction files are
+files it may read, not instructions it follows. Those all belong to the chat,
+whose Agent follows them itself, so a suggestion's prompt never restates them;
+it keeps only the requirements the user wrote in the message. The routing
+preferences are the one place to give suggestions standing instructions.
 
 Image markers use `[Image #N]`, followed by ` (caption: <alt text>)` when the
 occurrence has alt text. Within a message, repeated occurrences of a Library
@@ -364,10 +373,10 @@ one exact action:
 
 - **Keep:** keep it as a note.
 - **New chat:** start a chat in a Project or without one, with a prompt. While
-  suggestions choose models, a new chat may also name what it runs on (an
-  Agent, model and effort), parts of the work its Agent hands to another model
-  (each a one-line description and its Agent, model and effort), and a short
-  plan written to its Agent. Most chats delegate nothing.
+  suggestions choose models, a new chat may also name what it runs on: an
+  Agent, model and effort. When another model clearly suits part of the work,
+  the prompt says so in one sentence to the chat's Agent, which decides whether
+  and how to delegate it; a suggestion never plans subtasks or steps.
 - **Send to chat:** send a prompt to an existing chat.
 - **Move to Project:** file the message Page in another Project's Database.
 
@@ -381,7 +390,7 @@ completes a request by asking the user to handle the message manually.
 Main rejects unknown targets, invalid action fields, duplicate or missing members
 and overlong prompts instead of repairing or truncating them. A suggestion can
 never invent a destination, and every Agent, model and effort it names must be
-one it was offered, since Nodex starts and delegates to them exactly. An explicit group produces one concrete suggestion
+one it was offered, since Nodex starts the chat on it exactly. An explicit group produces one concrete suggestion
 covering all its members. Generation and transport failures remain failures
 with Retry; they do not masquerade as completed advice. A failure names its own
 cause: a timeout, missing sign-in, a rate limit, or an answer too long or in a
@@ -440,9 +449,6 @@ and its row show one of these:
     on the decision, shows its model on the menu half whenever it differs from
     the Inbox's own, so the decision never hides it, and the menu then offers
     `Use for all Inbox chats`;
-  - for a planned chat, beneath its prompt, each part it hands off with that
-    Agent's mark and model, then its plan, so how it will run is visible before
-    anything is sent;
   - the member count for a group, with access to its complete scope;
   - `Keep`.
 - **Failure:** one short reason and a new decision. A failed suggestion, or a
@@ -490,9 +496,7 @@ destination or prompt happens in `Handle manually`, which starts from that
 suggestion, including the model chosen on its decision. Manual target selection
 searches eligible chats beyond the recent list. For a new chat, the dispatch
 editor shows what it runs on beside `Start chat`, as the composer shows its
-model beside Send, and opens the same model menu. A planned chat's parts each
-keep their own model menu and can be removed, leaving that part to the chat's
-own Agent, and its plan can be rewritten.
+model beside Send, and opens the same model menu.
 
 ## How the Inbox plans
 
@@ -548,9 +552,7 @@ reviewed. It freezes the complete original message, final prompt and
 destination; a chat receives each message as written, its images attached in
 place. New chats also retain the resolved Agent instance, model and
 options: the one their decision names, chosen by the suggestion or by the user,
-or else the Inbox's own. A planned chat's delegation instructions are written
-at confirmation against the catalog that resolved it and frozen with it. Retries do
-not re-read the current defaults. A choice the catalog cannot run is refused
+or else the Inbox's own. Retries do not re-read the current defaults. A choice the catalog cannot run is refused
 with its reason; it never silently starts on another Agent or model. What the
 Inbox shows before the decision is read against the same catalog with the same
 rules, so it names the model the chat will start with. Confirmed text is ordinary
@@ -559,12 +561,8 @@ instructions.
 
 - **New chat:** Core creates the Session atomically with the confirmation, titled
   after the first message. Main then starts its first Turn. The prompt is the
-  confirmed prompt, then a planned chat's delegation instructions, then the
-  original messages quoted as context with their Page keys. The instructions
-  give the plan, then each part with the exact `delegate_task` target Nodex
-  resolved for it; the chat's Agent keeps integration and the final review. A
-  part whose target cannot run when the chat starts still reaches the Agent,
-  which can choose another with `list_agent_models` or do it itself.
+  confirmed prompt, then the original messages quoted as context with their
+  Page keys.
   The window that confirmed it puts the message Pages in the new chat's right
   panel, the first message's active and the rest as tabs after it, while the
   Inbox stays in view; opening the chat then shows what it was started from
@@ -766,8 +764,7 @@ creates a second message, and does not count against the Agent budget again.
     suggestion Agent, which outrank Nodex's own guidance;
   - whether a chat the Inbox starts opens with its message Pages in its right
     panel, which is on by default;
-  - whether suggestions choose each new chat's models and plan its delegation,
-    which is on by default;
+  - whether suggestions choose each new chat's models, which is on by default;
   - what chats the Inbox starts run on otherwise, chosen with the composer's
     model menu: the Agent, its model, and the model's effort and speed;
   - whether suggestions read Nodex's model guide, which is on by default and can

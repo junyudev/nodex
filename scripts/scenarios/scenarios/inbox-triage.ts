@@ -263,8 +263,6 @@ const materializeInboxTriage = async (
       prompt:
         "Compare positioning the homepage as a developer tool versus a personal assistant. Read the current homepage and notes, then deliver a short comparison and the decisions I need to make. Do not change code.",
       agent: null,
-      delegates: [],
-      plan: null,
     },
     kind: "question",
     summary: "Compare both homepage positions before changing anything.",
@@ -339,26 +337,14 @@ const materializeInboxTriage = async (
       type: "new_chat",
       projectId: project.id,
       prompt:
-        "Make Board columns collapse gracefully on narrow windows. Keep the wide layout unchanged.",
-      // A planned chat: interaction and visual work lead on Opus; the arithmetic goes to Codex.
+        "Make Board columns collapse gracefully on narrow windows. Keep the wide layout unchanged. You may hand the breakpoint width arithmetic and its unit tests to GPT-6.1 Sol.",
+      // Interaction and visual work lead on Opus; the prompt offers the arithmetic to Sol.
       agent: {
         instanceId: DEFAULT_CLAUDE_INSTANCE_ID,
         model: "claude-opus-5-5",
         reasoningEffort: "high",
         serviceTier: null,
       },
-      delegates: [
-        {
-          work: "Work out the column widths at each breakpoint and unit-test that layout arithmetic",
-          agent: {
-            instanceId: "codex",
-            model: "gpt-6.1-sol",
-            reasoningEffort: "xhigh",
-            serviceTier: null,
-          },
-        },
-      ],
-      plan: "Design the narrow layout and its transitions yourself; keep the wide layout pixel-identical. Wire in the delegated arithmetic once its tests pass.",
     },
     kind: "todo",
     summary: "Start a chat to tighten narrow Board columns.",

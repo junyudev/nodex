@@ -319,8 +319,6 @@ fn confirmed_new_chat_creates_one_session_and_enters_the_outbox() {
             project_id: Some("project:default".into()),
             prompt: "Survey three assistant onboarding flows; do not change code.".into(),
             agent: None,
-            delegates: Vec::new(),
-            plan: None,
         },
     );
     assert!(pending(module).is_empty());
@@ -403,10 +401,8 @@ fn confirmed_new_chat_creates_one_session_and_enters_the_outbox() {
 }
 
 #[test]
-fn a_planned_new_chat_keeps_its_agents_and_places_its_orchestration_before_the_originals() {
-    use nodex_core_contracts::inbox::{
-        ProjectWorkspaceInboxChatAgent, ProjectWorkspaceInboxDelegate,
-    };
+fn a_new_chat_keeps_its_lead_agent_and_delegation_advice_in_the_prompt() {
+    use nodex_core_contracts::inbox::ProjectWorkspaceInboxChatAgent;
     let workspace = seeded_workspace();
     let module = &workspace.module;
     send(
@@ -421,19 +417,15 @@ fn a_planned_new_chat_keeps_its_agents_and_places_its_orchestration_before_the_o
         reasoning_effort: Some(effort.into()),
         service_tier: None,
     };
+    let prompt = "Redesign onboarding end to end. Delegate the API to Codex, then build the UI.";
     propose(
         module,
         "proposal:planned",
         &entry,
         ProjectWorkspaceInboxDispatchAction::NewChat {
             project_id: Some("project:default".into()),
-            prompt: "Redesign onboarding end to end.".into(),
+            prompt: prompt.into(),
             agent: Some(agent("claude:work", "claude-opus-5-5", "high")),
-            delegates: vec![ProjectWorkspaceInboxDelegate {
-                work: "  The onboarding API and its migrations ".into(),
-                agent: agent("codex", "gpt-6.1-sol", "xhigh"),
-            }],
-            plan: Some(" Settle the API contract first, then build the UI on it. ".into()),
         },
     );
     let proposal = window(module, ProjectWorkspaceInboxWindowFilter::Inbox)
@@ -442,32 +434,24 @@ fn a_planned_new_chat_keeps_its_agents_and_places_its_orchestration_before_the_o
         .expect("suggestion");
     let ProjectWorkspaceInboxDispatchAction::NewChat {
         agent: stored_agent,
-        delegates,
-        plan,
+        prompt: stored_prompt,
         ..
     } = &proposal.action
     else {
         panic!("new chat");
     };
     assert_eq!(
-        stored_agent.as_ref().map(|agent| agent.model.as_deref()),
-        Some(Some("claude-opus-5-5"))
+        stored_agent.as_ref(),
+        Some(&agent("claude:work", "claude-opus-5-5", "high"))
     );
-    assert_eq!(delegates[0].work, "The onboarding API and its migrations");
-    assert_eq!(
-        plan.as_deref(),
-        Some("Settle the API contract first, then build the UI on it.")
-    );
-
-    let mut frozen = selection();
-    frozen.orchestration = Some("Delegate the onboarding API to Codex.".into());
+    assert_eq!(stored_prompt, prompt);
     apply_host(
         module,
         "confirm:planned",
         ProjectWorkspaceIntent::ConfirmInboxDispatch {
             expected_store_epoch: "epoch-1".into(),
             basis: proposal_basis(module, "proposal:planned"),
-            execution_selection: Some(frozen),
+            execution_selection: Some(selection()),
             proposal_id: "proposal:planned".into(),
             expected_revision: proposal.revision,
             action: None,
@@ -481,12 +465,9 @@ fn a_planned_new_chat_keeps_its_agents_and_places_its_orchestration_before_the_o
         panic!("outbox");
     };
     let text = dispatches[0].final_text.as_deref().expect("frozen text");
-    let task = text.find("Redesign onboarding end to end.").expect("task");
-    let orchestration = text
-        .find("Delegate the onboarding API to Codex.")
-        .expect("orchestration");
-    let originals = text.find("Original Inbox messages:").expect("originals");
-    assert!(task < orchestration && orchestration < originals);
+    assert!(text.starts_with(&format!("{prompt}\n\nOriginal Inbox messages:\n")));
+    assert_eq!(dispatches[0].action, proposal.action);
+    assert_eq!(dispatches[0].execution_selection, Some(selection()));
 }
 
 #[test]
@@ -529,8 +510,6 @@ fn keep_dismisses_suggestions_and_states_filter_the_stream() {
             project_id: None,
             prompt: "Study it".into(),
             agent: None,
-            delegates: Vec::new(),
-            plan: None,
         },
     );
     apply_host(
@@ -1118,8 +1097,6 @@ fn deleting_a_message_erases_it_and_every_suggestion_that_names_it() {
                 project_id: None,
                 prompt: "Configure staging with sk-live-0123456789".into(),
                 agent: None,
-                delegates: Vec::new(),
-                plan: None,
             },
             entry_kind: Some(ProjectWorkspaceInboxEntryKind::Todo),
             summary: "Set up staging with the key".into(),
@@ -1234,8 +1211,6 @@ fn deleting_keeps_handled_neighbours_handled_and_refuses_filed_pages() {
                 project_id: None,
                 prompt: "Survey onboarding flows and their empty states".into(),
                 agent: None,
-                delegates: Vec::new(),
-                plan: None,
             },
             session_id: Some("session:ab".into()),
         },
@@ -1848,8 +1823,6 @@ fn a_project_inbox_routes_only_inside_its_project() {
                 project_id: None,
                 prompt: "Explain it".into(),
                 agent: None,
-                delegates: Vec::new(),
-                plan: None,
             },
         ),
         CoreErrorCode::InvalidInput
@@ -2218,7 +2191,6 @@ fn selection() -> nodex_core_contracts::inbox::ProjectWorkspaceInboxExecutionSel
             options: None,
         },
         interaction_mode: ProjectWorkspaceInboxInteractionMode::Default,
-        orchestration: None,
     }
 }
 fn pages_basis(
@@ -2401,8 +2373,6 @@ fn a_dispatched_chat_receives_the_messages_images_with_their_text() {
                 project_id: None,
                 prompt: "Fix the banners".into(),
                 agent: None,
-                delegates: Vec::new(),
-                plan: None,
             },
             session_id: Some("session:pictured".into()),
         },
@@ -2442,8 +2412,6 @@ fn complete_handoff_and_selection_survive_retries_with_fenced_receipts() {
                 project_id: None,
                 prompt: "Answer the question".into(),
                 agent: None,
-                delegates: Vec::new(),
-                plan: None,
             },
             session_id: Some("session:frozen".into()),
         },
@@ -2529,8 +2497,6 @@ fn replacing_a_failed_group_member_retires_its_delivery_and_reopens_the_rest() {
                     project_id: None,
                     prompt: "Discuss both messages".into(),
                     agent: None,
-                    delegates: Vec::new(),
-                    plan: None,
                 },
                 session_id: Some("session:group".into()),
                 execution_selection: Some(selection()),
@@ -2925,8 +2891,6 @@ fn remote_unknown_is_not_replayed_and_new_decisions_have_new_delivery_identity()
             project_id: None,
             prompt: "Discuss".into(),
             agent: None,
-            delegates: Vec::new(),
-            plan: None,
         },
         session_id: Some(session.into()),
     };
@@ -3669,8 +3633,6 @@ fn outbox_byte_budget_never_splits_a_frozen_handoff() {
                     project_id: None,
                     prompt: "Discuss".into(),
                     agent: None,
-                    delegates: Vec::new(),
-                    plan: None,
                 },
                 session_id: Some(format!("session:{id}")),
             },
@@ -3716,8 +3678,6 @@ fn erasing_a_dispatch_member_preserves_unknown_receipts_without_payload() {
                     project_id: None,
                     prompt: "Discuss secret-to-erase".into(),
                     agent: None,
-                    delegates: Vec::new(),
-                    plan: None,
                 },
                 session_id: Some("session:group".into()),
             },
@@ -3942,8 +3902,6 @@ fn dispatched_messages_become_linked_pages_of_their_chat() {
             project_id: Some(PROJECT.into()),
             prompt: "Draft the release notes".into(),
             agent: None,
-            delegates: Vec::new(),
-            plan: None,
         },
         Some("session:new"),
     );
@@ -4246,8 +4204,6 @@ fn a_messages_status_follows_its_handling_until_someone_else_sets_it() {
             project_id: Some(PROJECT.into()),
             prompt: "Fix the flickering Board header".into(),
             agent: None,
-            delegates: Vec::new(),
-            plan: None,
         },
         Some("session:chat"),
     );
@@ -6761,8 +6717,6 @@ fn inbox_over_budget_suggestions_fail_readably_and_preserve_the_proposal() {
                 project_id: None,
                 prompt: "Review these screenshots".into(),
                 agent: None,
-                delegates: Vec::new(),
-                plan: None,
             },
             session_id: Some("session:many".into()),
             execution_selection: Some(selection()),
@@ -6977,8 +6931,6 @@ fn inbox_confirmed_handoff_freezes_reviewed_image_hashes_across_file_replacement
                 project_id: None,
                 prompt: "Review it".into(),
                 agent: None,
-                delegates: Vec::new(),
-                plan: None,
             },
             session_id: Some("session:reviewed".into()),
             execution_selection: Some(selection()),

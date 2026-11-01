@@ -58,10 +58,6 @@ export type InboxDispatchAction =
       readonly prompt: string;
       /** What the chat runs on when chosen for this decision; the Inbox's own when null. */
       readonly agent: InboxChatAgent | null;
-      /** Parts of the work the chat's Agent hands to other Agents. */
-      readonly delegates: readonly InboxDelegate[];
-      /** How the chat's Agent should run the work, written to it. */
-      readonly plan: string | null;
     }
   | { readonly type: "send_to_chat"; readonly sessionId: string; readonly prompt: string }
   | { readonly type: "move_to_project"; readonly projectId: string }
@@ -74,12 +70,6 @@ export type InboxDispatchAction =
       readonly agent: InboxChatAgent | null;
     };
 
-/** One part of a new chat's work that its Agent delegates to another Agent. */
-export interface InboxDelegate {
-  readonly work: string;
-  readonly agent: InboxChatAgent;
-}
-
 /** A new chat with nothing chosen beyond its destination and prompt. */
 export const inboxNewChatAction = (
   projectId: string | null,
@@ -89,8 +79,6 @@ export const inboxNewChatAction = (
   projectId,
   prompt,
   agent: null,
-  delegates: [],
-  plan: null,
 });
 
 export type InboxSource =
@@ -342,12 +330,11 @@ export interface InboxDispatchInput {
 
 /**
  * Frozen by Main before the first confirmation is submitted. A new chat runs on its action's
- * Agent, or else the Inbox's own; its delegation instructions are written from the confirmed plan.
+ * Agent, or else the Inbox's own.
  */
 export interface InboxExecutionSelection {
   readonly modelSelection: AgentRuntimeLaunch["modelSelection"];
   readonly interactionMode: AgentRuntimeLaunch["interactionMode"];
-  readonly orchestration?: string | null;
 }
 
 /** What the user reviewed before deciding. */
@@ -485,7 +472,7 @@ export const inboxDefaultChatModel = <
 }): Model | undefined => provider.models.find((model) => model.isDefault) ?? provider.models[0];
 
 /**
- * Suggestions choose models and plan delegation as well as routing, so they reason at a steady
+ * Suggestions look things up and choose models as well as routing, so they reason at a steady
  * effort that does not follow any chat preference.
  */
 const inboxSuggestionEffort = (provider: Pick<InboxProvider, "driver">) =>

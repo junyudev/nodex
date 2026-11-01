@@ -32,8 +32,6 @@ const proposal = (overrides: Partial<InboxProposal> = {}): InboxProposal => ({
     projectId: "project:nodex",
     prompt: "Compare both positions.",
     agent: null,
-    delegates: [],
-    plan: null,
   },
   kind: "question",
   summary: "Compare both homepage positions first.",
@@ -476,85 +474,28 @@ describe("InboxTriage", () => {
     expect(agents.save).not.toHaveBeenCalled();
   });
 
-  test("a planned suggestion shows its lead, the parts it hands off and its plan, and confirms them as suggested", async () => {
+  test("a suggestion's own lead shows on its decision and confirms as suggested", async () => {
     const opus = {
       instanceId: CLAUDE_INSTANCE_ID,
       model: "claude-opus-5-5",
       reasoningEffort: "high",
       serviceTier: null,
     };
-    const planned = proposal({
+    const led = proposal({
       action: {
         type: "new_chat",
         projectId: "project:nodex",
-        prompt: "Build the usage dashboard.",
+        prompt: "Build the usage dashboard. You may hand the aggregation API to GPT-6 Luna.",
         agent: opus,
-        delegates: [
-          {
-            work: "The aggregation API and its SQLite queries",
-            agent: {
-              instanceId: "codex",
-              model: "gpt-6-luna",
-              reasoningEffort: null,
-              serviceTier: null,
-            },
-          },
-        ],
-        plan: "Settle the API contract first.",
       },
     });
-    const commands = renderTriage({ item: item({ proposal: planned }) });
+    const commands = renderTriage({ item: item({ proposal: led }) });
     // The suggestion's lead differs from the Inbox's own, so it shows on the decision.
     expect(
       screen.getByRole("button", { name: "Choose the model for this chat" }).textContent,
     ).toContain("Work · Opus 5.5 · High");
-    const plan = within(screen.getByTestId("inbox-chat-plan"));
-    expect(plan.getByText("The aggregation API and its SQLite queries")).toBeTruthy();
-    expect(plan.getByText("GPT-6 Luna")).toBeTruthy();
-    expect(plan.getByText("Settle the API contract first.")).toBeTruthy();
     await click("New chat in Nodex");
-    await waitFor(() => expect(commands.confirm).toHaveBeenCalledWith(planned));
-  });
-
-  test("handling a planned suggestion by hand can drop a delegated part and rewrite the plan", async () => {
-    const planned = proposal({
-      action: {
-        type: "new_chat",
-        projectId: "project:nodex",
-        prompt: "Build the usage dashboard.",
-        agent: null,
-        delegates: [
-          {
-            work: "The aggregation API",
-            agent: {
-              instanceId: "codex",
-              model: "gpt-6-luna",
-              reasoningEffort: null,
-              serviceTier: null,
-            },
-          },
-        ],
-        plan: "Settle the API contract first.",
-      },
-    });
-    const commands = renderTriage({
-      manualDraft: draftForInboxItem(item({ proposal: planned }), null),
-    });
-    await click("Do “The aggregation API” without delegating");
-    await act(async () => {
-      fireEvent.change(screen.getByRole("textbox", { name: "Plan" }), {
-        target: { value: "Build it all in this chat." },
-      });
-      await Promise.resolve();
-    });
-    await click("Start chat");
-    await waitFor(() =>
-      expect(commands.confirm).toHaveBeenCalledWith(
-        planned,
-        { ...planned.action, delegates: [], plan: "Build it all in this chat." },
-        null,
-      ),
-    );
+    await waitFor(() => expect(commands.confirm).toHaveBeenCalledWith(led));
   });
 
   test("Edit rewrites the message itself and asks nothing to run", async () => {
@@ -631,8 +572,6 @@ describe("InboxTriage", () => {
           projectId: "project:nodex",
           prompt: "Only list the trade-offs.",
           agent: null,
-          delegates: [],
-          plan: null,
         },
         null,
       ),
@@ -695,8 +634,6 @@ describe("InboxTriage", () => {
         type: "new_chat",
         prompt: "Homepage feels like a dev tool",
         agent: null,
-        delegates: [],
-        plan: null,
       }),
     );
   });

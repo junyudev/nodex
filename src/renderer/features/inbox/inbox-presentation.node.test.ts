@@ -59,8 +59,6 @@ const proposal = (overrides: Partial<InboxProposal> = {}): InboxProposal => ({
     projectId: "project:nodex",
     prompt: "Research",
     agent: null,
-    delegates: [],
-    plan: null,
   },
   kind: "question",
   summary: "Compare both positions",
@@ -378,8 +376,6 @@ describe("describeInboxAction", () => {
           projectId: "project:nodex",
           prompt: "x",
           agent: null,
-          delegates: [],
-          plan: null,
         },
         {
           targetProjectName: "Nodex",

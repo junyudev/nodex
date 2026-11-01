@@ -104,8 +104,6 @@ test("recovers Core loss while three Inbox chats run without repeating dispatch 
             projectId: project.id,
             prompt: `${prefix} ${index}`,
             agent: agents[index]!,
-            delegates: [],
-            plan: null,
           },
         });
         if (decision.kind !== "direct") throw new Error("Expected direct Inbox decision");

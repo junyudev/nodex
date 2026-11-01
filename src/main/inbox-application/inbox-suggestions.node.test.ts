@@ -57,8 +57,6 @@ const raw = (overrides: Record<string, unknown>) => ({
   chat_instance_id: null,
   chat_model: null,
   chat_effort: null,
-  delegates: [],
-  plan: null,
   summary: "Keep it",
   rationale: "Not ready",
   ...overrides,
@@ -123,8 +121,6 @@ describe("validateInboxSuggestions", () => {
       projectId: "project:nodex",
       prompt: "Research the homepage; do not change code.",
       agent: null,
-      delegates: [],
-      plan: null,
     });
   });
 
@@ -219,8 +215,6 @@ describe("validateInboxSuggestions", () => {
       projectId: null,
       prompt: "Answer the attached question with a clear explanation.",
       agent: null,
-      delegates: [],
-      plan: null,
     });
   });
 
@@ -460,17 +454,13 @@ describe("planned new chats", () => {
       ],
     },
   ];
-  const planned = (overrides: Record<string, unknown>) =>
+  const chosen = (overrides: Record<string, unknown>) =>
     raw({
       action: "new_chat",
       prompt: "Redesign onboarding and its API.",
       chat_instance_id: "claude:work",
       chat_model: "claude-opus-5-5",
       chat_effort: "high",
-      delegates: [
-        { work: "The onboarding API", instance_id: "codex", model: "gpt-6.1-sol", effort: "xhigh" },
-      ],
-      plan: "Settle the API first.",
       ...overrides,
     });
   const validate = (suggestion: unknown) =>
@@ -482,8 +472,8 @@ describe("planned new chats", () => {
       candidates,
     );
 
-  it("keeps the lead, delegated parts and plan the suggestion chose among those offered", () => {
-    expect(validate(planned({})).suggestions[0]?.action).toEqual({
+  it("keeps the lead the suggestion chose among those offered", () => {
+    expect(validate(chosen({})).suggestions[0]?.action).toEqual({
       type: "new_chat",
       projectId: null,
       prompt: "Redesign onboarding and its API.",
@@ -493,18 +483,6 @@ describe("planned new chats", () => {
         reasoningEffort: "high",
         serviceTier: null,
       },
-      delegates: [
-        {
-          work: "The onboarding API",
-          agent: {
-            instanceId: "codex",
-            model: "gpt-6.1-sol",
-            reasoningEffort: "xhigh",
-            serviceTier: null,
-          },
-        },
-      ],
-      plan: "Settle the API first.",
     });
   });
 
@@ -513,12 +491,8 @@ describe("planned new chats", () => {
     ["a model its Agent does not offer", { chat_model: "gpt-6.1-sol" }],
     ["an effort the model does not offer", { chat_effort: "minimal" }],
     ["a model without its Agent", { chat_instance_id: null }],
-    [
-      "a delegate on a model it was not offered",
-      { delegates: [{ work: "API", instance_id: "codex", model: "invented", effort: null }] },
-    ],
-  ])("refuses %s, since Nodex starts and delegates to them exactly", (_name, overrides) => {
-    expect(() => validate(planned(overrides))).toThrow(/Invalid Inbox suggestion/);
+  ])("refuses %s, since Nodex starts the chat on it exactly", (_name, overrides) => {
+    expect(() => validate(chosen(overrides))).toThrow(/Invalid Inbox suggestion/);
   });
 
   it("lets only a new chat choose Agents", () => {

@@ -56,11 +56,6 @@ export const inboxDispatchActionFromCore = (
         projectId: action.project_id ?? null,
         prompt: action.prompt,
         agent: action.agent ? inboxChatAgentFromCore(action.agent) : null,
-        delegates: (action.delegates ?? []).map((delegate) => ({
-          work: delegate.work,
-          agent: inboxChatAgentFromCore(delegate.agent),
-        })),
-        plan: action.plan ?? null,
       };
     case "send_to_chat":
       return { type: "send_to_chat", sessionId: action.session_id, prompt: action.prompt };
@@ -100,11 +95,6 @@ export const inboxDispatchActionToCore = (action: InboxDispatchAction): CoreInbo
         project_id: action.projectId,
         prompt: action.prompt,
         agent: action.agent ? chatAgentToCore(action.agent) : null,
-        delegates: action.delegates.map((delegate) => ({
-          work: delegate.work,
-          agent: chatAgentToCore(delegate.agent),
-        })),
-        plan: action.plan,
       };
     case "send_to_chat":
       return { type: "send_to_chat", session_id: action.sessionId, prompt: action.prompt };
@@ -131,7 +121,6 @@ export const inboxExecutionSelectionToCore = (
     ? {
         model_selection: selection.modelSelection,
         interaction_mode: selection.interactionMode,
-        orchestration: selection.orchestration ?? null,
       }
     : null;
 export const inboxExecutionSelectionFromCore = (
@@ -140,7 +129,6 @@ export const inboxExecutionSelectionFromCore = (
   InboxExecutionSelectionSchema.parse({
     modelSelection: selection.model_selection,
     interactionMode: selection.interaction_mode,
-    orchestration: selection.orchestration ?? null,
   });
 
 export const inboxScopeToCore = (scope: InboxScope): CoreInboxScope =>

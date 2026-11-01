@@ -39412,23 +39412,6 @@
           }
         }
       },
-      "ProjectWorkspaceInboxDelegate": {
-        "type": "object",
-        "description": "One part of a new chat's work that its Agent delegates to another Agent.",
-        "required": [
-          "work",
-          "agent"
-        ],
-        "properties": {
-          "agent": {
-            "$ref": "#/components/schemas/ProjectWorkspaceInboxChatAgent"
-          },
-          "work": {
-            "type": "string"
-          }
-        },
-        "additionalProperties": false
-      },
       "ProjectWorkspaceInboxDispatchAction": {
         "oneOf": [
           {
@@ -39464,20 +39447,6 @@
                     "type": "null"
                   }
                 ]
-              },
-              "delegates": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/ProjectWorkspaceInboxDelegate"
-                },
-                "description": "Parts of the work the chat's Agent hands to other Agents."
-              },
-              "plan": {
-                "type": [
-                  "string",
-                  "null"
-                ],
-                "description": "How the chat's Agent should run the work, written to it."
               },
               "project_id": {
                 "type": [
@@ -39776,13 +39745,6 @@
           },
           "model_selection": {
             "$ref": "#/components/schemas/ProjectWorkspaceInboxModelSelection"
-          },
-          "orchestration": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "The delegation instructions written from the confirmed plan, placed after the prompt."
           }
         },
         "additionalProperties": false

@@ -78,28 +78,15 @@ it.effect("freezes a new chat on the Agent its decision chose, or else on the In
         instanceId: "codex",
         model: "default-model",
       });
-      assert.isNull(inboxOwn.executionSelection?.orchestration ?? null);
 
-      const planned = yield* prepare({
-        ...plain,
-        agent: deep,
-        delegates: [{ work: "The data migration", agent: { ...deep, reasoningEffort: "low" } }],
-        plan: "Write the migration before the UI.",
-      });
-      assert.deepEqual(planned.executionSelection?.modelSelection, {
+      const chosen = yield* prepare({ ...plain, agent: deep });
+      assert.deepEqual(chosen.executionSelection?.modelSelection, {
         instanceId: "codex",
         model: "deep-model",
         options: [{ id: "reasoningEffort", value: "high" }],
       });
-      // The delegation instructions are written once, against the catalog that resolved the chat.
-      const orchestration = planned.executionSelection?.orchestration ?? "";
-      assert.include(orchestration, "Write the migration before the UI.");
-      assert.include(
-        orchestration,
-        '{"providerInstanceId":"codex","model":"deep-model","options":[{"id":"reasoningEffort","value":"low"}]}',
-      );
       // The prepared handoff replays unchanged.
-      assert.deepEqual(InboxPreparedConfirmationSchema.parse(planned), planned);
+      assert.deepEqual(InboxPreparedConfirmationSchema.parse(chosen), chosen);
 
       // A choice the catalog cannot run is refused rather than replaced by another model.
       const retired = yield* Effect.flip(

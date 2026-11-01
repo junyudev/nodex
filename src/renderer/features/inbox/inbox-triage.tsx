@@ -60,7 +60,6 @@ import {
 } from "./inbox-dispatch-editor";
 import type { InboxActions } from "./use-inbox-actions";
 import { InboxAgentLabel, InboxAgentPicker, type InboxAgents } from "./inbox-agent-picker";
-import { InboxChatPlan } from "./inbox-chat-plan";
 import {
   describeInboxAgent,
   sameInboxChatAgent,
@@ -312,11 +311,9 @@ function ChatAgentMenu({
  */
 function SuggestionStrip({
   proposal,
-  agents,
   firingLine,
 }: {
   readonly proposal: InboxProposal;
-  readonly agents: InboxAgents;
   /** For a scheduled task's run, how it will go; its instructions are the message above. */
   readonly firingLine: string | null;
 }) {
@@ -348,10 +345,6 @@ function SuggestionStrip({
       ) : (
         <p className="min-w-0 text-sm leading-snug">{proposal.summary}</p>
       )}
-      {/* A planned chat shows how it will run before anything is sent. */}
-      {action.type === "new_chat" ? (
-        <InboxChatPlan agents={agents} delegates={action.delegates} plan={action.plan} />
-      ) : null}
     </div>
   );
 }
@@ -676,7 +669,6 @@ export function InboxTriage({
               {groupMembers(proposal)}
               <SuggestionStrip
                 proposal={proposal}
-                agents={agents}
                 firingLine={item.firing ? describeInboxFiring(item.firing, task, new Date()) : null}
               />
             </Settle>
