@@ -2,6 +2,7 @@ import type { CodexConversationItem } from "@/lib/types";
 import { visibleCodexUserInputAnswerValues } from "../../../shared/codex-user-input-answer-values";
 import type { VisibleConversationTurnEntry } from "./selectors";
 import { delegatedTaskMarkdownLines } from "./delegated-task-presentation";
+import { formatDisplayPath, isAbsoluteDisplayPath, normalizeDisplayPath } from "@/lib/display-path";
 import {
   recoveryDiagnosticText,
   recoveryStatusLabel,
@@ -19,8 +20,6 @@ const GIT_ACTION_DIRECTIVE_PATTERN = /::git-[a-z-]+\{[^}\n]*\}/g;
 const MARKDOWN_LINK_TARGET_PATTERN =
   /\]\((<[^>\n]+>|[^)\s\n]+)([ \t]+(?:"[^"\n]*"|'[^'\n]*'|\([^)\n]*\)))?\)/g;
 const PATH_LINE_SUFFIX_PATTERN = /^(.*?)(:\d+(?:-\d+)?)$/;
-const UNIX_HOME_PATTERN = /^\/(?:Users|home)\/[^/]+(?=\/|$)/;
-const WINDOWS_HOME_PATTERN = /^[A-Za-z]:\/Users\/[^/]+(?=\/|$)/;
 
 function asRecord(value: unknown): UnknownRecord | null {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -67,41 +66,12 @@ function fencedCode(language: string, value: string): string {
   return `${fence}${language}\n${body}\n${fence}`;
 }
 
-function normalizeAbsolutePath(value: string): string {
-  return value.replaceAll("\\", "/").replace(/\/+$/, "");
-}
-
-function isAbsolutePath(value: string): boolean {
-  return value.startsWith("/") || /^[A-Za-z]:\//.test(value);
-}
-
-function resolveHomeDirectory(cwd: string | null): string | null {
-  if (!cwd) return null;
-  return UNIX_HOME_PATTERN.exec(cwd)?.[0] ?? WINDOWS_HOME_PATTERN.exec(cwd)?.[0] ?? null;
-}
-
 function rewritePath(value: string, cwd: string | null): string {
   const suffixMatch = PATH_LINE_SUFFIX_PATTERN.exec(value);
   const path =
-    suffixMatch && isAbsolutePath(suffixMatch[1] ?? "") ? (suffixMatch[1] ?? value) : value;
+    suffixMatch && isAbsoluteDisplayPath(suffixMatch[1] ?? "") ? (suffixMatch[1] ?? value) : value;
   const suffix = path === value ? "" : (suffixMatch?.[2] ?? "");
-  const normalized = normalizeAbsolutePath(path);
-  const normalizedCwd = cwd ? normalizeAbsolutePath(cwd) : null;
-  if (normalizedCwd && normalizedCwd !== "/") {
-    if (normalized === normalizedCwd) return `.${suffix}`;
-    if (normalized.startsWith(`${normalizedCwd}/`)) {
-      return `./${normalized.slice(normalizedCwd.length + 1)}${suffix}`;
-    }
-  }
-
-  const home = resolveHomeDirectory(normalizedCwd);
-  if (home) {
-    if (normalized === home) return `~${suffix}`;
-    if (normalized.startsWith(`${home}/`)) {
-      return `~/${normalized.slice(home.length + 1)}${suffix}`;
-    }
-  }
-  return `${normalized}${suffix}`;
+  return `${formatDisplayPath(path, cwd)}${suffix}`;
 }
 
 function rewriteMarkdownLinkPaths(value: string, cwd: string | null): string {
@@ -110,7 +80,7 @@ function rewriteMarkdownLinkPaths(value: string, cwd: string | null): string {
     (whole, rawTarget: string, title: string | undefined) => {
       const angled = rawTarget.startsWith("<") && rawTarget.endsWith(">");
       const target = angled ? rawTarget.slice(1, -1) : rawTarget;
-      if (!isAbsolutePath(normalizeAbsolutePath(target))) return whole;
+      if (!isAbsoluteDisplayPath(normalizeDisplayPath(target))) return whole;
       const rewritten = rewritePath(target, cwd);
       const safeTarget = angled || /[\s()]/.test(rewritten) ? `<${rewritten}>` : rewritten;
       return `](${safeTarget}${title ?? ""})`;
