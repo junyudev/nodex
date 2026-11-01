@@ -412,6 +412,16 @@ pub(crate) fn query_interrupted(cancelled: bool) -> StoreError {
     )
 }
 
+/// Pins the WAL observation for every step of an online SQLite copy. BEGIN alone
+/// is deferred: the first read must happen before another connection can commit.
+pub(crate) fn pin_backup_snapshot(
+    connection: &Connection,
+) -> Result<rusqlite::Transaction<'_>, StoreError> {
+    let snapshot = rusqlite::Transaction::new_unchecked(connection, TransactionBehavior::Deferred)?;
+    snapshot.query_row("SELECT count(*) FROM sqlite_schema", [], |_| Ok(()))?;
+    Ok(snapshot)
+}
+
 pub fn with_immediate_transaction<T>(
     connection: &mut Connection,
     operation: impl FnOnce(&rusqlite::Transaction<'_>) -> Result<T, StoreError>,
@@ -563,6 +573,76 @@ mod tests {
     use tempfile::tempdir;
 
     use super::*;
+
+    #[test]
+    fn online_backup_finishes_at_the_pinned_state_despite_commits_between_every_step() {
+        use rusqlite::backup::{Backup, StepResult};
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("source.sqlite");
+        let writer = Connection::open(&path).unwrap();
+        writer.execute_batch("PRAGMA journal_mode=WAL; CREATE TABLE content(id INTEGER PRIMARY KEY, body BLOB); INSERT INTO content VALUES(1,zeroblob(4096));").unwrap();
+        for _ in 0..8 {
+            writer
+                .execute(
+                    "INSERT INTO content SELECT id+(SELECT max(id) FROM content),body FROM content",
+                    [],
+                )
+                .unwrap();
+        }
+        let reader = Connection::open_with_flags(&path, OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap();
+        let snapshot = pin_backup_snapshot(&reader).unwrap();
+        let pinned_count: i64 = snapshot
+            .query_row("SELECT count(*) FROM content", [], |r| r.get(0))
+            .unwrap();
+        let mut destination = Connection::open(directory.path().join("snapshot.sqlite")).unwrap();
+        let backup = Backup::new(&snapshot, &mut destination).unwrap();
+        let mut steps = 0;
+        let mut remaining = i32::MAX;
+        loop {
+            // Commit even before the first backup step: BEGIN must already be pinned.
+            writer
+                .execute("INSERT INTO content(body) VALUES(zeroblob(4096))", [])
+                .unwrap();
+            let step = backup.step(8).unwrap();
+            steps += 1;
+            assert!(
+                steps < 100,
+                "one pinned observation must complete in bounded steps"
+            );
+            let progress = backup.progress();
+            assert!(
+                progress.remaining < remaining,
+                "concurrent commits must not restart the backup"
+            );
+            remaining = progress.remaining;
+            assert!(matches!(step, StepResult::More | StepResult::Done));
+            if matches!(step, StepResult::Done) {
+                break;
+            }
+        }
+        assert!(steps > 1);
+        drop(backup);
+        drop(snapshot);
+        assert!(reader.is_autocommit());
+        assert_eq!(
+            destination
+                .query_row("SELECT count(*) FROM content", [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            pinned_count
+        );
+        assert_eq!(
+            writer
+                .query_row("SELECT count(*) FROM content", [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            pinned_count + steps
+        );
+        assert_eq!(
+            destination
+                .query_row("PRAGMA integrity_check", [], |r| r.get::<_, String>(0))
+                .unwrap(),
+            "ok"
+        );
+    }
 
     #[test]
     fn immediate_transactions_record_bounded_duration_metrics() {

@@ -849,7 +849,8 @@ fn stage_backup(
     let mut database_busy_retries = 0u64;
     {
         let mut destination = Connection::open(&database_path)?;
-        let backup = Backup::new(connection, &mut destination)?;
+        let snapshot = crate::infrastructure::sqlite::pin_backup_snapshot(connection)?;
+        let backup = Backup::new(&snapshot, &mut destination)?;
         let mut last_reported_at = Instant::now();
         loop {
             if cancellation_requested()? {

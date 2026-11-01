@@ -3357,11 +3357,13 @@ fn create_migration_backup(
         }
         fs::remove_file(&pending_path).map_err(io_error)?;
     }
-    connection.backup(
+    let snapshot = super::sqlite::pin_backup_snapshot(connection)?;
+    snapshot.backup(
         MAIN_DB,
         &pending_path,
         None::<fn(rusqlite::backup::Progress)>,
     )?;
+    drop(snapshot);
     File::open(&pending_path)
         .map_err(io_error)?
         .sync_all()
@@ -3541,9 +3543,11 @@ pub(crate) fn prepare_test_current_store(
     let template = template
         .lock()
         .map_err(|_| corrupt("Test Store template lock is poisoned"))?;
-    let backup = Backup::new(&template, connection)?;
+    let snapshot = super::sqlite::pin_backup_snapshot(&template)?;
+    let backup = Backup::new(&snapshot, connection)?;
     backup.run_to_completion(1_024, Duration::ZERO, None)?;
     drop(backup);
+    drop(snapshot);
     with_immediate_transaction(connection, |transaction| {
         initialize_fresh_profile(transaction, unix_time_millis()?)
     })?;
