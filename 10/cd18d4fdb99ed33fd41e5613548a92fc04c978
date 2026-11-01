@@ -1,0 +1,27 @@
+src/main/platform/node/NodexAccountPlatform.ts
+  s_61ededb051faa8::t_b3f3edf5a8d1af 30,299,310
+src/main/platform/node/RuntimeArtifactVerification.ts
+  s_61ededb051faa8::t_b3f3edf5a8d1af 3,40
+src/main/ipc/handlers/file-local-import.ts
+  s_61ededb051faa8::t_b3f3edf5a8d1af 3,19-20,23
+src/main/platform/node/file-export-cache.ts
+  s_61ededb051faa8::t_b3f3edf5a8d1af 5,27
+src/main/platform/node/open-regular-file.ts
+  s_61ededb051faa8::t_b3f3edf5a8d1af 1-30
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "10cd18d4fdb99ed33fd41e5613548a92fc04c978",
+  "prompts": {},
+  "sessions": {
+    "s_61ededb051faa8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19725-1673-78a3-85e3-bdba96788967",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
