@@ -1,0 +1,23 @@
+package.json
+  s_9ad21099c264dd::t_ce72834b584fde 87
+scripts/ci/verify-source-type-ownership.test.ts
+  s_9ad21099c264dd::t_8680bf20997267 34
+scripts/dev-launcher.test.ts
+  s_9ad21099c264dd::t_62dd97eb195de4 447
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "788028087e222b183da6c8322129ffe3e3f38224",
+  "prompts": {},
+  "sessions": {
+    "s_9ad21099c264dd": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1964f-2f03-7680-8da9-7c6d6ce01903",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
