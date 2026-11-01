@@ -1,0 +1,45 @@
+crates/nodex-markdown/src/write/escapes/properties.rs
+  s_50bc651199cc10::t_bca2f2e5f109b4 50-100,108-109,131-140,142,159-165,219-229,232,235
+  s_50bc651199cc10::t_277a2768b92e3a 230-231,233-234,236-238
+crates/nodex-markdown/src/write/tests.rs
+  s_50bc651199cc10::t_5f292a228fc0e5 40-51
+  s_50bc651199cc10::t_4cc1ab7f00301a 52-61
+crates/nodex-markdown/src/read/addresses.rs
+  s_50bc651199cc10::t_2f8d2d93f971b5 19,34-36,50,75,86-87,100-101,140,172-174,177-178,190,304-307,310-313,315-316,323
+  s_50bc651199cc10::t_ea7a41d9ffe654 37-49,55-67,76-85,88-98,179-189,314,317-322
+  s_50bc651199cc10::t_15d239a7a7e720 17,21-33,102,108,118-119,128,131-133,138-139,141-142,144-170,191-196,207,232-243,252,257-258,264-270,282-284
+  s_50bc651199cc10::t_7d275e6e2d68ea 18,20,53-54,68-69,143,171,175-176,244-251,253-256,259-263,271-281,285-303,308-309
+  s_50bc651199cc10::t_fac029eea37d61 324-327
+crates/nodex-markdown/src/write/inline.rs
+  s_50bc651199cc10::t_26b0b4644c930f 3,240-245
+  s_50bc651199cc10::t_5f40cc9786d980 246-253,357-363
+crates/nodex-markdown/src/write/escapes.rs
+  s_50bc651199cc10::t_2e78e718487592 122-132,136,138-140,399-401,404-406,413-430,434-443,447-467,472-476,491-497,501-511,520,528-530,536-541
+  s_50bc651199cc10::t_26b0b4644c930f 542,860-865
+  s_50bc651199cc10::t_c06a1130f5cdb8 133-135,137,431-433,444-446,468-471,477-490,498-500,512-519,521-527,531-535
+  s_50bc651199cc10::t_61f087a4287dd5 543
+src/shared/nodex-markdown/facade.test.ts
+  s_50bc651199cc10::t_5f292a228fc0e5 4,6,17-29
+crates/nodex-markdown/src/write/blocks.rs
+  s_50bc651199cc10::t_4656df5dac834a 331-335,617,627
+crates/nodex-markdown/tests/fixtures/cases.json
+  s_50bc651199cc10::t_2a6eb957449fcb 4-6
+crates/nodex-markdown/tests/fixtures/portable-cases.json
+  s_50bc651199cc10::t_c53f90b01c18e7 1-131
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0e06944301985a5a4bb359eb0d69cf96be87768b",
+  "prompts": {},
+  "sessions": {
+    "s_50bc651199cc10": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19523-075f-7270-9358-f28cf9aec9d2",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
