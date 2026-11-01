@@ -1,0 +1,249 @@
+crates/nodex-core/src/database/mod.rs
+  s_a5bb892838ce25::t_47f9b0fe6e3f9e 368,380
+scripts/scenarios/scenarios/page-file-provenance.ts
+  s_a5bb892838ce25::t_e871129cca6f59 1-159,161-270
+  s_a5bb892838ce25::t_dc539975bdc2c9 160
+src/main/platform/node/NodexCliBootstrap.ts
+  s_a5bb892838ce25::t_cdbe74e08e515c 12-17,24-25,59,68,82-85,128
+crates/nodex-core/src/infrastructure/store_replacement.rs
+  s_a5bb892838ce25::t_47f9b0fe6e3f9e 1313
+src/main/page-files/page-file-html-network.test.ts
+  s_a5bb892838ce25::t_4c796a1e825320 1-36
+crates/nodex-core/src/infrastructure/event_log.rs
+  s_a5bb892838ce25::t_47f9b0fe6e3f9e 828,1674,1686,1812
+docs/development.md
+  s_a5bb892838ce25::t_9be8621ef6aded 411-417
+packages/core-protocol/openapi.json
+  s_a5bb892838ce25::t_844396c204c757 53-92,2089-2118,2207
+  s_0abb363085c388::t_0f1ee4ee69810d 2198-2206,21972
+src/main/core-client/core-client.ts
+  s_a5bb892838ce25::t_5fc3fe77b3fae2 295-301
+  s_a5bb892838ce25::t_531eca850ba2ed 47,238-253
+  s_a5bb892838ce25::t_423b0afa682748 254-255
+src/main/platform/node/NodexCliBootstrap.node.test.ts
+  s_a5bb892838ce25::t_f1f10e1ddbdb60 128-209,403,432
+  s_a5bb892838ce25::t_77bd60ce6e91e1 33,66,85,96,103-109
+crates/nodex-core/src/library/block_transfer.rs
+  s_a5bb892838ce25::t_47f9b0fe6e3f9e 7520
+src/renderer/components/workbench/workbench-page-file-surface.tsx
+  s_a5bb892838ce25::t_be989ca332395a 1-13,37-87,89-115
+crates/nodex-core/src/library/navigation.rs
+  s_a5bb892838ce25::t_47f9b0fe6e3f9e 3791
+src/main/page-files/page-file-html-host.integration.ts
+  s_a5bb892838ce25::t_4c796a1e825320 291
+crates/nodex-core/src/infrastructure/migration.rs
+  s_a5bb892838ce25::t_47f9b0fe6e3f9e 7824,8008,8318
+crates/nodex-core/src/administration/tests.rs
+  s_a5bb892838ce25::t_47f9b0fe6e3f9e 253
+crates/nodex-core/src/workspace/thread.rs
+  s_a5bb892838ce25::t_47f9b0fe6e3f9e 2988
+src/renderer/components/board/page-stage/page-file-source.tsx
+  s_a5bb892838ce25::t_738e59864c7d90 1-116
+crates/nodex-core-contracts/src/lib.rs
+  s_a5bb892838ce25::t_74fcb0f51c2a7b 56-67
+crates/nodex-core-server/Cargo.toml
+  s_a5bb892838ce25::t_e25227daf46edf 25
+src/main/platform/node/NodexCliShell.node.test.ts
+  s_a5bb892838ce25::t_e358b3b1fcf707 80
+src/main/core-client/library-module-adapter.ts
+  s_a5bb892838ce25::t_8802e2c3bb3f33 100-101
+  s_a5bb892838ce25::t_5fc3fe77b3fae2 2023-2028
+docs/ARCHITECTURE.md
+  s_a5bb892838ce25::t_e6f151beccfa54 127-128
+scripts/scenarios/contracts.ts
+  s_a5bb892838ce25::t_fd3438dff88599 93-97
+crates/nodex-core/src/read_budget_gate.rs
+  s_a5bb892838ce25::t_47f9b0fe6e3f9e 54
+scripts/testing/probe-agent-cli-bootstrap.ts
+  s_a5bb892838ce25::t_88e46848b2dc7b 151,184
+crates/nodex-core/src/infrastructure/module_receipts.rs
+  s_a5bb892838ce25::t_47f9b0fe6e3f9e 567
+crates/nodex-core-protocol/src/client.rs
+  s_a5bb892838ce25::t_530938908b023e 92,136,142-153,699-701
+crates/nodex-core/src/workspace/mutation.rs
+  s_a5bb892838ce25::t_47f9b0fe6e3f9e 160,2704,2716
+src/main/core-client/page-file-provenance-scenario.node.test.ts
+  s_a5bb892838ce25::t_90c3bc5ea77b6e 1-45
+src/main/agent-runtime/AgentRuntimeHost.node.test.ts
+  s_a5bb892838ce25::t_b18c206ffe226e 84,190-194,269-272
+  s_a5bb892838ce25::t_8a62fb60198b49 208
+  s_a5bb892838ce25::t_ebb564b75646f0 273
+  s_a5bb892838ce25::t_92bf9f8bbbaaf2 274-276
+crates/nodex-core/src/library/page_copy.rs
+  s_a5bb892838ce25::t_47f9b0fe6e3f9e 1654
+crates/nodex-core/src/library/structural_edit/storage_lifetime_tests.rs
+  s_a5bb892838ce25::t_47f9b0fe6e3f9e 72
+docs/product-specs/page-files-behavior.md
+  s_a5bb892838ce25::t_eb3bf9b68812b4 56-57,145
+  s_a5bb892838ce25::t_71d417a6e1a05a 5,47-48,50-55,60-85,105-144,146-156
+  s_a5bb892838ce25::t_17bd845983b6a9 59,157
+scripts/scenarios/adapters/core-client-seed-adapter.ts
+  s_a5bb892838ce25::t_fd3438dff88599 291-296,298,788,800
+crates/nodex-core-protocol/src/lib.rs
+  s_a5bb892838ce25::t_d013a02db66d92 1427
+  s_a5bb892838ce25::t_580e4392dc3477 50-51,573-588,1029-1036,1267,1316-1317
+src/main/page-files/page-file-html-resolver.test.ts
+  s_a5bb892838ce25::t_66feb890cf3310 39-46
+crates/nodex-core-contracts/src/library.rs
+  s_a5bb892838ce25::t_275703011d4318 1793
+crates/nodex-core-server/src/lib.rs
+  s_a5bb892838ce25::t_01b31440c0c27b 4,209,3122,3212,3216-3290,4095-4096
+crates/nodex-core-server/tests/native_cli_client.rs
+  s_a5bb892838ce25::t_bf8170fdec3336 581-818
+src/main/codex-application/CodexTurnPreparation.node.test.ts
+  s_a5bb892838ce25::t_88e46848b2dc7b 8-9,35-52
+crates/nodex-core/src/document/maintenance.rs
+  s_a5bb892838ce25::t_47f9b0fe6e3f9e 475
+src/main/codex-application/CodexTurnPreparation.ts
+  s_a5bb892838ce25::t_32d2d5a60810ce 8-9,238,252,545-558,563
+crates/nodex-core/src/library/files.rs
+  s_a5bb892838ce25::t_47f9b0fe6e3f9e 483,566
+src/main/page-files/page-file-html-host.ts
+  s_a5bb892838ce25::t_4c796a1e825320 32-33,275,328-330
+src/renderer/lib/page-file-provenance.ts
+  s_a5bb892838ce25::t_4f7b5e062e53ed 23
+docs/product-specs/workbench-shell.md
+  s_a5bb892838ce25::t_bd76bd3e11f3d3 27,30
+src/shared/agent-backend.ts
+  s_a5bb892838ce25::t_fd993719d19422 24-34
+crates/nodex-core/src/library/structural_edit/history_owner.rs
+  s_a5bb892838ce25::t_74fcb0f51c2a7b 283,533,755,1014,1059
+crates/nodex-core/src/workspace/test_support.rs
+  s_a5bb892838ce25::t_47f9b0fe6e3f9e 31
+Cargo.toml
+  s_a5bb892838ce25::t_e25227daf46edf 44
+src/main/page-files/page-file-html-network.ts
+  s_a5bb892838ce25::t_4c796a1e825320 1-38
+crates/nodex-core/src/document/history.rs
+  s_a5bb892838ce25::t_47f9b0fe6e3f9e 1170
+crates/nodex-core/src/library/structural_edit.rs
+  s_a5bb892838ce25::t_47f9b0fe6e3f9e 8070,8490,8979,9759,10049
+scripts/scenarios/adapters/renderer-ipc-seed-adapter.ts
+  s_a5bb892838ce25::t_b8d0e78b16a208 320-322
+src/main/page-files/page-file-html-host.test.ts
+  s_a5bb892838ce25::t_4c796a1e825320 54-55
+crates/nodex-core-contracts/src/agent.rs
+  s_a5bb892838ce25::t_275703011d4318 27-38
+src/main/agent-runtime/AgentRuntimeHost.ts
+  s_a5bb892838ce25::t_4c796a1e825320 18
+  s_a5bb892838ce25::t_fd993719d19422 156-162,170,253
+src/renderer/features/page-files/page-file-html-view.tsx
+  s_a5bb892838ce25::t_4c796a1e825320 113
+src/renderer/components/board/page-stage/page-files-row.tsx
+  s_a5bb892838ce25::t_67a2e8805494ef 2,6,54-63,72-73
+  s_a5bb892838ce25::t_202dd251d46dab 653-702,705,707,709-717,721-728,731,740-761,767-776,778-814,817-822,824-826,828-833,835-840,843-844,846-847,851,853-920
+  s_a5bb892838ce25::t_b9945a1a0e9981 762-766
+src/main/core-client/agent-eval-desktop-environment.node.test.ts
+  s_a5bb892838ce25::t_88e46848b2dc7b 27
+src/main/codex-application/CodexTurnPermissionMaterialization.node.test.ts
+  s_a5bb892838ce25::t_88e46848b2dc7b 7-8,121-138
+crates/nodex-core/src/workspace/read.rs
+  s_a5bb892838ce25::t_47f9b0fe6e3f9e 878
+docs/SECURITY.md
+  s_a5bb892838ce25::t_4c796a1e825320 108-112
+  s_a5bb892838ce25::t_cd8f08c9640df4 125-142
+crates/nodex-core/src/library/files/tests/page_attachment.rs
+  s_a5bb892838ce25::t_275703011d4318 3,244
+  s_a5bb892838ce25::t_277b38852ab9ea 181-220
+  s_a5bb892838ce25::t_3cdbda1f432093 180
+src/main/platform/node/NodexCliShell.ts
+  s_a5bb892838ce25::t_cdbe74e08e515c 187-189,197-198,207-209
+crates/nodex-core/src/library/block_transfer/promotion_history/tests.rs
+  s_a5bb892838ce25::t_47f9b0fe6e3f9e 36
+crates/nodex-core/src/library/file_queries.rs
+  s_a5bb892838ce25::t_47f9b0fe6e3f9e 338
+crates/nodex-core/src/automation/mutation.rs
+  s_a5bb892838ce25::t_47f9b0fe6e3f9e 2241,2271,2378,4528
+CONTEXT.md
+  s_a5bb892838ce25::t_263f709dc53dd6 205
+src/shared/library-files-transport.test.ts
+  s_a5bb892838ce25::t_4f7b5e062e53ed 181-185,214
+crates/nodex-cli/src/runtime.rs
+  s_a5bb892838ce25::t_bf8dee84a03edc 29-31,206,213-222
+crates/nodex-core/src/document/module.rs
+  s_a5bb892838ce25::t_47f9b0fe6e3f9e 2688,5894,5906,12142
+scripts/scenarios/registry.ts
+  s_a5bb892838ce25::t_767ef343a5f4a0 20,44
+crates/nodex-core-server/src/agent_attribution.rs
+  s_a5bb892838ce25::t_651ae09d3ac0aa 1-151
+docs/CLI.md
+  s_a5bb892838ce25::t_263f709dc53dd6 325-334
+crates/nodex-core/src/library/mod.rs
+  s_a5bb892838ce25::t_47f9b0fe6e3f9e 968,1051,1391,1786,3641,3889,4225,6785,7433,7442
+CHANGELOG.md
+  s_a5bb892838ce25::t_7823503da61dff 9-10
+crates/nodex-core/src/library/page_file_attachment.rs
+  s_a5bb892838ce25::t_275703011d4318 95-96,98,119-122,136-138
+  s_a5bb892838ce25::t_d2a1f4406a706f 9-12,16-21
+crates/nodex-core/src/infrastructure/durable_mutation.rs
+  s_a5bb892838ce25::t_47f9b0fe6e3f9e 469
+crates/nodex-core/src/library/structural_edit/editor_history.rs
+  s_a5bb892838ce25::t_47f9b0fe6e3f9e 286
+src/main/core-client/testing/fake-core-client.ts
+  s_a5bb892838ce25::t_2edca3d537efe4 323-326
+src/main/core-runtime/CoreModules.ts
+  s_a5bb892838ce25::t_531eca850ba2ed 17,223-227
+  s_a5bb892838ce25::t_2edca3d537efe4 94-95
+  s_a5bb892838ce25::t_8142244b76c939 228
+packages/core-protocol/src/generated.ts
+  s_a5bb892838ce25::t_844396c204c757 23-38,454-465,488-493,5342,12551-12572,12575-12578,12580-12583
+  s_0abb363085c388::t_988606b02547a9 12573-12574,12579
+crates/nodex-core/src/library/mutation.rs
+  s_a5bb892838ce25::t_47f9b0fe6e3f9e 3961,3973
+src/shared/library-files-transport.ts
+  s_a5bb892838ce25::t_5e5a847d3df651 313
+src/renderer/features/page-files/page-file-viewer.tsx
+  s_a5bb892838ce25::t_c6e478064f61d3 191
+src/main/core-client/types.ts
+  s_a5bb892838ce25::t_5fc3fe77b3fae2 247-248
+  s_a5bb892838ce25::t_896b8b4593641d 269-272
+  s_a5bb892838ce25::t_531eca850ba2ed 29
+Cargo.lock
+  s_a5bb892838ce25::t_5f9e04e7aedfdc 1226
+src/main/codex-application/CodexConversationContext.node.test.ts
+  s_8b58b89ca1a92a::t_aed7990ce4e7ba 73,157
+src/main/codex-application/CodexConversationRelationships.node.test.ts
+  s_8b58b89ca1a92a::t_afd59fae665976 131
+src/main/codex-application/CodexThreadDurableProjection.node.test.ts
+  s_8b58b89ca1a92a::t_b17d7ba4c53e43 151,221,367,448
+src/main/codex-application/CodexThreadSettingsRuntime.node.test.ts
+  s_8b58b89ca1a92a::t_c661b3f05b9744 179,339
+src/main/codex-application/CodexThreadTitlePersistence.node.test.ts
+  s_8b58b89ca1a92a::t_c15a54a8473f77 125
+src/main/codex-application/CodexTurnAuthority.node.test.ts
+  s_8b58b89ca1a92a::t_e8db9a0cf2f0ca 25
+src/main/core-client/CodexSubagentParityPerformance.stress.test.ts
+  s_8b58b89ca1a92a::t_122b9df0f864ec 442
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "59df89c5535f653795257faa29c0827194027d82",
+  "prompts": {},
+  "sessions": {
+    "s_0abb363085c388": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1947f-75c6-7463-b3d4-19742c0a4eb9",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_8b58b89ca1a92a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c075d5c4-0b38-4f3d-8c6c-e4a048a9b857",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_a5bb892838ce25": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e15d53ef-531c-43aa-afdd-245a08fa0ce0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
