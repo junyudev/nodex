@@ -11,7 +11,7 @@ import {
   getProviderAttachmentLimitError,
   ProviderInteractionMode,
   RuntimeMode,
-  DEFAULT_RUNTIME_MODE,
+  NARROWEST_RUNTIME_MODE,
   OrchestrationV2AppThread,
   type OrchestrationV2DomainEvent,
   type OrchestrationV2UnavailableImage,
@@ -57,6 +57,7 @@ export const NativeImportInput = Schema.Struct({
   modelSelection: ModelSelection,
   cwd: Schema.NonEmptyString,
   interactionMode: Schema.optional(ProviderInteractionMode),
+  /** The chat's mode, which its caller states; an import that omits it never widens access. */
   runtimeMode: Schema.optional(RuntimeMode),
   sideChatCapture: Schema.optional(Schema.Literal(true)),
 });
@@ -166,7 +167,7 @@ export const make = Effect.gen(function* () {
         title: input.title,
         providerInstanceId: input.modelSelection.instanceId,
         modelSelection: input.modelSelection,
-        runtimeMode: input.runtimeMode ?? DEFAULT_RUNTIME_MODE,
+        runtimeMode: input.runtimeMode ?? NARROWEST_RUNTIME_MODE,
         interactionMode: input.interactionMode ?? "default",
         branch: null,
         worktreePath: input.cwd,

@@ -1,4 +1,4 @@
-import { DEFAULT_RUNTIME_MODE, RuntimeMode } from "@t3tools/contracts";
+import { NARROWEST_RUNTIME_MODE, RuntimeMode } from "@t3tools/contracts";
 import { providerCredentialBindingsOverlap } from "@t3tools/provider-core/server/auth";
 import {
   AcpRegistrySearchInput,
@@ -823,7 +823,7 @@ export const make = Effect.fn("AcpManagement.make")(function* (
               projectId: input.projectId,
               title: input.title,
               modelSelection: { instanceId: input.instanceId, model: input.model },
-              runtimeMode: input.runtimeMode ?? DEFAULT_RUNTIME_MODE,
+              runtimeMode: input.runtimeMode ?? NARROWEST_RUNTIME_MODE,
               interactionMode: "default",
               branch: null,
               worktreePath: input.cwd,
