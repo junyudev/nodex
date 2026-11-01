@@ -1,0 +1,49 @@
+src/main/platform/node/filesystem-durability.ts
+  s_61ededb051faa8::t_b3f3edf5a8d1af 1-40
+src/main/browser-use/browser-use-policy-store.ts
+  s_61ededb051faa8::t_5d60816c0040c5 1,212
+src/main/browser/browser-credential-vault.test.ts
+  s_61ededb051faa8::t_a5f6a97af68cdd 44-48
+src/main/browser/browser-credential-vault.ts
+  s_61ededb051faa8::t_ea2864b3d4330b 1,324,369
+src/main/browser/browser-download-service.ts
+  s_61ededb051faa8::t_61d72c245012dc 1,243
+src/main/browser/browser-history-store.ts
+  s_61ededb051faa8::t_286a16cf545002 1,113
+src/main/browser/browser-local-server-preferences.test.ts
+  s_61ededb051faa8::t_71061a981d43d9 44-45
+src/main/browser/browser-local-server-preferences.ts
+  s_61ededb051faa8::t_d27d7f9839f904 1,144
+src/main/browser/browser-page-store.ts
+  s_61ededb051faa8::t_0c38b8d811b9fc 1,161
+src/main/durable-json-file.ts
+  s_61ededb051faa8::t_714c5a3c28de65 1-2
+src/main/local-store/persisted-atoms.ts
+  s_61ededb051faa8::t_60dde9d9a961ec 1,53
+src/main/platform/node/MainFatalIncidentStore.ts
+  s_61ededb051faa8::t_f457851ec3d0f3 2,95
+src/main/remote-hosted-pip-preference-store.ts
+  s_61ededb051faa8::t_9a08b0068beaca 1,170
+src/main/settings/agent-environment-storage.ts
+  s_61ededb051faa8::t_5403bc7be5087e 1,90
+src/main/settings/application-settings-persistence.ts
+  s_61ededb051faa8::t_30203e97f51faa 1,263
+src/main/window-session-state.ts
+  s_61ededb051faa8::t_d9f04ec46d4892 1,1011
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "84e7abdd6d510e6576591c9478a6e7e0ddbb8c7d",
+  "prompts": {},
+  "sessions": {
+    "s_61ededb051faa8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19725-1673-78a3-85e3-bdba96788967",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
