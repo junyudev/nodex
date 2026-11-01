@@ -1,6 +1,7 @@
 import { assert, it } from "@effect/vitest";
 import { subscribeToBackendLogs, type BackendLogEntry } from "../logging/logger";
 import * as Context from "effect/Context";
+import * as Clock from "effect/Clock";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -1130,5 +1131,155 @@ it.effect("an erasure request wakes Block retention instead of waiting for its i
     yield* waitUntil("Block retention woken by erasure", () => blockPlans === 2);
 
     yield* Scope.close(harness.scope, Exit.void);
+  }),
+);
+
+const automaticBackupSettings = {
+  autoEnabled: true,
+  intervalHours: 1,
+  retentionCount: 5,
+  retentionGiB: 32,
+};
+const backupOnlyTiming: StoreAdministrationSchedulerTiming = {
+  maintenance: Object.fromEntries(
+    ["revision", "operational", "document", "block"].map((lane) => [
+      lane,
+      { initial: 30 * 24 * 60 * 60_000, interval: 30 * 24 * 60 * 60_000 },
+    ]),
+  ),
+};
+const backupAt = (createdAt: number, trigger: "auto" | "manual" = "manual") => ({
+  version: 2,
+  id: `backup:${createdAt}`,
+  createdAt: new Date(createdAt).toISOString(),
+  trigger,
+  label: null,
+  includesAssets: true,
+  dbBytes: 100,
+  assetsBytes: 20,
+  totalBytes: 120,
+});
+
+it.effect("schedules from the newest completed backup across restarts and manual captures", () =>
+  Effect.gen(function* () {
+    yield* TestClock.adjust("2 hours");
+    const history = [backupAt(60 * 60_000), backupAt(90 * 60_000)];
+    let attempts = 0;
+    const administration = {
+      ...defaultAdministration(),
+      listBackups: Effect.sync(() => history),
+      createBackup: () =>
+        Effect.gen(function* () {
+          attempts += 1;
+          const backup = backupAt(yield* Clock.currentTimeMillis, "auto");
+          history.push(backup);
+          return backup;
+        }),
+    } satisfies StoreAdministration["Service"];
+    const first = yield* buildHarness({
+      administration,
+      initialBackup: automaticBackupSettings,
+      storeTiming: backupOnlyTiming,
+    });
+    yield* first.store.activate;
+    yield* TestClock.adjust("10 minutes");
+    assert.equal(attempts, 0);
+    yield* Scope.close(first.scope, Exit.void);
+    const second = yield* buildHarness({
+      administration,
+      initialBackup: automaticBackupSettings,
+      storeTiming: backupOnlyTiming,
+    });
+    yield* second.store.activate;
+    yield* TestClock.adjust(20 * 60_000 - 1);
+    assert.equal(attempts, 0);
+    yield* TestClock.adjust(1);
+    assert.equal(attempts, 1);
+    yield* TestClock.adjust("30 minutes");
+    history.push(backupAt(yield* Clock.currentTimeMillis));
+    yield* TestClock.adjust("30 minutes");
+    assert.equal(attempts, 1);
+    yield* TestClock.adjust("30 minutes");
+    assert.equal(attempts, 2);
+    yield* Scope.close(second.scope, Exit.void);
+  }),
+);
+
+it.effect("catches up overdue backups one minute after Core becomes ready", () =>
+  Effect.gen(function* () {
+    yield* TestClock.adjust("2 hours");
+    let attempts = 0;
+    const administration = {
+      ...defaultAdministration(),
+      listBackups: Effect.succeed([backupAt(0)]),
+      createBackup: () =>
+        Effect.gen(function* () {
+          attempts += 1;
+          return backupAt(yield* Clock.currentTimeMillis, "auto");
+        }),
+    } satisfies StoreAdministration["Service"];
+    const h = yield* buildHarness({
+      administration,
+      initialBackup: automaticBackupSettings,
+      storeTiming: backupOnlyTiming,
+    });
+    yield* SubscriptionRef.set(h.authorityState, {
+      kind: "recovering",
+      attempt: 1,
+      previousGeneration: "old",
+    });
+    yield* h.store.activate;
+    yield* TestClock.adjust("1 minute");
+    assert.equal(attempts, 0);
+    yield* SubscriptionRef.set(h.authorityState, { kind: "ready", generation: "ready" });
+    yield* TestClock.adjust(59_999);
+    assert.equal(attempts, 0);
+    yield* TestClock.adjust(1);
+    assert.equal(attempts, 1);
+    yield* Scope.close(h.scope, Exit.void);
+  }),
+);
+
+it.effect("retries failed backups with exponential backoff capped at the configured interval", () =>
+  Effect.gen(function* () {
+    const times: number[] = [];
+    let fail = true;
+    const administration = {
+      ...defaultAdministration(),
+      createBackup: () =>
+        Effect.gen(function* () {
+          times.push(yield* Clock.currentTimeMillis);
+          if (fail)
+            return yield* new StoreAdministrationError({
+              operation: "create-backup",
+              cause: new Error("Disk unavailable"),
+            });
+          return backupAt(yield* Clock.currentTimeMillis, "auto");
+        }),
+    } satisfies StoreAdministration["Service"];
+    const h = yield* buildHarness({
+      administration,
+      initialBackup: automaticBackupSettings,
+      storeTiming: backupOnlyTiming,
+    });
+    yield* h.store.activate;
+    yield* TestClock.adjust(60_000);
+    assert.deepEqual(times, [60_000]);
+    for (let retry = 0; retry < 12; retry += 1) {
+      const delay = Math.min(60 * 60_000, 5_000 * 2 ** retry);
+      yield* TestClock.adjust(delay - 1);
+      assert.equal(times.length, retry + 1);
+      yield* TestClock.adjust(1);
+      assert.equal(times.length, retry + 2);
+      assert.equal(times.at(-1)! - times.at(-2)!, delay);
+    }
+    fail = false;
+    yield* TestClock.adjust("1 hour");
+    const completed = times.length;
+    yield* TestClock.adjust(60 * 60_000 - 1);
+    assert.equal(times.length, completed);
+    yield* TestClock.adjust(1);
+    assert.equal(times.length, completed + 1);
+    yield* Scope.close(h.scope, Exit.void);
   }),
 );

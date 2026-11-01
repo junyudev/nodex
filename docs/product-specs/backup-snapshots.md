@@ -44,6 +44,13 @@ Failure leaves the existing snapshot inventory unchanged and presents a safe
 diagnostic message. Retrying starts a new job unless Core can prove that the
 same accepted job is being recovered.
 
+## Automatic snapshots
+
+An automatic snapshot is due one interval after the newest completed snapshot of any kind,
+so a manual snapshot also satisfies the schedule. When Nodex starts with a snapshot overdue,
+it takes one shortly after the Store is ready; restarting Nodex never postpones the schedule.
+A failed attempt is retried after increasing delays, never longer than the interval.
+
 ## Capacity and retention
 
 Backups shows total stored snapshot bytes, available filesystem capacity, and

@@ -51,6 +51,9 @@ export class StoreAdministrationSchedulerRuntime extends Context.Service<
   }
 >()("nodex/main/host-runtime/StoreAdministrationSchedulerRuntime") {}
 
+const STARTUP_SETTLE_MS = 60_000;
+const DUE_RECHECK_MS = 15 * 60_000;
+
 export const live = (
   options: StoreAdministrationSchedulerRuntimeOptions,
 ): Layer.Layer<
@@ -94,44 +97,75 @@ export const live = (
         );
       };
 
-      const runBackup = (settings: BackupSchedulerSettings): Effect.Effect<void> =>
-        backupLock
-          .withPermitsIfAvailable(1)(
-            Effect.gen(function* () {
-              if (!(yield* authorityReady)) return;
-              yield* administration.createBackup({ trigger: "auto" });
-              if (!(yield* authorityReady)) return;
-              yield* administration.pruneBackups(
-                Math.max(0, Math.trunc(settings.retentionCount)),
-                Math.max(0, Math.trunc(settings.retentionGiB)) * 1024 * 1024 * 1024,
-              );
-            }).pipe(
-              Effect.catch((error) =>
-                Effect.sync(() => {
-                  logger.error("Automatic backup run failed", {
-                    error: operationCause(error),
-                    intervalHours: settings.intervalHours,
-                    retentionCount: settings.retentionCount,
-                    retentionGiB: settings.retentionGiB,
-                  });
-                }),
-              ),
-            ),
-          )
-          .pipe(Effect.asVoid);
-
-      const backupSchedule = (settings: BackupSchedulerSettings): Effect.Effect<void> =>
-        Deferred.await(activation).pipe(
-          Effect.andThen(
-            settings.autoEnabled
-              ? Effect.forever(
-                  Effect.sleep(`${Math.max(1, Math.trunc(settings.intervalHours))} hours`).pipe(
-                    Effect.andThen(runBackup(settings)),
-                  ),
-                )
-              : Effect.void,
-          ),
+      const waitForCore = SubscriptionRef.changes(authority.state).pipe(
+        Stream.filter((state) => state.kind === "ready"),
+        Stream.runHead,
+        Effect.scoped,
+        Effect.asVoid,
+      );
+      const runBackup = (settings: BackupSchedulerSettings) =>
+        backupLock.withPermits(1)(
+          Effect.gen(function* () {
+            const backup = yield* administration.createBackup({ trigger: "auto" });
+            yield* administration.pruneBackups(
+              Math.max(0, Math.trunc(settings.retentionCount)),
+              Math.max(0, Math.trunc(settings.retentionGiB)) * 1024 * 1024 * 1024,
+            );
+            return Date.parse(backup.createdAt);
+          }),
         );
+
+      const backupSchedule = Effect.fn("StoreAdministrationSchedulerRuntime.backupSchedule")(
+        function* (settings: BackupSchedulerSettings) {
+          yield* Deferred.await(activation);
+          if (!settings.autoEnabled) return;
+          const interval = Math.max(1, Math.trunc(settings.intervalHours)) * 60 * 60_000;
+          let failures = 0;
+          let settle = true;
+          let lastCompletedAt = Number.NEGATIVE_INFINITY;
+          while (true) {
+            yield* waitForCore;
+            const attempt = yield* Effect.gen(function* () {
+              const backups = yield* administration.listBackups;
+              const newest = backups.reduce(
+                (latest, backup) => Math.max(latest, Date.parse(backup.createdAt)),
+                lastCompletedAt,
+              );
+              const now = yield* Clock.currentTimeMillis;
+              const remaining = newest + interval - now;
+              if (remaining > 0) {
+                settle = false;
+                return { delay: remaining };
+              }
+              // A restarted Desktop catches up after Core is ready, giving startup a short rest.
+              if (settle) {
+                settle = false;
+                return { delay: STARTUP_SETTLE_MS };
+              }
+              lastCompletedAt = yield* runBackup(settings);
+              return {
+                delay: Math.max(250, lastCompletedAt + interval - (yield* Clock.currentTimeMillis)),
+              };
+            }).pipe(Effect.result);
+            if (attempt._tag === "Success") {
+              failures = 0;
+              // Timers pause while the computer sleeps; re-reading the wall clock keeps the due time.
+              yield* Effect.sleep(Math.min(attempt.success.delay, DUE_RECHECK_MS));
+              continue;
+            }
+            const delay = Math.min(interval, 5_000 * 2 ** Math.min(failures, 20));
+            failures += 1;
+            logger.error("Automatic backup run failed", {
+              error: operationCause(attempt.failure),
+              retryAfterMs: delay,
+              intervalHours: settings.intervalHours,
+              retentionCount: settings.retentionCount,
+              retentionGiB: settings.retentionGiB,
+            });
+            yield* Effect.sleep(delay);
+          }
+        },
+      );
 
       const runMaintenance = (
         lane: StoreMaintenanceLane,

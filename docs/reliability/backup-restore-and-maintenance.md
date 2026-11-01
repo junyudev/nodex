@@ -55,6 +55,9 @@ revalidate anything adopted from disk.
 
 Manual and scheduled backups use the same operation. Automatic interval and
 retention are Profile settings described in [Configuration](../CONFIGURATION.md).
+The next automatic backup is due one interval after the newest completed backup of any
+trigger, so restarts never postpone it; Main catches up shortly after Core becomes ready and
+retries a failed attempt with bounded backoff no longer than the interval.
 Automatic snapshots obey both a count limit and a total-byte budget. Manual and
 pre-restore snapshots are never silently removed by that policy.
 The UI reports environment-managed values without pretending to overwrite them.
