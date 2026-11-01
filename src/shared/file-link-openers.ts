@@ -1,3 +1,5 @@
+import { restoreNativeAppFilesystemPath } from "./app-protocol";
+
 export type FileLinkOpenerId =
   | "vscode"
   | "vscodeInsiders"
@@ -114,7 +116,7 @@ function decodeFileUrlPath(value: string): string | null {
     if (url.protocol !== "file:") return null;
     const path = decodeURIComponent(url.pathname);
     if (url.host && url.host !== "localhost") return `//${url.host}${path}`;
-    return path;
+    return restoreNativeAppFilesystemPath(path);
   } catch {
     return null;
   }
@@ -186,12 +188,15 @@ export function formatFileLinkLocation(target: FileLinkTarget): string {
 }
 
 export function buildFileUrl(target: FileLinkTarget): string {
-  const encodedPath = encodeURI(target.path);
+  const normalizedPath = /^[a-zA-Z]:[\\/]|^\\\\/u.test(target.path)
+    ? target.path.replaceAll("\\", "/")
+    : target.path;
+  const encodedPath = encodeURI(normalizedPath).replaceAll("#", "%23").replaceAll("?", "%3F");
   const fragment = target.line
     ? `#L${target.line}${target.column ? `C${target.column}` : ""}${target.endLine ? `-L${target.endLine}${target.endColumn ? `C${target.endColumn}` : ""}` : ""}`
     : "";
   if (/^[a-zA-Z]:[\\/]/.test(target.path)) {
-    return `file:///${encodedPath.replace(/\\/g, "/")}${fragment}`;
+    return `file:///${encodedPath}${fragment}`;
   }
-  return `file://${encodedPath}${fragment}`;
+  return `${normalizedPath.startsWith("//") ? "file:" : "file://"}${encodedPath}${fragment}`;
 }
