@@ -390,6 +390,11 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 195,
         apply: migrate_v194_to_v195,
     },
+    MigrationStep {
+        from_revision: 195,
+        to_revision: 196,
+        apply: migrate_v195_to_v196,
+    },
 ];
 
 fn resolve_migration_path(
@@ -2551,6 +2556,21 @@ fn migrate_v189_to_v190(
         params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
             context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
             r#"{"session_search_usage":true}"#],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
+fn migrate_v195_to_v196(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v195_to_v196.sql"))?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            r#"{"page_file_attachment_provenance":true}"#],
     )?;
     connection.pragma_update(None, "user_version", context.target_revision)?;
     Ok(())
@@ -8466,7 +8486,7 @@ mod tests {
             .unwrap()
             .collect::<rusqlite::Result<Vec<_>>>()
             .unwrap();
-        assert_eq!(steps, vec![(193, 194), (194, 195)]);
+        assert_eq!(steps, vec![(193, 194), (194, 195), (195, 196)]);
         let states = connection
             .prepare("SELECT page_id,suggestion_state FROM inbox_entries ORDER BY page_id")
             .unwrap()
@@ -8672,6 +8692,92 @@ mod tests {
                 .unwrap()
                 .migrated_from_version,
             None
+        );
+    }
+
+    #[test]
+    fn v195_entries_migrate_to_unknown_origins_without_borrowing_file_or_manifest_time() {
+        let profile = tempdir().unwrap();
+        fs::write(
+            profile.path().join("nodex.db"),
+            include_bytes!("../../tests/fixtures/store-v191.db"),
+        )
+        .unwrap();
+        let mut connection = open_writer(&profile.path().join("nodex.db")).unwrap();
+        with_schema_rebuild_transaction(&mut connection, |transaction| {
+            for step in MIGRATION_STEPS
+                .iter()
+                .filter(|step| step.from_revision >= 191 && step.to_revision <= 195)
+            {
+                (step.apply)(
+                    transaction,
+                    &MigrationContext {
+                        source_revision: step.from_revision,
+                        target_revision: step.to_revision,
+                        backup_name: "v195-entry-fixture.db".to_owned(),
+                        source_schema_fingerprint: published_format(step.from_revision)?
+                            .schema_fingerprint,
+                        target_schema_fingerprint: published_format(step.to_revision)?
+                            .schema_fingerprint,
+                        completed_at_unix_ms: 1,
+                    },
+                )?;
+            }
+            Ok(())
+        })
+        .unwrap();
+        validate_schema_identity(&connection, 195).unwrap();
+        let (page, library): (String, String) = connection
+            .query_row("SELECT block_id,library_id FROM pages LIMIT 1", [], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })
+            .unwrap();
+        let hash = crate::document::sha256(b"historical output");
+        fs::create_dir_all(profile.path().join("assets")).unwrap();
+        fs::write(
+            profile.path().join("assets").join(format!("{hash}.blob")),
+            b"historical output",
+        )
+        .unwrap();
+        with_immediate_transaction(&mut connection, |transaction| {
+            transaction.execute("INSERT INTO managed_blobs(content_hash,physical_asset_name,byte_length,created_at) VALUES (?1,?2,17,'2026-09-01T00:00:00.000Z')", params![hash,format!("{hash}.blob")])?;
+            transaction.execute("INSERT INTO library_files(file_id,library_id,default_name,head_version,revision,lifecycle,created_by_actor_id,created_at,updated_at) VALUES ('file:historical',?1,'report.txt',1,1,'live','project:creation','2026-09-02T00:00:00.000Z','2026-09-03T00:00:00.000Z')", [&library])?;
+            transaction.execute("INSERT INTO file_versions(file_id,version,library_id,blob_hash,mime_type,byte_length,actor_id,operation_id,occurred_at) VALUES ('file:historical',1,?1,?2,'text/plain',17,'project:creation','historical-import','2026-09-02T00:00:00.000Z')",params![library,hash])?;
+            transaction.execute("INSERT INTO page_file_entries(page_id,library_id,file_id,logical_path,path_key) VALUES (?1,?2,'file:historical','report.txt','report.txt')",params![page,library])?;
+            transaction.execute("UPDATE page_file_manifests SET revision=1,updated_at='2026-09-04T00:00:00.000Z' WHERE page_id=?1",[&page])?;
+            Ok(())
+        }).unwrap();
+        let preparation = prepare_profile_store(&mut connection, profile.path()).unwrap();
+        assert_eq!(preparation.migrated_from_version, Some(195));
+        assert_eq!(preparation.schema_version, 196);
+        let provenance: (String,Option<String>) = connection.query_row("SELECT attached_by_json,attached_at FROM page_file_entries WHERE file_id='file:historical'",[],|row| Ok((row.get(0)?,row.get(1)?))).unwrap();
+        assert_eq!(
+            serde_json::from_str::<nodex_core_contracts::library::LibraryPageFileAttachmentActor>(
+                &provenance.0
+            )
+            .unwrap(),
+            nodex_core_contracts::library::LibraryPageFileAttachmentActor::Unknown
+        );
+        assert_eq!(provenance.1, None);
+        validate_current_store(&connection).unwrap();
+        let mut fresh = Connection::open_in_memory().unwrap();
+        install_current_schema(&mut fresh).unwrap();
+        assert_eq!(
+            super::super::schema::read_schema_inventory(&connection).unwrap(),
+            super::super::schema::read_schema_inventory(&fresh).unwrap()
+        );
+        assert_eq!(
+            prepare_profile_store(&mut connection, profile.path())
+                .unwrap()
+                .migrated_from_version,
+            None
+        );
+        assert_eq!(connection.query_row("SELECT count(*) FROM core_store_migration_history WHERE source_revision=195 AND target_revision=196",[],|row| row.get::<_,i64>(0)).unwrap(),1);
+        assert_eq!(
+            fs::read_dir(profile.path().join("backups"))
+                .unwrap()
+                .count(),
+            1
         );
     }
 

@@ -37,7 +37,12 @@ vi.mock("@/lib/use-library-navigation", () => ({
 }));
 vi.mock("@/lib/use-library-files", () => ({
   usePageFile: () => ({
-    item: { file: mocks.file, logical_path: "images/current.png", body_count: 1 },
+    item: {
+      file: mocks.file,
+      logical_path: "images/current.png",
+      body_count: 1,
+      attachment: { attached_by: { kind: "unknown" as const }, attached_at: null },
+    },
     refresh: mocks.refresh,
   }),
   usePageFiles: () => ({

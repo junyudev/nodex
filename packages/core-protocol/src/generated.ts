@@ -5292,6 +5292,30 @@ export interface components {
             readonly end: number;
             readonly start: number;
         };
+        readonly LibraryPageFileAttachment: {
+            /** @description Core-authored RFC3339 time; unknown historical origins have no time. */
+            readonly attached_at: string | null;
+            readonly attached_by: components["schemas"]["LibraryPageFileAttachmentActor"];
+        };
+        /**
+         * @description The origin proven when an explicit Page File entry was attached. File
+         *     creation evidence and the Session's current backend are independent facts.
+         */
+        readonly LibraryPageFileAttachmentActor: {
+            /** @enum {string} */
+            readonly kind: "person";
+        } | {
+            readonly backend: components["schemas"]["AgentBackendBinding"];
+            /** @enum {string} */
+            readonly kind: "agent";
+            readonly session_id: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "external";
+        } | {
+            /** @enum {string} */
+            readonly kind: "unknown";
+        };
         /** @enum {string} */
         readonly LibraryPageFileCollisionPolicy: "reject" | "suffix";
         readonly LibraryPageFileEntryChange: {
@@ -5372,6 +5396,7 @@ export interface components {
             readonly unplaced_total: number;
         };
         readonly LibraryPageFileItem: {
+            readonly attachment: components["schemas"]["LibraryPageFileAttachment"] | null;
             /** Format: int64 */
             readonly body_count: number;
             readonly file: components["schemas"]["LibraryFile"];

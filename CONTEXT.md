@@ -209,6 +209,16 @@ entry does not rename, replace, or transfer the File. Page Files presents the
 union of explicit entries and current body occurrences, deduplicated by File ID.
 A child's entries are not flattened into its parent.
 
+Each explicit entry retains attachment provenance: who attached it and the
+Core-authored attachment time. The actor is the local person, a verified Agent
+identified by its product Session and captured Backend Binding, an external
+caller without verified execution identity, or an unknown historical origin
+with no time. Body-only uses have no entry attachment evidence. File creation
+and version evidence describe the File, not who attached it to a Page.
+Renaming, moving, copying, or structurally restoring an entry preserves its
+attachment evidence; replacing its File or removing and reattaching creates
+new evidence. A shared File update or global name change leaves it unchanged.
+
 ### File placement
 
 A File placement is an image or attachment occurrence in a Page Document in

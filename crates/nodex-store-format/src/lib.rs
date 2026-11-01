@@ -250,6 +250,10 @@ pub const PUBLISHED_STORE_FORMATS: &[PublishedStoreFormat] = &[
         195,
         "62ca70d4078ec6bc8b5ba4e945864cfb4da34b2f865560bfd04b36e909d65185",
     ),
+    format(
+        196,
+        "89406fee2de502e25b4bd88e85c8da9572d42992b54d4aeaaf5f10ff28ee1d11",
+    ),
 ];
 
 pub const CURRENT_STORE_FORMAT: PublishedStoreFormat =

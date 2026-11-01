@@ -4,18 +4,18 @@ use nodex_core_contracts::library::{
 };
 use rusqlite::{Connection, OptionalExtension, params};
 
-use super::{cursor, file_access, files, page_file_entries};
+use super::{cursor, file_access, files, page_file_attachment, page_file_entries};
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 
 const INVENTORY: &str = "WITH uses AS (
     SELECT file_id AS file_id, count(*) AS body_count FROM block_asset_refs
     WHERE library_id = ?1 AND owner_block_id = ?2 AND file_id IS NOT NULL GROUP BY file_id
   ), inventory AS (
-    SELECT entry.file_id, entry.logical_path, entry.path_key, COALESCE(uses.body_count, 0) AS body_count
+    SELECT entry.file_id, entry.logical_path, entry.path_key, COALESCE(uses.body_count, 0) AS body_count, entry.attached_by_json, entry.attached_at
     FROM page_file_entries entry LEFT JOIN uses ON uses.file_id = entry.file_id
     WHERE entry.library_id = ?1 AND entry.page_id = ?2
     UNION ALL
-    SELECT uses.file_id, NULL, NULL, uses.body_count FROM uses
+    SELECT uses.file_id, NULL, NULL, uses.body_count, NULL, NULL FROM uses
     WHERE NOT EXISTS(SELECT 1 FROM page_file_entries entry WHERE entry.page_id = ?2 AND entry.file_id = uses.file_id)
   )";
 
@@ -69,9 +69,9 @@ pub(super) fn resolve(
     };
     file_access::require_page_use(connection, context, page_id, &file_id)?;
     let file = files::metadata(connection, &context.library_id.0, &file_id)?;
-    let logical_path = connection.query_row(
-        "SELECT logical_path FROM page_file_entries WHERE page_id = ?1 AND file_id = ?2 AND library_id = ?3",
-        params![page_id, file_id, context.library_id.0], |row| row.get::<_, String>(0),
+    let entry = connection.query_row(
+        "SELECT logical_path, attached_by_json, attached_at FROM page_file_entries WHERE page_id = ?1 AND file_id = ?2 AND library_id = ?3",
+        params![page_id, file_id, context.library_id.0], |row| Ok((row.get::<_, String>(0)?, page_file_attachment::from_row(row, 1, 2)?)),
     ).optional()?;
     let body_count: i64 = connection.query_row(
         "SELECT count(*) FROM block_asset_refs WHERE library_id = ?1 AND owner_block_id = ?2 AND file_id = ?3",
@@ -79,7 +79,8 @@ pub(super) fn resolve(
     )?;
     Ok(LibraryPageFileItem {
         file,
-        logical_path,
+        logical_path: entry.as_ref().map(|(path, _)| path.clone()),
+        attachment: entry.map(|(_, attachment)| attachment),
         body_count: body_count as u64,
     })
 }
@@ -157,7 +158,8 @@ pub(super) fn list_current_page(
     ), params![library_id, page_id, query], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?, row.get::<_, i64>(2)?)))?;
     let mut files = connection.prepare(&format!(
         "{INVENTORY} SELECT {columns}, inventory.logical_path, inventory.body_count,
-             COALESCE(inventory.path_key, lower(file.default_name)) AS sort_path
+             COALESCE(inventory.path_key, lower(file.default_name)) AS sort_path,
+             inventory.attached_by_json, inventory.attached_at
          {joins} JOIN inventory ON inventory.file_id = file.file_id
          WHERE {FILTER} AND (?4 IS NULL OR (inventory.body_count > 0) > ?4
            OR ((inventory.body_count > 0) = ?4 AND (sort_path > ?5 OR (sort_path = ?5 AND file.file_id > ?6))))
@@ -166,7 +168,7 @@ pub(super) fn list_current_page(
         joins = files::FILE_TABLES,
     ))?.query_map(params![library_id, page_id, query, after_section, after_path, after_id, i64::from(limit) + 1], |row| {
         let body_count: i64 = row.get(14)?;
-        Ok((LibraryPageFileItem { file: files::file_from_row(row)?, logical_path: row.get(13)?, body_count: body_count as u64 }, row.get::<_, String>(15)?))
+        Ok((LibraryPageFileItem { file: files::file_from_row(row)?, logical_path: row.get(13)?, body_count: body_count as u64, attachment: row.get::<_, Option<String>>(16)?.map(|_| page_file_attachment::from_row(row, 16, 17)).transpose()? }, row.get::<_, String>(15)?))
     })?.collect::<rusqlite::Result<Vec<_>>>()?;
     let has_more = files.len() > limit as usize;
     files.truncate(limit as usize);

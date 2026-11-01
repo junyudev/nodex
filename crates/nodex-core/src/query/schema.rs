@@ -230,6 +230,8 @@ pub(super) fn describe(name: &str) -> Option<SqlTable> {
                 ("manifest_revision", "INTEGER", false),
                 ("body_usage_revision", "INTEGER", false),
                 ("body_count", "INTEGER", false),
+                ("attached_by_json", "TEXT", true),
+                ("attached_at", "TEXT", true),
             ],
         ),
         "files" => (

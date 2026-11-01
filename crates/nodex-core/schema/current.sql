@@ -1737,6 +1737,12 @@ CREATE TABLE page_file_entries (
   file_id TEXT NOT NULL,
   logical_path TEXT NOT NULL CHECK (length(logical_path) BETWEEN 1 AND 1024),
   path_key TEXT NOT NULL CHECK (length(path_key) BETWEEN 1 AND 1024),
+  attached_by_json TEXT NOT NULL DEFAULT '{"kind":"unknown"}'
+    CHECK (json_valid(attached_by_json) AND COALESCE(json_extract(attached_by_json, '$.kind') IN ('person', 'agent', 'external', 'unknown'), 0)),
+  attached_at TEXT CHECK (
+    (json_extract(attached_by_json, '$.kind') = 'unknown' AND attached_at IS NULL) OR
+    (json_extract(attached_by_json, '$.kind') <> 'unknown' AND attached_at IS NOT NULL AND length(attached_at) > 0)
+  ),
   PRIMARY KEY (page_id, file_id),
   UNIQUE (page_id, path_key),
   FOREIGN KEY (page_id, library_id) REFERENCES pages(block_id, library_id)
@@ -4515,7 +4521,7 @@ BEGIN
   WHERE page_id=OLD.id AND waiting_in_inbox=1;
 END;
 
-PRAGMA user_version = 195;
+PRAGMA user_version = 196;
 
 CREATE TABLE document_recovery_drafts (
     library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,

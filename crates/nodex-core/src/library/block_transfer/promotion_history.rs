@@ -578,6 +578,7 @@ fn refresh_lifecycle_projection(
 fn restore_guard(connection: &Connection, state: &PromotionRestore) -> Result<String, StoreError> {
     let target = block_transfer_target_guard_hash(
         connection,
+        &state.undo.library_id,
         &state.undo.roots,
         state.undo.schema_restore.as_ref(),
     )?;
@@ -1145,6 +1146,7 @@ pub(super) fn restore(
             }
             state.undo.target_guard_hash = block_transfer_target_guard_hash(
                 connection,
+                &state.undo.library_id,
                 &state.undo.roots,
                 state.undo.schema_restore.as_ref(),
             )?;

@@ -480,6 +480,8 @@ pub struct PageFileArgs {
 
 #[derive(Clone, Debug, PartialEq, Subcommand)]
 pub enum PageFileCommand {
+    /// List Page Files with their attachment origin and time.
+    List(PageFileListArgs),
     /// Read current bytes by an explicit File ID or Page path.
     Read(PageFileReadArgs),
     /// Import at a path; --replace-entry replaces only this Page relation.
@@ -496,6 +498,18 @@ pub enum PageFileCommand {
     Move(PageFileTransferArgs),
     /// Copy a Page relation while retaining the shared File identity.
     Copy(PageFileTransferArgs),
+}
+
+#[derive(Clone, Debug, Args, PartialEq)]
+pub struct PageFileListArgs {
+    /// Page ID, Page key, or uniquely resolvable title path.
+    pub page: String,
+    #[arg(long)]
+    pub query: Option<String>,
+    #[arg(long)]
+    pub cursor: Option<String>,
+    #[arg(long, value_parser = clap::value_parser!(u32).range(1..=100))]
+    pub limit: Option<u32>,
 }
 
 #[derive(Clone, Debug, Args, PartialEq)]

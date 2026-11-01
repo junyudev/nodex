@@ -430,6 +430,7 @@ fn revision_conflict() -> StoreError {
 #[cfg(test)]
 mod tests {
     mod canvas_bindings;
+    mod page_attachment;
 
     use std::fs;
 
@@ -448,6 +449,13 @@ mod tests {
     use crate::library::page_file_entries::{self as entries, EntryWriteContext};
 
     const NOW: &str = "2026-09-04T00:00:00.000Z";
+
+    fn external_attachment() -> nodex_core_contracts::library::LibraryPageFileAttachment {
+        nodex_core_contracts::library::LibraryPageFileAttachment {
+            attached_by: nodex_core_contracts::library::LibraryPageFileAttachmentActor::External,
+            attached_at: Some(NOW.to_owned()),
+        }
+    }
 
     struct Fixture {
         home: tempfile::TempDir,
@@ -2261,6 +2269,9 @@ mod tests {
                 }],
             },
         );
+        let original_attachment = page_attachment::inventory(&module, "page-nested").files[0]
+            .attachment
+            .clone();
         let host = page_content(&module, "page-a");
         let clipboard = apply_intent(
             &module,
@@ -2344,6 +2355,10 @@ mod tests {
         .structural_edit
         .unwrap();
         let copied_page = copied.copied_block_ids["page-nested"].clone();
+        assert_eq!(
+            page_attachment::inventory(&module, &copied_page).files[0].attachment,
+            original_attachment
+        );
         let body = page_content(&module, &copied_page);
         assert_eq!(body.asset_refs[0].file_id.as_deref(), Some("file-a"));
         let blob = module
@@ -2438,6 +2453,10 @@ mod tests {
         .page_copy
         .unwrap();
         let target_id = copied.page_id;
+        assert_eq!(
+            page_attachment::inventory(&module, &target_id).files[0].attachment,
+            page_attachment::inventory(&module, "page-a").files[0].attachment
+        );
         let before = page_content(&module, "page-a");
         let target_before = page_content(&module, &target_id);
         assert_eq!(before.asset_refs[0].file_id.as_deref(), Some("file-a"));
@@ -2504,8 +2523,18 @@ mod tests {
         write(&fixture, "seed-entries", |context| {
             import(context, "file-a")?;
             import(context, "file-b")?;
-            entries::add(&entry(context, "page-a", 0), "file-a", "a.txt")?;
-            entries::add(&entry(context, "page-a", 1), "file-b", "b.txt")?;
+            entries::add(
+                &entry(context, "page-a", 0),
+                "file-a",
+                "a.txt",
+                &external_attachment(),
+            )?;
+            entries::add(
+                &entry(context, "page-a", 1),
+                "file-b",
+                "b.txt",
+                &external_attachment(),
+            )?;
             Ok(())
         })
         .unwrap();
@@ -2640,8 +2669,18 @@ mod tests {
         let fixture = fixture();
         write(&fixture, "seed-path-put", |context| {
             import(context, "file-a")?;
-            entries::add(&entry(context, "page-a", 0), "file-a", "source.txt")?;
-            entries::add(&entry(context, "page-b", 0), "file-a", "also.txt")?;
+            entries::add(
+                &entry(context, "page-a", 0),
+                "file-a",
+                "source.txt",
+                &external_attachment(),
+            )?;
+            entries::add(
+                &entry(context, "page-b", 0),
+                "file-a",
+                "also.txt",
+                &external_attachment(),
+            )?;
             Ok(())
         })
         .unwrap();
@@ -2669,6 +2708,19 @@ mod tests {
         prepare(&fixture, "replace-path", "receipt:replace-path", b"beta");
         let request = put("replace-path", 1, true);
         let applied = module.apply(&actor, request.clone()).unwrap();
+        let attachment = page_attachment::inventory(&module, "page-a").files[0]
+            .attachment
+            .clone()
+            .unwrap();
+        assert_eq!(
+            attachment.attached_by,
+            nodex_core_contracts::library::LibraryPageFileAttachmentActor::External
+        );
+        assert_eq!(
+            attachment.attached_at.as_deref(),
+            Some(applied.committed.receipt.committed_at.as_str())
+        );
+        assert_ne!(attachment.attached_at.as_deref(), Some(NOW));
         assert_eq!(
             applied.committed.value.page_file_entries[0].manifest_revision,
             2
@@ -2700,6 +2752,10 @@ mod tests {
         let replay = module.apply(&actor, request).unwrap();
         assert!(replay.committed.receipt.mutation.duplicate);
         assert_eq!(
+            page_attachment::inventory(&module, "page-a").files[0].attachment,
+            Some(attachment)
+        );
+        assert_eq!(
             replay.committed.value.page_file_entries,
             applied.committed.value.page_file_entries
         );
@@ -2727,8 +2783,18 @@ mod tests {
         let fixture = fixture();
         write(&fixture, "seed-local-replace", |context| {
             import(context, "file-a")?;
-            entries::add(&entry(context, "page-a", 0), "file-a", "source.txt")?;
-            entries::add(&entry(context, "page-b", 0), "file-a", "also.txt")?;
+            entries::add(
+                &entry(context, "page-a", 0),
+                "file-a",
+                "source.txt",
+                &external_attachment(),
+            )?;
+            entries::add(
+                &entry(context, "page-b", 0),
+                "file-a",
+                "also.txt",
+                &external_attachment(),
+            )?;
             Ok(())
         })
         .unwrap();
@@ -3123,11 +3189,13 @@ mod tests {
                 &entry(context, "page-a", 0),
                 "file-a",
                 "research/source.txt",
+                &external_attachment(),
             )?;
             entries::add(
                 &entry(context, "page-b", 0),
                 "file-a",
                 "reference/paper.txt",
+                &external_attachment(),
             )?;
             entries::rename(&entry(context, "page-a", 1), "file-a", "docs/source.txt")?;
             assert_eq!(
@@ -3237,8 +3305,18 @@ mod tests {
         write(&fixture, "seed", |context| {
             import(context, "file-a")?;
             import(context, "file-b")?;
-            entries::add(&entry(context, "page-a", 0), "file-a", "source.txt")?;
-            entries::add(&entry(context, "page-b", 0), "file-b", "occupied.txt")?;
+            entries::add(
+                &entry(context, "page-a", 0),
+                "file-a",
+                "source.txt",
+                &external_attachment(),
+            )?;
+            entries::add(
+                &entry(context, "page-b", 0),
+                "file-b",
+                "occupied.txt",
+                &external_attachment(),
+            )?;
             Ok(())
         })
         .unwrap();
@@ -3281,7 +3359,12 @@ mod tests {
         write(&fixture, "seed", |context| {
             import(context, "file-a")?;
             import(context, "file-b")?;
-            entries::add(&entry(context, "page-a", 0), "file-a", "folder/source.txt")?;
+            entries::add(
+                &entry(context, "page-a", 0),
+                "file-a",
+                "folder/source.txt",
+                &external_attachment(),
+            )?;
             Ok(())
         })
         .unwrap();
@@ -3292,7 +3375,12 @@ mod tests {
         ] {
             assert_eq!(
                 write(&fixture, "conflict", move |context| {
-                    entries::add(&entry(context, "page-a", 1), "file-b", path)
+                    entries::add(
+                        &entry(context, "page-a", 1),
+                        "file-b",
+                        path,
+                        &external_attachment(),
+                    )
                 })
                 .unwrap_err()
                 .code,
@@ -3300,7 +3388,12 @@ mod tests {
             );
         }
         write(&fixture, "retarget", |context| {
-            entries::retarget(&entry(context, "page-a", 1), "file-a", "file-b")?;
+            entries::retarget(
+                &entry(context, "page-a", 1),
+                "file-a",
+                "file-b",
+                &external_attachment(),
+            )?;
             assert_eq!(
                 entries::resolve_path(
                     context.connection,

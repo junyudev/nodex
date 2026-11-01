@@ -199,6 +199,43 @@ fn native_cli_shares_files_replaces_only_one_relation_and_replays_exact_writes()
             ],
         );
     }
+    let inventory = success(&home, &["page", "file", "list", &a]);
+    let attachment = inventory["files"][0]["attachment"].clone();
+    assert_eq!(
+        attachment["attached_by"],
+        serde_json::json!({"kind":"external"})
+    );
+    chrono::DateTime::parse_from_rfc3339(attachment["attached_at"].as_str().unwrap()).unwrap();
+    let downloaded = success(
+        &home,
+        &[
+            "page",
+            "file",
+            "read",
+            &a,
+            "--file-id",
+            file_id,
+            "--output",
+            "download.txt",
+        ],
+    );
+    assert_eq!(downloaded["attachment"], attachment);
+    assert_eq!(fs::read(home.join("download.txt")).unwrap(), b"alpha");
+    let provenance = success(
+        &home,
+        &[
+            "sql",
+            "query",
+            "SELECT attached_by_json,attached_at FROM page_files WHERE page_id=:id",
+            "--param",
+            &format!("id={}", serde_json::to_string(PAGE_A).unwrap()),
+        ],
+    );
+    assert_eq!(
+        serde_json::from_str::<Value>(provenance["rows"][0][0].as_str().unwrap()).unwrap(),
+        attachment["attached_by"]
+    );
+    assert_eq!(provenance["rows"][0][1], attachment["attached_at"]);
     let replace = [
         "file",
         "replace",

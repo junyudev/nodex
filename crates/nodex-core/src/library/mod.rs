@@ -32,6 +32,7 @@ pub(crate) use files::capture_snapshot as capture_file_snapshot;
 mod agent_surface;
 mod file_blobs;
 mod mutation_ledger;
+mod page_file_attachment;
 mod page_file_entries;
 mod page_file_entry_mutation;
 mod page_file_inventory;

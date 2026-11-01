@@ -318,9 +318,27 @@ requires no current or recoverable Page uses. Purge requires a trashed File
 with no history, draft, or other File retention roots. An unused live File is
 retained until explicitly trashed and purged.
 
+`nodex page file list` reports the deduplicated explicit entries and body-only
+uses, including current File metadata, Page paths, body counts, and attachment
+provenance. JSON includes `attachment: { attached_by, attached_at }` for explicit
+entries and `attachment: null` for body-only uses. The actor is `person`,
+`agent` (with its product `session_id` and captured `backend`), `external`, or
+`unknown`. Unknown historical origins have no attachment time; other entries
+have a Core-authored RFC3339 time. CLI callers without verified Agent execution
+are external. Human output uses one compact row per File. JSON download
+receipts from `page file read` also include `attachment`.
+
+Renaming paths, transferring entries, and copying or structurally restoring
+Pages preserve attachment evidence. Replacing an entry or removing and later
+reattaching it records a new actor and time. File creation/version evidence and
+shared File updates are independent of Page attachment provenance. The
+`page_files` SQL relation exposes `attached_by_json` and `attached_at` alongside
+the existing entry and body-use columns.
+
 `nodex page file` manages Page relations and reads their current bytes:
 
 ```text
+nodex page file list <page-selector> [--query report] [--limit 50] [--cursor <cursor>]
 nodex page file read <page-selector> --file-id <file-id> --output -
 nodex page file read <page-selector> --path references/api.md --output ./api.md
 nodex page file put <page-selector> --path references/api.md --from ./api.md --if-manifest 0 [--replace-entry]

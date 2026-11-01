@@ -3740,6 +3740,7 @@ fn read_task_shorthand_schema_restore(
 
 fn block_transfer_target_guard_hash(
     connection: &Connection,
+    library_id: &str,
     roots: &[BlockTransferUndoRootV1],
     schema_restore: Option<&BlockTransferUndoSchemaRestoreV1>,
 ) -> Result<String, StoreError> {
@@ -3837,13 +3838,8 @@ fn block_transfer_target_guard_hash(
                 },
             )
             .optional()?;
-        let file_entries = connection
-            .prepare("SELECT file_id, logical_path FROM page_file_entries WHERE page_id = ?1 ORDER BY file_id")?
-            .query_map([&root.result_page_id], |row| Ok(serde_json::json!({
-                "fileId": row.get::<_, String>(0)?,
-                "logicalPath": row.get::<_, String>(1)?,
-            })))?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
+        let file_entries =
+            super::page_file_entries::capture(connection, library_id, &root.result_page_id)?;
         guarded_pages.push(serde_json::json!({
             "pageId": root.result_page_id,
             "authority": authority,
@@ -3931,8 +3927,12 @@ fn build_page_parent_undo_recipe(
             source_root_properties: root.source_root_properties.clone(),
         })
         .collect::<Vec<_>>();
-    let target_guard_hash =
-        block_transfer_target_guard_hash(connection, &roots, schema_restore.as_ref())?;
+    let target_guard_hash = block_transfer_target_guard_hash(
+        connection,
+        &prepared.source_authority.head.library_id,
+        &roots,
+        schema_restore.as_ref(),
+    )?;
     let footprint = promotion_history::capture_footprint(connection, &roots)?;
     let recipe = BlockTransferUndoRecipeV4 {
         version: BLOCK_TRANSFER_UNDO_RECIPE_VERSION,
@@ -6882,6 +6882,7 @@ fn undo_promotion(
     }
     let target_guard = block_transfer_target_guard_hash(
         connection,
+        &recipe.library_id,
         &recipe.roots,
         recipe.schema_restore.as_ref(),
     )?;

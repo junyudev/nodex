@@ -19,6 +19,7 @@ use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 pub(super) fn put(
     connection: &Connection,
     context: &BoundModuleContext,
+    attachment_actor: &nodex_core_contracts::library::LibraryPageFileAttachmentActor,
     store_epoch: &str,
     operation_id: &str,
     request_hash: &str,
@@ -67,6 +68,7 @@ pub(super) fn put(
     apply_with_kind(
         connection,
         context,
+        attachment_actor,
         store_epoch,
         operation_id,
         request_hash,
@@ -82,6 +84,7 @@ pub(super) fn put(
 pub(super) fn apply(
     connection: &Connection,
     context: &BoundModuleContext,
+    attachment_actor: &nodex_core_contracts::library::LibraryPageFileAttachmentActor,
     store_epoch: &str,
     operation_id: &str,
     request_hash: &str,
@@ -93,6 +96,7 @@ pub(super) fn apply(
     apply_with_kind(
         connection,
         context,
+        attachment_actor,
         store_epoch,
         operation_id,
         request_hash,
@@ -108,6 +112,7 @@ pub(super) fn apply(
 fn apply_with_kind(
     connection: &Connection,
     context: &BoundModuleContext,
+    attachment_actor: &nodex_core_contracts::library::LibraryPageFileAttachmentActor,
     store_epoch: &str,
     operation_id: &str,
     request_hash: &str,
@@ -149,7 +154,7 @@ fn apply_with_kind(
                 | Change::Replace { .. }
         ) {
             let entry = entries::resolve(connection, library_id, page_id, file_id)?;
-            originals.insert(file_id.to_owned(), entry.logical_path);
+            originals.insert(file_id.to_owned(), entry);
         }
         match change {
             Change::Attach {
@@ -263,7 +268,7 @@ fn apply_with_kind(
                         retargeted.insert(file_id.clone(), replacement_file_id.clone());
                         (
                             replacement_file_id.clone(),
-                            originals[file_id].clone(),
+                            originals[file_id].logical_path.clone(),
                             LibraryPageFileCollisionPolicy::Reject,
                         )
                     }
@@ -316,7 +321,7 @@ fn apply_with_kind(
                         retargeted.insert(file_id.clone(), replacement_file_id.clone());
                         (
                             replacement_file_id.clone(),
-                            originals[file_id].clone(),
+                            originals[file_id].logical_path.clone(),
                             LibraryPageFileCollisionPolicy::Reject,
                         )
                     }
@@ -328,9 +333,22 @@ fn apply_with_kind(
                     &replacements,
                     policy,
                 )?;
+                let attachment = match change {
+                    Change::Rename { file_id, .. } => originals[file_id].attachment.clone(),
+                    Change::Retarget {
+                        file_id,
+                        replacement_file_id,
+                        ..
+                    } if file_id == replacement_file_id => originals[file_id].attachment.clone(),
+                    _ => nodex_core_contracts::library::LibraryPageFileAttachment {
+                        attached_by: attachment_actor.clone(),
+                        attached_at: Some(now.clone()),
+                    },
+                };
                 replacements.push(EntryReplacement {
                     file_id,
                     logical_path,
+                    attachment,
                 });
             }
             let revision = entries::replace_batch(&entry_context, &removed_ids, &replacements)?;

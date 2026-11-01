@@ -217,12 +217,12 @@ pub(super) fn apply(
             }
             match &request.intent {
                 LibraryIntent::PutPageFileEntry { page_id, expected_manifest_revision, file_id, logical_path, mime_type, prepared_blob_receipt_id, replace_entry, turn_id } => super::page_file_entry_mutation::put(
-                    transaction, &context, &store_epoch, &request.operation_id, &request_hash,
+                    transaction, &context, &super::page_file_attachment::resolve_actor(&context)?, &store_epoch, &request.operation_id, &request_hash,
                     page_id, *expected_manifest_revision, file_id, logical_path, mime_type,
                     prepared_blob_receipt_id, *replace_entry, turn_id.as_deref(),
                 ),
                 LibraryIntent::ApplyPageFileEntries { page_id, expected_manifest_revision, changes, turn_id } => super::page_file_entry_mutation::apply(
-                    transaction, &context, &store_epoch, &request.operation_id, &request_hash,
+                    transaction, &context, &super::page_file_attachment::resolve_actor(&context)?, &store_epoch, &request.operation_id, &request_hash,
                     page_id, *expected_manifest_revision, changes, turn_id.as_deref(),
                 ),
                 LibraryIntent::TransferPageFileEntry { file_id, source_page_id, source_manifest_revision, target_page_id, target_manifest_revision, target_logical_path, copy } => super::page_file_entry_mutation::transfer(

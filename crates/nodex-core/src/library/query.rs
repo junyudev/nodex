@@ -225,6 +225,22 @@ impl QueryContext<'_> {
                 row["manifest_revision"] = json!(inventory.revision);
                 row["body_usage_revision"] = json!(inventory.body_usage_revision);
                 row["body_count"] = json!(item.body_count);
+                row["attached_by_json"] = item
+                    .attachment
+                    .as_ref()
+                    .map(|attachment| serde_json::to_string(&attachment.attached_by))
+                    .transpose()
+                    .map_err(|_| {
+                        error(
+                            StoreErrorCode::Internal,
+                            "Page File attachment cannot be encoded",
+                        )
+                    })?
+                    .map_or(Value::Null, Value::String);
+                row["attached_at"] = json!(
+                    item.attachment
+                        .and_then(|attachment| attachment.attached_at)
+                );
                 rows.push(row)?;
             }
             ensure_budget(rows.len())?;

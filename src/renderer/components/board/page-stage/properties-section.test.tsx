@@ -54,6 +54,7 @@ const pageFile = (
     | { readonly kind: "placed"; readonly placementCount: number },
 ): LibraryPageFileItem => ({
   logical_path: logicalPath,
+  attachment: { attached_by: { kind: "unknown" as const }, attached_at: null },
   body_count: bodyUsage.kind === "placed" ? bodyUsage.placementCount : 0,
   file: {
     file_id: fileId,

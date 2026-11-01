@@ -1081,7 +1081,14 @@ describe("Library Module transport", () => {
         page_id: "page-1",
         revision: 3,
         body_usage_revision: 4,
-        files: [{ file, logical_path: "images/diagram.png", body_count: 2 }],
+        files: [
+          {
+            file,
+            logical_path: "images/diagram.png",
+            body_count: 2,
+            attachment: { attached_by: { kind: "unknown" as const }, attached_at: null },
+          },
+        ],
         next_cursor: null,
         has_more: false,
         total: 1,
@@ -1106,7 +1113,7 @@ describe("Library Module transport", () => {
           ...manifest,
           value: {
             ...manifest.value,
-            files: [{ file, logical_path: "images/diagram.png", body_count: -1 }],
+            files: [{ ...manifest.value.files[0], body_count: -1 }],
           },
         }),
       ),

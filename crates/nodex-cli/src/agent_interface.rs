@@ -729,6 +729,16 @@ const COMMANDS: &[CommandMetadata] = &[
         ],
     },
     CommandMetadata {
+        path: &["page", "file", "list"],
+        capability: "pageFiles",
+        effect: CommandEffect::Read,
+        validators: &["profile_identity", "current_page_access"],
+        result: "page_file_inventory",
+        errors: READ_ERRORS,
+        example: "nodex --json page file list page-id",
+        example_argv: &["--json", "page", "file", "list", "page-id"],
+    },
+    CommandMetadata {
         path: &["page", "file", "read"],
         capability: "pageFiles",
         effect: CommandEffect::Read,
@@ -1514,7 +1524,7 @@ fn command_semantics(path: &[&str]) -> Vec<&'static str> {
 
 fn result_revision(path: &[&str]) -> u32 {
     match path {
-        ["search"] => 2,
+        ["search"] | ["page", "file", "read"] => 2,
         ["read"] | ["data-source", _] | ["sql", _] | ["page", "properties", "prepare-batch"] => 2,
         _ => 1,
     }
@@ -1678,7 +1688,7 @@ fn group_semantics(path: &[&str]) -> Vec<&'static str> {
             "replace changes shared bytes for all current uses; fork creates a separate File. restore publishes a retained version; untrash restores lifecycle state.",
         ],
         ["page", "file"] => vec![
-            "Logical paths belong to this Page. Discover entries with the page_files SQL relation and read pages.file_manifest_revision before changing entries.",
+            "Logical paths belong to this Page. Discover entries with page file list or the page_files SQL relation and read pages.file_manifest_revision before changing entries.",
             "put imports a File; add links an existing live Library File. remove detaches the entry while retaining its File and body uses. replace-entry changes only this Page relation.",
         ],
         ["sql"] => vec![

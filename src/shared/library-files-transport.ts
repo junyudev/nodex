@@ -14,6 +14,8 @@ import type {
   LibraryPageFileEntryReceipt,
   LibraryPageFileInventory,
   LibraryPageFileItem,
+  LibraryPageFileAttachment,
+  LibraryPageFileAttachmentActor,
   LibraryPageFileSelector,
   ReadFileBytesInput,
   SaveFileInput,
@@ -300,13 +302,51 @@ const fileVersionSchema = z
     occurred_at: identity,
   })
   .strict() satisfies z.ZodType<LibraryFileVersion>;
+const attachmentActorSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("person") }).strict(),
+  z.object({ kind: z.literal("external") }).strict(),
+  z.object({ kind: z.literal("unknown") }).strict(),
+  z
+    .object({
+      kind: z.literal("agent"),
+      session_id: identity,
+      backend: z.discriminatedUnion("kind", [
+        z.object({ kind: z.literal("codex") }).strict(),
+        z.object({ kind: z.literal("claude"), instance_config_id: identity }).strict(),
+        z.object({ kind: z.literal("opencode"), instance_config_id: identity }).strict(),
+        z
+          .object({
+            kind: z.literal("acp"),
+            agent_definition_id: identity,
+            instance_config_id: identity.nullish(),
+          })
+          .strict(),
+      ]),
+    })
+    .strict(),
+]) satisfies z.ZodType<LibraryPageFileAttachmentActor>;
+const attachmentSchema = z
+  .object({
+    attached_by: attachmentActorSchema,
+    attached_at: z.iso.datetime({ offset: true }).nullable(),
+  })
+  .strict()
+  .refine(
+    ({ attached_by, attached_at }) => (attached_by.kind === "unknown") === (attached_at === null),
+    "Only unknown attachment origins have no time",
+  ) satisfies z.ZodType<LibraryPageFileAttachment>;
 const pageItemSchema = z
   .object({
     file: libraryFileSchema,
     logical_path: name.nullish(),
     body_count: revision,
+    attachment: attachmentSchema.nullable(),
   })
-  .strict() satisfies z.ZodType<LibraryPageFileItem>;
+  .strict()
+  .refine(
+    ({ logical_path, attachment }) => (logical_path == null) === (attachment === null),
+    "Only explicit entries carry attachment evidence",
+  ) satisfies z.ZodType<LibraryPageFileItem>;
 const pageInventorySchema = z
   .object({
     page_id: identity,

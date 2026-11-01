@@ -2,6 +2,7 @@ import { describe, expect, test } from "vite-plus/test";
 import { bindLibraryModuleApply, bindLibraryModuleRead } from "./library-module-transport";
 import {
   libraryFileReadValueSchema,
+  libraryFileOperationSchema,
   readFileBytesSchema,
   toCoreLibraryFileRead,
 } from "./library-files-transport";
@@ -135,6 +136,128 @@ describe("Library File transport boundaries", () => {
         read: { mode: "files", lifecycle: "live", usage: "all", limit: 201 },
       }),
     ).toThrow();
+  });
+
+  test("validates attachment evidence on both inventory and selected-item reads", () => {
+    const file = {
+      file_id: "file-a",
+      library_id: "library-a",
+      default_name: "output.html",
+      head_version: 1,
+      revision: 1,
+      lifecycle: "live",
+      mime_type: "text/html",
+      byte_length: 12,
+      blob_etag: "a".repeat(64),
+      created_by_actor_id: "project-a",
+      created_by_turn_id: null,
+      created_at: "2026-10-01T00:00:00Z",
+      updated_at: "2026-10-01T00:00:00Z",
+    };
+    const parse = (item: unknown, inventory: boolean) =>
+      libraryFileReadValueSchema.parse(
+        inventory
+          ? {
+              kind: "page_file_inventory",
+              value: {
+                page_id: "page-a",
+                revision: 1,
+                body_usage_revision: 0,
+                files: [item],
+                next_cursor: null,
+                has_more: false,
+                total: 1,
+                unplaced_total: 1,
+                placed_total: 0,
+              },
+            }
+          : { kind: "resolved_page_file", value: item },
+      );
+    const time = "2026-11-01T10:15:00+08:00";
+    const actors = [
+      { kind: "person" },
+      { kind: "external" },
+      { kind: "unknown" },
+      ...[
+        { kind: "codex" },
+        { kind: "claude", instance_config_id: "claude-a" },
+        { kind: "opencode", instance_config_id: "opencode-a" },
+        { kind: "acp", agent_definition_id: "definition-a", instance_config_id: null },
+      ].map((backend) => ({ kind: "agent", session_id: "session-product-a", backend })),
+    ];
+    for (const inventory of [true, false]) {
+      const item = { file, logical_path: "output.html", body_count: 0 };
+      for (const actor of actors) {
+        const attachment = {
+          attached_by: actor,
+          attached_at: actor.kind === "unknown" ? null : time,
+        };
+        expect(() => parse({ ...item, attachment }, inventory)).not.toThrow();
+        expect(() =>
+          parse(
+            {
+              ...item,
+              attachment: { ...attachment, attached_at: actor.kind === "unknown" ? time : null },
+            },
+            inventory,
+          ),
+        ).toThrow();
+      }
+      expect(() =>
+        parse({ ...item, logical_path: null, attachment: null }, inventory),
+      ).not.toThrow();
+      for (const attachment of [
+        undefined,
+        null,
+        { attached_by: { kind: "person" }, attached_at: "2026-11-01 10:15:00" },
+        { attached_by: { kind: "agent", session_id: "project-a" }, attached_at: time },
+        {
+          attached_by: { kind: "agent", session_id: "chat", backend: { kind: "claude" } },
+          attached_at: time,
+        },
+        { attached_by: { kind: "person", session_id: "forged" }, attached_at: time },
+      ])
+        expect(() => parse({ ...item, attachment }, inventory)).toThrow();
+      expect(() =>
+        parse(
+          {
+            ...item,
+            logical_path: null,
+            attachment: { attached_by: { kind: "person" }, attached_at: time },
+          },
+          inventory,
+        ),
+      ).toThrow();
+    }
+  });
+
+  test("entry commands cannot supply attachment actors or times", () => {
+    const operation = {
+      kind: "apply_page_file_entries",
+      page_id: "page-a",
+      expected_manifest_revision: 0,
+      changes: [
+        {
+          kind: "attach",
+          file_id: "file-a",
+          logical_path: "output.html",
+          source: { kind: "direct" },
+          collision_policy: "reject",
+        },
+      ],
+    };
+    for (const forged of [
+      { attached_by: { kind: "person" } },
+      { attached_at: "2026-11-01T00:00:00Z" },
+    ]) {
+      expect(() => libraryFileOperationSchema.parse({ ...operation, ...forged })).toThrow();
+      expect(() =>
+        libraryFileOperationSchema.parse({
+          ...operation,
+          changes: [{ ...operation.changes[0], ...forged }],
+        }),
+      ).toThrow();
+    }
   });
 
   test("accepts frozen presentation without current global metadata", () => {

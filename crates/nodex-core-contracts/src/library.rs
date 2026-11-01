@@ -14,7 +14,7 @@ use crate::database::{
 use crate::document::{ContentRoutingContext, DocumentHeadRevision};
 use crate::{ApplyResponse, ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const LIBRARY_CONTRACT_VERSION: u32 = 57;
+pub const LIBRARY_CONTRACT_VERSION: u32 = 58;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -1782,17 +1782,44 @@ pub struct LibraryFileMutationResult {
     pub file: Option<LibraryFile>,
 }
 
+/// The origin proven when an explicit Page File entry was attached. File
+/// creation evidence and the Session's current backend are independent facts.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum LibraryPageFileAttachmentActor {
+    Person,
+    Agent {
+        session_id: String,
+        backend: crate::agent::AgentBackendBinding,
+    },
+    External,
+    Unknown,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct LibraryPageFileAttachment {
+    pub attached_by: LibraryPageFileAttachmentActor,
+    /// Core-authored RFC3339 time; unknown historical origins have no time.
+    #[schema(required = true)]
+    pub attached_at: Option<String>,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct LibraryPageFileEntry {
     pub page_id: String,
     pub file_id: String,
     pub logical_path: String,
+    pub attachment: LibraryPageFileAttachment,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct LibraryPageFileItem {
     pub file: LibraryFile,
     pub logical_path: Option<String>,
+    /// Null only for a body-only File with no explicit entry.
+    #[schema(required = true)]
+    pub attachment: Option<LibraryPageFileAttachment>,
     pub body_count: u64,
 }
 

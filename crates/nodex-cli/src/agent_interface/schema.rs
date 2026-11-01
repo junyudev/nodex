@@ -95,9 +95,11 @@ pub(super) fn result(path: &[&str]) -> Value {
         ["page", "move"] => document::<crate::page_lifecycle::PageMoveResult>(),
         ["page", "duplicate"] => document::<crate::page_lifecycle::PageCopyResult>(),
         ["page", "delete"] => document::<crate::page_lifecycle::PageDeletionResult>(),
-        ["file", "read"] | ["page", "file", "read"] => {
-            document::<crate::files::FileDownloadResult>()
+        ["page", "file", "list"] => {
+            document::<nodex_core_contracts::library::LibraryPageFileInventory>()
         }
+        ["page", "file", "read"] => document::<crate::page_files::PageFileDownloadResult>(),
+        ["file", "read"] => document::<crate::files::FileDownloadResult>(),
         ["file", _] | ["page", "file", _] => document::<crate::files::FileMutationResult>(),
         ["history"] => document::<LibraryPageHistoryPage>(),
         ["inbox", "send"] => document::<crate::inbox::InboxSendResult>(),

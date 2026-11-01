@@ -1,7 +1,9 @@
 //! Explicit Page paths reference Library Files. A path mutation never changes
 //! the target File's name, content, lifecycle, or revision.
 
-use nodex_core_contracts::library::LibraryPageFileEntry;
+use nodex_core_contracts::library::{LibraryPageFileAttachment, LibraryPageFileEntry};
+
+use super::page_file_attachment;
 use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::domain::file_path::PortablePageFilePath;
@@ -12,6 +14,15 @@ use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 pub(super) struct EntryReplacement {
     pub(super) file_id: String,
     pub(super) logical_path: String,
+    #[serde(default = "unknown_attachment")]
+    pub(super) attachment: LibraryPageFileAttachment,
+}
+
+fn unknown_attachment() -> LibraryPageFileAttachment {
+    LibraryPageFileAttachment {
+        attached_by: nodex_core_contracts::library::LibraryPageFileAttachmentActor::Unknown,
+        attached_at: None,
+    }
 }
 
 /// Captured Page paths are immutable structural evidence. Replaying a copy
@@ -22,10 +33,11 @@ pub(super) fn capture(
     page_id: &str,
 ) -> Result<Vec<EntryReplacement>, StoreError> {
     Ok(connection
-        .prepare("SELECT file_id, logical_path FROM page_file_entries WHERE library_id = ?1 AND page_id = ?2 ORDER BY file_id")?
+        .prepare("SELECT file_id, logical_path, attached_by_json, attached_at FROM page_file_entries WHERE library_id = ?1 AND page_id = ?2 ORDER BY file_id")?
         .query_map(params![library_id, page_id], |row| Ok(EntryReplacement {
             file_id: row.get(0)?,
             logical_path: row.get(1)?,
+            attachment: page_file_attachment::from_row(row, 2, 3)?,
         }))?
         .collect::<rusqlite::Result<Vec<_>>>()?)
 }
@@ -46,8 +58,8 @@ pub(super) fn initialize_captured(
         let path = PortablePageFilePath::parse(&entry.logical_path)?;
         require_path_excluding(context, &path, "[]")?;
         context.connection.execute(
-            "INSERT INTO page_file_entries(page_id, library_id, file_id, logical_path, path_key) VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![context.page_id, context.library_id, entry.file_id, path.display(), path.collision_key()],
+            "INSERT INTO page_file_entries(page_id, library_id, file_id, logical_path, path_key, attached_by_json, attached_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![context.page_id, context.library_id, entry.file_id, path.display(), path.collision_key(), page_file_attachment::encode(&entry.attachment)?, entry.attachment.attached_at],
         )?;
     }
     if entries.is_empty() {
@@ -89,7 +101,7 @@ pub(super) fn replace_batch(
                 context.page_id,
                 file_id,
             )
-            .map(|entry| (entry.file_id, entry.logical_path))
+            .map(|entry| (entry.file_id.clone(), entry))
         })
         .collect::<Result<std::collections::BTreeMap<_, _>, _>>()?;
     let mut replacement_ids = BTreeSet::new();
@@ -102,6 +114,7 @@ pub(super) fn replace_batch(
     })?;
     for replacement in replacements {
         require_live_file(context, &replacement.file_id)?;
+        page_file_attachment::encode(&replacement.attachment)?;
         if !replacement_ids.insert(&replacement.file_id) {
             return Err(error(
                 StoreErrorCode::Conflict,
@@ -134,9 +147,9 @@ pub(super) fn replace_batch(
     }
     if originals.len() == replacements.len()
         && replacements.iter().zip(&paths).all(|(replacement, path)| {
-            originals
-                .get(&replacement.file_id)
-                .is_some_and(|old| old == path.display())
+            originals.get(&replacement.file_id).is_some_and(|old| {
+                old.logical_path == path.display() && old.attachment == replacement.attachment
+            })
         })
     {
         return Ok(context.expected_revision);
@@ -148,8 +161,8 @@ pub(super) fn replace_batch(
     )?;
     for (replacement, path) in replacements.iter().zip(paths) {
         context.connection.execute(
-            "INSERT INTO page_file_entries(page_id, library_id, file_id, logical_path, path_key) VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![context.page_id, context.library_id, replacement.file_id, path.display(), path.collision_key()],
+            "INSERT INTO page_file_entries(page_id, library_id, file_id, logical_path, path_key, attached_by_json, attached_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![context.page_id, context.library_id, replacement.file_id, path.display(), path.collision_key(), page_file_attachment::encode(&replacement.attachment)?, replacement.attachment.attached_at],
         )?;
     }
     advance_revision(context)?;
@@ -343,7 +356,7 @@ pub(super) fn resolve(
 ) -> Result<LibraryPageFileEntry, StoreError> {
     connection
         .query_row(
-            "SELECT page_id, file_id, logical_path FROM page_file_entries \
+            "SELECT page_id, file_id, logical_path, attached_by_json, attached_at FROM page_file_entries \
          WHERE page_id = ?1 AND file_id = ?2 AND library_id = ?3",
             params![page_id, file_id, library_id],
             |row| {
@@ -351,6 +364,7 @@ pub(super) fn resolve(
                     page_id: row.get(0)?,
                     file_id: row.get(1)?,
                     logical_path: row.get(2)?,
+                    attachment: page_file_attachment::from_row(row, 3, 4)?,
                 })
             },
         )
@@ -377,6 +391,7 @@ pub(super) fn add(
     context: &EntryWriteContext<'_>,
     file_id: &str,
     logical_path: &str,
+    attachment: &LibraryPageFileAttachment,
 ) -> Result<LibraryPageFileEntry, StoreError> {
     require_revision(context)?;
     require_live_file(context, file_id)?;
@@ -394,14 +409,16 @@ pub(super) fn add(
         ));
     }
     context.connection.execute(
-        "INSERT INTO page_file_entries(page_id, library_id, file_id, logical_path, path_key) \
-         VALUES (?1, ?2, ?3, ?4, ?5)",
+        "INSERT INTO page_file_entries(page_id, library_id, file_id, logical_path, path_key, attached_by_json, attached_at) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
         params![
             context.page_id,
             context.library_id,
             file_id,
             path.display(),
-            path.collision_key()
+            path.collision_key(),
+            page_file_attachment::encode(attachment)?,
+            attachment.attached_at
         ],
     )?;
     advance_revision(context)?;
@@ -475,6 +492,7 @@ pub(super) fn retarget(
     context: &EntryWriteContext<'_>,
     file_id: &str,
     replacement_file_id: &str,
+    attachment: &LibraryPageFileAttachment,
 ) -> Result<LibraryPageFileEntry, StoreError> {
     require_revision(context)?;
     let entry = resolve(
@@ -499,8 +517,8 @@ pub(super) fn retarget(
         ));
     }
     context.connection.execute(
-        "UPDATE page_file_entries SET file_id = ?1 WHERE page_id = ?2 AND file_id = ?3 AND library_id = ?4",
-        params![replacement_file_id, context.page_id, file_id, context.library_id],
+        "UPDATE page_file_entries SET file_id = ?1, attached_by_json = ?5, attached_at = ?6 WHERE page_id = ?2 AND file_id = ?3 AND library_id = ?4",
+        params![replacement_file_id, context.page_id, file_id, context.library_id, page_file_attachment::encode(attachment)?, attachment.attached_at],
     )?;
     advance_revision(context)?;
     resolve(
@@ -531,13 +549,13 @@ pub(super) fn transfer(
         ));
     }
     require_revision(source)?;
-    resolve(
+    let original = resolve(
         source.connection,
         source.library_id,
         source.page_id,
         file_id,
     )?;
-    let entry = add(target, file_id, logical_path)?;
+    let entry = add(target, file_id, logical_path, &original.attachment)?;
     if !copy {
         remove(source, file_id)?;
     }

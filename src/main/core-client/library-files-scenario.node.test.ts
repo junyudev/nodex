@@ -22,6 +22,15 @@ describe("library/files authoritative scenario", () => {
       });
       expect(facts.sharedFileId).not.toBe(facts.unusedFileId);
 
+      const inventory = await context.seed.readPageFileInventory(
+        context.manifest.projectId,
+        context.manifest.pageIdsByKey[LIBRARY_FILES_PAGE_A_KEY]!,
+      );
+      const shared = inventory.files.find((item) => item.file.file_id === facts.sharedFileId);
+      expect(shared?.attachment?.attached_by).toEqual({ kind: "person" });
+      expect(shared?.attachment?.attached_at).toEqual(expect.any(String));
+      expect(Number.isFinite(Date.parse(shared!.attachment!.attached_at!))).toBe(true);
+
       const project = context.runtime.clientForProject(context.manifest.projectId);
       const [pageABytes, pageBBytes, unusedBytes] = await Promise.all([
         project.readFileBlob({

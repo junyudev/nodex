@@ -42,7 +42,17 @@ const model = (logicalPath: string | null, bodyCount: number): PageFilesReadMode
     page_id: "page-1",
     revision: 8,
     body_usage_revision: 3,
-    files: [{ file, logical_path: logicalPath, body_count: bodyCount }],
+    files: [
+      {
+        file,
+        logical_path: logicalPath,
+        body_count: bodyCount,
+        attachment:
+          logicalPath === null
+            ? null
+            : { attached_by: { kind: "unknown" as const }, attached_at: null },
+      },
+    ],
     next_cursor: null,
     has_more: false,
     total: 1,

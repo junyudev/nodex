@@ -9,7 +9,7 @@ use nodex_core_contracts::library::{
 use nodex_core_contracts::{ModuleApplyRequest, StoreEpoch};
 use nodex_core_protocol::ResponseEnvelope;
 use nodex_core_protocol::client::CoreClient;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use utoipa::ToSchema;
 
@@ -27,7 +27,7 @@ pub(crate) struct FileMutationResult {
     page_file_entries: Vec<nodex_core_contracts::library::LibraryPageFileEntryReceipt>,
     commit_seq: i64,
 }
-#[derive(Serialize, ToSchema)]
+#[derive(Deserialize, Serialize, ToSchema)]
 pub(crate) struct FileDownloadResult {
     file_id: String,
     source: LibraryFileReadSource,

@@ -21844,6 +21844,95 @@
           }
         }
       },
+      "LibraryPageFileAttachment": {
+        "type": "object",
+        "required": [
+          "attached_by",
+          "attached_at"
+        ],
+        "properties": {
+          "attached_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Core-authored RFC3339 time; unknown historical origins have no time."
+          },
+          "attached_by": {
+            "$ref": "#/components/schemas/LibraryPageFileAttachmentActor"
+          }
+        },
+        "additionalProperties": false
+      },
+      "LibraryPageFileAttachmentActor": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "person"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "session_id",
+              "backend",
+              "kind"
+            ],
+            "properties": {
+              "backend": {
+                "$ref": "#/components/schemas/AgentBackendBinding"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "agent"
+                ]
+              },
+              "session_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "external"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "unknown"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "The origin proven when an explicit Page File entry was attached. File\ncreation evidence and the Session's current backend are independent facts."
+      },
       "LibraryPageFileCollisionPolicy": {
         "type": "string",
         "enum": [
@@ -22171,9 +22260,21 @@
         "type": "object",
         "required": [
           "file",
+          "attachment",
           "body_count"
         ],
         "properties": {
+          "attachment": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/LibraryPageFileAttachment",
+                "description": "Null only for a body-only File with no explicit entry."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "body_count": {
             "type": "integer",
             "format": "int64",
