@@ -1,0 +1,38 @@
+scripts/testing/run-tests.test.ts
+  s_b708cefbbd2f84::t_b5fdb894231514 77
+config/test-suites.test.ts
+  s_b708cefbbd2f84::t_b5fdb894231514 18-19,64
+docs/CI.md
+  s_b708cefbbd2f84::t_970c63e175716b 45,59-63,69-71
+  s_b708cefbbd2f84::t_623b2bf32b6a08 72,91
+.github/workflows/windows.yml
+  s_b708cefbbd2f84::t_d5c7d22930bab9 69,129
+config/test-suites.ts
+  s_b708cefbbd2f84::t_d19d3f608584b4 9,53-70,141,145-152,157
+package.json
+  s_b708cefbbd2f84::t_70cfc0b36be92a 16-17
+scripts/ci/app-test-suite.test.ts
+  s_b708cefbbd2f84::t_dcb39ae5ade5f6 49-58
+scripts/ci/classify-change.test.ts
+  s_b708cefbbd2f84::t_e76710be152856 141
+scripts/ci/classify-change.ts
+  s_b708cefbbd2f84::t_94a2676e66bf1f 166,170,178,182,194
+vitest.host.config.ts
+  s_b708cefbbd2f84::t_95993189f94fb9 1-6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c282146993f51e446194cce3997f21bf10c43c9d",
+  "prompts": {},
+  "sessions": {
+    "s_b708cefbbd2f84": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1964e-d1d0-7381-9ea9-cb7cf0748ec9",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
