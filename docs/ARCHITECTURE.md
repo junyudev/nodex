@@ -1298,6 +1298,7 @@ These invariants cross subsystem boundaries. Narrower domain and feature invaria
 22. The Library owns File identity. Pages own relationships and paths; structural moves and copies preserve File IDs without changing shared content or global metadata. File and Page relationship identities remain separate.
 23. Native clipboard descriptors and Main lifecycle state are routing evidence only. Core's durable bundle and cut claim are the sole structural copy and move authority; every non-authoritative path remains portable content.
 24. Blocks have one exact text language, [Nodex Markdown](references/nodex-markdown.md). Core links its Rust implementation natively and the app runs the same implementation through WebAssembly; exact writes and portable exports share that writer and fixture. [ADR 0073](adr/0073-one-text-language-for-blocks.md) records the boundary, while [Markdown Interchange](references/markdown-interchange.md) owns clipboard and HTML conversion. Written messages are message text: a message's Page body, its bubble, its Composer draft, and what a chat receives from it are projections of that one document; see [Message Content Behavior](product-specs/message-content-behavior.md).
+25. An Agent reply's outcome comes only from its Agent's evidence. A failure of Nodex's own observation leads to reattachment and reconciliation, never an invented outcome, and every unfinished reply is bound to a live native turn; see [Agent Runtime behavior](product-specs/agent-runtime-behavior.md#request-recovery-and-continuation).
 
 ## Codemap
 

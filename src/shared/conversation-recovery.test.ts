@@ -2,6 +2,7 @@ import { describe, expect, test } from "vite-plus/test";
 import {
   codexConversationRecoveryReason,
   conversationRecoveryReason,
+  isWaitingForNetworkMessage,
   parseConversationRetryProgress,
 } from "./conversation-recovery";
 
@@ -23,6 +24,9 @@ describe("conversation recovery reasons", () => {
     ["responseStreamConnectionFailed", "connection"],
     ["responseStreamDisconnected", "connection"],
     ["responseTooManyFailedAttempts", "connection"],
+    ["observation_lost", "connection"],
+    ["provider_process_exited", "process_lost"],
+    ["turn_start_unconfirmed", "process_lost"],
   ] as const)("classifies the provider's exact %s code as %s", (code, reason) => {
     expect(conversationRecoveryReason(code)).toBe(reason);
   });
@@ -107,5 +111,17 @@ describe("provider retry progress", () => {
     "Retrying 1/9007199254740992",
   ])("does not invent valid progress from %s", (message) => {
     expect(parseConversationRetryProgress(message)).toBeNull();
+  });
+});
+
+describe("network waits", () => {
+  test.each([
+    ["Reconnecting... waiting for network", true],
+    ["Waiting for the network", true],
+    ["Reconnecting... 2/5", false],
+    ["The network request failed", false],
+    [null, false],
+  ] as const)("%s → %s", (message, expected) => {
+    expect(isWaitingForNetworkMessage(message)).toBe(expected);
   });
 });

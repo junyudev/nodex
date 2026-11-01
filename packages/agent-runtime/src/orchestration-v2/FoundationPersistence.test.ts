@@ -20,6 +20,10 @@ import {
   ProviderInstanceId,
   ProviderSessionId,
   ProviderThreadId,
+  ProviderTurnId,
+  type OrchestrationV2ProviderTurn,
+  type OrchestrationV2ProviderThread,
+  type OrchestrationV2RunAttempt,
   RunAttemptId,
   RunId,
   ThreadId,
@@ -351,6 +355,174 @@ it.effect("keeps other database work runnable while discovering compaction candi
 );
 
 it.layer(layerTest)("orchestration V2 foundation persistence", (it) => {
+  it.effect("finds orphaned provider turns and rejects cleanup after a turn is adopted", () =>
+    Effect.gen(function* () {
+      const sink = yield* EventSink.EventSinkV2;
+      const projections = yield* ProjectionStore.ProjectionStoreV2;
+      const now = yield* DateTime.now;
+      const threadId = ThreadId.make("thread:orphan-adoption");
+      const providerThreadId = ProviderThreadId.make("provider-thread:orphan-adoption");
+      const turnId = ProviderTurnId.make("provider-turn:orphan-adoption");
+      const runId = RunId.make("run:orphan-adoption:1");
+      const attemptId = RunAttemptId.make("attempt:orphan-adoption:1");
+      const nodeId = NodeId.make("node:orphan-adoption:1");
+      const run: OrchestrationV2Run = {
+        id: runId,
+        threadId,
+        ordinal: 1,
+        providerInstanceId,
+        modelSelection,
+        providerThreadId,
+        userMessageId: MessageId.make("message:orphan-adoption"),
+        rootNodeId: nodeId,
+        activeAttemptId: attemptId,
+        status: "failed",
+        requestedAt: now,
+        startedAt: now,
+        completedAt: now,
+        checkpointId: null,
+        contextHandoffId: null,
+      };
+      const attempt: OrchestrationV2RunAttempt = {
+        id: attemptId,
+        runId,
+        attemptOrdinal: 1,
+        rootNodeId: nodeId,
+        providerInstanceId,
+        providerThreadId,
+        providerTurnId: turnId,
+        reason: "initial",
+        status: "failed",
+        startedAt: now,
+        completedAt: now,
+      };
+      const thread: OrchestrationV2ProviderThread = {
+        id: providerThreadId,
+        appThreadId: threadId,
+        ownerNodeId: null,
+        driver: providerDriver,
+        providerInstanceId,
+        providerSessionId: null,
+        nativeThreadRef: null,
+        nativeConversationHeadRef: null,
+        status: "idle",
+        firstRunOrdinal: 1,
+        lastRunOrdinal: 1,
+        handoffIds: [],
+        forkedFrom: null,
+        createdAt: now,
+        updatedAt: now,
+      };
+      const turn: OrchestrationV2ProviderTurn = {
+        id: turnId,
+        providerThreadId,
+        nodeId,
+        runAttemptId: attemptId,
+        nativeTurnRef: {
+          driver: providerDriver,
+          nativeId: "native:orphan-adoption",
+          strength: "strong",
+        },
+        ordinal: 1,
+        status: "running",
+        startedAt: now,
+        completedAt: null,
+      };
+      const event = (
+        id: string,
+        payload: OrchestrationV2ProviderTurn,
+      ): OrchestrationV2DomainEvent => ({
+        id: EventId.make(id),
+        type: "provider-turn.updated",
+        threadId,
+        providerInstanceId,
+        occurredAt: now,
+        payload,
+      });
+      yield* sink.write({
+        events: [
+          threadCreatedEvent({
+            id: "event:orphan-adoption:thread",
+            thread: makeThread(threadId, now),
+            now,
+          }),
+          {
+            id: EventId.make("event:orphan-adoption:run"),
+            type: "run.created",
+            threadId,
+            providerInstanceId,
+            occurredAt: now,
+            payload: run,
+          },
+          {
+            id: EventId.make("event:orphan-adoption:attempt"),
+            type: "run-attempt.created",
+            threadId,
+            providerInstanceId,
+            occurredAt: now,
+            payload: attempt,
+          },
+          {
+            id: EventId.make("event:orphan-adoption:provider"),
+            type: "provider-thread.updated",
+            threadId,
+            providerInstanceId,
+            occurredAt: now,
+            payload: thread,
+          },
+          event("event:orphan-adoption:turn", turn),
+          {
+            id: EventId.make("event:orphan-adoption:latest"),
+            type: "run.created",
+            threadId,
+            providerInstanceId,
+            occurredAt: now,
+            payload: {
+              ...run,
+              id: RunId.make("run:orphan-adoption:2"),
+              ordinal: 2,
+              activeAttemptId: null,
+            },
+          },
+        ],
+      });
+      assert.include(yield* projections.getRecoveryThreadIds("runtime"), threadId);
+      const state = yield* projections.getRuntimeRecoveryProjection(threadId);
+      assert.isTrue(state.runs.some((owner) => owner.id === runId));
+      assert.isTrue(state.attempts.some((owner) => owner.id === attemptId));
+      assert.deepEqual(
+        state.providerTurns.map((row) => row.id),
+        [turnId],
+      );
+      assert.deepEqual(
+        state.providerThreads.map((row) => row.id),
+        [providerThreadId],
+      );
+      const adopted = { ...turn, runAttemptId: RunAttemptId.make("attempt:orphan-adoption:2") };
+      yield* sink.write({ events: [event("event:orphan-adoption:adopted", adopted)] });
+      const cleanup = { ...turn, status: "interrupted" as const, completedAt: now };
+      const rejected = yield* sink.write({
+        expectedProviderTurn: { id: turnId, runAttemptId: attemptId },
+        events: [event("event:orphan-adoption:stale-cleanup", cleanup)],
+      });
+      assert.deepEqual(rejected, []);
+      assert.equal(
+        (yield* projections.getRuntimeRecoveryProjection(threadId)).providerTurns[0]?.runAttemptId,
+        adopted.runAttemptId,
+      );
+      const accepted = yield* sink.write({
+        expectedProviderTurn: { id: turnId, runAttemptId: adopted.runAttemptId },
+        events: [
+          event("event:orphan-adoption:current-cleanup", {
+            ...cleanup,
+            runAttemptId: adopted.runAttemptId,
+          }),
+        ],
+      });
+      assert.lengthOf(accepted, 1);
+    }),
+  );
+
   it.effect("projects oversized tool bodies before both replay and live RPC retention", () =>
     Effect.scoped(
       Effect.gen(function* () {

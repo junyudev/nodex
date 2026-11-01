@@ -5272,7 +5272,7 @@ it.effect.each([true, false])(
 );
 
 it.effect(
-  "ProviderSessionManagerV2 retires an overflowing subscription and opens a fresh native generation",
+  "ProviderSessionManagerV2 replaces an overflowing subscription without stopping its native session or siblings",
   () =>
     Effect.gen(function* () {
       const state = yield* Ref.make(emptyState);
@@ -5294,8 +5294,18 @@ it.effect(
         const original = yield* manager.open(input);
         const stalled = yield* original.subscribeEvents!;
         const sibling = yield* original.subscribeEvents!;
+        const received = yield* Ref.make(0);
+        const pressurePublished = yield* Deferred.make<void>();
         const siblingResult = yield* sibling.events.pipe(
-          Stream.runDrain,
+          Stream.runForEach(() =>
+            Ref.updateAndGet(received, (count) => count + 1).pipe(
+              Effect.flatMap((count) =>
+                count > ProviderSessionManager.MAX_EVENT_SUBSCRIPTION_ITEMS
+                  ? Deferred.succeed(pressurePublished, undefined).pipe(Effect.asVoid)
+                  : Effect.void,
+              ),
+            ),
+          ),
           Effect.exit,
           Effect.forkScoped,
         );
@@ -5306,21 +5316,26 @@ it.effect(
             driver: CODEX_DRIVER,
             providerSession: original.providerSession,
           });
-        yield* Deferred.await(closed);
-        assert.equal((yield* Ref.get(state)).closeCount, 1);
-        assert.isTrue(Option.isNone(yield* manager.get(providerSessionId)));
+        yield* Deferred.await(pressurePublished);
         const failed = yield* Effect.exit(stalled.events.pipe(Stream.runCollect));
         assert.isTrue(Exit.isFailure(failed));
-        assert.isTrue(Exit.isFailure(yield* Fiber.join(siblingResult)));
+        assert.equal((yield* Ref.get(state)).closeCount, 0);
+        assert.isTrue(Option.isSome(yield* manager.get(providerSessionId)));
         const recovered = yield* manager.open(input);
-        assert.notStrictEqual(recovered, original);
-        assert.notEqual(recovered.nativeGeneration, original.nativeGeneration);
+        assert.strictEqual(recovered, original);
+        assert.equal(recovered.nativeGeneration, original.nativeGeneration);
+        assert.isAbove(yield* Ref.get(received), 0);
         const subscription = yield* recovered.subscribeEvents!;
         yield* manager.close(providerSessionId);
         assert.isTrue(
           Exit.isFailure(yield* Effect.exit(subscription.events.pipe(Stream.runCollect))),
         );
-        assert.equal((yield* Ref.get(state)).closeCount, 2);
+        assert.equal((yield* Ref.get(state)).closeCount, 1);
+        assert.isTrue(Exit.isFailure(yield* Fiber.join(siblingResult)));
+        const staleSubscription = yield* original.subscribeEvents!;
+        assert.isTrue(
+          Exit.isFailure(yield* Effect.exit(staleSubscription.events.pipe(Stream.runCollect))),
+        );
       }).pipe(Effect.provide(layerTest({ state, idleTimeoutMs: 60_000, scopeClosed: closed })));
     }),
 );

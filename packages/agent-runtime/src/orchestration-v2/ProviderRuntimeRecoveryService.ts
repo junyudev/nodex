@@ -251,6 +251,26 @@ export const make = Effect.gen(function* () {
           ),
         );
       const events: Array<OrchestrationV2DomainEvent> = [];
+      for (const turn of projection.providerTurns ?? []) {
+        if (turn.status !== "running") continue;
+        const attempt = (projection.attempts ?? []).find(
+          (attempt) => attempt.id === turn.runAttemptId,
+        );
+        const owner = projection.runs.find((run) => run.id === attempt?.runId);
+        if (owner === undefined || nonterminalRuns(projection).some((run) => run.id === owner.id))
+          continue;
+        events.push({
+          id: yield* allocateEventId(),
+          type: "provider-turn.updated",
+          threadId: projection.thread.id,
+          runId: owner.id,
+          nodeId: turn.nodeId,
+          providerInstanceId: owner.providerInstanceId,
+          occurredAt: now,
+          payload: { ...turn, status: "cancelled", completedAt: now },
+        });
+      }
+
       // Background work that outlived its settled turn. The provider transcript
       // cannot record its death, so the next provider turn is told instead.
       // Shutdown records it too: a graceful restart cancels it there first.

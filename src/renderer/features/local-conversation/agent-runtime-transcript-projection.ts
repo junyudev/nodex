@@ -43,6 +43,7 @@ import { getDisplayCommand } from "../../../shared/codex-command-execution";
 import type { CodexTranscriptTurnDetails } from "../../../shared/codex-transcript-projection";
 import {
   conversationRecoveryReason,
+  isWaitingForNetworkMessage,
   type ConversationRecovery,
 } from "../../../shared/conversation-recovery";
 
@@ -468,6 +469,11 @@ function runtimeRecoveryState(
 function runtimeRecoveryReason(
   failure: Extract<AgentTurnItem, { type: "error" }>["failure"],
 ): ConversationRecovery["reason"] {
+  // The upstream HTTP status is more precise than a broad connection wrapper.
+  if (failure.httpStatusCode != null) {
+    const statusReason = conversationRecoveryReason(`api_error_${failure.httpStatusCode}`);
+    if (statusReason !== "unknown") return statusReason;
+  }
   // An unclassified provider code is not evidence of a connection failure.
   if (failure.code !== null) return conversationRecoveryReason(failure.code);
   if (failure.class === "transport_error") return "connection";
@@ -489,6 +495,9 @@ function projectRuntimeRecovery(
     maxAttempts: item.retry?.maxAttempts ?? null,
     retryAt: state === "retrying" && updatedAt !== null && delay != null ? updatedAt + delay : null,
     updatedAt,
+    ...(state === "retrying" && isWaitingForNetworkMessage(item.failure.message)
+      ? { waitingForNetwork: true }
+      : {}),
   };
 }
 
@@ -499,7 +508,9 @@ function runtimeFailureDetails(
   const details = [
     // "unknown" names no cause; the recovery reason already records that.
     failure.code === null || failure.code === "unknown" ? null : `Code: ${failure.code}`,
+    failure.httpStatusCode == null ? null : `HTTP status: ${failure.httpStatusCode}`,
     resetAt === null ? null : `Usage resets: ${new Date(resetAt).toUTCString()}`,
+    failure.diagnostic?.trim() || null,
   ]
     .filter((line) => line !== null)
     .join("\n");

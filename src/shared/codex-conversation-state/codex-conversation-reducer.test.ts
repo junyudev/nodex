@@ -239,6 +239,18 @@ describe("provider recovery lifecycle", () => {
     questions: null,
   };
 
+  test("an outage wait says it is waiting for the network until the stream resumes", () => {
+    const f = session([message]);
+    f.fail("Reconnecting... waiting for network");
+    expect(f.errors()[0]!.recovery).toMatchObject({
+      state: "retrying",
+      reason: "connection",
+      waitingForNetwork: true,
+    });
+    f.fail("Reconnecting 2/5");
+    expect(f.errors()[0]!.recovery.waitingForNetwork).toBeUndefined();
+  });
+
   test("updates one pending retry and opens another occurrence only after recovery", () => {
     const f = session([message]);
     f.fail();

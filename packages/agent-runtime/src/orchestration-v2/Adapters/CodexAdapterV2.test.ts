@@ -37,6 +37,7 @@ import * as CodexClient from "effect-codex-app-server/client";
 import * as CodexError from "effect-codex-app-server/errors";
 import * as CodexReplay from "effect-codex-app-server/replay";
 import * as DateTime from "effect/DateTime";
+import * as Cause from "effect/Cause";
 import * as Deferred from "effect/Deferred";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
@@ -2249,6 +2250,350 @@ describe("CodexAdapterV2 post-settle continuation", () => {
         firstTerminal: Deferred.await(firstTerminal),
       };
     });
+
+  it.effect.each([true, false])(
+    "fences a reused native turn when its previous owner is terminal=%s",
+    (terminalOwner) =>
+      Effect.gen(function* () {
+        const nativeThreadId = "ownership-thread";
+        const nativeTurnId = "ownership-turn";
+        const preamble = codexReplayPreamble({ nativeThreadId, nativeTurnId, prompt: "Research." });
+        const secondStart = preamble[5]!;
+        if (secondStart.type !== "expect_outbound" || !Predicate.isObject(secondStart.frame))
+          return yield* Effect.die("Missing start fixture");
+        const transcript = makeCodexReplayTranscript({
+          scenario: `ownership-${terminalOwner}`,
+          entries: [
+            ...preamble,
+            {
+              type: "expect_outbound",
+              frame: {
+                ...secondStart.frame,
+                id: 4,
+                params: {
+                  ...(secondStart.frame.params as Record<string, unknown>),
+                  input: [{ type: "text", text: "Continue." }],
+                },
+              },
+            },
+            {
+              type: "emit_inbound",
+              frame: {
+                id: 4,
+                result: { turn: makeCodexReplayTurn({ id: nativeTurnId, status: "inProgress" }) },
+              },
+            },
+            {
+              type: "emit_inbound",
+              afterMs: 1000,
+              frame: {
+                method: "turn/completed",
+                params: {
+                  threadId: nativeThreadId,
+                  turn: makeCodexReplayTurn({ id: nativeTurnId, status: "completed" }),
+                },
+              },
+            },
+          ],
+        });
+        const harness = yield* makeCodexReplayHarness(transcript);
+        const first = makeCodexTestTurnInput({
+          threadId: harness.threadId,
+          providerThread: harness.providerThread,
+          now: yield* DateTime.now,
+          attemptId: RunAttemptId.make("owner-1"),
+          text: "Research.",
+        });
+        const second = {
+          ...makeCodexTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now: yield* DateTime.now,
+            attemptId: RunAttemptId.make("owner-2"),
+            text: "Continue.",
+          }),
+          runOrdinal: 2,
+          providerTurnOrdinal: 2,
+          isRunTerminal: (runId: RunId) => Effect.succeed(terminalOwner && runId === first.runId),
+        };
+        yield* harness.runtime.startTurn(first);
+        const result = yield* Effect.exit(harness.runtime.startTurn(second));
+        if (terminalOwner) assert.isTrue(Exit.isSuccess(result));
+        else {
+          assert.isTrue(Exit.isFailure(result));
+          if (Exit.isFailure(result))
+            assert.instanceOf(
+              Cause.squash(result.cause),
+              ProviderAdapter.ProviderTurnOwnershipConflictError,
+            );
+        }
+        yield* TestClock.adjust("2 seconds");
+        yield* harness.firstTerminal;
+        const expected = terminalOwner ? second : first;
+        assert.deepEqual(
+          harness.terminalEvents().map((event) => event.runOrdinal),
+          [expected.runOrdinal],
+        );
+        assert.isTrue(
+          harness.events.some(
+            (event) =>
+              event.type === "provider_turn.updated" &&
+              event.providerTurn.runAttemptId === expected.attemptId &&
+              event.providerTurn.nodeId === expected.rootNodeId,
+          ),
+        );
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
+  );
+
+  it.effect.each([1, 5])(
+    "bounds reconciliation when the native turn is absent after %s pages",
+    (pages) =>
+      Effect.gen(function* () {
+        const nativeThreadId = "missing-snapshot-thread";
+        const nativeTurnId = "missing-snapshot-turn";
+        const harness = yield* makeCodexReplayHarness(
+          makeCodexReplayTranscript({
+            scenario: `missing-turn-${pages}`,
+            entries: [
+              ...codexReplayPreamble({ nativeThreadId, nativeTurnId, prompt: "Research." }),
+              ...Array.from({ length: pages }, (_, page) => [
+                {
+                  type: "expect_outbound" as const,
+                  frame: {
+                    id: 4 + page,
+                    method: "thread/turns/list",
+                    params: {
+                      threadId: nativeThreadId,
+                      limit: 10,
+                      sortDirection: "desc",
+                      itemsView: "full",
+                      ...(page === 0 ? {} : { cursor: `page:${page}` }),
+                    },
+                  },
+                },
+                {
+                  type: "emit_inbound" as const,
+                  frame: {
+                    id: 4 + page,
+                    result: {
+                      data: [
+                        makeCodexReplayTurn({ id: `other-turn:${page}`, status: "completed" }),
+                      ],
+                      nextCursor: pages === 1 ? null : `page:${page + 1}`,
+                      backwardsCursor: null,
+                    },
+                  },
+                },
+              ]).flat(),
+            ],
+          }),
+        );
+        yield* harness.runtime.startTurn(
+          makeCodexTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now: yield* DateTime.now,
+            attemptId: RunAttemptId.make("missing-snapshot-attempt"),
+            text: "Research.",
+          }),
+        );
+        const result = yield* harness.runtime.reconcileTurn!({
+          providerThread: harness.providerThread,
+          providerTurnId: IdAllocator.derive.providerTurn({
+            driver: CodexAdapterV2.CODEX_DRIVER_KIND,
+            nativeTurnId,
+          }),
+        });
+        assert.deepEqual(result, { status: "unknown", events: [] });
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
+  );
+
+  it.effect(
+    "normalizes a reconciled Codex snapshot exactly like completed item notifications",
+    () =>
+      Effect.gen(function* () {
+        const nativeThreadId = "snapshot-thread";
+        const nativeTurnId = "snapshot-turn";
+        const item = {
+          type: "agentMessage",
+          id: "snapshot-answer",
+          text: "Recovered answer.",
+          phase: "final_answer",
+          memoryCitation: null,
+        };
+        const nativeItems = [
+          {
+            type: "reasoning",
+            id: "snapshot-reasoning",
+            summary: ["Checking the workspace."],
+            content: [],
+          },
+          {
+            type: "commandExecution",
+            id: "snapshot-command",
+            command: "pwd",
+            cwd: "/workspace",
+            processId: null,
+            source: "agent",
+            status: "completed",
+            commandActions: [],
+            aggregatedOutput: "/workspace",
+            exitCode: 0,
+            durationMs: 1,
+          },
+          item,
+        ];
+        const collect = (snapshot: boolean) =>
+          Effect.gen(function* () {
+            const preamble = codexReplayPreamble({
+              nativeThreadId,
+              nativeTurnId,
+              prompt: "Research.",
+            });
+            const turn = {
+              ...makeCodexReplayTurn({ id: nativeTurnId, status: "completed" }),
+              items: nativeItems,
+              itemsView: "full",
+            };
+            const transcript = makeCodexReplayTranscript({
+              scenario: `snapshot-${snapshot}`,
+              entries: [
+                ...preamble,
+                ...(snapshot
+                  ? [
+                      {
+                        type: "expect_outbound" as const,
+                        frame: {
+                          id: 4,
+                          method: "thread/turns/list",
+                          params: {
+                            threadId: nativeThreadId,
+                            limit: 10,
+                            sortDirection: "desc",
+                            itemsView: "full",
+                          },
+                        },
+                      },
+                      {
+                        type: "emit_inbound" as const,
+                        frame: {
+                          id: 4,
+                          result: {
+                            data: [makeCodexReplayTurn({ id: "newer-turn", status: "completed" })],
+                            nextCursor: "older-turns",
+                            backwardsCursor: null,
+                          },
+                        },
+                      },
+                      {
+                        type: "expect_outbound" as const,
+                        frame: {
+                          id: 5,
+                          method: "thread/turns/list",
+                          params: {
+                            threadId: nativeThreadId,
+                            limit: 10,
+                            sortDirection: "desc",
+                            itemsView: "full",
+                            cursor: "older-turns",
+                          },
+                        },
+                      },
+                      {
+                        type: "emit_inbound" as const,
+                        frame: {
+                          id: 5,
+                          result: {
+                            data: [turn],
+                            nextCursor: "unused-page",
+                            backwardsCursor: null,
+                          },
+                        },
+                      },
+                    ]
+                  : [
+                      ...nativeItems.map((item) => ({
+                        type: "emit_inbound" as const,
+                        frame: {
+                          method: "item/completed",
+                          params: { threadId: nativeThreadId, turnId: nativeTurnId, item },
+                        },
+                      })),
+                      {
+                        type: "emit_inbound" as const,
+                        frame: {
+                          method: "turn/completed",
+                          params: { threadId: nativeThreadId, turn },
+                        },
+                      },
+                    ]),
+              ],
+            });
+            const harness = yield* makeCodexReplayHarness(transcript);
+            yield* harness.runtime.startTurn(
+              makeCodexTestTurnInput({
+                threadId: harness.threadId,
+                providerThread: harness.providerThread,
+                now: yield* DateTime.now,
+                attemptId: RunAttemptId.make("snapshot-attempt"),
+                text: "Research.",
+              }),
+            );
+            if (!snapshot) {
+              yield* harness.firstTerminal;
+              return harness.events;
+            }
+            const result = yield* harness.runtime.reconcileTurn!({
+              providerThread: harness.providerThread,
+              providerTurnId: IdAllocator.derive.providerTurn({
+                driver: CodexAdapterV2.CODEX_DRIVER_KIND,
+                nativeTurnId,
+              }),
+            });
+            assert.equal(result.status, "completed");
+            assert.deepEqual(harness.continuationRequests, []);
+            return result.events;
+          }).pipe(Effect.scoped);
+        const live = yield* collect(false);
+        const snapshot = yield* collect(true);
+        const items = (events: readonly ProviderAdapter.ProviderAdapterV2Event[]) =>
+          events.flatMap((event) =>
+            event.type === "turn_item.updated"
+              ? [
+                  {
+                    id: event.turnItem.id,
+                    type: event.turnItem.type,
+                    text: "text" in event.turnItem ? event.turnItem.text : null,
+                    command: "command" in event.turnItem ? event.turnItem.command : null,
+                    output: "output" in event.turnItem ? event.turnItem.output : null,
+                    status: event.turnItem.status,
+                    ordinal: event.turnItem.ordinal,
+                  },
+                ]
+              : [],
+          );
+        assert.deepEqual(
+          items(snapshot).map((item) => item.type),
+          ["reasoning", "command_execution", "assistant_message"],
+        );
+        assert.deepEqual(items(snapshot), items(live));
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
+  );
 
   it.effect("reuses session grants only on their native thread and current mode epoch", () =>
     Effect.scoped(

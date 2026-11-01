@@ -5,6 +5,7 @@ import {
   OrchestrationV2DomainEvent,
   OrchestrationV2StoredEvent,
   ProviderThreadId,
+  type ProviderTurnId,
   RunAttemptId,
   RunId,
   RuntimeRequestId,
@@ -73,11 +74,21 @@ export type EventSinkV2Error = typeof EventSinkV2Error.Type;
  */
 export interface EventSinkV2Shape {
   readonly write: (input: {
+    /** Reject orphan cleanup if a native turn has been adopted by another attempt. */
+    readonly expectedProviderTurn?: {
+      readonly id: ProviderTurnId;
+      readonly runAttemptId: RunAttemptId | null;
+    };
     readonly guardProviderRequestUpdates?: boolean;
     readonly commandId?: CommandId;
     readonly events: ReadonlyArray<OrchestrationV2DomainEvent>;
   }) => Effect.Effect<ReadonlyArray<OrchestrationV2StoredEvent>, EventSinkV2Error>;
   readonly writeWithEffects: (input: {
+    /** Reject orphan cleanup if a native turn has been adopted by another attempt. */
+    readonly expectedProviderTurn?: {
+      readonly id: ProviderTurnId;
+      readonly runAttemptId: RunAttemptId | null;
+    };
     readonly guardProviderRequestUpdates?: boolean;
     readonly commandId?: CommandId;
     readonly events: ReadonlyArray<OrchestrationV2DomainEvent>;
@@ -470,6 +481,18 @@ const layerBase: Layer.Layer<
 
       return yield* commitThenPublish(
         Effect.gen(function* () {
+          if (input.expectedProviderTurn !== undefined) {
+            const expected = input.expectedProviderTurn;
+            const rows = yield* sql<{
+              readonly run_attempt_id: RunAttemptId | null;
+              readonly status: string;
+            }>`
+              SELECT run_attempt_id, status FROM orchestration_v2_projection_provider_turns
+              WHERE provider_turn_id = ${expected.id}
+            `;
+            if (rows[0]?.status !== "running" || rows[0].run_attempt_id !== expected.runAttemptId)
+              return [];
+          }
           const normalized = yield* normalizeEvents(
             input.guardProviderRequestUpdates === true
               ? yield* guardProviderRequests(input.events)

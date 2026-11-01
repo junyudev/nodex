@@ -163,6 +163,10 @@ describe("Runtime request recovery", () => {
     [{ ...failure, class: "transport_error" }, "unknown"],
     [{ ...failure, code: null, class: "transport_error" }, "connection"],
     [{ ...failure, code: null, class: "usage_limit" }, "usage_limit"],
+    [{ ...failure, code: "httpConnectionFailed", httpStatusCode: 429 }, "rate_limit"],
+    [{ ...failure, code: "httpConnectionFailed", httpStatusCode: 502 }, "connection"],
+    [{ ...failure, code: "observation_lost" }, "connection"],
+    [{ ...failure, code: "provider_process_exited" }, "process_lost"],
   ] as const)("uses reported provider classification %j", (reported, reason) => {
     expect(projectAgentRuntimeItem(error({ failure: reported }))).toMatchObject({
       recovery: { reason },
@@ -182,6 +186,43 @@ describe("Runtime request recovery", () => {
       message: failure.message,
       recovery: { state: "failed", reason: "usage_limit", retryAt: null },
       additionalDetails: "Usage resets: Thu, 15 Oct 2026 01:00:00 GMT",
+    });
+  });
+
+  test("a Nodex-originated failure keeps its bounded diagnostic for Copy diagnostics", () => {
+    expect(
+      projectAgentRuntimeItem(
+        error({
+          status: "failed",
+          retry: undefined,
+          failure: {
+            ...failure,
+            code: "observation_lost",
+            httpStatusCode: 502,
+            diagnostic: "SqlError: Database reader query was interrupted",
+          },
+        }),
+      ),
+    ).toMatchObject({
+      recovery: { state: "failed", reason: "connection" },
+      additionalDetails:
+        "Code: observation_lost\nHTTP status: 502\nSqlError: Database reader query was interrupted",
+    });
+  });
+
+  test("a provider waiting out an outage says so only while it is retrying", () => {
+    const waiting = error({
+      failure: {
+        ...failure,
+        code: "responseStreamDisconnected",
+        message: "Reconnecting... waiting for network",
+      },
+    });
+    expect(projectAgentRuntimeItem(waiting)).toMatchObject({
+      recovery: { state: "retrying", reason: "connection", waitingForNetwork: true },
+    });
+    expect(projectAgentRuntimeItem({ ...waiting, status: "completed" })).not.toMatchObject({
+      recovery: { waitingForNetwork: true },
     });
   });
 });

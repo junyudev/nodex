@@ -28,6 +28,9 @@ import {
   TurnItemId,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
+import * as Fiber from "effect/Fiber";
+import { TestClock } from "effect/testing";
+import { SqlError, UnknownError } from "effect/sql/SqlError";
 import * as Exit from "effect/Exit";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
@@ -3000,7 +3003,7 @@ it.effect.each(["completed", "interrupted", "cancelled", "failed"] as const)(
     }),
 );
 
-it.effect("records a finished run as failed when its ownership check cannot be read", () =>
+it.effect("preserves native completion when the final ownership read fails", () =>
   Effect.gen(function* () {
     const { observed } = yield* captureRootRunTermination({
       key: "finalize-guard-read-failure",
@@ -3013,9 +3016,7 @@ it.effect("records a finished run as failed when its ownership check cannot be r
         ),
       events: (ids) => Stream.make(rootTerminalEvent(ids, "completed")),
     });
-    // The fallback settles through the guarded write instead of the same
-    // failing read, so the run does not stay running.
-    assert.include(observed, "run:failed");
+    assert.include(observed, "run:waiting");
   }),
 );
 
@@ -3023,7 +3024,8 @@ it.effect("does not refresh pull requests for auxiliary or stale provider termin
   Effect.gen(function* () {
     const { observed } = yield* captureRootRunTermination({
       key: "pull-request-refresh:auxiliary",
-      shouldFinalizeRun: () => Effect.succeed(true),
+      shouldFinalizeRun: () => Effect.succeed(false),
+      rejectTerminalWrite: true,
       events: (ids) =>
         Stream.fromIterable([
           rootTerminalEvent(
@@ -3060,7 +3062,7 @@ it.effect("refreshes pull requests after a provider stream exits with an error",
       ["error"],
     );
     const error = written.find((item) => item.type === "error");
-    assert.include(error?.failure.message ?? "", "provider event stream closed unexpectedly");
+    assert.include(error?.failure.message ?? "", "lost contact with this reply");
   }),
 );
 
@@ -3069,6 +3071,7 @@ it.effect("refreshes pull requests only once when startup failure closes its eve
     const ingestionStarted = yield* Deferred.make<void>();
     const { observed, written } = yield* captureRootRunTermination({
       key: "pull-request-refresh:startup-error",
+      providerTurnBound: false,
       shouldFinalizeRun: () => Effect.succeed(true),
       events: () =>
         Stream.unwrap(Deferred.succeed(ingestionStarted, undefined).pipe(Effect.as(Stream.never))),
@@ -3090,7 +3093,7 @@ it.effect("refreshes pull requests only once when startup failure closes its eve
     assert.equal(observed.filter((item) => item === "pull-requests-refreshed").length, 1);
     assert.equal(observed[0], "run:failed");
     const error = written.find((item) => item.type === "error");
-    assert.include(error?.failure.message ?? "", "provider could not start this turn");
+    assert.include(error?.failure.message ?? "", "couldn't start this reply");
   }),
 );
 
@@ -3106,8 +3109,158 @@ it.effect("keeps completed runs completed when pull request refresh fails", () =
   }),
 );
 
+it.effect("retries one interrupted-reader event twice without losing any event", () =>
+  Effect.gen(function* () {
+    const persisted: ProviderAdapter.ProviderAdapterV2Event[] = [];
+    let attempts = 0;
+    const test = yield* captureRootRunTermination({
+      key: "transient-ingestion",
+      shouldFinalizeRun: () => Effect.succeed(true),
+      events: (ids) =>
+        Stream.fromIterable([
+          backgroundTurnItemEvent(ids, "command_execution", "completed", 1),
+          rootTerminalEvent(ids, "completed"),
+        ]),
+      ingestNormalized: ({ event }) =>
+        Effect.suspend(() => {
+          if (event.type === "turn_item.updated" && attempts++ < 2)
+            return Effect.fail(
+              new ProviderEventIngestor.ProviderEventPublishError({
+                providerSessionId: ProviderSessionId.make("session:transient-ingestion"),
+                eventCount: 1,
+                cause: new SqlError({
+                  reason: new UnknownError({
+                    cause: new Error("Database reader query was interrupted"),
+                    message: "Database reader query was interrupted",
+                  }),
+                }),
+              }),
+            );
+          persisted.push(event);
+          return Effect.succeed([]);
+        }),
+    }).pipe(Effect.forkChild);
+    yield* TestClock.adjust("1 second");
+    const result = yield* Fiber.join(test);
+    assert.equal(attempts, 3);
+    assert.deepEqual(
+      persisted.map((event) => event.type),
+      ["turn_item.updated", "turn.terminal"],
+    );
+    assert.deepEqual(result.observed, ["run:waiting", "pull-requests-refreshed"]);
+  }),
+);
+
+it.effect("reconciles a broken subscription and backfills its final assistant message", () =>
+  Effect.gen(function* () {
+    const persisted: ProviderAdapter.ProviderAdapterV2Event[] = [];
+    let reconciled = 0;
+    const result = yield* captureRootRunTermination({
+      key: "observation-backfill",
+      shouldFinalizeRun: () => Effect.succeed(true),
+      events: () =>
+        Stream.fail(
+          new ProviderAdapter.ProviderAdapterEventStreamError({
+            driver,
+            providerSessionId: ProviderSessionId.make("session:backfill"),
+            cause: new Error("subscription overflow"),
+          }),
+        ),
+      reconcileTurn: (ids) => () =>
+        Effect.sync(() => {
+          reconciled++;
+          return {
+            status: "completed",
+            events: [
+              {
+                type: "message.updated",
+                driver,
+                message: {
+                  id: MessageId.make("message:backfilled"),
+                  threadId: ids.threadId,
+                  runId: ids.runId,
+                  nodeId: ids.rootNodeId,
+                  role: "assistant",
+                  text: "The finished answer.",
+                  attachments: [],
+                  streaming: false,
+                  createdBy: "agent",
+                  creationSource: "provider",
+                  createdAt: DateTime.makeUnsafe(0),
+                  updatedAt: DateTime.makeUnsafe(0),
+                },
+              },
+              rootTerminalEvent(ids, "completed"),
+            ],
+          };
+        }),
+      ingestNormalized: ({ event }) =>
+        Effect.sync(() => {
+          persisted.push(event);
+          return [];
+        }),
+    });
+    assert.equal(reconciled, 1);
+    assert.isTrue(
+      persisted.some(
+        (event) =>
+          event.type === "message.updated" && event.message.text === "The finished answer.",
+      ),
+    );
+    assert.deepEqual(result.observed, ["run:waiting", "pull-requests-refreshed"]);
+    assert.deepEqual(result.written, []);
+  }),
+);
+it.effect("reconciles native acceptance when a later startup receipt fails", () =>
+  Effect.gen(function* () {
+    const bound = yield* Deferred.make<void>();
+    const result = yield* captureRootRunTermination({
+      key: "accepted-startup-error",
+      providerTurnBound: false,
+      shouldFinalizeRun: () => Effect.succeed(true),
+      events: (ids) =>
+        Stream.make({
+          type: "provider_turn.updated",
+          driver,
+          threadId: ids.threadId,
+          providerTurn: {
+            id: ids.rootProviderTurnId,
+            providerThreadId: ids.providerThreadId,
+            nodeId: ids.rootNodeId,
+            runAttemptId: ids.attemptId,
+            nativeTurnRef: { driver, nativeId: "native:accepted", strength: "strong" },
+            ordinal: 1,
+            status: "running",
+            startedAt: DateTime.makeUnsafe(0),
+            completedAt: null,
+          },
+        } as ProviderAdapter.ProviderAdapterV2Event).pipe(Stream.concat(Stream.never)),
+      ingestNormalized: ({ event }) =>
+        event.type === "provider_turn.updated"
+          ? Deferred.succeed(bound, undefined).pipe(Effect.as([]))
+          : Effect.succeed([]),
+      startTurn: () =>
+        Deferred.await(bound).pipe(
+          Effect.andThen(
+            Effect.fail(
+              new ProviderAdapter.ProviderAdapterProtocolError({
+                driver,
+                detail: "Local startup receipt failed",
+              }),
+            ),
+          ),
+        ),
+      reconcileTurn: (ids) => () =>
+        Effect.succeed({ status: "completed", events: [rootTerminalEvent(ids, "completed")] }),
+    });
+    assert.deepEqual(result.observed, ["run:waiting", "pull-requests-refreshed"]);
+    assert.deepEqual(result.written, []);
+  }),
+);
+
 function captureRootRunTermination(input: {
   readonly key: string;
+  readonly providerTurnBound?: boolean;
   readonly shouldFinalizeRun: () => Effect.Effect<boolean, ProjectionStore.ProjectionStoreV2Error>;
   readonly rejectTerminalWrite?: boolean;
   readonly hasUnpairedRunInterruptRequest?: () => Effect.Effect<boolean>;
@@ -3120,6 +3273,10 @@ function captureRootRunTermination(input: {
   >;
   readonly startTurn?: ProviderAdapter.ProviderAdapterV2SessionRuntime["startTurn"];
   readonly refreshAfterTurn?: Effect.Effect<void>;
+  readonly reconcileTurn?: (
+    ids: BackgroundScenarioIds,
+  ) => NonNullable<ProviderAdapter.ProviderAdapterV2SessionRuntime["reconcileTurn"]>;
+  readonly ingestNormalized?: ProviderEventIngestor.ProviderEventIngestorV2["Service"]["ingestNormalized"];
 }) {
   return Effect.gen(function* () {
     const ids = backgroundScenarioIds(input.key);
@@ -3185,7 +3342,7 @@ function captureRootRunTermination(input: {
           }),
           IdAllocator.layer,
           Layer.mock(ProviderEventIngestor.ProviderEventIngestorV2)({
-            ingestNormalized: () => Effect.succeed([]),
+            ingestNormalized: input.ingestNormalized ?? (() => Effect.succeed([])),
           }),
           ServerSettings.layerTest(),
           Layer.succeed(RunFinalizationService.RunFinalizationObserver, {
@@ -3237,6 +3394,8 @@ function captureRootRunTermination(input: {
             close: Deferred.succeed(ingestionDone, undefined),
           }),
           startTurn: input.startTurn ?? (() => Effect.void),
+          reconcileTurn: input.reconcileTurn?.(ids),
+          interruptTurn: () => Effect.void,
         } as unknown as ProviderAdapter.ProviderAdapterV2SessionRuntime,
         run: {
           id: ids.runId,
@@ -3257,7 +3416,7 @@ function captureRootRunTermination(input: {
         } as OrchestrationV2ProviderThread,
         attempt: {
           id: ids.attemptId,
-          providerTurnId: ids.rootProviderTurnId,
+          providerTurnId: input.providerTurnBound === false ? null : ids.rootProviderTurnId,
         } as OrchestrationV2RunAttempt,
         attemptId: ids.attemptId,
         providerTurnOrdinal: 1,
@@ -3281,6 +3440,11 @@ function captureRootRunTermination(input: {
           cwd: process.cwd(),
         },
       });
+      for (let index = 0; index < 10_000; index++) {
+        if ((yield* runExecution.observers).length === 0) return;
+        yield* Effect.yieldNow;
+      }
+      return yield* Effect.die("Run observation did not settle");
     }).pipe(Effect.provide(layerTest));
 
     yield* Deferred.await(ingestionDone);

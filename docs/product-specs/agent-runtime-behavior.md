@@ -71,14 +71,34 @@ contract live in [Native Conversation Connection Behavior](native-conversation-c
 
 ## Request recovery and continuation
 
-Providers own automatic request retries. Nodex retains their reported cause, attempt,
-limit and next attempt time and presents the shared
-[request recovery states](codex-thread-transcript-behavior.md) in the conversation.
-A retry record is historical evidence after its item completes, fails or stops; it
-does not keep an ended request retrying. Unknown provider errors do not establish a
-network failure, and retryability alone does not establish an active retry. A retry's
-message describes the failed attempt in a sentence, such as "Claude API request failed.";
-its HTTP status travels in the failure code instead of being repeated in the message.
+A reply's outcome comes only from its Agent. When Nodex itself loses track of a reply,
+for example because a local read failed while recording the Agent's output or because
+its event stream broke, that is not a failed reply. Nodex retries recording the same
+output in order, and otherwise reattaches to the Agent and reconciles the exact native
+turn: a turn that is still running stays observed however long it has been quiet, and a
+turn that already ended settles the reply with the Agent's own outcome, including the
+output Nodex missed. Only when the Agent cannot be reached at all does Nodex stop the
+native turn and report that it lost contact with the reply. A failure that originates in
+Nodex says what happened instead of a generic provider error, and keeps a short redacted
+diagnostic for Copy diagnostics.
+
+Every running reply is backed by a live native turn.
+Nodex checks this periodically and whenever an Agent process or connection is lost: a
+reply nobody is observing is reattached and reconciled, and a reply whose Agent never
+confirmed a turn within two minutes is resolved instead of staying "running". A native
+turn left running after its reply ended is stopped. If a message is accepted into a
+native turn whose reply had already ended, the new reply adopts that turn; a turn that
+belongs to a live reply is never silently reassigned.
+
+Agents retry their own requests first. Nodex shows their reported cause, attempt, limit
+and next attempt time in the shared
+[request recovery states](codex-thread-transcript-behavior.md). Codex keeps a turn alive
+through a network outage and says it is waiting for the network. A retry record is
+historical evidence after its item completes, fails or stops; it does not keep an ended
+request retrying. Unknown provider errors do not establish a network failure, and
+retryability alone does not establish an active retry. A retry's message describes the
+failed attempt in a sentence, such as "Claude API request failed."; its HTTP status
+travels with the failure instead of being repeated in the message.
 
 Continue on the latest failed reply submits a new follow-up asking the Agent to
 continue from where it left off, with the existing conversation context. It does not

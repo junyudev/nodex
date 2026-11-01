@@ -3928,6 +3928,10 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
         const executionHost = yield* ExecutionHost.ExecutionHost;
         const nativeCallTokens = new Map<string, string>();
         const activeTurn = yield* Ref.make<ActiveClaudeTurnContext | null>(null);
+        const terminalTurnEvidence = new Map<
+          ActiveClaudeTurnContext["providerTurnId"],
+          ProviderAdapter.ProviderAdapterV2TurnReconciliation
+        >();
         const sdkMessageLock = yield* Semaphore.make(1);
         // Survives turn settle: members mostly finish after the launching
         // turn has ended, and each transition must be emitted exactly once.
@@ -6455,7 +6459,12 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                     `terminal-failure:${input.context.providerTurnId}`,
                   ),
                   status: input.status,
-                  failure: input.failure ?? makeProviderFailure({ class: "provider_error" }),
+                  failure:
+                    input.failure ??
+                    makeProviderFailure({
+                      class: "provider_error",
+                      message: "Claude ended the turn with a provider error.",
+                    }),
                   ...(providerRetry === undefined
                     ? {}
                     : {
@@ -6474,6 +6483,13 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                   failure: null,
                   threadDisposition,
                 };
+          terminalTurnEvidence.set(input.context.providerTurnId, {
+            status: input.status === "cancelled" ? "interrupted" : input.status,
+            events: [terminalEvent],
+            ...(terminalEvent.failure === null ? {} : { failure: terminalEvent.failure }),
+          });
+          if (terminalTurnEvidence.size > 256)
+            terminalTurnEvidence.delete(terminalTurnEvidence.keys().next().value!);
           yield* Effect.all(
             [
               emitProviderEvent({
@@ -6653,6 +6669,8 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                     failure: makeProviderFailure({
                       cause: cause === undefined ? undefined : Cause.squash(cause),
                       class: "transport_error",
+                      message: "Claude Code stopped before finishing this reply.",
+                      code: "provider_process_exited",
                     }),
                   }),
             });
@@ -10134,6 +10152,18 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                 ),
               ),
           ),
+          reconcileTurn: (input) =>
+            Effect.gen(function* () {
+              const current = yield* Ref.get(activeTurn);
+              if (current?.providerTurnId === input.providerTurnId)
+                return { status: "active" as const, events: [] };
+              return (
+                terminalTurnEvidence.get(input.providerTurnId) ?? {
+                  status: "unknown" as const,
+                  events: [],
+                }
+              );
+            }),
           readThreadSnapshot: (snapshotInput) =>
             Effect.fail(
               new ProviderAdapter.ProviderAdapterReadThreadSnapshotError({

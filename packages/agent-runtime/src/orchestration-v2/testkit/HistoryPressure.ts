@@ -68,6 +68,7 @@ const LIVE_STATE_INDEXES = [
   "orchestration_v2_projection_turn_items_recovery_idx",
   "orchestration_v2_queued_run_window_idx",
   "orchestration_v2_execution_live_nodes_idx",
+  "orchestration_v2_execution_live_provider_turns_idx",
   "orchestration_v2_execution_live_tasks_idx",
   "orchestration_v2_execution_live_native_tasks_idx",
   "orchestration_v2_execution_live_items_idx",

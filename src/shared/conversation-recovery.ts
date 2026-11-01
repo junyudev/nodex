@@ -8,6 +8,8 @@ export type ConversationRecoveryReason =
   | "rate_limit"
   | "usage_limit"
   | "authentication"
+  /** The Agent's process ended mid-reply; Nodex resumes it in the same conversation. */
+  | "process_lost"
   /** The provider can't reopen the captured conversation; retrying the same chat can't help. */
   | "unrecoverable"
   | "unknown";
@@ -21,6 +23,13 @@ export interface ConversationRecovery {
   /** Provider-reported next attempt time. Null when the provider gives no delay. */
   readonly retryAt: number | null;
   readonly updatedAt: number | null;
+  /** The provider reports it is waiting for the network to come back, without a retry budget. */
+  readonly waitingForNetwork?: boolean;
+}
+
+/** Codex keeps a turn alive through an outage and says so in its retry message. */
+export function isWaitingForNetworkMessage(message: string | null | undefined): boolean {
+  return message != null && /\bwaiting for (?:the )?network\b/i.test(message);
 }
 
 export function conversationRecoveryReason(code: string | null): ConversationRecoveryReason {
@@ -38,9 +47,13 @@ export function conversationRecoveryReason(code: string | null): ConversationRec
     code === "httpConnectionFailed" ||
     code === "responseStreamConnectionFailed" ||
     code === "responseStreamDisconnected" ||
-    code === "responseTooManyFailedAttempts"
+    code === "responseTooManyFailedAttempts" ||
+    // Nodex lost contact with the provider's turn and could not confirm how it ended.
+    code === "observation_lost"
   )
     return "connection";
+  if (code === "provider_process_exited" || code === "turn_start_unconfirmed")
+    return "process_lost";
   if (code === "native_session_unrecoverable") return "unrecoverable";
   return "unknown";
 }

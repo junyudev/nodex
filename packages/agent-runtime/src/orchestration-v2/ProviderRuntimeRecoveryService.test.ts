@@ -1586,3 +1586,70 @@ it.effect("leaves delegated tasks to their own child threads after process loss"
     assert.deepEqual(noted, [`subagent ${nativeSubagentId}`]);
   }).pipe(Effect.provide(layer));
 });
+
+it.effect(
+  "terminalizes orphaned running provider turns of already-terminal Runs at startup",
+  () => {
+    const threadId = ThreadId.make("thread:startup-orphan");
+    const runId = RunId.make("run:startup-orphan");
+    const attemptId = RunAttemptId.make("attempt:startup-orphan");
+    const turnId = ProviderTurnId.make("turn:startup-orphan");
+    const events: import("@t3tools/contracts").OrchestrationV2DomainEvent[] = [];
+    const projection = {
+      thread: { id: threadId },
+      runs: [{ id: runId, status: "failed", providerInstanceId: ProviderInstanceId.make("codex") }],
+      attempts: [{ id: attemptId, runId }],
+      providerTurns: [
+        {
+          id: turnId,
+          runAttemptId: attemptId,
+          status: "running",
+          nodeId: NodeId.make("node:startup-orphan"),
+        },
+      ],
+      providerThreads: [],
+      providerSessions: [],
+      nodes: [],
+      subagents: [],
+      messages: [],
+      turnItems: [],
+      runtimeRequests: [],
+    } as unknown as ProjectionStore.ProjectionRuntimeRecoveryState;
+    const layer = ProviderRuntimeRecovery.layer.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          ServerSettings.layerTest(),
+          IdAllocator.layer,
+          Layer.mock(ProjectionStore.ProjectionStoreV2)({
+            getRecoveryThreadIds: () => Effect.succeed([threadId]),
+            getRuntimeRecoveryProjection: () => Effect.succeed(projection),
+          }),
+          Layer.mock(EventSink.EventSinkV2)({
+            commitCommand: (input) =>
+              Effect.sync(() => {
+                events.push(...input.events);
+                return { committed: true, cancelledEffectCount: 0 } as never;
+              }),
+          }),
+          Layer.mock(EffectOutbox.EffectOutboxV2)({
+            reconcileAfterProcessLoss: Effect.succeed({ requeued: 0, cancelled: 0 }),
+          }),
+        ),
+      ),
+    );
+    return Effect.gen(function* () {
+      const summary = yield* (yield* ProviderRuntimeRecovery.ProviderRuntimeRecoveryService)
+        .recover;
+      assert.equal(summary.terminalizedRuns, 0);
+      assert.isTrue(
+        events.some(
+          (event) =>
+            event.type === "provider-turn.updated" &&
+            event.payload.id === turnId &&
+            event.payload.status === "cancelled",
+        ),
+      );
+      assert.isFalse(events.some((event) => event.type === "run.updated"));
+    }).pipe(Effect.provide(layer));
+  },
+);

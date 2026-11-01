@@ -1542,6 +1542,7 @@ export const OrchestrationV2ContextBudget = Schema.Struct({
 export type OrchestrationV2ContextBudget = typeof OrchestrationV2ContextBudget.Type;
 
 export const OrchestrationV2ProviderFailure = Schema.Struct({
+  diagnostic: Schema.optional(Schema.String.check(Schema.isMaxLength(2_000))),
   contextBudget: Schema.optional(OrchestrationV2ContextBudget),
   class: OrchestrationV2ProviderFailureClass,
   message: OrchestrationV2ProviderFailureMessage,
@@ -1549,6 +1550,12 @@ export const OrchestrationV2ProviderFailure = Schema.Struct({
   retryable: Schema.NullOr(Schema.Boolean),
   /** Reported reset time; absent when the provider cannot name one. */
   resetAt: Schema.optional(Schema.NullOr(IsoDateTime)),
+  /** Native HTTP evidence, retained independently of the provider's failure code. */
+  httpStatusCode: Schema.optional(
+    Schema.Int.check(Schema.isGreaterThanOrEqualTo(100), Schema.isLessThanOrEqualTo(599)),
+  ),
+  /** Provider retry-after duration measured when the terminal failure was observed. */
+  retryAfterMs: Schema.optional(NonNegativeInt),
 });
 export type OrchestrationV2ProviderFailure = typeof OrchestrationV2ProviderFailure.Type;
 

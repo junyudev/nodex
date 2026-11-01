@@ -16,6 +16,47 @@ const UNRESOLVED_CHILD_TASK_PREDICATE = `origin = 'app_owned' AND child_thread_i
 export const LIVE_PROVIDER_THREAD_PREDICATE = `status = 'active' OR CASE WHEN json_valid(payload_json)
       THEN json_array_length(payload_json, '$.pendingBackgroundTasks') > 0 ELSE 0 END`;
 
+/** Lightweight live-Run metadata; the partial predicate keeps history out of the read. */
+export const liveRunLivenessCandidates = (sql: SqlClient.SqlClient) => sql<{
+  readonly thread_id: string;
+  readonly run_id: string;
+  readonly active_attempt_id: string;
+  readonly attempt_started_at: string | null;
+  readonly provider_turn_id: string | null;
+}>`
+  SELECT run.thread_id, run.run_id, attempt.attempt_id AS active_attempt_id,
+    json_extract(attempt.payload_json, '$.startedAt') AS attempt_started_at,
+    COALESCE((
+      SELECT turn.provider_turn_id FROM orchestration_v2_projection_provider_turns AS turn
+      WHERE turn.thread_id = run.thread_id AND turn.run_attempt_id = attempt.attempt_id
+      ORDER BY turn.ordinal DESC LIMIT 1
+    ), attempt.provider_turn_id) AS provider_turn_id
+  FROM orchestration_v2_projection_runs AS run
+  JOIN orchestration_v2_projection_run_attempts AS attempt
+    ON attempt.attempt_id = json_extract(run.payload_json, '$.activeAttemptId')
+  JOIN orchestration_v2_projection_threads AS thread ON thread.thread_id = run.thread_id
+  WHERE run.status IN ('queued', 'preparing', 'starting', 'running', 'waiting')
+    AND run.status = 'running' AND thread.deleted_at IS NULL
+`;
+
+/** Start from the live-turn index, then inspect only those turns' owners. */
+export const orphanedRunningProviderTurnThreadIds = (sql: SqlClient.SqlClient) => sql<{
+  readonly thread_id: string;
+}>`
+  WITH live_turns AS MATERIALIZED (
+    SELECT thread_id, run_attempt_id, status FROM orchestration_v2_projection_provider_turns
+    WHERE status IN ('pending','running')
+  )
+  SELECT DISTINCT live_turns.thread_id FROM live_turns
+  JOIN orchestration_v2_projection_run_attempts AS attempt
+    ON attempt.attempt_id = live_turns.run_attempt_id
+  JOIN orchestration_v2_projection_runs AS run ON run.run_id = attempt.run_id
+  JOIN orchestration_v2_projection_threads AS thread ON thread.thread_id = live_turns.thread_id
+  WHERE live_turns.status = 'running' AND thread.deleted_at IS NULL
+    AND (run.status IN ('completed', 'failed', 'interrupted', 'cancelled', 'rolled_back')
+      OR json_extract(run.payload_json, '$.activeAttemptId') IS NOT live_turns.run_attempt_id)
+`;
+
 /**
  * Candidate Thread ids for one startup recovery pass. Every branch starts from a live-state
  * index, so startup cost follows unfinished work rather than the size of retained history.
@@ -89,9 +130,13 @@ export const recoveryCandidateThreadIds = (
             SELECT provider_thread_id, thread_id, owner_node_id
             FROM orchestration_v2_projection_provider_threads
             WHERE ${sql.literal(LIVE_PROVIDER_THREAD_PREDICATE)}
+          ), orphaned_turn_threads AS MATERIALIZED (
+            ${orphanedRunningProviderTurnThreadIds(sql)}
           )
           SELECT thread_id FROM orchestration_v2_projection_runs
           WHERE status IN ('preparing', 'starting', 'running', 'waiting')
+          UNION
+          SELECT thread_id FROM orphaned_turn_threads
           UNION
           -- A held queue already went through recovery; rereading it on
           -- every boot costs a projection read per held thread.

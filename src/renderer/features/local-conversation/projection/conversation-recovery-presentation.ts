@@ -36,6 +36,8 @@ export function recoveryStatusLabel(recovery: ConversationRecovery): string {
         return "Service is unavailable";
       case "connection":
         return "Connection could not be restored";
+      case "process_lost":
+        return "Agent stopped unexpectedly";
       case "unrecoverable":
         return "Couldn't reopen this conversation";
       case "unknown":
@@ -44,7 +46,9 @@ export function recoveryStatusLabel(recovery: ConversationRecovery): string {
   }
   switch (recovery.reason) {
     case "connection":
-      return "Reconnecting";
+      return recovery.waitingForNetwork ? "Waiting for network" : "Reconnecting";
+    case "process_lost":
+      return "Resuming";
     case "overloaded":
       return "Service is busy";
     case "rate_limit":

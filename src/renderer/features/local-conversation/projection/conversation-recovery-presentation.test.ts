@@ -67,6 +67,13 @@ describe("conversation recovery presentation", () => {
   test("does not invent a network diagnosis or a retry budget", () => {
     expect(recoveryStatusLabel(retrying)).toBe("Retrying request");
     expect(recoveryStatusLabel({ ...retrying, reason: "connection" })).toBe("Reconnecting");
+    expect(
+      recoveryStatusLabel({ ...retrying, reason: "connection", waitingForNetwork: true }),
+    ).toBe("Waiting for network");
+    expect(recoveryStatusLabel({ ...retrying, reason: "process_lost" })).toBe("Resuming");
+    expect(recoveryStatusLabel({ ...retrying, reason: "process_lost", state: "failed" })).toBe(
+      "Agent stopped unexpectedly",
+    );
     expect(recoveryStatusLabel({ ...retrying, state: "recovered" })).toBe("Request resumed");
     expect(recoveryProgressLabel({ ...retrying, maxAttempts: null }, 0)).toBe("Attempt 2");
     expect(recoveryProgressLabel({ ...retrying, maxAttempts: 1 }, 0)).toBe("Attempt 2");

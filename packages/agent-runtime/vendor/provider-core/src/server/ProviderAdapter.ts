@@ -374,7 +374,21 @@ export class ProviderAdapterProtocolError extends Schema.TaggedError<ProviderAda
   }
 }
 
+export class ProviderTurnOwnershipConflictError extends Schema.TaggedError<ProviderTurnOwnershipConflictError>()(
+  "ProviderTurnOwnershipConflictError",
+  {
+    providerTurnId: ProviderTurnId,
+    ownerRunId: RunId,
+    runId: RunId,
+  },
+) {
+  override get message(): string {
+    return `The native turn ${this.providerTurnId} already belongs to the active Run ${this.ownerRunId}; Run ${this.runId} cannot claim it.`;
+  }
+}
+
 export const ProviderAdapterV2Error = Schema.Union([
+  ProviderTurnOwnershipConflictError,
   ProviderAdapterCapabilitiesError,
   ProviderAdapterOpenSessionError,
   ProviderAdapterCloseSessionError,
@@ -418,6 +432,8 @@ export interface ProviderAdapterV2EnsureThreadInput {
 }
 
 export interface ProviderAdapterV2TurnInput {
+  /** Durable ownership probe; absent means another Run must be treated as live. */
+  readonly isRunTerminal?: (runId: RunId) => Effect.Effect<boolean, unknown>;
   readonly nativeInput?: import("@t3tools/contracts").OrchestrationV2Run["nativeInput"];
   readonly hostExecutionIdentity?: import("./ExecutionHost.ts").HostTurnIdentity;
   /** Trusted execution-host context supplied after Turn admission. */
@@ -456,6 +472,8 @@ export interface ProviderAdapterV2SteerInput {
 }
 
 export interface ProviderAdapterV2InterruptInput {
+  /** Orphan cleanup may stop only the attempt it reconciled, never a subsequent adopter. */
+  readonly expectedRunAttemptId?: RunAttemptId;
   readonly providerThread: OrchestrationV2ProviderThread;
   readonly providerTurnId: ProviderTurnId;
   /** When true, the next `startTurn` may respawn the provider runtime (Grok Stop recovery). */
@@ -573,7 +591,18 @@ export interface ProviderAdapterV2McpApps {
   }) => Effect.Effect<{ readonly contents: ReadonlyArray<unknown> }, ProviderAdapterV2Error>;
 }
 
+export interface ProviderAdapterV2TurnReconciliation {
+  readonly status: "active" | "completed" | "failed" | "interrupted" | "unknown" | "process_gone";
+  /** Idempotent snapshots normalized exactly like live events, in delivery order. */
+  readonly events: ReadonlyArray<ProviderAdapterV2Event>;
+  readonly failure?: import("@t3tools/contracts").OrchestrationV2ProviderFailure;
+}
+
 export interface ProviderAdapterV2SessionRuntime {
+  readonly reconcileTurn?: (input: {
+    readonly providerThread: OrchestrationV2ProviderThread;
+    readonly providerTurnId: ProviderTurnId;
+  }) => Effect.Effect<ProviderAdapterV2TurnReconciliation, ProviderAdapterV2Error>;
   readonly codexNative?: import("./nativeInteraction.ts").CodexNativeInteraction;
   /** Manager-observed incarnation of this native session within the daemon. */
   readonly nativeGeneration?: number;

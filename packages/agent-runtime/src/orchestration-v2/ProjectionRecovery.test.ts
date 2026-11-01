@@ -12,6 +12,8 @@ import {
   ProviderInstanceId,
   ProviderSessionId,
   ProviderThreadId,
+  ProviderTurnId,
+  RunAttemptId,
   RunId,
   RuntimeRequestId,
   ThreadId,
@@ -26,7 +28,11 @@ import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import { CodexProviderCapabilitiesV2 } from "./Adapters/CodexAdapterV2.ts";
 import * as EffectOutbox from "./EffectOutbox.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
-import { recoveryCandidateThreadIds } from "./ProjectionRecoveryQueries.ts";
+import {
+  recoveryCandidateThreadIds,
+  liveRunLivenessCandidates,
+  orphanedRunningProviderTurnThreadIds,
+} from "./ProjectionRecoveryQueries.ts";
 import { restartContinuationRun } from "./RestartContinuation.ts";
 import {
   fullHistoryScans,
@@ -118,6 +124,111 @@ const createRun = Effect.fn(function* (
   });
   return runId;
 });
+
+it.effect.each(["SQLite", "memory"] as const)(
+  "selects live Run bindings and orphaned turns without queued work (%s)",
+  (storage) =>
+    Effect.gen(function* () {
+      const projections = yield* ProjectionStore.ProjectionStoreV2;
+      const now = yield* DateTime.now;
+      const threadIds = new Map<string, ThreadId>();
+      const expectedRuns: ProjectionStore.ProjectionRunLivenessCandidate[] = [];
+      const expectedOrphans: ThreadId[] = [];
+      for (const name of ["bound", "unbound", "held", "terminal", "superseded", "deleted"]) {
+        const threadId = yield* createThread(
+          `liveness-${name}`,
+          name === "deleted" ? { deletedAt: now } : {},
+        );
+        threadIds.set(name, threadId);
+        const attemptId = RunAttemptId.make(`attempt:${threadId}`);
+        const providerThreadId = ProviderThreadId.make(`provider-thread:${threadId}`);
+        const turnId = ProviderTurnId.make(`turn:${threadId}`);
+        const nodeId = NodeId.make(`node:${threadId}`);
+        const runId = yield* createRun(
+          threadId,
+          name === "terminal" ? "failed" : name === "held" ? "queued" : "running",
+          {
+            activeAttemptId: name === "superseded" ? RunAttemptId.make("attempt:newer") : attemptId,
+            queueHeld: name === "held",
+          },
+        );
+        yield* projections.apply({
+          id: EventId.make(`event:${attemptId}`),
+          type: "run-attempt.created",
+          threadId,
+          occurredAt: now,
+          payload: {
+            id: attemptId,
+            runId,
+            attemptOrdinal: 1,
+            rootNodeId: nodeId,
+            providerInstanceId,
+            providerThreadId,
+            providerTurnId: null,
+            reason: "initial",
+            status: "running",
+            startedAt: now,
+            completedAt: null,
+          },
+        });
+        if (name !== "unbound" && name !== "held")
+          yield* projections.apply({
+            id: EventId.make(`event:${turnId}`),
+            type: "provider-turn.updated",
+            threadId,
+            occurredAt: now,
+            payload: {
+              id: turnId,
+              providerThreadId,
+              nodeId,
+              runAttemptId: attemptId,
+              nativeTurnRef: null,
+              ordinal: 1,
+              status: "running",
+              startedAt: now,
+              completedAt: null,
+            },
+          });
+        if (name === "bound" || name === "unbound")
+          expectedRuns.push({
+            threadId,
+            runId,
+            activeAttemptId: attemptId,
+            attemptStartedAt: now,
+            providerTurnId: name === "unbound" ? null : turnId,
+          });
+        if (name === "terminal" || name === "superseded") expectedOrphans.push(threadId);
+      }
+      const candidates = yield* projections.getRunLivenessCandidates();
+      assert.sameDeepMembers([...candidates.runs], expectedRuns);
+      assert.sameMembers([...candidates.orphanedTurnThreadIds], expectedOrphans);
+      const startupCandidates = yield* projections.getRecoveryThreadIds("runtime");
+      for (const threadId of expectedOrphans) assert.include(startupCandidates, threadId);
+      // Native completion can precede local Run finalization; its binding still matters.
+      const boundThreadId = threadIds.get("bound")!;
+      yield* projections.apply({
+        id: EventId.make("event:liveness:native-completed"),
+        type: "provider-turn.updated",
+        threadId: boundThreadId,
+        occurredAt: now,
+        payload: {
+          id: ProviderTurnId.make(`turn:${boundThreadId}`),
+          providerThreadId: ProviderThreadId.make(`provider-thread:${boundThreadId}`),
+          nodeId: NodeId.make(`node:${boundThreadId}`),
+          runAttemptId: RunAttemptId.make(`attempt:${boundThreadId}`),
+          nativeTurnRef: null,
+          ordinal: 1,
+          status: "completed",
+          startedAt: now,
+          completedAt: now,
+        },
+      });
+      assert.sameDeepMembers(
+        [...(yield* projections.getRunLivenessCandidates()).runs],
+        expectedRuns,
+      );
+    }).pipe(Effect.provide(storage === "SQLite" ? layerTest : ProjectionStore.layerMemory)),
+);
 
 it.effect("selects unfinished recovery work without reading settled thread histories", () =>
   Effect.gen(function* () {
@@ -671,11 +782,31 @@ it.effect(
           params,
         );
         assert.deepEqual(
-          fullHistoryScans(plan, ["pending_provider_threads", "unresolved"]),
+          fullHistoryScans(plan, [
+            "pending_provider_threads",
+            "unresolved",
+            "live_turns",
+            "orphaned_turn_threads",
+          ]),
           [],
           kind,
         );
       }
+      for (const query of [
+        liveRunLivenessCandidates(sql),
+        orphanedRunningProviderTurnThreadIds(sql),
+      ]) {
+        const [text, params] = query.compile();
+        const plan = yield* sql.unsafe<{ readonly detail: string }>(
+          `EXPLAIN QUERY PLAN ${text}`,
+          params,
+        );
+        assert.deepEqual(fullHistoryScans(plan, ["live_turns"]), []);
+      }
+      assert.deepEqual(yield* projections.getRunLivenessCandidates(), {
+        runs: [],
+        orphanedTurnThreadIds: [],
+      });
       assert.deepEqual(yield* projections.getRecoveryThreadIds("runtime"), [live]);
       assert.deepEqual(yield* projections.getRecoveryThreadIds("queued-runs"), []);
       assert.deepEqual(yield* projections.getRecoveryThreadIds("subagent-results"), []);

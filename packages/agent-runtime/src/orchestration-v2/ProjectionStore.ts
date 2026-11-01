@@ -58,11 +58,12 @@ import type {
   OrchestrationV2TurnItem,
   ProjectId,
   ProviderInstanceId,
-  ProviderTurnId,
-  RunAttemptId,
 } from "@t3tools/contracts";
 import {
   hasImportedThreadHistory,
+  latestProviderTurnForAttempt,
+  ProviderTurnId,
+  RunAttemptId,
   ChatImageAttachment,
   OrchestrationV2AppThreadJson as OrchestrationV2AppThreadJsonSchema,
   OrchestrationV2CheckpointJson as OrchestrationV2CheckpointJsonSchema,
@@ -123,6 +124,8 @@ import { threadHtmlRenderAttachmentIds } from "../attachmentStore.ts";
 import {
   OPEN_DELIVERY_RUN_PREDICATE,
   recoveryCandidateThreadIds,
+  liveRunLivenessCandidates,
+  orphanedRunningProviderTurnThreadIds,
 } from "./ProjectionRecoveryQueries.ts";
 import {
   isThreadHistoryUserTurn,
@@ -361,6 +364,19 @@ export type ProjectionRuntimeRecoveryState = Pick<
   | "messages"
   | "turnItems"
 >;
+
+export interface ProjectionRunLivenessCandidate {
+  readonly threadId: ThreadId;
+  readonly runId: RunId;
+  readonly activeAttemptId: RunAttemptId;
+  readonly attemptStartedAt: DateTime.Utc | null;
+  readonly providerTurnId: ProviderTurnId | null;
+}
+
+export interface ProjectionRunLivenessCandidates {
+  readonly runs: ReadonlyArray<ProjectionRunLivenessCandidate>;
+  readonly orphanedTurnThreadIds: ReadonlyArray<ThreadId>;
+}
 
 export type ProjectionHostProviderThread = Pick<
   OrchestrationV2ProviderThread,
@@ -1327,6 +1343,10 @@ export interface ProjectionStoreV2Shape {
   readonly canStartQueuedRun: (
     threadId: ThreadId,
   ) => Effect.Effect<boolean, ProjectionStoreV2Error>;
+  readonly getRunLivenessCandidates: () => Effect.Effect<
+    ProjectionRunLivenessCandidates,
+    ProjectionStoreV2Error
+  >;
   readonly getRecoveryThreadIds: (
     kind: ProjectionRecoveryKind,
   ) => Effect.Effect<ReadonlyArray<ThreadId>, ProjectionStoreV2Error>;
@@ -1377,6 +1397,21 @@ export class ProjectionStoreV2 extends Context.Service<ProjectionStoreV2, Projec
 ) {}
 
 export const ORCHESTRATION_V2_PROJECTION_SCHEMA_VERSION = 2;
+
+function hasOrphanedRunningProviderTurn(
+  projection: Pick<ProjectionRuntimeRecoveryState, "providerTurns" | "attempts" | "runs">,
+): boolean {
+  return projection.providerTurns.some((turn) => {
+    if (turn.status !== "running") return false;
+    const attempt = projection.attempts.find((row) => row.id === turn.runAttemptId);
+    const run = projection.runs.find((row) => row.id === attempt?.runId);
+    return (
+      run !== undefined &&
+      (["completed", "failed", "interrupted", "cancelled", "rolled_back"].includes(run.status) ||
+        run.activeAttemptId !== turn.runAttemptId)
+    );
+  });
+}
 
 function needsRecovery(
   projection: OrchestrationV2ThreadProjection,
@@ -1446,6 +1481,7 @@ function needsRecovery(
             ["preparing", "starting", "running", "waiting"].includes(run.status) ||
             (run.status === "queued" && run.queueHeld !== true),
         ) ||
+        hasOrphanedRunningProviderTurn(projection) ||
         projection.runtimeRequests.some((request) => request.status === "pending") ||
         projection.subagents.some(
           (subagent) =>
@@ -5414,6 +5450,26 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       Effect.mapError((cause) => new ProjectionStoreSetupError({ cause })),
     );
 
+    const getRunLivenessCandidates = Effect.fn("ProjectionStore.getRunLivenessCandidates")(
+      function* () {
+        const runs = yield* liveRunLivenessCandidates(sql);
+        const orphans = yield* orphanedRunningProviderTurnThreadIds(sql);
+        return {
+          runs: runs.map((row) => ({
+            threadId: ThreadId.make(row.thread_id),
+            runId: RunId.make(row.run_id),
+            activeAttemptId: RunAttemptId.make(row.active_attempt_id),
+            attemptStartedAt:
+              row.attempt_started_at === null ? null : DateTime.makeUnsafe(row.attempt_started_at),
+            providerTurnId:
+              row.provider_turn_id === null ? null : ProviderTurnId.make(row.provider_turn_id),
+          })),
+          orphanedTurnThreadIds: orphans.map((row) => ThreadId.make(row.thread_id)),
+        } satisfies ProjectionRunLivenessCandidates;
+      },
+      Effect.mapError((cause) => new ProjectionStoreSetupError({ cause })),
+    );
+
     // Decode every canonical row once. Full thread reads repeat shared sessions,
     // provider threads, transfers, and inherited fork histories for each owner.
     const getUnreadableThreadIds = Effect.fn("ProjectionStore.getUnreadableThreadIds")(
@@ -6638,6 +6694,12 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
               WHERE run.thread_id = ${threadId}
                 AND (
                   run.status IN ('queued', 'preparing', 'starting', 'running', 'waiting')
+                  OR run.run_id IN (
+                    SELECT attempt.run_id FROM orchestration_v2_projection_run_attempts AS attempt
+                    JOIN orchestration_v2_projection_provider_turns AS turn
+                      ON turn.run_attempt_id = attempt.attempt_id
+                    WHERE turn.thread_id = ${threadId} AND turn.status IN ('pending','running') AND turn.status = 'running'
+                  )
                   OR run.run_id = (
                     SELECT latest.run_id FROM orchestration_v2_projection_runs AS latest
                     WHERE latest.thread_id = ${threadId}
@@ -6679,7 +6741,10 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                   SELECT run_id FROM orchestration_v2_projection_runs
                   WHERE thread_id = ${threadId}
                     AND status IN ('queued', 'preparing', 'starting', 'running', 'waiting')
-                )
+                ) OR (attempt.thread_id = ${threadId} AND attempt.attempt_id IN (
+                  SELECT run_attempt_id FROM orchestration_v2_projection_provider_turns
+                  WHERE thread_id = ${threadId} AND status IN ('pending','running') AND status = 'running'
+                ))
               ORDER BY attempt.run_id ASC, attempt.attempt_ordinal ASC
             `,
           sql<PayloadRow>`
@@ -6776,6 +6841,10 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                 )
                 AND (
                   provider_thread.status = 'active'
+                  OR provider_thread.provider_thread_id IN (
+                    SELECT provider_thread_id FROM orchestration_v2_projection_provider_turns
+                    WHERE thread_id = ${threadId} AND status IN ('pending','running') AND status = 'running'
+                  )
                   OR CASE WHEN json_valid(provider_thread.payload_json)
                     THEN json_array_length(provider_thread.payload_json, '$.pendingBackgroundTasks') > 0
                     ELSE 0 END
@@ -6797,16 +6866,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
               SELECT provider_turn.payload_json
               FROM orchestration_v2_projection_provider_turns AS provider_turn
               WHERE provider_turn.thread_id = ${threadId}
-                AND provider_turn.status IN ('pending', 'starting', 'running', 'waiting')
-                AND provider_turn.run_attempt_id IN (
-                  SELECT attempt_id FROM orchestration_v2_projection_run_attempts
-                  WHERE thread_id = ${threadId}
-                    AND run_id IN (
-                      SELECT run_id FROM orchestration_v2_projection_runs
-                      WHERE thread_id = ${threadId}
-                        AND status IN ('queued', 'preparing', 'starting', 'running', 'waiting')
-                    )
-                )
+                AND provider_turn.status IN ('pending','running')
               ORDER BY provider_turn.provider_thread_id ASC, provider_turn.ordinal ASC
             `,
           sql<PayloadRow>`
@@ -9892,6 +9952,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       getPendingMessageDeliveryIds,
       getProviderRetirementContext,
       getLimitRecoveryCandidates,
+      getRunLivenessCandidates,
       getRecoveryThreadIds,
       getUnreadableThreadIds,
       getThreadSnapshot,
@@ -9970,6 +10031,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       getPendingMessageDeliveryIds: readOnReader(service.getPendingMessageDeliveryIds),
       getProviderRetirementContext: readOnReader(service.getProviderRetirementContext),
       getLimitRecoveryCandidates: readOnReader(service.getLimitRecoveryCandidates),
+      getRunLivenessCandidates: readOnReader(service.getRunLivenessCandidates),
       getRecoveryThreadIds: readOnReader(service.getRecoveryThreadIds),
       getUnreadableThreadIds: readOnReader(service.getUnreadableThreadIds),
       getThreadSnapshot: readOnReader(service.getThreadSnapshot),
@@ -10217,6 +10279,31 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
               .toSorted((left, right) => left.id.localeCompare(right.id)),
           ),
         ),
+      getRunLivenessCandidates: () =>
+        Effect.gen(function* () {
+          const runs: ProjectionRunLivenessCandidate[] = [];
+          const orphanedTurnThreadIds: ThreadId[] = [];
+          for (const projection of (yield* Ref.get(replayState)).projections.values()) {
+            if (projection.thread.deletedAt !== null) continue;
+            for (const run of projection.runs) {
+              if (run.status !== "running") continue;
+              const attempt = projection.attempts.find((row) => row.id === run.activeAttemptId);
+              if (attempt === undefined) continue;
+              runs.push({
+                threadId: projection.thread.id,
+                runId: run.id,
+                activeAttemptId: attempt.id,
+                attemptStartedAt: attempt.startedAt,
+                providerTurnId:
+                  latestProviderTurnForAttempt(projection.providerTurns, attempt.id)?.id ??
+                  attempt.providerTurnId,
+              });
+            }
+            if (hasOrphanedRunningProviderTurn(projection))
+              orphanedTurnThreadIds.push(projection.thread.id);
+          }
+          return { runs, orphanedTurnThreadIds };
+        }),
       getRecoveryThreadIds: (kind) =>
         Effect.gen(function* () {
           const projections = (yield* Ref.get(replayState)).projections;

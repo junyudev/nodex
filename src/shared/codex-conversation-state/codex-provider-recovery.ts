@@ -2,6 +2,7 @@ import type { Draft } from "immer";
 import type { CodexErrorInfo, ThreadItem, Turn } from "@nodex/codex-app-server-protocol/v2";
 import {
   codexConversationRecoveryReason,
+  isWaitingForNetworkMessage,
   parseConversationRetryProgress,
   type ConversationRecovery,
 } from "../conversation-recovery";
@@ -27,6 +28,9 @@ export function codexRecoveryFromError(input: {
     maxAttempts: progress?.maxAttempts ?? input.previous?.maxAttempts ?? null,
     retryAt: null,
     updatedAt: input.updatedAt,
+    ...(input.willRetry && isWaitingForNetworkMessage(input.message)
+      ? { waitingForNetwork: true }
+      : {}),
   };
 }
 

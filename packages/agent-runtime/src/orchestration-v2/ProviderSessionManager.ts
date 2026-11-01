@@ -644,8 +644,8 @@ export const layerWithOptions = (
         Ref.get(subscribers).pipe(
           Effect.flatMap((current) =>
             Effect.forEach(
-              current.values(),
-              (queue) =>
+              current.entries(),
+              ([subscriberId, queue]) =>
                 signal.type === "failure"
                   ? BoundedQueue.isOverflow(Cause.squash(signal.cause))
                     ? BoundedQueue.failCause(queue, signal.cause)
@@ -653,9 +653,14 @@ export const layerWithOptions = (
                         Effect.andThen(BoundedQueue.end(queue)),
                       )
                   : BoundedQueue.offer(queue, signal).pipe(
-                      Effect.flatMap(() => BoundedQueue.failure(queue)),
-                      Effect.flatMap((failure) =>
-                        Option.isSome(failure) ? Effect.fail(failure.value) : Effect.void,
+                      Effect.flatMap((offered) =>
+                        offered
+                          ? Effect.void
+                          : Ref.update(subscribers, (latest) => {
+                              const next = new Map(latest);
+                              next.delete(subscriberId);
+                              return next;
+                            }),
                       ),
                     ),
               { discard: true },
@@ -1889,7 +1894,21 @@ export const layerWithOptions = (
         terminalPublicationWaiters: LiveSessionEntry["terminalPublicationWaiters"],
       ): ProviderAdapter.ProviderAdapterV2SessionRuntime => {
         const providerSessionId = runtime.providerSessionId;
-        const subscribeEvents = makeEventSubscription(eventSubscribers, runtime);
+        const subscribeEvents = Effect.gen(function* () {
+          const current = (yield* Ref.get(sessions)).get(sessionKey(providerSessionId));
+          if (current?.runtime === runtime)
+            return yield* makeEventSubscription(eventSubscribers, runtime);
+          return {
+            events: Stream.fail(
+              new ProviderAdapter.ProviderAdapterEventStreamError({
+                driver: runtime.driver,
+                providerSessionId,
+                cause: "The provider session is no longer available for observation.",
+              }),
+            ),
+            close: Effect.void,
+          };
+        });
         const requireCurrentRuntime = Effect.gen(function* () {
           const current = (yield* Ref.get(sessions)).get(sessionKey(providerSessionId));
           const retired =

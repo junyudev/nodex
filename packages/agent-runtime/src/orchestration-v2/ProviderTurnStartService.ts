@@ -476,6 +476,7 @@ export const layer: Layer.Layer<
               ? makeProviderFailure({
                   class: "permission_error",
                   message: authResult.failure.detail,
+                  cause: authResult.failure,
                 })
               : undefined;
           const status = failure === undefined ? "completed" : "failed";
@@ -1446,6 +1447,18 @@ export const layer: Layer.Layer<
       yield* runExecution.startRootRun({
         commandId: CommandId.make(`command:effect:provider-turn.start:${run.id}`),
         appThread: projection.thread,
+        isRunTerminal: (ownerRunId) =>
+          projectionStore
+            .getRunOutcome({ threadId: input.threadId, runId: ownerRunId })
+            .pipe(
+              Effect.map(
+                (owner) =>
+                  owner !== null &&
+                  ["completed", "failed", "interrupted", "cancelled", "rolled_back"].includes(
+                    owner.status,
+                  ),
+              ),
+            ),
         providerSessionId,
         session: deliverySession,
         run: runningRun,

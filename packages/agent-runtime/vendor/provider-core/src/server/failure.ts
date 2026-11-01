@@ -29,6 +29,46 @@ export class ContextHandoffBudgetError extends Schema.TaggedError<ContextHandoff
 
 export const MAX_PROVIDER_FAILURE_MESSAGE_LENGTH = 4_096;
 export const MAX_PROVIDER_FAILURE_CODE_LENGTH = 128;
+export const MAX_PROVIDER_FAILURE_DIAGNOSTIC_LENGTH = 2_000;
+
+/** Render the bounded error chain, never stacks or arbitrary serialized payloads. */
+export function providerFailureDiagnostic(cause: unknown, message?: string): string | undefined {
+  const seen = new Set<unknown>();
+  const parts: string[] = [];
+  for (let depth = 0; depth < 16 && cause != null && !seen.has(cause); depth++) {
+    seen.add(cause);
+    try {
+      if (Cause.isCause(cause)) {
+        cause = Cause.squash(cause);
+        continue;
+      }
+      if (typeof cause === "string") {
+        if (boundedText(cause, MAX_PROVIDER_FAILURE_MESSAGE_LENGTH) !== message) parts.push(cause);
+        break;
+      }
+      if (typeof cause !== "object") break;
+      const error = cause as {
+        _tag?: unknown;
+        name?: unknown;
+        message?: unknown;
+        cause?: unknown;
+        reason?: unknown;
+      };
+      const name = typeof error._tag === "string" ? error._tag : error.name;
+      if (
+        typeof error.message === "string" &&
+        boundedText(error.message, MAX_PROVIDER_FAILURE_MESSAGE_LENGTH) !== message
+      )
+        parts.push(`${typeof name === "string" ? `${name}: ` : ""}${error.message}`);
+      cause = error.cause ?? error.reason;
+    } catch {
+      break;
+    }
+  }
+  return parts.length === 0
+    ? undefined
+    : boundedText(parts.join(" → "), MAX_PROVIDER_FAILURE_DIAGNOSTIC_LENGTH);
+}
 
 const DEFAULT_PROVIDER_FAILURE_MESSAGE = "Provider turn failed.";
 
@@ -68,6 +108,8 @@ function causeMessage(cause: unknown): string | undefined {
           return stringField(cause, "message");
         case "ContextHandoffDeliveryUncertainError":
           return "T3 could not confirm whether conversation history reached the provider. Retry the turn to recover the session.";
+        case "ProviderTurnOwnershipConflictError":
+          return stringField(cause, "message");
         case "ProviderAdapterTurnStartError":
           message =
             "The provider could not start this turn. Retry the turn; if it keeps failing, check the provider setup and server logs.";
@@ -167,14 +209,17 @@ export function makeProviderFailure(input: {
   readonly message?: string | undefined;
   readonly code?: string | null | undefined;
   readonly class?: OrchestrationV2ProviderFailureClass;
-  readonly retryable?: boolean | null;
-  readonly resetAt?: string | null;
+  readonly retryable?: boolean | null | undefined;
+  readonly resetAt?: string | null | undefined;
+  readonly httpStatusCode?: number | null;
+  readonly retryAfterMs?: number | null;
 }): OrchestrationV2ProviderFailure {
   const budgetError = findContextBudgetError(input.cause);
   const budgetExhausted = budgetError !== undefined;
   const contextBudget = budgetError?.budget;
   const rawMessage = input.message ?? causeMessage(input.cause) ?? DEFAULT_PROVIDER_FAILURE_MESSAGE;
   const message = boundedText(rawMessage, MAX_PROVIDER_FAILURE_MESSAGE_LENGTH);
+  const diagnostic = providerFailureDiagnostic(input.cause, message);
   const rawCode = budgetExhausted
     ? "context_budget_exhausted"
     : (input.code ?? stringField(input.cause, "code") ?? null);
@@ -182,13 +227,17 @@ export function makeProviderFailure(input: {
     rawCode === null ? null : boundedText(rawCode, MAX_PROVIDER_FAILURE_CODE_LENGTH) || null;
 
   return {
+    ...(diagnostic === undefined ? {} : { diagnostic }),
     class: input.class ?? "unknown",
     message: message || DEFAULT_PROVIDER_FAILURE_MESSAGE,
     code,
     retryable: budgetExhausted ? false : (input.retryable ?? null),
     ...(contextBudget === undefined ? {} : { contextBudget }),
-    ...(input.class === "usage_limit" &&
-    input.resetAt != null &&
+    ...(Number.isInteger(input.httpStatusCode) && input.httpStatusCode! >= 100 && input.httpStatusCode! <= 599
+      ? { httpStatusCode: input.httpStatusCode! } : {}),
+    ...(Number.isInteger(input.retryAfterMs) && input.retryAfterMs! >= 0
+      ? { retryAfterMs: input.retryAfterMs! } : {}),
+    ...(input.resetAt != null &&
     Number.isFinite(Date.parse(input.resetAt))
       ? { resetAt: DateTime.formatIso(DateTime.makeUnsafe(input.resetAt)) }
       : {}),

@@ -34,6 +34,7 @@ import * as ProviderSwitchService from "./ProviderSwitchService.ts";
 import * as ProviderTurnControlService from "./ProviderTurnControlService.ts";
 import * as ProviderTurnStartService from "./ProviderTurnStartService.ts";
 import * as RunExecutionService from "./RunExecutionService.ts";
+import * as RunLivenessService from "./RunLivenessService.ts";
 import * as RunFinalizationService from "./RunFinalization.ts";
 import * as RuntimePolicy from "./RuntimePolicy.ts";
 import * as RuntimeRequestService from "./RuntimeRequestService.ts";
@@ -282,6 +283,22 @@ const layerProviderRuntimeRecoveryProvided = ProviderRuntimeRecoveryService.laye
   ),
 );
 
+const layerRunLivenessProvided = RunLivenessService.layer.pipe(
+  Layer.provide(
+    Layer.mergeAll(
+      ProjectionStore.layer,
+      layerProviderSessionManagerProvided,
+      layerRunExecutionServiceProvided,
+      layerEventSinkProvided,
+      IdAllocator.layer,
+      layerRuntimePolicyProvided,
+    ),
+  ),
+);
+const layerRunLivenessWorker = Layer.effectDiscard(
+  RunLivenessService.RunLivenessService.use((service) => service.start),
+).pipe(Layer.provide(layerRunLivenessProvided));
+
 const layerMcpAppRequestsProvided = McpAppRequests.layer.pipe(
   Layer.provide(
     Layer.mergeAll(
@@ -301,6 +318,7 @@ export const layer = Layer.mergeAll(
   layerProviderSessionManagerProvided,
   layerProviderAuthServiceProvided,
   layerProviderRuntimeRecoveryProvided,
+  layerRunLivenessProvided,
   layerProjectionMaintenanceProvided,
   layerLegacyV1ThreadImporterProvided,
 );
@@ -341,5 +359,6 @@ export const layerProduction = Layer.mergeAll(
   layerSecretRequestsProvided,
   layerProviderContinuationWorkerProvided,
   layerDelegatedTaskQuestions,
+  layerRunLivenessWorker,
   EffectOutbox.layerPruneWorker.pipe(Layer.provide(EffectOutbox.layer)),
 ).pipe(Layer.provideMerge(layerEventInfrastructure));

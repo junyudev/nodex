@@ -207,3 +207,55 @@ it.effect("keys terminal failure items by provider turn across retries and fallb
     assert.equal(firstAttempt.ordinal, 101);
   }).pipe(Effect.provide(IdAllocator.layer)),
 );
+
+it("stores a bounded redacted diagnostic with tagged SQL error causes", () => {
+  const failure = makeProviderFailure({
+    cause: Cause.fail({
+      _tag: "SqlError",
+      message: "Database reader query was interrupted",
+      cause: new Error(
+        "reader failed: token=private-value https://user:pass@example.com?token=secret",
+      ),
+    }),
+    message: "Nodex could not observe the turn.",
+  });
+  assert.include(failure.diagnostic!, "SqlError: Database reader query was interrupted");
+  assert.include(failure.diagnostic!, "Error: reader failed");
+  assert.notInclude(failure.diagnostic!, "private-value");
+  assert.notInclude(failure.diagnostic!, "user:pass");
+  assert.notInclude(failure.diagnostic!, "token=secret");
+  assert.equal(
+    makeProviderFailure({ cause: new Error("x".repeat(3000)) }).diagnostic!.length,
+    2000,
+  );
+});
+
+it("omits diagnostics that repeat the failure message after redaction", () => {
+  const message = "Request rejected: token=private-value";
+  for (const cause of [
+    message,
+    new Error(message),
+    Cause.fail({ _tag: "AcpRequestError", message }),
+    new Error(message, { cause: new Error(message) }),
+  ]) {
+    assert.isUndefined(makeProviderFailure({ cause, message }).diagnostic);
+  }
+  const failure = makeProviderFailure({
+    message,
+    cause: new Error(message, { cause: new Error("Upstream returned HTTP 502") }),
+  });
+  assert.equal(failure.diagnostic, "Error: Upstream returned HTTP 502");
+});
+
+
+it("retains validated HTTP throttling evidence without treating it as usage exhaustion", () => {
+  const failure = makeProviderFailure({ class: "provider_error", code: "rateLimitExceeded",
+    httpStatusCode: 429, retryAfterMs: 1_500, resetAt: "2030-01-01T01:00:00Z" });
+  assert.equal(failure.httpStatusCode, 429); assert.equal(failure.retryAfterMs, 1_500);
+  assert.equal(failure.resetAt, "2030-01-01T01:00:00.000Z");
+  for (const invalid of [NaN, Infinity, -1, 1.5]) {
+    const rejected = makeProviderFailure({ httpStatusCode: invalid, retryAfterMs: invalid, resetAt: "invalid" });
+    assert.isUndefined(rejected.httpStatusCode); assert.isUndefined(rejected.retryAfterMs); assert.isUndefined(rejected.resetAt);
+  }
+  assert.isUndefined(makeProviderFailure({ httpStatusCode: 600 }).httpStatusCode);
+});
