@@ -1,0 +1,142 @@
+src/renderer/features/local-conversation/view/use-chat-message-reveal.test.tsx
+  s_a64b3013ad0e7e::t_da0f759810146f 55-74,76-78,81-91
+  s_a64b3013ad0e7e::t_6a056aa70d6c30 75,79-80
+src/renderer/features/local-conversation/view/local-conversation-virtualized-turn-list.test.tsx
+  s_a64b3013ad0e7e::t_bdeebe5a7b019b 431-473,475,477-478
+  s_a64b3013ad0e7e::t_e2e3ff6168a646 474
+  s_a64b3013ad0e7e::t_bcf20f7fc93103 476
+src/renderer/features/local-conversation/thread-stage-types.ts
+  s_fe7dc95f5a58ab::t_8f0550c24da49a 1248-1250,1254-1256
+  s_fe7dc95f5a58ab::t_216072611430af 1251-1253
+src/renderer/features/local-conversation/projection/build-turn-render-model.node.test.ts
+  s_fe7dc95f5a58ab::t_0abfc933aebd93 500-505
+  s_fe7dc95f5a58ab::t_91e19b93dee18c 472-499,506-515
+src/renderer/features/local-conversation/view/local-conversation-footer.test.tsx
+  s_fe7dc95f5a58ab::t_6468714431cdb9 1,650,654,668,673,675,695,697-705
+  s_fe7dc95f5a58ab::t_e80b479756bfd7 224-226,509,521,543-544,572-573,609,653,658-661,800,819,832,1017,1076,1094,1100,1102
+  s_fe7dc95f5a58ab::t_f11db6639f6a07 583-585
+src/renderer/features/floating-composer/floating-composer.tsx
+  s_fe7dc95f5a58ab::t_f945da93a817b8 146-149
+  s_fe7dc95f5a58ab::t_121b232d57388e 151,875
+src/renderer/features/local-conversation/view/local-conversation-thread-body-owner.tsx
+  s_a64b3013ad0e7e::t_f5516a179252e8 86,1326,1337
+  s_a64b3013ad0e7e::t_256f1f50096040 763-766,768-769,776
+  s_a64b3013ad0e7e::t_612359b954319d 84-85,87,538-566,568,628,1181-1182,1192,1297,1327-1336,1438,1440
+  s_fe7dc95f5a58ab::t_c8cbebaf131b37 180,189,198,794,802,805,970,980
+  s_fe7dc95f5a58ab::t_a9ea2c24ccbd43 116
+src/renderer/features/local-conversation/projection/created-subagent-timeline.node.test.ts
+  s_fe7dc95f5a58ab::t_a7ea987a6ff48d 111-114,116-122,124-128,130-138
+  s_68bb18ec1516cf::t_501c4ead6a47e9 115,123,129
+src/renderer/features/local-conversation/use-shown-conversation-read-state.ts
+  s_fe7dc95f5a58ab::t_d94ad8b8b19665 1-4,10-65
+  s_fe7dc95f5a58ab::t_f11db6639f6a07 5-9
+src/renderer/features/local-conversation/projection/build-renderer-item-stream.node.test.ts
+  s_fe7dc95f5a58ab::t_d6cec28d33d945 1340-1358,1364,1370-1395,1402-1411,1416
+  s_fe7dc95f5a58ab::t_3188e13342630e 1359-1363,1365-1369,1396-1401,1412-1415
+src/renderer/features/local-conversation/view/local-conversation-runtime-scroll-intent.browser.test.tsx
+  s_a64b3013ad0e7e::t_e75287f4ffd650 280-296,334-336,338,373,433-494
+  s_a64b3013ad0e7e::t_f96432ceca888a 337
+src/renderer/features/local-conversation/view/floating-conversation-completion-preview.tsx
+  s_fe7dc95f5a58ab::t_fa872dc4968448 31
+  s_fe7dc95f5a58ab::t_2b196aacde86c8 1-30,32-59
+src/renderer/features/local-conversation/view/local-conversation-thread-body.tsx
+  s_a64b3013ad0e7e::t_1c9f42dfaca405 230,234,331,336
+  s_fe7dc95f5a58ab::t_3188e13342630e 244-246
+  s_a64b3013ad0e7e::t_2399545c8ba3d5 1,7,19,51,55,81,134,146,221-229,231-233,235-243,247-251,294-298,313,332-335,342
+  s_fe7dc95f5a58ab::t_6468714431cdb9 52
+src/renderer/features/local-conversation/view/local-conversation-footer.tsx
+  s_fe7dc95f5a58ab::t_f11db6639f6a07 8
+  s_fe7dc95f5a58ab::t_6f46ca8460075e 37,153
+  s_fe7dc95f5a58ab::t_d752592bdb0e34 92,95,97,104-152,154-158,203-234,236-258
+  s_fe7dc95f5a58ab::t_ab9e5b6ad05d70 169
+  s_fe7dc95f5a58ab::t_42d42fcfa8066d 6,20,38,42,159,161,168,183,192,194,235
+src/renderer/features/local-conversation/view/use-chat-message-reveal.ts
+  s_a64b3013ad0e7e::t_612359b954319d 15,26,40,42,52,78
+src/renderer/features/local-conversation/view/subagent-activity-visibility.ts
+  s_fe7dc95f5a58ab::t_e39b24446ae410 1-13
+docs/product-specs/workbench-shell.md
+  s_fe7dc95f5a58ab::t_f9b89393f57a50 27
+  s_fe7dc95f5a58ab::t_179828093d65c7 157
+docs/product-specs/codex-thread-transcript-behavior.md
+  s_fe7dc95f5a58ab::t_6746202fbbffeb 360
+src/renderer/features/content-search/content-search-surface.tsx
+  s_fe7dc95f5a58ab::t_f945da93a817b8 122
+src/renderer/features/local-conversation/view/local-conversation-turn-entry.tsx
+  s_fe7dc95f5a58ab::t_b9555f7dbad3ab 33,144,155,178
+src/renderer/features/local-conversation/view/connected-thread-stage.tsx
+  s_fe7dc95f5a58ab::t_e443e3e862ccf1 627,629
+  s_fe7dc95f5a58ab::t_30203a1d9c491d 3,1476-1479
+  s_fe7dc95f5a58ab::t_f11db6639f6a07 1108-1109
+  s_fe7dc95f5a58ab::t_6f46ca8460075e 656,1226-1238,1754-1764
+  s_fe7dc95f5a58ab::t_026db0be8a3cbb 593-594,610
+  s_fe7dc95f5a58ab::t_cb71846a4f3b63 341-361,380-381,396,572,577-584,588-591,595-596,607,611-621,625-626,628
+  s_fe7dc95f5a58ab::t_cc0c8473d70a71 642,657,1090,1225,1239,1753,1765
+  s_fe7dc95f5a58ab::t_d8e2d43eef6cbd 45
+  s_fe7dc95f5a58ab::t_c8cbebaf131b37 585-587,592,597-606,608-609,622-624
+src/renderer/features/local-conversation/projection/normalized-timeline.test-fixtures.ts
+  s_fe7dc95f5a58ab::t_a7ea987a6ff48d 73,82
+src/renderer/features/local-conversation/projection/build-turn-render-model.ts
+  s_fe7dc95f5a58ab::t_929c839c6ae43c 51-52,76,359,478,493,533
+  s_fe7dc95f5a58ab::t_6f1f0a874477a0 479-480,504,530
+src/renderer/features/local-conversation/projection/normalized-timeline-entries.ts
+  s_fe7dc95f5a58ab::t_97a717ec766ef2 123-127,193-197
+src/renderer/features/local-conversation/view/local-conversation-thread-scroll-controller.tsx
+  s_a64b3013ad0e7e::t_10689a337a1b2d 217,219
+  s_a64b3013ad0e7e::t_2399545c8ba3d5 128,215-216,218,220,946,1005-1007
+src/renderer/features/local-conversation/view/connected-thread-stage.test.tsx
+  s_fe7dc95f5a58ab::t_a3189b51ecb887 1200
+src/renderer/features/local-conversation/projection/build-renderer-item-stream.ts
+  s_fe7dc95f5a58ab::t_6f1f0a874477a0 32-34,742
+  s_fe7dc95f5a58ab::t_7f6b24e63de732 30-31,35-36
+  s_fe7dc95f5a58ab::t_3188e13342630e 743-756
+  s_fe7dc95f5a58ab::t_d1f94d2d33f6f8 741
+  s_fe7dc95f5a58ab::t_a58c36c6d45553 771
+  s_fe7dc95f5a58ab::t_839f51a3549a1a 49-53
+src/renderer/features/local-conversation/view/local-conversation-search-source.ts
+  s_fe7dc95f5a58ab::t_8faaff4ae262c0 79-80,147
+src/renderer/features/local-conversation/view/local-conversation-virtualized-turn-list.tsx
+  s_a64b3013ad0e7e::t_009655e5f4472f 2787,2792
+  s_a64b3013ad0e7e::t_8ed4b9aadfd055 2504,2575
+  s_a64b3013ad0e7e::t_612359b954319d 289-290,2221,2330-2332,2352-2355,2388-2390,2395,2434,2446,2584,2640,2723-2724,2727,2788-2791
+CHANGELOG.md
+  s_fe7dc95f5a58ab::t_3854fd97cd93d7 20
+src/renderer/features/local-conversation/view/local-conversation-thread-body.test.tsx
+  s_fe7dc95f5a58ab::t_750dd1df751402 1262-1311
+  s_a64b3013ad0e7e::t_da0f759810146f 1477
+  s_a64b3013ad0e7e::t_38db55202c052b 1631
+  s_a64b3013ad0e7e::t_dfc54ed052ef01 1502-1508,1512-1517,1519-1524,1526-1537,1539-1541,1544-1554
+  s_a64b3013ad0e7e::t_28480f85fcf62c 1481,1487,1490,1509-1511,1518,1525,1538,1542-1543,1585,1591,1599,1608,1624,1627,1660-1662
+  s_a64b3013ad0e7e::t_c7c9351c4b5698 3-4,51-52,54-59,1429-1476,1478-1480,1482-1486,1488-1489,1491-1501,1555-1584,1586-1590,1592-1598,1600-1607,1609-1623,1625-1626,1628-1630,1632-1659
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "719e68a276d04a55ea10bc832e950919b8673224",
+  "prompts": {},
+  "sessions": {
+    "s_68bb18ec1516cf": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a192ee-eb6e-7d03-b3b9-05f8ede11b13",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_a64b3013ad0e7e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a192c8-58e7-7553-98c1-33513bbec7c4",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_fe7dc95f5a58ab": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "544dcfbc-fb2a-443f-beae-a1f75aa89ee3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
