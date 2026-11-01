@@ -37,9 +37,14 @@ test.each([
 });
 
 test.each([
-  { project_id: "project:work", section_id: "section:direct", unread: true },
-  { project_id: null, section_id: null, unread: false },
-])("preserves nullable Session Sidebar placement coordinates: %j", (placement) => {
+  {
+    project_id: "project:work",
+    section_id: "section:direct",
+    unread: true,
+    remind_at: "2026-11-02T09:00:00.000Z",
+  },
+  { project_id: null, section_id: null, unread: false, remind_at: null },
+])("preserves nullable Session Sidebar placement and reminders: %j", (placement) => {
   expect(
     projectWorkspaceSessionSidebarPlacementFromCore({
       session_id: "session:live",
@@ -50,5 +55,6 @@ test.each([
     projectId: placement.project_id,
     sectionId: placement.section_id,
     unread: placement.unread,
+    remindAt: placement.remind_at,
   });
 });
