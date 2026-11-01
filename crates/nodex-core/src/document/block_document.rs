@@ -223,7 +223,7 @@ mod tests {
             .expect("valid Page document");
         assert_eq!(decoded.schema.schema_key(), PAGE_SCHEMA_KEY);
         assert_eq!(decoded.schema.schema_version(), PAGE_SCHEMA_VERSION);
-        assert_eq!(decoded.block_tree.blocks.len(), 18);
+        assert_eq!(decoded.block_tree.blocks.len(), 19);
         assert!(decoded.title.is_some());
     }
 

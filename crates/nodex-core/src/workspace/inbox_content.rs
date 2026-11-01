@@ -212,7 +212,7 @@ mod tests {
             assert_eq!(content.images.iter().map(|image| image.file_id.as_str()).collect::<Vec<_>>(), vec!["prompt-first", "prompt-child"]);
             let numbers = content.images.iter().enumerate().map(|(index, image)| (image.source.clone(), index + 1)).collect();
             let rendered = agent_markdown(&content, &numbers, 20)?;
-            assert_eq!(rendered, ":::prompt[Review [Image 1: First]]\n  [Image 2: Child]\n:::");
+            assert_eq!(rendered, ":::prompt[Review [Image #1] (caption: First)]\n  [Image #2] (caption: Child)\n:::");
             Ok(())
         }).unwrap();
     }
