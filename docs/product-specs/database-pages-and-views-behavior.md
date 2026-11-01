@@ -742,7 +742,9 @@ create action that opens the standard Page composer already seeded to that
 status. Their icons form one compact progress family: Triage uses a segmented
 ring, Plan an empty ring, Doing a half-filled ring, Review a three-quarter-filled
 ring, and Done a filled ring with a knocked-out check. Shape communicates state
-at 14–16px while semantic color remains supplementary. Status values use a flat
+at 14–16px while semantic color remains supplementary: Triage alone is neutral
+because nobody has decided on its work yet, and each decided stage has its own
+hue, Plan violet, Doing blue, Review orange, and Done green. Status values use a flat
 icon-and-neutral-label presentation; the surrounding row or trigger owns hover,
 focus, and selection backgrounds, so status itself never adds a nested pill.
 Set-like Tags and Labels remain compact chips. Custom non-status option labels

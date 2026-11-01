@@ -29,14 +29,14 @@ const STATUS_GLYPH = {
 // status-presentation.tsx / theme-source.css: dots stay constant; column surfaces follow theme.
 const STATUS_ACCENT: Record<Status, string> = {
   Triage: "#8e8b86",
-  Plan: "#8e8b86",
+  Plan: "#8b6cd8",
   Doing: "#2783de",
   Review: "#bc4c00",
   Done: "#46a171",
 };
 const STATUS_COLUMN: Record<Status, string> = {
   Triage: "bg-[rgba(42,28,0,0.03)] dark:bg-white/3",
-  Plan: "bg-[rgba(28,19,1,0.04)] dark:bg-white/4",
+  Plan: "bg-[rgba(76,29,199,0.04)] dark:bg-[rgba(167,139,250,0.06)]",
   Doing: "bg-[rgba(0,118,217,0.04)] dark:bg-[rgba(94,159,232,0.06)]",
   Review: "bg-[rgba(127,51,0,0.04)] dark:bg-[rgba(222,146,85,0.06)]",
   Done: "bg-[rgba(0,96,38,0.04)] dark:bg-[rgba(114,188,143,0.06)]",
