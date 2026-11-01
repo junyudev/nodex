@@ -1,0 +1,209 @@
+.github/workflows/windows.yml
+  s_96ff75d3bdf36b::t_848da504ff41f6 66-73
+CHANGELOG.md
+  s_9ad21099c264dd::t_01415aadce0aca 9-10
+docs/ARCHITECTURE.md
+  s_96ff75d3bdf36b::t_98bee19a23026f 593-594,596-599
+docs/CONFIGURATION.md
+  s_96ff75d3bdf36b::t_617b2c45bd2ad7 175-178,248
+docs/product-specs/agent-interface-behavior.md
+  s_96ff75d3bdf36b::t_7ca42bc4777624 8-9
+docs/product-specs/index.md
+  s_9ad21099c264dd::t_2190aec7404a1b 74-75
+docs/product-specs/windows-host-behavior.md
+  s_96ff75d3bdf36b::t_2efc03bfc7aecc 1-38
+packages/agent-runtime/package.json
+  s_96ff75d3bdf36b::t_64ea7e46dec5d1 12-13
+packages/agent-runtime/src/nodex/NodePtyAdapter.ts
+  s_9ad21099c264dd::t_8140b34601383f 2,55,193-197
+packages/agent-runtime/src/nodex/WindowsPty.ts
+  s_9ad21099c264dd::t_b668655585f8dc 1-82
+packages/agent-runtime/vendor/shared/src/shell.ts
+  s_96ff75d3bdf36b::t_d4c53c15bf9e39 51
+packages/agent-runtime/vendor/shared/src/windowsShell.ts
+  s_96ff75d3bdf36b::t_e20301181a620b 1-33
+packages/nodex-app-tools-mcp/src/bundle.test.ts
+  s_b708cefbbd2f84::t_87e7b234e9cbbb 9,15
+packages/nodex-app-tools-mcp/src/pipe.test.ts
+  s_3dc0b7647fcf0b::t_57f6aa449075b3 9-14,30
+packages/nodex-app-tools-mcp/src/pipe.ts
+  s_3dc0b7647fcf0b::t_f2bc57f7a661f0 1-2,20-25
+src/main/app-tools/CodexAppToolSession.ts
+  s_3dc0b7647fcf0b::t_2e9bc199af7c2b 1,18,28-31,33-43
+src/main/app/CodexApplicationLive.ts
+  s_437d1b69acf515::t_ca5fb376cef6ed 135-136,206-208,212
+src/main/app/MainConfig.ts
+  s_3dc0b7647fcf0b::t_3985576129fdb3 1,31-34,45-51,58
+src/main/bootstrap-config.ts
+  s_3dc0b7647fcf0b::t_48f4c78ddc4743 104
+src/main/clipboard-paste-inspector.test.ts
+  s_96ff75d3bdf36b::t_5422025555bbca 139-155
+src/main/clipboard-paste-inspector.ts
+  s_3dc0b7647fcf0b::t_9570135b24552c 5-9,101-105,111-112
+src/main/codex/codex-runtime.test.ts
+  s_9ad21099c264dd::t_455b488edb3c3a 286,335-366
+src/main/codex/codex-runtime.ts
+  s_96ff75d3bdf36b::t_e0ff207a089bc1 59-63,95-96,105-106,121-125,186-187,193,203-204
+src/main/composer-appshot-platform.ts
+  s_3dc0b7647fcf0b::t_936ab0ecf70b34 1,202-203
+src/main/host-runtime/AppProtocolRuntime.test.ts
+  s_b708cefbbd2f84::t_9603b9787650eb 1,51
+src/main/host-runtime/AppUpdatePolicy.ts
+  s_3dc0b7647fcf0b::t_0eb085c8240cd7 1,24-28,31,48
+src/main/host-runtime/AppUpdateRuntime.ts
+  s_9ad21099c264dd::t_51fa39c07004a6 1,58,61
+src/main/host-runtime/ChromeControlRuntime.ts
+  s_9ad21099c264dd::t_a7ee0f584b9566 1,371
+src/main/host-runtime/ComposerAppshotRuntime.ts
+  s_3dc0b7647fcf0b::t_396439d245d066 1,128-129
+src/main/host-runtime/ComputerUseRuntime.ts
+  s_9ad21099c264dd::t_6492e351bdf232 1,328
+src/main/host-runtime/ComputerUseSettingsRuntime.ts
+  s_3dc0b7647fcf0b::t_9ac9b5b8955cec 1,232-247,249,353
+src/main/host-runtime/DictationRuntime.ts
+  s_96ff75d3bdf36b::t_40e219af8024ee 218,221,234
+src/main/host-runtime/OpenCodeSetup.node.test.ts
+  s_96ff75d3bdf36b::t_ff19af7450048a 147
+src/main/host-runtime/OpenCodeSetup.ts
+  s_9ad21099c264dd::t_9cfc95d915df56 20,83,87
+src/main/ipc/handlers/AppUpdateIpc.node.test.ts
+  s_b708cefbbd2f84::t_063fe036b3306d 1,49
+src/main/ipc/handlers/BrowserProfileIpc.node.test.ts
+  s_b708cefbbd2f84::t_bc3547b3ac1579 1,125
+src/main/ipc/handlers/BrowserSidebarIpc.node.test.ts
+  s_3dc0b7647fcf0b::t_d43ec3d0bba421 1,133
+src/main/ipc/handlers/ChromeControlSettingsIpc.node.test.ts
+  s_b708cefbbd2f84::t_16d39df5bbf74c 1,67
+src/main/ipc/handlers/CodexApplicationIpc.node.test.ts
+  s_b708cefbbd2f84::t_72be8defeac0e8 1,217
+src/main/ipc/handlers/ComputerUseSettingsIpc.node.test.ts
+  s_b708cefbbd2f84::t_6c658a3957e482 1,47
+src/main/ipc/handlers/GitWorkerIpc.node.test.ts
+  s_b708cefbbd2f84::t_40d1355ce279c9 1,44
+src/main/ipc/handlers/RemoteHostedPipIpc.node.test.ts
+  s_b708cefbbd2f84::t_b6e7de15a69993 1,63
+src/main/nodex-home.test.ts
+  s_3dc0b7647fcf0b::t_7cf1c66c0ce7c7 66-79
+src/main/nodex-home.ts
+  s_3dc0b7647fcf0b::t_7948d3b76ad4ae 5,11-14,17-23,29,32,37-41,44
+src/main/platform/electron/ElectronClipboard.ts
+  s_3dc0b7647fcf0b::t_0ed7392ba0e0fe 1-3,13,63-72,79-80,84,94-101,104,145-170,172-174
+src/main/platform/electron/ElectronClipboardFallback.test.ts
+  s_3dc0b7647fcf0b::t_923691143fd663 1-56
+src/main/platform/electron/ElectronClipboardFallback.ts
+  s_3dc0b7647fcf0b::t_bd9954189e1471 1-85
+src/main/platform/electron/ElectronCodexAttestation.ts
+  s_3dc0b7647fcf0b::t_98c8ab605f4840 1,24-35
+src/main/platform/electron/NativeNotificationAuthorization.ts
+  s_9ad21099c264dd::t_aa1202790620bc 1,38
+src/main/platform/electron/RemoteHostedPipNativePlatform.ts
+  s_3dc0b7647fcf0b::t_1107705d1b6fe4 1,556-557
+src/main/platform/electron/WindowsDictationNative.test.ts
+  s_9ad21099c264dd::t_1184bc846e41a2 34-39,148-150
+src/main/platform/electron/WindowsDictationNative.ts
+  s_96ff75d3bdf36b::t_b5968d52efa0cc 1,157,163-166
+src/main/platform/electron/native-clipboard.ts
+  s_96ff75d3bdf36b::t_4f8b3c404038ec 10
+src/main/platform/host-capabilities.test.ts
+  s_9ad21099c264dd::t_94dbaf2470c152 1-30
+src/main/platform/host-capabilities.ts
+  s_96ff75d3bdf36b::t_776a3022b886d1 1-17
+src/main/platform/node/ClaudeExecutable.ts
+  s_3dc0b7647fcf0b::t_afd069698d5ef8 26-29,51-54,121-127
+src/main/platform/node/CodexAccountHome.test.ts
+  s_3dc0b7647fcf0b::t_dd1d8ef5ef9bdb 33,66-67,128
+src/main/platform/node/CodexAccountHome.ts
+  s_3dc0b7647fcf0b::t_8fec2962d6177e 6,113-119,147-152,156-170,215-216,218-219,238-242,245,248-249,253-261,297
+src/main/platform/node/CodexProcessEnvironment.ts
+  s_3dc0b7647fcf0b::t_63026e5d1f2466 12-16,18-22
+src/main/platform/node/NodexAppToolPipe.node.test.ts
+  s_3dc0b7647fcf0b::t_c10ea6b47f5983 20-34,48-53
+src/main/platform/node/NodexAppToolPipe.ts
+  s_3dc0b7647fcf0b::t_560e4318f35d14 8-12,31,39,41
+src/main/platform/node/NodexCliBootstrap.node.test.ts
+  s_b708cefbbd2f84::t_6ba8caafa5950e 99
+src/main/platform/node/NodexCliBootstrap.ts
+  s_b708cefbbd2f84::t_c166b2a70c82b9 76,81-85,109,119,125
+src/main/platform/node/NodexCliShell.node.test.ts
+  s_9ad21099c264dd::t_aaf5244ee8da63 7-8
+src/main/platform/node/NodexCliShell.ts
+  s_3dc0b7647fcf0b::t_04a47a3d3bff51 31-34,39-70,101,129-133,135-136,235,244-256,271-275,278-281
+src/main/platform/node/NodexCliShell.windows.test.ts
+  s_9ad21099c264dd::t_25682cfd02680b 1-95
+src/main/platform/node/OpenCodeExecutable.node.test.ts
+  s_9ad21099c264dd::t_87cb1098555d8e 91-98
+src/main/platform/node/OpenCodeExecutable.ts
+  s_3dc0b7647fcf0b::t_7228c90f3bc73b 1-2,12-13,16-19,23-34,36-39
+src/main/platform/node/OpenCodeInstallPlatform.node.test.ts
+  s_96ff75d3bdf36b::t_1b08ea518c4ac3 269
+src/main/platform/node/OpenCodeInstallPlatform.ts
+  s_9ad21099c264dd::t_a7cb071650d643 1-4,6-9,21-43,58,105-108,124-129,148,151,202,212-218,240,248-254,264-269,272,275-277,301-346,367-372
+src/main/platform/node/OpenCodeInstallPlatform.windows.test.ts
+  s_9ad21099c264dd::t_1b8034b12be835 1-35
+src/main/platform/node/TerminalEnvironment.test.ts
+  s_3dc0b7647fcf0b::t_00ed38ce6923f6 2,21-34
+src/main/platform/node/TerminalEnvironment.ts
+  s_3dc0b7647fcf0b::t_e73c411b028a91 5-6,35,39,42-79,92-95,97,101,108,110-134
+src/main/platform/node/TerminalPty.ts
+  s_9ad21099c264dd::t_3457ea1d479b55 1-2,57,59-78,80-88,90-122,124-141,143-145
+src/main/platform/node/TerminalPty.windows.test.ts
+  s_96ff75d3bdf36b::t_4c77ff5c448ff4 1-46
+src/main/process-tree.test.ts
+  s_3dc0b7647fcf0b::t_c221c31cf4721a 1-38
+src/main/process-tree.ts
+  s_9ad21099c264dd::t_7b64a38a87bafc 1,3-24,26,29
+src/main/terminal-runtime/TerminalRuntime.integration.ts
+  s_3dc0b7647fcf0b::t_0430a6e21b552d 1,62-68
+src/main/terminal-runtime/TerminalRuntimeLive.ts
+  s_3dc0b7647fcf0b::t_a7d903dc1c78e8 1,16-18
+src/renderer/features/local-conversation/view/connected-thread-stage.test.tsx
+  s_9ad21099c264dd::t_4e35bf0f6c62dd 1141-1143,2492,2495,2517-2524
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9f5379ae6292a57cafb1ed90f0f155a0e296130a",
+  "prompts": {},
+  "sessions": {
+    "s_3dc0b7647fcf0b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1964e-690a-72d0-a5e2-1468f0931284",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_437d1b69acf515": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19611-f985-7bb1-8992-f548b040da3f",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_96ff75d3bdf36b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19650-f065-71b3-84a9-bed1ca4b5a2a",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_9ad21099c264dd": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1964f-2f03-7680-8da9-7c6d6ce01903",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_b708cefbbd2f84": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1964e-d1d0-7381-9ea9-cb7cf0748ec9",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
