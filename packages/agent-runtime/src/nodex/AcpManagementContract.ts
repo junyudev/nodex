@@ -159,6 +159,7 @@ export interface AgentAcpManagementOperations {
       readonly sessionId: string;
       readonly sourceFingerprint: string;
       readonly model: string;
+      readonly runtimeMode?: import("@t3tools/contracts").RuntimeMode;
     };
     readonly output: { readonly threadId: string };
   };

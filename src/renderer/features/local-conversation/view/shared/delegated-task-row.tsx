@@ -1,6 +1,11 @@
 import { useEffect, useSyncExternalStore } from "react";
 import { toast } from "@/components/ui/toast";
-import { InfoIcon, StopIcon, TerminalActivityIcon } from "@/components/shared/icons";
+import {
+  DeniedCircleIcon,
+  InfoIcon,
+  StopIcon,
+  TerminalActivityIcon,
+} from "@/components/shared/icons";
 import { cn } from "@/lib/utils";
 import type {
   CodexConversationChildMembership,
@@ -175,6 +180,7 @@ export function DelegatedTaskGroup({
 function RuntimeNoticeIcon({ notice }: { notice: CodexRuntimeNotice | undefined }) {
   const className = "icon-xs shrink-0";
   if (notice?.kind === "stopped") return <StopIcon className={className} />;
+  if (notice?.kind === "declined") return <DeniedCircleIcon className={className} />;
   if (notice?.kind === "report" && notice.source === "subagent") {
     return notice.childThreadId ? (
       <SubagentAvatar seed={notice.childThreadId} className={className} />

@@ -483,3 +483,20 @@ it.effect("returns unsupported for unavailable queues and refuses changed retry 
     );
   }),
 );
+
+it.effect("carries the admission ceiling to Runtime queue and Stop controls", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture;
+    yield* f.execute("session_queue", {
+      sessionId: "target",
+      action: "edit",
+      queuedId: "queued",
+      text: "replacement",
+    });
+    yield* f.execute("stop_session", { sessionId: "target" });
+    for (const name of ["runtime-queue", "runtime-stop"]) {
+      const input = f.calls.find((call) => call.name === name)?.input as { modeLimit?: unknown };
+      assert.deepEqual(input.modeLimit, { runtimeMode: "full-access", interactionMode: "default" });
+    }
+  }),
+);

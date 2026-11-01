@@ -1,3 +1,4 @@
+import type { AgentRuntimeSettings } from "../../shared/agent-runtime-settings";
 import {
   DEFAULT_USAGE_METER_SETTINGS,
   sameUsageMeterSettings,
@@ -80,6 +81,8 @@ import {
   getThreadNotificationSettings,
   getWindowRestoreSettings,
   getComposerPredictionSettings,
+  getAgentRuntimeSettings,
+  updateAgentRuntimeSettings,
   getUsageMeterSettings,
   updateUsageMeterSettings,
   getInboxSettings,
@@ -125,6 +128,7 @@ export interface ApplicationSettingsSnapshot {
   readonly windowRestore: WindowRestoreSettings;
   readonly inbox: InboxSettings;
   readonly composerPredictions: ComposerPredictionSettings;
+  readonly agentRuntime: AgentRuntimeSettings;
   readonly usageMeters: UsageMeterSettings;
 }
 
@@ -162,6 +166,7 @@ export type ApplicationSettingsCommand =
   | { readonly type: "reset-command-keybindings" }
   | { readonly type: "update-app-update"; readonly input: UpdateAppUpdateSettingsInput }
   | { readonly type: "update-window-restore"; readonly input: UpdateWindowRestoreSettingsInput }
+  | { readonly type: "update-agent-runtime"; readonly input: AgentRuntimeSettings }
   | { readonly type: "update-composer-predictions"; readonly input: ComposerPredictionSettings }
   | { readonly type: "update-usage-meters"; readonly input: UsageMeterSettings }
   | { readonly type: "update-inbox"; readonly input: UpdateInboxSettingsInput };
@@ -284,6 +289,7 @@ function makeSnapshot(
     windowRestore: getWindowRestoreSettings(snapshotSource),
     inbox: getInboxSettings(snapshotSource),
     composerPredictions: getComposerPredictionSettings(snapshotSource),
+    agentRuntime: getAgentRuntimeSettings(snapshotSource),
     usageMeters: getUsageMeterSettings(snapshotSource),
   };
 }
@@ -344,6 +350,9 @@ function applyCommand(
       return;
     case "update-window-restore":
       updateWindowRestoreSettings(command.input, source);
+      return;
+    case "update-agent-runtime":
+      updateAgentRuntimeSettings(command.input, source);
       return;
     case "update-composer-predictions":
       updateComposerPredictionSettings(command.input, source);

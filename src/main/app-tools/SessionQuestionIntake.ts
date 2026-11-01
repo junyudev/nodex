@@ -89,6 +89,11 @@ export const make = Effect.gen(function* () {
           ),
         ),
     );
-    return owner === "runtime" ? runtime(callerFacts.interactionMode) : native;
+    return owner === "runtime"
+      ? runtime({
+          runtimeMode: callerFacts.runtimeMode,
+          interactionMode: callerFacts.interactionMode,
+        })
+      : native;
   });
 });

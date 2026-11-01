@@ -410,7 +410,7 @@ describe("describeInboxAction", () => {
         ...busy,
         status: { statusType: "active", activeFlags: ["waitingOnApproval"] },
       }),
-    ).toMatchObject({ label: "Waiting", tone: "working" });
+    ).toMatchObject({ label: "Needs approval", tone: "attention" });
     expect(
       describeInboxChatStatus({
         ...busy,
@@ -419,7 +419,7 @@ describe("describeInboxAction", () => {
           activeFlags: ["waitingOnApproval", "waitingOnUserInput"],
         },
       }),
-    ).toMatchObject({ label: "Needs input", tone: "attention" });
+    ).toMatchObject({ label: "Needs approval", tone: "attention" });
   });
 });
 
@@ -438,6 +438,11 @@ describe("chat progress", () => {
       inProgress: true,
     });
     expect(describeInboxChatStatus(runtime, "background")).toMatchObject({ label: "Working" });
+    expect(describeInboxChatStatus(runtime, "approval")).toEqual({
+      label: "Needs approval",
+      tone: "attention",
+      inProgress: true,
+    });
     expect(describeInboxChatStatus(runtime, "waiting")).toEqual({
       label: "Needs input",
       tone: "attention",

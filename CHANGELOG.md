@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Choose what each chat's Agent may do on your computer: Ask for approval, Approve for me, or Full access. Ask for approval keeps the Agent in its workspace and asks before it reaches the network or changes other files. New chats start with Full access; change the default in Settings → Agents and any chat's mode from the composer, with Full access confirmed whenever you turn it on. When the Agent needs permission, the request appears where it stopped with the exact command or change, and you approve it, decline it, or just send a message to redirect the Agent. Delegated tasks never exceed their parent's mode, Agents cannot approve each other, and every Agent keeps full access to your Pages and chats in every mode.
 - Agents can answer the questions other chats ask. `session_question` reads and answers a pending question in another chat, and the Agent that delegated a task answers its questions with `task_question`, woken by the question or returned from its wait. Each answer shows which conversation gave it, and approvals still come to you.
 - Agents can stop another chat, mark chats read or unread, and manage the messages queued behind a chat's current turn, within the same permissions as that chat.
 - New page in the command palette creates a page where you are and opens it beside you: in your Project's database in a Project or one of its chats, and in Space otherwise.

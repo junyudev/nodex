@@ -1,3 +1,4 @@
+import type { AgentDispatchModeLimit } from "@nodex/agent-runtime/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -47,6 +48,7 @@ export class ThreadExecution extends Context.Service<
       threadId: string,
       prompt: string,
       operationId?: string,
+      modeLimit?: AgentDispatchModeLimit,
     ) => Effect.Effect<void, ThreadExecutionError>;
     readonly reconcileRecovery?: (
       operations: readonly { readonly threadId: string; readonly operationId: string }[],
@@ -132,12 +134,12 @@ export const make = Effect.gen(function* () {
         owned("commit", threadId, codex.commit(threadId, location)),
         (port) => port.commit(threadId, location),
       ),
-    followUp: (threadId, prompt, operationId) =>
+    followUp: (threadId, prompt, operationId, modeLimit) =>
       route(
         "follow-up",
         threadId,
-        owned("follow-up", threadId, codex.followUp(threadId, prompt)),
-        (port) => port.followUp(threadId, prompt, operationId),
+        owned("follow-up", threadId, codex.followUp(threadId, prompt, modeLimit)),
+        (port) => port.followUp(threadId, prompt, operationId, modeLimit),
       ),
     reconcileRecovery: (operations) =>
       Option.isSome(runtime)

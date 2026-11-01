@@ -10,8 +10,8 @@ import * as BoundedQueue from "@t3tools/shared/BoundedQueue";
  * the running execution's next step boundary, so it ends with the turn it
  * joined. Fork and rollback cut the native history before the user message a
  * turn prompted with (its `nativeTurnRef`). Plan selects OpenCode's planning
- * agent while native execution retains full access. Native permission callbacks
- * are approved automatically; genuine question forms remain interactive.
+ * agent. Native permission requests and question forms wait for the person
+ * on the Session that owns the turn.
  *
  * A `subagent` call runs in a child session shown as a subagent thread. A
  * background one outlives its turn; when it ends, OpenCode starts a parent
@@ -51,6 +51,7 @@ import {
   type MessageId,
   type ModelSelection,
   type ProviderInstanceId,
+  type ProviderApprovalDecision,
   type RunId,
   type RuntimeRequestId,
 } from "@t3tools/contracts";
@@ -74,6 +75,7 @@ import * as ExecutionHost from "@t3tools/provider-core/server/ExecutionHost";
 import * as OpenCode2Client from "./OpenCode2Client.ts";
 import * as OpenCode2Server from "./OpenCode2Server.ts";
 import * as OpenCodeRuntime from "../OpenCodeRuntime.ts";
+import { openCodePermissionRequestKind } from "../adapter.ts";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
 import { buildRuntimeInstructions } from "@t3tools/provider-core/server/runtimeInstructions";
 import { SKILL_MENTION_PATTERN } from "@t3tools/shared/composerInlineTokens";
@@ -105,6 +107,7 @@ const OpenCode2ProviderCapabilities = {
     // One server serves every location, so one session runtime owns them all.
     supportsMultipleProviderThreadsPerSession: true,
     supportsModelSwitchInSession: true,
+    supportsRuntimeModeSwitchInSession: true,
     supportsProviderSwitchingViaHandoff: true,
     pendingRequestsSurviveRestart: false,
   },
@@ -362,6 +365,8 @@ interface ThreadState {
   title: string | undefined;
   /** The native session's execution rules as last read or written. */
   rules: ReadonlyArray<Rule> | undefined;
+  policy: RulesPolicy;
+  readonly grants: Array<Rule>;
   /** The session's `subagent` calls still running, by tool call id. */
   readonly calls: Map<string, SubagentCall>;
   /**
@@ -420,9 +425,10 @@ type TurnTerminal =
   | { readonly status: "failed"; readonly failure: ReturnType<typeof makeProviderFailure> };
 
 type Rule = Permission.Rule;
+type RulesPolicy = Pick<ProviderAdapter.ProviderAdapterV2RuntimePolicy, "runtimeMode">;
 type NativeForm = EventOf<"form.created">["data"]["form"];
 
-/** A genuine question form waiting for a user answer. */
+/** A live native approval or question awaiting the person who owns the Session. */
 interface PendingRequest {
   readonly request: OrchestrationV2RuntimeRequest;
   readonly item: OrchestrationV2TurnItem;
@@ -434,7 +440,15 @@ interface PendingRequest {
   readonly sessionId: string;
   /** Set once T3 sends its answer; the orchestrator has already recorded it. */
   answering: boolean;
-  readonly native: { readonly type: "form"; readonly id: string; readonly form: NativeForm };
+  readonly native:
+    | {
+        readonly type: "permission";
+        readonly id: string;
+        readonly action: string;
+        readonly resources: ReadonlyArray<string>;
+        readonly save: ReadonlyArray<string>;
+      }
+    | { readonly type: "form"; readonly id: string; readonly form: NativeForm };
 }
 
 const rule = (action: string, effect: Rule["effect"]): Rule => ({ action, resource: "*", effect });
@@ -459,7 +473,47 @@ export const nodexAppMcpServerName = Effect.fn("nodexAppMcpServerName")(function
   return `${NODEX_APP_MCP_SERVER}-${Hex.encode(digest).slice(0, 16)}`;
 });
 
-const EXECUTION_PERMISSIONS: ReadonlyArray<Rule> = [rule("*", "allow")];
+// Last match wins: each Session uses only its own authenticated Nodex MCP entry.
+const mcpRules = (name: string | null): ReadonlyArray<Rule> =>
+  name === null
+    ? []
+    : [
+        { action: `${NODEX_APP_MCP_SERVER}-*`, resource: "*", effect: "deny" },
+        { action: `${name}_*`, resource: "*", effect: "allow" },
+      ];
+
+export const openCode2SessionRules = (
+  policy: RulesPolicy,
+  paths: ReadonlyArray<Rule>,
+  grants: ReadonlyArray<Rule>,
+  mcpServerName: string | null,
+): ReadonlyArray<Rule> => [
+  ...(policy.runtimeMode === "full-access"
+    ? [rule("*", "allow")]
+    : [
+        rule("*", "ask"),
+        ...["shell", "edit", "external_directory"].map((action) => rule(action, "ask")),
+        ...["read", "glob", "grep", "lsp", "todowrite", "task", "skill", "question"].map((action) =>
+          rule(action, "allow"),
+        ),
+        { action: "read", resource: "*.env", effect: "ask" as const },
+        { action: "read", resource: "*.env.*", effect: "ask" as const },
+        { action: "read", resource: "*.env.example", effect: "allow" as const },
+        ...grants,
+      ]),
+  ...paths,
+  ...mcpRules(mcpServerName),
+];
+
+const DECLINED = "The user declined this request.";
+const declinedNote = (action: string, resources: ReadonlyArray<string>) =>
+  `The user declined the ${action} request${resources.length === 0 ? "" : ` (${resources.join(", ")})`}. Do not retry it; continue without it or ask the user how to proceed.`;
+const sessionGrantLabel = (action: string, save: ReadonlyArray<string>) =>
+  save.every((pattern) => pattern === "*")
+    ? `Allow every ${action} request this session`
+    : `Allow ${save.join(", ")} this session`;
+const approves = (decision: ProviderApprovalDecision) =>
+  decision === "accept" || decision === "acceptForSession";
 
 const sameRules = (left: ReadonlyArray<Rule> | undefined, right: ReadonlyArray<Rule>) =>
   left?.length === right.length &&
@@ -535,6 +589,14 @@ const formGone = {
   FormAlreadySettledError: () => Effect.void,
   SessionNotFoundError: () => Effect.void,
 };
+
+const agentPaths = (rules: ReadonlyArray<Rule>) =>
+  rules.filter(
+    (entry) =>
+      entry.effect === "allow" &&
+      entry.resource !== "*" &&
+      (entry.action === "edit" || entry.action === "external_directory"),
+  );
 
 const ref = (nativeId: string, strength: "strong" | "weak" = "strong") => ({
   driver: OPENCODE_PROVIDER,
@@ -838,6 +900,14 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
     const threads = new Map<string, ThreadState>();
     // A subagent's session, by its id, to the thread whose session started it.
     const childOwners = new Map<string, ThreadState>();
+    const sessionGrants = new Map<string, Array<Rule>>();
+    const grantsFor = (sessionId: string) => {
+      const existing = sessionGrants.get(sessionId);
+      if (existing !== undefined) return existing;
+      const grants: Array<Rule> = [];
+      sessionGrants.set(sessionId, grants);
+      return grants;
+    };
     // What OpenCode announced about a subagent's session, until its call names it.
     const announced = new Map<string, EventOf<"session.created">["data"]>();
     // Subagent sessions a dropped held execution started, and the subagents
@@ -848,6 +918,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
     // Sessions of these threads with an execution running, seen on the stream.
     const busy = new Set<string>();
     const pending = new Map<RuntimeRequestId, PendingRequest>();
+    const settledRequests = new Set<string>();
     const nativeCalls = new Map<string, { readonly token: string; readonly turn: ActiveTurn }>();
     const nativeCallKey = (source: {
       readonly sessionID: string;
@@ -907,6 +978,8 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
       agent: "build",
       title: undefined,
       rules: undefined,
+      policy: childOwners.get(sessionId)?.policy ?? input.runtimePolicy,
+      grants: grantsFor(sessionId),
       calls: new Map(),
       subagent,
       wakes: [],
@@ -1496,7 +1569,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
       yield* emitSubagent(call);
       // A reused native session may still carry old execution settings.
       if (info === undefined) {
-        yield* writeRules(child).pipe(
+        yield* writeRules(child, rootOf(call.state).policy).pipe(
           Effect.timeout(REQUEST_REPLY_TIMEOUT),
           Effect.ignore({ log: true }),
         );
@@ -1691,7 +1764,8 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
         const background = callsAbove(entry.sessionId).some((call) => call.background);
         if (
           entry.sessionId === state.sessionId ||
-          (entry.turn === turn && !(background && terminal.status !== "failed"))
+          (entry.turn === turn &&
+            (entry.native.type === "permission" || !(background && terminal.status !== "failed")))
         ) {
           yield* settleRequest(entry, "cancelled");
         }
@@ -1841,6 +1915,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
     /** Stops tracking a request; the session is waiting only while any remain. */
     const forgetRequest = Effect.fnUntraced(function* (entry: PendingRequest) {
       if (!pending.delete(entry.request.id)) return false;
+      settledRequests.add(`${entry.sessionId}:${entry.native.id}`);
       if (pending.size === 0 && session.status === "waiting") {
         yield* setSessionStatus("running", null);
       }
@@ -1931,16 +2006,26 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
       }
     });
 
-    /**
-     * Shows a genuine question on its native session's running turn.
-     */
     const showRequest = Effect.fnUntraced(function* (
       sessionId: string,
       native: PendingRequest["native"],
-      body: {
-        readonly type: "user_input_request";
-        readonly questions: ReadonlyArray<OrchestrationV2UserInputQuestion>;
-      },
+      body:
+        | {
+            readonly type: "approval_request";
+            readonly requestKind: Extract<
+              OrchestrationV2TurnItem,
+              { type: "approval_request" }
+            >["requestKind"];
+            readonly prompt: string;
+            readonly options: Extract<
+              OrchestrationV2TurnItem,
+              { type: "approval_request" }
+            >["options"];
+          }
+        | {
+            readonly type: "user_input_request";
+            readonly questions: ReadonlyArray<OrchestrationV2UserInputQuestion>;
+          },
     ) {
       const target = requestTurn(sessionId);
       if (target === undefined) return;
@@ -1958,7 +2043,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
         nodeId,
         providerTurnId: turn.providerTurn.id,
         nativeRequestRef: ref(native.id),
-        kind: "user_input",
+        kind: body.type === "approval_request" ? body.requestKind : "user_input",
         status: "pending",
         responseCapability: { type: "live", providerSessionId: input.providerSessionId },
         createdAt: now,
@@ -1996,13 +2081,24 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
         completedAt: null,
         updatedAt: now,
       };
-      const item: OrchestrationV2TurnItem = {
-        ...base,
-        title: "User input",
-        type: "user_input_request",
-        requestId,
-        questions: body.questions,
-      };
+      const item: OrchestrationV2TurnItem =
+        body.type === "approval_request"
+          ? {
+              ...base,
+              title: native.type === "permission" ? native.action : null,
+              type: "approval_request",
+              requestId,
+              requestKind: body.requestKind,
+              prompt: body.prompt,
+              ...(body.options === undefined ? {} : { options: body.options }),
+            }
+          : {
+              ...base,
+              title: "User input",
+              type: "user_input_request",
+              requestId,
+              questions: body.questions,
+            };
       pending.set(requestId, {
         request,
         item,
@@ -2022,6 +2118,35 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
       });
       yield* emit({ type: "turn_item.updated", driver, turnItem: item });
       yield* setSessionStatus("waiting", null);
+    });
+
+    const onPermissionAsked = Effect.fnUntraced(function* (data: Permission.Request) {
+      const turn = threads.get(data.sessionID)?.active;
+      const toolName =
+        data.source === undefined ? undefined : turn?.tools.get(data.source.id)?.name;
+      const save = data.save ?? [];
+      yield* showRequest(
+        data.sessionID,
+        { type: "permission", id: data.id, action: data.action, resources: data.resources, save },
+        {
+          type: "approval_request",
+          requestKind: openCodePermissionRequestKind(data.action, toolName),
+          prompt: data.resources.length === 0 ? data.action : data.resources.join("\n"),
+          options: [
+            { decision: "cancel", label: "Cancel" },
+            { decision: "decline", label: "Decline" },
+            ...(save.length > 0
+              ? [
+                  {
+                    decision: "acceptForSession" as const,
+                    label: sessionGrantLabel(data.action, save),
+                  },
+                ]
+              : []),
+            { decision: "accept", label: "Approve" },
+          ],
+        },
+      );
     });
 
     const onFormCreated = Effect.fnUntraced(function* (form: NativeForm) {
@@ -2070,6 +2195,12 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
         | { readonly type: "form"; readonly form: NativeForm },
     ) {
       const asking = asked.type === "permission" ? asked.request.sessionID : asked.form.sessionID;
+      const native =
+        asked.type === "permission"
+          ? { type: "permission" as const, id: asked.request.id }
+          : { type: "form" as const, id: asked.form.id };
+      if (settledRequests.has(`${asking}:${native.id}`))
+        return yield* stopStaleRequest(asking, native);
       // A stray belongs to no turn: its request is refused, which ends its run.
       if (strays.has(asking)) {
         return yield* stopStaleRequest(
@@ -2081,28 +2212,36 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
       }
       const state = ownerOf(asking);
       if (state === undefined) return;
-      if (asked.type === "permission") {
-        if (state.unsettled)
-          return yield* stopStaleRequest(asking, { type: "permission", id: asked.request.id });
-        const delivered = yield* deliver(
-          client.permission
-            .reply({
-              sessionID: asked.request.sessionID,
-              requestID: asked.request.id,
-              decision: "once",
-            })
-            .pipe(Effect.catchTags(permissionGone)),
-        );
-        if (!delivered)
-          yield* abandonRequest(threads.get(asking) ?? state, "permission answer not delivered");
-        return;
-      }
       const target = requestTurn(asking);
       if (target !== undefined && !target.turn.awaitingStart) {
+        const appThreadId = rootOf(state).providerThread.appThreadId;
+        const ownMcp = appThreadId === null ? undefined : yield* mcpServerNameFor(appThreadId);
+        if (
+          asked.type === "permission" &&
+          ownMcp !== undefined &&
+          asked.request.action.startsWith(`${ownMcp}_`)
+        ) {
+          yield* deliver(
+            client.permission
+              .reply({
+                sessionID: asked.request.sessionID,
+                requestID: asked.request.id,
+                decision: "once",
+              })
+              .pipe(Effect.catchTags(permissionGone)),
+          );
+          return;
+        }
+        if (asked.type === "permission") return yield* onPermissionAsked(asked.request);
         return yield* onFormCreated(asked.form);
       }
-      if (state.unsettled || state.active?.awaitingStart === true) {
-        yield* stopStaleRequest(asking, { type: "form", id: asked.form.id });
+      if (asked.type === "permission" || state.unsettled || state.active?.awaitingStart === true) {
+        yield* stopStaleRequest(
+          asking,
+          asked.type === "permission"
+            ? { type: "permission", id: asked.request.id }
+            : { type: "form", id: asked.form.id },
+        );
       }
     });
 
@@ -2578,6 +2717,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
         event.type === "form.cancelled"
       ) {
         const nativeId = event.type === "permission.replied" ? event.data.requestID : event.data.id;
+        settledRequests.add(`${event.data.sessionID}:${nativeId}`);
         const entry = [...pending.values()].find((candidate) => candidate.native.id === nativeId);
         if (entry === undefined || entry.answering) return;
         const answered =
@@ -2987,13 +3127,76 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
       contextWindows.has(directoryOf(cwd)) ? Effect.void : readModels(directoryOf(cwd));
     yield* readModels(session.cwd);
 
-    const writeRules = Effect.fnUntraced(function* (state: ThreadState) {
-      if (sameRules(state.rules, EXECUTION_PERMISSIONS)) return;
-      yield* client.session.update({
-        sessionID: Session.ID.make(state.sessionId),
-        permissions: EXECUTION_PERMISSIONS,
-      });
-      state.rules = EXECUTION_PERMISSIONS;
+    const agentRules = new Map<string, ReadonlyMap<string, ReadonlyArray<Rule>>>();
+    const pathsFor = Effect.fnUntraced(function* (
+      directory: string,
+      agents: ReadonlyArray<string>,
+    ) {
+      let known = agentRules.get(directory);
+      if (known === undefined) {
+        // A fresh server lists no agents for its first moments, like its models.
+        const listed = yield* client.agent.list({ location: { directory } }).pipe(
+          Effect.repeat({
+            until: (list) => list.data.length > 0,
+            schedule: Schedule.spaced("250 millis"),
+          }),
+          Effect.timeout("5 seconds"),
+          Effect.tapCause((cause) =>
+            Effect.logWarning(
+              "Could not list OpenCode agents; their path rules are skipped.",
+              cause,
+            ).pipe(Effect.annotateLogs({ errorTag: causeErrorTag(cause) })),
+          ),
+          Effect.option,
+        );
+        if (listed._tag === "None") return [];
+        known = new Map(
+          listed.value.data.map((agent) => [agent.id, agentPaths(agent.permissions)]),
+        );
+        agentRules.set(directory, known);
+      }
+      const paths = new Map<string, Rule>();
+      for (const agent of agents) {
+        for (const entry of known.get(agent) ?? []) {
+          paths.set(`${entry.action}\u0000${entry.resource}`, entry);
+        }
+      }
+      return [...paths.values()];
+    });
+
+    const rulesFor = Effect.fnUntraced(function* (
+      thread: Pick<ThreadState, "directory" | "agent" | "grants">,
+      policy: RulesPolicy,
+      appThreadId: string | null,
+    ) {
+      const paths =
+        policy.runtimeMode === "full-access"
+          ? []
+          : yield* pathsFor(thread.directory, [thread.agent]);
+      return openCode2SessionRules(
+        policy,
+        paths,
+        policy.runtimeMode === "full-access" ? [] : thread.grants,
+        appThreadId === null ? null : yield* mcpServerNameFor(appThreadId),
+      );
+    });
+
+    const writeRules = Effect.fnUntraced(function* (state: ThreadState, policy: RulesPolicy) {
+      if (state.policy.runtimeMode !== policy.runtimeMode) {
+        state.grants.length = 0;
+        for (const [child, owner] of childOwners) {
+          if (rootOf(owner) === rootOf(state)) sessionGrants.get(child)?.splice(0);
+        }
+      }
+      const rules = yield* rulesFor(state, policy, rootOf(state).providerThread.appThreadId);
+      if (!sameRules(state.rules, rules)) {
+        yield* client.session.update({
+          sessionID: Session.ID.make(state.sessionId),
+          permissions: rules,
+        });
+        state.rules = rules;
+      }
+      state.policy = policy;
     });
 
     /** Names the session after its thread when they differ. */
@@ -3683,7 +3886,11 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
           const directory = threadInput.runtimePolicy.cwd ?? host.paths.cwd;
           const policy = threadInput.runtimePolicy;
           // A new session runs OpenCode's default agent.
-          const permissions = EXECUTION_PERMISSIONS;
+          const permissions = yield* rulesFor(
+            { directory, agent: "build", grants: [] },
+            policy,
+            threadInput.threadId,
+          );
           const title = threadInput.title?.trim() || undefined;
           // A session created with a title is never titled by OpenCode's own model.
           const created = yield* client.session.create({
@@ -3723,6 +3930,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
             },
             directory,
           );
+          state.policy = policy;
           return state.providerThread;
         }).pipe(
           Effect.mapError((cause) =>
@@ -3758,7 +3966,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
           if (!loaded) yield* stopLeftoverRequests(state);
           // The session gets the rules for this thread's mode: it may have run
           // another mode, or been made by 1.x or an earlier build.
-          yield* writeRules(state);
+          yield* writeRules(state, threadInput.runtimePolicy ?? state.policy);
           // A thread moved to another worktree takes its session with it.
           if (cwd != null && native.location.directory !== cwd) {
             yield* client.session.move({
@@ -3872,8 +4080,8 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
                 });
                 state.agent = agent;
               }
-              // Root and existing native children share full execution access.
-              yield* writeRules(state);
+              // Apply this turn's mode to the root and live children before admission.
+              yield* writeRules(state, turnInput.runtimePolicy);
               // A thread renamed since the last turn, or titled after its first prompt.
               yield* writeTitle(state, turnInput.appThread.title).pipe(
                 Effect.timeout(REQUEST_REPLY_TIMEOUT),
@@ -3881,7 +4089,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
               );
               for (const call of runningCalls(state)) {
                 if (call.child === undefined) continue;
-                yield* writeRules(call.child).pipe(
+                yield* writeRules(call.child, turnInput.runtimePolicy).pipe(
                   Effect.timeout(REQUEST_REPLY_TIMEOUT),
                   Effect.ignore({ log: true }),
                 );
@@ -4015,9 +4223,27 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
           const state = threads.get(sessionId);
           if (state === undefined) return;
           const turn = state.active;
-          const awaitRetirement = Effect.suspend(() => Effect.succeed(
-            !hasBackground(state) && !sessionsOf(state).some((entry) => busy.has(entry.sessionId) || entry.unsettled || entry.active !== undefined),
-          )).pipe(Effect.repeat({ until: (done) => done, schedule: Schedule.spaced("25 millis") }), Effect.timeout(INTERRUPT_TIMEOUT));
+          for (const entry of Array.from(pending.values())) {
+            if (
+              (turn?.providerTurn.id === interruptInput.providerTurnId && entry.turn === turn) ||
+              (interruptInput.requestRuntimeRestart === true &&
+                rootOf(entry.state) === rootOf(state))
+            ) {
+              yield* settleRequest(entry, "cancelled");
+            }
+          }
+          const awaitRetirement = Effect.suspend(() =>
+            Effect.succeed(
+              !hasBackground(state) &&
+                !sessionsOf(state).some(
+                  (entry) =>
+                    busy.has(entry.sessionId) || entry.unsettled || entry.active !== undefined,
+                ),
+            ),
+          ).pipe(
+            Effect.repeat({ until: (done) => done, schedule: Schedule.spaced("25 millis") }),
+            Effect.timeout(INTERRUPT_TIMEOUT),
+          );
           // OpenCode stops a foreground subagent with its parent, but not a
           // background one: a user Stop (`requestRuntimeRestart`) stops those
           // too, and the execution OpenCode starts to report them. A turn
@@ -4102,10 +4328,12 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
             return;
           }
           threads.delete(nativeId);
+          sessionGrants.delete(nativeId);
           for (const [child, owner] of childOwners) {
             if (owner !== state) continue;
             childOwners.delete(child);
             threads.delete(child);
+            sessionGrants.delete(child);
           }
           if (state.mcp !== undefined) yield* removeMcp(state.mcp);
         }),
@@ -4118,23 +4346,80 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
               detail: `No pending OpenCode request ${requestInput.requestId}`,
             });
           }
-          const { answers } = requestInput;
+          const { decision, answers } = requestInput;
           const { native } = entry;
+          if (native.type === "permission" && decision === undefined) {
+            return yield* new ProviderAdapter.ProviderAdapterProtocolError({
+              driver,
+              detail: `OpenCode approval request ${requestInput.requestId} requires a decision`,
+            });
+          }
+          if (
+            native.type === "permission" &&
+            decision === "acceptForSession" &&
+            native.save.length === 0
+          ) {
+            return yield* new ProviderAdapter.ProviderAdapterProtocolError({
+              driver,
+              detail: "This OpenCode request has no session-scoped resources",
+            });
+          }
           entry.answering = true;
-          const asker = threads.get(entry.sessionId) ?? entry.state;
-          const delivered = yield* deliver(
-            (answers === undefined
-              ? client.session.form.cancel({
-                  sessionID: entry.sessionId,
-                  formID: Form.ID.make(native.id),
-                })
-              : client.session.form.reply({
-                  sessionID: entry.sessionId,
-                  formID: Form.ID.make(native.id),
-                  answer: formAnswer(native.form, answers),
-                })
-            ).pipe(Effect.catchTags(formGone)),
-          );
+          // Native always grants persist in the asking subagent's project, not its parent's.
+          const asker = threads.get(entry.sessionId) ?? {
+            ...entry.state,
+            sessionId: entry.sessionId,
+            grants: grantsFor(entry.sessionId),
+            rules: undefined,
+          };
+          if (native.type === "permission" && decision === "acceptForSession") {
+            const state = asker;
+            for (const resource of native.save) {
+              if (
+                !state.grants.some(
+                  (grant) => grant.action === native.action && grant.resource === resource,
+                )
+              ) {
+                state.grants.push({ action: native.action, resource, effect: "allow" });
+              }
+            }
+            yield* writeRules(state, rootOf(state).policy).pipe(Effect.ignore({ log: true }));
+          }
+          const sessionID = Session.ID.make(entry.sessionId);
+          if (native.type === "permission" && decision === "decline") {
+            yield* client.session
+              .synthetic({
+                sessionID,
+                text: declinedNote(native.action, native.resources),
+                delivery: "steer",
+                resume: false,
+              })
+              .pipe(Effect.timeout(REQUEST_REPLY_TIMEOUT), Effect.ignore({ log: true }));
+          }
+          const delivered = yield* native.type === "permission"
+            ? deliver(
+                client.permission
+                  .reply({
+                    sessionID,
+                    requestID: Permission.ID.make(native.id),
+                    decision: decision !== undefined && approves(decision) ? "once" : "reject",
+                    ...(decision === "decline" ? { message: DECLINED } : {}),
+                  })
+                  .pipe(Effect.catchTags(permissionGone)),
+              )
+            : deliver(
+                (answers === undefined || decision === "decline" || decision === "cancel"
+                  ? client.session.form.cancel({
+                      sessionID: entry.sessionId,
+                      formID: Form.ID.make(native.id),
+                    })
+                  : client.session.form.reply({
+                      sessionID: entry.sessionId,
+                      formID: Form.ID.make(native.id),
+                      answer: formAnswer(native.form, answers),
+                    })
+                ).pipe(Effect.catchTags(formGone)),
+              );
           yield* forgetRequest(entry);
           if (!delivered) yield* abandonRequest(asker, "answer not delivered");
         }).pipe(
@@ -4293,7 +4578,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
           const cwd = forkInput.runtimePolicy?.cwd;
           const state = register(providerThread, forked, cwd ?? forked.location.directory);
           // The fork runs the target thread's mode, not whatever the source ran.
-          yield* writeRules(state);
+          yield* writeRules(state, forkInput.runtimePolicy ?? state.policy);
           if (cwd != null && forked.location.directory !== cwd) {
             yield* client.session.move({
               sessionID: Session.ID.make(forked.id),

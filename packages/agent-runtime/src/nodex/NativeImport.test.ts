@@ -186,6 +186,7 @@ const fixture = (
   } = {},
 ) => {
   const calls: Array<{ method: string; params: Record<string, unknown> }> = [];
+  const runtimeModes: Array<typeof NativeImportInput.Type.runtimeMode> = [];
   let failSecondPage = options.failSecondPage ?? false;
   let serial = 0;
   const sourceUser = options.userEntry ?? user;
@@ -273,6 +274,7 @@ const fixture = (
   const session = { codexNative: native } as Adapter.ProviderAdapterV2SessionRuntime;
   return {
     calls,
+    runtimeModes,
     recover: () => {
       failSecondPage = false;
     },
@@ -298,6 +300,7 @@ const fixture = (
           Layer.mock(ProviderSessionManagerV2)({
             open: (request) =>
               Effect.gen(function* () {
+                runtimeModes.push(request.runtimePolicy.runtimeMode);
                 const at = yield* DateTime.now;
                 yield* sink
                   .write({
@@ -1338,3 +1341,23 @@ it.effect("refuses opaque provider media without inventing a local path", () =>
     assert.match(String(failure), /resource_unavailable/);
   }).pipe(Effect.provide(layer)),
 );
+
+for (const runtimeMode of [undefined, "auto"] as const) {
+  it.effect(
+    `imports native history under ${runtimeMode ?? "the safe default"} without escalating its reader`,
+    () =>
+      Effect.gen(function* () {
+        const source = fixture();
+        const importThread = yield* source.makeImport;
+        const target = { ...input(), ...(runtimeMode ? { runtimeMode } : {}) };
+        yield* importThread(target);
+        const store = yield* ProjectionStoreV2;
+        assert.equal(
+          (yield* store.getThreadProjection(target.threadId)).thread.runtimeMode,
+          runtimeMode ?? "approval-required",
+        );
+        assert.deepEqual(source.runtimeModes, [runtimeMode ?? "approval-required"]);
+        assert.isFalse(source.calls.some(({ method }) => /start|resume|fork/.test(method)));
+      }).pipe(Effect.provide(layer)),
+  );
+}

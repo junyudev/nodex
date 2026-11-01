@@ -259,6 +259,8 @@ export const ServerProvider = Schema.Struct({
   badgeLabel: Schema.optional(TrimmedNonEmptyString),
   continuation: Schema.optional(ServerProviderContinuation),
   showInteractionModeToggle: Schema.optional(Schema.Boolean),
+  // Execution modes the driver enforces natively; absent means every mode.
+  supportedRuntimeModes: Schema.optional(Schema.Array(RuntimeMode)),
   // The driver streams context window usage, so a started thread will have a
   // meter once its activities load. Clients reserve the meter's space on it.
   reportsContextWindow: Schema.optional(Schema.Boolean),

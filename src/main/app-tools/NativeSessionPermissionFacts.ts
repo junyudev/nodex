@@ -60,8 +60,8 @@ export const make = Effect.gen(function* () {
       permissions.sandboxPolicy.type === "dangerFullAccess"
         ? ("full-access" as const)
         : permissions.sandboxPolicy.type === "workspaceWrite"
-          ? permissions.approvalPolicy === "never"
-            ? ("auto-accept-edits" as const)
+          ? permissions.approvalsReviewer === "auto_review"
+            ? ("auto" as const)
             : ("approval-required" as const)
           : permissions.sandboxPolicy.type === "readOnly"
             ? ("approval-required" as const)

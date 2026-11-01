@@ -12,6 +12,7 @@ export type ProjectAgentDockChatIndicator =
   | "background"
   | "unread"
   | "waiting"
+  | "approval"
   | "error";
 
 export interface ProjectAgentDockTargetRow {
@@ -106,6 +107,7 @@ export function buildProjectAgentDockPendingWorktreeModel(
 
 function indicatorForSession(session: ProjectSessionSummary): ProjectAgentDockChatIndicator {
   if (session.thread?.statusType === "systemError") return "error";
+  if (session.thread?.statusActiveFlags.includes("waitingOnApproval")) return "approval";
   if (nativeThreadWaitsOnPerson(session.thread?.statusActiveFlags)) return "waiting";
   if (session.thread?.statusType === "active") return "running";
   if (session.unread) return "unread";
@@ -115,7 +117,8 @@ function indicatorForSession(session: ProjectSessionSummary): ProjectAgentDockCh
 export function attentionForIndicator(
   indicator: ProjectAgentDockChatIndicator,
 ): ProjectAgentDockAttention {
-  if (indicator === "waiting" || indicator === "error") return "request";
+  if (indicator === "waiting" || indicator === "approval" || indicator === "error")
+    return "request";
   if (indicator === "running" || indicator === "background" || indicator === "unread")
     return "activity";
   return "none";

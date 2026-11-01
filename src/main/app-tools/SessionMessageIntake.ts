@@ -101,7 +101,7 @@ export const make = Effect.gen(function* () {
         : {
             sessionId: target.session.id,
             threadId: null,
-            runtimeMode: "full-access",
+            runtimeMode: callerFacts.runtimeMode,
             interactionMode: callerFacts.interactionMode,
             modelSelection: callerFacts.modelSelection,
           };
@@ -201,9 +201,10 @@ export const make = Effect.gen(function* () {
       attachments,
       ...(modelSelection ? { modelSelection } : {}),
       senderThreadId: input.sourceThreadId,
-      ...(currentCallerFacts.interactionMode === "plan"
-        ? { interactionModeCeiling: "plan" as const }
-        : {}),
+      modeLimit: {
+        runtimeMode: currentCallerFacts.runtimeMode,
+        interactionMode: currentCallerFacts.interactionMode,
+      },
       ...(input.sourceRunId === undefined ? {} : { senderRunId: input.sourceRunId }),
     };
     if (runtimeOwned) return yield* runtime.send(command);
@@ -223,10 +224,12 @@ export const make = Effect.gen(function* () {
       projectId: target.session.project_id ?? null,
       title: target.session.display_title,
       modelSelection: modelSelection ?? targetFacts.modelSelection,
+      runtimeMode: currentCallerFacts.runtimeMode,
       interactionMode: targetFacts.interactionMode,
-      ...(currentCallerFacts.interactionMode === "plan"
-        ? { interactionModeCeiling: "plan" as const }
-        : {}),
+      modeLimit: {
+        runtimeMode: currentCallerFacts.runtimeMode,
+        interactionMode: currentCallerFacts.interactionMode,
+      },
       resources: attachments,
       messageFingerprint: fingerprint,
       message: { messageId, text: input.request.prompt, attachments: [] },

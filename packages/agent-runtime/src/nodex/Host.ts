@@ -1,3 +1,4 @@
+import { NODEX_APP_TASK_TOOL_NAMES } from "@t3tools/shared/nodexAppMcp";
 import * as NodeHttp from "node:http";
 import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
 import * as Layer from "effect/Layer";
@@ -25,7 +26,12 @@ export const layer = (configuration: AgentRuntimeConfiguration) => {
   );
   return HttpRouter.serve(routes, { disableLogger: true }).pipe(
     Layer.provideMerge(engine),
-    Layer.provideMerge(Sessions.layer),
+    Layer.provideMerge(
+      Sessions.layerWithToolNames([
+        ...NODEX_APP_TASK_TOOL_NAMES,
+        ...(configuration.host?.tools ?? []).map((tool) => tool.name),
+      ]),
+    ),
     Layer.provideMerge(ServerEnvironment.layerIdentity),
     Layer.provideMerge(ServerSecrets.layer),
     Layer.provideMerge(Runtime.layerConfiguration(configuration)),

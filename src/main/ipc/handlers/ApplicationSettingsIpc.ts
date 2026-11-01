@@ -1,3 +1,4 @@
+import { AgentRuntimeSettingsSchema } from "../../../shared/agent-runtime-settings";
 import {
   USAGE_METER_SETTINGS_CHANGED_CHANNEL,
   UsageMeterSettingsSchema,
@@ -81,6 +82,7 @@ type SettingsReadChannel =
   | "settings:thread-notifications:get"
   | "settings:window-restore:get"
   | "settings:usage-meters:get"
+  | "settings:agent-runtime:get"
   | "settings:composer-predictions:get"
   | "settings:inbox:get";
 
@@ -615,6 +617,25 @@ export const live: Layer.Layer<
             "update-window-restore-settings",
             { type: "update-window-restore", input: parsed },
             (value) => value.windowRestore,
+          ),
+        ),
+      ),
+    );
+    yield* handleRead(
+      "settings:agent-runtime:get",
+      "Agent execution settings",
+      (value) => value.agentRuntime,
+    );
+    yield* ipc.handlePlainCommand("settings:agent-runtime:update", (event, input: unknown) =>
+      authorize(event, "Agent execution settings").pipe(
+        Effect.andThen(
+          parse("parse-agent-runtime-settings", () => AgentRuntimeSettingsSchema.parse(input)),
+        ),
+        Effect.flatMap((parsed) =>
+          update(
+            "update-agent-runtime-settings",
+            { type: "update-agent-runtime", input: parsed },
+            (value) => value.agentRuntime,
           ),
         ),
       ),

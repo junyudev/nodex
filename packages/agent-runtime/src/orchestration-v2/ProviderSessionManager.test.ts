@@ -5634,3 +5634,149 @@ it.effect(
       );
     }),
 );
+
+it.effect.each([false, true])(
+  "runtime mode changes reopen only before idle reuse when in-session switching is %s",
+  (inSession) =>
+    Effect.gen(function* () {
+      const state = yield* Ref.make(emptyState);
+      const background = yield* Ref.make(false);
+      yield* Effect.gen(function* () {
+        const manager = yield* ProviderSessionManager.ProviderSessionManagerV2;
+        const eventSink = yield* EventSink.EventSinkV2;
+        const ids = yield* IdAllocator.IdAllocatorV2;
+        const now = yield* DateTime.now;
+        const threadId = ThreadId.make(`thread:runtime-mode:${inSession}`);
+        const providerSessionId = yield* ids.allocate.providerSession({
+          providerInstanceId: modelSelection.instanceId,
+          threadId,
+        });
+        yield* eventSink.write({
+          events: [yield* makeThreadCreatedEvent({ idAllocator: ids, threadId, now })],
+        });
+        const opened = yield* manager.open({
+          threadId,
+          providerSessionId,
+          modelSelection,
+          runtimePolicy,
+        });
+        const thread = yield* (yield* ProjectionStore.ProjectionStoreV2).getThread(threadId);
+        const providerThread = makeProviderThread({
+          idAllocator: ids,
+          threadId,
+          providerSessionId,
+          now,
+        });
+        const runId = ids.derive.run({ threadId, ordinal: 1 });
+        yield* opened.startTurn({
+          appThread: thread,
+          threadId,
+          runId,
+          runOrdinal: 1,
+          providerTurnOrdinal: 1,
+          attemptId: ids.derive.runAttempt({ runId, attemptOrdinal: 1 }),
+          rootNodeId: ids.derive.rootNode({ runId }),
+          providerThread,
+          modelSelection,
+          runtimePolicy,
+          message: {
+            createdBy: "user",
+            creationSource: "web",
+            messageId: yield* ids.allocate.message({ threadId, ordinal: 1 }),
+            text: "Work",
+            attachments: [],
+          },
+        });
+        yield* eventSink.write({
+          events: [
+            {
+              id: yield* ids.allocate.event({ threadId }),
+              threadId,
+              occurredAt: now,
+              type: "thread.runtime-mode-updated",
+              payload: { ...thread, runtimeMode: "approval-required" },
+            },
+          ],
+        });
+        assert.equal((yield* Ref.get(state)).closeCount, 0);
+        assert.equal((yield* Ref.get(state)).interruptCount, 0);
+        assert.equal((yield* Ref.get(state)).openCount, 1);
+        const whileRunning = yield* manager
+          .open({
+            threadId,
+            providerSessionId,
+            modelSelection,
+            runtimePolicy: { ...runtimePolicy, runtimeMode: "approval-required" },
+          })
+          .pipe(Effect.result);
+        assert.equal(whileRunning._tag, inSession ? "Success" : "Failure");
+        assert.equal((yield* Ref.get(state)).closeCount, 0);
+        const subscription = yield* opened.subscribeEvents!;
+        const terminal = subscription.events.pipe(Stream.take(1), Stream.runDrain);
+        yield* Queue.offer((yield* Ref.get(state)).eventQueues.get(String(providerSessionId))!, {
+          type: "turn.terminal",
+          driver: CODEX_DRIVER,
+          providerThreadId: providerThread.id,
+          providerTurnId: ids.derive.providerTurn({
+            driver: CODEX_DRIVER,
+            nativeTurnId: "mode-switch",
+          }),
+          runOrdinal: 1,
+          status: "completed",
+          failure: null,
+          threadDisposition: "reusable",
+        });
+        yield* terminal;
+        yield* subscription.close;
+        if (!inSession) {
+          yield* Ref.set(background, true);
+          assert.equal(
+            (yield* manager
+              .open({
+                threadId,
+                providerSessionId,
+                modelSelection,
+                runtimePolicy: { ...runtimePolicy, runtimeMode: "approval-required" },
+              })
+              .pipe(Effect.result))._tag,
+            "Failure",
+          );
+          assert.equal((yield* Ref.get(state)).closeCount, 0);
+          yield* Ref.set(background, false);
+        }
+        const next = yield* manager.open({
+          threadId,
+          providerSessionId,
+          modelSelection,
+          runtimePolicy: { ...runtimePolicy, runtimeMode: "approval-required" },
+        });
+        assert.equal(next === opened, inSession);
+        assert.equal((yield* Ref.get(state)).openCount, inSession ? 1 : 2);
+        assert.equal((yield* Ref.get(state)).closeCount, inSession ? 0 : 1);
+        assert.equal((yield* Ref.get(state)).interruptCount, 0);
+        // Reusing the newly applied policy does not reopen repeatedly.
+        yield* manager.open({
+          threadId,
+          providerSessionId,
+          modelSelection,
+          runtimePolicy: { ...runtimePolicy, runtimeMode: "approval-required" },
+        });
+        assert.equal((yield* Ref.get(state)).openCount, inSession ? 1 : 2);
+      }).pipe(
+        Effect.provide(
+          layerTest({
+            state,
+            idleTimeoutMs: 60_000,
+            hasPendingBackgroundWork: Ref.get(background),
+            capabilities: {
+              ...ExclusiveCapabilities,
+              sessions: {
+                ...ExclusiveCapabilities.sessions,
+                supportsRuntimeModeSwitchInSession: inSession,
+              },
+            },
+          }),
+        ),
+      );
+    }),
+);

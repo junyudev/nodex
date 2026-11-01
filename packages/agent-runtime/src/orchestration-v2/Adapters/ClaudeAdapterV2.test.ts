@@ -45,6 +45,7 @@ import {
   type ProviderInstanceEnvironment,
   ProviderDriverKind,
   type ProviderReplayTranscript,
+  type ProviderApprovalDecision,
   ProviderSessionId,
   ProviderTurnId,
   RunAttemptId,
@@ -292,10 +293,10 @@ describe("ClaudeAdapterV2 runtime query policy", () => {
   });
 
   it.each([
-    ["--permission-mode acceptEdits", "bypassPermissions"],
-    ["--dangerously-skip-permissions", "bypassPermissions"],
-    ["--dangerously-skip-permissions --permission-mode plan", "bypassPermissions"],
-  ])("keeps full execution access when launch args contain %s", (launchArgs, expected) => {
+    ["--permission-mode acceptEdits", "acceptEdits"],
+    ["--dangerously-skip-permissions", "acceptEdits"],
+    ["--dangerously-skip-permissions --permission-mode plan", "acceptEdits"],
+  ])("keeps the Session execution mode when launch args contain %s", (launchArgs, expected) => {
     const options = ClaudeAdapterV2.makeClaudeQueryOptions({
       modelSelection: CLAUDE_TEST_MODEL_SELECTION,
       nativeThreadId: "native-permission-override",
@@ -362,6 +363,196 @@ describe("ClaudeAdapterV2 runtime query policy", () => {
     });
     assert.isTrue(
       ClaudeAdapterV2.ClaudeProviderCapabilitiesV2.planning.supportsStructuredQuestions,
+    );
+  });
+
+  it.each([
+    ["approval-required", false, false, "acceptEdits"],
+    ["auto", false, false, "auto"],
+    ["auto", false, true, "acceptEdits"],
+    ["full-access", false, false, "bypassPermissions"],
+    ["full-access", true, false, "auto"],
+    ["full-access", true, true, "acceptEdits"],
+  ] as const)(
+    "maps %s with managed restrictions (%s, %s) to %s",
+    (runtimeMode, bypassDisabled, autoDisabled, expected) => {
+      for (const interactionMode of ["default", "plan"] as const) {
+        const policy = ClaudeAdapterV2.claudeRuntimeQueryPolicyForRuntimePolicy(
+          ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
+            runtimeMode,
+            interactionMode,
+            cwd: "/workspace",
+          }),
+          { bypassDisabled, autoDisabled },
+        );
+        const options = ClaudeAdapterV2.makeClaudeQueryOptions({
+          modelSelection: CLAUDE_TEST_MODEL_SELECTION,
+          nativeThreadId: "policy-test",
+          resume: false,
+          cwd: "/workspace",
+          ...policy,
+        });
+        assert.equal(options.permissionMode, expected);
+        assert.equal(options.allowDangerouslySkipPermissions, bypassDisabled ? undefined : true);
+      }
+    },
+  );
+
+  it("honors explicit false in effective managed settings", () => {
+    assert.deepEqual(
+      ClaudeAdapterV2.claudePermissionAvailability({
+        disableAutoMode: false,
+        permissions: { disableAutoMode: false, disableBypassPermissionsMode: false },
+      }),
+      { bypassDisabled: false, autoDisabled: false },
+    );
+  });
+
+  it.each(["accept", "acceptForSession", "decline", "cancel"] as const)(
+    "translates %s into a native permission result",
+    (decision) => {
+      const result = ClaudeAdapterV2.permissionResultFromDecision({
+        toolName: "Bash",
+        toolInput: { command: "pwd" },
+        toolUseID: "tool",
+        decision,
+        ...(decision === "decline" ? { feedback: "Use the project script instead." } : {}),
+      });
+      if (decision === "accept" || decision === "acceptForSession") {
+        assert.equal(result.behavior, "allow");
+        if (result.behavior !== "allow") return;
+        assert.deepEqual(result.updatedInput, { command: "pwd" });
+        assert.equal(
+          result.decisionClassification,
+          decision === "accept" ? "user_temporary" : "user_permanent",
+        );
+        assert.deepEqual(
+          result.updatedPermissions,
+          decision === "accept"
+            ? undefined
+            : [
+                {
+                  type: "addRules",
+                  rules: [{ toolName: "Bash" }],
+                  behavior: "allow",
+                  destination: "session",
+                },
+              ],
+        );
+        return;
+      }
+      assert.equal(result.behavior, "deny");
+      if (result.behavior !== "deny") return;
+      assert.equal(result.interrupt, decision === "cancel" ? true : undefined);
+      assert.equal(
+        result.message,
+        decision === "decline"
+          ? "Use the project script instead."
+          : "User cancelled tool execution.",
+      );
+    },
+  );
+
+  it("keeps native permission suggestions within this Session", () => {
+    const result = ClaudeAdapterV2.permissionResultFromDecision({
+      toolName: "Read",
+      toolInput: {},
+      toolUseID: "read",
+      decision: "acceptForSession",
+      suggestions: [
+        { type: "addDirectories", directories: ["/reference"], destination: "userSettings" },
+        {
+          type: "addRules",
+          rules: [{ toolName: "Read", ruleContent: "/reference/**" }],
+          behavior: "allow",
+          destination: "projectSettings",
+        },
+      ],
+    });
+    assert.equal(result.behavior, "allow");
+    if (result.behavior !== "allow") return;
+    assert.deepEqual(
+      result.updatedPermissions?.map((update) => update.destination),
+      ["session", "session"],
+    );
+  });
+
+  it.each([undefined, { source: "userSettings", toolName: "Bash" }])(
+    "explains full-access checks and limits the approval options (%s)",
+    (matchedAskRule) => {
+      assert.deepEqual(
+        ClaudeAdapterV2.claudeApprovalPresentation({
+          permissionMode: "bypassPermissions",
+          prompt: "rm -rf /tmp/test",
+          callbackOptions: {
+            decisionReason: "\u001b[31mNative check\u001b[0m",
+            suppressAlwaysAllowRule: true,
+            ...(matchedAskRule === undefined ? {} : { matchedAskRule }),
+          },
+        }),
+        {
+          reason: "Native check",
+          fullAccessOverride: matchedAskRule === undefined ? "provider_check" : "ask_rule",
+          options: [
+            { decision: "decline", label: "Decline" },
+            { decision: "accept", label: "Approve" },
+          ],
+        },
+      );
+    },
+  );
+
+  it.effect("cancels an approval when its native callback is aborted", () =>
+    Effect.gen(function* () {
+      const decision = yield* Deferred.make<{
+        readonly decision: ProviderApprovalDecision;
+        readonly feedback?: string;
+      }>();
+      const controller = new AbortController();
+      const waiting = yield* ClaudeAdapterV2.awaitClaudeApprovalDecision(
+        decision,
+        controller.signal,
+      ).pipe(Effect.forkScoped);
+      controller.abort();
+      assert.deepEqual(yield* Fiber.join(waiting), { decision: "cancel" });
+    }).pipe(Effect.scoped),
+  );
+
+  it("keeps MCP consent separate from information forms and ignores schema defaults", () => {
+    const request = {
+      serverName: "calendar",
+      message: "Create the event?",
+      requestedSchema: {
+        properties: {
+          decision: {
+            type: "string",
+            enum: ["allow_once", "allow_always"],
+            default: "allow_always",
+          },
+          persist: { type: "boolean", default: true },
+        },
+        required: ["decision", "persist"],
+      },
+    };
+    assert.deepEqual(ClaudeAdapterV2.claudeMcpElicitationAcceptance(request), {
+      action: "accept",
+      content: { decision: "allow_once", persist: false },
+    });
+    assert.isUndefined(
+      ClaudeAdapterV2.claudeMcpElicitationAcceptance({
+        ...request,
+        requestedSchema: {
+          properties: { email: { type: "string", default: "hidden@example.com" } },
+          required: ["email"],
+        },
+      }),
+    );
+    assert.isUndefined(
+      ClaudeAdapterV2.claudeMcpElicitationAcceptance({
+        ...request,
+        mode: "url",
+        url: "https://example.com/connect",
+      }),
     );
   });
 
@@ -445,7 +636,7 @@ describe("ClaudeAdapterV2 MCP query overrides", () => {
     assert.deepEqual(overrides, { allowedTools: ["Read"] });
   });
 
-  it("pre-approves all nodex_app tools when attaching an MCP session without an allowlist", () => {
+  it("attaches the host server without a prefix-wide tool allow rule", () => {
     const threadId = ThreadId.make("thread-claude-mcp-no-allowlist");
     const mcpSession = mcpSessionFor(threadId);
     const overrides = ClaudeAdapterV2.claudeMcpQueryOverrides({
@@ -453,12 +644,11 @@ describe("ClaudeAdapterV2 MCP query overrides", () => {
     });
 
     assert.deepEqual(overrides, {
-      allowedTools: [ClaudeAdapterV2.CLAUDE_NODEX_APP_TOOL_WILDCARD],
       mcpServers: NODEX_APP_MCP_SERVERS,
     });
   });
 
-  it("extends an explicit allowlist with the nodex_app wildcard", () => {
+  it("removes ambiguous host prefix rules from an explicit allowlist", () => {
     const threadId = ThreadId.make("thread-claude-mcp-with-allowlist");
     const mcpSession = mcpSessionFor(threadId);
     const overrides = ClaudeAdapterV2.claudeMcpQueryOverrides({
@@ -467,7 +657,7 @@ describe("ClaudeAdapterV2 MCP query overrides", () => {
     });
 
     assert.deepEqual(overrides, {
-      allowedTools: ["Read", "mcp__nodex_app__*"],
+      allowedTools: ["Read"],
       mcpServers: NODEX_APP_MCP_SERVERS,
     });
   });
@@ -527,7 +717,7 @@ describe("ClaudeAdapterV2 native protocol logging", () => {
       allowedTools: ["Read"],
     });
     assert.deepEqual(overrides, {
-      allowedTools: ["Read", "mcp__nodex_app__*"],
+      allowedTools: ["Read"],
       mcpServers: {
         nodex_app: {
           type: "http",
@@ -738,7 +928,7 @@ describe("ClaudeAdapterV2 context usage", () => {
 });
 
 describe("ClaudeAdapterV2 full execution access", () => {
-  it.effect("conveys Plan intent and automatically allows native commands", () =>
+  it.effect("conveys Plan intent and asks about native checks under full access", () =>
     Effect.scoped(
       Effect.gen(function* () {
         const fileSystem = yield* FileSystem.FileSystem;
@@ -822,20 +1012,41 @@ describe("ClaudeAdapterV2 full execution access", () => {
         assert.isFunction(canUseTool);
 
         const requestEvents: ProviderAdapter.ProviderAdapterV2Event[] = [];
+        const requests =
+          yield* Queue.unbounded<
+            Extract<ProviderAdapter.ProviderAdapterV2Event, { type: "runtime_request.updated" }>
+          >();
         yield* runtime.events.pipe(
-          Stream.runForEach((event) => Effect.sync(() => requestEvents.push(event))),
+          Stream.runForEach((event) =>
+            Effect.gen(function* () {
+              requestEvents.push(event);
+              if (event.type === "runtime_request.updated") yield* Queue.offer(requests, event);
+            }),
+          ),
           Effect.forkScoped,
         );
         const command = { command: "node -e 'console.log(42)'" };
-        const result = yield* Effect.promise(() =>
+        const callback = yield* Effect.promise(() =>
           canUseTool!("Bash", command, {
             signal: new AbortController().signal,
             toolUseID: "tool-bash-full-access",
             requestId: "request-bash-full-access",
           }),
-        );
+        ).pipe(Effect.forkScoped);
+        const request = (yield* Queue.take(requests)).runtimeRequest;
+        assert.equal(request.kind, "command");
+        yield* runtime.respondToRuntimeRequest({ requestId: request.id, decision: "accept" });
+        const result = yield* Fiber.join(callback);
         assert.equal(result?.behavior, "allow");
-        assert.isFalse(requestEvents.some((event) => event.type === "runtime_request.updated"));
+        const item = requestEvents.find(
+          (event) =>
+            event.type === "turn_item.updated" && event.turnItem.type === "approval_request",
+        );
+        assert.isDefined(item);
+        if (item?.type === "turn_item.updated" && item.turnItem.type === "approval_request") {
+          assert.equal(item.turnItem.prompt, command.command);
+          assert.equal(item.turnItem.fullAccessOverride, "provider_check");
+        }
       }).pipe(
         Effect.provide(
           Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
@@ -1045,22 +1256,6 @@ describe("ClaudeAdapterV2 resume compaction", () => {
         assert.isFunction(callback);
         const canUseTool = openedOptions?.canUseTool;
         assert.isFunction(canUseTool);
-        const ordinaryToolResult = yield* Effect.promise(() =>
-          canUseTool!(
-            "Bash",
-            { command: "pwd" },
-            {
-              signal: new AbortController().signal,
-              toolUseID: "tool-bash-full-access",
-              requestId: "request-bash-full-access",
-            },
-          ),
-        );
-        assert.deepEqual(ordinaryToolResult, {
-          behavior: "allow",
-          updatedInput: { command: "pwd" },
-          toolUseID: "tool-bash-full-access",
-        });
         const longQuestion = `Choose a deployment target: ${"region ".repeat(80)}`;
         const questionRequestEvent = yield* runtime.events.pipe(
           Stream.filter((event) => event.type === "runtime_request.updated"),
@@ -2164,6 +2359,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     readonly refuseLiveSelectionOnce?: boolean;
     readonly refuseSourceRootsOnce?: boolean;
     readonly startupFrames?: ReadonlyArray<SDKMessage>;
+    readonly resolveSettings?: (typeof import("@anthropic-ai/claude-agent-sdk"))["resolveSettings"];
   }) =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
@@ -2231,6 +2427,12 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         readAppliedSettings: Effect.succeed(options?.appliedSettings ?? null),
       };
       const permissionModeChanges: Array<string> = [];
+      const nativeModesAtOffer: Array<string> = [];
+      let nativeMode = "";
+      const approvalReceipts =
+        yield* Queue.unbounded<
+          Extract<ProviderAdapter.ProviderAdapterV2Event, { type: "turn_item.updated" }>
+        >();
       const continuationRequests: Array<ProviderContinuationRequests.ProviderContinuationRequest> =
         [];
       const continuationReceipts =
@@ -2255,6 +2457,9 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       const adapter = yield* ClaudeAdapterV2.makeClaudeAdapterV2({
         instanceId: ClaudeAdapterV2.CLAUDE_DEFAULT_INSTANCE_ID,
         settings: options?.settings ?? DEFAULT_CLAUDE_SETTINGS,
+        resolveSettings:
+          options?.resolveSettings ??
+          (async () => ({ effective: {}, sources: [], provenance: {} })),
         environment: options?.environment ?? {},
         attachmentsDir,
         fileSystem,
@@ -2272,6 +2477,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           open: (input) =>
             Effect.gen(function* () {
               openedOptions = input.options;
+              nativeMode = input.options.permissionMode;
               actualNativeModel = input.options.model;
               if (options?.freshQueueOnReopen === true && processQueues.length > 0) {
                 const processMessages = yield* Queue.unbounded<SDKMessage>();
@@ -2281,6 +2487,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
                   offer: (message: SDKUserMessage) =>
                     Effect.sync(() => {
                       offeredMessages.push(message);
+                      nativeModesAtOffer.push(nativeMode);
                       sourceRootsAtOffer.push([...nativeSourceRoots]);
                       nativeModelsAtOffer.push(actualNativeModel);
                     }),
@@ -2316,6 +2523,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
                 offer: (message) =>
                   Effect.sync(() => {
                     offeredMessages.push(message);
+                    nativeModesAtOffer.push(nativeMode);
                     sourceRootsAtOffer.push([...nativeSourceRoots]);
                     nativeModelsAtOffer.push(actualNativeModel);
                   }),
@@ -2323,6 +2531,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
                 setPermissionMode: (mode) =>
                   Effect.sync(() => {
                     permissionModeChanges.push(mode);
+                    nativeMode = mode;
                   }),
                 stopTask: options?.stopTask ?? (() => Effect.void),
                 ...(options?.getTaskOutput === undefined
@@ -2355,6 +2564,8 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         Stream.runForEach((event) =>
           Effect.gen(function* () {
             events.push(event);
+            if (event.type === "turn_item.updated" && event.turnItem.type === "approval_request")
+              yield* Queue.offer(approvalReceipts, event);
             if (event.type === "provider_thread.updated")
               yield* Queue.offer(providerThreadReceipts, event);
             if (event.type === "subagent.updated") {
@@ -2396,6 +2607,8 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           return uuid;
         },
         permissionModeChanges,
+        nativeModesAtOffer,
+        approvalReceipts,
         continuationRequests,
         continuationReceipts,
         events,
@@ -2413,6 +2626,456 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       };
     });
   const makeWakeHarness = makeWakeHarnessWithOptions();
+
+  it.effect("applies Session execution mode changes on the live query before the next prompt", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeWakeHarness;
+      const now = yield* DateTime.now;
+      for (const [index, runtimeMode] of (
+        ["approval-required", "auto", "full-access", "approval-required"] as const
+      ).entries()) {
+        yield* harness.runtime.startTurn(
+          makeClaudeTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now,
+            attemptId: RunAttemptId.make(`mode-${index}`),
+            providerTurnOrdinal: index + 1,
+            text: "Continue",
+            attachments: [],
+            runtimePolicy: ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
+              ...CLAUDE_TEST_RUNTIME_POLICY,
+              runtimeMode,
+            }),
+          }),
+        );
+        yield* Queue.offer(
+          harness.sdkMessages,
+          makeResultFrame({ uuid: `mode-result-${index}`, result: "Done" }),
+        );
+        yield* Queue.take(harness.terminalReceipts);
+      }
+      assert.lengthOf(harness.processQueues, 1);
+      assert.deepEqual(harness.permissionModeChanges, ["auto", "bypassPermissions", "acceptEdits"]);
+      assert.deepEqual(harness.nativeModesAtOffer, [
+        "acceptEdits",
+        "auto",
+        "bypassPermissions",
+        "acceptEdits",
+      ]);
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+      ),
+    ),
+  );
+
+  it.effect.each(["accept", "acceptForSession", "decline", "cancel"] as const)(
+    "delivers %s and feedback to the native approval callback",
+    (decision) =>
+      Effect.gen(function* () {
+        const harness = yield* makeWakeHarness;
+        yield* harness.runtime.startTurn(
+          makeClaudeTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now: yield* DateTime.now,
+            attemptId: RunAttemptId.make("approval"),
+            text: "Run a command",
+            attachments: [],
+          }),
+        );
+        const canUseTool = harness.getOpenedOptions()!.canUseTool!;
+        const result = yield* Effect.promise(() =>
+          canUseTool(
+            "Bash",
+            { command: "npm publish" },
+            {
+              toolUseID: "publish",
+              requestId: "request-publish",
+              signal: new AbortController().signal,
+              title: "Publish package",
+              decisionReason: "\u001b[33mAn ask rule applies\u001b[0m",
+              matchedAskRule: { source: "userSettings", toolName: "Bash" },
+            },
+          ),
+        ).pipe(Effect.forkScoped);
+        const event = yield* Queue.take(harness.approvalReceipts);
+        assert.equal(event.turnItem.type, "approval_request");
+        if (event.turnItem.type !== "approval_request") return;
+        const item = event.turnItem;
+        assert.equal(item.prompt, "npm publish");
+        assert.equal(item.reason, "An ask rule applies");
+        assert.equal(item.fullAccessOverride, "ask_rule");
+        const request = harness.events.find(
+          (entry) =>
+            entry.type === "runtime_request.updated" && entry.runtimeRequest.id === item.requestId,
+        );
+        assert.isDefined(request);
+        if (request?.type === "runtime_request.updated")
+          assert.deepEqual(request.runtimeRequest.responseCapability, {
+            type: "live",
+            providerSessionId: ProviderSessionId.make("provider-session-claude-wake"),
+            supportsFeedback: true,
+          });
+        yield* harness.runtime.respondToRuntimeRequest({
+          requestId: item.requestId,
+          decision,
+          ...(decision === "decline" ? { feedback: "Run npm pack first." } : {}),
+        });
+        assert.deepEqual(
+          yield* Fiber.join(result),
+          ClaudeAdapterV2.permissionResultFromDecision({
+            toolName: "Bash",
+            toolInput: { command: "npm publish" },
+            toolUseID: "publish",
+            decision,
+            ...(decision === "decline" ? { feedback: "Run npm pack first." } : {}),
+          }),
+        );
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
+  );
+
+  it.effect("restores the managed fallback after Claude enters native Plan mode", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeWakeHarnessWithOptions({
+        resolveSettings: async () => ({
+          effective: {
+            permissions: { disableBypassPermissionsMode: "disable" },
+            disableAutoMode: "disable",
+          },
+          sources: [],
+          provenance: {},
+        }),
+      });
+      const now = yield* DateTime.now;
+      yield* harness.runtime.startTurn(
+        makeClaudeTestTurnInput({
+          threadId: harness.threadId,
+          providerThread: harness.providerThread,
+          now,
+          attemptId: RunAttemptId.make("managed-plan-1"),
+          text: "Plan",
+          attachments: [],
+        }),
+      );
+      yield* harness.offerAndWait(
+        claudeSdkFrame({
+          type: "system",
+          subtype: "status",
+          status: null,
+          permissionMode: "plan",
+          uuid: "managed-plan-status",
+          session_id: WAKE_NATIVE_SESSION,
+        }),
+      );
+      yield* Queue.offer(
+        harness.sdkMessages,
+        makeResultFrame({ uuid: "managed-plan-result", result: "Planned" }),
+      );
+      yield* Queue.take(harness.terminalReceipts);
+      yield* harness.runtime.startTurn(
+        makeClaudeTestTurnInput({
+          threadId: harness.threadId,
+          providerThread: harness.providerThread,
+          now,
+          attemptId: RunAttemptId.make("managed-plan-2"),
+          providerTurnOrdinal: 2,
+          text: "Continue",
+          attachments: [],
+        }),
+      );
+      assert.equal(harness.getOpenedOptions()?.permissionMode, "acceptEdits");
+      assert.isUndefined(harness.getOpenedOptions()?.allowDangerouslySkipPermissions);
+      assert.deepEqual(harness.permissionModeChanges, ["acceptEdits"]);
+      assert.lengthOf(harness.processQueues, 1);
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+      ),
+    ),
+  );
+
+  it.effect("cancels unanswered approval callbacks when the native turn ends", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeWakeHarness;
+      yield* harness.runtime.startTurn(
+        makeClaudeTestTurnInput({
+          threadId: harness.threadId,
+          providerThread: harness.providerThread,
+          now: yield* DateTime.now,
+          attemptId: RunAttemptId.make("terminal-approval"),
+          text: "Run a command",
+          attachments: [],
+        }),
+      );
+      const response = yield* Effect.promise(() =>
+        harness.getOpenedOptions()!.canUseTool!(
+          "Bash",
+          { command: "npm publish" },
+          {
+            toolUseID: "publish",
+            requestId: "publish",
+            signal: new AbortController().signal,
+          },
+        ),
+      ).pipe(Effect.forkScoped);
+      const approval = yield* Queue.take(harness.approvalReceipts);
+      if (approval.turnItem.type !== "approval_request") throw new Error("Expected approval");
+      yield* Queue.offer(
+        harness.sdkMessages,
+        makeResultFrame({ uuid: "terminal-approval-result", result: "Stopped" }),
+      );
+      yield* Queue.take(harness.terminalReceipts);
+      const result = yield* Fiber.join(response);
+      assert.equal(result?.behavior, "deny");
+      if (result?.behavior === "deny") assert.equal(result.interrupt, true);
+      const late = yield* harness.runtime
+        .respondToRuntimeRequest({ requestId: approval.turnItem.requestId, decision: "accept" })
+        .pipe(Effect.result);
+      assert.equal(late._tag, "Failure");
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+      ),
+    ),
+  );
+
+  it.effect.each(["accept", "decline", "cancel", "abort"] as const)(
+    "handles MCP elicitation consent with %s",
+    (decision) =>
+      Effect.gen(function* () {
+        const harness = yield* makeWakeHarness;
+        yield* harness.runtime.startTurn(
+          makeClaudeTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now: yield* DateTime.now,
+            attemptId: RunAttemptId.make("elicitation"),
+            text: "Create an event",
+            attachments: [],
+          }),
+        );
+        const onElicitation = harness.getOpenedOptions()!.onElicitation!;
+        assert.isFunction(onElicitation);
+        const controller = new AbortController();
+        const response = yield* Effect.promise(() =>
+          onElicitation(
+            {
+              serverName: "calendar",
+              displayName: "Calendar",
+              message: "Create an event?",
+              requestedSchema: {
+                properties: { decision: { type: "string", enum: ["allow_once", "always"] } },
+                required: ["decision"],
+              },
+            },
+            { signal: controller.signal, requestId: "elicitation" },
+          ),
+        ).pipe(Effect.forkScoped);
+        const event = yield* Queue.take(harness.approvalReceipts);
+        if (event.turnItem.type !== "approval_request") throw new Error("Expected approval");
+        const item = event.turnItem;
+        assert.equal(item.requestKind, "mcp-elicitation");
+        assert.equal(item.appName, "Calendar");
+        assert.deepEqual(
+          item.options?.map((option) => option.decision),
+          ["cancel", "decline", "accept"],
+        );
+        if (decision === "abort") controller.abort();
+        else
+          yield* harness.runtime.respondToRuntimeRequest({ requestId: item.requestId, decision });
+        assert.deepEqual(
+          yield* Fiber.join(response),
+          decision === "accept"
+            ? { action: "accept", content: { decision: "allow_once" } }
+            : { action: decision === "abort" ? "cancel" : decision },
+        );
+        if (decision !== "abort") return;
+        const late = yield* harness.runtime
+          .respondToRuntimeRequest({ requestId: item.requestId, decision: "accept" })
+          .pipe(Effect.result);
+        assert.equal(late._tag, "Failure");
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
+  );
+
+  it.effect(
+    "reads custom-home and remote permission switches without treating false as disabled",
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const home = yield* fs.makeTempDirectoryScoped();
+        yield* fs.writeFileString(
+          `${home}/settings.json`,
+          JSON.stringify({
+            permissions: { disableBypassPermissionsMode: false },
+            disableAutoMode: false,
+          }),
+        );
+        yield* fs.writeFileString(
+          `${home}/remote-settings.json`,
+          JSON.stringify({
+            permissions: { disableBypassPermissionsMode: "disable" },
+            disableAutoMode: false,
+          }),
+        );
+        const harness = yield* makeWakeHarnessWithOptions({
+          settings: { ...DEFAULT_CLAUDE_SETTINGS, homePath: home },
+        });
+        yield* harness.runtime.startTurn(
+          makeClaudeTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now: yield* DateTime.now,
+            attemptId: RunAttemptId.make("custom-home-policy"),
+            text: "Continue",
+            attachments: [],
+          }),
+        );
+        assert.equal(harness.getOpenedOptions()?.permissionMode, "auto");
+        assert.isUndefined(harness.getOpenedOptions()?.allowDangerouslySkipPermissions);
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
+  );
+
+  it.effect.each([
+    { settings: { permissions: { disableBypassPermissionsMode: "disable" } }, expected: "auto" },
+    {
+      settings: {
+        permissions: { disableBypassPermissionsMode: "disable" },
+        disableAutoMode: "disable",
+      },
+      expected: "acceptEdits",
+    },
+    {
+      settings: { permissions: { disableBypassPermissionsMode: false }, disableAutoMode: false },
+      expected: "bypassPermissions",
+    },
+  ] as const)(
+    "uses effective managed settings in query creation ($expected)",
+    ({ settings, expected }) =>
+      Effect.gen(function* () {
+        const harness = yield* makeWakeHarnessWithOptions({
+          resolveSettings: async () => ({
+            effective: settings as import("@anthropic-ai/claude-agent-sdk").Settings,
+            sources: [],
+            provenance: {},
+          }),
+        });
+        yield* harness.runtime.startTurn(
+          makeClaudeTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now: yield* DateTime.now,
+            attemptId: RunAttemptId.make("managed"),
+            text: "Continue",
+            attachments: [],
+          }),
+        );
+        assert.equal(harness.getOpenedOptions()?.permissionMode, expected);
+        assert.equal(
+          harness.getOpenedOptions()?.allowDangerouslySkipPermissions,
+          expected === "bypassPermissions" ? true : undefined,
+        );
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
+  );
+
+  it.effect.each(["approval-required", "auto", "full-access"] as const)(
+    "pre-allows only the Session's nodex_app tools in %s",
+    (runtimeMode) =>
+      Effect.gen(function* () {
+        const harness = yield* makeWakeHarness;
+        const sessions = yield* McpProviderSessions.McpProviderSessions;
+        yield* sessions.set({
+          threadId: harness.threadId,
+          environmentId: EnvironmentId.make("local"),
+          providerSessionId: "provider-session-claude-wake",
+          registeredToolNames: ["read_page"],
+          providerInstanceId: ClaudeAdapterV2.CLAUDE_DEFAULT_INSTANCE_ID,
+          browserToolsAvailable: false,
+          endpoint: "http://127.0.0.1:43123/mcp",
+          authorizationHeader: "Bearer test",
+        });
+        yield* harness.runtime.startTurn(
+          makeClaudeTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now: yield* DateTime.now,
+            attemptId: RunAttemptId.make("content"),
+            text: "Read a Page",
+            attachments: [],
+            runtimePolicy: ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
+              ...CLAUDE_TEST_RUNTIME_POLICY,
+              runtimeMode,
+            }),
+          }),
+        );
+        assert.notInclude(harness.getOpenedOptions()?.allowedTools ?? [], "mcp__nodex_app__*");
+        const result = yield* Effect.promise(() =>
+          harness.getOpenedOptions()!.canUseTool!(
+            "mcp__nodex_app__read_page",
+            {},
+            {
+              signal: new AbortController().signal,
+              toolUseID: "content",
+              requestId: "content",
+              mcpServer: { name: "nodex_app", source: "sdk" },
+            },
+          ),
+        );
+        assert.equal(result?.behavior, "allow");
+        assert.equal(Queue.sizeUnsafe(harness.approvalReceipts), 0);
+        const controller = new AbortController();
+        const other = yield* Effect.promise(() =>
+          harness.getOpenedOptions()!.canUseTool!(
+            "mcp__nodex_app__evil__publish",
+            {},
+            {
+              signal: controller.signal,
+              toolUseID: "other",
+              requestId: "other",
+              mcpServer: { name: "nodex_app__evil", source: "project" },
+            },
+          ),
+        ).pipe(Effect.forkScoped);
+        const outcome = yield* Effect.raceFirst(
+          Queue.take(harness.approvalReceipts).pipe(Effect.as("approval")),
+          Fiber.join(other).pipe(Effect.as("completed")),
+        );
+        assert.equal(outcome, "approval");
+        controller.abort();
+        const denied = yield* Fiber.join(other);
+        assert.equal(denied?.behavior, "deny");
+        if (denied?.behavior === "deny") assert.equal(denied.interrupt, true);
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
+  );
 
   it.effect(
     "synchronizes current Project Sources before prompts without replacing background work",
@@ -2633,7 +3296,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       );
       const toolName = "mcp__weather__get_weather";
       const id = "weather-call";
-      yield* Effect.promise(() =>
+      const permission = yield* Effect.promise(() =>
         harness.getOpenedOptions()!.canUseTool!(
           toolName,
           { city: "Berlin" },
@@ -2643,7 +3306,14 @@ describe("ClaudeAdapterV2 background wake turns", () => {
             requestId: "weather-request",
           },
         ),
-      );
+      ).pipe(Effect.forkScoped);
+      const approval = yield* Queue.take(harness.approvalReceipts);
+      if (approval.turnItem.type !== "approval_request") throw new Error("Expected approval");
+      yield* harness.runtime.respondToRuntimeRequest({
+        requestId: approval.turnItem.requestId,
+        decision: "accept",
+      });
+      yield* Fiber.join(permission);
       yield* harness.offerAndWait(
         claudeSdkFrame({
           type: "assistant",
@@ -14545,4 +15215,44 @@ it("uses the bundled SDK executable and excludes filesystem settings for isolate
   assert.isUndefined(options.pathToClaudeCodeExecutable);
   assert.deepEqual(options.settingSources, []);
   assert.strictEqual(options.env?.CLAUDE_CONFIG_DIR, "/profile/account/claude");
+});
+
+it("describes the native permission suggestions in the remembered approval option", () => {
+  const presentation = ClaudeAdapterV2.claudeApprovalPresentation({
+    permissionMode: "acceptEdits",
+    prompt: "git status",
+    callbackOptions: {
+      suggestions: [
+        {
+          type: "addRules",
+          behavior: "allow",
+          destination: "session",
+          rules: [{ toolName: "Bash", ruleContent: "git:*" }],
+        },
+      ],
+    },
+  });
+  assert.equal(
+    presentation.options?.find((option) => option.decision === "acceptForSession")?.label,
+    "Allow Bash(git:*) for this chat",
+  );
+});
+
+it("pre-allows the exact tool inventory registered by the host for its HTTP MCP server", () => {
+  const overrides = ClaudeAdapterV2.claudeMcpQueryOverrides({
+    mcpSession: {
+      environmentId: EnvironmentId.make("local"),
+      threadId: ThreadId.make("inventory"),
+      providerSessionId: "inventory",
+      providerInstanceId: ClaudeAdapterV2.CLAUDE_DEFAULT_INSTANCE_ID,
+      endpoint: "http://127.0.0.1:43123/mcp",
+      authorizationHeader: "Bearer test",
+      browserToolsAvailable: false,
+      registeredToolNames: ["read_page", "delegate_task"],
+    },
+  });
+  assert.deepEqual(overrides.allowedTools, [
+    "mcp__nodex_app__read_page",
+    "mcp__nodex_app__delegate_task",
+  ]);
 });

@@ -856,3 +856,59 @@ describe("Agent Runtime stage commands", () => {
     expect(message).not.toHaveBeenCalled();
   });
 });
+
+it("keeps Page context as a steer after approval feedback consumes the typed message", async () => {
+  const { createAgentApprovalRuntime } = await import("./agent-approval-runtime");
+  const context = fixture();
+  const approvals = createAgentApprovalRuntime(async (approval, response) => {
+    await context.respond({
+      ...context.target,
+      requestId: approval.requestId,
+      runId: approval.runId,
+      ...response,
+    });
+  });
+  approvals.update({
+    pending: [
+      {
+        requestId: "approval",
+        runId: "run:original",
+        kind: "permission",
+        detail: "Read private data",
+        reason: null,
+        appName: null,
+        options: [{ decision: "decline", label: "Decline" }],
+        fullAccessOverride: null,
+        live: true,
+        supportsFeedback: true,
+        createdAt: 0,
+      },
+    ],
+    suppressedItemIds: new Set(),
+  });
+  const prepare = vi.fn(
+    async (text: string, _promptInput?: import("../../../shared/types").CodexPromptInput) => ({
+      text,
+    }),
+  );
+  const actions = createAgentRuntimeStageActions({
+    target: () => context.target,
+    owner: () => ({ ...context.owner, approvals }),
+    transport: { message: context.message } as unknown as AgentRuntimeRendererTransport,
+    prepare,
+  });
+  const pageReferences = [{ pageId: "page", titleSnapshot: "Public data", selectedBlockIds: [] }];
+  await actions.onSendPrompt!("Use this Page instead", {
+    promptInput: { text: "Use this Page instead", pageReferences },
+  });
+  expect(context.respond).toHaveBeenCalledWith({
+    ...context.target,
+    requestId: "approval",
+    runId: "run:original",
+    decision: "decline",
+    feedback: "Use this Page instead",
+  });
+  expect(prepare).toHaveBeenCalledWith("", { text: "", pageReferences }, undefined);
+  expect(context.message).toHaveBeenCalledWith(expect.objectContaining({ intent: "steer" }));
+  approvals.clear();
+});

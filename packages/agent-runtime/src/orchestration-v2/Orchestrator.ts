@@ -1,3 +1,4 @@
+import { ProviderRequestKind } from "@t3tools/contracts";
 import {
   conversationRewindContext,
   isExactConversationRewindTarget,
@@ -498,6 +499,7 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
     case "thread.pull-request-watch.sync":
     case "thread.pull-request.sync":
     case "thread.title.regeneration.complete":
+    case "thread.runtime-mode.set":
     case "thread.interaction-mode.set":
     case "thread.model-selection.set":
     case "provider-session.detach":
@@ -2581,6 +2583,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           | "thread.pull-request-watch.sync"
           | "thread.pull-request.sync"
           | "thread.title.regeneration.complete"
+          | "thread.runtime-mode.set"
           | "thread.interaction-mode.set"
           | "thread.model-selection.set"
           | "provider.switch";
@@ -3406,6 +3409,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                 updatedAt: now,
               }
             : thread;
+        case "thread.runtime-mode.set":
+          return { ...thread, runtimeMode: command.runtimeMode, updatedAt: now };
         case "thread.interaction-mode.set":
           return { ...thread, interactionMode: command.interactionMode, updatedAt: now };
         case "thread.model-selection.set":
@@ -3454,6 +3459,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         case "thread.pull-request-watch.sync":
         case "thread.pull-request.sync":
           return "thread.pull-request-synced" as const;
+        case "thread.runtime-mode.set":
+          return "thread.runtime-mode-updated" as const;
         case "thread.interaction-mode.set":
           return "thread.interaction-mode-updated" as const;
         case "thread.model-selection.set":
@@ -7943,15 +7950,43 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           cause: `Runtime request ${command.requestId} was not found.`,
         });
       }
+      const isApproval = Schema.is(ProviderRequestKind)(runtimeRequest.kind);
       if (
-        (command.requirePending && runtimeRequest.kind !== "user_input") ||
-        (runtimeRequest.kind !== "user_input" && runtimeRequest.kind !== "mcp-elicitation")
+        ((command.requirePending || command.respondedBy !== undefined) &&
+          runtimeRequest.kind !== "user_input") ||
+        (runtimeRequest.kind !== "user_input" && !isApproval)
       ) {
         return yield* new OrchestratorDispatchError({
           commandId: command.commandId,
           commandType: command.type,
           reason: "not_found",
-          cause: "Only user questions accept a response.",
+          cause: "This request does not accept this response.",
+        });
+      }
+      if (
+        isApproval &&
+        (command.decision === undefined || runtimeRequest.responseCapability.type !== "live")
+      ) {
+        return yield* new OrchestratorDispatchError({
+          commandId: command.commandId,
+          commandType: command.type,
+          reason: "unsupported",
+          cause: "Approvals require a decision for the original live provider session.",
+        });
+      }
+      if (
+        command.feedback !== undefined &&
+        (!isApproval ||
+          command.decision !== "decline" ||
+          runtimeRequest.responseCapability.type !== "live" ||
+          runtimeRequest.responseCapability.supportsFeedback !== true ||
+          command.feedback.trim().length === 0)
+      ) {
+        return yield* new OrchestratorDispatchError({
+          commandId: command.commandId,
+          commandType: command.type,
+          reason: "unsupported",
+          cause: "Feedback requires a declined live approval that supports feedback.",
         });
       }
       const canReviseMessageAnswers =
@@ -7981,7 +8016,12 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           ? runtimeRequest.responseCapability.providerSessionId
           : null;
       const providerSession = context.session;
-      if (providerSessionId !== null && providerSession === undefined) {
+      if (
+        providerSessionId !== null &&
+        (providerSession === undefined ||
+          providerSession.status === "stopped" ||
+          providerSession.status === "error")
+      ) {
         return yield* new OrchestratorDispatchError({
           commandId: command.commandId,
           commandType: command.type,
@@ -7991,6 +8031,35 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
 
       const now = yield* DateTime.now;
       const approvalTurnItem = context.item;
+      if (
+        isApproval &&
+        approvalTurnItem?.type === "approval_request" &&
+        approvalTurnItem.options?.length &&
+        !approvalTurnItem.options.some((option) => option.decision === command.decision)
+      ) {
+        return yield* new OrchestratorDispatchError({
+          commandId: command.commandId,
+          commandType: command.type,
+          reason: "unsupported",
+          cause: "The provider does not offer this approval decision.",
+        });
+      }
+      const offeredChoices =
+        isApproval && approvalTurnItem?.type === "approval_request"
+          ? (approvalTurnItem.options?.filter((option) => option.decision === command.decision) ??
+            [])
+          : [];
+      if (
+        (command.optionId !== undefined &&
+          !offeredChoices.some((option) => option.optionId === command.optionId)) ||
+        (command.optionId === undefined && offeredChoices.length > 1)
+      )
+        return yield* new OrchestratorDispatchError({
+          commandId: command.commandId,
+          commandType: command.type,
+          reason: "unsupported",
+          cause: "Choose the provider's exact approval scope.",
+        });
       const messageResponse = runtimeRequest.responseCapability.type === "message";
       const cancelled = command.decision === "decline" || command.decision === "cancel";
       if (messageResponse && approvalTurnItem?.type !== "user_input_request") {
@@ -8061,6 +8130,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         status: fullyAnswered ? ("resolved" as const) : ("pending" as const),
         resolvedAt: fullyAnswered ? now : null,
         ...(command.decision === undefined ? {} : { decision: command.decision }),
+        ...(command.optionId === undefined ? {} : { optionId: command.optionId }),
+        ...(command.feedback === undefined ? {} : { feedback: command.feedback }),
         ...(answers === undefined ? {} : { answers }),
         ...(command.respondedBy === undefined ? {} : { respondedBy: command.respondedBy }),
         ...(command.responseFingerprint === undefined
@@ -8110,6 +8181,15 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       }
 
       if (approvalTurnItem !== undefined) {
+        const answeredItem =
+          approvalTurnItem.type === "approval_request" && command.decision !== undefined
+            ? {
+                ...approvalTurnItem,
+                decision: command.decision,
+                ...(command.optionId === undefined ? {} : { optionId: command.optionId }),
+                ...(command.feedback === undefined ? {} : { feedback: command.feedback }),
+              }
+            : approvalTurnItem;
         yield* emitEvent({
           type: "turn-item.updated",
           threadId: command.threadId,
@@ -8123,7 +8203,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
               }),
           occurredAt: now,
           payload: {
-            ...approvalTurnItem,
+            ...answeredItem,
             ...(approvalTurnItem.type === "user_input_request" && command.answers !== undefined
               ? {
                   questionAnswer: {
@@ -8240,10 +8320,44 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             providerSessionId,
             requestId: command.requestId,
             ...(command.decision === undefined ? {} : { decision: command.decision }),
+            ...(command.optionId === undefined ? {} : { optionId: command.optionId }),
+            ...(command.feedback === undefined ? {} : { feedback: command.feedback }),
             ...(command.answers === undefined ? {} : { answers: command.answers }),
           },
         } satisfies PendingOrchestrationEffectV2,
       ]);
+      if (!isApproval || command.decision !== "cancel") return;
+      const owningRunId = context.node?.runId ?? approvalTurnItem?.runId;
+      if (owningRunId == null) return;
+      const owner = yield* projectionStore
+        .getThreadRecords(command.threadId, ["runs", "providerTurns", "providerThreads"])
+        .pipe(mapDispatchError(command));
+      const run = owner.runs.find((run) => run.id === owningRunId);
+      if (!run || !isBlockingRun(run)) return;
+      const providerThread = owner.providerThreads.find(
+        (thread) => thread.id === run.providerThreadId,
+      );
+      if (providerThread?.providerSessionId !== providerSessionId) return;
+      // A late answer may deny its old callback, but cannot stop a replacement native turn.
+      if (
+        runtimeRequest.providerTurnId !== null &&
+        !owner.providerTurns.some(
+          (turn) => turn.id === runtimeRequest.providerTurnId && turn.status === "running",
+        )
+      )
+        return;
+      yield* dispatchRunInterrupt(
+        {
+          type: "run.interrupt",
+          commandId: command.commandId,
+          threadId: command.threadId,
+          runId: owningRunId,
+          holdQueue: true,
+          reason: "Execution approval declined and stopped",
+        },
+        events,
+        effects,
+      );
     });
 
   const dispatchThreadUserInputDismiss = (
@@ -10111,6 +10225,92 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       };
     });
 
+  const cancelPendingApprovals = Effect.fn("orchestrationV2.cancelPendingApprovals")(function* (
+    command: Extract<
+      OrchestrationV2ServerCommand,
+      { readonly type: "run.interrupt" | "thread.stop" }
+    >,
+    events: Ref.Ref<Array<OrchestrationV2DomainEvent>>,
+    effects: Ref.Ref<Array<PendingOrchestrationEffectV2>>,
+    runId?: RunId,
+  ) {
+    const records = yield* projectionStore
+      .getThreadRecords(command.threadId, ["runtimeRequests", "nodes", "turnItems"], {
+        turnItemTypes: ["approval_request"],
+        turnItemStatuses: ["pending", "running", "waiting"],
+      })
+      .pipe(mapDispatchError(command));
+    const planned = yield* Ref.get(events);
+    const now = yield* DateTime.now;
+    const emitEvent = emit(events, command);
+    const releaseSessions = new Set<ProviderSessionId>();
+    for (const request of records.runtimeRequests) {
+      if (request.status !== "pending" || !Schema.is(ProviderRequestKind)(request.kind)) continue;
+      if (
+        planned.some(
+          (event) =>
+            event.type === "runtime-request.updated" &&
+            event.payload.id === request.id &&
+            event.payload.status !== "pending",
+        )
+      )
+        continue;
+      const node = records.nodes.find((node) => node.id === request.nodeId);
+      if (runId !== undefined && node?.runId != null && node.runId !== runId) continue;
+      yield* emitEvent({
+        type: "runtime-request.updated",
+        threadId: command.threadId,
+        nodeId: request.nodeId,
+        occurredAt: now,
+        payload: {
+          ...request,
+          status: "cancelled",
+          resolvedAt: now,
+          responseCapability: { type: "not_resumable", reason: "The work was stopped." },
+        },
+      });
+      if (node !== undefined)
+        yield* emitEvent({
+          type: "node.updated",
+          threadId: command.threadId,
+          nodeId: node.id,
+          occurredAt: now,
+          payload: { ...node, status: "cancelled", completedAt: now },
+        });
+      for (const item of records.turnItems) {
+        if (item.type !== "approval_request" || item.requestId !== request.id) continue;
+        yield* emitEvent({
+          type: "turn-item.updated",
+          threadId: command.threadId,
+          nodeId: request.nodeId,
+          occurredAt: now,
+          payload: { ...item, status: "cancelled", completedAt: now, updatedAt: now },
+        });
+      }
+      // Session-origin callbacks have no native Turn to interrupt.
+      if (
+        request.providerTurnId === null &&
+        node?.runId == null &&
+        request.responseCapability.type === "live"
+      )
+        releaseSessions.add(request.responseCapability.providerSessionId);
+    }
+    for (const providerSessionId of releaseSessions)
+      yield* Ref.update(effects, (existing) => [
+        ...existing,
+        {
+          id: `effect:${command.commandId}:stop-approval-session:${providerSessionId}`,
+          commandId: command.commandId,
+          threadId: command.threadId,
+          request: {
+            type: "provider-session.detach",
+            providerSessionId,
+            detail: "Stopped a pending approval without a native Turn.",
+          },
+        } satisfies PendingOrchestrationEffectV2,
+      ]);
+  });
+
   const dispatchRunInterrupt = (
     command: Extract<OrchestrationV2Command, { readonly type: "run.interrupt" }>,
     events: Ref.Ref<Array<OrchestrationV2DomainEvent>>,
@@ -10501,7 +10701,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         ...otherProviderInterrupts,
       ]);
       return undefined;
-    });
+    }).pipe(Effect.tap(() => cancelPendingApprovals(command, events, effects, command.runId)));
 
   /**
    * Stop for a thread whatever it is doing, the way the Stop button stops the run it
@@ -10586,7 +10786,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       }
       yield* holdStoppedThread({ command, events, projection, cohortRunIds: [], now });
       return undefined;
-    });
+    }).pipe(Effect.tap(() => cancelPendingApprovals(command, events, effects)));
 
   const dispatchCheckpointRollback = (
     command: Extract<OrchestrationV2Command, { readonly type: "checkpoint.rollback" }>,
@@ -12044,6 +12244,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       case "thread.pull-request.watch":
       case "thread.pull-request.sync":
       case "thread.title.regeneration.complete":
+      case "thread.runtime-mode.set":
       case "thread.interaction-mode.set":
       case "thread.model-selection.set":
       case "provider.switch":
@@ -12371,7 +12572,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
 
     const limit = yield* DispatchModeLimit;
     if (limit !== undefined) {
-      const threadId = commandThreadId(command);
+      const threadId =
+        command.type === "thread.fork" ? command.sourceThreadId : commandThreadId(command);
       const shell = yield* projectionStore
         .getThreadShell(threadId)
         .pipe(Effect.mapError((cause) => new OrchestratorProjectionError({ threadId, cause })));
@@ -12379,10 +12581,18 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       if (modes !== null) {
         const current = exceededDispatchModeLimit(limit, modes);
         const effective =
-          command.type === "message.dispatch" || command.type === "thread.interaction-mode.set"
+          command.type === "message.dispatch" ||
+          command.type === "thread.interaction-mode.set" ||
+          command.type === "thread.runtime-mode.set"
             ? exceededDispatchModeLimit(limit, {
-                runtimeMode: modes.runtimeMode,
-                interactionMode: command.interactionMode ?? modes.interactionMode,
+                runtimeMode:
+                  command.type === "thread.runtime-mode.set"
+                    ? command.runtimeMode
+                    : modes.runtimeMode,
+                interactionMode:
+                  command.type === "thread.runtime-mode.set"
+                    ? modes.interactionMode
+                    : (command.interactionMode ?? modes.interactionMode),
               })
             : undefined;
         const reason = current ?? effective;
@@ -12412,6 +12622,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         "thread.fork",
         "thread.merge_back",
         "thread.clear_context",
+        "thread.runtime-mode.set",
         "thread.interaction-mode.set",
       ].includes(command.type)
     ) {

@@ -115,8 +115,9 @@ remain separate operations.
 Every Agent has full read and write access to the current Profile's Projects, Pages
 and Library. Parent Agents, delegated children and background work use the same model
 and may operate across Projects and Sessions. Plan changes planning interaction and
-permits content writes. Native Providers run with full access and permission requests
-are approved automatically. Blocking information questions and optional message-capable questions remain open until answered or explicitly settled. Native nonblocking synchronous questions follow the host's inactivity and snooze policy.
+permits content writes. Native execution follows the Session's permission mode, and native
+permission requests wait for the person as specified in
+[Agent Permissions and Approvals](agent-permissions-behavior.md). Blocking information questions and optional message-capable questions remain open until answered or explicitly settled. Native nonblocking synchronous questions follow the host's inactivity and snooze policy.
 Standard ACP information questions belong to the live Session, with Run left null;
 they can arrive after foreground completion or while another Run executes.
 
@@ -127,8 +128,8 @@ removing Sources, or moving the Session to another Project, takes effect before 
 next prompt while background agents, shells and workflows keep running. A prompt is
 not submitted until that synchronization succeeds. The Session's execution directory
 or managed worktree and its attachments remain available independently of Project
-Source membership. These directories govern shell working-directory persistence;
-Agents retain full access under the execution policy above.
+Source membership. These directories govern shell working-directory persistence and form
+the workspace boundary of narrower permission modes.
 
 Host preparation creates and binds the product Session before its first Run executes. Every
 application call carries exact runtime, Thread, native incarnation and connection

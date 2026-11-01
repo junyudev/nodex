@@ -1,3 +1,4 @@
+import { RUNTIME_MODE_RANK } from "@nodex/agent-runtime/contracts";
 import { sessionQuestionSchema } from "../../shared/nodex-app-tools/session-question-schema";
 import { make as makeSessionQuestions } from "./SessionQuestionIntake";
 import { SessionQuestionError } from "./SessionQuestions";
@@ -114,7 +115,12 @@ export const make = Effect.gen(function* () {
         if (!operation.success) return operation.result;
         const { operationId, acceptedAtMs } = operation;
         const sourceSessionId = request.sessionId ?? sessionId;
+        const callerFacts = yield* intake.inspect(callerTarget);
         const result = yield* application.fork({
+          modeLimit: {
+            runtimeMode: callerFacts.runtimeMode,
+            interactionMode: callerFacts.interactionMode,
+          },
           source: {
             sessionId: sourceSessionId,
             ...(hosted && sourceSessionId === sessionId ? { threadId: hosted.threadId } : {}),
@@ -147,7 +153,10 @@ export const make = Effect.gen(function* () {
       const request = parsed.data;
       const projectId = request.target.type === "project" ? request.target.projectId : null;
       const callerFacts = yield* intake.inspect(callerTarget);
-      if (callerFacts.runtimeMode !== "full-access")
+      if (
+        request.runtimeMode &&
+        RUNTIME_MODE_RANK[request.runtimeMode] > RUNTIME_MODE_RANK[callerFacts.runtimeMode]
+      )
         return toolFailure("runtime_mode_escalation_denied");
       const selection = callerFacts.modelSelection;
       const operation = yield* admitOperation(input, authority, core.identity.profileId, request);
@@ -172,8 +181,12 @@ export const make = Effect.gen(function* () {
               }
             : {}),
         },
+        runtimeMode: request.runtimeMode ?? callerFacts.runtimeMode,
         interactionMode: callerFacts.interactionMode,
-        ...(callerFacts.interactionMode === "plan" ? { interactionModeCeiling: "plan" } : {}),
+        modeLimit: {
+          runtimeMode: callerFacts.runtimeMode,
+          interactionMode: callerFacts.interactionMode,
+        },
         runInTarget: environment?.type === "worktree" ? "newWorktree" : "localProject",
         ...(environment?.type === "worktree" && environment.startingState
           ? { worktreeStartingState: environment.startingState }

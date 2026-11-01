@@ -1,3 +1,4 @@
+import { ProviderRequestKind } from "@t3tools/contracts";
 import {
   boundConversationRewindContext,
   conversationRewindContext,
@@ -404,7 +405,7 @@ export interface ProjectionHostToolAuthorityContext {
   >;
 }
 
-export type ProjectionPendingUserInputs = Pick<
+export type ProjectionPendingNativeRequests = Pick<
   OrchestrationV2ThreadProjection,
   "runtimeRequests" | "nodes" | "turnItems"
 >;
@@ -1261,10 +1262,10 @@ export interface ProjectionStoreV2Shape {
   readonly getOpeningRequest: (
     threadId: ThreadId,
   ) => Effect.Effect<OrchestrationV2ConversationMessage | null, ProjectionStoreV2Error>;
-  readonly getPendingNativeUserInputs: (
+  readonly getPendingNativeRequests: (
     threadId: ThreadId,
     providerTurnId: ProviderTurnId,
-  ) => Effect.Effect<ProjectionPendingUserInputs, ProjectionStoreV2Error>;
+  ) => Effect.Effect<ProjectionPendingNativeRequests, ProjectionStoreV2Error>;
   readonly getPlan: (
     threadId: ThreadId,
     planId: PlanId,
@@ -1709,6 +1710,7 @@ export function applyToProjection(
     case "thread.active-reordered":
     case "thread.metadata-updated":
     case "thread.pull-request-synced":
+    case "thread.runtime-mode-updated":
     case "thread.interaction-mode-updated":
     case "thread.model-selection-updated":
     case "thread.provider-switched":
@@ -3045,6 +3047,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
           case "thread.marked-unread":
           case "thread.metadata-updated":
           case "thread.pull-request-synced":
+          case "thread.runtime-mode-updated":
           case "thread.interaction-mode-updated":
           case "thread.model-selection-updated":
           case "thread.provider-switched": {
@@ -4188,6 +4191,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
           event.type !== "thread.visited" &&
           event.type !== "thread.marked-unread" &&
           event.type !== "thread.metadata-updated" &&
+          event.type !== "thread.runtime-mode-updated" &&
           event.type !== "thread.interaction-mode-updated" &&
           event.type !== "thread.model-selection-updated" &&
           event.type !== "thread.provider-switched"
@@ -6684,6 +6688,10 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                 AND node.status IN ('pending', 'starting', 'running', 'waiting')
                 AND (
                   (node.run_id IS NULL AND node.kind = 'root_turn')
+                  OR node.node_id IN (
+                    SELECT node_id FROM orchestration_v2_projection_runtime_requests
+                    WHERE thread_id = ${threadId} AND status = 'pending'
+                  )
                   OR node.run_id IN (
                     SELECT run_id FROM orchestration_v2_projection_runs
                     WHERE thread_id = ${threadId}
@@ -6827,6 +6835,10 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                       AND status IN ('queued', 'preparing', 'starting', 'running', 'waiting')
                   )
                   OR item.type IN ('command_execution', 'dynamic_tool', 'subagent')
+                  OR item.node_id IN (
+                    SELECT node_id FROM orchestration_v2_projection_runtime_requests
+                    WHERE thread_id = ${threadId} AND status = 'pending'
+                  )
                   OR (
                     item.run_id IS NULL
                     AND item.node_id IN (
@@ -7476,7 +7488,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
         )
         .pipe(Effect.mapError(controlReadError(input.threadId)));
 
-    const getPendingNativeUserInputs: ProjectionStoreV2Shape["getPendingNativeUserInputs"] = (
+    const getPendingNativeRequests: ProjectionStoreV2Shape["getPendingNativeRequests"] = (
       threadId,
       providerTurnId,
     ) =>
@@ -7486,7 +7498,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             const rows = yield* sql<PayloadRow>`
           SELECT payload_json FROM orchestration_v2_projection_runtime_requests
           WHERE thread_id = ${threadId} AND provider_turn_id = ${providerTurnId}
-            AND kind = 'user_input' AND status = 'pending'
+            AND kind IN ('user_input', 'command', 'file-read', 'file-change', 'permission', 'mcp-elicitation') AND status = 'pending'
         `;
             const runtimeRequests = (yield* decodeRows(
               decodeRuntimeRequestPayload,
@@ -7503,14 +7515,16 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             const itemRows = yield* sql<PayloadRow>`
           SELECT payload_json FROM orchestration_v2_projection_turn_items
           WHERE thread_id = ${threadId} AND provider_turn_id = ${providerTurnId}
-            AND type = 'user_input_request'
+            AND type IN ('user_input_request', 'approval_request')
         `;
             const requestIds = new Set(runtimeRequests.map((request) => request.id));
             return {
               runtimeRequests,
               nodes: yield* decodeRows(decodeNodePayload, threadId)(nodeRows),
               turnItems: (yield* decodeRows(decodeTurnItemPayload, threadId)(itemRows)).filter(
-                (item) => item.type === "user_input_request" && requestIds.has(item.requestId),
+                (item) =>
+                  (item.type === "user_input_request" || item.type === "approval_request") &&
+                  requestIds.has(item.requestId),
               ),
             };
           }),
@@ -9857,7 +9871,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       getCheckpointCaptureContext,
       getRunMessage,
       canStartQueuedRun,
-      getPendingNativeUserInputs,
+      getPendingNativeRequests,
       hasUnpairedRunInterruptRequest,
       getMessageCount,
       getNextTurnItemOrdinal,
@@ -9940,7 +9954,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       getCheckpointCaptureContext: readOnReader(service.getCheckpointCaptureContext),
       getRunMessage: readOnReader(service.getRunMessage),
       canStartQueuedRun: readOnReader(service.canStartQueuedRun),
-      getPendingNativeUserInputs: readOnReader(service.getPendingNativeUserInputs),
+      getPendingNativeRequests: readOnReader(service.getPendingNativeRequests),
       hasUnpairedRunInterruptRequest: readOnReader(service.hasUnpairedRunInterruptRequest),
       getMessageCount: readOnReader(service.getMessageCount),
       getNextTurnItemOrdinal: readOnReader(service.getNextTurnItemOrdinal),
@@ -10225,14 +10239,14 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
             .map((projection) => projection.thread.id);
         }),
       getUnreadableThreadIds: () => Effect.succeed([]),
-      getPendingNativeUserInputs: (threadId, providerTurnId) =>
+      getPendingNativeRequests: (threadId, providerTurnId) =>
         Effect.gen(function* () {
           const projection = (yield* Ref.get(replayState)).projections.get(threadId);
           if (projection === undefined) return { runtimeRequests: [], nodes: [], turnItems: [] };
           const runtimeRequests = projection.runtimeRequests.filter(
             (request) =>
               request.providerTurnId === providerTurnId &&
-              request.kind === "user_input" &&
+              (request.kind === "user_input" || Schema.is(ProviderRequestKind)(request.kind)) &&
               request.status === "pending" &&
               request.responseCapability.type !== "message",
           );
@@ -10242,7 +10256,9 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
             runtimeRequests,
             nodes: projection.nodes.filter((node) => nodeIds.has(node.id)),
             turnItems: projection.turnItems.filter(
-              (item) => item.type === "user_input_request" && requestIds.has(item.requestId),
+              (item) =>
+                (item.type === "user_input_request" || item.type === "approval_request") &&
+                requestIds.has(item.requestId),
             ),
           };
         }),

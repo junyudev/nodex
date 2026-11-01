@@ -27,8 +27,9 @@ The shared conversation surface provides rich prompts, streamed text and tool ac
 model selection, planning, Tasks, queues, cancellation and genuine information questions.
 Selecting a model retains its exact Provider instance identity, even when instances
 advertise the same model ID. Unsupported capabilities fail explicitly. Plan conveys
-planning intent while retaining full execution and Profile content access. Provider
-permission requests are approved automatically.
+planning intent while retaining Profile content access. Each Provider instance declares the
+permission modes it enforces; native permission requests follow
+[Agent Permissions and Approvals](agent-permissions-behavior.md).
 
 ## Configuration and discovery
 

@@ -524,16 +524,18 @@ export function describeInboxChatStatus(
   if (!chat) return { label: "Chat unavailable", tone: "error", inProgress: false };
   if (chat.archived) return { label: "Archived", tone: "quiet", inProgress: false };
   if (chat.executionRef) {
+    if (live === "approval")
+      return { label: "Needs approval", tone: "attention", inProgress: true };
     if (live === "waiting") return { label: "Needs input", tone: "attention", inProgress: true };
     if (live) return { label: "Working", tone: "working", inProgress: true };
   } else {
     const status = chat.status;
     if (!status) return { label: "Starting", tone: "working", inProgress: true };
+    if (status.activeFlags.includes("waitingOnApproval")) {
+      return { label: "Needs approval", tone: "attention", inProgress: true };
+    }
     if (status.activeFlags.includes("waitingOnUserInput")) {
       return { label: "Needs input", tone: "attention", inProgress: true };
-    }
-    if (status.activeFlags.includes("waitingOnApproval")) {
-      return { label: "Waiting", tone: "working", inProgress: true };
     }
     if (status.statusType === "active") {
       return { label: "Working", tone: "working", inProgress: true };

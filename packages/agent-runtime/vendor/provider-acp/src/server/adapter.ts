@@ -21,6 +21,9 @@ import {
   type OrchestrationV2TurnItem,
   type OrchestrationV2UserInputQuestion,
   type OrchestrationV2WebSearchResult,
+  type ProviderApprovalDecision,
+  type ProviderApprovalOption,
+  type ProviderRequestKind,
   type ProviderInstanceId,
   type ProviderInteractionMode,
   type ProviderDriverKind,
@@ -73,6 +76,8 @@ import {
   extractMcpToolCallIdentity,
   findModelConfigOption,
   mergeToolCallState,
+  parsePermissionRequest,
+  withTrackedPermissionToolCall,
   parseSessionUpdateEvent,
   toolCallVisibleOutputChanged,
   type AcpPlanUpdate,
@@ -85,6 +90,14 @@ import {
   resolveEmbeddedTerminalContent,
   type AcpClientTerminals,
 } from "./clientTerminals.ts";
+import {
+  acpClientExecuteDisposition,
+  acpApprovedExecution,
+  acpMcpToolApprovalElicitationDisposition,
+  acpPermissionDisposition,
+  makeAcpClientPolicyGrants,
+  type AcpPermissionDisposition,
+} from "./clientPolicy.ts";
 import { ACP_SESSION_MODE_OPTION_ID, acpOptionSelectionValue } from "./sessionConfig.ts";
 import * as AcpSessionRuntime from "./AcpSessionRuntime.ts";
 import {
@@ -284,10 +297,17 @@ export interface AcpAdapterV2Flavor {
       request: EffectAcpSchema.WriteTextFileRequest,
     ) => Effect.Effect<EffectAcpSchema.WriteTextFileResponse, EffectAcpErrors.AcpError>;
   };
+  readonly permissionDisposition?: (
+    policy: ProviderAdapter.ProviderAdapterV2RuntimePolicy,
+    request: EffectAcpSchema.RequestPermissionRequest,
+  ) => AcpPermissionDisposition;
+  readonly approvalOptions?: (
+    request: EffectAcpSchema.RequestPermissionRequest,
+  ) => ReadonlyArray<ProviderApprovalOption>;
   /**
    * Permission requests that are really questions (Antigravity `interaction_*`
    * tool calls). Returns the question and a response builder; undefined routes
-   * the request through automatic native approval.
+   * the request through execution policy.
    */
   readonly extractPermissionQuestion?: (request: EffectAcpSchema.RequestPermissionRequest) =>
     | {
@@ -562,6 +582,7 @@ export const AcpProviderCapabilitiesV2 = {
   sessions: {
     supportsMultipleProviderThreadsPerSession: false,
     supportsModelSwitchInSession: false,
+    supportsRuntimeModeSwitchInSession: false,
     supportsProviderSwitchingViaHandoff: true,
 
     pendingRequestsSurviveRestart: false,
@@ -673,6 +694,7 @@ function negotiatedCapabilities(
     sessions: {
       ...base.sessions,
       supportsModelSwitchInSession: hasModelConfig,
+      supportsRuntimeModeSwitchInSession: false,
     },
     threads: {
       ...base.threads,
@@ -1085,6 +1107,23 @@ function acpBackendWebSearch(
   return { query, results: [...urls].map((url) => ({ url })) };
 }
 
+function providerRequestKind(kind: string | "unknown"): ProviderRequestKind {
+  switch (kind) {
+    case "execute":
+      return "command";
+    case "read":
+    case "search":
+    case "fetch":
+      return "file-read";
+    case "edit":
+    case "delete":
+    case "move":
+      return "file-change";
+    default:
+      return "command";
+  }
+}
+
 function toolStatus(
   status: AcpToolCallState["status"],
 ): "pending" | "running" | "waiting" | "completed" | "failed" {
@@ -1112,14 +1151,32 @@ function completedAtForStatus(status: ProjectedToolStatus, now: DateTime.Utc): D
   return status === "completed" || status === "failed" || status === "interrupted" ? now : null;
 }
 
+function selectPermissionOptionId(
+  request: EffectAcpSchema.RequestPermissionRequest,
+  decision: Exclude<ProviderApprovalDecision, "cancel">,
+  selectedOptionId?: string,
+): string | undefined {
+  const kind =
+    decision === "acceptForSession"
+      ? "allow_always"
+      : decision === "accept"
+        ? "allow_once"
+        : "reject_once";
+  const optionId = request.options.find(
+    (option) =>
+      option.kind === kind &&
+      (selectedOptionId === undefined || option.optionId === selectedOptionId),
+  )?.optionId;
+  return optionId?.trim() ? optionId : undefined;
+}
+
+// Prefer allow-once; allow-always can persist beyond the session.
 function selectAutoApprovedPermissionOption(
   request: EffectAcpSchema.RequestPermissionRequest,
 ): string | undefined {
   return (
-    (
-      request.options.find((option) => option.kind === "allow_once") ??
-      request.options.find((option) => option.kind === "allow_always")
-    )?.optionId.trim() || undefined
+    selectPermissionOptionId(request, "accept") ??
+    selectPermissionOptionId(request, "acceptForSession")
   );
 }
 
@@ -1470,9 +1527,19 @@ type PendingRuntimeRequest = {
   readonly runtimeRequest: OrchestrationV2RuntimeRequest;
   readonly node: OrchestrationV2ExecutionNode;
   readonly turnItem: OrchestrationV2TurnItem;
-  readonly type: "user_input";
-  readonly answers: Deferred.Deferred<ProviderUserInputAnswers | null>;
-};
+} & (
+  | {
+      readonly type: "approval";
+      readonly decision: Deferred.Deferred<{
+        readonly decision: ProviderApprovalDecision;
+        readonly optionId?: string;
+      }>;
+    }
+  | {
+      readonly type: "user_input";
+      readonly answers: Deferred.Deferred<ProviderUserInputAnswers | null>;
+    }
+);
 
 interface SnapshotMessageState {
   readonly order: Array<string>;
@@ -1561,14 +1628,16 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           });
           const initialized = yield* runtime.initialize();
           if (initialized.agentCapabilities?.sessionCapabilities?.delete == null) return;
-          yield* runtime.deleteSession(sessionId).pipe(
-            Effect.catch((cause) =>
-              Schema.is(EffectAcpErrors.AcpRequestError)(cause) &&
-              (cause.code === -32601 || cause.code === -32002)
-                ? Effect.void
-                : Effect.fail(cause),
-            ),
-          );
+          yield* runtime
+            .deleteSession(sessionId)
+            .pipe(
+              Effect.catch((cause) =>
+                Schema.is(EffectAcpErrors.AcpRequestError)(cause) &&
+                (cause.code === -32601 || cause.code === -32002)
+                  ? Effect.void
+                  : Effect.fail(cause),
+              ),
+            );
         }).pipe(
           Effect.provideService(Crypto.Crypto, crypto),
           Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, childProcessSpawner),
@@ -1759,9 +1828,8 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               agentTerminalsById.get(sessionScopedId(sessionId, terminalId))?.command;
             return command === undefined ? [] : [command];
           });
-        // Client terminals (Devin) run with the T3 server's privileges, so they
-        // are policy-checked against the active turn policy; a command the user
-        // already approved satisfies an "ask" disposition.
+        let latestRuntimePolicy = input.runtimePolicy;
+        let clientPolicyGrants = makeAcpClientPolicyGrants();
         const events = yield* BoundedQueue.make<
           ProviderAdapter.ProviderAdapterV2Event,
           ProviderAdapter.ProviderAdapterEventStreamError
@@ -1994,15 +2062,21 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           );
           return false;
         });
-        const awaitAdmittedNativeResponses = Ref.get(nativeResponseAcknowledgements).pipe(
-          Effect.flatMap((current) =>
-            awaitNativeResponseAcknowledgements(
-              [...current.entries()].map(
-                ([requestId, entry]) => [requestId, entry.acknowledgement] as const,
-              ),
-            ),
-          ),
-        );
+        const awaitAdmittedNativeResponses = Effect.gen(function* () {
+          const unanswered = new Set<string>();
+          for (const request of (yield* Ref.get(pendingRuntimeRequests)).values()) {
+            const answered = yield* request.type === "approval"
+              ? Deferred.isDone(request.decision)
+              : Deferred.isDone(request.answers);
+            if (!answered) unanswered.add(request.transportRequestId);
+          }
+          // Unanswered requests have no response to drain. Stop cancels them before teardown.
+          return yield* awaitNativeResponseAcknowledgements(
+            [...(yield* Ref.get(nativeResponseAcknowledgements)).entries()]
+              .filter(([requestId]) => !unanswered.has(requestId))
+              .map(([requestId, entry]) => [requestId, entry.acknowledgement] as const),
+          );
+        });
         const quarantineNativeTransportAtGeneration = Effect.fnUntraced(function* (
           generation: number,
         ) {
@@ -5380,6 +5454,168 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           yield* rearmDeferredFinalize(context);
         });
 
+        const requireActiveContext = Effect.flatMap(Ref.get(activeTurn), (context) =>
+          context === null || context.finalized || context.interrupted
+            ? Effect.fail(
+                new EffectAcpErrors.AcpTransportError({
+                  detail: "ACP agent requested approval without an active turn",
+                  cause: "No active ACP turn",
+                }),
+              )
+            : Effect.succeed(context),
+        );
+
+        const beginApprovalRequest = Effect.fnUntraced(function* (
+          context: ActiveAcpTurn,
+          params: EffectAcpSchema.RequestPermissionRequest,
+          generation: number,
+          transportRequestId: string,
+          kindOverride?: ProviderRequestKind,
+        ) {
+          yield* closeTextStreams(context);
+          const parsed = parsePermissionRequest(params);
+          const approvalOptions =
+            flavor.approvalOptions?.(params) ??
+            params.options.flatMap((option) => {
+              const decision =
+                option.kind === "allow_once"
+                  ? "accept"
+                  : option.kind === "allow_always"
+                    ? "acceptForSession"
+                    : option.kind === "reject_once"
+                      ? "decline"
+                      : undefined;
+              return decision === undefined ||
+                option.optionId.trim().length === 0 ||
+                option.name.trim().length === 0
+                ? []
+                : [
+                    {
+                      decision,
+                      optionId: option.optionId,
+                      label: option.name,
+                    } satisfies ProviderApprovalOption,
+                  ];
+            });
+          const nativeRequestId = params.toolCall.toolCallId;
+          const requestId = yield* idAllocator.allocate.runtimeRequest({
+            driver,
+            providerTurnId: context.providerTurnId,
+            nativeRequestId,
+          });
+          const decision = yield* Deferred.make<{
+            readonly decision: ProviderApprovalDecision;
+            readonly optionId?: string;
+          }>();
+          const nativeResponseAcknowledgement = yield* Deferred.make<
+            void,
+            EffectAcpErrors.AcpError
+          >();
+          yield* registerNativeResponseAcknowledgement(
+            generation,
+            transportRequestId,
+            nativeResponseAcknowledgement,
+          );
+          const now = yield* DateTime.now;
+          const nodeId = idAllocator.derive.approvalNode({ requestId });
+          const requestKind = kindOverride ?? providerRequestKind(parsed.kind);
+          const nativeItemRef = { driver, nativeId: nativeRequestId, strength: "weak" as const };
+          const ordinal = yield* resolveItemOrdinal(
+            context,
+            `${context.nativeTurnId}:approval:${nativeRequestId}`,
+          );
+          const runtimeRequest: OrchestrationV2RuntimeRequest = {
+            id: requestId,
+            nodeId,
+            providerTurnId: context.providerTurnId,
+            nativeRequestRef: nativeItemRef,
+            kind: requestKind,
+            status: "pending",
+            responseCapability: {
+              type: "live",
+              providerSessionId: input.providerSessionId,
+            },
+            createdAt: now,
+            resolvedAt: null,
+          };
+          const node: OrchestrationV2ExecutionNode = {
+            id: nodeId,
+            threadId: context.input.threadId,
+            runId: context.input.runId,
+            parentNodeId: context.input.rootNodeId,
+            rootNodeId: context.input.rootNodeId,
+            kind: "approval_request",
+            status: "waiting",
+            countsForRun: false,
+            providerThreadId: context.input.providerThread.id,
+            providerTurnId: context.providerTurnId,
+            nativeItemRef,
+            runtimeRequestId: requestId,
+            checkpointScopeId: null,
+            startedAt: now,
+            completedAt: null,
+          };
+          const turnItem: OrchestrationV2TurnItem = {
+            id: idAllocator.derive.approvalTurnItem({ requestId }),
+            threadId: context.input.threadId,
+            runId: context.input.runId,
+            nodeId,
+            providerThreadId: context.input.providerThread.id,
+            providerTurnId: context.providerTurnId,
+            nativeItemRef,
+            parentItemId: null,
+            ordinal,
+            status: "waiting",
+            title: null,
+            startedAt: now,
+            completedAt: null,
+            updatedAt: now,
+            type: "approval_request",
+            requestId,
+            requestKind,
+            ...(parsed.detail === undefined ? {} : { prompt: parsed.detail }),
+            ...(approvalOptions === undefined ? {} : { options: approvalOptions }),
+          };
+          yield* Ref.update(pendingRuntimeRequests, (current) => {
+            const updated = new Map(current);
+            updated.set(String(requestId), {
+              type: "approval",
+              generation,
+              nativeResponseAcknowledgement,
+              requestId,
+              transportRequestId,
+              decision,
+              runtimeRequest,
+              node,
+              turnItem,
+            });
+            return updated;
+          });
+          yield* emitProviderEvent({
+            type: "node.updated",
+            driver,
+            node,
+          });
+          yield* emitProviderEvent({
+            type: "runtime_request.updated",
+            driver,
+            threadId: context.input.threadId,
+            runtimeRequest,
+          });
+          yield* emitProviderEvent({
+            type: "turn_item.updated",
+            driver,
+            turnItem,
+          });
+          return {
+            context,
+            decision,
+            nativeResponseAcknowledgement,
+            requestId,
+            transportRequestId,
+          } as const;
+        });
+
         const beginUserInputRequest = Effect.fnUntraced(function* (
           request: AcpAdapterV2UserInputRequest,
           generation: number,
@@ -5573,14 +5809,25 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           ),
         );
 
-        const cancelPendingRuntimeRequests = Effect.fnUntraced(function* () {
-          const waiting = turnAttached;
-          turnAttached = yield* Deferred.make<boolean>();
-          yield* Deferred.succeed(waiting, false);
-          const requests = yield* Ref.modify(pendingRuntimeRequests, (current) => [
-            [...current.values()],
-            new Map<string, PendingRuntimeRequest>(),
-          ]);
+        const cancelPendingRuntimeRequests = Effect.fnUntraced(function* (
+          providerTurnId?: OrchestrationV2ProviderTurn["id"],
+        ) {
+          if (providerTurnId === undefined) {
+            const waiting = turnAttached;
+            turnAttached = yield* Deferred.make<boolean>();
+            yield* Deferred.succeed(waiting, false);
+          }
+          const requests = yield* Ref.modify(pendingRuntimeRequests, (current) => {
+            const cancelled = [...current.values()].filter(
+              (request) =>
+                providerTurnId === undefined ||
+                (request.type === "approval" &&
+                  request.runtimeRequest.providerTurnId === providerTurnId),
+            );
+            const remaining = new Map(current);
+            for (const request of cancelled) remaining.delete(String(request.requestId));
+            return [cancelled, remaining];
+          });
           if (requests.length === 0) return;
 
           const now = yield* DateTime.now;
@@ -5588,7 +5835,9 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             requests,
             (request) =>
               Effect.gen(function* () {
-                const cancelled = yield* Deferred.succeed(request.answers, null);
+                const cancelled = yield* request.type === "approval"
+                  ? Deferred.succeed(request.decision, { decision: "cancel" })
+                  : Deferred.succeed(request.answers, null);
                 if (!cancelled) return;
 
                 yield* emitProviderEvent({
@@ -5598,6 +5847,10 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                   runtimeRequest: {
                     ...request.runtimeRequest,
                     status: "cancelled",
+                    responseCapability: {
+                      type: "not_resumable",
+                      reason: "The ACP request was cancelled",
+                    },
                     resolvedAt: now,
                   },
                 });
@@ -6042,6 +6295,46 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             projectAcpRuntimeSessionUpdateEffect(rawNotification),
           ).pipe(Effect.asVoid);
 
+        // Post-settle background work retains the latest turn policy.
+        const clientPolicyContext = Effect.map(Ref.get(activeTurn), (context) => ({
+          policy: context?.input.runtimePolicy ?? latestRuntimePolicy,
+          turnKey: context === null ? null : String(context.providerTurnId),
+        }));
+
+        const denyClientRequest = (operation: string, disposition: "ask" | "deny") =>
+          Effect.logWarning("ACP client policy denied a client-mediated operation", {
+            operation,
+            disposition,
+          }).pipe(
+            Effect.andThen(
+              Effect.fail(
+                EffectAcpErrors.AcpRequestError.internalError(
+                  disposition === "ask"
+                    ? `The active Nodex execution policy requires approval for ${operation}. Request permission with session/request_permission before retrying.`
+                    : `The active Nodex execution policy does not allow ${operation}.`,
+                ),
+              ),
+            ),
+          );
+
+        const guardClientTerminalCreate = (request: EffectAcpSchema.CreateTerminalRequest) =>
+          clientPolicyContext.pipe(
+            Effect.flatMap(({ policy, turnKey }) => {
+              const disposition = acpClientExecuteDisposition(policy);
+              if (
+                disposition === "allow" ||
+                (disposition === "ask" &&
+                  clientPolicyGrants.consumeExecute(turnKey, {
+                    ...request,
+                    cwd: request.cwd ?? policy.cwd,
+                  }))
+              ) {
+                return Effect.void;
+              }
+              return denyClientRequest("terminal/create", disposition);
+            }),
+          );
+
         const admitNativeClientRequest = <A>(
           generation: number,
           effect: Effect.Effect<A, EffectAcpErrors.AcpError>,
@@ -6056,7 +6349,12 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
         ) {
           if (clientTerminals === undefined) return;
           yield* targetRuntime.handleCreateTerminal((request) =>
-            admitNativeClientRequest(generation, clientTerminals.create(request)),
+            admitNativeClientRequest(
+              generation,
+              guardClientTerminalCreate(request).pipe(
+                Effect.andThen(clientTerminals.create(request)),
+              ),
+            ),
           );
           yield* targetRuntime.handleTerminalOutput(clientTerminals.output);
           yield* targetRuntime.handleTerminalWaitForExit(clientTerminals.waitForExit);
@@ -6157,8 +6455,16 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               projectAcpRuntimeSessionUpdate(handlerGeneration, rawNotification),
             );
           }
-          yield* targetRuntime.handleRequestPermission((params, requestContext) =>
+          yield* targetRuntime.handleRequestPermission((nativeParams, requestContext) =>
             Effect.gen(function* () {
+              const trackedTurn = yield* Ref.get(activeTurn);
+              const params =
+                trackedTurn !== null && nativeParams.sessionId === (yield* Ref.get(activeSessionId))
+                  ? withTrackedPermissionToolCall(
+                      nativeParams,
+                      trackedTurn.tools.get(nativeParams.toolCall.toolCallId),
+                    )
+                  : nativeParams;
               const transportRequestId = requestContext.requestId;
               const permissionQuestion = flavor.extractPermissionQuestion?.(params);
               if (permissionQuestion !== undefined) {
@@ -6179,22 +6485,130 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                 yield* userInput.acknowledgeNativeResponse;
                 return response ?? ({ outcome: { outcome: "cancelled" } } as const);
               }
-              const response = yield* runRuntimeCallbackAtGeneration(
+              const dispositionFor = (policy: ProviderAdapter.ProviderAdapterV2RuntimePolicy) =>
+                (flavor.permissionDisposition ?? acpPermissionDisposition)(policy, params);
+              if (followsAgentWorkState && dispositionFor(latestRuntimePolicy) === "ask") {
+                if (!(yield* awaitRequestTurn(handlerGeneration)))
+                  return { outcome: { outcome: "cancelled" } } as const;
+              }
+              const admitted = yield* runRuntimeCallbackAtGeneration(
                 handlerGeneration,
                 Effect.gen(function* () {
-                  const optionId = selectAutoApprovedPermissionOption(params);
-                  const acknowledgement = yield* Deferred.make<void, EffectAcpErrors.AcpError>();
-                  yield* registerNativeResponseAcknowledgement(
-                    handlerGeneration,
-                    transportRequestId,
-                    acknowledgement,
+                  const context = yield* Ref.get(activeTurn);
+                  const disposition = dispositionFor(
+                    context?.input.runtimePolicy ?? latestRuntimePolicy,
                   );
-                  return optionId === undefined
-                    ? ({ outcome: { outcome: "cancelled" } } as const)
-                    : ({ outcome: { outcome: "selected", optionId } } as const);
+                  if (disposition === "allow") {
+                    const optionId = selectAutoApprovedPermissionOption(params);
+                    return {
+                      _tag: "Immediate" as const,
+                      response:
+                        optionId === undefined
+                          ? ({ outcome: { outcome: "cancelled" } } as const)
+                          : ({ outcome: { outcome: "selected", optionId } } as const),
+                    };
+                  }
+                  if (disposition === "deny") {
+                    const optionId = selectPermissionOptionId(params, "decline");
+                    return {
+                      _tag: "Immediate" as const,
+                      response:
+                        optionId === undefined
+                          ? ({ outcome: { outcome: "cancelled" } } as const)
+                          : ({ outcome: { outcome: "selected", optionId } } as const),
+                    };
+                  }
+                  return {
+                    _tag: "Pending" as const,
+                    pending: yield* beginApprovalRequest(
+                      yield* requireActiveContext,
+                      params,
+                      handlerGeneration,
+                      transportRequestId,
+                    ),
+                  };
                 }),
               );
-              return Option.isSome(response) ? response.value : yield* Effect.never;
+              if (Option.isNone(admitted)) {
+                return yield* Effect.never;
+              }
+              if (admitted.value._tag === "Immediate") {
+                const response = admitted.value.response;
+                const checked = yield* runRuntimeCallbackAtGeneration(
+                  handlerGeneration,
+                  Effect.gen(function* () {
+                    const nativeResponseAcknowledgement = yield* Deferred.make<
+                      void,
+                      EffectAcpErrors.AcpError
+                    >();
+                    yield* registerNativeResponseAcknowledgement(
+                      handlerGeneration,
+                      transportRequestId,
+                      nativeResponseAcknowledgement,
+                    );
+                    return response;
+                  }),
+                );
+                return Option.isSome(checked) ? checked.value : yield* Effect.never;
+              }
+              const {
+                context,
+                decision: pendingDecision,
+                requestId,
+                transportRequestId: pendingTransportRequestId,
+              } = admitted.value.pending;
+              const parsedPermission = parsePermissionRequest(params);
+              const grants = clientPolicyGrants;
+              const { decision, optionId: selectedOptionId } = yield* Deferred.await(
+                pendingDecision,
+              ).pipe(
+                Effect.ensuring(
+                  runRuntimeCallbackAtGeneration(
+                    handlerGeneration,
+                    Ref.update(pendingRuntimeRequests, (current) => {
+                      const updated = new Map(current);
+                      updated.delete(String(requestId));
+                      return updated;
+                    }),
+                  ).pipe(Effect.asVoid),
+                ),
+              );
+              const response = (() => {
+                if (decision === "cancel") {
+                  return { outcome: { outcome: "cancelled" } } as const;
+                }
+                const optionId = selectPermissionOptionId(params, decision, selectedOptionId);
+                return optionId === undefined
+                  ? ({ outcome: { outcome: "cancelled" } } as const)
+                  : ({ outcome: { outcome: "selected", optionId } } as const);
+              })();
+              const checked = yield* runRuntimeCallbackAtGeneration(
+                handlerGeneration,
+                Effect.sync(() => {
+                  if (context.finalized || context.interrupted)
+                    return { outcome: { outcome: "cancelled" } } as const;
+                  if (
+                    response.outcome.outcome === "selected" &&
+                    parsedPermission.kind === "execute" &&
+                    (decision === "accept" || decision === "acceptForSession")
+                  ) {
+                    const execution = acpApprovedExecution(
+                      params.toolCall.rawInput,
+                      context.input.runtimePolicy.cwd,
+                    );
+                    grants.recordApproval({
+                      kind: "command",
+                      scope: decision === "acceptForSession" ? "session" : "turn",
+                      turnKey: String(context.providerTurnId),
+                      ...(execution === undefined ? {} : { execution }),
+                    });
+                  }
+                  return response;
+                }),
+              );
+              if (Option.isNone(checked)) return yield* Effect.never;
+              yield* acknowledgeNativeResponse(handlerGeneration, pendingTransportRequestId);
+              return checked.value;
             }).pipe(
               Effect.mapError(
                 (cause) =>
@@ -6209,26 +6623,84 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           yield* targetRuntime.handleElicitation((params, requestContext) =>
             Effect.gen(function* () {
               const transportRequestId = requestContext.requestId;
-              if (
-                params.mode === "form" &&
-                ((typeof params._meta === "object" && params._meta !== null
-                  ? Reflect.get(params._meta, "codex_approval_kind")
-                  : undefined) === "mcp_tool_call" ||
-                  transportRequestId.startsWith("mcp_tool_call_approval_"))
-              ) {
-                const acknowledgement = yield* runRuntimeCallbackAtGeneration(
+              const mcpDisposition = acpMcpToolApprovalElicitationDisposition(
+                (yield* Ref.get(activeTurn))?.input.runtimePolicy ?? latestRuntimePolicy,
+                params,
+                transportRequestId,
+                (yield* readMcpContext(input.threadId)).servers.length > 0,
+              );
+              if (mcpDisposition !== undefined) {
+                if (mcpDisposition === "ask" && !(yield* awaitRequestTurn(handlerGeneration)))
+                  return { action: "cancel" } as const;
+                const admitted = yield* runRuntimeCallbackAtGeneration(
                   handlerGeneration,
                   Effect.gen(function* () {
-                    const acknowledgement = yield* Deferred.make<void, EffectAcpErrors.AcpError>();
-                    yield* registerNativeResponseAcknowledgement(
+                    if (mcpDisposition === "allow") {
+                      const acknowledgement = yield* Deferred.make<
+                        void,
+                        EffectAcpErrors.AcpError
+                      >();
+                      yield* registerNativeResponseAcknowledgement(
+                        handlerGeneration,
+                        transportRequestId,
+                        acknowledgement,
+                      );
+                      return undefined;
+                    }
+                    return yield* beginApprovalRequest(
+                      yield* requireActiveContext,
+                      {
+                        sessionId:
+                          "sessionId" in params && typeof params.sessionId === "string"
+                            ? params.sessionId
+                            : "",
+                        toolCall: {
+                          toolCallId: transportRequestId,
+                          title: params.message,
+                          kind: "other",
+                        },
+                        options: [
+                          { optionId: "accept", name: "Allow once", kind: "allow_once" },
+                          { optionId: "decline", name: "Decline", kind: "reject_once" },
+                        ],
+                      },
                       handlerGeneration,
                       transportRequestId,
-                      acknowledgement,
+                      "mcp-elicitation",
                     );
                   }),
                 );
-                if (Option.isNone(acknowledgement)) return yield* Effect.never;
-                return { action: "accept", content: {} } as const;
+                if (Option.isNone(admitted)) return yield* Effect.never;
+                const pending = admitted.value;
+                if (pending === undefined) return { action: "accept", content: {} } as const;
+                const { decision } = yield* Deferred.await(pending.decision).pipe(
+                  Effect.ensuring(
+                    runRuntimeCallbackAtGeneration(
+                      handlerGeneration,
+                      Ref.update(pendingRuntimeRequests, (current) => {
+                        const updated = new Map(current);
+                        updated.delete(String(pending.requestId));
+                        return updated;
+                      }),
+                    ).pipe(Effect.asVoid),
+                  ),
+                );
+                const checked = yield* runRuntimeCallbackAtGeneration(
+                  handlerGeneration,
+                  Effect.succeed(
+                    pending.context.finalized ||
+                      pending.context.interrupted ||
+                      decision === "cancel" ||
+                      decision === "acceptForSession"
+                      ? ({ action: "cancel" } as const)
+                      : decision === "accept"
+                        ? ({ action: "accept", content: {} } as const)
+                        : ({ action: "decline" } as const),
+                  ),
+                );
+                if (Option.isNone(checked)) return yield* Effect.never;
+                yield* acknowledgeNativeResponse(handlerGeneration, transportRequestId);
+                return checked.value;
               }
               if (
                 params.mode === "url" &&
@@ -6278,29 +6750,31 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                   ? params.sessionId
                   : undefined;
               const elicitationScopeId = nativeSessionId ?? `request:${transportRequestId}`;
-              const questions = extracted?.questions ?? Object.entries(properties).map(
-                ([id, property], index): OrchestrationV2UserInputQuestion => {
-                  const record = unknownRecord(property);
-                  const enumValues = Array.isArray(record?.enum)
-                    ? record.enum.filter((value): value is string => typeof value === "string")
-                    : [];
-                  const options =
-                    enumValues.length > 0
-                      ? enumValues.map((value) => ({ label: value, description: value }))
-                      : record?.type === "boolean"
-                        ? [
-                            { label: "true", description: "Yes" },
-                            { label: "false", description: "No" },
-                          ]
-                        : [];
-                  return {
-                    id,
-                    header: nonEmptyText(record?.title, `Question ${index + 1}`),
-                    question: nonEmptyText(record?.description, params.message),
-                    options,
-                  };
-                },
-              );
+              const questions =
+                extracted?.questions ??
+                Object.entries(properties).map(
+                  ([id, property], index): OrchestrationV2UserInputQuestion => {
+                    const record = unknownRecord(property);
+                    const enumValues = Array.isArray(record?.enum)
+                      ? record.enum.filter((value): value is string => typeof value === "string")
+                      : [];
+                    const options =
+                      enumValues.length > 0
+                        ? enumValues.map((value) => ({ label: value, description: value }))
+                        : record?.type === "boolean"
+                          ? [
+                              { label: "true", description: "Yes" },
+                              { label: "false", description: "No" },
+                            ]
+                          : [];
+                    return {
+                      id,
+                      header: nonEmptyText(record?.title, `Question ${index + 1}`),
+                      question: nonEmptyText(record?.description, params.message),
+                      options,
+                    };
+                  },
+                );
               const userInput = yield* requestUserInputWithAdmission(
                 handlerGeneration,
                 Effect.gen(function* () {
@@ -6321,16 +6795,26 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               const response =
                 userInput.answers === null
                   ? ({ action: "cancel" } as const)
-                  : extracted?.respond(userInput.answers) ?? ({
+                  : (extracted?.respond(userInput.answers) ??
+                    ({
                       action: "accept",
                       content: elicitationContent(
                         userInput.answers,
                         new Set(Object.keys(properties)),
                       ),
-                    } as const);
+                    } as const));
               yield* userInput.acknowledgeNativeResponse;
               return response;
-            }).pipe(holdingAgentRequest(handlerGeneration)),
+            }).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new EffectAcpErrors.AcpTransportError({
+                    detail: "Failed to handle an ACP elicitation",
+                    cause,
+                  }),
+              ),
+              holdingAgentRequest(handlerGeneration),
+            ),
           );
           if (flavor.registerExtensions !== undefined) {
             yield* flavor.registerExtensions({
@@ -6549,6 +7033,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                   }
                   yield* quarantineNativeTransportAtGeneration(previousGeneration);
                   runtime = replacementExit.value.replacementRuntime;
+                  clientPolicyGrants = makeAcpClientPolicyGrants();
                   runtimeScope = replacementScope;
                   runtimeMcpBridge = replacementMcpBridge;
                   yield* Ref.set(runtimeCallbackGeneration, replacementGeneration);
@@ -6894,6 +7379,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
         });
 
         const quarantineStoppedRun = Effect.fnUntraced(function* () {
+          clientPolicyGrants = makeAcpClientPolicyGrants();
           agentWork = null;
           agentRequests.clear();
           nativeChildren.clear();
@@ -6922,6 +7408,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           const settledStatus = context.interrupted ? "interrupted" : status;
           context.finalizedStatus = settledStatus;
           context.finalized = true;
+          yield* cancelPendingRuntimeRequests(context.providerTurnId);
           const directStopQuarantine = yield* Ref.get(stoppedRunQuarantine);
           if (flavor.subagentsIdleOnTurnCompletion === true) {
             for (const subagent of context.subagents.values()) {
@@ -7242,6 +7729,9 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                 detail: `ACP provider turn ${existing.providerTurnId} is still active`,
               });
             }
+            if (latestRuntimePolicy.runtimeMode !== turnInput.runtimePolicy.runtimeMode)
+              clientPolicyGrants = makeAcpClientPolicyGrants();
+            latestRuntimePolicy = turnInput.runtimePolicy;
             useProviderThreadIdentity(turnInput.providerThread);
             // Session activation can itself invoke client fs/terminal methods.
             // Install the incoming thread policy before load/resume so those
@@ -7255,6 +7745,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               (yield* Ref.get(activeSessionId)) !== requestedSessionId ||
               restartAfterInterrupt !== undefined;
             if (needsSessionActivation) {
+              clientPolicyGrants = makeAcpClientPolicyGrants();
               const activated =
                 restartAfterInterrupt ??
                 (yield* activateSession(requestedSessionId, turnInput.threadId));
@@ -7653,7 +8144,11 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             const requests = [...(yield* Ref.get(pendingRuntimeRequests)).values()];
             yield* Effect.forEach(
               requests,
-              (request) => Deferred.succeed(request.answers, null).pipe(Effect.ignore),
+              (request) =>
+                (request.type === "approval"
+                  ? Deferred.succeed(request.decision, { decision: "cancel" })
+                  : Deferred.succeed(request.answers, null)
+                ).pipe(Effect.ignore),
               { discard: true },
             );
             const closingError = new EffectAcpErrors.AcpTransportError({
@@ -7794,6 +8289,10 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                   yield* awaitRuntimeTeardown();
                   const sessionId = yield* nativeThreadId(driver, threadInput.providerThread);
                   const previousItemIdentityVersion = itemIdentityVersion;
+                  const nextRuntimePolicy = threadInput.runtimePolicy ?? input.runtimePolicy;
+                  if (latestRuntimePolicy.runtimeMode !== nextRuntimePolicy.runtimeMode)
+                    clientPolicyGrants = makeAcpClientPolicyGrants();
+                  latestRuntimePolicy = nextRuntimePolicy;
                   useProviderThreadIdentity(threadInput.providerThread);
                   const restorePreviousItemIdentity = Effect.sync(() => {
                     itemIdentityVersion = previousItemIdentityVersion;
@@ -7824,7 +8323,6 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                     yield* Ref.set(activeSessionId, activated.sessionId);
                     yield* setActiveSessionSetup(activated);
                     const nextSelection = threadInput.modelSelection ?? input.modelSelection;
-                    const nextRuntimePolicy = threadInput.runtimePolicy ?? input.runtimePolicy;
                     yield* configureSession(activated, nextSelection, nextRuntimePolicy);
                     yield* Ref.set(activeSelection, nextSelection);
                     yield* Ref.set(activeInteractionMode, nextRuntimePolicy.interactionMode);
@@ -8194,10 +8692,35 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                       detail: `No pending ACP runtime request ${requestInput.requestId}`,
                     });
                   }
-                  const settled = yield* Deferred.succeed(
-                    pending.answers,
-                    requestInput.answers ?? null,
-                  );
+                  const offered =
+                    pending.type === "approval" && pending.turnItem.type === "approval_request"
+                      ? (pending.turnItem.options?.filter(
+                          (option) => option.decision === requestInput.decision,
+                        ) ?? [])
+                      : [];
+                  if (
+                    (requestInput.optionId !== undefined &&
+                      !offered.some((option) => option.optionId === requestInput.optionId)) ||
+                    (requestInput.optionId === undefined && offered.length > 1)
+                  )
+                    return yield* new ProviderAdapter.ProviderAdapterProtocolError({
+                      driver,
+                      detail: "Choose the native approval scope.",
+                    });
+                  const settled =
+                    pending.type === "user_input"
+                      ? yield* Deferred.succeed(pending.answers, requestInput.answers ?? null)
+                      : requestInput.decision === undefined
+                        ? yield* new ProviderAdapter.ProviderAdapterProtocolError({
+                            driver,
+                            detail: `ACP approval request ${requestInput.requestId} requires a decision`,
+                          })
+                        : yield* Deferred.succeed(pending.decision, {
+                            decision: requestInput.decision,
+                            ...(requestInput.optionId === undefined
+                              ? {}
+                              : { optionId: requestInput.optionId }),
+                          });
                   if (!settled) {
                     return yield* new ProviderAdapter.ProviderAdapterProtocolError({
                       driver,

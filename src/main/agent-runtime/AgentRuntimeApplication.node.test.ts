@@ -1,3 +1,8 @@
+import {
+  ApplicationSettings,
+  make as makeApplicationSettings,
+} from "../settings/ApplicationSettings";
+import { exceededDispatchModeLimit } from "@nodex/agent-runtime/orchestration/DispatchModeLimit";
 import { AgentRuntimeProcessError } from "../platform/node/AgentRuntimeProcess";
 import { assert, it } from "@effect/vitest";
 import { access, mkdir, mkdtemp, realpath, rm, stat } from "node:fs/promises";
@@ -1067,6 +1072,18 @@ const setup = (
       }
       if (method === "thread.send") {
         const request = input as AgentRuntimeOperations["thread.send"]["input"];
+        const thread = snapshots.get(request.threadId)?.projection.thread;
+        const exceeded =
+          request.modeLimit && thread
+            ? exceededDispatchModeLimit(request.modeLimit, thread)
+            : undefined;
+        if (exceeded)
+          return yield* new AgentRuntimeProcessError({
+            reason: "rejected",
+            message: exceeded,
+            engineTag: "OrchestratorThreadAboveModeLimitError",
+            engineReason: exceeded,
+          });
         if (state.admitMessageRuns) {
           const current = snapshots.get(request.threadId)!;
           const existing = current.projection.runs.find(
@@ -1318,6 +1335,7 @@ it.effect("binds an independent imported chat before reading its history into th
       sourceNativeThreadId: codexImport.nativeSessionId,
       modelSelection: { instanceId: "codex", model: "model-b" },
       cwd: codexImport.cwd,
+      runtimeMode: "approval-required",
     });
     assert.equal(fixture.applied.length, 1);
     assert.deepEqual(fixture.applied[0]!.intent, {
@@ -3221,7 +3239,7 @@ for (const kind of ["user_input", "mcp-elicitation"] as const) {
               },
               requirePending: true,
               responseFingerprint: "exact-response",
-              interactionModeCeiling: "plan" as const,
+              modeLimit: { runtimeMode: "full-access" as const, interactionMode: "plan" as const },
             }),
       });
       const command = [...fixture.commands.values()].at(-1)!;
@@ -5092,7 +5110,7 @@ it.effect(
         sessionId: launched.sessionId,
         mode: "queue",
         messageFingerprint: "a".repeat(64),
-        interactionModeCeiling: "plan",
+        modeLimit: { runtimeMode: "full-access", interactionMode: "plan" },
         resources: [
           { name: "gone.png", mimeType: "image/png", sizeBytes: 10, source: "/removed/source.png" },
         ],
@@ -5146,7 +5164,7 @@ it.effect(
       const before = fixture.calls.length;
       const retry = yield* owner.launch({
         ...input,
-        interactionModeCeiling: "plan",
+        modeLimit: { runtimeMode: "full-access", interactionMode: "plan" },
         interactionMode: "default",
         resources: [
           { name: "gone.png", mimeType: "image/png", sizeBytes: 10, source: "/removed/source.png" },
@@ -5172,9 +5190,10 @@ it.effect(
       fixture.state.failThreadCreate = true;
       const input = {
         ...launch,
+        runtimeMode: "full-access" as const,
         messageFingerprint: "a".repeat(64),
         interactionMode: "plan" as const,
-        interactionModeCeiling: "plan" as const,
+        modeLimit: { runtimeMode: "full-access" as const, interactionMode: "plan" as const },
         modelSelection: { instanceId: "codex", model: "model-b" },
         resources: [
           {
@@ -5650,7 +5669,7 @@ it.effect("a Plan caller cannot use message config to widen the final send or la
       .launch({
         ...launch,
         interactionMode: "plan",
-        interactionModeCeiling: "plan",
+        modeLimit: { runtimeMode: "full-access", interactionMode: "plan" },
         modelSelection: { instanceId: "codex", model: "model-a" },
         message,
       })
@@ -5661,7 +5680,7 @@ it.effect("a Plan caller cannot use message config to widen the final send or la
       ...launch,
       interactionMode: "plan",
       modelSelection: { instanceId: "codex", model: "model-a" },
-      interactionModeCeiling: "plan",
+      modeLimit: { runtimeMode: "full-access", interactionMode: "plan" },
     });
     const first = fixture.calls.find(
       (call) =>
@@ -5678,7 +5697,7 @@ it.effect("a Plan caller cannot use message config to widen the final send or la
       .sendMessage({
         sessionId: started.sessionId,
         mode: "auto",
-        interactionModeCeiling: "plan",
+        modeLimit: { runtimeMode: "full-access", interactionMode: "plan" },
         message,
       })
       .pipe(Effect.flip);
@@ -5687,7 +5706,7 @@ it.effect("a Plan caller cannot use message config to widen the final send or la
     yield* owner.sendMessage({
       sessionId: started.sessionId,
       mode: "auto",
-      interactionModeCeiling: "plan",
+      modeLimit: { runtimeMode: "full-access", interactionMode: "plan" },
       message: { messageId: "message:allowed-plan", text: "Continue planning" },
     });
     const sent = fixture.calls.find((call) => call.method === "thread.send")!;
@@ -6475,6 +6494,7 @@ it.effect.each(["stored", "live", "standard"] as const)(
   (settings) =>
     Effect.gen(function* () {
       const f = setup({
+        defaultRuntimeMode: Effect.succeed("auto"),
         ...(settings === "stored"
           ? {}
           : {
@@ -6524,6 +6544,7 @@ it.effect.each(["stored", "live", "standard"] as const)(
       assert.deepEqual(f.state.nativeSession, original);
       const capture = [...f.imports.values()][0]!;
       assert.isTrue(capture.sideChatCapture);
+      assert.equal(capture.runtimeMode, "auto");
       assert.equal(capture.sourceNativeThreadId, codexImport.nativeSessionId);
       assert.equal(capture.interactionMode, settings === "stored" ? undefined : "plan");
       assert.deepEqual(capture.modelSelection, {
@@ -6662,5 +6683,275 @@ it.effect(
       yield* owner.cleanupDeletedSessions;
       assert.isNotNull(f.snapshots.get(side.threadId)!.projection.thread.deletedAt);
       assert.isNull(f.snapshots.get(source.threadId)!.projection.thread.deletedAt);
+    }),
+);
+
+for (const runtimeMode of [undefined, "approval-required", "auto", "full-access"] as const) {
+  it.effect(`launches with ${runtimeMode ?? "the Profile default"} native execution mode`, () =>
+    Effect.gen(function* () {
+      const f = setup({ defaultRuntimeMode: Effect.succeed("auto") });
+      const owner = yield* f.owner;
+      const result = yield* owner.launch({ ...launch, ...(runtimeMode ? { runtimeMode } : {}) });
+      assert.equal(
+        f.snapshots.get(result.threadId)!.projection.thread.runtimeMode,
+        runtimeMode ?? "auto",
+      );
+      const read = yield* owner.read({ sessionId: result.sessionId });
+      assert.equal(read.snapshot.projection.thread.runtimeMode, runtimeMode ?? "auto");
+      yield* owner.setModes({
+        sessionId: result.sessionId,
+        requestId: "set-native",
+        runtimeMode: "approval-required",
+      });
+      assert.deepInclude([...f.commands.values()].at(-1), {
+        type: "thread.runtime-mode.set",
+        threadId: result.threadId,
+        runtimeMode: "approval-required",
+      });
+    }),
+  );
+}
+
+it.effect("defaults recovered roots and imported Sessions to the current Profile preference", () =>
+  Effect.gen(function* () {
+    const f = setup({ defaultRuntimeMode: Effect.succeed("auto") });
+    const owner = yield* f.owner;
+    f.state.failThreadCreate = true;
+    assert.equal((yield* owner.launch(launch).pipe(Effect.result))._tag, "Failure");
+    const recovered = yield* owner.read({ sessionId: launch.sessionId });
+    assert.equal(recovered.snapshot.projection.thread.runtimeMode, "auto");
+    yield* importConversation(owner, codexImport);
+    assert.equal([...f.imports.values()][0]?.runtimeMode, "auto");
+  }),
+);
+
+it.effect(
+  "rejects native launch escalation before binding and carries restricted ceilings to commands",
+  () =>
+    Effect.gen(function* () {
+      const f = setup();
+      const owner = yield* f.owner;
+      const modeLimit = { runtimeMode: "approval-required", interactionMode: "default" } as const;
+      const denied = yield* owner
+        .launch({ ...launch, runtimeMode: "full-access", modeLimit })
+        .pipe(Effect.flip);
+      assert.equal(denied.message, "runtime_mode_escalation_denied");
+      assert.equal(f.bindings.size, 0);
+      const launched = yield* owner.launch({
+        ...launch,
+        runtimeMode: "approval-required",
+        modeLimit,
+      });
+      for (const call of f.calls.filter((call) => call.method === "command.dispatch")) {
+        const input = call.input as AgentRuntimeOperations["command.dispatch"]["input"];
+        if (input.command.type === "thread.create" || input.command.type === "message.dispatch")
+          assert.deepEqual(input.modeLimit, modeLimit);
+      }
+      yield* owner.sendMessage({
+        sessionId: launched.sessionId,
+        mode: "auto",
+        modeLimit,
+        message: { messageId: "restricted-send", text: "Continue" },
+      });
+      assert.deepEqual(
+        (
+          f.calls.findLast((call) => call.method === "thread.send")!
+            .input as AgentRuntimeOperations["thread.send"]["input"]
+        ).modeLimit,
+        modeLimit,
+      );
+      const current = f.snapshots.get(launched.threadId)!;
+      f.snapshots.set(launched.threadId, {
+        ...current,
+        projection: {
+          ...current.projection,
+          thread: { ...current.projection.thread, runtimeMode: "full-access" },
+        },
+      });
+      assert.equal(
+        (yield* owner
+          .sendMessage({
+            sessionId: launched.sessionId,
+            mode: "auto",
+            modeLimit,
+            message: { messageId: "escalating-send", text: "Continue" },
+          })
+          .pipe(Effect.flip)).message,
+        "runtime_mode_escalation_denied",
+      );
+    }),
+);
+
+for (const kind of [
+  "command",
+  "file-read",
+  "file-change",
+  "permission",
+  "mcp-elicitation",
+] as const) {
+  it.effect(`admits exact live ${kind} approval decisions and supported decline feedback`, () =>
+    Effect.gen(function* () {
+      const f = setup();
+      const owner = yield* f.owner;
+      const launched = yield* owner.launch(launch);
+      const current = f.snapshots.get(launched.threadId)!;
+      f.snapshots.set(launched.threadId, {
+        ...current,
+        projection: {
+          ...current.projection,
+          nodes: [
+            { id: "approval-node", threadId: launched.threadId, runId: "approval-run" },
+          ] as never,
+          providerSessions: [{ id: "approval-session", status: "waiting" }] as never,
+          runtimeRequests: [
+            {
+              id: "approval",
+              kind,
+              nodeId: "approval-node",
+              status: "pending",
+              responseCapability: {
+                type: "live",
+                providerSessionId: "approval-session",
+                supportsFeedback: true,
+              },
+            },
+          ] as never,
+          turnItems: [
+            {
+              id: "approval-item",
+              type: "approval_request",
+              requestId: "approval",
+              options: [
+                { decision: "acceptForSession", label: "Allow for session" },
+                { decision: "decline", label: "Decline" },
+              ],
+            },
+          ] as never,
+        },
+      });
+      const input = { sessionId: launched.sessionId, requestId: "approval", runId: "approval-run" };
+      for (const invalid of [
+        { ...input, runId: "another-run", decision: "decline" as const },
+        { ...input, decision: "accept" as const },
+        { ...input, decision: "acceptForSession" as const, feedback: "No" },
+        { ...input, decision: "decline" as const, feedback: " " },
+        { ...input, decision: "decline" as const, answers: {} },
+        {
+          ...input,
+          decision: "decline" as const,
+          respondedBy: { kind: "agent" as const, senderThreadId: "agent" },
+        },
+      ])
+        assert.equal((yield* owner.respond(invalid).pipe(Effect.result))._tag, "Failure");
+      assert.equal(
+        (yield* owner
+          .respond({ ...input, decision: "decline" })
+          .pipe(Effect.provideService(CoreApplicationAgent, agent), Effect.result))._tag,
+        "Failure",
+      );
+      yield* owner.respond({
+        ...input,
+        decision: "acceptForSession",
+        submissionId: "approval-batch",
+      });
+      yield* owner.respond({
+        ...input,
+        decision: "decline",
+        feedback: "Keep the network disabled",
+        submissionId: "decline-batch",
+      });
+      assert.deepInclude([...f.commands.values()].at(-1), {
+        type: "runtime-request.respond",
+        decision: "decline",
+        feedback: "Keep the network disabled",
+      });
+      const snapshot = f.snapshots.get(launched.threadId)!;
+      f.snapshots.set(launched.threadId, {
+        ...snapshot,
+        projection: { ...snapshot.projection, providerSessions: [] },
+      });
+      assert.equal(
+        (yield* owner
+          .respond({ ...input, decision: "decline", submissionId: "lost-connection" })
+          .pipe(Effect.result))._tag,
+        "Failure",
+      );
+    }),
+  );
+}
+
+it.effect("retains the caller ceiling when the target broadens during resource preparation", () =>
+  Effect.gen(function* () {
+    let f: ReturnType<typeof setup>;
+    f = setup({}, [], (input) =>
+      Effect.sync(() => {
+        const current = f.snapshots.get(input.threadId)!;
+        f.snapshots.set(input.threadId, {
+          ...current,
+          projection: {
+            ...current.projection,
+            thread: { ...current.projection.thread, runtimeMode: "full-access" },
+          },
+        });
+        return { attachments: [] };
+      }),
+    );
+    const owner = yield* f.owner;
+    const launched = yield* owner.launch({ ...launch, runtimeMode: "approval-required" });
+    const error = yield* owner
+      .sendMessage({
+        sessionId: launched.sessionId,
+        mode: "auto",
+        modeLimit: { runtimeMode: "approval-required", interactionMode: "default" },
+        resources: [
+          {
+            name: "evidence.txt",
+            mimeType: "text/plain",
+            sizeBytes: 1,
+            source: "/authorized/evidence.txt",
+          },
+        ],
+        message: { messageId: "racing-mode", text: "Continue" },
+      })
+      .pipe(Effect.flip);
+    assert.equal(error.message, "runtime_mode_escalation_denied");
+  }),
+);
+
+it.effect(
+  "reads the Profile default at launch while preserving already materialized Thread modes",
+  () =>
+    Effect.gen(function* () {
+      const home = yield* Effect.acquireRelease(
+        Effect.promise(() => mkdtemp(join(tmpdir(), "nodex-runtime-default-"))),
+        (directory) => Effect.promise(() => rm(directory, { recursive: true, force: true })),
+      );
+      const settings = yield* makeApplicationSettings({
+        environment: {},
+        hostHomeDirectory: home,
+        settingsPath: join(home, "config.toml"),
+      });
+      const f = setup();
+      const owner = yield* f.owner.pipe(Effect.provideService(ApplicationSettings, settings));
+      const first = yield* owner.launch(launch);
+      assert.equal(
+        f.snapshots.get(first.threadId)!.projection.thread.runtimeMode,
+        "approval-required",
+      );
+      yield* settings.update({
+        type: "update-agent-runtime",
+        input: { defaultRuntimeMode: "full-access" },
+      });
+      const second = yield* owner.launch({
+        ...launch,
+        launchId: "launch:changed-default",
+        sessionId: "session:changed-default",
+        message: { ...launch.message, messageId: "message:changed-default" },
+      });
+      assert.equal(f.snapshots.get(second.threadId)!.projection.thread.runtimeMode, "full-access");
+      assert.equal(
+        (yield* owner.read({ sessionId: first.sessionId })).snapshot.projection.thread.runtimeMode,
+        "approval-required",
+      );
     }),
 );

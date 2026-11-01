@@ -94,6 +94,8 @@ const sameActivity = (left: SessionActivity | null, right: SessionActivity | nul
     left.sideChatSourceThreadId === right.sideChatSourceThreadId &&
     left.activeRunId === right.activeRunId &&
     left.pendingRequestCount === right.pendingRequestCount &&
+    JSON.stringify(left.activeFlags ?? []) === JSON.stringify(right.activeFlags ?? []) &&
+    left.approvalPrompt === right.approvalPrompt &&
     left.backgroundTasks.length === right.backgroundTasks.length &&
     left.backgroundTasks.every((task, index) => {
       const other = right.backgroundTasks[index]!;
@@ -120,6 +122,8 @@ const toSessionActivity = (sessionId: string, root: AgentRootActivity): SessionA
   status: root.status,
   activeRunId: root.activeRunId,
   pendingRequestCount: root.pendingRequestCount,
+  ...(root.activeFlags === undefined ? {} : { activeFlags: root.activeFlags }),
+  ...(root.approvalPrompt === undefined ? {} : { approvalPrompt: root.approvalPrompt }),
   backgroundTasks: root.backgroundTasks,
   providerInstanceId: root.providerInstanceId,
   model: root.model,

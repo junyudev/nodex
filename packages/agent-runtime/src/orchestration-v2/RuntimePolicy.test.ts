@@ -12,6 +12,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 
+import * as ProviderInstanceRegistry from "../provider/ProviderInstanceRegistry.ts";
 import * as ProjectStore from "./ProjectStore.ts";
 import * as RuntimePolicy from "./RuntimePolicy.ts";
 
@@ -79,6 +80,11 @@ const layerTest = RuntimePolicy.layerFromProjectStore.pipe(
         ),
     }),
   ),
+  Layer.provide(
+    Layer.mock(ProviderInstanceRegistry.ProviderInstanceRegistry)({
+      getInstance: () => Effect.succeed(undefined),
+    }),
+  ),
 );
 
 it.layer(layerTest)("RuntimePolicyV2", (it) => {
@@ -106,17 +112,76 @@ it.layer(layerTest)("RuntimePolicyV2", (it) => {
     }),
   );
 
-  it.effect("uses full access while preserving planning and working-directory context", () =>
+  it.effect("preserves the Thread mode, planning intent and working-directory context", () =>
     Effect.gen(function* () {
       const policy = yield* RuntimePolicy.RuntimePolicyV2;
       const now = yield* DateTime.now;
       const resolved = yield* policy.resolve({
-        thread: { ...makeThread({ now, worktreePath: null }), interactionMode: "plan" },
+        thread: {
+          ...makeThread({ now, worktreePath: null, runtimeMode: "auto" }),
+          interactionMode: "plan",
+        },
         modelSelection,
       });
-      assert.equal(resolved.runtimeMode, "full-access");
+      assert.equal(resolved.runtimeMode, "auto");
       assert.equal(resolved.interactionMode, "plan");
       assert.equal(resolved.cwd, "/project-root");
     }),
   );
+});
+
+it.effect("the standalone policy layer preserves every durable Thread mode", () =>
+  Effect.gen(function* () {
+    const policy = yield* RuntimePolicy.RuntimePolicyV2;
+    const now = yield* DateTime.now;
+    for (const runtimeMode of ["approval-required", "auto", "full-access"] as const) {
+      const thread = makeThread({ now, worktreePath: null, runtimeMode });
+      assert.equal((yield* policy.resolve({ thread, modelSelection })).runtimeMode, runtimeMode);
+    }
+  }).pipe(Effect.provide(RuntimePolicy.layer)),
+);
+
+it.effect("uses the selected provider's broadest supported mode within the Thread ceiling", () =>
+  Effect.gen(function* () {
+    const policy = yield* RuntimePolicy.RuntimePolicyV2;
+    const now = yield* DateTime.now;
+    const thread = makeThread({ now, worktreePath: "/project-worktree", runtimeMode: "auto" });
+    assert.equal(
+      (yield* policy.resolve({ thread, modelSelection })).runtimeMode,
+      "approval-required",
+    );
+    assert.equal(thread.runtimeMode, "auto");
+  }).pipe(
+    Effect.provide(
+      RuntimePolicy.layerFromProjectStore.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            Layer.mock(ProjectStore.ProjectStoreV2)({}),
+            Layer.mock(ProviderInstanceRegistry.ProviderInstanceRegistry)({
+              getInstance: (id) => {
+                assert.equal(id, modelSelection.instanceId);
+                return Effect.succeed({
+                  snapshot: {
+                    getSnapshot: Effect.succeed({
+                      supportedRuntimeModes: ["approval-required", "full-access"],
+                    }),
+                  },
+                } as never);
+              },
+            }),
+          ),
+        ),
+      ),
+    ),
+  ),
+);
+
+it.each([
+  ["full-access", ["auto", "approval-required"], "auto"],
+  ["auto", ["full-access", "approval-required"], "approval-required"],
+  ["approval-required", ["full-access"], "approval-required"],
+  ["auto", [], "auto"],
+  ["auto", undefined, "auto"],
+] as const)("resolves %s within provider support %j to %s", (mode, supported, expected) => {
+  assert.equal(RuntimePolicy.providerRuntimeMode(mode, supported), expected);
 });

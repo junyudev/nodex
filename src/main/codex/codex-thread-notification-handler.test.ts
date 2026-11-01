@@ -95,6 +95,78 @@ function setup(
 }
 
 describe("Codex thread notification handler", () => {
+  test("approval requests show their action, navigate to their Session and dismiss independently of questions", () => {
+    const runtime = setup({ turnMode: "off", questionsEnabled: true });
+    const facts = conversation({ runtimeSessionId: "session-1" });
+    runtime.source.eventListener?.({
+      type: "approval-requested",
+      hostId: "local",
+      conversation: facts,
+      requestId: 73,
+      turnId: "turn-1",
+      prompt: "git push origin main",
+    });
+    runtime.source.eventListener?.({
+      type: "user-input-requested",
+      hostId: "local",
+      conversation: facts,
+      requestId: 73,
+      turnId: "turn-1",
+      questionCount: 1,
+    });
+    expect(runtime.shown).toHaveLength(2);
+    const approval = runtime.shown[0]!;
+    expect(approval).toMatchObject({
+      id: "approval-local-73",
+      title: "Notification parity needs approval",
+      body: "git push origin main",
+      navigationPath: "session:session-1/thread:thread-1",
+      requestId: 73,
+    });
+    expect(approval.actions).toBeUndefined();
+    expect(approval.replyPlaceholder).toBeUndefined();
+    expect(approval.occurrenceId).not.toBe(runtime.shown[1]?.occurrenceId);
+    runtime.actions[0]?.({ notificationId: approval.id, actionType: "open", actionId: null });
+    expect(runtime.focusTargetClient).toHaveBeenCalledWith("renderer-1");
+    expect(runtime.dispatched[0]).toMatchObject({
+      actionType: "open",
+      hostId: "local",
+      conversationId: "thread-1",
+      navigationPath: "session:session-1/thread:thread-1",
+      requestId: 73,
+    });
+    runtime.source.eventListener?.({
+      type: "request-resolved",
+      hostId: "local",
+      conversationId: "thread-1",
+      requestId: 73,
+      family: "approval",
+    });
+    expect(runtime.dismissed).toEqual([{ occurrenceId: approval.occurrenceId }]);
+  });
+
+  test("approval requests share request preferences and foreground suppression", () => {
+    const event = {
+      type: "approval-requested",
+      hostId: "local",
+      conversation: conversation(),
+      requestId: "approval-1",
+      turnId: "turn-1",
+      prompt: null,
+    } as const;
+    const disabled = setup({ turnMode: "always", questionsEnabled: false });
+    disabled.source.eventListener?.(event);
+    expect(disabled.shown).toEqual([]);
+    const visible = setup();
+    visible.setPresented(true);
+    visible.source.eventListener?.(event);
+    expect(visible.shown).toEqual([]);
+    const background = setup();
+    background.setForegrounded(true);
+    background.source.eventListener?.(event);
+    expect(background.shown[0]?.body).toBe("Approve the requested action to proceed.");
+  });
+
   test("muted automations notify on failure while respecting global notification settings", () => {
     const runtime = setup();
     const emit = (target: ReturnType<typeof setup>, status: "completed" | "failed") =>

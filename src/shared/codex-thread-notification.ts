@@ -43,11 +43,21 @@ export interface CodexUserInputRequestedNotificationEvent {
   questionCount: number;
 }
 
+export interface CodexApprovalRequestedNotificationEvent {
+  type: "approval-requested";
+  hostId: string;
+  conversation: CodexNotificationConversationFacts;
+  requestId: CodexAppServerRequestId;
+  turnId: string;
+  prompt: string | null;
+}
+
 export interface CodexRequestResolvedNotificationEvent {
   type: "request-resolved";
   hostId: string;
   conversationId: string;
   requestId: CodexAppServerRequestId;
+  family?: "question" | "approval";
 }
 
 export interface CodexAsyncQuestionNotificationEvent {
@@ -79,6 +89,7 @@ export type CodexThreadNotificationEvent =
   | CodexAsyncQuestionNotificationEvent
   | CodexAsyncQuestionResolvedNotificationEvent
   | CodexTurnCompletedNotificationEvent
+  | CodexApprovalRequestedNotificationEvent
   | CodexUserInputRequestedNotificationEvent
   | CodexRequestResolvedNotificationEvent;
 
@@ -192,6 +203,15 @@ export function resolveCodexQuestionNotificationBody(questionCount: number): str
   return "Answer a question to proceed.";
 }
 
+export function resolveCodexApprovalNotificationTitle(title: string | null): string {
+  const normalized = normalizeDesktopNotificationText(title);
+  return normalized ? `${normalized} needs approval` : "Nodex needs approval";
+}
+
+export function resolveCodexApprovalNotificationBody(prompt: string | null): string {
+  return prompt?.trim() || "Approve the requested action to proceed.";
+}
+
 export function buildCodexTurnNotificationId(turnId: string): string {
   return `turn-${turnId}`;
 }
@@ -211,8 +231,15 @@ export function buildCodexQuestionNotificationId(
   return `question-${hostId}-${requestId}`;
 }
 
+export function buildCodexApprovalNotificationId(
+  hostId: string,
+  requestId: CodexAppServerRequestId,
+): string {
+  return `approval-${hostId}-${requestId}`;
+}
+
 export function buildCodexRequestNotificationOccurrenceId(
-  family: "question",
+  family: "question" | "approval",
   hostId: string,
   conversationId: string,
   requestId: CodexAppServerRequestId,

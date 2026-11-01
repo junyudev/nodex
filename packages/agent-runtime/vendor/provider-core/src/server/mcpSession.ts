@@ -14,6 +14,8 @@ export interface McpProviderSessionConfig {
    * call would reject.
    */
   readonly browserToolsAvailable: boolean;
+  /** Exact tools installed on this credential's host-owned application server. */
+  readonly registeredToolNames?: ReadonlyArray<string>;
   /** Capabilities the credential grants ("preview", "device"). */
   readonly capabilities?: ReadonlySet<string>;
   /**

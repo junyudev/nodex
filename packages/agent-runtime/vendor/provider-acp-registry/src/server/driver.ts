@@ -217,6 +217,7 @@ function baseSnapshot(
     // so selectors must not offer these instances for commit, PR, branch, or
     // title generation.
     supportsTextGeneration: false,
+    supportedRuntimeModes: ["approval-required", "full-access"],
     enabled: input.settings.enabled,
     installed: input.installed,
     version: input.version,

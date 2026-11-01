@@ -23,7 +23,6 @@ import {
   type OrchestratorMcpCapabilitiesResult,
   type OrchestratorMcpDelegateTaskInput,
   type OrchestratorMcpDelegateTaskResult,
-  type OrchestratorMcpInteractionMode,
   type OrchestratorMcpTarget,
   type OrchestratorMcpTaskCancelInput,
   type OrchestratorMcpTaskCancelResult,
@@ -31,10 +30,10 @@ import {
   type OrchestratorMcpThreadListItem,
   type OrchestratorMcpThreadSendInput,
   type OrchestratorMcpThreadSendResult,
-  type ProviderInteractionMode,
   type ProviderOptionDescriptor,
   type ProviderOptionSelection,
   ProviderRequestKind,
+  type RuntimeMode,
   type ServerProvider,
   ThreadId,
   TurnItemId,
@@ -69,7 +68,10 @@ import type {
   TaskReadInput,
   TaskReadResult,
 } from "./toolkits/task/tools.ts";
-import { dispatchFailure } from "./threadAccess.ts";
+import { assertTargetWithinLimits, dispatchFailure } from "./threadAccess.ts";
+import { DispatchModeLimit } from "../orchestration-v2/DispatchModeLimit.ts";
+import { OrchestratorThreadAboveModeLimitError } from "../orchestration-v2/Orchestrator.ts";
+import { resolveInteractionMode, resolveRuntimeMode } from "./delegatedTaskModes.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import { isSnoozed } from "../orchestration-v2/threadSnoozePolicy.ts";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
@@ -77,6 +79,7 @@ import * as ServerSettings from "../serverSettings.ts";
 import {
   type McpInvocationScope,
   type McpThreadInvocationScope,
+  callerModeCeiling,
   requireThreadScope,
 } from "./McpInvocationContext.ts";
 
@@ -95,6 +98,7 @@ const DEFAULT_THREAD_ITEM_MAX_CHARS = 20_000;
 
 interface ResolvedTarget {
   readonly modelSelection: ModelSelection;
+  readonly supportedRuntimeModes: ReadonlyArray<RuntimeMode> | undefined;
 }
 
 export interface OrchestratorMcpServiceShape {
@@ -158,6 +162,7 @@ export class OrchestratorMcpService extends Context.Service<
 >()("t3/mcp/OrchestratorMcpService") {}
 
 const isThreadManagementError = Schema.is(ThreadManagementService.ThreadManagementError);
+const isModeLimitError = Schema.is(OrchestratorThreadAboveModeLimitError);
 
 function failure(code: OrchestratorMcpFailure["code"], message: string): OrchestratorMcpFailure {
   return new OrchestratorMcpFailure({ code, message });
@@ -423,13 +428,6 @@ function canExposeTaskRunResult(run: OrchestrationV2Run | undefined): run is Orc
   );
 }
 
-/** Planning intent may be selected independently for every Session. */
-export const planningIntent = (
-  current: ProviderInteractionMode,
-  requested: OrchestratorMcpInteractionMode | undefined,
-): ProviderInteractionMode =>
-  requested === undefined || requested === "inherit" ? current : requested;
-
 function stablePart(value: string): string {
   return encodeURIComponent(value);
 }
@@ -596,7 +594,7 @@ export const make = Effect.gen(function* () {
       return run;
     });
 
-  /** Resolve caller identity and planning defaults. */
+  /** Resolve native execution authority separately from content access. */
   const loadCaller = (scope: McpInvocationScope) =>
     Effect.gen(function* () {
       yield* requireCapability(scope);
@@ -604,10 +602,7 @@ export const make = Effect.gen(function* () {
         scope.thread === undefined ? undefined : yield* loadThreadMetadata(scope.thread.threadId);
       return {
         parent,
-        defaults: {
-          runtimeMode: "full-access" as const,
-          interactionMode: parent?.thread.interactionMode ?? "default",
-        },
+        defaults: callerModeCeiling(scope, parent?.thread),
       };
     });
 
@@ -641,6 +636,14 @@ export const make = Effect.gen(function* () {
           : yield* loadTargetThread(threadId);
       return { ...caller, target } as const;
     });
+
+  const loadControllableThread = Effect.fn("OrchestratorMcpService.loadControllableThread")(
+    function* (scope: McpInvocationScope, threadId: ThreadId) {
+      const caller = yield* loadScopedThread(scope, threadId);
+      yield* assertTargetWithinLimits(caller.defaults, caller.target.thread);
+      return caller;
+    },
+  );
 
   const loadReadableThread = (scope: McpInvocationScope, threadId: ThreadId) =>
     Effect.gen(function* () {
@@ -828,6 +831,7 @@ export const make = Effect.gen(function* () {
       }
 
       return {
+        supportedRuntimeModes: provider.supportedRuntimeModes,
         modelSelection:
           instanceId === inheritedSelection.instanceId &&
           model === inheritedSelection.model &&
@@ -1383,8 +1387,13 @@ export const make = Effect.gen(function* () {
           providers,
           skipProjectEnablementFilter: isRetryOfAcceptedDelegation,
         });
-        const runtimeMode = "full-access";
-        const interactionMode = planningIntent(
+        const limits = callerModeCeiling(scope, parent.thread);
+        const runtimeMode = yield* resolveRuntimeMode(
+          limits.runtimeMode,
+          input.runtimeMode,
+          target,
+        );
+        const interactionMode = yield* resolveInteractionMode(
           parent.thread.interactionMode,
           input.interactionMode,
         );
@@ -1410,16 +1419,7 @@ export const make = Effect.gen(function* () {
             // only needed if the parent settled first (timeout, disconnect).
             completionWake: input.mode === "wait" ? "settled_only" : "always",
           })
-          .pipe(
-            Effect.mapError((error) =>
-              error._tag === "ThreadManagementProviderInstanceDisabledError"
-                ? threadManagementFailure(error)
-                : failure(
-                    "orchestration_error",
-                    `Unable to create delegated task: ${errorMessage(error)}`,
-                  ),
-            ),
-          );
+          .pipe(Effect.provideService(DispatchModeLimit, limits), Effect.mapError(dispatchFailure));
         const taskEvent = result.storedEvents.find(
           (stored) =>
             stored.event.type === "subagent.updated" && stored.event.payload.origin === "app_owned",
@@ -1444,6 +1444,7 @@ export const make = Effect.gen(function* () {
           return waited.value;
         }
         // An incomplete wait gives up delivery, so later results must wake the coordinator.
+        const { defaults: currentLimits } = yield* loadCaller(scope);
         yield* threadManagement
           .dispatch({
             type: "delegated_task.wake-policy",
@@ -1457,6 +1458,7 @@ export const make = Effect.gen(function* () {
             completionWake: "always",
           })
           .pipe(
+            Effect.provideService(DispatchModeLimit, currentLimits),
             // The tool still returns after a timeout, question or approval, so failures
             // stay warnings. Keep the two shapes apart: a rejected receipt
             // means this exact command id already failed (a replay of a
@@ -1515,6 +1517,7 @@ export const make = Effect.gen(function* () {
       if (input.action === "read") return { requestId: request.id, questions: item.questions };
       if (input.answers === undefined)
         return yield* failure("invalid_request", "This action needs `answers`.");
+      const { defaults } = yield* loadControllableThread(scope, threadId);
       const key = yield* requestKey();
       const result = yield* threadManagement
         .dispatch({
@@ -1530,12 +1533,14 @@ export const make = Effect.gen(function* () {
           respondedBy: { kind: "agent", senderThreadId: yield* taskOwner(scope, input.taskId) },
           requirePending: true,
         })
-        .pipe(Effect.mapError(dispatchFailure));
+        .pipe(Effect.provideService(DispatchModeLimit, defaults), Effect.mapError(dispatchFailure));
       return { sequence: result.sequence };
     }),
     cancelTask: (scope, input) =>
       Effect.gen(function* () {
         yield* readTask(scope, input.taskId);
+        const childThreadId = yield* taskThread(scope, input.taskId);
+        const { defaults } = yield* loadControllableThread(scope, childThreadId);
         const key =
           input.idempotencyKey === undefined
             ? yield* requestKey()
@@ -1549,15 +1554,18 @@ export const make = Effect.gen(function* () {
             ...(input.reason === undefined ? {} : { reason: input.reason }),
           })
           .pipe(
+            Effect.provideService(DispatchModeLimit, defaults),
             Effect.mapError((error) =>
-              failure(
-                error.reason === "not-found"
-                  ? "task_not_found"
-                  : error.reason === "orchestration-error"
-                    ? "orchestration_error"
-                    : "task_not_cancellable",
-                `Unable to stop delegated task ${input.taskId}: ${errorMessage(error.cause ?? error)}`,
-              ),
+              isModeLimitError(error.cause)
+                ? dispatchFailure(error.cause)
+                : failure(
+                    error.reason === "not-found"
+                      ? "task_not_found"
+                      : error.reason === "orchestration-error"
+                        ? "orchestration_error"
+                        : "task_not_cancellable",
+                    `Unable to stop delegated task ${input.taskId}: ${errorMessage(error.cause ?? error)}`,
+                  ),
             ),
           );
       }),
@@ -1644,28 +1652,26 @@ export const make = Effect.gen(function* () {
       }),
     stopWorkflow: (callerScope, subagentId) =>
       Effect.gen(function* () {
-        yield* requireCapability(callerScope);
-        const scope = yield* requireThreadScope(callerScope, "stop_workflow");
-        yield* threadManagement
-          .stopWorkflow({ threadId: scope.thread.threadId, subagentId })
-          .pipe(
-            Effect.mapError((cause) =>
-              failure(
-                cause.reason === "unavailable" || cause.reason === "stop-failed"
-                  ? "orchestration_error"
-                  : "invalid_request",
-                cause.reason === "not-running"
-                  ? `Workflow ${subagentId} is not running in this conversation.`
-                  : cause.reason === "unsupported"
-                    ? `Task ${subagentId} is not a stoppable workflow.`
-                    : cause.message,
-              ),
+        const { scope, parent } = yield* loadThreadCaller(callerScope, "stop_workflow");
+        yield* threadManagement.stopWorkflow({ threadId: scope.thread.threadId, subagentId }).pipe(
+          Effect.provideService(DispatchModeLimit, callerModeCeiling(scope, parent.thread)),
+          Effect.mapError((cause) =>
+            failure(
+              cause.reason === "unavailable" || cause.reason === "stop-failed"
+                ? "orchestration_error"
+                : "invalid_request",
+              cause.reason === "not-running"
+                ? `Workflow ${subagentId} is not running in this conversation.`
+                : cause.reason === "unsupported"
+                  ? `Task ${subagentId} is not a stoppable workflow.`
+                  : cause.message,
             ),
-          );
+          ),
+        );
       }),
     sendToThread: (scope, input, idempotencyArguments) =>
       Effect.gen(function* () {
-        const { parent, target } = yield* loadScopedThread(scope, input.threadId);
+        const { parent, target, defaults } = yield* loadControllableThread(scope, input.threadId);
 
         const admission = yield* ExecutionHost.McpTurnAdmission;
         const senderRunId =
@@ -1706,13 +1712,11 @@ export const make = Effect.gen(function* () {
             creationSource: "mcp",
           })
           .pipe(
+            Effect.provideService(DispatchModeLimit, defaults),
             Effect.mapError((error) =>
               isThreadManagementError(error)
                 ? threadManagementFailure(error)
-                : failure(
-                    "orchestration_error",
-                    `Unable to send to thread ${input.threadId}: ${errorMessage(error)}`,
-                  ),
+                : dispatchFailure(error),
             ),
           );
         return {

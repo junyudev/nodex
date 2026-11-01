@@ -539,7 +539,7 @@ it.layer(layerTest)("checkOpenCodeProviderStatus", (it) => {
     }),
   );
 
-  it.effect("lists a local OpenCode 2 binary's models in Full access only, never via 1.x", () =>
+  it.effect("lists a local OpenCode 2 binary's models and supported execution modes", () =>
     Effect.gen(function* () {
       runtimeMock.state.versionStdout = "opencode v2.0.18\n";
       const snapshot = yield* checkProvider(
@@ -559,6 +559,7 @@ it.layer(layerTest)("checkOpenCodeProviderStatus", (it) => {
       );
 
       NodeAssert.equal(snapshot.status, "ready");
+      NodeAssert.deepEqual(snapshot.supportedRuntimeModes, ["approval-required", "full-access"]);
       NodeAssert.equal(snapshot.version, "2.0.18");
       // Plan mode runs as OpenCode's plan agent, and every session can compact.
       NodeAssert.equal(snapshot.showInteractionModeToggle, true);

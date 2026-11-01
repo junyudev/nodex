@@ -52,9 +52,20 @@ import {
   projectNormalizedTimelineEntries,
 } from "./projection/normalized-timeline-entries";
 
+vi.mock("../../lib/agent-runtime-settings", () => ({
+  agentRuntimeSettingsQueryOptions: () => ({
+    queryKey: ["settings", "agent-runtime"],
+    queryFn: async () => ({ defaultRuntimeMode: "approval-required" as const }),
+  }),
+}));
+
 function RuntimeWorkbench({ children }: PropsWithChildren) {
   const [store] = useState(createMaitaiStore);
-  return <MaitaiProvider store={store}>{children}</MaitaiProvider>;
+  return (
+    <TestQueryProvider>
+      <MaitaiProvider store={store}>{children}</MaitaiProvider>
+    </TestQueryProvider>
+  );
 }
 
 // Account supply is an independent Main projection; catalog behavior uses a deterministic observation.
@@ -493,6 +504,11 @@ describe("Agent Runtime Codex controls", () => {
     await waitFor(() => expect(result.current.selectedModel).toBe("gpt-mini"));
     expect(result.current.selectedEffort).toBe("high");
     expect(result.current.provider.serviceTier).toBe("fast");
+    expect(result.current.runtimeMode).toBe("approval-required");
+    await act(async () => {
+      await result.current.actions.onRuntimeModeChange!("full-access");
+    });
+    expect(result.current.runtimeMode).toBe("full-access");
     await act(async () => {
       await result.current.actions.onStartThreadForSession!({
         projectId: "project",
@@ -500,6 +516,7 @@ describe("Agent Runtime Codex controls", () => {
         prompt: "Go",
       });
     });
+    expect(launch.mock.calls[0]![0].runtimeMode).toBe("full-access");
     expect(launch.mock.calls[0]![0].modelSelection).toEqual({
       instanceId: "codex",
       model: "gpt-mini",
@@ -2742,4 +2759,262 @@ it("keeps managed Codex and Claude choices without user-configured instances", a
     "Temporarily unavailable",
   );
   await act(async () => unmount());
+});
+
+describe("Runtime native approvals", () => {
+  const at = "2026-10-15T00:00:00.000Z";
+  const makeConversation = (supportsFeedback = false) => {
+    const approval: AgentTurnItem = {
+      id: "approval-item",
+      threadId: "engine-thread",
+      runId: "original-run",
+      nodeId: "approval-node",
+      providerThreadId: "provider-thread",
+      providerTurnId: "provider-turn",
+      parentItemId: null,
+      nativeItemRef: { driver: "codex", nativeId: "tool", strength: "strong" },
+      ordinal: 2,
+      type: "approval_request",
+      status: "waiting",
+      title: null,
+      startedAt: at,
+      updatedAt: at,
+      completedAt: null,
+      requestId: "exact-request",
+      requestKind: "command",
+      prompt: "echo private",
+      options: [
+        { decision: "accept", label: "Approve" },
+        { decision: "decline", label: "Decline" },
+      ],
+    };
+    const tool: AgentTurnItem = {
+      ...approval,
+      id: "tool-item",
+      nodeId: "tool-node",
+      ordinal: 1,
+      type: "command_execution",
+      status: "running",
+      input: "echo private",
+    };
+    return {
+      sessionId: "approval-session",
+      projectId: "project",
+      threadId: "engine-thread",
+      snapshot: agentRuntimeSnapshotFixture({
+        projection: {
+          runs: [
+            agentRuntimeRow("runs", {
+              id: "original-run",
+              threadId: "engine-thread",
+              ordinal: 1,
+              status: "waiting",
+              modelSelection: { instanceId: "codex", model: "model" },
+            }),
+          ],
+          runtimeRequests: [
+            agentRuntimeRow("runtimeRequests", {
+              id: "exact-request",
+              nodeId: "approval-node",
+              kind: "command",
+              status: "pending",
+              createdAt: at,
+              resolvedAt: null,
+              responseCapability: {
+                type: "live",
+                providerSessionId: "physical-session",
+                supportsFeedback,
+              },
+            }),
+          ],
+          visibleTurnItems: [tool, approval].map((item, position) => ({
+            item,
+            position,
+            sourceThreadId: item.threadId,
+            sourceItemId: item.id,
+            visibility: "local" as const,
+          })),
+        },
+      }),
+    };
+  };
+
+  it("renders the pending approval outside folded work and responds to the exact original request", async () => {
+    const conversation = makeConversation();
+    vi.spyOn(agentRuntimeRuntime, "read").mockResolvedValue(conversation);
+    vi.spyOn(agentRuntimeRuntime, "control").mockResolvedValue(conversation);
+    vi.spyOn(agentRuntimeRuntime, "subscribe").mockResolvedValue(() => {});
+    const respond = vi.spyOn(agentRuntimeRuntime, "respond").mockResolvedValue({ sequence: 1 });
+    const owner = new AgentRuntimeConversationOwner({
+      sessionId: conversation.sessionId,
+      threadId: conversation.threadId,
+    });
+    const release = owner.readOwner.subscribeStructure(() => {});
+    await owner.resume();
+    const runtime = createAgentRuntimeConversationRuntime(
+      "codex",
+      { sessionId: conversation.sessionId, threadId: conversation.threadId },
+      owner,
+    );
+    const entry = selectNormalizedConversationTurnEntries({
+      owner: owner.readOwner,
+      structure: owner.readOwner.readStructure()!,
+      conversation: owner.getSnapshot().view,
+    })[0]!;
+    const view = renderWithMaitai(
+      <NodexTooltipProvider>
+        <ConversationRuntimeContext value={runtime}>
+          <CodexTranscriptReadOwnerContext value={owner.readOwner}>
+            <LocalConversationTurnEntry
+              conversationId={conversation.threadId}
+              entry={entry}
+              cwd="/workspace"
+              canEditTurnUserPrefix={false}
+              canForkTurn={false}
+              persistedCollapsed
+            />
+          </CodexTranscriptReadOwnerContext>
+        </ConversationRuntimeContext>
+      </NodexTooltipProvider>,
+      { wrapper: LocalConversationTestQueryProvider },
+    );
+    try {
+      const button = await view.findByRole("button", { name: "Approve" });
+      expect(view.getAllByText("echo private")).toHaveLength(1);
+      expect(view.getByRole("group", { name: "Command approval" })).toBeTruthy();
+      await act(async () => {
+        fireEvent.click(button);
+        await Promise.resolve();
+      });
+      await waitFor(() =>
+        expect(respond).toHaveBeenCalledWith({
+          sessionId: "approval-session",
+          threadId: "engine-thread",
+          requestId: "exact-request",
+          runId: "original-run",
+          decision: "accept",
+        }),
+      );
+    } finally {
+      view.unmount();
+      release();
+      owner.dispose();
+    }
+  });
+
+  it.each([false, true])(
+    "sending declines before steering, with feedback supported: %s",
+    async (supportsFeedback) => {
+      const conversation = makeConversation(supportsFeedback);
+      vi.spyOn(agentRuntimeRuntime, "catalog").mockResolvedValue([provider]);
+      vi.spyOn(agentRuntimeRuntime, "read").mockResolvedValue(conversation);
+      vi.spyOn(agentRuntimeRuntime, "control").mockResolvedValue(conversation);
+      vi.spyOn(agentRuntimeRuntime, "subscribe").mockResolvedValue(() => {});
+      const calls: string[] = [];
+      const respond = vi.spyOn(agentRuntimeRuntime, "respond").mockImplementation(async () => {
+        calls.push("decline");
+        return { sequence: 1 };
+      });
+      const message = vi.spyOn(agentRuntimeRuntime, "message").mockImplementation(async () => {
+        calls.push("steer");
+        return { sequence: 1 };
+      });
+      const { result, unmount } = renderHook(
+        () => {
+          const adapter = useAgentRuntimeConversationAdapter({
+            sessionId: conversation.sessionId,
+            sessionUnread: false,
+            executionRef: { runtimeId: "engine", threadId: conversation.threadId },
+            projectId: "project",
+            modelProjectId: "project",
+            instances,
+            onRefresh: async () => {},
+            onOpenThread: async () => {},
+            ensureDraft: async () => ({ id: conversation.sessionId }),
+          });
+          const reader = adapter.runtime.transcriptReadOwner!(conversation.threadId);
+          useEffect(() => reader?.subscribeStructure(() => {}), [reader]);
+          return adapter;
+        },
+        { wrapper: RuntimeWorkbench },
+      );
+      try {
+        await waitFor(() =>
+          expect(result.current.owner?.approvals.getSnapshot().pending).toHaveLength(1),
+        );
+        expect(result.current.provider.runtimeMode).toBe("full-access");
+        expect(result.current.defaultRuntimeMode).toBe("approval-required");
+        await act(async () => {
+          await result.current.actions.onSendPrompt!("Use the public file");
+        });
+        expect(respond).toHaveBeenCalledWith(
+          expect.objectContaining({
+            requestId: "exact-request",
+            runId: "original-run",
+            decision: "decline",
+            ...(supportsFeedback ? { feedback: "Use the public file" } : {}),
+          }),
+        );
+        expect(calls).toEqual(supportsFeedback ? ["decline"] : ["decline", "steer"]);
+        if (!supportsFeedback)
+          expect(message).toHaveBeenCalledWith(
+            expect.objectContaining({
+              intent: "steer",
+              message: expect.objectContaining({ text: "Use the public file" }),
+            }),
+          );
+      } finally {
+        unmount();
+      }
+    },
+  );
+});
+
+it("changes a started chat's execution mode through Main without changing its stored selection locally", async () => {
+  const conversation = {
+    sessionId: "mode-session",
+    projectId: "project",
+    threadId: "engine-thread",
+    snapshot: agentRuntimeSnapshotFixture({ thread: { runtimeMode: "auto" } }),
+  };
+  vi.spyOn(agentRuntimeRuntime, "catalog").mockResolvedValue([
+    { ...provider, supportedRuntimeModes: ["approval-required", "full-access"] },
+  ]);
+  vi.spyOn(agentRuntimeRuntime, "control").mockResolvedValue(conversation);
+  vi.spyOn(agentRuntimeRuntime, "subscribe").mockResolvedValue(() => {});
+  const setModes = vi.spyOn(agentRuntimeRuntime, "setModes").mockResolvedValue({ changed: true });
+  const { result, unmount } = renderHook(
+    () =>
+      useAgentRuntimeConversationAdapter({
+        sessionId: conversation.sessionId,
+        sessionUnread: false,
+        executionRef: { runtimeId: "engine", threadId: conversation.threadId },
+        projectId: "project",
+        modelProjectId: "project",
+        instances,
+        onRefresh: async () => {},
+        onOpenThread: async () => {},
+        ensureDraft: async () => ({ id: conversation.sessionId }),
+      }),
+    { wrapper: RuntimeWorkbench },
+  );
+  try {
+    await waitFor(() =>
+      expect(result.current.supportedRuntimeModes).toEqual(["approval-required", "full-access"]),
+    );
+    expect(result.current.runtimeMode).toBe("approval-required");
+    expect(result.current.state.conversation?.snapshot.projection.thread.runtimeMode).toBe("auto");
+    await act(async () => {
+      await result.current.actions.onRuntimeModeChange!("full-access");
+    });
+    expect(setModes).toHaveBeenCalledWith({
+      sessionId: "mode-session",
+      threadId: "engine-thread",
+      requestId: expect.any(String),
+      runtimeMode: "full-access",
+    });
+    expect(result.current.state.conversation?.snapshot.projection.thread.runtimeMode).toBe("auto");
+  } finally {
+    unmount();
+  }
 });

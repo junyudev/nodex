@@ -1,22 +1,18 @@
 import path from "node:path";
+import { RUNTIME_MODE_RANK } from "@nodex/agent-runtime/contracts";
+import type { RuntimeMode } from "../../shared/agent-runtime-api";
 import type { AgentRuntimeInspection } from "../../shared/agent-runtime-api";
 import type { CodexCanonicalPermissionContext } from "../../shared/types";
 export interface SessionMessageFacts {
   readonly sessionId: string;
   readonly threadId: string | null;
-  readonly runtimeMode: "full-access" | "auto" | "auto-accept-edits" | "approval-required";
+  readonly runtimeMode: RuntimeMode;
   readonly nativeSandbox?: "readOnly" | "workspaceWrite" | "dangerFullAccess";
   readonly nativePermissions?: CodexCanonicalPermissionContext;
   readonly executionHostId?: string;
   readonly interactionMode: AgentRuntimeInspection["thread"]["interactionMode"];
   readonly modelSelection: AgentRuntimeInspection["thread"]["modelSelection"];
 }
-const runtimeRank = {
-  "approval-required": 0,
-  "auto-accept-edits": 1,
-  auto: 2,
-  "full-access": 3,
-} as const;
 const sandboxRank = { readOnly: 0, workspaceWrite: 1, dangerFullAccess: 2 } as const;
 const coversRoot = (root: string, candidate: string) => {
   const windows = /^[a-z]:[\\/]|^\\\\/iu.test(root);
@@ -88,7 +84,7 @@ export const sessionMessageCeilingError = (
   )
     return "runtime_mode_escalation_denied";
   if (
-    runtimeRank[target.runtimeMode] > runtimeRank[caller.runtimeMode] ||
+    RUNTIME_MODE_RANK[target.runtimeMode] > RUNTIME_MODE_RANK[caller.runtimeMode] ||
     nativePermissionsWiden(caller, target)
   )
     return "runtime_mode_escalation_denied";

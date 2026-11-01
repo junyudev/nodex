@@ -3777,3 +3777,20 @@ it.effect("does not resume an unavailable native question execution", () =>
     yield* Scope.close(harness.scope, Exit.void);
   }),
 );
+
+it.effect(
+  "rejects a handoff follow-up whose prepared execution exceeds its admission ceiling",
+  () =>
+    Effect.gen(function* () {
+      const fixture = executionStateFixture();
+      const harness = yield* makeHarness({ ...fixture, request: () => Effect.succeed(response()) });
+      const result = yield* harness.commands
+        .start("thread-a", "continue", {
+          modeLimit: { runtimeMode: "approval-required", interactionMode: "plan" },
+        })
+        .pipe(Effect.result);
+      assert.equal(result._tag, "Failure");
+      assert.equal(harness.requests(), 0);
+      yield* Scope.close(harness.scope, Exit.void);
+    }),
+);

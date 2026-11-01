@@ -1,4 +1,9 @@
 import {
+  AgentRuntimeSettingsSchema,
+  DEFAULT_AGENT_RUNTIME_SETTINGS,
+  type AgentRuntimeSettings,
+} from "../../shared/agent-runtime-settings";
+import {
   UsageMeterSettingsSchema,
   DEFAULT_USAGE_METER_SETTINGS,
   type UsageMeterSettings,
@@ -121,6 +126,7 @@ interface ServerTomlConfig {
   app_updates_channel?: "stable" | "nightly";
   window_restore_policy?: WindowRestorePolicy;
   composer_predictions_enabled?: boolean;
+  default_runtime_mode?: AgentRuntimeSettings["defaultRuntimeMode"];
   usage_meters?: Partial<UsageMeterSettings>;
   inbox_suggestions?: InboxSuggestionMode;
   /** Read only to migrate the former boolean preference. */
@@ -1392,6 +1398,27 @@ export function updateWindowRestoreSettings(
 
   writeTomlConfig(profileSettingsPath, nextToml);
   return getWindowRestoreSettings(source);
+}
+
+export function getAgentRuntimeSettings(
+  source: ApplicationSettingsDocumentSource,
+): AgentRuntimeSettings {
+  const parsed = AgentRuntimeSettingsSchema.safeParse({
+    defaultRuntimeMode: loadProfileServerTomlConfig(source).default_runtime_mode,
+  });
+  return parsed.success ? parsed.data : DEFAULT_AGENT_RUNTIME_SETTINGS;
+}
+
+export function updateAgentRuntimeSettings(
+  input: AgentRuntimeSettings,
+  source: ApplicationSettingsDocumentSource,
+): AgentRuntimeSettings {
+  const settings = AgentRuntimeSettingsSchema.parse(input);
+  writeProfileServerTomlConfig(source, {
+    ...loadProfileServerTomlConfig(source),
+    default_runtime_mode: settings.defaultRuntimeMode,
+  });
+  return settings;
 }
 
 export function getComposerPredictionSettings(

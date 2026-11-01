@@ -467,6 +467,9 @@ export interface ProviderAdapterV2InterruptInput {
 export interface ProviderAdapterV2RuntimeRequestResponseInput {
   readonly requestId: RuntimeRequestId;
   readonly decision?: ProviderApprovalDecision;
+  readonly optionId?: string;
+  /** Decline feedback for a live request that advertises `supportsFeedback`. */
+  readonly feedback?: string;
   readonly answers?: ProviderUserInputAnswers;
   readonly response?: unknown;
 }
@@ -602,7 +605,10 @@ export interface ProviderAdapterV2SessionRuntime {
    * unrelated root subscription open.
    */
   readonly hasPendingBackgroundWorkForThread?: (
-    providerThread: Pick<OrchestrationV2ProviderThread, "id" | "nativeThreadRef" | "pendingBackgroundTasks">,
+    providerThread: Pick<
+      OrchestrationV2ProviderThread,
+      "id" | "nativeThreadRef" | "pendingBackgroundTasks"
+    >,
   ) => Effect.Effect<boolean>;
   /**
    * Capacity for the requested model/options, independent of native thread usage.

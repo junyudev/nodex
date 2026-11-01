@@ -141,7 +141,7 @@ describe("buildProjectAgentDockModel", () => {
 
     expect(model.rows.map((row) => row.label)).toEqual(["New chat", "approval", "running"]);
     expect(model.trigger.attention).toBe("request");
-    expect(model.trigger.indicator).toBe("waiting");
+    expect(model.trigger.indicator).toBe("approval");
     expect(model.rows[2]?.indicator).toBe("running");
     expect(model.hasMore).toBe(true);
   });

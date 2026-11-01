@@ -449,6 +449,8 @@ export type CodexRuntimeNotice =
     }
   /** The conversation's context ended here; later Turns start every Agent fresh. */
   | { readonly kind: "contextCleared" }
+  /** The person refused a native action the Agent asked to take. */
+  | { readonly kind: "declined" }
   | { readonly kind: "info" };
 
 /** A configured Agent and the model it ran, named by the conversation's presentation. */

@@ -105,7 +105,9 @@ const fixture = (
   return {
     backend: make.pipe(
       Effect.provideService(AgentRuntimeApplication, application),
-      Effect.map((backend) => backend("plan")),
+      Effect.map((backend) =>
+        backend({ runtimeMode: "approval-required", interactionMode: "plan" }),
+      ),
     ),
     controls,
     responses,
@@ -142,7 +144,7 @@ for (const mode of ["live", "message"] as const) {
             respondedBy: responder,
             submissionId: "operation",
             requirePending: true,
-            interactionModeCeiling: "plan",
+            modeLimit: { runtimeMode: "approval-required", interactionMode: "plan" },
           });
           assert.equal(f.responses[0]?.threadId, execution?.threadId);
           assert.equal(f.controls[0]?.requestId, "request");

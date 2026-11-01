@@ -1,6 +1,8 @@
 import { assert, describe, it } from "@effect/vitest";
 import type * as CodexSchema from "effect-codex-app-server/schema";
 import {
+  codexMcpApprovalOptions,
+  codexMcpApprovalResponse,
   codexMcpElicitationQuestions,
   codexMcpElicitationResponse,
   isCodexMcpPermissionRequest,
@@ -99,4 +101,78 @@ describe("native MCP information requests", () => {
       action: "cancel",
     });
   });
+});
+
+describe("native MCP tool approval responses", () => {
+  const approval = {
+    ...form,
+    mode: "openai/form" as const,
+    _meta: { codex_approval_kind: "mcp_tool_call" },
+    requestedSchema: {
+      properties: {
+        scope: {
+          type: "string",
+          oneOf: [
+            { const: "once", title: "This call" },
+            { const: "session", title: "This session" },
+            { const: "always", title: "Always" },
+          ],
+        },
+      },
+      required: ["scope"],
+    },
+  };
+  it("keeps provider session options and sends native scope without offering standing grants", () => {
+    assert.deepEqual(
+      codexMcpApprovalOptions(approval).map((option) => option.decision),
+      ["accept", "acceptForSession", "decline", "cancel"],
+    );
+    assert.equal(codexMcpApprovalOptions(approval)[0]?.label, "This call");
+    assert.equal(codexMcpApprovalOptions(approval)[1]?.label, "This session");
+    assert.deepEqual(codexMcpApprovalResponse(approval, "accept"), {
+      action: "accept",
+      content: { scope: "once" },
+    });
+    assert.deepEqual(codexMcpApprovalResponse(approval, "acceptForSession"), {
+      action: "accept",
+      content: { scope: "session" },
+      _meta: { persist: "session" },
+    });
+    assert.deepEqual(codexMcpApprovalResponse(approval, "decline"), { action: "decline" });
+    assert.deepEqual(codexMcpApprovalResponse(approval, "cancel"), { action: "cancel" });
+  });
+  it("offers only decisions the native form can encode", () => {
+    const unsupported = {
+      ...approval,
+      requestedSchema: { properties: { unknown: { type: "string" } }, required: ["unknown"] },
+    };
+    assert.deepEqual(
+      codexMcpApprovalOptions(unsupported).map((option) => option.decision),
+      ["decline", "cancel"],
+    );
+    assert.deepEqual(codexMcpApprovalResponse(unsupported, "accept"), { action: "decline" });
+    assert.deepEqual(
+      codexMcpApprovalResponse({ ...approval, requestedSchema: { type: "object" } }, "accept"),
+      { action: "accept", content: {} },
+    );
+    assert.deepEqual(
+      codexMcpApprovalOptions({ ...approval, requestedSchema: { properties: {} } }).map(
+        (option) => option.decision,
+      ),
+      ["accept", "decline", "cancel"],
+    );
+  });
+});
+
+it("uses the chat label for a native session grant without a scope label", () => {
+  const approval = {
+    ...form,
+    _meta: { codex_approval_kind: "mcp_tool_call", persist: "session" },
+    requestedSchema: { type: "object", properties: {}, required: [] },
+  } satisfies CodexSchema.McpServerElicitationRequestParams;
+  assert.equal(
+    codexMcpApprovalOptions(approval).find((option) => option.decision === "acceptForSession")
+      ?.label,
+    "Allow for this chat",
+  );
 });

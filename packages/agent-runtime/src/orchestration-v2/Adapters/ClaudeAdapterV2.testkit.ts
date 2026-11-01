@@ -205,6 +205,8 @@ interface ClaudePermissionRequestFrame {
     readonly suggestions?: Parameters<CanUseTool>[2]["suggestions"];
     readonly blockedPath?: string;
     readonly decisionReason?: string;
+    readonly matchedAskRule?: Parameters<CanUseTool>[2]["matchedAskRule"];
+    readonly suppressAlwaysAllowRule?: boolean;
     readonly title?: string;
     readonly displayName?: string;
     readonly description?: string;
@@ -376,6 +378,10 @@ function permissionRequestOptionsFromFrame(
     ...(options.suggestions === undefined ? {} : { suggestions: options.suggestions }),
     ...(options.blockedPath === undefined ? {} : { blockedPath: options.blockedPath }),
     ...(options.decisionReason === undefined ? {} : { decisionReason: options.decisionReason }),
+    ...(options.matchedAskRule === undefined ? {} : { matchedAskRule: options.matchedAskRule }),
+    ...(options.suppressAlwaysAllowRule === undefined
+      ? {}
+      : { suppressAlwaysAllowRule: options.suppressAlwaysAllowRule }),
     ...(options.title === undefined ? {} : { title: options.title }),
     ...(options.displayName === undefined ? {} : { displayName: options.displayName }),
     ...(options.description === undefined ? {} : { description: options.description }),
@@ -920,22 +926,6 @@ function replayQueryRunnerError(
   });
 }
 
-const makeClaudeAgentSdkReplayQueryRunner = Effect.fn("ClaudeAgentSdkReplayQueryRunner.layer")(
-  function* (
-    transcript: ClaudeAgentSdkReplayTranscript,
-    options: { readonly replayGate?: ProviderReplayGate } = {},
-  ) {
-    const queryRunner = makeReplayQueryRunner(transcript, options);
-    yield* Effect.addFinalizer(() =>
-      Effect.sync(() => {
-        queryRunner.assertComplete();
-      }),
-    );
-
-    return replayQueryRunnerService(transcript, queryRunner);
-  },
-);
-
 function replayQueryRunnerService(
   transcript: ClaudeAgentSdkReplayTranscript,
   queryRunner: ClaudeQueryRunner,
@@ -1025,33 +1015,12 @@ function serializeReplayError(error: unknown, scenario?: string): unknown {
     : error;
 }
 
-function permissionResultForRecording(input: {
-  readonly decision: ProviderApprovalDecision;
-  readonly toolInput: Record<string, unknown>;
-  readonly toolUseID: string;
-  readonly suggestions?: Parameters<CanUseTool>[2]["suggestions"];
-}): PermissionResult {
-  if (input.decision === "accept" || input.decision === "acceptForSession") {
-    return {
-      behavior: "allow",
-      updatedInput: input.toolInput,
-      toolUseID: input.toolUseID,
-      decisionClassification:
-        input.decision === "acceptForSession" ? "user_permanent" : "user_temporary",
-      ...(input.decision === "acceptForSession" && input.suggestions !== undefined
-        ? { updatedPermissions: input.suggestions }
-        : {}),
-    };
-  }
+function claudeRecordingPermissionOptions(
+  mode: ClaudeAdapterV2.ClaudeAgentSdkQueryOptions["permissionMode"] | undefined,
+) {
   return {
-    behavior: "deny",
-    message:
-      input.decision === "cancel"
-        ? "User cancelled tool execution."
-        : "User declined tool execution.",
-    toolUseID: input.toolUseID,
-    decisionClassification: "user_reject",
-    ...(input.decision === "cancel" ? { interrupt: true } : {}),
+    permissionMode: mode ?? "default",
+    ...(mode === "bypassPermissions" ? { allowDangerouslySkipPermissions: true as const } : {}),
   };
 }
 
@@ -1075,6 +1044,12 @@ function permissionRequestFrame(input: {
       ...(callbackOptions.decisionReason === undefined
         ? {}
         : { decisionReason: callbackOptions.decisionReason }),
+      ...(callbackOptions.matchedAskRule === undefined
+        ? {}
+        : { matchedAskRule: callbackOptions.matchedAskRule }),
+      ...(callbackOptions.suppressAlwaysAllowRule === undefined
+        ? {}
+        : { suppressAlwaysAllowRule: callbackOptions.suppressAlwaysAllowRule }),
       ...(callbackOptions.title === undefined ? {} : { title: callbackOptions.title }),
       ...(callbackOptions.displayName === undefined
         ? {}
@@ -1510,7 +1485,8 @@ async function recordClaudeStreamingQuery(input: {
             label: `permission.request:${toolName}`,
             frame: requestFrame,
           });
-          const result = permissionResultForRecording({
+          const result = ClaudeAdapterV2.permissionResultFromDecision({
+            toolName,
             decision: input.permissionDecision ?? "accept",
             toolInput,
             toolUseID: callbackOptions.toolUseID,
@@ -1534,7 +1510,7 @@ async function recordClaudeStreamingQuery(input: {
     ...(input.enableTools === true
       ? {
           tools: input.tools ?? { type: "preset", preset: "claude_code" },
-          permissionMode: input.permissionMode ?? "default",
+          ...claudeRecordingPermissionOptions(input.permissionMode),
           ...(input.allowedTools === undefined ? {} : { allowedTools: input.allowedTools }),
           ...(input.disallowedTools === undefined
             ? {}
@@ -1698,7 +1674,8 @@ async function recordClaudeActiveSteeringQuery(input: {
             label: `permission.request:${toolName}`,
             frame: requestFrame,
           });
-          const result = permissionResultForRecording({
+          const result = ClaudeAdapterV2.permissionResultFromDecision({
+            toolName,
             decision: input.permissionDecision ?? "accept",
             toolInput,
             toolUseID: callbackOptions.toolUseID,
@@ -1722,7 +1699,7 @@ async function recordClaudeActiveSteeringQuery(input: {
     ...(input.enableTools === true
       ? {
           tools: input.tools ?? { type: "preset", preset: "claude_code" },
-          permissionMode: input.permissionMode ?? "default",
+          ...claudeRecordingPermissionOptions(input.permissionMode),
           ...(input.allowedTools === undefined ? {} : { allowedTools: input.allowedTools }),
           ...(input.disallowedTools === undefined
             ? {}
@@ -1801,7 +1778,7 @@ async function recordClaudeRestartingQueries(input: {
       ...(input.enableTools === true
         ? {
             tools: input.tools ?? { type: "preset", preset: "claude_code" },
-            permissionMode: input.permissionMode ?? "default",
+            ...claudeRecordingPermissionOptions(input.permissionMode),
             ...(input.allowedTools === undefined ? {} : { allowedTools: input.allowedTools }),
             ...(input.disallowedTools === undefined
               ? {}
@@ -1894,7 +1871,7 @@ async function recordClaudeResumeAtCursorQuery(input: {
     ...(input.enableTools === true
       ? {
           tools: input.tools ?? { type: "preset", preset: "claude_code" },
-          permissionMode: input.permissionMode ?? "default",
+          ...claudeRecordingPermissionOptions(input.permissionMode),
           ...(input.allowedTools === undefined ? {} : { allowedTools: input.allowedTools }),
           ...(input.disallowedTools === undefined
             ? {}
@@ -1964,7 +1941,7 @@ async function recordClaudeResumeAtCursorQuery(input: {
         ...(input.enableTools === true
           ? {
               tools: input.tools ?? { type: "preset", preset: "claude_code" },
-              permissionMode: input.permissionMode ?? "default",
+              ...claudeRecordingPermissionOptions(input.permissionMode),
               ...(input.allowedTools === undefined ? {} : { allowedTools: input.allowedTools }),
               ...(input.disallowedTools === undefined
                 ? {}
@@ -2077,7 +2054,7 @@ async function recordClaudeForkSessionQuery(input: {
     ...(input.enableTools === true
       ? {
           tools: input.tools ?? { type: "preset", preset: "claude_code" },
-          permissionMode: input.permissionMode ?? "default",
+          ...claudeRecordingPermissionOptions(input.permissionMode),
           ...(input.allowedTools === undefined ? {} : { allowedTools: input.allowedTools }),
           ...(input.disallowedTools === undefined
             ? {}
@@ -2185,7 +2162,7 @@ async function recordClaudeForkSessionQuery(input: {
         ...(input.enableTools === true
           ? {
               tools: input.tools ?? { type: "preset", preset: "claude_code" },
-              permissionMode: input.permissionMode ?? "default",
+              ...claudeRecordingPermissionOptions(input.permissionMode),
               ...(input.allowedTools === undefined ? {} : { allowedTools: input.allowedTools }),
               ...(input.disallowedTools === undefined
                 ? {}
@@ -2243,7 +2220,7 @@ async function recordClaudeForkSessionQuery(input: {
         ...(input.enableTools === true
           ? {
               tools: input.tools ?? { type: "preset", preset: "claude_code" },
-              permissionMode: input.permissionMode ?? "default",
+              ...claudeRecordingPermissionOptions(input.permissionMode),
               ...(input.allowedTools === undefined ? {} : { allowedTools: input.allowedTools }),
               ...(input.disallowedTools === undefined
                 ? {}
@@ -2334,7 +2311,7 @@ async function recordInterruptedClaudeQuery(input: {
     ...(input.enableTools === true
       ? {
           tools: input.tools ?? { type: "preset", preset: "claude_code" },
-          permissionMode: input.permissionMode ?? "default",
+          ...claudeRecordingPermissionOptions(input.permissionMode),
           ...(input.allowedTools === undefined ? {} : { allowedTools: input.allowedTools }),
           ...(input.disallowedTools === undefined
             ? {}
@@ -2515,7 +2492,7 @@ async function recordClaudeInterruptRestartQuery(input: {
     ...(input.enableTools === true
       ? {
           tools: input.tools ?? { type: "preset", preset: "claude_code" },
-          permissionMode: input.permissionMode ?? "default",
+          ...claudeRecordingPermissionOptions(input.permissionMode),
           ...(input.allowedTools === undefined ? {} : { allowedTools: input.allowedTools }),
           ...(input.disallowedTools === undefined
             ? {}

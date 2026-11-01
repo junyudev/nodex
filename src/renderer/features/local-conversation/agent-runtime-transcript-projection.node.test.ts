@@ -695,6 +695,32 @@ describe("Runtime message attribution and notices", () => {
     );
   });
 
+  test("a declined approval stays where it was asked, while an approved one leaves no row", () => {
+    const approval = (decision: "accept" | "decline" | "cancel", feedback?: string) =>
+      ({
+        ...base,
+        type: "approval_request",
+        status: decision === "accept" ? "completed" : "cancelled",
+        requestId: "request",
+        requestKind: "command",
+        prompt: "/bin/zsh -lc 'curl -sI https://example.com'",
+        decision,
+        ...(feedback ? { feedback } : {}),
+      }) as AgentTurnItem;
+    expect(isAgentRuntimeItemHidden(approval("accept"))).toBe(true);
+    expect(projectAgentRuntimeItem(approval("accept"))).toBeNull();
+    expect(isAgentRuntimeItemHidden(approval("decline", "Use the cached copy"))).toBe(false);
+    expect(projectAgentRuntimeItem(approval("decline", "Use the cached copy"))).toEqual({
+      type: "runtimeNotice",
+      id: "item",
+      message: "Declined curl -sI https://example.com — Use the cached copy",
+      notice: { kind: "declined" },
+    });
+    expect(projectAgentRuntimeItem(approval("cancel"))).toMatchObject({
+      message: "Declined curl -sI https://example.com",
+    });
+  });
+
   test("reported work names the one task it can open", () => {
     expect(
       projectAgentRuntimeItem({
@@ -1302,4 +1328,110 @@ test("a delegated asynchronous answer resolves its parent conversation within th
   expect(canonical).toMatchObject({
     respondedBy: { kind: "agent", senderThreadId: "parent-child", senderSessionId: "root-session" },
   });
+});
+
+describe("Runtime pending approval projection", () => {
+  test.each(["command", "file-read", "file-change", "permission", "mcp-elicitation"] as const)(
+    "retains %s semantics and exact Run identity",
+    async (kind) => {
+      const { projectAgentPendingApproval, projectAgentRuntimeRequest } =
+        await import("./agent-runtime-transcript-projection");
+      const item: AgentTurnItem = {
+        ...base,
+        type: "approval_request",
+        requestId: "request",
+        requestKind: kind,
+        status: "waiting",
+        runId: null,
+        prompt: "Read /private",
+        reason: "Needs access",
+        appName: "App",
+        fullAccessOverride: "ask_rule",
+        options: [{ decision: "decline", label: "Deny", warning: "Caution" }],
+      };
+      const request = {
+        id: "request",
+        nodeId: "approval-node",
+        providerTurnId: null,
+        nativeRequestRef: null,
+        kind,
+        status: "pending" as const,
+        responseCapability: {
+          type: "live" as const,
+          providerSessionId: "session",
+          supportsFeedback: true,
+        },
+        createdAt: at,
+        resolvedAt: null,
+      };
+      expect(projectAgentPendingApproval(item, request)).toMatchObject({
+        requestId: "request",
+        runId: null,
+        kind,
+        detail: "Read /private",
+        reason: "Needs access",
+        appName: "App",
+        options: [{ decision: "decline", label: "Decline", warning: "Caution" }],
+        fullAccessOverride: "ask_rule",
+        live: true,
+        supportsFeedback: true,
+      });
+      expect(projectAgentRuntimeRequest(item, "project", null)).toBeNull();
+      expect(projectAgentPendingApproval(item, { ...request, status: "resolved" })).toBeNull();
+      expect(
+        projectAgentPendingApproval(item, {
+          ...request,
+          responseCapability: { type: "not_resumable", reason: "Lost process" },
+        }),
+      ).toMatchObject({ live: false, supportsFeedback: false });
+      expect(projectAgentPendingApproval({ ...item, status: "completed" }, request)).toBeNull();
+    },
+  );
+});
+
+test("suppresses the exact waiting action while preserving unrelated and completed tool rows", async () => {
+  const { agentApprovalSuppressesItem } = await import("./agent-runtime-transcript-projection");
+  const approval: Extract<AgentTurnItem, { type: "approval_request" }> = {
+    ...base,
+    id: "approval",
+    type: "approval_request",
+    status: "waiting",
+    requestId: "request",
+    requestKind: "command",
+    nativeItemRef: { driver: "codex", nativeId: "tool", strength: "strong" },
+    providerTurnId: "native-turn",
+    providerThreadId: "native-thread",
+  };
+  const item: AgentTurnItem = {
+    ...approval,
+    id: "tool",
+    type: "command_execution",
+    status: "running",
+    input: "pwd",
+  };
+  expect(agentApprovalSuppressesItem(approval, item)).toBe(true);
+  expect(agentApprovalSuppressesItem(approval, { ...item, status: "completed" })).toBe(false);
+  // A declined action never ran as shown; its approval's in-place record replaces the row.
+  expect(
+    agentApprovalSuppressesItem(
+      { ...approval, status: "cancelled", decision: "decline" },
+      { ...item, status: "cancelled" },
+    ),
+  ).toBe(true);
+  expect(
+    agentApprovalSuppressesItem(
+      { ...approval, status: "completed", decision: "accept" },
+      { ...item, status: "completed" },
+    ),
+  ).toBe(false);
+  expect(
+    agentApprovalSuppressesItem(approval, { ...item, providerTurnId: "replacement-turn" }),
+  ).toBe(false);
+  expect(agentApprovalSuppressesItem(approval, { ...item, nativeItemRef: null })).toBe(false);
+  expect(
+    agentApprovalSuppressesItem(
+      { ...approval, nativeItemRef: null, parentItemId: item.id },
+      { ...item, nativeItemRef: null },
+    ),
+  ).toBe(true);
 });

@@ -12,13 +12,17 @@ notifications, and remote cloud-task watchers are separate features.
 
 ## Notification Families
 
-Native execution permission requests are approved automatically and produce no task notification. Nodex has two task notification families:
+Nodex has three task notification families:
 
 - `turn-complete`: a local-host top-level task turn reached `completed`,
   `failed`, or `interrupted`.
 - `question`: an asynchronous question arrived or a user-input request became pending, including ordinary
   questions and supported option/onboarding/setup inputs with no question
   rows.
+- `approval`: an Agent Runtime Session started waiting for a native execution approval. The title
+  says the Session needs approval and the body names the requested action. It has its own public
+  identity but shares the question preference, open-only action and persistent lifecycle; it
+  never answers the approval itself.
 
 For native conversations, MCP elicitation, plan-implementation confirmation, setup context selection,
 and unsupported private requests do not produce desktop notifications.
@@ -285,8 +289,10 @@ title is the Session title, and its host is the local host.
   failed or interrupted Runs. A newer Run or child reply cannot supply its body;
   an absent reply uses the ordinary completion fallback. Missed terminal status
   is also read from that outcome. Delegated children never notify on their own.
-- `question`: the Session starts waiting for user attention or gains another pending request.
-  Root approvals and live questions notify immediately. An asynchronous root question notifies
+- `question` and `approval`: the Session starts waiting for user attention or gains another
+  pending request; an execution approval uses the approval family. Root approvals and live
+  questions notify immediately. A waiting episode that changes between a question and an
+  approval replaces its notification. An asynchronous root question notifies
   once its Run stops working, including when the provider turn ends. Only live delegated
   approvals roll up; delegated questions and provider-native child requests never notify the
   user. Temporary side-chat attention notifies through the source Session. Attention replaces

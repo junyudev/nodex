@@ -371,6 +371,19 @@ export const SETTINGS_SEARCH_PANELS = {
     subtitle: "The coding agents Nodex can run. Open one to change how it starts and signs in.",
     groups: [
       {
+        anchor: "default-permissions",
+        title: "Permissions",
+        entries: [
+          entry("Default permissions", "What new chats can do on this computer without asking.", [
+            "Ask for approval",
+            "Approve for me",
+            "Full access",
+            "approvals",
+            "sandbox",
+          ]),
+        ],
+      },
+      {
         anchor: "codex",
         title: "Codex",
         entries: [

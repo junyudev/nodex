@@ -7,8 +7,9 @@ Native account configuration, imported history and metadata discovery remain Pro
 current behavior is defined in [Agent Backend Behavior](../product-specs/agent-backend-behavior.md)
 and [Agent Runtime behavior](../product-specs/agent-runtime-behavior.md).
 
-ACP execution now belongs to the supervised Agent Runtime. Native execution uses
-full access and automatic permission approval. Standard ACP tool calls carry the
+ACP execution now belongs to the supervised Agent Runtime. Native execution follows the
+Session's permission mode ([ADR 0074](0074-content-access-and-native-execution-permissions.md)).
+Standard ACP tool calls carry the
 exact Session and native incarnation with unknown Run left null. Cancellation
 retires that physical source before another prompt is admitted. Project paths
 route execution and do not impose resource or filesystem permissions.

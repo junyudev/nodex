@@ -107,9 +107,11 @@ malformed ownership refuses admission; stale recovery requires a proven absent P
 owner token under an exclusive nested `.recovering` claim. Scope release verifies the exact
 token, and a PID reused by another process conservatively retains ownership.
 
-All Agents can read and write the current Profile across Projects and Sessions. Plan selects
-planning intent and does not restrict content or native execution. Providers use full access and
-automatically approve authorization requests; information questions still await a user answer.
+All Agents can read and write the current Profile across Projects and Sessions. Native execution
+follows each Thread's runtime mode (`approval-required`, `auto` or `full-access`); provider
+adapters map it to native enforcement, and native permission requests become pending approvals
+answered through `runtime-request.respond`. Plan selects planning intent independently.
+Utilities run read-only without prompts; information questions still await a user answer.
 Project coordinates determine placement, working directory, list selection and lifecycle.
 Ordinary Session creation binds its product identity before the first Run begins.
 

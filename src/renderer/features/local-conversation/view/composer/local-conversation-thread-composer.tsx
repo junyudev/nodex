@@ -1,3 +1,5 @@
+import { useAgentApprovals } from "../../use-agent-approvals";
+import { agentApprovalComposerPlaceholder } from "../../agent-approval";
 import { composerDraftIntents } from "@/lib/composer-draft-intents";
 import type { PageReference } from "../../../../../shared/page-reference";
 import { useComposerPageContext } from "./use-composer-page-context";
@@ -198,6 +200,7 @@ import {
   COMPOSER_FOOTER_PLAN_ACCESSORY_BUTTON_CLASS_NAME,
   ComposerFooterAccessoryDivider,
 } from "../shared/composer-footer-controls";
+import { PermissionModeDropdown } from "../shared/permission-mode-dropdown";
 import { AgentIntelligenceDropdown } from "@/components/shared/agent-runtime/agent-intelligence-dropdown";
 import {
   clearComposerCompletedDraftAtom,
@@ -1502,6 +1505,11 @@ function HydratedThreadComposer({
     model.composerShell.queuedFollowUpStatus,
     pausedQueueSendDialogOpen,
   ]);
+  const approvals = useAgentApprovals();
+  const answerableApprovals = approvals.pending.filter(
+    (approval) => !approvals.held.has(approval.requestId),
+  );
+  const approvalPlaceholder = agentApprovalComposerPlaceholder(answerableApprovals);
   const promptEditorRef = useRef<ComposerPromptEditorHandle>(null);
   const lastFocusedIntentRef = useRef<number | null>(null);
   useLayoutEffect(() => {
@@ -2527,7 +2535,7 @@ function HydratedThreadComposer({
             onErrorMessage("Select a session before starting a new thread.");
             return false;
           }
-        } else if (model.isThreadRunning) {
+        } else if (model.isThreadRunning && approvals.pending.length === 0) {
           const threadId = model.conversation.threadId;
           if (isImageEditFollowUp || input.submitAction === "queue") {
             if (queuedFollowUpEdit && actions.onReplaceQueuedFollowUp) {
@@ -2695,6 +2703,7 @@ function HydratedThreadComposer({
     },
     [
       actions,
+      approvals.pending.length,
       appModelContext,
       composerPrediction,
       attachmentState,
@@ -3769,7 +3778,7 @@ function HydratedThreadComposer({
 
   const composerActionState = resolveStageThreadsComposerActionState({
     canSendPrompt: model.conversation !== null || canStartNewThread,
-    isThreadRunning: model.isThreadRunning,
+    isThreadRunning: model.isThreadRunning && approvals.pending.length === 0,
     busyAction,
     hasDraftContent: hasComposerContent,
     hasThreadGoal: goalModeActive || Boolean(model.conversation?.threadGoal),
@@ -3908,19 +3917,21 @@ function HydratedThreadComposer({
   const newThreadPromptPlaceholder = model.newThreadTarget
     ? "Do anything"
     : "Select a card or session before starting a new thread";
-  const promptPlaceholder = model.newThreadStartBlockedReason
-    ? model.newThreadStartBlockedReason
-    : goalModeActive
-      ? getThreadGoalMessage("composer.placeholder.goal")
-      : isFloatingComposer
-        ? "Do anything"
-        : model.selectedCollaborationMode === "plan"
-          ? "Describe your task to generate a plan..."
-          : model.conversation
-            ? "Ask for follow-up changes"
-            : model.isNewThreadTab
-              ? newThreadPromptPlaceholder
-              : "Select a thread";
+  const promptPlaceholder =
+    approvalPlaceholder ??
+    (model.newThreadStartBlockedReason
+      ? model.newThreadStartBlockedReason
+      : goalModeActive
+        ? getThreadGoalMessage("composer.placeholder.goal")
+        : isFloatingComposer
+          ? "Do anything"
+          : model.selectedCollaborationMode === "plan"
+            ? "Describe your task to generate a plan..."
+            : model.conversation
+              ? "Ask for follow-up changes"
+              : model.isNewThreadTab
+                ? newThreadPromptPlaceholder
+                : "Select a thread");
   const isPromptEditorDisabled =
     (model.conversation === null && !canStartNewThread) ||
     busyAction !== null ||
@@ -4261,41 +4272,68 @@ function HydratedThreadComposer({
       </NodexTooltip>
     );
   const renderPromptEditor = (singleLine = false) => (
-    <ComposerPromptEditor
-      ref={promptEditorRef}
-      data-composer-prompt-frame="true"
-      value={prompt}
-      placeholder={promptPlaceholder}
-      disabled={isPromptEditorDisabled}
-      singleLine={singleLine}
-      {...(model.provider?.kind === "claude" ? { promptKeywords: CLAUDE_PROMPT_KEYWORDS } : {})}
-      prediction={
-        !isPromptEditorDisabled &&
-        model.composerShell.activeRequest === null &&
-        !hasAttachments &&
-        imageEditDraft.mode === null &&
-        !isStarting &&
-        !isDictating &&
-        !isTranscribing &&
-        !isRealtimeVoiceActive
-          ? composerPrediction.prediction
-          : null
-      }
-      onPredictionInteraction={composerPrediction.onInteraction}
-      onChange={(nextPrompt) => {
-        setPrompt(nextPrompt);
+    <div
+      className="contents"
+      onFocusCapture={() => approvals.runtime?.interact({ type: "focus" })}
+      onBlurCapture={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget))
+          approvals.runtime?.interact({ type: "blur" });
       }}
-      onKeyDown={handleKeyDown}
-      onLargeTextPaste={handleLargeTextPaste}
-      onPasteFiles={handlePasteFiles}
-      onSuggestionStateChange={handleSuggestionStateChange}
-      onSuggestionAction={handleSuggestionAction}
-      onIntrinsicContentWidthChange={
-        isFloatingComposer ? handlePromptIntrinsicWidthChange : undefined
-      }
-    />
+    >
+      <ComposerPromptEditor
+        ref={promptEditorRef}
+        data-composer-prompt-frame="true"
+        value={prompt}
+        placeholder={promptPlaceholder}
+        disabled={isPromptEditorDisabled}
+        singleLine={singleLine}
+        {...(model.provider?.kind === "claude" ? { promptKeywords: CLAUDE_PROMPT_KEYWORDS } : {})}
+        prediction={
+          !isPromptEditorDisabled &&
+          model.composerShell.activeRequest === null &&
+          !hasAttachments &&
+          imageEditDraft.mode === null &&
+          !isStarting &&
+          !isDictating &&
+          !isTranscribing &&
+          !isRealtimeVoiceActive
+            ? composerPrediction.prediction
+            : null
+        }
+        onPredictionInteraction={composerPrediction.onInteraction}
+        onChange={(nextPrompt) => {
+          approvals.runtime?.interact({ type: "type", now: Date.now() });
+          setPrompt(nextPrompt);
+        }}
+        onKeyDown={handleKeyDown}
+        onLargeTextPaste={handleLargeTextPaste}
+        onPasteFiles={handlePasteFiles}
+        onSuggestionStateChange={handleSuggestionStateChange}
+        onSuggestionAction={handleSuggestionAction}
+        onIntrinsicContentWidthChange={
+          isFloatingComposer ? handlePromptIntrinsicWidthChange : undefined
+        }
+      />
+    </div>
   );
-  const floatingLeadingControls = addContextControl;
+  const permissionControl =
+    model.runtimeMode != null && actions.onRuntimeModeChange ? (
+      <PermissionModeDropdown
+        triggerStyle="composer"
+        mode={model.runtimeMode}
+        supportedModes={model.supportedRuntimeModes}
+        agentLabel={model.provider?.label}
+        emphasized={model.runtimeMode !== model.defaultRuntimeMode}
+        appliesNextMessage={composerActionState.action === "stop"}
+        onSelect={actions.onRuntimeModeChange}
+      />
+    ) : null;
+  const floatingLeadingControls = (
+    <div className="flex min-w-0 items-center gap-[5px]">
+      {addContextControl}
+      {permissionControl}
+    </div>
+  );
   const floatingTrailingControls = (
     <div className="flex min-w-0 shrink-0 items-center gap-2">
       {model.selectedCollaborationMode === "plan" || goalModeActive ? (
@@ -4312,6 +4350,7 @@ function HydratedThreadComposer({
   const standardLeadingControls = (
     <div className="flex min-w-0 items-center gap-[5px]">
       {addContextControl}
+      {permissionControl}
 
       {model.selectedCollaborationMode === "plan" || goalModeActive ? (
         <ComposerFooterAccessoryDivider />

@@ -42,7 +42,9 @@ import {
   advanceOpenCodePromptAdmission,
   cancelOpenCodePromptAdmission,
   openCodeBoundaryAfterProviderTurn,
-  OPENCODE_EXECUTION_PERMISSIONS,
+  openCodePermissionRules,
+  openCodeChildPermissionRules,
+  openCodePermissionRequestKind,
   openCodeToolProjectionKind,
   makeOpenCodeProtocolLogger,
   makeOpenCodeAdapterV2,
@@ -117,7 +119,7 @@ function runtimePolicy(
   });
 }
 
-function permissionAction(rules: typeof OPENCODE_EXECUTION_PERMISSIONS, permission: string) {
+function permissionAction(rules: ReturnType<typeof openCodePermissionRules>, permission: string) {
   return rules.findLast((rule) => rule.permission === "*" || rule.permission === permission)
     ?.action;
 }
@@ -189,7 +191,12 @@ const makeOpenCodeRuntimeHarness = Effect.fn("makeOpenCodeRuntimeHarness")(funct
   const startTurn = (
     text = "hello",
     startProviderThread: OrchestrationV2ProviderThread = providerThread,
-    source: Partial<Pick<ProviderAdapter.ProviderAdapterV2TurnInput, "hostExecutionIdentity" | "hostInstructions" | "runId" | "attemptId">> = {},
+    source: Partial<
+      Pick<
+        ProviderAdapter.ProviderAdapterV2TurnInput,
+        "hostExecutionIdentity" | "hostInstructions" | "runId" | "attemptId" | "runtimePolicy"
+      >
+    > = {},
     sideChat = false,
   ) =>
     runtime.startTurn({
@@ -284,79 +291,179 @@ describe("OpenCodeAdapterV2", () => {
       assert.deepEqual(removed, ["side-chat", "side-chat"]);
     }).pipe(Effect.provide(Layer.merge(IdAllocator.layer, McpProviderSessions.layer)), Effect.scoped),
   );
-  it.effect("keeps native calls on their original Run and releases them on completion and cancellation", () =>
-    Effect.gen(function* () {
-      const events = asyncEventStream();
-      const push = (event: unknown) => Effect.promise(() => events.push(event));
-      const captures: Array<{ identity: ExecutionHost.HostTurnIdentity; nativeCallId: string; nativeTurnId?: string }> = [];
-      const released: string[] = [];
-      const displayedInputs = yield* Queue.unbounded<unknown>();
-      let promptId = "";
-      const harness = yield* makeOpenCodeRuntimeHarness("native-source", "root", {
-        event: { subscribe: async () => ({ stream: events.stream }) },
-        mcp: { status: async () => ({ data: { nodex_app: { status: "connected" } } }) },
-        session: {
-          create: async () => ({ data: { id: "root", time: { created: 1, updated: 1 } } }),
-          get: async () => ({ data: { id: "root", time: { created: 1, updated: 1 } } }),
-          promptAsync: async (input: { messageID: string }) => { promptId = input.messageID; return { data: true }; },
-          abort: async () => ({ data: true }),
-          children: async () => ({ data: [] }),
-          messages: async () => ({ data: [] }),
-        },
-      }).pipe(Effect.provideService(ExecutionHost.ExecutionHost, {
-        prepareTurn: () => Effect.succeed({}),
-        captureNativeToolCall: (source) => Effect.sync(() => { captures.push(source); return `call:${captures.length}`; }),
-        releaseNativeToolCall: (token) => Effect.sync(() => { released.push(token); }),
-      }));
-      yield* harness.runtime.events.pipe(
-        Stream.runForEach((event) => event.type === "turn_item.updated" && event.turnItem.type === "dynamic_tool"
-          ? Queue.offer(displayedInputs, event.turnItem.input)
-          : Effect.void),
-        Effect.forkScoped,
-      );
-      const identity: ExecutionHost.HostTurnIdentity = {
-        nativeDriver: OPENCODE_PROVIDER, projectId: ProjectId.make("project:native-source"),
-        threadId: harness.threadId, runId: harness.runId, attemptId: RunAttemptId.make("attempt:A"),
-        providerInstanceId: harness.providerThread.providerInstanceId,
-        providerSessionId: harness.providerThread.providerSessionId!, providerThreadId: harness.providerThread.id,
-        nativeGeneration: 1, nativeThreadRef: harness.providerThread.nativeThreadRef, cwd: "/workspace",
-      };
-      const nativePart = (messageID: string, status: "pending" | "completed") => ({
-        type: "message.part.updated", properties: { part: {
-          id: `part:${messageID}`, sessionID: "root", messageID, type: "tool", tool: "nodex_app_page-write", callID: "reused-call",
-          state: status === "pending" ? { status, input: { pageId: "page-1", __nodexNativeExecution: { nativeThreadId: "root", nativeTurnId: messageID, nativeCallId: "reused-call" } }, raw: "" } : {
-            status, input: { pageId: "page-1", __nodexNativeExecution: { nativeThreadId: "root", nativeTurnId: messageID, nativeCallId: "reused-call" } }, output: "done", title: "Write", metadata: {}, time: { start: 1, end: 2 },
+  it.effect(
+    "keeps native calls on their original Run and releases them on completion and cancellation",
+    () =>
+      Effect.gen(function* () {
+        const events = asyncEventStream();
+        const push = (event: unknown) => Effect.promise(() => events.push(event));
+        const captures: Array<{
+          identity: ExecutionHost.HostTurnIdentity;
+          nativeCallId: string;
+          nativeTurnId?: string;
+        }> = [];
+        const released: string[] = [];
+        const displayedInputs = yield* Queue.unbounded<unknown>();
+        let promptId = "";
+        const harness = yield* makeOpenCodeRuntimeHarness("native-source", "root", {
+          event: { subscribe: async () => ({ stream: events.stream }) },
+          mcp: { status: async () => ({ data: { nodex_app: { status: "connected" } } }) },
+          session: {
+            create: async () => ({ data: { id: "root", time: { created: 1, updated: 1 } } }),
+            get: async () => ({ data: { id: "root", time: { created: 1, updated: 1 } } }),
+            promptAsync: async (input: { messageID: string }) => {
+              promptId = input.messageID;
+              return { data: true };
+            },
+            abort: async () => ({ data: true }),
+            children: async () => ({ data: [] }),
+            messages: async () => ({ data: [] }),
           },
-        } },
-      });
-      const admit = () => Effect.gen(function* () {
-        yield* push({ type: "message.updated", properties: { sessionID: "root", info: { id: promptId, sessionID: "root", role: "user", time: { created: 1 } } } });
-        yield* push({ type: "session.status", properties: { sessionID: "root", status: { type: "busy" } } });
-      });
-      yield* harness.startTurn("first", harness.providerThread, { hostExecutionIdentity: identity });
-      yield* admit();
-      yield* push(nativePart("message:A", "pending"));
-      yield* push({ type: "session.status", properties: { sessionID: "root", status: { type: "idle" } } });
-      assert.deepEqual(released, []);
-      const second = { ...identity, runId: RunId.make("run:B"), attemptId: RunAttemptId.make("attempt:B") };
-      yield* harness.startTurn("second", harness.providerThread, {
-        hostExecutionIdentity: second, runId: second.runId, attemptId: second.attemptId,
-      });
-      yield* admit();
-      yield* push(nativePart("message:B", "pending"));
-      assert.deepEqual(captures.map((source) => [source.identity.runId, source.nativeTurnId, source.nativeCallId]), [
-        [identity.runId, "message:A", "reused-call"], [second.runId, "message:B", "reused-call"],
-      ]);
-      yield* push(nativePart("message:A", "completed"));
-      assert.deepEqual(released, ["call:1"]);
-      assert.deepEqual(yield* Queue.take(displayedInputs), { pageId: "page-1" });
-      assert.deepEqual(yield* Queue.take(displayedInputs), { pageId: "page-1" });
-      assert.deepEqual(yield* Queue.take(displayedInputs), { pageId: "page-1" });
-      const active = (yield* harness.runtime.readThreadSnapshot({ providerThread: harness.providerThread })).providerTurns.at(-1)!;
-      yield* harness.runtime.interruptTurn({ providerThread: harness.providerThread, providerTurnId: active.id });
-      yield* push({ type: "session.status", properties: { sessionID: "root", status: { type: "idle" } } });
-      assert.deepEqual(released, ["call:1", "call:2"]);
-    }).pipe(Effect.provide(Layer.merge(IdAllocator.layer, McpProviderSessions.layer)), Effect.scoped),
+        }).pipe(
+          Effect.provideService(ExecutionHost.ExecutionHost, {
+            prepareTurn: () => Effect.succeed({}),
+            captureNativeToolCall: (source) =>
+              Effect.sync(() => {
+                captures.push(source);
+                return `call:${captures.length}`;
+              }),
+            releaseNativeToolCall: (token) =>
+              Effect.sync(() => {
+                released.push(token);
+              }),
+          }),
+        );
+        yield* harness.runtime.events.pipe(
+          Stream.runForEach((event) =>
+            event.type === "turn_item.updated" && event.turnItem.type === "dynamic_tool"
+              ? Queue.offer(displayedInputs, event.turnItem.input)
+              : Effect.void,
+          ),
+          Effect.forkScoped,
+        );
+        const identity: ExecutionHost.HostTurnIdentity = {
+          nativeDriver: OPENCODE_PROVIDER,
+          projectId: ProjectId.make("project:native-source"),
+          threadId: harness.threadId,
+          runId: harness.runId,
+          attemptId: RunAttemptId.make("attempt:A"),
+          providerInstanceId: harness.providerThread.providerInstanceId,
+          providerSessionId: harness.providerThread.providerSessionId!,
+          providerThreadId: harness.providerThread.id,
+          nativeGeneration: 1,
+          nativeThreadRef: harness.providerThread.nativeThreadRef,
+          cwd: "/workspace",
+        };
+        const nativePart = (messageID: string, status: "pending" | "completed") => ({
+          type: "message.part.updated",
+          properties: {
+            part: {
+              id: `part:${messageID}`,
+              sessionID: "root",
+              messageID,
+              type: "tool",
+              tool: "nodex_app_page-write",
+              callID: "reused-call",
+              state:
+                status === "pending"
+                  ? {
+                      status,
+                      input: {
+                        pageId: "page-1",
+                        __nodexNativeExecution: {
+                          nativeThreadId: "root",
+                          nativeTurnId: messageID,
+                          nativeCallId: "reused-call",
+                        },
+                      },
+                      raw: "",
+                    }
+                  : {
+                      status,
+                      input: {
+                        pageId: "page-1",
+                        __nodexNativeExecution: {
+                          nativeThreadId: "root",
+                          nativeTurnId: messageID,
+                          nativeCallId: "reused-call",
+                        },
+                      },
+                      output: "done",
+                      title: "Write",
+                      metadata: {},
+                      time: { start: 1, end: 2 },
+                    },
+            },
+          },
+        });
+        const admit = () =>
+          Effect.gen(function* () {
+            yield* push({
+              type: "message.updated",
+              properties: {
+                sessionID: "root",
+                info: { id: promptId, sessionID: "root", role: "user", time: { created: 1 } },
+              },
+            });
+            yield* push({
+              type: "session.status",
+              properties: { sessionID: "root", status: { type: "busy" } },
+            });
+          });
+        yield* harness.startTurn("first", harness.providerThread, {
+          hostExecutionIdentity: identity,
+        });
+        yield* admit();
+        yield* push(nativePart("message:A", "pending"));
+        yield* push({
+          type: "session.status",
+          properties: { sessionID: "root", status: { type: "idle" } },
+        });
+        assert.deepEqual(released, []);
+        const second = {
+          ...identity,
+          runId: RunId.make("run:B"),
+          attemptId: RunAttemptId.make("attempt:B"),
+        };
+        yield* harness.startTurn("second", harness.providerThread, {
+          hostExecutionIdentity: second,
+          runId: second.runId,
+          attemptId: second.attemptId,
+        });
+        yield* admit();
+        yield* push(nativePart("message:B", "pending"));
+        assert.deepEqual(
+          captures.map((source) => [
+            source.identity.runId,
+            source.nativeTurnId,
+            source.nativeCallId,
+          ]),
+          [
+            [identity.runId, "message:A", "reused-call"],
+            [second.runId, "message:B", "reused-call"],
+          ],
+        );
+        yield* push(nativePart("message:A", "completed"));
+        assert.deepEqual(released, ["call:1"]);
+        assert.deepEqual(yield* Queue.take(displayedInputs), { pageId: "page-1" });
+        assert.deepEqual(yield* Queue.take(displayedInputs), { pageId: "page-1" });
+        assert.deepEqual(yield* Queue.take(displayedInputs), { pageId: "page-1" });
+        const active = (yield* harness.runtime.readThreadSnapshot({
+          providerThread: harness.providerThread,
+        })).providerTurns.at(-1)!;
+        yield* harness.runtime.interruptTurn({
+          providerThread: harness.providerThread,
+          providerTurnId: active.id,
+        });
+        yield* push({
+          type: "session.status",
+          properties: { sessionID: "root", status: { type: "idle" } },
+        });
+        assert.deepEqual(released, ["call:1", "call:2"]);
+      }).pipe(
+        Effect.provide(Layer.merge(IdAllocator.layer, McpProviderSessions.layer)),
+        Effect.scoped,
+      ),
   );
   it.effect.each(["completed", "failed", "unresolved", "unavailable", "reconnect"] as const)(
     "normalizes OpenCode step usage for %s turns",
@@ -670,7 +777,7 @@ describe("OpenCodeAdapterV2", () => {
   );
 
   it.effect(
-    "preserves tool lifecycle, native auto-approval, and late assistant text without cached tool payloads",
+    "preserves tool lifecycle, interactive approvals, and late assistant text without cached tool payloads",
     () =>
       Effect.gen(function* () {
         const nativeEvents = asyncEventStream();
@@ -823,6 +930,15 @@ describe("OpenCodeAdapterV2", () => {
         );
         assert.equal(commands[2]?.output, "/repo\n");
         assert.equal(commands[3]?.output, "Command failed");
+        assert.deepEqual(permissionReplies, []);
+        const approval = items.find((item) => item.type === "approval_request");
+        assert.equal(approval?.prompt, "/outside/*");
+        assert.equal(approval?.status, "waiting");
+        assert.isDefined(approval);
+        yield* harness.runtime.respondToRuntimeRequest({
+          requestId: approval!.requestId,
+          decision: "accept",
+        });
         assert.deepEqual(permissionReplies, [{ requestID: "read-permission", reply: "once" }]);
         const assistant = items.filter((item) => item.type === "assistant_message");
         assert.equal(assistant.at(-1)?.text, "Tool results received");
@@ -836,84 +952,109 @@ describe("OpenCodeAdapterV2", () => {
   // Event order from a live OpenCode 1.18.32 run of a `task` call with
   // background=true: the task part completes at launch, the root session
   // settles, and the child session stays busy until its own work ends.
-  it.effect("reports a background task child as pending work after the root turn settles", () =>
-    Effect.gen(function* () {
-      const nativeEvents = asyncEventStream();
-      const push = (event: unknown) => Effect.promise(() => nativeEvents.push(event));
-      const root = "ses_root";
-      const child = "ses_child";
-      let promptId = "";
-      const captured: Array<{ identity: ExecutionHost.HostTurnIdentity; nativeThreadId?: string }> = [];
-      const nativeReplies: unknown[] = [];
-      const harness = yield* makeOpenCodeRuntimeHarness("background-child", root, {
-        event: { subscribe: async () => ({ stream: nativeEvents.stream }) },
-        session: {
-          create: async () => ({ data: { id: root, time: { created: 1, updated: 1 } } }),
-          get: async () => ({
-            data: { id: child, parentID: root, permission: [], time: { created: 2, updated: 2 } },
-          }),
-          update: async () => ({ data: { id: child, parentID: root } }),
-          promptAsync: async (input: { messageID: string }) => {
-            promptId = input.messageID;
-            return { data: true };
+  it.effect.each(["accept", "stop"] as const)(
+    "keeps a background task child approval on its original Run until %s",
+    (ending) =>
+      Effect.gen(function* () {
+        const nativeEvents = asyncEventStream();
+        const push = (event: unknown) => Effect.promise(() => nativeEvents.push(event));
+        const root = "ses_root";
+        const child = "ses_child";
+        let promptId = "";
+        const captured: Array<{
+          identity: ExecutionHost.HostTurnIdentity;
+          nativeThreadId?: string;
+        }> = [];
+        const nativeReplies: unknown[] = [];
+        const harness = yield* makeOpenCodeRuntimeHarness("background-child", root, {
+          event: { subscribe: async () => ({ stream: nativeEvents.stream }) },
+          session: {
+            create: async () => ({ data: { id: root, time: { created: 1, updated: 1 } } }),
+            get: async () => ({
+              data: { id: child, parentID: root, permission: [], time: { created: 2, updated: 2 } },
+            }),
+            messages: async () => ({ data: [] }),
+            update: async () => ({ data: { id: child, parentID: root } }),
+            promptAsync: async (input: { messageID: string }) => {
+              promptId = input.messageID;
+              return { data: true };
+            },
+            abort: async () => ({ data: true }),
+            children: async () => ({ data: [] }),
           },
-          abort: async () => ({ data: true }),
-          children: async () => ({ data: [] }),
-        },
-        permission: { reply: async (request: unknown) => { nativeReplies.push(request); return { data: true }; } },
-        question: { reply: async () => ({ data: true }) },
-      }).pipe(Effect.provideService(ExecutionHost.ExecutionHost, {
-        prepareTurn: () => Effect.succeed({}),
-        captureNativeToolCall: (source) => Effect.sync(() => { captured.push(source); return `call:${captured.length}`; }),
-        releaseNativeToolCall: () => Effect.void,
-      }));
-      const hasPendingBackgroundWork = harness.runtime.hasPendingBackgroundWork;
-      if (hasPendingBackgroundWork === undefined) {
-        return yield* Effect.die("OpenCode runtime must expose hasPendingBackgroundWork.");
-      }
-      const identity: ExecutionHost.HostTurnIdentity = {
-        nativeDriver: OPENCODE_PROVIDER, projectId: ProjectId.make("project:background-source"),
-        threadId: harness.threadId, runId: harness.runId, attemptId: RunAttemptId.make("attempt:A"),
-        providerInstanceId: harness.providerThread.providerInstanceId,
-        providerSessionId: harness.providerThread.providerSessionId!, providerThreadId: harness.providerThread.id,
-        nativeGeneration: 1, nativeThreadRef: harness.providerThread.nativeThreadRef, cwd: "/workspace",
-      };
-      yield* harness.startTurn("first", harness.providerThread, { hostExecutionIdentity: identity });
-      const terminal = yield* harness.runtime.events.pipe(
-        Stream.filter((event) => event.type === "turn.terminal"),
-        Stream.runHead,
-        Effect.forkScoped,
-      );
-      const taskPart = (status: "running" | "completed") => ({
-        type: "message.part.updated",
-        properties: {
-          sessionID: root,
-          part: {
-            id: "prt_task",
-            sessionID: root,
-            messageID: "msg_root_assistant",
-            type: "tool",
-            tool: "task",
-            callID: "call_task",
-            state: {
-              status,
-              input: {
-                description: "Background sleep task",
-                prompt: "sleep",
-                subagent_type: "general",
-              },
-              title: "Background sleep task",
-              metadata: { parentSessionId: root, sessionId: child, background: true },
-              time: { start: 3, ...(status === "completed" ? { end: 3 } : {}) },
-              ...(status === "completed" ? { output: "Background task started" } : {}),
+          permission: {
+            reply: async (request: unknown) => {
+              nativeReplies.push(request);
+              return { data: true };
             },
           },
-        },
-      });
-      const status = (sessionID: string, type: "busy" | "idle") => ({
-        type: "session.status",
-        properties: { sessionID, status: { type } },
-      });
+          question: { reply: async () => ({ data: true }) },
+        }).pipe(
+          Effect.provideService(ExecutionHost.ExecutionHost, {
+            prepareTurn: () => Effect.succeed({}),
+            captureNativeToolCall: (source) =>
+              Effect.sync(() => {
+                captured.push(source);
+                return `call:${captured.length}`;
+              }),
+            releaseNativeToolCall: () => Effect.void,
+          }),
+        );
+        const hasPendingBackgroundWork = harness.runtime.hasPendingBackgroundWork;
+        if (hasPendingBackgroundWork === undefined) {
+          return yield* Effect.die("OpenCode runtime must expose hasPendingBackgroundWork.");
+        }
+        const identity: ExecutionHost.HostTurnIdentity = {
+          nativeDriver: OPENCODE_PROVIDER,
+          projectId: ProjectId.make("project:background-source"),
+          threadId: harness.threadId,
+          runId: harness.runId,
+          attemptId: RunAttemptId.make("attempt:A"),
+          providerInstanceId: harness.providerThread.providerInstanceId,
+          providerSessionId: harness.providerThread.providerSessionId!,
+          providerThreadId: harness.providerThread.id,
+          nativeGeneration: 1,
+          nativeThreadRef: harness.providerThread.nativeThreadRef,
+          cwd: "/workspace",
+        };
+        yield* harness.startTurn("first", harness.providerThread, {
+          hostExecutionIdentity: identity,
+        });
+        const terminal = yield* harness.runtime.events.pipe(
+          Stream.filter((event) => event.type === "turn.terminal"),
+          Stream.runHead,
+          Effect.forkScoped,
+        );
+        const taskPart = (status: "running" | "completed") => ({
+          type: "message.part.updated",
+          properties: {
+            sessionID: root,
+            part: {
+              id: "prt_task",
+              sessionID: root,
+              messageID: "msg_root_assistant",
+              type: "tool",
+              tool: "task",
+              callID: "call_task",
+              state: {
+                status,
+                input: {
+                  description: "Background sleep task",
+                  prompt: "sleep",
+                  subagent_type: "general",
+                },
+                title: "Background sleep task",
+                metadata: { parentSessionId: root, sessionId: child, background: true },
+                time: { start: 3, ...(status === "completed" ? { end: 3 } : {}) },
+                ...(status === "completed" ? { output: "Background task started" } : {}),
+              },
+            },
+          },
+        });
+        const status = (sessionID: string, type: "busy" | "idle") => ({
+          type: "session.status",
+          properties: { sessionID, status: { type } },
+        });
 
       yield* push({
         type: "message.updated",
@@ -940,37 +1081,117 @@ describe("OpenCodeAdapterV2", () => {
       assert.equal(Option.getOrUndefined(yield* Fiber.join(terminal))?.status, "completed");
       assert.isTrue(yield* hasPendingBackgroundWork, "the running child must pin idle release");
 
-      const second = { ...identity, runId: RunId.make("run:background:second"), attemptId: RunAttemptId.make("attempt:B") };
-      yield* harness.startTurn("second", harness.providerThread, {
-        hostExecutionIdentity: second, runId: second.runId, attemptId: second.attemptId,
-      });
-      yield* push({ type: "message.updated", properties: {
-        sessionID: root, info: { id: promptId, sessionID: root, role: "user", time: { created: 3 } },
-      } });
-      yield* push(status(root, "busy"));
-      yield* push({ type: "message.part.updated", properties: { part: {
-        id: "background-native-call", sessionID: child, messageID: "child-assistant", type: "tool", tool: "nodex_app_page-write", callID: "child-call",
-        state: { status: "pending", input: {}, raw: "" },
-      } } });
-      assert.deepEqual(captured.map((source) => [source.identity.runId, source.nativeThreadId]), [[identity.runId, child]]);
-      yield* push({ type: "permission.asked", properties: {
-        id: "background-permission", sessionID: child, permission: "bash", patterns: ["*"], always: [], metadata: {},
-      } });
-      assert.deepEqual(nativeReplies, [{ requestID: "background-permission", reply: "once" }]);
-      const question = yield* harness.runtime.events.pipe(
-        Stream.filter((event) => event.type === "turn_item.updated" && event.turnItem.type === "user_input_request"),
-        Stream.runHead, Effect.forkScoped,
-      );
-      yield* push({ type: "question.asked", properties: {
-        id: "background-question", sessionID: child,
-        questions: [{ header: "Choice", question: "Which?", options: [{ label: "Yes", description: "Proceed" }] }],
-      } });
-      const asked = Option.getOrUndefined(yield* Fiber.join(question));
-      assert.isDefined(asked);
-      if (asked?.type !== "turn_item.updated" || asked.turnItem.type !== "user_input_request") return yield* Effect.die("Expected a native question");
-      assert.equal(asked.turnItem.runId, identity.runId);
-      yield* harness.runtime.respondToRuntimeRequest({ requestId: asked.turnItem.requestId, answers: { Choice: "Yes" } });
-      yield* push({ type: "question.replied", properties: { requestID: "background-question", sessionID: child } });
+        const second = {
+          ...identity,
+          runId: RunId.make("run:background:second"),
+          attemptId: RunAttemptId.make("attempt:B"),
+        };
+        yield* harness.startTurn("second", harness.providerThread, {
+          hostExecutionIdentity: second,
+          runId: second.runId,
+          attemptId: second.attemptId,
+        });
+        yield* push({
+          type: "message.updated",
+          properties: {
+            sessionID: root,
+            info: { id: promptId, sessionID: root, role: "user", time: { created: 3 } },
+          },
+        });
+        yield* push(status(root, "busy"));
+        yield* push({
+          type: "message.part.updated",
+          properties: {
+            part: {
+              id: "background-native-call",
+              sessionID: child,
+              messageID: "child-assistant",
+              type: "tool",
+              tool: "nodex_app_page-write",
+              callID: "child-call",
+              state: { status: "pending", input: {}, raw: "" },
+            },
+          },
+        });
+        assert.deepEqual(
+          captured.map((source) => [source.identity.runId, source.nativeThreadId]),
+          [[identity.runId, child]],
+        );
+        yield* push({
+          type: "permission.asked",
+          properties: {
+            id: "background-permission",
+            sessionID: child,
+            permission: "bash",
+            patterns: ["*"],
+            always: [],
+            metadata: {},
+          },
+        });
+        assert.deepEqual(nativeReplies, []);
+        const approvalSnapshot = yield* harness.runtime.readThreadSnapshot({
+          providerThread: harness.providerThread,
+        });
+        const pending = approvalSnapshot.runtimeRequests.find(
+          (request) => request.nativeRequestRef?.nativeId === "background-permission",
+        );
+        assert.isDefined(pending);
+        if (ending === "stop") {
+          yield* harness.runtime.interruptTurn({
+            providerThread: harness.providerThread,
+            providerTurnId: approvalSnapshot.providerTurns.at(-1)!.id,
+            requestRuntimeRestart: true,
+          });
+          assert.isTrue(
+            Exit.isFailure(
+              yield* harness.runtime
+                .respondToRuntimeRequest({ requestId: pending!.id, decision: "accept" })
+                .pipe(Effect.exit),
+            ),
+          );
+          assert.deepEqual(nativeReplies, []);
+          return;
+        }
+        yield* harness.runtime.respondToRuntimeRequest({
+          requestId: pending!.id,
+          decision: "accept",
+        });
+        assert.deepEqual(nativeReplies, [{ requestID: "background-permission", reply: "once" }]);
+        const question = yield* harness.runtime.events.pipe(
+          Stream.filter(
+            (event) =>
+              event.type === "turn_item.updated" && event.turnItem.type === "user_input_request",
+          ),
+          Stream.runHead,
+          Effect.forkScoped,
+        );
+        yield* push({
+          type: "question.asked",
+          properties: {
+            id: "background-question",
+            sessionID: child,
+            questions: [
+              {
+                header: "Choice",
+                question: "Which?",
+                options: [{ label: "Yes", description: "Proceed" }],
+              },
+            ],
+          },
+        });
+        const asked = Option.getOrUndefined(yield* Fiber.join(question));
+        assert.isDefined(asked);
+        if (asked?.type !== "turn_item.updated" || asked.turnItem.type !== "user_input_request")
+          return yield* Effect.die("Expected a native question");
+        assert.equal(asked.turnItem.runId, identity.runId);
+        yield* harness.runtime.respondToRuntimeRequest({
+          requestId: asked.turnItem.requestId,
+          answers: { Choice: "Yes" },
+        });
+        yield* push({
+          type: "question.replied",
+          properties: { requestID: "background-question", sessionID: child },
+        });
 
       yield* push(status(child, "idle"));
       yield* push({ type: "session.idle", properties: { sessionID: child } });
@@ -2783,8 +3004,19 @@ describe("OpenCodeAdapterV2", () => {
   });
 
   it("uses full execution access for every native tool family", () => {
-    for (const permission of ["read", "edit", "bash", "webfetch", "external_directory", "task", "plugin_tool"]) {
-      assert.equal(permissionAction(OPENCODE_EXECUTION_PERMISSIONS, permission), "allow");
+    for (const permission of [
+      "read",
+      "edit",
+      "bash",
+      "webfetch",
+      "external_directory",
+      "task",
+      "plugin_tool",
+    ]) {
+      assert.equal(
+        permissionAction(openCodePermissionRules(runtimePolicy("full-access")), permission),
+        "allow",
+      );
     }
   });
 
@@ -2866,4 +3098,303 @@ it.effect.each([false, true])(
       Effect.provide(Layer.merge(IdAllocator.layer, McpProviderSessions.layer)),
       Effect.scoped,
     ),
+);
+
+it("asks before native mutations while keeping content tools and read tools available", () => {
+  const rules = openCodePermissionRules(runtimePolicy("approval-required"));
+  for (const permission of ["bash", "edit", "external_directory", "webfetch", "plugin_tool"]) {
+    assert.equal(permissionAction(rules, permission), "ask");
+  }
+  for (const permission of ["glob", "grep", "lsp", "todowrite", "task", "skill", "question"]) {
+    assert.equal(permissionAction(rules, permission), "allow");
+  }
+  const action = (permission: string, resource: string) =>
+    rules.findLast(
+      (entry) =>
+        new RegExp(`^${entry.permission.replaceAll("*", ".*")}$`).test(permission) &&
+        new RegExp(`^${entry.pattern.replaceAll(".", "\\.").replaceAll("*", ".*")}$`).test(
+          resource,
+        ),
+    )?.action;
+  assert.equal(action("read", "/workspace/src/main.ts"), "allow");
+  assert.equal(action("read", "/workspace/.env"), "ask");
+  assert.equal(action("read", "/workspace/.env.local"), "ask");
+  assert.equal(action("read", "/workspace/.env.example"), "allow");
+  assert.equal(action("nodex_app_page_write", "*"), "allow");
+  const child = openCodeChildPermissionRules(
+    runtimePolicy("approval-required"),
+    [
+      ...openCodePermissionRules(runtimePolicy("full-access")),
+      { permission: "task", pattern: "*", action: "deny" },
+    ],
+    openCodePermissionRules(runtimePolicy("full-access")),
+  );
+  assert.equal(permissionAction(child, "bash"), "ask");
+  assert.equal(permissionAction(child, "task"), "deny");
+  assert.equal(openCodePermissionRequestKind("external_directory"), "file-read");
+  assert.equal(openCodePermissionRequestKind("edit"), "file-change");
+  assert.equal(openCodePermissionRequestKind("bash"), "command");
+  assert.equal(OpenCodeRuntime.toOpenCodePermissionReply("acceptForSession"), "always");
+});
+
+it.effect.each(["accept", "decline", "cancel", "finalize", "stop"] as const)(
+  "keeps OpenCode 1 approval pending until %s, then rejects stale answers",
+  (decision) =>
+    Effect.gen(function* () {
+      const events = asyncEventStream();
+      const replies: unknown[] = [];
+      const harness = yield* makeOpenCodeRuntimeHarness(`approval-${decision}`, "root", {
+        event: { subscribe: async () => ({ stream: events.stream }) },
+        session: {
+          create: async () => ({ data: { id: "root", time: { created: 1, updated: 1 } } }),
+          update: async () => ({ data: {} }),
+          promptAsync: async () => ({ data: true }),
+          abort: async () => ({ data: true }),
+          children: async () => ({ data: [] }),
+        },
+        permission: {
+          reply: async (value: unknown) => {
+            replies.push(value);
+            return { data: true };
+          },
+        },
+      });
+      yield* harness.startTurn("edit", harness.providerThread, {
+        runtimePolicy: runtimePolicy("approval-required", { cwd: "/workspace" }),
+      });
+      const asked = yield* harness.runtime.events.pipe(
+        Stream.filter(
+          (
+            event,
+          ): event is Extract<
+            ProviderAdapter.ProviderAdapterV2Event,
+            { type: "turn_item.updated" }
+          > => event.type === "turn_item.updated" && event.turnItem.type === "approval_request",
+        ),
+        Stream.runHead,
+        Effect.forkScoped,
+      );
+      yield* Effect.promise(() =>
+        events.push({
+          type: "permission.asked",
+          properties: {
+            id: "permission",
+            sessionID: "root",
+            permission: "bash",
+            patterns: ["npm publish"],
+            always: ["npm *"],
+            metadata: {},
+          },
+        }),
+      );
+      const item = Option.getOrThrow(yield* Fiber.join(asked)).turnItem;
+      if (item.type !== "approval_request") return yield* Effect.die("Expected approval");
+      assert.equal(item.status, "waiting");
+      assert.equal(item.prompt, "npm publish");
+      assert.deepEqual(
+        item.options?.map((option) => option.decision),
+        ["cancel", "decline", "accept"],
+      );
+      assert.deepEqual(replies, []);
+      const unsupported = yield* harness.runtime
+        .respondToRuntimeRequest({ requestId: item.requestId, decision: "acceptForSession" })
+        .pipe(Effect.exit);
+      assert.isTrue(Exit.isFailure(unsupported));
+      assert.deepEqual(replies, []);
+      if (decision === "finalize" || decision === "stop") {
+        const completed = yield* harness.runtime.events.pipe(
+          Stream.filter(
+            (event) =>
+              event.type === "runtime_request.updated" &&
+              event.runtimeRequest.status === "cancelled",
+          ),
+          Stream.runHead,
+          Effect.forkScoped,
+        );
+        if (decision === "stop")
+          yield* harness.runtime.interruptTurn({
+            providerThread: harness.providerThread,
+            providerTurnId: item.providerTurnId!,
+          });
+        else
+          yield* Effect.promise(() =>
+            events.push({
+              type: "session.error",
+              properties: {
+                sessionID: "root",
+                error: { name: "MessageAbortedError", data: { message: "Done" } },
+              },
+            }),
+          );
+        assert.isTrue(Option.isSome(yield* Fiber.join(completed)));
+      } else {
+        yield* harness.runtime.respondToRuntimeRequest({ requestId: item.requestId, decision });
+        assert.deepEqual(replies, [
+          { requestID: "permission", reply: decision === "accept" ? "once" : "reject" },
+        ]);
+      }
+      const stale = yield* harness.runtime
+        .respondToRuntimeRequest({ requestId: item.requestId, decision: "accept" })
+        .pipe(Effect.exit);
+      assert.isTrue(Exit.isFailure(stale));
+    }).pipe(
+      Effect.provide(Layer.merge(IdAllocator.layer, McpProviderSessions.layer)),
+      Effect.scoped,
+    ),
+);
+
+it.effect("applies a changed runtime policy to the session on resume and turn start", () =>
+  Effect.gen(function* () {
+    const updates: Array<{ sessionID: string; permission: unknown }> = [];
+    const fullAccess = runtimePolicy("full-access", { cwd: "/workspace" });
+    const supervised = runtimePolicy("approval-required", { cwd: "/workspace" });
+    const harness = yield* makeOpenCodeRuntimeHarness("policy-change", "root", {
+      event: { subscribe: async () => ({ stream: asyncEventStream().stream }) },
+      session: {
+        create: async (input: { permission: unknown }) => ({
+          data: {
+            id: "root",
+            permission: input.permission,
+            time: { created: 1, updated: 1 },
+          },
+        }),
+        get: async () => ({
+          data: {
+            id: "root",
+            permission: openCodePermissionRules(fullAccess),
+            time: { created: 1, updated: 1 },
+          },
+        }),
+        update: async (input: { sessionID: string; permission: unknown }) => {
+          updates.push(input);
+          return { data: { id: input.sessionID, time: { created: 1, updated: 2 } } };
+        },
+        promptAsync: async () => ({ data: true }),
+        abort: async () => ({ data: true }),
+        children: async () => ({ data: [] }),
+      },
+    });
+
+    yield* harness.runtime.resumeThread({
+      providerThread: harness.providerThread,
+      runtimePolicy: fullAccess,
+    });
+    assert.deepStrictEqual(updates, []);
+
+    yield* harness.runtime.resumeThread({
+      providerThread: harness.providerThread,
+      runtimePolicy: supervised,
+    });
+    assert.deepStrictEqual(updates, [
+      { sessionID: "root", permission: openCodePermissionRules(supervised) },
+    ]);
+
+    yield* harness.startTurn("hello", harness.providerThread, { runtimePolicy: fullAccess });
+    assert.deepStrictEqual(updates.slice(1), [
+      { sessionID: "root", permission: openCodePermissionRules(fullAccess) },
+    ]);
+  }).pipe(Effect.provide(Layer.merge(IdAllocator.layer, McpProviderSessions.layer)), Effect.scoped),
+);
+
+it.effect("applies a changed runtime policy to existing subagent sessions", () =>
+  Effect.gen(function* () {
+    const nativeEvents = asyncEventStream();
+    const push = (event: unknown) => Effect.promise(() => nativeEvents.push(event));
+    const updates: Array<{
+      sessionID: string;
+      permission: ReturnType<typeof openCodePermissionRules>;
+    }> = [];
+    const fullAccess = runtimePolicy("full-access", { cwd: "/workspace" });
+    const supervised = runtimePolicy("approval-required", { cwd: "/workspace" });
+    const root = "ses_root";
+    const child = "ses_child";
+    const taskDeny = { permission: "task", pattern: "*", action: "deny" as const };
+    const nativePermissions = new Map<string, (typeof updates)[number]["permission"]>([
+      [root, openCodePermissionRules(fullAccess)],
+      [child, [taskDeny]],
+    ]);
+    let failNextChildUpdate = false;
+    const harness = yield* makeOpenCodeRuntimeHarness("child-policy-change", root, {
+      event: { subscribe: async () => ({ stream: nativeEvents.stream }) },
+      session: {
+        create: async () => ({ data: { id: root, time: { created: 1, updated: 1 } } }),
+        get: async ({ sessionID }: { sessionID: string }) => ({
+          data: {
+            id: sessionID,
+            ...(sessionID === child ? { parentID: root } : {}),
+            permission: nativePermissions.get(sessionID),
+            time: { created: 1, updated: 1 },
+          },
+        }),
+        update: async (input: (typeof updates)[number]) => {
+          if (input.sessionID === child && failNextChildUpdate) {
+            failNextChildUpdate = false;
+            throw new Error("child update failed");
+          }
+          updates.push(input);
+          nativePermissions.set(input.sessionID, input.permission);
+          return { data: { id: input.sessionID, time: { created: 1, updated: 2 } } };
+        },
+        promptAsync: async () => ({ data: true }),
+        abort: async () => ({ data: true }),
+        children: async () => ({ data: [] }),
+      },
+    });
+
+    yield* harness.startTurn("hello", harness.providerThread, { runtimePolicy: fullAccess });
+    yield* push({
+      type: "message.part.updated",
+      properties: {
+        sessionID: root,
+        part: {
+          id: "prt_task",
+          sessionID: root,
+          messageID: "msg_root_assistant",
+          type: "tool",
+          tool: "task",
+          callID: "call_task",
+          state: {
+            status: "running",
+            input: { description: "Explore", prompt: "look around", subagent_type: "general" },
+            title: "Explore",
+            metadata: { parentSessionId: root, sessionId: child },
+            time: { start: 3 },
+          },
+        },
+      },
+    });
+    const childUpdates = () => updates.filter((update) => update.sessionID === child);
+    assert.equal(permissionAction(childUpdates().at(-1)!.permission, "bash"), "allow");
+
+    yield* harness.runtime.resumeThread({
+      providerThread: harness.providerThread,
+      runtimePolicy: supervised,
+    });
+    const childRules = childUpdates().at(-1)!.permission;
+    assert.equal(childUpdates().length, 2);
+    assert.equal(permissionAction(childRules, "bash"), "ask");
+    assert.equal(permissionAction(childRules, "task"), "deny");
+    assert.deepStrictEqual(childRules, openCodeChildPermissionRules(supervised, [taskDeny]));
+
+    yield* harness.runtime.resumeThread({
+      providerThread: harness.providerThread,
+      runtimePolicy: fullAccess,
+    });
+    assert.equal(permissionAction(nativePermissions.get(child)!, "bash"), "allow");
+
+    failNextChildUpdate = true;
+    const failed = yield* Effect.exit(
+      harness.runtime.resumeThread({
+        providerThread: harness.providerThread,
+        runtimePolicy: supervised,
+      }),
+    );
+    assert.isTrue(Exit.isFailure(failed));
+    yield* harness.runtime.resumeThread({
+      providerThread: harness.providerThread,
+      runtimePolicy: supervised,
+    });
+    assert.equal(permissionAction(nativePermissions.get(child)!, "bash"), "ask");
+    assert.equal(permissionAction(nativePermissions.get(child)!, "task"), "deny");
+  }).pipe(Effect.provide(Layer.merge(IdAllocator.layer, McpProviderSessions.layer)), Effect.scoped),
 );

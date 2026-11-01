@@ -26,6 +26,7 @@ const fixture = (
     readonly nativeReplay?: boolean;
     readonly resume?: boolean;
     readonly restricted?: boolean;
+    readonly targetRestricted?: boolean;
     readonly restrictedNative?: boolean;
     readonly importedPlan?: boolean;
   } = {},
@@ -162,7 +163,8 @@ const fixture = (
                   threadId: sessionId === "caller" ? "caller-thread" : "adopted-thread",
                   thread: {
                     runtimeMode:
-                      sessionId === "caller" && options.restricted
+                      (sessionId === "caller" && options.restricted) ||
+                      (sessionId === "target" && options.targetRestricted)
                         ? "approval-required"
                         : "full-access",
                     interactionMode:
@@ -385,4 +387,28 @@ it.effect(
         interactionMode: "plan",
       });
     }),
+);
+
+it.effect("preserves a restricted caller's full ceiling on fresh Runtime sends", () =>
+  Effect.gen(function* () {
+    const f = fixture({ runtime: true, restricted: true, targetRestricted: true });
+    const intake = yield* f.makeIntake;
+    yield* intake.send(input(true));
+    const sent = f.calls.find((call) => call.name === "runtime-send")!;
+    assert.deepInclude(sent.input, {
+      modeLimit: { runtimeMode: "approval-required", interactionMode: "plan" },
+    });
+  }),
+);
+it.effect("a cold draft inherits a restricted caller's mode", () =>
+  Effect.gen(function* () {
+    const f = fixture({ draft: true, restricted: true });
+    const intake = yield* f.makeIntake;
+    yield* intake.send(input());
+    const sent = f.calls.find((call) => call.name === "launch")!;
+    assert.deepInclude(sent.input, {
+      runtimeMode: "approval-required",
+      modeLimit: { runtimeMode: "approval-required", interactionMode: "plan" },
+    });
+  }),
 );

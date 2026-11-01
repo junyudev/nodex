@@ -29,6 +29,7 @@ const OPENCODE_PRESENTATION = {
   displayName: "OpenCode",
   showInteractionModeToggle: false,
   supportsConversationRollback: true,
+  supportedRuntimeModes: ["approval-required", "full-access"],
 } as const;
 
 class OpenCodeProbeError extends Data.TaggedError("OpenCodeProbeError")<{

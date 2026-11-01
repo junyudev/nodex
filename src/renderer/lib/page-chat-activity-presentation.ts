@@ -25,25 +25,27 @@ const counted = (count: number, singular: string, plural = `${singular}s`): stri
 
 /**
  * Core counts native thread status; Runtime-bound Sessions add their live Session activity. A
- * waiting Runtime chat awaits the user's information, so it counts as awaiting input.
+ * waiting Runtime chat retains whether it needs approval or information.
  */
 export function presentPageChatActivity(
   summary: PageChatActivitySummary,
   runtimeStatuses: PageChatRuntimeStatuses = NO_RUNTIME_STATUSES,
 ): PageChatActivityPresentation {
   let workingCount = summary.workingCount;
+  let waitingOnApprovalCount = summary.waitingOnApprovalCount;
   let waitingOnUserInputCount = summary.waitingOnUserInputCount;
   let backgroundCount = 0;
   for (const sessionId of summary.runtimeSessionIds) {
     const status = runtimeStatuses.get(sessionId);
     if (status === "running") workingCount += 1;
+    else if (status === "approval") waitingOnApprovalCount += 1;
     else if (status === "waiting") waitingOnUserInputCount += 1;
     else if (status === "background") backgroundCount += 1;
   }
   const execution: PageChatExecutionIndicator =
     summary.errorCount > 0
       ? "error"
-      : summary.waitingOnApprovalCount > 0
+      : waitingOnApprovalCount > 0
         ? "approval"
         : waitingOnUserInputCount > 0
           ? "input"
@@ -54,8 +56,8 @@ export function presentPageChatActivity(
               : "idle";
   const parts = [counted(summary.relatedCount, "linked chat")];
   if (summary.errorCount > 0) parts.push(counted(summary.errorCount, "error"));
-  if (summary.waitingOnApprovalCount > 0) {
-    parts.push(counted(summary.waitingOnApprovalCount, "awaiting approval"));
+  if (waitingOnApprovalCount > 0) {
+    parts.push(counted(waitingOnApprovalCount, "awaiting approval"));
   }
   if (waitingOnUserInputCount > 0) {
     parts.push(counted(waitingOnUserInputCount, "awaiting input"));

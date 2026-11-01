@@ -1,3 +1,4 @@
+import { agentRuntimeSubagentApprovalsQueryOptions } from "@/features/local-conversation/agent-runtime-subagent-overview";
 import { composerDraftIntents } from "@/lib/composer-draft-intents";
 import { ConnectedThreadStage, type ThreadStageActions } from "@/features/local-conversation";
 import { ConversationRuntimeContext } from "@/features/local-conversation/conversation-runtime";
@@ -303,6 +304,9 @@ export function AgentRuntimeSubagentsOverviewPanel(input: {
     /** Advances when a report leaves the section totals to a re-read. */
     recount: number;
   }>({ source: null, error: null, recount: 0 });
+  const approvalThreads = useQuery(
+    agentRuntimeSubagentApprovalsQueryOptions(input.sessionId, input.threadId, state.source),
+  ).data;
   const [attachment, setAttachment] = useState(0);
   const loadingMore = useRef(new Set<"active" | "terminal">());
   const connection = useAgentRuntimeConnectionState();
@@ -496,12 +500,16 @@ export function AgentRuntimeSubagentsOverviewPanel(input: {
       <div className="min-h-0 flex-1">
         <SubagentsPanelOverviewContent
           rootThreadId={input.threadId}
-          overview={projectAgentRuntimeSubagentOverview(input.threadId, source, (task) =>
-            agentRuntimeAgentLabel(
-              labels,
-              task.providerInstanceId,
-              task.modelSelection?.model ?? task.model,
-            ),
+          overview={projectAgentRuntimeSubagentOverview(
+            input.threadId,
+            source,
+            (task) =>
+              agentRuntimeAgentLabel(
+                labels,
+                task.providerInstanceId,
+                task.modelSelection?.model ?? task.model,
+              ),
+            approvalThreads,
           )}
           onSelect={(row) => input.onSelect(projectSubagentOverviewRowToOpenPayload(row))}
           isStopping={(row) => {

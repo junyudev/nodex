@@ -403,3 +403,34 @@ it.live("a slow activity observer resets after overflow without blocking other w
     assert.isFalse(projection.has("session:a"));
   }).pipe(Effect.scoped),
 );
+
+it.live(
+  "publishes approval attention and action changes without another policy or transcript read",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture({ "thread:a": "session:a" });
+      const runtime = yield* fakeRuntime("1");
+      yield* f.attach(runtime.connection);
+      yield* f.until(() => f.changes.length === 1);
+      const approval = root("thread:a", "waiting", {
+        activeFlags: ["waitingOnApproval"],
+        approvalPrompt: "git push",
+      });
+      yield* runtime.commit("thread:a", approval);
+      yield* f.until(() => f.changes.length === 2);
+      assert.deepInclude((yield* f.activity.read).items[0], {
+        activeFlags: ["waitingOnApproval"],
+        approvalPrompt: "git push",
+      });
+      yield* runtime.commit("thread:a", { ...approval, approvalPrompt: "curl example.com" });
+      yield* f.until(() => f.changes.length === 3);
+      assert.equal((yield* f.activity.read).items[0]?.approvalPrompt, "curl example.com");
+      yield* runtime.commit("thread:a", {
+        ...approval,
+        activeFlags: ["waitingOnUserInput"],
+        approvalPrompt: null,
+      });
+      yield* f.until(() => f.changes.length === 4);
+      assert.deepEqual((yield* f.activity.read).items[0]?.activeFlags, ["waitingOnUserInput"]);
+    }).pipe(Effect.scoped),
+);

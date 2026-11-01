@@ -7,6 +7,7 @@ import type {
 } from "../../shared/types";
 import { DEFAULT_CODEX_HOST_ID } from "../../shared/codex-host";
 import {
+  buildCodexApprovalNotificationId,
   buildCodexAsyncQuestionNotificationId,
   buildCodexQuestionNotificationId,
   buildCodexRequestNotificationOccurrenceId,
@@ -14,6 +15,8 @@ import {
   buildCodexTurnNotificationOccurrenceId,
   decideCodexRequestNotification,
   decideCodexTurnNotification,
+  resolveCodexApprovalNotificationBody,
+  resolveCodexApprovalNotificationTitle,
   resolveCodexQuestionNotificationBody,
   resolveCodexQuestionNotificationTitle,
   resolveCodexTurnNotificationBody,
@@ -93,7 +96,9 @@ function showNotification(
     conversationId,
     navigationPath: navigation.navigationPath,
     activateTabId: navigation.activateTabId,
-    ...(event.type === "user-input-requested" ? { requestId: event.requestId } : {}),
+    ...(event.type === "user-input-requested" || event.type === "approval-requested"
+      ? { requestId: event.requestId }
+      : {}),
   };
 
   options.showNotification(notification, targetClientId, (action) => {
@@ -109,7 +114,10 @@ function showNotification(
       conversationId,
       navigationPath: navigation.navigationPath,
       activateTabId: navigation.activateTabId,
-      requestId: event.type === "user-input-requested" ? event.requestId : null,
+      requestId:
+        event.type === "user-input-requested" || event.type === "approval-requested"
+          ? event.requestId
+          : null,
     });
     if (!dispatched) {
       options.dismissNotification(
@@ -141,7 +149,7 @@ export const makeCodexThreadNotificationHandler =
     if (event.type === "request-resolved") {
       options.dismissNotification({
         occurrenceId: buildCodexRequestNotificationOccurrenceId(
-          "question",
+          event.family ?? "question",
           event.hostId,
           event.conversationId,
           event.requestId,
@@ -208,6 +216,22 @@ export const makeCodexThreadNotificationHandler =
         kind: "question",
         title: resolveCodexQuestionNotificationTitle(event.conversation.title),
         body: "Nodex has a question",
+      });
+      return;
+    }
+
+    if (event.type === "approval-requested") {
+      showNotification(options, event, {
+        id: buildCodexApprovalNotificationId(event.hostId, event.requestId),
+        occurrenceId: buildCodexRequestNotificationOccurrenceId(
+          "approval",
+          event.hostId,
+          event.conversation.conversationId,
+          event.requestId,
+        ),
+        kind: "question",
+        title: resolveCodexApprovalNotificationTitle(event.conversation.title),
+        body: resolveCodexApprovalNotificationBody(event.prompt),
       });
       return;
     }

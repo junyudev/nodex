@@ -465,9 +465,19 @@ it.effect(
       ])
         assert.isTrue(Exit.isFailure(yield* Effect.exit(use)));
       assert.deepEqual(f.calls, []);
-      yield* f.execution.followUp("thread", "continue", "move");
-      yield* f.execution.followUp("thread", "continue", "move");
+      yield* f.execution.followUp("thread", "continue", "move", {
+        runtimeMode: "approval-required",
+        interactionMode: "plan",
+      });
+      yield* f.execution.followUp("thread", "continue", "move", {
+        runtimeMode: "approval-required",
+        interactionMode: "plan",
+      });
       assert.deepEqual(f.messages[0], f.messages[1]);
+      assert.deepEqual((f.messages[0] as { modeLimit?: unknown }).modeLimit, {
+        runtimeMode: "approval-required",
+        interactionMode: "plan",
+      });
       assert.strictEqual((f.messages[0] as { sessionId: string }).sessionId, "session");
     }),
 );

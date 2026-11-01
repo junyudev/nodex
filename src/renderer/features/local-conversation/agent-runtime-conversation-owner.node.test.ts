@@ -2110,10 +2110,13 @@ describe("Agent Runtime keyed transcript reads", () => {
       status: "running",
     };
     const { owner, wire, release } = await open(conversation([approval, task]));
-    expect(owner.getSnapshot().view?.requests[0]).toMatchObject({
+    expect(owner.getSnapshot().view?.requests).toEqual([]);
+    expect(owner.approvals.getSnapshot().pending[0]).toMatchObject({
       requestId: "request",
-      turnId: "run",
-      type: "approval",
+      runId: "run",
+      kind: "command",
+      detail: "Approve command?",
+      live: false,
     });
     expect(owner.getSnapshot().view?.canonicalRequests).toEqual([]);
     const key = owner.readOwner.readStructure()!.turnEntityKeys[0]!;
@@ -3325,3 +3328,64 @@ test("preserves paged Provider Turn evidence across historical metadata updates 
     owner.dispose();
   }
 });
+
+test.each(["accept", "decline", "cancel"] as const)(
+  "clears an approval from waiting once it is answered: %s",
+  async (decision) => {
+    const approval: AgentTurnItem = {
+      ...base("approval-history", 3),
+      type: "approval_request",
+      status: "waiting",
+      requestId: "history-request",
+      requestKind: "permission",
+      prompt: "Read /private",
+    };
+    const initial = conversation([approval]);
+    const request = agentRuntimeRow("runtimeRequests", {
+      id: "history-request",
+      nodeId: "approval-node",
+      kind: "permission",
+      status: "pending",
+      createdAt: at,
+      resolvedAt: null,
+      responseCapability: { type: "live", providerSessionId: "physical", supportsFeedback: true },
+    });
+    const source = {
+      ...initial,
+      snapshot: {
+        ...initial.snapshot,
+        projection: { ...initial.snapshot.projection, runtimeRequests: [request] },
+      },
+    };
+    const { owner, wire, release } = await open(source);
+    try {
+      expect(owner.approvals.getSnapshot().pending[0]).toMatchObject({
+        kind: "permission",
+        live: true,
+        supportsFeedback: true,
+      });
+      wire.emit({
+        sequence: 2,
+        commandId: null,
+        event: {
+          id: "approval-resolved",
+          threadId: target.threadId,
+          occurredAt: at,
+          type: "runtime-request.updated",
+          payload: {
+            ...request,
+            status: "resolved",
+            resolvedAt: at,
+            decision,
+            ...(decision === "decline" ? { feedback: "Use public data" } : {}),
+          },
+        },
+      });
+      expect(owner.approvals.getSnapshot().pending).toEqual([]);
+      expect(owner.getSnapshot().view?.statusActiveFlags).toEqual([]);
+    } finally {
+      release();
+      owner.dispose();
+    }
+  },
+);

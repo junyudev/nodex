@@ -392,7 +392,9 @@ export function layerWithRegistry<Error>(
     Layer.provide(Layer.merge(layerStores, layerProviderSessionManagerProvided)),
   );
   const layerRuntimeRequestServiceProvided = RuntimeRequestService.layer.pipe(
-    Layer.provide(Layer.merge(layerStores, layerProviderSessionManagerProvided)),
+    Layer.provide(
+      Layer.mergeAll(layerStores, layerProviderSessionManagerProvided, layerEventSinkProvided),
+    ),
   );
   const layerCheckpointRollbackServiceProvided = CheckpointRollbackService.layer.pipe(
     Layer.provide(

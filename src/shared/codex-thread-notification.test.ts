@@ -1,11 +1,14 @@
 import { describe, expect, test } from "vite-plus/test";
 import {
+  buildCodexApprovalNotificationId,
   buildCodexQuestionNotificationId,
   buildCodexRequestNotificationOccurrenceId,
   decideCodexRequestNotification,
   decideCodexTurnNotification,
   isCodexNotificationChildConversation,
   resolveCodexQuestionNotificationBody,
+  resolveCodexApprovalNotificationBody,
+  resolveCodexApprovalNotificationTitle,
   resolveCodexTurnNotificationBody,
   type CodexNotificationConversationFacts,
   type CodexTurnCompletedNotificationEvent,
@@ -43,6 +46,24 @@ function turn(
 }
 
 describe("codex thread notification policy", () => {
+  test("approvals have their own identity and action copy", () => {
+    expect(resolveCodexApprovalNotificationTitle("  Review change  ")).toBe(
+      "Review change needs approval",
+    );
+    expect(resolveCodexApprovalNotificationTitle(null)).toBe("Nodex needs approval");
+    expect(resolveCodexApprovalNotificationBody(" git push ")).toBe("git push");
+    expect(resolveCodexApprovalNotificationBody(" ")).toBe(
+      "Approve the requested action to proceed.",
+    );
+    expect(buildCodexApprovalNotificationId("local", 73)).toBe("approval-local-73");
+    expect(buildCodexRequestNotificationOccurrenceId("approval", "local", "thread-1", 73)).not.toBe(
+      buildCodexRequestNotificationOccurrenceId("question", "local", "thread-1", 73),
+    );
+    expect(buildCodexRequestNotificationOccurrenceId("approval", "local", "thread-1", 73)).not.toBe(
+      buildCodexRequestNotificationOccurrenceId("approval", "local", "thread-1", "73"),
+    );
+  });
+
   test("only parent provenance classifies a child conversation", () => {
     expect(isCodexNotificationChildConversation(conversation())).toBe(false);
     expect(

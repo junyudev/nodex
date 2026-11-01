@@ -995,7 +995,7 @@ layer("ProviderEventIngestorV2", (it) => {
   );
 
   it.effect.each(["completed", "interrupted", "failed", "cancelled", "control"] as const)(
-    "dismisses only native questions when a provider turn ends with %s",
+    "cancels native questions and approvals when a provider turn ends with %s",
     (terminal) =>
       Effect.gen(function* () {
         const now = yield* DateTime.now;
@@ -1141,7 +1141,8 @@ layer("ProviderEventIngestorV2", (it) => {
         const stored = yield* ingestor.ingestNormalized(input);
         const projection = yield* projectionStore.getThreadProjection(threadId);
         for (const fixture of fixtures) {
-          const closed = fixture.key === "native" || fixture.key === "unavailable";
+          const closed =
+            fixture.key === "native" || fixture.key === "unavailable" || fixture.key === "approval";
           const request = projection.runtimeRequests.find(
             (item) => item.id === fixture.request.id,
           )!;
@@ -1149,6 +1150,7 @@ layer("ProviderEventIngestorV2", (it) => {
           const item = projection.turnItems.find((item) => item.id === fixture.item.id)!;
           if (closed) {
             assert.equal(request.status, "cancelled");
+            assert.equal(request.responseCapability.type, "not_resumable");
             assert.isNotNull(request.resolvedAt);
             assert.equal(node.status, "cancelled");
             assert.isNotNull(node.completedAt);
@@ -1162,10 +1164,10 @@ layer("ProviderEventIngestorV2", (it) => {
         }
         assert.equal(
           stored.filter((entry) => entry.event.type === "runtime-request.updated").length,
-          2,
+          3,
         );
         assert.isEmpty(
-          (yield* projectionStore.getPendingNativeUserInputs(threadId, providerTurnId))
+          (yield* projectionStore.getPendingNativeRequests(threadId, providerTurnId))
             .runtimeRequests,
         );
         const replayed = yield* eventStore.read({ threadId }).pipe(Stream.runCollect);
@@ -1175,16 +1177,16 @@ layer("ProviderEventIngestorV2", (it) => {
               entry.event.type === "runtime-request.updated" &&
               entry.event.payload.status === "cancelled",
           ).length,
-          2,
+          3,
         );
         const repeated = yield* ingestor.ingestNormalized(input);
         assert.isFalse(repeated.some((entry) => entry.event.type === "runtime-request.updated"));
       }),
   );
 
-  it.effect(
-    "preserves an answer committed after terminal normalization reads a pending question",
-    () =>
+  it.effect.each(["user_input", "command"] as const)(
+    "preserves an answer committed after terminal normalization reads a pending %s request",
+    (kind) =>
       Effect.scoped(
         Effect.gen(function* () {
           const eventSink = yield* EventSink.EventSinkV2;
@@ -1212,7 +1214,7 @@ layer("ProviderEventIngestorV2", (it) => {
             nodeId,
             providerTurnId,
             nativeRequestRef: null,
-            kind: "user_input",
+            kind,
             status: "pending",
             responseCapability: { type: "live", providerSessionId },
             createdAt: now,
@@ -1224,7 +1226,7 @@ layer("ProviderEventIngestorV2", (it) => {
             runId: null,
             parentNodeId: null,
             rootNodeId: nodeId,
-            kind: "user_input_request",
+            kind: kind === "user_input" ? "user_input_request" : "approval_request",
             status: "waiting",
             countsForRun: false,
             providerThreadId,
@@ -1250,9 +1252,10 @@ layer("ProviderEventIngestorV2", (it) => {
             startedAt: now,
             completedAt: null,
             updatedAt: now,
-            type: "user_input_request",
             requestId: request.id,
-            questions: [],
+            ...(kind === "user_input"
+              ? { type: "user_input_request", questions: [] }
+              : { type: "approval_request", requestKind: kind }),
           };
           const seedEvents: Array<OrchestrationV2DomainEvent> = [threadEvent];
           for (const payload of [
@@ -1337,6 +1340,30 @@ layer("ProviderEventIngestorV2", (it) => {
           const answered = projection.runtimeRequests.find((entry) => entry.id === request.id)!;
           assert.equal(answered.status, "resolved");
           assert.deepEqual(answered.answers, answers);
+          if (kind === "command") {
+            for (const event of [
+              {
+                type: "runtime_request.updated" as const,
+                driver: CODEX_DRIVER,
+                runtimeRequest: request,
+              },
+              { type: "node.updated" as const, driver: CODEX_DRIVER, node },
+              { type: "turn_item.updated" as const, driver: CODEX_DRIVER, turnItem: item },
+            ]) {
+              assert.isEmpty(
+                yield* ingestor.ingestNormalized({
+                  providerSessionId,
+                  providerInstanceId: modelSelection.instanceId,
+                  threadId,
+                  event,
+                }),
+              );
+            }
+            assert.equal(
+              (yield* projections.getRuntimeRequest(threadId, request.id))?.status,
+              "resolved",
+            );
+          }
           assert.equal(projection.nodes.find((entry) => entry.id === nodeId)!.status, "completed");
           assert.equal(
             projection.turnItems.find((entry) => entry.id === item.id)!.status,

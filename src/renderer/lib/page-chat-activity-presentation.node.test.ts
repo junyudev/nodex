@@ -104,6 +104,10 @@ describe("Page Chat activity presentation", () => {
     expect(presentPageChatItemActivity(item)).toMatchObject({ execution: "idle", unread: true });
     expect(presentPageChatItemActivity(item, "running").execution).toBe("working");
     expect(presentPageChatItemActivity(item, "waiting").execution).toBe("input");
+    expect(presentPageChatItemActivity(item, "approval")).toMatchObject({
+      execution: "approval",
+      accessibleLabel: "1 linked chat, 1 awaiting approval, 1 unread chat",
+    });
     expect(
       presentPageChatItemActivity({ ...item, sessionArchived: true }, "running").execution,
     ).toBe("idle");

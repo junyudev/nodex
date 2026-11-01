@@ -234,6 +234,7 @@ interface LiveSessionEntry {
    */
   readonly mcpCredentialIdByThread: ReadonlyMap<ThreadId, string>;
   readonly supportsMultipleProviderThreads: boolean;
+  readonly openedRuntimeMode: ProviderAdapter.ProviderAdapterV2RuntimePolicy["runtimeMode"];
   readonly runtime: ProviderAdapter.ProviderAdapterV2SessionRuntime;
   readonly exposedRuntime: ProviderAdapter.ProviderAdapterV2SessionRuntime;
   readonly eventSubscribers: Ref.Ref<
@@ -2453,7 +2454,7 @@ export const layerWithOptions = (
               yield* adapter.discardThread({
                 providerThread,
                 runtimePolicy: {
-                  runtimeMode: "full-access",
+                  runtimeMode: records.thread.runtimeMode,
                   interactionMode: records.thread.interactionMode,
                   cwd: records.thread.worktreePath,
                 },
@@ -2500,15 +2501,41 @@ export const layerWithOptions = (
                 existing?.runtime.nativeSessionRetired === undefined
                   ? false
                   : yield* existing.runtime.nativeSessionRetired;
-              if (existing !== undefined && retired) {
+              const policyChanged =
+                existing !== undefined &&
+                !existing.runtime.providerSession.capabilities.sessions
+                  .supportsRuntimeModeSwitchInSession &&
+                existing.openedRuntimeMode !== input.runtimePolicy.runtimeMode;
+              const pendingBackground =
+                policyChanged && existing.runtime.hasPendingBackgroundWork !== undefined
+                  ? yield* existing.runtime.hasPendingBackgroundWork
+                  : false;
+              if (policyChanged && (existing.busyTurns.size > 0 || pendingBackground)) {
+                return yield* new ProviderSessionOpenError({
+                  instanceId: input.modelSelection.instanceId,
+                  providerSessionId: input.providerSessionId,
+                  cause: "The provider session is still running with its previous runtime mode.",
+                });
+              }
+              if (existing !== undefined && (retired || policyChanged)) {
                 yield* releaseEntry({
                   providerSessionId: input.providerSessionId,
                   reason: "manual_shutdown",
                   expectedRuntime: existing.runtime,
-                  detail: "Native session incarnation ended before reuse.",
+                  ...(policyChanged ? { onlyIfIdleGeneration: existing.idleGeneration } : {}),
+                  detail: policyChanged
+                    ? "Runtime mode changed before the next turn."
+                    : "Native session incarnation ended before reuse.",
                 });
               }
-              if (existing !== undefined && !retired) {
+              if (policyChanged && (yield* Ref.get(sessions)).get(key) === existing) {
+                return yield* new ProviderSessionOpenError({
+                  instanceId: input.modelSelection.instanceId,
+                  providerSessionId: input.providerSessionId,
+                  cause: "The provider session became active before its runtime mode could change.",
+                });
+              }
+              if (existing !== undefined && !retired && !policyChanged) {
                 const attached = existing.attachedThreadIds.has(input.threadId);
                 if (!attached && !existing.supportsMultipleProviderThreads) {
                   return yield* new ProviderSessionOpenError({
@@ -2656,6 +2683,7 @@ export const layerWithOptions = (
               );
               const now = yield* Clock.currentTimeMillis;
               const entry: LiveSessionEntry = {
+                openedRuntimeMode: input.runtimePolicy.runtimeMode,
                 attachedThreadIds: new Set([input.threadId]),
                 loadedProviderThreadKeyByThread: new Map(),
                 mcpCredentialIdByThread:

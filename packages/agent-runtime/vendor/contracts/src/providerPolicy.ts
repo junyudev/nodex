@@ -22,9 +22,24 @@ export const ProviderSandboxMode = Schema.Literals([
 ]);
 export type ProviderSandboxMode = typeof ProviderSandboxMode.Type;
 
-export const RuntimeMode = Schema.Literal("full-access");
+/**
+ * Native execution access, ordered from narrowest to broadest. Content access through Nodex
+ * tools is independent of this mode.
+ * - `approval-required`: works in its workspace and asks before going beyond it.
+ * - `auto`: a native reviewer approves routine requests and asks about risky ones.
+ * - `full-access`: unrestricted native execution without prompts.
+ */
+export const RuntimeMode = Schema.Literals(["approval-required", "auto", "full-access"]);
 export type RuntimeMode = typeof RuntimeMode.Type;
+/** New Sessions run with full access unless the Profile chooses otherwise. */
 export const DEFAULT_RUNTIME_MODE: RuntimeMode = "full-access";
+/** The fallback wherever an unknown or unsupported mode must never widen access. */
+export const NARROWEST_RUNTIME_MODE: RuntimeMode = "approval-required";
+export const RUNTIME_MODE_RANK: Record<RuntimeMode, number> = {
+  "approval-required": 0,
+  auto: 1,
+  "full-access": 2,
+};
 
 export const ProviderInteractionMode = Schema.Literals(["default", "plan"]);
 export type ProviderInteractionMode = typeof ProviderInteractionMode.Type;
@@ -45,19 +60,26 @@ export type AssistantDeliveryMode = typeof AssistantDeliveryMode.Type;
 export const ProviderApprovalDecision = Schema.Literals([
   "accept",
   "acceptForSession",
-  "acceptAlways",
   "decline",
   "cancel",
 ]);
 export type ProviderApprovalDecision = typeof ProviderApprovalDecision.Type;
 
 export const ProviderApprovalOption = Schema.Struct({
+  optionId: Schema.optional(TrimmedNonEmptyString),
   decision: ProviderApprovalDecision,
   label: TrimmedNonEmptyString,
   /** Provider-supplied caution shown next to the option, such as a prompt injection warning. */
   warning: Schema.optional(TrimmedNonEmptyString),
 });
 export type ProviderApprovalOption = typeof ProviderApprovalOption.Type;
+
+/**
+ * Why a Full access request still reached the user: the Agent's own ask rule, or a native
+ * safety check that no execution setting can skip.
+ */
+export const ProviderApprovalFullAccessOverride = Schema.Literals(["ask_rule", "provider_check"]);
+export type ProviderApprovalFullAccessOverride = typeof ProviderApprovalFullAccessOverride.Type;
 
 export const ProviderUserInputAnswers = Schema.Record(Schema.String, Schema.Unknown);
 export type ProviderUserInputAnswers = typeof ProviderUserInputAnswers.Type;

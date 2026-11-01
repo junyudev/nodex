@@ -59,7 +59,7 @@ an alias never replaces a receipt or execution identity.
 
 ## Threat Model
 
-Nodex is local-first. Main risks are malformed local inputs, accidental data loss, renderer capability abuse, and stale or incorrectly attributed Agent execution. Native execution uses full access and automatically answers controllable permission requests; connection and execution identity remain enforced.
+Nodex is local-first. Main risks are malformed local inputs, accidental data loss, renderer capability abuse, and stale or incorrectly attributed Agent execution. Native execution follows each chat's permission mode: narrower modes keep the Agent inside its workspace boundary and route native permission requests to the person, while Full access requires explicit confirmation. Agents can never answer execution approvals, and delegated work cannot exceed its caller's mode. Content access through Nodex tools is Profile-wide in every mode; connection and execution identity remain enforced.
 
 ## Library File boundaries
 
@@ -214,8 +214,8 @@ read through the authenticated Profile and exact execution identity boundary.
 
 - Native Claude Code instances run user-managed executables through the official Agent SDK.
   Inherited user/project/local settings may execute hooks, skills, subagents, and MCP servers as the
-  current user. Nodex starts Claude Code with bypass permissions and automatically approves
-  native authorization requests; genuine information questions remain interactive. The optional account config directory changes only the
+  current user. Nodex starts Claude Code in the permission mode of the chat and routes native
+  authorization requests to the person outside Full access; genuine information questions remain interactive. The optional account config directory changes only the
   child/worker environment. Existing Claude credentials are never copied into Nodex settings. Explicit instance environment
   secrets use OS-backed encryption, with immutable ciphertext outside ordinary settings and references
   published only after encryption and storage succeed. Settings reads never return secret plaintext;
@@ -235,7 +235,7 @@ read through the authenticated Profile and exact execution identity boundary.
   and explicit environment secrets follow the same encrypted-reference contract as Claude.
   Native repository configuration and plugins execute inside the local-code trust boundary.
   External HTTP(S) servers are explicit instance configuration, receive only explicit server
-  credentials, and never receive Nodex application-tool leases. Native permission requests are approved automatically. Information-question replies
+  credentials, and never receive Nodex application-tool leases. Native permission rules follow the chat's permission mode. Information-question replies
   address only the exact pending request in the owning Session or proven descendant.
   Discovery and session restoration resolve the exact workspace and configured native owner;
   a missing session or changed profile cannot silently create a replacement conversation.
@@ -254,8 +254,8 @@ read through the authenticated Profile and exact execution identity boundary.
   unsupported ACP client capabilities remain unadvertised. Advertised filesystem callbacks
   resolve exact paths with bounded reads and writes under the native connection lifetime;
   Project roots are execution locations rather than filesystem permission scopes. Advertised
-  terminals share the supervised Agent Runtime, bounded output, cwd and Session lifetime.
-  Native permission requests are approved automatically. Standard ACP application calls retain
+  terminals share the supervised Agent Runtime, bounded output, cwd and Session lifetime; outside
+  Full access a terminal starts only after its command is approved. Standard ACP application calls retain
   their exact Session identity with unknown Run left null, and cancellation closes that source.
   Whoever can replace the configured package or executable is inside this local-code trust boundary.
   Setup and terminal flows have trusted window ownership, bounded redacted output and cancellation;

@@ -316,6 +316,42 @@ export const make = Effect.gen(function* () {
           },
         });
       }
+      // Live callbacks can originate outside a Run or outlive a settled Run.
+      const recoveringRunIds = new Set(runs.map((run) => run.id));
+      const requestNodeIds = new Set(requests.map((request) => request.nodeId));
+      for (const node of projection.nodes) {
+        if (
+          !requestNodeIds.has(node.id) ||
+          (node.runId !== null && recoveringRunIds.has(node.runId)) ||
+          !isNonterminalTurnItemStatus(node.status)
+        )
+          continue;
+        events.push({
+          id: yield* allocateEventId(),
+          type: "node.updated",
+          threadId: projection.thread.id,
+          nodeId: node.id,
+          occurredAt: now,
+          payload: { ...node, status: "cancelled", completedAt: now },
+        });
+      }
+      for (const item of projection.turnItems ?? []) {
+        if (
+          item.nodeId === null ||
+          !requestNodeIds.has(item.nodeId) ||
+          (item.runId !== null && recoveringRunIds.has(item.runId)) ||
+          !isNonterminalTurnItemStatus(item.status)
+        )
+          continue;
+        events.push({
+          id: yield* allocateEventId(),
+          type: "turn-item.updated",
+          threadId: projection.thread.id,
+          nodeId: item.nodeId,
+          occurredAt: now,
+          payload: cancelledItem(item, now),
+        });
+      }
       for (const run of runs) {
         events.push({
           id: yield* allocateEventId(),

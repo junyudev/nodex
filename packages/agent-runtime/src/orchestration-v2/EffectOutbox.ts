@@ -4,6 +4,7 @@ import {
   CommandId,
   MessageId,
   NodeId,
+  ProviderApprovalDecision,
   ProviderSessionId,
   RunAttemptId,
   ProviderUserInputAnswers,
@@ -88,7 +89,9 @@ export const OrchestrationEffectRequestV2 = Schema.Union([
     type: Schema.Literal("runtime-request.respond"),
     providerSessionId: ProviderSessionId,
     requestId: RuntimeRequestId,
-    decision: Schema.optional(Schema.Literals(["accept", "decline", "cancel"])),
+    decision: Schema.optional(ProviderApprovalDecision),
+    optionId: Schema.optional(Schema.String),
+    feedback: Schema.optional(Schema.String),
     answers: Schema.optional(ProviderUserInputAnswers),
   }),
   Schema.Struct({

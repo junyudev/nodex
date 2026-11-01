@@ -37,7 +37,9 @@ A local Profile owns one Library. The Library owns durable content: Blocks,
 Pages, Documents, Databases, Data Sources, Views, Canvases, assets, schedules,
 and history. A Project is an execution context: it owns filesystem sources,
 Chats, terminals, execution settings, and one primary Database binding. Every
-Agent has full access to the current Profile, including across Projects and Sessions.
+Agent has full content access to the current Profile, including across Projects and Sessions.
+Native execution on the computer follows each chat's
+[permission mode](agent-permissions-behavior.md).
 
 Project lifecycle never owns or deletes Library content. A Page has one stable
 Block identity, one independently synchronized Document, and exactly one
@@ -196,7 +198,7 @@ Read [Agent Interface Behavior](agent-interface-behavior.md),
 5. Collaborative content has one Document authority. Summaries, search rows,
    Markdown text, and UI caches are rebuildable projections.
 6. Window layout and local interaction state never become content authority.
-7. Every Agent has full access to the current Profile; authenticated connection,
+7. Every Agent has full content access to the current Profile; authenticated connection,
    captured execution identity and resource lifecycle remain exact.
 8. User-growing collections are bounded and paginated.
 9. Restore and history create forward state and invalidate stale work; they do

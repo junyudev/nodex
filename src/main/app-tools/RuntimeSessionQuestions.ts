@@ -18,7 +18,9 @@ const unavailable = (cause: unknown) =>
 
 export const make = Effect.gen(function* () {
   const application = yield* AgentRuntimeApplication;
-  return (interactionMode: "default" | "plan"): SessionQuestionBackend => ({
+  return (
+    modeLimit: import("@nodex/agent-runtime/contracts").AgentDispatchModeLimit,
+  ): SessionQuestionBackend => ({
     list: (target) =>
       application.listQuestionIds(runtimeSessionTarget(target)).pipe(Effect.mapError(unavailable)),
     read: Effect.fn("RuntimeSessionQuestions.read")(function* (target, requestId) {
@@ -66,7 +68,7 @@ export const make = Effect.gen(function* () {
             submissionId: operationId,
             requirePending: true,
             responseFingerprint,
-            ...(interactionMode === "plan" ? { interactionModeCeiling: "plan" } : {}),
+            modeLimit,
           })
           .pipe(
             Effect.mapError((cause) => {

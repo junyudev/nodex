@@ -19,6 +19,7 @@ export interface SidebarThreadRowLiveView {
   /** No foreground Run, but delegated or background work is live or will resume the chat. */
   readonly background: boolean;
   readonly needsAttention: boolean;
+  readonly needsApproval?: boolean;
   /** The single trailing status the row shows. */
   readonly status: SidebarRowStatus | null;
 }
@@ -41,6 +42,7 @@ export function projectSidebarThreadRowLiveView(
       item,
       running: item.statusType === "active",
       background: false,
+      ...(item.statusActiveFlags?.includes("waitingOnApproval") ? { needsApproval: true } : {}),
       needsAttention:
         item.needsAttention === true || nativeThreadWaitsOnPerson(item.statusActiveFlags),
     });
@@ -61,6 +63,10 @@ export function projectSidebarThreadRowLiveView(
     item: located,
     running: runtime.indicator === "running",
     background: runtime.indicator === "background",
-    needsAttention: item.needsAttention === true || runtime.indicator === "waiting",
+    ...(runtime.indicator === "approval" ? { needsApproval: true } : {}),
+    needsAttention:
+      item.needsAttention === true ||
+      runtime.indicator === "waiting" ||
+      runtime.indicator === "approval",
   });
 }

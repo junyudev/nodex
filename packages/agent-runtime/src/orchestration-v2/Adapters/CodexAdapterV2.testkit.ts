@@ -270,6 +270,7 @@ export function makeReplayServerConfig(
 export function layer(input: {
   readonly transcript: CodexReplay.CodexAppServerReplayTranscript;
   readonly driver?: CodexReplay.CodexAppServerReplayDriver;
+  readonly serverConfig?: ServerConfig.ServerConfig["Service"];
 }) {
   const layerReplay =
     input.driver === undefined
@@ -294,10 +295,13 @@ export function layer(input: {
         );
       }),
   });
-  const layerServerConfig = Layer.effect(
-    ServerConfig.ServerConfig,
-    makeReplayServerConfig(input.transcript.scenario).pipe(Effect.orDie),
-  ).pipe(Layer.provide(NodeServices.layer));
+  const layerServerConfig =
+    input.serverConfig === undefined
+      ? Layer.effect(
+          ServerConfig.ServerConfig,
+          makeReplayServerConfig(input.transcript.scenario).pipe(Effect.orDie),
+        ).pipe(Layer.provide(NodeServices.layer))
+      : Layer.succeed(ServerConfig.ServerConfig, input.serverConfig);
   const layerRegistry = ProviderAdapterRegistry.layerFromDrivers({
     drivers: [CodexAdapterV2.CodexAdapterV2Driver],
     configMap: {
@@ -348,8 +352,42 @@ export const CodexOrchestratorReplayHarness: OrchestratorV2ProviderReplayHarness
         if (replayGate !== undefined) {
           yield* Effect.addFinalizer(() => Effect.sync(() => replayGate.releaseAll()));
         }
+        const serverConfig = yield* makeReplayServerConfig(transcript.scenario).pipe(
+          Effect.provide(NodeServices.layer),
+          Effect.orDie,
+        );
+        const materialized = {
+          ...transcript,
+          entries: transcript.entries.map((entry) => {
+            if (
+              entry.type !== "expect_outbound" ||
+              !Predicate.isObject(entry.frame) ||
+              entry.frame.method !== "turn/start" ||
+              !Predicate.isObject(entry.frame.params)
+            )
+              return entry;
+            const params = entry.frame.params;
+            const sandbox = params.sandboxPolicy;
+            if (!Predicate.isObject(sandbox) || !Array.isArray(sandbox.writableRoots)) return entry;
+            return {
+              ...entry,
+              frame: {
+                ...entry.frame,
+                params: {
+                  ...params,
+                  sandboxPolicy: {
+                    ...sandbox,
+                    writableRoots: sandbox.writableRoots.map((root) =>
+                      root === "<attachments>" ? serverConfig.attachmentsDir : root,
+                    ),
+                  },
+                },
+              },
+            };
+          }),
+        };
         const driver = yield* CodexReplay.makeReplayDriver(
-          transcript,
+          materialized,
           replayGate === undefined
             ? {}
             : {
@@ -357,7 +395,7 @@ export const CodexOrchestratorReplayHarness: OrchestratorV2ProviderReplayHarness
                   Effect.promise((signal) => replayGate.beforeEmit(entry.label, signal)),
               },
         );
-        return yield* Layer.build(layer({ transcript, driver }));
+        return yield* Layer.build(layer({ transcript: materialized, driver, serverConfig }));
       }),
     );
   },

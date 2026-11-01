@@ -507,12 +507,15 @@ describe("orchestration V2 contracts", () => {
 
     const decoded = decodeOrchestrationV2ProviderCapabilities(legacyCapabilities);
     expect(decoded.runtimePolicy).toEqual({ enforcement: "client-boundary" });
+    expect(decoded.sessions.supportsRuntimeModeSwitchInSession).toBe(false);
 
     const explicit = decodeOrchestrationV2ProviderCapabilities({
       ...legacyCapabilities,
+      sessions: { ...legacyCapabilities.sessions, supportsRuntimeModeSwitchInSession: true },
       runtimePolicy: { enforcement: "native" },
     });
     expect(explicit.runtimePolicy).toEqual({ enforcement: "native" });
+    expect(explicit.sessions.supportsRuntimeModeSwitchInSession).toBe(true);
   });
 
   it("lets legacy snapshot decoders ignore enrichment metadata", () => {

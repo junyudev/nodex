@@ -1,3 +1,9 @@
+import { useQuery } from "@tanstack/react-query";
+import { DEFAULT_AGENT_RUNTIME_SETTINGS } from "../../../shared/agent-runtime-settings";
+import { resolveAgentRuntimeMode } from "@/lib/agent-runtime-mode";
+import { agentRuntimeSettingsQueryOptions } from "@/lib/agent-runtime-settings";
+import { planAgentApprovalDeclineOnSend } from "./agent-approval";
+import { approvalsRefusedBySend } from "./agent-approval-runtime";
 import { composerDraftIntents, type ComposerChatKey } from "@/lib/composer-draft-intents";
 import { isNodexProviderId } from "../../../shared/nodex-models";
 import { useNodexAccount } from "../nodex-account/use-nodex-account";
@@ -193,6 +199,7 @@ export function createAgentRuntimeConversationRuntime(
   const matches = (id: string | null) => owner !== null && id === owner.threadId;
   const runtime: ConversationRuntime = {
     kind,
+    approvals: owner?.approvals,
     hostId: "local",
     sessionId: target?.sessionId,
     read: (id) => (matches(id) ? owner!.getSnapshot().view : null),
@@ -330,7 +337,9 @@ export function createAgentRuntimeStageActions(input: {
         | "readQueuedInput"
         | "readSentMessage"
       > &
-        Partial<Pick<AgentRuntimeConversationOwner, "contentSource" | "whenObserved">>)
+        Partial<
+          Pick<AgentRuntimeConversationOwner, "contentSource" | "whenObserved" | "approvals">
+        >)
     | null;
   readonly transport?: AgentRuntimeRendererTransport;
   readonly prepare: (
@@ -376,6 +385,21 @@ export function createAgentRuntimeStageActions(input: {
     },
   ) => {
     const target = requireTarget();
+    const approvalRuntime = input.owner()?.approvals;
+    // Choose before Send releases the typing hold, so a held request is not refused unseen.
+    const approvals = approvalRuntime ? approvalsRefusedBySend(approvalRuntime.getSnapshot()) : [];
+    approvalRuntime?.interact({ type: "send" });
+    const plan = planAgentApprovalDeclineOnSend(approvals, text);
+    for (const response of plan.responses)
+      await approvalRuntime!.respond(response.requestId, response.response);
+    const hasSupplementalInput =
+      Boolean(appMessage) ||
+      Object.entries(promptInput ?? {}).some(
+        ([key, value]) =>
+          key !== "text" && (Array.isArray(value) ? value.length > 0 : value != null),
+      );
+    if (plan.responses.length && plan.steerMessage === null && !hasSupplementalInput) return;
+    if (plan.responses.length) intent = plan.steer ? "steer" : undefined;
     const messageId = admission?.messageId ?? createUuidV7();
     const presentationTicket =
       admission?.presentationTicket ??
@@ -385,7 +409,12 @@ export function createAgentRuntimeStageActions(input: {
             submitted,
           )
         : undefined);
-    const prepared = await input.prepare(text, promptInput, appMessage);
+    const messageText = plan.responses.length ? (plan.steerMessage ?? "") : text;
+    const prepared = await input.prepare(
+      messageText,
+      plan.responses.length && promptInput ? { ...promptInput, text: messageText } : promptInput,
+      appMessage,
+    );
     admission?.assertCurrent?.();
     const owner = input.owner();
     const accepted = await transport.message({
@@ -789,6 +818,12 @@ export function createAgentRuntimeStageActions(input: {
       const selected = runId ?? run?.id;
       if (selected) await transport.stop({ ...target, runId: selected });
     },
+    onRespondApproval: async (requestId, response) => {
+      requireTarget();
+      const approvals = input.owner()?.approvals;
+      if (!approvals) throw new Error("This conversation has no approval to answer");
+      await approvals.respond(requestId, response);
+    },
     onRespondUserInput: (id, answers) =>
       respond(id, {
         answers: Object.fromEntries(
@@ -932,6 +967,10 @@ export function useAgentRuntimeConversationAdapter(input: {
   const draftKey = agentRuntimeChoiceKey.draft(input.sessionId, input.modelProjectId);
   const draft = choices[draftKey] ?? {};
   const draftMode = draft.interactionMode ?? "default";
+  const runtimeSettings = useQuery(agentRuntimeSettingsQueryOptions());
+  const defaultRuntimeMode =
+    runtimeSettings.data?.defaultRuntimeMode ?? DEFAULT_AGENT_RUNTIME_SETTINGS.defaultRuntimeMode;
+  const draftRuntimeMode = draft.runtimeMode ?? defaultRuntimeMode;
   const [createdTarget, setCreatedTarget] = useState<
     (AgentRuntimeSessionTarget & { threadId: string }) | null
   >(null);
@@ -1051,6 +1090,7 @@ export function useAgentRuntimeConversationAdapter(input: {
         ? withAgentRuntimeComposerChoice(unspent, draftKey, {
             selection: undefined,
             interactionMode: undefined,
+            runtimeMode: undefined,
           })
         : unspent;
     });
@@ -1320,6 +1360,7 @@ export function useAgentRuntimeConversationAdapter(input: {
           title: request.prompt.slice(0, 120) || "New chat",
           modelSelection,
           interactionMode: draftMode,
+          runtimeMode: draft.runtimeMode,
           runInTarget: request.runInTarget === "newWorktree" ? "newWorktree" : "localProject",
           runInEnvironmentPath: request.runInEnvironmentPath,
           worktreeStartingState: request.worktreeStartingState,
@@ -1416,6 +1457,13 @@ export function useAgentRuntimeConversationAdapter(input: {
           },
         }
       : {}),
+    onRuntimeModeChange: async (runtimeMode) => {
+      if (!target) {
+        await writeChoice(draftKey, { runtimeMode });
+        return;
+      }
+      await agentRuntimeRuntime.setModes({ ...target, requestId: createUuidV7(), runtimeMode });
+    },
     onCollaborationModeChange: async (interactionMode) => {
       if (!target) {
         await writeChoice(draftKey, { interactionMode });
@@ -1567,6 +1615,12 @@ export function useAgentRuntimeConversationAdapter(input: {
   // An imported native conversation stays empty until its Agent restores it on the next message.
   const pendingImport = acpPendingImportedHistory(projection);
   const presentation: ConversationProviderPresentation = {
+    runtimeMode: resolveAgentRuntimeMode(
+      observed?.runtimeMode ?? draftRuntimeMode,
+      provider?.supportedRuntimeModes,
+    ),
+    supportedRuntimeModes: provider?.supportedRuntimeModes,
+    defaultRuntimeMode,
     resolveRuntimeAttachment: async (reference) => {
       if (!target) throw new Error("Open the conversation before reading its attachment");
       const result = await agentRuntimeRuntime.attachment({ ...target, ...reference });
@@ -1710,6 +1764,9 @@ export function useAgentRuntimeConversationAdapter(input: {
           }))
         : [],
     ),
+    runtimeMode: presentation.runtimeMode,
+    supportedRuntimeModes: provider?.supportedRuntimeModes,
+    defaultRuntimeMode,
     selectedMode: observed?.interactionMode ?? draftMode,
     modes: [
       { name: "Code", mode: "default", model: null },

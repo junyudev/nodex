@@ -1,3 +1,4 @@
+import type { AgentDispatchModeLimit } from "@nodex/agent-runtime/contracts";
 import * as path from "node:path";
 import { createHash } from "node:crypto";
 import { NATIVE_THREAD_IMPORT_OPERATION_PREFIX } from "@nodex/agent-runtime/contracts";
@@ -258,6 +259,7 @@ export const make = Effect.gen(function* () {
       threadId: string,
       prompt: string,
       operationId?: string,
+      modeLimit?: AgentDispatchModeLimit,
     ) {
       if (!operationId)
         return yield* fail("follow-up", threadId, "A handoff operation identity is required");
@@ -265,6 +267,7 @@ export const make = Effect.gen(function* () {
       yield* application
         .message({
           sessionId: captured.sessionId,
+          ...(modeLimit ? { modeLimit } : {}),
           message: {
             messageId: `handoff-follow-up:${createHash("sha256").update(operationId).digest("hex")}`,
             text: prompt,

@@ -1,8 +1,13 @@
-import type { ProviderUserInputAnswers } from "@t3tools/contracts";
+import type {
+  ProviderApprovalDecision,
+  ProviderApprovalOption,
+  ProviderUserInputAnswers,
+} from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import type * as CodexSchema from "effect-codex-app-server/schema";
 
 const Field = Schema.Struct({
+  default: Schema.optionalKey(Schema.Json),
   type: Schema.optionalKey(Schema.String),
   title: Schema.optionalKey(Schema.String),
   description: Schema.optionalKey(Schema.String),
@@ -17,11 +22,22 @@ const Form = Schema.Struct({
   required: Schema.optionalKey(Schema.Array(Schema.String)),
 });
 const decodeForm = Schema.decodeUnknownOption(Form);
+const decodeApprovalForm = Schema.decodeUnknownOption(
+  Schema.Struct({
+    ...Form.fields,
+    properties: Schema.optionalKey(Form.fields.properties),
+  }),
+);
 
-/** Native tool authorization is automatic; connection and information prompts are questions. */
+type CodexMcpApprovalPayload = Exclude<
+  CodexSchema.McpServerElicitationRequestParams,
+  { readonly mode: "url" | "openai/userVerification" }
+>;
+
+/** Tool authorization is separate from connection and information prompts. */
 export function isCodexMcpPermissionRequest(
   payload: CodexSchema.McpServerElicitationRequestParams,
-): boolean {
+): payload is CodexMcpApprovalPayload {
   return (
     payload.mode !== "url" &&
     payload.mode !== "openai/userVerification" &&
@@ -124,4 +140,82 @@ export function codexMcpElicitationResponse(
   if (form.value.required?.some((key) => !Object.hasOwn(content, key)))
     return { action: "decline" };
   return { action: "accept", content };
+}
+
+const ApprovalMetadata = Schema.Struct({
+  persist: Schema.optionalKey(
+    Schema.NullOr(Schema.Union([Schema.String, Schema.Array(Schema.String)])),
+  ),
+});
+const decodeApprovalMetadata = Schema.decodeUnknownOption(ApprovalMetadata);
+const isSessionOption = (value: string) => value.toLowerCase().includes("session");
+const isOnceOption = (value: string) =>
+  /^(?:once|accept|approve|allow)(?:[_\s-]*(?:once(?:[_\s-]*only)?|this[_\s-]*time))?$/i.test(
+    value.trim(),
+  );
+
+function approvalFieldOptions(field: typeof Field.Type) {
+  return (
+    field.oneOf?.map((option) => ({ value: option.const, label: option.title })) ??
+    field.enum?.map((value, index) => ({ value, label: field.enumNames?.[index] })) ??
+    []
+  );
+}
+
+/** Encode the provider's authorization form without turning arbitrary required fields into consent. */
+export function codexMcpApprovalResponse(
+  payload: CodexMcpApprovalPayload,
+  decision: ProviderApprovalDecision,
+): CodexSchema.McpServerElicitationRequestResponse {
+  if (decision === "decline" || decision === "cancel") return { action: decision };
+  const form = decodeApprovalForm(payload.requestedSchema);
+  if (form._tag === "None") return { action: "decline" };
+  const content: Record<string, Schema.Json> = {};
+  for (const [key, field] of Object.entries(form.value.properties ?? {})) {
+    const chosen = approvalFieldOptions(field).find((option) =>
+      (decision === "acceptForSession" ? isSessionOption : isOnceOption)(option.value),
+    );
+    if (chosen !== undefined) content[key] = chosen.value;
+    else if (field.type === "boolean" && /persist|always|session/i.test(key)) content[key] = false;
+    else if (field.default !== undefined) content[key] = field.default;
+  }
+  if (form.value.required?.some((key) => !Object.hasOwn(content, key)))
+    return { action: "decline" };
+  return {
+    action: "accept",
+    content,
+    ...(decision === "acceptForSession" ? { _meta: { persist: "session" } } : {}),
+  };
+}
+
+export function codexMcpApprovalOptions(
+  payload: CodexMcpApprovalPayload,
+): ReadonlyArray<ProviderApprovalOption> {
+  const metadata = decodeApprovalMetadata(payload._meta);
+  const persist = metadata._tag === "Some" ? metadata.value.persist : undefined;
+  const form = decodeApprovalForm(payload.requestedSchema);
+  const choices =
+    form._tag === "Some"
+      ? Object.values(form.value.properties ?? {}).flatMap(approvalFieldOptions)
+      : [];
+  const sessionOption = choices.find((option) => isSessionOption(option.value));
+  const onceOption = choices.find((option) => isOnceOption(option.value));
+  const supportsSession =
+    sessionOption !== undefined ||
+    (typeof persist === "string" ? [persist] : (persist ?? [])).some(isSessionOption);
+  return [
+    ...(codexMcpApprovalResponse(payload, "accept").action === "accept"
+      ? [{ decision: "accept" as const, label: onceOption?.label || "Approve once" }]
+      : []),
+    ...(supportsSession && codexMcpApprovalResponse(payload, "acceptForSession").action === "accept"
+      ? [
+          {
+            decision: "acceptForSession" as const,
+            label: sessionOption?.label || "Allow for this chat",
+          },
+        ]
+      : []),
+    { decision: "decline", label: "Decline" },
+    { decision: "cancel", label: "Cancel" },
+  ];
 }

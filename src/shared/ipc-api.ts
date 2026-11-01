@@ -1519,6 +1519,14 @@ export interface IpcApi
     args: [input: import("./usage-meter-settings").UsageMeterSettings];
     result: import("./usage-meter-settings").UsageMeterSettings;
   };
+  "settings:agent-runtime:get": {
+    args: [];
+    result: import("./agent-runtime-settings").AgentRuntimeSettings;
+  };
+  "settings:agent-runtime:update": {
+    args: [input: import("./agent-runtime-settings").AgentRuntimeSettings];
+    result: import("./agent-runtime-settings").AgentRuntimeSettings;
+  };
   "settings:composer-predictions:get": {
     args: [];
     result: import("./composer-prediction-settings").ComposerPredictionSettings;

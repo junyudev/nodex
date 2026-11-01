@@ -1,9 +1,14 @@
+import { ApplicationSettings } from "../settings/ApplicationSettings";
 import { readPromptTurns } from "./AgentRuntimePromptTurns";
 import { UNKNOWN_PROMPT_TURN, type PromptTurnsInput } from "../../shared/prompt-turn";
 import { AgentRuntimeProcessError } from "../platform/node/AgentRuntimeProcess";
 import type { AcpConversationImportResult } from "../../shared/acp-api";
 import { createHash } from "node:crypto";
-import { NATIVE_THREAD_IMPORT_OPERATION_PREFIX } from "@nodex/agent-runtime/contracts";
+import {
+  DEFAULT_RUNTIME_MODE,
+  RUNTIME_MODE_RANK,
+  NATIVE_THREAD_IMPORT_OPERATION_PREFIX,
+} from "@nodex/agent-runtime/contracts";
 import type { NativeSessionWorkspace } from "../agent-backend/NativeSessionWorkspace";
 import { nativeSelectionFromState } from "../agent-backend/NativeSessionState";
 import type { components } from "@nodex/core-protocol";
@@ -15,6 +20,8 @@ import type {
   AgentRuntimeOperations,
   AgentSnapshot,
   AgentTurnItem,
+  AgentDispatchModeLimit,
+  RuntimeMode,
 } from "@nodex/agent-runtime/contracts";
 import * as Context from "effect/Context";
 import * as Cause from "effect/Cause";
@@ -120,6 +127,7 @@ export interface AgentRuntimeApplicationOptions {
   readonly connect: Effect.Effect<AgentRuntimeApplicationConnection, unknown>;
   /** Transient cleanup may use a live generation but must never start a cold Runtime. */
   readonly currentConnection: Effect.Effect<AgentRuntimeApplicationConnection | null, unknown>;
+  readonly defaultRuntimeMode?: Effect.Effect<RuntimeMode, unknown>;
   /** Canonical history home from the exact physical Codex configuration used by this lease. */
   readonly nativeImportSourceHome?: (
     connection: AgentRuntimeApplicationConnection,
@@ -331,6 +339,14 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
   options: AgentRuntimeApplicationOptions,
 ) {
   const core = yield* CoreModules;
+  const settings = yield* Effect.serviceOption(ApplicationSettings);
+  const defaultRuntimeMode =
+    options.defaultRuntimeMode ??
+    (Option.isSome(settings)
+      ? settings.value
+          .snapshot()
+          .pipe(Effect.map((snapshot) => snapshot.agentRuntime.defaultRuntimeMode))
+      : Effect.succeed(DEFAULT_RUNTIME_MODE));
   const lifecycle = yield* ProjectRuntimeLifecycleRuntime;
   const workspace = yield* ProjectWorkspace;
   const messageResources = yield* makeMessageResources();
@@ -762,7 +778,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       projectId: scope.id,
       title: title || "New chat",
       modelSelection: { instanceId: provider.instanceId, model },
-      runtimeMode: "full-access",
+      runtimeMode: yield* defaultRuntimeMode,
       interactionMode: "default",
       branch: null,
       worktreePath: scope.workspaceRoot,
@@ -831,16 +847,8 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
   const dispatch = (
     connection: AgentRuntimeApplicationConnection,
     command: AgentCommand,
-    interactionModeCeiling?: "plan",
-  ) =>
-    connection.request("command.dispatch", {
-      command,
-      ...(interactionModeCeiling
-        ? {
-            modeLimit: { runtimeMode: "full-access", interactionMode: interactionModeCeiling },
-          }
-        : {}),
-    });
+    modeLimit?: AgentDispatchModeLimit,
+  ) => connection.request("command.dispatch", { command, ...(modeLimit ? { modeLimit } : {}) });
   const prepareMessageInput = Effect.fn("AgentRuntimeApplication.prepareMessageInput")(function* (
     connection: AgentRuntimeApplicationConnection,
     message: AgentRuntimeMessage,
@@ -1120,6 +1128,12 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           fingerprint: input.messageFingerprint,
         })
       : null;
+    const runtimeMode = retained?.runtimeMode ?? input.runtimeMode ?? (yield* defaultRuntimeMode);
+    if (
+      input.modeLimit &&
+      RUNTIME_MODE_RANK[runtimeMode] > RUNTIME_MODE_RANK[input.modeLimit.runtimeMode]
+    )
+      return yield* failure("launch", "runtime_mode_escalation_denied");
     const preparation: { readonly message: AgentRuntimeMessage; readonly hasConfig: boolean } =
       retained
         ? { message: retained.message, hasConfig: false }
@@ -1131,7 +1145,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
             input.resources?.some((resource) => resource.mimeType.startsWith("image/")) ?? false,
           );
     if (
-      input.interactionModeCeiling === "plan" &&
+      input.modeLimit?.interactionMode === "plan" &&
       (preparation.message.interactionMode ?? input.interactionMode) !== "plan"
     )
       return yield* failure("launch", "interaction_mode_escalation_denied");
@@ -1153,6 +1167,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
             launchId: input.launchId,
             acceptedAt: input.acceptedAt,
             title: input.title,
+            runtimeMode,
             modelSelection: preparation.message.modelSelection ?? input.modelSelection,
             interactionMode: preparation.message.interactionMode ?? input.interactionMode,
             message: {
@@ -1253,23 +1268,27 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     yield* upsertProject(connection, scope);
     if (lease) yield* lease.retain;
     if (!existing)
-      yield* dispatch(connection, {
-        type: "thread.create",
-        commandId: commandId("launch-thread", {
-          launchId: input.launchId,
-          sessionId: input.sessionId,
-        }),
-        threadId,
-        projectId: scope.id,
-        title: input.title.trim(),
-        modelSelection: prepared.message.modelSelection ?? input.modelSelection,
-        runtimeMode: "full-access",
-        interactionMode: prepared.message.interactionMode ?? input.interactionMode,
-        branch: input.branch ?? null,
-        worktreePath: cwd,
-        createdBy: provenance ? "agent" : "user",
-        creationSource: provenance ? "mcp" : "web",
-      });
+      yield* dispatch(
+        connection,
+        {
+          type: "thread.create",
+          commandId: commandId("launch-thread", {
+            launchId: input.launchId,
+            sessionId: input.sessionId,
+          }),
+          threadId,
+          projectId: scope.id,
+          title: input.title.trim(),
+          modelSelection: prepared.message.modelSelection ?? input.modelSelection,
+          runtimeMode,
+          interactionMode: prepared.message.interactionMode ?? input.interactionMode,
+          branch: input.branch ?? null,
+          worktreePath: cwd,
+          createdBy: provenance ? "agent" : "user",
+          creationSource: provenance ? "mcp" : "web",
+        },
+        input.modeLimit,
+      );
     const current = yield* targetInfo(connection, { sessionId: input.sessionId, threadId }, true);
     if (input.messageFingerprint)
       yield* connection.request("thread.message-admit", {
@@ -1324,7 +1343,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
             },
           }
         : command,
-      input.interactionModeCeiling,
+      input.modeLimit,
     );
     if (deferWorktree) {
       const outcome = yield* connection.request("run.outcome", {
@@ -1653,6 +1672,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       title: prepared.title,
       sessionId: input.sessionId,
       model,
+      runtimeMode: yield* defaultRuntimeMode,
     });
     return { sessionId, threadId: prepared.threadId, projectId: binding.project_id ?? null };
   });
@@ -1809,6 +1829,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         sourceNativeThreadId: input.nativeSessionId,
         modelSelection: { instanceId: provider.instanceId, model },
         cwd: input.cwd,
+        runtimeMode: yield* defaultRuntimeMode,
         ...(input.adoption ? { interactionMode: input.adoption.interactionMode } : {}),
       })
       .pipe(
@@ -2057,6 +2078,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         ...(modelOptions.length ? { options: modelOptions } : {}),
       },
       cwd: native.cwd,
+      runtimeMode: yield* defaultRuntimeMode,
       ...(interactionMode ? { interactionMode } : {}),
       sideChatCapture: true,
     });
@@ -2147,6 +2169,13 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       ? yield* sideChatSource(connection, input)
       : yield* targetInfo(connection, input.source, !input.saveSideChat);
     const provenance = yield* CoreApplicationAgent;
+    if (
+      input.modeLimit &&
+      RUNTIME_MODE_RANK[source.thread.runtimeMode] > RUNTIME_MODE_RANK[input.modeLimit.runtimeMode]
+    )
+      return yield* failure("fork", "runtime_mode_escalation_denied");
+    if (input.modeLimit?.interactionMode === "plan" && source.thread.interactionMode !== "plan")
+      return yield* failure("fork", "interaction_mode_escalation_denied");
 
     const projectId = source.binding.project_id ?? null;
     const sourceTitle = yield* host(
@@ -2222,23 +2251,27 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       }),
     );
     if (!existing && (input.sideChat || input.saveSideChat || sourceRunId !== null))
-      yield* dispatch(connection, {
-        type: "thread.fork",
-        commandId: commandId("fork-thread", {
-          requestId: input.requestId,
-          sessionId: input.sessionId,
-        }),
-        sourceThreadId: source.threadId,
-        targetThreadId: threadId,
-        sourcePoint:
-          sourceRunId == null ? { type: "latest_stable" } : { type: "run", runId: sourceRunId },
-        ...(input.sideChat ? { sideChat: true } : {}),
-        ...(input.saveSideChat ? { saveSideChat: true } : {}),
-        rootPolicy: "independent_root",
-        title,
-        createdBy: provenance ? "agent" : "user",
-        creationSource: provenance ? "mcp" : "web",
-      });
+      yield* dispatch(
+        connection,
+        {
+          type: "thread.fork",
+          commandId: commandId("fork-thread", {
+            requestId: input.requestId,
+            sessionId: input.sessionId,
+          }),
+          sourceThreadId: source.threadId,
+          targetThreadId: threadId,
+          sourcePoint:
+            sourceRunId == null ? { type: "latest_stable" } : { type: "run", runId: sourceRunId },
+          ...(input.sideChat ? { sideChat: true } : {}),
+          ...(input.saveSideChat ? { saveSideChat: true } : {}),
+          rootPolicy: "independent_root",
+          title,
+          createdBy: provenance ? "agent" : "user",
+          creationSource: provenance ? "mcp" : "web",
+        },
+        input.modeLimit,
+      );
     // A worktree fork still sharing its source directory never finished relocating, including
     // a retry after the process stopped between the fork and the location update.
     const forked = existing ?? (yield* connection.request("thread.read", { threadId }));
@@ -2444,7 +2477,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         readonly message: AgentRuntimeMessage;
         readonly intent?: DispatchMessage["deliveryIntent"];
         readonly resources?: AgentRuntimeOperations["attachments.import"]["input"]["attachments"];
-        readonly interactionModeCeiling?: "plan";
+        readonly modeLimit?: AgentDispatchModeLimit;
         readonly messageFingerprint?: string;
         readonly presentationTicket?: import("../../shared/nodex-app-tools/turn-presentation").CodexTurnPresentationTicket;
       },
@@ -2452,6 +2485,12 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     ) {
       const connection = yield* options.connect;
       const loaded = yield* targetInfo(connection, input, true);
+      if (
+        input.modeLimit &&
+        RUNTIME_MODE_RANK[loaded.thread.runtimeMode] >
+          RUNTIME_MODE_RANK[input.modeLimit.runtimeMode]
+      )
+        return yield* failure("message", "runtime_mode_escalation_denied");
       const imported = input.resources?.length
         ? yield* connection.request("attachments.import", {
             threadId: loaded.threadId,
@@ -2480,7 +2519,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         loaded.thread.interactionMode,
       );
       if (
-        input.interactionModeCeiling === "plan" &&
+        input.modeLimit?.interactionMode === "plan" &&
         (prepared.message.interactionMode ?? loaded.thread.interactionMode) !== "plan"
       )
         return yield* failure("message", "interaction_mode_escalation_denied");
@@ -2528,7 +2567,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         agent,
         queueAfterActive || prepared.hasConfig,
       ),
-      input.interactionModeCeiling,
+      input.modeLimit,
     );
     const sideChatTitle = yield* titleSideChatRequest(connection, loaded, prepared.message, agent);
     if (interactive) yield* options.interactiveState!.sent(loaded.threadId, interactive.key);
@@ -2603,8 +2642,6 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       }
       if (intent.sessionId !== input.sessionId || intent.launchId !== input.launchId)
         return yield* failure("launch", "The original message launch intent is unavailable");
-      if (input.modeLimit.runtimeMode !== "full-access")
-        return yield* failure("launch", "runtime_mode_escalation_denied");
       yield* launch({
         sessionId: input.sessionId,
         launchId: input.launchId,
@@ -2615,7 +2652,8 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         message: intent.message,
         modelSelection: intent.modelSelection,
         interactionMode: intent.interactionMode,
-        ...(input.modeLimit.interactionMode === "plan" ? { interactionModeCeiling: "plan" } : {}),
+        runtimeMode: intent.runtimeMode ?? input.modeLimit.runtimeMode,
+        modeLimit: input.modeLimit,
       });
       const delivered = yield* replayMessage(input);
       if (!delivered)
@@ -2672,14 +2710,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       attachments: prepared.attachments ?? [],
       mode: preparation.hasConfig ? "queue" : input.mode,
       createdBy: agent ? "agent" : "user",
-      ...(input.interactionModeCeiling
-        ? {
-            modeLimit: {
-              runtimeMode: "full-access",
-              interactionMode: input.interactionModeCeiling,
-            },
-          }
-        : {}),
+      ...(input.modeLimit ? { modeLimit: input.modeLimit } : {}),
       ...(prepared.context === undefined ? {} : { context: prepared.context }),
       ...(prepared.interactionMode === undefined
         ? {}
@@ -2742,7 +2773,16 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     const node = snapshot.projection.nodes.find((node) => node.id === request?.nodeId);
     if (
       !request ||
-      (request.kind !== "user_input" && request.kind !== "mcp-elicitation") ||
+      snapshot.projection.thread.id !== loaded.threadId ||
+      node?.threadId !== loaded.threadId ||
+      ![
+        "user_input",
+        "mcp-elicitation",
+        "command",
+        "file-read",
+        "file-change",
+        "permission",
+      ].includes(request.kind) ||
       node?.runId !== input.runId ||
       (input.runId === null && request.responseCapability.type !== "live")
     )
@@ -2752,7 +2792,51 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       );
     if (request.responseCapability.type === "not_resumable" && input.submissionId === undefined)
       return yield* failure("respond", request.responseCapability.reason);
-    const { decision, answers, attachmentsByQuestionId } = input;
+    const approvalItem = snapshot.projection.turnItems.find(
+      (item) => item.type === "approval_request" && item.requestId === request.id,
+    );
+    const approval =
+      request.kind !== "user_input" &&
+      (request.kind !== "mcp-elicitation" || approvalItem !== undefined);
+    const capability = request.responseCapability;
+    if (approval) {
+      if ((yield* CoreApplicationAgent) !== null || input.respondedBy !== undefined)
+        return yield* failure("respond", "Agents cannot answer execution approvals");
+      if (
+        capability.type !== "live" ||
+        (request.status === "pending" &&
+          !snapshot.projection.providerSessions.some(
+            (session) =>
+              session.id === capability.providerSessionId &&
+              session.status !== "stopped" &&
+              session.status !== "error",
+          ))
+      )
+        return yield* failure("respond", "The original approval connection is unavailable");
+      if (
+        input.decision === undefined ||
+        input.answers !== undefined ||
+        input.attachmentsByQuestionId !== undefined
+      )
+        return yield* failure("respond", "An approval decision is required");
+      if (
+        approvalItem?.type === "approval_request" &&
+        approvalItem.options?.length &&
+        !approvalItem.options.some((option) => option.decision === input.decision)
+      )
+        return yield* failure("respond", "This approval decision is unavailable");
+      if (
+        input.feedback !== undefined &&
+        (input.decision !== "decline" ||
+          !capability.supportsFeedback ||
+          !input.feedback.trim() ||
+          input.feedback.length > 10_000)
+      )
+        return yield* failure("respond", "Feedback is only supported for a declined approval");
+    } else if (input.feedback !== undefined || input.decision === "acceptForSession") {
+      return yield* failure("respond", "This response is only supported for execution approvals");
+    }
+    const { decision, feedback, answers, attachmentsByQuestionId } = input;
     return yield* dispatch(
       connection,
       {
@@ -2765,6 +2849,8 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         threadId: loaded.threadId,
         requestId: input.requestId,
         ...(decision === undefined ? {} : { decision }),
+        ...(feedback === undefined ? {} : { feedback }),
+        ...(input.optionId === undefined ? {} : { optionId: input.optionId }),
         ...(input.respondedBy === undefined ? {} : { respondedBy: input.respondedBy }),
         ...(input.requirePending === undefined ? {} : { requirePending: input.requirePending }),
         ...(input.responseFingerprint === undefined
@@ -2773,20 +2859,30 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         ...(answers === undefined ? {} : { answers }),
         ...(attachmentsByQuestionId === undefined ? {} : { attachmentsByQuestionId }),
       },
-      input.interactionModeCeiling,
+      input.modeLimit,
     );
   });
 
   const setModes = Effect.fn("AgentRuntimeApplication.setModes")(function* (
-    input: AgentRuntimeSessionTarget & {
-      readonly requestId: string;
-      readonly interactionMode?: CreateThread["interactionMode"];
-    },
+    input: import("../../shared/agent-runtime-api").AgentRuntimeModeInput,
   ) {
-    if (!validId(input.requestId) || input.interactionMode === undefined)
+    if (
+      !validId(input.requestId) ||
+      (input.interactionMode === undefined && input.runtimeMode === undefined)
+    )
       return yield* failure("mode", "An execution mode and request identity are required");
     const connection = yield* options.connect;
     const loaded = yield* targetInfo(connection, input, true);
+    if (input.runtimeMode !== undefined)
+      yield* dispatch(connection, {
+        type: "thread.runtime-mode.set",
+        commandId: commandId("runtime-mode", {
+          threadId: loaded.threadId,
+          requestId: input.requestId,
+        }),
+        threadId: loaded.threadId,
+        runtimeMode: input.runtimeMode,
+      });
     if (input.interactionMode !== undefined)
       yield* dispatch(connection, {
         type: "thread.interaction-mode.set",
@@ -3309,7 +3405,11 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         }),
       ),
     stopSession: (
-      input: AgentRuntimeSessionTarget & { readonly requestId: string; readonly reason: string },
+      input: AgentRuntimeSessionTarget & {
+        readonly requestId: string;
+        readonly reason: string;
+        readonly modeLimit?: AgentDispatchModeLimit;
+      },
     ) =>
       ownedWrite(
         "stop-session",
@@ -3323,6 +3423,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
               threadId: loaded.threadId,
             }),
             reason: input.reason,
+            ...(input.modeLimit ? { modeLimit: input.modeLimit } : {}),
           });
           return { ...result, threadId: loaded.threadId };
         }),

@@ -15,6 +15,8 @@ import { CoreModules } from "../core-runtime/CoreModules";
 import { coreRuntimeError } from "../core-runtime/CoreRuntimeError";
 import type { AppToolInvocation } from "./AppToolInvocationInbox";
 import { createHostedAppToolCaller, captureHostedAppToolAuthority } from "./AppToolCaller";
+import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
+import { CodexThreadDirectory } from "../codex-application/CodexThreadDirectory";
 import { make, makeWithCapture } from "./SessionHandoffAppTools";
 
 const authority: NodexAgentTurnContext = {
@@ -42,6 +44,46 @@ const input: AppToolInvocation = {
     isActive: () => true,
   },
 };
+const withNativeFacts = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+  effect.pipe(
+    Effect.provideService(ProjectWorkspace, {
+      getThread: () =>
+        Effect.succeed({
+          sessionId: "caller-session",
+          executionHostId: "local",
+          projectId: "project",
+        }),
+      getProjectSession: (id: string) =>
+        Effect.succeed({
+          id,
+          archived: false,
+          thread: {
+            threadId: id === "caller-session" ? "caller" : "target-thread",
+            executionHostId: "local",
+            backendBinding: { kind: "codex" },
+          },
+        }),
+    } as never),
+    Effect.provideService(CodexThreadDirectory, {
+      resolve: () =>
+        Effect.succeed({
+          canonical: {
+            hostId: "local",
+            currentPermissions: {
+              approvalPolicy: "never",
+              approvalsReviewer: "user",
+              sandboxPolicy: { type: "dangerFullAccess" },
+            },
+            latestThreadSettings: {
+              model: "gpt",
+              collaborationMode: { mode: "default" },
+              approvalPolicy: "never",
+              sandboxPolicy: { type: "dangerFullAccess" },
+            },
+          },
+        }),
+    } as never),
+  );
 const setup = (
   options: {
     denied?: boolean;
@@ -60,58 +102,64 @@ const setup = (
   return {
     admitted,
     starts,
-    execute: make.pipe(
-      Effect.provideService(CoreAuthority, { identity: { profileId: "profile" } } as never),
-      Effect.provideService(CodexTurnAuthority, {
-        capture: () => Effect.succeed({ ...authority }),
-      } as never),
-      Effect.provideService(CoreModules, {
-        workspace: {
-          admitToolOperation: createAppToolAdmissionFixture().admitToolOperation,
-          read: () =>
-            Effect.succeed({
-              value: {
-                kind: "agent_session",
-                session: { archived: options.archived ?? false, display_title: "Target session" },
-                thread:
-                  options.threadId === null
-                    ? null
-                    : {
-                        thread_id: options.threadId ?? "target-thread",
-                        backend_binding: { kind: options.backend ?? "codex" },
-                      },
-              },
+    execute: withNativeFacts(
+      make.pipe(
+        Effect.provideService(AgentRuntimeApplication, {} as never),
+        Effect.provideService(CoreAuthority, { identity: { profileId: "profile" } } as never),
+        Effect.provideService(CodexTurnAuthority, {
+          capture: () => Effect.succeed({ ...authority }),
+        } as never),
+        Effect.provideService(CoreModules, {
+          workspace: {
+            admitToolOperation: createAppToolAdmissionFixture().admitToolOperation,
+            read: () =>
+              Effect.succeed({
+                value: {
+                  kind: "agent_session",
+                  session: { archived: options.archived ?? false, display_title: "Target session" },
+                  thread:
+                    options.threadId === null
+                      ? null
+                      : {
+                          thread_id: options.threadId ?? "target-thread",
+                          backend_binding: { kind: options.backend ?? "codex" },
+                        },
+                },
+              }),
+            apply: (command: ProjectWorkspaceApplyInput) =>
+              Effect.gen(function* () {
+                admitted.push(command);
+                if (options.denied)
+                  return yield* coreRuntimeError({
+                    operation: "apply",
+                    reason: "operation",
+                    retryable: false,
+                  });
+                const duplicate = seen.has(command.operationId);
+                seen.add(command.operationId);
+                options.afterAdmission?.();
+                return {
+                  status: "no_op",
+                  receipt: { duplicate, affected_session_ids: ["target"] },
+                };
+              }),
+          },
+        } as never),
+        Effect.provideService(CodexThreadHandoffRuntime, {
+          get: () =>
+            Effect.succeed(
+              options.failure ? null : { sourceThreadId: "target-thread", status: "success" },
+            ),
+          launch: (request: CodexLaunchThreadHandoffInput) =>
+            Effect.sync(() => {
+              starts.push(request);
+              return {
+                sourceThreadId: options.wrongOperation ? "unrelated" : request.threadId,
+                status: "running",
+              };
             }),
-          apply: (command: ProjectWorkspaceApplyInput) =>
-            Effect.gen(function* () {
-              admitted.push(command);
-              if (options.denied)
-                return yield* coreRuntimeError({
-                  operation: "apply",
-                  reason: "operation",
-                  retryable: false,
-                });
-              const duplicate = seen.has(command.operationId);
-              seen.add(command.operationId);
-              options.afterAdmission?.();
-              return { status: "no_op", receipt: { duplicate, affected_session_ids: ["target"] } };
-            }),
-        },
-      } as never),
-      Effect.provideService(CodexThreadHandoffRuntime, {
-        get: () =>
-          Effect.succeed(
-            options.failure ? null : { sourceThreadId: "target-thread", status: "success" },
-          ),
-        launch: (request: CodexLaunchThreadHandoffInput) =>
-          Effect.sync(() => {
-            starts.push(request);
-            return {
-              sourceThreadId: options.wrongOperation ? "unrelated" : request.threadId,
-              status: "running",
-            };
-          }),
-      } as never),
+        } as never),
+      ),
     ),
   };
 };
@@ -209,7 +257,11 @@ it.effect("does not expose another Thread's operation when an identity is alread
 );
 
 const runtimeFixture = (
-  options: { withdrawOnInspect?: boolean; wrongOperation?: boolean } = {},
+  options: {
+    withdrawOnInspect?: boolean;
+    wrongOperation?: boolean;
+    targetMode?: "approval-required" | "full-access";
+  } = {},
 ) => {
   let active = true;
   const starts: CodexLaunchThreadHandoffInput[] = [];
@@ -232,52 +284,62 @@ const runtimeFixture = (
       cwd: "/source",
     },
   });
-  const execute = makeWithCapture(captureHostedAppToolAuthority).pipe(
-    Effect.provideService(CoreAuthority, { identity: { profileId: "profile" } } as never),
-    Effect.provideService(CoreModules, {
-      workspace: {
-        admitToolOperation: createAppToolAdmissionFixture().admitToolOperation,
-        read: () =>
-          Effect.succeed({
-            value: {
-              kind: "agent_session",
-              session: {
-                archived: false,
-                execution_ref: { runtime_id: "runtime", thread_id: "target-root" },
+  const execute = withNativeFacts(
+    makeWithCapture(captureHostedAppToolAuthority).pipe(
+      Effect.provideService(CoreAuthority, { identity: { profileId: "profile" } } as never),
+      Effect.provideService(CoreModules, {
+        workspace: {
+          admitToolOperation: createAppToolAdmissionFixture().admitToolOperation,
+          read: () =>
+            Effect.succeed({
+              value: {
+                kind: "agent_session",
+                session: {
+                  archived: false,
+                  execution_ref: { runtime_id: "runtime", thread_id: "target-root" },
+                },
+                thread: null,
               },
-              thread: null,
-            },
+            }),
+          apply: () => Effect.die("Runtime handoffs are admitted by the handoff journal"),
+        },
+      } as never),
+      Effect.provideService(AgentRuntimeApplication, {
+        inspect: (target: unknown) =>
+          Effect.gen(function* () {
+            inspections.push({ target, agent: yield* CoreApplicationAgent });
+            if (options.withdrawOnInspect) active = false;
+            return {
+              sessionId: "target",
+              threadId: "target-root",
+              thread: {
+                title: "Runtime target",
+                runtimeMode:
+                  (target as { sessionId: string }).sessionId === "source-session"
+                    ? "approval-required"
+                    : (options.targetMode ?? "approval-required"),
+                interactionMode: "plan",
+                modelSelection: { instanceId: "claude", model: "model" },
+              },
+            };
           }),
-        apply: () => Effect.die("Runtime handoffs are admitted by the handoff journal"),
-      },
-    } as never),
-    Effect.provideService(AgentRuntimeApplication, {
-      inspect: (target: unknown) =>
-        Effect.gen(function* () {
-          inspections.push({ target, agent: yield* CoreApplicationAgent });
-          if (options.withdrawOnInspect) active = false;
-          return {
-            sessionId: "target",
-            threadId: "target-root",
-            thread: { title: "Runtime target" },
-          };
-        }),
-    } as never),
-    Effect.provideService(CodexThreadHandoffRuntime, {
-      get: (operationId: string) => Effect.succeed(operations.get(operationId) ?? null),
-      launch: (request: CodexLaunchThreadHandoffInput) =>
-        Effect.sync(() => {
-          const previous = operations.get(request.operationId);
-          if (previous) return previous;
-          starts.push(request);
-          const operation = {
-            sourceThreadId: options.wrongOperation ? "other" : request.threadId,
-            status: "running",
-          };
-          operations.set(request.operationId, operation);
-          return operation;
-        }),
-    } as never),
+      } as never),
+      Effect.provideService(CodexThreadHandoffRuntime, {
+        get: (operationId: string) => Effect.succeed(operations.get(operationId) ?? null),
+        launch: (request: CodexLaunchThreadHandoffInput) =>
+          Effect.sync(() => {
+            const previous = operations.get(request.operationId);
+            if (previous) return previous;
+            starts.push(request);
+            const operation = {
+              sourceThreadId: options.wrongOperation ? "other" : request.threadId,
+              status: "running",
+            };
+            operations.set(request.operationId, operation);
+            return operation;
+          }),
+      } as never),
+    ),
   );
   return { caller, execute, starts, inspections };
 };
@@ -293,10 +355,15 @@ it.effect("routes hosted handoffs through the bound Runtime root and journal rep
       requestThreadId: "source-child",
       threadTitle: "Runtime target",
     });
-    assert.deepNestedInclude(f.inspections[0], {
-      "target.sessionId": "target",
-      "agent.authority.thread_id": authority.threadId,
-    });
+    assert.deepNestedInclude(
+      f.inspections.find(
+        (entry) => (entry as { target: { sessionId: string } }).target.sessionId === "target",
+      ),
+      {
+        "target.sessionId": "target",
+        "agent.authority.thread_id": authority.threadId,
+      },
+    );
     const replay = yield* execute({
       ...input,
       caller: f.caller,
@@ -330,5 +397,24 @@ it.effect("rejects a hosted child's own Session, withdrawn sources and unrelated
       assert.isTrue(result.isError);
       assert.lengthOf(f.starts, options.withdrawOnInspect ? 0 : 1);
     }
+  }),
+);
+
+it.effect("retains the caller ceiling and rejects a handoff follow-up above it", () =>
+  Effect.gen(function* () {
+    const allowed = runtimeFixture();
+    const execute = yield* allowed.execute;
+    assert.isNotTrue((yield* execute({ ...input, caller: allowed.caller })).isError);
+    assert.deepEqual(allowed.starts[0]?.modeLimit, {
+      runtimeMode: "approval-required",
+      interactionMode: "plan",
+    });
+    const denied = runtimeFixture({ targetMode: "full-access" });
+    const run = yield* denied.execute;
+    const result = yield* run({ ...input, caller: denied.caller });
+    assert.deepNestedInclude(result.structuredContent, {
+      "error.code": "runtime_mode_escalation_denied",
+    });
+    assert.isEmpty(denied.starts);
   }),
 );

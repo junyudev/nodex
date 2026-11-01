@@ -1,3 +1,4 @@
+import { resolveAgentApprovalOptions, type AgentPendingApproval } from "./agent-approval";
 import {
   readRuntimePageReferences,
   pageReferencesAdditionalContext,
@@ -37,6 +38,7 @@ import {
 } from "../../../shared/agent-runtime-attachments";
 import { projectAgentRuntimeSubagentDisplay } from "../../../shared/agent-runtime-subagent-display";
 import { agentMessageDisplayText } from "../../../shared/agent-prompt";
+import { getDisplayCommand } from "../../../shared/codex-command-execution";
 import type { CodexTranscriptTurnDetails } from "../../../shared/codex-transcript-projection";
 import {
   conversationRecoveryReason,
@@ -371,9 +373,11 @@ export function isAgentRuntimeItemHidden(item: AgentTurnItem): boolean {
       if (namespace !== "nodex_app") return false;
       return HIDDEN_TASK_TOOLS.has(tool) || (TASK_ROW_TOOLS.has(tool) && item.status !== "failed");
     }
+    // Pending approvals wait at the end of their turn; only a person's refusal stays in place.
+    case "approval_request":
+      return !isDeclinedApproval(item);
     case "run_interrupt_request":
     case "checkpoint":
-    case "approval_request":
     // A Turn's hooks are its metadata, presented with its reply rather than as rows.
     case "hook_run":
       return true;
@@ -860,12 +864,31 @@ export function projectAgentRuntimeItem(
         userAuthorization: item.userAuthorization,
         rationale: item.rationale,
       };
+    case "approval_request":
+      return isDeclinedApproval(item)
+        ? notice(
+            item,
+            [`Declined ${approvalDetail(item) || "request"}`, item.feedback]
+              .filter(Boolean)
+              .join(" — "),
+            { kind: "declined" },
+          )
+        : null;
     case "run_interrupt_request":
     case "checkpoint":
-    case "approval_request":
     case "hook_run":
       return null;
   }
+}
+
+function isDeclinedApproval(item: Extract<AgentTurnItem, { type: "approval_request" }>): boolean {
+  return item.decision === "decline" || item.decision === "cancel";
+}
+
+/** The action as the person would type it: shell wrappers around a command are dropped. */
+function approvalDetail(item: Extract<AgentTurnItem, { type: "approval_request" }>): string {
+  const detail = item.prompt ?? item.title ?? "";
+  return item.requestKind === "command" ? getDisplayCommand(detail) : detail;
 }
 
 /** A Turn's hook, in the shape its reply's hook presentation reads. */
@@ -954,8 +977,8 @@ export function projectAgentRuntimeTurnDetails(input: {
             ...pageReferencesAdditionalContext(readRuntimePageReferences(openingItem.context)),
           },
           cwd: thread.worktreePath ?? null,
-          approvalPolicy: "never",
-          approvalsReviewer: "user",
+          approvalPolicy: null,
+          approvalsReviewer: null,
           sandboxPolicy: { type: "dangerFullAccess" },
           model: run?.modelSelection.model ?? thread.modelSelection.model,
           effort: null,
@@ -969,8 +992,8 @@ export function projectAgentRuntimeTurnDetails(input: {
           threadId: thread.id,
           input: [],
           cwd: thread.worktreePath ?? null,
-          approvalPolicy: "never",
-          approvalsReviewer: "user",
+          approvalPolicy: null,
+          approvalsReviewer: null,
           sandboxPolicy: { type: "dangerFullAccess" },
           model: run?.modelSelection.model ?? thread.modelSelection.model,
           effort: null,
@@ -1003,16 +1026,6 @@ export function projectAgentRuntimeRequest(
     itemId: item.id,
     createdAt: agentRuntimeTime(item.startedAt ?? item.updatedAt) ?? 0,
   };
-  if (item.type === "approval_request" && turnId !== null)
-    return {
-      ...base,
-      turnId,
-      type: "approval",
-      requestId: item.requestId,
-      kind: item.requestKind === "file-change" ? "file" : "command",
-      reason: item.prompt,
-      availableDecisions: item.options?.map((option) => option.decision) ?? null,
-    };
   if (item.type !== "user_input_request" || isAgentRuntimeAsyncQuestion(item)) return null;
   return {
     ...base,
@@ -1036,4 +1049,63 @@ export function projectAgentRuntimeRequest(
       })),
     })),
   };
+}
+
+/** Approval items supply presentation; the matching request supplies live callback authority. */
+export function projectAgentPendingApproval(
+  item: AgentTurnItem,
+  request:
+    | import("@nodex/agent-runtime/contracts").AgentSnapshot["projection"]["runtimeRequests"][number]
+    | undefined,
+): AgentPendingApproval | null {
+  if (
+    item.type !== "approval_request" ||
+    !isLive(item.status) ||
+    (request && request.status !== "pending")
+  )
+    return null;
+  return {
+    requestId: item.requestId,
+    runId: item.runId,
+    kind: item.requestKind,
+    detail: approvalDetail(item),
+    reason: item.reason ?? null,
+    appName: item.appName ?? null,
+    options: resolveAgentApprovalOptions(item.options),
+    fullAccessOverride: item.fullAccessOverride ?? null,
+    live: request?.responseCapability.type === "live",
+    supportsFeedback:
+      request?.responseCapability.type === "live" &&
+      request.responseCapability.supportsFeedback === true,
+    createdAt: agentRuntimeTime(request?.createdAt ?? item.startedAt ?? item.updatedAt) ?? 0,
+  };
+}
+
+/**
+ * The approval row speaks for its exact native action: a still-running occurrence while the
+ * approval waits, and any occurrence once the person declined it, since it never ran as shown.
+ */
+export function agentApprovalSuppressesItem(
+  approval: Extract<AgentTurnItem, { type: "approval_request" }>,
+  item: Pick<AgentTurnItem, "id" | "runId" | "type" | "status" | "nodeId"> &
+    Partial<Pick<AgentTurnItem, "nativeItemRef" | "providerThreadId" | "providerTurnId">>,
+): boolean {
+  if (
+    !(isLive(item.status) || isDeclinedApproval(approval)) ||
+    approval.runId !== item.runId ||
+    item.type === "approval_request"
+  )
+    return false;
+  if (
+    approval.parentItemId === item.id ||
+    (approval.nodeId !== null && approval.nodeId === item.nodeId)
+  )
+    return true;
+  if (!approval.nativeItemRef || !item.nativeItemRef) return false;
+  return (
+    approval.providerThreadId === item.providerThreadId &&
+    approval.providerTurnId === item.providerTurnId &&
+    approval.nativeItemRef.driver === item.nativeItemRef.driver &&
+    approval.nativeItemRef.nativeId === item.nativeItemRef.nativeId
+  );
 }

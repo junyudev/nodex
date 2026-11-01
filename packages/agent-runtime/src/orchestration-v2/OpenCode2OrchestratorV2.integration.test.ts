@@ -77,8 +77,51 @@ const event = (type: string, data: Record<string, unknown>): ProviderReplayEntry
 });
 const labelled = (entry: ProviderReplayEntry, label: string): ProviderReplayEntry =>
   entry.type === "runtime_exit" ? entry : { ...entry, label };
-/** Native Sessions retain full access across planning, resume and model changes. */
-const EXECUTION_PERMISSIONS = [{ action: "*", resource: "*", effect: "allow" }];
+/** Native permissions preserve the thread's mode and its own content-tool access. */
+const executionPermissions = (name: string, runtimeMode: RuntimeMode = "full-access") => [
+  ...(runtimeMode === "full-access"
+    ? [{ action: "*", resource: "*", effect: "allow" }]
+    : [
+        ...["*", "shell", "edit", "external_directory"].map((action) => ({
+          action,
+          resource: "*",
+          effect: "ask",
+        })),
+        ...["read", "glob", "grep", "lsp", "todowrite", "task", "skill", "question"].map(
+          (action) => ({
+            action,
+            resource: "*",
+            effect: "allow",
+          }),
+        ),
+        { action: "read", resource: "*.env", effect: "ask" },
+        { action: "read", resource: "*.env.*", effect: "ask" },
+        { action: "read", resource: "*.env.example", effect: "allow" },
+      ]),
+  { action: "nodex_app-*", resource: "*", effect: "deny" },
+  {
+    action: `nodex_app-thread_${name.replaceAll(/[^a-zA-Z0-9_-]/g, "_")}_*`,
+    resource: "*",
+    effect: "allow",
+  },
+];
+const directoryAgents = (directory: string): ReadonlyArray<ProviderReplayEntry> => [
+  out("agent.list", { "location[directory]": directory }),
+  reply("agent.list", {
+    location: { directory },
+    data: [
+      {
+        id: "build",
+        name: "Build",
+        request: { settings: {}, headers: {}, body: {} },
+        description: "Build",
+        mode: "primary",
+        hidden: false,
+        permissions: [],
+      },
+    ],
+  }),
+];
 /** A session this runtime loads again (after a detach) waits on nothing. */
 const noOpenRequests: ReadonlyArray<ProviderReplayEntry> = [
   out("permission.list", { sessionID: SESSION }),
@@ -155,7 +198,11 @@ const catalogModel = (id: string, name: string) => ({
   enabled: true,
   limit: { context: 200000, input: 160000, output: 32000 },
 });
-const createdSession = (directory: string, name: string): ReadonlyArray<ProviderReplayEntry> => [
+const createdSession = (
+  directory: string,
+  name: string,
+  runtimeMode: RuntimeMode = "full-access",
+): ReadonlyArray<ProviderReplayEntry> => [
   out("event.subscribe"),
   out("model.list", "<any>"),
   reply("model.list", {
@@ -165,14 +212,15 @@ const createdSession = (directory: string, name: string): ReadonlyArray<Provider
       catalogModel("mimo-v2.6-flash-free", "MiMo V2.6 Flash Free"),
     ],
   }),
+  ...(runtimeMode === "full-access" ? [] : directoryAgents(directory)),
   // The thread's title, which is its name here.
   out("session.create", {
     location: { directory },
     model: "<any>",
-    permissions: EXECUTION_PERMISSIONS,
+    permissions: executionPermissions(name, runtimeMode),
     title: name,
   }),
-  reply("session.create", sessionInfo(directory, EXECUTION_PERMISSIONS, name)),
+  reply("session.create", sessionInfo(directory, executionPermissions(name, runtimeMode), name)),
 ];
 
 /** A recording with its scrubbed `<work>` directory replaced by `directory`. */
@@ -318,7 +366,7 @@ describe("OpenCode 2 through the orchestrator", () => {
             ...answeredPrompt("FIRST"),
             // The next turn resumes the session at its new selection.
             out("session.get", { sessionID: SESSION }),
-            reply("session.get", sessionInfo(cwd, EXECUTION_PERMISSIONS, name)),
+            reply("session.get", sessionInfo(cwd, executionPermissions(name), name)),
             out("session.switchModel", {
               sessionID: SESSION,
               model: { providerID: "opencode", id: "mimo-v2.6-flash-free" },
@@ -371,7 +419,7 @@ describe("OpenCode 2 through the orchestrator", () => {
           ...answeredPrompt("FIRST"),
           ...directoryModels(after),
           out("session.get", { sessionID: SESSION }),
-          reply("session.get", sessionInfo(before, EXECUTION_PERMISSIONS, name)),
+          reply("session.get", sessionInfo(before, executionPermissions(name), name)),
           // The worktree change detached the thread, so its session is loaded afresh.
           ...noOpenRequests,
           out("session.move", { sessionID: SESSION, directory: after }),
@@ -400,60 +448,66 @@ describe("OpenCode 2 through the orchestrator", () => {
     }).pipe(Effect.scoped),
   );
 
-  it.effect("restores full native access before resuming a session with stale provider rules", () =>
-    Effect.gen(function* () {
-      const name = "opencode2-resume-rules";
-      const before = yield* checkpointWorkspace(`${name}-before`);
-      const after = yield* checkpointWorkspace(`${name}-after`);
-      const thread = threadCommands({ name, worktreePath: before });
-      const projection = yield* runScenario({
-        name,
-        threadId: thread.threadId,
-        entries: [
-          ...createdSession(before, name),
-          ...instructionsWritten,
-          ...answeredPrompt("FIRST"),
-          ...directoryModels(after),
-          // Reopened after a worktree change, the session reports the rules an
-          // older build gave it, which denied subagents; they are replaced
-          // before anything runs.
-          out("session.get", { sessionID: SESSION }),
-          reply(
-            "session.get",
-            sessionInfo(
-              before,
-              [
-                { action: "*", resource: "*", effect: "allow" },
-                { action: "subagent", resource: "*", effect: "deny" },
-              ],
-              name,
+  it.effect.each(["approval-required", "full-access"] as const)(
+    "restores %s permissions before resuming a session with stale provider rules",
+    (runtimeMode) =>
+      Effect.gen(function* () {
+        const name = `opencode2-resume-${runtimeMode}`;
+        const before = yield* checkpointWorkspace(`${name}-before`);
+        const after = yield* checkpointWorkspace(`${name}-after`);
+        const thread = threadCommands({ name, worktreePath: before, runtimeMode });
+        const projection = yield* runScenario({
+          name,
+          threadId: thread.threadId,
+          entries: [
+            ...createdSession(before, name, runtimeMode),
+            ...instructionsWritten,
+            ...answeredPrompt("FIRST"),
+            ...directoryModels(after),
+            // Reopened after a worktree change, the session reports the rules an
+            // older build gave it, which denied subagents; they are replaced
+            // before anything runs.
+            out("session.get", { sessionID: SESSION }),
+            reply(
+              "session.get",
+              sessionInfo(
+                before,
+                [
+                  { action: "*", resource: "*", effect: "allow" },
+                  { action: "subagent", resource: "*", effect: "deny" },
+                ],
+                name,
+              ),
             ),
-          ),
-          ...noOpenRequests,
-          out("session.update", { sessionID: SESSION, permissions: EXECUTION_PERMISSIONS }),
-          reply("session.update", null),
-          out("session.move", { sessionID: SESSION, directory: after }),
-          reply("session.move", null),
-          ...instructionsWritten,
-          ...answeredPrompt("SECOND"),
-        ],
-        commands: [
-          thread.create,
-          thread.message("first"),
-          {
-            type: "thread.metadata.update",
-            commandId: thread.command("worktree"),
-            threadId: thread.threadId,
-            worktreePath: after,
-          },
-          thread.message("second"),
-        ],
-      });
-      assert.deepEqual(
-        projection.runs.map((run) => run.status),
-        ["completed", "completed"],
-      );
-    }).pipe(Effect.scoped),
+            ...noOpenRequests,
+            ...(runtimeMode === "full-access" ? [] : directoryAgents(after)),
+            out("session.update", {
+              sessionID: SESSION,
+              permissions: executionPermissions(name, runtimeMode),
+            }),
+            reply("session.update", null),
+            out("session.move", { sessionID: SESSION, directory: after }),
+            reply("session.move", null),
+            ...instructionsWritten,
+            ...answeredPrompt("SECOND"),
+          ],
+          commands: [
+            thread.create,
+            thread.message("first"),
+            {
+              type: "thread.metadata.update",
+              commandId: thread.command("worktree"),
+              threadId: thread.threadId,
+              worktreePath: after,
+            },
+            thread.message("second"),
+          ],
+        });
+        assert.deepEqual(
+          projection.runs.map((run) => run.status),
+          ["completed", "completed"],
+        );
+      }).pipe(Effect.scoped),
   );
 
   it.effect("forks from an earlier turn before the next turn's user message", () =>

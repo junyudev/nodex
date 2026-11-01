@@ -49,6 +49,7 @@ import {
   OPENCODE_PROVIDER,
   nodexAppMcpServerName,
 } from "@t3tools/provider-opencode/testing";
+import { openCode2SessionRules } from "@t3tools/provider-opencode/server/v2/adapter";
 import { openCode2ReplayAdapter, openCode2ReplayRuntime } from "./OpenCode2AdapterV2.testkit.ts";
 import {
   makeProviderReplayGate,
@@ -92,8 +93,12 @@ const event = (
 });
 const durable = { durable: { aggregateID: SESSION, seq: 1, version: 1 } };
 
-/** Native execution uses full access for every session. */
-const t3Rules = [{ action: "*", resource: "*", effect: "allow" }];
+/** The root Session keeps its authenticated MCP entry in every mode. */
+const t3Rules = [
+  { action: "*", resource: "*", effect: "allow" },
+  { action: "nodex_app-*", resource: "*", effect: "deny" },
+  { action: "nodex_app-thread_opencode2-adapter_*", resource: "*", effect: "allow" },
+];
 /** The thread's title, which the recorded session already carries. */
 const TITLE = "Prime check";
 const sessionInfo = (overrides: Record<string, unknown> = {}) => ({
@@ -215,7 +220,7 @@ const directoryModels = (directory: string): ReadonlyArray<ProviderReplayEntry> 
 ];
 
 const bigPickle: ModelSelection = { instanceId, model: "opencode/big-pickle" };
-const policy = (runtimeMode: "full-access" | "full-access" = "full-access") => ({
+const policy = (runtimeMode: "approval-required" | "full-access" = "full-access") => ({
   runtimeMode,
   interactionMode: "default" as const,
   cwd: WORK,
@@ -242,7 +247,7 @@ const providerThread = (now: DateTime.Utc): OrchestrationV2ProviderThread => ({
 const turnInput = (
   thread: OrchestrationV2ProviderThread,
   modelSelection: ModelSelection = bigPickle,
-  runtimeMode: "full-access" | "full-access" = "full-access",
+  runtimeMode: "approval-required" | "full-access" = "full-access",
 ) => ({
   appThread: { title: TITLE } as OrchestrationV2AppThread,
   threadId,
@@ -266,6 +271,27 @@ const turnInput = (
 });
 
 // The first ask and question form the spike recorded (recordings/permission, question).
+const agentList = {
+  location: { directory: WORK },
+  data: [
+    {
+      id: "build",
+      name: "Build",
+      request: { settings: {}, headers: {}, body: {} },
+      description: "Build",
+      mode: "primary",
+      hidden: false,
+      permissions: [],
+    },
+  ],
+};
+const approvalRules = openCode2SessionRules(
+  policy("approval-required"),
+  [],
+  [],
+  "nodex_app-thread_opencode2-adapter",
+);
+
 const shellAsk = {
   data: {
     id: "per_0eb7c4d7e001Pyt8o50Vi4KrOO",
@@ -303,6 +329,7 @@ const resumed = (
     readonly external?: boolean;
     readonly replaceConnectionOnReconnect?: boolean;
     readonly replayGate?: ProviderReplayGate;
+    readonly runtimeMode?: "approval-required" | "full-access";
   },
 ) =>
   Effect.gen(function* () {
@@ -312,6 +339,14 @@ const resumed = (
         out("session.get", { sessionID: SESSION }),
         replyData("session.get", sessionInfo()),
         ...noOpenRequests,
+        ...(options?.runtimeMode === "approval-required"
+          ? [
+              out("agent.list", "<any>"),
+              reply("agent.list", agentList),
+              out("session.update", { sessionID: SESSION, permissions: approvalRules }),
+              reply("session.update", null),
+            ]
+          : []),
         ...entries,
       ]),
       {
@@ -326,10 +361,25 @@ const resumed = (
       providerThread: providerThread(yield* DateTime.now),
       threadId,
       modelSelection: bigPickle,
-      runtimePolicy: policy(),
+      runtimePolicy: policy(options?.runtimeMode),
     });
     return { runtime, thread };
   });
+
+const requestOf = (runtime: ProviderAdapter.ProviderAdapterV2SessionRuntime) =>
+  runtime.events.pipe(
+    Stream.filter(
+      (
+        event,
+      ): event is Extract<
+        ProviderAdapter.ProviderAdapterV2Event,
+        { type: "runtime_request.updated" }
+      > => event.type === "runtime_request.updated" && event.runtimeRequest.status === "pending",
+    ),
+    Stream.map((event) => event.runtimeRequest),
+    Stream.runHead,
+    Effect.map(Option.getOrUndefined),
+  );
 
 const terminalOf = (runtime: ProviderAdapter.ProviderAdapterV2SessionRuntime) =>
   runtime.events.pipe(
@@ -783,6 +833,32 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
       lineage: { parentThreadId: null, relationshipToParent: null, rootThreadId: threadId },
     } as OrchestrationV2AppThread,
   });
+  it.effect("rewrites existing root and live child rules before a turn changes mode", () =>
+    Effect.gen(function* () {
+      const { runtime, thread } = yield* resumed([
+        ...backgroundLaunch(CHILD),
+        event("session.execution.started", { sessionID: CHILD }),
+        event("session.execution.succeeded", { sessionID: SESSION }),
+        out("agent.list", "<any>"),
+        reply("agent.list", agentList),
+        out("session.update", { sessionID: SESSION, permissions: approvalRules }),
+        reply("session.update", null),
+        out("session.update", { sessionID: CHILD, permissions: approvalRules }),
+        reply("session.update", null),
+        out("session.prompt", { sessionID: SESSION, text: "<any>" }),
+        promptAccepted,
+        event("session.execution.succeeded", { sessionID: SESSION }),
+      ]);
+      yield* runtime.startTurn(withLineage(thread));
+      assert.equal((yield* terminalOf(runtime))?.status, "completed");
+      yield* runtime.startTurn({
+        ...withLineage(thread),
+        runtimePolicy: policy("approval-required"),
+      });
+      assert.equal((yield* terminalOf(runtime))?.status, "completed");
+    }).pipe(Effect.scoped),
+  );
+
   /**
    * The continuation turn the orchestrator starts for an offered wake: its
    * message is the one the offer named, as `ProviderContinuationService` dispatches it.
@@ -2678,10 +2754,14 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
         ],
         {},
       );
-      const terminal = yield* terminalOf(runtime).pipe(Effect.forkScoped);
+      const requested = yield* requestOf(runtime).pipe(Effect.forkScoped);
       yield* runtime.startTurn(turnInput(thread, bigPickle, "full-access"));
+      const request = yield* Fiber.join(requested);
+      assert.isDefined(request);
+      assert.equal(request!.status, "pending");
+      yield* runtime.respondToRuntimeRequest({ requestId: request!.id, decision: "accept" });
 
-      const ended = yield* Fiber.join(terminal);
+      const ended = yield* terminalOf(runtime);
       assert.equal(ended?.status, "failed");
       assert.equal(
         ended?.status === "failed" ? ended.failure.message : undefined,
@@ -2715,11 +2795,15 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
         ],
         {},
       );
-      const terminal = yield* terminalOf(runtime).pipe(Effect.forkScoped);
+      const requested = yield* requestOf(runtime).pipe(Effect.forkScoped);
       yield* runtime.startTurn(turnInput(thread, bigPickle, "full-access"));
+      const request = yield* Fiber.join(requested);
+      assert.isDefined(request);
+      assert.equal(request!.status, "pending");
+      yield* runtime.respondToRuntimeRequest({ requestId: request!.id, decision: "accept" });
 
       // Not "waiting on a request Nodex couldn't answer": nothing waits on it.
-      assert.equal((yield* Fiber.join(terminal))?.status, "completed");
+      assert.equal((yield* terminalOf(runtime))?.status, "completed");
     }).pipe(Effect.scoped),
   );
 
@@ -2761,7 +2845,7 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
     }).pipe(Effect.scoped),
   );
 
-  it.effect("automatically answers native subagent permission requests", () =>
+  it.effect("routes native subagent approvals to the parent turn", () =>
     Effect.gen(function* () {
       const child = "ses_f0e5aa64cffelFnoQRL0DAA9BH";
       const { runtime, thread } = yield* resumed(
@@ -2798,10 +2882,14 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
         ],
         {},
       );
-      const terminal = yield* terminalOf(runtime).pipe(Effect.forkScoped);
+      const requested = yield* requestOf(runtime).pipe(Effect.forkScoped);
       yield* runtime.startTurn(turnInput(thread, bigPickle, "full-access"));
+      const request = yield* Fiber.join(requested);
+      assert.isDefined(request);
+      assert.equal(request!.status, "pending");
+      yield* runtime.respondToRuntimeRequest({ requestId: request!.id, decision: "accept" });
 
-      assert.equal((yield* Fiber.join(terminal))?.status, "completed");
+      assert.equal((yield* terminalOf(runtime))?.status, "completed");
     }).pipe(Effect.scoped),
   );
 
@@ -2857,7 +2945,7 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
         ],
         {},
       );
-      const ended = yield* runtime.events.pipe(
+      const ended = runtime.events.pipe(
         Stream.filter(
           (event) =>
             event.type === "provider_turn.updated" && event.providerTurn.status === "failed",
@@ -2865,12 +2953,17 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
         Stream.runHead,
         Effect.forkScoped,
       );
+      const requested = yield* requestOf(runtime).pipe(Effect.forkScoped);
       yield* runtime.startTurn({
         ...withLineage(thread),
         runtimePolicy: policy("full-access"),
       });
+      const request = yield* Fiber.join(requested);
+      assert.isDefined(request);
+      assert.equal(request!.status, "pending");
+      yield* runtime.respondToRuntimeRequest({ requestId: request!.id, decision: "accept" });
 
-      yield* Fiber.join(ended);
+      yield* ended;
     }).pipe(Effect.scoped),
   );
 
@@ -3405,7 +3498,7 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
     }).pipe(Effect.scoped),
   );
 
-  it.effect("automatically answers a permission recovered after reconnecting", () =>
+  it.effect("shows a pending approval recovered after reconnecting", () =>
     Effect.gen(function* () {
       const { runtime, thread } = yield* resumed(
         [
@@ -3424,10 +3517,14 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
         ],
         {},
       );
-      const terminal = yield* terminalOf(runtime).pipe(Effect.forkScoped);
+      const requested = yield* requestOf(runtime).pipe(Effect.forkScoped);
       yield* runtime.startTurn(turnInput(thread, bigPickle, "full-access"));
+      const request = yield* Fiber.join(requested);
+      assert.isDefined(request);
+      assert.equal(request!.status, "pending");
+      yield* runtime.respondToRuntimeRequest({ requestId: request!.id, decision: "accept" });
 
-      assert.equal((yield* Fiber.join(terminal))?.status, "completed");
+      assert.equal((yield* terminalOf(runtime))?.status, "completed");
     }).pipe(Effect.scoped),
   );
 
@@ -3529,7 +3626,10 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
         replyData(
           "session.get",
           sessionInfo({
-            permissions: t3Rules,
+            permissions: [
+              ...t3Rules.slice(0, 2),
+              { action: `${server}_*`, resource: "*", effect: "allow" },
+            ],
           }),
         ),
         ...noOpenRequests,
@@ -4472,6 +4572,14 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
       const { runtime, thread } = yield* resumed([
         out("session.fork", { sessionID: SESSION }),
         replyData("session.fork", sessionInfo({ id: FORK })),
+        out("session.update", {
+          sessionID: FORK,
+          permissions: [
+            ...t3Rules.slice(0, 2),
+            { action: "nodex_app-thread_opencode2-adapter_fork_*", resource: "*", effect: "allow" },
+          ],
+        }),
+        reply("session.update", null),
         // The fork's T3 MCP server is the target thread's.
 
         // OpenCode makes the fork where its source runs; the target thread runs elsewhere.
@@ -4575,6 +4683,14 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
         // The replay fails on a fork without this cut.
         out("session.fork", { sessionID: SESSION, before: "msg_report" }),
         replyData("session.fork", sessionInfo({ id: FORK })),
+        out("session.update", {
+          sessionID: FORK,
+          permissions: [
+            ...t3Rules.slice(0, 2),
+            { action: "nodex_app-thread_opencode2-adapter_fork_*", resource: "*", effect: "allow" },
+          ],
+        }),
+        reply("session.update", null),
       ]);
       const forked = yield* runtime.forkThread({
         sourceProviderThread: thread,
@@ -5343,5 +5459,380 @@ it.layer(McpProviderSessions.layer)("OpenCode reported model variants", (it) => 
           ["default", "thinking", "none", "none"],
         );
       }).pipe(Effect.scoped),
+  );
+});
+
+it("enforces OpenCode 2 execution modes with ordered read, secret-file, and MCP rules", () => {
+  const action = (mode: "approval-required" | "full-access", tool: string, resource = "*") =>
+    openCode2SessionRules(policy(mode), [], [], "nodex_app-this-session").findLast(
+      (entry) =>
+        new RegExp(`^${entry.action.replaceAll("*", ".*")}$`).test(tool) &&
+        new RegExp(`^${entry.resource.replaceAll(".", "\\.").replaceAll("*", ".*")}$`).test(
+          resource,
+        ),
+    )?.effect;
+  for (const tool of ["shell", "edit", "external_directory", "other_mcp_tool"]) {
+    assert.equal(action("approval-required", tool), "ask");
+    assert.equal(action("full-access", tool), "allow");
+  }
+  for (const tool of ["read", "glob", "grep", "lsp", "todowrite", "task", "skill", "question"]) {
+    assert.equal(action("approval-required", tool), "allow");
+  }
+  for (const runtimeMode of ["approval-required", "full-access"] as const) {
+    const planningPolicy = { ...policy(runtimeMode), interactionMode: "plan" as const };
+    const plannedEdit = openCode2SessionRules(planningPolicy, [], [], null).findLast(
+      (entry) => entry.action === "*" || entry.action === "edit",
+    );
+    assert.equal(plannedEdit?.effect, runtimeMode === "full-access" ? "allow" : "ask");
+  }
+  assert.equal(action("approval-required", "read", "/workspace/.env"), "ask");
+  assert.equal(action("approval-required", "read", "/workspace/.env.local"), "ask");
+  assert.equal(action("approval-required", "read", "/workspace/.env.example"), "allow");
+  for (const mode of ["approval-required", "full-access"] as const) {
+    assert.equal(action(mode, "nodex_app-this-session_page_write"), "allow");
+    assert.equal(action(mode, "nodex_app-other-session_page_write"), "deny");
+  }
+});
+
+it.layer(McpProviderSessions.layer)("OpenCode2 execution approvals", (it) => {
+  it.effect.each(["accept", "decline", "cancel", "acceptForSession"] as const)(
+    "keeps requests pending and delivers %s at the native permission boundary",
+    (decision) =>
+      Effect.gen(function* () {
+        const { runtime, thread } = yield* resumed(
+          [
+            out("session.prompt", { sessionID: SESSION, text: "<any>" }),
+            promptAccepted,
+            shellAskEvent,
+            ...(decision === "acceptForSession"
+              ? [
+                  out("session.update", {
+                    sessionID: SESSION,
+                    permissions: openCode2SessionRules(
+                      policy("approval-required"),
+                      [],
+                      [{ action: "shell", resource: "echo *", effect: "allow" }],
+                      "nodex_app-thread_opencode2-adapter",
+                    ),
+                  }),
+                  reply("session.update", null),
+                ]
+              : []),
+            ...(decision === "decline"
+              ? [
+                  out("session.synthetic", {
+                    sessionID: SESSION,
+                    text: "<any>",
+                    delivery: "steer",
+                    resume: false,
+                  }),
+                  reply("session.synthetic", null),
+                ]
+              : []),
+            out("permission.reply", {
+              sessionID: SESSION,
+              requestID: shellAsk.data.id,
+              decision:
+                decision === "accept" || decision === "acceptForSession" ? "once" : "reject",
+              ...(decision === "decline" ? { message: "The user declined this request." } : {}),
+            }),
+            reply("permission.reply", null),
+            event("session.execution.succeeded", { sessionID: SESSION }),
+          ],
+          { runtimeMode: "approval-required" },
+        );
+        yield* runtime.startTurn(turnInput(thread, bigPickle, "approval-required"));
+        const itemEvent = yield* runtime.events.pipe(
+          Stream.filter(
+            (
+              event,
+            ): event is Extract<
+              ProviderAdapter.ProviderAdapterV2Event,
+              { type: "turn_item.updated" }
+            > => event.type === "turn_item.updated" && event.turnItem.type === "approval_request",
+          ),
+          Stream.runHead,
+        );
+        const item = Option.getOrThrow(itemEvent).turnItem;
+        if (item.type !== "approval_request") return yield* Effect.die("Expected approval");
+        assert.equal(item.status, "waiting");
+        assert.equal(item.prompt, "echo FIRST");
+        assert.equal(item.threadId, threadId);
+        assert.deepEqual(
+          item.options?.map((option) => option.decision),
+          ["cancel", "decline", "acceptForSession", "accept"],
+        );
+        yield* runtime.respondToRuntimeRequest({ requestId: item.requestId, decision });
+        assert.equal((yield* terminalOf(runtime))?.status, "completed");
+        assert.isTrue(
+          Exit.isFailure(
+            yield* runtime
+              .respondToRuntimeRequest({ requestId: item.requestId, decision: "accept" })
+              .pipe(Effect.exit),
+          ),
+        );
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect.each(["finalize", "stop"] as const)("cancels unanswered approvals on %s", (ending) =>
+    Effect.gen(function* () {
+      const gate = makeProviderReplayGate(["finish-approval"]);
+      const { runtime, thread } = yield* resumed(
+        [
+          out("session.prompt", { sessionID: SESSION, text: "<any>" }),
+          promptAccepted,
+          event("permission.asked", { ...shellAsk.data, save: [] }),
+          ...(ending === "stop"
+            ? [
+                out("session.interrupt", { sessionID: SESSION }),
+                reply("session.interrupt", { interrupted: true }),
+              ]
+            : []),
+          event("session.execution.succeeded", { sessionID: SESSION }, "finish-approval"),
+        ],
+        { runtimeMode: "approval-required", replayGate: gate },
+      );
+      yield* runtime.startTurn(turnInput(thread, bigPickle, "approval-required"));
+      const itemEvent = yield* runtime.events.pipe(
+        Stream.filter(
+          (
+            event,
+          ): event is Extract<
+            ProviderAdapter.ProviderAdapterV2Event,
+            { type: "turn_item.updated" }
+          > => event.type === "turn_item.updated" && event.turnItem.type === "approval_request",
+        ),
+        Stream.runHead,
+      );
+      const item = Option.getOrThrow(itemEvent).turnItem;
+      if (item.type !== "approval_request") return yield* Effect.die("Expected approval");
+      assert.deepEqual(
+        item.options?.map((option) => option.decision),
+        ["cancel", "decline", "accept"],
+      );
+      assert.isTrue(
+        Exit.isFailure(
+          yield* runtime
+            .respondToRuntimeRequest({ requestId: item.requestId, decision: "acceptForSession" })
+            .pipe(Effect.exit),
+        ),
+      );
+      if (ending === "stop")
+        yield* runtime.interruptTurn({
+          providerThread: thread,
+          providerTurnId: item.providerTurnId!,
+        });
+      gate.release("finish-approval");
+      const cancelled = yield* runtime.events.pipe(
+        Stream.filter(
+          (event) =>
+            event.type === "runtime_request.updated" && event.runtimeRequest.status === "cancelled",
+        ),
+        Stream.runHead,
+      );
+      assert.isTrue(Option.isSome(cancelled));
+      assert.isTrue(
+        Exit.isFailure(
+          yield* runtime
+            .respondToRuntimeRequest({ requestId: item.requestId, decision: "accept" })
+            .pipe(Effect.exit),
+        ),
+      );
+    }).pipe(Effect.scoped),
+  );
+});
+
+it.layer(McpProviderSessions.layer)("OpenCode2 session grants", (it) => {
+  it.effect("invalidates session grants when the execution mode changes", () =>
+    Effect.gen(function* () {
+      const granted = openCode2SessionRules(
+        policy("approval-required"),
+        [],
+        [{ action: "shell", resource: "echo *", effect: "allow" }],
+        "nodex_app-thread_opencode2-adapter",
+      );
+      const { runtime, thread } = yield* resumed(
+        [
+          out("session.prompt", { sessionID: SESSION, text: "<any>" }),
+          promptAccepted,
+          shellAskEvent,
+          out("session.update", { sessionID: SESSION, permissions: granted }),
+          reply("session.update", null),
+          out("permission.reply", {
+            sessionID: SESSION,
+            requestID: shellAsk.data.id,
+            decision: "once",
+          }),
+          reply("permission.reply", null),
+          event("session.execution.succeeded", { sessionID: SESSION }),
+          out("session.update", { sessionID: SESSION, permissions: t3Rules }),
+          reply("session.update", null),
+          out("session.prompt", { sessionID: SESSION, text: "<any>" }),
+          promptAccepted,
+          event("session.execution.succeeded", { sessionID: SESSION }),
+          out("session.update", { sessionID: SESSION, permissions: approvalRules }),
+          reply("session.update", null),
+          out("session.prompt", { sessionID: SESSION, text: "<any>" }),
+          promptAccepted,
+          event("permission.asked", { ...shellAsk.data, id: "per_again" }),
+          out("permission.reply", { sessionID: SESSION, requestID: "per_again", decision: "once" }),
+          reply("permission.reply", null),
+          event("session.execution.succeeded", { sessionID: SESSION }),
+        ],
+        { runtimeMode: "approval-required" },
+      );
+      yield* runtime.startTurn(turnInput(thread, bigPickle, "approval-required"));
+      const first = yield* requestOf(runtime);
+      assert.isDefined(first);
+      yield* runtime.respondToRuntimeRequest({
+        requestId: first!.id,
+        decision: "acceptForSession",
+      });
+      yield* terminalOf(runtime);
+      yield* runtime.startTurn(turnInput(thread, bigPickle, "full-access"));
+      yield* terminalOf(runtime);
+      yield* runtime.startTurn(turnInput(thread, bigPickle, "approval-required"));
+      const again = yield* requestOf(runtime);
+      assert.equal(again?.nativeRequestRef?.nativeId, "per_again");
+      yield* runtime.respondToRuntimeRequest({ requestId: again!.id, decision: "accept" });
+      yield* terminalOf(runtime);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("stores nested child grants only on the native session that asked", () =>
+    Effect.gen(function* () {
+      const child = "ses_child_approval";
+      const nested = "ses_nested_approval";
+      const granted = openCode2SessionRules(
+        policy("approval-required"),
+        [],
+        [{ action: "shell", resource: "echo *", effect: "allow" }],
+        "nodex_app-thread_opencode2-adapter",
+      );
+      const { runtime, thread } = yield* resumed(
+        [
+          out("session.prompt", { sessionID: SESSION, text: "<any>" }),
+          promptAccepted,
+          event("session.execution.started", { sessionID: SESSION }),
+          event("session.created", {
+            sessionID: child,
+            parentID: SESSION,
+            slug: "child",
+            version: "2.0.18",
+            projectID: "global",
+            location: { directory: WORK },
+            subpath: "",
+            title: "Child",
+            agent: "general",
+            permissions: approvalRules,
+            model: { id: "big-pickle", providerID: "opencode", variant: "default" },
+          }),
+          event("session.created", {
+            sessionID: nested,
+            parentID: child,
+            slug: "nested",
+            version: "2.0.18",
+            projectID: "global",
+            location: { directory: WORK },
+            subpath: "",
+            title: "Nested",
+            agent: "general",
+            permissions: approvalRules,
+            model: { id: "big-pickle", providerID: "opencode", variant: "default" },
+          }),
+          event("permission.asked", { ...shellAsk.data, sessionID: nested }),
+          out("session.update", { sessionID: nested, permissions: granted }),
+          reply("session.update", null),
+          out("permission.reply", {
+            sessionID: nested,
+            requestID: shellAsk.data.id,
+            decision: "once",
+          }),
+          reply("permission.reply", null),
+          event("session.execution.succeeded", { sessionID: SESSION }),
+        ],
+        { runtimeMode: "approval-required" },
+      );
+      yield* runtime.startTurn(turnInput(thread, bigPickle, "approval-required"));
+      const request = yield* requestOf(runtime);
+      assert.isDefined(request);
+      yield* runtime.respondToRuntimeRequest({
+        requestId: request!.id,
+        decision: "acceptForSession",
+      });
+      assert.equal((yield* terminalOf(runtime))?.status, "completed");
+    }).pipe(Effect.scoped),
+  );
+});
+
+it.layer(McpProviderSessions.layer)("OpenCode2 approval retries", (it) => {
+  it.effect("rejects a repeated native request after its approval was resolved", () =>
+    Effect.gen(function* () {
+      const { runtime, thread } = yield* resumed(
+        [
+          out("session.prompt", { sessionID: SESSION, text: "<any>" }),
+          promptAccepted,
+          shellAskEvent,
+          out("permission.reply", {
+            sessionID: SESSION,
+            requestID: shellAsk.data.id,
+            decision: "once",
+          }),
+          reply("permission.reply", null),
+          shellAskEvent,
+          out("permission.reply", {
+            sessionID: SESSION,
+            requestID: shellAsk.data.id,
+            decision: "reject",
+          }),
+          reply("permission.reply", null),
+          event("session.execution.succeeded", { sessionID: SESSION }),
+        ],
+        { runtimeMode: "approval-required" },
+      );
+      yield* runtime.startTurn(turnInput(thread, bigPickle, "approval-required"));
+      const request = yield* requestOf(runtime);
+      yield* runtime.respondToRuntimeRequest({ requestId: request!.id, decision: "accept" });
+      const remaining = yield* runtime.events.pipe(
+        Stream.takeUntil((event) => event.type === "turn.terminal"),
+        Stream.runCollect,
+      );
+      assert.isFalse(
+        remaining.some(
+          (event) =>
+            event.type === "runtime_request.updated" && event.runtimeRequest.status === "pending",
+        ),
+      );
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("allows the Session's own Nodex tools without approval", () =>
+    Effect.gen(function* () {
+      const { runtime, thread } = yield* resumed(
+        [
+          out("session.prompt", { sessionID: SESSION, text: "<any>" }),
+          promptAccepted,
+          event("permission.asked", {
+            ...shellAsk.data,
+            action: "nodex_app-thread_opencode2-adapter_page_write",
+            resources: ["page-1"],
+          }),
+          out("permission.reply", {
+            sessionID: SESSION,
+            requestID: shellAsk.data.id,
+            decision: "once",
+          }),
+          reply("permission.reply", null),
+          event("session.execution.succeeded", { sessionID: SESSION }),
+        ],
+        { runtimeMode: "approval-required" },
+      );
+      yield* runtime.startTurn(turnInput(thread, bigPickle, "approval-required"));
+      const remaining = yield* runtime.events.pipe(
+        Stream.takeUntil((event) => event.type === "turn.terminal"),
+        Stream.runCollect,
+      );
+      assert.isFalse(remaining.some((event) => event.type === "runtime_request.updated"));
+    }).pipe(Effect.scoped),
   );
 });

@@ -1,3 +1,4 @@
+import type { AgentDispatchModeLimit } from "@nodex/agent-runtime/contracts";
 import { residentConversationTurns } from "../../shared/codex-conversation-state/codex-turn-mutation";
 import * as path from "node:path";
 import type {
@@ -72,6 +73,7 @@ export class CodexThreadExecution extends Context.Service<
     readonly followUp: (
       threadId: string,
       prompt: string,
+      modeLimit?: AgentDispatchModeLimit,
     ) => Effect.Effect<void, CodexThreadExecutionError>;
   }
 >()("nodex/main/codex-application/CodexThreadExecution") {}
@@ -418,8 +420,8 @@ export const live: Layer.Layer<
               .pipe(Effect.asVoid),
           )
           .pipe(Effect.mapError((cause) => error("commit", threadId, cause))),
-      followUp: (threadId, prompt) =>
-        turns.start(threadId, prompt).pipe(
+      followUp: (threadId, prompt, modeLimit) =>
+        turns.start(threadId, prompt, modeLimit ? { modeLimit } : undefined).pipe(
           Effect.flatMap((turn) =>
             turn
               ? Effect.void

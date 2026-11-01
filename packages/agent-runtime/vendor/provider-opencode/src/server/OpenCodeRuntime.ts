@@ -1,7 +1,7 @@
 import { sdkFetch } from "./SseIntake.ts";
 import * as NodeURL from "node:url";
 
-import type { ChatAttachment } from "@t3tools/contracts";
+import type { ChatAttachment, ProviderApprovalDecision } from "@t3tools/contracts";
 import {
   createOpencodeClient,
   type Agent,
@@ -512,6 +512,19 @@ export function toOpenCodeFileParts(input: {
   }
 
   return parts;
+}
+
+export function toOpenCodePermissionReply(
+  decision: ProviderApprovalDecision,
+): "once" | "always" | "reject" {
+  switch (decision) {
+    case "accept":
+      return "once";
+    case "acceptForSession":
+      return "always";
+    default:
+      return "reject";
+  }
 }
 
 export function toOpenCodeQuestionAnswers(

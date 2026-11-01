@@ -21,6 +21,7 @@ import {
   type AppToolAuthorityCapture,
 } from "./AppToolCaller";
 import type { AppToolInvocation } from "./AppToolInvocationInbox";
+import { sessionMessageCeilingError } from "./session-message-policy";
 import { make as makeAuthority, denied } from "./SessionControlAuthority";
 import { parseAppToolArguments, toolFailure, toolSuccess } from "./app-tool-result";
 
@@ -82,6 +83,11 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
           return toolFailure("cannot_stop_calling_session");
         if (input.name === "set_session_unread") yield* access.authorize(sessionId);
         else yield* access.check(callerTarget, target);
+        const source =
+          input.name === "set_session_unread" ? null : yield* access.inspect(callerTarget);
+        const modeLimit = source
+          ? { runtimeMode: source.runtimeMode, interactionMode: source.interactionMode }
+          : undefined;
         if (!input.caller.isActive()) return toolFailure("call_withdrawn");
         const perform = Effect.gen(function* () {
           // Revalidate lifecycle and permission facts immediately before crossing the control owner.
@@ -90,7 +96,9 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
               ? yield* access.authorize(sessionId)
               : (yield* access.check(callerTarget, target)).session;
           const beforeNativeControl = Effect.gen(function* () {
-            const current = (yield* access.check(callerTarget, target)).session;
+            const { session: current, facts } = yield* access.check(callerTarget, target);
+            const ceilingError = source && facts ? sessionMessageCeilingError(source, facts) : null;
+            if (ceilingError) return yield* denied(ceilingError);
             if (!input.caller.isActive()) return yield* denied("call_withdrawn");
             if (
               current.session.execution_ref ||
@@ -142,6 +150,7 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
                   ...runtimeSessionTarget(target),
                   requestId: operationId,
                   reason,
+                  modeLimit,
                 })
               : {
                   threadId: session.thread?.thread_id ?? null,
@@ -166,6 +175,7 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
                 ...args,
                 ...runtimeSessionTarget(target),
                 requestId: operationId,
+                modeLimit,
               })
             : session.thread
               ? yield* native.queue(

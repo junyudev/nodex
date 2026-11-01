@@ -96,3 +96,34 @@ it.effect("refuses thread-owned capabilities to a caller signed in from outside 
     expect(error.threadId).toBeUndefined();
   });
 });
+
+it("keeps content credentials separate from a Thread's execution ceiling", () => {
+  const scope: McpInvocationContext.McpInvocationScope = {
+    environmentId: EnvironmentId.make("environment-1"),
+    requestNamespace: "client:session-1",
+    thread: undefined,
+    client: undefined,
+    capabilities: new Set(["orchestration"]),
+    issuedAt: 1,
+  };
+  expect(McpInvocationContext.callerModeCeiling(scope, undefined)).toEqual({
+    runtimeMode: "approval-required",
+    interactionMode: "default",
+  });
+  const clientScope = {
+    ...scope,
+    client: { sessionId: "external", label: "External client", access: "full-access" as const },
+  };
+  expect(McpInvocationContext.callerModeCeiling(clientScope, undefined).runtimeMode).toBe(
+    "full-access",
+  );
+  expect(
+    McpInvocationContext.callerModeCeiling(clientScope, {
+      runtimeMode: "auto",
+      interactionMode: "plan",
+    }),
+  ).toEqual({
+    runtimeMode: "auto",
+    interactionMode: "plan",
+  });
+});

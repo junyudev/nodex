@@ -1,10 +1,13 @@
 import {
   type AuthMcpClientAccess,
+  NARROWEST_RUNTIME_MODE,
   type EnvironmentId,
   McpCapabilityUnavailableError,
   OrchestratorMcpFailure,
   PreviewAutomationUnavailableError,
   type ProviderInstanceId,
+  type ProviderInteractionMode,
+  type RuntimeMode,
   type ThreadId,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
@@ -50,6 +53,17 @@ export interface McpInvocationScope {
   readonly thread: McpThreadCaller | undefined;
   readonly client: McpClientCaller | undefined;
 }
+
+/** Content access does not grant a thread more native execution authority. */
+export const callerModeCeiling = (
+  scope: McpInvocationScope,
+  caller:
+    | { readonly runtimeMode: RuntimeMode; readonly interactionMode: ProviderInteractionMode }
+    | undefined,
+): { readonly runtimeMode: RuntimeMode; readonly interactionMode: ProviderInteractionMode } => ({
+  runtimeMode: caller?.runtimeMode ?? scope.client?.access ?? NARROWEST_RUNTIME_MODE,
+  interactionMode: caller?.interactionMode ?? "default",
+});
 
 export class McpInvocationContext extends Context.Service<
   McpInvocationContext,

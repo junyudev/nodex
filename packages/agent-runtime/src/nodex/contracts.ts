@@ -4,6 +4,8 @@ export {
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
   PROVIDER_SEND_TURN_MAX_FILE_BYTES,
   getProviderAttachmentLimitError,
+  DEFAULT_RUNTIME_MODE,
+  RUNTIME_MODE_RANK,
 } from "@t3tools/contracts";
 export type {
   OrchestrationV2AppThread,
@@ -16,6 +18,8 @@ export type {
   OrchestrationV2ThreadShell,
   OrchestrationV2ThreadHistoryPage,
   ModelSelection,
+  RuntimeMode,
+  ProviderApprovalDecision,
   ProviderInstanceId,
   ThreadId,
   RunId,

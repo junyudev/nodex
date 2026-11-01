@@ -1,4 +1,7 @@
 import {
+  NARROWEST_RUNTIME_MODE,
+  RUNTIME_MODE_RANK,
+  type RuntimeMode,
   ModelSelection,
   OrchestrationV2AppThread,
   ProjectId,
@@ -11,6 +14,7 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+import * as ProviderInstanceRegistry from "../provider/ProviderInstanceRegistry.ts";
 import * as ProjectStore from "./ProjectStore.ts";
 
 /**
@@ -58,23 +62,46 @@ export class RuntimePolicyV2 extends Context.Service<RuntimePolicyV2, RuntimePol
 export const layer: Layer.Layer<RuntimePolicyV2> = Layer.succeed(RuntimePolicyV2, {
   resolve: (input) =>
     Effect.succeed({
-      runtimeMode: "full-access",
-
+      runtimeMode: input.thread.runtimeMode,
       interactionMode: input.thread.interactionMode,
       cwd: input.thread.worktreePath,
     }),
 });
 
+/** Resolve provider support without widening or changing the durable Thread mode. */
+export function providerRuntimeMode(
+  runtimeMode: RuntimeMode,
+  supportedRuntimeModes: ReadonlyArray<RuntimeMode> | undefined,
+): RuntimeMode {
+  if (supportedRuntimeModes === undefined || supportedRuntimeModes.length === 0) return runtimeMode;
+  return (
+    supportedRuntimeModes.reduce<RuntimeMode | undefined>(
+      (selected, mode) =>
+        RUNTIME_MODE_RANK[mode] <= RUNTIME_MODE_RANK[runtimeMode] &&
+        (selected === undefined || RUNTIME_MODE_RANK[mode] > RUNTIME_MODE_RANK[selected])
+          ? mode
+          : selected,
+      undefined,
+    ) ?? NARROWEST_RUNTIME_MODE
+  );
+}
+
 export const layerFromProjectStore: Layer.Layer<
   RuntimePolicyV2,
   never,
-  ProjectStore.ProjectStoreV2
+  ProjectStore.ProjectStoreV2 | ProviderInstanceRegistry.ProviderInstanceRegistry
 > = Layer.effect(
   RuntimePolicyV2,
   Effect.gen(function* () {
     const projects = yield* ProjectStore.ProjectStoreV2;
+    const providerInstances = yield* ProviderInstanceRegistry.ProviderInstanceRegistry;
     return RuntimePolicyV2.of({
       resolve: Effect.fn("RuntimePolicyV2.resolve")(function* (input) {
+        const instance = yield* providerInstances.getInstance(input.modelSelection.instanceId);
+        const supportedRuntimeModes =
+          instance === undefined
+            ? undefined
+            : (yield* instance.snapshot.getSnapshot).supportedRuntimeModes;
         const cwd =
           input.thread.worktreePath ??
           (yield* projects.get(input.thread.projectId).pipe(
@@ -101,8 +128,7 @@ export const layerFromProjectStore: Layer.Layer<
             ),
           ));
         return ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
-          runtimeMode: "full-access",
-
+          runtimeMode: providerRuntimeMode(input.thread.runtimeMode, supportedRuntimeModes),
           interactionMode: input.thread.interactionMode,
           cwd,
         });

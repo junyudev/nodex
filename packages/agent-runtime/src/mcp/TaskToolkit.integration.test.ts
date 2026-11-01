@@ -21,6 +21,7 @@ import {
   type ProviderOptionDescriptor,
   ProviderThreadId,
   ProviderTurnId,
+  type RuntimeMode,
   type ServerProvider,
   ThreadId,
   TurnItemId,
@@ -124,6 +125,7 @@ interface CapturedTurn {
   readonly instanceId: ProviderInstanceId;
   readonly threadId: ThreadId;
   readonly text: string;
+  readonly runtimeMode: RuntimeMode;
 }
 
 function unsupported(driver: ProviderDriverKind, detail: string) {
@@ -242,6 +244,7 @@ function makeDeterministicAdapter(input: {
                   instanceId: input.instanceId,
                   threadId: turnInput.threadId,
                   text: turnInput.message.text,
+                  runtimeMode: turnInput.runtimePolicy.runtimeMode,
                 },
               ]);
               const eventTime = yield* DateTime.now;
@@ -589,7 +592,7 @@ describe("task tools", () => {
             projectId,
             title: "Task parent",
             modelSelection: codexSelection,
-            runtimeMode: "full-access",
+            runtimeMode: "approval-required",
             interactionMode: "default",
             branch: null,
             worktreePath: cwd,
@@ -752,6 +755,14 @@ describe("task tools", () => {
             hasPendingFollowUps: false,
             waitTimedOut: false,
           });
+          expect(yield* Ref.get(capturedTurns)).toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({
+                threadId: childThreadId,
+                runtimeMode: "approval-required",
+              }),
+            ]),
+          );
           const acknowledged = yield* waitForProjection(
             orchestrator,
             parentThreadId,

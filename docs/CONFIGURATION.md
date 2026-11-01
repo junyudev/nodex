@@ -253,8 +253,8 @@ Native project configuration remains active in the selected execution folder.
 
 Model discovery supports OpenCode 1.x and 2.x and verifies the native metadata it requires.
 Nodex reuses a compatible installed executable; the install action leaves version selection
-to OpenCode's official installer. Native execution uses full access and automatically answers
-permission requests. Unsupported metadata produces a compatibility error with the native
+to OpenCode's official installer. Nodex installs native permission rules for the chat's
+permission mode; OpenCode offers Ask for approval and Full access. Unsupported metadata produces a compatibility error with the native
 version when available. An incompatible local executable includes an upgrade hint.
 
 The composer's model menu initially shows OpenCode models with native IDs ending in `-free`

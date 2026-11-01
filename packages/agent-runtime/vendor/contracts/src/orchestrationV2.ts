@@ -56,6 +56,7 @@ import {
 } from "./threadPullRequest.ts";
 import {
   ProviderApprovalDecision,
+  ProviderApprovalFullAccessOverride,
   ProviderApprovalOption,
   ProviderInteractionMode,
   ProviderRequestKind,
@@ -205,6 +206,10 @@ export type OrchestrationV2ContextTransfer = typeof OrchestrationV2ContextTransf
 export const OrchestrationV2SessionCapabilities = Schema.Struct({
   supportsMultipleProviderThreadsPerSession: Schema.Boolean,
   supportsModelSwitchInSession: Schema.Boolean,
+  /** A live session applies a changed runtime mode on its next turn without reopening. */
+  supportsRuntimeModeSwitchInSession: Schema.Boolean.pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed(false)),
+  ),
   supportsProviderSwitchingViaHandoff: Schema.Boolean,
 
   pendingRequestsSurviveRestart: Schema.Boolean,
@@ -1236,7 +1241,12 @@ export const OrchestrationV2RuntimeRequest = Schema.Struct({
   ]),
   status: Schema.Literals(["pending", "resolved", "expired", "cancelled"]),
   responseCapability: Schema.Union([
-    Schema.Struct({ type: Schema.Literal("live"), providerSessionId: ProviderSessionId }),
+    Schema.Struct({
+      type: Schema.Literal("live"),
+      providerSessionId: ProviderSessionId,
+      /** The provider can carry decline feedback back to the asking Agent. */
+      supportsFeedback: Schema.optional(Schema.Boolean),
+    }),
     Schema.Struct({
       type: Schema.Literal("message"),
       /** Codex reads replies to its asynchronous questions from its own reply envelope. */
@@ -1247,6 +1257,8 @@ export const OrchestrationV2RuntimeRequest = Schema.Struct({
   createdAt: Schema.DateTimeUtc,
   resolvedAt: Schema.NullOr(Schema.DateTimeUtc),
   decision: Schema.optional(ProviderApprovalDecision),
+  optionId: Schema.optional(Schema.String),
+  feedback: Schema.optional(Schema.String),
   answers: Schema.optional(ProviderUserInputAnswers),
   respondedBy: Schema.optional(UserInputResponder),
   /** Retained with the accepted response for exact Session-tool retries. */
@@ -1828,6 +1840,12 @@ export const OrchestrationV2TurnItem = Schema.Union([
     requestId: RuntimeRequestId,
     requestKind: ProviderRequestKind,
     prompt: Schema.optional(Schema.String),
+    reason: Schema.optional(Schema.String),
+    fullAccessOverride: Schema.optional(ProviderApprovalFullAccessOverride),
+    /** The person's answer, once resolved. */
+    decision: Schema.optional(ProviderApprovalDecision),
+    optionId: Schema.optional(Schema.String),
+    feedback: Schema.optional(Schema.String),
     /** App requesting access, for mcp-elicitation approvals (#8058). */
     appName: Schema.optional(Schema.String),
     /** Approval choices advertised by the provider (#8058). */
@@ -2058,6 +2076,7 @@ export const OrchestrationV2DomainEvent = Schema.Union([
       "thread.marked-unread",
       "thread.metadata-updated",
       "thread.pull-request-synced",
+      "thread.runtime-mode-updated",
       "thread.interaction-mode-updated",
       "thread.model-selection-updated",
       "thread.provider-switched",
@@ -2680,6 +2699,12 @@ export const OrchestrationV2TurnItemJson = Schema.Union([
     requestId: RuntimeRequestId,
     requestKind: ProviderRequestKind,
     prompt: Schema.optional(Schema.String),
+    reason: Schema.optional(Schema.String),
+    fullAccessOverride: Schema.optional(ProviderApprovalFullAccessOverride),
+    /** The person's answer, once resolved. */
+    decision: Schema.optional(ProviderApprovalDecision),
+    optionId: Schema.optional(Schema.String),
+    feedback: Schema.optional(Schema.String),
     /** App requesting access, for mcp-elicitation approvals (#8058). */
     appName: Schema.optional(Schema.String),
     /** Approval choices advertised by the provider (#8058). */
@@ -2952,6 +2977,7 @@ export const OrchestrationV2DomainEventJson = Schema.Union([
       "thread.marked-unread",
       "thread.pull-request-synced",
       "thread.metadata-updated",
+      "thread.runtime-mode-updated",
       "thread.interaction-mode-updated",
       "thread.model-selection-updated",
       "thread.provider-switched",
@@ -3290,6 +3316,12 @@ export const OrchestrationV2Command = Schema.Union([
     title: Schema.optional(TrimmedNonEmptyString),
   }),
   Schema.Struct({
+    type: Schema.Literal("thread.runtime-mode.set"),
+    commandId: CommandId,
+    threadId: ThreadId,
+    runtimeMode: RuntimeMode,
+  }),
+  Schema.Struct({
     type: Schema.Literal("thread.interaction-mode.set"),
     commandId: CommandId,
     threadId: ThreadId,
@@ -3483,7 +3515,10 @@ export const OrchestrationV2Command = Schema.Union([
     commandId: CommandId,
     threadId: ThreadId,
     requestId: RuntimeRequestId,
-    decision: Schema.optional(Schema.Literals(["accept", "decline", "cancel"])),
+    decision: Schema.optional(ProviderApprovalDecision),
+    optionId: Schema.optional(Schema.String),
+    /** Decline feedback, accepted only where the live request supports it. */
+    feedback: Schema.optional(Schema.String),
     answers: Schema.optional(ProviderUserInputAnswers),
     attachmentsByQuestionId: Schema.optional(UserInputAttachments),
   }),

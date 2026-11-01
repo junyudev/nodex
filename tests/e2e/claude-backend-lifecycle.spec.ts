@@ -273,7 +273,7 @@ test("runs a Claude Code chat in a new worktree environment and continues it wit
       cwd: worktreePath,
       model: "claude-opus-5",
       effort: "max",
-      permissionMode: "bypassPermissions",
+      permissionMode: "acceptEdits",
       fast: true,
       thinking: true,
       content: "Native Claude lifecycle",
@@ -294,7 +294,7 @@ test("runs a Claude Code chat in a new worktree environment and continues it wit
     });
     expect(
       observations().find(
-        ({ type, permissionMode }) => type === "launch" && permissionMode === "bypassPermissions",
+        ({ type, permissionMode }) => type === "launch" && permissionMode === "acceptEdits",
       ),
     ).toMatchObject({ allowsBypass: true });
 
@@ -314,7 +314,7 @@ test("runs a Claude Code chat in a new worktree environment and continues it wit
       effort: "medium",
       thinking: true,
       fast: false,
-      permissionMode: "bypassPermissions",
+      permissionMode: "acceptEdits",
     });
     await openComposerModelPicker(page);
     await sonnet.click();

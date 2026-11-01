@@ -1,5 +1,6 @@
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
+import { AgentRuntimeModeSchema } from "../schemas/agent-runtime-api";
 import { idempotencyKeySchema } from "./idempotency-key";
 
 export const createSessionSchema = z.strictObject({
@@ -54,6 +55,7 @@ export const createSessionSchema = z.strictObject({
   reasoningEffort: z
     .enum(["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"])
     .optional(),
+  runtimeMode: AgentRuntimeModeSchema.optional(),
   idempotencyKey: idempotencyKeySchema.optional(),
 });
 

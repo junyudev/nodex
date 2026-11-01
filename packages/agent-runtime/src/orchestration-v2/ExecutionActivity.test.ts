@@ -235,7 +235,7 @@ const fixture = Effect.gen(function* () {
         updatedAt: now,
       },
     });
-  return { thread, run, task, request, roster, secret, now };
+  return { thread, run, task, request, roster, secret, now, apply };
 });
 
 const activity = (rootThreadIds?: ReadonlyArray<string>) =>
@@ -780,5 +780,59 @@ it.effect("lists a settled Codex terminal as Session background activity using i
         startedAt: DateTime.formatIso(startedAt),
       },
     ]);
+  }).pipe(Effect.provide(layer)),
+);
+
+it.effect("rolls approval flags and action prompts through delegated tasks and side chats", () =>
+  Effect.gen(function* () {
+    const { thread, run, request, apply, now } = yield* fixture;
+    const root = yield* thread("root:approval-notifications");
+    const child = yield* thread("child:approval-notifications", root);
+    yield* run(child, "running");
+    const side = yield* thread("side:approval-notifications", undefined, {
+      sideChat: { sourceThreadId: root, sourceRunId: null, nativeFork: false },
+    });
+    for (const [owner, id, prompt] of [
+      [child, "approval:child", "git push origin main"],
+      [side, "approval:side", "Write /outside/config.json"],
+    ] as const) {
+      yield* request(owner, id, "pending", liveCapability, "command");
+      yield* apply({
+        type: "turn-item.updated",
+        threadId: owner,
+        payload: {
+          id: TurnItemId.make(`item:${id}`),
+          threadId: owner,
+          runId: null,
+          nodeId: NodeId.make(`node:${id}`),
+          providerThreadId: null,
+          providerTurnId: null,
+          nativeItemRef: null,
+          parentItemId: null,
+          ordinal: 1,
+          status: "waiting",
+          title: null,
+          startedAt: now,
+          completedAt: null,
+          updatedAt: now,
+          type: "approval_request",
+          requestId: RuntimeRequestId.make(id),
+          requestKind: "command",
+          prompt,
+        },
+      });
+    }
+    const read = () =>
+      readRootActivity({ rootThreadIds: [root] }).pipe(Effect.map((page) => page.items[0]));
+    const combined = yield* read();
+    assert.deepEqual(combined?.activeFlags, ["waitingOnApproval"]);
+    assert.equal(combined?.pendingRequestCount, 2);
+    assert.equal(combined?.approvalPrompt, "git push origin main");
+    yield* request(child, "approval:child", "resolved", liveCapability, "command");
+    assert.equal((yield* read())?.approvalPrompt, "Write /outside/config.json");
+    yield* request(side, "approval:side", "resolved", liveCapability, "command");
+    yield* request(root, "question:root", "pending", liveCapability);
+    assert.deepEqual((yield* read())?.activeFlags, ["waitingOnUserInput"]);
+    assert.isNull((yield* read())?.approvalPrompt);
   }).pipe(Effect.provide(layer)),
 );

@@ -16,7 +16,7 @@ export interface RuntimeSessionMessageInput {
   readonly mode: "auto" | "queue" | "steer" | "restart";
   readonly modelSelection?: NonNullable<AgentRuntimeMessage["modelSelection"]>;
   readonly attachments: readonly ResolvedSessionAttachment[];
-  readonly interactionModeCeiling?: "plan";
+  readonly modeLimit?: import("@nodex/agent-runtime/contracts").AgentDispatchModeLimit;
   readonly senderThreadId?: string;
   readonly senderRunId?: string | null;
 }
@@ -67,9 +67,7 @@ export const make = Effect.gen(function* () {
         mode: input.mode,
         messageFingerprint: input.fingerprint,
         resources: input.attachments,
-        ...(input.interactionModeCeiling
-          ? { interactionModeCeiling: input.interactionModeCeiling }
-          : {}),
+        ...(input.modeLimit ? { modeLimit: input.modeLimit } : {}),
         ...(input.senderThreadId === undefined ? {} : { senderThreadId: input.senderThreadId }),
         ...(input.senderRunId === undefined ? {} : { senderRunId: input.senderRunId }),
         message: {

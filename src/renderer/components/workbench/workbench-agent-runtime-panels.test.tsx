@@ -1,5 +1,6 @@
-import { act } from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { TestQueryProvider } from "@/test/query";
+import { act, type ReactElement } from "react";
+import { fireEvent, render as renderDom, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 import type {
   AgentSubagentOverview,
@@ -12,6 +13,8 @@ import {
   AgentRuntimeChildPanel,
   AgentRuntimeSubagentsOverviewPanel,
 } from "./workbench-agent-runtime-panels";
+
+const render = (ui: ReactElement) => renderDom(ui, { wrapper: TestQueryProvider });
 
 const childAdapter = vi.hoisted(() => vi.fn());
 vi.mock("@/features/local-conversation/agent-runtime-conversation-adapter", () => ({
@@ -344,4 +347,41 @@ it("counts every Done task and re-reads the totals a report from an unloaded pag
   expect(screen.getByText("Active · 1")).toBeTruthy();
   expect(overview).toHaveBeenCalledTimes(2);
   view.unmount();
+});
+
+it("names a child's pending approval using control metadata without reading its transcript", async () => {
+  const { agentRuntimeSnapshotFixture, agentRuntimeRow } =
+    await import("../../../shared/testing/agent-runtime-snapshot");
+  vi.spyOn(agentRuntimeRuntime, "overview").mockResolvedValue(
+    overviewOf([{ ...task("approval"), status: "waiting" }]),
+  );
+  vi.spyOn(agentRuntimeRuntime, "subscribe").mockResolvedValue(() => {});
+  const read = vi.spyOn(agentRuntimeRuntime, "read");
+  const control = vi.spyOn(agentRuntimeRuntime, "control").mockResolvedValue({
+    sessionId: "session",
+    projectId: null,
+    threadId: "child:approval",
+    snapshot: agentRuntimeSnapshotFixture({
+      projection: {
+        runtimeRequests: [
+          agentRuntimeRow("runtimeRequests", {
+            id: "request",
+            nodeId: "approval-node",
+            kind: "permission",
+            status: "pending",
+          }),
+        ],
+      },
+    }),
+  });
+  const view = render(
+    <AgentRuntimeSubagentsOverviewPanel sessionId="session" threadId="root" onSelect={vi.fn()} />,
+  );
+  try {
+    expect(await screen.findByText("Needs approval")).toBeTruthy();
+    expect(control).toHaveBeenCalledWith({ sessionId: "session", threadId: "child:approval" });
+    expect(read).not.toHaveBeenCalled();
+  } finally {
+    view.unmount();
+  }
 });

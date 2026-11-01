@@ -6,7 +6,11 @@ import type {
   AgentRuntimeOperations,
   AgentSnapshot,
   AgentTurnItem,
+  AgentDispatchModeLimit,
+  RuntimeMode,
 } from "@nodex/agent-runtime/contracts";
+
+export type { RuntimeMode } from "@nodex/agent-runtime/contracts";
 
 type CreateThread = Extract<AgentCommand, { readonly type: "thread.create" }>;
 type DispatchMessage = Extract<AgentCommand, { readonly type: "message.dispatch" }>;
@@ -27,7 +31,7 @@ export interface AgentRuntimeMessage {
 export interface AgentRuntimeLaunch {
   /** Immutable application-tool request identity; receipt replay precedes mutable preparation. */
   readonly messageFingerprint?: string;
-  readonly interactionModeCeiling?: "plan";
+  readonly modeLimit?: AgentDispatchModeLimit;
   /** Host-authorized resources, materialized by the execution owner before its first message. */
   readonly resources?: AgentRuntimeOperations["attachments.import"]["input"]["attachments"];
   readonly launchId: string;
@@ -40,6 +44,7 @@ export interface AgentRuntimeLaunch {
   readonly presentationTicket?: import("./nodex-app-tools/turn-presentation").CodexTurnPresentationTicket;
   readonly sourceRoot?: string;
   readonly modelSelection: CreateThread["modelSelection"];
+  readonly runtimeMode?: RuntimeMode;
   readonly interactionMode: CreateThread["interactionMode"];
   readonly runInTarget?: "localProject" | "newWorktree";
   readonly runInEnvironmentPath?: string | null;
@@ -110,6 +115,7 @@ export const AGENT_RUNTIME_CONTROL_EVENT_TYPES = [
   "thread.unsettled",
   "thread.metadata-updated",
   "thread.interaction-mode-updated",
+  "thread.runtime-mode-updated",
   "thread.model-selection-updated",
   "thread.provider-switched",
 ] as const satisfies readonly AgentEvent["event"]["type"][];
@@ -140,6 +146,8 @@ export type AgentRuntimeResponseInput = AgentRuntimeSessionTarget &
     Respond,
     | "requestId"
     | "decision"
+    | "optionId"
+    | "feedback"
     | "answers"
     | "attachmentsByQuestionId"
     | "respondedBy"
@@ -149,10 +157,11 @@ export type AgentRuntimeResponseInput = AgentRuntimeSessionTarget &
     readonly runId: string | null;
     /** One accepted answer batch; retries reuse it and later answers allocate a new identity. */
     readonly submissionId?: string;
-    readonly interactionModeCeiling?: "plan";
+    readonly modeLimit?: AgentDispatchModeLimit;
   };
 export type AgentRuntimeModeInput = AgentRuntimeSessionTarget & {
   readonly requestId: string;
+  readonly runtimeMode?: RuntimeMode;
   readonly interactionMode?: CreateThread["interactionMode"];
 };
 export type AgentRuntimeCompactInput = AgentRuntimeSessionTarget & {
@@ -236,6 +245,7 @@ export interface AgentRuntimeSideChatDiscardInput {
 /** Freezes an idle side chat as an ordinary Session without starting a Run. */
 export type AgentRuntimeSideChatSaveInput = AgentRuntimeSideChatCreateInput;
 export interface AgentRuntimeForkInput {
+  readonly modeLimit?: AgentDispatchModeLimit;
   readonly source: AgentRuntimeSessionTarget;
   readonly sessionId: string;
   readonly requestId: string;
@@ -291,6 +301,8 @@ export interface AgentRuntimeSessionActivity {
   readonly status: "running" | "waiting" | "background";
   readonly activeRunId: string | null;
   readonly pendingRequestCount: number;
+  readonly activeFlags?: AgentRootActivity["activeFlags"];
+  readonly approvalPrompt?: string | null;
   readonly backgroundTasks: AgentRootActivity["backgroundTasks"];
   readonly providerInstanceId: string;
   readonly model: string;

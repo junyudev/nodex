@@ -171,5 +171,11 @@ describe("Session execution projection", () => {
   test("treats absent activity as idle", () => {
     expect(runtimeSessionLiveIndicator(null)).toBeNull();
     expect(runtimeSessionLiveIndicator({ status: "background" })).toBe("background");
+    expect(
+      runtimeSessionLiveIndicator({
+        status: "waiting",
+        activeFlags: ["waitingOnApproval", "waitingOnUserInput"],
+      }),
+    ).toBe("approval");
   });
 });

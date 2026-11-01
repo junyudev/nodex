@@ -28,6 +28,7 @@ import {
   RunId,
   ThreadId,
   type OrchestrationV2ProviderThread,
+  type OrchestrationV2RuntimeRequest,
 } from "@t3tools/contracts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import { resolveSelfInvocation } from "@t3tools/shared/nodeRuntime";
@@ -602,8 +603,8 @@ function makeTurnInput(input: {
       title: "ACP adapter test",
       providerInstanceId: input.instanceId,
       modelSelection,
-      runtimeMode: "full-access",
-      interactionMode: "default",
+      runtimeMode: input.runtimePolicy.runtimeMode,
+      interactionMode: input.runtimePolicy.interactionMode,
       branch: null,
       worktreePath: null,
       activeProviderThreadId: input.providerThread.id,
@@ -3463,127 +3464,131 @@ describe("AcpAdapterV2", () => {
       }).pipe(Effect.provide(layerTest), Effect.scoped),
   );
 
-  it.live("automatically approves native permission requests and allows client terminals", () =>
-    Effect.gen(function* () {
-      const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-      const path = yield* Path.Path;
-      const selfInvocation = yield* resolveSelfInvocation();
-      const mockAgentPath = yield* path.fromFileUrl(
-        new URL("../../../scripts/acp-mock-agent.ts", import.meta.url),
-      );
-      type RuntimeService = AcpSessionRuntime.AcpSessionRuntime["Service"];
-      let requestPermission: Parameters<RuntimeService["handleRequestPermission"]>[0] | undefined;
-      let createTerminal: Parameters<RuntimeService["handleCreateTerminal"]>[0] | undefined;
-      let runtimeInput: AcpAdapterV2RuntimeInput | undefined;
-      const makeRuntime = makeMockRuntime({
-        childProcessSpawner,
-        mockAgentPath,
-        environment: { T3_ACP_EMIT_RUNNING_COMMAND_THEN_HANG: "1" },
-        wrapRuntime: (runtime) => ({
-          ...runtime,
-          handleRequestPermission: (handler) =>
-            Effect.sync(() => {
-              requestPermission = handler;
-            }).pipe(Effect.andThen(runtime.handleRequestPermission(handler))),
-          handleCreateTerminal: (handler) =>
-            Effect.sync(() => {
-              createTerminal = handler;
-            }).pipe(Effect.andThen(runtime.handleCreateTerminal(handler))),
-        }),
-      });
-      const instanceId = ProviderInstanceId.make("acp-test-unknown-permission-grant");
-      const adapter = yield* makeAcpAdapterV2({
-        instanceId,
-        flavor: {
-          driver: ACP_TEST_DRIVER,
-          capabilities: AcpProviderCapabilitiesV2,
-          interruptPromptOnCancel: true,
-          makeRuntime: (input) =>
-            Effect.sync(() => {
-              runtimeInput = input;
-            }).pipe(Effect.andThen(makeRuntime(input))),
-        },
-        selfInvocation,
-        clientTerminals: {},
-      });
-      const threadId = ThreadId.make("thread-acp-unknown-permission-grant");
-      const runtimePolicy = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
-        runtimeMode: "full-access",
-        interactionMode: "default",
-        cwd: process.cwd(),
-      });
-      const modelSelection = { instanceId, model: "default" } as const;
-      const runtime = yield* adapter.openSession({
-        threadId,
-        providerSessionId: ProviderSessionId.make("provider-session-acp-unknown-permission-grant"),
-        modelSelection,
-        runtimePolicy,
-      });
-      const providerThread = yield* runtime.ensureThread({
-        threadId,
-        modelSelection,
-        runtimePolicy,
-      });
-      const turnStarted = yield* Deferred.make<void>();
-      yield* runtime.events.pipe(
-        Stream.runForEach((event) =>
-          event.type === "provider_turn.updated" && event.providerTurn.status === "running"
-            ? Deferred.succeed(turnStarted, undefined)
-            : Effect.void,
-        ),
-        Effect.forkScoped,
-      );
-      const turnFiber = yield* runtime
-        .startTurn(
-          makeTurnInput({
-            threadId,
-            providerThread,
-            instanceId,
-            runtimePolicy,
-            now: yield* DateTime.now,
+  it.live(
+    "automatically approves native permission requests and allows client terminals in full access",
+    () =>
+      Effect.gen(function* () {
+        const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+        const path = yield* Path.Path;
+        const selfInvocation = yield* resolveSelfInvocation();
+        const mockAgentPath = yield* path.fromFileUrl(
+          new URL("../../../scripts/acp-mock-agent.ts", import.meta.url),
+        );
+        type RuntimeService = AcpSessionRuntime.AcpSessionRuntime["Service"];
+        let requestPermission: Parameters<RuntimeService["handleRequestPermission"]>[0] | undefined;
+        let createTerminal: Parameters<RuntimeService["handleCreateTerminal"]>[0] | undefined;
+        let runtimeInput: AcpAdapterV2RuntimeInput | undefined;
+        const makeRuntime = makeMockRuntime({
+          childProcessSpawner,
+          mockAgentPath,
+          environment: { T3_ACP_EMIT_RUNNING_COMMAND_THEN_HANG: "1" },
+          wrapRuntime: (runtime) => ({
+            ...runtime,
+            handleRequestPermission: (handler) =>
+              Effect.sync(() => {
+                requestPermission = handler;
+              }).pipe(Effect.andThen(runtime.handleRequestPermission(handler))),
+            handleCreateTerminal: (handler) =>
+              Effect.sync(() => {
+                createTerminal = handler;
+              }).pipe(Effect.andThen(runtime.handleCreateTerminal(handler))),
           }),
-        )
-        .pipe(Effect.forkScoped);
-      yield* Deferred.await(turnStarted);
-      if (requestPermission === undefined || createTerminal === undefined) {
-        return yield* Effect.die("ACP runtime must register permission and terminal handlers");
-      }
-
-      const permissionFiber = yield* requestPermission(
-        {
-          sessionId: "mock-session-1",
-          toolCall: {
-            toolCallId: "unknown-permission-tool",
-            title: "Unknown permission kind",
+        });
+        const instanceId = ProviderInstanceId.make("acp-test-unknown-permission-grant");
+        const adapter = yield* makeAcpAdapterV2({
+          instanceId,
+          flavor: {
+            driver: ACP_TEST_DRIVER,
+            capabilities: AcpProviderCapabilitiesV2,
+            interruptPromptOnCancel: true,
+            makeRuntime: (input) =>
+              Effect.sync(() => {
+                runtimeInput = input;
+              }).pipe(Effect.andThen(makeRuntime(input))),
           },
-          options: [{ optionId: "allow-once", name: "Allow once", kind: "allow_once" }],
-        },
-        { requestId: "unknown-permission-request", method: "session/request_permission" },
-      ).pipe(Effect.forkScoped);
-      assert.equal((yield* Fiber.join(permissionFiber)).outcome.outcome, "selected");
-      if (runtimeInput?.onOutgoingResponse === undefined)
-        return yield* Effect.die("Missing native acknowledgement");
-      yield* runtimeInput.onOutgoingResponse("unknown-permission-request");
+          selfInvocation,
+          clientTerminals: {},
+        });
+        const threadId = ThreadId.make("thread-acp-unknown-permission-grant");
+        const runtimePolicy = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          cwd: process.cwd(),
+        });
+        const modelSelection = { instanceId, model: "default" } as const;
+        const runtime = yield* adapter.openSession({
+          threadId,
+          providerSessionId: ProviderSessionId.make(
+            "provider-session-acp-unknown-permission-grant",
+          ),
+          modelSelection,
+          runtimePolicy,
+        });
+        const providerThread = yield* runtime.ensureThread({
+          threadId,
+          modelSelection,
+          runtimePolicy,
+        });
+        const turnStarted = yield* Deferred.make<void>();
+        yield* runtime.events.pipe(
+          Stream.runForEach((event) =>
+            event.type === "provider_turn.updated" && event.providerTurn.status === "running"
+              ? Deferred.succeed(turnStarted, undefined)
+              : Effect.void,
+          ),
+          Effect.forkScoped,
+        );
+        const turnFiber = yield* runtime
+          .startTurn(
+            makeTurnInput({
+              threadId,
+              providerThread,
+              instanceId,
+              runtimePolicy,
+              now: yield* DateTime.now,
+            }),
+          )
+          .pipe(Effect.forkScoped);
+        yield* Deferred.await(turnStarted);
+        if (requestPermission === undefined || createTerminal === undefined) {
+          return yield* Effect.die("ACP runtime must register permission and terminal handlers");
+        }
 
-      const terminalExit = yield* createTerminal(
-        {
-          sessionId: "mock-session-1",
-          command: process.execPath,
-          args: ["-e", "process.stdout.write('unexpected')"],
-        },
-        { requestId: "unknown-permission-terminal", method: "terminal/create" },
-      ).pipe(Effect.exit);
-      assert.isTrue(Exit.isSuccess(terminalExit));
+        const permissionFiber = yield* requestPermission(
+          {
+            sessionId: "mock-session-1",
+            toolCall: {
+              toolCallId: "unknown-permission-tool",
+              title: "Unknown permission kind",
+            },
+            options: [{ optionId: "allow-once", name: "Allow once", kind: "allow_once" }],
+          },
+          { requestId: "unknown-permission-request", method: "session/request_permission" },
+        ).pipe(Effect.forkScoped);
+        assert.equal((yield* Fiber.join(permissionFiber)).outcome.outcome, "selected");
+        if (runtimeInput?.onOutgoingResponse === undefined)
+          return yield* Effect.die("Missing native acknowledgement");
+        yield* runtimeInput.onOutgoingResponse("unknown-permission-request");
 
-      yield* runtime.interruptTurn({
-        providerThread,
-        providerTurnId: (yield* IdAllocator.IdAllocatorV2).derive.providerTurn({
-          driver: ACP_TEST_DRIVER,
-          nativeTurnId: acpScopedNativeId(instanceId, "mock-session-1:turn:1"),
-        }),
-      });
-      yield* Fiber.join(turnFiber);
-    }).pipe(Effect.provide(layerTest), Effect.scoped),
+        const terminalExit = yield* createTerminal(
+          {
+            sessionId: "mock-session-1",
+            command: process.execPath,
+            args: ["-e", "process.stdout.write('unexpected')"],
+          },
+          { requestId: "unknown-permission-terminal", method: "terminal/create" },
+        ).pipe(Effect.exit);
+        assert.isTrue(Exit.isSuccess(terminalExit));
+
+        yield* runtime.interruptTurn({
+          providerThread,
+          providerTurnId: (yield* IdAllocator.IdAllocatorV2).derive.providerTurn({
+            driver: ACP_TEST_DRIVER,
+            nativeTurnId: acpScopedNativeId(instanceId, "mock-session-1:turn:1"),
+          }),
+        });
+        yield* Fiber.join(turnFiber);
+      }).pipe(Effect.provide(layerTest), Effect.scoped),
   );
 
   it.effect("fails missing native ACP session ids through the typed start-turn error channel", () =>
@@ -13959,3 +13964,448 @@ describe("Claude ACP native work", () => {
       }).pipe(Effect.provide(layerTest), Effect.scoped),
   );
 });
+
+const makeAcpApprovalHarness = Effect.fnUntraced(function* (
+  mode: "approval-required" | "full-access" = "approval-required",
+  appEndpoint = false,
+) {
+  type Native = AcpSessionRuntime.AcpSessionRuntime["Service"];
+  let permission: Parameters<Native["handleRequestPermission"]>[0] | undefined;
+  let terminal: Parameters<Native["handleCreateTerminal"]>[0] | undefined;
+  let elicitation: Parameters<Native["handleElicitation"]>[0] | undefined;
+  let update: Parameters<Native["handleSessionUpdate"]>[0] | undefined;
+  let nativeInput: AcpAdapterV2RuntimeInput | undefined;
+  const promptStarted = yield* Deferred.make<void>();
+  const promptFinished = yield* Deferred.make<void>();
+  const requests = yield* Queue.unbounded<OrchestrationV2RuntimeRequest>();
+  const cancelledRequests = yield* Queue.unbounded<OrchestrationV2RuntimeRequest>();
+  const events: ProviderAdapter.ProviderAdapterV2Event[] = [];
+  const instanceId = ProviderInstanceId.make("acp-approval-contract");
+  const threadId = ThreadId.make("acp-approval-contract");
+  if (appEndpoint)
+    yield* (yield* McpProviderSessions.McpProviderSessions).set({
+      threadId,
+      providerInstanceId: instanceId,
+      providerSessionId: "acp-approval-contract",
+      environmentId: EnvironmentId.make("acp-approval-contract"),
+      endpoint: "http://127.0.0.1:43123/mcp",
+      authorizationHeader: "Bearer acp-approval-contract",
+      browserToolsAvailable: false,
+    });
+  const makeRuntime = makeMockRuntime({
+    childProcessSpawner: yield* ChildProcessSpawner.ChildProcessSpawner,
+    mockAgentPath: yield* (yield* Path.Path).fromFileUrl(
+      new URL("../../../scripts/acp-mock-agent.ts", import.meta.url),
+    ),
+    wrapRuntime: (runtime) => ({
+      ...runtime,
+      prompt: () =>
+        Deferred.succeed(promptStarted, undefined).pipe(
+          Effect.andThen(Deferred.await(promptFinished)),
+          Effect.as({ stopReason: "end_turn" as const }),
+        ),
+      cancel: Deferred.succeed(promptFinished, undefined).pipe(Effect.asVoid),
+      handleRequestPermission: (handler) =>
+        Effect.sync(() => {
+          permission = handler;
+        }).pipe(Effect.andThen(runtime.handleRequestPermission(handler))),
+      handleCreateTerminal: (handler) =>
+        Effect.sync(() => {
+          terminal = handler;
+        }).pipe(Effect.andThen(runtime.handleCreateTerminal(handler))),
+      handleElicitation: (handler) =>
+        Effect.sync(() => {
+          elicitation = handler;
+        }).pipe(Effect.andThen(runtime.handleElicitation(handler))),
+      handleSessionUpdate: (handler) =>
+        Effect.sync(() => {
+          update = handler;
+        }).pipe(Effect.andThen(runtime.handleSessionUpdate(handler))),
+    }),
+  });
+  const adapter = yield* makeAcpAdapterV2({
+    instanceId,
+    selfInvocation: yield* resolveSelfInvocation(),
+    clientTerminals: {},
+    flavor: {
+      driver: ACP_TEST_DRIVER,
+      capabilities: AcpProviderCapabilitiesV2,
+      makeRuntime: (input) =>
+        Effect.sync(() => {
+          nativeInput = input;
+        }).pipe(Effect.andThen(makeRuntime(input))),
+    },
+  });
+  const runtimePolicy = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
+    runtimeMode: mode,
+    interactionMode: "default",
+    cwd: process.cwd(),
+  });
+  const modelSelection = { instanceId, model: "default" } as const;
+  const runtime = yield* adapter.openSession({
+    threadId,
+    providerSessionId: ProviderSessionId.make("acp-approval-contract"),
+    modelSelection,
+    runtimePolicy,
+  });
+  const providerThread = yield* runtime.ensureThread({ threadId, modelSelection, runtimePolicy });
+  yield* runtime.events.pipe(
+    Stream.runForEach((event) => {
+      events.push(event);
+      if (event.type === "runtime_request.updated" && event.runtimeRequest.status === "cancelled")
+        return Queue.offer(cancelledRequests, event.runtimeRequest);
+      return event.type === "runtime_request.updated" && event.runtimeRequest.status === "pending"
+        ? Queue.offer(requests, event.runtimeRequest)
+        : Effect.void;
+    }),
+    Effect.forkScoped,
+  );
+  const turnFiber = yield* runtime
+    .startTurn(
+      makeTurnInput({
+        threadId,
+        providerThread,
+        instanceId,
+        runtimePolicy,
+        now: yield* DateTime.now,
+      }),
+    )
+    .pipe(Effect.forkScoped);
+  yield* Deferred.await(promptStarted);
+  if (
+    permission === undefined ||
+    terminal === undefined ||
+    elicitation === undefined ||
+    update === undefined ||
+    nativeInput?.onOutgoingResponse === undefined
+  )
+    return yield* Effect.die("Missing ACP client callbacks");
+  const acknowledge = nativeInput.onOutgoingResponse;
+  const createTerminalHandler = terminal;
+  const createTerminal = (
+    execution = { command: process.execPath, args: ["-e", "process.stdout.write('approved')"] },
+  ) =>
+    createTerminalHandler(
+      {
+        sessionId: "mock-session-1",
+        ...execution,
+      },
+      { method: "terminal/create", requestId: "terminal" },
+    );
+  const stop = runtime.interruptTurn({
+    providerThread,
+    providerTurnId: (yield* IdAllocator.IdAllocatorV2).derive.providerTurn({
+      driver: ACP_TEST_DRIVER,
+      nativeTurnId: acpScopedNativeId(instanceId, "mock-session-1:turn:1"),
+    }),
+  });
+  return {
+    runtime,
+    providerThread,
+    runtimePolicy,
+    permission,
+    elicitation,
+    update,
+    requests,
+    cancelledRequests,
+    events,
+    acknowledge,
+    createTerminal,
+    stop,
+    finish: Deferred.succeed(promptFinished, undefined).pipe(Effect.andThen(Fiber.join(turnFiber))),
+    turnFiber,
+  };
+});
+
+const acpApprovalOptions = [
+  { kind: "allow_once", optionId: "native-once-id", name: "Allow this command" },
+  { kind: "allow_always", optionId: "native-session-id", name: "Allow commands for this session" },
+  { kind: "reject_once", optionId: "native-reject-id", name: "Reject this command" },
+] as const;
+
+describe("ACP interactive approval contract", () => {
+  it.live("keeps full-access permissions automatic after turn settlement", () =>
+    Effect.gen(function* () {
+      const h = yield* makeAcpApprovalHarness("full-access");
+      yield* h.finish;
+      const response = yield* h.permission(
+        {
+          sessionId: "mock-session-1",
+          toolCall: { toolCallId: "post-settle-command", kind: "execute" },
+          options: acpApprovalOptions,
+        },
+        { method: "session/request_permission", requestId: "post-settle-permission" },
+      );
+      assert.deepEqual(response.outcome, { outcome: "selected", optionId: "native-once-id" });
+      yield* h.acknowledge("post-settle-permission");
+      assert.isFalse(h.events.some((event) => event.type === "runtime_request.updated"));
+      assert.isTrue(Exit.isSuccess(yield* h.createTerminal().pipe(Effect.exit)));
+    }).pipe(Effect.provide(layerTest), Effect.scoped),
+  );
+
+  for (const [decision, expected] of [
+    ["accept", "native-once-id"],
+    ["acceptForSession", "native-session-id"],
+    ["decline", "native-reject-id"],
+    ["cancel", null],
+  ] as const) {
+    it.live(`holds permission until ${decision} and returns its native option ID`, () =>
+      Effect.gen(function* () {
+        const h = yield* makeAcpApprovalHarness();
+        assert.isTrue(Exit.isFailure(yield* h.createTerminal().pipe(Effect.exit)));
+        yield* h.update({
+          sessionId: "mock-session-1",
+          update: {
+            sessionUpdate: "tool_call",
+            toolCallId: "tracked-command",
+            title: "Terminal",
+            kind: "execute",
+            status: "pending",
+            rawInput: { command: ["printf", "hello"] },
+          },
+        });
+        const permissionFiber = yield* h
+          .permission(
+            {
+              sessionId: "mock-session-1",
+              toolCall: { toolCallId: "tracked-command" },
+              options: acpApprovalOptions,
+            },
+            { method: "session/request_permission", requestId: "native-permission" },
+          )
+          .pipe(Effect.forkScoped);
+        const request = yield* Queue.take(h.requests);
+        assert.isUndefined(permissionFiber.pollUnsafe());
+        assert.equal(request.kind, "command");
+        assert.equal(request.responseCapability.type, "live");
+        const item = h.events.find(
+          (event) =>
+            event.type === "turn_item.updated" && event.turnItem.type === "approval_request",
+        );
+        assert.isDefined(item);
+        if (item?.type === "turn_item.updated" && item.turnItem.type === "approval_request") {
+          assert.equal(item.turnItem.prompt, "printf hello");
+          assert.deepEqual(item.turnItem.options, [
+            { decision: "accept", optionId: "native-once-id", label: "Allow this command" },
+            {
+              decision: "acceptForSession",
+              optionId: "native-session-id",
+              label: "Allow commands for this session",
+            },
+            { decision: "decline", optionId: "native-reject-id", label: "Reject this command" },
+          ]);
+        }
+        const responseFiber = yield* h.runtime
+          .respondToRuntimeRequest({ requestId: request.id, decision })
+          .pipe(Effect.forkScoped);
+        const response = yield* Fiber.join(permissionFiber);
+        assert.deepEqual(
+          response.outcome,
+          expected === null
+            ? { outcome: "cancelled" }
+            : { outcome: "selected", optionId: expected },
+        );
+        assert.isUndefined(responseFiber.pollUnsafe());
+        yield* h.acknowledge("native-permission");
+        yield* Fiber.join(responseFiber);
+        assert.equal(
+          Exit.isSuccess(yield* h.createTerminal().pipe(Effect.exit)),
+          decision === "acceptForSession",
+        );
+        const approvedExecution = { command: "printf", args: ["hello"] };
+        assert.equal(
+          Exit.isSuccess(yield* h.createTerminal(approvedExecution).pipe(Effect.exit)),
+          decision === "accept" || decision === "acceptForSession",
+        );
+        assert.equal(
+          Exit.isSuccess(yield* h.createTerminal(approvedExecution).pipe(Effect.exit)),
+          decision === "acceptForSession",
+        );
+        yield* h.finish;
+        assert.equal(
+          Exit.isSuccess(yield* h.createTerminal().pipe(Effect.exit)),
+          decision === "acceptForSession",
+        );
+        if (decision === "acceptForSession") {
+          yield* h.runtime.resumeThread({
+            providerThread: h.providerThread,
+            runtimePolicy: { ...h.runtimePolicy, runtimeMode: "full-access" },
+          });
+          yield* h.runtime.resumeThread({
+            providerThread: h.providerThread,
+            runtimePolicy: h.runtimePolicy,
+          });
+          assert.isTrue(Exit.isFailure(yield* h.createTerminal().pipe(Effect.exit)));
+        }
+      }).pipe(Effect.provide(layerTest), Effect.scoped),
+    );
+  }
+
+  for (const [kind, options, decision] of [
+    ["unknown", acpApprovalOptions, "accept"],
+    [
+      "execute",
+      acpApprovalOptions.filter((option) => option.kind !== "allow_always"),
+      "acceptForSession",
+    ],
+  ] as const) {
+    it.live(
+      `never grants terminals from ${kind === "unknown" ? "an unknown ID" : "a missing native option"}`,
+      () =>
+        Effect.gen(function* () {
+          const h = yield* makeAcpApprovalHarness();
+          const permissionFiber = yield* h
+            .permission(
+              {
+                sessionId: "mock-session-1",
+                toolCall: { toolCallId: "untracked", ...(kind === "execute" ? { kind } : {}) },
+                options,
+              },
+              { method: "session/request_permission", requestId: "permission" },
+            )
+            .pipe(Effect.forkScoped);
+          const request = yield* Queue.take(h.requests);
+          const reply = yield* h.runtime
+            .respondToRuntimeRequest({ requestId: request.id, decision })
+            .pipe(Effect.forkScoped);
+          const response = yield* Fiber.join(permissionFiber);
+          assert.deepEqual(
+            response.outcome,
+            kind === "unknown"
+              ? { outcome: "selected", optionId: "native-once-id" }
+              : { outcome: "cancelled" },
+          );
+          yield* h.acknowledge("permission");
+          yield* Fiber.join(reply);
+          assert.isTrue(Exit.isFailure(yield* h.createTerminal().pipe(Effect.exit)));
+          yield* h.finish;
+        }).pipe(Effect.provide(layerTest), Effect.scoped),
+    );
+  }
+
+  for (const stop of [false, true]) {
+    it.live(`${stop ? "Stop" : "turn completion"} cancels unanswered approvals`, () =>
+      Effect.gen(function* () {
+        const h = yield* makeAcpApprovalHarness();
+        const permissionFiber = yield* h
+          .permission(
+            {
+              sessionId: "mock-session-1",
+              toolCall: { toolCallId: "pending", kind: "execute" },
+              options: acpApprovalOptions,
+            },
+            { method: "session/request_permission", requestId: "permission" },
+          )
+          .pipe(Effect.forkScoped);
+        const pending = yield* Queue.take(h.requests);
+        const finalizing = yield* (stop ? h.stop : h.finish).pipe(Effect.forkScoped);
+        assert.deepEqual((yield* Fiber.join(permissionFiber)).outcome, { outcome: "cancelled" });
+        yield* h.acknowledge("permission");
+        yield* Fiber.join(finalizing);
+        yield* Fiber.join(h.turnFiber);
+        const cancelled = yield* Queue.take(h.cancelledRequests);
+        assert.equal(cancelled.id, pending.id);
+        assert.equal(cancelled.responseCapability.type, "not_resumable");
+      }).pipe(Effect.provide(layerTest), Effect.scoped),
+    );
+  }
+
+  for (const server of ["nodex_app", "external_tools"]) {
+    it.live(`${server} tagged MCP authorization follows its own approval boundary`, () =>
+      Effect.gen(function* () {
+        const h = yield* makeAcpApprovalHarness("approval-required", true);
+        const native = yield* h
+          .elicitation(
+            {
+              sessionId: "mock-session-1",
+              mode: "form",
+              message: "Run the requested tool",
+              requestedSchema: { type: "object", properties: {} },
+              _meta: { codex_approval_kind: "mcp_tool_call", server_name: server },
+            },
+            { method: "session/elicitation/create", requestId: "mcp_tool_call_approval_tool" },
+          )
+          .pipe(Effect.forkScoped);
+        if (server === "nodex_app") {
+          assert.deepEqual(yield* Fiber.join(native), { action: "accept", content: {} });
+          assert.isFalse(h.events.some((event) => event.type === "runtime_request.updated"));
+        } else {
+          const request = yield* Queue.take(h.requests);
+          assert.equal(request.kind, "mcp-elicitation");
+          assert.isUndefined(native.pollUnsafe());
+          const reply = yield* h.runtime
+            .respondToRuntimeRequest({ requestId: request.id, decision: "decline" })
+            .pipe(Effect.forkScoped);
+          assert.deepEqual(yield* Fiber.join(native), { action: "decline" });
+          yield* h.acknowledge("mcp_tool_call_approval_tool");
+          yield* Fiber.join(reply);
+        }
+        yield* h.acknowledge("mcp_tool_call_approval_tool");
+        yield* h.finish;
+      }).pipe(Effect.provide(layerTest), Effect.scoped),
+    );
+  }
+});
+
+it.live("preserves and selects distinct native remembered permission scopes", () =>
+  Effect.gen(function* () {
+    const h = yield* makeAcpApprovalHarness();
+    const options = [
+      {
+        kind: "allow_always" as const,
+        optionId: "allow-command",
+        name: "Allow this command for this chat",
+      },
+      {
+        kind: "allow_always" as const,
+        optionId: "allow-directory",
+        name: "Allow commands in this directory for this chat",
+      },
+    ];
+    const permission = yield* h
+      .permission(
+        {
+          sessionId: "mock-session-1",
+          toolCall: { toolCallId: "scopes", kind: "execute" },
+          options,
+        },
+        { method: "session/request_permission", requestId: "native-scopes" },
+      )
+      .pipe(Effect.forkScoped);
+    const request = yield* Queue.take(h.requests);
+    const item = h.events.find(
+      (event) => event.type === "turn_item.updated" && event.turnItem.type === "approval_request",
+    );
+    assert.deepEqual(
+      item?.type === "turn_item.updated" && item.turnItem.type === "approval_request"
+        ? item.turnItem.options
+        : undefined,
+      options.map((option) => ({
+        decision: "acceptForSession",
+        optionId: option.optionId,
+        label: option.name,
+      })),
+    );
+    assert.isTrue(
+      Exit.isFailure(
+        yield* h.runtime
+          .respondToRuntimeRequest({ requestId: request.id, decision: "acceptForSession" })
+          .pipe(Effect.exit),
+      ),
+    );
+    const response = yield* h.runtime
+      .respondToRuntimeRequest({
+        requestId: request.id,
+        decision: "acceptForSession",
+        optionId: "allow-directory",
+      })
+      .pipe(Effect.forkScoped);
+    assert.deepEqual((yield* Fiber.join(permission)).outcome, {
+      outcome: "selected",
+      optionId: "allow-directory",
+    });
+    yield* h.acknowledge("native-scopes");
+    yield* Fiber.join(response);
+    yield* h.finish;
+  }).pipe(Effect.provide(layerTest), Effect.scoped),
+);

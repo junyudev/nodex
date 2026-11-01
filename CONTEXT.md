@@ -16,7 +16,8 @@ Nodex is a local-first workspace for durable content and agent work. A local
 Profile owns one Library containing Pages, Databases, Blocks, Documents, and
 their durable history. A Project is an execution context: it owns filesystem
 roots, sessions, terminals and Threads, and binds one primary Database.
-The single user and all Agents have full access to every resource in that Profile.
+The single user and all Agents have full content access to every resource in that Profile;
+what an Agent may do natively on the computer is its Session's Permission Mode.
 Projects organize execution, placement and lifecycle. Project lifecycle
 never owns or deletes Library content.
 
@@ -86,6 +87,14 @@ part of that identity; a different native profile requires a new instance.
 A Model Selection combines a Backend Binding, an exact backend-owned model identifier, and the
 backend's supported model options and mode. A provider may form part of the model identifier, but never replaces
 the runtime instance that owns the conversation.
+
+### Permission Mode
+
+A Permission Mode is a Session's native execution access: Ask for approval, Approve for me or
+Full access, from narrowest to broadest. It governs what the Agent's own process may do on the
+computer and never narrows content access through Nodex tools. Delegated and Agent-started work
+cannot exceed the caller's mode. See
+[Agent Permissions and Approvals](docs/product-specs/agent-permissions-behavior.md).
 
 ### Profile
 
@@ -792,7 +801,7 @@ state is rejected rather than replayed.
     or embed a foreign body in the host Document.
 11. Each Project binds one Database; each Database has at most one active
     Project. Project lifecycle never removes content.
-12. The user and all Agents have full access to the current Profile; execution identity and resource lifecycle remain exact.
+12. The user and all Agents have full content access to the current Profile; native execution follows the Session's Permission Mode, and execution identity and resource lifecycle remain exact.
 13. Committed engine/database/transfer mutations are idempotent and acknowledged
     only after their SQLite transaction commits.
 14. Restore appends a forward engine mutation and never rewinds causal history.

@@ -1,6 +1,6 @@
 # ADR 0065: Claude Code owns its native execution and configuration
 
-- Status: Superseded for local Session execution by [ADR 0068](0068-agent-runtime-execution-authority.md)
+- Status: Superseded for local Session execution by [ADR 0068](0068-agent-runtime-execution-authority.md); permission handling superseded by [ADR 0074](0074-content-access-and-native-execution-permissions.md)
 - Date: 2026-09-29
 - Owners: Nodex maintainers
 - Refines: [ADR 0056](0056-native-codex-and-capability-negotiated-agent-backends.md)

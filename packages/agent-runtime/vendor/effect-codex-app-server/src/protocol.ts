@@ -3,6 +3,7 @@ import * as Cause from "effect/Cause";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import * as FiberMap from "effect/FiberMap";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Scope from "effect/Scope";
@@ -195,6 +196,7 @@ export const makeCodexAppServerPatchedProtocol = Effect.fn("makeCodexAppServerPa
     const terminationFailure = yield* Ref.make(Option.none<CodexError.CodexAppServerError>());
     const terminationSignal = yield* Deferred.make<void>();
     const activeRequestHandlers = yield* Ref.make({ count: 0, bytes: 0 });
+    const requestHandlers = yield* FiberMap.make<string | number>().pipe(Scope.provide(requestHandlerScope));
 
     const logProtocol = (event: CodexAppServerProtocolLogEvent) => {
       if (event.direction === "incoming" && !options.logIncoming) {
@@ -390,7 +392,7 @@ export const makeCodexAppServerPatchedProtocol = Effect.fn("makeCodexAppServerPa
                     Effect.asVoid,
                   ),
                 ),
-                Effect.forkIn(requestHandlerScope, { startImmediately: true }),
+                FiberMap.run(requestHandlers, request.id),
                 Effect.asVoid,
               );
             }),
@@ -399,8 +401,15 @@ export const makeCodexAppServerPatchedProtocol = Effect.fn("makeCodexAppServerPa
         Effect.asVoid,
       );
 
+    const releaseResolvedRequest = (notification: CodexAppServerIncomingNotification) =>
+      notification.method === "serverRequest/resolved" &&
+      isObject(notification.params) && isJsonRpcId(notification.params.requestId)
+        ? FiberMap.remove(requestHandlers, notification.params.requestId)
+        : Effect.void;
+
     const handleNotification = (notification: CodexAppServerIncomingNotification) =>
-      incomingNotifications.offer(notification).pipe(
+      releaseResolvedRequest(notification).pipe(
+        Effect.andThen(incomingNotifications.offer(notification)),
         Effect.flatMap((accepted) =>
           accepted
             ? Effect.void

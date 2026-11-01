@@ -4,7 +4,7 @@
 
 The Workbench has four sidebar destinations: Home for chats, Projects, and Inbox; Space for Pages, Databases, and Canvases; Scheduled for scheduled tasks and their runs; Plugins (Customize) for plugins and skills. Home presents each Project as a folder in its sidebar. Expanded Projects show durable Project-owned Sessions, but a Project can have zero Sessions until the first ordinary New Chat action ensures its Core-owned default draft. Each Window Session renders an owner-scoped Scene through one shared composition: a Project Scene's protected root is the Project's own Inbox with its Views as ordinary tabs beside it, the singleton Inbox Scene's protected root is the Library Inbox with Library content as ordinary tabs beside it, a Session Scene keeps Conversation as its primary plane, and Space uses the singleton Library Scene to present trusted Library content as ordinary tabs without a protected primary. A Project Agent Dock can observe and send to one real Session without changing the selected Scene. Core-backed domain data remains shared; Scene surfaces, Dock presentation, and panel arrangement do not synchronize across windows.
 
-Detailed Auto-review preset, config, and approval-lifecycle rules are specified in [Auto-review Behavior](./auto-review-behavior.md).
+Permission modes and approval lifecycle are specified in [Agent Permissions and Approvals](./agent-permissions-behavior.md).
 Thread Summary content and row actions are specified in [Thread Summary Panel Behavior](./thread-summary-panel-behavior.md). Scheduled, Inbox, and Settings route behavior is specified in [Scheduled Route Behavior](./scheduled-route-behavior.md), [Inbox Behavior](./inbox-behavior.md), and [Settings Route Behavior](./settings-route-behavior.md).
 
 ## Layout

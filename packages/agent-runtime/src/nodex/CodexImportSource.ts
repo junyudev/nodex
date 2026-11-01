@@ -8,7 +8,7 @@ import type {
   ThreadTimelineListResponse,
 } from "@nodex/codex-app-server-protocol/v2";
 import type { CodexNativeInteraction } from "@t3tools/provider-core/server/nativeInteraction";
-import { EventId, ProviderSessionId } from "@t3tools/contracts";
+import { DEFAULT_RUNTIME_MODE, EventId, ProviderSessionId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as DateTime from "effect/DateTime";
 import * as Schema from "effect/Schema";
@@ -31,7 +31,7 @@ export const openCodexImportSource = Effect.fn("CodexImportSource.open")(functio
   const sink = yield* EventSinkV2;
   const sessions = yield* ProviderSessionManagerV2;
   const runtimePolicy = {
-    runtimeMode: "full-access" as const,
+    runtimeMode: input.runtimeMode ?? DEFAULT_RUNTIME_MODE,
     interactionMode: "default" as const,
     cwd: input.cwd,
   };

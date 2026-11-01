@@ -92,7 +92,8 @@ changes and partial configuration failures preserve the actual applied state. Ru
 its own model selection, so editing the current Composer cannot rewrite queued work.
 
 Conversation events retain text, thought, tools, plans, files, usage, supported images and native
-extensions through the existing normalized Runtime history. Native permissions use full access;
+extensions through the existing normalized Runtime history. ACP Agents offer Ask for approval
+and Full access; native permission requests and client terminals follow the chat's mode, and
 questions that need user information remain interactive. Dedicated compatibility adapters require
 evidence of their native capability and never infer it solely from an executable basename.
 

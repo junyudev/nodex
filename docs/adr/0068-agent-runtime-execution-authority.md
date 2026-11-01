@@ -4,6 +4,7 @@
 - Date: 2026-10-14
 - Owners: Nodex maintainers
 - Refines: [ADR 0066](0066-native-model-selection-and-opencode.md)
+- Refined by: native execution permissions in [ADR 0074](0074-content-access-and-native-execution-permissions.md)
 - Supersedes for Agent Runtime bound Sessions: conversation execution ownership in [ADR 0048](0048-effect-main-application-kernel.md), [ADR 0056](0056-native-codex-and-capability-negotiated-agent-backends.md), [ADR 0065](0065-native-claude-code-backend.md) and [ADR 0055](0055-acp-session-runtime-boundary.md)
 - Supersedes: the Agent/resource permission distinctions in [ADR 0021](0021-local-user-library-workspace-authority.md), [ADR 0018](0018-full-access-turn-library-authority.md) and [ADR 0019](0019-project-agent-resource-consent.md)
 
@@ -39,8 +40,9 @@ execution bindings are mutually exclusive for a Session.
 Nodex is a single-user Profile with full content access. Every Agent can read and
 write its Projects, Pages and Library, including work in other Projects or Sessions.
 Parents, children and background work share this model. Plan selects planning behavior.
-Native execution uses full access and automatically approves permission requests;
-questions requiring user information remain interactive.
+Native execution access is a separate per-Session permission mode, specified by
+[ADR 0074](0074-content-access-and-native-execution-permissions.md); questions requiring
+user information remain interactive.
 
 Desktop Host invocation identity belongs to an exact native connection of the current
 engine process. Providers supplying causal call metadata also identify the original Run

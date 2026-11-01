@@ -14,6 +14,7 @@ import {
   EventId,
   MessageId,
   type ModelSelection,
+  type OrchestrationV2RuntimeRequest,
   NodeId,
   type OrchestrationV2AppThread,
   type OrchestrationV2ProviderThread,
@@ -49,6 +50,7 @@ import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as PlatformError from "effect/PlatformError";
 import * as Ref from "effect/Ref";
+import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import { TestClock } from "effect/testing";
@@ -137,7 +139,7 @@ describe("Codex context usage compatibility", () => {
 });
 
 describe("CodexAdapterV2 file change approvals", () => {
-  it("uses nonblank reasons before sorted file operations and renamed paths", () => {
+  it("lists sorted file operations and renamed paths separately from reasons", () => {
     const fileChanges = {
       "/tmp/removed.md": { type: "delete" as const, content: "gone" },
       "/tmp/added.ts": { type: "add" as const, content: "export {};" },
@@ -152,7 +154,7 @@ describe("CodexAdapterV2 file change approvals", () => {
         reason: "  Update configuration. ",
         fileChanges,
       }),
-      "Update configuration.",
+      "add /tmp/added.ts\nupdate /tmp/moved.ts -> /tmp/renamed.ts\ndelete /tmp/removed.md",
     );
     assert.equal(
       CodexAdapterV2.codexFileChangeApprovalPrompt({ reason: " ", fileChanges }),
@@ -441,6 +443,33 @@ describe("CodexAdapterV2 runtime policy", () => {
       assert.equal(result.approvalPolicy, "never");
       assert.equal(result.approvalsReviewer, "user");
       assert.deepEqual(result.sandboxPolicy, { type: "dangerFullAccess" });
+    }),
+  );
+
+  it.effect("sends the current sandbox and resets the reviewer on every mode transition", () =>
+    Effect.gen(function* () {
+      for (const runtimeMode of ["auto", "approval-required", "auto", "full-access"] as const) {
+        const params = yield* CodexAdapterV2.buildCodexTurnStartParams({
+          nativeThreadId: "mode-thread",
+          codexInput: [{ type: "text", text: "test" }],
+          runtimePolicy: { runtimeMode, interactionMode: "default", cwd: "/workspace" },
+          attachmentsDir: "/runtime/attachments",
+          sourceRoots: ["/workspace", "/sources/docs"],
+          modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
+        });
+        assert.equal(params.approvalsReviewer, runtimeMode === "auto" ? "auto_review" : "user");
+        assert.equal(params.approvalPolicy, runtimeMode === "full-access" ? "never" : "on-request");
+        assert.deepEqual(
+          params.sandboxPolicy,
+          runtimeMode === "full-access"
+            ? { type: "dangerFullAccess" }
+            : {
+                type: "workspaceWrite",
+                writableRoots: ["/workspace", "/sources/docs", "/runtime/attachments"],
+                networkAccess: false,
+              },
+        );
+      }
     }),
   );
 
@@ -2096,11 +2125,14 @@ describe("CodexAdapterV2 post-settle continuation", () => {
     transformClient?: (
       client: CodexClient.CodexAppServerClient["Service"],
     ) => CodexClient.CodexAppServerClient["Service"],
+    serverConfigOverride?: ServerConfig.ServerConfig["Service"],
   ) =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
       const idAllocator = yield* IdAllocator.IdAllocatorV2;
-      const serverConfig = yield* makeReplayServerConfig(transcript.scenario).pipe(Effect.orDie);
+      const serverConfig =
+        serverConfigOverride ??
+        (yield* makeReplayServerConfig(transcript.scenario).pipe(Effect.orDie));
       const continuationRequests: Array<ProviderContinuationRequests.ProviderContinuationRequest> =
         [];
       const clientFactory: CodexAdapterV2.CodexAppServerClientFactoryShape = {
@@ -2217,6 +2249,708 @@ describe("CodexAdapterV2 post-settle continuation", () => {
         firstTerminal: Deferred.await(firstTerminal),
       };
     });
+
+  it.effect("reuses session grants only on their native thread and current mode epoch", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const nativeThreadId = "session-grants";
+        const modes = [
+          "approval-required",
+          "approval-required",
+          "auto",
+          "approval-required",
+        ] as const;
+        const config = yield* makeReplayServerConfig("session-grants").pipe(Effect.orDie);
+        const requests = yield* Queue.unbounded<OrchestrationV2RuntimeRequest>();
+        const terminals = yield* Queue.unbounded<void>();
+        const entries: Array<CodexReplay.CodexAppServerReplayEntry> = codexReplayPreamble({
+          nativeThreadId,
+          nativeTurnId: "unused",
+          prompt: "unused",
+        }).slice(0, -3);
+        for (const [index, runtimeMode] of modes.entries()) {
+          const turnId = `grant-turn-${index}`;
+          const turn = makeCodexReplayTurn({ id: turnId, status: "inProgress" });
+          entries.push(
+            {
+              type: "expect_outbound",
+              frame: {
+                id: 3 + index,
+                method: "turn/start",
+                params: {
+                  threadId: nativeThreadId,
+                  input: [{ type: "text", text: `round ${index}` }],
+                  cwd: "/workspace",
+                  model: "gpt-5.4",
+                  approvalPolicy: "on-request",
+                  approvalsReviewer: runtimeMode === "auto" ? "auto_review" : "user",
+                  sandboxPolicy: {
+                    type: "workspaceWrite",
+                    writableRoots: ["/workspace", config.attachmentsDir],
+                    networkAccess: false,
+                  },
+                  summary: "detailed",
+                },
+              },
+            },
+            { type: "emit_inbound", frame: { id: 3 + index, result: { turn } } },
+            {
+              type: "emit_inbound",
+              frame: { method: "turn/started", params: { threadId: nativeThreadId, turn } },
+            },
+          );
+          for (const kind of ["commandExecution", "fileChange"] as const) {
+            const id = `${turnId}-${kind}`;
+            entries.push(
+              {
+                type: "emit_inbound",
+                frame: {
+                  id,
+                  method: `item/${kind}/requestApproval`,
+                  params: {
+                    threadId: nativeThreadId,
+                    turnId,
+                    itemId: id,
+                    ...(kind === "commandExecution"
+                      ? {
+                          command: `cat ${id}`,
+                          ...(index === 1 ? { availableDecisions: ["accept", "decline"] } : {}),
+                        }
+                      : {}),
+                  },
+                },
+              },
+              {
+                type: "expect_outbound",
+                frame: {
+                  id,
+                  result: {
+                    decision:
+                      index === 1 && kind === "commandExecution" ? "accept" : "acceptForSession",
+                  },
+                },
+              },
+            );
+          }
+          entries.push({
+            type: "emit_inbound",
+            frame: {
+              method: "turn/completed",
+              params: { threadId: nativeThreadId, turn: { ...turn, status: "completed" } },
+            },
+          });
+        }
+        const harness = yield* makeCodexReplayHarness(
+          makeCodexReplayTranscript({ scenario: "session-grants", entries }),
+          (event) =>
+            event.type === "runtime_request.updated" && event.runtimeRequest.status === "pending"
+              ? Queue.offer(requests, event.runtimeRequest)
+              : event.type === "turn.terminal"
+                ? Queue.offer(terminals, undefined)
+                : Effect.void,
+          undefined,
+          undefined,
+          undefined,
+          config,
+        );
+        for (const [index, runtimeMode] of modes.entries()) {
+          yield* harness.runtime.startTurn({
+            ...makeCodexTestTurnInput({
+              threadId: harness.threadId,
+              providerThread: harness.providerThread,
+              now: yield* DateTime.now,
+              attemptId: RunAttemptId.make(`grant-attempt-${index}`),
+              text: `round ${index}`,
+            }),
+            runtimePolicy: { ...CODEX_TEST_RUNTIME_POLICY, runtimeMode },
+            providerTurnOrdinal: index + 1,
+          });
+          if (index !== 1) {
+            for (const kind of ["command", "file-change"]) {
+              const request = yield* Queue.take(requests);
+              assert.equal(request.kind, kind);
+              yield* harness.runtime.respondToRuntimeRequest({
+                requestId: request.id,
+                decision: "acceptForSession",
+              });
+            }
+          }
+          yield* Queue.take(terminals);
+        }
+        assert.equal(
+          harness.events.filter(
+            (event) =>
+              event.type === "runtime_request.updated" && event.runtimeRequest.status === "pending",
+          ).length,
+          6,
+        );
+      }),
+    ).pipe(
+      Effect.provide(
+        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+      ),
+    ),
+  );
+
+  it.effect("cancels unanswered approvals when their native turn ends", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const pending = yield* Deferred.make<OrchestrationV2RuntimeRequest>();
+        const cancelled = yield* Deferred.make<OrchestrationV2RuntimeRequest>();
+        const transcript = makeCodexReplayTranscript({
+          scenario: "approval-terminal",
+          entries: [
+            ...codexReplayPreamble({
+              nativeThreadId: "approval-thread",
+              nativeTurnId: "approval-turn",
+              prompt: "test approval",
+            }),
+            {
+              type: "emit_inbound",
+              frame: {
+                id: "unanswered",
+                method: "item/commandExecution/requestApproval",
+                params: {
+                  threadId: "approval-thread",
+                  turnId: "approval-turn",
+                  itemId: "unanswered",
+                  command: "curl example.com",
+                },
+              },
+            },
+            {
+              type: "emit_inbound",
+              frame: {
+                method: "turn/completed",
+                params: {
+                  threadId: "approval-thread",
+                  turn: makeCodexReplayTurn({ id: "approval-turn", status: "completed" }),
+                },
+              },
+            },
+            {
+              type: "expect_outbound",
+              frame: { id: "unanswered", result: { decision: "cancel" } },
+            },
+          ],
+        });
+        const harness = yield* makeCodexReplayHarness(transcript, (event) =>
+          event.type !== "runtime_request.updated"
+            ? Effect.void
+            : event.runtimeRequest.status === "pending"
+              ? Deferred.succeed(pending, event.runtimeRequest)
+              : Deferred.succeed(cancelled, event.runtimeRequest),
+        );
+        yield* harness.runtime.startTurn(
+          makeCodexTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now: yield* DateTime.now,
+            attemptId: RunAttemptId.make("approval-terminal"),
+            text: "test approval",
+          }),
+        );
+        const request = yield* Deferred.await(pending);
+        const terminal = yield* Deferred.await(cancelled);
+        assert.equal(terminal.id, request.id);
+        assert.equal(terminal.status, "cancelled");
+        assert.equal(terminal.responseCapability.type, "not_resumable");
+        const response = yield* harness.runtime
+          .respondToRuntimeRequest({ requestId: request.id, decision: "accept" })
+          .pipe(Effect.exit);
+        assert.isTrue(Exit.isFailure(response));
+        yield* harness.firstTerminal;
+      }),
+    ).pipe(
+      Effect.provide(
+        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+      ),
+    ),
+  );
+
+  it.effect.each([false, true])(
+    "routes a nested=%s native approval to one root-owned request",
+    (nested) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const root = "ownership-root";
+          const child = "ownership-child";
+          const grandchild = "ownership-grandchild";
+          const askingThread = nested ? grandchild : child;
+          const entries = codexReplayPreamble({
+            nativeThreadId: root,
+            nativeTurnId: `${root}-turn`,
+            prompt: "spawn",
+          });
+          for (const [parent, threadId, callId] of [
+            [root, child, "spawn-child"],
+            ...(nested ? [[child, grandchild, "spawn-grandchild"]] : []),
+          ]) {
+            entries.push(
+              {
+                type: "emit_inbound",
+                frame: {
+                  method: "item/completed",
+                  params: {
+                    threadId: parent,
+                    turnId: `${parent}-turn`,
+                    item: {
+                      type: "subAgentActivity",
+                      id: callId,
+                      kind: "started",
+                      agentThreadId: threadId,
+                      agentPath: "/root/worker",
+                    },
+                  },
+                },
+              },
+              {
+                type: "emit_inbound",
+                frame: {
+                  method: "turn/started",
+                  params: {
+                    threadId,
+                    turn: makeCodexReplayTurn({ id: `${threadId}-turn`, status: "inProgress" }),
+                  },
+                },
+              },
+            );
+          }
+          entries.push(
+            {
+              type: "emit_inbound",
+              frame: {
+                id: "owned-request",
+                method: "item/commandExecution/requestApproval",
+                params: {
+                  threadId: askingThread,
+                  turnId: `${askingThread}-turn`,
+                  itemId: "child-command",
+                  command: "curl example.com",
+                },
+              },
+            },
+            {
+              type: "expect_outbound",
+              frame: { id: "owned-request", result: { decision: "accept" } },
+            },
+          );
+          for (const threadId of [...(nested ? [grandchild] : []), child, root])
+            entries.push({
+              type: "emit_inbound",
+              frame: {
+                method: "turn/completed",
+                params: {
+                  threadId,
+                  turn: makeCodexReplayTurn({ id: `${threadId}-turn`, status: "completed" }),
+                },
+              },
+            });
+          const pending = yield* Deferred.make<OrchestrationV2RuntimeRequest>();
+          const harness = yield* makeCodexReplayHarness(
+            makeCodexReplayTranscript({ scenario: `approval-ownership-${nested}`, entries }),
+            (event) =>
+              event.type === "runtime_request.updated"
+                ? Deferred.succeed(pending, event.runtimeRequest)
+                : Effect.void,
+          );
+          yield* harness.runtime.startTurn(
+            makeCodexTestTurnInput({
+              threadId: harness.threadId,
+              providerThread: harness.providerThread,
+              now: yield* DateTime.now,
+              attemptId: RunAttemptId.make("ownership-attempt"),
+              text: "spawn",
+            }),
+          );
+          const request = yield* Deferred.await(pending);
+          const nodeEvent = harness.events.find(
+            (event) => event.type === "node.updated" && event.node.id === request.nodeId,
+          );
+          if (nodeEvent?.type !== "node.updated") return yield* Effect.die("Missing approval node");
+          assert.equal(nodeEvent.node.threadId, harness.threadId);
+          assert.equal(nodeEvent.node.providerThreadId, harness.providerThread.id);
+          assert.equal(nodeEvent.node.parentNodeId, harness.subagentUpdates()[0]?.subagent.id);
+          assert.equal(
+            nodeEvent.node.providerTurnId,
+            (yield* IdAllocator.IdAllocatorV2).derive.providerTurn({
+              driver: CodexAdapterV2.CODEX_DRIVER_KIND,
+              nativeTurnId: `${root}-turn`,
+            }),
+          );
+          assert.equal(
+            harness.events.filter((event) => event.type === "runtime_request.updated").length,
+            1,
+          );
+          yield* harness.runtime.respondToRuntimeRequest({
+            requestId: request.id,
+            decision: "accept",
+          });
+          yield* harness.firstTerminal;
+        }),
+      ).pipe(
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
+  );
+
+  it.effect("cancels native-resolved approvals without answering a cleared callback", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const cancelled = yield* Deferred.make<OrchestrationV2RuntimeRequest>();
+        const transcript = makeCodexReplayTranscript({
+          scenario: "approval-cleared",
+          entries: [
+            ...codexReplayPreamble({
+              nativeThreadId: "approval-thread",
+              nativeTurnId: "approval-turn",
+              prompt: "test approval",
+            }),
+            {
+              type: "emit_inbound",
+              frame: {
+                id: "cleared",
+                method: "item/commandExecution/requestApproval",
+                params: {
+                  threadId: "approval-thread",
+                  turnId: "approval-turn",
+                  itemId: "cleared",
+                  command: "curl example.com",
+                },
+              },
+            },
+            {
+              type: "emit_inbound",
+              frame: {
+                method: "serverRequest/resolved",
+                params: { threadId: "approval-thread", requestId: "cleared" },
+              },
+            },
+            {
+              type: "emit_inbound",
+              frame: {
+                method: "turn/completed",
+                params: {
+                  threadId: "approval-thread",
+                  turn: makeCodexReplayTurn({ id: "approval-turn", status: "completed" }),
+                },
+              },
+            },
+          ],
+        });
+        const harness = yield* makeCodexReplayHarness(transcript, (event) =>
+          event.type === "runtime_request.updated" && event.runtimeRequest.status === "cancelled"
+            ? Deferred.succeed(cancelled, event.runtimeRequest)
+            : Effect.void,
+        );
+        yield* harness.runtime.startTurn(
+          makeCodexTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now: yield* DateTime.now,
+            attemptId: RunAttemptId.make("approval-cleared"),
+            text: "test approval",
+          }),
+        );
+        const request = yield* Deferred.await(cancelled);
+        assert.equal(request.responseCapability.type, "not_resumable");
+        assert.isTrue(
+          Exit.isFailure(
+            yield* harness.runtime
+              .respondToRuntimeRequest({ requestId: request.id, decision: "accept" })
+              .pipe(Effect.exit),
+          ),
+        );
+        yield* harness.firstTerminal;
+      }),
+    ).pipe(
+      Effect.provide(
+        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+      ),
+    ),
+  );
+
+  const approvalCase = (method: string, permissions?: Record<string, unknown>) => {
+    const common = {
+      threadId: "approval-thread",
+      turnId: "approval-turn",
+      itemId: "action",
+      startedAtMs: 1,
+      reason: "Escalation reason",
+      environmentId: null,
+      cwd: "/workspace",
+    };
+    const legacy = {
+      conversationId: common.threadId,
+      callId: common.itemId,
+      reason: common.reason,
+      cwd: "/workspace",
+    };
+    switch (method) {
+      case "item/commandExecution/requestApproval":
+        return {
+          ...common,
+          command: "curl https://example.com",
+          approvalId: "callback-id",
+          availableDecisions: ["accept", "decline", "cancel", "acceptForSession"],
+        };
+      case "item/fileChange/requestApproval":
+        return common;
+      case "item/permissions/requestApproval":
+        return { ...common, permissions };
+      case "execCommandApproval":
+        return { ...legacy, command: ["curl", "https://example.com"], parsedCmd: [] };
+      case "applyPatchApproval":
+        return {
+          ...legacy,
+          fileChanges: { "/tmp/secret.txt": { type: "add", content: "PRIVATE PATCH BODY" } },
+        };
+      default:
+        return {
+          threadId: common.threadId,
+          turnId: common.turnId,
+          serverName: "external-tools",
+          mode: "form",
+          _meta: { codex_approval_kind: "mcp_tool_call" },
+          message: "Send deployment",
+          requestedSchema: {
+            type: "object",
+            properties: { scope: { type: "string", enum: ["once", "session"] } },
+            required: ["scope"],
+          },
+        };
+    }
+  };
+  const permissionProfiles = [
+    {
+      kind: "file-change",
+      permissions: {
+        fileSystem: {
+          entries: [{ path: { type: "glob_pattern", pattern: "/outside/**" }, access: "write" }],
+        },
+      },
+    },
+    {
+      kind: "file-read",
+      permissions: {
+        fileSystem: {
+          entries: [{ path: { type: "glob_pattern", pattern: "/outside/**" }, access: "read" }],
+        },
+      },
+    },
+    { kind: "file-change", permissions: { fileSystem: { read: ["/read"], write: ["/write"] } } },
+    { kind: "file-read", permissions: { fileSystem: { read: ["/read"] } } },
+    { kind: "command", permissions: { network: { enabled: true } } },
+  ];
+  const approvalMethods = [
+    { method: "item/commandExecution/requestApproval", kind: "permission", network: true },
+    { method: "item/commandExecution/requestApproval", kind: "command" },
+    { method: "item/fileChange/requestApproval", kind: "file-change" },
+    { method: "execCommandApproval", kind: "command" },
+    { method: "applyPatchApproval", kind: "file-change" },
+    { method: "mcpServer/elicitation/request", kind: "mcp-elicitation" },
+    ...permissionProfiles.map((profile) => ({
+      method: "item/permissions/requestApproval",
+      ...profile,
+    })),
+  ];
+  for (const testCase of approvalMethods) {
+    for (const decision of ["accept", "acceptForSession", "decline", "cancel"] as const) {
+      it.effect(`answers ${testCase.method} ${testCase.kind} with ${decision}`, () =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const permissions = "permissions" in testCase ? testCase.permissions : undefined;
+            const nativeResult =
+              testCase.method === "item/permissions/requestApproval"
+                ? {
+                    permissions:
+                      decision === "accept" || decision === "acceptForSession" ? permissions : {},
+                    scope: decision === "acceptForSession" ? "session" : "turn",
+                  }
+                : testCase.method === "mcpServer/elicitation/request"
+                  ? decision === "accept" || decision === "acceptForSession"
+                    ? {
+                        action: "accept",
+                        content: { scope: decision === "accept" ? "once" : "session" },
+                        ...(decision === "acceptForSession"
+                          ? { _meta: { persist: "session" } }
+                          : {}),
+                      }
+                    : { action: decision }
+                  : testCase.method === "execCommandApproval" ||
+                      testCase.method === "applyPatchApproval"
+                    ? {
+                        decision:
+                          decision === "accept"
+                            ? "approved"
+                            : decision === "acceptForSession"
+                              ? "approved_for_session"
+                              : decision === "cancel"
+                                ? "abort"
+                                : { denied: { rejection: "User declined the request." } },
+                      }
+                    : { decision };
+            const preamble = codexReplayPreamble({
+              nativeThreadId: "approval-thread",
+              nativeTurnId: "approval-turn",
+              prompt: "test approval",
+            });
+            const transcript = makeCodexReplayTranscript({
+              scenario: "native-approval",
+              entries: [
+                ...preamble,
+                {
+                  type: "emit_inbound",
+                  frame: {
+                    method: "item/started",
+                    params: {
+                      threadId: "approval-thread",
+                      turnId: "approval-turn",
+                      item: {
+                        id: "action",
+                        type: "fileChange",
+                        status: "inProgress",
+                        changes: [
+                          {
+                            path: "/tmp/proposed.txt",
+                            kind: { type: "update", move_path: "/tmp/renamed.txt" },
+                            diff: "PRIVATE PATCH BODY",
+                          },
+                        ],
+                      },
+                    },
+                  },
+                },
+                {
+                  type: "emit_inbound",
+                  frame: {
+                    id: "request-id",
+                    method: testCase.method,
+                    params: {
+                      ...approvalCase(testCase.method, permissions),
+                      ...("network" in testCase
+                        ? {
+                            networkApprovalContext: {
+                              protocol: "https",
+                              host: "uploads.example:8443",
+                            },
+                          }
+                        : {}),
+                      ...(testCase.method === "item/commandExecution/requestApproval" &&
+                      decision === "decline"
+                        ? { availableDecisions: ["decline", "cancel"] }
+                        : {}),
+                    },
+                  },
+                },
+                { type: "expect_outbound", frame: { id: "request-id", result: nativeResult } },
+                {
+                  type: "emit_inbound",
+                  frame: {
+                    method: "turn/completed",
+                    params: {
+                      threadId: "approval-thread",
+                      turn: makeCodexReplayTurn({ id: "approval-turn", status: "completed" }),
+                    },
+                  },
+                },
+              ],
+            });
+            const requests = yield* Queue.unbounded<OrchestrationV2RuntimeRequest>();
+            const harness = yield* makeCodexReplayHarness(transcript, (event) =>
+              event.type === "runtime_request.updated" && event.runtimeRequest.status === "pending"
+                ? Queue.offer(requests, event.runtimeRequest)
+                : Effect.void,
+            );
+            yield* harness.runtime.startTurn(
+              makeCodexTestTurnInput({
+                threadId: harness.threadId,
+                providerThread: harness.providerThread,
+                now: yield* DateTime.now,
+                attemptId: RunAttemptId.make("approval-attempt"),
+                text: "test approval",
+              }),
+            );
+            const request = yield* Queue.take(requests);
+            assert.equal(request.kind, testCase.kind);
+            assert.deepEqual(request.responseCapability, {
+              type: "live",
+              providerSessionId: harness.providerThread.providerSessionId!,
+            });
+            const node = harness.events.find(
+              (event) => event.type === "node.updated" && event.node.id === request.nodeId,
+            );
+            assert.isTrue(node?.type === "node.updated" && node.node.status === "waiting");
+            const itemEvent = harness.events.find(
+              (event) =>
+                event.type === "turn_item.updated" && event.turnItem.type === "approval_request",
+            );
+            assert.isTrue(
+              itemEvent?.type === "turn_item.updated" &&
+                itemEvent.turnItem.type === "approval_request",
+            );
+            if (
+              itemEvent?.type !== "turn_item.updated" ||
+              itemEvent.turnItem.type !== "approval_request"
+            )
+              return yield* Effect.die("Missing approval item");
+            const item = itemEvent.turnItem;
+            assert.equal(item.requestId, request.id);
+            assert.equal(item.status, "waiting");
+            assert.notInclude(item.prompt, "PRIVATE PATCH BODY");
+            if (
+              testCase.kind === "command" &&
+              testCase.method !== "item/permissions/requestApproval"
+            )
+              assert.equal(item.prompt, "curl https://example.com");
+            if (testCase.method === "item/fileChange/requestApproval")
+              assert.equal(item.prompt, "update /tmp/proposed.txt -> /tmp/renamed.txt");
+            if ("network" in testCase) {
+              assert.equal(item.prompt, "https://uploads.example:8443");
+              assert.equal(item.reason, "Escalation reason\nCommand: curl https://example.com");
+            } else if (testCase.method !== "mcpServer/elicitation/request")
+              assert.equal(item.reason, "Escalation reason");
+            assert.isTrue(item.options?.some((option) => option.decision === decision));
+            if (
+              testCase.method !== "mcpServer/elicitation/request" &&
+              item.options?.some((option) => option.decision === "acceptForSession")
+            )
+              assert.equal(
+                item.options.find((option) => option.decision === "acceptForSession")?.label,
+                "Allow for this chat",
+              );
+            if (
+              testCase.method === "item/commandExecution/requestApproval" &&
+              decision === "decline"
+            ) {
+              assert.deepEqual(
+                item.options?.map((option) => option.decision),
+                ["decline", "cancel"],
+              );
+              assert.isTrue(
+                Exit.isFailure(
+                  yield* harness.runtime
+                    .respondToRuntimeRequest({ requestId: request.id, decision: "accept" })
+                    .pipe(Effect.exit),
+                ),
+              );
+            }
+            const missingDecision = yield* harness.runtime
+              .respondToRuntimeRequest({ requestId: request.id, answers: {} })
+              .pipe(Effect.exit);
+            assert.isTrue(Exit.isFailure(missingDecision));
+            yield* harness.runtime.respondToRuntimeRequest({ requestId: request.id, decision });
+            yield* harness.firstTerminal;
+          }),
+        ).pipe(
+          Effect.provide(
+            Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+          ),
+        ),
+      );
+    }
+  }
 
   it.effect("stops one background terminal by its process id and leaves its sibling alone", () =>
     Effect.gen(function* () {
@@ -10244,26 +10978,66 @@ describe("CodexAdapterV2 post-settle continuation", () => {
     ),
   );
 
-  it.effect.each(["permission", "information"] as const)(
-    "automatically handles native MCP %s requests while preserving genuine questions",
-    (kind) =>
+  it.effect.each(
+    (["permission", "information"] as const).flatMap((kind) =>
+      (["approval-required", "auto", "full-access"] as const).map((runtimeMode) => ({
+        kind,
+        runtimeMode,
+      })),
+    ),
+  )(
+    "allows Nodex MCP $kind requests in $runtimeMode while preserving genuine questions",
+    ({ kind, runtimeMode }) =>
       Effect.gen(function* () {
         const nativeThreadId = `mcp-${kind}-thread`;
         const nativeTurnId = `mcp-${kind}-turn`;
         const prompt = "Use the connected app";
         let runtime: ProviderAdapter.ProviderAdapterV2SessionRuntime | undefined;
         const requests: string[] = [];
+        const config = yield* makeReplayServerConfig(`mcp-${kind}-${runtimeMode}`).pipe(
+          Effect.orDie,
+        );
+        const preamble = codexReplayPreamble({ nativeThreadId, nativeTurnId, prompt }).map(
+          (entry) => {
+            if (
+              entry.type !== "expect_outbound" ||
+              !Predicate.isObject(entry.frame) ||
+              entry.frame.method !== "turn/start" ||
+              !Predicate.isObject(entry.frame.params)
+            )
+              return entry;
+            return {
+              ...entry,
+              frame: {
+                ...entry.frame,
+                params: {
+                  ...entry.frame.params,
+                  approvalPolicy: runtimeMode === "full-access" ? "never" : "on-request",
+                  approvalsReviewer: runtimeMode === "auto" ? "auto_review" : "user",
+                  sandboxPolicy:
+                    runtimeMode === "full-access"
+                      ? { type: "dangerFullAccess" }
+                      : {
+                          type: "workspaceWrite",
+                          writableRoots: ["/workspace", config.attachmentsDir],
+                          networkAccess: false,
+                        },
+                },
+              },
+            };
+          },
+        );
         const transcript = makeCodexReplayTranscript({
           scenario: `mcp-${kind}`,
           entries: [
-            ...codexReplayPreamble({ nativeThreadId, nativeTurnId, prompt }),
+            ...preamble,
             {
               type: "emit_inbound",
               frame: {
                 id: "native-form",
                 method: "mcpServer/elicitation/request",
                 params: {
-                  serverName: "connected-app",
+                  serverName: "nodex_app",
                   threadId: nativeThreadId,
                   turnId: nativeTurnId,
                   mode: "form",
@@ -10301,27 +11075,38 @@ describe("CodexAdapterV2 post-settle continuation", () => {
             },
           ],
         });
-        const harness = yield* makeCodexReplayHarness(transcript, (event) => {
-          if (event.type !== "runtime_request.updated" || event.runtimeRequest.status !== "pending")
-            return Effect.void;
-          requests.push(event.runtimeRequest.kind);
-          return runtime!
-            .respondToRuntimeRequest({
-              requestId: event.runtimeRequest.id,
-              answers: { destination: "Oslo" },
-            })
-            .pipe(Effect.orDie);
-        });
+        const harness = yield* makeCodexReplayHarness(
+          transcript,
+          (event) => {
+            if (
+              event.type !== "runtime_request.updated" ||
+              event.runtimeRequest.status !== "pending"
+            )
+              return Effect.void;
+            requests.push(event.runtimeRequest.kind);
+            return runtime!
+              .respondToRuntimeRequest({
+                requestId: event.runtimeRequest.id,
+                answers: { destination: "Oslo" },
+              })
+              .pipe(Effect.orDie);
+          },
+          undefined,
+          undefined,
+          undefined,
+          config,
+        );
         runtime = harness.runtime;
-        yield* runtime.startTurn(
-          makeCodexTestTurnInput({
+        yield* runtime.startTurn({
+          ...makeCodexTestTurnInput({
             threadId: harness.threadId,
             providerThread: harness.providerThread,
             now: yield* DateTime.now,
             attemptId: RunAttemptId.make(`mcp-${kind}-attempt`),
             text: prompt,
           }),
-        );
+          runtimePolicy: { ...CODEX_TEST_RUNTIME_POLICY, runtimeMode },
+        });
         yield* harness.firstTerminal;
         assert.deepEqual(requests, kind === "permission" ? [] : ["user_input"]);
       }).pipe(

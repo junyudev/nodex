@@ -12,6 +12,10 @@ import * as ExecutionHost from "@t3tools/provider-core/server/ExecutionHost";
 
 import type { OrchestratorV2Error } from "../orchestration-v2/Orchestrator.ts";
 import * as ThreadManagement from "../orchestration-v2/ThreadManagementService.ts";
+import {
+  type DispatchModes,
+  exceededDispatchModeLimit,
+} from "../orchestration-v2/DispatchModeLimit.ts";
 import * as McpInvocationContext from "./McpInvocationContext.ts";
 
 export const unavailable = () =>
@@ -24,23 +28,29 @@ export const unavailable = () =>
 export const dispatchFailure = (
   error: OrchestratorV2Error | ThreadManagement.ThreadManagementProviderInstanceDisabledError,
 ) =>
-  error._tag === "ThreadManagementProviderInstanceDisabledError"
-    ? new OrchestratorMcpFailure({ code: "invalid_request", message: error.message })
-    : (error._tag === "OrchestratorDispatchError" ||
-          error._tag === "OrchestratorCommandRejectedError") &&
-        typeof error.cause === "string" &&
-        error.cause.length > 0
-      ? new OrchestratorMcpFailure({
-          code: "orchestration_error",
-          message: Array.from(error.cause).slice(0, 1000).join(""),
-        })
-      : unavailable();
+  error._tag === "OrchestratorThreadAboveModeLimitError"
+    ? new OrchestratorMcpFailure({
+        code: error.reason,
+        message: `Thread ${error.threadId} now exceeds the caller's execution modes.`,
+      })
+    : error._tag === "ThreadManagementProviderInstanceDisabledError"
+      ? new OrchestratorMcpFailure({ code: "invalid_request", message: error.message })
+      : (error._tag === "OrchestratorDispatchError" ||
+            error._tag === "OrchestratorCommandRejectedError") &&
+          typeof error.cause === "string" &&
+          error.cause.length > 0
+        ? new OrchestratorMcpFailure({
+            code: "orchestration_error",
+            message: Array.from(error.cause).slice(0, 1000).join(""),
+          })
+        : unavailable();
 
 export interface Caller {
   readonly scope: McpInvocationContext.McpInvocationScope;
   readonly threads: ThreadManagement.ThreadManagementService["Service"];
   /** The calling thread, absent for a client signed in from outside T3. */
   readonly caller: OrchestrationV2ThreadShell | undefined;
+  readonly limits: DispatchModes;
 }
 
 export const readCaller = Effect.fn("mcp.readCaller")(function* () {
@@ -63,6 +73,7 @@ export const loadCaller = Effect.fn("mcp.loadCaller")(function* () {
       scope,
       threads,
       caller: undefined,
+      limits: McpInvocationContext.callerModeCeiling(scope, undefined),
     } satisfies Caller;
   }
   const caller = yield* threads
@@ -78,8 +89,24 @@ export const loadCaller = Effect.fn("mcp.loadCaller")(function* () {
     scope,
     threads,
     caller,
+    limits: McpInvocationContext.callerModeCeiling(scope, caller),
   } satisfies Caller;
 });
+
+export const assertTargetWithinLimits = (
+  limits: DispatchModes,
+  target: DispatchModes,
+): Effect.Effect<void, OrchestratorMcpFailure> => {
+  const reason = exceededDispatchModeLimit(limits, target);
+  return reason === undefined
+    ? Effect.void
+    : Effect.fail(
+        new OrchestratorMcpFailure({
+          code: reason,
+          message: "The target conversation exceeds the caller's execution modes.",
+        }),
+      );
+};
 
 /** Fence the captured native execution; completion does not retire a live background process. */
 export const assertCallerLifetime = Effect.fn("mcp.assertCallerLifetime")(function* () {

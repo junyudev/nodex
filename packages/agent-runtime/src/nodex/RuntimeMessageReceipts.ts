@@ -6,6 +6,7 @@ import {
   OrchestrationMessageContext,
   OrchestrationV2RunStatus,
   ProviderInteractionMode,
+  RuntimeMode,
   ThreadId,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
@@ -37,6 +38,7 @@ export const RuntimeMessageLaunch = Schema.Struct({
   title: Schema.String,
   modelSelection: ModelSelection,
   interactionMode: ProviderInteractionMode,
+  runtimeMode: Schema.optional(RuntimeMode),
   message: Schema.Struct({
     messageId: MessageId,
     text: Schema.String,

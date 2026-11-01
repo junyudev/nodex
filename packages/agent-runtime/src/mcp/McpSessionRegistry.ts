@@ -62,6 +62,7 @@ interface RegistryState {
 
 export interface McpSessionRegistryOptions {
   readonly livenessWindowMs?: number;
+  readonly registeredToolNames?: ReadonlyArray<string>;
   readonly now?: () => number;
 }
 
@@ -159,6 +160,9 @@ const makeWithOptions = Effect.fn("McpSessionRegistry.make")(function* (
           endpoint,
           authorizationHeader: `Bearer ${rawToken}`,
           browserToolsAvailable: scope.capabilities.has("preview"),
+          ...(options.registeredToolNames === undefined
+            ? {}
+            : { registeredToolNames: options.registeredToolNames }),
           capabilities: scope.capabilities,
         },
       };
@@ -220,23 +224,26 @@ const makeWithOptions = Effect.fn("McpSessionRegistry.make")(function* (
 
 let activeMcpSessionRegistry: McpSessionRegistryShape | undefined;
 
-const make = Effect.acquireRelease(
-  makeWithOptions().pipe(
-    Effect.tap((registry) =>
-      Effect.sync(() => {
-        activeMcpSessionRegistry = registry;
-      }),
+const make = (options: McpSessionRegistryOptions = {}) =>
+  Effect.acquireRelease(
+    makeWithOptions(options).pipe(
+      Effect.tap((registry) =>
+        Effect.sync(() => {
+          activeMcpSessionRegistry = registry;
+        }),
+      ),
     ),
-  ),
-  (registry) =>
-    Effect.sync(() => {
-      if (activeMcpSessionRegistry === registry) {
-        activeMcpSessionRegistry = undefined;
-      }
-    }),
-);
+    (registry) =>
+      Effect.sync(() => {
+        if (activeMcpSessionRegistry === registry) {
+          activeMcpSessionRegistry = undefined;
+        }
+      }),
+  );
 
-export const layer = Layer.effect(McpSessionRegistry, make);
+export const layer = Layer.effect(McpSessionRegistry, make());
+export const layerWithToolNames = (registeredToolNames: ReadonlyArray<string>) =>
+  Layer.effect(McpSessionRegistry, make({ registeredToolNames }));
 
 export const issueActiveMcpCredential = (
   request: McpCredentialRequest,

@@ -122,6 +122,7 @@ const makeExecutionHosts = Effect.gen(function* () {
 const makeHarness = (input: {
   readonly calls: string[];
   readonly operationIds?: string[];
+  readonly modeLimits?: unknown[];
   readonly reconciliations?: Array<
     readonly { readonly threadId: string; readonly operationId: string }[]
   >;
@@ -225,9 +226,10 @@ const makeHarness = (input: {
               cause: new Error("Commit reply lost"),
             });
         }),
-      followUp: (_threadId, _prompt, operationId) =>
+      followUp: (_threadId, _prompt, operationId, modeLimit) =>
         Effect.suspend(() => {
           input.operationIds?.push(operationId ?? "missing");
+          input.modeLimits?.push(modeLimit);
           assert.isFalse(
             handoffActive,
             "Follow-up must be admitted after the handoff guard releases",
@@ -852,5 +854,25 @@ it.effect("an empty startup journal does not wait for background execution recov
     assert.deepEqual(yield* Fiber.join(first), []);
     assert.deepEqual(yield* Fiber.join(second), []);
     assert.deepEqual(reconciliations, [[]]);
+  }),
+);
+
+it.effect("persists and forwards the handoff admission ceiling", () =>
+  Effect.gen(function* () {
+    const modeLimits: unknown[] = [];
+    const runtime = yield* makeHarness({ calls: [], modeLimits });
+    const modeLimit = {
+      runtimeMode: "approval-required" as const,
+      interactionMode: "plan" as const,
+    };
+    const entry = yield* runtime.start({
+      operationId: "limited-handoff",
+      threadId: "thread-1",
+      destinationHostId: null,
+      followUpPrompt: "continue",
+      modeLimit,
+    });
+    assert.deepEqual(entry.modeLimit, modeLimit);
+    assert.deepEqual(modeLimits, [modeLimit]);
   }),
 );

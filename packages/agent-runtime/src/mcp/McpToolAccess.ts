@@ -1,6 +1,8 @@
 import { withMcpTurnLifetime } from "@t3tools/provider-core/server/ExecutionHost";
 import {
   OrchestratorMcpFailure,
+  type OrchestratorMcpInteractionMode,
+  type OrchestratorMcpRuntimeMode,
   type ProviderInteractionMode,
   type RuntimeMode,
   type ThreadId,
@@ -12,7 +14,16 @@ import type * as Scope from "effect/Scope";
 import type { Tool, Toolkit } from "effect/ai";
 
 import * as McpInvocationContext from "./McpInvocationContext.ts";
-import { assertCallerLifetime, type Caller, loadCaller, readCaller } from "./threadAccess.ts";
+import { DispatchModeLimit } from "../orchestration-v2/DispatchModeLimit.ts";
+import { resolveInteractionMode, resolveRuntimeMode } from "./delegatedTaskModes.ts";
+import {
+  assertCallerLifetime,
+  assertTargetWithinLimits,
+  type Caller,
+  loadCaller,
+  readCaller,
+  unavailable,
+} from "./threadAccess.ts";
 
 // Only the classes below assign these, from their static blocks, so nothing
 // outside this module can build a declaration or a handlers layer.
@@ -90,13 +101,21 @@ export const actsAsCaller = <P, A, E, R>(handle: (params: P) => Effect.Effect<A,
   declare((params: P) =>
     requireThreadCaller.pipe(
       Effect.flatMap(() => writingCaller),
-      Effect.flatMap(() => handle(params)),
+      Effect.flatMap(({ limits }) =>
+        handle(params).pipe(Effect.provideService(DispatchModeLimit, limits)),
+      ),
     ),
   );
 
 /** Changes something that belongs to no thread, such as a pending upload or a scheduled task. */
 export const writes = <P, A, E, R>(handle: (params: P) => Effect.Effect<A, E, R>) =>
-  declare((params: P) => orchestratingCaller.pipe(Effect.flatMap(() => handle(params))));
+  declare((params: P) =>
+    orchestratingCaller.pipe(
+      Effect.flatMap(({ limits }) =>
+        handle(params).pipe(Effect.provideService(DispatchModeLimit, limits)),
+      ),
+    ),
+  );
 
 /**
  * Changes something that belongs to no thread under a capability of the tool's own, such as
@@ -108,9 +127,23 @@ export const writesWithCapability = <P, A, E, R>(handle: (params: P) => Effect.E
 
 /** Resolve the caller before mutating a target Session. The handler owns target routing. */
 export const writesThreads = <P, A, E, R>(
-  _threads: (params: P) => ReadonlyArray<ThreadId | undefined>,
+  threads: (params: P) => ReadonlyArray<ThreadId | undefined>,
   handle: (params: P) => Effect.Effect<A, E, R>,
-) => declare((params: P) => writingCaller.pipe(Effect.flatMap(() => handle(params))));
+) =>
+  declare((params: P) =>
+    Effect.gen(function* () {
+      const caller = yield* writingCaller;
+      for (const threadId of threads(params)) {
+        if (threadId === undefined || threadId === caller.caller?.id) continue;
+        const target = yield* caller.threads
+          .getThreadShell(threadId)
+          .pipe(Effect.mapError(unavailable));
+        if (target !== null && target.deletedAt === null)
+          yield* assertTargetWithinLimits(caller.limits, target);
+      }
+      return yield* handle(params).pipe(Effect.provideService(DispatchModeLimit, caller.limits));
+    }),
+  );
 
 /** The modes a started thread runs with: those requested, else the caller's own. */
 export interface StartedModes {
@@ -118,22 +151,26 @@ export interface StartedModes {
   readonly interactionMode: ProviderInteractionMode;
 }
 
-/** Starts threads with the modes `modes` requests, which preserve planning intent. */
+/** Starts threads within the caller's execution and planning ceilings. */
 export const startsThreads = <P, A, E, R>(
   modes: (params: P) => {
-    readonly interactionMode?: ProviderInteractionMode | undefined;
+    readonly runtimeMode?: OrchestratorMcpRuntimeMode | undefined;
+    readonly interactionMode?: OrchestratorMcpInteractionMode | undefined;
   },
   handle: (params: P, modes: StartedModes) => Effect.Effect<A, E, R>,
 ) =>
   declare((params: P) =>
     Effect.gen(function* () {
-      const { caller } = yield* writingCaller;
+      const { limits } = yield* writingCaller;
       const requested = modes(params);
       const started: StartedModes = {
-        runtimeMode: "full-access",
-        interactionMode: requested.interactionMode ?? caller?.interactionMode ?? "default",
+        runtimeMode: yield* resolveRuntimeMode(limits.runtimeMode, requested.runtimeMode),
+        interactionMode: yield* resolveInteractionMode(
+          limits.interactionMode,
+          requested.interactionMode,
+        ),
       };
-      return yield* handle(params, started);
+      return yield* handle(params, started).pipe(Effect.provideService(DispatchModeLimit, limits));
     }),
   );
 

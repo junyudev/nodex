@@ -96,6 +96,7 @@ export interface ConversationDelegatedTaskPort {
 
 /** Product conversation reads and lifecycle; protocol ownership stays in each Adapter. */
 export interface ConversationRuntime {
+  readonly approvals?: import("./agent-approval-runtime").AgentApprovalRuntime;
   /** Captures the selected history reader's lifetime without changing execution retention. */
   readonly history?: (threadId: string) => ConversationHistoryPort | null;
   /** Present where work can run on several configured Agents. */

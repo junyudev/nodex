@@ -394,7 +394,10 @@ type AcpToolCallUpdate = Extract<
   { readonly sessionUpdate: "tool_call" | "tool_call_update" }
 >;
 
-type AcpModelConfigOption = Extract<EffectAcpSchema.SessionConfigOption, { readonly type: "select" }>;
+type AcpModelConfigOption = Extract<
+  EffectAcpSchema.SessionConfigOption,
+  { readonly type: "select" }
+>;
 
 /** The first selectable model category owns model selection, as specified by ACP. */
 export function findModelConfigOption(
@@ -1241,6 +1244,28 @@ export function embeddedTerminalIdsFromSessionUpdate(
     .filter((entry) => entry.type === "terminal")
     .map((entry) => entry.terminalId);
   return terminalIds.length === 0 ? undefined : { toolCallId: update.toolCallId, terminalIds };
+}
+
+export function withTrackedPermissionToolCall(
+  params: EffectAcpSchema.RequestPermissionRequest,
+  tracked: AcpToolCallState | undefined,
+): EffectAcpSchema.RequestPermissionRequest {
+  if (tracked === undefined) return params;
+  const { title, kind, rawInput } = params.toolCall;
+  return {
+    ...params,
+    toolCall: {
+      ...params.toolCall,
+      ...(title === undefined && typeof tracked.data.title === "string"
+        ? { title: tracked.data.title }
+        : {}),
+      // Unrecognised kinds map to command approvals, so only a tracked execute kind may grant execution.
+      ...(kind === undefined && tracked.kind === "execute" ? { kind: "execute" as const } : {}),
+      ...(rawInput === undefined && tracked.data.rawInput !== undefined
+        ? { rawInput: tracked.data.rawInput }
+        : {}),
+    },
+  };
 }
 
 export function parsePermissionRequest(

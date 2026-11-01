@@ -8,6 +8,7 @@ import type {
   CodexThreadNotificationEvent,
 } from "../../shared/codex-thread-notification";
 import { parseCodexHeartbeatAssistantMessage } from "../../shared/codex-turn-notification";
+import type { AgentRuntimeSessionActivity } from "../../shared/agent-runtime-api";
 import type { AgentRuntimeActivityTransition } from "./AgentRuntimeSessionActivity";
 
 export interface AgentRuntimeNotificationSession {
@@ -35,13 +36,18 @@ const terminalStatus = (status: string | null): CodexNotificationTurnStatus | nu
   return status === "cancelled" ? "interrupted" : null;
 };
 
-/** One waiting episode of a root shares a question identity until its questions resolve. */
+/** One waiting episode shares its request identity across foreground Runs. */
 export const runtimeQuestionRequestId = (rootThreadId: string) =>
   `agent-runtime:${rootThreadId}:session`;
 
+const waitingFamily = (activity: AgentRuntimeSessionActivity | null) => {
+  if (activity?.status !== "waiting") return null;
+  return activity.activeFlags?.includes("waitingOnApproval") ? "approval" : "question";
+};
+
 /**
  * Turns Session activity transitions into unread state and desktop notifications. A foreground
- * Run ending (including automatic wake Runs) or a new information question marks an unpresented
+ * Run ending (including automatic wake Runs) or a new attention request marks an unpresented
  * Session unread and raises the shared notification owner with native conversation copy.
  * User attention replaces completion while the Session waits, including questions revealed at
  * turn end. Temporary side chats surface their questions through their visible source Session.
@@ -78,19 +84,24 @@ export const run = Effect.fn("AgentRuntimeSessionNotifications.run")(function* (
           ? yield* readOutcome(transition, endedRun.runId)
           : undefined;
       const status = terminalStatus(endedRun?.status ?? outcome?.status ?? null);
-      const questionStarted =
-        after?.status === "waiting" &&
-        (before?.status !== "waiting" || after.pendingRequestCount > before.pendingRequestCount);
-      const questionsResolved = before?.status === "waiting" && after?.status !== "waiting";
-      if (questionsResolved && before)
+      const beforeFamily = waitingFamily(before);
+      const afterFamily = waitingFamily(after);
+      const attentionStarted =
+        afterFamily !== null &&
+        after !== null &&
+        (beforeFamily !== afterFamily ||
+          after.pendingRequestCount > (before?.pendingRequestCount ?? 0) ||
+          (afterFamily === "approval" && after.approvalPrompt !== before?.approvalPrompt));
+      if (beforeFamily !== null && beforeFamily !== afterFamily)
         options.publish({
           type: "request-resolved",
           hostId: DEFAULT_CODEX_HOST_ID,
           conversationId: rootThreadId,
           requestId: runtimeQuestionRequestId(rootThreadId),
+          ...(beforeFamily === "approval" ? { family: "approval" } : {}),
         });
       const turnCompleted = status && endedRun && after?.status !== "waiting";
-      if (!turnCompleted && !questionStarted) return;
+      if (!turnCompleted && !attentionStarted) return;
       if (after?.sideChatSourceThreadId) return;
       const session = yield* options.readSession(sessionId);
       if (!session) return;
@@ -129,14 +140,15 @@ export const run = Effect.fn("AgentRuntimeSessionNotifications.run")(function* (
           hasPendingContinuation,
         });
       }
-      if (questionStarted && after)
+      if (attentionStarted && after)
         options.publish({
-          type: "user-input-requested",
           hostId: DEFAULT_CODEX_HOST_ID,
           conversation,
           requestId: runtimeQuestionRequestId(rootThreadId),
           turnId: after.activeRunId ?? "",
-          questionCount: after.pendingRequestCount,
+          ...(afterFamily === "approval"
+            ? { type: "approval-requested", prompt: after.approvalPrompt ?? null }
+            : { type: "user-input-requested", questionCount: after.pendingRequestCount }),
         });
     }).pipe(
       Effect.catchCause((cause) =>

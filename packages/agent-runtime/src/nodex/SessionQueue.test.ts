@@ -2,12 +2,16 @@ import { make as makeStop } from "./SessionStop.ts";
 import { assert, it } from "@effect/vitest";
 import {
   CommandId,
+  EventId,
   MessageId,
   ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
   ThreadId,
 } from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
+import * as Deferred from "effect/Deferred";
+import * as Fiber from "effect/Fiber";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
@@ -23,6 +27,8 @@ import {
   layer as management,
 } from "../orchestration-v2/ThreadManagementService.ts";
 import type { ProviderAdapterV2 } from "@t3tools/provider-core/server/ProviderAdapter";
+import * as EventSink from "../orchestration-v2/EventSink.ts";
+import * as ThreadCommandExecutor from "../orchestration-v2/ThreadCommandExecutor.ts";
 import { make, type SessionQueueInput } from "./SessionQueue.ts";
 
 const database = SqlitePersistence.layerMemory;
@@ -267,4 +273,101 @@ it.effect(
         later.status,
       );
     }).pipe(Effect.provide(layer)),
+);
+
+it.effect("carries queue and Stop caller ceilings to command admission", () =>
+  Effect.gen(function* () {
+    const f = yield* setup;
+    yield* f.send("limited", "original");
+    const queuedId = yield* f.queued("limited");
+    const modeLimit = {
+      runtimeMode: "approval-required" as const,
+      interactionMode: "default" as const,
+    };
+    const stop = yield* makeStop;
+    for (const effect of [
+      f
+        .call({ action: "edit", queuedId, text: "unsafe replacement", modeLimit })
+        .pipe(Effect.result),
+      f.call({ action: "steer", queuedId, modeLimit }).pipe(Effect.result),
+      stop({ threadId, commandId: CommandId.make("stop:limited"), modeLimit }).pipe(Effect.result),
+    ]) {
+      const result = yield* effect;
+      assert.equal(result._tag, "Failure");
+      if (result._tag === "Failure")
+        assert.propertyVal(result.failure, "_tag", "OrchestratorThreadAboveModeLimitError");
+    }
+    const projection = yield* f.orchestrator.getThreadProjection(threadId);
+    assert.equal(projection.messages.find((message) => message.id === "limited")?.text, "original");
+    assert.equal(projection.runs.find((run) => run.id === queuedId)?.status, "queued");
+  }).pipe(Effect.provide(layer)),
+);
+
+it.effect.each(["edit", "steer", "stop"] as const)(
+  "rechecks %s after a target widens while waiting for its command lock",
+  (action) =>
+    Effect.gen(function* () {
+      const f = yield* setup;
+      yield* f.send("race", "original");
+      yield* f.orchestrator.dispatch({
+        type: "thread.runtime-mode.set",
+        threadId,
+        commandId: CommandId.make("narrow"),
+        runtimeMode: "approval-required",
+      });
+      const queuedId = yield* f.queued("race");
+      const initial = (yield* f.orchestrator.getThreadProjection(threadId)).thread;
+      const events = yield* EventSink.EventSinkV2;
+      const executor = yield* ThreadCommandExecutor.ThreadCommandExecutor;
+      const locked = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      const waiting = yield* Deferred.make<void>();
+      const mutation = yield* executor
+        .withLock(
+          threadId,
+          Effect.gen(function* () {
+            yield* Deferred.succeed(locked, undefined);
+            yield* Deferred.await(release);
+            yield* events.write({
+              events: [
+                {
+                  id: EventId.make("widen:queue"),
+                  type: "thread.metadata-updated",
+                  threadId,
+                  occurredAt: yield* DateTime.now,
+                  payload: { ...initial, runtimeMode: "full-access" },
+                },
+              ],
+            });
+          }),
+        )
+        .pipe(Effect.forkChild);
+      yield* Deferred.await(locked);
+      const stop = yield* makeStop;
+      const modeLimit = {
+        runtimeMode: "approval-required" as const,
+        interactionMode: "default" as const,
+      };
+      const attempt = yield* Effect.gen(function* () {
+        yield* Deferred.succeed(waiting, undefined);
+        if (action === "stop") {
+          return yield* stop({ threadId, commandId: CommandId.make("stop:race"), modeLimit }).pipe(
+            Effect.result,
+          );
+        }
+        return yield* f
+          .call({ action, queuedId, text: "replacement", modeLimit })
+          .pipe(Effect.result);
+      }).pipe(Effect.forkChild);
+      yield* Deferred.await(waiting);
+      yield* Deferred.succeed(release, undefined);
+      yield* Fiber.join(mutation);
+      const result = yield* Fiber.join(attempt);
+      assert.equal(result._tag, "Failure");
+      if (result._tag === "Failure")
+        assert.propertyVal(result.failure, "_tag", "OrchestratorThreadAboveModeLimitError");
+      const projection = yield* f.orchestrator.getThreadProjection(threadId);
+      assert.equal(projection.messages.find((message) => message.id === "race")?.text, "original");
+      assert.equal(projection.runs.find((run) => run.id === queuedId)?.status, "queued");
+    }).pipe(Effect.provide(Layer.merge(layer, ThreadCommandExecutor.layer))),
 );

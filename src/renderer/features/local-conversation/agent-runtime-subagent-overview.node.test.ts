@@ -252,3 +252,15 @@ describe("Runtime subagent overview events", () => {
     expect(agentRuntimeOverviewSectionsToRefill(exhausted, shown)).toEqual([]);
   });
 });
+
+it("labels a waiting child approval without turning an information question into approval", () => {
+  const waiting = { ...task, status: "waiting" as const };
+  expect(projectAgentRuntimeSubagent(waiting, null, true)).toMatchObject({
+    status: "waiting",
+    statusSummary: "Needs approval",
+  });
+  expect(projectAgentRuntimeSubagent(waiting)).toMatchObject({
+    status: "waiting",
+    statusSummary: null,
+  });
+});

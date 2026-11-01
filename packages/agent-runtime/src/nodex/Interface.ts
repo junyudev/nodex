@@ -226,6 +226,8 @@ export interface AgentRootActivity {
   readonly status: "running" | "waiting" | "background";
   readonly activeRunId: string | null;
   readonly pendingRequestCount: number;
+  readonly activeFlags?: readonly import("@nodex/codex-app-server-protocol/v2").ThreadActiveFlag[];
+  readonly approvalPrompt?: string | null;
   readonly backgroundTasks: ReadonlyArray<AgentBackgroundTask>;
   readonly providerInstanceId: string;
   readonly model: string;
@@ -245,6 +247,7 @@ export interface AgentRuntimeOperations extends AgentAcpManagementOperations {
       readonly modelSelection: AgentWire<ModelSelection>;
       readonly cwd: string;
       readonly interactionMode?: "default" | "plan";
+      readonly runtimeMode?: import("@t3tools/contracts").RuntimeMode;
       readonly sideChatCapture?: true;
     };
     readonly output: { readonly threadId: string };
@@ -609,6 +612,7 @@ export interface AgentRuntimeOperations extends AgentAcpManagementOperations {
       readonly threadId: string;
       readonly commandId: string;
       readonly reason?: string;
+      readonly modeLimit?: AgentDispatchModeLimit;
     };
     readonly output: { readonly stopped: boolean };
   };

@@ -1,3 +1,5 @@
+import type { RuntimeMode } from "@nodex/agent-runtime/contracts";
+import { AgentRuntimeModeSchema } from "../../../shared/schemas/agent-runtime-api";
 import { z } from "zod";
 import { persistedAtom } from "@/lib/maitai";
 import type { AgentModelSelection } from "../../../shared/agent-model-catalog";
@@ -13,6 +15,7 @@ type ModelOptions = NonNullable<AgentModelSelection["options"]>;
 export interface AgentRuntimeComposerChoice {
   readonly selection?: AgentModelSelection;
   readonly interactionMode?: "default" | "plan";
+  readonly runtimeMode?: RuntimeMode;
 }
 export type AgentRuntimeComposerChoices = Readonly<Record<string, AgentRuntimeComposerChoice>>;
 /** The options last chosen for each Agent model, by provider instance and then model. */
@@ -36,6 +39,7 @@ const selection = z.strictObject({
 const choice = z.strictObject({
   selection: selection.optional(),
   interactionMode: z.enum(["default", "plan"]).optional(),
+  runtimeMode: AgentRuntimeModeSchema.optional(),
 });
 
 /** Keys for the choices a Composer can hold before execution applies them. */

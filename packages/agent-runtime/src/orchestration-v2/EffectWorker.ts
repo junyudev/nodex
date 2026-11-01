@@ -476,6 +476,12 @@ export const layerExecutor: Layer.Layer<
                 ...(effect.request.decision === undefined
                   ? {}
                   : { decision: effect.request.decision }),
+                ...(effect.request.optionId === undefined
+                  ? {}
+                  : { optionId: effect.request.optionId }),
+                ...(effect.request.feedback === undefined
+                  ? {}
+                  : { feedback: effect.request.feedback }),
                 ...(effect.request.answers === undefined
                   ? {}
                   : { answers: effect.request.answers }),
@@ -486,6 +492,7 @@ export const layerExecutor: Layer.Layer<
                     new OrchestrationEffectExecutionError({
                       effectId: effect.id,
                       effectType: effect.request.type,
+                      retryable: cause.retryable !== false,
                       cause,
                     }),
                 ),
@@ -996,7 +1003,3 @@ export const runDaemonWithOptions = (options: OrchestrationEffectDaemonOptions =
   );
 
 export const runDaemon = runDaemonWithOptions();
-
-const layerDaemon: Layer.Layer<never, never, OrchestrationEffectWorkerV2> = Layer.effectDiscard(
-  runDaemon.pipe(Effect.forkScoped),
-);

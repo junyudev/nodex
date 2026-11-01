@@ -13,59 +13,72 @@ import {
 import { ClaudeSettings } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 
-it.effect("sends admitted host context through Codex's trusted instruction channels", () =>
-  Effect.gen(function* () {
-    const params = yield* buildCodexTurnStartParams({
+it.effect.each(["approval-required", "auto", "full-access"] as const)(
+  "sends mode-independent content tool guidance through Codex's trusted channels in %s mode",
+  (runtimeMode) =>
+    Effect.gen(function* () {
+      const params = yield* buildCodexTurnStartParams({
+        nativeThreadId: "native:test",
+        codexInput: [{ type: "text", text: "Help with this Page." }],
+        runtimePolicy: { runtimeMode, interactionMode: "default", cwd: "/workspace" },
+        modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
+        hasT3Mcp: true,
+        hostInstructions: "The admitted CLI context is ready.",
+        hostOrchestrationInstructions: ORCHESTRATION_INSTRUCTIONS,
+      });
+      expect(params.additionalContext?.nodex_host).toEqual({
+        kind: "application",
+        value: "The admitted CLI context is ready.",
+      });
+      expect(params.additionalContext?.nodex_tools).toEqual({
+        kind: "application",
+        value: ORCHESTRATION_INSTRUCTIONS,
+      });
+      expect(Object.keys(params.additionalContext ?? {}).toSorted()).toEqual([
+        "nodex_host",
+        "nodex_runtime",
+        "nodex_tools",
+      ]);
+      expect(params.additionalContext?.nodex_runtime?.value).toContain("running in Nodex");
+      expect(params.additionalContext?.nodex_tools?.value).toContain(
+        "Nodex content tools work in every execution mode.",
+      );
+      expect(params.additionalContext?.nodex_tools?.value).toContain(
+        "prefer `nodex_app` tools there.",
+      );
+    }),
+);
+
+it.each(["acceptEdits", "auto", "bypassPermissions"] as const)(
+  "sends content tool guidance with Claude's system preset in %s mode",
+  (permissionMode) => {
+    const options = makeClaudeQueryOptions({
       nativeThreadId: "native:test",
-      codexInput: [{ type: "text", text: "Help with this Page." }],
-      runtimePolicy: { runtimeMode: "full-access", interactionMode: "default", cwd: "/workspace" },
-      modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
-      hasT3Mcp: true,
+      resume: false,
+      cwd: "/workspace",
+      modelSelection: {
+        instanceId: ProviderInstanceId.make("claude-work"),
+        model: "claude-sonnet-4-6",
+      },
+      mcpServers: {},
+      permissionMode,
       hostInstructions: "The admitted CLI context is ready.",
       hostOrchestrationInstructions: ORCHESTRATION_INSTRUCTIONS,
     });
-    expect(params.additionalContext?.nodex_host).toEqual({
-      kind: "application",
-      value: "The admitted CLI context is ready.",
-    });
-    expect(params.additionalContext?.nodex_tools).toEqual({
-      kind: "application",
-      value: ORCHESTRATION_INSTRUCTIONS,
-    });
-    expect(Object.keys(params.additionalContext ?? {}).toSorted()).toEqual([
-      "nodex_host",
-      "nodex_runtime",
-      "nodex_tools",
-    ]);
-    expect(params.additionalContext?.nodex_runtime?.value).toContain("running in Nodex");
-  }),
+    expect(options.systemPrompt).toMatchObject({ type: "preset", preset: "claude_code" });
+    const prompt =
+      typeof options.systemPrompt === "object" &&
+      !Array.isArray(options.systemPrompt) &&
+      options.systemPrompt?.type === "preset"
+        ? options.systemPrompt.append
+        : undefined;
+    expect(prompt).toContain(ORCHESTRATION_INSTRUCTIONS);
+    expect(prompt).toContain("Nodex content tools work in every execution mode.");
+    expect(prompt).toContain("The admitted CLI context is ready.");
+    expect(prompt).toContain("running in Nodex through the Claude Code harness");
+    expect(prompt).not.toMatch(/T3|t3[-_]?code/i);
+  },
 );
-
-it("sends admitted host context with Claude's system preset", () => {
-  const options = makeClaudeQueryOptions({
-    nativeThreadId: "native:test",
-    resume: false,
-    cwd: "/workspace",
-    modelSelection: {
-      instanceId: ProviderInstanceId.make("claude-work"),
-      model: "claude-sonnet-4-6",
-    },
-    mcpServers: {},
-    hostInstructions: "The admitted CLI context is ready.",
-    hostOrchestrationInstructions: ORCHESTRATION_INSTRUCTIONS,
-  });
-  expect(options.systemPrompt).toMatchObject({ type: "preset", preset: "claude_code" });
-  const prompt =
-    typeof options.systemPrompt === "object" &&
-    !Array.isArray(options.systemPrompt) &&
-    options.systemPrompt?.type === "preset"
-      ? options.systemPrompt.append
-      : undefined;
-  expect(prompt).toContain(ORCHESTRATION_INSTRUCTIONS);
-  expect(prompt).toContain("The admitted CLI context is ready.");
-  expect(prompt).toContain("running in Nodex through the Claude Code harness");
-  expect(prompt).not.toMatch(/T3|t3[-_]?code/i);
-});
 
 it("refreshes admitted ACP context on each Turn while preserving native slash commands", () => {
   const state = { interactionMode: "default", hasAppTools: true } as const;

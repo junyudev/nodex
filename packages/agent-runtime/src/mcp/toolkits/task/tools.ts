@@ -247,7 +247,7 @@ const ListAgentModelsTool = Tool.make("list_agent_models", {
 
 const DelegateTaskTool = Tool.make("delegate_task", {
   description:
-    "Start a delegated child task that runs only the supplied prompt, without the parent conversation. Use it for cross-provider work or models your native subagents cannot run; choose models from list_agent_models. Provider, model and options inherit unless target overrides them. Prefer mode='async': completion or a question wakes you, so end your turn instead of polling. mode='wait' ends on a result, live question, approval or timeoutMs and never cancels the task.",
+    "Start a child task with only the supplied prompt. Use for cross-provider work or models your native subagents cannot run; choose from list_agent_models. Provider, model, options and execution mode inherit unless overridden. Execution cannot exceed yours; a narrower child asks a person for approval. Prefer mode='async' and end your turn: completion or a question wakes you. mode='wait' returns on a result, question, approval or timeoutMs without cancelling.",
   parameters: OrchestratorMcpDelegateTaskInput,
   success: TaskView,
   failure: OrchestratorMcpFailure,

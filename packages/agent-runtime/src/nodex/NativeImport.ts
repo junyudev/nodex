@@ -10,6 +10,8 @@ import {
   ModelSelection,
   getProviderAttachmentLimitError,
   ProviderInteractionMode,
+  RuntimeMode,
+  DEFAULT_RUNTIME_MODE,
   OrchestrationV2AppThread,
   type OrchestrationV2DomainEvent,
   type OrchestrationV2UnavailableImage,
@@ -55,6 +57,7 @@ export const NativeImportInput = Schema.Struct({
   modelSelection: ModelSelection,
   cwd: Schema.NonEmptyString,
   interactionMode: Schema.optional(ProviderInteractionMode),
+  runtimeMode: Schema.optional(RuntimeMode),
   sideChatCapture: Schema.optional(Schema.Literal(true)),
 });
 export const NativeImportsFindInput = Schema.Struct({
@@ -163,7 +166,7 @@ export const make = Effect.gen(function* () {
         title: input.title,
         providerInstanceId: input.modelSelection.instanceId,
         modelSelection: input.modelSelection,
-        runtimeMode: "full-access",
+        runtimeMode: input.runtimeMode ?? DEFAULT_RUNTIME_MODE,
         interactionMode: input.interactionMode ?? "default",
         branch: null,
         worktreePath: input.cwd,

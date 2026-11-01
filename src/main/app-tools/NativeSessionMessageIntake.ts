@@ -204,8 +204,8 @@ export const make = Effect.gen(function* () {
               mode: input.mode,
               expectedPermissions: facts.permissions,
               expectedInteractionMode: facts.interactionMode,
-              ...(input.interactionModeCeiling
-                ? { interactionModeCeiling: input.interactionModeCeiling }
+              ...(input.modeLimit?.interactionMode === "plan"
+                ? { interactionModeCeiling: "plan" }
                 : {}),
             },
           )

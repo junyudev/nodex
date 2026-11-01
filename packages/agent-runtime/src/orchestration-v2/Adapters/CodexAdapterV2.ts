@@ -63,6 +63,10 @@ import type {
   OrchestrationV2RuntimeRequest,
   OrchestrationV2Subagent,
   OrchestrationV2TurnItem,
+  ProviderApprovalDecision,
+  ProviderApprovalOption,
+  ProviderRequestKind,
+  RuntimeMode,
   ProviderUserInputAnswers,
   ProviderThreadId,
   ProviderTurnId,
@@ -107,6 +111,8 @@ import {
 import {
   codexMcpElicitationQuestions,
   codexMcpElicitationResponse,
+  codexMcpApprovalOptions,
+  codexMcpApprovalResponse,
   isCodexMcpPermissionRequest,
 } from "../../provider/CodexMcpElicitation.ts";
 import {
@@ -166,14 +172,16 @@ const CODEX_PROVIDER = ProviderDriverKind.make("codex");
 export const CODEX_DRIVER_KIND = CODEX_PROVIDER;
 export const CODEX_DEFAULT_INSTANCE_ID = defaultInstanceIdForDriver(CODEX_DRIVER_KIND);
 
-/** Describe approval scope even when Codex omits or blanks the optional reason. */
+type CodexFileChangeKinds = Readonly<
+  Record<string, CodexSchema.V2ItemStartedNotification__PatchChangeKind>
+>;
+
+/** Describe proposed paths and operations without retaining patch bodies. */
 export function codexFileChangeApprovalPrompt(input: {
-  readonly reason?: string | null;
-  readonly grantRoot?: string | null;
-  readonly fileChanges?: CodexSchema.ServerRequest__ApplyPatchApprovalParams["fileChanges"];
+  readonly reason?: string | null | undefined;
+  readonly grantRoot?: string | null | undefined;
+  readonly fileChanges?: CodexFileChangeKinds | undefined;
 }): string | undefined {
-  const reason = input.reason?.trim();
-  if (reason) return reason;
   const entries = Object.entries(input.fileChanges ?? {}).toSorted(([left], [right]) =>
     left.localeCompare(right),
   );
@@ -185,7 +193,7 @@ export function codexFileChangeApprovalPrompt(input: {
     const remaining = entries.length - described.length;
     return remaining > 0 ? `${described.join("\n")}\n+${remaining} more` : described.join("\n");
   }
-  return input.grantRoot?.trim() || undefined;
+  return input.grantRoot?.trim() || input.reason?.trim() || undefined;
 }
 
 type CodexFileUpdateChange = Extract<
@@ -316,6 +324,7 @@ export const CodexProviderCapabilitiesV2 = {
   sessions: {
     supportsMultipleProviderThreadsPerSession: true,
     supportsModelSwitchInSession: true,
+    supportsRuntimeModeSwitchInSession: true,
     supportsProviderSwitchingViaHandoff: true,
 
     pendingRequestsSurviveRestart: false,
@@ -695,11 +704,29 @@ const isProviderAdapterRuntimeRequestResponseError = Schema.is(
   ProviderAdapter.ProviderAdapterRuntimeRequestResponseError,
 );
 
-const codexExecutionPolicy = {
-  approvalPolicy: "never",
-  approvalsReviewer: "user",
-  sandboxPolicy: { type: "dangerFullAccess" },
-} as const;
+/** The workspace boundary covers the execution directory, Project Sources and attachments. */
+function codexExecutionPolicy(
+  policy: ProviderAdapter.ProviderAdapterV2RuntimePolicy,
+  attachmentsDir?: string,
+  sourceRoots: readonly string[] = [],
+): Pick<CodexTurnStartParams, "approvalPolicy" | "approvalsReviewer" | "sandboxPolicy"> {
+  if (policy.runtimeMode === "full-access") {
+    return {
+      approvalPolicy: "never",
+      approvalsReviewer: "user",
+      sandboxPolicy: { type: "dangerFullAccess" },
+    };
+  }
+  return {
+    approvalPolicy: "on-request",
+    approvalsReviewer: policy.runtimeMode === "auto" ? "auto_review" : "user",
+    sandboxPolicy: {
+      type: "workspaceWrite",
+      writableRoots: [...new Set(compactStrings([policy.cwd, ...sourceRoots, attachmentsDir]))],
+      networkAccess: false,
+    },
+  };
+}
 
 export function buildCodexTurnStartParams(input: {
   readonly nativeThreadId: string;
@@ -707,6 +734,8 @@ export function buildCodexTurnStartParams(input: {
   readonly runtimePolicy: ProviderAdapter.ProviderAdapterV2RuntimePolicy;
   readonly modelSelection: ModelSelection;
   readonly hasT3Mcp?: boolean;
+  readonly attachmentsDir?: string;
+  readonly sourceRoots?: readonly string[];
   readonly hostInstructions?: string;
   readonly hostOrchestrationInstructions?: string;
   /** ChatGPT token sharing does not accept service tiers. */
@@ -715,9 +744,12 @@ export function buildCodexTurnStartParams(input: {
   readonly appContext?: ProviderAdapter.ProviderAdapterV2TurnInput["appContext"];
 }) {
   return Effect.gen(function* () {
-    const runtimeModeDefaults = codexExecutionPolicy;
-    const approvalPolicy = codexExecutionPolicy.approvalPolicy;
-    const sandboxPolicy = codexExecutionPolicy.sandboxPolicy;
+    const runtimeModeDefaults = codexExecutionPolicy(
+      input.runtimePolicy,
+      input.attachmentsDir,
+      input.sourceRoots,
+    );
+    const { approvalPolicy, sandboxPolicy } = runtimeModeDefaults;
     const selectedEffort = getModelSelectionStringOptionValue(
       input.modelSelection,
       "reasoningEffort",
@@ -1128,6 +1160,7 @@ interface ActiveCodexTurnContext {
   // Item positions allocated in this turn. Later turns never look items up
   // here: late background items resolve their settled turn's context, and a
   // Root Run identity remains stable while native child Turns continue.
+  readonly fileChangeKindsByItem: Map<string, CodexFileChangeKinds>;
   readonly itemPositions: Map<
     string,
     { readonly ordinal: number; readonly startedAt: DateTime.Utc }
@@ -1219,11 +1252,113 @@ interface PendingCodexSubagentTurnStarted {
   readonly startedAt: DateTime.Utc;
 }
 
-type PendingCodexRuntimeRequest = {
-  readonly type: "user_input";
-  readonly requestId: RuntimeRequestId;
-  readonly answers: Deferred.Deferred<ProviderUserInputAnswers>;
+type CodexApprovalArtifacts = {
+  readonly node: OrchestrationV2ExecutionNode;
+  readonly request: OrchestrationV2RuntimeRequest;
+  readonly turnItem: Extract<OrchestrationV2TurnItem, { type: "approval_request" }>;
 };
+
+type PendingCodexRuntimeRequest =
+  | {
+      readonly type: "approval";
+      readonly requestId: RuntimeRequestId;
+      readonly context: ActiveCodexTurnContext;
+      readonly artifacts: CodexApprovalArtifacts;
+      readonly decision: Deferred.Deferred<ProviderApprovalDecision>;
+    }
+  | {
+      readonly type: "user_input";
+      readonly requestId: RuntimeRequestId;
+      readonly answers: Deferred.Deferred<ProviderUserInputAnswers>;
+    };
+
+const approvalOwnerCodexTurn = (context: ActiveCodexTurnContext) => {
+  let owner = context;
+  let subagent: CodexSubagentThreadContext | null = null;
+  while (owner.subagent !== null) {
+    subagent = owner.subagent;
+    owner = subagent.parentContext;
+  }
+  return { owner, subagent };
+};
+
+const codexApprovalOptions: ReadonlyArray<ProviderApprovalOption> = [
+  { decision: "accept", label: "Approve once" },
+  { decision: "acceptForSession", label: "Allow for this chat" },
+  { decision: "decline", label: "Decline" },
+  { decision: "cancel", label: "Cancel" },
+];
+
+function commandApprovalOptions(
+  decisions: CodexSchema.CommandExecutionRequestApprovalParams["availableDecisions"],
+): ReadonlyArray<ProviderApprovalOption> {
+  const options = codexApprovalOptions;
+  if (decisions == null) return options;
+  return decisions.flatMap((decision) => options.filter((option) => option.decision === decision));
+}
+
+function approvalDecisionToLegacyReviewDecision(
+  decision: ProviderApprovalDecision,
+): CodexSchema.ExecCommandApprovalResponse__ReviewDecision {
+  switch (decision) {
+    case "accept":
+      return "approved";
+    case "acceptForSession":
+      return "approved_for_session";
+    case "decline":
+      return { denied: { rejection: "User declined the request." } };
+    case "cancel":
+      return "abort";
+  }
+}
+
+function providerRequestKindFromPermissions(
+  permissions: CodexSchema.PermissionsRequestApprovalParams["permissions"],
+): ProviderRequestKind {
+  const requests = (access: "read" | "write") =>
+    (permissions.fileSystem?.[access]?.length ?? 0) > 0 ||
+    permissions.fileSystem?.entries?.some((entry) => entry.access === access);
+  if (requests("write")) return "file-change";
+  if (requests("read")) return "file-read";
+  return "command";
+}
+
+function codexPermissionPath(
+  path: CodexSchema.PermissionsRequestApprovalParams__FileSystemPath,
+): string {
+  if (path.type === "path") return path.path;
+  if (path.type === "glob_pattern") return path.pattern;
+  const special = path.value;
+  switch (special.kind) {
+    case "root":
+      return "/";
+    case "minimal":
+      return "runtime files";
+    case "project_roots":
+      return special.subpath ? `Project files/${special.subpath}` : "Project files";
+    case "tmpdir":
+      return "temporary directory";
+    case "slash_tmp":
+      return "/tmp";
+    case "unknown":
+      return special.subpath ? `${special.path}/${special.subpath}` : special.path;
+  }
+}
+
+function codexPermissionsApprovalPrompt(
+  permissions: CodexSchema.PermissionsRequestApprovalParams["permissions"],
+): string {
+  const fileSystem = permissions.fileSystem;
+  const actions = new Set([
+    ...(fileSystem?.entries ?? []).map(
+      (entry) => `${entry.access} ${codexPermissionPath(entry.path)}`,
+    ),
+    ...(fileSystem?.read ?? []).map((path) => `read ${path}`),
+    ...(fileSystem?.write ?? []).map((path) => `write ${path}`),
+    ...(permissions.network?.enabled ? ["Network access"] : []),
+  ]);
+  return [...actions].join("\n") || "Request additional permissions";
+}
 
 type CodexWebSearchItem = {
   readonly id: string;
@@ -2086,6 +2221,30 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
         const pendingRuntimeRequests = yield* Ref.make(
           new Map<string, PendingCodexRuntimeRequest>(),
         );
+        const sessionApprovals = new Map<
+          string,
+          { readonly runtimeMode: RuntimeMode; readonly kinds: Set<ProviderRequestKind> }
+        >();
+        const sessionAllowance = (nativeThreadId: string, context: ActiveCodexTurnContext) => {
+          const runtimeMode = context.input.runtimePolicy.runtimeMode;
+          const allowed = sessionApprovals.get(nativeThreadId);
+          if (allowed?.runtimeMode === runtimeMode) return allowed.kinds;
+          // A late answer must never grant permissions to a newer mode epoch.
+          if (allowed !== undefined) return new Set<ProviderRequestKind>();
+          const kinds = new Set<ProviderRequestKind>();
+          sessionApprovals.set(nativeThreadId, { runtimeMode, kinds });
+          return kinds;
+        };
+        const invalidateSessionApprovals = (context: ActiveCodexTurnContext) => {
+          const nativeThreadId = context.providerThread.nativeThreadRef?.nativeId;
+          if (nativeThreadId == null) return;
+          if (
+            sessionApprovals.get(nativeThreadId)?.runtimeMode ===
+            context.input.runtimePolicy.runtimeMode
+          )
+            return;
+          sessionApprovals.delete(nativeThreadId);
+        };
         const pendingMessageDeliveries = new Map<
           string,
           {
@@ -2517,12 +2676,14 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               subagent: null,
               startedAt: input.startedAt,
               itemPositions: new Map(),
+              fileChangeKindsByItem: new Map(),
             };
             yield* Ref.update(limitedTurnItems, (current) => {
               const next = new Map(current);
               next.delete(context.providerThread.id);
               return next;
             });
+            invalidateSessionApprovals(context);
             beginTurnTokenUsage(context);
             yield* Ref.update(activeTurns, (current) => {
               const updated = new Map(current);
@@ -3137,7 +3298,9 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               subagent,
               startedAt: turn.startedAt,
               itemPositions: new Map(),
+              fileChangeKindsByItem: new Map(),
             };
+            invalidateSessionApprovals(activeContext);
             beginTurnTokenUsage(activeContext);
             yield* Ref.update(activeTurns, (current) => {
               const updated = new Map(current);
@@ -4630,6 +4793,203 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             return { node, plan, turnItem };
           });
 
+        const buildApprovalRequestArtifacts = Effect.fn(
+          "CodexAdapterV2.buildApprovalRequestArtifacts",
+        )(function* (input: {
+          readonly context: ActiveCodexTurnContext;
+          readonly nativeItemId: string;
+          readonly nativeRequestId: string;
+          readonly requestKind: ProviderRequestKind;
+          readonly prompt?: string | null;
+          readonly reason?: string | null | undefined;
+          readonly appName?: string;
+          readonly options?: ReadonlyArray<ProviderApprovalOption>;
+        }) {
+          const createdAt = yield* DateTime.now;
+          const { owner, subagent } = approvalOwnerCodexTurn(input.context);
+          const parentNodeId =
+            subagent?.subagentNodeId ??
+            idAllocator.derive.nodeFromProviderItem({
+              driver: CODEX_PROVIDER,
+              nativeItemId: input.nativeItemId,
+            });
+          const ordinal = yield* resolveItemOrdinal(
+            owner,
+            `${input.nativeItemId}:approval:${input.nativeRequestId}`,
+          );
+          const requestId = yield* idAllocator.allocate.runtimeRequest({
+            driver: CODEX_PROVIDER,
+            providerTurnId: owner.providerTurnId,
+            nativeRequestId: input.nativeRequestId,
+          });
+          const nodeId = idAllocator.derive.approvalNode({ requestId });
+          const providerSessionId = owner.input.providerThread.providerSessionId;
+          if (providerSessionId === null) {
+            return yield* toProtocolError(
+              `Provider thread ${owner.providerThread.id} is missing a provider session id.`,
+            );
+          }
+          const node: OrchestrationV2ExecutionNode = {
+            id: nodeId,
+            threadId: owner.projectionThreadId,
+            runId: owner.projectionRunId,
+            parentNodeId,
+            rootNodeId: owner.rootNodeId,
+            kind: "approval_request",
+            status: "waiting",
+            countsForRun: false,
+            providerThreadId: owner.providerThread.id,
+            providerTurnId: owner.providerTurnId,
+            nativeItemRef: codexNativeItemRef(input.nativeItemId),
+            runtimeRequestId: requestId,
+            checkpointScopeId: null,
+            startedAt: createdAt,
+            completedAt: null,
+          };
+          const request: OrchestrationV2RuntimeRequest = {
+            id: requestId,
+            nodeId,
+            providerTurnId: owner.providerTurnId,
+            nativeRequestRef: {
+              driver: CODEX_PROVIDER,
+              nativeId: input.nativeRequestId,
+              strength: "strong",
+            },
+            kind: input.requestKind,
+            status: "pending",
+            responseCapability: {
+              type: "live",
+              providerSessionId,
+            },
+            createdAt,
+            resolvedAt: null,
+          };
+          const turnItem: OrchestrationV2TurnItem = {
+            id: idAllocator.derive.approvalTurnItem({ requestId }),
+            threadId: owner.projectionThreadId,
+            runId: owner.projectionRunId,
+            nodeId,
+            providerThreadId: owner.providerThread.id,
+            providerTurnId: owner.providerTurnId,
+            nativeItemRef: codexNativeItemRef(input.nativeItemId),
+            parentItemId: null,
+            ordinal,
+            status: "waiting",
+            title: null,
+            startedAt: createdAt,
+            completedAt: null,
+            updatedAt: createdAt,
+            type: "approval_request",
+            requestId,
+            requestKind: input.requestKind,
+            ...(input.prompt === null || input.prompt === undefined
+              ? {}
+              : { prompt: input.prompt }),
+            ...(trimText(input.reason) === undefined ? {} : { reason: trimText(input.reason)! }),
+            ...(input.appName === undefined ? {} : { appName: input.appName }),
+            ...(input.options === undefined ? {} : { options: input.options }),
+          };
+          return { node, request, turnItem };
+        });
+
+        const cancelApproval = Effect.fn("CodexAdapterV2.cancelApproval")(function* (
+          requestId: RuntimeRequestId,
+          reason: string,
+        ) {
+          const pending = yield* Ref.modify(pendingRuntimeRequests, (current) => {
+            const pending = current.get(String(requestId));
+            if (pending?.type !== "approval") return [undefined, current] as const;
+            const next = new Map(current);
+            next.delete(String(requestId));
+            return [pending, next] as const;
+          });
+          if (pending === undefined) return;
+          const now = yield* DateTime.now;
+          const { node, request, turnItem } = pending.artifacts;
+          yield* emitProviderEvent({
+            type: "node.updated",
+            driver: CODEX_PROVIDER,
+            node: { ...node, status: "cancelled", completedAt: now },
+          });
+          yield* emitProviderEvent({
+            type: "turn_item.updated",
+            driver: CODEX_PROVIDER,
+            turnItem: { ...turnItem, status: "cancelled", completedAt: now, updatedAt: now },
+          });
+          yield* emitProviderEvent({
+            type: "runtime_request.updated",
+            driver: CODEX_PROVIDER,
+            threadId: node.threadId,
+            runtimeRequest: {
+              ...request,
+              status: "cancelled",
+              resolvedAt: now,
+              responseCapability: { type: "not_resumable", reason },
+            },
+          });
+          yield* Deferred.succeed(pending.decision, "cancel");
+        });
+
+        const awaitApproval = Effect.fn("CodexAdapterV2.awaitApproval")(function* (
+          input: Parameters<typeof buildApprovalRequestArtifacts>[0] & {
+            readonly nativeThreadId: string;
+            readonly sessionGrant?: boolean;
+          },
+        ) {
+          const options = input.options ?? codexApprovalOptions;
+          const allowance = input.sessionGrant
+            ? sessionAllowance(input.nativeThreadId, input.context)
+            : undefined;
+          if (allowance?.has(input.requestKind)) {
+            if (options.some((option) => option.decision === "acceptForSession"))
+              return "acceptForSession" as const;
+            if (options.some((option) => option.decision === "accept")) return "accept" as const;
+          }
+          const artifacts = yield* buildApprovalRequestArtifacts({ ...input, options });
+          const decision = yield* Deferred.make<ProviderApprovalDecision>();
+          yield* Ref.update(pendingRuntimeRequests, (current) =>
+            new Map(current).set(String(artifacts.request.id), {
+              type: "approval",
+              requestId: artifacts.request.id,
+              context: input.context,
+              artifacts,
+              decision,
+            }),
+          );
+          const resolved = yield* Effect.gen(function* () {
+            yield* emitProviderEvent({
+              type: "node.updated",
+              driver: CODEX_PROVIDER,
+              node: artifacts.node,
+            });
+            yield* emitProviderEvent({
+              type: "turn_item.updated",
+              driver: CODEX_PROVIDER,
+              turnItem: artifacts.turnItem,
+            });
+            yield* emitProviderEvent({
+              type: "runtime_request.updated",
+              driver: CODEX_PROVIDER,
+              threadId: artifacts.node.threadId,
+              runtimeRequest: artifacts.request,
+            });
+            return yield* Deferred.await(decision);
+          }).pipe(
+            Effect.onInterrupt(() =>
+              cancelApproval(artifacts.request.id, "The native request is no longer active."),
+            ),
+            Effect.ensuring(
+              Ref.update(pendingRuntimeRequests, (current) => {
+                const next = new Map(current);
+                next.delete(String(artifacts.request.id));
+                return next;
+              }),
+            ),
+          );
+          if (resolved === "acceptForSession") allowance?.add(input.requestKind);
+          return resolved;
+        });
+
         const buildUserInputRequestArtifacts = (input: {
           readonly context: ActiveCodexTurnContext;
           readonly nativeItemId: string;
@@ -5339,6 +5699,14 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             const resolved = yield* resolveItemEventContext(payload.turnId);
             if (resolved === undefined) return;
             const context = resolved.context;
+            if (payload.item.type === "fileChange") {
+              context.fileChangeKindsByItem.set(
+                payload.item.id,
+                Object.fromEntries(
+                  payload.item.changes.map((change) => [change.path, change.kind]),
+                ),
+              );
+            }
             if (
               payload.item.type === "mcpToolCall" &&
               payload.item.server === NODEX_APP_MCP_SERVER &&
@@ -5850,9 +6218,31 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             const context = yield* awaitActiveTurn(payload.turnId);
             if (context === undefined)
               return yield* toProtocolError("Native execution is no longer active.", payload);
-            return {
-              decision: "accept",
-            } satisfies CodexSchema.CommandExecutionRequestApprovalResponse;
+            const trackedCommand = (yield* Ref.get(runningCommandItemsByTurn))
+              .get(context.nativeTurnId)
+              ?.get(payload.itemId)?.command;
+            const command = trimText(payload.command) ?? trackedCommand;
+            const network = payload.networkApprovalContext;
+            const prompt =
+              network == null
+                ? (command ?? "Run command")
+                : `${network.protocol}://${network.host}`;
+            const reason =
+              network == null || command === undefined
+                ? payload.reason
+                : [payload.reason, `Command: ${command}`].filter(Boolean).join("\n");
+            const decision = yield* awaitApproval({
+              context,
+              nativeThreadId: payload.threadId,
+              nativeItemId: payload.itemId,
+              nativeRequestId: payload.approvalId ?? payload.itemId,
+              requestKind: network == null ? "command" : "permission",
+              prompt,
+              reason,
+              options: commandApprovalOptions(payload.availableDecisions),
+              sessionGrant: true,
+            });
+            return { decision } satisfies CodexSchema.CommandExecutionRequestApprovalResponse;
           }).pipe(Effect.orDie),
         );
 
@@ -5861,7 +6251,21 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             const context = yield* awaitActiveTurn(payload.turnId);
             if (context === undefined)
               return yield* toProtocolError("Native execution is no longer active.", payload);
-            return { decision: "accept" } satisfies CodexSchema.FileChangeRequestApprovalResponse;
+            const decision = yield* awaitApproval({
+              context,
+              nativeThreadId: payload.threadId,
+              nativeItemId: payload.itemId,
+              nativeRequestId: payload.itemId,
+              requestKind: "file-change",
+              sessionGrant: true,
+              prompt:
+                codexFileChangeApprovalPrompt({
+                  grantRoot: payload.grantRoot,
+                  fileChanges: context.fileChangeKindsByItem.get(payload.itemId),
+                }) ?? "Apply file changes",
+              reason: payload.reason,
+            });
+            return { decision } satisfies CodexSchema.FileChangeRequestApprovalResponse;
           }).pipe(Effect.orDie),
         );
 
@@ -5870,27 +6274,50 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             const context = yield* awaitActiveTurn(payload.turnId);
             if (context === undefined)
               return yield* toProtocolError("Native execution is no longer active.", payload);
+            const decision = yield* awaitApproval({
+              context,
+              nativeThreadId: payload.threadId,
+              nativeItemId: payload.itemId,
+              nativeRequestId: payload.itemId,
+              requestKind: providerRequestKindFromPermissions(payload.permissions),
+              prompt: codexPermissionsApprovalPrompt(payload.permissions),
+              reason: payload.reason,
+            });
             return {
-              permissions: payload.permissions,
-              scope: "session",
+              permissions:
+                decision === "accept" || decision === "acceptForSession" ? payload.permissions : {},
+              scope: decision === "acceptForSession" ? "session" : "turn",
             } satisfies CodexSchema.PermissionsRequestApprovalResponse;
           }).pipe(Effect.orDie),
         );
 
         yield* client.handleServerRequest("mcpServer/elicitation/request", (payload) =>
           Effect.gen(function* () {
-            const resolvedContext =
-              payload.turnId == null ? undefined : yield* resolveItemEventContext(payload.turnId);
-            const context = resolvedContext?.context;
+            const context =
+              payload.turnId == null ? undefined : yield* awaitActiveTurn(payload.turnId);
             if (context === undefined)
               return {
                 action: "decline",
               } satisfies CodexSchema.McpServerElicitationRequestResponse;
-            if (isCodexMcpPermissionRequest(payload))
-              return {
-                action: "accept",
-                content: {},
-              } satisfies CodexSchema.McpServerElicitationRequestResponse;
+            if (isCodexMcpPermissionRequest(payload)) {
+              if (payload.serverName === NODEX_APP_MCP_SERVER)
+                return {
+                  action: "accept",
+                  content: {},
+                } satisfies CodexSchema.McpServerElicitationRequestResponse;
+              const nativeRequestId = `mcp-approval:${payload.serverName}:${nextMcpElicitationOrdinal++}`;
+              const decision = yield* awaitApproval({
+                context,
+                nativeThreadId: payload.threadId,
+                nativeItemId: nativeRequestId,
+                nativeRequestId,
+                requestKind: "mcp-elicitation",
+                prompt: payload.message,
+                appName: payload.serverName,
+                options: codexMcpApprovalOptions(payload),
+              });
+              return codexMcpApprovalResponse(payload, decision);
+            }
             const questions = codexMcpElicitationQuestions(payload);
             if (questions.length === 0)
               return {
@@ -5949,7 +6376,19 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             const context = yield* findActiveTurnByNativeThreadId(payload.conversationId);
             if (context === undefined)
               return yield* toProtocolError("Native execution is no longer active.", payload);
-            return { decision: "approved" } satisfies CodexSchema.ExecCommandApprovalResponse;
+            const decision = yield* awaitApproval({
+              context,
+              nativeThreadId: payload.conversationId,
+              nativeItemId: payload.callId,
+              nativeRequestId: payload.approvalId ?? payload.callId,
+              requestKind: "command",
+              prompt: payload.command.join(" "),
+              reason: payload.reason,
+              sessionGrant: true,
+            });
+            return {
+              decision: approvalDecisionToLegacyReviewDecision(decision),
+            } satisfies CodexSchema.ExecCommandApprovalResponse;
           }).pipe(Effect.orDie),
         );
 
@@ -5958,7 +6397,23 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             const context = yield* findActiveTurnByNativeThreadId(payload.conversationId);
             if (context === undefined)
               return yield* toProtocolError("Native execution is no longer active.", payload);
-            return { decision: "approved" } satisfies CodexSchema.ApplyPatchApprovalResponse;
+            const decision = yield* awaitApproval({
+              context,
+              nativeThreadId: payload.conversationId,
+              nativeItemId: payload.callId,
+              nativeRequestId: payload.callId,
+              requestKind: "file-change",
+              sessionGrant: true,
+              prompt:
+                codexFileChangeApprovalPrompt({
+                  fileChanges: payload.fileChanges,
+                  grantRoot: payload.grantRoot,
+                }) ?? "Apply file changes",
+              reason: payload.reason,
+            });
+            return {
+              decision: approvalDecisionToLegacyReviewDecision(decision),
+            } satisfies CodexSchema.ApplyPatchApprovalResponse;
           }).pipe(Effect.orDie),
         );
 
@@ -6255,6 +6710,10 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               const current = (yield* Ref.get(activeTurns)).get(input.nativeTurnId);
               if (current !== input.context) {
                 return false;
+              }
+              for (const pending of (yield* Ref.get(pendingRuntimeRequests)).values()) {
+                if (pending.type === "approval" && pending.context === input.context)
+                  yield* cancelApproval(pending.requestId, "The provider turn ended.");
               }
               yield* observeRootTurn(input.context, "ended");
               if (input.status !== "completed") yield* releaseNativeMcpTurn(input.nativeTurnId);
@@ -6572,6 +7031,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             subagent: null,
             startedAt: now,
             itemPositions: new Map(),
+            fileChangeKindsByItem: new Map(),
           };
           const providerTurn = {
             id: context.providerTurnId,
@@ -6731,6 +7191,10 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               nativeThreadId: threadId,
               codexInput,
               runtimePolicy: turnInput.runtimePolicy,
+              attachmentsDir: serverConfig.attachmentsDir,
+              ...(turnInput.hostSourceRoots === undefined
+                ? {}
+                : { sourceRoots: turnInput.hostSourceRoots }),
               modelSelection: turnInput.modelSelection,
               hasT3Mcp: mcpSession !== undefined,
               ...(turnInput.hostInstructions === undefined
@@ -7586,6 +8050,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             Effect.gen(function* () {
               const nativeThreadId = yield* getNativeThreadId(unloadInput.providerThread);
               voiceNativeThreads.delete(nativeThreadId);
+              sessionApprovals.delete(nativeThreadId);
               yield* client.request("thread/unsubscribe", { threadId: nativeThreadId });
             }).pipe(
               Effect.mapError((cause) =>
@@ -8044,6 +8509,30 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                     `No pending Codex runtime request ${requestInput.requestId}.`,
                   ),
                 });
+              }
+              if (pending.type === "approval") {
+                if (
+                  requestInput.decision === undefined ||
+                  !pending.artifacts.turnItem.options?.some(
+                    (option) => option.decision === requestInput.decision,
+                  )
+                ) {
+                  return yield* new ProviderAdapter.ProviderAdapterRuntimeRequestResponseError({
+                    driver: CODEX_PROVIDER,
+                    requestId: requestInput.requestId,
+                    cause: toProtocolError(
+                      `Codex approval ${requestInput.requestId} requires an offered decision.`,
+                    ),
+                  });
+                }
+                // Remove before unblocking: a simultaneous native terminal must not cancel a recorded answer.
+                yield* Ref.update(pendingRuntimeRequests, (current) => {
+                  const next = new Map(current);
+                  next.delete(String(requestInput.requestId));
+                  return next;
+                });
+                yield* Deferred.succeed(pending.decision, requestInput.decision);
+                return;
               }
               if (requestInput.answers === undefined) {
                 return yield* new ProviderAdapter.ProviderAdapterRuntimeRequestResponseError({

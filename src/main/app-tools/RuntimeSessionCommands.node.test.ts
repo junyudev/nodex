@@ -550,12 +550,15 @@ it.effect(
       );
       assert.equal((f.calls[0]?.input as { projectId: string }).projectId, "other-project");
       assert.equal((f.calls[0]?.input as { interactionMode: string }).interactionMode, "plan");
-      assert.equal(
-        (f.calls[0]?.input as { interactionModeCeiling: string }).interactionModeCeiling,
-        "plan",
-      );
+      assert.deepEqual((f.calls[0]?.input as { modeLimit: unknown }).modeLimit, {
+        runtimeMode: "full-access",
+        interactionMode: "plan",
+      });
       restricted = true;
-      const denied = yield* execute(invocation);
+      const denied = yield* execute({
+        ...invocation,
+        arguments: { ...invocation.arguments, runtimeMode: "full-access" },
+      });
       assert.equal(
         denied.structuredContent?.error &&
           (denied.structuredContent.error as { code: string }).code,
@@ -713,7 +716,7 @@ it.effect(
         runId: "source-run",
         respondedBy: { kind: "agent", senderThreadId: "child", senderSessionId: "session:root" },
         requirePending: true,
-        interactionModeCeiling: "plan",
+        modeLimit: { runtimeMode: "full-access", interactionMode: "plan" },
       });
       assert.isNotNull(responses[0]?.agent);
     }),
@@ -835,3 +838,29 @@ it.effect("withdrawn Session question calls cannot inspect or answer their targe
     assert.equal(f.calls.length, 0);
   }),
 );
+
+for (const runtimeMode of [undefined, "approval-required"] as const) {
+  it.effect(
+    `Agent-created Sessions ${runtimeMode ? "accept narrower modes" : "inherit the caller mode"}`,
+    () =>
+      Effect.gen(function* () {
+        const f = fixture({ restricted: true });
+        const execute = yield* f.execute;
+        const result = yield* execute({
+          caller: f.caller,
+          name: "create_session",
+          arguments: {
+            prompt: "Build it",
+            target: { type: "projectless" },
+            ...(runtimeMode ? { runtimeMode } : {}),
+          },
+        });
+        assert.isFalse(result.isError ?? false);
+        const launched = f.calls.find((call) => call.name === "launch")!;
+        assert.deepInclude(launched.input, {
+          runtimeMode: "approval-required",
+          modeLimit: { runtimeMode: "approval-required", interactionMode: "plan" },
+        });
+      }),
+  );
+}

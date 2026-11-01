@@ -34,7 +34,9 @@ flowchart LR
 ```
 
 The CLI is the default shell Agent content Interface. Its authenticated connection
-has full access to the current Profile. Native application MCP provides live Workbench context,
+has full content access to the current Profile. Native execution access is a separate per-Session
+permission mode ([ADR 0074](adr/0074-content-access-and-native-execution-permissions.md)).
+Native application MCP provides live Workbench context,
 application operations and content operations under verified execution identity.
 Both Interfaces share Core semantics. Per-Turn host connection
 context selects the Skill and a task-bound shell entrypoint for the current
@@ -1042,8 +1044,8 @@ The executing manager owns delivery locks, settings waits, terminal recovery and
 or steer. Main provides durable storage and admitted input capabilities without owning a second
 renderer queue projection. See [Thread Owner/Follower Streaming](product-specs/codex-thread-owner-follower-streaming.md).
 
-Native permission requests receive a fixed automatic approval. Genuine elicitation and
-user-input requests have one canonical pending request lifecycle. Admission records
+Native Codex conversations outside the Agent Runtime keep a fixed automatic approval policy.
+Genuine elicitation and user-input requests have one canonical pending request lifecycle. Admission records
 the exact native endpoint and Session generation before presentation;
 renderer or automation responses claim that identity once and send through the typed Gateway.
 Replacement, timeout, renderer loss, server resolution, and Scope close settle the same authority

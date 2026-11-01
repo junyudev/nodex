@@ -1,3 +1,6 @@
+import { useAgentApprovals } from "../use-agent-approvals";
+import { PendingApprovalRow } from "./shared/pending-approval-row";
+import { toast } from "@/components/ui/toast";
 import { useCodexConversationValue } from "../local-conversation-store";
 import { memo, useLayoutEffect, useMemo, type RefCallback } from "react";
 import type { CodexConversationChildMembership } from "../../../lib/types";
@@ -108,10 +111,25 @@ function LocalConversationTurnEntryComponent({
     isNormalizedConversationTurnEntry(entry) ? null : entry.turn,
     isCodexTimelineTurnEntry(entry) ? entry.timelineSlice : undefined,
   );
-  const materializedEntry = useMemo<VisibleConversationTurnEntry | null>(
-    () => (turn ? { ...entry, turn } : null),
-    [entry, turn],
+  const approvals = useAgentApprovals();
+  const approvalRunId = turn?.turnId;
+  const pendingApprovals = approvals.pending.filter(
+    (approval) =>
+      approval.runId === approvalRunId || (approval.runId === null && entry.isMostRecentTurn),
   );
+  const includeApprovals =
+    !isCodexTimelineTurnEntry(entry) || entry.timelineSlice.includeTurnExtras;
+  const materializedEntry = useMemo<VisibleConversationTurnEntry | null>(() => {
+    if (!turn) return null;
+    const visibleTurn =
+      approvals.suppressedItemIds.size > 0
+        ? {
+            ...turn,
+            items: turn.items.filter((item) => !approvals.suppressedItemIds.has(item.itemId)),
+          }
+        : turn;
+    return { ...entry, turn: visibleTurn };
+  }, [entry, turn, approvals.suppressedItemIds]);
   const isTimelineEntry = isCodexTimelineTurnEntry(entry);
   const allowUserActions = !isTimelineEntry || entry.timelineUserActions;
   const includeTurnExtras = !isTimelineEntry || entry.timelineSlice.includeTurnExtras;
@@ -220,6 +238,29 @@ function LocalConversationTurnEntryComponent({
         <div data-content-search-turn-key={entry.turnKey} data-virtualized-turn-content="true">
           <ThreadTurn
             turn={turnModel}
+            agentBodyEnd={
+              includeApprovals && pendingApprovals.length > 0 ? (
+                <div className="flex flex-col gap-2">
+                  {pendingApprovals.map((approval) => (
+                    <PendingApprovalRow
+                      key={approval.requestId}
+                      approval={approval}
+                      responding={approvals.responding.has(approval.requestId)}
+                      disabled={approvals.held.has(approval.requestId)}
+                      onRespond={(requestId, response) => {
+                        void approvals.runtime
+                          ?.respond(requestId, response)
+                          .catch((error: unknown) => {
+                            toast.danger(
+                              error instanceof Error ? error.message : "Could not answer approval",
+                            );
+                          });
+                      }}
+                    />
+                  ))}
+                </div>
+              ) : null
+            }
             endResources={isTimelineEntry ? undefined : resources}
             hostId={hostId}
             mcpApps={mcpApps ?? []}

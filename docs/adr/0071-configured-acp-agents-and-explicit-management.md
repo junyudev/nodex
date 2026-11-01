@@ -4,6 +4,7 @@
 - Date: 2026-10-24
 - Owners: Nodex maintainers
 - Refines: [ADR 0068](0068-agent-runtime-execution-authority.md)
+- Refined by: native permission modes in [ADR 0074](0074-content-access-and-native-execution-permissions.md)
 - Supersedes: the fixed ACP definition allowlist, stable-v1-only and scheduled-execution restrictions, and future third-party installation policy in [ADR 0056](0056-native-codex-and-capability-negotiated-agent-backends.md)
 
 ## Context

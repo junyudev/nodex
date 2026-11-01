@@ -32,6 +32,7 @@ import {
   type OrchestrationV2TurnItem,
   type PlanId,
   ProviderDriverKind,
+  type ProviderRequestKind,
   type ProviderInstanceId,
   type ProviderSessionId,
   type RuntimeRequestId,
@@ -125,6 +126,7 @@ const OpenCodeProviderCapabilitiesV2 = {
     // Keep it isolated until its runtime is made safe for cross-thread pooling.
     supportsMultipleProviderThreadsPerSession: false,
     supportsModelSwitchInSession: true,
+    supportsRuntimeModeSwitchInSession: false,
     supportsProviderSwitchingViaHandoff: true,
 
     pendingRequestsSurviveRestart: false,
@@ -397,6 +399,8 @@ interface OpenCodeThreadState {
   parentSubagent: OpenCodeSubagentContext | null;
   nextChildTurnOrdinal: number;
   nextAdmissionGeneration: number;
+  permission: PermissionRuleset;
+  inheritedPermission: PermissionRuleset;
 }
 
 interface OpenCodeRequestOwner {
@@ -422,7 +426,9 @@ function topLevelRequestOwner(state: OpenCodeThreadState): OpenCodeRequestOwner 
     subagent?.parentTurn.rootTurn ??
     subagent?.parentTurn ??
     owner.activeTurn;
-  return turn == null || turn.interrupted ? undefined : { state: owner, turn, subagent };
+  return turn == null || turn.interrupted || (turn.finalized && state.activeTurn === null)
+    ? undefined
+    : { state: owner, turn, subagent };
 }
 
 interface PendingOpenCodeRequest {
@@ -435,9 +441,11 @@ interface PendingOpenCodeRequest {
   readonly nodeId: OrchestrationV2ExecutionNode["id"];
   readonly parentNodeId: OrchestrationV2ExecutionNode["id"];
   readonly turnItemId: OrchestrationV2TurnItem["id"];
-  readonly requestKind: "user_input";
+  readonly requestKind: "user_input" | OpenCodePermissionRequestKind;
   readonly createdAt: DateTime.Utc;
-  readonly question: QuestionRequest;
+  readonly question?: QuestionRequest;
+  readonly permission?: PermissionRequest;
+  answering?: boolean;
 }
 
 export interface OpenCodeAdapterV2Options {
@@ -558,10 +566,150 @@ function sdkResponseForRawLog(value: unknown): unknown {
   return value;
 }
 
-/** Root and native child sessions use the same full execution access. */
-export const OPENCODE_EXECUTION_PERMISSIONS: PermissionRuleset = [
-  { permission: "*", pattern: "*", action: "allow" },
-];
+type OpenCodePermissionRequestKind = Extract<
+  ProviderRequestKind,
+  "command" | "file-read" | "file-change"
+>;
+
+export function openCodePermissionRequestKind(
+  permission: string,
+  toolName?: string,
+): OpenCodePermissionRequestKind {
+  const normalized = permission.toLowerCase();
+  const normalizedTool = toolName?.toLowerCase() ?? "";
+  if (
+    normalized === "edit" ||
+    normalized === "write" ||
+    normalized === "patch" ||
+    normalized === "apply_patch" ||
+    normalizedTool === "edit" ||
+    normalizedTool === "write" ||
+    normalizedTool === "patch" ||
+    normalizedTool === "apply_patch"
+  ) {
+    return "file-change";
+  }
+  if (
+    normalized === "read" ||
+    normalized === "glob" ||
+    normalized === "grep" ||
+    normalized === "lsp" ||
+    normalized === "external_directory" ||
+    normalizedTool === "read" ||
+    normalizedTool.includes("glob") ||
+    normalizedTool.includes("grep") ||
+    normalizedTool.includes("search")
+  ) {
+    return "file-read";
+  }
+  return "command";
+}
+
+const OPENCODE_ALWAYS_ALLOWED_PERMISSIONS = [
+  "question",
+  "read",
+  "glob",
+  "grep",
+  "lsp",
+  "todowrite",
+  "task",
+  "skill",
+] as const;
+
+const OPENCODE_RESTRICTED_PERMISSIONS = [
+  "bash",
+  "edit",
+  "webfetch",
+  "websearch",
+  "codesearch",
+  "external_directory",
+  "doom_loop",
+] as const;
+
+const OPENCODE_APP_PERMISSION: PermissionRuleset[number] = {
+  permission: `${NODEX_APP_MCP_SERVER}_*`,
+  pattern: "*",
+  action: "allow",
+};
+
+/** OpenCode has no OS sandbox; native permission rules enforce the Session mode. */
+export function openCodePermissionRules(
+  runtimePolicy: ProviderAdapter.ProviderAdapterV2RuntimePolicy,
+): PermissionRuleset {
+  if (runtimePolicy.runtimeMode === "full-access") {
+    return [{ permission: "*", pattern: "*", action: "allow" }];
+  }
+  // Children initially inherit only denies; seed them before overrides to protect the policy-install gap.
+  const rules: PermissionRuleset = [
+    { permission: "*", pattern: "*", action: "deny" },
+    ...OPENCODE_RESTRICTED_PERMISSIONS.map((permission) => ({
+      permission,
+      pattern: "*",
+      action: "deny" as const,
+    })),
+  ];
+
+  rules.push({ permission: "*", pattern: "*", action: "ask" });
+  for (const permission of OPENCODE_RESTRICTED_PERMISSIONS) {
+    rules.push({ permission, pattern: "*", action: "ask" });
+  }
+
+  rules.push(
+    ...OPENCODE_ALWAYS_ALLOWED_PERMISSIONS.map((permission) => ({
+      permission,
+      pattern: "*",
+      action: "allow" as const,
+    })),
+  );
+
+  rules.push(
+    { permission: "read", pattern: "*.env", action: "ask" },
+    { permission: "read", pattern: "*.env.*", action: "ask" },
+    { permission: "read", pattern: "*.env.example", action: "allow" },
+  );
+
+  rules.push(OPENCODE_APP_PERMISSION);
+  return rules;
+}
+
+function permissionRuleEquals(
+  left: PermissionRuleset[number],
+  right: PermissionRuleset[number],
+): boolean {
+  return (
+    left.permission === right.permission &&
+    left.pattern === right.pattern &&
+    left.action === right.action
+  );
+}
+
+/**
+ * Children inherit only deny/external-directory rules; restore parent policy while retaining agent restrictions.
+ * `previousParentRules` are the parent rules already written into `childRules`.
+ */
+export function openCodeChildPermissionRules(
+  runtimePolicy: ProviderAdapter.ProviderAdapterV2RuntimePolicy,
+  childRules: PermissionRuleset,
+  previousParentRules: PermissionRuleset = [],
+): PermissionRuleset {
+  const parentRules = openCodePermissionRules(runtimePolicy);
+  const inheritedRules = [
+    ...parentRules.filter(
+      (rule) => rule.permission === "external_directory" || rule.action === "deny",
+    ),
+    ...previousParentRules,
+  ];
+  const childSpecificRules = childRules.filter(
+    (childRule) =>
+      !inheritedRules.some((inheritedRule) => permissionRuleEquals(childRule, inheritedRule)),
+  );
+  return [
+    ...[...parentRules, ...childSpecificRules].filter(
+      (rule) => rule.permission !== OPENCODE_APP_PERMISSION.permission,
+    ),
+    OPENCODE_APP_PERMISSION,
+  ];
+}
 
 /**
  * OpenCode's fork/revert boundary is exclusive. To retain the selected app
@@ -814,9 +962,7 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
         yield* OpenCodeRuntime.runOpenCodeSdk("session.delete", (signal) =>
           client.session.delete({ sessionID }, { signal }),
         ).pipe(
-          Effect.catch((cause) =>
-            isOpenCodeNotFound(cause) ? Effect.void : Effect.fail(cause),
-          ),
+          Effect.catch((cause) => (isOpenCodeNotFound(cause) ? Effect.void : Effect.fail(cause))),
         );
       },
       Effect.scoped,
@@ -1301,7 +1447,10 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
               () => client.session.get({ sessionID: childSessionId }),
             );
             const nativeChildSession = unwrapData("session.get", childSessionResponse);
-            const childPermission = OPENCODE_EXECUTION_PERMISSIONS;
+            const childPermission = openCodeChildPermissionRules(
+              turn.runtimePolicy,
+              nativeChildSession.permission ?? [],
+            );
             yield* sdkCall(
               "session.update",
               { sessionID: childSessionId, permission: childPermission },
@@ -1323,6 +1472,8 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
               parentSubagent: context,
               nextChildTurnOrdinal: 1,
               nextAdmissionGeneration: 1,
+              permission: childPermission,
+              inheritedPermission: openCodePermissionRules(turn.runtimePolicy),
             });
             yield* emitProviderEvent({
               type: "app_thread.created",
@@ -1677,19 +1828,43 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
             completedAt,
             updatedAt,
           };
+          if (pending.question !== undefined) {
+            return {
+              ...base,
+              title: "User input",
+              type: "user_input_request",
+              requestId: pending.requestId,
+              questions: requestQuestions(pending.question),
+            };
+          }
+          const permission = pending.permission;
+          if (permission === undefined) {
+            throw protocolError(`OpenCode request ${pending.requestId} has no native payload`);
+          }
           return {
             ...base,
-            title: "User input",
-            type: "user_input_request",
+            title: permission.permission,
+            type: "approval_request",
             requestId: pending.requestId,
-            questions: requestQuestions(pending.question),
+            requestKind: pending.requestKind === "user_input" ? "command" : pending.requestKind,
+            options: [
+              { decision: "cancel", label: "Cancel" },
+              { decision: "decline", label: "Decline" },
+              { decision: "accept", label: "Approve" },
+            ],
+            prompt:
+              permission.patterns.length === 0
+                ? permission.permission
+                : permission.patterns.join("\n"),
           };
         };
 
         const emitRuntimeRequest = Effect.fnUntraced(function* (
           owner: OpenCodeRequestOwner,
           nativeRequestId: string,
-          request: { readonly type: "question"; readonly value: QuestionRequest },
+          request:
+            | { readonly type: "permission"; readonly value: PermissionRequest }
+            | { readonly type: "question"; readonly value: QuestionRequest },
         ) {
           if (pendingRequestsByNativeId.has(nativeRequestId)) return;
           const { state, turn, subagent } = owner;
@@ -1701,7 +1876,18 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
           });
           const nodeId = idAllocator.derive.approvalNode({ requestId });
           const turnItemId = idAllocator.derive.approvalTurnItem({ requestId });
-          const requestKind = "user_input";
+          const permissionToolName =
+            request.type === "permission" && request.value.tool !== undefined
+              ? threads
+                  .get(request.value.sessionID)
+                  ?.activeTurn?.toolNamesByCallId.get(request.value.tool.callID)
+              : undefined;
+          const permissionRequestKind =
+            request.type === "permission"
+              ? openCodePermissionRequestKind(request.value.permission, permissionToolName)
+              : undefined;
+          const requestKind: OrchestrationV2RuntimeRequest["kind"] =
+            permissionRequestKind ?? "user_input";
           const pending: PendingOpenCodeRequest = {
             requestId,
             nativeRequestId,
@@ -1713,7 +1899,9 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
             turnItemId,
             requestKind,
             createdAt: now,
-            question: request.value,
+            ...(request.type === "permission"
+              ? { permission: request.value }
+              : { question: request.value }),
           };
           pendingRequests.set(String(requestId), pending);
           pendingRequestsByNativeId.set(nativeRequestId, pending);
@@ -1741,7 +1929,7 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
               runId: turn.runId,
               parentNodeId: pending.parentNodeId,
               rootNodeId: turn.rootNodeId,
-              kind: "user_input_request",
+              kind: request.type === "question" ? "user_input_request" : "approval_request",
               status: "waiting",
               countsForRun: false,
               providerThreadId: state.providerThread.id,
@@ -1773,6 +1961,7 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
         ) {
           const pending = pendingRequestsByNativeId.get(nativeRequestId);
           if (pending === undefined) return;
+          rememberSettledRequest(nativeRequestId);
           const now = yield* DateTime.now;
           const current = pending.state.runtimeRequests.get(String(pending.requestId));
           if (current !== undefined) {
@@ -1798,7 +1987,7 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
               runId: pending.turn.runId,
               parentNodeId: pending.parentNodeId,
               rootNodeId: pending.turn.rootNodeId,
-              kind: "user_input_request",
+              kind: pending.question === undefined ? "approval_request" : "user_input_request",
               status: status === "resolved" ? "completed" : "cancelled",
               countsForRun: false,
               providerThreadId: pending.state.providerThread.id,
@@ -1870,6 +2059,19 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
             | { readonly type: "permission"; readonly value: PermissionRequest }
             | { readonly type: "question"; readonly value: QuestionRequest },
         ) {
+          if (
+            request.type === "permission" &&
+            request.value.permission.startsWith(`${NODEX_APP_MCP_SERVER}_`)
+          ) {
+            yield* sdkCall(
+              "permission.reply",
+              { requestID: nativeRequestId, reply: "once" },
+              (signal) =>
+                client.permission.reply({ requestID: nativeRequestId, reply: "once" }, { signal }),
+            );
+            rememberSettledRequest(nativeRequestId);
+            return;
+          }
           if (pendingChildRequestRoutes.has(nativeRequestId)) return;
           const attempt = Effect.gen(function* () {
             if (
@@ -1881,19 +2083,6 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
             const state = yield* resolveSessionOwner(sessionId);
             const owner = state === undefined ? undefined : topLevelRequestOwner(state);
             if (owner === undefined) return false;
-            if (request.type === "permission") {
-              yield* sdkCall(
-                "permission.reply",
-                { requestID: nativeRequestId, reply: "once" },
-                (signal) =>
-                  client.permission.reply(
-                    { requestID: nativeRequestId, reply: "once" },
-                    { signal },
-                  ),
-              ).pipe(Effect.timeout("10 seconds"));
-              rememberSettledRequest(nativeRequestId);
-              return true;
-            }
             yield* emitRuntimeRequest(owner, nativeRequestId, request);
             return true;
           });
@@ -1903,6 +2092,18 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
             for (let retry = 0; retry < 5; retry += 1) {
               yield* Effect.sleep(Duration.millis(Math.min(200 * 2 ** retry, 2_000)));
               if (yield* attempt) return;
+            }
+            if (request.type === "permission") {
+              yield* sdkCall(
+                "permission.reply",
+                { requestID: nativeRequestId, reply: "reject" },
+                (signal) =>
+                  client.permission.reply(
+                    { requestID: nativeRequestId, reply: "reject" },
+                    { signal },
+                  ),
+              ).pipe(Effect.timeout("10 seconds"), Effect.ignore({ log: true }));
+              rememberSettledRequest(nativeRequestId);
             }
           }).pipe(
             Effect.ensuring(Effect.sync(() => pendingChildRequestRoutes.delete(nativeRequestId))),
@@ -2728,6 +2929,8 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
           const existing = threads.get(nativeSession.id);
           if (existing !== undefined) {
             existing.providerThread = providerThread;
+            if (nativeSession.permission !== undefined)
+              existing.permission = nativeSession.permission;
             if (appThread !== null) existing.appThread = appThread;
             return existing;
           }
@@ -2743,10 +2946,43 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
             parentSubagent: subagentsByChildSessionId.get(nativeSession.id) ?? null,
             nextChildTurnOrdinal: 1,
             nextAdmissionGeneration: 1,
+            permission: nativeSession.permission ?? [],
+            inheritedPermission:
+              subagentsByChildSessionId.get(nativeSession.id)?.parentState.permission ?? [],
           };
           threads.set(nativeSession.id, state);
           return state;
         };
+
+        // OpenCode copies parent rules into a child only at creation, so children are updated here too.
+        const applyPermissionRules = Effect.fnUntraced(function* (
+          state: OpenCodeThreadState,
+          policy: ProviderAdapter.ProviderAdapterV2RuntimePolicy,
+        ) {
+          const parentRules = openCodePermissionRules(policy);
+          const pending = [state];
+          for (let target = pending.pop(); target !== undefined; target = pending.pop()) {
+            const previous = target.permission;
+            const permission =
+              target.parentSubagent === null
+                ? parentRules
+                : openCodeChildPermissionRules(policy, previous, target.inheritedPermission);
+            if (
+              permission.length !== previous.length ||
+              !permission.every((rule, index) => permissionRuleEquals(rule, previous[index]!))
+            ) {
+              const sessionID = target.nativeSessionId;
+              yield* sdkCall("session.update", { sessionID, permission }, () =>
+                client.session.update({ sessionID, permission }),
+              );
+              target.permission = permission;
+            }
+            if (target.parentSubagent !== null) target.inheritedPermission = parentRules;
+            for (const child of threads.values()) {
+              if (child.parentSubagent?.parentState === target) pending.push(child);
+            }
+          }
+        });
 
         const resolvePromptParts = (turnInput: ProviderAdapter.ProviderAdapterV2TurnInput) => {
           const text = providerMessageTextWithAttachmentPaths({
@@ -2945,16 +3181,17 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
               if (threadInput.existingProviderThread?.nativeThreadRef != null) {
                 return yield* runtimeSession.resumeThread({
                   providerThread: threadInput.existingProviderThread,
+                  runtimePolicy: threadInput.runtimePolicy,
                 });
               }
               // No title: OpenCode generates one from the first prompt only when
               // session.create leaves it unset (SessionPrompt.ensureTitle).
               const response = yield* sdkCall(
                 "session.create",
-                { permission: OPENCODE_EXECUTION_PERMISSIONS },
+                { permission: openCodePermissionRules(threadInput.runtimePolicy) },
                 () =>
                   client.session.create({
-                    permission: OPENCODE_EXECUTION_PERMISSIONS,
+                    permission: openCodePermissionRules(threadInput.runtimePolicy),
                   }),
               );
               const nativeSession = unwrapData("session.create", response);
@@ -2982,7 +3219,14 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
                       status: created.status,
                       updatedAt: created.updatedAt,
                     };
-              registerThread(nativeSession, providerThread, null);
+              registerThread(
+                {
+                  ...nativeSession,
+                  permission: openCodePermissionRules(threadInput.runtimePolicy),
+                },
+                providerThread,
+                null,
+              );
               return providerThread;
             }).pipe(
               Effect.mapError(
@@ -3008,7 +3252,8 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
                 status: "idle" as const,
                 updatedAt: dateTimeFromEpoch(nativeSession.time.updated, resumedAt),
               };
-              registerThread(nativeSession, providerThread, null);
+              const state = registerThread(nativeSession, providerThread, null);
+              yield* applyPermissionRules(state, threadInput.runtimePolicy ?? input.runtimePolicy);
               return providerThread;
             }).pipe(
               Effect.mapError(
@@ -3043,6 +3288,7 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
                   `OpenCode provider thread ${turnInput.providerThread.id} already has an active turn`,
                 );
               }
+              yield* applyPermissionRules(state, turnInput.runtimePolicy);
               const parsedModel = OpenCodeRuntime.parseOpenCodeModelSlug(
                 turnInput.modelSelection.model,
               );
@@ -3339,6 +3585,10 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
                 (turn === undefined || turn === null) &&
                 interruptInput.requestRuntimeRestart === true
               ) {
+                for (const pending of Array.from(pendingRequests.values())) {
+                  if (pending.state.nativeSessionId === sessionId)
+                    yield* resolveRuntimeRequest(pending.nativeRequestId, "cancelled");
+                }
                 for (const controller of commandControllers.get(sessionId) ?? [])
                   controller.abort();
                 yield* abortDescendants(sessionId);
@@ -3354,6 +3604,13 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
                 );
               }
               turn.interrupted = true;
+              for (const pending of Array.from(pendingRequests.values())) {
+                if (
+                  pending.turn === turn ||
+                  (interruptInput.requestRuntimeRestart === true && pending.state === state)
+                )
+                  yield* resolveRuntimeRequest(pending.nativeRequestId, "cancelled");
+              }
               for (const controller of commandControllers.get(sessionId) ?? []) controller.abort();
               const admissionWasPending = turn.admissionPending;
               cancelOpenCodePromptAdmission(turn, state!.nextAdmissionGeneration++);
@@ -3406,7 +3663,44 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
                   `No pending OpenCode request ${requestInput.requestId}`,
                 );
               }
-              if (requestInput.answers === undefined)
+              if (pending.answering)
+                return yield* protocolError(
+                  `OpenCode request ${requestInput.requestId} is already answered`,
+                );
+              if (pending.permission !== undefined) {
+                if (requestInput.decision === undefined)
+                  return yield* protocolError(
+                    `OpenCode approval request ${requestInput.requestId} requires a decision`,
+                  );
+                // OpenCode 1's always grant is project-wide, so session approval is not offered.
+                if (requestInput.decision === "acceptForSession")
+                  return yield* protocolError(
+                    "OpenCode 1 does not support session-scoped approval",
+                  );
+                const reply = OpenCodeRuntime.toOpenCodePermissionReply(requestInput.decision);
+                pending.answering = true;
+                yield* sdkCall(
+                  "permission.reply",
+                  { requestID: pending.nativeRequestId, reply },
+                  (signal) =>
+                    client.permission.reply(
+                      { requestID: pending.nativeRequestId, reply },
+                      { signal },
+                    ),
+                ).pipe(
+                  Effect.timeout("10 seconds"),
+                  Effect.onExit((exit) =>
+                    Exit.isFailure(exit)
+                      ? Effect.sync(() => {
+                          pending.answering = false;
+                        })
+                      : Effect.void,
+                  ),
+                );
+                yield* resolveRuntimeRequest(pending.nativeRequestId, "resolved");
+                return;
+              }
+              if (pending.question === undefined || requestInput.answers === undefined)
                 return yield* protocolError(
                   `OpenCode question request ${requestInput.requestId} requires answers`,
                 );
@@ -3414,6 +3708,7 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
                 pending.question,
                 requestInput.answers,
               );
+              pending.answering = true;
               yield* sdkCall(
                 "question.reply",
                 { requestID: pending.nativeRequestId, answers },
@@ -3422,7 +3717,17 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
                     { requestID: pending.nativeRequestId, answers },
                     { signal },
                   ),
-              ).pipe(Effect.timeout("10 seconds"));
+              ).pipe(
+                Effect.timeout("10 seconds"),
+                Effect.onExit((exit) =>
+                  Exit.isFailure(exit)
+                    ? Effect.sync(() => {
+                        pending.answering = false;
+                      })
+                    : Effect.void,
+                ),
+              );
+              yield* resolveRuntimeRequest(pending.nativeRequestId, "resolved");
             }).pipe(
               Effect.mapError(
                 (cause) =>
@@ -3497,7 +3802,7 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
                 yield* sdkCall("session.update", { sessionID: fork.id }, () =>
                   client.session.update({
                     sessionID: fork.id,
-                    permission: OPENCODE_EXECUTION_PERMISSIONS,
+                    permission: openCodePermissionRules(input.runtimePolicy),
                   }),
                 );
                 retainedThread = {
@@ -3561,6 +3866,14 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
                   }),
               );
               const nativeSession = unwrapData("session.fork", response);
+              yield* sdkCall("session.update", { sessionID: nativeSession.id }, () =>
+                client.session.update({
+                  sessionID: nativeSession.id,
+                  permission: openCodePermissionRules(
+                    forkInput.runtimePolicy ?? input.runtimePolicy,
+                  ),
+                }),
+              );
               const forkedAt = yield* DateTime.now;
               const providerThread = makeProviderThread({
                 idAllocator,

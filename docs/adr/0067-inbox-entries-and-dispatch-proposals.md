@@ -2,7 +2,7 @@
 
 Status: Accepted
 Date: 2026-10-11
-Refined by: Library Inbox Database navigation in [ADR 0072](0072-inbox-page-peek-and-primary-inbox-database.md)
+Refined by: Library Inbox Database navigation in [ADR 0072](0072-inbox-page-peek-and-primary-inbox-database.md); read-only utilities in [ADR 0074](0074-content-access-and-native-execution-permissions.md)
 
 ## Context
 

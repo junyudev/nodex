@@ -1,5 +1,4 @@
 import * as Layer from "effect/Layer";
-import * as Effect from "effect/Effect";
 import * as OrchestrationCommandReceipts from "../persistence/OrchestrationCommandReceipts.ts";
 import * as OrchestrationEventStore from "../persistence/OrchestrationEventStore.ts";
 import * as McpAppModelContext from "../mcpApps/McpAppModelContext.ts";
@@ -171,7 +170,13 @@ const layerProviderTurnControlServiceProvided = ProviderTurnControlService.layer
 );
 
 const layerRuntimeRequestServiceProvided = RuntimeRequestService.layer.pipe(
-  Layer.provide(Layer.merge(ProjectionStore.layer, layerProviderSessionManagerProvided)),
+  Layer.provide(
+    Layer.mergeAll(
+      ProjectionStore.layer,
+      layerProviderSessionManagerProvided,
+      layerEventSinkProvided,
+    ),
+  ),
 );
 
 const layerCheckpointRollbackServiceProvided = CheckpointRollbackService.layer.pipe(

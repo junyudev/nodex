@@ -7,6 +7,10 @@ import { createHash } from "node:crypto";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import { sessionHandoffSchema } from "../../shared/nodex-app-tools/session-handoff-schemas";
+import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
+import { resolveAppToolCallingSession } from "./AppToolCallingSession";
+import { sessionMessageCeilingError } from "./session-message-policy";
+import { make as makeControlAuthority, denied } from "./SessionControlAuthority";
 import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
 import { CodexTurnAuthority } from "../codex-application/CodexTurnAuthority";
 import { CodexThreadHandoffRuntime } from "../codex-application/CodexThreadHandoffRuntime";
@@ -25,6 +29,8 @@ export const makeWithCapture = (captureCaller: AppToolAuthorityCapture) =>
     const core = yield* CoreModules;
     const handoffs = yield* CodexThreadHandoffRuntime;
     const application = yield* Effect.serviceOption(AgentRuntimeApplication);
+    const workspace = yield* ProjectWorkspace;
+    const access = yield* makeControlAuthority;
 
     return Effect.fn("SessionHandoffAppTools.execute")(function* (input: AppToolInvocation) {
       const parsed = parseAppToolArguments(sessionHandoffSchema, input.arguments);
@@ -56,6 +62,33 @@ export const makeWithCapture = (captureCaller: AppToolAuthorityCapture) =>
         return toolFailure("session_unavailable");
       const { thread, session } = observed.value;
       if (session.archived) return toolFailure("session_archived");
+      const caller = yield* resolveAppToolCallingSession(input.caller, workspace);
+      if (!caller) return toolFailure("session_unavailable");
+      if (caller.sessionId === request.sessionId)
+        return toolFailure("cannot_handoff_calling_session");
+      const callerTarget = {
+        sessionId: caller.sessionId,
+        ...(readHostedAppToolSessionContext(input.caller)
+          ? { execution: { threadId: caller.threadId } }
+          : {}),
+      };
+      const admittedModes = yield* Effect.gen(function* () {
+        const source = yield* access.inspect(callerTarget);
+        const { facts } = yield* access.check(callerTarget, { sessionId: request.sessionId });
+        const error = facts ? sessionMessageCeilingError(source, facts) : null;
+        if (error) return yield* denied(error);
+        return { runtimeMode: source.runtimeMode, interactionMode: source.interactionMode };
+      }).pipe(Effect.provideService(CoreApplicationAgent, provenance), Effect.result);
+      if (admittedModes._tag === "Failure")
+        return toolFailure(
+          typeof admittedModes.failure === "object" &&
+            admittedModes.failure !== null &&
+            "reason" in admittedModes.failure &&
+            typeof admittedModes.failure.reason === "string"
+            ? admittedModes.failure.reason
+            : "session_unavailable",
+        );
+      const modeLimit = admittedModes.success;
       if (session.execution_ref) {
         if (Option.isNone(application)) return toolFailure("session_backend_unavailable");
         const hosted = readHostedAppToolSessionContext(input.caller);
@@ -80,6 +113,7 @@ export const makeWithCapture = (captureCaller: AppToolAuthorityCapture) =>
             threadTitle: target.thread.title,
             destinationHostId: request.destinationHostId ?? null,
             followUpPrompt: request.followUpPrompt ?? null,
+            modeLimit,
           })
           .pipe(Effect.catch(() => Effect.succeed(null)));
         if (!operation) return toolFailure("session_handoff_unconfirmed", undefined, result);
@@ -146,6 +180,7 @@ export const makeWithCapture = (captureCaller: AppToolAuthorityCapture) =>
           threadTitle: session.display_title,
           destinationHostId: request.destinationHostId ?? null,
           followUpPrompt: request.followUpPrompt ?? null,
+          modeLimit,
         })
         .pipe(Effect.catch(() => Effect.succeed(null)));
       if (!operation)

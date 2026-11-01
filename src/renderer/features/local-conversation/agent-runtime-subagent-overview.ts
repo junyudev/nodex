@@ -1,3 +1,5 @@
+import { queryOptions } from "@tanstack/react-query";
+import { agentRuntimeRuntime } from "@/lib/agent-runtime-runtime";
 import type {
   AgentEvent,
   AgentSubagentOverview,
@@ -29,6 +31,7 @@ const newerFirst = (left: AgentSubagentOverviewItem, right: AgentSubagentOvervie
 export const projectAgentRuntimeSubagent = (
   task: AgentSubagentOverviewItem,
   agentLabel: string | null = null,
+  waitingOnApproval = false,
 ): CodexSubagentOverviewRow => {
   const { displayName } = projectAgentRuntimeSubagentDisplay(task);
   return {
@@ -48,8 +51,9 @@ export const projectAgentRuntimeSubagent = (
         : ["pending", "running"].includes(task.status)
           ? "active"
           : "done",
-    statusSummary:
-      task.status === "failed"
+    statusSummary: waitingOnApproval
+      ? "Needs approval"
+      : task.status === "failed"
         ? "Failed"
         : task.status === "interrupted"
           ? "Stopped"
@@ -73,9 +77,14 @@ export function projectAgentRuntimeSubagentOverview(
   rootThreadId: string,
   source: AgentSubagentOverview,
   agentLabel: (task: AgentSubagentOverviewItem) => string | null = () => null,
+  approvalThreads: ReadonlySet<string> = new Set(),
 ): CodexSubagentOverviewWindow {
   const project = (task: AgentSubagentOverviewItem) =>
-    projectAgentRuntimeSubagent(task, agentLabel(task));
+    projectAgentRuntimeSubagent(
+      task,
+      agentLabel(task),
+      approvalThreads.has(task.childThreadId ?? task.id),
+    );
   const rows = [...source.active.items, ...source.terminal.items].map(project);
   const section = (page: AgentSubagentOverview["active"]) => ({
     rows: page.items.map(project),
@@ -235,4 +244,50 @@ export function appendAgentRuntimeOverviewPage(
     },
     page,
   );
+}
+
+/** Waiting child rows read only control metadata; the panel never attaches their transcript. */
+export function agentRuntimeSubagentApprovalsQueryOptions(
+  sessionId: string,
+  threadId: string,
+  source: AgentSubagentOverview | null,
+) {
+  const waiting = source?.active.items.filter((task) => task.status === "waiting") ?? [];
+  return queryOptions({
+    queryKey: [
+      "agent-runtime",
+      "subagent-approvals",
+      sessionId,
+      threadId,
+      waiting.map((task) => [task.id, task.childThreadId, task.providerThreadId, task.updatedAt]),
+    ],
+    enabled: waiting.length > 0,
+    queryFn: async () => {
+      const reads = new Map<string, ReturnType<typeof agentRuntimeRuntime.control>>();
+      const threads = await Promise.all(
+        waiting.map(async (task) => {
+          const target = task.childThreadId ?? threadId;
+          let read = reads.get(target);
+          if (!read) {
+            read = agentRuntimeRuntime.control({ sessionId, threadId: target });
+            reads.set(target, read);
+          }
+          const projection = (await read).snapshot.projection;
+          const approval = projection.runtimeRequests.some((request) => {
+            if (request.status !== "pending" || request.kind === "user_input") return false;
+            if (task.childThreadId !== null) return true;
+            return (
+              task.providerThreadId !== null &&
+              projection.nodes.some(
+                (node) =>
+                  node.id === request.nodeId && node.providerThreadId === task.providerThreadId,
+              )
+            );
+          });
+          return approval ? (task.childThreadId ?? task.id) : null;
+        }),
+      );
+      return new Set(threads.filter((id): id is string => id !== null));
+    },
+  });
 }

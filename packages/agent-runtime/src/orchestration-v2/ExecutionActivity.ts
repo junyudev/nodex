@@ -1,3 +1,4 @@
+import type { ThreadActiveFlag } from "@nodex/codex-app-server-protocol/v2";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
@@ -7,6 +8,7 @@ import {
   OPEN_DELIVERY_RUN_PREDICATE,
 } from "./ProjectionRecoveryQueries.ts";
 import {
+  sessionAttentionFlags,
   ATTENTION_KINDS,
   ATTENTION_KIND_SQL_LIST,
   AWAITS_PERSON_PREDICATE,
@@ -44,6 +46,8 @@ export interface RootActivity {
   readonly status: "running" | "waiting" | "background";
   readonly activeRunId: string | null;
   readonly pendingRequestCount: number;
+  readonly activeFlags?: readonly ThreadActiveFlag[];
+  readonly approvalPrompt?: string | null;
   readonly backgroundTasks: ReadonlyArray<RootActivityBackgroundTask>;
   readonly providerInstanceId: string;
   readonly model: string;
@@ -140,26 +144,29 @@ export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(
         readonly root_thread_id: string;
         readonly active_runs: number;
         readonly pending_requests: number;
+        readonly has_approval: number;
+        readonly has_input: number;
+        readonly approval_prompt: string | null;
         readonly active_tasks: number;
         readonly resumes: number;
         readonly fact_at: string | null;
         readonly background_tasks_json: string;
       }>`
-        WITH RECURSIVE facts(thread_id, kind, at, amount, background_task) AS MATERIALIZED (
-          SELECT thread_id, 'run', requested_at, 1, NULL FROM orchestration_v2_projection_runs
+        WITH RECURSIVE facts(thread_id, kind, at, amount, background_task, request_id) AS MATERIALIZED (
+          SELECT thread_id, 'run', requested_at, 1, NULL, NULL FROM orchestration_v2_projection_runs
           WHERE ${sql.literal(LIVE_RUN_PREDICATE)}
           UNION ALL
-          SELECT thread_id, ${sql.literal(REQUEST_ATTENTION_KIND_SQL)}, created_at, 1, NULL
+          SELECT thread_id, ${sql.literal(REQUEST_ATTENTION_KIND_SQL)}, created_at, 1, NULL, runtime_request_id
           FROM orchestration_v2_projection_runtime_requests
           WHERE ${sql.literal(PENDING_ATTENTION_REQUEST_PREDICATE)}
           UNION ALL
-          SELECT secret.thread_id, ${sql.literal(`'${ATTENTION_KINDS.input}'`)}, secret.updated_at, 1, NULL
+          SELECT secret.thread_id, ${sql.literal(`'${ATTENTION_KINDS.input}'`)}, secret.updated_at, 1, NULL, secret.turn_item_id
           ${sql.literal(SECRET_CARD_ATTENTION_FACT_FROM_SQL)}
           UNION ALL
-          SELECT thread_id, 'task', updated_at, 1, NULL FROM orchestration_v2_projection_subagents
+          SELECT thread_id, 'task', updated_at, 1, NULL, NULL FROM orchestration_v2_projection_subagents
           WHERE status IN ('pending', 'running', 'waiting')
           UNION ALL
-          SELECT provider.thread_id, 'task', provider.updated_at, 1, task.value
+          SELECT provider.thread_id, 'task', provider.updated_at, 1, task.value, NULL
           FROM orchestration_v2_projection_provider_threads AS provider
           CROSS JOIN json_each(
             CASE WHEN json_valid(provider.payload_json) THEN provider.payload_json ELSE '{}' END,
@@ -167,14 +174,14 @@ export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(
           ) AS task
           WHERE provider.thread_id IS NOT NULL AND (${sql.literal(LIVE_PROVIDER_THREAD_PREDICATE)})
           UNION ALL
-          SELECT thread_id, 'wake', NULL, 1, NULL FROM orchestration_v2_projection_runs
+          SELECT thread_id, 'wake', NULL, 1, NULL, NULL FROM orchestration_v2_projection_runs
           WHERE ${sql.literal(OPEN_DELIVERY_RUN_PREDICATE)}
           UNION ALL
-          SELECT thread_id, 'wake', updated_at, 1, NULL FROM orchestration_v2_projection_subagents
+          SELECT thread_id, 'wake', updated_at, 1, NULL, NULL FROM orchestration_v2_projection_subagents
           WHERE ${sql.literal(WAKING_LIVE_TASK_PREDICATE)}
         ), rooted AS MATERIALIZED (
           SELECT json_extract(thread.payload_json, '$.lineage.rootThreadId') AS root_thread_id,
-            facts.thread_id, facts.kind, facts.at, facts.amount, facts.background_task,
+            facts.thread_id, facts.kind, facts.at, facts.amount, facts.background_task, facts.request_id,
             json_extract(thread.payload_json, '$.title') AS thread_title
           FROM facts
           -- Keep the live fact set outermost; discovery indexes must never turn this into
@@ -185,13 +192,12 @@ export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(
             AND (facts.kind NOT IN (${sql.literal(ATTENTION_KIND_SQL_LIST)})
               OR (${sql.literal(OWN_ATTENTION_PREDICATE)})
               OR (${sql.literal(CHILD_APPROVAL_PREDICATE)}))
-        ), attention(root_thread_id, thread_id, at, amount) AS (
-          SELECT root_thread_id, thread_id, MAX(at), SUM(amount)
+        ), attention(root_thread_id, thread_id, kind, at, amount, request_id) AS (
+          SELECT root_thread_id, thread_id, kind, at, amount, request_id
           FROM rooted WHERE kind IN (${sql.literal(ATTENTION_KIND_SQL_LIST)})
-          GROUP BY root_thread_id, thread_id
           UNION
           SELECT (${sql.literal(SIDE_CHAT_SOURCE_ROOT)}), attention.thread_id,
-            attention.at, attention.amount
+            attention.kind, attention.at, attention.amount, attention.request_id
           FROM attention CROSS JOIN orchestration_v2_projection_threads AS owner
             ON owner.thread_id = attention.root_thread_id
           WHERE json_extract(owner.payload_json, '$.sideChat.sourceThreadId') IS NOT NULL
@@ -199,11 +205,13 @@ export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(
           SELECT root_thread_id, thread_id, kind, at, amount FROM rooted
           WHERE kind NOT IN (${sql.literal(ATTENTION_KIND_SQL_LIST)})
           UNION ALL
-          SELECT root_thread_id, thread_id, 'request', at, amount FROM attention
+          SELECT root_thread_id, thread_id, kind, at, amount FROM attention
         ), activity AS MATERIALIZED (
         SELECT root_thread_id,
           SUM(kind = 'run') AS active_runs,
-          SUM(CASE WHEN kind = 'request' THEN amount ELSE 0 END) AS pending_requests,
+          SUM(CASE WHEN kind IN (${sql.literal(ATTENTION_KIND_SQL_LIST)}) THEN amount ELSE 0 END) AS pending_requests,
+          MAX(kind = ${ATTENTION_KINDS.approval}) AS has_approval,
+          MAX(kind IN (${ATTENTION_KINDS.input}, ${ATTENTION_KINDS.question})) AS has_input,
           SUM(CASE WHEN kind = 'task' THEN amount ELSE 0 END) AS active_tasks,
           MAX(kind = 'wake' AND thread_id = root_thread_id) AS resumes,
           MAX(at) AS fact_at
@@ -241,7 +249,17 @@ export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(
             ORDER BY root_thread_id, position)
           GROUP BY root_thread_id
         )
-        SELECT activity.*, COALESCE(background_tasks.background_tasks_json, '[]') AS background_tasks_json
+        SELECT activity.*, COALESCE(background_tasks.background_tasks_json, '[]') AS background_tasks_json,
+          (SELECT json_extract(item.payload_json, '$.prompt') FROM attention
+            CROSS JOIN orchestration_v2_projection_runtime_requests AS request
+              ON request.thread_id = attention.thread_id AND request.runtime_request_id = attention.request_id
+            CROSS JOIN orchestration_v2_projection_turn_items AS item
+              INDEXED BY orchestration_v2_projection_turn_items_node_ordinal_idx
+              ON item.node_id = request.node_id AND item.thread_id = request.thread_id AND item.type = 'approval_request'
+            WHERE attention.root_thread_id = activity.root_thread_id AND attention.kind = ${ATTENTION_KINDS.approval}
+              AND json_extract(request.payload_json, '$.responseCapability.type') = 'live'
+              AND TRIM(COALESCE(json_extract(item.payload_json, '$.prompt'), '')) <> ''
+            ORDER BY attention.at, attention.thread_id, attention.request_id, item.ordinal DESC LIMIT 1) AS approval_prompt
         FROM activity LEFT JOIN background_tasks ON background_tasks.root_thread_id = activity.root_thread_id
         ORDER BY activity.root_thread_id`;
 
@@ -282,6 +300,11 @@ export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(
             row.pending_requests > 0 ? "waiting" : row.active_runs > 0 ? "running" : "background",
           activeRunId: head.active_run_id,
           pendingRequestCount: row.pending_requests,
+          activeFlags: sessionAttentionFlags([
+            { kind: ATTENTION_KINDS.approval, awaitsPerson: row.has_approval > 0 },
+            { kind: ATTENTION_KINDS.input, awaitsPerson: row.has_input > 0 },
+          ]),
+          approvalPrompt: row.approval_prompt,
           backgroundTasks: yield* decodeBackgroundTasks(row.background_tasks_json),
           providerInstanceId: head.provider_instance_id ?? "",
           model: head.model ?? "",

@@ -220,3 +220,18 @@ it.effect("rejects in-progress and rolled-back fork sources", () =>
     }
   }),
 );
+
+it.each(["approval-required", "auto", "full-access"] as const)(
+  "forks inherit the source runtime mode %s",
+  (runtimeMode) => {
+    const source = { ...makeSourceThread(), runtimeMode };
+    const fork = ThreadForkService.forkThread({
+      sourceProjection: { thread: source },
+      targetThreadId,
+      createdBy: "user",
+      creationSource: "web",
+      createdAt: forkCreatedAt,
+    });
+    assert.equal(fork.runtimeMode, runtimeMode);
+  },
+);

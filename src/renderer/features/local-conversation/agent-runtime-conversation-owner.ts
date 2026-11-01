@@ -1,3 +1,8 @@
+import { createAgentApprovalRuntime } from "./agent-approval-runtime";
+import {
+  agentApprovalSuppressesItem,
+  projectAgentPendingApproval,
+} from "./agent-runtime-transcript-projection";
 import {
   isConversationRewindRun,
   resolveConversationRewindTargets,
@@ -100,7 +105,8 @@ export type AgentRuntimeReadTransport = Pick<
   | "readRunMessage"
   | "readQueuedPreview"
   | "attachment"
->;
+> &
+  Partial<Pick<AgentRuntimeRendererTransport, "respond">>;
 export type ResolvedAgentRuntimeTarget = AgentRuntimeSessionTarget & { readonly threadId: string };
 export interface AgentRuntimeConversationOwnerSnapshot {
   readonly conversation: AgentRuntimeConversation | null;
@@ -121,6 +127,9 @@ interface ResidentItem {
   readonly nodeId: string | null;
   readonly status: AgentTurnItem["status"];
   readonly startedAt: string | null;
+  readonly nativeItemRef?: AgentTurnItem["nativeItemRef"];
+  readonly providerTurnId?: AgentTurnItem["providerTurnId"];
+  readonly providerThreadId?: AgentTurnItem["providerThreadId"];
 }
 interface ResidentTurn {
   readonly details: CodexTranscriptTurnDetails;
@@ -271,6 +280,12 @@ export class AgentRuntimeConversationOwner {
   readonly #turns = new Map<string, ResidentTurn>();
   /** Each Turn's hooks by item, presented with its reply rather than as transcript rows. */
   readonly #hookRuns = new Map<string, Map<string, CodexCanonicalHookRun>>();
+  readonly approvals: ReturnType<typeof createAgentApprovalRuntime>;
+  readonly #approvalItems = new Map<string, Extract<AgentTurnItem, { type: "approval_request" }>>();
+  readonly #approvalRequests = new Map<
+    string,
+    AgentSnapshot["projection"]["runtimeRequests"][number]
+  >();
   readonly #requests = new Map<string, CodexConversationServerRequest>();
   /** Unanswered asynchronous questions by request, answerable until the Agent settles them. */
   readonly #asyncQuestions = new Map<string, AgentRuntimeQuestionRequest>();
@@ -317,6 +332,15 @@ export class AgentRuntimeConversationOwner {
   ) {
     this.#target = target;
     this.#transport = transport;
+    this.approvals = createAgentApprovalRuntime(async (approval, response) => {
+      const accepted = await (transport.respond ?? agentRuntimeRuntime.respond)({
+        ...target,
+        requestId: approval.requestId,
+        runId: approval.runId,
+        ...response,
+      });
+      await this.whenObserved(accepted.sequence);
+    });
     this.asyncQuestions = createAsyncQuestionRuntime({
       drafts: questionDraftStore,
       namespace: JSON.stringify(["agent-runtime", target.sessionId, target.threadId]),
@@ -478,6 +502,9 @@ export class AgentRuntimeConversationOwner {
       this.#readMode = null;
       this.#clearTranscript();
       this.#requests.clear();
+      this.#approvalItems.clear();
+      this.#approvalRequests.clear();
+      this.approvals.clear();
       this.#asyncQuestions.clear();
       this.asyncQuestions.clear(this.threadId);
       this.#nodeRuns.clear();
@@ -704,6 +731,8 @@ export class AgentRuntimeConversationOwner {
           this.#historyGeneration += 1;
         }
         this.#requests.clear();
+        this.#approvalItems.clear();
+        this.#approvalRequests.clear();
         this.#asyncQuestions.clear();
         this.#nodeRuns.clear();
         this.#cohortHeads.clear();
@@ -1339,6 +1368,7 @@ export class AgentRuntimeConversationOwner {
   #captureRequest(item: AgentTurnItem, local: boolean): boolean {
     if (!local || (item.type !== "approval_request" && item.type !== "user_input_request"))
       return false;
+    if (item.type === "approval_request") this.#approvalItems.set(item.requestId, item);
     if (isAgentRuntimeAsyncQuestion(item)) {
       const pending =
         item.status === "pending" || item.status === "waiting" || item.status === "completed";
@@ -1376,6 +1406,9 @@ export class AgentRuntimeConversationOwner {
       nodeId: item.nodeId,
       status: item.status,
       startedAt: item.startedAt,
+      nativeItemRef: item.nativeItemRef,
+      providerTurnId: item.providerTurnId,
+      providerThreadId: item.providerThreadId,
     };
     this.#items.set(item.id, resident);
     if (item.runId === null) return;
@@ -1813,6 +1846,8 @@ export class AgentRuntimeConversationOwner {
       return;
     }
     if (event.type === "runtime-request.updated") {
+      if (event.payload.kind !== "user_input")
+        this.#approvalRequests.set(event.payload.id, event.payload);
       const requests = conversation.snapshot.projection.runtimeRequests.filter(
         (value) => value.id !== event.payload.id,
       );
@@ -2114,6 +2149,32 @@ export class AgentRuntimeConversationOwner {
         run.status !== "queued" && (!latest || latest.ordinal < run.ordinal) ? run : latest,
       undefined,
     );
+    for (const request of projection.runtimeRequests)
+      if (request.kind !== "user_input") this.#approvalRequests.set(request.id, request);
+    const pending = [...this.#approvalItems.values()].flatMap((item) => {
+      const approval = projectAgentPendingApproval(
+        item,
+        this.#approvalRequests.get(item.requestId),
+      );
+      return approval ? [approval] : [];
+    });
+    const pendingIds = new Set(pending.map((approval) => approval.requestId));
+    const awaiting = [...this.#approvalItems.values()].filter(
+      (item) =>
+        pendingIds.has(item.requestId) || item.decision === "decline" || item.decision === "cancel",
+    );
+    const awaitingRuns = new Set(awaiting.map((approval) => approval.runId));
+    const suppressedItemIds = new Set(
+      awaiting.length === 0
+        ? []
+        : [...this.#items].flatMap(([id, item]) =>
+            awaitingRuns.has(item.runId) &&
+            awaiting.some((approval) => agentApprovalSuppressesItem(approval, { id, ...item }))
+              ? [id]
+              : [],
+          ),
+    );
+    this.approvals.update({ pending, suppressedItemIds });
     const requests = [...this.#requests.values()];
     const active =
       latestRun !== undefined && agentRuntimeTurnStatus(latestRun.status) === "inProgress";
@@ -2128,13 +2189,10 @@ export class AgentRuntimeConversationOwner {
       modelProvider: thread.modelSelection.instanceId,
       cwd: thread.worktreePath,
       statusType: latestRun?.status === "failed" ? "systemError" : active ? "active" : "idle",
-      statusActiveFlags: requests.length
-        ? [
-            requests.some((request) => request.type === "userInput")
-              ? "waitingOnUserInput"
-              : "waitingOnApproval",
-          ]
-        : [],
+      statusActiveFlags: [
+        ...(pending.length ? ["waitingOnApproval" as const] : []),
+        ...(requests.length ? ["waitingOnUserInput" as const] : []),
+      ],
       archived: thread.archivedAt !== null,
       createdAt: agentRuntimeTime(thread.createdAt) ?? 0,
       updatedAt: agentRuntimeTime(thread.updatedAt) ?? 0,

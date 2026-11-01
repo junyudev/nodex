@@ -133,12 +133,12 @@ describe("ClientSettings rich text composer", () => {
 });
 
 describe("ServerSettings default permissions", () => {
-  it("keeps full access for settings saved before a default was configured", () => {
+  it("runs with full access when no default was configured", () => {
     expect(decodeServerSettings({}).defaultRuntimeMode).toBe("full-access");
     expect(DEFAULT_SERVER_SETTINGS.defaultRuntimeMode).toBe("full-access");
   });
 
-  it.each(["full-access"])(
+  it.each(["approval-required", "auto", "full-access"])(
     "round-trips %s as an environment default and project override",
     (defaultRuntimeMode) => {
       const input = {
@@ -150,7 +150,7 @@ describe("ServerSettings default permissions", () => {
     },
   );
 
-  it.each(["unsupported", "auto", "read-only", "workspace-write"])(
+  it.each(["unsupported", "auto-accept-edits", "read-only", "workspace-write"])(
     "rejects unsupported permission default %s",
     (defaultRuntimeMode) => {
       expect(() => decodeServerSettings({ defaultRuntimeMode })).toThrow();

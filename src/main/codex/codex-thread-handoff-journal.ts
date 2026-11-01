@@ -1,3 +1,5 @@
+import type { AgentDispatchModeLimit } from "@nodex/agent-runtime/contracts";
+import { AgentRuntimeModeSchema } from "../../shared/schemas/agent-runtime-api";
 import type { CodexThreadHandoffBranches } from "../../shared/codex-thread-handoff";
 import path from "node:path";
 import { z } from "zod";
@@ -90,6 +92,7 @@ export interface CodexThreadHandoffJournalEntry {
   readonly runtimeSwitched: boolean;
   readonly coreCommitted: boolean;
   readonly followUpPrompt: string | null;
+  readonly modeLimit?: AgentDispatchModeLimit;
   readonly followUpDispatchStarted: boolean;
   readonly warnings: readonly string[];
   readonly lastError: string | null;
@@ -213,6 +216,12 @@ const entrySchema = z
     runtimeSwitched: z.boolean(),
     coreCommitted: z.boolean(),
     followUpPrompt: z.string().max(64_000).nullable(),
+    modeLimit: z
+      .strictObject({
+        runtimeMode: AgentRuntimeModeSchema,
+        interactionMode: z.enum(["default", "plan"]),
+      })
+      .optional(),
     followUpDispatchStarted: z.boolean(),
     warnings: z.array(z.string().max(64_000)).max(128),
     lastError: z.string().max(64_000).nullable(),

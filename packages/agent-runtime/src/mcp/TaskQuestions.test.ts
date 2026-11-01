@@ -9,11 +9,14 @@ import {
   type OrchestrationV2DomainEvent,
   type OrchestrationV2RuntimeRequest,
   type OrchestrationV2Subagent,
+  OrchestratorMcpRuntimeMode,
+  OrchestratorMcpFailure,
   ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
   ProviderSessionId,
   RuntimeRequestId,
+  type RuntimeMode,
   ThreadId,
   TurnItemId,
 } from "@t3tools/contracts";
@@ -23,8 +26,9 @@ import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
+import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
-import { McpSchema, McpServer } from "effect/ai";
+import { McpSchema, McpServer, Tool, Toolkit } from "effect/ai";
 import { CodexProviderCapabilitiesV2 } from "../orchestration-v2/Adapters/CodexAdapterV2.ts";
 import * as CommandReceiptStore from "../orchestration-v2/CommandReceiptStore.ts";
 import * as Questions from "../orchestration-v2/DelegatedTaskQuestionReactor.ts";
@@ -36,10 +40,14 @@ import * as Replay from "../orchestration-v2/testkit/ProviderReplayHarness.ts";
 import * as Threads from "../orchestration-v2/ThreadManagementService.ts";
 import * as Sqlite from "../persistence/Sqlite.ts";
 import * as ProviderRegistryMock from "../provider/testUtils/providerRegistryMock.ts";
+import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
+import { DispatchModeLimit } from "../orchestration-v2/DispatchModeLimit.ts";
 import * as Settings from "../serverSettings.ts";
 import { layerToolkit } from "../nodex/Mcp.ts";
 import * as Invocation from "./McpInvocationContext.ts";
 import * as Tasks from "./OrchestratorMcpService.ts";
+import * as Access from "./McpToolAccess.ts";
+import { dispatchFailure } from "./threadAccess.ts";
 
 const instanceId = ProviderInstanceId.make("codex");
 const modelSelection = { instanceId, model: "gpt-6-luna" };
@@ -134,6 +142,7 @@ const failure = (result: McpSchema.CallToolResult) => {
 };
 const setup = Effect.fn("TaskQuestions.setup")(function* (
   completionWake: "always" | "settled_only" = "always",
+  runtimeMode: RuntimeMode = "full-access",
 ) {
   const orchestrator = yield* Orchestrator.OrchestratorV2;
   const projections = yield* ProjectionStore.ProjectionStoreV2;
@@ -148,7 +157,7 @@ const setup = Effect.fn("TaskQuestions.setup")(function* (
       projectId: ProjectId.make("project:questions"),
       title: "Question coordinator",
       modelSelection,
-      runtimeMode: "full-access",
+      runtimeMode,
       interactionMode: "default",
       branch: null,
       worktreePath: null,
@@ -177,7 +186,7 @@ const setup = Effect.fn("TaskQuestions.setup")(function* (
     task: "Research the sources",
     completionWake,
     modelSelection,
-    runtimeMode: "full-access",
+    runtimeMode,
     interactionMode: "default",
     createdBy: "agent",
     creationSource: "mcp",
@@ -436,28 +445,36 @@ it.effect(
   () =>
     Effect.gen(function* () {
       const f = yield* setup();
-      const approval = yield* f.addRequest("approval:permission", "live", "permission");
-      expect((yield* f.question({ action: "list" })).structuredContent).toEqual({ requestIds: [] });
-      for (const action of ["read", "respond"]) {
-        expect(
-          failure(
-            yield* f.question({
-              action,
-              requestId: approval.payload.id,
-              answers: { decision: "accept" },
-            }),
-          ),
-        ).toMatchObject({
-          code: "invalid_request",
-          message: "The pending user-input request was not found.",
-        });
+      for (const kind of [
+        "command",
+        "file-read",
+        "file-change",
+        "mcp-elicitation",
+        "permission",
+      ] as const) {
+        const approval = yield* f.addRequest(`approval:${kind}`, "live", kind);
+        for (const action of ["read", "respond"]) {
+          expect(
+            failure(
+              yield* f.question({
+                action,
+                requestId: approval.payload.id,
+                answers: { decision: "accept" },
+              }),
+            ),
+          ).toMatchObject({
+            code: "invalid_request",
+            message: "The pending user-input request was not found.",
+          });
+        }
+        const request = yield* f.projections.getRuntimeRequest(
+          f.task.childThreadId!,
+          approval.payload.id,
+        );
+        expect(request?.status).toBe("pending");
+        expect(request?.decision).toBeUndefined();
       }
-      const request = yield* f.projections.getRuntimeRequest(
-        f.task.childThreadId!,
-        approval.payload.id,
-      );
-      expect(request?.status).toBe("pending");
-      expect(request?.decision).toBeUndefined();
+      expect((yield* f.question({ action: "list" })).structuredContent).toEqual({ requestIds: [] });
       const event = yield* f.addRequest("question:required-fields");
       for (const action of ["read", "respond"]) {
         expect(failure(yield* f.question({ action }))).toMatchObject({
@@ -540,11 +557,301 @@ const watchingTasks = Effect.fn("TaskQuestions.watchingTasks")(function* () {
   return { tasks, subscribed };
 });
 
+const executionModeCases: ReadonlyArray<{
+  readonly name: string;
+  readonly caller: RuntimeMode;
+  readonly requested?: OrchestratorMcpRuntimeMode;
+  readonly supported?: ReadonlyArray<RuntimeMode>;
+  readonly expected?: RuntimeMode;
+  readonly error?: "invalid_request" | "runtime_mode_escalation_denied";
+}> = [
+  { name: "inherits an omitted mode", caller: "auto", expected: "auto" },
+  {
+    name: "inherits an explicit inherit",
+    caller: "approval-required",
+    requested: "inherit",
+    expected: "approval-required",
+  },
+  {
+    name: "accepts a narrower explicit mode",
+    caller: "full-access",
+    requested: "approval-required",
+    expected: "approval-required",
+  },
+  {
+    name: "refuses a broader explicit mode",
+    caller: "approval-required",
+    requested: "full-access",
+    error: "runtime_mode_escalation_denied",
+  },
+  {
+    name: "steps unsupported inheritance down",
+    caller: "auto",
+    supported: ["approval-required", "full-access"],
+    expected: "approval-required",
+  },
+  {
+    name: "chooses the broadest supported narrower mode",
+    caller: "full-access",
+    supported: ["approval-required", "auto"],
+    expected: "auto",
+  },
+  {
+    name: "refuses unsupported explicit modes",
+    caller: "full-access",
+    requested: "auto",
+    supported: ["approval-required", "full-access"],
+    error: "invalid_request",
+  },
+  {
+    name: "falls back without escalating",
+    caller: "approval-required",
+    supported: ["full-access"],
+    expected: "approval-required",
+  },
+  { name: "treats empty support as unrestricted", caller: "auto", supported: [], expected: "auto" },
+];
+
+it.effect("starts threads with the caller's modes and refuses broader requests", () =>
+  Effect.gen(function* () {
+    const f = yield* setup("always", "auto");
+    const definition = Toolkit.make(
+      Tool.make("start_thread", {
+        parameters: Schema.Struct({
+          threadId: ThreadId,
+          runtimeMode: Schema.optional(OrchestratorMcpRuntimeMode),
+        }),
+        success: ThreadId,
+        failure: OrchestratorMcpFailure,
+        failureMode: "return",
+        dependencies: [Invocation.McpInvocationContext, Threads.ThreadManagementService],
+      }),
+    );
+    const handlers = Access.toLayer(definition, {
+      start_thread: Access.startsThreads(
+        (input) => input,
+        (input, modes) =>
+          f.orchestrator
+            .dispatch({
+              type: "thread.create",
+              commandId: CommandId.make(`create:${input.threadId}`),
+              threadId: input.threadId,
+              projectId: ProjectId.make("project:questions"),
+              title: "Agent-launched conversation",
+              modelSelection,
+              ...modes,
+              branch: null,
+              worktreePath: null,
+              createdBy: "agent",
+              creationSource: "mcp",
+            })
+            .pipe(Effect.mapError(dispatchFailure), Effect.as(input.threadId)),
+      ),
+    });
+    const toolkit = yield* definition.pipe(Effect.provide(Access.HandlersLayer.layer(handlers)));
+    for (const [index, runtimeMode] of (
+      [undefined, "inherit", "approval-required", "full-access"] as const
+    ).entries()) {
+      const threadId = ThreadId.make(`thread:agent-launch:${index}`);
+      const results = yield* toolkit
+        .handle("start_thread", { threadId, runtimeMode })
+        .pipe(
+          Effect.flatMap(Stream.runCollect),
+          Effect.provideService(Invocation.McpInvocationContext, scope()),
+        );
+      if (runtimeMode === "full-access") {
+        expect(results[0]).toMatchObject({
+          isFailure: true,
+          result: { code: "runtime_mode_escalation_denied" },
+        });
+        expect(yield* f.projections.getThreadShell(threadId)).toBeNull();
+        continue;
+      }
+      expect(results[0]?.isFailure).toBe(false);
+      expect((yield* f.projections.getThreadRecords(threadId, [])).thread).toMatchObject({
+        runtimeMode: runtimeMode === "approval-required" ? runtimeMode : "auto",
+        interactionMode: "default",
+      });
+    }
+  }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect.each(executionModeCases)("delegation $name", (testCase) =>
+  Effect.gen(function* () {
+    const f = yield* setup("always", testCase.caller);
+    const providers = yield* ProviderRegistry.ProviderRegistry;
+    const tasks = yield* Tasks.make.pipe(
+      Effect.provideService(ProviderRegistry.ProviderRegistry, {
+        ...providers,
+        getCheckedProviders: providers.getCheckedProviders.pipe(
+          Effect.map((snapshots) =>
+            snapshots.map((provider) => ({
+              ...provider,
+              ...(testCase.supported === undefined
+                ? {}
+                : { supportedRuntimeModes: testCase.supported }),
+            })),
+          ),
+        ),
+      }),
+    );
+    const operation = tasks.delegateTask(scope(), {
+      task: "Inspect the sources within the selected execution mode.",
+      parentRunId: f.parentRun.id,
+      ...(testCase.requested === undefined ? {} : { runtimeMode: testCase.requested }),
+    });
+    if (testCase.error !== undefined) {
+      expect(yield* Effect.flip(operation)).toMatchObject({ code: testCase.error });
+      expect(
+        (yield* f.projections.getThreadRecords(parentId, ["subagents"])).subagents,
+      ).toHaveLength(1);
+      return;
+    }
+    const task = yield* operation;
+    const child = yield* f.projections.getThreadRecords(task.childThreadId, []);
+    expect(child.thread.runtimeMode).toBe(testCase.expected);
+    expect(child.thread.interactionMode).toBe("default");
+    expect((yield* f.projections.getThreadRecords(parentId, [])).thread.runtimeMode).toBe(
+      testCase.caller,
+    );
+  }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect("keeps delegated planning intent within the caller's ceiling", () =>
+  Effect.gen(function* () {
+    const f = yield* setup("always", "auto");
+    yield* f.orchestrator.dispatch({
+      type: "thread.interaction-mode.set",
+      commandId: CommandId.make("plan:parent"),
+      threadId: parentId,
+      interactionMode: "plan",
+    });
+    const tasks = yield* Tasks.OrchestratorMcpService;
+    expect(
+      yield* tasks
+        .delegateTask(scope(), {
+          task: "Leave Plan mode",
+          parentRunId: f.parentRun.id,
+          interactionMode: "default",
+        })
+        .pipe(Effect.flip),
+    ).toMatchObject({ code: "interaction_mode_escalation_denied" });
+    const task = yield* tasks.delegateTask(scope(), {
+      task: "Keep planning",
+      parentRunId: f.parentRun.id,
+    });
+    expect((yield* f.projections.getThreadRecords(task.childThreadId, [])).thread).toMatchObject({
+      runtimeMode: "auto",
+      interactionMode: "plan",
+    });
+  }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect("refuses task controls above the caller while preserving task reads", () =>
+  Effect.gen(function* () {
+    const f = yield* setup("always", "approval-required");
+    const question = yield* f.addRequest("question:broader-child");
+    yield* f.orchestrator.dispatch({
+      type: "thread.runtime-mode.set",
+      commandId: CommandId.make("raise:child"),
+      threadId: f.task.childThreadId!,
+      runtimeMode: "full-access",
+    });
+    for (const mode of ["auto", "queue", "steer", "restart"]) {
+      expect(
+        failure(
+          yield* f.invoke("task_send", {
+            taskId: f.task.id,
+            message: "Continue the work",
+            mode,
+          }),
+        ),
+      ).toMatchObject({ code: "runtime_mode_escalation_denied" });
+    }
+    expect(failure(yield* f.invoke("task_cancel", { taskId: f.task.id }))).toMatchObject({
+      code: "runtime_mode_escalation_denied",
+    });
+    expect(
+      failure(
+        yield* f.question({
+          action: "respond",
+          requestId: question.payload.id,
+          answers: { format: "Markdown" },
+        }),
+      ),
+    ).toMatchObject({ code: "runtime_mode_escalation_denied" });
+    for (const name of ["task_read", "task_status", "task_wait"]) {
+      expect((yield* f.invoke(name, { taskId: f.task.id })).isError).not.toBe(true);
+    }
+    expect(
+      (yield* f.question({ action: "read", requestId: question.payload.id })).isError,
+    ).not.toBe(true);
+    expect(
+      (yield* f.projections.getRuntimeRequest(f.task.childThreadId!, question.payload.id))?.status,
+    ).toBe("pending");
+  }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect.each(["send", "cancel", "respond"] as const)(
+  "rechecks the caller ceiling at the command lock for task %s",
+  (control) =>
+    Effect.gen(function* () {
+      const f = yield* setup("always", "approval-required");
+      const question = yield* f.addRequest("question:mode-race");
+      const threads = yield* Threads.ThreadManagementService;
+      // A person's independent mode change lands after the MCP preflight.
+      const raiseMode = f.orchestrator
+        .dispatch({
+          type: "thread.runtime-mode.set",
+          commandId: CommandId.make("raise:child-after-preflight"),
+          threadId: f.task.childThreadId!,
+          runtimeMode: "full-access",
+        })
+        .pipe(Effect.provideService(DispatchModeLimit, undefined));
+      const tasks = yield* Tasks.make.pipe(
+        Effect.provideService(Threads.ThreadManagementService, {
+          ...threads,
+          sendToThread: (input) => raiseMode.pipe(Effect.andThen(threads.sendToThread(input))),
+          cancelDelegatedTask: (input) =>
+            raiseMode.pipe(Effect.orDie, Effect.andThen(threads.cancelDelegatedTask(input))),
+          dispatch: (command) =>
+            (command.type === "runtime-request.respond" ? raiseMode : Effect.void).pipe(
+              Effect.andThen(threads.dispatch(command)),
+            ),
+        }),
+      );
+      const operation: Effect.Effect<unknown, OrchestratorMcpFailure> =
+        control === "send"
+          ? tasks.sendToThread(scope(), {
+              threadId: f.task.childThreadId!,
+              message: "Continue working",
+            })
+          : control === "cancel"
+            ? tasks.cancelTask(scope(), { taskId: f.task.id })
+            : tasks.taskQuestion(scope(), {
+                action: "respond",
+                taskId: f.task.id,
+                requestId: question.payload.id,
+                answers: { format: "Markdown" },
+              });
+      expect(yield* operation.pipe(Effect.flip)).toMatchObject({
+        code: "runtime_mode_escalation_denied",
+      });
+      expect(
+        (yield* f.projections.getThreadRecords(f.task.childThreadId!, ["runs"])).runs,
+      ).toHaveLength(1);
+      expect(
+        (yield* f.projections.getRuntimeRequest(f.task.childThreadId!, question.payload.id))
+          ?.status,
+      ).toBe("pending");
+    }).pipe(Effect.provide(layerTest)),
+);
+
 it.effect.each(["user_input", "permission"] as const)(
   "ends task_wait when a child's %s request arrives",
   (kind) =>
     Effect.gen(function* () {
-      const f = yield* setup();
+      const f = yield* setup("always", "approval-required");
       const { tasks, subscribed } = yield* watchingTasks();
       const waiting = yield* tasks.waitTask(scope(), { taskId: f.task.id }).pipe(Effect.forkChild);
       yield* Deferred.await(subscribed);
@@ -574,7 +881,7 @@ it.effect.each(["user_input", "permission"] as const)(
   "returns a blocking delegation on %s and keeps completion delivery armed",
   (kind) =>
     Effect.gen(function* () {
-      const f = yield* setup();
+      const f = yield* setup("always", "approval-required");
       const { tasks, subscribed } = yield* watchingTasks();
       const waiting = yield* tasks
         .delegateTask(scope(), {
@@ -590,6 +897,9 @@ it.effect.each(["user_input", "permission"] as const)(
         (task) => task.title === "Blocking question",
       )!;
       const event = yield* f.addRequest("request:blocking", "live", kind, task);
+      expect(
+        (yield* f.projections.getThreadRecords(task.childThreadId!, [])).thread.runtimeMode,
+      ).toBe("approval-required");
       expect(yield* Fiber.join(waiting)).toMatchObject({
         taskId: task.id,
         status: "running",

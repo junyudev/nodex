@@ -130,6 +130,8 @@ it.effect("owns the complete application settings ingress with the Main Scope", 
       "settings:acp-agents:configuration-status",
       "settings:acp-agents:get",
       "settings:acp-agents:update",
+      "settings:agent-runtime:get",
+      "settings:agent-runtime:update",
       "settings:backup:get",
       "settings:backup:update",
       "settings:claude-agents:get",
@@ -208,6 +210,29 @@ it.effect("owns the complete application settings ingress with the Main Scope", 
         "Failure",
       );
     }
+    assert.deepEqual(yield* handlers.get("settings:agent-runtime:get")!(event), {
+      defaultRuntimeMode: "full-access",
+    });
+    assert.deepEqual(
+      yield* handlers.get("settings:agent-runtime:update")!(event, { defaultRuntimeMode: "auto" }),
+      { defaultRuntimeMode: "auto" },
+    );
+    assert.equal(
+      (yield* Effect.result(
+        handlers.get("settings:agent-runtime:update")!(event, {
+          defaultRuntimeMode: "acceptAlways",
+        }),
+      ))._tag,
+      "Failure",
+    );
+    assert.equal(
+      (yield* Effect.result(
+        handlers.get("settings:agent-runtime:update")!(untrustedEvent, {
+          defaultRuntimeMode: "full-access",
+        }),
+      ))._tag,
+      "Failure",
+    );
     assert.deepEqual(yield* handlers.get("settings:composer-predictions:get")!(event), {
       enabled: true,
     });

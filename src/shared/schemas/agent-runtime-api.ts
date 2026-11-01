@@ -1,6 +1,6 @@
 import { PROMPT_TURN_READ_LIMIT } from "../prompt-turn";
 import { z } from "zod";
-import type { AgentRuntimeLaunch, AgentRuntimeMessage } from "../agent-runtime-api";
+import type { AgentRuntimeLaunch, AgentRuntimeMessage, RuntimeMode } from "../agent-runtime-api";
 import { AGENT_RUNTIME_CONTROL_EVENT_TYPES } from "../agent-runtime-api";
 import { CodexTurnPresentationTicketSchema } from "../nodex-app-tools/turn-presentation";
 
@@ -19,6 +19,8 @@ export const AgentRuntimePromptTurnsSchema = z
   })
   .strict();
 export const AgentRuntimeControlSchema = AgentRuntimeTargetSchema.extend({
+  requestId: id.optional(),
+  requireActive: z.boolean().optional(),
   runId: id.optional(),
 }).strict();
 export const AgentRuntimeOverviewSchema = AgentRuntimeTargetSchema.extend({
@@ -35,6 +37,11 @@ export const AgentRuntimeModelSelectionSchema = z
       .optional(),
   })
   .strict();
+export const AgentRuntimeModeSchema = z.enum([
+  "approval-required",
+  "auto",
+  "full-access",
+]) satisfies z.ZodType<RuntimeMode>;
 export const AgentRuntimeInteractionModeSchema = z.enum(["default", "plan"]);
 // Native attachment/context codecs stay authoritative in the execution process.
 export const AgentRuntimeMessageSchema = z
@@ -83,6 +90,7 @@ export const AgentRuntimeLaunchSchema = z
     initialPageIds: z.array(id).max(16).optional(),
     presentationTicket: CodexTurnPresentationTicketSchema.optional(),
     modelSelection: AgentRuntimeModelSelectionSchema,
+    runtimeMode: AgentRuntimeModeSchema.optional(),
     interactionMode: AgentRuntimeInteractionModeSchema,
     runInTarget: z.enum(["localProject", "newWorktree"]).optional(),
     sourceRoot: z.string().trim().min(1).max(32768).optional(),
@@ -116,12 +124,15 @@ export const AgentRuntimeResponseSchema = AgentRuntimeTargetSchema.extend({
   runId: id.nullable(),
   requestId: id,
   submissionId: id.optional(),
-  decision: z.enum(["accept", "acceptForSession", "acceptAlways", "decline", "cancel"]).optional(),
+  decision: z.enum(["accept", "acceptForSession", "decline", "cancel"]).optional(),
+  optionId: z.string().min(1).optional(),
+  feedback: z.string().trim().min(1).max(10_000).optional(),
   answers: z.record(z.string(), z.unknown()).optional(),
   attachmentsByQuestionId: z.record(z.string(), z.unknown()).optional(),
 });
 export const AgentRuntimeModesSchema = AgentRuntimeTargetSchema.extend({
   requestId: id,
+  runtimeMode: AgentRuntimeModeSchema.optional(),
   interactionMode: AgentRuntimeInteractionModeSchema.optional(),
 });
 export const AgentRuntimeCompactSchema = AgentRuntimeTargetSchema.extend({ requestId: id });

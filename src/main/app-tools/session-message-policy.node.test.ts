@@ -13,7 +13,7 @@ describe("Session send authority ceiling", () => {
     expect(sessionMessageCeilingError(facts(), facts())).toBeNull();
     expect(
       sessionMessageCeilingError(
-        facts({ runtimeMode: "auto-accept-edits" }),
+        facts({ runtimeMode: "approval-required" }),
         facts({ runtimeMode: "auto" }),
       ),
     ).toBe("runtime_mode_escalation_denied");

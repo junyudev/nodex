@@ -42,8 +42,18 @@ export function buildSidebarRuntimeGroupActivities(
     const status = activities.get(placement.sessionId)?.status;
     if (!status || seen.has(placement.sessionId)) continue;
     seen.add(placement.sessionId);
-    add(projects, placement.projectId, status === "waiting", placement.unread);
-    add(sections, placement.sectionId, status === "waiting", placement.unread);
+    add(
+      projects,
+      placement.projectId,
+      status === "waiting" || status === "approval",
+      placement.unread,
+    );
+    add(
+      sections,
+      placement.sectionId,
+      status === "waiting" || status === "approval",
+      placement.unread,
+    );
   }
   return { projects, sections };
 }

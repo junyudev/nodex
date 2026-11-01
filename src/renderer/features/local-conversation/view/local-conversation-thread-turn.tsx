@@ -57,6 +57,7 @@ function normalizeThreadLiveActivity(turn: ThreadTurnModel): ThreadTurnModel {
 }
 
 interface ThreadTurnProps {
+  agentBodyEnd?: import("react").ReactNode;
   hostId?: string;
   endResources?: readonly ThreadSummaryPanelOutputRow[];
   turn: ThreadTurnModel;
@@ -246,6 +247,7 @@ function ThreadTurnBody({
   hostId = "local",
   endResources = EMPTY_END_RESOURCES,
   agentBodyUnits,
+  agentBodyEnd,
   turn,
   agentBodyCollapsed,
   onAgentBodyCollapsedChange,
@@ -505,7 +507,18 @@ function ThreadTurnBody({
           </>
         ) : null}
 
-        {turn.liveActivity.fallback.owner === "standalone" ? (
+        {agentBodyEnd ? (
+          // Where the Agent is waiting: after everything it has said and done in this turn.
+          <>
+            {turn.leadingBlocks.length > 0 ||
+            agentBodyUnits.length > 0 ||
+            turn.trailingBlocks.length > 0 ||
+            endResources.length > 0 ? (
+              <ThreadGap />
+            ) : null}
+            <div ref={latestTurnFollowContentRef}>{agentBodyEnd}</div>
+          </>
+        ) : turn.liveActivity.fallback.owner === "standalone" ? (
           <>
             {turn.leadingBlocks.length > 0 ||
             agentBodyUnits.length > 0 ||

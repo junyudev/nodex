@@ -4,7 +4,7 @@ export function openCodeRunningChildApprovalInput(): OrchestratorFixtureInput {
   return {
     steps: [
       { type: "message", text: OPENCODE_SUBAGENT_PROMPT },
-
+      { type: "approve_next_runtime_request", decision: "accept" },
     ],
   };
 }

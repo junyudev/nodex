@@ -3,6 +3,10 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 import { ThreadManagementService } from "../orchestration-v2/ThreadManagementService.ts";
+import {
+  DispatchModeLimit,
+  DispatchModeLimitSchema,
+} from "../orchestration-v2/DispatchModeLimit.ts";
 import { OrchestratorV2 } from "../orchestration-v2/Orchestrator.ts";
 
 export const SessionQueueInput = Schema.Struct({
@@ -14,6 +18,7 @@ export const SessionQueueInput = Schema.Struct({
   cursor: Schema.optional(Schema.String),
   limit: Schema.optional(Schema.Number),
   commandId: CommandId,
+  modeLimit: Schema.optional(DispatchModeLimitSchema),
 });
 export type SessionQueueInput = typeof SessionQueueInput.Type;
 export interface SessionQueueEntry {
@@ -93,9 +98,12 @@ export const make = Effect.gen(function* () {
     WHERE run.thread_id=${threadId} AND run.status='queued' AND (${queuedId ?? null} IS NULL OR run.run_id=${queuedId ?? null})
     ) WHERE (${anchor === null ? 1 : 0}=1 OR (priority,position,ordinal,run_id)>(${anchor?.[1] ?? 0},${anchor?.[2] ?? 0},${anchor?.[3] ?? 0},${anchor?.[4] ?? ""}))
     ORDER BY priority,position,ordinal,run_id LIMIT ${limit}`;
-  const dispatch = (command: Parameters<typeof threads.dispatch>[0]) =>
-    threads.dispatch(command).pipe(Effect.map(({ sequence }) => ({ sequence })));
   return Effect.fn("SessionQueue.execute")(function* (input: SessionQueueInput) {
+    const dispatch = (command: Parameters<typeof threads.dispatch>[0]) =>
+      threads.dispatch(command).pipe(
+        Effect.provideService(DispatchModeLimit, input.modeLimit),
+        Effect.map(({ sequence }) => ({ sequence })),
+      );
     if (input.action === "list") {
       const limit = input.limit ?? 20;
       if (!Number.isInteger(limit) || limit < 1 || limit > 20)

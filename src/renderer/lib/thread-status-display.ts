@@ -2,7 +2,7 @@ import type { ProjectSessionThreadSummary } from "../../shared/types";
 
 export type ThreadStatusDisplayLabel =
   | "Error"
-  | "Approval"
+  | "Needs approval"
   | "Waiting"
   | "Running"
   | "Ready"
@@ -15,7 +15,7 @@ export function resolveThreadStatusDisplayLabel(
   if (thread.archived) return "Archived";
   if (thread.statusType === "systemError") return "Error";
   if (thread.statusActiveFlags.includes("waitingOnApproval")) {
-    return "Approval";
+    return "Needs approval";
   }
   if (thread.statusActiveFlags.includes("waitingOnUserInput")) {
     return "Waiting";

@@ -201,7 +201,102 @@ it.effect("a new question asks for input and its resolution withdraws the notifi
       body: "Answer 1 question to proceed.",
     });
     assert.deepEqual(h.dismissed, [{ occurrenceId: h.shown[0]!.occurrenceId! }]);
+    assert.deepEqual(
+      h.events.map((event) => event.type),
+      ["user-input-requested", "request-resolved"],
+    );
   }),
+);
+
+it.effect("approval attention uses the requested action and withdraws on resolution", () =>
+  Effect.gen(function* () {
+    const h = harness({});
+    const waiting = activity("waiting", {
+      activeFlags: ["waitingOnApproval", "waitingOnUserInput"],
+      approvalPrompt: "git push origin main",
+    });
+    yield* h.deliver([
+      transition(activity("running"), waiting),
+      transition(waiting, waiting),
+      transition(waiting, activity("running")),
+    ]);
+    assert.deepEqual(
+      h.events.map((event) => event.type),
+      ["approval-requested", "request-resolved"],
+    );
+    assert.deepEqual(h.unread, ["session:a"]);
+    assert.strictEqual(h.shown.length, 1);
+    assert.include(h.shown[0]!, {
+      title: "Refine the board needs approval",
+      body: "git push origin main",
+      navigationPath: "session:session%3Aa/thread:thread%3Aa",
+    });
+    assert.deepEqual(h.dismissed, [{ occurrenceId: h.shown[0]!.occurrenceId! }]);
+    assert.deepEqual(h.requests, []);
+  }),
+);
+
+it.effect(
+  "switching attention replaces questions and approvals even at the same request count",
+  () =>
+    Effect.gen(function* () {
+      const h = harness({});
+      const question = activity("waiting", { activeFlags: ["waitingOnUserInput"] });
+      const approval = activity("waiting", { activeFlags: ["waitingOnApproval"] });
+      yield* h.deliver([
+        transition(activity("running"), question),
+        transition(question, approval),
+        transition(approval, question),
+        transition(question, null),
+      ]);
+      assert.deepEqual(
+        h.events.map((event) => event.type),
+        [
+          "user-input-requested",
+          "request-resolved",
+          "approval-requested",
+          "request-resolved",
+          "user-input-requested",
+          "request-resolved",
+        ],
+      );
+      assert.deepEqual(
+        h.dismissed,
+        h.shown.map((notification) => ({ occurrenceId: notification.occurrenceId! })),
+      );
+    }),
+);
+
+it.effect(
+  "another approval action refreshes the waiting episode without a completion notification",
+  () =>
+    Effect.gen(function* () {
+      const h = harness({});
+      const first = activity("waiting", {
+        activeFlags: ["waitingOnApproval"],
+        approvalPrompt: "git fetch",
+      });
+      const next = activity("waiting", {
+        activeFlags: ["waitingOnApproval"],
+        approvalPrompt: "git push",
+      });
+      yield* h.deliver([
+        transition(activity("running"), first),
+        transition(first, next, { runId: "run:1", status: "completed" }),
+        transition(next, null),
+      ]);
+      assert.deepEqual(
+        h.events.map((event) => event.type),
+        ["approval-requested", "approval-requested", "request-resolved"],
+      );
+      assert.deepEqual(
+        h.shown.map((notification) => notification.body),
+        ["git fetch", "git push"],
+      );
+      assert.strictEqual(h.shown[0]?.occurrenceId, h.shown[1]?.occurrenceId);
+      assert.deepEqual(h.dismissed, [{ occurrenceId: h.shown[1]!.occurrenceId! }]);
+      assert.deepEqual(h.requests, []);
+    }),
 );
 
 it.effect("an asynchronous question revealed at turn end replaces completion", () =>
@@ -258,7 +353,7 @@ it.effect("delegated approvals notify their root while child questions leave it 
   Effect.gen(function* () {
     const h = harness({});
     const running = activity("running", { activeRunId: null });
-    const waiting = activity("waiting", { activeRunId: null });
+    const waiting = activity("waiting", { activeRunId: null, activeFlags: ["waitingOnApproval"] });
     yield* h.deliver([
       transition(null, running),
       transition(running, running),
@@ -271,7 +366,7 @@ it.effect("delegated approvals notify their root while child questions leave it 
     );
     assert.deepEqual(
       h.events.map((event) => event.type),
-      ["user-input-requested", "request-resolved"],
+      ["approval-requested", "request-resolved"],
     );
     assert.deepEqual(h.unread, ["session:a"]);
   }),

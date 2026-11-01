@@ -75,7 +75,11 @@ import {
   projectSidebarThreadRowLiveView,
   type SidebarThreadRowLiveView,
 } from "@/lib/sidebar-thread-row-live-view";
-import { runtimeSessionTarget, SESSION_LIVE_INDICATOR_LABELS } from "@/lib/session-execution";
+import {
+  runtimeSessionTarget,
+  runtimeSessionLiveIndicator,
+  SESSION_LIVE_INDICATOR_LABELS,
+} from "@/lib/session-execution";
 import {
   useSessionLinkedPage,
   type SessionLinkedPage,
@@ -1784,7 +1788,7 @@ function RuntimeCodexSidebarThreadRow(
     <CodexSidebarThreadRowView
       {...props}
       live={projectSidebarThreadRowLiveView(props.item, {
-        indicator: state.activity?.status ?? null,
+        indicator: runtimeSessionLiveIndicator(state.activity),
         location: state.location,
       })}
     />
@@ -1823,7 +1827,9 @@ function CodexSidebarThreadRowView({
   const pageStatus = status ? null : (linkedPage?.status ?? null);
   // The trailing slot shows one status; the description keeps unread news even under a spinner.
   const statusDescription = needsAttention
-    ? SESSION_LIVE_INDICATOR_LABELS.waiting
+    ? live.needsApproval
+      ? SESSION_LIVE_INDICATOR_LABELS.approval
+      : SESSION_LIVE_INDICATOR_LABELS.waiting
     : item.unread
       ? "Unread"
       : pageStatus

@@ -52,7 +52,7 @@ export function useRuntimeSessionStatuses(
       key
         ? key
             .split("\n")
-            .map((sessionId) => store.read(sessionId)?.status ?? "")
+            .map((sessionId) => runtimeSessionLiveIndicator(store.read(sessionId)) ?? "")
             .join("\n")
         : "",
   );
@@ -61,7 +61,12 @@ export function useRuntimeSessionStatuses(
   const values = snapshot.split("\n");
   key.split("\n").forEach((sessionId, index) => {
     const status = values[index];
-    if (status === "running" || status === "waiting" || status === "background")
+    if (
+      status === "running" ||
+      status === "waiting" ||
+      status === "approval" ||
+      status === "background"
+    )
       statuses.set(sessionId, status);
   });
   return statuses;

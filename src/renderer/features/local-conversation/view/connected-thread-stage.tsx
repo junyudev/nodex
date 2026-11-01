@@ -831,6 +831,9 @@ export function ConnectedThreadStageFooter({
     () => ({
       connectionStatus: connection.status,
       provider: input.provider,
+      runtimeMode: input.provider?.runtimeMode ?? null,
+      supportedRuntimeModes: input.provider?.supportedRuntimeModes,
+      defaultRuntimeMode: input.provider?.defaultRuntimeMode,
       workspaceSearchContext,
       projectId: input.projectId,
       hostId,

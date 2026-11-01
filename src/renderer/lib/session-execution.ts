@@ -237,18 +237,25 @@ export function runtimeSessionThreadSummary(
   };
 }
 
-export type SessionLiveIndicator = "running" | "waiting" | "background";
+export type SessionLiveIndicator = "running" | "waiting" | "approval" | "background";
 
 /** Runtime activity is the only live-status source for Runtime Sessions; idle is absent. */
 export function runtimeSessionLiveIndicator(
-  activity: Pick<AgentRuntimeSessionActivity, "status"> | null | undefined,
+  activity:
+    | (Pick<AgentRuntimeSessionActivity, "status"> &
+        Partial<Pick<AgentRuntimeSessionActivity, "activeFlags">>)
+    | null
+    | undefined,
 ): SessionLiveIndicator | null {
-  return activity?.status ?? null;
+  return activity?.activeFlags?.includes("waitingOnApproval")
+    ? "approval"
+    : (activity?.status ?? null);
 }
 
 export const SESSION_LIVE_INDICATOR_LABELS: Readonly<Record<SessionLiveIndicator, string>> = {
   running: "Running",
   waiting: "Waiting for you",
+  approval: "Needs approval",
   background: "Working in background",
 };
 

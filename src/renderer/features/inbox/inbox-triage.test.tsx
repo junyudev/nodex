@@ -982,7 +982,7 @@ describe("InboxHistory", () => {
       </TestQueryProvider>,
     );
     expect(screen.getByText("Started “Homepage positioning”")).toBeTruthy();
-    expect(screen.getByText("Waiting")).toBeTruthy();
+    expect(screen.getByText("Needs approval")).toBeTruthy();
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { expanded: false }));
       await Promise.resolve();

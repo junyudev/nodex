@@ -1,3 +1,5 @@
+import { RUNTIME_MODE_RANK, type AgentDispatchModeLimit } from "@nodex/agent-runtime/contracts";
+import type { CodexCanonicalPermissionContext } from "../../shared/types";
 import { assertCodexFailedTurnContinuation } from "../../shared/codex-conversation-state/codex-failed-turn-continuation";
 import {
   encodeCodexAsyncQuestionReplies,
@@ -159,7 +161,30 @@ const uncertainPeerDelivery = (
   return admittedDeliveryFailure(cause, method, clientUserMessageId);
 };
 
+const assertNativeModeLimit = (
+  limit: AgentDispatchModeLimit | undefined,
+  permissions: CodexCanonicalPermissionContext | undefined,
+  interactionMode: string | undefined,
+): void => {
+  if (!limit) return;
+  if (!permissions) throw new Error("Native execution permission facts are unavailable");
+  const sandbox = permissions.sandboxPolicy.type;
+  if (sandbox !== "dangerFullAccess" && sandbox !== "workspaceWrite" && sandbox !== "readOnly")
+    throw new Error("Native execution permissions cannot be compared");
+  const runtimeMode =
+    sandbox === "dangerFullAccess"
+      ? "full-access"
+      : sandbox === "workspaceWrite" && permissions.approvalsReviewer === "auto_review"
+        ? "auto"
+        : "approval-required";
+  if (RUNTIME_MODE_RANK[runtimeMode] > RUNTIME_MODE_RANK[limit.runtimeMode])
+    throw new Error("runtime_mode_escalation_denied");
+  if (limit.interactionMode === "plan" && interactionMode !== "plan")
+    throw new Error("interaction_mode_escalation_denied");
+};
+
 export type CodexTurnStartOverrides = CodexTurnStartOptions & {
+  readonly modeLimit?: AgentDispatchModeLimit;
   readonly expectedExecution?: { readonly hostId: string; readonly generation: number };
   readonly questionResponse?: import("../../shared/codex-question-response").CodexQuestionResponseMetadata;
   /**
@@ -2102,6 +2127,19 @@ export const make: Effect.Effect<
                 request.threadId,
                 new Error("Turn owner or request changed after materialization"),
               );
+            yield* Effect.try(() => {
+              const state = conversations.current(request.threadId)?.readCanonicalState();
+              assertNativeModeLimit(
+                entry.overrides.modeLimit,
+                state?.currentPermissions,
+                state?.latestCollaborationMode.mode,
+              );
+              assertNativeModeLimit(
+                entry.overrides.modeLimit,
+                entry.plan!.permissions,
+                entry.plan!.collaborationMode?.mode ?? state?.latestCollaborationMode.mode,
+              );
+            });
             if (
               entry.plan.rendererOwnsState &&
               Array.isArray(entry.context?.responseItems) &&
@@ -2145,19 +2183,35 @@ export const make: Effect.Effect<
           Effect.andThen(
             conversations.runCommand(
               request.threadId,
-              startTransaction(plan, {
-                connection: entry,
-                executionEpoch: entry.executionEpoch,
-                returnNativeResponse: true,
-                assertCurrentOwner,
-                responseItems,
-                serverQueuedSubmission: entry.context?.serverQueuedSubmission,
-                expectedFailedTurnId,
-                passiveContext:
-                  !plan.rendererOwnsState && entry.injection !== "complete"
-                    ? entry.context?.passiveContext
-                    : undefined,
-              }),
+              Effect.try(() => {
+                const current = conversations.current(request.threadId)?.readCanonicalState();
+                assertNativeModeLimit(
+                  entry.overrides.modeLimit,
+                  current?.currentPermissions,
+                  current?.latestCollaborationMode.mode,
+                );
+                assertNativeModeLimit(
+                  entry.overrides.modeLimit,
+                  plan.permissions,
+                  plan.collaborationMode?.mode ?? current?.latestCollaborationMode.mode,
+                );
+              }).pipe(
+                Effect.andThen(
+                  startTransaction(plan, {
+                    connection: entry,
+                    executionEpoch: entry.executionEpoch,
+                    returnNativeResponse: true,
+                    assertCurrentOwner,
+                    responseItems,
+                    serverQueuedSubmission: entry.context?.serverQueuedSubmission,
+                    expectedFailedTurnId,
+                    passiveContext:
+                      !plan.rendererOwnsState && entry.injection !== "complete"
+                        ? entry.context?.passiveContext
+                        : undefined,
+                  }),
+                ),
+              ),
             ),
           ),
           Effect.flatMap((response) =>

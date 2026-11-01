@@ -1,9 +1,9 @@
-import { ProviderInteractionMode } from "@t3tools/contracts";
+import { ProviderInteractionMode, RUNTIME_MODE_RANK, RuntimeMode } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Schema from "effect/Schema";
 
 export const DispatchModeLimitSchema = Schema.Struct({
-  runtimeMode: Schema.Literals(["approval-required", "auto-accept-edits", "auto", "full-access"]),
+  runtimeMode: RuntimeMode,
   interactionMode: ProviderInteractionMode,
 });
 export type DispatchModes = typeof DispatchModeLimitSchema.Type;
@@ -14,15 +14,8 @@ export const DispatchModeLimit = Context.Reference<DispatchModes | undefined>(
   { defaultValue: () => undefined },
 );
 
-const runtimeRank = {
-  "approval-required": 0,
-  "auto-accept-edits": 1,
-  auto: 2,
-  "full-access": 3,
-} as const;
-
 export const exceededDispatchModeLimit = (limit: DispatchModes, modes: DispatchModes) =>
-  runtimeRank[modes.runtimeMode] > runtimeRank[limit.runtimeMode]
+  RUNTIME_MODE_RANK[modes.runtimeMode] > RUNTIME_MODE_RANK[limit.runtimeMode]
     ? ("runtime_mode_escalation_denied" as const)
     : limit.interactionMode === "plan" && modes.interactionMode !== "plan"
       ? ("interaction_mode_escalation_denied" as const)

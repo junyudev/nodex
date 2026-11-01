@@ -1,3 +1,4 @@
+import { withSupportedRuntimeModes } from "./ProviderRuntimeModes.ts";
 import { pendingUserQuestionIds } from "./PendingUserQuestions.ts";
 import * as SessionStop from "./SessionStop.ts";
 import { ProviderSessionManagerV2 } from "../orchestration-v2/ProviderSessionManager.ts";
@@ -160,6 +161,7 @@ const AgentRequest = Schema.Union([
       threadId: ThreadId,
       commandId: CommandId,
       reason: Schema.optional(Schema.String),
+      modeLimit: Schema.optional(DispatchModeLimitSchema),
     }),
   ),
   request("native-message.receipt", NativeMessageReceipts.NativeMessageLookup),
@@ -595,7 +597,11 @@ const AgentRequest = Schema.Union([
 ]);
 const decodeRequest = Schema.decodeUnknownEffect(Schema.toCodecJson(AgentRequest));
 const encodeShell = Schema.encodeEffect(Schema.toCodecJson(OrchestrationV2ThreadShellSnapshot));
-const encodeProviders = Schema.encodeEffect(Schema.toCodecJson(Schema.Array(ServerProvider)));
+const encodeProviderSnapshots = Schema.encodeEffect(
+  Schema.toCodecJson(Schema.Array(ServerProvider)),
+);
+const encodeProviders = (providers: readonly ServerProvider[]) =>
+  encodeProviderSnapshots(providers.map(withSupportedRuntimeModes));
 const encodeThreadShell = Schema.encodeEffect(
   Schema.toCodecJson(
     Schema.NullOr(

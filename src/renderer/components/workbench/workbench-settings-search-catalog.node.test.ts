@@ -146,16 +146,14 @@ describe("workbench settings search catalog", () => {
     }
   });
 
-  test("does not index the retired raw Codex config and agent permission controls", () => {
-    for (const query of [
-      "Approval policy",
-      "danger-full-access",
-      "network_access",
-      "permission mode",
-    ]) {
+  test("finds default permissions on the Agents page without raw Codex config", () => {
+    for (const query of ["Default permissions", "Full access", "Ask for approval"]) {
+      expect(hasSectionResult(query, "agent")).toBe(true);
+      expect(settingsSearchAnchor("agent", query)).toBe("default-permissions");
+    }
+    for (const query of ["Approval policy", "danger-full-access", "network_access"]) {
       expect(hasSectionResult(query, "agent")).toBe(false);
     }
-    expect(hasSectionResult("Default permissions mode", "general-settings")).toBe(false);
   });
 
   test("does not index the retired sidebar section preferences", () => {

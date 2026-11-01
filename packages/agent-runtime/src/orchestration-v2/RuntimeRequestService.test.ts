@@ -13,6 +13,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 
 import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+import * as EventSink from "./EventSink.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import * as ProviderSessionManager from "./ProviderSessionManager.ts";
 import * as RuntimeRequestService from "./RuntimeRequestService.ts";
@@ -52,6 +53,7 @@ function layerRuntimeRequestTest(
   return RuntimeRequestService.layer.pipe(
     Layer.provide(
       Layer.mergeAll(
+        Layer.mock(EventSink.EventSinkV2)({ write: () => Effect.succeed([]) }),
         Layer.mock(ProjectionStore.ProjectionStoreV2)({
           getRuntimeRequest: (_threadId, requestId) =>
             Effect.succeed(projection.runtimeRequests.find((request) => request.id === requestId)),
@@ -99,6 +101,7 @@ it.effect("forwards orchestrator-resolved runtime requests to the live adapter",
   const layerTest = RuntimeRequestService.layer.pipe(
     Layer.provide(
       Layer.mergeAll(
+        Layer.mock(EventSink.EventSinkV2)({ write: () => Effect.succeed([]) }),
         Layer.mock(ProjectionStore.ProjectionStoreV2)({
           getRuntimeRequest: (_threadId, requestId) =>
             Effect.succeed(projection.runtimeRequests.find((request) => request.id === requestId)),
@@ -163,6 +166,7 @@ it.effect("rejects expired runtime requests before invoking the live adapter", (
   const layerTest = RuntimeRequestService.layer.pipe(
     Layer.provide(
       Layer.mergeAll(
+        Layer.mock(EventSink.EventSinkV2)({ write: () => Effect.succeed([]) }),
         Layer.mock(ProjectionStore.ProjectionStoreV2)({
           getRuntimeRequest: (_threadId, requestId) =>
             Effect.succeed(projection.runtimeRequests.find((request) => request.id === requestId)),

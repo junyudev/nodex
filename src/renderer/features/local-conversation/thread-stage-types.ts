@@ -296,6 +296,9 @@ export interface ConversationBackgroundTasks {
 
 /** Capabilities vary by provider; the stage, timeline, editor and request UI are shared. */
 export interface ConversationProviderPresentation {
+  readonly runtimeMode?: import("@nodex/agent-runtime/contracts").RuntimeMode | null;
+  readonly supportedRuntimeModes?: readonly import("@nodex/agent-runtime/contracts").RuntimeMode[];
+  readonly defaultRuntimeMode?: import("@nodex/agent-runtime/contracts").RuntimeMode;
   readonly status?: ConversationProviderStatus | null;
   /** Live background work of the opened conversation; subagents are listed separately. */
   readonly backgroundTasks?: ConversationBackgroundTasks | null;
@@ -422,6 +425,13 @@ export interface ThreadStageRouteInput {
 export interface ThreadStageActions {
   onNextQueuedFollowUpPage?: () => Promise<void>;
   onPreviousQueuedFollowUpPage?: () => Promise<void>;
+  onRuntimeModeChange?: (
+    mode: import("@nodex/agent-runtime/contracts").RuntimeMode,
+  ) => void | Promise<void>;
+  onRespondApproval?: (
+    requestId: string,
+    response: import("./agent-approval").AgentApprovalResponse,
+  ) => Promise<void>;
   onCollaborationModeChange: (mode: CodexCollaborationModeKind) => void | Promise<void>;
   onModelChange: (model: string) => void | Promise<void>;
   onReasoningEffortChange: (reasoningEffort: CodexReasoningEffort) => void | Promise<void>;
@@ -1294,6 +1304,9 @@ export interface ThreadBodySurfaceModel {
 }
 
 export interface ThreadFooterModel {
+  readonly runtimeMode?: import("@nodex/agent-runtime/contracts").RuntimeMode | null;
+  readonly supportedRuntimeModes?: readonly import("@nodex/agent-runtime/contracts").RuntimeMode[];
+  readonly defaultRuntimeMode?: import("@nodex/agent-runtime/contracts").RuntimeMode;
   readonly connectionStatus: CodexConnectionState["status"];
   provider?: ConversationProviderPresentation;
   readonly workspaceSearchContext: WorkspaceSearchContext | null;

@@ -696,3 +696,31 @@ it.effect(
       assert.deepEqual((yield* fresh.snapshot()).usageMeters, shown);
     }),
 );
+
+it.effect("persists the Profile's default native execution mode and rejects invalid updates", () =>
+  Effect.gen(function* () {
+    const { root, settingsPath } = fixture('[plugin]\nname = "keep"\n');
+    const source = { environment: {}, hostHomeDirectory: root, settingsPath };
+    const settings = yield* makeApplicationSettings(source);
+    assert.deepEqual((yield* settings.snapshot()).agentRuntime, {
+      defaultRuntimeMode: "full-access",
+    });
+    for (const defaultRuntimeMode of ["auto", "approval-required", "full-access"] as const) {
+      yield* settings.update({ type: "update-agent-runtime", input: { defaultRuntimeMode } });
+      const reopened = yield* makeApplicationSettings(source);
+      assert.equal(
+        (yield* reopened.snapshot()).agentRuntime.defaultRuntimeMode,
+        defaultRuntimeMode,
+      );
+      assert.deepEqual(parseToml(readFileSync(settingsPath, "utf8")).plugin, { name: "keep" });
+    }
+    const before = readFileSync(settingsPath, "utf8");
+    assert.equal(
+      (yield* settings
+        .update({ type: "update-agent-runtime", input: { defaultRuntimeMode: "unknown" as never } })
+        .pipe(Effect.result))._tag,
+      "Failure",
+    );
+    assert.equal(readFileSync(settingsPath, "utf8"), before);
+  }),
+);

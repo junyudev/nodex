@@ -1,3 +1,4 @@
+import type { AgentDispatchModeLimit } from "@nodex/agent-runtime/contracts";
 import { resolveCodexThreadHandoffStepLabel } from "../../shared/codex-thread-handoff";
 import type {
   CodexAppHandoffOperation,
@@ -40,6 +41,7 @@ export interface CodexStartThreadHandoffInput {
   /** Reject a stale attached selector rather than toggling the opposite way. */
   readonly expectedDestination?: "local" | "worktree";
   readonly followUpPrompt: string | null;
+  readonly modeLimit?: AgentDispatchModeLimit;
   readonly requestThreadId?: string;
   readonly threadTitle?: string;
   readonly onProgress?: (progress: CodexThreadHandoffProgress) => void;
@@ -872,7 +874,12 @@ export const make = (options: {
         );
         entry = yield* invoke(
           "send-follow-up",
-          threadExecution.followUp(entry.threadId, followUpPrompt, entry.operationId),
+          threadExecution.followUp(
+            entry.threadId,
+            followUpPrompt,
+            entry.operationId,
+            entry.modeLimit,
+          ),
           { operationId: entry.operationId, threadId: entry.threadId },
         ).pipe(
           Effect.as(entry),
@@ -1180,6 +1187,7 @@ export const make = (options: {
                   runtimeSwitched: false,
                   coreCommitted: false,
                   followUpPrompt: input.followUpPrompt,
+                  ...(input.modeLimit ? { modeLimit: input.modeLimit } : {}),
                   followUpDispatchStarted: false,
                   warnings: [],
                   lastError: null,

@@ -131,6 +131,7 @@ it.effect(
         acceptedAt: 1,
         modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "original-model" },
         interactionMode: "plan" as const,
+        runtimeMode: "approval-required" as const,
         message: { messageId: input.messageId, text: "", attachments: [] },
         resources: [{ name: "evidence.txt", mimeType: "text/plain", sizeBytes: 8, source }],
       };
@@ -139,6 +140,7 @@ it.effect(
       const recreated = yield* make;
       assert.deepEqual(yield* recreated.stage(request), staged);
       assert.equal(staged.interactionMode, "plan");
+      assert.equal(staged.runtimeMode, "approval-required");
       assert.deepEqual(staged.modelSelection, request.modelSelection);
       assert.equal(
         yield* fs.readFileString(

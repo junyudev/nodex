@@ -40,6 +40,7 @@ function indicatorLabel(indicator: ProjectAgentDockChatIndicator): string | null
   if (indicator === "running") return SESSION_LIVE_INDICATOR_LABELS.running;
   if (indicator === "background") return SESSION_LIVE_INDICATOR_LABELS.background;
   if (indicator === "unread") return "Unread";
+  if (indicator === "approval") return SESSION_LIVE_INDICATOR_LABELS.approval;
   if (indicator === "waiting") return SESSION_LIVE_INDICATOR_LABELS.waiting;
   if (indicator === "error") return "Error";
   return null;
@@ -86,7 +87,7 @@ function ProjectAgentDockChatIndicatorView({
           )}
           animationDurationMs={indicator === "background" ? 5_000 : 2_000}
         />
-      ) : indicator === "waiting" ? (
+      ) : indicator === "waiting" || indicator === "approval" ? (
         <ChatWaitingIcon className="icon-2xs" />
       ) : indicator === "error" ? (
         <CircleAlert className="icon-2xs shrink-0 text-token-error-foreground" aria-hidden />
