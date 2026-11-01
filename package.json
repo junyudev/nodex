@@ -13,6 +13,8 @@
     "test:unit:related": "tsx scripts/testing/run-tests.ts unit --related",
     "test:core-client": "tsx scripts/testing/run-tests.ts core-client",
     "test:core-client:related": "tsx scripts/testing/run-tests.ts core-client --related",
+    "test:host": "tsx scripts/testing/run-tests.ts host",
+    "test:host:related": "tsx scripts/testing/run-tests.ts host --related",
     "test:main": "tsx scripts/testing/run-tests.ts main",
     "test:main:related": "tsx scripts/testing/run-tests.ts main --related",
     "test:renderer": "tsx scripts/testing/run-tests.ts renderer",

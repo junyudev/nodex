@@ -138,7 +138,7 @@ describe("CI change classification", () => {
       classifyChangedPaths(["crates/nodex-core/src/infrastructure/migration.rs"]),
     ).toMatchObject({ rustFast: true, rustMigration: true });
     expect(classifyChangedPaths(["src/main/core-client/core-client.ts"])).toMatchObject({
-      appTestSuites: ["core-client", "main", "integration"],
+      appTestSuites: ["core-client", "host", "main", "integration"],
       protocolContracts: true,
       rustFast: false,
       testMode: "related",

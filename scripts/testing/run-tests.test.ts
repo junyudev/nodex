@@ -74,6 +74,7 @@ describe("test execution", () => {
       "vitest.effect-codex.config.ts",
       "packages/agent-runtime/vite.config.ts",
       "vitest.core-client.config.ts",
+      "vitest.host.config.ts",
       "vitest.main.config.ts",
       "vitest.renderer.config.ts",
       "vitest.integration.config.ts",

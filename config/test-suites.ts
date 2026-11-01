@@ -6,6 +6,7 @@ export const APP_TEST_SUITES = [
   "effect-codex",
   "agent-runtime",
   "core-client",
+  "host",
   "main",
   "renderer",
   "integration",
@@ -47,6 +48,24 @@ const blocknoteTests = [
   "third_party/blocknote/packages/react/src/components/SuggestionMenu/SuggestionMenuFreshness.test.tsx",
   "third_party/blocknote/packages/react/src/components/SuggestionMenu/hooks/useCloseSuggestionMenuNoItems.test.tsx",
   "third_party/blocknote/packages/react/src/util/sanitizeUrl.test.ts",
+] as const;
+
+/** Core-independent Electron host boundaries, exercised on every supported OS. */
+const hostTests = [
+  "src/main/platform/host-capabilities.test.ts",
+  "src/main/platform/electron/ElectronClipboard.test.ts",
+  "src/main/platform/electron/ElectronClipboardFallback.test.ts",
+  "src/main/platform/node/CodexAccountHome.test.ts",
+  "src/main/platform/node/NodexCliShell.windows.test.ts",
+  "src/main/platform/node/OpenCodeInstallPlatform.windows.test.ts",
+  "src/main/platform/node/TerminalEnvironment.test.ts",
+  "src/main/platform/node/TerminalPty.windows.test.ts",
+  "src/main/platform/node/TerminalPty.test.ts",
+  "src/main/host-runtime/ApplicationHostRuntime.test.ts",
+  "src/main/nodex-home.test.ts",
+  "src/main/process-tree.test.ts",
+  "src/main/platform/node/NodeExecutionRuntime.test.ts",
+  "src/main/platform/node/AgentRuntimeEntrypoint.node.test.ts",
 ] as const;
 
 interface TestSuite {
@@ -119,15 +138,23 @@ const suites: Readonly<Record<SuiteId, TestSuite>> = {
     config: "vitest.core-client.config.ts",
     runtime: "host-node",
     include: ["src/main/**/*.node.test.ts", YJS_YRS_TEST],
-    exclude: [],
+    exclude: [...hostTests],
     stress: ["src/main/**/*.stress.node.test.ts"],
     native: ["core-server", "yjs-yrs-bridge", "cli"],
+  },
+  host: {
+    config: "vitest.host.config.ts",
+    runtime: "electron-node",
+    include: [...hostTests],
+    exclude: [],
+    stress: [],
+    native: [],
   },
   main: {
     config: "vitest.main.config.ts",
     runtime: "electron-node",
     include: ["src/main/**/*.test.ts"],
-    exclude: ["src/main/**/*.integration.ts", "src/main/**/*.node.test.ts"],
+    exclude: ["src/main/**/*.integration.ts", "src/main/**/*.node.test.ts", ...hostTests],
     stress: ["src/main/**/*.stress*.test.ts"],
     native: ["core-server"],
   },

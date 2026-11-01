@@ -47,6 +47,16 @@ describe("application CI suite planning", () => {
         },
       ],
       [
+        "host",
+        {
+          needsPlaywright: false,
+          needsRust: false,
+          needsXvfb: true,
+          packageScript: "test:host",
+          relatedPackageScript: "test:host:related",
+        },
+      ],
+      [
         "main",
         {
           needsPlaywright: false,
