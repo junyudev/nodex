@@ -1,0 +1,43 @@
+.github/workflows/windows.yml
+  s_61ededb051faa8::t_a06bd51f1e3c61 73,87-91
+config/test-suites.test.ts
+  s_61ededb051faa8::t_95a322b26f1227 18-19
+config/test-suites.ts
+  s_61ededb051faa8::t_9585dc41708331 122,130
+docs/CI.md
+  s_61ededb051faa8::t_c4f4449639b30a 45,69-72,92
+docs/windows-verification.md
+  s_61ededb051faa8::t_34cda912942632 14-16
+scripts/ci/app-test-suite.test.ts
+  s_de900885deb30b::t_a270b780ceadd1 8,92-100
+scripts/ci/app-test-suite.ts
+  s_61ededb051faa8::t_6018b4d130e1a7 19-22,25
+scripts/ci/classify-change.test.ts
+  s_61ededb051faa8::t_cfa63b4e025a46 141
+scripts/ci/classify-change.ts
+  s_61ededb051faa8::t_ed454bb9723ec4 166,170,178,182,194
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "53aaf524a90990822d026b2739e3a1d7125915a7",
+  "prompts": {},
+  "sessions": {
+    "s_61ededb051faa8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19725-1673-78a3-85e3-bdba96788967",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_de900885deb30b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "060ee655-9b7c-4fef-be43-afa1b6d532d3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
