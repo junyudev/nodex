@@ -205,7 +205,7 @@ async function main(): Promise<void> {
         if (claim.runId !== runId || claim.hostPid !== child.pid)
           throw new Error("Installed Nodex readiness belongs to another host generation");
         const { descriptor } = readCoreRuntimeConnection(profile);
-        if (!descriptor.socket_path.startsWith("\\\\.\\pipe\\"))
+        if (!descriptor.endpoint.startsWith("\\\\.\\pipe\\nodex-core-"))
           throw new Error(
             "Windows Core must publish a named-pipe endpoint in its runtime descriptor",
           );
