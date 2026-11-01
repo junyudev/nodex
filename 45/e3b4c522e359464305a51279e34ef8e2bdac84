@@ -1,0 +1,47 @@
+CHANGELOG.md
+  s_a62e5887089e7e::t_dbe28b7ee1e199 50
+docs/FRONTEND.md
+  s_a62e5887089e7e::t_2145e5c2310e93 365-368
+docs/product-specs/codex-workspace-behavior.md
+  s_a62e5887089e7e::t_82334163280d7b 187-190
+docs/product-specs/workspace-file-git-data.md
+  s_a62e5887089e7e::t_6bc2aea9713160 28-30,63-67
+src/renderer/features/workspace-files/workspace-file-change-blocks.node.test.ts
+  s_a62e5887089e7e::t_ce227ec82e57df 6,8-11
+src/renderer/features/workspace-files/workspace-file-change-blocks.ts
+  s_a62e5887089e7e::t_2436ffc699fdd7 1
+src/renderer/features/workspace-files/workspace-file-conflict.test.tsx
+  s_a62e5887089e7e::t_f779c002aaf582 1-49
+src/renderer/features/workspace-files/workspace-file-conflict.tsx
+  s_a62e5887089e7e::t_5fd64c45632f58 1-2,11,29-30,32-36,56-58,77-90
+src/renderer/features/workspace-files/workspace-file-editor-diff.test.ts
+  s_a62e5887089e7e::t_57b2f3a9b1cd40 3-12,20,33,46-79
+src/renderer/features/workspace-files/workspace-file-editor-diff.ts
+  s_a62e5887089e7e::t_0337a8ba367b12 1-2,4-24,28-54
+src/renderer/features/workspace-files/workspace-file-git-model.node.test.ts
+  s_a62e5887089e7e::t_24229f6ed75f05 7,158-176
+src/renderer/features/workspace-files/workspace-file-git-model.ts
+  s_a62e5887089e7e::t_32a0ac965a44d9 51-58,297-300
+src/renderer/features/workspace-files/workspace-files-panel.tsx
+  s_a62e5887089e7e::t_0af106a270e10b 121,123,239,411,753,1426-1437,1451
+src/renderer/features/workspace-files/workspace-pierre-editor.test.tsx
+  s_a62e5887089e7e::t_3e66907370cdfc 16,109,273-304
+src/renderer/features/workspace-files/workspace-pierre-editor.tsx
+  s_a62e5887089e7e::t_ece8026f9ed14e 59-62,110-111,192,242-251,348-349,352,358-361,397
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "45e3b4c522e359464305a51279e34ef8e2bdac84",
+  "prompts": {},
+  "sessions": {
+    "s_a62e5887089e7e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2ec19bab-a0ee-4190-9ba2-f81423363c25",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
