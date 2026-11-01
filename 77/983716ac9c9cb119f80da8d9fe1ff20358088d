@@ -1,0 +1,98 @@
+src/renderer/components/workbench/workbench-runtime.tsx
+  s_fd402faa98738e::t_3399054cb2f685 2367,2369,2748,5379-5380
+  s_fd402faa98738e::t_d04ab8c7c61b05 5381
+src/renderer/components/workbench/workbench-command-palette-host.tsx
+  s_fd402faa98738e::t_3399054cb2f685 34-35,62-66,190-191,245-259
+src/renderer/features/local-conversation/view/composer/local-conversation-thread-composer.tsx
+  s_fd402faa98738e::t_3399054cb2f685 1135-1139
+src/renderer/components/workbench/sidebar-status-indicator.tsx
+  s_fd402faa98738e::t_3399054cb2f685 2,7-8,64-75
+src/renderer/components/workbench/codex-sidebar.test.tsx
+  s_fd402faa98738e::t_3399054cb2f685 6-15,118-189
+  s_fd402faa98738e::t_f45f553d52ef97 190-191
+src/renderer/components/workbench/command-palette.test.tsx
+  s_fd402faa98738e::t_3399054cb2f685 101-102
+src/renderer/lib/sidebar-status.test.ts
+  s_fd402faa98738e::t_3399054cb2f685 5,25-32
+  s_fd402faa98738e::t_17d8b813816770 33-35
+src/renderer/components/workbench/session-context-menu-model.test.ts
+  s_fd402faa98738e::t_3399054cb2f685 4,10,13,16-18,129,136-139,171,177,336-376
+  s_fd402faa98738e::t_6ea62e9f9fd2d3 377
+src/renderer/components/workbench/session-context-menu-model.ts
+  s_fd402faa98738e::t_3399054cb2f685 18,23,33,46-47,64-65,90-132,333
+src/renderer/features/local-conversation/native-thread-stage-actions.ts
+  s_fd402faa98738e::t_3399054cb2f685 31
+src/renderer/features/local-conversation/view/connected-thread-stage.tsx
+  s_fd402faa98738e::t_3399054cb2f685 308
+src/renderer/lib/use-session-execution.ts
+  s_fd402faa98738e::t_3399054cb2f685 15,92
+src/renderer/lib/use-workbench-session-commands.ts
+  s_fd402faa98738e::t_3399054cb2f685 178,237,710-716,739
+src/shared/icon-geometry.ts
+  s_fd402faa98738e::t_3399054cb2f685 107-110
+src/renderer/components/workbench/command-palette-surface.tsx
+  s_fd402faa98738e::t_3399054cb2f685 42,94,110-113,228-230
+src/renderer/components/workbench/use-workbench-sidebar-controller.ts
+  s_fd402faa98738e::t_3399054cb2f685 33,39,776-788,969-977,1030,1121,1123
+src/shared/command-keybindings.ts
+  s_fd402faa98738e::t_3399054cb2f685 578-585
+src/renderer/lib/command-palette-commands.ts
+  s_fd402faa98738e::t_3399054cb2f685 18,24-56,69-71,107-109,137-139,353-391
+src/renderer/components/workbench/session-chat-tab-icon.tsx
+  s_fd402faa98738e::t_3399054cb2f685 4,7,19
+src/renderer/components/workbench/workbench-session-thread-route.tsx
+  s_fd402faa98738e::t_3399054cb2f685 108,204,430,468
+src/renderer/components/shared/icons/app-icons.tsx
+  s_fd402faa98738e::t_3399054cb2f685 17,3446
+src/renderer/components/workbench/command-palette-scope.test.tsx
+  s_fd402faa98738e::t_3399054cb2f685 67-72,102-103
+src/renderer/components/workbench/command-palette.browser.test.tsx
+  s_fd402faa98738e::t_3399054cb2f685 87-92,122-123
+src/renderer/features/local-conversation/view/local-conversation-stage-header.tsx
+  s_fd402faa98738e::t_3399054cb2f685 6,40,64-69,77,89,131,192-234
+  s_fd402faa98738e::t_05a2fc356b136c 235
+src/renderer/lib/chat-reminder.node.test.ts
+  s_fd402faa98738e::t_3399054cb2f685 1-97
+src/renderer/lib/chat-reminder.ts
+  s_fd402faa98738e::t_3399054cb2f685 1-181
+src/renderer/lib/sidebar-status.ts
+  s_fd402faa98738e::t_3399054cb2f685 4-5,7-15,18,37,44-53
+  s_fd402faa98738e::t_1a7e152251c597 54-55
+src/shared/session-context-menu-icons.ts
+  s_fd402faa98738e::t_3399054cb2f685 3,91
+docs/KEYBOARD_SHORTCUTS.md
+  s_fd402faa98738e::t_3399054cb2f685 39
+src/renderer/components/workbench/codex-sidebar.tsx
+  s_fd402faa98738e::t_3399054cb2f685 27,29,93-99,1507-1519,1583,1593-1594,1659-1667,1858-1864,1866-1880,2139
+docs/product-specs/workbench-shell.md
+  s_fd402faa98738e::t_3399054cb2f685 14-15,243
+src/renderer/features/local-conversation/thread-stage-types.ts
+  s_fd402faa98738e::t_3399054cb2f685 366-367,519-520,635,1249
+CHANGELOG.md
+  s_fd402faa98738e::t_3399054cb2f685 12
+src/renderer/lib/sidebar-thread-row-live-view.ts
+  s_fd402faa98738e::t_3399054cb2f685 7,23-24
+src/renderer/features/local-conversation/view/composer/composer-draft-state.ts
+  s_fd402faa98738e::t_3399054cb2f685 2,454-462,466,470,472-491,494-518,624,631-632,683,689-690
+src/renderer/features/local-conversation/view/composer/composer-prompt-draft-atom.test.ts
+  s_fd402faa98738e::t_3399054cb2f685 20,94-120
+  s_fd402faa98738e::t_73b2ec2d6411d1 121-122
+src/shared/native-context-menu.ts
+  s_fd402faa98738e::t_3399054cb2f685 9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "77983716ac9c9cb119f80da8d9fe1ff20358088d",
+  "prompts": {},
+  "sessions": {
+    "s_fd402faa98738e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e9ed185e-5142-4fe3-b1e7-a7a8706fc9a9",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
