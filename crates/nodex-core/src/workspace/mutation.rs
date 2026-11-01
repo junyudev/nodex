@@ -877,6 +877,7 @@ pub(super) fn apply(
                 ProjectWorkspaceIntent::MoveSession {
                     session_id,
                     project_id,
+                    placement,
                 } => session_lifecycle::move_session(
                     transaction,
                     &library_id,
@@ -886,25 +887,18 @@ pub(super) fn apply(
                     &request_hash,
                     session_id,
                     project_id.as_deref(),
+                    placement.as_ref(),
                 ),
-                ProjectWorkspaceIntent::ReorderSessions {
-                    project_id,
-                    session_ids,
-                } => session_lifecycle::reorder_sessions(
-                    transaction,
-                    &library_id,
-                    &context,
-                    &store_epoch,
-                    &request.operation_id,
-                    &request_hash,
-                    project_id.as_deref(),
-                    session_ids,
-                    false,
+                ProjectWorkspaceIntent::PlaceSession { session_id, placement } => session_lifecycle::place_session(
+                    transaction, &library_id, &context, &store_epoch, &request.operation_id, &request_hash, session_id, placement,
+                ),
+                ProjectWorkspaceIntent::RecordSessionActivity { entries } => session_lifecycle::record_session_activity(
+                    transaction, &library_id, &context, &store_epoch, &request.operation_id, &request_hash, entries,
                 ),
                 ProjectWorkspaceIntent::ReorderPinnedSessions {
                     project_id,
                     session_ids,
-                } => session_lifecycle::reorder_sessions(
+                } => session_lifecycle::reorder_pinned_sessions(
                     transaction,
                     &library_id,
                     &context,
@@ -913,7 +907,6 @@ pub(super) fn apply(
                     &request_hash,
                     project_id.as_deref(),
                     session_ids,
-                    true,
                 ),
                 ProjectWorkspaceIntent::UpsertThread { thread_id, patch } => thread::upsert_thread(
                     transaction,
@@ -4444,6 +4437,7 @@ mod tests {
                     ProjectWorkspaceIntent::MoveSession {
                         session_id: winner.clone(),
                         project_id: Some("project-beta".to_owned()),
+                        placement: None,
                     },
                 ),
             )
@@ -4457,6 +4451,7 @@ mod tests {
                     ProjectWorkspaceIntent::MoveSession {
                         session_id: winner.clone(),
                         project_id: Some("project-gamma".to_owned()),
+                        placement: None,
                     },
                 ),
             )
@@ -4684,18 +4679,6 @@ mod tests {
             .apply(
                 &context(),
                 request(
-                    "workspace-session-reorder",
-                    ProjectWorkspaceIntent::ReorderSessions {
-                        project_id: Some("project-native".to_owned()),
-                        session_ids: vec!["session-b".to_owned(), "session-a".to_owned()],
-                    },
-                ),
-            )
-            .expect("reorder active Sessions");
-        module
-            .apply(
-                &context(),
-                request(
                     "workspace-session-reorder-pinned",
                     ProjectWorkspaceIntent::ReorderPinnedSessions {
                         project_id: Some("project-native".to_owned()),
@@ -4834,6 +4817,7 @@ mod tests {
                     ProjectWorkspaceIntent::MoveSession {
                         session_id: "session-projectless".to_owned(),
                         project_id: Some("project-native".to_owned()),
+                        placement: None,
                     },
                 ),
             )
@@ -4865,6 +4849,7 @@ mod tests {
                     ProjectWorkspaceIntent::MoveSession {
                         session_id: "session-projectless".to_owned(),
                         project_id: None,
+                        placement: None,
                     },
                 ),
             )
@@ -4894,7 +4879,7 @@ mod tests {
             .call(move |connection| {
                 let session_rows = connection
                     .prepare(
-                        "SELECT id, \"order\", pinned, pinned_order, archived, archived_at, \
+                        "SELECT id, activity_at, pinned, pinned_order, archived, archived_at, \
                            no_thread_fallback_title \
                          FROM project_sessions WHERE project_id = 'project-native' \
                          ORDER BY id",
@@ -4936,14 +4921,16 @@ mod tests {
             .iter()
             .find(|row| row.0 == "session-a")
             .expect("first explicit Session");
-        assert_eq!((session_a.1, session_a.2, session_a.3), (2, 1, Some(1)));
+        assert!(session_a.1 > 0);
+        assert_eq!((session_a.2, session_a.3), (1, Some(1)));
         assert_eq!(session_a.6, "Lifecycle A");
         let session_b = stored
             .0
             .iter()
             .find(|row| row.0 == "session-b")
             .expect("second explicit Session");
-        assert_eq!((session_b.1, session_b.2, session_b.3), (1, 0, None));
+        assert!(session_b.1 >= session_a.1);
+        assert_eq!((session_b.2, session_b.3), (0, None));
         assert_eq!(session_b.4, 0);
         assert_eq!(session_b.5, None);
         assert_eq!(stored.1, (0, 0, None));

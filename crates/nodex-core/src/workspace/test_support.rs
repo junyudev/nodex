@@ -237,6 +237,11 @@ pub(super) fn create_session_thread(
             initial_page_ids: Vec::new(),
         },
     );
+    let id = session_id.to_owned();
+    module.writer.as_ref().expect("writer").call(move |connection| {
+        connection.execute("UPDATE project_sessions SET created_at=strftime('%Y-%m-%dT%H:%M:%fZ',?1 / 1000.0,'unixepoch'), activity_at=?1 WHERE id=?2",rusqlite::params![updated_at,id])?;
+        Ok(())
+    }).expect("historical native Session fixture");
     apply(
         module,
         &format!("{prefix}-thread"),

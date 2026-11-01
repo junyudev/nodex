@@ -29,7 +29,7 @@ function createSession(overrides: Partial<ProjectSession> = {}): ProjectSession 
     projectId: overrides.projectId === undefined ? "project-1" : overrides.projectId,
     noThreadFallbackTitle: overrides.noThreadFallbackTitle ?? "Session",
     displayTitle: overrides.displayTitle ?? "Session",
-    order: overrides.order ?? 0,
+    activityAt: overrides.activityAt ?? 0,
     pinned: overrides.pinned ?? false,
     pinnedOrder: overrides.pinnedOrder ?? null,
     archived: overrides.archived ?? false,
@@ -44,12 +44,35 @@ function createSession(overrides: Partial<ProjectSession> = {}): ProjectSession 
 }
 
 describe("project session query cache", () => {
+  test("invalidates every sort and placement window in the changed lane", async () => {
+    const client = createQueryClient();
+    const keys = (["all", "builtin"] as const).flatMap((scope) =>
+      (["activity", "manual"] as const).map((order) =>
+        queryKeys.projectSessions.summaries("project-1", scope, order),
+      ),
+    );
+    for (const key of keys)
+      client.setQueryData(key, {
+        items: [],
+        nextCursor: null,
+        hasMore: false,
+        projectionRevision: 1,
+      });
+    await invalidateProjectSessionScope(client, {
+      summaryScopes: [{ kind: "project", projectId: "project-1" }],
+      detailInvalidation: { kind: "sessions", sessionIds: [] },
+      changeType: "update",
+    });
+    for (const key of keys) expect(client.getQueryState(key)?.isInvalidated).toBe(true);
+    client.clear();
+  });
+
   test("uses stable summary and detail keys", () => {
     expect(JSON.stringify(queryKeys.projectSessions.summaries("project-1"))).toBe(
-      JSON.stringify(["projectSessions", "summaries", "project-1"]),
+      JSON.stringify(["projectSessions", "summaries", "project-1", "all", "activity"]),
     );
     expect(JSON.stringify(queryKeys.projectSessions.summaries(null))).toBe(
-      JSON.stringify(["projectSessions", "summaries", ""]),
+      JSON.stringify(["projectSessions", "summaries", "", "all", "activity"]),
     );
     expect(JSON.stringify(queryKeys.projectSessions.detail("session-1"))).toBe(
       JSON.stringify(["projectSessions", "detail", "session-1"]),
@@ -105,10 +128,10 @@ describe("project session query cache", () => {
     queryClient.clear();
   });
 
-  test("preserves canonical TaskWindow order while seeding detail changes", () => {
+  test("preserves canonical TaskWindow activityAt while seeding detail changes", () => {
     const queryClient = createQueryClient();
-    const first = createSession({ id: "session-first", order: 10 });
-    const second = createSession({ id: "session-second", order: 0 });
+    const first = createSession({ id: "session-first", activityAt: 10 });
+    const second = createSession({ id: "session-second", activityAt: 0 });
     setProjectSessionSummaries(queryClient, "project-1", [
       projectSessionToSummary(first),
       projectSessionToSummary(second),
@@ -117,7 +140,7 @@ describe("project session query cache", () => {
     seedProjectSessionDetail(queryClient, {
       ...first,
       displayTitle: "Updated first",
-      order: 20,
+      activityAt: 20,
     });
 
     const window = queryClient.getQueryData<ProjectSessionSummaryWindow>(
@@ -207,7 +230,7 @@ describe("project session query cache", () => {
     expect(window.projectionRevision).toBe(10);
   });
 
-  test("rejects a late older projection instead of rolling canonical order back", () => {
+  test("rejects a late older projection instead of rolling canonical activityAt back", () => {
     const newer = {
       items: [projectSessionToSummary(createSession({ id: "newer" }))],
       nextCursor: null,
@@ -253,12 +276,12 @@ describe("project session query cache", () => {
 
   test("summary refresh replaces the identical domain detail shape", () => {
     const queryClient = createQueryClient();
-    const detail = createSession({ displayTitle: "Stale title", order: 7 });
+    const detail = createSession({ displayTitle: "Stale title", activityAt: 7 });
     seedProjectSessionDetail(queryClient, detail);
     const summary = projectSessionToSummary(
       createSession({
         displayTitle: "Current title",
-        order: 2,
+        activityAt: 2,
         updatedAt: "2026-01-02T00:00:00.000Z",
       }),
     );
@@ -267,7 +290,7 @@ describe("project session query cache", () => {
 
     const cached = getCachedProjectSessionDetail(queryClient, detail.id);
     expect(cached?.displayTitle).toBe("Current title");
-    expect(cached?.order).toBe(2);
+    expect(cached?.activityAt).toBe(2);
     expect(cached).toEqual(summary);
     queryClient.clear();
   });

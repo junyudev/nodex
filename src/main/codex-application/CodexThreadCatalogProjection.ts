@@ -214,7 +214,7 @@ export const projectCoreWorkspaceTask = (task: CoreWorkspaceTask): ProjectSessio
     task.thread?.backend_binding.kind === "codex"
       ? projectCodexCatalogDisplayTitle(task.session.display_title)
       : task.session.display_title,
-  order: task.session.order,
+  activityAt: task.session.activity_at,
   pinned: task.session.pinned,
   pinnedOrder: task.session.pinned_order ?? null,
   archived: task.session.archived,

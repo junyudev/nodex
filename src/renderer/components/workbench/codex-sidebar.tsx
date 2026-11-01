@@ -2209,7 +2209,7 @@ export function CodexThreadRow({
     preview: session.thread?.threadPreview ?? "",
     cwd: session.thread?.cwd ?? null,
     updatedAt: session.thread?.updatedAt ?? Date.parse(session.updatedAt),
-    recencyAt: session.thread?.recencyAt ?? null,
+    recencyAt: session.activityAt,
     createdAt: session.thread?.createdAt ?? Date.parse(session.createdAt),
     pinned: session.pinned,
     pinnedOrder: session.pinnedOrder,

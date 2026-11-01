@@ -3053,9 +3053,9 @@ mod tests {
             .call(|connection| {
                 connection.execute(
                     "INSERT INTO project_sessions( \
-                       id, project_id, no_thread_fallback_title, \"order\", \
+                       id, project_id, no_thread_fallback_title, activity_at, \
                        created_at, updated_at \
-                     ) VALUES ('session:retention', ?1, 'Retention', 0, ?2, ?2)",
+                     ) VALUES ('session:retention', ?1, 'Retention', CAST(round(unixepoch(?2, 'subsec') * 1000) AS INTEGER), ?2, ?2)",
                     params![PROJECT_ID, "2026-01-01T00:00:00.000Z"],
                 )?;
                 let summary = run_block_retention_pass(connection, 0)?;

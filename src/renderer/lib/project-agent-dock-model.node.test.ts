@@ -18,7 +18,7 @@ function session(
     projectId: "project-1",
     noThreadFallbackTitle: "New chat",
     displayTitle: id,
-    order: 0,
+    activityAt: 0,
     pinned: false,
     pinnedOrder: null,
     archived: false,
@@ -99,7 +99,7 @@ describe("buildProjectAgentDockModel", () => {
       },
       summaries: [
         session("running", {
-          order: 0,
+          activityAt: 0,
           thread: {
             sessionId: "running",
             projectId: "project-1",

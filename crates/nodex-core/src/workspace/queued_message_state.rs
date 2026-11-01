@@ -35,6 +35,7 @@ pub(super) fn accept_user_messages(
     state: &State,
 ) -> Result<Vec<String>, StoreError> {
     let previous = read(connection)?;
+    let now = super::session_mutation::sqlite_now(connection)?;
     let mut changed = std::collections::BTreeSet::new();
     for (thread_id, messages) in state {
         let session_id = connection
@@ -51,7 +52,6 @@ pub(super) fn accept_user_messages(
             let Some(message_id) = message.get("id").and_then(Value::as_str) else {
                 continue;
             };
-            super::session_mutation::validate_id("message_id", message_id)?;
             if previous.get(thread_id).is_some_and(|items| {
                 items
                     .iter()
@@ -73,15 +73,14 @@ pub(super) fn accept_user_messages(
             {
                 continue;
             }
-            let inserted = connection.execute("INSERT INTO project_session_user_message_receipts(session_id,message_id) VALUES (?1,?2) ON CONFLICT DO NOTHING", params![session_id,message_id])?;
-            if inserted == 0 {
-                continue;
+            if super::session_mutation::accept_person_message(
+                connection,
+                &session_id,
+                message_id,
+                &now,
+            )? {
+                changed.insert(session_id.clone());
             }
-            let cancelled = connection.execute(
-                "DELETE FROM project_session_reminder_deliveries WHERE session_id=?1",
-                [&session_id],
-            )?;
-            if connection.execute("UPDATE project_sessions SET remind_at=NULL,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?1 AND remind_at IS NOT NULL", [&session_id])? + cancelled > 0 { changed.insert(session_id.clone()); }
         }
     }
     Ok(changed.into_iter().collect())

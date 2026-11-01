@@ -1,4 +1,5 @@
 import { recordAcceptedUserMessage } from "../project-application/SessionMessageReminder";
+import { make as makeSessionOrdering } from "./AgentRuntimeSessionOrdering";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
 import { readPromptTurns } from "./AgentRuntimePromptTurns";
 import { UNKNOWN_PROMPT_TURN, type PromptTurnsInput } from "../../shared/prompt-turn";
@@ -345,6 +346,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
   options: AgentRuntimeApplicationOptions,
 ) {
   const core = yield* CoreModules;
+  const sessionOrdering = yield* makeSessionOrdering();
   const settings = yield* Effect.serviceOption(ApplicationSettings);
   const defaultRuntimeMode =
     options.defaultRuntimeMode ??
@@ -3290,6 +3292,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
   });
 
   return {
+    reconcileSessionActivity: sessionOrdering.reconcile,
     clearPredictions: (threadId?: string) =>
       owned(
         "prediction-clear",
@@ -3538,6 +3541,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       readonly operationId: string;
       readonly sessionId: string;
       readonly projectId: string | null;
+      readonly placement?: import("../../shared/types").ProjectSessionPlacement;
     }) =>
       withSessionLifecycle(
         "move-session",
@@ -3557,6 +3561,14 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
               kind: "move_session",
               session_id: input.sessionId,
               project_id: input.projectId,
+              ...(input.placement
+                ? {
+                    placement: {
+                      kind: input.placement.kind,
+                      session_id: input.placement.sessionId,
+                    },
+                  }
+                : {}),
             },
           });
           if (options.runtimeExists && !(yield* options.runtimeExists))

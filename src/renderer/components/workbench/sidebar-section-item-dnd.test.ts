@@ -30,7 +30,7 @@ const sessionItem = {
     projectId: null,
     noThreadFallbackTitle: "Alpha chat",
     displayTitle: "Alpha chat",
-    order: 1,
+    activityAt: Date.parse("2026-08-31T00:00:00.000Z"),
     pinned: false,
     pinnedOrder: null,
     archived: false,

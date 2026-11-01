@@ -187,7 +187,7 @@ fn library_reads_page_references_from_canonical_document_commits() {
 fn deleted_session_mentions_allow_text_edits_but_not_more_mentions() {
     let seeded = seeded_module();
     seeded.kernel.writer().call(|connection| {
-        connection.execute("INSERT INTO project_sessions(id,project_id,no_thread_fallback_title,\"order\",created_at,updated_at) VALUES('session:mention',?1,'Mentioned chat',0,?2,?2)",params![PROJECT_ID,NOW])?;
+        connection.execute("INSERT INTO project_sessions(id,project_id,no_thread_fallback_title,activity_at,created_at,updated_at) VALUES('session:mention',?1,'Mentioned chat',CAST(round(unixepoch(?2,'subsec')*1000) AS INTEGER),?2,?2)",params![PROJECT_ID,NOW])?;
         Ok::<_,StoreError>(())
     }).unwrap();
     let mention = json!({"type":"threadMention","props":{"uuid":"session:mention"}});

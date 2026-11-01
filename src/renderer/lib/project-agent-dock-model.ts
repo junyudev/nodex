@@ -212,7 +212,7 @@ export function buildProjectAgentDockModel({
               projectId,
               noThreadFallbackTitle: "Chat unavailable",
               displayTitle: "Chat unavailable",
-              order: Number.MAX_SAFE_INTEGER,
+              activityAt: 0,
               pinned: false,
               pinnedOrder: null,
               archived: false,

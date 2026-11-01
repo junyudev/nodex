@@ -4,6 +4,7 @@ import { settleAsyncRender, textContent } from "../../test/dom";
 import { within, act, fireEvent, waitFor } from "@testing-library/react";
 import { type CodexSidebarSyncResult, type CodexSidebarThreadItem } from "@/lib/types";
 import {
+  fixtureSessionActivityAt,
   makeAttachedSession,
   makePanelLayout,
   makeProject,
@@ -153,7 +154,7 @@ describe("workbench session shell / sidebar-projects", () => {
     const activeThread = makeAttachedSession({
       id: "session:alpha:thread",
       title: "Active thread",
-      order: 1,
+      activityAt: fixtureSessionActivityAt(1),
       rightCollapsed: true,
       rightLayout: makePanelLayout([], null),
       tabs: [],
@@ -601,7 +602,7 @@ describe("workbench session shell / sidebar-projects", () => {
     const olderThread = makeAttachedSession({
       id: "session:alpha:older",
       title: "Older chat",
-      order: 1,
+      activityAt: fixtureSessionActivityAt(1),
       rightCollapsed: true,
       rightLayout: makePanelLayout([], null),
       tabs: [],
@@ -653,7 +654,7 @@ describe("workbench session shell / sidebar-projects", () => {
       id: "session:alpha:snapshot-older",
       threadId: "thread-snapshot-older",
       title: "Older snapshot chat",
-      order: 1,
+      activityAt: fixtureSessionActivityAt(1),
       rightCollapsed: true,
       rightLayout: makePanelLayout([], null),
       tabs: [],
@@ -714,7 +715,7 @@ describe("workbench session shell / sidebar-projects", () => {
         id: `session:alpha:paged-${index + 1}`,
         threadId: `thread-paged-${index + 1}`,
         title: `Paged chat ${index + 1}`,
-        order: index + 1,
+        activityAt: fixtureSessionActivityAt(index + 1),
         pinned: false,
         pinnedOrder: null,
         rightCollapsed: true,
@@ -781,7 +782,7 @@ describe("workbench session shell / sidebar-projects", () => {
         projectId: null,
         threadId: `thread-projectless-paged-${index + 1}`,
         title: `Projectless chat ${index + 1}`,
-        order: index + 1,
+        activityAt: fixtureSessionActivityAt(index + 1),
         pinned: false,
         pinnedOrder: null,
         rightCollapsed: true,
@@ -1098,7 +1099,7 @@ describe("workbench session shell / sidebar-projects", () => {
       title: "Pinned Alpha",
       pinned: true,
       pinnedOrder: 0,
-      order: 1,
+      activityAt: fixtureSessionActivityAt(1),
     });
     const normalAlpha = makeAttachedSession({
       id: "session:alpha:normal",
@@ -1106,7 +1107,7 @@ describe("workbench session shell / sidebar-projects", () => {
       title: "Normal Alpha",
       pinned: false,
       pinnedOrder: null,
-      order: 2,
+      activityAt: fixtureSessionActivityAt(2),
     });
     const screen = renderWorkbench({
       sessionsByProject: { alpha: [pinnedAlpha, normalAlpha] },
@@ -1175,21 +1176,21 @@ describe("workbench session shell / sidebar-projects", () => {
       projectId: null,
       threadId: "thread-chat-a",
       title: "Chat A",
-      order: 0,
+      activityAt: fixtureSessionActivityAt(0),
     });
     const chatNew = makeAttachedSession({
       id: "session:chat:new",
       projectId: null,
       threadId: "thread-chat-new",
       title: "Chat New",
-      order: 1,
+      activityAt: fixtureSessionActivityAt(1),
     });
     const chatB = makeAttachedSession({
       id: "session:chat:b",
       projectId: null,
       threadId: "thread-chat-b",
       title: "Chat B",
-      order: 2,
+      activityAt: fixtureSessionActivityAt(2),
     });
     if (!chatA.thread || !chatNew.thread || !chatB.thread) {
       throw new Error("Expected attached projectless sessions");
@@ -1252,19 +1253,19 @@ describe("workbench session shell / sidebar-projects", () => {
       id: "session:alpha:a",
       threadId: "thread-alpha-a",
       title: "Alpha A",
-      order: 0,
+      activityAt: fixtureSessionActivityAt(0),
     });
     const chatNew = makeAttachedSession({
       id: "session:alpha:new",
       threadId: "thread-alpha-new",
       title: "Alpha New",
-      order: 1,
+      activityAt: fixtureSessionActivityAt(1),
     });
     const chatB = makeAttachedSession({
       id: "session:alpha:b",
       threadId: "thread-alpha-b",
       title: "Alpha B",
-      order: 2,
+      activityAt: fixtureSessionActivityAt(2),
     });
     if (!pinned.thread || !chatA.thread || !chatNew.thread || !chatB.thread) {
       throw new Error("Expected attached project sessions");
@@ -1312,7 +1313,7 @@ describe("workbench session shell / sidebar-projects", () => {
       title: "Pinned Beta",
       pinned: true,
       pinnedOrder: 0,
-      order: 1,
+      activityAt: fixtureSessionActivityAt(1),
     });
     const normalBeta = makeAttachedSession({
       id: "session:beta:normal",
@@ -1321,7 +1322,7 @@ describe("workbench session shell / sidebar-projects", () => {
       title: "Normal Beta",
       pinned: false,
       pinnedOrder: null,
-      order: 2,
+      activityAt: fixtureSessionActivityAt(2),
     });
     const pendingBeta: CodexSidebarThreadItem = {
       key: "local:client-new-thread:beta-pending",

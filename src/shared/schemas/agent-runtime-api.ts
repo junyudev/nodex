@@ -1,3 +1,4 @@
+import { ProjectSessionPlacementSchema } from "./session-order";
 import { PROMPT_TURN_READ_LIMIT } from "../prompt-turn";
 import { z } from "zod";
 import type { AgentRuntimeLaunch, AgentRuntimeMessage, RuntimeMode } from "../agent-runtime-api";
@@ -143,7 +144,12 @@ export const AgentRuntimeRollbackSchema = AgentRuntimeTargetSchema.extend({
   runId: id,
 });
 export const AgentRuntimeSessionMoveSchema = z
-  .object({ operationId: id, sessionId: id, projectId: id.nullable() })
+  .object({
+    operationId: id,
+    sessionId: id,
+    projectId: id.nullable(),
+    placement: ProjectSessionPlacementSchema.optional(),
+  })
   .strict();
 export const AgentRuntimeTaskStopSchema = AgentRuntimeTargetSchema.extend({
   requestId: id,

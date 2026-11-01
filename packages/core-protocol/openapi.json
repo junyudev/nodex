@@ -30455,6 +30455,16 @@
                       "move_session"
                     ]
                   },
+                  "placement": {
+                    "oneOf": [
+                      {
+                        "$ref": "#/components/schemas/ProjectWorkspaceSessionPlacement"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
                   "project_id": {
                     "type": [
                       "string",
@@ -30469,27 +30479,43 @@
               {
                 "type": "object",
                 "required": [
-                  "session_ids",
+                  "session_id",
+                  "placement",
                   "kind"
                 ],
                 "properties": {
                   "kind": {
                     "type": "string",
                     "enum": [
-                      "reorder_sessions"
+                      "place_session"
                     ]
                   },
-                  "project_id": {
-                    "type": [
-                      "string",
-                      "null"
-                    ]
+                  "placement": {
+                    "$ref": "#/components/schemas/ProjectWorkspaceSessionPlacement"
                   },
-                  "session_ids": {
+                  "session_id": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "entries",
+                  "kind"
+                ],
+                "properties": {
+                  "entries": {
                     "type": "array",
                     "items": {
-                      "type": "string"
+                      "$ref": "#/components/schemas/ProjectWorkspaceSessionActivityEntry"
                     }
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "record_session_activity"
+                    ]
                   }
                 }
               },
@@ -36205,6 +36231,9 @@
                       "task_window"
                     ]
                   },
+                  "order": {
+                    "$ref": "#/components/schemas/ProjectWorkspaceTaskOrder"
+                  },
                   "placement_scope": {
                     "$ref": "#/components/schemas/ProjectWorkspaceTaskPlacementScope"
                   },
@@ -41600,6 +41629,16 @@
                   "move_session"
                 ]
               },
+              "placement": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/ProjectWorkspaceSessionPlacement"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "project_id": {
                 "type": [
                   "string",
@@ -41614,27 +41653,43 @@
           {
             "type": "object",
             "required": [
-              "session_ids",
+              "session_id",
+              "placement",
               "kind"
             ],
             "properties": {
               "kind": {
                 "type": "string",
                 "enum": [
-                  "reorder_sessions"
+                  "place_session"
                 ]
               },
-              "project_id": {
-                "type": [
-                  "string",
-                  "null"
-                ]
+              "placement": {
+                "$ref": "#/components/schemas/ProjectWorkspaceSessionPlacement"
               },
-              "session_ids": {
+              "session_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "entries",
+              "kind"
+            ],
+            "properties": {
+              "entries": {
                 "type": "array",
                 "items": {
-                  "type": "string"
+                  "$ref": "#/components/schemas/ProjectWorkspaceSessionActivityEntry"
                 }
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "record_session_activity"
+                ]
               }
             }
           },
@@ -43968,6 +44023,22 @@
       "ProjectWorkspaceReadResponse": {
         "$ref": "#/components/schemas/ResponseEnvelope_ModuleReadSnapshot_ProjectWorkspaceReadValue"
       },
+      "ProjectWorkspaceSessionActivityEntry": {
+        "type": "object",
+        "required": [
+          "session_id",
+          "at_ms"
+        ],
+        "properties": {
+          "at_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "session_id": {
+            "type": "string"
+          }
+        }
+      },
       "ProjectWorkspaceSessionExecutionRef": {
         "type": "object",
         "description": "Immutable execution coordinates; presentation and execution state come from the runtime.",
@@ -44069,6 +44140,46 @@
           "identity"
         ]
       },
+      "ProjectWorkspaceSessionPlacement": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "session_id",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "before"
+                ]
+              },
+              "session_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "session_id",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "after"
+                ]
+              },
+              "session_id": {
+                "type": "string"
+              }
+            }
+          }
+        ]
+      },
       "ProjectWorkspaceSessionReminderDelivery": {
         "type": "object",
         "required": [
@@ -44124,7 +44235,7 @@
           "id",
           "no_thread_fallback_title",
           "display_title",
-          "order",
+          "activity_at",
           "pinned",
           "archived",
           "unread",
@@ -44132,6 +44243,10 @@
           "updated_at"
         ],
         "properties": {
+          "activity_at": {
+            "type": "integer",
+            "format": "int64"
+          },
           "archived": {
             "type": "boolean"
           },
@@ -44162,10 +44277,6 @@
           },
           "no_thread_fallback_title": {
             "type": "string"
-          },
-          "order": {
-            "type": "integer",
-            "format": "int64"
           },
           "pinned": {
             "type": "boolean"
@@ -44699,6 +44810,13 @@
             "type": "string"
           }
         }
+      },
+      "ProjectWorkspaceTaskOrder": {
+        "type": "string",
+        "enum": [
+          "activity",
+          "manual"
+        ]
       },
       "ProjectWorkspaceTaskPlacementScope": {
         "type": "string",

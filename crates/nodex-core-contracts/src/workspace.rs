@@ -16,7 +16,7 @@ use crate::inbox::{
 };
 use crate::{ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 56;
+pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 57;
 
 /// Host-only admission: the model chooses an opaque key, never a clock or operation envelope.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -104,6 +104,8 @@ pub enum ProjectWorkspaceRead {
         include_archived: Option<bool>,
         #[serde(default)]
         placement_scope: ProjectWorkspaceTaskPlacementScope,
+        #[serde(default)]
+        order: ProjectWorkspaceTaskOrder,
         window: CollectionWindowRequest,
     },
     SidebarOverview {
@@ -433,6 +435,27 @@ pub enum ProjectWorkspaceThreadPlacement {
     Default,
     Before { thread_id: String },
     After { thread_id: String },
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectWorkspaceTaskOrder {
+    #[default]
+    Activity,
+    Manual,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ProjectWorkspaceSessionPlacement {
+    Before { session_id: String },
+    After { session_id: String },
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceSessionActivityEntry {
+    pub session_id: String,
+    pub at_ms: i64,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -1339,7 +1362,7 @@ pub struct ProjectWorkspaceSessionSummary {
     pub project_id: Option<String>,
     pub no_thread_fallback_title: String,
     pub display_title: String,
-    pub order: i64,
+    pub activity_at: i64,
     pub pinned: bool,
     pub pinned_order: Option<i64>,
     pub archived: bool,
@@ -1700,10 +1723,15 @@ pub enum ProjectWorkspaceIntent {
     MoveSession {
         session_id: String,
         project_id: Option<String>,
+        #[serde(default)]
+        placement: Option<ProjectWorkspaceSessionPlacement>,
     },
-    ReorderSessions {
-        project_id: Option<String>,
-        session_ids: Vec<String>,
+    PlaceSession {
+        session_id: String,
+        placement: ProjectWorkspaceSessionPlacement,
+    },
+    RecordSessionActivity {
+        entries: Vec<ProjectWorkspaceSessionActivityEntry>,
     },
     ReorderPinnedSessions {
         project_id: Option<String>,

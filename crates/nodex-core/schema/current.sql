@@ -777,29 +777,6 @@ CREATE TABLE "codex_scheduled_automations" (
            CHECK (reasoning_effort IS NULL OR length(trim(reasoning_effort)) BETWEEN 1 AND 64),
            CHECK (service_tier IS NULL OR length(trim(service_tier)) BETWEEN 1 AND 64)
          ) WITHOUT ROWID;
-CREATE TABLE workspace_sidebar_lanes (
-  scope_key TEXT PRIMARY KEY,
-  lane_kind TEXT NOT NULL CHECK (lane_kind IN ('project', 'projectless')),
-  project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
-  order_mode TEXT NOT NULL CHECK (order_mode IN ('recency', 'manual')),
-  revision INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1),
-  updated_at TEXT NOT NULL,
-  CHECK (
-    (lane_kind = 'project' AND project_id IS NOT NULL AND scope_key = 'project:' || project_id)
-    OR (lane_kind = 'projectless' AND project_id IS NULL AND scope_key = 'projectless')
-  )
-) WITHOUT ROWID, STRICT;
-CREATE TABLE workspace_sidebar_positions (
-  scope_key TEXT NOT NULL
-    REFERENCES workspace_sidebar_lanes(scope_key) ON UPDATE CASCADE ON DELETE CASCADE,
-  thread_id TEXT NOT NULL
-    REFERENCES codex_threads(thread_id) ON UPDATE CASCADE ON DELETE CASCADE,
-  rank_key INTEGER NOT NULL CHECK (rank_key >= 0),
-  revision INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1),
-  updated_at TEXT NOT NULL,
-  PRIMARY KEY (scope_key, thread_id),
-  UNIQUE (scope_key, rank_key)
-) WITHOUT ROWID, STRICT;
 CREATE TABLE workspace_app_server_thread_observations (
   thread_id TEXT PRIMARY KEY
     REFERENCES codex_threads(thread_id) ON UPDATE CASCADE ON DELETE CASCADE,
@@ -1001,11 +978,10 @@ CREATE TABLE canvas_owners (
   CHECK (length(created_at) > 0),
   CHECK (length(updated_at) > 0)
 ) WITHOUT ROWID, STRICT;
-CREATE TABLE project_sessions (
+CREATE TABLE "project_sessions" (
   id TEXT PRIMARY KEY,
   project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
   no_thread_fallback_title TEXT NOT NULL,
-  "order" INTEGER NOT NULL,
   pinned INTEGER NOT NULL DEFAULT 0,
   pinned_order INTEGER,
   archived INTEGER NOT NULL DEFAULT 0,
@@ -1013,6 +989,9 @@ CREATE TABLE project_sessions (
   unread INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL, is_default_draft INTEGER NOT NULL DEFAULT 0 CHECK (is_default_draft IN (0, 1)), remind_at TEXT,
+  activity_at INTEGER NOT NULL,
+  manual_rank INTEGER,
+  CHECK (activity_at >= CAST(round(unixepoch(created_at, 'subsec') * 1000) AS INTEGER)),
   CHECK (pinned IN (0, 1)),
   CHECK (archived IN (0, 1)),
   CHECK (unread IN (0, 1))
@@ -1026,7 +1005,6 @@ CREATE TABLE project_session_threads (
   thread_id TEXT NOT NULL REFERENCES codex_threads(thread_id) ON DELETE CASCADE,
   linked_at TEXT NOT NULL
 ) WITHOUT ROWID;
-CREATE INDEX idx_project_sessions_project_identity ON project_sessions(project_id,id);
 CREATE TABLE project_session_execution_bindings (
   session_id TEXT PRIMARY KEY REFERENCES project_sessions(id) ON DELETE CASCADE,
   runtime_id TEXT NOT NULL,
@@ -2568,10 +2546,6 @@ CREATE INDEX idx_core_automation_leases_inbox
 CREATE UNIQUE INDEX idx_codex_scheduled_automations_active_heartbeat
            ON codex_scheduled_automations(target_session_id)
            WHERE kind = 'heartbeat' AND status = 'ACTIVE' AND target_session_id IS NOT NULL;
-CREATE INDEX idx_workspace_sidebar_positions_lane_rank
-  ON workspace_sidebar_positions(scope_key, rank_key, thread_id);
-CREATE INDEX idx_workspace_sidebar_positions_thread
-  ON workspace_sidebar_positions(thread_id, scope_key);
 CREATE INDEX idx_workspace_app_server_thread_observations_sweep
   ON workspace_app_server_thread_observations(last_seen_sweep_id, thread_id);
 CREATE INDEX idx_workspace_subagent_descendants_parent
@@ -2599,10 +2573,6 @@ CREATE INDEX idx_canvas_scene_mutation_receipts_head
            ON canvas_scene_mutation_receipts(document_id, generation, committed_head_seq);
 CREATE INDEX idx_canvas_owners_library
   ON canvas_owners(library_id, block_id);
-CREATE INDEX idx_project_sessions_project_order
-  ON project_sessions(project_id, "order", created_at);
-CREATE INDEX idx_project_sessions_project_sidebar
-  ON project_sessions(project_id, archived, pinned, pinned_order, "order");
 CREATE UNIQUE INDEX idx_project_session_threads_thread
   ON project_session_threads(thread_id);
 CREATE INDEX idx_project_session_pages_page
@@ -4540,7 +4510,7 @@ CREATE TABLE project_session_user_message_receipts (
   message_id TEXT NOT NULL,
   PRIMARY KEY (session_id, message_id)
 ) WITHOUT ROWID, STRICT;
-PRAGMA user_version = 200;
+PRAGMA user_version = 201;
 
 CREATE TABLE document_recovery_drafts (
     library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,
@@ -4982,3 +4952,45 @@ CREATE TABLE app_tool_operations (
   PRIMARY KEY (caller_identity, tool_name, idempotency_key)
 ) STRICT;
 CREATE INDEX idx_app_tool_operations_expiry ON app_tool_operations(expires_at_ms);
+
+CREATE INDEX idx_project_sessions_project_activity ON project_sessions(project_id, archived, activity_at DESC, id);
+
+CREATE INDEX idx_project_sessions_project_identity ON project_sessions(project_id, id);
+
+CREATE INDEX idx_project_sessions_project_manual ON project_sessions(project_id, archived, manual_rank, activity_at DESC, id);
+
+CREATE INDEX idx_project_sessions_project_sidebar ON project_sessions(project_id, archived, pinned, pinned_order, id);
+
+CREATE TRIGGER project_sessions_clear_manual_rank AFTER UPDATE OF project_id, pinned, archived ON project_sessions
+WHEN NEW.project_id IS NOT OLD.project_id OR NEW.pinned <> OLD.pinned OR NEW.archived <> OLD.archived
+BEGIN
+  UPDATE project_sessions SET manual_rank = NULL WHERE id = NEW.id;
+END;
+
+CREATE TRIGGER sidebar_section_session_clear_manual_rank AFTER INSERT ON workspace_sidebar_section_items
+WHEN NEW.session_id IS NOT NULL
+BEGIN
+  UPDATE project_sessions SET manual_rank = NULL WHERE id = NEW.session_id;
+END;
+
+CREATE TRIGGER sidebar_section_session_move_clear_manual_rank AFTER UPDATE OF section_id ON workspace_sidebar_section_items
+WHEN NEW.session_id IS NOT NULL
+BEGIN
+  UPDATE project_sessions SET manual_rank = NULL WHERE id = NEW.session_id;
+END;
+
+CREATE TRIGGER project_session_link_activity AFTER INSERT ON project_session_threads
+BEGIN
+  UPDATE project_sessions SET activity_at = max(activity_at, (SELECT recency_at FROM codex_threads WHERE thread_id = NEW.thread_id)) WHERE id = NEW.session_id;
+END;
+CREATE TRIGGER codex_thread_session_activity AFTER UPDATE OF recency_at ON codex_threads
+WHEN NEW.recency_at > OLD.recency_at
+BEGIN
+  UPDATE project_sessions SET activity_at = max(activity_at, NEW.recency_at) WHERE id IN (SELECT session_id FROM project_session_threads WHERE thread_id = NEW.thread_id);
+END;
+
+CREATE TRIGGER sidebar_section_restore_clear_manual_rank AFTER UPDATE OF lifecycle ON workspace_sidebar_sections
+WHEN NEW.lifecycle = 'active' AND OLD.lifecycle <> 'active'
+BEGIN
+  UPDATE project_sessions SET manual_rank = NULL WHERE id IN (SELECT session_id FROM workspace_sidebar_section_items WHERE section_id = NEW.section_id AND library_id = NEW.library_id);
+END;

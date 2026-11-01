@@ -130,10 +130,10 @@ fn seed_identity_and_workspace(kernel: &SqliteStoreKernel) {
                 {
                     let mut insert_session = transaction.prepare(
                         "INSERT INTO project_sessions(\
-                           id, project_id, no_thread_fallback_title, \"order\", pinned, \
+                           id, project_id, no_thread_fallback_title, activity_at, pinned, \
                            pinned_order, archived, archived_at, unread, \
                            created_at, updated_at\
-                         ) VALUES (?1, ?2, ?3, ?4, 0, NULL, 0, NULL, 0, ?5, ?5)",
+                         ) VALUES (?1, ?2, ?3, CAST(round(unixepoch(?5, 'subsec') * 1000) AS INTEGER) + ?4, 0, NULL, 0, NULL, 0, ?5, ?5)",
                     )?;
                     let mut link_thread = transaction.prepare(
                         "INSERT INTO project_session_threads(session_id, thread_id, linked_at) \
@@ -685,6 +685,7 @@ fn read_budget_gate_large_fixture() {
                     project_id: Some(PROJECT_ID.to_owned()),
                     include_archived: Some(false),
                     placement_scope: Default::default(),
+                    order: Default::default(),
                     window: CollectionWindowRequest {
                         after: None,
                         first: Some(200),
@@ -717,6 +718,7 @@ fn read_budget_gate_large_fixture() {
                     project_id: Some(PROJECT_ID.to_owned()),
                     include_archived: Some(false),
                     placement_scope: Default::default(),
+                    order: Default::default(),
                     window: CollectionWindowRequest {
                         after: Some(workspace_cursor),
                         first: Some(200),

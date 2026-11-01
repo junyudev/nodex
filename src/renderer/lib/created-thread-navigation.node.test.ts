@@ -14,7 +14,7 @@ const session: ProjectSession = {
   projectId: null,
   noThreadFallbackTitle: "Chat",
   displayTitle: "Chat",
-  order: 0,
+  activityAt: 0,
   pinned: false,
   pinnedOrder: null,
   archived: false,

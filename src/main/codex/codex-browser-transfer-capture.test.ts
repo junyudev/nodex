@@ -16,7 +16,7 @@ function makeSession(hasThread = false): ProjectSession {
     projectId: "project-source",
     noThreadFallbackTitle: "Source",
     displayTitle: "Source",
-    order: 0,
+    activityAt: 0,
     pinned: false,
     pinnedOrder: null,
     archived: false,

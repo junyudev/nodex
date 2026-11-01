@@ -21,6 +21,7 @@ interface CodexSidebarThreadMoveBase {
   targetContainerId: CodexSidebarThreadContainerId;
 }
 
+/** An omitted placement returns the Session to the unarranged prefix of its destination lane. */
 export type CodexSidebarThreadMovePlacement =
   | {
       beforeThreadId: string;

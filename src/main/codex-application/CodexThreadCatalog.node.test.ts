@@ -63,7 +63,7 @@ const coreTask = (
     project_id: "project-a",
     no_thread_fallback_title: threadId,
     display_title: threadId,
-    order: 0,
+    activityAt: 0,
     pinned: true,
     pinned_order: 0,
     archived: false,
@@ -250,10 +250,82 @@ it.effect("moves a Thread across Projects while preserving its physical workspac
       const moveIntent = applied[0]?.intent;
       assert.isDefined(moveIntent);
       assert.deepEqual(moveIntent.metadata, {});
+      assert.deepEqual(moveIntent.placement, { kind: "default" });
       assert.isUndefined(moveIntent.runtime_workspace_roots);
       assert.isUndefined(moveIntent.workspace_transition);
       assert.strictEqual(sourceThread.cwd, "/workspace/a");
       assert.strictEqual(targetThread.project_id, "project-b");
+    }),
+  ),
+);
+
+it.effect("unpins a moved chat before applying its manual destination placement", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      let pinned = true;
+      let projectId = "project-a";
+      const intents: Array<Record<string, unknown>> = [];
+      const service = yield* catalog({
+        read: ({ kind }) => {
+          if (kind === "thread")
+            return Effect.succeed({
+              value: {
+                kind,
+                thread: {
+                  ...coreTask("thread-move", { kind: "codex" }).thread,
+                  project_id: projectId,
+                  pinned_order: pinned ? 0 : null,
+                  has_unread_turn: false,
+                },
+              },
+            });
+          if (kind === "project_window")
+            return Effect.succeed({
+              value: {
+                kind,
+                projects: {
+                  items: [coreProject("project-a", "/a"), coreProject("project-b", "/b")],
+                  next_cursor: null,
+                  authority: { projection_revision: 1 },
+                },
+              },
+            });
+          return Effect.succeed(emptyCoreWindow(kind as never));
+        },
+        apply: (request) =>
+          Effect.sync(() => {
+            const { intent } = request as { intent: Record<string, unknown> };
+            intents.push(intent);
+            if (intent.kind === "set_thread_pinned") pinned = false;
+            if (intent.kind === "move_thread") {
+              assert.isFalse(pinned);
+              projectId = "project-b";
+            }
+            return {
+              status: "committed",
+              commit: { commit_seq: intents.length, store_epoch: "epoch:test" },
+              outcome: { affected_project_ids: [], affected_thread_ids: [] },
+            } as never;
+          }),
+        sidebar: {
+          ensureSession: () => Effect.succeed({ id: "session-thread-move" } as never),
+          changed: () => Effect.succeed({ snapshot: {} } as never),
+        },
+      });
+      const moved = yield* service.move({
+        hostId: "local",
+        threadId: "thread-move",
+        sourceContainerId: "project-pinned:project-a",
+        targetContainerId: "project:project-b",
+        beforeThreadId: null,
+        afterThreadId: "thread:anchor",
+      });
+      assert.deepEqual(
+        intents.map((intent) => intent.kind),
+        ["set_thread_pinned", "move_thread"],
+      );
+      assert.deepEqual(intents[1]?.placement, { kind: "after", thread_id: "thread:anchor" });
+      assert.equal(moved.projectionRevision, 2);
     }),
   ),
 );

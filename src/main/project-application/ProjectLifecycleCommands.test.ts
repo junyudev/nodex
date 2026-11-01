@@ -45,7 +45,7 @@ const session = (
   projectId: "project-1",
   noThreadFallbackTitle: "Alpha chat",
   displayTitle: "Alpha chat",
-  order: 0,
+  activityAt: 0,
   pinned: false,
   pinnedOrder: null,
   archived: false,

@@ -1,3 +1,5 @@
+import type { ProjectSessionSummaryWindowInput } from "./types";
+
 export const SIDEBAR_COLLAPSIBLE_SECTION_IDS = ["pinned", "pages", "projects", "chats"] as const;
 
 export type SidebarCollapsibleSectionId = (typeof SIDEBAR_COLLAPSIBLE_SECTION_IDS)[number];
@@ -12,6 +14,16 @@ export type SidebarCollapsibleSectionsState = Record<string, boolean> &
  * Project's chats, or a custom Section.
  */
 export type SidebarListId = SidebarCollapsibleSectionId | `project:${string}` | `custom:${string}`;
+
+/**
+ * How Chats and every Project's chats are ordered: by when each chat was created or last sent a
+ * message, or with the person's arrangement kept below chats they never arranged.
+ */
+export type SidebarChatOrder = NonNullable<ProjectSessionSummaryWindowInput["order"]>;
+
+export function normalizeSidebarChatOrder(value: unknown): SidebarChatOrder {
+  return value === "manual" ? "manual" : "activity";
+}
 
 /** Show more steps each sidebar list keeps revealed. Absent means its first page. */
 export type SidebarListExtraPagesState = Readonly<Partial<Record<SidebarListId, number>>>;

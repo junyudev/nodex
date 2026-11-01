@@ -198,7 +198,7 @@ export const make = (options: CodexSidebarSyncRuntimeOptions = {}) =>
             preview: thread.threadPreview,
             cwd: thread.cwd ?? null,
             updatedAt: thread.updatedAt,
-            recencyAt: thread.recencyAt ?? null,
+            recencyAt: task.activityAt,
             createdAt: thread.createdAt,
             pinned: task.pinned,
             pinnedOrder: task.pinnedOrder,

@@ -45,7 +45,7 @@ function projectSession(threadId: string | null = null): ProjectSession {
     projectId: "project-1",
     noThreadFallbackTitle: "New task",
     displayTitle: "New task",
-    order: 0,
+    activityAt: 0,
     pinned: false,
     pinnedOrder: null,
     archived: false,

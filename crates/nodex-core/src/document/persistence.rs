@@ -2657,10 +2657,10 @@ mod reference_tests {
                      INSERT INTO projects (id, name, created, updated, library_id)
                        VALUES ('project', 'Project', 'now', 'now', 'library'),
                               ('other', 'Other', 'now', 'now', 'library');
-                     INSERT INTO project_sessions (id, project_id, no_thread_fallback_title, \"order\", created_at, updated_at)
-                       VALUES ('session', 'project', 'Chat', 0, 'now', 'now'),
-                              ('elsewhere', 'other', 'Chat', 1, 'now', 'now'),
-                              ('unstarted', NULL, 'Chat', 2, 'now', 'now');
+                     INSERT INTO project_sessions (id, project_id, no_thread_fallback_title, activity_at, created_at, updated_at)
+                       VALUES ('session', 'project', 'Chat', 1767225600000, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z'),
+                              ('elsewhere', 'other', 'Chat', 1767225600000, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z'),
+                              ('unstarted', NULL, 'Chat', 1767225600000, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z');
                      INSERT INTO project_session_execution_bindings (session_id, runtime_id, runtime_thread_id, launch_request_id, bound_at)
                        VALUES ('session', 'runtime', 'nodex:thread:agent', 'launch', 'now'),
                               ('elsewhere', 'runtime', 'nodex:thread:other', 'launch-other', 'now');",

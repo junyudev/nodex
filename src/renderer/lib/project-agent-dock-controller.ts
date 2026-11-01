@@ -60,7 +60,7 @@ export function createProjectAgentDockDraftSession(
     projectId,
     noThreadFallbackTitle: "New chat",
     displayTitle: "New chat",
-    order: Number.MAX_SAFE_INTEGER,
+    activityAt: 0,
     pinned: false,
     pinnedOrder: null,
     archived: false,

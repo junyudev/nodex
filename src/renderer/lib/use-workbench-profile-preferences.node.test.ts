@@ -56,6 +56,7 @@ describe("Workbench profile preferences", () => {
           "project:alpha": 1,
           unknown: 4,
         },
+        chatOrder: "manual",
       },
       recentPageSessions: [
         {
@@ -91,6 +92,7 @@ describe("Workbench profile preferences", () => {
         chats: true,
       },
       listExtraPages: { pages: 2, "project:alpha": 1 },
+      chatOrder: "manual",
     });
     expect(preferences.recentPageSessions).toHaveLength(1);
     expect(preferences.databaseViewTabs.displayModeByDatabaseId).toEqual({
@@ -100,6 +102,16 @@ describe("Workbench profile preferences", () => {
       "view-a": true,
       "view-b": false,
     });
+  });
+
+  test("orders chats by activity unless manual order was chosen", () => {
+    expect(normalizeWorkbenchProfilePreferences(undefined).sidebar.chatOrder).toBe("activity");
+    expect(
+      normalizeWorkbenchProfilePreferences({ sidebar: { chatOrder: "created" } }).sidebar.chatOrder,
+    ).toBe("activity");
+    expect(
+      normalizeWorkbenchProfilePreferences({ sidebar: { chatOrder: "manual" } }).sidebar.chatOrder,
+    ).toBe("manual");
   });
 
   test("drops retired Database presentation preferences", () => {

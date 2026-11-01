@@ -15,6 +15,7 @@ import type {
   ProjectPinnedInput,
   ProjectPinnedOrderInput,
   ProjectSessionCreateInput,
+  ProjectSessionPlacement,
   ProjectSessionPinnedInput,
   ProjectSessionPinnedOrderInput,
   ProjectSessionRenameInput,
@@ -103,9 +104,9 @@ export const workspaceCatalogCommandDefinitions = {
     owner: "workbench-session-catalog",
     protocol: receiptFenced("pending"),
   }),
-  sessionReorder: defineLocalCommitRendererCommand({
-    key: "workspace.session.reorder",
-    channel: "project-sessions:reorder",
+  sessionPlace: defineLocalCommitRendererCommand({
+    key: "workspace.session.place",
+    channel: "project-sessions:place",
     authority: "core",
     owner: "workbench-session-catalog",
     protocol: receiptFenced("pending"),
@@ -242,7 +243,7 @@ const {
   sessionUpdate: sessionUpdateCommand,
   sessionRename: sessionRenameCommand,
   sessionDelete: sessionDeleteCommand,
-  sessionReorder: sessionReorderCommand,
+  sessionPlace: sessionPlaceCommand,
   sessionSetPinned: sessionSetPinnedCommand,
   sessionSetPinnedOrder: sessionSetPinnedOrderCommand,
   sessionReorderPinned: sessionReorderPinnedCommand,
@@ -349,11 +350,11 @@ export const workspaceSessionCommands = {
         payload: { sessionId },
       })
     ).value,
-  reorder: async (projectId: string | null, orderedSessionIds: readonly string[]) =>
+  place: async (sessionId: string, placement: ProjectSessionPlacement) =>
     (
-      await invokeLocalCommitCommand(sessionReorderCommand, {
-        operationId: operation("session.reorder"),
-        payload: { projectId, orderedSessionIds },
+      await invokeLocalCommitCommand(sessionPlaceCommand, {
+        operationId: operation("session.place"),
+        payload: { sessionId, placement },
       })
     ).value,
   setPinned: async (sessionId: string, input: ProjectSessionPinnedInput) =>

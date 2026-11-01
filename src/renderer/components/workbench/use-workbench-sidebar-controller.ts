@@ -94,8 +94,7 @@ import {
 } from "@/lib/workspace-catalog-commands";
 import { isCodexAgentBackendBinding } from "../../../shared/agent-backend";
 import { resolveSidebarThreadMutationAuthority } from "./sidebar-thread-backend-routing";
-import { readSidebarSectionContainerId } from "../../../shared/sidebar-sections";
-import { moveSidebarSectionSession, resolveSidebarDropSession } from "./sidebar-session-drop";
+import { moveSidebarSession, resolveSidebarDropSession } from "./sidebar-session-drop";
 
 type ProjectSession = WorkbenchSessionRenderProjection;
 type SidebarState = Pick<
@@ -278,20 +277,10 @@ export function useWorkbenchSidebarController({
 
   const moveSidebarThreadForSidebar = useCallback(
     async (drop: SidebarThreadDropRequest): Promise<SidebarThreadDropCommit | null> => {
-      const targetSectionId = readSidebarSectionContainerId(drop.targetContainerId);
-      const sourceSectionId = readSidebarSectionContainerId(drop.sourceContainerId);
-      if (targetSectionId === null && sourceSectionId === null) {
-        const item = [...sidebarThreadModel.threadItemsByKey.values()].find(
-          (candidate) => candidate.threadId === drop.threadId,
-        );
-        if (!item || resolveSidebarThreadMutationAuthority(item).kind !== "codex") return null;
-        return await moveNativeSidebarThreadForSidebar(drop);
-      }
-
       const session = await resolveSidebarDropSession(drop, knownSessions, catalog);
       if (session === null) throw new Error("That chat is not available");
 
-      await moveSidebarSectionSession({
+      await moveSidebarSession({
         drop,
         session,
         moveNativeThread: moveNativeSidebarThreadForSidebar,
@@ -313,7 +302,6 @@ export function useWorkbenchSidebarController({
       moveNativeSidebarThreadForSidebar,
       queryClient,
       refreshProjectSessions,
-      sidebarThreadModel.threadItemsByKey,
     ],
   );
 

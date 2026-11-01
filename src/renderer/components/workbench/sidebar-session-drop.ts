@@ -11,7 +11,7 @@ import {
   listAllSidebarSectionItems,
   readSidebarPinnedSessionOrder,
 } from "@/lib/sidebar-sections-api";
-import type { ProjectSession } from "@/lib/types";
+import type { ProjectSession, ProjectSessionPlacement } from "@/lib/types";
 import type { WorkbenchSessionCatalog } from "@/lib/use-workbench-session-catalog";
 import {
   workspaceSessionCommands,
@@ -54,8 +54,30 @@ async function pinSidebarSessionAtBoundary(
   ]);
 }
 
-/** Section placement uses the durable Session, regardless of its execution backend. */
-export async function moveSidebarSectionSession({
+/**
+ * The chat a lane drop lands beside. Only lanes that keep a manual arrangement send an anchor;
+ * a drop that follows the destination's own order has none.
+ */
+export function resolveSidebarLaneDropPlacement(
+  drop: Pick<SidebarThreadDropRequest, "beforeItemId" | "targetItemIds" | "useDefaultOrder">,
+  sessionId: string,
+): ProjectSessionPlacement | null {
+  if (drop.useDefaultOrder || drop.beforeItemId === undefined || !drop.targetItemIds) return null;
+  const remaining = drop.targetItemIds.filter((id) => id !== sessionId);
+  if (drop.beforeItemId !== null) {
+    return remaining.includes(drop.beforeItemId)
+      ? { kind: "before", sessionId: drop.beforeItemId }
+      : null;
+  }
+  const last = remaining.at(-1);
+  return last === undefined ? null : { kind: "after", sessionId: last };
+}
+
+/**
+ * Moves a chat by its durable Session, whichever Agent runs it: the execution owner changes its
+ * Project, then the Session leaves its Section and takes its pin or lane position.
+ */
+export async function moveSidebarSession({
   drop,
   session,
   moveNativeThread,
@@ -91,51 +113,46 @@ export async function moveSidebarSectionSession({
           ? "pinned"
           : "chats"
         : codexSidebarProjectThreadContainerId(session.projectId, session.pinned);
+    // Anchors may be drafts or chats on other Agents, which have no native Thread record.
+    // The execution owner moves membership; the Session owner places the row below.
     const committed = await moveNativeThread({
       ...drop,
-      // Session anchors may be drafts or Runtime roots with no native Thread record.
-      // The execution owner moves membership; the Session owner places the row below.
-      ...(drop.beforeItemId === undefined
-        ? {}
-        : {
-            beforeThreadId: null,
-            afterThreadId: undefined,
-            insertAtEnd: undefined,
-            useDefaultOrder: true,
-          }),
+      beforeThreadId: null,
+      afterThreadId: undefined,
+      insertAtEnd: undefined,
+      useDefaultOrder: true,
       sessionId: session.id,
       threadId: nativeThread.threadId,
       sourceContainerId,
     });
     if (committed === null) throw new Error("Couldn’t move chat");
-  } else if (session.projectId !== target.projectId) {
-    await agentRuntimeRuntime.moveSession({
-      operationId: `session-move:${createUuidV7()}`,
-      sessionId: session.id,
-      projectId: target.projectId,
-    });
+  } else {
+    if (session.projectId !== target.projectId) {
+      await agentRuntimeRuntime.moveSession({
+        operationId: `session-move:${createUuidV7()}`,
+        sessionId: session.id,
+        projectId: target.projectId,
+      });
+    }
+    if (session.pinned && !target.pinned) {
+      await workspaceSessionCommands.setPinned(session.id, { pinned: false });
+    }
   }
 
-  // Keep the Section placement until the execution owner's Project move succeeds.
   // The root Pinned lane owns projectless chats; Project pin lanes keep their Project.
+  // Pinning clears direct Section placement.
   if (target.pinned) {
     await pinSidebarSessionAtBoundary(session.id, drop.beforeItemId);
     return;
   }
-  if (drop.targetItemIds !== undefined && drop.beforeItemId !== undefined) {
-    const remaining = drop.targetItemIds.filter((id) => id !== session.id);
-    const beforeIndex =
-      drop.beforeItemId === null ? remaining.length : remaining.indexOf(drop.beforeItemId);
-    const index = beforeIndex < 0 ? remaining.length : beforeIndex;
-    await workspaceSessionCommands.reorder(target.projectId, [
-      ...remaining.slice(0, index),
-      session.id,
-      ...remaining.slice(index),
-    ]);
+  // Keep the Section placement until the execution owner's Project move succeeds.
+  if (readSidebarSectionContainerId(drop.sourceContainerId) !== null) {
+    await workspaceSidebarCommands.moveItem({
+      item: { kind: "session", sessionId: session.id },
+      sectionId: null,
+      placement: { kind: "end" },
+    });
   }
-  await workspaceSidebarCommands.moveItem({
-    item: { kind: "session", sessionId: session.id },
-    sectionId: null,
-    placement: { kind: "end" },
-  });
+  const placement = resolveSidebarLaneDropPlacement(drop, session.id);
+  if (placement) await workspaceSessionCommands.place(session.id, placement);
 }

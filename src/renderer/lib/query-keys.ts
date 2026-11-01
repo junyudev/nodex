@@ -154,10 +154,15 @@ export const queryKeys = {
     summaries: (
       projectId: string | null,
       placementScope: NonNullable<ProjectSessionSummaryWindowInput["placementScope"]> = "all",
+      order: NonNullable<ProjectSessionSummaryWindowInput["order"]> = "activity",
     ) =>
-      placementScope === "builtin"
-        ? (["projectSessions", "summaries", normalizeNullable(projectId), "builtin"] as const)
-        : (["projectSessions", "summaries", normalizeNullable(projectId)] as const),
+      [
+        "projectSessions",
+        "summaries",
+        normalizeNullable(projectId),
+        placementScope,
+        order,
+      ] as const,
     detail: (sessionId: string) => ["projectSessions", "detail", sessionId] as const,
   },
   projectActivity: {

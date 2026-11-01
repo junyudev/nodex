@@ -30,7 +30,7 @@ export const row = (
         project_id: "project",
         display_title: title,
         no_thread_fallback_title: title,
-        order: 0,
+        activity_at: 0,
         pinned: false,
         pinned_order: null,
         archived: false,

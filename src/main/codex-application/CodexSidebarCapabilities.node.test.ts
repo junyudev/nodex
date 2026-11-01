@@ -257,7 +257,7 @@ it("projects execution authority from the Core task window without follow-up rea
       project_id: null,
       no_thread_fallback_title: "Authority",
       display_title: "Authority",
-      order: 0,
+      activityAt: 0,
       pinned: true,
       pinned_order: 0,
       archived: false,

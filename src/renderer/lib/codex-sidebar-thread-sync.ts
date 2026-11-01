@@ -316,14 +316,13 @@ export function buildCodexSidebarPinnedReorderMutation(input: {
 
 type SidebarThreadSortSession = Pick<
   ProjectSessionSummary,
-  "id" | "order" | "pinned" | "pinnedOrder" | "createdAt" | "updatedAt" | "thread"
+  "id" | "activityAt" | "pinned" | "pinnedOrder" | "createdAt" | "updatedAt" | "thread"
 >;
 
 interface SidebarThreadSortEntry {
   key: string;
   item: CodexSidebarThreadItem;
   session: SidebarThreadSortSession | null;
-  sourceIndex: number;
 }
 
 function parseDateMs(value: string | null | undefined): number | null {
@@ -344,20 +343,14 @@ function resolveItemPinnedOrder(entry: SidebarThreadSortEntry): number {
   return entry.session?.pinnedOrder ?? entry.item.pinnedOrder ?? Number.MAX_SAFE_INTEGER;
 }
 
-function resolveItemRecencyAt(entry: SidebarThreadSortEntry): number {
-  return finiteNumberOrNull(entry.item.recencyAt) ?? 0;
-}
-
-function resolveItemCreatedAt(entry: SidebarThreadSortEntry): number {
-  return finiteNumberOrNull(entry.item.createdAt) ?? parseDateMs(entry.session?.createdAt) ?? 0;
-}
-
-function resolveItemSessionOrder(entry: SidebarThreadSortEntry): number {
-  return entry.session ? entry.session.order : Number.MAX_SAFE_INTEGER;
-}
-
-function isLocalNoThreadSessionEntry(entry: SidebarThreadSortEntry): boolean {
-  return entry.session !== null && entry.session.thread === null;
+function resolveItemActivityAt(entry: SidebarThreadSortEntry): number {
+  return (
+    entry.session?.activityAt ??
+    finiteNumberOrNull(entry.item.recencyAt) ??
+    finiteNumberOrNull(entry.item.createdAt) ??
+    parseDateMs(entry.session?.createdAt) ??
+    Number.NEGATIVE_INFINITY
+  );
 }
 
 function compareSidebarThreadSortEntries(
@@ -373,19 +366,12 @@ function compareSidebarThreadSortEntries(
     if (pinnedOrderDelta !== 0) return pinnedOrderDelta;
   }
 
-  if (isLocalNoThreadSessionEntry(left) || isLocalNoThreadSessionEntry(right)) {
-    const sessionOrderDelta = resolveItemSessionOrder(left) - resolveItemSessionOrder(right);
-    if (sessionOrderDelta !== 0) return sessionOrderDelta;
-  }
-
-  const recencyAtDelta = resolveItemRecencyAt(right) - resolveItemRecencyAt(left);
-  if (recencyAtDelta !== 0) return recencyAtDelta;
-
-  const createdAtDelta = resolveItemCreatedAt(right) - resolveItemCreatedAt(left);
-  if (createdAtDelta !== 0) return createdAtDelta;
-
-  if (left.sourceIndex !== right.sourceIndex) return left.sourceIndex - right.sourceIndex;
-  return left.key.localeCompare(right.key);
+  const leftActivity = resolveItemActivityAt(left);
+  const rightActivity = resolveItemActivityAt(right);
+  if (leftActivity !== rightActivity) return leftActivity > rightActivity ? -1 : 1;
+  const leftId = left.session?.id ?? left.key;
+  const rightId = right.session?.id ?? right.key;
+  return leftId.localeCompare(rightId);
 }
 
 export function sortSidebarThreadKeysForDisplay(input: {
@@ -394,11 +380,11 @@ export function sortSidebarThreadKeysForDisplay(input: {
   sessionsById: ReadonlyMap<string, SidebarThreadSortSession>;
 }): string[] {
   return input.threadKeys
-    .flatMap((key, sourceIndex): SidebarThreadSortEntry[] => {
+    .flatMap((key): SidebarThreadSortEntry[] => {
       const item = input.itemsByKey.get(key);
       if (!item) return [];
       const session = item.sessionId ? (input.sessionsById.get(item.sessionId) ?? null) : null;
-      return [{ key, item, session, sourceIndex }];
+      return [{ key, item, session }];
     })
     .sort(compareSidebarThreadSortEntries)
     .map((entry) => entry.key);

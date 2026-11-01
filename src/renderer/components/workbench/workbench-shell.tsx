@@ -125,6 +125,7 @@ export function WorkbenchShell({
     setSidebarWidth,
     setSidebarCollapsibleSectionCollapsed,
     setSidebarListExtraPages,
+    setSidebarChatOrder,
     recordRecentPageLeave,
   } = useWorkbenchProfilePreferences();
   const projectOrder = useMemo(() => projects.map((project) => project.id), [projects]);
@@ -442,6 +443,7 @@ export function WorkbenchShell({
       setSidebarWidth={setSidebarWidth}
       setSidebarCollapsibleSectionCollapsed={setSidebarCollapsibleSectionCollapsed}
       setSidebarListExtraPages={setSidebarListExtraPages}
+      setSidebarChatOrder={setSidebarChatOrder}
       onLeavePageStage={recordPageLeave}
       pageStageSessionSnapshotRef={pageStageSessionSnapshotRef}
       onRequestProjectPickerOpen={handleOpenProjectPicker}

@@ -7313,13 +7313,18 @@ export interface components {
             } | {
                 /** @enum {string} */
                 readonly kind: "move_session";
+                readonly placement?: components["schemas"]["ProjectWorkspaceSessionPlacement"] | null;
                 readonly project_id?: string | null;
                 readonly session_id: string;
             } | {
                 /** @enum {string} */
-                readonly kind: "reorder_sessions";
-                readonly project_id?: string | null;
-                readonly session_ids: readonly string[];
+                readonly kind: "place_session";
+                readonly placement: components["schemas"]["ProjectWorkspaceSessionPlacement"];
+                readonly session_id: string;
+            } | {
+                readonly entries: readonly components["schemas"]["ProjectWorkspaceSessionActivityEntry"][];
+                /** @enum {string} */
+                readonly kind: "record_session_activity";
             } | {
                 /** @enum {string} */
                 readonly kind: "reorder_pinned_sessions";
@@ -8588,6 +8593,7 @@ export interface components {
                 readonly include_archived?: boolean | null;
                 /** @enum {string} */
                 readonly kind: "task_window";
+                readonly order?: components["schemas"]["ProjectWorkspaceTaskOrder"];
                 readonly placement_scope?: components["schemas"]["ProjectWorkspaceTaskPlacementScope"];
                 readonly project_id?: string | null;
                 readonly window: components["schemas"]["CollectionWindowRequest"];
@@ -9965,13 +9971,18 @@ export interface components {
         } | {
             /** @enum {string} */
             readonly kind: "move_session";
+            readonly placement?: components["schemas"]["ProjectWorkspaceSessionPlacement"] | null;
             readonly project_id?: string | null;
             readonly session_id: string;
         } | {
             /** @enum {string} */
-            readonly kind: "reorder_sessions";
-            readonly project_id?: string | null;
-            readonly session_ids: readonly string[];
+            readonly kind: "place_session";
+            readonly placement: components["schemas"]["ProjectWorkspaceSessionPlacement"];
+            readonly session_id: string;
+        } | {
+            readonly entries: readonly components["schemas"]["ProjectWorkspaceSessionActivityEntry"][];
+            /** @enum {string} */
+            readonly kind: "record_session_activity";
         } | {
             /** @enum {string} */
             readonly kind: "reorder_pinned_sessions";
@@ -10498,6 +10509,11 @@ export interface components {
         };
         readonly ProjectWorkspaceReadRequest: components["schemas"]["ModuleReadRequest_ProjectWorkspaceRead"];
         readonly ProjectWorkspaceReadResponse: components["schemas"]["ResponseEnvelope_ModuleReadSnapshot_ProjectWorkspaceReadValue"];
+        readonly ProjectWorkspaceSessionActivityEntry: {
+            /** Format: int64 */
+            readonly at_ms: number;
+            readonly session_id: string;
+        };
         /** @description Immutable execution coordinates; presentation and execution state come from the runtime. */
         readonly ProjectWorkspaceSessionExecutionRef: {
             readonly runtime_id: string;
@@ -10525,6 +10541,15 @@ export interface components {
         };
         /** @enum {string} */
         readonly ProjectWorkspaceSessionOrder: "conversation" | "identity";
+        readonly ProjectWorkspaceSessionPlacement: {
+            /** @enum {string} */
+            readonly kind: "before";
+            readonly session_id: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "after";
+            readonly session_id: string;
+        };
         readonly ProjectWorkspaceSessionReminderDelivery: {
             readonly delivery_id: string;
             readonly remind_at: string;
@@ -10538,6 +10563,8 @@ export interface components {
             readonly unread: boolean;
         };
         readonly ProjectWorkspaceSessionSummary: {
+            /** Format: int64 */
+            readonly activity_at: number;
             readonly archived: boolean;
             readonly archived_at?: string | null;
             readonly created_at: string;
@@ -10545,8 +10572,6 @@ export interface components {
             readonly execution_ref?: components["schemas"]["ProjectWorkspaceSessionExecutionRef"] | null;
             readonly id: string;
             readonly no_thread_fallback_title: string;
-            /** Format: int64 */
-            readonly order: number;
             readonly pinned: boolean;
             /** Format: int64 */
             readonly pinned_order?: number | null;
@@ -10684,6 +10709,8 @@ export interface components {
             readonly root_thread_id: string;
             readonly source_epoch: string;
         };
+        /** @enum {string} */
+        readonly ProjectWorkspaceTaskOrder: "activity" | "manual";
         /** @enum {string} */
         readonly ProjectWorkspaceTaskPlacementScope: "all" | "builtin";
         readonly ProjectWorkspaceTaskSummary: {

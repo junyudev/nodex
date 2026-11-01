@@ -192,7 +192,7 @@ export const summaryOf = (item: ListingItem, runtime?: CatalogItem): SessionList
     ? runtime.recencyAt === null
       ? null
       : Date.parse(runtime.recencyAt)
-    : (item.task.thread?.recency_at ?? null),
+    : item.task.session.activity_at,
   createdBy: runtime?.createdBy ?? null,
   creationSource: runtime?.creationSource ?? item.task.thread?.thread_source ?? null,
   createdAt: runtime?.createdAt ?? item.task.session.created_at,
@@ -417,9 +417,7 @@ const readNative = Effect.fn("SessionDiscovery.native")(function* (
     lastEligible: candidates.at(-1)?.cursor ?? null,
     hasMore: window.next_cursor !== null,
     done: candidates.length === 0 && window.next_cursor === null,
-    frontier: last
-      ? (last.task.thread?.recency_at ?? Date.parse(last.task.session.created_at))
-      : null,
+    frontier: last?.task.session.activity_at ?? null,
   } satisfies SourcePage;
 });
 

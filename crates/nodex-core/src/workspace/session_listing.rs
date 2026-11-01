@@ -76,7 +76,7 @@ pub(super) fn read_session_window(
         .map_err(|_| invalid("Session execution references are invalid"))?;
     let normalized = normalize_request(request)?;
     let fingerprint = cursor::query_fingerprint(&(
-        "workspace_session_listing_v5",
+        "workspace_session_listing_v6",
         order,
         archived,
         projectless_only,
@@ -141,9 +141,7 @@ pub(super) fn read_session_window(
     };
     let order_expression = match order {
         ProjectWorkspaceSessionOrder::Identity => "0",
-        ProjectWorkspaceSessionOrder::Conversation => {
-            "-COALESCE(thread.recency_at, CAST(round(unixepoch(session.created_at, 'subsec') * 1000) AS INTEGER),session.\"order\")"
-        }
+        ProjectWorkspaceSessionOrder::Conversation => "-session.activity_at",
     };
     let sql = format!(
         "WITH task_rows AS (SELECT {TASK_SUMMARY_COLUMNS},

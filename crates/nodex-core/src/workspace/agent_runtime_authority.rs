@@ -213,6 +213,7 @@ mod tests {
             ProjectWorkspaceIntent::MoveSession {
                 session_id: "session:root".into(),
                 project_id: Some("project:other".into()),
+                placement: None,
             },
         );
         let current = preflight(&w, credential.clone()).unwrap();

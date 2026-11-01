@@ -852,6 +852,7 @@ mod tests {
                 project_id: binding.project_id.clone(),
                 include_archived: Some(false),
                 placement_scope: Default::default(),
+                order: Default::default(),
                 window: nodex_core_contracts::collection::CollectionWindowRequest {
                     first: Some(10),
                     after: None,
@@ -942,7 +943,7 @@ mod tests {
             Ok((
                 connection.query_row("SELECT count(*) FROM project_sessions WHERE id IN ('session:denied','session:failed')", [], |row| row.get::<_, i64>(0))?,
                 connection.query_row("SELECT count(*) FROM project_session_pages WHERE session_id IN ('session:denied','session:failed')", [], |row| row.get::<_, i64>(0))?,
-                connection.query_row("SELECT \"order\" FROM project_sessions WHERE id='session:prior'", [], |row| row.get::<_, i64>(0))?,
+                connection.query_row("SELECT manual_rank IS NOT NULL FROM project_sessions WHERE id='session:prior'", [], |row| row.get::<_, i64>(0))?,
             ))
         }).unwrap();
         assert_eq!(state, (0, 0, 0));
@@ -1009,6 +1010,7 @@ mod tests {
             ProjectWorkspaceIntent::MoveSession {
                 session_id: "session:first".into(),
                 project_id: Some("project:other".into()),
+                placement: None,
             },
         );
         let ProjectWorkspaceReadValue::AgentRuntimeSessionBinding {
@@ -1090,6 +1092,7 @@ mod tests {
             ProjectWorkspaceIntent::MoveSession {
                 session_id: "b".into(),
                 project_id: Some("project:other".into()),
+                placement: None,
             },
         );
         apply(
@@ -1157,6 +1160,7 @@ mod tests {
             ProjectWorkspaceIntent::MoveSession {
                 session_id: "a".into(),
                 project_id: None,
+                placement: None,
             },
         );
         let ProjectWorkspaceReadValue::AgentRuntimeSessionBindingWindow { bindings: rootless } =

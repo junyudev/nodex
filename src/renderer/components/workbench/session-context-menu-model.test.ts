@@ -23,7 +23,7 @@ function makeSession(overrides: Partial<ProjectSession> = {}): ProjectSession {
     projectId: "project-1",
     noThreadFallbackTitle: "Session one",
     displayTitle: "Session one",
-    order: 1,
+    activityAt: 0,
     pinned: false,
     pinnedOrder: null,
     archived: false,

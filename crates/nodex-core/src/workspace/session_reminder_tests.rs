@@ -399,3 +399,53 @@ fn native_queue_acceptance_cancels_atomically_and_retains_agent_provenance() {
     );
     assert!(session(&w.module, "chat").remind_at.is_some());
 }
+
+#[test]
+fn person_messages_and_due_reminders_bring_a_chat_back_but_agent_activity_does_not() {
+    let w = seeded_workspace();
+    create_session_thread(&w.module, "create", "chat", "thread", None, 1);
+    let pause = || std::thread::sleep(std::time::Duration::from_millis(5));
+    let activity = || session(&w.module, "chat").activity_at;
+    let created = activity();
+    pause();
+    mutate(
+        &w.module,
+        "agent-complete",
+        "chat",
+        ProjectSessionIntent::SetUnread { unread: true },
+    );
+    reminder(&w.module, "set", "chat", "2020-01-01T00:00:00Z");
+    assert_eq!(activity(), created);
+    mutate(
+        &w.module,
+        "user-message",
+        "chat",
+        ProjectSessionIntent::RecordUserMessage {
+            message_id: "message".into(),
+        },
+    );
+    let sent = activity();
+    assert!(sent > created);
+    pause();
+    mutate(
+        &w.module,
+        "user-message-replayed",
+        "chat",
+        ProjectSessionIntent::RecordUserMessage {
+            message_id: "message".into(),
+        },
+    );
+    assert_eq!(activity(), sent);
+    reminder(&w.module, "due", "chat", "2020-01-02T00:00:00Z");
+    assert_eq!(activity(), sent);
+    mutate(
+        &w.module,
+        "claim",
+        "chat",
+        ProjectSessionIntent::ConsumeReminder {
+            remind_at: "2020-01-02T00:00:00.000Z".into(),
+            deliver: false,
+        },
+    );
+    assert!(activity() > sent);
+}

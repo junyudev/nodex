@@ -209,6 +209,7 @@ export type AgentRuntimeTaskCancelInput = AgentRuntimeSessionTarget & {
 };
 /** Changes product placement; the Session keeps its execution root and working directory. */
 export interface AgentRuntimeSessionMoveInput {
+  readonly placement?: import("./types").ProjectSessionPlacement;
   readonly operationId: string;
   readonly sessionId: string;
   readonly projectId: string | null;

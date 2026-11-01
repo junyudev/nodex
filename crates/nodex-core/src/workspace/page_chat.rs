@@ -535,7 +535,7 @@ pub(super) fn read_page_chat_window(
     require_page_access(connection, library_id, page_id)?;
     let normalized = normalize_request(request)?;
     let fingerprint =
-        cursor::query_fingerprint(&("workspace_page_chat_window_v3", page_id, include_archived))?;
+        cursor::query_fingerprint(&("workspace_page_chat_window_v4", page_id, include_archived))?;
     let subject = CollectionCursorSubject {
         kind: "workspace_page_chats",
         library_id,
@@ -594,7 +594,6 @@ pub(super) fn read_page_chat_window(
             .map_err(|_| invalid("Page Chat window size is invalid"))?,
     ));
     let limit_parameter = parameters.len();
-    // A Runtime-bound Session has no native thread recency; its Session recency orders it.
     let sql = format!(
         "SELECT * FROM ( \
            SELECT session.id AS session_id, session.project_id, project.name, \
@@ -602,13 +601,10 @@ pub(super) fn read_page_chat_window(
              COALESCE(substr(thread.thread_preview, 1, 1024), ''), thread.status_type, \
              thread.status_active_flags_json, COALESCE(thread.archived, 0), session.unread, \
              session.archived, \
-             COALESCE(thread.recency_at, CASE WHEN binding.session_id IS NOT NULL \
-               THEN unixepoch(session.updated_at) * 1000 END) AS conversation_recency_at, \
+             session.activity_at AS conversation_recency_at, \
              relation.linked_at AS linked_at, \
-             CASE WHEN thread.thread_id IS NULL AND binding.session_id IS NULL \
-               THEN 1 ELSE 0 END AS recency_null, \
-             -COALESCE(thread.recency_at, CASE WHEN binding.session_id IS NOT NULL \
-               THEN unixepoch(session.updated_at) * 1000 END, 0) AS recency_order, \
+             0 AS recency_null, \
+             -session.activity_at AS recency_order, \
              binding.runtime_id, binding.runtime_thread_id \
            FROM project_session_pages relation \
            JOIN pages page ON page.block_id = relation.page_id AND page.library_id = ?2 \
@@ -1004,9 +1000,9 @@ mod tests {
             panic!("Page Chat window");
         };
         assert_eq!(chats.items.len(), 1);
-        assert_eq!(chats.items[0].session_id, "session:working");
-        assert_eq!(chats.items[0].display_title, "Working chat");
-        assert!(chats.items[0].unread);
+        assert_eq!(chats.items[0].session_id, "session:threadless");
+        assert!(chats.items[0].thread_id.is_none());
+        assert!(chats.items[0].conversation_recency_at.is_some());
         let next_cursor = chats.next_cursor.expect("second Linked chat page");
         let ProjectWorkspaceReadValue::PageChatWindow { chats } = read(
             &workspace.module,
@@ -1022,8 +1018,9 @@ mod tests {
             panic!("Page Chat continuation");
         };
         assert_eq!(chats.items.len(), 1);
-        assert_eq!(chats.items[0].session_id, "session:threadless");
-        assert!(chats.items[0].thread_id.is_none());
+        assert_eq!(chats.items[0].session_id, "session:working");
+        assert_eq!(chats.items[0].display_title, "Working chat");
+        assert!(chats.items[0].unread);
 
         apply(
             &workspace.module,

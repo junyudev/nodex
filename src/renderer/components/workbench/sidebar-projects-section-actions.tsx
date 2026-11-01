@@ -7,7 +7,6 @@ import {
   ProjectFolderIcon,
   ProjectRemovedIcon,
   ProjectReopenPreviousIcon,
-  SidebarCreatedIcon,
   SidebarManualOrderIcon,
   SidebarSortClockIcon,
   SidebarUpdatedIcon,
@@ -16,10 +15,13 @@ import {
   NodexDropdownFlyoutSubmenuItem,
   NodexDropdownItem,
   NodexDropdownMenu,
+  NodexDropdownRadioGroup,
+  NodexDropdownRadioItem,
   NodexDropdownSelectedIcon,
   NodexDropdownSeparator,
 } from "@/components/ui/dropdown";
 import type { SidebarProjectGroupCollapseAction } from "@/lib/sidebar-project-group-collapse-action";
+import { normalizeSidebarChatOrder, type SidebarChatOrder } from "@/lib/sidebar-section-prefs";
 import { CodexSidebarActionButton } from "./codex-sidebar";
 import { SidebarProjectAddButton } from "./sidebar-project-add-button";
 import { RemovedProjectsDialog } from "./removed-projects-dialog";
@@ -27,11 +29,15 @@ import { RemovedProjectsDialog } from "./removed-projects-dialog";
 const PROJECT_SIDEBAR_OPTIONS_SUBMENU_CLASS = "min-w-[180px]";
 const PROJECT_SIDEBAR_MENU_ICON_CLASS = "icon-xs";
 export function SidebarProjectsSectionActions({
+  chatOrder,
+  onChatOrderChange,
   projectGroupCollapseAction,
   onProjectGroupCollapseAction,
   onCreateProject,
   openCreateDialogTick,
 }: {
+  chatOrder: SidebarChatOrder;
+  onChatOrderChange: (chatOrder: SidebarChatOrder) => void;
   projectGroupCollapseAction?: SidebarProjectGroupCollapseAction | null;
   onProjectGroupCollapseAction?: (action: SidebarProjectGroupCollapseAction) => void;
   onCreateProject: (input: ProjectCreateInput) => Promise<Project | null>;
@@ -60,7 +66,11 @@ export function SidebarProjectsSectionActions({
           )}
         </CodexSidebarActionButton>
       ) : null}
-      <SidebarProjectOptionsMenu onOpenRemovedProjects={() => setRemovedProjectsOpen(true)} />
+      <SidebarProjectOptionsMenu
+        chatOrder={chatOrder}
+        onChatOrderChange={onChatOrderChange}
+        onOpenRemovedProjects={() => setRemovedProjectsOpen(true)}
+      />
       <SidebarProjectAddButton
         onCreateProject={onCreateProject}
         openDialogTick={openCreateDialogTick}
@@ -70,9 +80,22 @@ export function SidebarProjectsSectionActions({
   );
 }
 
+const SIDEBAR_CHAT_ORDER_OPTIONS = [
+  { order: "activity", label: "Last updated", Icon: SidebarUpdatedIcon },
+  { order: "manual", label: "Manual order", Icon: SidebarManualOrderIcon },
+] as const satisfies readonly {
+  order: SidebarChatOrder;
+  label: string;
+  Icon: typeof SidebarUpdatedIcon;
+}[];
+
 function SidebarProjectOptionsMenu({
+  chatOrder,
+  onChatOrderChange,
   onOpenRemovedProjects,
 }: {
+  chatOrder: SidebarChatOrder;
+  onChatOrderChange: (chatOrder: SidebarChatOrder) => void;
   onOpenRemovedProjects: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -129,28 +152,25 @@ function SidebarProjectOptionsMenu({
         </NodexDropdownItem>
       </NodexDropdownFlyoutSubmenuItem>
       <NodexDropdownFlyoutSubmenuItem
-        label="Sort by"
+        label="Sort chats by"
         contentClassName={PROJECT_SIDEBAR_OPTIONS_SUBMENU_CLASS}
         leftSlot={<SidebarSortClockIcon className={PROJECT_SIDEBAR_MENU_ICON_CLASS} />}
       >
-        <NodexDropdownItem
-          leftSlot={<SidebarManualOrderIcon className={PROJECT_SIDEBAR_MENU_ICON_CLASS} />}
-          rightSlot={<NodexDropdownSelectedIcon />}
+        <NodexDropdownRadioGroup
+          value={chatOrder}
+          onValueChange={(value) => onChatOrderChange(normalizeSidebarChatOrder(value))}
         >
-          Manual order
-        </NodexDropdownItem>
-        <NodexDropdownItem
-          disabled
-          leftSlot={<SidebarCreatedIcon className={PROJECT_SIDEBAR_MENU_ICON_CLASS} />}
-        >
-          Created
-        </NodexDropdownItem>
-        <NodexDropdownItem
-          disabled
-          leftSlot={<SidebarUpdatedIcon className={PROJECT_SIDEBAR_MENU_ICON_CLASS} />}
-        >
-          Updated
-        </NodexDropdownItem>
+          {SIDEBAR_CHAT_ORDER_OPTIONS.map(({ order, label, Icon }) => (
+            <NodexDropdownRadioItem
+              key={order}
+              value={order}
+              leftSlot={<Icon className={PROJECT_SIDEBAR_MENU_ICON_CLASS} />}
+              data-app-action-sidebar-chat-order={order}
+            >
+              {label}
+            </NodexDropdownRadioItem>
+          ))}
+        </NodexDropdownRadioGroup>
       </NodexDropdownFlyoutSubmenuItem>
     </NodexDropdownMenu>
   );

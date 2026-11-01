@@ -1,5 +1,10 @@
 use std::collections::HashSet;
 
+use nodex_core_contracts::workspace::{
+    ProjectSessionInvalidationScope, ProjectWorkspaceSessionActivityEntry,
+    ProjectWorkspaceSessionPlacement,
+};
+
 use nodex_core_contracts::BoundModuleContext;
 use rusqlite::{Connection, OptionalExtension, params};
 
@@ -15,7 +20,7 @@ use super::session_mutation::{
 
 const MAX_SESSION_TITLE_BYTES: usize = 8_000;
 const MAX_SESSION_TITLE_UTF16: usize = 2_000;
-const MAX_SESSION_ORDER_SIZE: usize = 100_000;
+const MAX_SESSIONS_PER_LANE: usize = 100_000;
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn create_session(
@@ -176,22 +181,17 @@ pub(super) fn insert_session_records(
     )?;
     if usize::try_from(count)
         .ok()
-        .is_none_or(|count| count >= MAX_SESSION_ORDER_SIZE)
+        .is_none_or(|count| count >= MAX_SESSIONS_PER_LANE)
     {
         return Err(invalid("Project has too many Sessions"));
     }
     let now = sqlite_now(connection)?;
     connection.execute(
-        "UPDATE project_sessions SET \"order\" = \"order\" + 1, updated_at = ?1 \
-         WHERE project_id IS ?2 AND \"order\" >= 0",
-        params![now, project_id],
-    )?;
-    connection.execute(
         "INSERT INTO project_sessions(\
-           id, project_id, no_thread_fallback_title, \"order\", pinned, pinned_order, \
+           id, project_id, no_thread_fallback_title, activity_at, pinned, pinned_order, \
            archived, archived_at, unread, is_default_draft, \
            created_at, updated_at\
-         ) VALUES (?1, ?2, ?3, 0, 0, NULL, 0, NULL, 0, ?4, ?5, ?5)",
+         ) VALUES (?1, ?2, ?3, CAST(round(unixepoch(?5, 'subsec') * 1000) AS INTEGER), 0, NULL, 0, NULL, 0, ?4, ?5, ?5)",
         params![
             session_id,
             project_id,
@@ -256,6 +256,7 @@ pub(super) fn move_session(
     request_hash: &str,
     session_id: &str,
     project_id: Option<&str>,
+    placement: Option<&ProjectWorkspaceSessionPlacement>,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
     validate_id("session_id", session_id)?;
     if let Some(project_id) = project_id {
@@ -264,7 +265,7 @@ pub(super) fn move_session(
     }
     let authority = require_session(connection, library_id, session_id)?;
     let now = sqlite_now(connection)?;
-    if authority.project_id.as_deref() == project_id {
+    if authority.project_id.as_deref() == project_id && placement.is_none() {
         return finish_session_mutation(
             connection,
             library_id,
@@ -302,13 +303,8 @@ pub(super) fn move_session(
     } else {
         None
     };
-    connection.execute(
-        "UPDATE project_sessions SET \"order\" = \"order\" + 1, updated_at = ?1 \
-         WHERE project_id IS ?2 AND \"order\" >= 0",
-        params![now, project_id],
-    )?;
     let changed = connection.execute(
-        "UPDATE project_sessions SET project_id = ?1, \"order\" = 0, pinned_order = ?2, \
+        "UPDATE project_sessions SET project_id = ?1, manual_rank = NULL, pinned_order = ?2, \
            updated_at = ?3 WHERE id = ?4",
         params![project_id, next_pinned_order, now, session_id],
     )?;
@@ -322,6 +318,9 @@ pub(super) fn move_session(
         params![project_id, session_id],
     )?;
 
+    if let Some(placement) = placement {
+        super::session_order::place(connection, session_id, project_id, placement)?;
+    }
     let mut project_ids = authority.project_id.iter().cloned().collect::<Vec<_>>();
     if let Some(project_id) = project_id
         && !project_ids.iter().any(|candidate| candidate == project_id)
@@ -352,7 +351,7 @@ pub(super) fn move_session(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(super) fn reorder_sessions(
+pub(super) fn reorder_pinned_sessions(
     connection: &Connection,
     library_id: &str,
     context: &BoundModuleContext,
@@ -360,65 +359,32 @@ pub(super) fn reorder_sessions(
     operation_id: &str,
     request_hash: &str,
     project_id: Option<&str>,
-    selected_session_ids: &[String],
-    pinned_only: bool,
+    session_ids: &[String],
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
-    if let Some(project_id) = project_id {
-        validate_id("project_id", project_id)?;
-        require_project(connection, library_id, project_id, true)?;
+    if session_ids.len() > MAX_SESSIONS_PER_LANE {
+        return Err(invalid("Pinned Session order exceeds its bound"));
     }
-    if selected_session_ids.len() > MAX_SESSION_ORDER_SIZE {
-        return Err(invalid("Project Session order exceeds its bound"));
+    if let Some(id) = project_id {
+        validate_id("project_id", id)?;
+        require_project(connection, library_id, id, true)?;
     }
-    for session_id in selected_session_ids {
-        validate_id("session_id", session_id)?;
+    for id in session_ids {
+        validate_id("session_id", id)?;
     }
-    let existing = read_ordered_session_ids(connection, project_id, pinned_only)?;
-    let existing_set = existing.iter().map(String::as_str).collect::<HashSet<_>>();
-    let mut seen = HashSet::new();
-    let mut final_order = selected_session_ids
+    let now = sqlite_now(connection)?;
+    let current = super::sidebar_pins::read_order(connection, library_id)?;
+    let eligible = current
         .iter()
-        .filter(|session_id| {
-            existing_set.contains(session_id.as_str()) && seen.insert((*session_id).clone())
-        })
+        .filter(|row| row.project_id.as_deref() == project_id)
+        .map(|row| row.id.as_str())
+        .collect::<HashSet<_>>();
+    let selected = session_ids
+        .iter()
+        .filter(|id| eligible.contains(id.as_str()))
         .cloned()
         .collect::<Vec<_>>();
-    final_order.extend(
-        existing
-            .into_iter()
-            .filter(|session_id| seen.insert(session_id.clone())),
-    );
-    let now = sqlite_now(connection)?;
-    if pinned_only {
-        super::sidebar_pins::reorder_subset(connection, library_id, &final_order, &now)?;
-    } else {
-        for (order, session_id) in final_order.iter().enumerate() {
-            let changed = connection.execute(
-                "UPDATE project_sessions SET \"order\" = ?1, updated_at = ?2 WHERE id = ?3 AND project_id IS ?4 AND archived = 0",
-                params![to_order(order)?, now, session_id, project_id],
-            )?;
-            if changed != 1 {
-                return Err(corrupt("Project Session order changed during mutation"));
-            }
-        }
-        super::sidebar::replace_lane_with_session_order(connection, project_id, &now)?;
-    }
-    let (session_ids, thread_ids, summary_scopes) = if pinned_only {
-        let pins = super::sidebar_pins::read_order(connection, library_id)?;
-        (
-            pins.iter().map(|row| row.id.clone()).collect(),
-            pins.iter()
-                .filter_map(|row| row.thread_id.clone())
-                .collect(),
-            vec![nodex_core_contracts::workspace::ProjectSessionInvalidationScope::All],
-        )
-    } else {
-        (
-            final_order,
-            Vec::new(),
-            vec![project_session_scope(project_id)],
-        )
-    };
+    super::sidebar_pins::reorder_subset(connection, library_id, &selected, &now)?;
+    let pins = super::sidebar_pins::read_order(connection, library_id)?;
     finish_lifecycle_mutation(
         connection,
         library_id,
@@ -426,39 +392,111 @@ pub(super) fn reorder_sessions(
         store_epoch,
         operation_id,
         request_hash,
-        if pinned_only {
-            "reorder_pinned_sessions"
-        } else {
-            "reorder_sessions"
-        },
+        "reorder_pinned_sessions",
         project_id.into_iter().map(str::to_owned).collect(),
-        session_ids,
-        thread_ids,
-        summary_scopes,
+        pins.iter().map(|p| p.id.clone()).collect(),
+        pins.iter().filter_map(|p| p.thread_id.clone()).collect(),
+        vec![ProjectSessionInvalidationScope::All],
         project_id,
         &[],
         now,
     )
 }
 
-fn read_ordered_session_ids(
+#[allow(clippy::too_many_arguments)]
+pub(super) fn place_session(
     connection: &Connection,
-    project_id: Option<&str>,
-    pinned_only: bool,
-) -> Result<Vec<String>, StoreError> {
-    let rows = connection
-        .prepare(
-            "SELECT id FROM project_sessions WHERE project_id IS ?1 AND archived = 0 \
-               AND (?2 = 0 OR pinned = 1) \
-             ORDER BY CASE WHEN pinned = 1 THEN 0 ELSE 1 END, \
-               CASE WHEN pinned = 1 THEN COALESCE(pinned_order, 9223372036854775807) \
-                    ELSE \"order\" END, created_at, id",
-        )?
-        .query_map(params![project_id, i64::from(pinned_only)], |row| {
-            row.get::<_, String>(0)
-        })?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    Ok(rows)
+    library_id: &str,
+    context: &BoundModuleContext,
+    store_epoch: &str,
+    operation_id: &str,
+    request_hash: &str,
+    session_id: &str,
+    placement: &ProjectWorkspaceSessionPlacement,
+) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
+    let authority = require_session(connection, library_id, session_id)?;
+    super::session_order::place(
+        connection,
+        session_id,
+        authority.project_id.as_deref(),
+        placement,
+    )?;
+    finish_lifecycle_mutation(
+        connection,
+        library_id,
+        context,
+        store_epoch,
+        operation_id,
+        request_hash,
+        "place_session",
+        authority.project_id.iter().cloned().collect(),
+        vec![session_id.to_owned()],
+        vec![],
+        vec![project_session_scope(authority.project_id.as_deref())],
+        authority.project_id.as_deref(),
+        &[],
+        sqlite_now(connection)?,
+    )
+}
+
+/// The activity relay is replayable and tolerates Sessions deleted between catalog pages.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn record_session_activity(
+    connection: &Connection,
+    library_id: &str,
+    context: &BoundModuleContext,
+    store_epoch: &str,
+    operation_id: &str,
+    request_hash: &str,
+    entries: &[ProjectWorkspaceSessionActivityEntry],
+) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
+    if entries.len() > 500 {
+        return Err(invalid("Session activity accepts at most 500 entries"));
+    }
+    for entry in entries {
+        validate_id("session_id", &entry.session_id)?;
+    }
+    let now = sqlite_now(connection)?;
+    let mut session_ids = Vec::new();
+    for entry in entries {
+        let changed = connection.execute(
+            "UPDATE project_sessions SET activity_at=max(activity_at, CAST(round(unixepoch(created_at,'subsec')*1000) AS INTEGER), min(?1, CAST(round(unixepoch(?2,'subsec')*1000) AS INTEGER))) \
+             WHERE id=?3 AND (project_id IS NULL OR EXISTS(SELECT 1 FROM projects WHERE projects.id=project_sessions.project_id AND library_id=?4)) \
+             AND activity_at < max(CAST(round(unixepoch(created_at,'subsec')*1000) AS INTEGER),min(?1,CAST(round(unixepoch(?2,'subsec')*1000) AS INTEGER)))",
+            params![entry.at_ms,now,entry.session_id,library_id])?;
+        if changed != 0 {
+            session_ids.push(entry.session_id.clone());
+        }
+    }
+    if session_ids.is_empty() {
+        return finish_no_op(
+            connection,
+            context,
+            store_epoch,
+            operation_id,
+            request_hash,
+            "record_session_activity",
+            vec![],
+            vec![],
+            &now,
+        );
+    }
+    finish_lifecycle_mutation(
+        connection,
+        library_id,
+        context,
+        store_epoch,
+        operation_id,
+        request_hash,
+        "record_session_activity",
+        vec![],
+        session_ids,
+        vec![],
+        vec![ProjectSessionInvalidationScope::All],
+        None,
+        &[],
+        now,
+    )
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -548,10 +586,6 @@ pub(super) fn normalize_session_title(value: &str) -> Result<String, StoreError>
     Ok(value.to_owned())
 }
 
-fn to_order(value: usize) -> Result<i64, StoreError> {
-    i64::try_from(value).map_err(|_| internal("Project Session order overflow"))
-}
-
 fn invalid(message: &str) -> StoreError {
     StoreError::new(StoreErrorCode::InvalidInput, message, false)
 }
@@ -562,8 +596,4 @@ fn not_found(message: &str) -> StoreError {
 
 fn corrupt(message: &str) -> StoreError {
     StoreError::new(StoreErrorCode::StoreCorrupt, message, false)
-}
-
-fn internal(message: &str) -> StoreError {
-    StoreError::new(StoreErrorCode::Internal, message, true)
 }

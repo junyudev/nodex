@@ -157,7 +157,7 @@ export function makeTestWorkbenchSession(
     projectId: input.projectId === undefined ? "project-1" : input.projectId,
     noThreadFallbackTitle: "Test Session",
     displayTitle: "Test Session",
-    order: 0,
+    activityAt: Date.parse(TIMESTAMP),
     pinned: false,
     pinnedOrder: null,
     archived: false,

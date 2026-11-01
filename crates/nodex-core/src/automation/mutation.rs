@@ -2939,6 +2939,7 @@ mod tests {
             ProjectWorkspaceIntent::MoveSession {
                 session_id: "heartbeat-target".to_owned(),
                 project_id: Some("project:moved".to_owned()),
+                placement: None,
             },
         );
         let begin = |run_id: &str, session_id: Option<&str>| AutomationIntent::BeginRun {

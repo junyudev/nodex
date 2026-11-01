@@ -157,6 +157,7 @@ import { PageTitleProjectionProvider } from "@/lib/page-title-projection-context
 import { useLibraryNavigationInvalidation } from "@/lib/use-library-navigation";
 import { cn } from "@/lib/utils";
 import {
+  type SidebarChatOrder,
   type SidebarCollapsibleSectionsState,
   type SidebarDisclosureSectionId,
   type SidebarListExtraPagesState,
@@ -461,6 +462,7 @@ export interface WorkbenchRuntimeProps {
     width: number;
     collapsibleSections?: SidebarCollapsibleSectionsState;
     listExtraPages?: SidebarListExtraPagesState;
+    chatOrder?: SidebarChatOrder;
   };
   pageStageCloseRef: React.RefObject<(() => Promise<void>) | null>;
   pageStagePersistRef?: React.MutableRefObject<(() => Promise<void>) | null>;
@@ -504,6 +506,7 @@ export interface WorkbenchRuntimeProps {
     collapsed: boolean,
   ) => void;
   setSidebarListExtraPages?: (listId: SidebarListId, extraPages: number) => void;
+  setSidebarChatOrder?: (chatOrder: SidebarChatOrder) => void;
   recentPageSessions?: readonly RecentPageSession[];
   projectPickerOpenTick?: number;
   taskSearchOpenTick?: number;
@@ -513,6 +516,7 @@ export interface WorkbenchRuntimeProps {
 }
 
 const EMPTY_RECENT_PAGE_SESSIONS: readonly RecentPageSession[] = [];
+const ignoreSidebarChatOrderChange = (_chatOrder: SidebarChatOrder) => {};
 
 export function WorkbenchRuntime({
   windowSessionId,
@@ -553,6 +557,7 @@ export function WorkbenchRuntime({
   setSidebarWidth,
   setSidebarCollapsibleSectionCollapsed,
   setSidebarListExtraPages,
+  setSidebarChatOrder,
   onNavigationStateChange,
   onRegisterCommandPort,
   commandKeymapState,
@@ -785,12 +790,14 @@ export function WorkbenchRuntime({
     !projectAgentDockSessionQuery.data.archived
       ? projectAgentDockSessionQuery.data
       : null;
+  const sidebarChatOrder = sidebar?.chatOrder ?? "activity";
   const sidebarSessionCollections = useWorkbenchSessionCollections({
     projects,
     expandedProjectIds,
     activeProjectId: sessionCatalog.activeProjectId,
     resolveScene: sessionCatalog.resolveScene,
     placementScope: "builtin",
+    order: sidebarChatOrder,
   });
   const sessionCollectionsByProject = sessionCatalog.collectionsByProject;
   const projectlessSessionCollection = sessionCatalog.projectlessCollection;
@@ -5600,7 +5607,9 @@ export function WorkbenchRuntime({
     onReorderProjects,
     onSetProjectPinned,
     onSetPinnedProjectOrder,
-    onReorderSessions: sessionCatalog.reorder,
+    chatOrder: sidebarChatOrder,
+    onChatOrderChange: setSidebarChatOrder ?? ignoreSidebarChatOrderChange,
+    onPlaceSession: sessionCatalog.place,
     onMoveSidebarThread: moveSidebarThreadForSidebar,
     onReorderPinnedThreads: reorderPinnedSidebarThreads,
     sidebarArchivePendingKeys,

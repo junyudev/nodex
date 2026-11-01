@@ -2669,22 +2669,19 @@ export function renderWorkbench({
   }): ProjectSession => {
     const sessionStateKey = input.projectId ?? projectlessSessionStateKey;
     const existingSessions = sessionState[sessionStateKey] ?? [];
-    const shiftedSessions = existingSessions.map((session) =>
-      session.order >= 0 ? { ...session, order: session.order + 1 } : session,
-    );
     const session = makeSession({
       id: input.sessionId,
       projectId: input.projectId,
       noThreadFallbackTitle: input.noThreadFallbackTitle ?? "New chat",
       displayTitle: input.noThreadFallbackTitle ?? "New chat",
-      order: 0,
+      activityAt: Date.now(),
       thread: null,
       tabs: [],
       panels: makePanels({ rightCollapsed: true }),
     });
     sessionState = {
       ...sessionState,
-      [sessionStateKey]: sortProjectSessionsForTest([...shiftedSessions, session]),
+      [sessionStateKey]: sortProjectSessionsForTest([...existingSessions, session]),
     };
     return session;
   };
@@ -3318,7 +3315,7 @@ export function renderWorkbench({
           projectId: session.projectId,
           noThreadFallbackTitle: session.noThreadFallbackTitle,
           displayTitle: session.displayTitle,
-          order: session.order,
+          activityAt: session.activityAt,
           pinned: session.pinned,
           pinnedOrder: session.pinnedOrder,
           archived: session.archived,
@@ -3373,33 +3370,27 @@ export function renderWorkbench({
     if (channel === "page-chats:link" || channel === "page-chats:unlink") {
       return undefined;
     }
-    if (channel === "project-sessions:reorder") {
+    if (channel === "project-sessions:place") {
       const command = readWorkspaceCommandEnvelope(channel, args);
-      const projectId =
-        command.payload.projectId === null
-          ? projectlessSessionStateKey
-          : String(command.payload.projectId);
-      const orderedSessionIds = Array.isArray(command.payload.orderedSessionIds)
-        ? command.payload.orderedSessionIds.map(String)
-        : [];
+      const sessionId = String(command.payload.sessionId);
+      const placement = command.payload.placement as {
+        kind: "before" | "after";
+        sessionId: string;
+      };
       return completeWorkspaceCommand(command, command, () => {
-        const current = sessionState[projectId] ?? [];
-        const currentById = new Map(current.map((session) => [session.id, session] as const));
-        const seen = new Set<string>();
-        const ordered = orderedSessionIds.flatMap((sessionId) => {
-          const session = currentById.get(sessionId);
-          if (!session || seen.has(sessionId)) return [];
-          seen.add(sessionId);
-          return [session];
-        });
-        ordered.push(...current.filter((session) => !seen.has(session.id)));
-        const next = ordered.map((session, order) => ({ ...session, order }));
-        const changed = next.some(
-          (session, index) =>
-            session.id !== current[index]?.id || session.order !== current[index]?.order,
+        const projectKey = Object.keys(sessionState).find((key) =>
+          sessionState[key]?.some((session) => session.id === sessionId),
         );
-        if (changed) sessionState = { ...sessionState, [projectId]: next };
-        return { changed, value: undefined };
+        if (!projectKey) return { changed: false, value: undefined };
+        const current = sessionState[projectKey] ?? [];
+        const moved = current.find((session) => session.id === sessionId);
+        if (!moved) return { changed: false, value: undefined };
+        const next = current.filter((session) => session.id !== sessionId);
+        const anchor = next.findIndex((session) => session.id === placement.sessionId);
+        if (anchor < 0) return { changed: false, value: undefined };
+        next.splice(anchor + Number(placement.kind === "after"), 0, moved);
+        sessionState[projectKey] = next;
+        return { changed: true, value: undefined };
       });
     }
     // Every Project's Home is its Inbox; the shell renders it empty unless a test seeds it.
@@ -3637,7 +3628,7 @@ export function renderWorkbench({
         projectId,
         threadId,
         title: "Mention target",
-        order: projectSessions.length,
+        activityAt: Date.now(),
         rightCollapsed: true,
         tabs: [],
       });

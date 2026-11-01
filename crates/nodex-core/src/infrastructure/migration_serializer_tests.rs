@@ -128,8 +128,13 @@ fn rows(connection: &Connection, query: &str) -> Vec<Vec<rusqlite::types::Value>
 
 /// Compare all durable tables, including FTS backing tables, execution receipts,
 /// immutable history, File bindings, recovery packages, indexes and timestamps.
+/// Later upgrades in the same run rebuild Session ordering (v201); its own migration tests cover it.
+const REBUILT_AFTER_SERIALIZER: &str =
+    "'project_sessions','workspace_sidebar_lanes','workspace_sidebar_positions'";
+
+/// Tables, and planner statistics for them, that the serializer upgrade must leave intact.
 fn unaffected(connection: &Connection) -> BTreeMap<String, Vec<Vec<rusqlite::types::Value>>> {
-    let tables = connection.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT IN ('document_materializations','core_store_migration_history','inbox_suggestion_requests','inbox_proposals','core_automation_firings') ORDER BY name").unwrap().query_map([],|r|r.get::<_,String>(0)).unwrap().collect::<rusqlite::Result<Vec<_>>>().unwrap();
+    let tables = connection.prepare(&format!("SELECT name FROM sqlite_master WHERE type='table' AND name NOT IN ('document_materializations','core_store_migration_history','inbox_suggestion_requests','inbox_proposals','core_automation_firings',{REBUILT_AFTER_SERIALIZER}) ORDER BY name")).unwrap().query_map([],|r|r.get::<_,String>(0)).unwrap().collect::<rusqlite::Result<Vec<_>>>().unwrap();
     tables
         .into_iter()
         .map(|name| {
@@ -141,9 +146,14 @@ fn unaffected(connection: &Connection) -> BTreeMap<String, Vec<Vec<rusqlite::typ
                 .map(|n| n.to_string())
                 .collect::<Vec<_>>()
                 .join(",");
+            let only_stable = if name.starts_with("sqlite_stat") {
+                format!(" WHERE tbl NOT IN ({REBUILT_AFTER_SERIALIZER})")
+            } else {
+                String::new()
+            };
             let values = rows(
                 connection,
-                &format!("SELECT * FROM \"{name}\" ORDER BY {order}"),
+                &format!("SELECT * FROM \"{name}\"{only_stable} ORDER BY {order}"),
             );
             (name, values)
         })
@@ -220,7 +230,7 @@ fn serializer_upgrade_rebuilds_exact_text_without_content_or_identity_changes() 
     .1;
     let prepared = prepare_profile_store(&mut connection, home.path()).unwrap();
     assert_eq!(prepared.migrated_from_version, Some(199));
-    assert_eq!(prepared.schema_version, 200);
+    assert_eq!(prepared.schema_version, CURRENT_STORE_REVISION);
     assert_eq!(unaffected(&connection), before);
     assert_eq!(rows(&connection, fields), materializations);
     assert_eq!(

@@ -98,6 +98,7 @@ import type {
   ProjectPinnedInput,
   ProjectPinnedOrderInput,
   ProjectSession as ProjectSessionDomain,
+  ProjectSessionPlacement,
   ProjectUpdateInput,
 } from "@/lib/types";
 import type { SessionLinkedPage } from "@/lib/session-linked-page";
@@ -112,10 +113,12 @@ import {
 } from "@/lib/use-workbench-session-catalog";
 import { projectSessionSummaryToDomain } from "@/lib/workbench-session-presentation";
 import type {
+  SidebarChatOrder,
   SidebarCollapsibleSectionsState,
   SidebarListExtraPagesState,
   SidebarListId,
 } from "@/lib/sidebar-section-prefs";
+import { resolveSidebarSessionPlacement } from "@/lib/sidebar-session-placement";
 import { SidebarPaginatedItems } from "./sidebar-paginated-items";
 import {
   SidebarCustomSections,
@@ -346,7 +349,8 @@ function SidebarThreadContainerRowsContent({
   hasMoreAtSource,
   onLoadMore,
   onRetry,
-  onVisibleSessionOrderChange,
+  reorderable,
+  onPlaceSession,
   renderThread,
 }: {
   containerId: "chats";
@@ -362,7 +366,8 @@ function SidebarThreadContainerRowsContent({
   hasMoreAtSource: boolean;
   onLoadMore: () => void | Promise<void>;
   onRetry: () => void | Promise<void>;
-  onVisibleSessionOrderChange: (orderedSessionIds: string[]) => Promise<void>;
+  reorderable: boolean;
+  onPlaceSession: (sessionId: string, placement: ProjectSessionPlacement) => Promise<void>;
   renderThread: (threadKey: string) => ReactNode;
 }) {
   const pendingThreadDrops = usePendingSidebarThreadDrops();
@@ -384,13 +389,14 @@ function SidebarThreadContainerRowsContent({
   });
   const reorder = useSidebarThreadReorderController({
     visibleThreadKeys: sortableThreadKeys,
-    onVisibleThreadOrderChange: async ({ nextVisibleThreadKeys }) => {
-      await onVisibleSessionOrderChange(
-        nextVisibleThreadKeys.flatMap((threadKey) => {
-          const sessionId = getSessionId(threadKey);
-          return sessionId === null ? [] : [sessionId];
-        }),
-      );
+    reorderable,
+    onVisibleThreadOrderChange: async ({ activeThreadKey, nextVisibleThreadKeys }) => {
+      const resolved = resolveSidebarSessionPlacement({
+        activeThreadKey,
+        nextVisibleThreadKeys,
+        getSessionId,
+      });
+      if (resolved) await onPlaceSession(resolved.sessionId, resolved.placement);
     },
   });
   const displayedThreadKeys = replaceVisibleCodexSidebarThreadKeyOrder({
@@ -479,7 +485,8 @@ function SidebarProjectThreadRowsContent({
   onRetry,
   onExtraPagesChange,
   onPinnedThreadOrderChange,
-  onRegularSessionOrderChange,
+  regularReorderable,
+  onPlaceSession,
   getSessionId,
   getThreadId,
   itemsByKey,
@@ -501,7 +508,8 @@ function SidebarProjectThreadRowsContent({
     visibleThreadKeys: string[];
     nextVisibleThreadKeys: string[];
   }) => Promise<void>;
-  onRegularSessionOrderChange: (orderedSessionIds: string[]) => Promise<void>;
+  regularReorderable: boolean;
+  onPlaceSession: (sessionId: string, placement: ProjectSessionPlacement) => Promise<void>;
   getSessionId: (threadKey: string) => string | null;
   getThreadId: (threadKey: string) => string | null;
   itemsByKey: ReadonlyMap<string, CodexSidebarThreadItem>;
@@ -569,13 +577,14 @@ function SidebarProjectThreadRowsContent({
   });
   const regularReorder = useSidebarThreadReorderController({
     visibleThreadKeys: sortableRegularThreadKeys,
-    onVisibleThreadOrderChange: async ({ nextVisibleThreadKeys }) => {
-      await onRegularSessionOrderChange(
-        nextVisibleThreadKeys.flatMap((threadKey) => {
-          const sessionId = getSessionId(threadKey);
-          return sessionId === null ? [] : [sessionId];
-        }),
-      );
+    reorderable: regularReorderable,
+    onVisibleThreadOrderChange: async ({ activeThreadKey, nextVisibleThreadKeys }) => {
+      const resolved = resolveSidebarSessionPlacement({
+        activeThreadKey,
+        nextVisibleThreadKeys,
+        getSessionId,
+      });
+      if (resolved) await onPlaceSession(resolved.sessionId, resolved.placement);
     },
   });
   const displayedPinnedThreadKeys = useMemo(
@@ -760,7 +769,9 @@ function SidebarThreadOrganizerSections({
   onReorderProjects,
   onSetProjectPinned,
   onSetPinnedProjectOrder,
-  onReorderSessions,
+  chatOrder,
+  onChatOrderChange,
+  onPlaceSession,
   onReorderPinnedThreads,
   sidebarArchivePendingKeys,
   hasMoreProjects,
@@ -828,10 +839,9 @@ function SidebarThreadOrganizerSections({
   onReorderProjects: (input: ProjectOrderInput) => Promise<void>;
   onSetProjectPinned: (projectId: string, input: ProjectPinnedInput) => Promise<Project | null>;
   onSetPinnedProjectOrder: (input: ProjectPinnedOrderInput) => Promise<void>;
-  onReorderSessions: (
-    projectId: string | null,
-    orderedSessionIds: readonly string[],
-  ) => Promise<void>;
+  chatOrder: SidebarChatOrder;
+  onChatOrderChange: (chatOrder: SidebarChatOrder) => void;
+  onPlaceSession: (sessionId: string, placement: ProjectSessionPlacement) => Promise<void>;
   onReorderPinnedThreads: (orderedThreadIds: readonly string[]) => Promise<unknown>;
   sidebarArchivePendingKeys: ReadonlySet<string>;
   hasMoreProjects: boolean;
@@ -960,7 +970,7 @@ function SidebarThreadOrganizerSections({
           preview: session.thread?.threadPreview ?? "",
           cwd: session.thread?.cwd ?? null,
           updatedAt: session.thread?.updatedAt ?? Date.parse(session.updatedAt),
-          recencyAt: session.thread?.recencyAt ?? null,
+          recencyAt: session.activityAt,
           createdAt: session.thread?.createdAt ?? Date.parse(session.createdAt),
           pinned: session.pinned,
           pinnedOrder: session.pinnedOrder,
@@ -1518,9 +1528,8 @@ function SidebarThreadOrganizerSections({
           onLoadMore={() => onLoadMoreTaskWindow(project.id)}
           onRetry={() => onRetryTaskWindow(project.id)}
           onPinnedThreadOrderChange={reorderVisiblePinnedThreads}
-          onRegularSessionOrderChange={(orderedSessionIds) =>
-            onReorderSessions(project.id, orderedSessionIds)
-          }
+          regularReorderable={chatOrder === "manual"}
+          onPlaceSession={onPlaceSession}
           getSessionId={getSidebarSessionId}
           getThreadId={getSidebarRealThreadId}
           itemsByKey={sidebarThreadItemsByKey}
@@ -1706,6 +1715,8 @@ function SidebarThreadOrganizerSections({
         onToggle={onToggleProjectsSectionCollapsed}
         actions={
           <SidebarProjectsSectionActions
+            chatOrder={chatOrder}
+            onChatOrderChange={onChatOrderChange}
             projectGroupCollapseAction={projectGroupCollapseAction}
             onProjectGroupCollapseAction={runProjectGroupCollapseAction}
             onCreateProject={onCreateProject}
@@ -1754,9 +1765,8 @@ function SidebarThreadOrganizerSections({
             hasMoreAtSource={projectlessSessionCollection.hasMore}
             onLoadMore={() => onLoadMoreTaskWindow(null)}
             onRetry={() => onRetryTaskWindow(null)}
-            onVisibleSessionOrderChange={(orderedSessionIds) =>
-              onReorderSessions(null, orderedSessionIds)
-            }
+            reorderable={chatOrder === "manual"}
+            onPlaceSession={onPlaceSession}
             renderThread={renderThreadRow}
           />
         </CodexSidebarSection>
@@ -1834,10 +1844,9 @@ export interface ProjectSessionSidebarProps extends Omit<
   onReorderProjects: (input: ProjectOrderInput) => Promise<void>;
   onSetProjectPinned: (projectId: string, input: ProjectPinnedInput) => Promise<Project | null>;
   onSetPinnedProjectOrder: (input: ProjectPinnedOrderInput) => Promise<void>;
-  onReorderSessions: (
-    projectId: string | null,
-    orderedSessionIds: readonly string[],
-  ) => Promise<void>;
+  chatOrder: SidebarChatOrder;
+  onChatOrderChange: (chatOrder: SidebarChatOrder) => void;
+  onPlaceSession: (sessionId: string, placement: ProjectSessionPlacement) => Promise<void>;
   onMoveSidebarThread: (drop: SidebarThreadDropRequest) => Promise<SidebarThreadDropCommit | null>;
   onReorderPinnedThreads: (orderedThreadIds: readonly string[]) => Promise<unknown>;
   sidebarArchivePendingKeys: ReadonlySet<string>;
@@ -1908,7 +1917,9 @@ export function ProjectSessionSidebar({
   onReorderProjects,
   onSetProjectPinned,
   onSetPinnedProjectOrder,
-  onReorderSessions,
+  chatOrder,
+  onChatOrderChange,
+  onPlaceSession,
   onMoveSidebarThread,
   onReorderPinnedThreads,
   sidebarArchivePendingKeys,
@@ -2177,7 +2188,9 @@ export function ProjectSessionSidebar({
                 onReorderProjects={onReorderProjects}
                 onSetProjectPinned={onSetProjectPinned}
                 onSetPinnedProjectOrder={onSetPinnedProjectOrder}
-                onReorderSessions={onReorderSessions}
+                chatOrder={chatOrder}
+                onChatOrderChange={onChatOrderChange}
+                onPlaceSession={onPlaceSession}
                 onReorderPinnedThreads={onReorderPinnedThreads}
                 sidebarArchivePendingKeys={sidebarArchivePendingKeys}
                 hasMoreProjects={hasMoreProjects}

@@ -13,6 +13,7 @@ import type {
   AgentRuntimeForkInput,
 } from "../../../shared/agent-runtime-api";
 import {
+  fixtureSessionActivityAt,
   makeAttachedSession,
   makePanelLayout,
   makeProject,
@@ -308,13 +309,13 @@ describe("workbench session shell / sidebar-core", () => {
     const alphaHome = makeSession({
       id: "session:alpha:home",
       title: "Alpha Home",
-      order: 0,
+      activityAt: fixtureSessionActivityAt(0),
       rightFullWidth: true,
     });
     const alphaWork = makeSession({
       id: "session:alpha:work",
       title: "Alpha Work",
-      order: 1,
+      activityAt: fixtureSessionActivityAt(1),
       rightFullWidth: true,
       tabs: [
         {
@@ -332,7 +333,7 @@ describe("workbench session shell / sidebar-core", () => {
       id: "session:beta:work",
       projectId: "beta",
       title: "Beta Work",
-      order: 0,
+      activityAt: fixtureSessionActivityAt(0),
       rightFullWidth: true,
     });
     const screen = renderWorkbench({
@@ -424,7 +425,7 @@ describe("workbench session shell / sidebar-core", () => {
       makeSession({
         id: `session:alpha:single-${index}`,
         title: `Session ${index}`,
-        order: index - 1,
+        activityAt: fixtureSessionActivityAt(index - 1),
         rightFullWidth: true,
       }),
     );
@@ -464,7 +465,7 @@ describe("workbench session shell / sidebar-core", () => {
       id: "session:alpha:thread-regular",
       threadId: "thread-regular",
       title: "Regular thread",
-      order: 0,
+      activityAt: fixtureSessionActivityAt(0),
       rightFullWidth: false,
     });
     const namedSession = {
@@ -489,14 +490,14 @@ describe("workbench session shell / sidebar-core", () => {
       id: "session:alpha:thread-a",
       threadId: "thread-a",
       title: "Thread A",
-      order: 0,
+      activityAt: fixtureSessionActivityAt(0),
       rightFullWidth: true,
     });
     const second = makeAttachedSession({
       id: "session:alpha:thread-b",
       threadId: "thread-b",
       title: "Thread B",
-      order: 1,
+      activityAt: fixtureSessionActivityAt(1),
       rightFullWidth: true,
     });
     const namedFirst = {
@@ -644,7 +645,7 @@ describe("workbench session shell / sidebar-core", () => {
       id: "session:alpha:pin-target",
       threadId: "thread-pin-target",
       title: "Pin target",
-      order: 1,
+      activityAt: fixtureSessionActivityAt(1),
       rightCollapsed: true,
       tabs: [],
     });
@@ -749,7 +750,7 @@ describe("workbench session shell / sidebar-core", () => {
       id: "session:alpha:archive-target",
       threadId: "thread-archive-target",
       title: "Archive target",
-      order: 1,
+      activityAt: fixtureSessionActivityAt(1),
       rightCollapsed: true,
       tabs: [],
     });
@@ -911,7 +912,7 @@ describe("workbench session shell / sidebar-core", () => {
       id: "session:alpha:first",
       threadId: "thread-first-unpinned",
       title: "First unpinned",
-      order: 1,
+      activityAt: fixtureSessionActivityAt(1),
       rightCollapsed: true,
       tabs: [],
     });
@@ -919,7 +920,7 @@ describe("workbench session shell / sidebar-core", () => {
       id: "session:alpha:second",
       threadId: "thread-second-target",
       title: "Second target",
-      order: 2,
+      activityAt: fixtureSessionActivityAt(2),
       rightCollapsed: true,
       tabs: [],
     });
@@ -953,7 +954,7 @@ describe("workbench session shell / sidebar-core", () => {
       id: "session:alpha:pinned",
       threadId: "thread-pinned-target",
       title: "Pinned target",
-      order: 1,
+      activityAt: fixtureSessionActivityAt(1),
       pinned: true,
       pinnedOrder: 1,
       rightCollapsed: true,
@@ -1000,7 +1001,7 @@ describe("workbench session shell / sidebar-core", () => {
     const unread = makeAttachedSession({
       id: "session:alpha:unread",
       title: "Unread target",
-      order: 1,
+      activityAt: fixtureSessionActivityAt(1),
       unread: true,
       rightCollapsed: true,
       tabs: [],
@@ -1008,7 +1009,7 @@ describe("workbench session shell / sidebar-core", () => {
     const long = makeAttachedSession({
       id: "session:alpha:long",
       title: "Very long session title that should truncate before colliding with row actions",
-      order: 2,
+      activityAt: fixtureSessionActivityAt(2),
       rightCollapsed: true,
       tabs: [],
     });
@@ -1057,7 +1058,7 @@ describe("workbench session shell / sidebar-core", () => {
     const target = makeAttachedSession({
       id: "session:alpha:rename-target",
       title: "Rename target",
-      order: 1,
+      activityAt: fixtureSessionActivityAt(1),
       rightCollapsed: true,
       tabs: [],
     });
@@ -1100,7 +1101,7 @@ describe("workbench session shell / sidebar-core", () => {
     const target = makeAttachedSession({
       id: "session:alpha:rename-target",
       title: "Rename target",
-      order: 1,
+      activityAt: fixtureSessionActivityAt(1),
       rightCollapsed: true,
       tabs: [],
     });

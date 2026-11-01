@@ -499,7 +499,7 @@ export function makeSession(overrides: SessionFixtureOverrides = {}): ProjectSes
     projectId,
     noThreadFallbackTitle,
     displayTitle,
-    order: 0,
+    activityAt: fixtureSessionActivityAt(0),
     panels,
     thread,
     executionRef: thread ? { runtimeId: "runtime:test", threadId: thread.threadId } : null,
@@ -666,6 +666,14 @@ export function replaceSession(
   );
 }
 
+const FIXTURE_SESSION_ACTIVITY_EPOCH = Date.parse("2026-06-07T00:00:00.000Z");
+
+/** Activity of the `rank`-th most recently active fixture chat; rank 0 is the newest. */
+export function fixtureSessionActivityAt(rank: number): number {
+  return FIXTURE_SESSION_ACTIVITY_EPOCH - rank * 60_000;
+}
+
+/** Mirrors Core's `Last updated` lane order: pins first, then newest activity. */
 export function sortProjectSessionsForTest(sessions: ProjectSession[]): ProjectSession[] {
   return [...sessions].sort((a, b) => {
     const rank = (session: ProjectSession) => (session.pinned ? 0 : 1);
@@ -676,6 +684,6 @@ export function sortProjectSessionsForTest(sessions: ProjectSession[]): ProjectS
         (a.pinnedOrder ?? Number.MAX_SAFE_INTEGER) - (b.pinnedOrder ?? Number.MAX_SAFE_INTEGER)
       );
     }
-    return a.order - b.order;
+    return b.activityAt - a.activityAt || a.id.localeCompare(b.id);
   });
 }

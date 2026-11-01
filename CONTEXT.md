@@ -43,6 +43,12 @@ relationships owners of the conversation or its delegated tasks.
 A Chat reminder makes a chat unread again at a chosen time. A message the person
 sends into the chat or archiving it cancels its reminder.
 
+### Session activity
+
+Session activity is when a chat was created, when the person last sent it a message, or
+when its reminder came due. It orders chat lists; Agent replies, messages from other
+Agents, reading and organizing a chat never change it.
+
 ### Thread
 
 A Thread is an execution conversation with its own history, model selection and Runs.

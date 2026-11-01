@@ -1065,7 +1065,7 @@ const activeSession: ProjectSession = {
   projectId: project.id,
   noThreadFallbackTitle: "Session",
   displayTitle: "Session",
-  order: 0,
+  activityAt: 0,
   pinned: false,
   pinnedOrder: null,
   archived: false,

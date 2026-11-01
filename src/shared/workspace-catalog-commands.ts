@@ -6,6 +6,7 @@ import type {
   ProjectPinnedInput,
   ProjectPinnedOrderInput,
   ProjectSessionCreateInput,
+  ProjectSessionPlacement,
   ProjectSessionPinnedInput,
   ProjectSessionPinnedOrderInput,
   ProjectSessionRenameInput,
@@ -88,9 +89,9 @@ export type ProjectSessionReminderCommandInput = OperationIdentifiedCommand<
 export interface ProjectSessionUnreadCommandPayload
   extends ProjectSessionIdentityPayload, ProjectSessionUnreadInput {}
 
-export interface ProjectSessionReorderCommandPayload {
-  readonly projectId: string | null;
-  readonly orderedSessionIds: readonly string[];
+export interface ProjectSessionPlaceCommandPayload {
+  readonly sessionId: string;
+  readonly placement: ProjectSessionPlacement;
 }
 
 export interface ProjectSessionPinnedOrderCommandPayload extends ProjectSessionPinnedOrderInput {
@@ -107,8 +108,8 @@ export type ProjectSessionRenameCommandInput =
   OperationIdentifiedCommand<ProjectSessionRenameCommandPayload>;
 export type ProjectSessionDeleteCommandInput =
   OperationIdentifiedCommand<ProjectSessionIdentityPayload>;
-export type ProjectSessionReorderCommandInput =
-  OperationIdentifiedCommand<ProjectSessionReorderCommandPayload>;
+export type ProjectSessionPlaceCommandInput =
+  OperationIdentifiedCommand<ProjectSessionPlaceCommandPayload>;
 export type ProjectSessionPinnedCommandInput =
   OperationIdentifiedCommand<ProjectSessionPinnedCommandPayload>;
 export type ProjectSessionPinnedOrderCommandInput =

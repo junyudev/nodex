@@ -128,7 +128,7 @@ const session = (bound = false): ProjectSession => ({
   projectId: "project:one",
   noThreadFallbackTitle: "Investigation",
   displayTitle: "Investigation",
-  order: 1,
+  activityAt: 1,
   pinned: false,
   pinnedOrder: null,
   archived: false,

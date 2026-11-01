@@ -344,6 +344,7 @@ fn v196_deleted_pages_keep_readable_restore_evidence_and_verified_receipts() {
         super::super::local_commit::refresh_migrated_receipt(connection,commit,&hex::encode(Sha256::digest(raw.as_bytes())))?;
         connection.execute("DELETE FROM core_store_migration_history WHERE target_revision>=197", [])?;
         connection.execute("UPDATE data_source_properties SET config_json=replace(replace(replace(replace(config_json,'\"doing\"','\"build\"'),'\"done\"','\"ship\"'),'\"Doing\"','\"Build\"'),'\"Done\"','\"Ship\"') WHERE id='status'", [])?;
+        rewind_v201_to_v200(connection)?;
         // v198 added chat reminders; a v196 Store has none of their schema.
         connection.execute_batch(
             "DROP TRIGGER project_session_archive_cancels_reminder;

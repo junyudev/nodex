@@ -20,6 +20,7 @@ const native = (id: string, day: number, projectId: string | null = "project:a")
         id,
         project_id: projectId,
         created_at: at(day),
+        activity_at: Date.parse(at(day)),
         display_title: id,
         pinned: false,
         archived: false,

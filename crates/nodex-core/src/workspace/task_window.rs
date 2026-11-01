@@ -17,7 +17,7 @@ use crate::infrastructure::cursor::{
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 
 pub(super) const TASK_SUMMARY_COLUMNS: &str = "session.id AS session_id, session.project_id, \
-             session.no_thread_fallback_title, session.\"order\", session.pinned, \
+             session.no_thread_fallback_title, session.activity_at, session.pinned, \
              session.pinned_order, session.archived, session.archived_at, session.unread, \
              session.created_at, session.updated_at, \
              thread.thread_id, thread.project_id, thread.forked_from_id, \
@@ -38,6 +38,7 @@ pub(super) const TASK_SUMMARY_COLUMNS: &str = "session.id AS session_id, session
 const MAX_PREVIEW_UTF16: usize = 240;
 const MAX_PREVIEW_BYTES: usize = 1_024;
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn read_task_window(
     connection: &Connection,
     library_id: &str,
@@ -45,6 +46,7 @@ pub(super) fn read_task_window(
     project_id: Option<&str>,
     include_archived: bool,
     placement_scope: ProjectWorkspaceTaskPlacementScope,
+    order: nodex_core_contracts::workspace::ProjectWorkspaceTaskOrder,
     request: &CollectionWindowRequest,
 ) -> Result<CollectionWindow<ProjectWorkspaceTaskSummary>, StoreError> {
     read_task_window_in_scope(
@@ -55,6 +57,7 @@ pub(super) fn read_task_window(
         false,
         include_archived,
         placement_scope,
+        order,
         request,
     )
 }
@@ -74,6 +77,7 @@ pub(super) fn read_pinned_task_window(
         true,
         include_archived,
         ProjectWorkspaceTaskPlacementScope::All,
+        nodex_core_contracts::workspace::ProjectWorkspaceTaskOrder::Activity,
         request,
     )
 }
@@ -87,6 +91,7 @@ fn read_task_window_in_scope(
     pinned_only: bool,
     include_archived: bool,
     placement_scope: ProjectWorkspaceTaskPlacementScope,
+    order: nodex_core_contracts::workspace::ProjectWorkspaceTaskOrder,
     request: &CollectionWindowRequest,
 ) -> Result<CollectionWindow<ProjectWorkspaceTaskSummary>, StoreError> {
     if !pinned_only && let Some(project_id) = project_id {
@@ -103,11 +108,12 @@ fn read_task_window_in_scope(
     }
     let normalized = normalize_request(request)?;
     let fingerprint = cursor::query_fingerprint(&(
-        "workspace_task_window_v5",
+        "workspace_task_window_v6",
         project_id,
         pinned_only,
         include_archived,
         placement_scope,
+        order,
     ))?;
     let subject = CollectionCursorSubject {
         kind: if pinned_only {
@@ -170,31 +176,26 @@ fn read_task_window_in_scope(
                  AND section.kind = 'custom' AND section.lifecycle = 'active')"
         }
     };
+    let manual = matches!(
+        order,
+        nodex_core_contracts::workspace::ProjectWorkspaceTaskOrder::Manual
+    );
+    let bucket = if manual {
+        "CASE WHEN session.pinned = 1 THEN 0 WHEN session.manual_rank IS NULL THEN 1 ELSE 2 END"
+    } else {
+        "CASE WHEN session.pinned = 1 THEN 0 ELSE 1 END"
+    };
+    let lane_order = if manual {
+        "CASE WHEN session.pinned = 1 THEN COALESCE(session.pinned_order, 9223372036854775807) WHEN session.manual_rank IS NOT NULL THEN session.manual_rank ELSE -session.activity_at END"
+    } else {
+        "CASE WHEN session.pinned = 1 THEN COALESCE(session.pinned_order, 9223372036854775807) ELSE -session.activity_at END"
+    };
     let sql = format!(
         "WITH task_rows AS (\
-           SELECT {TASK_SUMMARY_COLUMNS}, \
-             CASE WHEN session.pinned = 1 THEN 0 ELSE 1 END AS pin_bucket, \
-             CASE WHEN session.pinned = 1 \
-               THEN COALESCE(session.pinned_order, 9223372036854775807) \
-               WHEN lane.order_mode = 'manual' AND NOT EXISTS (\
-                 SELECT 1 FROM workspace_sidebar_positions lane_position \
-                 WHERE lane_position.scope_key = lane.scope_key\
-               ) THEN session.\"order\" \
-               WHEN lane.order_mode = 'manual' \
-                 THEN COALESCE(position.rank_key, -COALESCE(thread.recency_at, session.\"order\")) \
-               ELSE -COALESCE(\
-                 thread.recency_at, \
-                 session.\"order\"\
-               ) END AS lane_order \
+           SELECT {TASK_SUMMARY_COLUMNS}, {bucket} AS pin_bucket, {lane_order} AS lane_order \
            FROM project_sessions session \
            LEFT JOIN project_session_threads link ON link.session_id = session.id \
            LEFT JOIN codex_threads thread ON thread.thread_id = link.thread_id \
-           LEFT JOIN workspace_sidebar_lanes lane ON lane.scope_key = CASE \
-             WHEN session.project_id IS NULL THEN 'projectless' \
-             ELSE 'project:' || session.project_id END \
-           LEFT JOIN workspace_sidebar_positions position \
-             ON position.scope_key = lane.scope_key \
-             AND position.thread_id = thread.thread_id \
            WHERE NOT EXISTS (SELECT 1 FROM project_session_side_chats side WHERE side.session_id = session.id) AND ((?4 = 1 AND session.pinned = 1) OR (?4 = 0 AND \
              ((?1 IS NULL AND session.project_id IS NULL) OR session.project_id = ?1))) \
              AND (session.project_id IS NULL OR EXISTS (\
@@ -315,7 +316,7 @@ pub(super) fn task_summary_from_row(
             project_id: row.get(offset + 1)?,
             no_thread_fallback_title: fallback_title,
             display_title,
-            order: row.get(offset + 3)?,
+            activity_at: row.get(offset + 3)?,
             pinned: row.get::<_, i64>(offset + 4)? == 1,
             pinned_order: row.get(offset + 5)?,
             archived: row.get::<_, i64>(offset + 6)? == 1,
@@ -413,6 +414,30 @@ mod tests {
         )
     }
 
+    fn manual_task_window(
+        workspace: &crate::workspace::test_support::TestWorkspace,
+        project_id: Option<&str>,
+        after: Option<String>,
+        first: u32,
+    ) -> CollectionWindow<ProjectWorkspaceTaskSummary> {
+        let ProjectWorkspaceReadValue::TaskWindow { tasks } = read(
+            &workspace.module,
+            ProjectWorkspaceRead::TaskWindow {
+                project_id: project_id.map(str::to_owned),
+                include_archived: Some(false),
+                placement_scope: ProjectWorkspaceTaskPlacementScope::All,
+                order: nodex_core_contracts::workspace::ProjectWorkspaceTaskOrder::Manual,
+                window: CollectionWindowRequest {
+                    after,
+                    first: Some(first),
+                },
+            },
+        ) else {
+            panic!("task window")
+        };
+        tasks
+    }
+
     fn task_window_with_placement(
         workspace: &crate::workspace::test_support::TestWorkspace,
         project_id: Option<&str>,
@@ -426,6 +451,7 @@ mod tests {
                 project_id: project_id.map(str::to_owned),
                 include_archived: Some(false),
                 placement_scope,
+                order: Default::default(),
                 window: CollectionWindowRequest {
                     after,
                     first: Some(first),
@@ -552,6 +578,7 @@ mod tests {
                                 project_id: None,
                                 include_archived: Some(false),
                                 placement_scope,
+                                order: Default::default(),
                                 window: CollectionWindowRequest {
                                     after,
                                     first: Some(1)
@@ -627,17 +654,16 @@ mod tests {
         apply(
             &workspace.module,
             "reorder-with-manual-default-draft",
-            ProjectWorkspaceIntent::ReorderSessions {
-                project_id: Some("project:default".to_owned()),
-                session_ids: vec![
-                    "session:b".to_owned(),
-                    "session:draft".to_owned(),
-                    "session:a".to_owned(),
-                ],
+            ProjectWorkspaceIntent::PlaceSession {
+                session_id: "session:b".to_owned(),
+                placement:
+                    nodex_core_contracts::workspace::ProjectWorkspaceSessionPlacement::Before {
+                        session_id: "session:draft".to_owned(),
+                    },
             },
         );
 
-        let reordered = task_window(&workspace, Some("project:default"), None, 10);
+        let reordered = manual_task_window(&workspace, Some("project:default"), None, 10);
         assert_eq!(
             reordered
                 .items
@@ -676,7 +702,7 @@ mod tests {
             },
         );
 
-        let linked = task_window(&workspace, Some("project:default"), None, 10);
+        let linked = manual_task_window(&workspace, Some("project:default"), None, 10);
         assert_eq!(
             linked
                 .items
@@ -723,13 +749,12 @@ mod tests {
         apply(
             &workspace.module,
             "reorder-target-session-lane",
-            ProjectWorkspaceIntent::ReorderSessions {
-                project_id: Some("project:default".to_owned()),
-                session_ids: vec![
-                    "session:b".to_owned(),
-                    "session:draft".to_owned(),
-                    "session:a".to_owned(),
-                ],
+            ProjectWorkspaceIntent::PlaceSession {
+                session_id: "session:b".to_owned(),
+                placement:
+                    nodex_core_contracts::workspace::ProjectWorkspaceSessionPlacement::Before {
+                        session_id: "session:draft".to_owned(),
+                    },
             },
         );
         create_session_thread(
@@ -761,7 +786,7 @@ mod tests {
             },
         );
 
-        let target = task_window(&workspace, Some("project:default"), None, 10);
+        let target = manual_task_window(&workspace, Some("project:default"), None, 10);
         assert_eq!(
             target
                 .items
@@ -898,7 +923,7 @@ mod tests {
             );
         }
 
-        let before = task_window(&workspace, Some("project:a"), None, 3);
+        let before = manual_task_window(&workspace, Some("project:a"), None, 3);
         apply(
             &workspace.module,
             "move-after-visible-anchor",
@@ -918,7 +943,7 @@ mod tests {
                 runtime_workspace_roots: None,
             },
         );
-        let after = task_window(&workspace, Some("project:a"), None, 4);
+        let after = manual_task_window(&workspace, Some("project:a"), None, 4);
         let thread_ids = after
             .items
             .iter()

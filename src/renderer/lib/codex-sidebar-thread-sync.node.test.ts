@@ -113,7 +113,7 @@ function makePendingThreadItem(input: {
 
 function makeSession(input: {
   id: string;
-  order: number;
+  activityAt: number;
   pinned?: boolean;
   pinnedOrder?: number | null;
   updatedAt?: string;
@@ -123,7 +123,7 @@ function makeSession(input: {
     projectId: "alpha",
     noThreadFallbackTitle: input.id,
     displayTitle: input.id,
-    order: input.order,
+    activityAt: input.activityAt,
     pinned: input.pinned === true,
     pinnedOrder: input.pinnedOrder ?? null,
     archived: false,
@@ -553,14 +553,14 @@ describe("sortSidebarThreadKeysForDisplay", () => {
         "session:thread-older",
         makeSession({
           id: "session:thread-older",
-          order: 1,
+          activityAt: 100,
         }),
       ],
       [
         "session-new",
         makeSession({
           id: "session-new",
-          order: 0,
+          activityAt: 200,
           updatedAt: "2026-01-01T00:00:01.000Z",
         }),
       ],
@@ -572,9 +572,7 @@ describe("sortSidebarThreadKeysForDisplay", () => {
       sessionsById,
     });
 
-    expect(JSON.stringify(sorted)).toBe(
-      JSON.stringify([newFallbackThread.key, olderSnapshotThread.key]),
-    );
+    expect(sorted).toEqual([newFallbackThread.key, olderSnapshotThread.key]);
   });
 
   test("sorts pinned fallback rows by pinned order instead of append order", () => {
@@ -606,7 +604,7 @@ describe("sortSidebarThreadKeysForDisplay", () => {
         "session:thread-pinned",
         makeSession({
           id: "session:thread-pinned",
-          order: 1,
+          activityAt: 1,
           pinned: true,
           pinnedOrder: 3,
         }),
@@ -615,7 +613,7 @@ describe("sortSidebarThreadKeysForDisplay", () => {
         "session-database-view",
         makeSession({
           id: "session-database-view",
-          order: 0,
+          activityAt: 0,
           pinned: true,
           pinnedOrder: 0,
         }),
@@ -748,11 +746,11 @@ describe("durable Session pin order", () => {
     const sessionsById = new Map([
       [
         attached.sessionId!,
-        makeSession({ id: attached.sessionId!, order: 1, pinned: true, pinnedOrder: 2 }),
+        makeSession({ id: attached.sessionId!, activityAt: 1, pinned: true, pinnedOrder: 2 }),
       ],
       [
         draft.sessionId!,
-        makeSession({ id: draft.sessionId!, order: 0, pinned: true, pinnedOrder: 0 }),
+        makeSession({ id: draft.sessionId!, activityAt: 0, pinned: true, pinnedOrder: 0 }),
       ],
     ]);
     expect(

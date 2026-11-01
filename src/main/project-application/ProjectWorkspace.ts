@@ -57,7 +57,7 @@ import type {
   ProjectSessionPinnedCommandInput,
   ProjectSessionPinnedOrderCommandInput,
   ProjectSessionRenameCommandInput,
-  ProjectSessionReorderCommandInput,
+  ProjectSessionPlaceCommandInput,
   ProjectSessionUnreadCommandInput,
   ProjectSessionReminderCommandInput,
   ProjectSessionOpenedCommandInput,
@@ -320,8 +320,8 @@ export interface ProjectWorkspaceService {
   readonly deleteProjectSession: (
     command: ProjectSessionDeleteCommandInput,
   ) => ProjectWorkspaceEffect<ProjectWorkspaceCommandResult<boolean>>;
-  readonly reorderProjectSessions: (
-    command: ProjectSessionReorderCommandInput,
+  readonly placeProjectSession: (
+    command: ProjectSessionPlaceCommandInput,
   ) => ProjectWorkspaceEffect<ProjectWorkspaceCommandResult<void>>;
   readonly setProjectSessionPinned: (
     command: ProjectSessionPinnedCommandInput,
@@ -744,6 +744,7 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
         project_id: projectId,
         include_archived: input?.includeArchived ?? false,
         placement_scope: input?.placementScope ?? "all",
+        order: input?.order ?? "activity",
         window: { after: input?.after ?? null, first: input?.first },
       });
       return yield* evaluate("session.window", () => {
@@ -1467,13 +1468,16 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
       return { value: true, apply: applied };
     });
 
-    const reorderProjectSessions = Effect.fn("ProjectWorkspace.reorderProjectSessions")(function* (
-      command: ProjectSessionReorderCommandInput,
+    const placeProjectSession = Effect.fn("ProjectWorkspace.placeProjectSession")(function* (
+      command: ProjectSessionPlaceCommandInput,
     ) {
-      const applied = yield* applyWithId("session.reorder", command.operationId, {
-        kind: "reorder_sessions",
-        project_id: command.payload.projectId,
-        session_ids: [...command.payload.orderedSessionIds],
+      const applied = yield* applyWithId("session.place", command.operationId, {
+        kind: "place_session",
+        session_id: command.payload.sessionId,
+        placement: {
+          kind: command.payload.placement.kind,
+          session_id: command.payload.placement.sessionId,
+        },
       });
       return { value: undefined, apply: applied };
     });
@@ -1727,7 +1731,7 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
       unlinkPageFromProjectSession: (sessionId, input) =>
         mutatePageChat("page-chat.unlink", "unlink_page", sessionId, input),
       deleteProjectSession,
-      reorderProjectSessions,
+      placeProjectSession,
       setProjectSessionPinned,
       setPinnedProjectSessionOrder,
       archiveProjectSession: (command) => setProjectSessionArchived(command, true),

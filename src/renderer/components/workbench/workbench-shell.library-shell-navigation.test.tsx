@@ -7,6 +7,7 @@ import { isUuidV7 } from "../../../shared/uuid-v7";
 import { WORKBENCH_NAVIGATION_RAIL_WIDTH_PX } from "@/lib/workbench-shell-geometry";
 import { createApplicationReadiness } from "@/bootstrap/application-surface";
 import {
+  fixtureSessionActivityAt,
   makeAttachedSession,
   makeBlankSession,
   makePanelLayout,
@@ -2688,7 +2689,7 @@ describe("workbench session shell / library-shell-navigation", () => {
     const workSession = makeSession({
       id: "session:alpha:work",
       title: "Work",
-      order: 1,
+      activityAt: fixtureSessionActivityAt(1),
       tabs: [
         {
           id: "session:alpha:work:db",
@@ -2796,7 +2797,7 @@ describe("workbench session shell / library-shell-navigation", () => {
     const workSession = makeSession({
       id: "session:alpha:work",
       title: "Work",
-      order: 1,
+      activityAt: fixtureSessionActivityAt(1),
       tabs: [
         {
           id: "session:alpha:work:db",

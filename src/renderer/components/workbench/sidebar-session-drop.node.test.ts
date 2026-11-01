@@ -1,7 +1,11 @@
 import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import type { ProjectSession } from "@/lib/types";
 import type { SidebarSectionItem } from "../../../shared/sidebar-sections";
-import { moveSidebarSectionSession, resolveSidebarDropSession } from "./sidebar-session-drop";
+import {
+  moveSidebarSession,
+  resolveSidebarDropSession,
+  resolveSidebarLaneDropPlacement,
+} from "./sidebar-session-drop";
 import type { SidebarThreadDropRequest } from "./sidebar-thread-reorder";
 
 const commands = vi.hoisted(() => ({
@@ -12,7 +16,7 @@ const commands = vi.hoisted(() => ({
   })),
   moveItem: vi.fn(async (_input: unknown) => undefined),
   moveSession: vi.fn(async (_input: unknown) => undefined),
-  reorder: vi.fn(async (_projectId: string | null, _sessionIds: readonly string[]) => undefined),
+  place: vi.fn(async (_sessionId: string, _placement: unknown) => undefined),
   setPinned: vi.fn(async (_sessionId: string, _input: unknown) => undefined),
   reorderPinned: vi.fn(async (_revision: string, _sessionIds: readonly string[]) => undefined),
 }));
@@ -27,7 +31,7 @@ vi.mock("@/lib/agent-runtime-runtime", () => ({
 vi.mock("@/lib/workspace-catalog-commands", () => ({
   workspaceSidebarCommands: { moveItem: commands.moveItem },
   workspaceSessionCommands: {
-    reorder: commands.reorder,
+    place: commands.place,
     setPinned: commands.setPinned,
     reorderPinned: commands.reorderPinned,
   },
@@ -39,7 +43,7 @@ function session(overrides: Partial<ProjectSession> = {}): ProjectSession {
     projectId: "project-alpha",
     noThreadFallbackTitle: "Chat alpha",
     displayTitle: "Chat alpha",
-    order: 0,
+    activityAt: 0,
     pinned: false,
     pinnedOrder: null,
     archived: false,
@@ -83,7 +87,7 @@ beforeEach(() => {
   commands.listItems.mockResolvedValue([]);
 });
 
-describe("Sidebar Section Session moves", () => {
+describe("Sidebar Session moves", () => {
   test("materializes an imported Thread before placing its Session", async () => {
     const catalog = {
       readCurrent: vi.fn(async () => nativeSession),
@@ -122,7 +126,7 @@ describe("Sidebar Section Session moves", () => {
       },
     ]);
     const moveNativeThread = vi.fn(async () => null);
-    await moveSidebarSectionSession({
+    await moveSidebarSession({
       drop: { ...drop, threadId: source.thread?.threadId ?? null, beforeItemId: "placement-beta" },
       session: source,
       moveNativeThread,
@@ -139,7 +143,7 @@ describe("Sidebar Section Session moves", () => {
   test("keeps Section membership when the native Project move fails", async () => {
     const moveNativeThread = vi.fn(async () => null);
     await expect(
-      moveSidebarSectionSession({
+      moveSidebarSession({
         drop: { ...drop, targetContainerId: "project:project-beta" },
         session: nativeSession,
         moveNativeThread,
@@ -173,7 +177,7 @@ describe("Sidebar Section Session moves", () => {
         events.push(pinned ? "pin" : "release");
       });
       const moveNativeThread = vi.fn(async () => null);
-      await moveSidebarSectionSession({
+      await moveSidebarSession({
         drop: { ...drop, threadId: null, targetContainerId },
         session: draft,
         moveNativeThread,
@@ -202,7 +206,7 @@ describe("Sidebar Section Session moves", () => {
       new Error("Target scope already owns a default-draft Project Session"),
     );
     await expect(
-      moveSidebarSectionSession({
+      moveSidebarSession({
         drop: { ...drop, threadId: null, targetContainerId: "pinned" },
         session: session(),
         moveNativeThread: vi.fn(async () => null),
@@ -222,7 +226,7 @@ describe("Sidebar Section Session moves", () => {
     commands.moveItem.mockImplementationOnce(async () => {
       events.push("release");
     });
-    await moveSidebarSectionSession({
+    await moveSidebarSession({
       drop: { ...drop, targetContainerId: "chats" },
       session: nativeSession,
       moveNativeThread,
@@ -251,13 +255,13 @@ describe("Sidebar Section Session moves", () => {
         events.push("membership");
         return { operationId: "move-alpha", projectionRevision: 5 };
       });
-      commands.reorder.mockImplementationOnce(async () => {
-        events.push("position");
-      });
       commands.moveItem.mockImplementationOnce(async () => {
         events.push("release");
       });
-      await moveSidebarSectionSession({
+      commands.place.mockImplementationOnce(async () => {
+        events.push("position");
+      });
+      await moveSidebarSession({
         drop: {
           ...drop,
           targetContainerId: "project:project-beta",
@@ -269,20 +273,18 @@ describe("Sidebar Section Session moves", () => {
         session: nativeSession,
         moveNativeThread,
       });
-      expect(commands.reorder).toHaveBeenCalledWith("project-beta", [
-        "session-before",
-        nativeSession.id,
-        "session-beta",
-        "session-after",
-      ]);
-      expect(events).toEqual(["membership", "position", "release"]);
+      expect(commands.place).toHaveBeenCalledWith(nativeSession.id, {
+        kind: "before",
+        sessionId: "session-beta",
+      });
+      expect(events).toEqual(["membership", "release", "position"]);
     },
   );
 
-  test("keeps a native Chat in its Section if the Session position cannot commit", async () => {
-    commands.reorder.mockRejectedValueOnce(new Error("Destination changed"));
+  test("leaves a native Chat in its destination lane when its position cannot commit", async () => {
+    commands.place.mockRejectedValueOnce(new Error("Destination changed"));
     await expect(
-      moveSidebarSectionSession({
+      moveSidebarSession({
         drop: {
           ...drop,
           targetContainerId: "chats",
@@ -293,18 +295,25 @@ describe("Sidebar Section Session moves", () => {
         moveNativeThread: vi.fn(async () => ({ operationId: "move-alpha", projectionRevision: 5 })),
       }),
     ).rejects.toThrow("Destination changed");
-    expect(commands.moveItem).not.toHaveBeenCalled();
+    expect(commands.moveItem).toHaveBeenCalledWith(expect.objectContaining({ sectionId: null }));
   });
 
   test("moves Runtime chats to Chats by Session identity before clearing the Section", async () => {
     const runtimeSession = session({
       executionRef: { runtimeId: "runtime-alpha", threadId: "root-alpha" },
     });
+    const events: string[] = [];
     commands.moveSession.mockImplementationOnce(async () => {
-      expect(commands.moveItem).not.toHaveBeenCalled();
+      events.push("move");
+    });
+    commands.moveItem.mockImplementationOnce(async () => {
+      events.push("release");
+    });
+    commands.place.mockImplementationOnce(async () => {
+      events.push("position");
     });
     const moveNativeThread = vi.fn(async () => null);
-    await moveSidebarSectionSession({
+    await moveSidebarSession({
       drop: {
         ...drop,
         targetContainerId: "chats",
@@ -317,19 +326,67 @@ describe("Sidebar Section Session moves", () => {
     expect(commands.moveSession).toHaveBeenCalledWith(
       expect.objectContaining({ sessionId: runtimeSession.id, projectId: null }),
     );
-    expect(commands.reorder).toHaveBeenCalledWith(null, [
-      "session-beta",
-      runtimeSession.id,
-      "session-gamma",
-    ]);
-    expect(commands.moveItem).toHaveBeenCalledWith(expect.objectContaining({ sectionId: null }));
+    expect(commands.place).toHaveBeenCalledWith(runtimeSession.id, {
+      kind: "before",
+      sessionId: "session-gamma",
+    });
+    expect(events).toEqual(["move", "release", "position"]);
     expect(moveNativeThread).not.toHaveBeenCalled();
+  });
+
+  test("moves a Runtime chat between built-in lanes by Session identity", async () => {
+    const runtimeSession = session({
+      projectId: null,
+      executionRef: { runtimeId: "runtime-alpha", threadId: "root-alpha" },
+    });
+    const moveNativeThread = vi.fn(async () => null);
+    await moveSidebarSession({
+      drop: {
+        ...drop,
+        sourceContainerId: "chats",
+        targetContainerId: "project:project-beta",
+        targetItemIds: ["session-beta"],
+        beforeItemId: null,
+      },
+      session: runtimeSession,
+      moveNativeThread,
+    });
+    expect(commands.moveSession).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: runtimeSession.id, projectId: "project-beta" }),
+    );
+    expect(commands.place).toHaveBeenCalledWith(runtimeSession.id, {
+      kind: "after",
+      sessionId: "session-beta",
+    });
+    expect(commands.moveItem).not.toHaveBeenCalled();
+    expect(moveNativeThread).not.toHaveBeenCalled();
+  });
+
+  test("unpins a Runtime chat dragged out of Pinned into its own Project lane", async () => {
+    const runtimeSession = session({
+      pinned: true,
+      pinnedOrder: 0,
+      executionRef: { runtimeId: "runtime-alpha", threadId: "root-alpha" },
+    });
+    await moveSidebarSession({
+      drop: {
+        ...drop,
+        sourceContainerId: "project-pinned:project-alpha",
+        targetContainerId: "project:project-alpha",
+        useDefaultOrder: true,
+      },
+      session: runtimeSession,
+      moveNativeThread: vi.fn(async () => null),
+    });
+    expect(commands.moveSession).not.toHaveBeenCalled();
+    expect(commands.setPinned).toHaveBeenCalledWith(runtimeSession.id, { pinned: false });
+    expect(commands.place).not.toHaveBeenCalled();
   });
 
   test("keeps the Section when the Runtime destination rejects the move", async () => {
     commands.moveSession.mockRejectedValueOnce(new Error("Project is unavailable"));
     await expect(
-      moveSidebarSectionSession({
+      moveSidebarSession({
         drop: { ...drop, targetContainerId: "project:project-beta" },
         session: session({ executionRef: { runtimeId: "runtime-alpha", threadId: "root-alpha" } }),
         moveNativeThread: vi.fn(async () => null),
@@ -343,7 +400,7 @@ describe("Sidebar Section Session moves", () => {
       operationId: "move-alpha",
       projectionRevision: 5,
     }));
-    await moveSidebarSectionSession({
+    await moveSidebarSession({
       drop: { ...drop, targetContainerId: "pinned" },
       session: nativeSession,
       moveNativeThread,
@@ -364,7 +421,7 @@ describe("Sidebar Section Session moves", () => {
       operationId: "move-alpha",
       projectionRevision: 5,
     }));
-    await moveSidebarSectionSession({
+    await moveSidebarSession({
       drop: {
         ...drop,
         targetContainerId: "pinned",
@@ -388,11 +445,48 @@ describe("Sidebar Section Session moves", () => {
   test("surfaces a concurrent Pinned reorder conflict instead of silently accepting the wrong position", async () => {
     commands.reorderPinned.mockRejectedValueOnce(new Error("Pinned order changed"));
     await expect(
-      moveSidebarSectionSession({
+      moveSidebarSession({
         drop: { ...drop, targetContainerId: "pinned", beforeItemId: "session-beta" },
         session: nativeSession,
         moveNativeThread: vi.fn(async () => ({ operationId: "move-alpha", projectionRevision: 5 })),
       }),
     ).rejects.toThrow("Pinned order changed");
+  });
+});
+
+describe("Sidebar lane drop placement", () => {
+  const target = { targetItemIds: ["session-beta", "session-alpha", "session-gamma"] };
+
+  test("anchors before the chat the drop lands above", () => {
+    expect(
+      resolveSidebarLaneDropPlacement(
+        { ...target, beforeItemId: "session-gamma" },
+        "session-alpha",
+      ),
+    ).toEqual({ kind: "before", sessionId: "session-gamma" });
+  });
+
+  test("anchors after the last other chat when the drop lands at the end", () => {
+    expect(
+      resolveSidebarLaneDropPlacement({ ...target, beforeItemId: null }, "session-gamma"),
+    ).toEqual({ kind: "after", sessionId: "session-alpha" });
+  });
+
+  test("has no anchor when the destination follows its own order or the boundary is gone", () => {
+    expect(
+      resolveSidebarLaneDropPlacement(
+        { ...target, beforeItemId: "session-gamma", useDefaultOrder: true },
+        "session-alpha",
+      ),
+    ).toBeNull();
+    expect(
+      resolveSidebarLaneDropPlacement(
+        { ...target, beforeItemId: "session-missing" },
+        "session-alpha",
+      ),
+    ).toBeNull();
+    expect(
+      resolveSidebarLaneDropPlacement({ beforeItemId: "session-beta" }, "session-alpha"),
+    ).toBeNull();
   });
 });

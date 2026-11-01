@@ -278,7 +278,7 @@ export const make = (): Effect.Effect<
       }
       if (input.afterThreadId) return { kind: "after" as const, thread_id: input.afterThreadId };
       if (input.insertAtEnd) return { kind: "end" as const };
-      return { kind: "start" as const };
+      return { kind: "default" as const };
     };
 
     const move = Effect.fn("CodexThreadCatalog.move")(function* (
@@ -322,6 +322,12 @@ export const make = (): Effect.Effect<
         return yield* error("move", new Error(`Project not found: ${target.projectId}`));
       }
       const operationId = createOperationId("thread-catalog.move");
+      if (source.pinned && !target.pinned) {
+        yield* core.workspace.apply({
+          operationId: createOperationId("thread-catalog.unpin-before-move"),
+          intent: { kind: "set_thread_pinned", thread_id: input.threadId, pinned: false },
+        });
+      }
       const applied = yield* core.workspace.apply({
         operationId,
         intent: {
@@ -335,25 +341,21 @@ export const make = (): Effect.Effect<
             target.projectId === null
               ? { kind: "projectless" }
               : { kind: "project", project_id: target.projectId },
-          placement: placement(input),
+          placement: target.pinned ? { kind: "default" } : placement(input),
           metadata: {},
         },
       });
-      if (source.pinned || target.pinned) {
+      if (target.pinned) {
         yield* core.workspace.apply({
           operationId: createOperationId("thread-catalog.pin-after-move"),
           intent: {
             kind: "set_thread_pinned",
             thread_id: input.threadId,
-            pinned: target.pinned,
-            ...(target.pinned
-              ? {
-                  placement:
-                    input.beforeThreadId === null
-                      ? { kind: "end" as const }
-                      : { kind: "before" as const, thread_id: input.beforeThreadId },
-                }
-              : {}),
+            pinned: true,
+            placement:
+              input.useDefaultOrder || (!input.beforeThreadId && !input.afterThreadId)
+                ? { kind: "end" as const }
+                : placement(input),
           },
         });
       }

@@ -35,7 +35,7 @@ struct SessionRow {
     id: String,
     project_id: Option<String>,
     fallback_title: String,
-    order: i64,
+    activity_at: i64,
     pinned: i64,
     pinned_order: Option<i64>,
     archived: i64,
@@ -322,6 +322,7 @@ pub(super) fn read(
             project_id,
             include_archived,
             placement_scope,
+            order,
             window,
         } => Ok(ProjectWorkspaceReadValue::TaskWindow {
             tasks: super::task_window::read_task_window(
@@ -331,6 +332,7 @@ pub(super) fn read(
                 project_id.as_deref(),
                 include_archived.unwrap_or(false),
                 placement_scope,
+                order,
                 &window,
             )?,
         }),
@@ -774,7 +776,7 @@ fn read_session(
     connection
         .query_row(
             "SELECT session.id, session.project_id, session.no_thread_fallback_title, \
-               session.\"order\", session.pinned, session.pinned_order, session.archived, \
+               session.activity_at, session.pinned, session.pinned_order, session.archived, \
                session.archived_at, session.unread, \
                thread.thread_id, thread.thread_name, \
                thread.thread_preview, session.created_at, session.updated_at, \
@@ -800,7 +802,7 @@ fn session_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SessionRow> {
         id: row.get(0)?,
         project_id: row.get(1)?,
         fallback_title: row.get(2)?,
-        order: row.get(3)?,
+        activity_at: row.get(3)?,
         pinned: row.get(4)?,
         pinned_order: row.get(5)?,
         archived: row.get(6)?,
@@ -835,7 +837,7 @@ fn session_summary(row: SessionRow) -> ProjectWorkspaceSessionSummary {
         project_id: row.project_id,
         no_thread_fallback_title: row.fallback_title,
         display_title,
-        order: row.order,
+        activity_at: row.activity_at,
         pinned: row.pinned == 1,
         pinned_order: row.pinned_order,
         archived: row.archived == 1,
@@ -1016,21 +1018,21 @@ mod tests {
                          UPDATE database_containers SET default_view_id = 'view-1' \
                            WHERE block_id = 'database-1'; \
                          INSERT INTO project_sessions( \
-                           id, project_id, no_thread_fallback_title, \"order\", pinned, \
+                           id, project_id, no_thread_fallback_title, activity_at, pinned, \
                            pinned_order, archived, archived_at, unread, created_at, updated_at \
                          ) VALUES \
-                           ('session-project', 'project-1', 'Fallback', 2, 1, 0, 0, NULL, 1, \
+                           ('session-project', 'project-1', 'Fallback', 1784431980000, 1, 0, 0, NULL, 1, \
                             '2026-07-19T03:31:00.000Z', '2026-07-19T03:34:00.000Z'), \
-                           ('session-archived', 'project-1', 'Archived session', 3, 0, NULL, 1, \
+                           ('session-archived', 'project-1', 'Archived session', 1784431920000, 0, NULL, 1, \
                             '2026-07-19T03:35:00.000Z', 0, \
                             '2026-07-19T03:32:00.000Z', '2026-07-19T03:35:00.000Z'), \
-                           ('session-archived-project', 'project-2', 'Archived project', 0, 0, \
+                           ('session-archived-project', 'project-2', 'Archived project', 1784431920000, 0, \
                             NULL, 0, NULL, 0, \
                             '2026-07-19T03:32:00.000Z', '2026-07-19T03:35:00.000Z'), \
-                           ('session-foreign', 'project-foreign', 'Foreign session', 0, 0, NULL, \
+                           ('session-foreign', 'project-foreign', 'Foreign session', 1784431980000, 0, NULL, \
                             0, NULL, 0, \
                             '2026-07-19T03:33:00.000Z', '2026-07-19T03:33:00.000Z'), \
-                           ('session-projectless', NULL, 'Projectless', 0, 0, NULL, 0, NULL, 0, \
+                           ('session-projectless', NULL, 'Projectless', 1784431800000, 0, NULL, 0, NULL, 0, \
                             '2026-07-19T03:30:00.000Z', '2026-07-19T03:30:00.000Z'); \
                          INSERT INTO codex_threads( \
                            thread_id, project_id, thread_name, thread_preview, \
@@ -1140,6 +1142,7 @@ mod tests {
                 project_id: Some("project-1".to_owned()),
                 include_archived: Some(true),
                 placement_scope: Default::default(),
+                order: Default::default(),
                 window: CollectionWindowRequest {
                     after: None,
                     first: Some(50),
@@ -1171,6 +1174,7 @@ mod tests {
                 project_id: None,
                 include_archived: None,
                 placement_scope: Default::default(),
+                order: Default::default(),
                 window: CollectionWindowRequest {
                     after: None,
                     first: Some(50),

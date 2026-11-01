@@ -416,6 +416,11 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 200,
         apply: migrate_v199_to_v200,
     },
+    MigrationStep {
+        from_revision: 200,
+        to_revision: 201,
+        apply: migrate_v200_to_v201,
+    },
 ];
 
 fn resolve_migration_path(
@@ -2620,6 +2625,21 @@ fn migrate_v199_to_v200(
     Ok(())
 }
 
+fn migrate_v200_to_v201(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v200_to_v201.sql"))?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            r#"{"session_activity_and_manual_placement":true}"#],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
 fn migrate_v196_to_v197(
     connection: &Connection,
     context: &MigrationContext,
@@ -3543,6 +3563,14 @@ fn test_current_store_template() -> Result<&'static Mutex<Connection>, StoreErro
     TEST_CURRENT_STORE_TEMPLATE
         .get()
         .ok_or_else(|| corrupt("Test Store template was not initialized"))
+}
+
+/// Rewinds a Store built at the current schema to v200, so tests can reproduce upgrades from
+/// predecessors whose data was created through current Modules.
+#[cfg(test)]
+pub(super) fn rewind_v201_to_v200(connection: &Connection) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../tests/fixtures/rewind-v201-to-v200.sql"))?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -8641,7 +8669,8 @@ mod tests {
                 (196, 197),
                 (197, 198),
                 (198, 199),
-                (199, 200)
+                (199, 200),
+                (200, 201)
             ]
         );
         let states = connection
@@ -9246,6 +9275,101 @@ mod tests {
                 )
                 .unwrap(),
             new_epoch
+        );
+    }
+
+    #[test]
+    fn rewinding_the_current_schema_restores_v200_and_upgrades_again() {
+        let profile = tempdir().unwrap();
+        let mut connection = open_writer(&profile.path().join("nodex.db")).unwrap();
+        install_current_schema(&mut connection).unwrap();
+        with_schema_rebuild_transaction(&mut connection, |transaction| {
+            rewind_v201_to_v200(transaction)?;
+            validate_schema_identity(transaction, 200)?;
+            migrate_v200_to_v201(
+                transaction,
+                &MigrationContext {
+                    source_revision: 200,
+                    target_revision: 201,
+                    backup_name: "rewind.db".into(),
+                    source_schema_fingerprint: published_format(200)?.schema_fingerprint,
+                    target_schema_fingerprint: published_format(201)?.schema_fingerprint,
+                    completed_at_unix_ms: 1,
+                },
+            )
+        })
+        .unwrap();
+        validate_schema_identity(&connection, 201).unwrap();
+    }
+
+    #[test]
+    fn sidebar_activity_migration_backfills_creation_and_native_recency_and_preserves_bindings() {
+        let profile = tempdir().unwrap();
+        fs::write(
+            profile.path().join("nodex.db"),
+            include_bytes!("../../tests/fixtures/store-v191.db"),
+        )
+        .unwrap();
+        let mut connection = open_writer(&profile.path().join("nodex.db")).unwrap();
+        with_schema_rebuild_transaction(&mut connection, |transaction| {
+            for step in MIGRATION_STEPS.iter().filter(|step|step.from_revision>=191 && step.to_revision<=200) {
+                (step.apply)(transaction,&MigrationContext {
+                    source_revision:step.from_revision,target_revision:step.to_revision,
+                    backup_name:"sidebar-activity-fixture.db".into(),
+                    source_schema_fingerprint:published_format(step.from_revision)?.schema_fingerprint,
+                    target_schema_fingerprint:published_format(step.to_revision)?.schema_fingerprint,completed_at_unix_ms:1,
+                })?;
+            }
+            transaction.execute_batch("INSERT INTO project_sessions(id,no_thread_fallback_title,\"order\",created_at,updated_at) VALUES \
+               ('activity:draft','Draft',0,'2026-01-01T00:00:00.125Z','2026-12-01T00:00:00.000Z'), \
+               ('activity:older','Older',1,'2026-01-01T00:00:00.125Z','2026-12-01T00:00:00.000Z'), \
+               ('activity:newer','Newer',2,'2026-01-01T00:00:00.125Z','2026-12-01T00:00:00.000Z'); \
+               INSERT INTO codex_threads(thread_id,created_at,updated_at,recency_at,linked_at) VALUES \
+               ('activity:thread:older',1,2,2,'2026-01-01T00:00:00.125Z'), \
+               ('activity:thread:newer',1,1767225601000,1767225601000,'2026-01-01T00:00:00.125Z'); \
+               INSERT INTO project_session_threads(session_id,thread_id,linked_at) VALUES \
+               ('activity:older','activity:thread:older','2026-01-01T00:00:00.125Z'), \
+               ('activity:newer','activity:thread:newer','2026-01-01T00:00:00.125Z'); \
+               UPDATE project_sessions SET remind_at='2026-12-24T09:00:00.000Z' WHERE id='activity:draft';")?;
+            migrate_v200_to_v201(transaction,&MigrationContext {
+                source_revision:200,target_revision:201,backup_name:"sidebar-activity-fixture.db".into(),
+                source_schema_fingerprint:published_format(200)?.schema_fingerprint,
+                target_schema_fingerprint:published_format(201)?.schema_fingerprint,completed_at_unix_ms:1,
+            })?;
+            Ok(())
+        }).unwrap();
+        validate_schema_identity(&connection, 201).unwrap();
+        let rows=connection.prepare("SELECT id,activity_at,manual_rank FROM project_sessions WHERE id LIKE 'activity:%' ORDER BY id").unwrap().query_map([],|r|Ok((r.get::<_,String>(0)?,r.get::<_,i64>(1)?,r.get::<_,Option<i64>>(2)?))).unwrap().collect::<rusqlite::Result<Vec<_>>>().unwrap();
+        assert_eq!(
+            rows,
+            vec![
+                ("activity:draft".into(), 1767225600125, None),
+                ("activity:newer".into(), 1767225601000, None),
+                ("activity:older".into(), 1767225600125, None)
+            ]
+        );
+        assert_eq!(connection.query_row("SELECT count(*) FROM project_session_threads WHERE session_id LIKE 'activity:%'",[],|r|r.get::<_,i64>(0)).unwrap(),2);
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT remind_at FROM project_sessions WHERE id='activity:draft'",
+                    [],
+                    |r| r.get::<_, Option<String>>(0)
+                )
+                .unwrap()
+                .as_deref(),
+            Some("2026-12-24T09:00:00.000Z")
+        );
+        assert_eq!(connection.query_row("SELECT count(*) FROM sqlite_schema WHERE name IN ('workspace_sidebar_lanes','workspace_sidebar_positions')",[],|r|r.get::<_,i64>(0)).unwrap(),0);
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT count(*) FROM pragma_table_info('project_sessions') WHERE name='order'",
+                    [],
+                    |r| r.get::<_, i64>(0)
+                )
+                .unwrap(),
+            0
         );
     }
 }

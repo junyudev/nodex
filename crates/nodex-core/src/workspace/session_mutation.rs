@@ -153,26 +153,8 @@ pub(super) fn mutate_session(
             )
         }
         ProjectSessionIntent::RecordUserMessage { message_id } => {
-            validate_id("message_id", message_id)?;
-            let accepted = connection.execute(
-                "INSERT INTO project_session_user_message_receipts(session_id, message_id) VALUES (?1, ?2) ON CONFLICT DO NOTHING",
-                params![session_id, message_id],
-            )?;
-            if accepted == 1 {
-                return set_session_reminder(
-                    connection,
-                    library_id,
-                    context,
-                    store_epoch,
-                    operation_id,
-                    request_hash,
-                    session_id,
-                    &authority,
-                    None,
-                    None,
-                    false,
-                );
-            }
+            let now = sqlite_now(connection)?;
+            let changed = accept_person_message(connection, session_id, message_id, &now)?;
             finish_session_mutation(
                 connection,
                 library_id,
@@ -184,8 +166,12 @@ pub(super) fn mutate_session(
                 session_id,
                 &authority,
                 Vec::new(),
-                SessionInvalidationKind::None,
-                sqlite_now(connection)?,
+                if changed {
+                    SessionInvalidationKind::SummaryAndDetail
+                } else {
+                    SessionInvalidationKind::None
+                },
+                now,
             )
         }
         ProjectSessionIntent::SetArchived { archived } => set_session_archived(
@@ -540,6 +526,10 @@ fn set_session_reminder(
     };
     if changed > 0 && deliver {
         connection.execute("INSERT INTO project_session_reminder_deliveries(delivery_id,session_id,remind_at,next_attempt_at) VALUES (?1,?2,?3,?4)", params![operation_id,session_id,expected,now])?;
+    }
+    // A reminder that comes due brings its chat back to the top, like a person's message.
+    if changed > 0 && expected.is_some() {
+        super::session_order::raise_activity(connection, session_id, &now)?;
     }
     finish_session_mutation(
         connection,
@@ -955,6 +945,34 @@ pub(super) fn validate_id(name: &str, value: &str) -> Result<(), StoreError> {
     Err(invalid(&format!(
         "{name} must be a canonical identity of at most {MAX_ID_LENGTH} bytes"
     )))
+}
+
+/// A person's newly accepted message becomes the Session's activity and ends its reminder.
+/// Receipts keep retries and restarts idempotent. Returns whether the Session changed.
+pub(super) fn accept_person_message(
+    connection: &Connection,
+    session_id: &str,
+    message_id: &str,
+    now: &str,
+) -> Result<bool, StoreError> {
+    validate_id("message_id", message_id)?;
+    let accepted = connection.execute(
+        "INSERT INTO project_session_user_message_receipts(session_id, message_id) VALUES (?1, ?2) ON CONFLICT DO NOTHING",
+        params![session_id, message_id],
+    )?;
+    if accepted == 0 {
+        return Ok(false);
+    }
+    let moved = super::session_order::raise_activity(connection, session_id, now)?;
+    let cleared = connection.execute(
+        "UPDATE project_sessions SET remind_at = NULL, updated_at = ?2 WHERE id = ?1 AND remind_at IS NOT NULL",
+        params![session_id, now],
+    )?;
+    let cancelled = connection.execute(
+        "DELETE FROM project_session_reminder_deliveries WHERE session_id = ?1",
+        [session_id],
+    )?;
+    Ok(moved || cleared + cancelled > 0)
 }
 
 pub(super) fn sqlite_now(connection: &Connection) -> Result<String, StoreError> {

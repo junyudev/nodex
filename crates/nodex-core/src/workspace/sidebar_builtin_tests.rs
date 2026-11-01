@@ -466,6 +466,7 @@ fn attaching_an_acp_thread_and_moving_projects_preserves_the_session_pin_positio
         Intent::MoveSession {
             session_id: "session:acp".to_owned(),
             project_id: None,
+            placement: None,
         },
     );
     let (moved_revision, moved) = order(module, Lane::PinnedSessions, None, 100);

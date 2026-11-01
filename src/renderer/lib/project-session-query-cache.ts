@@ -63,8 +63,7 @@ export function sortProjectSessionSummariesForSidebar(
       const rightPinnedOrder = right.pinnedOrder ?? Number.MAX_SAFE_INTEGER;
       if (leftPinnedOrder !== rightPinnedOrder) return leftPinnedOrder - rightPinnedOrder;
     }
-    if (left.order !== right.order) return left.order - right.order;
-    return left.createdAt.localeCompare(right.createdAt);
+    return right.activityAt - left.activityAt || left.id.localeCompare(right.id);
   });
 }
 
@@ -74,7 +73,7 @@ export function projectSessionToSummary(session: ProjectSession): ProjectSession
     projectId: session.projectId,
     noThreadFallbackTitle: session.noThreadFallbackTitle,
     displayTitle: session.displayTitle,
-    order: session.order,
+    activityAt: session.activityAt,
     pinned: session.pinned,
     pinnedOrder: session.pinnedOrder,
     archived: session.archived,
@@ -221,9 +220,7 @@ export async function invalidateProjectSessionScope(
     }
     invalidations.push(
       queryClient.invalidateQueries({
-        queryKey: queryKeys.projectSessions.summaries(
-          scope.kind === "project" ? scope.projectId : null,
-        ),
+        queryKey: ["projectSessions", "summaries", scope.kind === "project" ? scope.projectId : ""],
       }),
     );
   }

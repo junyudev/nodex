@@ -126,14 +126,16 @@ export function boardByProjectQueryOptions(projectId: string) {
 export function projectSessionSummariesQueryOptions(
   projectId: string | null,
   placementScope: NonNullable<ProjectSessionSummaryWindowInput["placementScope"]> = "all",
+  order: NonNullable<ProjectSessionSummaryWindowInput["order"]> = "activity",
 ) {
-  const queryKey = queryKeys.projectSessions.summaries(projectId, placementScope);
+  const queryKey = queryKeys.projectSessions.summaries(projectId, placementScope, order);
   return queryOptions({
     queryKey,
     queryFn: async ({ client, queryKey: activeQueryKey }): Promise<ProjectSessionSummaryWindow> => {
       const incoming = (await invoke("workspace:tasks:list", projectId, {
         first: 50,
         placementScope,
+        order,
       })) as ProjectSessionSummaryWindow;
       return preferNewestProjectSessionSummaryWindow(
         client.getQueryData<ProjectSessionSummaryWindow>(activeQueryKey),

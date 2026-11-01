@@ -67,7 +67,7 @@ function makeSummary(
     projectId,
     noThreadFallbackTitle: id,
     displayTitle: id,
-    order: 0,
+    activityAt: 0,
     pinned: false,
     pinnedOrder: null,
     archived: false,
@@ -176,7 +176,7 @@ const WORKSPACE_SESSION_COMMANDS = new Set([
   "project-sessions:ensure-default-draft",
   "project-sessions:mark-unread",
   "project-sessions:set-reminder",
-  "project-sessions:reorder",
+  "project-sessions:place",
   "project-sessions:set-pinned",
 ]);
 
@@ -187,8 +187,8 @@ function isWorkspaceSessionCommand(channel: string): boolean {
 function legacyWorkspaceSessionArgs(channel: string, payload: Record<string, unknown>): unknown[] {
   if (channel === "project-sessions:create") return [payload.input];
   if (channel === "project-sessions:ensure-default-draft") return [payload.projectId];
-  if (channel === "project-sessions:reorder") {
-    return [payload.projectId, payload.orderedSessionIds];
+  if (channel === "project-sessions:place") {
+    return [payload.sessionId, payload.placement];
   }
   if (channel === "project-sessions:set-reminder")
     return [payload.sessionId, { remindAt: payload.remindAt }];
@@ -219,6 +219,7 @@ describe("useWorkbenchSessionCatalog", () => {
         if (input.placementScope === "all")
           return makeWindow([section, visible], { projectionRevision: revision });
         expect(input.placementScope).toBe("builtin");
+        expect(input.order).toBe("manual");
         if (revision === 2) return makeWindow([moved, visible], { projectionRevision: revision });
         if (input.after) {
           expect(input.after).toBe("builtin-next");
@@ -245,6 +246,7 @@ describe("useWorkbenchSessionCatalog", () => {
           activeProjectId: "alpha",
           resolveScene: catalog.resolveScene,
           placementScope: "builtin",
+          order: "manual",
         });
         return { catalog, sidebar };
       },
@@ -289,7 +291,7 @@ describe("useWorkbenchSessionCatalog", () => {
       });
       expect(
         client.getQueryData<ProjectSessionSummaryWindow>(
-          queryKeys.projectSessions.summaries("alpha", "builtin"),
+          queryKeys.projectSessions.summaries("alpha", "builtin", "manual"),
         )?.projectionRevision,
       ).toBe(2);
       await act(async () => {
@@ -1151,10 +1153,10 @@ describe("useWorkbenchSessionCatalog", () => {
   });
 
   test("commits canonical Session order for a pre-thread New Chat", async () => {
-    const chat = makeSummary("session:chat", "alpha", { order: 0 });
+    const chat = makeSummary("session:chat", "alpha", { activityAt: 1 });
     const draft = makeSummary("session:draft", "alpha", {
       displayTitle: "New chat",
-      order: 1,
+      activityAt: 2,
     });
     let canonical = [chat, draft];
     let projectionRevision = 1;
@@ -1162,12 +1164,9 @@ describe("useWorkbenchSessionCatalog", () => {
       if (channel === "workspace:tasks:list") {
         return Promise.resolve(makeWindow(canonical, { projectionRevision }));
       }
-      if (channel === "project-sessions:reorder") {
-        expect(args).toEqual(["alpha", ["session:draft", "session:chat"]]);
-        canonical = [
-          { ...draft, order: 0 },
-          { ...chat, order: 1 },
-        ];
+      if (channel === "project-sessions:place") {
+        expect(args).toEqual(["session:draft", { kind: "before", sessionId: "session:chat" }]);
+        canonical = [draft, chat];
         projectionRevision += 1;
         return Promise.resolve();
       }
@@ -1179,7 +1178,10 @@ describe("useWorkbenchSessionCatalog", () => {
     });
 
     await act(async () => {
-      await hook.result.current.reorder("alpha", ["session:draft", "session:chat"]);
+      await hook.result.current.place("session:draft", {
+        kind: "before",
+        sessionId: "session:chat",
+      });
     });
 
     await waitFor(() => {

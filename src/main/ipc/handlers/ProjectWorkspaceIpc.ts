@@ -1,3 +1,7 @@
+import {
+  ProjectSessionPlaceCommandSchema,
+  ProjectSessionSummaryWindowInputSchema,
+} from "../../../shared/schemas/session-order";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
@@ -476,7 +480,10 @@ export const live: Layer.Layer<
     yield* invokeEffectQuery("workspace:tasks:list", (_, projectId, input) =>
       Effect.gen(function* () {
         const startedAt = getDevRuntimeMetricStart();
-        const window = yield* projects.listProjectSessionSummaryWindow(projectId, input);
+        const parsed = yield* run("workspace:tasks:list", () =>
+          ProjectSessionSummaryWindowInputSchema.parse(input ?? {}),
+        );
+        const window = yield* projects.listProjectSessionSummaryWindow(projectId, parsed);
         yield* Effect.sync(() =>
           logDevRuntimeMetric("ipc.workspace_tasks_list", {
             projectId,
@@ -553,13 +560,15 @@ export const live: Layer.Layer<
         ),
       ),
     );
-    yield* handleLocalCommitCommand("project-sessions:reorder", (event, command) =>
+    yield* handleLocalCommitCommand("project-sessions:place", (event, command) =>
       authorize(event).pipe(
         Effect.andThen(
           catalogCommand(
-            "project-sessions:reorder",
+            "project-sessions:place",
             command,
-            projects.reorderProjectSessions(command),
+            run("project-sessions:place", () =>
+              ProjectSessionPlaceCommandSchema.parse(command),
+            ).pipe(Effect.flatMap((parsed) => projects.placeProjectSession(parsed))),
           ),
         ),
       ),

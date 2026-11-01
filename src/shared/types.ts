@@ -1127,7 +1127,7 @@ export interface ProjectSession {
   projectId: string | null;
   noThreadFallbackTitle: string;
   displayTitle: string;
-  order: number;
+  activityAt: number;
   pinned: boolean;
   pinnedOrder: number | null;
   archived: boolean;
@@ -1145,7 +1145,7 @@ export interface ProjectSessionSummary {
   projectId: string | null;
   noThreadFallbackTitle: string;
   displayTitle: string;
-  order: number;
+  activityAt: number;
   pinned: boolean;
   pinnedOrder: number | null;
   archived: boolean;
@@ -1168,7 +1168,13 @@ export interface ProjectSessionListOptions {
   includeArchived?: boolean;
 }
 
+export type ProjectSessionPlacement = {
+  readonly kind: "before" | "after";
+  readonly sessionId: string;
+};
+
 export interface ProjectSessionSummaryWindowInput extends ProjectSessionListOptions {
+  order?: "activity" | "manual";
   /** Builtin sidebar lanes exclude direct custom Section placements before pagination. */
   placementScope?: CoreProtocolComponents["schemas"]["ProjectWorkspaceTaskPlacementScope"];
   after?: string | null;

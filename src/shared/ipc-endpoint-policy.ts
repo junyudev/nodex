@@ -481,7 +481,7 @@ type CoreLocalCommitCommandEndpointPolicy =
   | "project-sessions:mark-unread"
   | "project-sessions:set-reminder"
   | "project-sessions:rename"
-  | "project-sessions:reorder"
+  | "project-sessions:place"
   | "project-sessions:set-pinned"
   | "project-sessions:set-pinned-order"
   | "project-sessions:unarchive"

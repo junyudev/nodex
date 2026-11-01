@@ -1318,7 +1318,7 @@ describe("Agent Runtime conversation adapter", () => {
         projectId: "project",
         noThreadFallbackTitle: "Task",
         displayTitle: "Task",
-        order: 0,
+        activityAt: 0,
         pinned: false,
         pinnedOrder: null,
         archived: false,

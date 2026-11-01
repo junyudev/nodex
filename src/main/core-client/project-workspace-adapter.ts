@@ -781,7 +781,7 @@ const fromCoreSessionSummary = (
     ? { runtimeId: session.execution_ref.runtime_id, threadId: session.execution_ref.thread_id }
     : null,
   displayTitle: session.display_title,
-  order: session.order,
+  activityAt: session.activity_at,
   pinned: session.pinned,
   pinnedOrder: session.pinned_order ?? null,
   archived: session.archived,

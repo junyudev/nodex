@@ -53,7 +53,7 @@ const session = (overrides: Partial<CoreSession> = {}): CoreSession => ({
   project_id: "project:one",
   no_thread_fallback_title: "New chat",
   display_title: "Mapped session",
-  order: 2,
+  activity_at: 2,
   pinned: true,
   pinned_order: 1,
   archived: false,
@@ -189,6 +189,7 @@ it.effect("keeps Session directories complete and scopes sidebar pages explicitl
         project_id: "project:one",
         include_archived: false,
         placement_scope: "all",
+        order: "activity",
         window: { after: null, first: undefined },
       },
       {
@@ -196,6 +197,7 @@ it.effect("keeps Session directories complete and scopes sidebar pages explicitl
         project_id: null,
         include_archived: false,
         placement_scope: "builtin",
+        order: "activity",
         window: { after: "sidebar-cursor", first: 50 },
       },
     ]);

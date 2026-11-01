@@ -16,7 +16,7 @@ const chat = (id: string, due: number): ProjectSession => ({
   projectId: null,
   noThreadFallbackTitle: id,
   displayTitle: id,
-  order: 0,
+  activityAt: 0,
   pinned: false,
   pinnedOrder: null,
   archived: false,

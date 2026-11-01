@@ -480,7 +480,7 @@ import type {
   ProjectSessionPinnedCommandInput,
   ProjectSessionPinnedOrderCommandInput,
   ProjectSessionRenameCommandInput,
-  ProjectSessionReorderCommandInput,
+  ProjectSessionPlaceCommandInput,
   ProjectSessionUnreadCommandInput,
   ProjectSessionReminderCommandInput,
   ProjectSessionOpenedCommandInput,
@@ -1235,8 +1235,8 @@ export interface IpcApi
     args: [command: ProjectSessionDeleteCommandInput];
     result: CoreLocalCommitResult<boolean>;
   };
-  "project-sessions:reorder": {
-    args: [command: ProjectSessionReorderCommandInput];
+  "project-sessions:place": {
+    args: [command: ProjectSessionPlaceCommandInput];
     result: CoreLocalCommitResult<void>;
   };
   "project-sessions:set-pinned": {

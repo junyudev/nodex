@@ -6,9 +6,11 @@ import {
   clampCodexSidebarWidth,
 } from "./codex-sidebar-auto-reveal";
 import {
+  normalizeSidebarChatOrder,
   normalizeSidebarCollapsibleSectionsState,
   normalizeSidebarListExtraPages,
   withSidebarListExtraPages,
+  type SidebarChatOrder,
   type SidebarDisclosureSectionId,
   type SidebarCollapsibleSectionsState,
   type SidebarListExtraPagesState,
@@ -19,6 +21,7 @@ import { WORKBENCH_PERSIST_DEBOUNCE_MS } from "./timing";
 
 export type RecentPageSession = WorkbenchRecentPageSession;
 export type {
+  SidebarChatOrder,
   SidebarCollapsibleSectionId,
   SidebarDisclosureSectionId,
   SidebarCollapsibleSectionsState,
@@ -31,6 +34,7 @@ export interface WorkbenchSidebarPreferences {
   readonly width: number;
   readonly collapsibleSections: SidebarCollapsibleSectionsState;
   readonly listExtraPages: SidebarListExtraPagesState;
+  readonly chatOrder: SidebarChatOrder;
 }
 
 export type DatabaseViewTabDisplayMode = "icon_and_text" | "text_only" | "icon_only";
@@ -62,6 +66,7 @@ function makeDefaultWorkbenchProfilePreferences(): WorkbenchProfilePreferences {
       width: CODEX_SIDEBAR_WIDTH_DEFAULT_PX,
       collapsibleSections: normalizeSidebarCollapsibleSectionsState(undefined),
       listExtraPages: {},
+      chatOrder: "activity",
     },
     databaseViewTabs: { displayModeByDatabaseId: {}, ruleBarOpenByViewId: {} },
     recentPageSessions: [],
@@ -145,6 +150,7 @@ function normalizeWorkbenchProfilePreferencesAtBoundary(
       ),
       collapsibleSections: normalizeSidebarCollapsibleSectionsState(sidebar?.collapsibleSections),
       listExtraPages: normalizeSidebarListExtraPages(sidebar?.listExtraPages),
+      chatOrder: normalizeSidebarChatOrder(sidebar?.chatOrder),
     },
     databaseViewTabs: {
       displayModeByDatabaseId: normalizeDatabaseViewTabDisplayModes(
@@ -347,6 +353,16 @@ export function useWorkbenchProfilePreferences() {
     [update],
   );
 
+  const setSidebarChatOrder = useCallback(
+    (chatOrder: SidebarChatOrder) => {
+      update((current) => {
+        if (current.sidebar.chatOrder === chatOrder) return current;
+        return { ...current, sidebar: { ...current.sidebar, chatOrder } };
+      });
+    },
+    [update],
+  );
+
   const setDatabaseViewTabDisplayMode = useCallback(
     (databaseId: string, mode: DatabaseViewTabDisplayMode) => {
       update((current) => {
@@ -418,6 +434,7 @@ export function useWorkbenchProfilePreferences() {
       setSidebarWidth,
       setSidebarCollapsibleSectionCollapsed,
       setSidebarListExtraPages,
+      setSidebarChatOrder,
       setDatabaseViewTabDisplayMode,
       setDatabaseViewRuleBarOpen,
       recordRecentPageLeave,
@@ -430,6 +447,7 @@ export function useWorkbenchProfilePreferences() {
       setSidebarCollapsed,
       setSidebarCollapsibleSectionCollapsed,
       setSidebarListExtraPages,
+      setSidebarChatOrder,
       setDatabaseViewTabDisplayMode,
       setDatabaseViewRuleBarOpen,
       setSidebarWidth,

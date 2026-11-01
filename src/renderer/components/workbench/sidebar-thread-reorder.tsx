@@ -166,6 +166,8 @@ interface SidebarThreadDropRect {
 }
 
 export interface SidebarThreadReorderController {
+  /** False when the lane keeps its own order: drops among its own rows change nothing. */
+  reorderable?: boolean;
   handleDragStart?: (event: DragStartEvent) => void;
   handleDragOver?: (event: DragMoveEvent | DragOverEvent, pointerY: number | null) => void;
   handleDragCancel?: (event?: DragCancelEvent | DragEndEvent) => void;
@@ -937,6 +939,10 @@ export function dispatchSidebarThreadDragEnd({
   const sameController =
     overPayload.kind !== "sidebar-thread-container" &&
     overPayload.controller === activePayload.controller;
+  if (sameController && activePayload.controller.reorderable === false) {
+    activePayload.controller.handleDragCancel?.(event);
+    return "cancelled";
+  }
   if (
     sameController &&
     (activePayload.itemId !== undefined ||
@@ -965,7 +971,16 @@ export function dispatchSidebarThreadDragEnd({
     activePayload.controller.handleDragCancel?.(event);
     return "cancelled";
   }
-  const dropTarget = resolvedDropTarget;
+  // A lane that keeps its own order takes an arriving chat by that order, not at the pointer.
+  const dropTarget: SidebarThreadResolvedExternalDropTarget =
+    overPayload.kind === "sidebar-item" && overPayload.controller.reorderable === false
+      ? {
+          beforeThreadId: null,
+          targetContainerId: resolvedDropTarget.targetContainerId,
+          targetProjectKind: resolvedDropTarget.targetProjectKind,
+          useDefaultOrder: true,
+        }
+      : resolvedDropTarget;
   const activeThread = activePayload.thread;
   activePayload.controller.handleDragCancel?.(event);
   const drop: SidebarThreadDropRequest = {
@@ -1331,6 +1346,7 @@ export function SidebarThreadDropContainer({
 export function useSidebarThreadReorderController({
   visibleThreadKeys,
   onVisibleThreadOrderChange,
+  reorderable = true,
 }: {
   visibleThreadKeys: string[];
   onVisibleThreadOrderChange?: (change: {
@@ -1338,6 +1354,11 @@ export function useSidebarThreadReorderController({
     visibleThreadKeys: string[];
     nextVisibleThreadKeys: string[];
   }) => Promise<void>;
+  /**
+   * A lane that keeps its own order shows no insertion boundary for its own rows and ignores
+   * drops onto itself; its rows still drag out to other destinations.
+   */
+  reorderable?: boolean;
 }): {
   controller: SidebarThreadReorderController;
   displayedVisibleThreadKeys: string[];
@@ -1371,15 +1392,16 @@ export function useSidebarThreadReorderController({
 
   const controller = useMemo<SidebarThreadReorderController>(
     () => ({
+      reorderable,
       handleDragOver(event, pointerY) {
-        setDropIndicatorTarget(resolveDropTarget(event, pointerY));
+        setDropIndicatorTarget(reorderable ? resolveDropTarget(event, pointerY) : null);
       },
       handleDragCancel() {
         setDropIndicatorTarget(null);
       },
       handleDragEnd(event, pointerY) {
         const activeThreadKey = String(event.active.id);
-        const target = resolveDropTarget(event, pointerY);
+        const target = reorderable ? resolveDropTarget(event, pointerY) : null;
         setDropIndicatorTarget(null);
         if (!target || !onVisibleThreadOrderChange) return;
 
@@ -1397,7 +1419,13 @@ export function useSidebarThreadReorderController({
         );
       },
     }),
-    [displayedVisibleThreadKeys, onVisibleThreadOrderChange, orderHandoff, resolveDropTarget],
+    [
+      displayedVisibleThreadKeys,
+      onVisibleThreadOrderChange,
+      orderHandoff,
+      reorderable,
+      resolveDropTarget,
+    ],
   );
 
   return {

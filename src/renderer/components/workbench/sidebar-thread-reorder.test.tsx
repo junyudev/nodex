@@ -22,6 +22,7 @@ import {
   useSidebarThreadReorderController,
   type PendingSidebarThreadDrop,
   type SidebarThreadContainerDndPayload,
+  type SidebarThreadDropRequest,
   type SidebarThreadItemDndPayload,
   type SidebarThreadReorderController,
 } from "./sidebar-thread-reorder";
@@ -878,6 +879,113 @@ describe("cross-container drag completion", () => {
     expect(dragEndCount).toBe(1);
     expect(dragCancelCount).toBe(0);
     expect(drops).toEqual([]);
+  });
+
+  test("ignores drops among a lane's own rows while the lane keeps its own order", async () => {
+    let dragEndCount = 0;
+    let dragCancelCount = 0;
+    const drops: unknown[] = [];
+    const controller: SidebarThreadReorderController = {
+      reorderable: false,
+      handleDragCancel() {
+        dragCancelCount += 1;
+      },
+      handleDragEnd() {
+        dragEndCount += 1;
+      },
+    };
+    const activePayload = makeSidebarThreadPayload({
+      containerId: "chats",
+      controller,
+      threadId: "thread-beta",
+      threadKey: "local:thread-beta",
+    });
+    const targetPayload = makeSidebarThreadPayload({
+      containerId: "chats",
+      controller,
+      threadId: "thread-alpha",
+      threadKey: "local:thread-alpha",
+    });
+
+    const disposition = dispatchSidebarThreadDragEnd({
+      destinationController: null,
+      event: makeRichDragEndEvent({
+        activePayload,
+        overId: "local:thread-alpha",
+        overPayload: targetPayload,
+      }),
+      getThreadIdByThreadKey: (threadKey) => threadKey.slice("local:".length),
+      homeContainerIdByThreadId: new Map(),
+      onError() {},
+      onThreadDrop(drop) {
+        drops.push(drop);
+        return { operationId: "move:alpha", projectionRevision: 1 };
+      },
+      pointerY: 4,
+      updatePendingThreadDrops() {},
+    });
+    await Promise.resolve();
+
+    expect(disposition).toBe("cancelled");
+    expect(dragEndCount).toBe(0);
+    expect(dragCancelCount).toBe(1);
+    expect(drops).toEqual([]);
+  });
+
+  test("moves a chat into a lane that keeps its own order without a pointer anchor", async () => {
+    const drops: SidebarThreadDropRequest[] = [];
+    const sourceController: SidebarThreadReorderController = { handleDragEnd() {} };
+    const destinationController: SidebarThreadReorderController = {
+      reorderable: false,
+      handleDragEnd() {},
+    };
+    const activePayload = makeSidebarThreadPayload({
+      containerId: "project:alpha",
+      controller: sourceController,
+      itemId: "session-beta",
+      sessionId: "session-beta",
+      threadId: "thread-beta",
+      threadKey: "local:thread-beta",
+    });
+    const targetPayload = makeSidebarThreadPayload({
+      containerId: "chats",
+      controller: destinationController,
+      itemId: "session-alpha",
+      threadId: "thread-alpha",
+      threadKey: "local:thread-alpha",
+    });
+
+    const disposition = dispatchSidebarThreadDragEnd({
+      destinationController,
+      event: makeRichDragEndEvent({
+        activePayload,
+        overId: "local:thread-alpha",
+        overPayload: targetPayload,
+      }),
+      getThreadIdByThreadKey: (threadKey) => threadKey.slice("local:".length),
+      homeContainerIdByThreadId: new Map(),
+      onError() {},
+      onThreadDrop(drop) {
+        drops.push(drop);
+        return null;
+      },
+      pointerY: 4,
+      updatePendingThreadDrops() {},
+    });
+    await Promise.resolve();
+
+    expect(disposition).toBe("moved");
+    expect(drops).toEqual([
+      {
+        beforeThreadId: null,
+        itemId: "session-beta",
+        sessionId: "session-beta",
+        sourceContainerId: "project:alpha",
+        targetContainerId: "chats",
+        threadId: "thread-beta",
+        useDefaultOrder: true,
+      },
+    ]);
   });
 
   test("does not submit or install optimistic state when a regular row returns home", async () => {

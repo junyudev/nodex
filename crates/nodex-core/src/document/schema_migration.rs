@@ -1579,7 +1579,7 @@ mod tests {
                             [source_version],
                         )
                         .unwrap();
-                    connection.execute("INSERT INTO project_sessions(id,no_thread_fallback_title,\"order\",created_at,updated_at) VALUES ('session-1','Keep chat',0,'2026-08-25T00:00:00.000Z','2026-08-25T00:00:00.000Z')", []).unwrap();
+                    connection.execute("INSERT INTO project_sessions(id,no_thread_fallback_title,activity_at,created_at,updated_at) VALUES ('session-1','Keep chat',1787616000000,'2026-08-25T00:00:00.000Z','2026-08-25T00:00:00.000Z')", []).unwrap();
                     connection.execute("INSERT INTO project_session_pages(session_id,page_id,linked_at) VALUES ('session-1','page-owner','2026-08-25T00:00:00.000Z')", []).unwrap();
                 }
                 let source_repository = DocumentReadRepository::new(&connection);

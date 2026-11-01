@@ -51,7 +51,7 @@ function buildSession(): ProjectSession {
     projectId: project.id,
     noThreadFallbackTitle: "Large content performance",
     displayTitle: "Large content performance",
-    order: 0,
+    activityAt: 0,
     pinned: false,
     pinnedOrder: null,
     archived: false,
