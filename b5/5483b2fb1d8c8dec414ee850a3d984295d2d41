@@ -1,0 +1,53 @@
+scripts/immutable-artifact-cache.test.ts
+  s_61ededb051faa8::t_a1427cc2996a47 399-401,472-474,479-503
+  s_de900885deb30b::t_64d2e5181f59c5 504-505
+scripts/immutable-artifact-cache.ts
+  s_61ededb051faa8::t_a1427cc2996a47 570-571,575
+src/main/workspace-files-service.test.ts
+  s_61ededb051faa8::t_a1427cc2996a47 61
+scripts/tooling/cache-report.ts
+  s_61ededb051faa8::t_93d2407db88b91 38,47,53
+src/main/platform/node/ClaudeHistoryRecords.ts
+  s_61ededb051faa8::t_93d2407db88b91 113-116,119-120,170
+  s_61ededb051faa8::t_4ffe7faee17d68 171
+scripts/materialize-browser-runtime.test.ts
+  s_61ededb051faa8::t_2dbe35402a7bc0 99-101
+scripts/materialize-workspace-runtime.test.ts
+  s_61ededb051faa8::t_305c06084109d1 125-126
+scripts/prepare-electron-runtime.test.ts
+  s_61ededb051faa8::t_7501de971af473 148-150
+scripts/stage-browser-runtime.test.ts
+  s_61ededb051faa8::t_b03b9bd964bdfb 205,212
+scripts/stage-codex-runtime.test.ts
+  s_61ededb051faa8::t_c285932f870ebe 370-372
+src/main/platform/node/CodexAccountHome.ts
+  s_61ededb051faa8::t_fa486453b273fb 14,54-55,59,61,94,98,103,106,162-163,235-236,259,262-263,280-281
+src/main/platform/node/CodexHomeReceipt.ts
+  s_61ededb051faa8::t_f47be259933070 16,36,38,48,51-52
+src/main/workspace-files-service.ts
+  s_61ededb051faa8::t_9de095d4b099e6 408,414
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b55483b2fb1d8c8dec414ee850a3d984295d2d41",
+  "prompts": {},
+  "sessions": {
+    "s_61ededb051faa8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19725-1673-78a3-85e3-bdba96788967",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_de900885deb30b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "060ee655-9b7c-4fef-be43-afa1b6d532d3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
