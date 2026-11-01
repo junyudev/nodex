@@ -71,6 +71,7 @@ All notable changes to this project will be documented in this file.
 - A `file://` link that names a network share opens that share instead of a local path with the same name.
 - A queued message in a chat on another machine no longer reads its image paths from this computer.
 - Copying from a Page no longer puts a backslash before periods, commas, question marks and `&`. A parenthesis or bracket in a paragraph used to leave most punctuation after it escaped, both in what you pasted into a chat or another app and in the text Agents read and edit. Now a backslash appears only where the character would otherwise become formatting, existing Pages are rewritten when Nodex updates, and web addresses copy without one, so they still open wherever you paste them.
+- Web and mail addresses in plain text pasted into a Page now become links, while each line keeps exactly its text.
 
 ## [0.5.0] - 2026-10-29
 

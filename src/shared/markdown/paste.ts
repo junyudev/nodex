@@ -6,7 +6,12 @@ import {
 } from "../clipboard-paste";
 import { parseFileSource } from "../file-resources";
 import type { MarkdownBlock, MarkdownInline } from "../nodex-markdown";
-import { readMarkdown, writeMarkdown, writePortableMarkdown } from "../nodex-markdown";
+import {
+  linkLiteralAddresses,
+  readMarkdown,
+  writeMarkdown,
+  writePortableMarkdown,
+} from "../nodex-markdown";
 import { htmlToBlocks } from "./html";
 
 /** The parts of a clipboard payload a paste reads. */
@@ -95,7 +100,8 @@ export function readPageTextPaste(clipboard: ClipboardPayload): MarkdownBlock[] 
 /**
  * The Blocks plain text pasted into a Page becomes. Text written in Markdown reads by the Markdown
  * rules: a newline breaks a line and a blank line separates Blocks. Other text means its lines:
- * each line becomes a paragraph with exactly its text, and blank lines only separate them.
+ * each line becomes a paragraph with exactly its text and linked web/mail addresses, and blank
+ * lines only separate them.
  */
 export function readPlainTextBlocks(text: string): MarkdownBlock[] {
   const markdown = readMarkdown(text, "boundary");
@@ -103,7 +109,7 @@ export function readPlainTextBlocks(text: string): MarkdownBlock[] {
   return text
     .split(/\r\n?|\n/u)
     .filter((line) => line.trim())
-    .map((line) => ({ type: "paragraph", content: [{ type: "text", text: line }] }));
+    .map((line) => ({ type: "paragraph", content: linkLiteralAddresses(line) }));
 }
 
 /** A fence opens written code. An indented line alone also reads as code, but plain text indents. */

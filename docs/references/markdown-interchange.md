@@ -39,10 +39,11 @@ Plain text with nothing richer beside it becomes Blocks by what it is. When
 reading it as Markdown finds Markdown, such as a heading, list, quote, fenced
 code, table, rule, formatting or a written link, it becomes those Blocks. Line
 breaks, indentation and bare web or mail addresses alone are plain text's own.
-Any other plain text becomes one paragraph per line with exactly its text, and
-blank lines only separate them. Continuing an oversized paste inline, and
-pasting over a typed-owner selection, follow the same rules. Nodex Markdown reads
-every text a Page paste takes; the editor's own Markdown detection stays off.
+Any other plain text becomes one paragraph per line with exactly its text, its
+web and mail addresses linked to themselves, and blank lines only separate
+them. Continuing an oversized paste inline, and pasting over a typed-owner
+selection, follow the same rules. Nodex Markdown reads every text a Page paste
+takes; the editor's own Markdown detection stays off.
 
 A Composer edits Markdown source. Explicit `text/markdown` stays as written.
 Nodex's own copies and code copied from an editor retain their plain text.

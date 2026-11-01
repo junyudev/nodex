@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vite-plus/test";
 import { NODEX_STRUCTURAL_CLIPBOARD_MIME } from "../clipboard-paste";
-import { readMarkdown } from "../nodex-markdown";
+import { markdownBlockLines, readMarkdown, writePortableMarkdown } from "../nodex-markdown";
 import {
   readComposerPaste,
   readMarkdownPaste,
@@ -181,9 +181,10 @@ describe("Page text paste", () => {
       readPlainTextBlocks(
         "第一行\n第二行\r\n\n   \n\t缩进  两个空格\nsee https://e.x/a, www.e.x or a@b.co\n",
       ),
-    ).toEqual(
-      lines("第一行", "第二行", "\t缩进  两个空格", "see https://e.x/a, www.e.x or a@b.co"),
-    );
+    ).toEqual([
+      ...lines("第一行", "第二行", "\t缩进  两个空格"),
+      ...readMarkdown("see https://e.x/a, www.e.x or a@b.co"),
+    ]);
     expect(readPlainTextBlocks("Error: boom\n    at run (job.js:1:2)")).toEqual(
       lines("Error: boom", "    at run (job.js:1:2)"),
     );
@@ -194,6 +195,43 @@ describe("Page text paste", () => {
       lines("AT&amp;T \\* <!-- kept -->"),
     );
     expect(readPlainTextBlocks(" \n\n")).toEqual([]);
+  });
+
+  test("plain addresses gain links without changing line text, spacing, entities, or escapes", () => {
+    const source =
+      "  中文 https://example.com/a_(b)?x=1&y=2.  \n\twww.example.com, me+tag@example.com!\nAT&amp;T \\* https://e.x/?a=1&amp;b=2";
+    const blocks = readPlainTextBlocks(source);
+    expect(markdownBlockLines(blocks)).toBe(source);
+    expect(blocks).toMatchObject([
+      {
+        content: [
+          { text: "  中文 " },
+          {
+            type: "link",
+            href: "https://example.com/a_(b)?x=1&y=2",
+            content: [{ text: "https://example.com/a_(b)?x=1&y=2" }],
+          },
+          { text: ".  " },
+        ],
+      },
+      {
+        content: [
+          { text: "\t" },
+          { type: "link", href: "http://www.example.com" },
+          { text: ", " },
+          { type: "link", href: "mailto:me+tag@example.com" },
+          { text: "!" },
+        ],
+      },
+      { content: [{ text: "AT&amp;T \\* " }, { type: "link", href: "https://e.x/?a=1&amp;b=2" }] },
+    ]);
+    const portable = writePortableMarkdown(
+      readPlainTextBlocks("see https://example.com or me@example.com"),
+    );
+    expect(portable).toEqual({
+      markdown: "see https://example.com or me@example.com",
+      exact: true,
+    });
   });
 
   test.each([
