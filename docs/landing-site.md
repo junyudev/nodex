@@ -46,7 +46,9 @@ WebP encoding; `brew install ffmpeg-full` supplies these on macOS. If ffmpeg
 lacks WebP encoding, the recorder also supports an installed `img2webp`
 (`brew install webp`). Nothing is installed automatically.
 
-`--base-url` defaults to `http://127.0.0.1:4330`. `--out` defaults to
+`--base-url` defaults to `http://127.0.0.1:4330`. With several checkouts running, that
+port may serve another checkout's site and the recording silently shows its demos; start
+this checkout's server on a free port and pass it with `--base-url`. `--out` defaults to
 `notes.local/artifacts/landing-captures` in the checkout, which git ignores. `--demo`, `--theme`, `--fps` (30), and `--scale` (2) select the
 capture. `--og` renders only a dark hero still at 70% as `og.png` (1200×630).
 Run `vp run capture:landing --help` for all options. Named outputs are replaced
