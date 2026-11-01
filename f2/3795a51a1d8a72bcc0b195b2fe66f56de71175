@@ -1,0 +1,23 @@
+src/main/codex/codex-git-command.ts
+  s_b708cefbbd2f84::t_8aae2ca989bc93 1-2,87,91
+src/main/process-tree.test.ts
+  s_b708cefbbd2f84::t_3ed1055e960f6f 47,59-62
+  s_b708cefbbd2f84::t_8aae2ca989bc93 5,7,41-46,48-58,63-87
+  s_b708cefbbd2f84::t_89cd4f552ebb42 88-94
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f23795a51a1d8a72bcc0b195b2fe66f56de71175",
+  "prompts": {},
+  "sessions": {
+    "s_b708cefbbd2f84": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1964e-d1d0-7381-9ea9-cb7cf0748ec9",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
