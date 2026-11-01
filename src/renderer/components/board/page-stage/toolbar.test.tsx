@@ -103,6 +103,37 @@ describe("page stage toolbar", () => {
     expect(copyCalls).toBe(1);
   });
 
+  test("each toggle redraws its glyph for the pressed state", () => {
+    const toolbar = (pressed: boolean) => (
+      <NodexTooltipProvider>
+        <PageStageToolbar
+          saving={false}
+          historyPanelActive={pressed}
+          limitMainContentWidth={!pressed}
+          showRawContent={pressed}
+          onCopyDeeplink={() => undefined}
+          onDelete={() => undefined}
+          onToggleContentWidth={() => undefined}
+          onToggleShowRawContent={() => undefined}
+          onToggleHistoryPanel={() => undefined}
+        />
+      </NodexTooltipProvider>
+    );
+    const toggleNames = ["Show raw", "Full width", "History"] as const;
+    const view = render(toolbar(false));
+    const glyph = (name: string) =>
+      view.getByRole("button", { name }).querySelector("svg")?.innerHTML;
+    const idleGlyphs = toggleNames.map(glyph);
+
+    view.rerender(toolbar(true));
+
+    for (const [index, name] of toggleNames.entries()) {
+      expect(view.getByRole("button", { name }).getAttribute("aria-pressed")).toBe("true");
+      expect(glyph(name)).toBeTruthy();
+      expect(glyph(name)).not.toBe(idleGlyphs[index]);
+    }
+  });
+
   test("renders nested page ancestry as accessible navigation", async () => {
     const openedPages: Array<{ pageId: string; index: number }> = [];
     const view = render(

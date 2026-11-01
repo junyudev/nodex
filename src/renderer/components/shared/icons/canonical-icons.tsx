@@ -102,19 +102,6 @@ const DATABASE_LABEL_PATHS = [
   "M5.5 8a1 1 0 1 1 2 0 1 1 0 0 1-2 0",
 ] as const;
 
-const FULL_WIDTH_PATH =
-  "M13 3v10M3 3v10M10.5 8H13M6 8l1.5-1.5M6 8l1.5 1.5M10 8l-1.5-1.5M10 8l-1.5 1.5M3 8h2.5";
-const FULL_WIDTH_PATHS = [
-  {
-    d: FULL_WIDTH_PATH,
-    fill: "none",
-    stroke: "currentColor",
-    strokeLinecap: "round",
-    strokeLinejoin: "round",
-    strokeWidth: 1.5,
-  },
-] as const;
-
 const DIRECTIONAL_ARROW_PATH =
   "M9.33467 16.6663V4.93978L4.6374 9.63704L4.1667 9.16634L3.69599 8.69661L9.52998 2.86263L9.63447 2.77767C9.8925 2.60753 10.2433 2.63564 10.4704 2.86263L16.3034 8.69661L16.3884 8.80111C16.5588 9.05922 16.5306 9.40982 16.3034 9.63704C16.0762 9.86414 15.7255 9.89242 15.4675 9.722L15.363 9.63704L10.6647 4.9388V16.6663C10.6647 17.0336 10.367 17.3314 9.99971 17.3314C9.63259 17.3312 9.33467 17.0335 9.33467 16.6663ZM4.6374 9.63704C4.3777 9.89674 3.95569 9.89674 3.69599 9.63704C3.43657 9.37744 3.43668 8.95628 3.69599 8.69661L4.6374 9.63704Z";
 
@@ -149,16 +136,6 @@ const INFO_PATHS = [
 
 const HISTORY_PATH =
   "M10 2.25C14.2802 2.25 17.75 5.71979 17.75 10C17.75 14.2802 14.2802 17.75 10 17.75C6.71706 17.75 3.90026 15.7115 2.736 12.8125H4.374C5.38877 14.8245 7.47908 16.25 10 16.25C13.4518 16.25 16.25 13.4518 16.25 10C16.25 6.54822 13.4518 3.75 10 3.75C7.47287 3.75 5.37809 5.18254 4.36618 7.203H6.25V8.703H2.25V4.703H3.75V6.073C5.15051 3.76289 7.56818 2.25 10 2.25ZM9.25 5.75H10.75V9.688L13.237 12.175L12.175 13.237L9.25 10.312V5.75Z";
-
-const PAGE_HISTORY_PATHS = [
-  {
-    d: "M8 4v4l3 1.5M14 8a6 6 0 11-12 0 6 6 0 0112 0z",
-    fill: "none",
-    stroke: "currentColor",
-    strokeLinecap: "round",
-    strokeWidth: 1.5,
-  },
-] as const;
 
 const VISIBILITY_PATHS = [
   {
@@ -275,19 +252,6 @@ export function DatabaseLabelIcon(props: CanonicalIconProps) {
   );
 }
 
-/** Full-width page-stage affordance: two rails with inward-pointing arrows. */
-export function FullWidthIcon(props: CanonicalIconProps) {
-  return (
-    <CanonicalGlyph
-      {...props}
-      width={16}
-      height={16}
-      viewBox="0 0 16 16"
-      paths={FULL_WIDTH_PATHS}
-    />
-  );
-}
-
 export function SortAscendingIcon(props: CanonicalIconProps) {
   return <CanonicalGlyph {...props} paths={DIRECTIONAL_ARROW_PATHS} />;
 }
@@ -327,18 +291,6 @@ export function InfoIcon(props: CanonicalIconProps) {
 
 export function HistoryIcon(props: CanonicalIconProps) {
   return <CanonicalGlyph {...props} paths={[HISTORY_PATH]} />;
-}
-
-export function PageHistoryIcon(props: CanonicalIconProps) {
-  return (
-    <CanonicalGlyph
-      {...props}
-      width={16}
-      height={16}
-      viewBox="0 0 16 16"
-      paths={PAGE_HISTORY_PATHS}
-    />
-  );
 }
 
 /**

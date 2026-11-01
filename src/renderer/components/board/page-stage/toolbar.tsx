@@ -1,13 +1,16 @@
+import type { ReactNode } from "react";
 import {
   AutomationsIcon,
   BackIcon,
-  CodeIcon,
+  ChatActionsIcon,
   DeleteIcon,
-  FullWidthIcon,
-  PageHistoryIcon,
   PageMenuCopyLinkIcon,
-  ProjectActionsIcon,
 } from "@/components/shared/icons";
+import {
+  PageFullWidthIcon,
+  PageHistoryIcon,
+  PageRawContentIcon,
+} from "@/components/shared/icons/page-stage-toolbar-icons";
 import {
   NodexDropdownItem,
   NodexDropdownMenu,
@@ -15,6 +18,11 @@ import {
 } from "@/components/ui/dropdown";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import {
+  TOOLBAR_BUTTON_BASE_CLASS,
+  TOOLBAR_BUTTON_GHOST_CLASS,
+  TOOLBAR_BUTTON_SECONDARY_CLASS,
+} from "@/lib/workbench-toolbar-control-styles";
 import { PageStageBreadcrumb, type PageStageBreadcrumbProps } from "./breadcrumb";
 
 interface PageStageToolbarProps {
@@ -36,11 +44,48 @@ interface PageStageToolbarProps {
   onNavigateBack?: () => void;
 }
 
-const pageStageToolbarButtonChrome =
-  "inline-flex size-7 items-center justify-center rounded-md disabled:pointer-events-none";
+/**
+ * Window toolbar chrome. A pending Page disables its actions without dimming them, so the
+ * toolbar keeps its resting appearance while the Page opens.
+ */
+const pageStageToolbarButtonClass = cn(
+  TOOLBAR_BUTTON_BASE_CLASS,
+  "shrink-0 disabled:pointer-events-none disabled:opacity-100",
+);
 
-const pageStageToolbarButtonHover =
-  "hover:bg-[color-mix(in_srgb,var(--foreground)_5%,transparent)]";
+function PageStageToolbarToggle({
+  label,
+  tooltip = label,
+  pressed,
+  disabled,
+  onClick,
+  children,
+}: {
+  label: string;
+  tooltip?: string;
+  pressed: boolean;
+  disabled: boolean;
+  onClick?: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <NodexTooltip tooltipContent={tooltip} side="bottom" delay={0}>
+      <button
+        type="button"
+        onClick={onClick}
+        aria-pressed={pressed}
+        aria-label={label}
+        disabled={disabled}
+        className={cn(
+          pageStageToolbarButtonClass,
+          pressed ? TOOLBAR_BUTTON_SECONDARY_CLASS : TOOLBAR_BUTTON_GHOST_CLASS,
+        )}
+      >
+        {children}
+      </button>
+    </NodexTooltip>
+  );
+}
 
 export function PageStageToolbar({
   saving,
@@ -66,14 +111,9 @@ export function PageStageToolbar({
             type="button"
             aria-label="Back to Library"
             onClick={onNavigateBack}
-            className={cn(
-              pageStageToolbarButtonChrome,
-              "shrink-0 text-(--foreground-tertiary)",
-              pageStageToolbarButtonHover,
-              "hover:text-(--foreground-secondary)",
-            )}
+            className={cn(pageStageToolbarButtonClass, TOOLBAR_BUTTON_GHOST_CLASS)}
           >
-            <BackIcon className="icon-sm" />
+            <BackIcon className="icon-xs" />
           </button>
         </NodexTooltip>
       ) : null}
@@ -82,69 +122,33 @@ export function PageStageToolbar({
       <div className="flex shrink-0 items-center gap-1">
         {saving && <span className="mr-2 text-xs text-(--foreground-tertiary)">Saving...</span>}
 
-        <NodexTooltip
-          tooltipContent={showRawContent ? "Show editor" : "Show raw-format content"}
-          side="bottom"
-          delay={0}
+        <PageStageToolbarToggle
+          label="Show raw"
+          tooltip={showRawContent ? "Show editor" : "Show raw-format content"}
+          pressed={showRawContent}
+          disabled={pending}
+          onClick={onToggleShowRawContent}
         >
-          <button
-            type="button"
-            onClick={onToggleShowRawContent}
-            aria-pressed={showRawContent}
-            aria-label="Show raw"
-            disabled={pending}
-            className={cn(
-              pageStageToolbarButtonChrome,
-              showRawContent
-                ? "bg-(--background-tertiary) text-(--foreground-secondary)"
-                : "text-(--foreground-tertiary)",
-              pageStageToolbarButtonHover,
-              "hover:text-(--foreground-secondary)",
-            )}
-          >
-            <CodeIcon className="icon-xs" />
-          </button>
-        </NodexTooltip>
+          <PageRawContentIcon active={showRawContent} />
+        </PageStageToolbarToggle>
 
-        <NodexTooltip tooltipContent="Full width" side="bottom" delay={0}>
-          <button
-            type="button"
-            onClick={onToggleContentWidth}
-            aria-pressed={!limitMainContentWidth}
-            aria-label="Full width"
-            disabled={pending}
-            className={cn(
-              pageStageToolbarButtonChrome,
-              !limitMainContentWidth
-                ? "bg-(--background-tertiary) text-(--foreground)"
-                : "text-(--foreground-tertiary)",
-              pageStageToolbarButtonHover,
-              "hover:text-(--foreground-secondary)",
-            )}
-          >
-            <FullWidthIcon className="icon-xs" />
-          </button>
-        </NodexTooltip>
+        <PageStageToolbarToggle
+          label="Full width"
+          pressed={!limitMainContentWidth}
+          disabled={pending}
+          onClick={onToggleContentWidth}
+        >
+          <PageFullWidthIcon active={!limitMainContentWidth} />
+        </PageStageToolbarToggle>
 
-        <NodexTooltip tooltipContent="History" side="bottom" delay={0}>
-          <button
-            type="button"
-            onClick={onToggleHistoryPanel}
-            aria-pressed={historyPanelActive}
-            aria-label="History"
-            disabled={pending}
-            className={cn(
-              pageStageToolbarButtonChrome,
-              historyPanelActive
-                ? "bg-(--background-tertiary) text-(--foreground)"
-                : "text-(--foreground-tertiary)",
-              pageStageToolbarButtonHover,
-              "hover:text-(--foreground-secondary)",
-            )}
-          >
-            <PageHistoryIcon className="icon-xs" />
-          </button>
-        </NodexTooltip>
+        <PageStageToolbarToggle
+          label="History"
+          pressed={historyPanelActive}
+          disabled={pending}
+          onClick={onToggleHistoryPanel}
+        >
+          <PageHistoryIcon active={historyPanelActive} />
+        </PageStageToolbarToggle>
 
         <NodexDropdownMenu
           align="end"
@@ -159,14 +163,9 @@ export function PageStageToolbar({
               aria-label="Page actions"
               data-tab-preview-pin-exempt="true"
               disabled={pending}
-              className={cn(
-                pageStageToolbarButtonChrome,
-                "text-(--foreground-tertiary)",
-                pageStageToolbarButtonHover,
-                "hover:text-(--foreground-secondary)",
-              )}
+              className={cn(pageStageToolbarButtonClass, TOOLBAR_BUTTON_GHOST_CLASS)}
             >
-              <ProjectActionsIcon className="icon-sm shrink-0" />
+              <ChatActionsIcon />
             </button>
           }
         >

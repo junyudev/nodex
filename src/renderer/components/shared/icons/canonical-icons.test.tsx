@@ -7,14 +7,12 @@ import {
   DatabaseLabelIcon,
   DispatchIcon,
   FilterIcon,
-  FullWidthIcon,
   ImageIcon,
   InfoIcon,
   ListLayoutIcon,
   LoadingIcon,
   MoveDownIcon,
   MoveUpIcon,
-  PageHistoryIcon,
   PauseIcon,
   PlayIcon,
   ResetIcon,
@@ -47,31 +45,6 @@ describe("canonical shared icons", () => {
     expect(icon?.getAttribute("class")).toBe("size-4");
     expect(path?.getAttribute("fill")).toBe("currentColor");
     expect(icon?.getAttribute("aria-hidden")).toBe("true");
-  });
-
-  test("keeps the full-width affordance distinct from the 20px glyph defaults", () => {
-    const view = render(<FullWidthIcon />);
-    const icon = view.container.querySelector("svg");
-    const path = icon?.querySelector("path");
-
-    expect(icon?.getAttribute("width")).toBe("16");
-    expect(icon?.getAttribute("height")).toBe("16");
-    expect(icon?.getAttribute("viewBox")).toBe("0 0 16 16");
-    expect(path?.getAttribute("stroke")).toBe("currentColor");
-    expect(path?.getAttribute("stroke-width")).toBe("1.5");
-  });
-
-  test("preserves the Page Stage history affordance", () => {
-    const view = render(<PageHistoryIcon />);
-    const icon = view.container.querySelector("svg");
-    const path = icon?.querySelector("path");
-
-    expect(icon?.getAttribute("width")).toBe("16");
-    expect(icon?.getAttribute("height")).toBe("16");
-    expect(icon?.getAttribute("viewBox")).toBe("0 0 16 16");
-    expect(path?.getAttribute("fill")).toBe("none");
-    expect(path?.getAttribute("stroke")).toBe("currentColor");
-    expect(path?.getAttribute("stroke-width")).toBe("1.5");
   });
 
   test.each([
