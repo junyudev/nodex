@@ -1,0 +1,39 @@
+src/main/codex-application/ManagedWorktreeCatalog.node.test.ts
+  s_61ededb051faa8::t_3abe02b6f67af8 716
+src/main/codex/browser-use-thread-config.test.ts
+  s_61ededb051faa8::t_c26b384d0970f3 49,70,96,106,130,149,170,211
+src/main/codex/codex-dynamic-first-turn-context.test.ts
+  s_61ededb051faa8::t_3d860c51c93cc0 14,23-25
+src/main/core-client/development-seed-sandbox.node.test.ts
+  s_ef93f85750414a::t_74301a5322f93e 57-59
+src/main/host-runtime/ComputerUseRuntime.node.test.ts
+  s_ef93f85750414a::t_a34b26d4dad075 95,97,158-160,215-217,222-224,255-257
+src/main/settings/claude-agent-environment.node.test.ts
+  s_61ededb051faa8::t_83528b6e47d5d3 108
+src/main/third-party-notices.test.ts
+  s_61ededb051faa8::t_04b3a3348e4585 3,67
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3bc8476b873955a6c0a7a9128ee8376749b98255",
+  "prompts": {},
+  "sessions": {
+    "s_61ededb051faa8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19725-1673-78a3-85e3-bdba96788967",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_ef93f85750414a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1975c-d042-74f3-8106-b6eb6f221778",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
