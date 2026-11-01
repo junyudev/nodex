@@ -1,0 +1,23 @@
+crates/nodex-platform/src/private_fs/windows.rs
+  s_3dc0b7647fcf0b::t_c3511e0209d0cd 754-779
+crates/nodex-platform/src/windows.rs
+  s_3dc0b7647fcf0b::t_66176901d95d60 128-130
+docs/reliability/core-lifecycle-and-store.md
+  s_3dc0b7647fcf0b::t_3e654cc94d6b8f 60-62
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9d5728af710546e029bee0a9fe4b84420f552492",
+  "prompts": {},
+  "sessions": {
+    "s_3dc0b7647fcf0b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1964e-690a-72d0-a5e2-1468f0931284",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
