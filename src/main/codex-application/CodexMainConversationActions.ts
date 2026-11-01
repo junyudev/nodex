@@ -361,7 +361,8 @@ export const install = Effect.gen(function* () {
               value ? [[key, value.answers]] : [],
             ),
           );
-          const { questionResponse } = yield* Schema.decodeUnknownEffect(
+          // An absent attribution stays absent rather than becoming an explicit `undefined`.
+          const attribution = yield* Schema.decodeUnknownEffect(
             Schema.Struct({
               questionResponse: Schema.optionalKey(
                 Schema.Struct({
@@ -376,7 +377,7 @@ export const install = Effect.gen(function* () {
             }),
           )(params);
           return {
-            ok: yield* responses.userInput({ threadId, requestId: id, answers, questionResponse }),
+            ok: yield* responses.userInput({ threadId, requestId: id, answers, ...attribution }),
           };
         }
         default:
