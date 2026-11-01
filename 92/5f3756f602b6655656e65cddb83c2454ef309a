@@ -1,0 +1,29 @@
+config/test-suites.ts
+  s_ef93f85750414a::t_d782df336d521e 66
+scripts/ci/probe-windows-installer.ts
+  s_ef93f85750414a::t_7705e31f7a0ac5 2,13,176-179
+src/main/core-client/core-artifact.test.ts
+  s_ef93f85750414a::t_f443f9c128887d 1-53
+src/main/core-client/core-artifact.ts
+  s_ef93f85750414a::t_08637a3d28c7c8 1-29
+src/main/core-client/core-launcher.node.test.ts
+  s_ef93f85750414a::t_f00772b1eb757a 6,8,128-166
+src/main/core-client/core-launcher.ts
+  s_ef93f85750414a::t_ad9aeabd0fe9d9 2,8,376,380-385
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "925f3756f602b6655656e65cddb83c2454ef309a",
+  "prompts": {},
+  "sessions": {
+    "s_ef93f85750414a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1975c-d042-74f3-8106-b6eb6f221778",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
