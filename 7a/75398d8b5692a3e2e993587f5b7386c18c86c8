@@ -1,0 +1,24 @@
+crates/nodex-core-protocol/src/client.rs
+  s_61ededb051faa8::t_5d7f3180779235 853-858,893-918,1369-1411,1413
+  s_61ededb051faa8::t_a375b38c5b9d7d 1412
+crates/nodex-core-server/tests/native_cli_client.rs
+  s_61ededb051faa8::t_5d7f3180779235 46-47
+docs/reliability/core-lifecycle-and-store.md
+  s_61ededb051faa8::t_268cb14846c568 17,85-86
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7a75398d8b5692a3e2e993587f5b7386c18c86c8",
+  "prompts": {},
+  "sessions": {
+    "s_61ededb051faa8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19725-1673-78a3-85e3-bdba96788967",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
