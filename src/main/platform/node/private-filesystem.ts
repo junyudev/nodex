@@ -13,7 +13,10 @@ export const makePrivate = async (filename: string, directory: boolean): Promise
       {
         windowsHide: true,
         env: {
-          ...process.env,
+          // PowerShell 7's inherited module path can shadow Windows PowerShell's own modules.
+          ...Object.fromEntries(
+            Object.entries(process.env).filter(([key]) => key.toUpperCase() !== "PSMODULEPATH"),
+          ),
           NODEX_PRIVATE_PATH: filename,
           NODEX_PRIVATE_DIRECTORY: String(directory),
         },

@@ -87,7 +87,13 @@ it.live(
             "$ErrorActionPreference='Stop'; $sid=[System.Security.Principal.WindowsIdentity]::GetCurrent().User; foreach ($p in @($env:NODEX_TEST_DIRECTORY,$env:NODEX_TEST_FILE)) { $acl=Get-Acl -LiteralPath $p; if ($acl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value -ne $sid.Value) { throw 'wrong owner' }; foreach ($rule in $acl.Access) { if ($rule.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value -ne $sid.Value -or $rule.AccessControlType -ne 'Allow') { throw 'foreign access' } }; if ($acl.Access.Count -eq 0) { throw 'missing access' } }; Write-Output 'private'",
           ],
           {
-            env: { ...process.env, NODEX_TEST_DIRECTORY: directory, NODEX_TEST_FILE: latest },
+            env: {
+              ...Object.fromEntries(
+                Object.entries(process.env).filter(([key]) => key.toUpperCase() !== "PSMODULEPATH"),
+              ),
+              NODEX_TEST_DIRECTORY: directory,
+              NODEX_TEST_FILE: latest,
+            },
             encoding: "utf8",
           },
         ),
