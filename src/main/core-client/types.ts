@@ -26,6 +26,7 @@ export type CoreEventReplayRequired = components["schemas"]["EventReplayRequired
 export type CoreStreamCheckpoint = components["schemas"]["StreamCheckpoint"];
 export type CoreModuleError = components["schemas"]["CoreError"];
 export type AppToolOperationRequest = components["schemas"]["AppToolOperationRequest"];
+export type AgentAttributionRequest = components["schemas"]["AgentAttributionRequest"];
 export type AppToolOperationIdentity = components["schemas"]["AppToolOperationIdentity"];
 export type CoreLocalMutationResolveRequest = components["schemas"]["LocalMutationResolveRequest"];
 export type CoreLocalMutationResolveResponse =
@@ -243,6 +244,8 @@ export interface CoreRequestOptions {
   readonly signal?: AbortSignal;
   /** Main-owned lifetime, carried in an authenticated header, never command JSON. */
   readonly editorHistoryOwnerId?: string;
+  /** A Core-issued credential naming the Agent this change is made for. */
+  readonly agentAttribution?: string;
 }
 
 export interface CoreClientPort {
@@ -263,6 +266,10 @@ export interface CoreClientPort {
     input: AppToolOperationRequest,
     options?: CoreRequestOptions,
   ): Promise<AppToolOperationIdentity>;
+  issueAgentAttribution(
+    input: AgentAttributionRequest,
+    options?: CoreRequestOptions,
+  ): Promise<string>;
   resolveLocalMutation(
     input: CoreLocalMutationResolveRequest,
   ): Promise<CoreLocalMutationResolveResponse>;

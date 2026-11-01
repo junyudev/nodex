@@ -1,6 +1,6 @@
 use super::*;
 use nodex_core_contracts::ModuleReadRequest;
-use nodex_core_contracts::agent::AgentBackendBinding;
+use nodex_core_contracts::agent::AgentBackendKind;
 use nodex_core_contracts::library::{
     LibraryFileChange, LibraryFileReadSource, LibraryPageFileAttachment,
     LibraryPageFileAttachmentActor as Actor, LibraryPageFileCollisionPolicy,
@@ -178,6 +178,51 @@ fn desktop_attach_stamps_commit_time_and_exact_retry_retains_it() {
 }
 
 #[test]
+fn verified_agent_attribution_names_the_attaching_session_on_any_adapter() {
+    let fixture = fixture();
+    let module = crate::library::LibraryModule::new("profile-1", "library-1", &fixture.kernel);
+    create_image(&fixture, &module);
+    let mut context = bound_context(Some("project-1"));
+    context.adapter = AdapterKind::NativeCli;
+    context.agent_attribution = Some(nodex_core_contracts::BoundAgentAttribution {
+        session_id: "session:cold-start".to_owned(),
+        backend: AgentBackendKind::OpenCode,
+    });
+    let committed = module
+        .apply(
+            &context,
+            ModuleApplyRequest {
+                contract_version: LIBRARY_CONTRACT_VERSION,
+                operation_id: "agent-attach".to_owned(),
+                store_epoch: StoreEpoch("epoch-1".to_owned()),
+                intent: changes(
+                    "page-a",
+                    0,
+                    vec![attach("file-a", "profile/flamegraph.png")],
+                ),
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        resolve(
+            &module,
+            "page-a",
+            LibraryPageFileSelector::FileId {
+                file_id: "file-a".to_owned()
+            }
+        )
+        .attachment,
+        Some(LibraryPageFileAttachment {
+            attached_by: Actor::Agent {
+                session_id: "session:cold-start".to_owned(),
+                backend: AgentBackendKind::OpenCode,
+            },
+            attached_at: Some(committed.committed.receipt.committed_at),
+        })
+    );
+}
+
+#[test]
 fn only_desktop_admission_implies_person_and_agent_labels_are_not_proof() {
     for adapter in [
         AdapterKind::NativeCli,
@@ -200,9 +245,7 @@ fn swaps_transfers_and_shared_updates_preserve_captured_agent_binding() {
     let original = LibraryPageFileAttachment {
         attached_by: Actor::Agent {
             session_id: "session:product-chat".to_owned(),
-            backend: AgentBackendBinding::Claude {
-                instance_config_id: "instance:original".to_owned(),
-            },
+            backend: AgentBackendKind::Claude,
         },
         attached_at: Some(NOW.to_owned()),
     };

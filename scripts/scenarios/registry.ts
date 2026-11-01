@@ -18,6 +18,7 @@ import { sidebarCustomSectionsScenario } from "./scenarios/sidebar-custom-sectio
 import { sidebarChatStatusScenario } from "./scenarios/sidebar-chat-status";
 import { sidebarLinkedPageStatusScenario } from "./scenarios/sidebar-linked-page-status";
 import { libraryFilesScenario } from "./scenarios/library-files";
+import { pageFileProvenanceScenario } from "./scenarios/page-file-provenance";
 import { inboxTriageScenario } from "./scenarios/inbox-triage";
 import { inboxSuggestionSpendScenario } from "./scenarios/inbox-suggestion-spend";
 import { scheduledAskInInboxScenario } from "./scenarios/scheduled-ask-in-inbox";
@@ -42,6 +43,7 @@ const scenarios = new Map<string, ScenarioDomainRecipe>([
   [sidebarChatStatusScenario.id, sidebarChatStatusScenario],
   [sidebarLinkedPageStatusScenario.id, sidebarLinkedPageStatusScenario],
   [libraryFilesScenario.id, libraryFilesScenario],
+  [pageFileProvenanceScenario.id, pageFileProvenanceScenario],
   [inboxTriageScenario.id, inboxTriageScenario],
   [scheduledAskInInboxScenario.id, scheduledAskInInboxScenario],
   [inboxSuggestionSpendScenario.id, inboxSuggestionSpendScenario],

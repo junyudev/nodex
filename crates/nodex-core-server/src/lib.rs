@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 use nodex_core_protocol::document_module_wire;
 
+mod agent_attribution;
 mod connections;
 mod document_live;
 mod document_wire;
@@ -205,6 +206,7 @@ fn duration_millis(duration: std::time::Duration) -> u64 {
 
 struct ServerState {
     auth_header: String,
+    agent_attribution: agent_attribution::AgentAttributionKey,
     owner_uid: u32,
     connections: ConnectionRegistry,
     lifecycle: LifecycleCoordinator,
@@ -3117,6 +3119,7 @@ fn router(state: Arc<ServerState>) -> Router {
     let connected_routes = Router::new()
         .route("/core/v1/events", get(events))
         .route("/core/v1/requests/cancel", post(cancel_request))
+        .route("/core/v1/agent-attributions", post(issue_agent_attribution))
         .route("/core/v1/projections/live", get(projection_live_events))
         .route(
             "/core/v1/local-mutations/resolve",
@@ -3206,7 +3209,83 @@ fn module_context(
         connection_id: bound.id.clone(),
         adapter: bound.adapter.clone(),
         editor_history_owner: editor_history_owner(headers, bound)?,
+        agent_attribution: agent_attribution(state, headers)?,
     })
+}
+
+/// A credential this Core issued names the Agent behind a request. Anything else
+/// attributes nothing rather than failing the content change it accompanies.
+fn agent_attribution(
+    state: &ServerState,
+    headers: &HeaderMap,
+) -> Result<Option<nodex_core_contracts::BoundAgentAttribution>, CoreError> {
+    let Some(credential) = optional_header(
+        headers,
+        nodex_core_protocol::AGENT_ATTRIBUTION_HEADER,
+        "Agent attribution",
+    )?
+    else {
+        return Ok(None);
+    };
+    let attribution = state.agent_attribution.verify(&credential);
+    if attribution.is_none() {
+        tracing::warn!("Ignored an Agent attribution credential this Core did not issue");
+    }
+    Ok(attribution)
+}
+
+/// The desktop Host has verified an Agent execution of this Session and asks Core
+/// to vouch for it. Only a live, unarchived Session can be attributed.
+async fn issue_agent_attribution(
+    State(state): State<Arc<ServerState>>,
+    Extension(bound): Extension<BoundConnection>,
+    headers: HeaderMap,
+    Json(request): Json<nodex_core_protocol::AgentAttributionRequest>,
+) -> Result<Json<nodex_core_protocol::AgentAttributionResponse>, ApiError> {
+    if bound.adapter != AdapterKind::ElectronHost {
+        return Err(ApiError::new(
+            StatusCode::UNAUTHORIZED,
+            "Agent attribution requires the Electron Host Adapter",
+        ));
+    }
+    let context = module_context(&state, &headers, &bound).map_err(api_core_error)?;
+    let session_id = request.session_id.clone();
+    let request_state = Arc::clone(&state);
+    let session = state
+        .request_executor
+        .execute(&bound.id, &headers, RequestClass::Interactive, move || {
+            request_state.workspace.read(
+                &context,
+                nodex_core_contracts::ModuleReadRequest {
+                    contract_version:
+                        nodex_core_contracts::workspace::PROJECT_WORKSPACE_CONTRACT_VERSION,
+                    read: nodex_core_contracts::workspace::ProjectWorkspaceRead::Session {
+                        session_id,
+                    },
+                },
+            )
+        })
+        .await
+        .map_err(api_core_error)?;
+    let nodex_core_contracts::workspace::ProjectWorkspaceReadValue::Session { session } =
+        session.value
+    else {
+        return Err(ApiError::new(
+            StatusCode::NOT_FOUND,
+            "The Session to attribute is unavailable",
+        ));
+    };
+    if session.archived {
+        return Err(ApiError::new(
+            StatusCode::CONFLICT,
+            "An archived Session cannot be attributed",
+        ));
+    }
+    Ok(Json(nodex_core_protocol::AgentAttributionResponse {
+        credential: state
+            .agent_attribution
+            .issue(&request.session_id, request.backend),
+    }))
 }
 
 fn editor_history_owner(
@@ -4013,6 +4092,8 @@ pub async fn run_with_selection(
     });
     let state = Arc::new(ServerState {
         auth_header: format!("Bearer {auth}"),
+        agent_attribution: agent_attribution::AgentAttributionKey::generate()
+            .map_err(|_| "Agent attribution key is unavailable")?,
         owner_uid,
         connections: ConnectionRegistry::new(),
         lifecycle: lifecycle.clone(),

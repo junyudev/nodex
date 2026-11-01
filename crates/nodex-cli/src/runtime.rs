@@ -26,6 +26,9 @@ use nodex_core_contracts::{
     VersionedModuleContract,
 };
 use nodex_core_protocol::client::{ClientError, CoreClient, connect_or_launch};
+
+/// Set by Nodex for the Agents it runs; see `CoreClient::attribute_to_agent`.
+pub const AGENT_ATTRIBUTION_ENV: &str = "NODEX_AGENT_ATTRIBUTION";
 use nodex_core_protocol::{
     DatabaseReadResponse, LibraryReadResponse, ProjectWorkspaceReadResponse, ResponseEnvelope,
     StoreAdministrationApplyResponse, StoreAdministrationReadResponse,
@@ -200,13 +203,23 @@ pub(crate) fn execute_with_presentation(
             .map(CommandOutput::Json)
             .map_err(internal);
     }
-    let client = connect_or_launch(
+    let mut client = connect_or_launch(
         &home,
         option_env!("NODEX_RELEASE_VERSION").unwrap_or(env!("CARGO_PKG_VERSION")),
         None,
     )
     .map_err(map_client_error)?;
     validate_expected_profile(cli.expect_profile.as_deref(), &client, &home)?;
+    // Nodex gives each Agent it runs a credential for its own chat. Core verifies it, so a
+    // copied or stale value cannot name another chat; without one, changes are external.
+    if let Some(credential) = env::var(AGENT_ATTRIBUTION_ENV)
+        .ok()
+        .filter(|value| !value.is_empty())
+    {
+        client
+            .attribute_to_agent(credential)
+            .map_err(map_client_error)?;
+    }
 
     match cli.command {
         Command::Sql(args) => crate::sql::execute(

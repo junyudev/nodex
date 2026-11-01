@@ -3958,6 +3958,7 @@ mod tests {
     fn context() -> BoundModuleContext {
         BoundModuleContext {
             editor_history_owner: None,
+            agent_attribution: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
             project_id: Some(ProjectId("project-1".to_owned())),
@@ -3969,6 +3970,7 @@ mod tests {
     fn library_context() -> BoundModuleContext {
         BoundModuleContext {
             editor_history_owner: None,
+            agent_attribution: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
             project_id: None,

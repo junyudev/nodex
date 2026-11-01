@@ -466,6 +466,7 @@ mod tests {
     fn context() -> BoundModuleContext {
         BoundModuleContext {
             editor_history_owner: None,
+            agent_attribution: None,
             profile_id: ProfileId("profile:durable-mutation".to_owned()),
             library_id: LibraryId("library:durable-mutation".to_owned()),
             project_id: Some(ProjectId("project:durable-mutation".to_owned())),

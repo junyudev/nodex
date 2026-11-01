@@ -178,12 +178,11 @@ describe("Library File transport boundaries", () => {
       { kind: "person" },
       { kind: "external" },
       { kind: "unknown" },
-      ...[
-        { kind: "codex" },
-        { kind: "claude", instance_config_id: "claude-a" },
-        { kind: "opencode", instance_config_id: "opencode-a" },
-        { kind: "acp", agent_definition_id: "definition-a", instance_config_id: null },
-      ].map((backend) => ({ kind: "agent", session_id: "session-product-a", backend })),
+      ...["codex", "claude", "opencode", "acp"].map((backend) => ({
+        kind: "agent",
+        session_id: "session-product-a",
+        backend,
+      })),
     ];
     for (const inventory of [true, false]) {
       const item = { file, logical_path: "output.html", body_count: 0 };
@@ -212,7 +211,7 @@ describe("Library File transport boundaries", () => {
         { attached_by: { kind: "person" }, attached_at: "2026-11-01 10:15:00" },
         { attached_by: { kind: "agent", session_id: "project-a" }, attached_at: time },
         {
-          attached_by: { kind: "agent", session_id: "chat", backend: { kind: "claude" } },
+          attached_by: { kind: "agent", session_id: "chat", backend: "gemini" },
           attached_at: time,
         },
         { attached_by: { kind: "person", session_id: "forged" }, attached_at: time },

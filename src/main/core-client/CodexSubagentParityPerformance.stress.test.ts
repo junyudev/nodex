@@ -439,6 +439,7 @@ const makeDirectoryHarness = Effect.fn("SubagentScale.makeDirectoryHarness")(fun
 
   const workspace: CoreModuleClients["workspace"] = {
     admitToolOperation: () => Effect.die("Unexpected application tool admission"),
+    issueAgentAttribution: () => Effect.die("Unexpected Agent attribution"),
     read: (read, options) =>
       Effect.promise(async () => {
         const startedAt = performance.now();

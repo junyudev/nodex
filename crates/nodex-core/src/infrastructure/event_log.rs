@@ -825,6 +825,7 @@ fn resolve_projection_live_packets(
                 project_id,
             } if library_id == &host_context.library_id.0 => BoundModuleContext {
                 editor_history_owner: None,
+                agent_attribution: None,
                 project_id: Some(ProjectId(project_id.clone())),
                 ..host_context.clone()
             },
@@ -1670,6 +1671,7 @@ mod tests {
     fn context(library_id: &str, project_id: &str) -> BoundModuleContext {
         BoundModuleContext {
             editor_history_owner: None,
+            agent_attribution: None,
             profile_id: ProfileId("profile:events".to_owned()),
             library_id: LibraryId(library_id.to_owned()),
             project_id: Some(ProjectId(project_id.to_owned())),
@@ -1681,6 +1683,7 @@ mod tests {
     fn host_context(library_id: &str) -> BoundModuleContext {
         BoundModuleContext {
             editor_history_owner: None,
+            agent_attribution: None,
             profile_id: ProfileId("profile:events".to_owned()),
             library_id: LibraryId(library_id.to_owned()),
             project_id: None,
@@ -1806,6 +1809,7 @@ mod tests {
                 operation_id: &operation_id,
                 context: &BoundModuleContext {
                     editor_history_owner: None,
+                    agent_attribution: None,
                     profile_id: ProfileId("profile:events".to_owned()),
                     library_id: LibraryId("library:events".to_owned()),
                     project_id: project_id.map(|id| ProjectId(id.to_owned())),

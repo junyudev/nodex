@@ -448,6 +448,13 @@ Runs, so assertions do not depend on those development delays:
 vp run test:e2e tests/e2e/agent-cross-provider-delegation.spec.ts
 ```
 
+`page/file-provenance` creates `lumen-web` with two Pages. Dashboard cold start has
+a linked Codex chat whose Agent attached `profile/report.html`,
+`profile/flamegraph.png` and `profile/trace.json` through a credential Core issued
+for that chat. Settings dark mode mixes a brief you attached, a mockup attached by a
+Claude chat's Agent, and an image used only in its body. No Agent is started:
+`vp run dev --home "$HOME/repo/nodex/runs.local/page-file-provenance" --seed page/file-provenance`.
+
 ### Real Profile snapshots
 
 Some defects and performance cliffs only appear with real document shapes,

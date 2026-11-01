@@ -22,6 +22,7 @@ fs2.workspace = true
 futures-core.workspace = true
 getrandom.workspace = true
 hex.workspace = true
+hmac.workspace = true
 http-body-util.workspace = true
 rustix = { workspace = true, features = ["stdio"] }
 serde.workspace = true

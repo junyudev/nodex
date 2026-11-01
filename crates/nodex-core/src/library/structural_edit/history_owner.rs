@@ -280,6 +280,7 @@ pub(crate) fn drain_cleanup(
             id: owner_id.clone(),
             peer_pid,
         }),
+        agent_attribution: None,
     };
     let operation_id = crate::domain::identity::random_uuid_v7()
         .map_err(|_| internal("History cleanup operation identity is unavailable"))?;
@@ -529,6 +530,7 @@ pub(crate) fn reap(
                     id: id.clone(),
                     peer_pid: pid,
                 }),
+                agent_attribution: None,
             };
             let operation_id = crate::domain::identity::random_uuid_v7()
                 .map_err(|_| internal("History cleanup operation identity is unavailable"))?;
@@ -750,6 +752,7 @@ mod tests {
                 id: "owner".into(),
                 peer_pid: 42,
             }),
+            agent_attribution: None,
         };
         let close_id = crate::domain::identity::random_uuid_v7().expect("identity");
         let close_steps = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
@@ -1008,7 +1011,7 @@ mod tests {
                 INSERT INTO block_store_metadata(id, store_epoch, created_at, updated_at) VALUES (1, 'epoch', 'now', 'now');")?;
             let context = BoundModuleContext { profile_id: ProfileId("profile".into()), library_id: LibraryId("library".into()), project_id: None,
                 connection_id: "temporary-connection".into(), adapter: AdapterKind::ElectronHost,
-                editor_history_owner: Some(BoundEditorHistoryOwner { id: "surface".into(), peer_pid: 42 }) };
+                editor_history_owner: Some(BoundEditorHistoryOwner { id: "surface".into(), peer_pid: 42 }), agent_attribution: None };
             require_active(transaction, &context, "epoch")?;
             transaction.execute_batch("INSERT INTO editor_history_local_sets VALUES ('surface', 'local', '', 'former-document', 1, 1, 'hash', 0, 1);
                 INSERT INTO editor_history_local_roots VALUES ('surface', 'local', 'retained-block');
@@ -1053,6 +1056,7 @@ mod tests {
                 id: "closed".into(),
                 peer_pid: 42,
             }),
+            agent_attribution: None,
         };
         assert!(!bind_owner(&connection, &context, "epoch", "closed").expect("closed marker"));
         assert!(require_active(&connection, &context, "epoch").is_err());

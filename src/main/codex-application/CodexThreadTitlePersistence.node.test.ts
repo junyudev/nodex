@@ -122,6 +122,7 @@ const harness = (input: {
   } as unknown as CodexConversationProjectionService);
   const workspace: CoreModuleClients["workspace"] = {
     admitToolOperation: () => Effect.die("Unexpected application tool admission"),
+    issueAgentAttribution: () => Effect.die("Unexpected Agent attribution"),
     apply: (operation) =>
       Effect.sync(() => {
         if (operation.intent.kind !== "update_thread") return {} as never;

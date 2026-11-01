@@ -965,6 +965,7 @@ mod tests {
     fn context() -> BoundModuleContext {
         BoundModuleContext {
             editor_history_owner: None,
+            agent_attribution: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
             project_id: None,
@@ -1047,6 +1048,7 @@ mod tests {
         const PAGE_B: &str = "page:lifecycle-b";
         let persistent_context = BoundModuleContext {
             editor_history_owner: None,
+            agent_attribution: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
             project_id: None,
@@ -1386,6 +1388,7 @@ mod tests {
         const REBALANCED_PAGE: &str = "019b1000-0000-7000-8000-000000000005";
         let persistent_context = BoundModuleContext {
             editor_history_owner: None,
+            agent_attribution: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
             project_id,
@@ -1780,6 +1783,7 @@ mod tests {
         const NOW: &str = "2026-07-18T23:59:00.000Z";
         let persistent_context = BoundModuleContext {
             editor_history_owner: None,
+            agent_attribution: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
             project_id: Some(ProjectId("project-1".to_owned())),
@@ -3634,6 +3638,7 @@ mod tests {
         const TARGET_DOCUMENT: &str = "document:transfer-target";
         let persistent_context = BoundModuleContext {
             editor_history_owner: None,
+            agent_attribution: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
             project_id: project_id.map(|id| ProjectId(id.to_owned())),
@@ -3881,6 +3886,7 @@ mod tests {
         const FOREIGN_TARGET_DOCUMENT: &str = "document:transfer-foreign-target";
         let context_for = |project_id: &str| BoundModuleContext {
             editor_history_owner: None,
+            agent_attribution: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
             project_id: Some(ProjectId(project_id.to_owned())),
@@ -4216,6 +4222,7 @@ mod tests {
         const LIST_VIEW: &str = "018f0000-0000-7000-8000-000000000324";
         let context = BoundModuleContext {
             editor_history_owner: None,
+            agent_attribution: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
             project_id: project_id.map(|id| ProjectId(id.to_owned())),
@@ -6775,6 +6782,7 @@ mod tests {
         const PAGE: &str = "019c1000-0000-7000-8000-000000000004";
         let persistent_context = BoundModuleContext {
             editor_history_owner: None,
+            agent_attribution: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
             project_id: Some(ProjectId("project-1".to_owned())),
@@ -7422,6 +7430,7 @@ mod tests {
         let module = LibraryModule::new("profile-1", "library-1", &kernel);
         let local_context = BoundModuleContext {
             editor_history_owner: None,
+            agent_attribution: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
             project_id: Some(ProjectId("project-1".to_owned())),
@@ -7430,6 +7439,7 @@ mod tests {
         };
         let foreign_context = BoundModuleContext {
             editor_history_owner: None,
+            agent_attribution: None,
             project_id: Some(ProjectId("project-2".to_owned())),
             connection_id: "connection:foreign-references".to_owned(),
             ..local_context.clone()

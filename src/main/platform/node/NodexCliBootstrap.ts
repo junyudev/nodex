@@ -9,13 +9,20 @@ import type { CoreAuthorityIdentity } from "../../core-runtime/CoreAuthority";
 import type { MainConfigValue } from "../../app/MainConfig";
 import { resolveCoreExecutable } from "../../core-client/core-launcher";
 import { nodexCliBootstrapPrompt } from "./NodexCliBootstrapPrompt";
-import { bindNodexCliShell, shellQuote as quote, unbindNodexCliShell } from "./NodexCliShell";
+import {
+  bindNodexCliShell,
+  NODEX_AGENT_ATTRIBUTION_ENV,
+  shellQuote as quote,
+  unbindNodexCliShell,
+} from "./NodexCliShell";
 import type { NodexAgentTurnContext } from "../../../shared/nodex-agent-authority";
 
 export interface NodexCliTaskContext {
   readonly threadId: string;
   readonly hostId: string;
   readonly projectId: string | null;
+  /** Core's credential for this task's chat, so the content it changes names that chat. */
+  readonly agentAttribution: string | null;
 }
 
 class BootstrapUnavailable extends Data.TaggedError("NodexCliBootstrapUnavailable")<{
@@ -49,6 +56,7 @@ export const buildAgentRuntimeCliContext = (
   identity: CoreAuthorityIdentity,
   authority: NodexAgentTurnContext,
   codexShellTaskId: string | null,
+  agentAttribution: string | null,
 ): Effect.Effect<string | null> => {
   if (config.platform === "win32") return Effect.succeed(null);
   const projectId = authority.actorProjectId;
@@ -57,6 +65,7 @@ export const buildAgentRuntimeCliContext = (
       threadId: codexShellTaskId,
       hostId: "local",
       projectId,
+      agentAttribution,
     }).pipe(
       Effect.map((entry) => entry.value),
       Effect.orElseSucceed(() => null),
@@ -70,7 +79,10 @@ export const buildAgentRuntimeCliContext = (
       ]);
       if (!(await stat(paths.executable)).isFile() || !(await stat(paths.skill)).isFile())
         return null;
-      const command = `NODEX_HOME=${quote(config.nodexHome)} ${quote(paths.executable)} --expect-profile ${quote(identity.profileId)}${projectId ? ` --project ${quote(projectId)}` : ""}`;
+      const attribution = agentAttribution
+        ? `${NODEX_AGENT_ATTRIBUTION_ENV}=${quote(agentAttribution)} `
+        : "";
+      const command = `NODEX_HOME=${quote(config.nodexHome)} ${attribution}${quote(paths.executable)} --expect-profile ${quote(identity.profileId)}${projectId ? ` --project ${quote(projectId)}` : ""}`;
       return `For shell content work, use ${command} followed by the command, including after changing directories. Read the bundled Skill at ${quote(paths.skill)}. This CLI selects the current build, Profile.`;
     },
     catch: (cause) => new BootstrapUnavailable({ cause }),
@@ -113,6 +125,7 @@ export const buildNodexCliBootstrap = (
         executable: paths.executable,
         profileId: identity.profileId,
         projectId,
+        agentAttribution: task.agentAttribution,
       });
       return {
         kind: "application" as const,

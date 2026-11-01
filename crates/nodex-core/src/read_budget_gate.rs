@@ -51,6 +51,7 @@ fn profile_home() -> PathBuf {
 fn context() -> BoundModuleContext {
     BoundModuleContext {
         editor_history_owner: None,
+        agent_attribution: None,
         profile_id: ProfileId(PROFILE_ID.to_owned()),
         library_id: LibraryId(LIBRARY_ID.to_owned()),
         project_id: Some(ProjectId(PROJECT_ID.to_owned())),

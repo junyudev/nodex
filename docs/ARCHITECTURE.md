@@ -126,6 +126,8 @@ Blocks, Documents, owner registries, search/asset projections, and top-level pla
 
 Projectless execution retains a null actor Project. Authenticated Profile content access and event delivery remain independent of that actor coordinate; content location never supplies a fallback execution identity.
 
+An Agent's CLI names its chat only through an attribution credential that Main obtains from Core for a verified execution and hands to that task's CLI. Core alone signs and verifies it and derives the actor from it at the transport boundary; command JSON never names an actor, and an unverifiable caller is external. See [SECURITY.md](SECURITY.md#agent-attribution-credentials).
+
 Every active Page has exactly one `library | page | data_source` parent. Page ownership forms an acyclic forest. References, mentions, backlinks, relations, and Views are non-owning. Page ID is Block ID; Document identity remains independent.
 
 The Library Module owns stable File identity, global metadata, immutable content

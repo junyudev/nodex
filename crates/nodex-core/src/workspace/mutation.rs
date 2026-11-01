@@ -157,6 +157,7 @@ pub(super) fn seed_rootless_default_project_for_test(
             )?;
             let receipt_context = nodex_core_contracts::BoundModuleContext {
                 editor_history_owner: None,
+                agent_attribution: None,
                 profile_id: nodex_core_contracts::ProfileId(profile_id.clone()),
                 library_id: nodex_core_contracts::LibraryId(library_id.clone()),
                 project_id: Some(nodex_core_contracts::ProjectId(
@@ -2700,6 +2701,7 @@ mod tests {
     fn context() -> BoundModuleContext {
         BoundModuleContext {
             editor_history_owner: None,
+            agent_attribution: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
             project_id: Some(ProjectId("project:default".to_owned())),
@@ -2711,6 +2713,7 @@ mod tests {
     fn bootstrap_context() -> BoundModuleContext {
         BoundModuleContext {
             editor_history_owner: None,
+            agent_attribution: None,
             project_id: None,
             ..context()
         }

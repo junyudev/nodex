@@ -5,6 +5,8 @@ import { CLIENT_REQUEST_PARAMS } from "@nodex/effect-codex-app-server/rpc";
 import { produce } from "immer";
 import { MainConfig } from "../app/MainConfig";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
+import { CoreModules } from "../core-runtime/CoreModules";
+import { coreRuntimeError } from "../core-runtime/CoreRuntimeError";
 import { TemporaryAssets } from "../local-store/TemporaryAssets";
 import { CodexGateway, CodexThreadHostResolver } from "../codex-runtime/CodexGateway";
 import { CodexAgentConfigRuntime } from "./CodexAgentConfigRuntime";
@@ -30,6 +32,24 @@ const prepare = (canonical: CodexCanonicalConversationState | null) =>
   make.pipe(
     Effect.provideService(MainConfig, {} as MainConfig["Service"]),
     Effect.provideService(CoreAuthority, {} as CoreAuthority["Service"]),
+    Effect.provideService(CoreModules, {
+      workspace: {
+        read: () =>
+          coreRuntimeError({
+            operation: "workspace.read",
+            reason: "operation",
+            retryable: false,
+            cause: new Error("Core is outside this test"),
+          }),
+        issueAgentAttribution: () =>
+          coreRuntimeError({
+            operation: "workspace.issueAgentAttribution",
+            reason: "operation",
+            retryable: false,
+            cause: new Error("Core is outside this test"),
+          }),
+      },
+    } as unknown as CoreModules["Service"]),
     Effect.provideService(CodexAgentConfigRuntime, {} as CodexAgentConfigRuntime["Service"]),
     Effect.provideService(CodexAttachments, {} as CodexAttachments["Service"]),
     Effect.provideService(CodexConversationContext, {} as CodexConversationContext["Service"]),

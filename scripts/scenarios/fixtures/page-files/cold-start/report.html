@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Dashboard cold start</title>
+    <style>
+      :root {
+        --bg: #ffffff;
+        --fg: #1c1c1e;
+        --muted: #6e6e73;
+        --faint: #a1a1a6;
+        --line: #e5e5ea;
+        --track: #f2f2f4;
+        --good: #2f9e63;
+        --hydrate: #e5652e;
+        --charts: #eba13f;
+        --font: #e3be3c;
+        --other: #b8b8bd;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #161618;
+          --fg: #f2f2f4;
+          --muted: #a1a1a6;
+          --faint: #6e6e73;
+          --line: #2c2c2e;
+          --track: #232325;
+          --good: #3fbf7f;
+          --other: #5a5a5f;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--fg);
+        font:
+          14px/1.5 -apple-system,
+          BlinkMacSystemFont,
+          "Inter",
+          "Segoe UI",
+          sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      main {
+        max-width: 760px;
+        margin: 0 auto;
+        padding: 40px 32px 56px;
+      }
+      .eyebrow {
+        color: var(--faint);
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      h1 {
+        margin: 4px 0 2px;
+        font-size: 26px;
+        letter-spacing: -0.015em;
+      }
+      .meta {
+        color: var(--muted);
+        font-size: 12.5px;
+      }
+      .headline {
+        display: flex;
+        align-items: flex-end;
+        gap: 18px;
+        margin: 28px 0 18px;
+      }
+      .headline span {
+        display: flex;
+        flex-direction: column;
+      }
+      .headline small {
+        color: var(--faint);
+        font-size: 11.5px;
+      }
+      .headline strong {
+        font-size: 40px;
+        line-height: 1;
+        letter-spacing: -0.03em;
+        font-variant-numeric: tabular-nums;
+      }
+      .arrow {
+        padding-bottom: 6px;
+        color: var(--faint);
+      }
+      .bar {
+        display: flex;
+        height: 12px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: var(--track);
+      }
+      .bar span {
+        height: 100%;
+        border-right: 2px solid var(--bg);
+        transition: width 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+      }
+      table {
+        width: 100%;
+        margin-top: 16px;
+        border-collapse: collapse;
+        font-variant-numeric: tabular-nums;
+      }
+      td {
+        padding: 7px 0;
+        border-bottom: 0.5px solid var(--line);
+      }
+      td.swatch {
+        width: 22px;
+      }
+      td.swatch i {
+        display: block;
+        width: 10px;
+        height: 10px;
+        border-radius: 3px;
+      }
+      td.num {
+        width: 72px;
+        color: var(--muted);
+        text-align: right;
+      }
+      td.saving {
+        width: 72px;
+        color: var(--good);
+        text-align: right;
+      }
+      h2 {
+        margin: 36px 0 10px;
+        font-size: 15px;
+      }
+      figure {
+        margin: 0;
+      }
+      figure img {
+        display: block;
+        width: 100%;
+        border-radius: 10px;
+        background: var(--track);
+      }
+      figcaption {
+        margin-top: 8px;
+        color: var(--faint);
+        font-size: 12px;
+      }
+      ol {
+        margin: 0;
+        padding-left: 20px;
+        color: var(--muted);
+      }
+      ol li {
+        margin: 4px 0;
+      }
+      ol b {
+        color: var(--fg);
+        font-weight: 600;
+      }
+      footer {
+        margin-top: 40px;
+        padding-top: 14px;
+        border-top: 0.5px solid var(--line);
+        color: var(--faint);
+        font-size: 12px;
+      }
+      code {
+        font:
+          12px ui-monospace,
+          "SF Mono",
+          Menlo,
+          monospace;
+      }
+      .note {
+        color: var(--faint);
+        font-size: 12.5px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="eyebrow">lumen-web · cold start profile</div>
+      <h1>Dashboard cold start</h1>
+      <div class="meta">5 cold runs of <code>/dashboard</code> · median shown</div>
+
+      <div class="headline">
+        <span><small>Today</small><strong id="today" style="color: var(--hydrate)">–</strong></span>
+        <span class="arrow">→</span>
+        <span
+          ><small>With the three fixes</small
+          ><strong id="fixed" style="color: var(--good)">–</strong></span
+        >
+      </div>
+      <div class="bar" id="bar" aria-hidden="true"></div>
+      <table>
+        <tbody id="costs">
+          <tr>
+            <td class="note">Reading trace.json…</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2>Main thread, first 2.3 s</h2>
+      <figure>
+        <img src="flamegraph.png" alt="Flame graph of the dashboard's first 2.3 seconds" />
+        <figcaption>
+          Hydrating the whole workspace tree blocks first paint for 1.1 s before the dashboard
+          renders.
+        </figcaption>
+      </figure>
+
+      <h2>Suggested fixes</h2>
+      <ol>
+        <li><b>Hydrate the open Project first</b> and load the rest of the tree after first paint.</li>
+        <li><b>Split the charts bundle by route</b> so the dashboard stops parsing 840 KB up front.</li>
+        <li><b>Preload the font</b> and swap it in on load instead of blocking render.</li>
+      </ol>
+
+      <footer>
+        Generated by <code>scripts/report.mjs</code> from <code>trace.json</code> in this folder.
+      </footer>
+    </main>
+    <script>
+      const COLORS = {
+        hydrate: "var(--hydrate)",
+        charts: "var(--charts)",
+        font: "var(--font)",
+        other: "var(--other)",
+      };
+      const seconds = (ms) => `${(ms / 1000).toFixed(1)} s`;
+
+      fetch("trace.json")
+        .then((response) => {
+          if (!response.ok) throw new Error(`trace.json ${response.status}`);
+          return response.json();
+        })
+        .then(({ traceEvents }) => {
+          const costs = traceEvents
+            .filter((event) => event.cat === "cold-start.cost")
+            .map((event) => ({
+              key: event.args.cost,
+              label: event.name,
+              ms: event.dur / 1000,
+              saving: event.args.saving_ms,
+            }));
+          const total = costs.reduce((sum, cost) => sum + cost.ms, 0);
+          const saved = costs.reduce((sum, cost) => sum + cost.saving, 0);
+          document.getElementById("today").textContent = seconds(total);
+          document.getElementById("fixed").textContent = seconds(total - saved);
+
+          const bar = document.getElementById("bar");
+          const rows = document.getElementById("costs");
+          rows.textContent = "";
+          for (const cost of costs) {
+            const segment = document.createElement("span");
+            segment.style.background = COLORS[cost.key];
+            segment.style.width = "0%";
+            bar.append(segment);
+            requestAnimationFrame(() =>
+              requestAnimationFrame(() => (segment.style.width = `${(cost.ms / total) * 100}%`)),
+            );
+
+            const row = rows.insertRow();
+            const swatch = row.insertCell();
+            swatch.className = "swatch";
+            swatch.innerHTML = `<i style="background:${COLORS[cost.key]}"></i>`;
+            row.insertCell().textContent = cost.label;
+            const time = row.insertCell();
+            time.className = "num";
+            time.textContent = seconds(cost.ms);
+            const saving = row.insertCell();
+            saving.className = "saving";
+            saving.textContent = cost.saving ? `−${seconds(cost.saving)}` : "";
+          }
+        })
+        .catch((error) => {
+          document.getElementById("costs").innerHTML =
+            `<tr><td class="note">Couldn’t read trace.json (${error.message}).</td></tr>`;
+        });
+    </script>
+  </body>
+</html>

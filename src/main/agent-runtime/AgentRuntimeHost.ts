@@ -15,6 +15,7 @@ import { MainConfig } from "../app/MainConfig";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { createHostedAppToolCaller } from "../app-tools/AppToolCaller";
+import { agentBackendKindOfRuntimeDriver } from "../../shared/agent-backend";
 import { buildAgentRuntimeCliContext } from "../platform/node/NodexCliBootstrap";
 import type { AgentRuntimeProcessConnection } from "../platform/node/AgentRuntimeProcess";
 import { make as makeRuntimeAuthority } from "./AgentRuntimeAuthority";
@@ -152,6 +153,13 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
         : [];
     if (presentation) yield* presentation.observe(proof);
     const base = `You are working in Nodex Session ${sessionId}. Use the Nodex application tools for content operations.`;
+    // Core vouches for this verified execution, so the CLI's changes name this chat.
+    const backend = agentBackendKindOfRuntimeDriver(driverOf(proof.providerInstanceId));
+    const agentAttribution = backend
+      ? yield* core.workspace
+          .issueAgentAttribution({ session_id: sessionId, backend })
+          .pipe(Effect.orElseSucceed(() => null))
+      : null;
     const cli = yield* buildAgentRuntimeCliContext(
       config,
       coreAuthority.identity,
@@ -159,6 +167,7 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
       identity.nativeThreadRef?.driver === "codex"
         ? (identity.nativeThreadRef.nativeId ?? null)
         : null,
+      agentAttribution,
     );
     return { instructions: cli ? `${base}\n\n${cli}` : base, sourceRoots };
   });
@@ -241,17 +250,7 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
             ]));
       const capture = authorize(request.identity, request.identity.nativeTurnId ?? null);
       const { proof, sessionId, context } = yield* capture;
-      const driver = driverOf(proof.providerInstanceId);
-      const backend =
-        driver === "codex"
-          ? "codex"
-          : driver === "claudeAgent"
-            ? "claude"
-            : driver === "opencode"
-              ? "opencode"
-              : driver === "acpRegistry"
-                ? "acp"
-                : null;
+      const backend = agentBackendKindOfRuntimeDriver(driverOf(proof.providerInstanceId));
       if (
         !backend ||
         request.input === null ||

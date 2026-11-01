@@ -44,6 +44,7 @@ import { MAX_DOCUMENT_HTTP_METADATA_BYTES } from "../../shared/block-documents/h
 import { readCoreRuntimeConnection } from "./runtime-descriptor";
 import { decodeBoundedJson } from "./codec";
 import type {
+  AgentAttributionRequest,
   AppToolOperationRequest,
   AppToolOperationIdentity,
   CoreClientPort,
@@ -234,6 +235,24 @@ export class CoreClient implements CoreClientPort {
     );
   }
 
+  /**
+   * Asks Core to vouch for an Agent execution of one product Session that this Host has
+   * verified. Only Core can check the returned credential; it expires with this Core.
+   */
+  async issueAgentAttribution(
+    input: AgentAttributionRequest,
+    options: CoreRequestOptions = {},
+  ): Promise<string> {
+    const response = await this.#transport.requestJson<{ readonly credential: string }>(
+      "POST",
+      "/core/v1/agent-attributions",
+      input,
+      this.#moduleHeaders(),
+      options,
+    );
+    return response.credential;
+  }
+
   async resolveLocalMutation(
     input: CoreLocalMutationResolveRequest,
   ): Promise<CoreLocalMutationResolveResponse> {
@@ -273,7 +292,13 @@ export class CoreClient implements CoreClientPort {
         store_epoch: this.handshake.store_epoch,
         intent: input.intent,
       },
-      { ...this.#moduleHeaders(), ...this.#historyOwnerHeaders(options.editorHistoryOwnerId) },
+      {
+        ...this.#moduleHeaders(),
+        ...this.#historyOwnerHeaders(options.editorHistoryOwnerId),
+        ...(options.agentAttribution
+          ? { "x-nodex-agent-attribution": options.agentAttribution }
+          : {}),
+      },
       options,
     );
     if (response.status === "ok") return response.payload;

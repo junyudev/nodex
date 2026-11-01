@@ -90,6 +90,11 @@ export interface ScenarioPageFileEntrySeed {
   readonly fileId: string;
   readonly logicalPath: string;
   readonly expectedManifestRevision: number;
+  /** Attaches as this chat's Agent, through the credential Core issues for it. */
+  readonly attachedByAgent?: {
+    readonly sessionId: string;
+    readonly backend: "codex" | "claude" | "opencode" | "acp";
+  };
 }
 
 export interface ScenarioDocumentCheckpointSeed {

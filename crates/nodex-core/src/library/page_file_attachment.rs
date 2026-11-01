@@ -6,13 +6,19 @@ use nodex_core_contracts::{AdapterKind, BoundModuleContext};
 
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 
-/// The single Page File attribution admission seam. A future host-issued Agent
-/// credential must be verified here before returning Agent { session_id, backend }.
-/// Neither a Project, an adapter's Agent label, nor caller-supplied Turn metadata
-/// proves execution identity. The backend must be captured from that proof.
+/// The single Page File attribution admission seam. An Agent is named only by
+/// the attribution its Core-issued credential proved for this request; a Project,
+/// an adapter label or caller-supplied Turn metadata proves nothing. The desktop
+/// Host acts for the person, and any other unverified caller is external.
 pub(super) fn resolve_actor(
     context: &BoundModuleContext,
 ) -> Result<LibraryPageFileAttachmentActor, StoreError> {
+    if let Some(attribution) = &context.agent_attribution {
+        return Ok(LibraryPageFileAttachmentActor::Agent {
+            session_id: attribution.session_id.clone(),
+            backend: attribution.backend,
+        });
+    }
     Ok(match context.adapter {
         AdapterKind::ElectronHost => LibraryPageFileAttachmentActor::Person,
         _ => LibraryPageFileAttachmentActor::External,
@@ -86,31 +92,10 @@ fn validate(attachment: &LibraryPageFileAttachment) -> Result<(), &'static str> 
     {
         return Err("Page File attachments require an RFC3339 time");
     }
-    if let LibraryPageFileAttachmentActor::Agent {
-        session_id,
-        backend,
-    } = &attachment.attached_by
+    if let LibraryPageFileAttachmentActor::Agent { session_id, .. } = &attachment.attached_by
+        && crate::domain::files::validate_file_identity(session_id, "Agent identity").is_err()
     {
-        let identity =
-            |id: &str| crate::domain::files::validate_file_identity(id, "Agent identity").is_ok();
-        if !identity(session_id) {
-            return Err("Page File Agent attribution requires a product Session identity");
-        }
-        use nodex_core_contracts::agent::AgentBackendBinding;
-        let valid = match backend {
-            AgentBackendBinding::Codex => true,
-            AgentBackendBinding::Claude { instance_config_id }
-            | AgentBackendBinding::OpenCode { instance_config_id } => identity(instance_config_id),
-            AgentBackendBinding::Acp {
-                agent_definition_id,
-                instance_config_id,
-            } => {
-                identity(agent_definition_id) && instance_config_id.as_deref().is_none_or(identity)
-            }
-        };
-        if !valid {
-            return Err("Page File Agent attribution requires a valid Backend Binding");
-        }
+        return Err("Page File Agent attribution requires a product Session identity");
     }
     Ok(())
 }
@@ -131,10 +116,10 @@ mod tests {
         for actor in [
             r#"{"kind":"person"}"#,
             r#"{"kind":"external"}"#,
-            r#"{"kind":"agent","session_id":"session:product","backend":{"kind":"codex"}}"#,
-            r#"{"kind":"agent","session_id":"session:product","backend":{"kind":"claude","instance_config_id":"instance:claude"}}"#,
-            r#"{"kind":"agent","session_id":"session:product","backend":{"kind":"opencode","instance_config_id":"instance:opencode"}}"#,
-            r#"{"kind":"agent","session_id":"session:product","backend":{"kind":"acp","agent_definition_id":"definition:acp","instance_config_id":null}}"#,
+            r#"{"kind":"agent","session_id":"session:product","backend":"codex"}"#,
+            r#"{"kind":"agent","session_id":"session:product","backend":"claude"}"#,
+            r#"{"kind":"agent","session_id":"session:product","backend":"opencode"}"#,
+            r#"{"kind":"agent","session_id":"session:product","backend":"acp"}"#,
         ] {
             let attachment = decode(actor, time).unwrap();
             assert_eq!(
@@ -148,8 +133,9 @@ mod tests {
         for actor in [
             r#"{"kind":"forged"}"#,
             r#"{"kind":"agent","session_id":"session:product"}"#,
-            r#"{"kind":"agent","session_id":"","backend":{"kind":"codex"}}"#,
-            r#"{"kind":"agent","session_id":"session:product","backend":{"kind":"claude","instance_config_id":""}}"#,
+            r#"{"kind":"agent","session_id":"","backend":"codex"}"#,
+            r#"{"kind":"agent","session_id":"session:product","backend":{"kind":"claude"}}"#,
+            r#"{"kind":"agent","session_id":"session:product","backend":"gemini"}"#,
             r#"{"kind":"person","session_id":"forged"}"#,
         ] {
             assert!(decode(actor, time).is_err(), "invalid actor: {actor}");

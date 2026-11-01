@@ -2238,6 +2238,7 @@ mod tests {
             .apply(
                 &BoundModuleContext {
                     editor_history_owner: None,
+                    agent_attribution: None,
                     profile_id: ProfileId("profile-1".to_owned()),
                     library_id: LibraryId("library-1".to_owned()),
                     project_id: None,
@@ -2267,6 +2268,7 @@ mod tests {
             module,
             context: BoundModuleContext {
                 editor_history_owner: None,
+                agent_attribution: None,
                 profile_id: ProfileId("profile-1".to_owned()),
                 library_id: LibraryId("library-1".to_owned()),
                 project_id: None,
@@ -2373,6 +2375,7 @@ mod tests {
     fn project_context(harness: &Harness) -> BoundModuleContext {
         BoundModuleContext {
             editor_history_owner: None,
+            agent_attribution: None,
             project_id: Some(ProjectId("project:default".to_owned())),
             ..harness.context.clone()
         }
@@ -4522,6 +4525,7 @@ mod tests {
             &harness,
             &BoundModuleContext {
                 editor_history_owner: None,
+                agent_attribution: None,
                 connection_id: "another-connection".to_owned(),
                 adapter: AdapterKind::NativeCli,
                 ..context.clone()

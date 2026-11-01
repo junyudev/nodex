@@ -288,8 +288,14 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
   }
 
   async addPageFileEntry(input: ScenarioPageFileEntrySeed) {
+    const agentAttribution = input.attachedByAgent
+      ? await this.#runtime.rootClient.issueAgentAttribution({
+          session_id: input.attachedByAgent.sessionId,
+          backend: input.attachedByAgent.backend,
+        })
+      : undefined;
     const result = requireSuccess(
-      await this.#library(input.projectId).apply({
+      await this.#library(input.projectId, false, agentAttribution).apply({
         operationId: input.operationId,
         storeEpoch: this.#runtime.identity.storeEpoch,
         operation: {
@@ -779,7 +785,7 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
     );
   }
 
-  #library(projectId: string, libraryAuthority = false) {
+  #library(projectId: string, libraryAuthority = false, agentAttribution?: string) {
     const libraryId = this.#libraryIdsByProject.get(projectId);
     if (!libraryId) {
       throw new Error(`Scenario Project ${projectId} was not created by this adapter`);
@@ -791,6 +797,7 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
       libraryId,
       profileId: this.#runtime.identity.profileId,
       storeEpoch: this.#runtime.identity.storeEpoch,
+      ...(agentAttribution ? { agentAttribution } : {}),
     });
   }
 

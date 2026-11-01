@@ -7517,6 +7517,7 @@ mod tests {
         };
         let mut first = BoundModuleContext {
             editor_history_owner: None,
+            agent_attribution: None,
             profile_id: nodex_core_contracts::ProfileId("profile-1".to_owned()),
             library_id: nodex_core_contracts::LibraryId("library-1".to_owned()),
             project_id: Some(nodex_core_contracts::ProjectId("project-1".to_owned())),

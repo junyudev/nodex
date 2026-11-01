@@ -21,3 +21,14 @@ export type NativeAgentBackendKind = "claude" | "opencode";
 export const isNativeAgentBackendKind = (
   kind: AgentBackendBinding["kind"] | undefined,
 ): kind is NativeAgentBackendKind => kind === "claude" || kind === "opencode";
+
+/** The backend family behind an Agent Runtime driver, or null for a driver Nodex does not know. */
+export const agentBackendKindOfRuntimeDriver = (
+  driver: string | undefined,
+): AgentBackendBinding["kind"] | null => {
+  if (driver === "codex") return "codex";
+  if (driver === "claudeAgent") return "claude";
+  if (driver === "opencode" || driver === "opencode2") return "opencode";
+  if (driver === "acpRegistry") return "acp";
+  return null;
+};

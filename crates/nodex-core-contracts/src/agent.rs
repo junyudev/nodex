@@ -24,6 +24,18 @@ pub enum AgentBackendBinding {
     },
 }
 
+/// The runtime family that executed an attributed action. Attribution keeps
+/// only the family: a Session may change provider configuration between Runs.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentBackendKind {
+    Codex,
+    Claude,
+    #[serde(rename = "opencode")]
+    OpenCode,
+    Acp,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct AgentTurnProvenance {
     pub profile_id: String,

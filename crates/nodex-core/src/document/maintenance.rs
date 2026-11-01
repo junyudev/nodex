@@ -472,6 +472,7 @@ mod tests {
                     connection,
                     &BoundModuleContext {
                         editor_history_owner: None,
+                        agent_attribution: None,
                         profile_id: ProfileId("profile:revision-maintenance".to_owned()),
                         library_id: LibraryId("library:revision-maintenance".to_owned()),
                         project_id: None,

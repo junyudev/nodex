@@ -24,6 +24,7 @@ test("ordinary shell pipelines, redirects, jq and Python preserve development CL
         executable: requiredNativeExecutable("cli"),
         profileId: runtime.identity.profileId,
         projectId: manifest.projectId,
+        agentAttribution: null,
       });
       const result = await promisify(execFile)(
         "/bin/bash",

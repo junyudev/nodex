@@ -322,11 +322,16 @@ retained until explicitly trashed and purged.
 uses, including current File metadata, Page paths, body counts, and attachment
 provenance. JSON includes `attachment: { attached_by, attached_at }` for explicit
 entries and `attachment: null` for body-only uses. The actor is `person`,
-`agent` (with its product `session_id` and captured `backend`), `external`, or
-`unknown`. Unknown historical origins have no attachment time; other entries
-have a Core-authored RFC3339 time. CLI callers without verified Agent execution
-are external. Human output uses one compact row per File. JSON download
-receipts from `page file read` also include `attachment`.
+`agent` (with its product `session_id` and `backend` family: `codex`, `claude`,
+`opencode` or `acp`), `external`, or `unknown`. Unknown historical origins have
+no attachment time; other entries have a Core-authored RFC3339 time. Human output
+uses one compact row per File. JSON download receipts from `page file read` also
+include `attachment`.
+
+Agents that Nodex runs receive `NODEX_AGENT_ATTRIBUTION` with their CLI command
+or shell binding: a credential Core issued for that chat. The CLI presents it, and
+Core records the chat as the actor of the content it changes. A missing or
+unverifiable credential attributes nothing; those changes are `external`.
 
 Renaming paths, transferring entries, and copying or structurally restoring
 Pages preserve attachment evidence. Replacing an entry or removing and later

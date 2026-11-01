@@ -5,6 +5,8 @@ import { latestAssignedConversationTurn } from "../../shared/codex-conversation-
 import { fullAccessTurnExecution } from "../codex-runtime/CodexNativeExecutionPolicy";
 import type { CodexPreparedTurnExecution } from "../../shared/codex-conversation-state/codex-turn-execution";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
+import { CoreModules } from "../core-runtime/CoreModules";
+import { readCodexLinkedRootSession } from "./CodexLinkedRootSession";
 import { MainConfig } from "../app/MainConfig";
 import { buildNodexCliBootstrap } from "../platform/node/NodexCliBootstrap";
 import { randomUUID } from "node:crypto";
@@ -233,6 +235,7 @@ export const make: Effect.Effect<
   never,
   | MainConfig
   | CoreAuthority
+  | CoreModules
   | CodexAgentConfigRuntime
   | CodexAttachments
   | CodexConversationContext
@@ -246,6 +249,7 @@ export const make: Effect.Effect<
 > = Effect.gen(function* () {
   const config = yield* MainConfig;
   const coreAuthority = yield* CoreAuthority;
+  const core = yield* CoreModules;
   const agentConfig = yield* CodexAgentConfigRuntime;
   const attachments = yield* CodexAttachments;
   const conversationContext = yield* CodexConversationContext;
@@ -538,10 +542,25 @@ export const make: Effect.Effect<
         prepared,
         executionHostId === CODEX_APP_LOCAL_HOST_ID,
       );
+      // Core vouches for the chat this local task belongs to, so the CLI's changes name it.
+      const linkedSession =
+        executionHostId === CODEX_APP_LOCAL_HOST_ID
+          ? yield* readCodexLinkedRootSession(core, {
+              hostId: executionHostId,
+              threadId: input.threadId,
+            }).pipe(Effect.orElseSucceed(() => null))
+          : null;
+      const agentAttribution =
+        linkedSession && !linkedSession.archived
+          ? yield* core.workspace
+              .issueAgentAttribution({ session_id: linkedSession.id, backend: "codex" })
+              .pipe(Effect.orElseSucceed(() => null))
+          : null;
       const cliBootstrap = yield* buildNodexCliBootstrap(config, coreAuthority.identity, {
         threadId: input.threadId,
         hostId: executionHostId,
         projectId,
+        agentAttribution,
       });
       const additionalContext = {
         ...prepared.additionalContext,

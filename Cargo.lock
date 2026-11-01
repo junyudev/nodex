@@ -1223,6 +1223,7 @@ dependencies = [
  "futures-core",
  "getrandom 0.4.3",
  "hex",
+ "hmac",
  "http-body-util",
  "nodex-core",
  "nodex-core-contracts",

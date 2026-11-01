@@ -184,6 +184,9 @@ export async function nodexCliShellLaunchArgs(
   ]);
 }
 
+/** The CLI presents this Core-issued credential so its changes name the Agent's chat. */
+export const NODEX_AGENT_ATTRIBUTION_ENV = "NODEX_AGENT_ATTRIBUTION";
+
 /** Atomically replace this task's routing without changing any other task's binding. */
 export async function bindNodexCliShell(input: {
   nodexHome: string;
@@ -191,6 +194,8 @@ export async function bindNodexCliShell(input: {
   executable: string;
   profileId: string;
   projectId: string | null;
+  /** Names this task's chat on the content it changes; absent attributes nothing. */
+  agentAttribution: string | null;
 }): Promise<void> {
   const file = bindingPath(input.nodexHome, input.threadId);
   await mkdir(nodexCliShellPaths(input.nodexHome).bindings, { recursive: true, mode: 0o700 });
@@ -199,6 +204,9 @@ export async function bindNodexCliShell(input: {
     [
       "#!/bin/sh",
       `export NODEX_HOME=${shellQuote(input.nodexHome)}`,
+      input.agentAttribution
+        ? `export ${NODEX_AGENT_ATTRIBUTION_ENV}=${shellQuote(input.agentAttribution)}`
+        : `unset ${NODEX_AGENT_ATTRIBUTION_ENV}`,
       `exec ${shellQuote(input.executable)} --expect-profile ${shellQuote(input.profileId)} ${input.projectId ? `--project ${shellQuote(input.projectId)} ` : ""}"$@"`,
       "",
     ].join("\n"),

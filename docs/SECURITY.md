@@ -82,6 +82,24 @@ publication; collection is serialized with snapshots. Queued and submitted
 conversation inputs retain exact bytes independently of a source File and are
 read through the authenticated Profile and exact execution identity boundary.
 
+## Agent attribution credentials
+
+Content changes name an Agent only through a credential Core issued. When Main
+starts a Turn for a chat it has verified (the proven Session of a runtime
+execution, or the Session that owns a local native Codex task), it asks Core for a
+credential naming that product Session and its backend family. Core issues it only
+to the desktop Host and only for an existing, unarchived Session, signs it with a
+random key that exists only in that Core process, and accepts it for at most seven
+days or until Core restarts. Main gives it only to that task's CLI: the private
+per-task shell binding for Codex, or the command it gives other runtimes. The CLI
+presents it on content requests.
+
+Core verifies every presentation. A missing, altered, expired or foreign
+credential attributes nothing, and the change proceeds as external rather than
+failing. Request JSON never names an actor. A credential identifies a chat for
+provenance; it grants no access beyond what every caller in the Profile already
+has.
+
 ## Security Controls in Place
 
 ### Dependency maintenance

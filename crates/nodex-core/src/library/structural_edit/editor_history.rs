@@ -283,6 +283,7 @@ mod tests {
             connection_id: "history-test".into(),
             adapter: AdapterKind::Test,
             editor_history_owner: None,
+            agent_attribution: None,
         };
         let module = LibraryModule::new("profile", "library", &kernel);
         let apply = |intent| {

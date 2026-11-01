@@ -89,6 +89,7 @@ pub struct CoreClient {
     auth: String,
     connection_id: String,
     connection_binding: String,
+    agent_attribution: Option<String>,
     pub descriptor: RuntimeDescriptor,
     pub handshake: HandshakeResponse,
 }
@@ -132,9 +133,22 @@ impl CoreClient {
             auth: runtime.auth,
             connection_id,
             connection_binding: handshake.connection_binding.clone(),
+            agent_attribution: None,
             descriptor: runtime.descriptor,
             handshake,
         })
+    }
+
+    /// Presents a Core-issued Agent attribution credential on content requests, so Core
+    /// names that Agent's Session as their author. An invalid credential attributes nothing.
+    pub fn attribute_to_agent(&mut self, credential: String) -> Result<(), ClientError> {
+        if !valid_header(&credential) {
+            return Err(ClientError::InvalidRuntime(
+                "Agent attribution credential is invalid".to_owned(),
+            ));
+        }
+        self.agent_attribution = Some(credential);
+        Ok(())
     }
 
     pub fn health(&self) -> Result<HealthResponse, ClientError> {
@@ -682,6 +696,9 @@ impl CoreClient {
             (CONNECTION_HEADER, self.connection_id.as_str()),
             (CONNECTION_BINDING_HEADER, self.connection_binding.as_str()),
         ];
+        if let Some(credential) = &self.agent_attribution {
+            headers.push((crate::AGENT_ATTRIBUTION_HEADER, credential.as_str()));
+        }
         headers.extend(scope.values);
         request_json(&self.socket, &self.auth, path, request, &headers)
     }

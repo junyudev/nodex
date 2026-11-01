@@ -7821,6 +7821,7 @@ mod tests {
             .apply(
                 &BoundModuleContext {
                     editor_history_owner: None,
+                    agent_attribution: None,
                     profile_id: ProfileId(profile_id.clone()),
                     library_id: LibraryId(library_id.clone()),
                     project_id: None,
@@ -8004,6 +8005,7 @@ mod tests {
             .unwrap();
         let context = BoundModuleContext {
             editor_history_owner: None,
+            agent_attribution: None,
             profile_id: ProfileId(profile_id.clone()),
             library_id: LibraryId(library_id.clone()),
             project_id: None,
@@ -8313,6 +8315,7 @@ mod tests {
         module.seed_rootless_default_project_for_test();
         let host = BoundModuleContext {
             editor_history_owner: None,
+            agent_attribution: None,
             profile_id: ProfileId(profile_id),
             library_id: LibraryId(library_id),
             project_id: None,

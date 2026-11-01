@@ -20,6 +20,22 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/core/v1/agent-attributions": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["issue_agent_attribution"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/core/v1/blobs/prepare": {
         readonly parameters: {
             readonly query?: never;
@@ -435,6 +451,18 @@ export interface components {
         };
         /** @enum {string} */
         readonly AddressResetReason: "stream_gap" | "recipient_nack" | "ack_timeout" | "queue_overflow" | "integrity_failure" | "store_epoch_replacement";
+        /** @description The desktop Host asks Core to vouch for one Agent execution of a product Session. */
+        readonly AgentAttributionRequest: {
+            readonly backend: components["schemas"]["AgentBackendKind"];
+            readonly session_id: string;
+        };
+        /**
+         * @description An opaque credential that Core alone can verify. A caller presents it in the
+         *     Agent attribution header so content changes name the Session's Agent.
+         */
+        readonly AgentAttributionResponse: {
+            readonly credential: string;
+        };
         /**
          * @description Durable identity of the runtime family that owns an Agent conversation.
          *     Backend-specific settings live behind their own stable identifiers instead
@@ -457,6 +485,12 @@ export interface components {
             /** @enum {string} */
             readonly kind: "acp";
         };
+        /**
+         * @description The runtime family that executed an attributed action. Attribution keeps
+         *     only the family: a Session may change provider configuration between Runs.
+         * @enum {string}
+         */
+        readonly AgentBackendKind: "codex" | "claude" | "opencode" | "acp";
         readonly AgentDocumentBlockGuard: {
             readonly block_id: string;
             readonly kind: components["schemas"]["AgentDocumentBlockGuardKind"];
@@ -5305,7 +5339,7 @@ export interface components {
             /** @enum {string} */
             readonly kind: "person";
         } | {
-            readonly backend: components["schemas"]["AgentBackendBinding"];
+            readonly backend: components["schemas"]["AgentBackendKind"];
             /** @enum {string} */
             readonly kind: "agent";
             readonly session_id: string;
@@ -12501,6 +12535,39 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["ShutdownResponse"];
+                };
+            };
+            /** @description Core HTTP rejection; invalid_input identifies request validation failures */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
+                };
+            };
+        };
+    };
+    readonly issue_agent_attribution: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["AgentAttributionRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Agent attribution credential for one product Session */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["AgentAttributionResponse"];
                 };
             };
             /** @description Core HTTP rejection; invalid_input identifies request validation failures */

@@ -1790,7 +1790,7 @@ pub enum LibraryPageFileAttachmentActor {
     Person,
     Agent {
         session_id: String,
-        backend: crate::agent::AgentBackendBinding,
+        backend: crate::agent::AgentBackendKind,
     },
     External,
     Unknown,

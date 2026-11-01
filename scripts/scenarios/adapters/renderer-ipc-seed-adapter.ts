@@ -317,6 +317,9 @@ export class RendererIpcSeedAdapter implements ScenarioSeedPort {
   }
 
   async addPageFileEntry(input: ScenarioPageFileEntrySeed) {
+    if (input.attachedByAgent) {
+      throw new Error("The renderer cannot attach Files as an Agent; seed through Core instead");
+    }
     const access = { kind: "project" as const, projectId: input.projectId };
     const metadata = requireSuccess(
       await this.#invoke("library-module:read", access, { read: { mode: "metadata" } }),

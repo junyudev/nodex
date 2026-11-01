@@ -578,3 +578,260 @@ fn native_core_survives_launcher_exit_and_process_group_cleanup() {
         std::mem::forget(guard);
     }
 }
+
+/// Opens a desktop Host connection the way Main does, returning its connection headers.
+fn bind_electron_host(client: &CoreClient, home: &Path) -> Vec<(String, String)> {
+    let connection_id = "agent-attribution-host";
+    let handshake = serde_json::to_string(&nodex_core_protocol::HandshakeRequest {
+        requirements: nodex_core_protocol::core_client_requirements(),
+        client: nodex_core_protocol::ClientIdentity {
+            kind: nodex_core_protocol::ClientKind::ElectronHost,
+            build_id: "agent-attribution-test".to_owned(),
+        },
+        connection_id: connection_id.to_owned(),
+        expected_generation: nodex_core_protocol::RuntimeGenerationIdentity::from(
+            &client.descriptor,
+        ),
+    })
+    .unwrap();
+    let response = raw_post(home, "/core/v1/handshake", &handshake, &[]);
+    assert!(response.0 == 200, "{response:?}");
+    let binding = response.1["connection_binding"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    vec![
+        ("x-nodex-connection-id".to_owned(), connection_id.to_owned()),
+        ("x-nodex-connection-binding".to_owned(), binding),
+    ]
+}
+
+fn raw_post(
+    home: &Path,
+    path: &str,
+    body: &str,
+    headers: &[(String, String)],
+) -> (u16, serde_json::Value) {
+    use std::io::{Read, Write};
+    let directory = home.join("run/core");
+    let auth = fs::read_to_string(directory.join("core.auth")).unwrap();
+    let mut stream = std::os::unix::net::UnixStream::connect(directory.join("core.sock")).unwrap();
+    let headers = headers
+        .iter()
+        .map(|(name, value)| format!("{name}: {value}\r\n"))
+        .collect::<String>();
+    write!(
+        stream,
+        "POST {path} HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer {}\r\nContent-Type: application/json\r\n{headers}Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        auth.trim(),
+        body.len(),
+    )
+    .unwrap();
+    let mut response = String::new();
+    stream.read_to_string(&mut response).unwrap();
+    let status = response[9..12].parse().unwrap();
+    let json = response
+        .split_once("\r\n\r\n")
+        .map(|(_, body)| serde_json::from_str(body).unwrap_or(serde_json::Value::Null))
+        .unwrap_or(serde_json::Value::Null);
+    (status, json)
+}
+
+#[test]
+fn agent_attribution_credentials_name_the_attaching_session() {
+    use nodex_core_contracts::library::{
+        LibraryPageFileAttachmentActor, LibraryPageFileCollisionPolicy, LibraryPageFileSelector,
+    };
+    let directory = tempdir().expect("Core home");
+    let home = directory.path().canonicalize().expect("absolute home");
+    let executable = Path::new(env!("CARGO_BIN_EXE_nodex-core"));
+    let mut client = connect_or_launch(&home, "agent-attribution-test", Some(executable))
+        .expect("native client launch");
+    let guard = ProcessGuard(client.handshake.generation.pid);
+    let store_epoch = StoreEpoch(client.handshake.store_epoch.clone());
+    let project_id = "019b1000-1000-7000-8000-0000000000a1";
+    let page_id = "019b1000-1000-7000-8000-0000000000a2";
+    let session_id = "019b1000-1000-7000-8000-0000000000a3";
+    let source = home.join("source");
+    fs::create_dir(&source).unwrap();
+    let workspace = |operation: &str, intent| {
+        let response = client
+            .workspace_apply(
+                None,
+                ModuleApplyRequest {
+                    contract_version: <nodex_core_contracts::workspace::ProjectWorkspaceContract as VersionedModuleContract>::VERSION,
+                    operation_id: operation.to_owned(),
+                    store_epoch: store_epoch.clone(),
+                    intent,
+                },
+            )
+            .unwrap();
+        assert!(
+            matches!(response.0, ResponseEnvelope::Ok(_)),
+            "{response:?}"
+        );
+    };
+    workspace(
+        "attribution:create-project",
+        ProjectWorkspaceIntent::CreateInitialProject {
+            project_id: project_id.to_owned(),
+            name: "Attribution".to_owned(),
+            description: String::new(),
+            appearance: None,
+            source_roots: vec![source.to_string_lossy().into_owned()],
+            page_key_prefix: None,
+            starter_page: ProjectWorkspaceStarterPage {
+                page_id: "019b1000-1000-7000-8000-0000000000a4".to_owned(),
+                document_id: "019b1000-1000-7000-8000-0000000000a5".to_owned(),
+                title_markdown: "Welcome".to_owned(),
+                markdown: "Welcome.".to_owned(),
+            },
+        },
+    );
+    workspace(
+        "attribution:create-session",
+        ProjectWorkspaceIntent::CreateSession {
+            session_id: session_id.to_owned(),
+            project_id: Some(project_id.to_owned()),
+            title: "Dashboard cold start".to_owned(),
+            initial_page_ids: Vec::new(),
+        },
+    );
+    let created_page = client
+        .library_apply(
+            Some(project_id),
+            ModuleApplyRequest {
+                contract_version: nodex_core_contracts::library::LIBRARY_CONTRACT_VERSION,
+                operation_id: "attribution:create-page".to_owned(),
+                store_epoch: store_epoch.clone(),
+                intent: LibraryIntent::CreatePage {
+                    page_id: page_id.to_owned(),
+                    document_id: "019b1000-1000-7000-8000-0000000000a6".to_owned(),
+                    title: "Dashboard cold start".to_owned(),
+                    parent: LibraryWriteParent::Library { before: None },
+                },
+            },
+        )
+        .unwrap();
+    assert!(matches!(created_page.0, ResponseEnvelope::Ok(_)));
+
+    let request = |session: &str| {
+        serde_json::json!({ "session_id": session, "backend": "opencode" }).to_string()
+    };
+    // Only the desktop Host can vouch for an Agent, and only for a Session that exists.
+    let native_headers = vec![];
+    assert_eq!(
+        raw_post(
+            &home,
+            "/core/v1/agent-attributions",
+            &request(session_id),
+            &native_headers
+        )
+        .0,
+        401
+    );
+    let host = bind_electron_host(&client, &home);
+    assert_eq!(
+        raw_post(
+            &home,
+            "/core/v1/agent-attributions",
+            &request("019b1000-1000-7000-8000-0000000000ff"),
+            &host
+        )
+        .0,
+        404
+    );
+    let (status, issued) = raw_post(
+        &home,
+        "/core/v1/agent-attributions",
+        &request(session_id),
+        &host,
+    );
+    assert_eq!(status, 200, "{issued}");
+    let credential = issued["credential"].as_str().unwrap().to_owned();
+
+    let attach = |client: &CoreClient, index: u64, path: &str| {
+        let bytes = format!("attributed {path}");
+        let operation_id = format!("attribution:attach:{index}");
+        let prepared = client
+            .prepare_file_blob(
+                Some(project_id),
+                &operation_id,
+                &client.handshake.store_epoch,
+                Some(path),
+                &mut Cursor::new(bytes.as_bytes()),
+                bytes.len() as u64,
+            )
+            .unwrap();
+        let response = client
+            .library_apply(
+                Some(project_id),
+                ModuleApplyRequest {
+                    contract_version: nodex_core_contracts::library::LIBRARY_CONTRACT_VERSION,
+                    operation_id,
+                    store_epoch: StoreEpoch(client.handshake.store_epoch.clone()),
+                    intent: LibraryIntent::ApplyPageFileEntries {
+                        page_id: page_id.to_owned(),
+                        expected_manifest_revision: index as i64,
+                        changes: vec![LibraryPageFileEntryChange::Import {
+                            file_id: format!("attributed-file-{index}"),
+                            logical_path: path.to_owned(),
+                            mime_type: "text/plain".to_owned(),
+                            prepared_blob_receipt_id: prepared.receipt_id,
+                            collision_policy: LibraryPageFileCollisionPolicy::Reject,
+                        }],
+                        turn_id: None,
+                    },
+                },
+            )
+            .unwrap();
+        assert!(
+            matches!(response.0, ResponseEnvelope::Ok(_)),
+            "{response:?}"
+        );
+        let resolved = client
+            .library_read(
+                Some(project_id),
+                LibraryRead::ResolvePageFile {
+                    page_id: page_id.to_owned(),
+                    selector: LibraryPageFileSelector::Path {
+                        logical_path: path.to_owned(),
+                    },
+                },
+            )
+            .unwrap();
+        let ResponseEnvelope::Ok(snapshot) = resolved.0 else {
+            panic!("resolved Page File")
+        };
+        let LibraryReadValue::ResolvedPageFile { value } = snapshot.value else {
+            panic!("resolved Page File value")
+        };
+        value.attachment.unwrap().attached_by
+    };
+
+    assert_eq!(
+        attach(&client, 0, "profile/unverified.txt"),
+        LibraryPageFileAttachmentActor::External
+    );
+    client.attribute_to_agent(credential.clone()).unwrap();
+    assert_eq!(
+        attach(&client, 1, "profile/report.html"),
+        LibraryPageFileAttachmentActor::Agent {
+            session_id: session_id.to_owned(),
+            backend: nodex_core_contracts::agent::AgentBackendKind::OpenCode,
+        }
+    );
+    // An altered credential proves nothing; the change is still made, as external.
+    let (prefix, rest) = credential.split_once('.').unwrap();
+    client
+        .attribute_to_agent(format!("{prefix}.{}x", rest))
+        .unwrap();
+    assert_eq!(
+        attach(&client, 2, "profile/trace.json"),
+        LibraryPageFileAttachmentActor::External
+    );
+
+    drop(client);
+    drop(guard);
+    wait_for_runtime_cleanup(&home);
+}

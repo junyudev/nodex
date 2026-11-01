@@ -33,6 +33,7 @@ fn context() -> BoundModuleContext {
         connection_id: "promotion-guard-test".into(),
         adapter: AdapterKind::Test,
         editor_history_owner: None,
+        agent_attribution: None,
     }
 }
 

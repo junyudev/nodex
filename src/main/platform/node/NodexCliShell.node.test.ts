@@ -77,6 +77,7 @@ async function withShellFixture(
           executable,
           profileId: name,
           projectId: `${name}-project`,
+          agentAttribution: null,
         });
         return {
           ...environment,

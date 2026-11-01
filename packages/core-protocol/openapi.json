@@ -50,6 +50,46 @@
         }
       }
     },
+    "/core/v1/agent-attributions": {
+      "post": {
+        "tags": [
+          "api"
+        ],
+        "operationId": "issue_agent_attribution",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentAttributionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Agent attribution credential for one product Session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentAttributionResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Core HTTP rejection; invalid_input identifies request validation failures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/core/v1/blobs/prepare": {
       "post": {
         "tags": [
@@ -2046,6 +2086,36 @@
           "store_epoch_replacement"
         ]
       },
+      "AgentAttributionRequest": {
+        "type": "object",
+        "description": "The desktop Host asks Core to vouch for one Agent execution of a product Session.",
+        "required": [
+          "session_id",
+          "backend"
+        ],
+        "properties": {
+          "backend": {
+            "$ref": "#/components/schemas/AgentBackendKind"
+          },
+          "session_id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "AgentAttributionResponse": {
+        "type": "object",
+        "description": "An opaque credential that Core alone can verify. A caller presents it in the\nAgent attribution header so content changes name the Session's Agent.",
+        "required": [
+          "credential"
+        ],
+        "properties": {
+          "credential": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
       "AgentBackendBinding": {
         "oneOf": [
           {
@@ -2124,6 +2194,16 @@
           }
         ],
         "description": "Durable identity of the runtime family that owns an Agent conversation.\nBackend-specific settings live behind their own stable identifiers instead\nof accumulating nullable fields on Threads and Automations."
+      },
+      "AgentBackendKind": {
+        "type": "string",
+        "description": "The runtime family that executed an attributed action. Attribution keeps\nonly the family: a Session may change provider configuration between Runs.",
+        "enum": [
+          "codex",
+          "claude",
+          "opencode",
+          "acp"
+        ]
       },
       "AgentDocumentBlockGuard": {
         "type": "object",
@@ -21889,7 +21969,7 @@
             ],
             "properties": {
               "backend": {
-                "$ref": "#/components/schemas/AgentBackendBinding"
+                "$ref": "#/components/schemas/AgentBackendKind"
               },
               "kind": {
                 "type": "string",

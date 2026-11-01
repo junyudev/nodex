@@ -81,6 +81,7 @@ const fixture = Effect.gen(function* () {
   const calls: AgentRuntimeMethod[] = [];
   const coreReads: ProjectWorkspaceRead[] = [];
   const coreWrites: ProjectWorkspaceApplyInput[] = [];
+  const attributions: { session_id: string; backend: string }[] = [];
   const live = new Map<string, ReturnType<typeof proofOf>>();
   const bind = (identity: AgentHostTurnIdentity | AgentHostNativeSessionIdentity) =>
     live.set(identity.runId ?? identity.incarnationId, proofOf(identity));
@@ -186,6 +187,11 @@ const fixture = Effect.gen(function* () {
             coreWrites.push(input);
             return {};
           }),
+        issueAgentAttribution: (input: { session_id: string; backend: string }) =>
+          Effect.sync(() => {
+            attributions.push(input);
+            return `credential:${input.session_id}`;
+          }),
       },
     } as never),
     Effect.provideService(CoreAuthority, {
@@ -199,6 +205,7 @@ const fixture = Effect.gen(function* () {
     calls,
     coreReads,
     coreWrites,
+    attributions,
     live,
     bind,
     caller: () => caller!,
@@ -256,6 +263,14 @@ it.effect("a projectless Turn contributes no Project directory scope", () =>
     f.moveToProject(null);
     assert.deepInclude(yield* f.execute(prepareTurn()), { sourceRoots: [] });
     assert.isFalse(f.coreReads.some((read) => read.kind === "project"));
+  }).pipe(Effect.scoped),
+);
+
+it.effect("a Turn's CLI is vouched for as its own Session's Agent", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture;
+    yield* f.execute(prepareTurn());
+    assert.deepEqual(f.attributions, [{ session_id: "session", backend: "acp" }]);
   }).pipe(Effect.scoped),
 );
 

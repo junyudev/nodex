@@ -211,7 +211,7 @@ A child's entries are not flattened into its parent.
 
 Each explicit entry retains attachment provenance: who attached it and the
 Core-authored attachment time. The actor is the local person, a verified Agent
-identified by its product Session and captured Backend Binding, an external
+identified by its product Session and captured backend family, an external
 caller without verified execution identity, or an unknown historical origin
 with no time. Body-only uses have no entry attachment evidence. File creation
 and version evidence describe the File, not who attached it to a Page.

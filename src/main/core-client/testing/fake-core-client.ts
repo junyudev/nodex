@@ -320,6 +320,10 @@ export class FakeCoreClient implements CoreClientPort {
     throw new Error("Fake Core client has no tool operation admission");
   }
 
+  async issueAgentAttribution(input: import("../types").AgentAttributionRequest): Promise<string> {
+    return `fake-attribution:${input.backend}:${input.session_id}`;
+  }
+
   async resolveLocalMutation(
     input: CoreLocalMutationResolveRequest,
   ): Promise<CoreLocalMutationResolveResponse> {

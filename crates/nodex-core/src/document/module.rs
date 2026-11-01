@@ -2685,6 +2685,7 @@ impl OwnedDocumentModule {
         let mutation_context = if prepared_agent.is_some() {
             BoundModuleContext {
                 editor_history_owner: None,
+                agent_attribution: None,
                 adapter: AdapterKind::Agent,
                 ..context.clone()
             }
@@ -5890,6 +5891,7 @@ mod tests {
     fn context_for_project(connection_id: &str, project_id: &str) -> BoundModuleContext {
         BoundModuleContext {
             editor_history_owner: None,
+            agent_attribution: None,
             profile_id: ProfileId(PROFILE_ID.to_owned()),
             library_id: LibraryId(LIBRARY_ID.to_owned()),
             project_id: Some(ProjectId(project_id.to_owned())),
@@ -5901,6 +5903,7 @@ mod tests {
     fn library_context_for(connection_id: &str, adapter: AdapterKind) -> BoundModuleContext {
         BoundModuleContext {
             editor_history_owner: None,
+            agent_attribution: None,
             profile_id: ProfileId(PROFILE_ID.to_owned()),
             library_id: LibraryId(LIBRARY_ID.to_owned()),
             project_id: None,
@@ -12136,6 +12139,7 @@ mod tests {
             .apply(
                 &BoundModuleContext {
                     editor_history_owner: None,
+                    agent_attribution: None,
                     profile_id: ProfileId(FOREIGN_PROFILE_ID.to_owned()),
                     library_id: LibraryId(FOREIGN_LIBRARY_ID.to_owned()),
                     project_id: None,

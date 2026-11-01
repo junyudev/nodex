@@ -97,6 +97,8 @@ export interface CoreLibraryModuleAdapterInput {
   readonly profileId: string;
   readonly storeEpoch: string;
   readonly editorHistoryOwnerId?: string;
+  /** Names the Agent these changes are made for; see `CoreRequestOptions.agentAttribution`. */
+  readonly agentAttribution?: string;
 }
 
 export interface CoreLibraryModuleAdapter {
@@ -2018,9 +2020,12 @@ export const createCoreLibraryModuleAdapter = (
       try {
         const committed = await input.client.libraryApply(
           { operationId: request.operationId, intent: toCoreIntent(request.operation) },
-          input.editorHistoryOwnerId
-            ? { editorHistoryOwnerId: input.editorHistoryOwnerId }
-            : undefined,
+          {
+            ...(input.editorHistoryOwnerId
+              ? { editorHistoryOwnerId: input.editorHistoryOwnerId }
+              : {}),
+            ...(input.agentAttribution ? { agentAttribution: input.agentAttribution } : {}),
+          },
         );
         const receipt = committed.receipt;
         const storeEpoch = applyResultStoreEpoch(committed);

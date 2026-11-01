@@ -148,6 +148,7 @@ const main = async () => {
           threadId: "probe-task",
           hostId: "local",
           projectId: scenario.manifest.projectId,
+          agentAttribution: null,
         },
       ),
     );
@@ -180,6 +181,7 @@ const main = async () => {
           executable: resolve("target/debug/nodex"),
           profileId: scenario.runtime.identity.profileId,
           projectId: scenario.manifest.projectId,
+          agentAttribution: null,
         });
         assert.equal((await shell(started.thread.id, "command -v nodex")).trim(), "nodex");
         const nativeContext = JSON.parse(

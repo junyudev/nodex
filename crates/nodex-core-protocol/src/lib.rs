@@ -47,6 +47,8 @@ pub const TRANSPORT_PROTOCOL_MAX: u32 = 14;
 pub const MAX_FILE_BLOB_BYTES: usize = 64 * 1024 * 1024;
 pub const MAX_MANAGED_BLOB_BYTES: usize = nodex_core_contracts::MAX_MANAGED_BLOB_BYTES as usize;
 pub const COMPATIBILITY_MANIFEST_VERSION: u32 = 1;
+/// Carries a Core-issued Agent attribution credential on content requests.
+pub const AGENT_ATTRIBUTION_HEADER: &str = "x-nodex-agent-attribution";
 pub const MAX_ORDINARY_JSON_REQUEST_BYTES: usize = 2 * 1024 * 1024;
 pub const MAX_ORDINARY_JSON_RESPONSE_BYTES: usize = 16 * 1024 * 1024;
 pub const MAX_EVENT_FRAME_BYTES: usize =
@@ -568,6 +570,22 @@ pub struct ClientIdentity {
     pub build_id: String,
 }
 
+/// The desktop Host asks Core to vouch for one Agent execution of a product Session.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct AgentAttributionRequest {
+    pub session_id: String,
+    pub backend: nodex_core_contracts::agent::AgentBackendKind,
+}
+
+/// An opaque credential that Core alone can verify. A caller presents it in the
+/// Agent attribution header so content changes name the Session's Agent.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct AgentAttributionResponse {
+    pub credential: String,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct HandshakeRequest {
@@ -1009,6 +1027,14 @@ mod api {
     pub(super) fn handshake() {}
 
     #[utoipa::path(
+        post,
+        path = "/core/v1/agent-attributions",
+        request_body = AgentAttributionRequest,
+        responses((status = 200, description = "Agent attribution credential for one product Session", body = AgentAttributionResponse))
+    )]
+    pub(super) fn issue_agent_attribution() {}
+
+    #[utoipa::path(
         get,
         path = "/core/v1/events",
         params(("after" = Option<i64>, Query, description = "Last committed event sequence observed")),
@@ -1238,6 +1264,7 @@ mod api {
     paths(
         api::health,
         api::handshake,
+        api::issue_agent_attribution,
         api::events,
         api::resolve_local_mutation,
         api::admit_app_tool_operation,
@@ -1286,6 +1313,8 @@ mod api {
         CompatibilityMismatch,
         HandshakeRequest,
         HandshakeResponse,
+        AgentAttributionRequest,
+        AgentAttributionResponse,
         HealthResponse,
         HttpErrorResponse,
         CoreHealthMetrics,
@@ -1395,6 +1424,7 @@ mod tests {
             .collect::<BTreeSet<_>>();
         let expected = [
             "/core/v1/admin/shutdown",
+            "/core/v1/agent-attributions",
             "/core/v1/events",
             "/core/v1/handshake",
             "/core/v1/health",

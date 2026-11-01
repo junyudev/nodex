@@ -3788,6 +3788,7 @@ mod tests {
             .expect("seed Profile identity");
         let context = BoundModuleContext {
             editor_history_owner: None,
+            agent_attribution: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
             project_id: None,

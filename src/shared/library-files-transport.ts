@@ -310,18 +310,7 @@ const attachmentActorSchema = z.discriminatedUnion("kind", [
     .object({
       kind: z.literal("agent"),
       session_id: identity,
-      backend: z.discriminatedUnion("kind", [
-        z.object({ kind: z.literal("codex") }).strict(),
-        z.object({ kind: z.literal("claude"), instance_config_id: identity }).strict(),
-        z.object({ kind: z.literal("opencode"), instance_config_id: identity }).strict(),
-        z
-          .object({
-            kind: z.literal("acp"),
-            agent_definition_id: identity,
-            instance_config_id: identity.nullish(),
-          })
-          .strict(),
-      ]),
+      backend: z.enum(["codex", "claude", "opencode", "acp"]),
     })
     .strict(),
 ]) satisfies z.ZodType<LibraryPageFileAttachmentActor>;

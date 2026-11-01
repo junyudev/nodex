@@ -53,6 +53,18 @@ pub struct BoundModuleContext {
     /// Main-authenticated editor lifetime; never accepted from command JSON.
     #[serde(default)]
     pub editor_history_owner: Option<BoundEditorHistoryOwner>,
+    /// A Core-verified Agent execution acting through this request; never accepted from
+    /// command JSON. Absent for people and for callers without a verified credential.
+    #[serde(default)]
+    pub agent_attribution: Option<BoundAgentAttribution>,
+}
+
+/// The product Session and backend family whose Agent issued a request, proven by a
+/// credential Core itself issued to the desktop Host for that Session.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct BoundAgentAttribution {
+    pub session_id: String,
+    pub backend: crate::agent::AgentBackendKind,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
