@@ -1,0 +1,77 @@
+CHANGELOG.md
+  s_23804a86f2e450::t_d382e50e7b6376 40
+src/main/inbox-application/InboxRuntime.node.test.ts
+  s_23804a86f2e450::t_f8b999856bd61a 37,158,896
+src/main/inbox-application/InboxDispatcher.ts
+  s_23804a86f2e450::t_f8b999856bd61a 3,21,55,61-77,156,160
+src/main/inbox-application/InboxApplication.test-support.ts
+  s_23804a86f2e450::t_e8d9bd1574fabe 43,45-50
+  s_23804a86f2e450::t_f8b999856bd61a 2,44,51,129
+packages/agent-runtime/src/textGeneration/ClaudeTextGeneration.ts
+  s_23804a86f2e450::t_0ba94739ecc444 178
+  s_23804a86f2e450::t_c01e24c49e354a 43-44,139,228-229,285,287
+packages/agent-runtime/src/textGeneration/CodexTextGeneration.ts
+  s_23804a86f2e450::t_f8b999856bd61a 165,227
+packages/agent-runtime/src/nodex/Service.ts
+  s_23804a86f2e450::t_f8b999856bd61a 261
+packages/agent-runtime/src/textGeneration/NativeUtilityExecution.test.ts
+  s_23804a86f2e450::t_c656620400c84b 27-28,30-32,51,133-140,146-151,155-160
+src/main/inbox-application/InboxDispatcher.node.test.ts
+  s_23804a86f2e450::t_f8b999856bd61a 10,22-26,99-101,118,143-144,325-356
+  s_ba060ac4e330f7::t_80c7ea05f925d9 357-359
+packages/agent-runtime/src/textGeneration/CodexTextGeneration.test.ts
+  s_23804a86f2e450::t_f8b999856bd61a 256-280
+src/main/inbox-application/inbox-suggestions.ts
+  s_23804a86f2e450::t_83869eb548ab86 16
+  s_23804a86f2e450::t_39e5a0a67fb4c3 250-251
+  s_23804a86f2e450::t_f8b999856bd61a 1,14-15,248-249,252,254
+docs/product-specs/inbox-behavior.md
+  s_23804a86f2e450::t_6351085c02e6bb 355
+  s_23804a86f2e450::t_d382e50e7b6376 315-318,323-324
+  s_23804a86f2e450::t_f8b999856bd61a 311-314,319-322,325-326,348-352,388-390
+docs/adr/0067-inbox-entries-and-dispatch-proposals.md
+  s_23804a86f2e450::t_a683ee9958adfa 71-73
+  s_23804a86f2e450::t_f8b999856bd61a 70
+crates/nodex-core-contracts/src/inbox.rs
+  s_23804a86f2e450::t_1938bdc0d2bf63 381-382
+crates/nodex-core/src/workspace/inbox_read.rs
+  s_23804a86f2e450::t_24fdd69c97f960 1113-1125,1137,1141-1153
+crates/nodex-core/src/workspace/inbox_tests.rs
+  s_23804a86f2e450::t_a79da870acee60 1022-1080
+packages/agent-runtime/vendor/provider-core/src/server/textGeneration.ts
+  s_23804a86f2e450::t_d51b892eec2fd2 134-135
+packages/agent-runtime/vendor/provider-core/src/server/textGenerationOperations.ts
+  s_23804a86f2e450::t_fb841a48a77c3d 38
+packages/core-protocol/openapi.json
+  s_23804a86f2e450::t_0bfafb525930f8 39183-39184,39195-39201
+packages/core-protocol/src/generated.ts
+  s_23804a86f2e450::t_f07745d3b26bc6 9389-9390
+scripts/evals/inbox-routing.ts
+  s_23804a86f2e450::t_7851fa82d92cd0 324-325
+src/main/inbox-application/inbox-suggestions.node.test.ts
+  s_23804a86f2e450::t_d5a26a012c991c 34-36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "235300bdbd649996a886dc5081056491fe8ba0ca",
+  "prompts": {},
+  "sessions": {
+    "s_23804a86f2e450": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "de32fbc3-bf75-4676-9677-8df79da4e08c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_ba060ac4e330f7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1a19e173-08d8-4dbe-8247-31ddc3af88af",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
