@@ -1,0 +1,22 @@
+packages/landing/src/replica/Chat.tsx
+  s_4e599f808c4b7e::t_daac0b97a36e7d 323-325,361-366
+docs/landing-site.md
+  s_4e599f808c4b7e::t_43ee54787e9dc6 200-203
+  s_4e599f808c4b7e::t_03d34e74b154c6 199
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "035d02b898508c077446e4c166439a6163c98660",
+  "prompts": {},
+  "sessions": {
+    "s_4e599f808c4b7e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "026a871a-c352-4ed4-acc4-38a2ff2e26fb",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
