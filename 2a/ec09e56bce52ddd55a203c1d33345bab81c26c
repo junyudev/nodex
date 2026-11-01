@@ -1,0 +1,19 @@
+src/renderer/features/local-conversation/agent-runtime-subagent-overview.node.test.ts
+  s_4e599f808c4b7e::t_6c4cb961ecf188 271
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2aec09e56bce52ddd55a203c1d33345bab81c26c",
+  "prompts": {},
+  "sessions": {
+    "s_4e599f808c4b7e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "026a871a-c352-4ed4-acc4-38a2ff2e26fb",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
