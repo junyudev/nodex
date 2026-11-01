@@ -1,0 +1,68 @@
+src/renderer/features/local-conversation/agent-runtime-subagent-overview.node.test.ts
+  s_8b58b89ca1a92a::t_681a056d4dc0bf 279-282
+  s_8b58b89ca1a92a::t_d330ddc3944c32 267-278,283
+src/renderer/features/local-conversation/view/shared/delegated-task-row.test.tsx
+  s_8b58b89ca1a92a::t_680ccfd51a3728 94-96,105
+  s_8b58b89ca1a92a::t_deb1db3caeef95 81-93,97-104,106-108
+src/renderer/features/local-conversation/view/shared/conversation-recovery-surface.tsx
+  s_8b58b89ca1a92a::t_bcb1dc9c199156 19,120
+docs/product-specs/codex-thread-transcript-behavior.md
+  s_8b58b89ca1a92a::t_528897d7b887d9 606-608
+CHANGELOG.md
+  s_8b58b89ca1a92a::t_1b4d673c91134a 20,45-46
+packages/agent-runtime/src/orchestration-v2/RunExecutionService.test.ts
+  s_8b58b89ca1a92a::t_d85a1cdb4f324e 3065,3096
+src/renderer/features/local-conversation/agent-runtime-subagent-overview.ts
+  s_8b58b89ca1a92a::t_b9942c4a7ee1e4 11,57-66
+  s_8b58b89ca1a92a::t_681a056d4dc0bf 67-72
+src/renderer/features/local-conversation/view/shared/use-recovery-now.ts
+  s_8b58b89ca1a92a::t_e5eca2f434b147 1-21
+src/renderer/features/local-conversation/agent-runtime-transcript-projection.node.test.ts
+  s_8b58b89ca1a92a::t_b9942c4a7ee1e4 230-290
+  s_8b58b89ca1a92a::t_681a056d4dc0bf 215-219
+packages/agent-runtime/src/orchestration-v2/RunExecutionService.ts
+  s_8b58b89ca1a92a::t_3e8346a6faefdc 1984-1987,2199
+src/renderer/features/local-conversation/delegated-task-presentation.ts
+  s_8b58b89ca1a92a::t_05d450a8f4c782 1,7-10,12-16,22,25-27,33,47,66-67,110,112-115
+  s_8b58b89ca1a92a::t_681a056d4dc0bf 111
+  s_8b58b89ca1a92a::t_cad59a11647f37 116
+src/renderer/features/local-conversation/projection/conversation-recovery-presentation.ts
+  s_8b58b89ca1a92a::t_a733e64d883c71 61-70,74
+src/renderer/features/local-conversation/agent-runtime-transcript-projection.ts
+  s_8b58b89ca1a92a::t_96d9c7799199d1 749-761
+src/renderer/features/local-conversation/projection/conversation-recovery-presentation.test.ts
+  s_8b58b89ca1a92a::t_a733e64d883c71 67-75
+src/renderer/features/local-conversation/delegated-task-presentation.node.test.ts
+  s_8b58b89ca1a92a::t_681a056d4dc0bf 56
+  s_8b58b89ca1a92a::t_f5b49d6845860b 4
+  s_8b58b89ca1a92a::t_a733e64d883c71 37-55,57-63
+docs/product-specs/agent-runtime-behavior.md
+  s_8b58b89ca1a92a::t_21aeee331435f1 74-124,625-628,823-825
+docs/ARCHITECTURE.md
+  s_8b58b89ca1a92a::t_528897d7b887d9 1299
+src/renderer/features/local-conversation/view/shared/delegated-task-row.tsx
+  s_8b58b89ca1a92a::t_bcb1dc9c199156 29,52,61
+  s_8b58b89ca1a92a::t_4bd638f6d3c397 19,59-60,62-63,127
+packages/agent-runtime/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
+  s_8b58b89ca1a92a::t_d85a1cdb4f324e 6693
+packages/agent-runtime/src/mcp/toolkits/task/tools.ts
+  s_8b58b89ca1a92a::t_db619b42042829 61-65
+src/shared/codex-conversation-state/codex-conversation-state.ts
+  s_8b58b89ca1a92a::t_71eefdb50fcc01 496-497
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6d3e809960bd62c062cc30167fc7387cb4dd4838",
+  "prompts": {},
+  "sessions": {
+    "s_8b58b89ca1a92a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c075d5c4-0b38-4f3d-8c6c-e4a048a9b857",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
