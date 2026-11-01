@@ -1,0 +1,85 @@
+.github/workflows/windows.yml
+  s_3dc0b7647fcf0b::t_dc17c29b0a9ebf 42-43
+crates/nodex-cli/src/ripgrep.rs
+  s_3dc0b7647fcf0b::t_43cc5ca93c9a84 229
+crates/nodex-cli/src/skills/target.rs
+  s_9ad21099c264dd::t_3e70380d29ee4b 216-220
+crates/nodex-cli/tests/skills_installer.rs
+  s_3dc0b7647fcf0b::t_f9eec6565cba46 106-107,112-117,185,277,377,450,491,526
+crates/nodex-core-server/src/lib.rs
+  s_3dc0b7647fcf0b::t_295baef5b00d3f 3880
+crates/nodex-core-server/tests/lifecycle.rs
+  s_3dc0b7647fcf0b::t_8d0d989e8cc19d 1369-1374
+crates/nodex-core/src/automation/mutation.rs
+  s_9ad21099c264dd::t_e10f84c34a2aff 2259-2261,2299-2301,2692,3328-3330,3648,3666,4129
+crates/nodex-core/src/document/retention.rs
+  s_3dc0b7647fcf0b::t_b38e82bd4304e8 2244-2250,2253-2256,2259-2262,2265-2268,2272-2301
+crates/nodex-core/src/domain/file_path.rs
+  s_3dc0b7647fcf0b::t_dba5b88492f990 207
+crates/nodex-core/src/infrastructure/migration.rs
+  s_3dc0b7647fcf0b::t_24e15aa7ca63d4 5704-5706
+crates/nodex-core/src/library/navigation.rs
+  s_9ad21099c264dd::t_a49e90c39c9d58 3808-3810
+crates/nodex-core/src/library/search_snapshot.rs
+  s_3dc0b7647fcf0b::t_219b9103dbc9b3 1043
+crates/nodex-core/src/library/tests/effective_view_query.rs
+  s_3dc0b7647fcf0b::t_5633f428c37aaf 48
+crates/nodex-core/src/workspace/codex_thread_navigation.rs
+  s_3dc0b7647fcf0b::t_92289ab54cb0d6 253
+crates/nodex-core/src/workspace/execution.rs
+  s_9ad21099c264dd::t_2a0f5eaf49eebc 1131-1133,1144-1146,1148-1151
+crates/nodex-core/src/workspace/inbox_tests.rs
+  s_9ad21099c264dd::t_4ff3088b53528c 1191-1193,4740-4743,4749-4752,4776,4828,5102-5104
+crates/nodex-core/src/workspace/mutation.rs
+  s_9ad21099c264dd::t_a56a7054ef4773 2772-2774,2848-2850,2907-2909,2926-2928,3077-3079,3131,3696-3697,3760-3762,3938,4041-4044
+crates/nodex-core/src/workspace/page_chat.rs
+  s_3dc0b7647fcf0b::t_c678b2b146afa5 1576
+crates/nodex-core/src/workspace/page_create.rs
+  s_3dc0b7647fcf0b::t_75aee7a6ed8160 330
+crates/nodex-core/src/workspace/read.rs
+  s_9ad21099c264dd::t_c981e31b93fd91 1134,1258-1261
+crates/nodex-core/src/workspace/sidebar.rs
+  s_9ad21099c264dd::t_f5c507f277da59 388-394,417-423
+crates/nodex-core/src/workspace/test_support.rs
+  s_9ad21099c264dd::t_0e4171492c5e7d 127-130
+crates/nodex-core/src/workspace/thread.rs
+  s_9ad21099c264dd::t_7deca2041672ee 3117,3119,3155,3158,3281,3377-3380,3405,3418,3420,3806,3940-3946,3948-3949,3969-3972,3985-3993,4092-4098,4104-4111,4113-4116,4142-4145,4326-4331,5198-5199,5212-5215,5228-5234,5317-5320
+crates/nodex-platform/src/local_endpoint/windows.rs
+  s_9ad21099c264dd::t_cc7d9fac6aee9c 5,7,9,11,13,55,76-82,104-164,415-437
+crates/nodex-platform/src/private_fs/unix.rs
+  s_3dc0b7647fcf0b::t_caa0c5f7df3daf 173-176
+crates/nodex-platform/src/private_fs/windows.rs
+  s_3dc0b7647fcf0b::t_4fa6a1183175a8 629-634
+crates/nodex-platform/src/test_support.rs
+  s_9ad21099c264dd::t_1471682b1ccc3a 23-34
+crates/nodex-profile/src/codex/tests.rs
+  s_9ad21099c264dd::t_ef5dda69c6c64b 463-472,882-885
+crates/nodex-profile/src/goals.rs
+  s_3dc0b7647fcf0b::t_9fced3876ce04f 95,166
+docs/reliability/core-lifecycle-and-store.md
+  s_3dc0b7647fcf0b::t_ab41b367b17dcc 57-58
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "00ae1e2b158a0575af85d9edb2356cbe5e35ee09",
+  "prompts": {},
+  "sessions": {
+    "s_3dc0b7647fcf0b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1964e-690a-72d0-a5e2-1468f0931284",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_9ad21099c264dd": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1964f-2f03-7680-8da9-7c6d6ce01903",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
