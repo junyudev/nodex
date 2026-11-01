@@ -1,0 +1,19 @@
+src/main/ipc/handlers/ProjectWorkspaceIpc.test.ts
+  s_a5bb892838ce25::t_30281a315440f2 10,125-128,156-160,230,239,294-301
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b64ca5b3cf06f1ed2bbdc9108d54051775826663",
+  "prompts": {},
+  "sessions": {
+    "s_a5bb892838ce25": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e15d53ef-531c-43aa-afdd-245a08fa0ce0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
