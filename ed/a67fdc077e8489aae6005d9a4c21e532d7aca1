@@ -1,0 +1,166 @@
+src/main/agent-runtime/AgentRuntimeApplication.node.test.ts
+  s_a5bb892838ce25::t_a05e16b856f5dc 7058
+  s_a5bb892838ce25::t_85cb10441f9007 7061
+crates/nodex-core/src/infrastructure/migration.rs
+  s_e17141fc7a66d9::t_b6c575d4580c7b 393-397,2574-2578,2609-2612,2614-2618
+crates/nodex-store-format/src/lib.rs
+  s_e17141fc7a66d9::t_86f9f995ec1d16 253-254,264
+src/renderer/components/board/page-stage/page-files-row.test.tsx
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 54
+packages/landing/src/replica/Viewers.tsx
+  s_a5bb892838ce25::t_e403914ac27168 38
+src/renderer/features/local-conversation/native-thread-stage-actions.ts
+  s_fd402faa98738e::t_277e083029e8d3 31
+src/renderer/components/workbench/session-chat-tab-icon.tsx
+  s_fd402faa98738e::t_277e083029e8d3 4,7,19
+src/renderer/lib/use-session-execution.ts
+  s_fd402faa98738e::t_277e083029e8d3 15,92
+src/renderer/components/workbench/workbench-testkit/workbench-shell-fixtures.ts
+  s_fd402faa98738e::t_277e083029e8d3 617
+src/shared/types.ts
+  s_fd402faa98738e::t_277e083029e8d3 1420
+src/renderer/features/local-conversation/view/composer/composer-prompt-draft-atom.test.ts
+  s_fd402faa98738e::t_277e083029e8d3 20,94-120
+src/renderer/lib/sidebar-thread-row-live-view.ts
+  s_fd402faa98738e::t_277e083029e8d3 7,23-24
+docs/product-specs/workbench-shell.md
+  s_fd402faa98738e::t_277e083029e8d3 14-15,244
+src/renderer/lib/use-workbench-session-commands.ts
+  s_fd402faa98738e::t_277e083029e8d3 178,237,720-726,749
+src/renderer/lib/chat-reminder.ts
+  s_fd402faa98738e::t_277e083029e8d3 1-181
+src/renderer/components/workbench/command-palette-scope.test.tsx
+  s_fd402faa98738e::t_277e083029e8d3 67-72,102-103
+src/renderer/lib/command-palette-commands.ts
+  s_fd402faa98738e::t_277e083029e8d3 18,24-56,69-71,107-109,137-139,353-391
+src/renderer/components/workbench/session-context-menu-model.ts
+  s_fd402faa98738e::t_277e083029e8d3 18,23,33,46-47,64-65,90-132,333
+src/renderer/components/workbench/workbench-runtime.tsx
+  s_fd402faa98738e::t_277e083029e8d3 2396,2398,2806,5505-5506
+src/renderer/features/local-conversation/view/connected-thread-stage.tsx
+  s_fd402faa98738e::t_277e083029e8d3 308
+src/renderer/features/local-conversation/view/local-conversation-stage-header.test.tsx
+  s_fd402faa98738e::t_277e083029e8d3 235-275
+src/shared/command-keybindings.ts
+  s_fd402faa98738e::t_277e083029e8d3 578-585
+src/renderer/components/shared/icons/app-icons.tsx
+  s_fd402faa98738e::t_277e083029e8d3 17,3446
+src/renderer/components/workbench/command-palette.browser.test.tsx
+  s_fd402faa98738e::t_277e083029e8d3 87-92,122-123
+src/renderer/components/workbench/codex-sidebar.tsx
+  s_fd402faa98738e::t_277e083029e8d3 27,29,93-99,1507-1519,1583,1593-1594,1659-1667,1858-1864,1866-1880,2135,2217
+src/renderer/components/workbench/session-context-menu-model.test.ts
+  s_fd402faa98738e::t_277e083029e8d3 4,10,13,16-18,129,136-139,171,177,336-376
+src/renderer/components/workbench/workbench-session-sidebar.tsx
+  s_fd402faa98738e::t_277e083029e8d3 968
+src/renderer/features/local-conversation/thread-stage-types.ts
+  s_fd402faa98738e::t_277e083029e8d3 366-367,519-520,635,1249
+src/renderer/components/workbench/sidebar-thread-reorder.browser.test.tsx
+  s_fd402faa98738e::t_277e083029e8d3 64
+src/renderer/features/local-conversation/view/composer/composer-draft-state.ts
+  s_fd402faa98738e::t_277e083029e8d3 2,454-462,466,470,472-491,494-517,623,630-631,682,688-689
+src/renderer/components/workbench/codex-sidebar.test.tsx
+  s_fd402faa98738e::t_277e083029e8d3 6-15,49,119-190
+src/renderer/components/workbench/workbench-shell.sidebar-core.test.tsx
+  s_fd402faa98738e::t_277e083029e8d3 810,861
+src/renderer/lib/sidebar-status.ts
+  s_fd402faa98738e::t_277e083029e8d3 4-5,7-15,18,37,44-53
+CHANGELOG.md
+  s_fd402faa98738e::t_277e083029e8d3 14
+src/renderer/components/workbench/codex-sidebar-actions.browser.test.tsx
+  s_fd402faa98738e::t_277e083029e8d3 33
+src/renderer/components/workbench/sidebar-status-indicator.tsx
+  s_fd402faa98738e::t_277e083029e8d3 2,7-8,64-76
+src/renderer/lib/codex-sidebar-thread-sync.ts
+  s_fd402faa98738e::t_277e083029e8d3 126
+src/shared/icon-geometry.ts
+  s_fd402faa98738e::t_277e083029e8d3 107-110
+src/renderer/lib/sidebar-thread-row-live-view.test.ts
+  s_fd402faa98738e::t_277e083029e8d3 23
+src/renderer/components/workbench/archived-chats-settings-page.test.tsx
+  s_fd402faa98738e::t_277e083029e8d3 66
+src/renderer/lib/chat-reminder.node.test.ts
+  s_fd402faa98738e::t_277e083029e8d3 1-97
+docs/KEYBOARD_SHORTCUTS.md
+  s_fd402faa98738e::t_277e083029e8d3 39
+src/renderer/components/workbench/workbench-command-palette-host.tsx
+  s_fd402faa98738e::t_277e083029e8d3 34-35,62-66,190-191,245-259
+src/renderer/components/workbench/workbench-session-thread-route.tsx
+  s_fd402faa98738e::t_277e083029e8d3 108,204,430,468
+src/renderer/lib/codex-sidebar-thread-sync.node.test.ts
+  s_fd402faa98738e::t_277e083029e8d3 66
+src/shared/native-context-menu.ts
+  s_fd402faa98738e::t_277e083029e8d3 9
+src/renderer/components/workbench/workbench-shell.sidebar-projects.test.tsx
+  s_fd402faa98738e::t_277e083029e8d3 1151,1347
+src/renderer/components/workbench/command-palette.test.tsx
+  s_fd402faa98738e::t_277e083029e8d3 101-102
+src/renderer/components/workbench/command-palette-surface.tsx
+  s_fd402faa98738e::t_277e083029e8d3 42,94,110-113,228-230
+src/renderer/features/local-conversation/view/composer/local-conversation-thread-composer.tsx
+  s_fd402faa98738e::t_277e083029e8d3 1135-1139
+src/renderer/lib/sidebar-status.test.ts
+  s_fd402faa98738e::t_277e083029e8d3 5,25-32
+src/renderer/features/local-conversation/view/local-conversation-stage-header.tsx
+  s_fd402faa98738e::t_277e083029e8d3 6,40,64-69,77,89,131,192-234
+src/renderer/components/workbench/use-workbench-sidebar-controller.ts
+  s_fd402faa98738e::t_277e083029e8d3 33,39,796-808,989-997,1050,1141,1143
+src/shared/session-context-menu-icons.ts
+  s_fd402faa98738e::t_277e083029e8d3 3,91
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "eda67fdc077e8489aae6005d9a4c21e532d7aca1",
+  "prompts": {},
+  "sessions": {
+    "s_4b207bbe152280": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a192d7-3b7e-70a1-8a29-08437fdb618b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_a4d65a7155d5da": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a192d7-b584-7662-990a-81bd87b15095",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_a5bb892838ce25": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e15d53ef-531c-43aa-afdd-245a08fa0ce0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_e17141fc7a66d9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a192d7-321e-7462-8802-27b818b2b6ba",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_f7fa97ab093d49": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a192e1-5ad5-7c50-8c8d-54f57563ed5e",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_fd402faa98738e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e9ed185e-5142-4fe3-b1e7-a7a8706fc9a9",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
