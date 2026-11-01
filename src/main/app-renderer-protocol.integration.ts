@@ -360,6 +360,20 @@ describe("development HTTP renderer origin", () => {
         document.body.append(image);
       }, buildAppFilesystemUrl(brokenImagePath));
       await expect(readLoadedImageDimensions(page, ["broken-source"])).rejects.toThrow();
+    } catch (cause) {
+      const failures = await application?.evaluate(() => {
+        const control = Reflect.get(
+          globalThis,
+          "nodexProtocolImages",
+        ) as ProtocolImageFixtureControl;
+        return control.failures;
+      });
+      throw new Error(
+        `Development media failed; native request failures: ${JSON.stringify(failures)}`,
+        {
+          cause,
+        },
+      );
     } finally {
       if (application) await application.close();
       if (developmentServer) await developmentServer.close();

@@ -15,6 +15,12 @@ import { APP_RENDERER_URL } from "../../../src/shared/app-renderer-policy";
 
 export interface ProtocolImageFixtureControl {
   readonly requested: Promise<void>;
+  readonly failures: readonly {
+    readonly url: string;
+    readonly error: string;
+    readonly initiatorOrigin?: string;
+    readonly frameUrl?: string;
+  }[];
   release(): void;
 }
 
@@ -49,8 +55,18 @@ void app.whenReady().then(async () => {
   const imageRequested = createSignal();
   const imageReleased = createSignal();
   if (holdImages) {
+    const failures: ProtocolImageFixtureControl["failures"][number][] = [];
+    session.defaultSession.webRequest.onErrorOccurred({ urls: ["app://fs/*"] }, (details) => {
+      failures.push({
+        url: details.url,
+        error: details.error,
+        initiatorOrigin: details.initiatorOrigin,
+        frameUrl: details.frame?.url,
+      });
+    });
     const control: ProtocolImageFixtureControl = {
       requested: imageRequested.promise,
+      failures,
       release: () => imageReleased.resolve(),
     };
     Reflect.set(globalThis, "nodexProtocolImages", control);

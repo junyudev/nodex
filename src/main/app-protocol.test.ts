@@ -356,7 +356,7 @@ describe("app protocol dispatch and origin gate", () => {
     const calls: string[] = [];
     let handlerInstalled = true;
     type GateListener = (
-      details: { frame?: { url: string } | null },
+      details: { frame?: { url: string } | null; initiatorOrigin?: string },
       callback: (result: { cancel: boolean }) => void,
     ) => void;
     let listener: GateListener | null = null;
@@ -402,6 +402,19 @@ describe("app protocol dispatch and origin gate", () => {
       },
     );
     expect(cancellation).toBe(false);
+    for (const [details, expected] of [
+      [{ initiatorOrigin: "http://localhost:51284", frame: null }, false],
+      [{ initiatorOrigin: "http://localhost:51284", frame: { url: "about:blank" } }, false],
+      [{ initiatorOrigin: "app://-", frame: { url: "https://untrusted.invalid" } }, false],
+      [{ initiatorOrigin: "https://untrusted.invalid", frame: { url: "app://-" } }, true],
+      [{ initiatorOrigin: "null", frame: { url: "app://-" } }, true],
+      [{ frame: null }, true],
+    ] as const) {
+      invokeListener?.(details, (result) => {
+        cancellation = result.cancel;
+      });
+      expect(cancellation).toBe(expected);
+    }
     developmentRendererUrl = "http://localhost:51285";
     invokeListener?.(
       { frame: { url: "http://localhost:51284/thread" } },

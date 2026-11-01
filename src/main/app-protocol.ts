@@ -405,8 +405,12 @@ export function registerAppProtocol(
   electronSession.webRequest.onBeforeRequest(
     { urls: [`${APP_FILESYSTEM_ORIGIN}/*`] },
     (details, callback) => {
+      // A frame's URL can lag its initial navigation or change after the request starts.
+      // Chromium's initiator is bound to the request and survives redirects.
+      const source =
+        details.initiatorOrigin === undefined ? details.frame : { url: details.initiatorOrigin };
       callback({
-        cancel: !isAllowedAppFilesystemFrame(details.frame, options.getDevelopmentRendererUrl()),
+        cancel: !isAllowedAppFilesystemFrame(source, options.getDevelopmentRendererUrl()),
       });
     },
   );
