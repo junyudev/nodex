@@ -858,6 +858,14 @@ fn stage_backup(
     let database_started_at = Instant::now();
     let mut database_busy_retries = 0u64;
     {
+        drop(
+            OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .mode(0o600)
+                .open(&database_path)
+                .map_err(io_error)?,
+        );
         let mut destination = Connection::open(&database_path)?;
         let backup = Backup::new(connection, &mut destination)?;
         let mut last_reported_at = Instant::now();

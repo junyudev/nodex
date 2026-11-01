@@ -162,6 +162,17 @@ impl Default for QueryCancellation {
 }
 
 pub fn open_writer(path: &std::path::Path) -> Result<Connection, StoreError> {
+    // SQLite inherits its default owner from the process token. Create the file
+    // through the private boundary first so elevated Windows tokens retain user ownership.
+    drop(
+        nodex_platform::private_fs::open_regular(path, true).map_err(|error| {
+            StoreError::new(
+                StoreErrorCode::InvalidProfile,
+                format!("Could not open the private Store file: {error}"),
+                false,
+            )
+        })?,
+    );
     let flags = OpenFlags::SQLITE_OPEN_READ_WRITE
         | OpenFlags::SQLITE_OPEN_CREATE
         | OpenFlags::SQLITE_OPEN_NO_MUTEX;
@@ -556,6 +567,19 @@ pub(crate) fn core_error(error: StoreError) -> CoreError {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn writer_creation_keeps_the_database_owned_by_the_current_user() {
+        let directory = nodex_platform::test_support::tempdir().unwrap();
+        let path = directory.path().join("nodex.db");
+        drop(super::open_writer(&path).unwrap());
+        nodex_platform::private_fs::checked_metadata(
+            &path,
+            nodex_platform::private_fs::EntryKind::File,
+            Some(0o600),
+        )
+        .unwrap();
+    }
+
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
 
