@@ -1,0 +1,23 @@
+docs/release-windows.md
+  s_9ad21099c264dd::t_8932dc2b5385d8 31
+electron-builder.yml
+  s_9ad21099c264dd::t_32af3c0f7c8251 183-184
+scripts/electron-builder-config.test.ts
+  s_9ad21099c264dd::t_25440f4406f09b 91-114
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "dd24555c103c1b795eedba754b5bebe77ccff63f",
+  "prompts": {},
+  "sessions": {
+    "s_9ad21099c264dd": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1964f-2f03-7680-8da9-7c6d6ce01903",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
