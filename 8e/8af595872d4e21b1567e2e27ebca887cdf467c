@@ -1,0 +1,19 @@
+src/renderer/components/workbench/workbench-shell.library-shell-navigation.test.tsx
+  s_7095a5752114b9::t_ed89d8e1f4daf4 841,891,893-896
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8e8af595872d4e21b1567e2e27ebca887cdf467c",
+  "prompts": {},
+  "sessions": {
+    "s_7095a5752114b9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ff5dab8b-6889-416a-8884-d0ab6d447946",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": null
+    }
+  }
+}
