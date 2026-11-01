@@ -1,0 +1,67 @@
+src/main/electron-test-windows.integration.ts
+  s_c8df0af554f9cf::t_01b4061334e481 15,34-37,42-44,90-91,97
+  s_c8df0af554f9cf::t_bda61f853d2de7 1-14,16-26,33,38-40,45-72,74-89,92,94-96,98-99
+  s_c8df0af554f9cf::t_509a92dd7366bf 73
+  s_c8df0af554f9cf::t_3d7f255bc4aab6 27-32,41,93
+scripts/scenarios/harness/electron-e2e-harness.ts
+  s_c8df0af554f9cf::t_09bd3fa73c173a 5,29-32,186,200-201
+src/main/workspace-media-protocol.integration.ts
+  s_c8df0af554f9cf::t_fd007c46874b09 5,8,75
+  s_c8df0af554f9cf::t_049e38fb723116 76
+scripts/testing/launch-electron.test.ts
+  s_c8df0af554f9cf::t_bda61f853d2de7 1-26,28-33
+  s_c8df0af554f9cf::t_0a8f275958bb46 27
+  s_c8df0af554f9cf::t_049e38fb723116 34-46
+tests/fixtures/background-windows/electron-main.cjs
+  s_c8df0af554f9cf::t_bda61f853d2de7 1-23,25-26,28-38
+  s_c8df0af554f9cf::t_01b4061334e481 24,27
+src/main/mcp-app/mcp-app-sandbox-host.integration.ts
+  s_c8df0af554f9cf::t_fd007c46874b09 6,8,69
+  s_c8df0af554f9cf::t_049e38fb723116 70
+src/main/dictation/dictation-streaming.integration.ts
+  s_c8df0af554f9cf::t_fd007c46874b09 10,13,203-204
+src/main/page-files/page-file-html-host.integration.ts
+  s_c8df0af554f9cf::t_fd007c46874b09 10,76-77
+  s_c8df0af554f9cf::t_6f5a7f7b8cb8f0 9
+docs/development.md
+  s_c8df0af554f9cf::t_bda61f853d2de7 853-861
+vite.config.ts
+  s_c8df0af554f9cf::t_bda61f853d2de7 233-241,244-247,250-255
+  s_c8df0af554f9cf::t_049e38fb723116 242-243,248-249
+  s_c8df0af554f9cf::t_3f1a6f40cc27f9 232
+src/main/browser-platform.integration.ts
+  s_c8df0af554f9cf::t_fd007c46874b09 8-9,70-71
+tests/e2e/clipboard-native.spec.ts
+  s_c8df0af554f9cf::t_049e38fb723116 15
+  s_c8df0af554f9cf::t_fd007c46874b09 10,13
+tests/e2e/electron-smoke.spec.ts
+  s_c8df0af554f9cf::t_fd007c46874b09 13,70,628
+scripts/testing/launch-electron.ts
+  s_c8df0af554f9cf::t_0a8f275958bb46 21
+  s_c8df0af554f9cf::t_09bd3fa73c173a 1-20,22-26
+scripts/testing/electron-background-windows.cjs
+  s_c8df0af554f9cf::t_934501023512f4 39
+  s_c8df0af554f9cf::t_09bd3fa73c173a 1-3,5,10,12-14,24-37,50,53
+  s_c8df0af554f9cf::t_c1ec8661b3693e 38,40-49,51-52
+src/main/app-renderer-protocol.integration.ts
+  s_c8df0af554f9cf::t_6f5a7f7b8cb8f0 5
+  s_c8df0af554f9cf::t_fd007c46874b09 10,121-122,219-220,290-291
+src/main/observability/sentry-electron.integration.ts
+  s_c8df0af554f9cf::t_fd007c46874b09 4,6,66-67
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c1e8e1194057d5df79b23c329aaa8b7323036a76",
+  "prompts": {},
+  "sessions": {
+    "s_c8df0af554f9cf": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19799-28ac-7e12-b50b-4c470ce59512",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
