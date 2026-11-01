@@ -63,6 +63,7 @@ const hostTests = [
   "src/main/platform/node/TerminalPty.test.ts",
   "src/main/host-runtime/ApplicationHostRuntime.test.ts",
   "src/main/durable-json-file.test.ts",
+  "src/main/core-client/core-artifact.test.ts",
   "src/main/window-session-state.test.ts",
   "src/main/local-store/persisted-atoms.test.ts",
   "src/main/remote-hosted-pip-preference-store.test.ts",

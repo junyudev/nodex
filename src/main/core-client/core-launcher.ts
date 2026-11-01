@@ -1,11 +1,11 @@
 import { spawn } from "node:child_process";
-import { createHash } from "node:crypto";
-import { accessSync, constants, lstatSync, readFileSync } from "node:fs";
+import { accessSync, constants, lstatSync } from "node:fs";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 
 import type { components } from "@nodex/core-protocol";
 import { NODEX_CORE_EXECUTABLE_ENV } from "../../shared/native-runtime-environment";
+import { readCoreArtifactDigest } from "./core-artifact";
 import { CoreClient } from "./core-client";
 import { parseCoreRuntimeDescriptor } from "./runtime-descriptor";
 
@@ -197,13 +197,6 @@ export function parseCoreStartupEventFrame(value: unknown): CoreStartupEvent | n
   throw new Error("Native Rust Core startup event kind is unsupported");
 }
 
-interface NativeCoreManifest {
-  readonly binaries?: readonly {
-    readonly name?: unknown;
-    readonly sourceSha256?: unknown;
-  }[];
-}
-
 const abortError = (signal: AbortSignal): Error => {
   const reason = signal.reason;
   if (reason instanceof Error) return reason;
@@ -375,35 +368,22 @@ function validateCoreExecutable(executablePath: string): void {
   accessSync(executablePath, constants.X_OK);
 }
 
-const sha256File = (filePath: string): string =>
-  createHash("sha256").update(readFileSync(filePath)).digest("hex");
-
 const expectedCoreArtifactDigest = (
   input: ResolveCoreExecutableInput,
   executablePath: string,
 ): string => {
-  const actual = sha256File(executablePath);
   const override = (input.environment ?? process.env)[NODEX_CORE_EXECUTABLE_ENV]?.trim();
-  if (override) return actual;
-  if (!input.isPackaged) return actual;
+  if (override || !input.isPackaged) return readCoreArtifactDigest(executablePath);
   if (!input.appResourcesPath) {
     throw new Error("Packaged Core startup requires an app resources path");
   }
-  const manifestPath = path.join(
-    requireAbsolutePath(input.appResourcesPath, "App resources path"),
-    "bin/rust-core-runtime.json",
+  return readCoreArtifactDigest(
+    executablePath,
+    path.join(
+      requireAbsolutePath(input.appResourcesPath, "App resources path"),
+      "bin/rust-core-runtime.json",
+    ),
   );
-  const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as NativeCoreManifest;
-  const expected = manifest.binaries?.find(
-    (binary) => binary.name === `nodex-core${process.platform === "win32" ? ".exe" : ""}`,
-  )?.sourceSha256;
-  if (typeof expected !== "string" || !/^[a-f0-9]{64}$/u.test(expected)) {
-    throw new Error("Packaged native runtime manifest omits the Core artifact digest");
-  }
-  if (actual !== expected) {
-    throw new Error("Packaged Core executable does not match its signed runtime manifest");
-  }
-  return actual;
 };
 
 const appendBoundedStderr = (current: string, chunk: string): string =>

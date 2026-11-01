@@ -1,5 +1,5 @@
 import { execFileSync, spawn } from "node:child_process";
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,6 +10,7 @@ import {
   ISOLATED_RUN_ID_ENV,
   readIsolatedRunClaim,
 } from "../../src/main/core-client/isolated-run-ownership";
+import { readCoreArtifactDigest } from "../../src/main/core-client/core-artifact";
 import { CoreClient } from "../../src/main/core-client/core-client";
 import { readCoreRuntimeConnection } from "../../src/main/core-client/runtime-descriptor";
 import { cleanupIsolatedCore } from "../isolated-core-cleanup";
@@ -20,7 +21,6 @@ import {
 } from "../../src/shared/agent-runtime-startup-evidence";
 
 const delay = (ms: number) => new Promise<void>((resolveDelay) => setTimeout(resolveDelay, ms));
-const sha256 = (file: string) => createHash("sha256").update(readFileSync(file)).digest("hex");
 const protocolKey = "HKCU\\Software\\Classes\\nodex";
 const queryProtocol = (): string | null => {
   try {
@@ -173,15 +173,10 @@ exit $uninstaller.ExitCode
     if (!registration?.includes(`"${executable}" "%1"`) || !registration.includes("URL Protocol"))
       throw new Error("NSIS did not register nodex:// for the current user");
     const core = join(installRoot, "resources/bin/nodex-core.exe");
-    const expectedCoreSha256 = sha256(core);
-    const manifest = JSON.parse(
-      readFileSync(join(installRoot, "resources/bin/rust-core-runtime.json"), "utf8"),
-    ) as { binaries: { name: string; sourceSha256: string }[] };
-    if (
-      manifest.binaries.find((binary) => binary.name === "nodex-core")?.sourceSha256 !==
-      expectedCoreSha256
-    )
-      throw new Error("Installed Core differs from its staged runtime identity");
+    const expectedCoreSha256 = readCoreArtifactDigest(
+      core,
+      join(installRoot, "resources/bin/rust-core-runtime.json"),
+    );
     const launchEnvironment = { ...process.env };
     delete launchEnvironment.NODE_OPTIONS;
     delete launchEnvironment.ELECTRON_RUN_AS_NODE;

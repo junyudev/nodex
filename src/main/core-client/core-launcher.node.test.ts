@@ -3,7 +3,9 @@ import {
   accessSync,
   chmodSync,
   constants,
+  copyFileSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -121,6 +123,45 @@ describe("native Core launcher", () => {
         isPackaged: false,
       }),
     ).toThrow("NODEX_CORE_EXECUTABLE must be absolute");
+  });
+
+  test("starts packaged Core using its logical manifest identity", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "nodex-pkg-"));
+    const resources = path.join(root, "resources");
+    const nodexHome = path.join(root, "profile");
+    mkdirSync(nodexHome, { mode: 0o700 });
+    const executable = resolveCoreExecutable({
+      appResourcesPath: resources,
+      environment: {},
+      isPackaged: true,
+    });
+    mkdirSync(path.dirname(executable), { recursive: true });
+    copyFileSync(CORE_BINARY, executable);
+    const digest = createHash("sha256").update(readFileSync(executable)).digest("hex");
+    writeFileSync(
+      path.join(resources, "bin/rust-core-runtime.json"),
+      JSON.stringify({ binaries: [{ name: "nodex-core", sourceSha256: digest }] }),
+    );
+    let launched: Awaited<ReturnType<typeof connectOrStartCore>> | undefined;
+    try {
+      launched = await connectOrStartCore({
+        appResourcesPath: resources,
+        buildId: "packaged-core-launcher-test",
+        environment: {},
+        isPackaged: true,
+        nodexHome,
+      });
+      expect(launched.executablePath).toBe(executable);
+      expect(launched.client.handshake.generation.artifact_sha256).toBe(digest);
+      await expect(launched.client.health()).resolves.toMatchObject({ status: "ready" });
+    } finally {
+      if (launched) {
+        await launched.client.shutdown();
+        const pid = launched.client.handshake.generation.pid;
+        await waitUntil(() => !processExists(pid), "Packaged Core remained alive after shutdown");
+      }
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   test("starts one detached Core and reuses the validated runtime", async () => {
