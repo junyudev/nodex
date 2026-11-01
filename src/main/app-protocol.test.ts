@@ -75,7 +75,10 @@ describe("app request path resolution", () => {
 
   test("accepts absolute image, audio, video, SVG, encoded separators, and query text", () => {
     const { rendererRoot } = createFixture();
-    const imagePath = createTemporaryFile("image #1?.png", "image");
+    const imagePath = createTemporaryFile(
+      process.platform === "win32" ? "image #1%.png" : "image #1?.png",
+      "image",
+    );
     const audioPath = createTemporaryFile("sound.mp3", "audio");
     const videoPath = createTemporaryFile("movie.mp4", "video");
     const svgPath = createTemporaryFile("shape.svg", "<svg></svg>");

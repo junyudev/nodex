@@ -1,6 +1,6 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, normalize } from "node:path";
 import { afterEach, describe, expect, test } from "vite-plus/test";
 import {
   readThirdPartyNotices,
@@ -26,12 +26,12 @@ describe("third-party notices", () => {
   test("resolves the immutable packaged resource instead of a repository path", () => {
     expect(
       resolveThirdPartyNoticesCandidates({
-        appPath: "/Applications/Nodex.app/Contents/Resources/app.asar",
+        appPath: normalize("/Applications/Nodex.app/Contents/Resources/app.asar"),
         cwd: "/tmp",
         isPackaged: true,
-        resourcesPath: "/Applications/Nodex.app/Contents/Resources",
+        resourcesPath: normalize("/Applications/Nodex.app/Contents/Resources"),
       }),
-    ).toEqual(["/Applications/Nodex.app/Contents/Resources/THIRD_PARTY_NOTICES.txt"]);
+    ).toEqual([normalize("/Applications/Nodex.app/Contents/Resources/THIRD_PARTY_NOTICES.txt")]);
   });
 
   test("reads the repository resource in development and returns null when it is absent", async () => {
@@ -57,16 +57,16 @@ describe("third-party notices", () => {
   test("supports the development asset locations used by packaged desktop sources", () => {
     expect(
       resolveThirdPartyNoticesCandidates({
-        appPath: "/repo/nodex",
-        cwd: "/repo/nodex",
+        appPath: normalize("/repo/nodex"),
+        cwd: normalize("/repo/nodex"),
         isPackaged: false,
-        resourcesPath: "/electron/resources",
+        resourcesPath: normalize("/electron/resources"),
       }),
     ).toEqual([
-      "/electron/resources/THIRD_PARTY_NOTICES.txt",
-      "/repo/nodex/.generated/build-resources/THIRD_PARTY_NOTICES.txt",
-      "/repo/nodex/assets/THIRD_PARTY_NOTICES.txt",
-      "/repo/nodex/electron/assets/THIRD_PARTY_NOTICES.txt",
+      normalize("/electron/resources/THIRD_PARTY_NOTICES.txt"),
+      normalize("/repo/nodex/.generated/build-resources/THIRD_PARTY_NOTICES.txt"),
+      normalize("/repo/nodex/assets/THIRD_PARTY_NOTICES.txt"),
+      normalize("/repo/nodex/electron/assets/THIRD_PARTY_NOTICES.txt"),
     ]);
   });
 });

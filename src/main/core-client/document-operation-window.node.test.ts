@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
 import { expect, test } from "vite-plus/test";
 import * as Y from "yjs";
@@ -23,10 +23,14 @@ test.each(["page", "canvas", "checkpoint"] as const)(
     withCoreScenario({ scenarioId: DOCUMENT_SYNC_RECOVERY_SCENARIO_ID }, async (scenario) => {
       const { profile, manifest } = scenario;
       await scenario.withStoppedCore(async () => {
-        execFileSync("sqlite3", [
-          path.join(profile.nodexHome, "nodex.db"),
-          "UPDATE operational_journal_state SET operation_identity_cutover_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-8 days') WHERE id = 1;",
-        ]);
+        const database = new DatabaseSync(path.join(profile.nodexHome, "nodex.db"));
+        try {
+          database.exec(
+            "UPDATE operational_journal_state SET operation_identity_cutover_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-8 days') WHERE id = 1;",
+          );
+        } finally {
+          database.close();
+        }
       });
       const runtime = scenario.runtime;
       const client = runtime.clientForProject(manifest.projectId);

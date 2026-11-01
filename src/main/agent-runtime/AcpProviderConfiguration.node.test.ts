@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { expect, it } from "vite-plus/test";
 import type { AcpAgentInstanceConfig } from "../../shared/acp-agent-settings";
 import { acpProviderConfiguration } from "./AcpProviderConfiguration";
@@ -43,8 +44,8 @@ it("projects arbitrary local commands with explicit secrets and isolated profile
   expect(env).toMatchObject({
     HOME: "/isolated",
     PATH: "/bin",
-    XDG_CONFIG_HOME: "/isolated/.config",
-    APPDATA: "/isolated/AppData/Roaming",
+    XDG_CONFIG_HOME: join("/isolated", ".config"),
+    APPDATA: join("/isolated", "AppData", "Roaming"),
     API_KEY: "key",
   });
   for (const key of ["HOST_SECRET", "NODE_OPTIONS", "HTTPS_PROXY"])

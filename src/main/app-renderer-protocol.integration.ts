@@ -93,7 +93,10 @@ describe("production app renderer origin", () => {
     });
     const rendererDirectory = path.join(outputDirectory, "renderer");
     mkdirSync(rendererDirectory);
-    const imagePath = path.join(outputDirectory, "image 空格 #?.png");
+    const imagePath = path.join(
+      outputDirectory,
+      process.platform === "win32" ? "image 空格 #%.png" : "image 空格 #?.png",
+    );
     const imageBytes = Buffer.from(
       "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
       "base64",
@@ -201,7 +204,7 @@ describe("production app renderer origin", () => {
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
         "base64",
       );
-      const localImagePath = path.join(outputDirectory, "Windows image 空格 #?.png");
+      const localImagePath = path.join(outputDirectory, "Windows image 空格 #%.png");
       writeFileSync(localImagePath, imageBytes);
       writeFileSync(path.join(rendererDirectory, "static.png"), imageBytes);
       writeFileSync(

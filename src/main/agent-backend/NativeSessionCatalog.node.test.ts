@@ -32,7 +32,7 @@ const importInput = (
   ...patch,
 });
 const temporaryRoot = Effect.acquireRelease(
-  Effect.sync(() => realpathSync(mkdtempSync(join(tmpdir(), "nodex-native-catalog-")))),
+  Effect.sync(() => realpathSync.native(mkdtempSync(join(tmpdir(), "nodex-native-catalog-")))),
   (root) => Effect.sync(() => rmSync(root, { force: true, recursive: true })),
 );
 

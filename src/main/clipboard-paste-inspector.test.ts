@@ -1,3 +1,4 @@
+import { pathToFileURL } from "node:url";
 import { describe, expect, test } from "vite-plus/test";
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -46,7 +47,7 @@ describe("clipboard paste inspector", () => {
     fs.mkdirSync(folderPath, { recursive: true });
 
     const result = inspectClipboardPasteItemsFromStrings([
-      `file://${filePath}\n${folderPath}`,
+      `${pathToFileURL(filePath).href}\n${folderPath}`,
       `${filePath}\n${filePath}`,
       "# comment\nmissing.txt",
     ]);

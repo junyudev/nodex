@@ -1,3 +1,4 @@
+import path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 import { resolveCodexHome } from "./codex-home";
 
@@ -6,12 +7,12 @@ describe("native Codex home selection", () => {
     expect(
       resolveCodexHome({
         configuredHome: " ~/work-codex ",
-        environment: { CODEX_HOME: "/host/inherited" },
-        homeDirectory: "/host/user",
+        environment: { CODEX_HOME: path.resolve("/host/inherited") },
+        homeDirectory: path.resolve("/host/user"),
       }),
     ).toEqual({
       homePath: "~/work-codex",
-      resolvedHomePath: "/host/user/work-codex",
+      resolvedHomePath: path.resolve("/host/user/work-codex"),
       source: "settings",
       accountHomePath: "",
       resolvedAccountHomePath: null,
@@ -23,11 +24,11 @@ describe("native Codex home selection", () => {
       resolveCodexHome({
         configuredHome: " ",
         environment: { CODEX_HOME: " /host/inherited/../codex " },
-        homeDirectory: "/host/user",
+        homeDirectory: path.resolve("/host/user"),
       }),
     ).toEqual({
       homePath: "",
-      resolvedHomePath: "/host/codex",
+      resolvedHomePath: path.resolve("/host/codex"),
       source: "environment",
       accountHomePath: "",
       resolvedAccountHomePath: null,
@@ -38,11 +39,11 @@ describe("native Codex home selection", () => {
     expect(
       resolveCodexHome({
         environment: { CODEX_HOME: " " },
-        homeDirectory: "/host/user",
+        homeDirectory: path.resolve("/host/user"),
       }),
     ).toEqual({
       homePath: "",
-      resolvedHomePath: "/host/user/.codex",
+      resolvedHomePath: path.resolve("/host/user/.codex"),
       source: "default",
       accountHomePath: "",
       resolvedAccountHomePath: null,
@@ -54,20 +55,20 @@ describe("native Codex home selection", () => {
       resolveCodexHome({
         configuredAccountHome: " ~/codex-personal ",
         environment: {},
-        homeDirectory: "/host/user",
+        homeDirectory: path.resolve("/host/user"),
       }),
     ).toEqual({
       homePath: "",
-      resolvedHomePath: "/host/user/.codex",
+      resolvedHomePath: path.resolve("/host/user/.codex"),
       source: "default",
       accountHomePath: "~/codex-personal",
-      resolvedAccountHomePath: "/host/user/codex-personal",
+      resolvedAccountHomePath: path.resolve("/host/user/codex-personal"),
     });
     expect(() =>
       resolveCodexHome({
         configuredAccountHome: "relative/account",
         environment: {},
-        homeDirectory: "/host/user",
+        homeDirectory: path.resolve("/host/user"),
       }),
     ).toThrow("Codex account directory must be an absolute path or start with ~/.");
   });
@@ -76,7 +77,7 @@ describe("native Codex home selection", () => {
     { configuredHome: "relative/codex", environment: {} },
     { configuredHome: "", environment: { CODEX_HOME: "relative/codex" } },
   ])("rejects a relative home instead of silently selecting another account: %j", (input) => {
-    expect(() => resolveCodexHome({ ...input, homeDirectory: "/host/user" })).toThrow(
+    expect(() => resolveCodexHome({ ...input, homeDirectory: path.resolve("/host/user") })).toThrow(
       "Codex home must be an absolute path or start with ~/.",
     );
   });

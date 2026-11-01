@@ -1,3 +1,4 @@
+import path from "node:path";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Scope from "effect/Scope";
@@ -82,7 +83,7 @@ const makeExecutionHosts = (
   ({
     hosts: () => Effect.succeed([{ hostId: "local" }]),
     resolve: (hostId: string) =>
-      Effect.succeed({ descriptor: { hostId, managedRoot: "/managed" } }),
+      Effect.succeed({ descriptor: { hostId, managedRoot: path.resolve("/managed") } }),
     updateLocalManagedRoot: (managedRoot: string) =>
       Effect.sync(() => updateManagedRoot("local", managedRoot)),
   }) as unknown as ExecutionHostRuntime["Service"];
@@ -127,7 +128,7 @@ const makeCatalog = (
     read: () => defaultSettings,
     update: () => defaultSettings,
   };
-  return make({ defaultManagedRoot: "/managed" }).pipe(
+  return make({ defaultManagedRoot: path.resolve("/managed") }).pipe(
     Effect.provideService(
       CodexApplicationEventHub,
       CodexApplicationEventHub.of({
@@ -712,7 +713,7 @@ it.effect("lists, deletes and restores the worktree an Agent chat works in", () 
   Effect.gen(function* () {
     const scope = yield* Scope.make();
     const agentThread = "nodex:thread:agent";
-    const worktreeGitRoot = "/managed/260814-1200-abcdef01";
+    const worktreeGitRoot = path.normalize("/managed/260814-1200-abcdef01");
     let present = true;
     const archived: string[] = [];
     const removed: string[] = [];

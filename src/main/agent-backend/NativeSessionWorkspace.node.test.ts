@@ -24,7 +24,7 @@ const input: NativeSessionWorkspaceInput = {
   title: "Review source",
   prompt: "Review source",
   localEnvironmentConfigPath: null,
-  sourceCwd: "/source",
+  sourceCwd: path.resolve("/source"),
   operationId: "run:create",
 };
 
@@ -84,7 +84,7 @@ const fixture = (
     Effect.provideService(ExecutionHostRuntime, {
       resolve: () =>
         Effect.succeed({
-          descriptor: { managedRoot: options.managedRoot ?? "/worktrees" },
+          descriptor: { managedRoot: options.managedRoot ?? path.resolve("/worktrees") },
           request: (
             request: CodexWorktreeWorkerRequest,
             callbacks?: WorktreeWorkerRequestOptions,
@@ -95,13 +95,13 @@ const fixture = (
                 callbacks?.onEvent?.({
                   operation: "create",
                   type: "path-allocated",
-                  worktreeGitRoot: "/worktrees/review",
-                  worktreeWorkspaceRoot: "/worktrees/review/packages/app",
+                  worktreeGitRoot: path.resolve("/worktrees/review"),
+                  worktreeWorkspaceRoot: path.resolve("/worktrees/review/packages/app"),
                 }) ?? Effect.void
               );
               return {
-                worktreeGitRoot: "/worktrees/review",
-                worktreeWorkspaceRoot: "/worktrees/review/packages/app",
+                worktreeGitRoot: path.resolve("/worktrees/review"),
+                worktreeWorkspaceRoot: path.resolve("/worktrees/review/packages/app"),
                 setupError: options.setupError ?? null,
                 shellEnvironment: options.shellEnvironment ?? null,
               };
@@ -181,9 +181,12 @@ it.effect(
       yield* Effect.scoped(
         Effect.gen(function* () {
           const lease = yield* owner.prepare(input);
-          assert.equal(lease.location.cwd, "/worktrees/review/packages/app");
-          assert.equal(lease.location.managedWorktreePath, "/worktrees/review");
-          assert.include(lease.location.workspaceRoots, "/worktrees/review/packages/source/.git");
+          assert.equal(lease.location.cwd, path.resolve("/worktrees/review/packages/app"));
+          assert.equal(lease.location.managedWorktreePath, path.resolve("/worktrees/review"));
+          assert.include(
+            lease.location.workspaceRoots,
+            path.resolve("/worktrees/review/packages/source/.git"),
+          );
           assert.deepEqual(f.events, ["register"]);
           yield* lease.attach("native-thread");
         }),
@@ -194,7 +197,7 @@ it.effect(
         return yield* Effect.die("Expected create request");
       assert.deepInclude(f.requests[0].input, {
         requestId: "run:create",
-        repositoryPath: "/source",
+        repositoryPath: path.resolve("/source"),
         localEnvironmentConfigPath: null,
       });
     }),
@@ -233,12 +236,12 @@ it.effect("selected worktree state and Environment reach the worker and survive 
       const startingState = { type: "working-tree" } as const;
       const lease = yield* owner.prepare({
         ...input,
-        sourceRoots: ["/source", "/additional"],
+        sourceRoots: [path.resolve("/source"), "/additional"],
         worktreeStartingState: startingState,
         localEnvironmentConfigPath: ".codex/environments/setup.toml",
       });
       assert.include(lease.location.workspaceRoots, "/additional");
-      assert.notInclude(lease.location.workspaceRoots, "/source");
+      assert.notInclude(lease.location.workspaceRoots, path.resolve("/source"));
       const request = f.requests[0];
       if (request?.operation !== "create") return yield* Effect.die("Expected create request");
       assert.deepEqual(request.input.startingState, startingState);
@@ -273,11 +276,11 @@ it.effect(
         const lease = yield* owner.prepare({
           ...input,
           runInTarget: "localProject",
-          sourceRoots: ["/source", "/additional"],
+          sourceRoots: [path.resolve("/source"), "/additional"],
         });
-        assert.equal(lease.location.cwd, "/source");
+        assert.equal(lease.location.cwd, path.resolve("/source"));
         assert.equal(lease.location.managedWorktreePath, null);
-        assert.deepEqual(lease.location.workspaceRoots, ["/source", "/additional"]);
+        assert.deepEqual(lease.location.workspaceRoots, [path.resolve("/source"), "/additional"]);
         assert.lengthOf(f.requests, 0);
         assert.deepEqual(f.events, []);
       }),

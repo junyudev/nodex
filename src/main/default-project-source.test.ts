@@ -1,7 +1,7 @@
 import { describe, expect, test, vi } from "vite-plus/test";
 import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import * as Effect from "effect/Effect";
 import { it } from "@effect/vitest";
 import {
@@ -14,7 +14,7 @@ import type { Project, ProjectCreateInput } from "../shared/types";
 import { resolveNodexProjectsDirectory } from "./nodex-projects-directory";
 
 const PROJECT = { id: "project-created" } as Project;
-const DOCUMENTS_DIRECTORY = "/Users/test/Documents";
+const DOCUMENTS_DIRECTORY = resolve("/Users/test/Documents");
 const PROJECTS_DIRECTORY = resolveNodexProjectsDirectory(DOCUMENTS_DIRECTORY);
 
 describe("default Project sources", () => {
@@ -29,8 +29,8 @@ describe("default Project sources", () => {
   it.effect("allocates the first free Documents/Nodex folder with numeric suffixes", () =>
     Effect.gen(function* () {
       const occupied = new Set([
-        "/Users/test/Documents/Nodex/New project",
-        "/Users/test/Documents/Nodex/New project 2",
+        join(DOCUMENTS_DIRECTORY, "Nodex/New project"),
+        join(DOCUMENTS_DIRECTORY, "Nodex/New project 2"),
       ]);
 
       const selected = yield* findAvailableDefaultProjectSource(
@@ -38,20 +38,20 @@ describe("default Project sources", () => {
         "New project",
         (candidate) => Effect.succeed(occupied.has(candidate)),
       );
-      expect(selected).toBe("/Users/test/Documents/Nodex/New project 3");
+      expect(selected).toBe(join(DOCUMENTS_DIRECTORY, "Nodex/New project 3"));
     }),
   );
 
   it.effect("does not let a legacy Documents folder consume the nested name", () =>
     Effect.gen(function* () {
-      const occupied = new Set(["/Users/test/Documents/Launch plan"]);
+      const occupied = new Set([join(DOCUMENTS_DIRECTORY, "Launch plan")]);
 
       const selected = yield* findAvailableDefaultProjectSource(
         PROJECTS_DIRECTORY,
         "Launch plan",
         (candidate) => Effect.succeed(occupied.has(candidate)),
       );
-      expect(selected).toBe("/Users/test/Documents/Nodex/Launch plan");
+      expect(selected).toBe(join(DOCUMENTS_DIRECTORY, "Nodex/Launch plan"));
     }),
   );
 
@@ -111,15 +111,17 @@ describe("default Project sources", () => {
       );
       expect(created).toBe(PROJECT);
 
-      expect(createDirectory).toHaveBeenCalledWith("/Users/test/Documents/Nodex/Launch plan");
-      expect(initializeRepository).toHaveBeenCalledWith("/Users/test/Documents/Nodex/Launch plan");
+      expect(createDirectory).toHaveBeenCalledWith(join(DOCUMENTS_DIRECTORY, "Nodex/Launch plan"));
+      expect(initializeRepository).toHaveBeenCalledWith(
+        join(DOCUMENTS_DIRECTORY, "Nodex/Launch plan"),
+      );
       expect(createProject).toHaveBeenCalledWith({
         appearance: {
           color: "black",
           marker: { kind: "icon", icon: "folder" },
         },
         name: "Launch plan",
-        sources: ["/Users/test/Documents/Nodex/Launch plan"],
+        sources: [join(DOCUMENTS_DIRECTORY, "Nodex/Launch plan")],
       });
     }),
   );

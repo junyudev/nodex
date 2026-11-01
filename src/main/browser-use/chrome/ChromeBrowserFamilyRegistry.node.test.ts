@@ -87,9 +87,11 @@ describe("Chrome browser family registry", () => {
       TEST_CHROME_AUTHORITY,
     );
     expect(destinations).toHaveLength(2);
-    expect(destinations.every((destination) => destination.startsWith("/Users/tester/"))).toBe(
-      true,
-    );
+    expect(
+      destinations.every(
+        (destination) => path.relative("/Users/tester", destination).split(path.sep)[0] !== "..",
+      ),
+    ).toBe(true);
     expect(
       destinations.every((destination) => destination.endsWith(`${TEST_CHROME_HOST_NAME}.json`)),
     ).toBe(true);

@@ -105,7 +105,8 @@ afterEach(async () => {
   );
 });
 
-describe("MacDictationNativeHelperClient", () => {
+// Exercises the macOS helper executable contract; Windows uses WindowsDictationNative tests.
+describe.skipIf(process.platform === "win32")("MacDictationNativeHelperClient", () => {
   it.each([
     "Shift+Fn",
     "Ctrl+Command+Alt+Fn",

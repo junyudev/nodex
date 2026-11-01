@@ -137,11 +137,15 @@ test("process enumeration rechecks ancestry after selecting descendants", async 
   const calls: string[][] = [];
   const row = (pid: number, parent: number) =>
     `${pid} ${parent} 0.0 12 Sun Sep 13 00:00:00 2026 node`;
-  const result = await listNodeReplChildProcesses(10, async (args) => {
-    calls.push([...args]);
-    if (args[0] === "-ax") return "11 10\n12 11\n13 10\n14 13\n999 1";
-    return [row(11, 10), row(12, 11), row(13, 1), row(14, 13)].join("\n");
-  });
+  const result = await listNodeReplChildProcesses(
+    10,
+    async (args) => {
+      calls.push([...args]);
+      if (args[0] === "-ax") return "11 10\n12 11\n13 10\n14 13\n999 1";
+      return [row(11, 10), row(12, 11), row(13, 1), row(14, 13)].join("\n");
+    },
+    { platform: "darwin" },
+  );
   expect(calls).toHaveLength(2);
   expect(calls[1]?.[1]).toBe("11,12,13,14");
   expect(result).toEqual([
@@ -153,10 +157,14 @@ test("process enumeration rechecks ancestry after selecting descendants", async 
 test("empty descendant selection performs no second process query", async () => {
   let calls = 0;
   expect(
-    await listNodeReplChildProcesses(10, async () => {
-      calls += 1;
-      return "11 1";
-    }),
+    await listNodeReplChildProcesses(
+      10,
+      async () => {
+        calls += 1;
+        return "11 1";
+      },
+      { platform: "darwin" },
+    ),
   ).toEqual([]);
   expect(calls).toBe(1);
 });

@@ -117,9 +117,11 @@ describe("isolated run ownership", () => {
       }),
     ).toEqual(ready);
     expect(readIsolatedRunClaim(nodexHome)).toEqual(ready);
-    expect(
-      lstatSync(path.join(isolatedRunLeaseDirectory(nodexHome), "host-claim.json")).mode & 0o777,
-    ).toBe(0o600);
+    if (process.platform !== "win32") {
+      expect(
+        lstatSync(path.join(isolatedRunLeaseDirectory(nodexHome), "host-claim.json")).mode & 0o777,
+      ).toBe(0o600);
+    }
     expect(() =>
       publishIsolatedRunClaim({
         nodexHome,

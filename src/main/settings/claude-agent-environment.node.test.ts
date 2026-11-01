@@ -69,7 +69,7 @@ it("encrypts secrets outside config, redacts reads, and resolves the exact launc
   for (const name of readdirSync(directory)) {
     const file = path.join(directory, name);
     expect(readFileSync(file).includes(Buffer.from("test-only-secret"))).toBe(false);
-    expect(statSync(file).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") expect(statSync(file).mode & 0o777).toBe(0o600);
   }
   expect(getClaudeLaunchConfiguration(source, "claude-default").environment).toEqual({
     ANTHROPIC_BASE_URL: "https://router.example",
@@ -105,7 +105,7 @@ it("normalizes account paths against the host home and preserves explicit custom
     },
     source,
   );
-  expect(saved.instances[0]?.configDirectory).toBe("/host/home/claude-work");
+  expect(saved.instances[0]?.configDirectory).toBe(path.join("/host/home", "claude-work"));
   expect(getClaudeLaunchConfiguration(source, "claude-default").instance.customModels).toEqual([
     model,
   ]);

@@ -4,6 +4,7 @@ import { Readable } from "node:stream";
 import { setTimeout as delay } from "node:timers/promises";
 import {
   app,
+  net,
   BrowserWindow,
   protocol,
   session,
@@ -59,6 +60,13 @@ void app.whenReady().then(async () => {
     rendererRoot: path.join(__dirname, "renderer"),
     getDevelopmentRendererUrl: () => developmentRendererUrl,
     protocol,
+    netFetch: async (url) => {
+      if (holdImages && new URL(url).pathname.endsWith(".png")) {
+        imageRequested.resolve();
+        await imageReleased.promise;
+      }
+      return await net.fetch(url);
+    },
     // Keep the long audio fixture partially buffered so seeking must request another range.
     ...(process.env.NODEX_TEST_SLOW_MEDIA === "1" || holdImages ? {
       createStream: (filePath, options) => Readable.from((async function* () {

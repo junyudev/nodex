@@ -1,6 +1,7 @@
+import { rm } from "node:fs/promises";
 import type { CodexThreadHandoffBranches } from "../../shared/codex-thread-handoff";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test } from "vite-plus/test";
@@ -48,9 +49,9 @@ function options() {
   };
 }
 
-afterEach(() => {
+afterEach(async () => {
   for (const root of fixtureRoots.splice(0)) {
-    rmSync(root, { recursive: true, force: true });
+    await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 });
 

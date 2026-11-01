@@ -177,11 +177,11 @@ it.effect(
         Effect.promise(() => mkdtemp(join(tmpdir(), "nodex-claude-version-"))),
         (root) => Effect.promise(() => rm(root, { recursive: true, force: true })),
       );
-      const executable = join(root, "claude");
+      const executable = join(root, "claude.cjs");
       yield* Effect.promise(() =>
         writeFile(
           executable,
-          '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "2.1.276 (Claude Code)"; else exit 9; fi\n',
+          'if (process.argv[2] === "--version") console.log("2.1.276 (Claude Code)"); else process.exit(9);',
         ),
       );
       yield* Effect.promise(() => chmod(executable, 0o700));

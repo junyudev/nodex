@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -125,7 +126,7 @@ it.effect(
         yield* Effect.gen(function* () {
           const skills = yield* StandaloneSkills;
           const installed = yield* skills.install("sample", null, Effect.void);
-          assert.strictEqual(installed.path, `${h.home}/skills/sample/SKILL.md`);
+          assert.strictEqual(installed.path, join(h.home, "skills", "sample", "SKILL.md"));
           assert.deepEqual((yield* skills.contents(installed.path)).files, [
             "SKILL.md",
             "scripts/run.py",
@@ -137,7 +138,10 @@ it.effect(
           const conflict = yield* skills.install("sample", null, Effect.void).pipe(Effect.flip);
           assert.strictEqual(conflict.code, "invalid_input");
           const project = yield* skills.install("sample", h.project, Effect.void);
-          assert.strictEqual(project.path, `${h.project}/.agents/skills/sample/SKILL.md`);
+          assert.strictEqual(
+            project.path,
+            join(h.project, ".agents", "skills", "sample", "SKILL.md"),
+          );
           yield* skills.uninstall(skill(project.path, "repo"), [h.project], Effect.void);
           assert.strictEqual(yield* fs.exists(`${h.project}/.agents/skills/sample`), false);
           yield* fs.symlink(h.home, `${h.home}/native-home-alias`);

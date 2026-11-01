@@ -24,7 +24,7 @@ describe("resolveBrowserProfileHelperExecutable", () => {
         repositoryRoot: "/work/nodex",
         resourcesPath: "/electron/resources",
       }),
-    ).toBe("/opt/nodex/bin/profile-helper");
+    ).toBe(path.normalize("/opt/nodex/bin/profile-helper"));
     expect(
       resolveBrowserProfileHelperExecutable({
         environment: {},
@@ -32,7 +32,13 @@ describe("resolveBrowserProfileHelperExecutable", () => {
         repositoryRoot: "/work/nodex",
         resourcesPath: "/Applications/Nodex.app/Contents/Resources",
       }),
-    ).toBe("/Applications/Nodex.app/Contents/Resources/bin/nodex-browser-profile-helper");
+    ).toBe(
+      path.join(
+        "/Applications/Nodex.app/Contents/Resources",
+        "bin",
+        "nodex-browser-profile-helper",
+      ),
+    );
     expect(
       resolveBrowserProfileHelperExecutable({
         environment: {},
@@ -58,16 +64,19 @@ describe("resolveBrowserProfileHelperExecutable", () => {
 });
 
 it.layer(BrowserProfileHelperNode.nodeLive)("Browser Profile helper runtime", (it) => {
-  it.effect("kills the scoped helper child when its Effect deadline expires", () =>
-    Effect.acquireUseRelease(
-      Effect.sync(() => fs.mkdtempSync(path.join(os.tmpdir(), "nodex-profile-helper-test-"))),
-      (root) =>
-        Effect.gen(function* () {
-          const pidPath = path.join(root, "helper.pid");
-          const executablePath = path.join(root, "helper.mjs");
-          fs.writeFileSync(
-            executablePath,
-            `#!/usr/bin/env node
+  // The shipped Browser Profile helper is macOS-only; Windows child lifetime is covered by NodeChildProcessSpawner.
+  it.effect.skipIf(process.platform === "win32")(
+    "kills the scoped helper child when its Effect deadline expires",
+    () =>
+      Effect.acquireUseRelease(
+        Effect.sync(() => fs.mkdtempSync(path.join(os.tmpdir(), "nodex-profile-helper-test-"))),
+        (root) =>
+          Effect.gen(function* () {
+            const pidPath = path.join(root, "helper.pid");
+            const executablePath = path.join(root, "helper.mjs");
+            fs.writeFileSync(
+              executablePath,
+              `#!/usr/bin/env node
 import fs from "node:fs";
 let input = "";
 process.stdin.setEncoding("utf8");
@@ -78,30 +87,30 @@ process.stdin.on("end", () => {
   setInterval(() => undefined, 1_000);
 });
 `,
-            { mode: 0o700 },
-          );
-          const platform = yield* BrowserProfileHelperPlatform;
-          const helper = platform.make({ executablePath, timeoutMs: 50 });
-          const pending = yield* Effect.forkChild(
-            helper.readProfile({
-              source: "chrome",
-              profilePath: pidPath,
-              includeCookies: true,
-              includePasswords: false,
-            }),
-            { startImmediately: true },
-          );
-          for (let attempt = 0; attempt < 600 && !fs.existsSync(pidPath); attempt += 1) {
-            yield* Effect.promise(() => new Promise<void>((resolve) => setTimeout(resolve, 5)));
-          }
-          assert.isTrue(fs.existsSync(pidPath));
-          const pid = Number.parseInt(fs.readFileSync(pidPath, "utf8"), 10);
-          yield* TestClock.adjust("50 millis");
-          const error = yield* Fiber.join(pending).pipe(Effect.flip);
-          assert.strictEqual(error.operation, "timeout");
-          assert.throws(() => process.kill(pid, 0));
-        }),
-      (root) => Effect.sync(() => fs.rmSync(root, { recursive: true, force: true })),
-    ),
+              { mode: 0o700 },
+            );
+            const platform = yield* BrowserProfileHelperPlatform;
+            const helper = platform.make({ executablePath, timeoutMs: 50 });
+            const pending = yield* Effect.forkChild(
+              helper.readProfile({
+                source: "chrome",
+                profilePath: pidPath,
+                includeCookies: true,
+                includePasswords: false,
+              }),
+              { startImmediately: true },
+            );
+            for (let attempt = 0; attempt < 600 && !fs.existsSync(pidPath); attempt += 1) {
+              yield* Effect.promise(() => new Promise<void>((resolve) => setTimeout(resolve, 5)));
+            }
+            assert.isTrue(fs.existsSync(pidPath));
+            const pid = Number.parseInt(fs.readFileSync(pidPath, "utf8"), 10);
+            yield* TestClock.adjust("50 millis");
+            const error = yield* Fiber.join(pending).pipe(Effect.flip);
+            assert.strictEqual(error.operation, "timeout");
+            assert.throws(() => process.kill(pid, 0));
+          }),
+        (root) => Effect.sync(() => fs.rmSync(root, { recursive: true, force: true })),
+      ),
   );
 });

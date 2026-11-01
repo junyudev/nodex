@@ -1,3 +1,4 @@
+import path from "node:path";
 import { assert, it } from "@effect/vitest";
 import * as Context from "effect/Context";
 import * as Data from "effect/Data";
@@ -956,8 +957,8 @@ it.effect.each(["project", "projectless"] as const)(
           // Main never strips an override to make an invalid definition appear valid.
           for (const override of [
             { projectId: manifest.projectId },
-            { cwds: ["/workspace"] },
-            { localEnvironmentConfigPath: "/workspace/environment.toml" },
+            { cwds: [path.resolve("/workspace")] },
+            { localEnvironmentConfigPath: path.resolve("/workspace/environment.toml") },
           ]) {
             const expected =
               "projectId" in override

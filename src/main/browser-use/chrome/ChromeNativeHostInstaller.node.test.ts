@@ -57,7 +57,8 @@ async function makeInstallerOptions(root: string): Promise<ChromeNativeHostInsta
   };
 }
 
-describe("Chrome native host installer", () => {
+// This installer publishes the signed macOS Chrome host; Windows has no native Chrome control capability.
+describe.skipIf(process.platform === "win32")("Chrome native host installer", () => {
   test("installs manifests against a verified Profile-owned native-host closure", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "nodex-chrome-install-"));
     temporaryRoots.push(root);
@@ -288,18 +289,18 @@ describe("Chrome native host installer", () => {
       }),
     ).rejects.toThrow("non-canonical parent path");
   });
+});
 
-  test("parses the exact code-signing identity reported by codesign", () => {
-    const identity = readChromeNativeHostIdentity("/runtime/native-host", (command, args) => {
-      expect(command).toBe("/usr/bin/codesign");
-      expect(args).toEqual(["-dv", "--verbose=4", "/runtime/native-host"]);
-      return [
-        "Executable=/runtime/native-host",
-        "Identifier=com.openai.chrome-host",
-        "TeamIdentifier=TESTTEAM1A",
-      ].join("\n");
-    });
-
-    expect(identity).toEqual(peerIdentity);
+test("parses the exact code-signing identity reported by codesign", () => {
+  const identity = readChromeNativeHostIdentity("/runtime/native-host", (command, args) => {
+    expect(command).toBe("/usr/bin/codesign");
+    expect(args).toEqual(["-dv", "--verbose=4", "/runtime/native-host"]);
+    return [
+      "Executable=/runtime/native-host",
+      "Identifier=com.openai.chrome-host",
+      "TeamIdentifier=TESTTEAM1A",
+    ].join("\n");
   });
+
+  expect(identity).toEqual(peerIdentity);
 });
