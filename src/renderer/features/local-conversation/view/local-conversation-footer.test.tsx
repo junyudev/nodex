@@ -1110,6 +1110,58 @@ describe("LocalConversationFooter", () => {
     ).toBeNull();
   });
 
+  test("opening a response from the minimized bubble restores the composer into its thread", async () => {
+    const target = document.createElement("div");
+    document.body.appendChild(target);
+    const base = buildModelWithRenderableLatestTurn();
+    if (!base.conversation) throw new Error("Expected a conversation");
+    const onStateChange = vi.fn();
+    const renderFooter = (visible: boolean) => (
+      <TooltipProvider>
+        <EnsureLocalConversationThreadScrollController>
+          <LocalConversationFooter
+            model={{ ...base, conversation: { ...base.conversation!, hasUnreadTurn: true } }}
+            actions={buildActions()}
+            errorMessage={null}
+            onErrorMessage={() => {}}
+            rightPanelComposerOverlay={{
+              enabled: true,
+              target,
+              transcript: floatingThread,
+              placement: {
+                title: "Release notes",
+                control: { state: { visible }, attention: "none", onStateChange },
+              },
+            }}
+          />
+        </EnsureLocalConversationThreadScrollController>
+      </TooltipProvider>
+    );
+    const view = render(renderFooter(false));
+
+    const bubble = await view.findByRole("button", { name: "Restore composer" });
+    await act(async () => {
+      fireEvent.pointerEnter(bubble, { pointerType: "mouse" });
+      await Promise.resolve();
+    });
+    const open = await view.findByRole("button", {
+      name: "Open completed response: Release notes",
+    });
+    await act(async () => {
+      fireEvent.click(open);
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(onStateChange).toHaveBeenCalledWith({ visible: true }));
+
+    await act(async () => {
+      view.rerender(renderFooter(true));
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(document.body.querySelector('[data-testid="floating-thread"]')).not.toBeNull();
+    });
+  });
+
   test("resuming active threads keep overlay composer ownership disabled", async () => {
     const target = document.createElement("div");
     document.body.appendChild(target);

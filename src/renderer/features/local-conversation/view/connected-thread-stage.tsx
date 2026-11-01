@@ -90,6 +90,7 @@ import { RemoteHostedPipHostLayoutReporter } from "./remote-hosted-pip-host-layo
 import { InlineVisualizationSurfaceProvider } from "./inline-visualization-window";
 import { ThreadStageHeader } from "./local-conversation-stage-header";
 import { LocalConversationThreadBody } from "./local-conversation-thread-body";
+import { useRightPanelComposerPresentation } from "./right-panel-composer-presentation";
 import {
   ManagedWorktreeRestoreBannerContainer,
   useManagedWorktreeAvailability,
@@ -590,8 +591,8 @@ type ConnectedFloatingThreadTranscriptProps = Omit<
 
 /**
  * The chat, read inside an expanded floating composer, including a first message still being
- * sent. It mounts only while shown, so it marks the conversation read as the main Conversation
- * does while visible.
+ * sent. It stays mounted while the composer is minimized and marks the conversation read only
+ * while the composer is shown, as the main Conversation does while visible.
  */
 function ConnectedFloatingThreadTranscript(props: ConnectedFloatingThreadTranscriptProps) {
   const { activeThreadId, input } = props;
@@ -604,10 +605,11 @@ function ConnectedFloatingThreadTranscript(props: ConnectedFloatingThreadTranscr
     },
     turns,
   );
+  const { visible: composerShown } = useRightPanelComposerPresentation();
   const { onReadInteraction } = useShownConversationReadState({
     conversationId: activeThreadId,
     summary: input.activeThreadSummary,
-    shown: true,
+    shown: composerShown,
   });
   return (
     <div

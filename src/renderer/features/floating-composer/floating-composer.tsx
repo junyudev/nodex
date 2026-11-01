@@ -17,11 +17,11 @@ import {
 import { createPortal } from "react-dom";
 import {
   animate,
-  AnimatePresence,
   motion,
   MotionConfig,
   useDragControls,
   useMotionValue,
+  useTransform,
   type MotionValue,
   type PanInfo,
 } from "motion/react";
@@ -60,7 +60,9 @@ import {
   isFloatingComposerPaneNarrow,
   resolveFloatingComposerPaneDropSide,
   isTopFloatingComposerDock,
+  resolveFloatingComposerBubbleRect,
   resolveFloatingComposerDockForRect,
+  resolveFloatingComposerDockOrigin,
   resolveFloatingComposerDockScaleOrigin,
   resolveFloatingComposerDragConstraints,
   resolveFloatingComposerDragTarget,
@@ -132,10 +134,17 @@ export interface FloatingComposerPortalGeometry {
   toolbarHeight: number;
 }
 
-type DockApproach = "none" | "near" | "minimize";
+/** Where a dragged surface is headed: near a dock, or collapsing onto a corner's bubble. */
+type DockApproach =
+  | { readonly stage: "none" | "near" }
+  | { readonly stage: "minimize"; readonly corner: FloatingComposerCornerDock };
 type ResizeEdges = { readonly horizontal?: "left" | "right"; readonly vertical?: "top" | "bottom" };
 
 const NO_MENU_ITEMS: readonly FloatingComposerMenuItem[] = [];
+const NO_DOCK_APPROACH: DockApproach = { stage: "none" };
+const NEAR_DOCK_APPROACH: DockApproach = { stage: "near" };
+const SURFACE_CHROME_CLASS =
+  "pointer-events-none absolute bg-token-input-background shadow-2xl ring-[0.5px] ring-token-border electron:dark:bg-token-dropdown-background";
 const SURFACE_RADIUS_PX = 22;
 const BUBBLE_RADIUS_PX = FLOATING_COMPOSER_BUBBLE_SIZE_PX / 2;
 const PRESENTATION_TRANSITION = { duration: 0.3, ease: [0.23, 1, 0.32, 1] } as const;
@@ -195,6 +204,15 @@ function findInlineCustomPropertyOwner(target: HTMLElement, property: string): H
     current = current.parentElement;
   }
   return null;
+}
+
+function isSameDockApproach(left: DockApproach, right: DockApproach): boolean {
+  if (left.stage !== right.stage) return false;
+  return left.stage !== "minimize" || right.stage !== "minimize" || left.corner === right.corner;
+}
+
+function lerp(from: number, to: number, progress: number): number {
+  return from + (to - from) * progress;
 }
 
 function mergeAttention(
@@ -427,8 +445,9 @@ function ResizeEdge({
 
 /**
  * A composer that floats over a full-width pane. It rests in a dock, reveals its header while in
- * use, expands into its conversation, can be dragged to another dock, resized, and minimized to a
- * bubble that keeps its own corner.
+ * use, expands into its conversation, can be dragged to another dock, resized, and minimized: the
+ * same surface collapses onto a bubble in its own corner, so its conversation and prompt stay
+ * mounted, scroll position included, until it opens again.
  */
 export function FloatingComposer({
   target,
@@ -445,7 +464,6 @@ export function FloatingComposer({
   previews,
   children,
 }: FloatingComposerProps) {
-  const surfaceLayoutId = useId();
   const titleId = useId();
   const reducedMotion = useResolvedReducedMotion();
   const { preference, update: updatePreference } = useFloatingComposerPreference();
@@ -458,7 +476,9 @@ export function FloatingComposer({
   const visible = state.visible;
   const attention = mergeAttention(control?.attention ?? "none", contentAttention);
   const hasTranscript = transcript !== undefined && transcript !== null && transcript !== false;
-  const expanded = visible && hasTranscript && expandedRequested;
+  // The presentation survives minimizing; only a visible surface shows it.
+  const expanded = hasTranscript && expandedRequested;
+  const expandedShown = visible && expanded;
 
   const geometry = usePaneGeometry(
     target,
@@ -475,6 +495,8 @@ export function FloatingComposer({
   const dock: FloatingComposerDock = narrow ? "bottom-center" : (state.dock ?? preference.dock);
   const minimizedDock: FloatingComposerCornerDock =
     state.minimizedDock ?? DEFAULT_FLOATING_COMPOSER_MINIMIZED_DOCK;
+  // A minimized surface rests in its bubble's corner.
+  const anchorDock: FloatingComposerDock = visible ? dock : minimizedDock;
 
   const paneRef = useRef<HTMLDivElement | null>(null);
   const frameRef = useRef<HTMLElement | null>(null);
@@ -482,20 +504,17 @@ export function FloatingComposer({
   const composerRef = useRef<HTMLDivElement | null>(null);
   const [headerSlot, setHeaderSlot] = useState<HTMLDivElement | null>(null);
   const frameDragControls = useDragControls();
-  const bubbleDragControls = useDragControls();
   const offsetX = useMotionValue(0);
   const offsetY = useMotionValue(0);
-  const bubbleX = useMotionValue(0);
-  const bubbleY = useMotionValue(0);
+  // 0 while the surface is open, 1 once it has collapsed onto its bubble.
+  const collapse = useMotionValue(visible ? 0 : 1);
   const [composerFocused, setComposerFocused] = useState(false);
   const [dragging, setDragging] = useState(false);
-  const [bubbleDragging, setBubbleDragging] = useState(false);
   const [bubbleHovered, setBubbleHovered] = useState(false);
   const [resizing, setResizing] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [paneDropSide, setPaneDropSide] = useState<"left" | "right" | null>(null);
-  // Near a corner the frame shrinks slightly; with the pointer in the corner, release minimizes.
-  const [dockApproach, setDockApproach] = useState<DockApproach>("none");
+  const [dockApproach, setDockApproach] = useState<DockApproach>(NO_DOCK_APPROACH);
   const [liveSize, setLiveSize] = useState<{ width?: number; height?: number } | null>(null);
   const [frameHeight, setFrameHeight] = useState(0);
   const [compactFrameHeight, setCompactFrameHeight] = useState(0);
@@ -503,18 +522,10 @@ export function FloatingComposer({
   const restoreFocusRef = useRef(false);
 
   const frameSettle = useDockSettle({
-    dock,
+    dock: anchorDock,
     elementRef: frameRef,
     offsetX,
     offsetY,
-    zoom,
-    reducedMotion,
-  });
-  const bubbleSettle = useDockSettle({
-    dock: minimizedDock,
-    elementRef: bubbleRef,
-    offsetX: bubbleX,
-    offsetY: bubbleY,
     zoom,
     reducedMotion,
   });
@@ -524,8 +535,44 @@ export function FloatingComposer({
   const expandedHeight =
     liveSize?.height ??
     resolveFloatingComposerExpandedHeight(preference.height, paneHeight, compactFrameHeight);
+  const frameBox = { width: frameWidth, height: expanded ? expandedHeight : frameHeight };
   const chromeRevealed =
     expanded || headerPinned || composerFocused || dragging || resizing || menuOpen;
+  // Pressing a dragged surface into a corner already collapses it onto the bubble there.
+  const collapseCorner: FloatingComposerCornerDock | null = !visible
+    ? minimizedDock
+    : dockApproach.stage === "minimize"
+      ? dockApproach.corner
+      : null;
+  const collapsed = collapseCorner !== null;
+  const bubble = resolveFloatingComposerBubbleRect(collapseCorner ?? minimizedDock, frameBox);
+
+  // The painted surface shrinks onto the bubble while the content is clipped to it and fades.
+  const surfaceTop = useTransform(collapse, (progress) => lerp(0, bubble.y, progress));
+  const surfaceRight = useTransform(collapse, (progress) =>
+    lerp(FLOATING_COMPOSER_SURFACE_INSET_PX, frameBox.width - bubble.x - bubble.width, progress),
+  );
+  const surfaceBottom = useTransform(collapse, (progress) =>
+    lerp(FLOATING_COMPOSER_SURFACE_INSET_PX, frameBox.height - bubble.y - bubble.height, progress),
+  );
+  const surfaceLeft = useTransform(collapse, (progress) =>
+    lerp(FLOATING_COMPOSER_SURFACE_INSET_PX, bubble.x, progress),
+  );
+  const surfaceRadius = useTransform(collapse, (progress) =>
+    lerp(SURFACE_RADIUS_PX, BUBBLE_RADIUS_PX, progress),
+  );
+  const contentClip = useTransform(collapse, (progress) => {
+    if (progress === 0) return "none";
+    // The content box starts at the frame's top and sits inside its side and bottom insets.
+    const inset = FLOATING_COMPOSER_SURFACE_INSET_PX;
+    const top = bubble.y * progress;
+    const right = (frameBox.width - inset - bubble.x - bubble.width) * progress;
+    const bottom = (frameBox.height - inset - bubble.y - bubble.height) * progress;
+    const left = (bubble.x - inset) * progress;
+    const radius = lerp(SURFACE_RADIUS_PX, BUBBLE_RADIUS_PX, progress);
+    return `inset(${top}px ${right}px ${bottom}px ${left}px round ${radius}px)`;
+  });
+  const contentOpacity = useTransform(collapse, (progress) => 1 - progress);
 
   const setDock = (next: FloatingComposerDock) => {
     updatePreference({ dock: next });
@@ -543,7 +590,7 @@ export function FloatingComposer({
   };
 
   // Measures the frame for its drag bounds; an expanded frame never ends shorter than its compact form.
-  const frameMounted = visible && geometry !== null;
+  const frameMounted = geometry !== null;
   useLayoutEffect(() => {
     const frame = frameRef.current;
     if (!frameMounted || !frame || typeof ResizeObserver === "undefined") return;
@@ -555,18 +602,52 @@ export function FloatingComposer({
     return () => observer.disconnect();
   }, [expanded, frameMounted]);
 
+  useLayoutEffect(() => {
+    if (reducedMotion) {
+      collapse.jump(collapsed ? 1 : 0);
+      return;
+    }
+    const animation = animate(collapse, collapsed ? 1 : 0, PRESENTATION_TRANSITION);
+    return () => animation.stop();
+  }, [collapse, collapsed, reducedMotion]);
+
+  // Minimizing and restoring move the surface's anchor; it glides there from where it was.
+  const anchorRef = useRef({ visible, anchorDock });
+  useLayoutEffect(() => {
+    const previous = anchorRef.current;
+    anchorRef.current = { visible, anchorDock };
+    if (previous.visible === visible) return;
+    if (previous.anchorDock !== anchorDock) {
+      const from = resolveFloatingComposerDockOrigin({
+        dock: previous.anchorDock,
+        box: frameBox,
+        pane,
+        inset: FLOATING_COMPOSER_FRAME_INSET_PX,
+      });
+      const to = resolveFloatingComposerDockOrigin({
+        dock: anchorDock,
+        box: frameBox,
+        pane,
+        inset: FLOATING_COMPOSER_FRAME_INSET_PX,
+      });
+      offsetX.jump(offsetX.get() + from.x - to.x);
+      offsetY.jump(offsetY.get() + from.y - to.y);
+    }
+    frameSettle.springHome();
+  });
+
   const collapseOnOutsidePointer = useEffectEvent((event: PointerEvent) => {
-    if (!expanded || dragging || resizing) return;
+    if (!expandedShown || dragging || resizing) return;
     if (isComposerOwnedTarget(event.target, frameRef.current)) return;
     setExpanded(false);
   });
 
   useEffect(() => {
-    if (!expanded) return;
+    if (!expandedShown) return;
     const ownerDocument = target?.ownerDocument ?? globalThis.document;
     ownerDocument?.addEventListener("pointerdown", collapseOnOutsidePointer, true);
     return () => ownerDocument?.removeEventListener("pointerdown", collapseOnOutsidePointer, true);
-  }, [expanded, target]);
+  }, [expandedShown, target]);
 
   useLayoutEffect(() => {
     if (visible || !restoreFocusRef.current) return;
@@ -600,13 +681,12 @@ export function FloatingComposer({
     };
   };
 
+  // Minimizing keeps the presentation, so restoring returns the composer compact or expanded.
   const minimize = (patch: Partial<FloatingComposerState> = {}) => {
     restoreFocusRef.current = frameRef.current?.contains(document.activeElement) ?? false;
     setComposerFocused(false);
     setMenuOpen(false);
-    offsetX.jump(0);
-    offsetY.jump(0);
-    if (expanded) onExpandedChange?.(false);
+    setBubbleHovered(false);
     updateState({ ...patch, visible: false });
   };
 
@@ -616,6 +696,15 @@ export function FloatingComposer({
     focusComposer();
   };
 
+  // Asking a minimized composer to expand, as opening a response card does, restores it.
+  const restoreForExpansion = useEffectEvent(restore);
+  const expansionRequestRef = useRef(expandedRequested);
+  useEffect(() => {
+    const requested = expandedRequested && !expansionRequestRef.current;
+    expansionRequestRef.current = expandedRequested;
+    if (requested && !visible) restoreForExpansion();
+  }, [expandedRequested, visible]);
+
   const startFrameDrag = (event: ReactPointerEvent) => {
     if (narrow || event.button !== 0 || event.ctrlKey) return;
     draggedRef.current = false;
@@ -624,7 +713,7 @@ export function FloatingComposer({
 
   const handleFramePointerDownCapture = (event: ReactPointerEvent<HTMLElement>) => {
     draggedRef.current = false;
-    if (!(event.target instanceof Element)) return;
+    if (!visible || !(event.target instanceof Element)) return;
     // The header and, while compact, the frame's own margin move the composer.
     const fromHeader = event.target.closest("[data-floating-composer-drag-handle]") !== null;
     const fromFrameMargin = !expanded && event.target === event.currentTarget;
@@ -644,6 +733,7 @@ export function FloatingComposer({
   };
 
   const handleFrameDrag = (_event: PointerEvent, info: PanInfo) => {
+    if (!visible) return;
     const dragTarget = readDragTarget(info);
     if (!dragTarget) return;
     setPaneDropSide(
@@ -651,13 +741,34 @@ export function FloatingComposer({
         ? resolveFloatingComposerPaneDropSide(dragTarget.pointer.x, paneWidth)
         : null,
     );
-    setDockApproach(dragTarget.minimize ? "minimize" : dragTarget.nearDock ? "near" : "none");
+    const approach: DockApproach = dragTarget.minimize
+      ? { stage: "minimize", corner: resolveMinimizedFloatingComposerDock(dragTarget.dock) }
+      : dragTarget.nearDock
+        ? NEAR_DOCK_APPROACH
+        : NO_DOCK_APPROACH;
+    setDockApproach((current) => (isSameDockApproach(current, approach) ? current : approach));
+  };
+
+  // A dragged bubble settles into the nearest corner.
+  const settleBubble = () => {
+    const metrics = readPaneRect(bubbleRef.current);
+    if (!metrics) return;
+    const corner = resolveMinimizedFloatingComposerDock(
+      resolveFloatingComposerDockForRect(metrics.rect, metrics.pane, { minimized: true }),
+    );
+    frameSettle.settle(corner, (next) =>
+      updateState({ minimizedDock: resolveMinimizedFloatingComposerDock(next) }),
+    );
   };
 
   const handleFrameDragEnd = (_event: PointerEvent, info: PanInfo) => {
     setDragging(false);
-    setDockApproach("none");
+    setDockApproach(NO_DOCK_APPROACH);
     setPaneDropSide(null);
+    if (!visible) {
+      settleBubble();
+      return;
+    }
     const dragTarget = readDragTarget(info);
     if (!dragTarget) return;
     const dropSide = onDropBesideContent
@@ -676,31 +787,16 @@ export function FloatingComposer({
     frameSettle.settle(dragTarget.dock, setDock);
   };
 
-  const handleBubbleDragEnd = () => {
-    setBubbleDragging(false);
-    const metrics = readPaneRect(bubbleRef.current);
-    if (!metrics) return;
-    const nextDock = resolveMinimizedFloatingComposerDock(
-      resolveFloatingComposerDockForRect(metrics.rect, metrics.pane, { minimized: true }),
-    );
-    bubbleSettle.settle(nextDock, (corner) =>
-      updateState({ minimizedDock: resolveMinimizedFloatingComposerDock(corner) }),
-    );
-  };
-
   const cancelDrag = useEffectEvent(() => {
     frameDragControls.cancel();
-    bubbleDragControls.cancel();
     setDragging(false);
-    setBubbleDragging(false);
-    setDockApproach("none");
+    setDockApproach(NO_DOCK_APPROACH);
     setPaneDropSide(null);
     frameSettle.springHome();
-    bubbleSettle.springHome();
   });
 
   useEffect(() => {
-    if (!dragging && !bubbleDragging) return;
+    if (!dragging) return;
     const view = target?.ownerDocument.defaultView;
     if (!view) return;
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -717,7 +813,7 @@ export function FloatingComposer({
       view.removeEventListener("blur", cancelDrag);
       view.removeEventListener("pointercancel", cancelDrag, true);
     };
-  }, [bubbleDragging, dragging, target]);
+  }, [dragging, target]);
 
   const startResize = (edges: ResizeEdges, event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0 || !geometry) return;
@@ -811,12 +907,12 @@ export function FloatingComposer({
       return;
     }
     setComposerFocused(false);
-    if (expanded) setExpanded(false);
+    if (expandedShown) setExpanded(false);
   };
 
   const handleFrameKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
     if (
-      !expanded ||
+      !expandedShown ||
       !isDomDescendant(event) ||
       event.key !== "Escape" ||
       event.defaultPrevented ||
@@ -833,7 +929,7 @@ export function FloatingComposer({
   // On the frame: the context rail is portaled into the header, so its clicks bubble through the
   // composer rather than the header row.
   const handleFrameClick = (event: ReactMouseEvent<HTMLElement>) => {
-    if (!hasTranscript || draggedRef.current || event.defaultPrevented) return;
+    if (!visible || !hasTranscript || draggedRef.current || event.defaultPrevented) return;
     const target = event.target;
     if (!(target instanceof Element) || !isDomDescendant(event)) return;
     if (!target.closest("[data-floating-composer-header]")) return;
@@ -844,18 +940,20 @@ export function FloatingComposer({
   if (!target || !geometry) return null;
 
   // Numeric bounds: motion re-fits ref bounds on every resize, which would halt the glide home.
-  const frameDragConstraints = resolveFloatingComposerDragConstraints({
-    dock,
-    box: { width: frameWidth, height: expanded ? expandedHeight : frameHeight },
-    pane,
-    inset: FLOATING_COMPOSER_FRAME_INSET_PX,
-  });
-  const bubbleDragConstraints = resolveFloatingComposerDragConstraints({
-    dock: minimizedDock,
-    box: { width: FLOATING_COMPOSER_BUBBLE_SIZE_PX, height: FLOATING_COMPOSER_BUBBLE_SIZE_PX },
-    pane,
-    inset: FLOATING_COMPOSER_EDGE_PX,
-  });
+  // A minimized surface moves with its bubble, which keeps its own distance from the pane edges.
+  const frameDragConstraints = visible
+    ? resolveFloatingComposerDragConstraints({
+        dock,
+        box: frameBox,
+        pane,
+        inset: FLOATING_COMPOSER_FRAME_INSET_PX,
+      })
+    : resolveFloatingComposerDragConstraints({
+        dock: minimizedDock,
+        box: { width: FLOATING_COMPOSER_BUBBLE_SIZE_PX, height: FLOATING_COMPOSER_BUBBLE_SIZE_PX },
+        pane,
+        inset: FLOATING_COMPOSER_EDGE_PX,
+      });
   const portalStyle: CSSProperties = {
     height: geometry.height,
     left: geometry.left,
@@ -864,15 +962,12 @@ export function FloatingComposer({
     zoom: geometry.zoom,
   };
   const presenceTransition = reducedMotion ? { duration: 0 } : PRESENTATION_TRANSITION;
-  const exitTransition = { duration: reducedMotion ? 0 : 0.12 };
   const attentionLabel = attention === "none" ? null : ATTENTION_LABELS[attention];
   const dockedTop = isTopFloatingComposerDock(dock);
-  const bubbleDockedTop = isTopFloatingComposerDock(minimizedDock);
+  const bubbleDockedTop = isTopFloatingComposerDock(collapseCorner ?? minimizedDock);
   const verticalResizeEdge = dockedTop ? "bottom" : "top";
   const showPreviews = Boolean(previews) && visible && !expanded && !dragging;
-  const showBubblePreviews = Boolean(previews) && !visible && bubbleHovered && !bubbleDragging;
-  const surfaceChromeClass =
-    "pointer-events-none absolute bg-token-input-background shadow-2xl ring-[0.5px] ring-token-border electron:dark:bg-token-dropdown-background";
+  const showBubblePreviews = Boolean(previews) && !visible && bubbleHovered && !dragging;
 
   const status =
     attention === "none" ? null : (
@@ -1000,31 +1095,32 @@ export function FloatingComposer({
 
   const frame = (
     <motion.section
-      key="frame"
       ref={frameRef}
       role="region"
       aria-label={title ? undefined : "Composer"}
       aria-labelledby={title ? titleId : undefined}
       tabIndex={-1}
       data-floating-composer-frame="true"
-      data-floating-composer-dock={dock}
+      data-floating-composer-dock={anchorDock}
       data-floating-composer-presentation={expanded ? "expanded" : "compact"}
       data-floating-composer-chrome={chromeRevealed ? "revealed" : "hidden"}
-      className="pointer-events-auto absolute flex flex-col outline-none"
+      data-floating-composer-minimized={visible ? undefined : "true"}
+      className={cn(
+        "absolute flex flex-col outline-none",
+        visible ? "pointer-events-auto" : "pointer-events-none",
+      )}
       style={{
-        ...dockAnchorStyle(dock, FLOATING_COMPOSER_FRAME_INSET_PX),
-        ...resolveFloatingComposerDockScaleOrigin(dock),
+        ...dockAnchorStyle(anchorDock, FLOATING_COMPOSER_FRAME_INSET_PX),
+        ...resolveFloatingComposerDockScaleOrigin(anchorDock),
         width: frameWidth,
         x: offsetX,
         y: offsetY,
       }}
-      initial={{ opacity: 0 }}
+      initial={false}
       animate={{
-        opacity: dockApproach === "minimize" ? 0.6 : 1,
-        scale: dockApproach === "none" ? 1 : 0.95,
+        scale: dockApproach.stage === "near" ? 0.95 : 1,
         height: expanded ? expandedHeight : "auto",
       }}
-      exit={{ opacity: 0, transition: exitTransition }}
       transition={{
         ...presenceTransition,
         height: resizing ? { duration: 0 } : presenceTransition,
@@ -1038,6 +1134,7 @@ export function FloatingComposer({
       onDragStart={() => {
         draggedRef.current = true;
         setMenuOpen(false);
+        setBubbleHovered(false);
         setDragging(true);
       }}
       onDrag={handleFrameDrag}
@@ -1068,30 +1165,51 @@ export function FloatingComposer({
           {previews}
         </div>
       ) : null}
+      {showBubblePreviews ? (
+        <div
+          data-floating-composer-bubble-previews="true"
+          className={cn(
+            "pointer-events-auto absolute flex max-h-[min(22rem,50vh)] flex-col gap-3 overflow-y-auto overscroll-contain",
+            bubbleDockedTop ? "pt-3" : "pb-3",
+          )}
+          style={{
+            left: FLOATING_COMPOSER_SURFACE_INSET_PX,
+            right: FLOATING_COMPOSER_SURFACE_INSET_PX,
+            ...(bubbleDockedTop
+              ? { top: bubble.y + bubble.height }
+              : { bottom: frameBox.height - bubble.y }),
+          }}
+          onClickCapture={() => setBubbleHovered(false)}
+        >
+          {previews}
+        </div>
+      ) : null}
       <motion.div
-        layoutId={surfaceLayoutId}
         aria-hidden="true"
-        className={surfaceChromeClass}
+        className={SURFACE_CHROME_CLASS}
         style={{
-          borderRadius: SURFACE_RADIUS_PX,
-          top: 0,
-          right: FLOATING_COMPOSER_SURFACE_INSET_PX,
-          bottom: FLOATING_COMPOSER_SURFACE_INSET_PX,
-          left: FLOATING_COMPOSER_SURFACE_INSET_PX,
+          top: surfaceTop,
+          right: surfaceRight,
+          bottom: surfaceBottom,
+          left: surfaceLeft,
+          borderRadius: surfaceRadius,
         }}
-        transition={presenceTransition}
       />
-      <ResizeEdge
-        edges={{ horizontal: "left" }}
-        label="Resize composer width"
-        onStart={startResize}
-      />
-      <ResizeEdge
-        edges={{ horizontal: "right" }}
-        label="Resize composer width"
-        onStart={startResize}
-      />
-      {expanded ? (
+      {visible ? (
+        <>
+          <ResizeEdge
+            edges={{ horizontal: "left" }}
+            label="Resize composer width"
+            onStart={startResize}
+          />
+          <ResizeEdge
+            edges={{ horizontal: "right" }}
+            label="Resize composer width"
+            onStart={startResize}
+          />
+        </>
+      ) : null}
+      {expandedShown ? (
         <>
           <ResizeEdge
             edges={{ vertical: verticalResizeEdge }}
@@ -1108,129 +1226,93 @@ export function FloatingComposer({
           />
         </>
       ) : null}
-      <div
-        className={cn("relative flex min-h-0 min-w-0 flex-1 flex-col", !expanded && "justify-end")}
+      <RightPanelComposerPresentationProvider visible={visible}>
+        <motion.div
+          aria-hidden={visible ? undefined : "true"}
+          inert={!visible}
+          className={cn(
+            "relative flex min-h-0 min-w-0 flex-1 flex-col",
+            !expanded && "justify-end",
+          )}
+          style={{
+            marginInline: FLOATING_COMPOSER_SURFACE_INSET_PX,
+            marginBottom: FLOATING_COMPOSER_SURFACE_INSET_PX,
+            clipPath: contentClip,
+            opacity: contentOpacity,
+          }}
+        >
+          {header}
+          {expanded ? (
+            <div data-floating-composer-transcript="true" className="flex min-h-0 flex-1 flex-col">
+              {transcript}
+            </div>
+          ) : null}
+          {expanded ? <div aria-hidden="true" className="border-t border-token-border" /> : null}
+          <div ref={composerRef} className="mt-auto shrink-0 py-1">
+            <FloatingComposerHeaderSlotContext.Provider value={headerSlot}>
+              {children}
+            </FloatingComposerHeaderSlotContext.Provider>
+          </div>
+        </motion.div>
+      </RightPanelComposerPresentationProvider>
+      <motion.button
+        ref={bubbleRef}
+        type="button"
+        aria-label="Restore composer"
+        aria-description={attentionLabel ?? undefined}
+        aria-hidden={visible ? "true" : undefined}
+        inert={visible}
+        data-floating-composer-bubble="true"
+        data-floating-composer-dock={minimizedDock}
+        className={cn(
+          "absolute flex cursor-interaction touch-none items-center justify-center rounded-full text-token-description-foreground outline-none hover:text-token-foreground focus-visible:ring-2 focus-visible:ring-token-focus-border",
+          visible ? "pointer-events-none" : "pointer-events-auto",
+        )}
         style={{
-          marginInline: FLOATING_COMPOSER_SURFACE_INSET_PX,
-          marginBottom: FLOATING_COMPOSER_SURFACE_INSET_PX,
+          left: bubble.x,
+          top: bubble.y,
+          width: bubble.width,
+          height: bubble.height,
+          opacity: collapse,
+        }}
+        onPointerDown={(event) => {
+          draggedRef.current = false;
+          if (!visible) startFrameDrag(event);
+        }}
+        onPointerEnter={(event) => {
+          if (!visible && event.pointerType !== "touch") setBubbleHovered(true);
+        }}
+        onKeyDown={(event) => {
+          if (!previews || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) return;
+          event.preventDefault();
+          setBubbleHovered(true);
+          requestAnimationFrame(() =>
+            paneRef.current
+              ?.querySelector<HTMLElement>("[data-floating-composer-bubble-previews] button")
+              ?.focus(),
+          );
+        }}
+        onClick={(event) => {
+          if (event.detail !== 0 && draggedRef.current) return;
+          restore();
         }}
       >
-        {header}
-        {expanded ? (
-          <div data-floating-composer-transcript="true" className="flex min-h-0 flex-1 flex-col">
-            {transcript}
-          </div>
-        ) : null}
-        {expanded ? <div aria-hidden="true" className="border-t border-token-border" /> : null}
-        <div ref={composerRef} className="mt-auto shrink-0 py-1">
-          <FloatingComposerHeaderSlotContext.Provider value={headerSlot}>
-            <RightPanelComposerPresentationProvider visible>
-              {children}
-            </RightPanelComposerPresentationProvider>
-          </FloatingComposerHeaderSlotContext.Provider>
-        </div>
-      </div>
+        <span className="relative flex items-center justify-center">
+          {attention === "activity" ? (
+            <ActivitySpinnerIcon className="icon-sm" />
+          ) : (
+            <ChatBubbleIcon className="icon-sm" />
+          )}
+          {attention === "request" ? (
+            <span
+              aria-hidden="true"
+              className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-token-charts-blue ring-2 ring-token-input-background"
+            />
+          ) : null}
+        </span>
+      </motion.button>
     </motion.section>
   );
-
-  const bubble = (
-    <motion.button
-      key="bubble"
-      ref={bubbleRef}
-      type="button"
-      aria-label="Restore composer"
-      aria-description={attentionLabel ?? undefined}
-      data-floating-composer-bubble="true"
-      data-floating-composer-dock={minimizedDock}
-      className="pointer-events-auto absolute flex cursor-interaction touch-none items-center justify-center text-token-description-foreground outline-none hover:text-token-foreground focus-visible:ring-2 focus-visible:ring-token-focus-border"
-      style={{
-        ...dockAnchorStyle(minimizedDock, FLOATING_COMPOSER_EDGE_PX),
-        borderRadius: BUBBLE_RADIUS_PX,
-        width: FLOATING_COMPOSER_BUBBLE_SIZE_PX,
-        height: FLOATING_COMPOSER_BUBBLE_SIZE_PX,
-        x: bubbleX,
-        y: bubbleY,
-      }}
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0, transition: exitTransition }}
-      transition={presenceTransition}
-      drag={!narrow}
-      dragControls={bubbleDragControls}
-      dragListener={false}
-      dragMomentum={false}
-      dragElastic={0}
-      dragConstraints={bubbleDragConstraints}
-      onDragStart={() => {
-        draggedRef.current = true;
-        setBubbleDragging(true);
-      }}
-      onDragEnd={handleBubbleDragEnd}
-      onPointerDown={(event) => {
-        draggedRef.current = false;
-        if (narrow || event.button !== 0) return;
-        bubbleDragControls.start(event, { snapToCursor: false });
-      }}
-      onPointerEnter={(event) => {
-        if (event.pointerType !== "touch") setBubbleHovered(true);
-      }}
-      onKeyDown={(event) => {
-        if (!previews || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) return;
-        event.preventDefault();
-        setBubbleHovered(true);
-        requestAnimationFrame(() =>
-          paneRef.current
-            ?.querySelector<HTMLElement>("[data-floating-composer-bubble-previews] button")
-            ?.focus(),
-        );
-      }}
-      onClick={(event) => {
-        if (event.detail !== 0 && draggedRef.current) return;
-        restore();
-      }}
-    >
-      <motion.span
-        layoutId={surfaceLayoutId}
-        aria-hidden="true"
-        className={cn(surfaceChromeClass, "inset-0")}
-        style={{ borderRadius: BUBBLE_RADIUS_PX }}
-        transition={presenceTransition}
-      />
-      <span className="relative flex items-center justify-center">
-        {attention === "activity" ? (
-          <ActivitySpinnerIcon className="icon-sm" />
-        ) : (
-          <ChatBubbleIcon className="icon-sm" />
-        )}
-        {attention === "request" ? (
-          <span
-            aria-hidden="true"
-            className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-token-charts-blue ring-2 ring-token-input-background"
-          />
-        ) : null}
-      </span>
-    </motion.button>
-  );
-
-  const bubbleOffset = FLOATING_COMPOSER_EDGE_PX + FLOATING_COMPOSER_BUBBLE_SIZE_PX;
-  const bubblePreviews = showBubblePreviews ? (
-    <div
-      data-floating-composer-bubble-previews="true"
-      className={cn(
-        "pointer-events-auto absolute flex w-80 max-w-[calc(100%-2rem)] flex-col gap-3",
-        bubbleDockedTop ? "pt-3" : "pb-3",
-      )}
-      style={{
-        ...(bubbleDockedTop ? { top: bubbleOffset } : { bottom: bubbleOffset }),
-        ...(minimizedDock.endsWith("left")
-          ? { left: FLOATING_COMPOSER_EDGE_PX }
-          : { right: FLOATING_COMPOSER_EDGE_PX }),
-      }}
-      onClickCapture={() => setBubbleHovered(false)}
-    >
-      {previews}
-    </div>
-  ) : null;
 
   const overlay = (
     <div
@@ -1262,8 +1344,7 @@ export function FloatingComposer({
               animate={{ opacity: 1 }}
             />
           ) : null}
-          <AnimatePresence initial={false}>{visible ? frame : bubble}</AnimatePresence>
-          {bubblePreviews}
+          {frame}
         </div>
       </MotionConfig>
     </div>

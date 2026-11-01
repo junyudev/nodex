@@ -200,26 +200,73 @@ describe("FloatingComposer", () => {
     expect(states.at(-1)).toMatchObject({ visible: true });
   });
 
-  test("keeps its conversation open in the move menu and minimizes from it", async () => {
-    const view = renderHarness({ transcript: <p>Shipped the release notes.</p> });
+  test("minimizes from the move menu into its corner and restores the same conversation where it was read", async () => {
+    const view = renderHarness({
+      transcript: (
+        <div data-testid="conversation-log" className="min-h-0 flex-1 overflow-y-auto">
+          <p style={{ height: 2000 }}>Shipped the release notes.</p>
+        </div>
+      ),
+    });
     await act(async () => {
       await userEvent.click(view.getByRole("textbox", { name: "Prompt" }));
     });
     await act(async () => {
       await userEvent.click(view.getByText("Work locally"));
     });
-    expect(view.getByText("Shipped the release notes.")).toBeTruthy();
+    const log = await view.findByTestId("conversation-log");
+    // Read once the expanded surface has settled at its height.
+    await waitFor(() =>
+      expect(paneRect(frameElement()).height).toBeCloseTo(
+        Math.min(640, PANE.height - paneToolbarHeight() - 32),
+        0,
+      ),
+    );
+    await act(async () => {
+      log.scrollTop = 300;
+      await nextFrame();
+    });
+    const readTo = log.scrollTop;
+    expect(readTo).toBeGreaterThan(0);
     await act(async () => {
       await userEvent.click(view.getByRole("button", { name: "Move composer" }));
     });
     // The menu is portaled; its clicks must reach the item rather than the handle.
     const item = await view.findByRole("menuitem", { name: "Minimize composer" });
-    expect(view.getByText("Shipped the release notes.")).toBeTruthy();
     await act(async () => {
       await userEvent.click(item);
     });
-    expect(await view.findByRole("button", { name: "Restore composer" })).toBeTruthy();
+    const restore = await view.findByRole("button", { name: "Restore composer" });
     expect(states.at(-1)).toMatchObject({ visible: false });
+    // The surface collapses onto its bubble; the conversation stays mounted, out of reach.
+    // The surface glides into the corner as it collapses.
+    await waitFor(
+      () => {
+        const rect = paneRect(restore);
+        expect(rect.right).toBeCloseTo(16, 0);
+        expect(rect.bottom).toBeCloseTo(16, 0);
+      },
+      { timeout: 3000 },
+    );
+    expect(log.isConnected).toBe(true);
+    expect(log.closest("[inert]")).not.toBeNull();
+    const logRect = log.getBoundingClientRect();
+    const covered = document.elementFromPoint(
+      logRect.left + logRect.width / 2,
+      logRect.top + logRect.height / 2,
+    );
+    expect(frameElement().contains(covered)).toBe(false);
+
+    // Minimizing keeps the presentation: the same conversation returns, still where it was read.
+    await act(async () => {
+      await userEvent.click(restore);
+    });
+    await waitFor(() => expect(log.closest("[inert]")).toBeNull());
+    expect(view.getByTestId("conversation-log")).toBe(log);
+    expect(log.scrollTop).toBe(readTo);
+    expect(
+      view.getByRole("button", { name: "Collapse composer" }).getAttribute("aria-expanded"),
+    ).toBe("true");
   });
 
   test("settles a dragged composer into the nearest dock and minimizes into a corner", async () => {
@@ -256,6 +303,28 @@ describe("FloatingComposer", () => {
       expect(rect.left).toBeCloseTo(16, 0);
       expect(rect.bottom).toBeCloseTo(16, 0);
     });
+  });
+
+  test("drags its bubble to another corner, where it stays", async () => {
+    const view = renderHarness({ initialState: { visible: false } });
+    const bubble = await view.findByRole("button", { name: "Restore composer" });
+    await waitFor(() => expect(paneRect(bubble).right).toBeCloseTo(16, 0));
+    const rect = bubble.getBoundingClientRect();
+    await dragPointer(
+      bubble,
+      { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 },
+      { x: PANE.left + 60, y: PANE.top + 80 },
+    );
+    await waitFor(() => expect(states.at(-1)).toMatchObject({ minimizedDock: "top-left" }));
+    await waitFor(
+      () => {
+        const resting = paneRect(bubble);
+        expect(resting.left).toBeCloseTo(16, 0);
+        expect(resting.top).toBeCloseTo(paneToolbarHeight() + 16, 0);
+      },
+      { timeout: 3000 },
+    );
+    expect(states.at(-1)).toMatchObject({ visible: false });
   });
 
   test("keeps a width resized from either edge", async () => {

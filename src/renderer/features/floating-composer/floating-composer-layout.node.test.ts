@@ -1,7 +1,10 @@
 import { describe, expect, test } from "vite-plus/test";
 import {
+  FLOATING_COMPOSER_EDGE_PX,
+  FLOATING_COMPOSER_FRAME_INSET_PX,
   clampFloatingComposerFrameWidth,
   isFloatingComposerPointerNearBubbleCorner,
+  resolveFloatingComposerBubbleRect,
   resolveFloatingComposerDockForRect,
   resolveFloatingComposerDockOrigin,
   resolveFloatingComposerDockScaleOrigin,
@@ -47,6 +50,33 @@ describe("floating composer layout", () => {
   test("the centre dock minimizes to the bottom-right corner", () => {
     expect(resolveMinimizedFloatingComposerDock("bottom-center")).toBe("bottom-right");
     expect(resolveMinimizedFloatingComposerDock("top-left")).toBe("top-left");
+  });
+
+  test("a minimized frame collapses onto a bubble resting 16px inside its corner", () => {
+    const frame = { width: 572, height: 640 };
+    for (const corner of ["bottom-left", "bottom-right", "top-left", "top-right"] as const) {
+      const bubble = resolveFloatingComposerBubbleRect(corner, frame);
+      const frameOrigin = resolveFloatingComposerDockOrigin({
+        dock: corner,
+        box: frame,
+        pane,
+        inset: FLOATING_COMPOSER_FRAME_INSET_PX,
+      });
+      expect({ x: frameOrigin.x + bubble.x, y: frameOrigin.y + bubble.y }).toEqual(
+        resolveFloatingComposerDockOrigin({
+          dock: corner,
+          box: bubble,
+          pane,
+          inset: FLOATING_COMPOSER_EDGE_PX,
+        }),
+      );
+    }
+    expect(resolveFloatingComposerBubbleRect("bottom-right", frame)).toEqual({
+      x: 530,
+      y: 598,
+      width: 36,
+      height: 36,
+    });
   });
 
   test("frame width stays between the minimum and the pane", () => {

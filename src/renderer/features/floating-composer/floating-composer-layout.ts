@@ -98,6 +98,24 @@ export function resolveFloatingComposerDockOrigin(input: {
 }
 
 /**
+ * Where a minimized composer's bubble sits inside its frame. The frame rests in the bubble's
+ * corner and collapses onto it, so the bubble keeps its 16px from the pane edges.
+ */
+export function resolveFloatingComposerBubbleRect(
+  corner: FloatingComposerCornerDock,
+  frame: FloatingComposerBox,
+): FloatingComposerRect {
+  const near = FLOATING_COMPOSER_EDGE_PX - FLOATING_COMPOSER_FRAME_INSET_PX;
+  const size = FLOATING_COMPOSER_BUBBLE_SIZE_PX;
+  return {
+    x: corner.endsWith("left") ? near : Math.max(0, frame.width - near - size),
+    y: isTopFloatingComposerDock(corner) ? near : Math.max(0, frame.height - near - size),
+    width: size,
+    height: size,
+  };
+}
+
+/**
  * How far a box resting at `dock` may be dragged while staying `inset` px inside the pane, as
  * offsets from its resting place.
  */
