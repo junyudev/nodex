@@ -221,6 +221,10 @@ it.effect("interrupting a live search terminates its process without a terminal 
       const pid = yield* Deferred.await(started);
       yield* Fiber.interrupt(fiber);
       assert.throws(() => process.kill(pid, 0), /ESRCH/u);
+      // Exit observation alone can precede Windows releasing the executable image.
+      yield* Effect.promise(() =>
+        rm(path.join(root, process.platform === "win32" ? "rg.exe" : "rg")),
+      );
     }).pipe(Effect.provide(runtimeLayer(root, process.env.PATH, environment)));
   }).pipe(Effect.scoped),
 );
@@ -244,6 +248,9 @@ it.effect("times out a stalled search and terminates its child process", () =>
       assert.isTrue(Result.isFailure(result));
       if (Result.isFailure(result)) assert.equal(result.failure.message, "File search timed out");
       assert.throws(() => process.kill(pid, 0), /ESRCH/u);
+      yield* Effect.promise(() =>
+        rm(path.join(root, process.platform === "win32" ? "rg.exe" : "rg")),
+      );
     }).pipe(Effect.provide(runtimeLayer(root, process.env.PATH, environment)));
   }).pipe(Effect.scoped),
 );

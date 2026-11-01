@@ -7,7 +7,7 @@ import { access, lstat, stat, mkdtemp, rm } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
 import { hostCapabilities } from "../host-capabilities";
 import { claudeExecutableCandidates, claudeHostEnvironmentValue } from "./ClaudeExecutable";
-import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeServices from "./NodeServices";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";

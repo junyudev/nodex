@@ -1,4 +1,4 @@
-import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeServices from "./NodeServices";
 import { StringDecoder } from "node:string_decoder";
 import * as Data from "effect/Data";
 import * as Duration from "effect/Duration";
