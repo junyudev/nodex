@@ -1,0 +1,125 @@
+src/main/agent-backend/NativeSessionCatalog.node.test.ts
+  s_61ededb051faa8::t_837e459f21d46f 35
+src/main/agent-backend/NativeSessionWorkspace.node.test.ts
+  s_61ededb051faa8::t_f670bcda354423 27,87,98-99,103-104,184-189,200,239,244,279,281,283
+src/main/agent-runtime/AcpProviderConfiguration.node.test.ts
+  s_61ededb051faa8::t_2fd9d247d90909 1,47-48
+src/main/agent-runtime/AgentRuntimeSnapshotSources.node.test.ts
+  s_61ededb051faa8::t_9a3533f2e8fe17 1,36,53,62,75,80,110-114
+src/main/agent-skill-setup.test.ts
+  s_61ededb051faa8::t_78dce7d84c5013 1,15
+src/main/app-protocol.test.ts
+  s_61ededb051faa8::t_261a9475ec1d73 78-81
+src/main/app-renderer-protocol.integration.ts
+  s_61ededb051faa8::t_525b25ddbb1c5e 96-99,207
+src/main/automation-application/AutomationExecution.node.test.ts
+  s_61ededb051faa8::t_e81bfc039560f0 1,960-961
+src/main/bootstrap-config.test.ts
+  s_61ededb051faa8::t_195a4ee6e9272d 6-8,10-11,17,24,40,42,52,63,69-70,82,84,89-90,96,98,102-103,115,117
+src/main/browser-platform.integration.ts
+  s_61ededb051faa8::t_35b8dd28c0efd4 260
+src/main/browser-use/browser-use-native-pipe-server.test.ts
+  s_61ededb051faa8::t_e115175a82d5d6 36,131-144,151-155,163,173-175
+src/main/browser-use/chrome/ChromeBrowserFamilyRegistry.node.test.ts
+  s_61ededb051faa8::t_c482abc53ce59c 90-94
+src/main/browser-use/chrome/ChromeNativeHostInstaller.node.test.ts
+  s_61ededb051faa8::t_0adb4503027dfd 60-61,292,294-302,304-305
+src/main/browser/browser-profile-helper-client.test.ts
+  s_61ededb051faa8::t_f0017230dd6bf4 27,35-41,67-79,90-114
+src/main/clipboard-paste-inspector.test.ts
+  s_61ededb051faa8::t_b1aa4a4bfa6f77 1,50
+src/main/codex-application/ManagedWorktreeCatalog.node.test.ts
+  s_61ededb051faa8::t_56c483e935c3c4 1,86,131,716
+src/main/codex-application/StandaloneSkills.node.test.ts
+  s_61ededb051faa8::t_8499a293c13bb3 1,129,141-144
+src/main/codex-application/WorkspaceTextSearch.node.test.ts
+  s_61ededb051faa8::t_e8d9a6ca6b2c04 2-11,50-54,58-62,69-78,212-214,224,232-234,247,255-260,273,277-278
+src/main/codex/codex-dynamic-first-turn-context.test.ts
+  s_61ededb051faa8::t_df36b8af2592c9 9-12,15-17,23-25,31
+src/main/codex/codex-home.test.ts
+  s_61ededb051faa8::t_bac0961fccacc5 1,10-11,15,27,31,42,46,58,62,65,71,80
+src/main/codex/codex-local-thread-handoff-git.test.ts
+  s_61ededb051faa8::t_011a909b92e7f4 1,4,52,54
+src/main/codex/codex-managed-worktree-effects.test.ts
+  s_61ededb051faa8::t_7cebccf2266ad2 79-106
+src/main/codex/codex-projectless-workspace-repair.test.ts
+  s_61ededb051faa8::t_eed48a67321b47 184-185
+src/main/codex/codex-ssh-execution-host.test.ts
+  s_61ededb051faa8::t_5487054b3de0b5 77-111,113-121
+src/main/codex/codex-worktree-shell-environment.test.ts
+  s_61ededb051faa8::t_3e7afe5be09e41 272,275-279
+src/main/core-client/document-operation-window.node.test.ts
+  s_61ededb051faa8::t_fd314e2cef3799 1,26-33
+src/main/core-client/isolated-run-ownership.node.test.ts
+  s_61ededb051faa8::t_0104b42272232d 120-124
+src/main/core-client/rust-core-runtime-benchmark.node.test.ts
+  s_61ededb051faa8::t_0076603b11e1ee 91,94,97,107
+src/main/core-client/scheduled-ask-in-inbox-scenario.node.test.ts
+  s_61ededb051faa8::t_288fecd78cdfaa 44
+src/main/default-project-source.test.ts
+  s_61ededb051faa8::t_f451dc09f21570 4,17,32-33,41,47,54,114-117,124
+src/main/dictation/dictation-recording-store.test.ts
+  s_61ededb051faa8::t_5aa87ad1fcf9e6 105-110,199-204
+src/main/dictation/mac-dictation-native-helper-client.test.ts
+  s_61ededb051faa8::t_d30d67881112f0 108-109
+src/main/file-link-opener.test.ts
+  s_61ededb051faa8::t_053af473697f48 1,58
+src/main/git-worker/git-review-operations.integration.ts
+  s_61ededb051faa8::t_2f44c596ed45dc 1,5,78,82,419
+src/main/github-pr-service.test.ts
+  s_61ededb051faa8::t_59afe785a0871a 1-2,12-39,76-77,83
+src/main/host-runtime/ChromeControlRuntime.node.test.ts
+  s_61ededb051faa8::t_2ef242da625540 1,21
+src/main/initial-project/initial-project-journal-store.node.test.ts
+  s_61ededb051faa8::t_cbaee47b3a81a5 105
+src/main/ipc/handlers/ApplicationSettingsIpc.test.ts
+  s_61ededb051faa8::t_2c7062ed2c966d 343-354
+src/main/nodex-account/managed-providers.node.test.ts
+  s_61ededb051faa8::t_d4603409a90cff 1,47-55
+src/main/platform/electron/ComputerUseHostPlatform.test.ts
+  s_61ededb051faa8::t_85a3a54cc829b0 174-182,193-223
+src/main/platform/node/ClaudeDiscovery.node.test.ts
+  s_61ededb051faa8::t_4663fde269409a 180,184
+src/main/platform/node/ClaudeExecutable.node.test.ts
+  s_61ededb051faa8::t_c70576531b59a1 57-58,96,119,139,165-188,200-218
+src/main/platform/node/ClaudeSdk.node.test.ts
+  s_61ededb051faa8::t_e4c9d1139b7203 1,50
+src/main/platform/node/ClaudeSdkBoundary.node.test.ts
+  s_61ededb051faa8::t_bac368c93c6d9e 5,21,44,46,48-49,54-55,72,79,90,162,170,173
+src/main/platform/node/CodexNodeReplCleanup.node.test.ts
+  s_61ededb051faa8::t_a2c9961c975bdb 140-148,160-167
+src/main/platform/node/CodexSshProxy.node.test.ts
+  s_61ededb051faa8::t_a87a14225cec31 12-24
+src/main/platform/node/NodeChildProcessSpawner.node.test.ts
+  s_61ededb051faa8::t_79cc403174bbdb 42
+src/main/platform/node/OpenCodeSdk.node.test.ts
+  s_61ededb051faa8::t_d3449a0ee104e8 1,97-101
+src/main/rust-data-authority.integration.ts
+  s_61ededb051faa8::t_26d32cab29f60c 1,5,222,226,2389,2391-2392
+src/main/settings/ApplicationSettings.test.ts
+  s_61ededb051faa8::t_c5089fa85cf5c1 191,194,200,204,214-215,219,227,231,235-238,257-261,273-276,290-293,297-300,315,319,520,533,544
+src/main/settings/acp-agent-environment.node.test.ts
+  s_61ededb051faa8::t_8b4d51d810a5d7 77
+src/main/settings/claude-agent-environment.node.test.ts
+  s_61ededb051faa8::t_81458b83120e32 72,108
+src/main/third-party-notices.test.ts
+  s_61ededb051faa8::t_460653d426ed1c 3,29,32,34,60-61,63,66-69
+tests/fixtures/app-renderer-protocol/electron-main.ts
+  s_61ededb051faa8::t_1139ac0ee50b1c 7,63-69
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "78a3461d3d1e5a2d1521d7001a2ed71954717537",
+  "prompts": {},
+  "sessions": {
+    "s_61ededb051faa8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19725-1673-78a3-85e3-bdba96788967",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
