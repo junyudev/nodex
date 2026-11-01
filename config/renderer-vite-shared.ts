@@ -27,6 +27,16 @@ export const rendererViteResolve = {
   },
 };
 
+/** Keep the worker and its back-importing lazy chunks at canonical ESM URLs. */
+export const rendererViteOptimizeDeps = {
+  exclude: ["@pierre/diffs/worker/worker.js"],
+};
+
+/** Workers ship as ES modules so their own dynamic imports (such as the highlighter) split normally. */
+export const rendererViteWorker = {
+  format: "es" as const,
+};
+
 export const rendererViteCss = {
   postcss: {
     plugins: [tailwindcss],

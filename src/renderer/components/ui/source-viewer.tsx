@@ -11,7 +11,12 @@ import {
 import { useTheme } from "@/lib/use-theme";
 import { useCodeFontSize } from "@/lib/use-code-font-size";
 import { cn } from "@/lib/utils";
-import { getSourceContentVersion } from "@/lib/source-content-version";
+import { getSourceContentDigest, sourceContentVersionOfDigest } from "@/lib/source-content-version";
+import { mainThreadSourceLanguage, sourceHighlightCacheKey } from "@/lib/source-highlight-cache";
+import {
+  SourceHighlightPoolProvider,
+  useSourceHighlightPoolState,
+} from "@/lib/source-highlight-pool";
 import {
   buildWorkspaceFileLineSelection,
   buildWorkspaceFileScrollTarget,
@@ -54,15 +59,22 @@ export function SourceViewer({
   const identity = sourceIdentity ?? filename;
   const { resolved } = useTheme();
   const { codeFontSize } = useCodeFontSize();
-  const contentVersion = useMemo(() => getSourceContentVersion(value), [value]);
+  const contentDigest = useMemo(() => getSourceContentDigest(value), [value]);
+  const contentVersion = sourceContentVersionOfDigest(contentDigest);
+  // The shared pool highlights the source palette; anywhere else large text stays plain.
+  const highlightState = useSourceHighlightPoolState();
+  const renderLanguage =
+    syntaxTheme === "source" && highlightState === "working"
+      ? language
+      : mainThreadSourceLanguage(language, value.length);
   const file = useMemo(
     () => ({
       name: filename,
       contents: value,
-      cacheKey: `${sourceIdentity ?? filename}:${contentVersion}`,
-      lang: language ?? undefined,
+      cacheKey: sourceHighlightCacheKey(identity, renderLanguage, value, contentDigest),
+      lang: renderLanguage ?? undefined,
     }),
-    [contentVersion, filename, language, sourceIdentity, value],
+    [contentDigest, filename, identity, renderLanguage, value],
   );
   const items = useMemo(
     () => [
@@ -110,14 +122,17 @@ export function SourceViewer({
       data-source-viewer="true"
       data-source-identity={sourceIdentity}
     >
-      <CodeView
-        ref={codeViewRef}
-        items={items}
-        options={options}
-        disableWorkerPool
-        className={cn(NODEX_SOURCE_HOST_CLASS, "h-full min-h-0 overflow-auto")}
-        style={style}
-      />
+      <SourceHighlightPoolProvider>
+        <CodeView
+          ref={codeViewRef}
+          items={items}
+          options={options}
+          // The shared pool renders the source palette only.
+          disableWorkerPool={syntaxTheme !== "source"}
+          className={cn(NODEX_SOURCE_HOST_CLASS, "h-full min-h-0 overflow-auto")}
+          style={style}
+        />
+      </SourceHighlightPoolProvider>
     </section>
   );
 }

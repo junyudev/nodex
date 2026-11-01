@@ -15,8 +15,8 @@ import {
 } from "@pierre/diffs/react";
 import {
   useEffect,
+  useEffectEvent,
   useImperativeHandle,
-  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -30,6 +30,18 @@ import {
   getNodexSourceEditorLineHeight,
   getNodexSourceOptions,
 } from "@/lib/diff-presentation";
+import {
+  mainThreadSourceLanguage,
+  sourceComparisonHighlightCacheKey,
+  sourceHighlightCacheKey,
+} from "@/lib/source-highlight-cache";
+import {
+  SourceHighlightPoolProvider,
+  getSourceHighlightPool,
+  primeSourceHighlight,
+  useSourceHighlightPoolState,
+  type SourceHighlightPoolState,
+} from "@/lib/source-highlight-pool";
 import { useTheme } from "@/lib/use-theme";
 import { useCodeFontSize } from "@/lib/use-code-font-size";
 import { cn } from "@/lib/utils";
@@ -90,6 +102,8 @@ export interface WorkspacePierreEditorProps {
     readonly layout: "unified" | "split";
   } | null;
   readonly onChangeNavigationChange?: (state: WorkspaceFileChangeNavigationState | null) => void;
+  /** True while the file stays read-only waiting for its highlight. */
+  readonly onHighlightPendingChange?: (pending: boolean) => void;
   readonly activeLineBlame?: {
     readonly savedContent: string;
     readonly labelForSavedLine: (lineNumber: number) => string | null;
@@ -131,6 +145,9 @@ interface EditorSession {
   caretLineIndex: number;
   diff?: FileDiffMetadata;
   editor?: Editor;
+  /** False for snapshots, which never attach an editor. */
+  readonly editable: boolean;
+  readonly highlightState: SourceHighlightPoolState;
 }
 
 const createWorkspaceEditor: EditorFactory<undefined, undefined> = (
@@ -166,6 +183,7 @@ export function WorkspacePierreEditor({
   comparison,
   activeLineBlame,
   onChangeNavigationChange,
+  onHighlightPendingChange,
   onChange,
   revealLocation,
   onRevealComplete,
@@ -177,9 +195,12 @@ export function WorkspacePierreEditor({
   const codeViewRef = useRef<CodeViewHandle<undefined, undefined>>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const sessionRef = useRef<EditorSession | null>(null);
-  const restoreRef = useRef<{ state: EditorViewState; focused: boolean; scrollTop: number } | null>(
-    null,
-  );
+  const restoreRef = useRef<{
+    state: EditorViewState;
+    focused: boolean;
+    /** Null once the read-only view has restored it, so attaching keeps later scrolling. */
+    scrollTop: number | null;
+  } | null>(null);
   const surfaceRef = useRef<HTMLElement | null>(null);
   const observerRef = useRef<MutationObserver | null>(null);
   const inlineBlameRef = useRef<HTMLSpanElement | null>(null);
@@ -194,8 +215,8 @@ export function WorkspacePierreEditor({
   } | null>(null);
   const refreshRef = useRef<(() => void) | null>(null);
   const revisionRef = useRef(0);
-  const editorIdentity = useId();
   const [attachment, setAttachment] = useState<EditorSession | null>(null);
+  const [renderedSession, setRenderedSession] = useState<EditorSession | null>(null);
   const [contextMenu, setContextMenu] = useState<WorkspacePierreEditorContextMenuItem[]>([]);
   const [schedule] = useState(() => {
     let pending = false;
@@ -209,6 +230,11 @@ export function WorkspacePierreEditor({
       });
     };
   });
+  const reportHighlightPending = useEffectEvent((pending: boolean) => {
+    onHighlightPendingChange?.(pending);
+  });
+  useEffect(() => () => reportHighlightPending(false), []);
+  const highlightState = useSourceHighlightPoolState();
   const { resolved } = useTheme();
   const { codeFontSize } = useCodeFontSize();
   const oldContent = comparison?.oldContent;
@@ -254,6 +280,7 @@ export function WorkspacePierreEditor({
               attributeFilter: ["data-line", "data-line-type"],
             });
         }
+        setRenderedSession(sessionRef.current);
         schedule();
       },
     };
@@ -280,7 +307,8 @@ export function WorkspacePierreEditor({
       previous.oldContent === oldContent &&
       previous.oldPath === oldPath &&
       previous.snapshotContent === snapshotContent &&
-      previous.content === content
+      previous.content === content &&
+      previous.highlightState === highlightState
     ) {
       schedule();
       return;
@@ -300,8 +328,8 @@ export function WorkspacePierreEditor({
       };
     }
     const revision = ++revisionRef.current;
-    // Differently edited surfaces for the same file must not share highlighted content.
-    const cacheKey = `${editorIdentity}:${sourceIdentity}:${documentVersion}:${revision}`;
+    const fileKey = fileIdentity ?? sourceIdentity;
+    const editable = snapshotContent === null;
     const diff =
       oldContent === undefined
         ? undefined
@@ -311,25 +339,51 @@ export function WorkspacePierreEditor({
             oldContent,
             newContent: content,
           });
-    if (diff) {
-      diff.cacheKey = cacheKey;
-      diff.lang = language ?? undefined;
-    }
-    const item: CodeViewItem<undefined> = diff
-      ? {
-          id: sourceIdentity,
-          type: "diff",
-          edit: snapshotContent === null,
-          version: revision,
-          fileDiff: diff,
-        }
-      : {
-          id: sourceIdentity,
-          type: "file",
-          edit: true,
-          version: revision,
-          file: { name: filename, contents: content, cacheKey, lang: language ?? undefined },
-        };
+    const itemFor = (
+      renderLanguage: SupportedLanguages | null | undefined,
+      edit: boolean,
+      version: number,
+    ): CodeViewItem<undefined> =>
+      diff
+        ? {
+            id: sourceIdentity,
+            type: "diff",
+            edit,
+            version,
+            fileDiff: {
+              ...diff,
+              lang: renderLanguage ?? undefined,
+              cacheKey: sourceComparisonHighlightCacheKey(fileKey, renderLanguage, content, {
+                path: oldPath ?? filename,
+                contents: oldContent ?? "",
+              }),
+            },
+          }
+        : {
+            id: sourceIdentity,
+            type: "file",
+            edit,
+            version,
+            file: {
+              name: filename,
+              contents: content,
+              cacheKey: sourceHighlightCacheKey(fileKey, renderLanguage, content),
+              lang: renderLanguage ?? undefined,
+            },
+          };
+    // Only the pool tokenizes large text; on this thread it stays plain.
+    const localLanguage = mainThreadSourceLanguage(
+      language,
+      content.length + (oldContent?.length ?? 0),
+    );
+    // Editing tokenizes on this thread, so an editable source waits read-only for
+    // the pool's highlight and edits from it, including while the pool starts.
+    const awaitingHighlight = editable && highlightState !== "unavailable";
+    const item = itemFor(
+      highlightState === "working" ? language : localLanguage,
+      editable && !awaitingHighlight,
+      revision,
+    );
     const session: EditorSession = {
       sourceIdentity,
       documentVersion,
@@ -342,6 +396,8 @@ export function WorkspacePierreEditor({
       content,
       lineCount: content.split("\n").length,
       caretLineIndex: previous?.sourceIdentity === sourceIdentity ? previous.caretLineIndex : 0,
+      editable,
+      highlightState,
     };
     sessionRef.current = session;
     // CodeView rejects a type change for an existing id. A new baseline/revision also
@@ -349,11 +405,31 @@ export function WorkspacePierreEditor({
     // Unkeyed editors retain active state across layout/virtualization, then release it here.
     codeView.getInstance()?.setItems(EMPTY_ITEMS);
     codeView.addItems([item]);
+    const restore = restoreRef.current;
+    if (restore && awaitingHighlight && restore.scrollTop !== null) {
+      codeView.scrollTo({ type: "position", position: restore.scrollTop, behavior: "instant" });
+      restoreRef.current = { ...restore, scrollTop: null };
+    }
     schedule();
+    reportHighlightPending(awaitingHighlight);
+    const pool = getSourceHighlightPool();
+    // A starting pool rebuilds this item once it settles.
+    if (!awaitingHighlight || highlightState !== "working" || !pool) return;
+    const startEditing = (fromHighlight: boolean) => () => {
+      const current = codeViewRef.current;
+      if (sessionRef.current !== session || current?.getItem(sourceIdentity) !== item) return;
+      const version = ++revisionRef.current;
+      current.updateItem(
+        fromHighlight ? { ...item, edit: true, version } : itemFor(localLanguage, true, version),
+      );
+      reportHighlightPending(false);
+    };
+    primeSourceHighlight(pool, item).then(startEditing(true), startEditing(false));
   }, [
     documentVersion,
-    editorIdentity,
+    fileIdentity,
     filename,
+    highlightState,
     language,
     oldContent,
     oldPath,
@@ -498,22 +574,26 @@ export function WorkspacePierreEditor({
   );
 
   useEffect(() => {
-    if (!revealLocation?.line || attachment !== sessionRef.current || !attachment?.editor) return;
+    const session = sessionRef.current;
     const codeView = codeViewRef.current;
-    if (!codeView || attachment.sourceIdentity !== sourceIdentity) return;
-    if (codeView.getEditor(sourceIdentity) !== attachment.editor) return;
-    const editorSelection = buildWorkspaceFileEditorSelection(revealLocation);
+    if (!revealLocation?.line || !session || !codeView) return;
+    if (session.sourceIdentity !== sourceIdentity) return;
+    const editor = attachment === session ? session.editor : undefined;
+    const attached = editor !== undefined && codeView.getEditor(sourceIdentity) === editor;
+    // A read-only view scrolls at once; the caret follows when editing starts.
+    if (!attached && renderedSession !== session) return;
+    const editorSelection = attached ? buildWorkspaceFileEditorSelection(revealLocation) : null;
     if (editorSelection) {
       codeView.setSelectedLines(null);
-      attachment.editor.setSelections([editorSelection]);
+      editor!.setSelections([editorSelection]);
     } else {
       codeView.setSelectedLines(buildWorkspaceFileLineSelection(sourceIdentity, revealLocation));
     }
     const target = buildWorkspaceFileScrollTarget(sourceIdentity, revealLocation);
     if (target) codeView.scrollTo(target);
     schedule();
-    onRevealComplete?.(revealLocation);
-  }, [attachment, onRevealComplete, revealLocation, schedule, sourceIdentity]);
+    if (attached || !session.editable) onRevealComplete?.(revealLocation);
+  }, [attachment, onRevealComplete, renderedSession, revealLocation, schedule, sourceIdentity]);
 
   const handleEditChange = ({ file }: EditorChangeEvent<EditorType, undefined, undefined>) => {
     const session = sessionRef.current;
@@ -578,62 +658,64 @@ export function WorkspacePierreEditor({
         })().catch(() => undefined);
       }}
     >
-      <EditProvider createEditor={createWorkspaceEditor}>
-        <CodeView
-          ref={codeViewRef}
-          containerRef={containerRef}
-          initialItems={EMPTY_ITEMS}
-          options={options}
-          editorOptions={{
-            onAttach: (editor) => {
+      <SourceHighlightPoolProvider>
+        <EditProvider createEditor={createWorkspaceEditor}>
+          <CodeView
+            ref={codeViewRef}
+            containerRef={containerRef}
+            initialItems={EMPTY_ITEMS}
+            options={options}
+            editorOptions={{
+              onAttach: (editor) => {
+                const session = sessionRef.current;
+                if (!session || codeViewRef.current?.getEditor(session.sourceIdentity) !== editor)
+                  return;
+                session.editor = editor;
+                const restore = restoreRef.current;
+                restoreRef.current = null;
+                if (restore) {
+                  // setSelections clamps retained positions after an external content replacement.
+                  editor.setSelections(
+                    (restore.state.selections ?? []).map((selection) => ({
+                      ...selection,
+                      direction:
+                        selection.direction < 0
+                          ? "backward"
+                          : selection.direction > 0
+                            ? "forward"
+                            : "none",
+                    })),
+                  );
+                  if (restore.state.view)
+                    editor.setViewState({ ...editor.getViewState(), view: restore.state.view });
+                  if (restore.scrollTop !== null)
+                    codeViewRef.current?.scrollTo({
+                      type: "position",
+                      position: restore.scrollTop,
+                      behavior: "instant",
+                    });
+                  if (restore.focused) editor.focus({ preventScroll: true });
+                }
+                setAttachment(session);
+                schedule();
+              },
+              clipboard: {
+                readText: readPlainTextFromClipboard,
+              },
+            }}
+            onItemEditChange={snapshotContent === null ? handleEditChange : undefined}
+            onSelectedLinesChange={(selection) => {
               const session = sessionRef.current;
-              if (!session || codeViewRef.current?.getEditor(session.sourceIdentity) !== editor)
-                return;
-              session.editor = editor;
-              const restore = restoreRef.current;
-              restoreRef.current = null;
-              if (restore) {
-                // setSelections clamps retained positions after an external content replacement.
-                editor.setSelections(
-                  (restore.state.selections ?? []).map((selection) => ({
-                    ...selection,
-                    direction:
-                      selection.direction < 0
-                        ? "backward"
-                        : selection.direction > 0
-                          ? "forward"
-                          : "none",
-                  })),
-                );
-                if (restore.state.view)
-                  editor.setViewState({ ...editor.getViewState(), view: restore.state.view });
-                codeViewRef.current?.scrollTo({
-                  type: "position",
-                  position: restore.scrollTop,
-                  behavior: "instant",
-                });
-                if (restore.focused) editor.focus({ preventScroll: true });
-              }
-              setAttachment(session);
+              if (session?.snapshotContent == null || !selection) return;
+              session.caretLineIndex = Math.max(0, selection.range.end - 1);
               schedule();
-            },
-            clipboard: {
-              readText: readPlainTextFromClipboard,
-            },
-          }}
-          disableWorkerPool
-          onItemEditChange={snapshotContent === null ? handleEditChange : undefined}
-          onSelectedLinesChange={(selection) => {
-            const session = sessionRef.current;
-            if (session?.snapshotContent == null || !selection) return;
-            session.caretLineIndex = Math.max(0, selection.range.end - 1);
-            schedule();
-          }}
-          onScroll={schedule}
-          className={cn(NODEX_SOURCE_HOST_CLASS, "h-full min-h-0 overflow-auto")}
-          style={style}
-        />
-      </EditProvider>
+            }}
+            onScroll={schedule}
+            className={cn(NODEX_SOURCE_HOST_CLASS, "h-full min-h-0 overflow-auto")}
+            style={style}
+          />
+        </EditProvider>
+      </SourceHighlightPoolProvider>
     </section>
   );
   return (

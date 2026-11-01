@@ -8,7 +8,9 @@ import { defineConfig } from "vite-plus";
 import {
   createRendererVitePlugins,
   rendererViteCss,
+  rendererViteOptimizeDeps,
   rendererViteResolve,
+  rendererViteWorker,
 } from "./config/renderer-vite-shared";
 import { filesForSuite } from "./config/test-suites";
 import { createTypographyBootstrapHtmlPlugin } from "./config/typography-bootstrap";
@@ -23,7 +25,9 @@ export default defineConfig(async () => ({
   ],
   resolve: rendererViteResolve,
   css: rendererViteCss,
+  worker: rendererViteWorker,
   optimizeDeps: {
+    ...rendererViteOptimizeDeps,
     // Each invocation may select a different graph. Reusing a narrower optimizer
     // cache can reload live test realms when the next suite imports more packages.
     force: true,

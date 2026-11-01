@@ -141,6 +141,7 @@ import {
 import { workspaceFileGitSourceForComparison } from "./workspace-file-changes";
 
 const MAX_IMAGE_PREVIEW_BYTES = 25_000_000;
+const HIGHLIGHT_PENDING_STATUS_DELAY_MS = 400;
 /** The system default app and the next few apps that can open the file. */
 const NATIVE_OPEN_TARGET_LIMIT = 5;
 export const WORKSPACE_RICH_MARKDOWN_MAX_BYTES = 256 * 1024;
@@ -230,6 +231,9 @@ interface WorkspaceFileEditorBinding {
   readonly notice: { readonly message: string; readonly onRetry?: () => void } | null;
   readonly activeLineBlame: WorkspacePierreEditorProps["activeLineBlame"];
   readonly onChangeNavigationChange: (state: WorkspaceFileChangeNavigationState | null) => void;
+  /** The file is readable but waits for its highlight before it can be edited. */
+  readonly highlightPending: boolean;
+  readonly onHighlightPendingChange: (pending: boolean) => void;
 }
 
 function WorkspaceFilePreview({
@@ -400,6 +404,7 @@ function WorkspaceFilePreview({
           onRevealComplete={onRevealComplete}
           comparison={editor.comparison}
           onChangeNavigationChange={editor.onChangeNavigationChange}
+          onHighlightPendingChange={editor.onHighlightPendingChange}
           activeLineBlame={editor.activeLineBlame}
         />
         <div className="flex h-6 shrink-0 items-center justify-end border-t-[0.5px] border-token-border px-2 text-[11px] text-(--color-codex-description)">
@@ -407,7 +412,9 @@ function WorkspaceFilePreview({
             ? "Saving…"
             : document.status === "dirty"
               ? "Unsaved"
-              : "Saved"}
+              : editor.highlightPending
+                ? "Highlighting…"
+                : "Saved"}
         </div>
       </div>
     );
@@ -738,6 +745,10 @@ export function WorkspaceFilesPanel({
   }, [comparing, fileComparison, resolvedSource, updateComparison]);
   const [changeNavigation, setChangeNavigation] =
     useState<WorkspaceFileChangeNavigationState | null>(null);
+  const [highlightPending, setHighlightPending] = useState(false);
+  // A quick highlight finishes before the status would be worth reading.
+  const visibleHighlightPending =
+    useDebouncedValue(highlightPending, HIGHLIGHT_PENDING_STATUS_DELAY_MS) && highlightPending;
   const editorRef = useRef<WorkspacePierreEditorHandle | null>(null);
   const diffLayout = useWorkspaceFileDiffLayout();
 
@@ -1426,6 +1437,8 @@ export function WorkspaceFilesPanel({
           }
         : null,
     onChangeNavigationChange: setChangeNavigation,
+    highlightPending: visibleHighlightPending,
+    onHighlightPendingChange: setHighlightPending,
   };
 
   const openControl: WorkspaceFileOpenControl | null =

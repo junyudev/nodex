@@ -7,6 +7,7 @@ import {
   createRendererVitePlugins,
   rendererViteCss,
   rendererViteResolve,
+  rendererViteWorker,
 } from "./config/renderer-vite-shared";
 import { filesForSuite } from "./config/test-suites";
 import { rendererWorkerCount } from "./config/renderer-worker-count";
@@ -17,6 +18,7 @@ export default defineConfig(async () => ({
   plugins: await createRendererVitePlugins(),
   resolve: rendererViteResolve,
   css: rendererViteCss,
+  worker: rendererViteWorker,
   test: {
     ...testObservation("renderer"),
     env: TEST_ENVIRONMENT,

@@ -344,6 +344,15 @@ than inferring it from its DOM environment.
 - Large text or diff sources use bounded or virtualized viewers. CSS clipping
   and scroll containers do not reduce mounted DOM, parsing, or accessibility
   work.
+- Virtualization bounds DOM, not syntax work: Pierre tokenizes a whole file
+  before it paints. Source-palette surfaces take colors from the shared worker
+  pool in `@/lib/source-highlight-pool`, keyed by
+  `@/lib/source-highlight-cache`, and an editor starts its edit session only
+  from that pool's finished highlight, because Pierre highlights active edit
+  sessions on the window thread. Do not give such a surface `disableWorkerPool`
+  or a per-mount cache key. Wherever the pool is not working, or a surface uses
+  another palette, pass the language through `mainThreadSourceLanguage` so
+  large text stays plain instead of stalling the window.
 
 Feature-specific editor behavior belongs in the focused specifications listed
 in [Product specifications](product-specs/index.md). Rich-editor performance

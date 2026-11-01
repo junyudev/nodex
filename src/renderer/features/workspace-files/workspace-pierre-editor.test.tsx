@@ -1,6 +1,13 @@
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
-import { createRef, forwardRef, useEffect, useImperativeHandle, useState } from "react";
+import {
+  createContext,
+  createRef,
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useState,
+} from "react";
 import type { CodeViewItem } from "@pierre/diffs";
 import type { EditorViewState } from "@pierre/diffs/edit";
 import { settleAsyncRender } from "../../test/dom";
@@ -52,6 +59,7 @@ vi.mock("@/lib/use-code-font-size", () => ({
 }));
 
 vi.mock("@pierre/diffs/react", () => ({
+  WorkerPoolContext: createContext(undefined),
   EditProvider: ({ children }: { children: React.ReactNode }) => children,
   CodeView: forwardRef(
     (

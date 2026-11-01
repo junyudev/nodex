@@ -14,7 +14,7 @@ type DiffHostStyle = Record<string, string>;
 
 const CODE_ROW_LINE_HEIGHT = 1.8;
 
-const NODEX_DIFF_THEME: ThemesType = {
+export const NODEX_DIFF_THEME: ThemesType = {
   dark: "pierre-dark",
   light: "pierre-light",
 };

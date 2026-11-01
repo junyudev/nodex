@@ -13,7 +13,9 @@ import {
 import {
   createRendererVitePlugins,
   rendererViteCss,
+  rendererViteOptimizeDeps,
   rendererViteResolve,
+  rendererViteWorker,
 } from "./config/renderer-vite-shared";
 import { buildTopLevelRendererCsp } from "./src/shared/app-renderer-policy";
 import { createSentryPlugins, shouldEmitSentrySourceMaps } from "./config/sentry-build";
@@ -198,7 +200,9 @@ export default defineConfig(async ({ command, mode }): Promise<UserConfig> => {
         ...(await createRendererVitePlugins()),
         ...createSentryPlugins(),
       ],
+      optimizeDeps: rendererViteOptimizeDeps,
       css: rendererViteCss,
+      worker: rendererViteWorker,
     },
   };
 });

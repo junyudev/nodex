@@ -184,7 +184,16 @@ Git status decorations. Its file context menu shares external opening, native
 Save as, full-path copying, and composer attachment behavior with Review.
 
 Editable files use bounded reads, recoverable drafts, compare-and-swap save,
-watcher refresh, and explicit external-change conflict presentation. Bounded
+watcher refresh, and explicit external-change conflict presentation. Source
+text shows at once as plain text; syntax highlighting runs in background
+workers and never blocks the window. Editing starts from the finished
+highlight, so a file stays read-only, with a delayed Highlighting… status,
+until its colors arrive. Highlights are cached by source, language, and text
+for the window's lifetime within a bounded text budget, so returning to a Chat
+whose Files panel shows an unchanged file reopens it highlighted and editable
+without tokenizing it again. Only small text is ever highlighted on the window
+thread; when the workers are unavailable, larger files open and edit as plain
+text. Bounded
 image previews use ephemeral object URLs that are revoked when the file or
 surface changes. PDF previews decode the binary response into PDF.js,
 render every page through a dedicated worker-backed canvas pipeline, and add
