@@ -618,11 +618,11 @@ const make = Effect.fn("makeWithDatabase")(function* (
   const fileDatabase = options.filename !== ":memory:" && options.filename !== "";
   const acquireReader = options.readerWorker && fileDatabase ? yield* makeReader(options) : undefined;
   const readerSemaphore = yield* Semaphore.make(1);
-  const writer = { lock: semaphore, connection };
+  const writer = { lock: semaphore, acquire: Effect.succeed(connection) };
+  const reader = acquireReader === undefined ? writer : { lock: readerSemaphore, acquire: acquireReader };
+  // Bind a reader generation only after taking its lease; waiters must not retain retired workers.
   const route = Effect.withFiber((fiber) =>
-    acquireReader !== undefined && Context.get(fiber.context, ReadOnly)
-      ? Effect.map(acquireReader, (reader) => reader === undefined ? writer : { lock: readerSemaphore, connection: reader })
-      : Effect.succeed(writer),
+    Effect.succeed(Context.get(fiber.context, ReadOnly) ? reader : writer),
   );
   const writerLeases = Client.makeSqliteAcquirers({ connection: Effect.succeed(connection), semaphore });
   const acquire = Effect.flatMap(route, (target) => {
@@ -632,10 +632,19 @@ const make = Effect.fn("makeWithDatabase")(function* (
       const interruptible = Context.get(fiber.context, ReadOnly) ?? restore;
       const lease = Effect.andThen(interruptible(target.lock.take(1)),
         Scope.addFinalizer(scope, target.lock.release(1)));
-      return Effect.as(Effect.provideService(lease, Scheduler.PreventSchedulerYield, true), target.connection);
+      return Effect.andThen(
+        Effect.provideService(lease, Scheduler.PreventSchedulerYield, true),
+        Effect.flatMap(target.acquire, (conn) => conn === undefined
+          ? interruptible(writerLeases.acquirer)
+          : Effect.succeed(conn)),
+      );
     }));
   });
-  const borrower: Borrower = (use) => Effect.flatMap(route, (target) => target.lock.withPermits(1)(use(target.connection)));
+  const borrower: Borrower = (use) => Effect.flatMap(route, (target) =>
+    target.lock.withPermits(1)(Effect.flatMap(target.acquire, (conn) => conn === undefined
+      ? semaphore.withPermits(1)(use(connection))
+      : use(conn))),
+  );
 
   return yield* Client.make({
     driver: "sqlite-node",
