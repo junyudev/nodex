@@ -12,6 +12,7 @@ import type {
   SDKAPIRetryMessage,
   SDKMessage,
   SDKResultMessage,
+  SDKStartupFailureReason,
   SDKUserMessage,
   SpawnedProcess,
   SpawnOptions,
@@ -2271,6 +2272,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     readonly isError?: boolean;
     readonly errors?: ReadonlyArray<string>;
     readonly apiErrorStatus?: number;
+    readonly startupFailureReason?: SDKStartupFailureReason;
     // null omits the field, as the CLI does on a zero-turn result.
     readonly terminalReason?: SDKResultMessage["terminal_reason"] | null;
   }) =>
@@ -2297,6 +2299,9 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       ...(input.origin === undefined ? {} : { origin: input.origin }),
       ...(input.errors === undefined ? {} : { errors: input.errors }),
       ...(input.apiErrorStatus === undefined ? {} : { api_error_status: input.apiErrorStatus }),
+      ...(input.startupFailureReason === undefined
+        ? {}
+        : { startup_failure_reason: input.startupFailureReason }),
       ...(input.terminalReason === null
         ? {}
         : { terminal_reason: input.terminalReason ?? "completed" }),
@@ -2974,6 +2979,12 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       settings: {
         permissions: { disableBypassPermissionsMode: "disable" },
         disableAutoMode: "disable",
+      },
+      expected: "acceptEdits",
+    },
+    {
+      settings: {
+        permissions: { disableBypassPermissionsMode: "disable", disableAutoMode: "disable" },
       },
       expected: "acceptEdits",
     },
@@ -4203,6 +4214,52 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           (event) => event.type === "turn_item.updated" && event.turnItem.type === "system_notice",
         ),
       );
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+      ),
+    ),
+  );
+
+  it.effect("reports a required sandbox startup failure before any model turn", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeWakeHarness;
+      const now = yield* DateTime.now;
+      const message = "Claude Code requires a sandbox, but it is unavailable on this system.";
+      yield* harness.runtime.startTurn(
+        makeClaudeTestTurnInput({
+          threadId: harness.threadId,
+          providerThread: harness.providerThread,
+          now,
+          attemptId: RunAttemptId.make("sandbox-startup-failure"),
+          text: "Continue.",
+          attachments: [],
+        }),
+      );
+      yield* Queue.offer(harness.sdkMessages, {
+        ...makeResultFrame({
+          uuid: "00000000-0000-4000-8000-000000000611",
+          result: "",
+          numTurns: 0,
+          subtype: "error_during_execution",
+          isError: true,
+          errors: [message],
+          terminalReason: null,
+          startupFailureReason: "sandbox_required_unavailable",
+        }),
+        usage: {
+          input_tokens: 0,
+          output_tokens: 0,
+          cache_creation_input_tokens: 0,
+          cache_read_input_tokens: 0,
+        },
+      } as SDKMessage);
+      const terminal = yield* Queue.take(harness.terminalReceipts);
+      assert.equal(terminal.status, "failed");
+      if (terminal.status !== "failed") return;
+      assert.equal(terminal.failure.message, message);
+      assert.equal(terminal.failure.class, "provider_error");
+      assert.equal(terminal.failure.code, "error_during_execution");
     }).pipe(
       Effect.provide(
         Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),

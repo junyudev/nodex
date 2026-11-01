@@ -566,7 +566,11 @@ standalone bundle includes the SDK and its native executable package, allowing
 managed Nodex Claude execution without a user-installed CLI. Both enter the
 build identity and output verification. Update
 the root and Agent Runtime manifests together; installation and bundling derive
-the runtime version and build receipt from that SDK closure. Scripted ACP peers
+the runtime version and build receipt from that SDK closure. Compare the published
+SDK declarations (including `sdk-tools`) and platform package layout on upgrades;
+keep current-version build and provider fixtures aligned, while preserving recorded
+transcripts as history. Verify the packaged SDK can launch its bundled executable.
+Scripted ACP peers
 use the SDK's `/unstable` v1 entrypoint to retain the negotiated lifecycle and
 callback features covered by the Runtime's v1/v2 wire compatibility tests.
 
