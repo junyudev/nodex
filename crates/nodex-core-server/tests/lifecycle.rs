@@ -421,7 +421,7 @@ fn concurrent_launchers_reuse_one_authenticated_profile_core() {
             "name": "Default",
             "description": "",
             "appearance": null,
-            "source_roots": ["/workspace/default"],
+            "source_roots": [nodex_platform::fixture_path!("/workspace/default")],
             "starter_page": {
                 "page_id": "page:getting-started",
                 "document_id": "document:getting-started",
@@ -439,7 +439,11 @@ fn concurrent_launchers_reuse_one_authenticated_profile_core() {
         &create_initial_project,
         &connection_headers,
     );
-    assert_eq!(response_json(&initial_project)["status"], "ok");
+    assert_eq!(
+        response_json(&initial_project)["status"],
+        "ok",
+        "{initial_project}"
+    );
 
     let apply_body = serde_json::json!({
         "contract_version": LIBRARY_CONTRACT_VERSION,
@@ -1271,7 +1275,7 @@ fn workspace_contract_mismatch_is_replaced_before_a_projectless_session_request(
             "name": "Default",
             "description": "",
             "appearance": null,
-            "source_roots": ["/workspace/default"],
+            "source_roots": [nodex_platform::fixture_path!("/workspace/default")],
             "starter_page": {
                 "page_id": "page:getting-started",
                 "document_id": "document:getting-started",
@@ -1289,7 +1293,11 @@ fn workspace_contract_mismatch_is_replaced_before_a_projectless_session_request(
         &create_initial_project,
         &connection_headers,
     );
-    assert_eq!(response_json(&initial_project)["status"], "ok");
+    assert_eq!(
+        response_json(&initial_project)["status"],
+        "ok",
+        "{initial_project}"
+    );
 
     let apply = serde_json::json!({
         "contract_version": PROJECT_WORKSPACE_CONTRACT_VERSION,

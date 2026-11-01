@@ -896,6 +896,7 @@ fn rejects_symlinks_and_native_paths_into_another_home() {
         .to_string()
         .contains("outside its Codex home")
     );
+    drop(db);
     fs::remove_file(agent.join("state_5.sqlite")).unwrap();
     let file = agent.join(&relative);
     let moved = agent.join("original");
