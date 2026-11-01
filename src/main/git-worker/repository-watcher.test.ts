@@ -66,6 +66,20 @@ class FakeFileWatchHost implements FileWatchHost {
   readonly sessions: FakeSession[] = [];
   readonly starts: string[] = [];
   readonly failuresRemaining = new Map<string, number>();
+  readonly missingDirectories = new Map<string, "ENOENT" | "ENOTDIR">();
+  readonly statFailures = new Map<string, string>();
+  readonly stats: string[] = [];
+
+  readonly stat = (directory: string) =>
+    Effect.try({
+      try: () => {
+        this.stats.push(directory);
+        const code = this.missingDirectories.get(directory) ?? this.statFailures.get(directory);
+        if (code) throw Object.assign(new Error(`Could not stat ${directory}`), { code });
+        return { isDirectory: () => true };
+      },
+      catch: (cause) => new FileWatchError({ path: directory, cause }),
+    });
 
   readonly watch = (input: FileWatchInput): Stream.Stream<FileWatchEvent, FileWatchError> =>
     Stream.callback<FileWatchEvent, FileWatchError>((events) =>
@@ -113,6 +127,150 @@ class FakeFileWatchHost implements FileWatchHost {
 }
 
 describe("makeGitReviewRepositoryWatcher", () => {
+  it.effect("keeps absent metadata directories healthy without timer or manual retries", () =>
+    Effect.gen(function* () {
+      const host = new FakeFileWatchHost();
+      const info = path.join(COMMON_DIR, "info");
+      const refs = path.join(COMMON_DIR, "refs");
+      host.missingDirectories.set(info, "ENOENT");
+      host.missingDirectories.set(refs, "ENOTDIR");
+      host.missingDirectories.set(path.join(refs, "heads"), "ENOTDIR");
+      const events: GitReviewRepositoryChangedEvent[] = [];
+      const watcher = yield* makeGitReviewRepositoryWatcher({
+        roots: ROOTS,
+        host,
+        stat: host.stat,
+        onChange: (event) => Effect.sync(() => events.push(event)),
+      });
+      expect(yield* watcher.requiresRecovery).toBe(false);
+      expect(host.activeSessions({ path: info })).toHaveLength(0);
+      expect(host.activeSessions({ path: refs })).toHaveLength(0);
+      const starts = [...host.starts];
+      const stats = [...host.stats];
+
+      yield* TestClock.adjust(GIT_REVIEW_WATCH_RETRY_MS * 5);
+      yield* watcher.recover;
+
+      expect(host.starts).toEqual(starts);
+      expect(host.stats).toEqual(stats);
+      expect(events).toEqual([]);
+      expect(yield* watcher.requiresRecovery).toBe(false);
+
+      host.missingDirectories.delete(info);
+      host.missingDirectories.delete(refs);
+      const common = host.activeSessions({ path: COMMON_DIR, recursive: true })[0];
+      if (!common) throw new Error("Missing common-directory watcher.");
+      common.emit([info, path.join(refs, "remotes")]);
+      while (
+        host.activeSessions({ path: info }).length === 0 ||
+        host.activeSessions({ path: refs }).length === 0
+      ) {
+        yield* Effect.yieldNow;
+      }
+      expect(host.activeSessions({ path: info })).toHaveLength(1);
+      expect(host.activeSessions({ path: refs })).toHaveLength(1);
+      yield* TestClock.adjust(GIT_REVIEW_REPOSITORY_CHANGE_DELAY_MS);
+      events.length = 0;
+
+      host.activeSessions({ path: info })[0]?.emit([path.join(info, "exclude")]);
+      host.activeSessions({ path: refs })[0]?.emit([path.join(refs, "remotes", "origin", "main")]);
+      yield* Effect.yieldNow;
+      yield* Effect.yieldNow;
+      yield* TestClock.adjust(GIT_REVIEW_REPOSITORY_CHANGE_DELAY_MS);
+      expect(events).toEqual(
+        expect.arrayContaining([{ changeType: "config" }, { changeType: "remote-refs" }]),
+      );
+      expect(yield* watcher.requiresRecovery).toBe(false);
+    }),
+  );
+
+  it.effect(
+    "releases metadata watches when their directory disappears and watches its replacement",
+    () =>
+      Effect.gen(function* () {
+        const host = new FakeFileWatchHost();
+        const events: GitReviewRepositoryChangedEvent[] = [];
+        const watcher = yield* makeGitReviewRepositoryWatcher({
+          roots: ROOTS,
+          host,
+          stat: host.stat,
+          onChange: (event) => Effect.sync(() => events.push(event)),
+        });
+        const info = path.join(COMMON_DIR, "info");
+        const original = host.activeSessions({ path: info })[0];
+        const common = host.activeSessions({ path: COMMON_DIR, recursive: true })[0];
+        if (!original || !common) throw new Error("Missing metadata watchers.");
+        host.missingDirectories.set(info, "ENOENT");
+        common.emit([info]);
+        while (host.stats.filter((directory) => directory === info).length < 2) {
+          yield* Effect.yieldNow;
+        }
+        expect(original.closeCount).toBe(1);
+        expect(host.activeSessions({ path: info })).toHaveLength(0);
+        expect(yield* watcher.requiresRecovery).toBe(false);
+        const starts = [...host.starts];
+        const stats = [...host.stats];
+
+        yield* TestClock.adjust(GIT_REVIEW_WATCH_RETRY_MS * 3);
+        expect(host.starts).toEqual(starts);
+        expect(host.stats).toEqual(stats);
+        expect(events).toEqual([{ changeType: "config" }]);
+
+        host.missingDirectories.delete(info);
+        common.emit([info]);
+        while (host.activeSessions({ path: info }).length === 0) yield* Effect.yieldNow;
+        expect(host.activeSessions({ path: info })).toHaveLength(1);
+        expect(host.activeSessions({ path: info })[0]).not.toBe(original);
+        expect(yield* watcher.requiresRecovery).toBe(false);
+      }),
+  );
+
+  it.effect.each(["ENOENT", "ENOTDIR"])(
+    "treats a disappeared metadata watch (%s) as missing",
+    (code) =>
+      Effect.gen(function* () {
+        const host = new FakeFileWatchHost();
+        const watcher = yield* makeGitReviewRepositoryWatcher({
+          roots: ROOTS,
+          host,
+          stat: host.stat,
+          onChange: () => Effect.void,
+        });
+        const info = path.join(COMMON_DIR, "info");
+        const session = host.activeSessions({ path: info })[0];
+        if (!session) throw new Error("Missing metadata watcher.");
+        session.fail(Object.assign(new Error("Directory disappeared"), { code }));
+        yield* TestClock.adjust(0);
+        expect(yield* watcher.requiresRecovery).toBe(false);
+        expect(host.activeSessions({ path: info })).toHaveLength(0);
+        const starts = [...host.starts];
+
+        yield* TestClock.adjust(GIT_REVIEW_WATCH_RETRY_MS * 3);
+        yield* watcher.recover;
+        expect(host.starts).toEqual(starts);
+      }),
+  );
+
+  it.effect("keeps metadata stat failures degraded and retries them", () =>
+    Effect.gen(function* () {
+      const host = new FakeFileWatchHost();
+      const info = path.join(COMMON_DIR, "info");
+      host.statFailures.set(info, "EACCES");
+      const watcher = yield* makeGitReviewRepositoryWatcher({
+        roots: ROOTS,
+        host,
+        stat: host.stat,
+        onChange: () => Effect.void,
+      });
+      expect(yield* watcher.requiresRecovery).toBe(true);
+      host.statFailures.delete(info);
+
+      yield* TestClock.adjust(GIT_REVIEW_WATCH_RETRY_MS);
+      expect(host.activeSessions({ path: info })).toHaveLength(1);
+      expect(yield* watcher.requiresRecovery).toBe(false);
+    }),
+  );
+
   it.effect("watches exact Git targets and emits all seven semantic change types", () =>
     Effect.gen(function* () {
       const host = new FakeFileWatchHost();
@@ -120,6 +278,7 @@ describe("makeGitReviewRepositoryWatcher", () => {
       yield* makeGitReviewRepositoryWatcher({
         roots: ROOTS,
         host,
+        stat: host.stat,
         onChange: (event) => Effect.sync(() => events.push(event)),
       });
 
@@ -180,6 +339,7 @@ describe("makeGitReviewRepositoryWatcher", () => {
       yield* makeGitReviewRepositoryWatcher({
         roots: ROOTS,
         host,
+        stat: host.stat,
         onChange: (event) => Effect.sync(() => events.push(event)),
       });
       const workingTreeSession = host.activeSessions({ path: ROOT, recursive: true })[0];
@@ -213,6 +373,7 @@ describe("makeGitReviewRepositoryWatcher", () => {
       yield* makeGitReviewRepositoryWatcher({
         roots: ROOTS,
         host,
+        stat: host.stat,
         onChange: (event) =>
           Effect.sync(() => events.push(event)).pipe(
             Effect.andThen(events.length === 0 ? Deferred.await(firstEmission) : Effect.void),
@@ -255,6 +416,7 @@ describe("makeGitReviewRepositoryWatcher", () => {
       const watcher = yield* makeGitReviewRepositoryWatcher({
         roots: ROOTS,
         host,
+        stat: host.stat,
         onChange: (event) => Effect.sync(() => events.push(event)),
         onRequiresRecoveryChanged: (requiresRecovery) =>
           Effect.sync(() => recoveryStates.push(requiresRecovery)),
@@ -293,6 +455,7 @@ describe("makeGitReviewRepositoryWatcher", () => {
       const watcher = yield* makeGitReviewRepositoryWatcher({
         roots: ROOTS,
         host,
+        stat: host.stat,
         onChange: () => Effect.void,
       });
       const workingTreeSession = host.activeSessions({ path: ROOT, recursive: true })[0];
@@ -322,6 +485,7 @@ describe("makeGitReviewRepositoryWatcher", () => {
       yield* makeGitReviewRepositoryWatcher({
         roots: ROOTS,
         host,
+        stat: host.stat,
         onChange: () => Effect.void,
       }).pipe(Scope.provide(watcherScope));
       const sessions = host.activeSessions();
