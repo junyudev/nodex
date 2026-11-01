@@ -1,0 +1,48 @@
+src/main/platform/node/MainFatalIncidentStore.node.test.ts
+  s_61ededb051faa8::t_888822c12780ad 1-2,50-52,81-82,84-85,87,107,122
+docs/windows-verification.md
+  s_61ededb051faa8::t_888822c12780ad 19-23
+src/main/platform/node/private-filesystem.ts
+  s_61ededb051faa8::t_888822c12780ad 5-26,29-30,32-33,36-46
+crates/nodex-core-server/src/lib.rs
+  s_61ededb051faa8::t_68902a85d392b9 13
+crates/nodex-platform/src/private_fs/mod.rs
+  s_61ededb051faa8::t_68902a85d392b9 47-61
+crates/nodex-platform/src/private_fs/windows.rs
+  s_61ededb051faa8::t_68902a85d392b9 603-611,613,616,643,661,697
+crates/nodex-core-server/src/main.rs
+  s_61ededb051faa8::t_68902a85d392b9 57-67
+crates/nodex-core-server/src/private_filesystem.rs
+  s_61ededb051faa8::t_68902a85d392b9 1-91
+  s_61ededb051faa8::t_d785cc1f5c46e2 92-122
+src/main/app/MainApplicationLive.ts
+  s_61ededb051faa8::t_9aae63e59f224a 1,255-260
+src/main/app/MainObservability.node.test.ts
+  s_61ededb051faa8::t_b313fd3ce7c4ad 1,103
+src/main/app/MainObservability.ts
+  s_61ededb051faa8::t_cfc32dee4d11e2 97
+src/main/core-client/profile-clone.node.test.ts
+  s_61ededb051faa8::t_5076b1551f4406 193-197
+src/main/platform/node/MainFatalIncidentStore.ts
+  s_61ededb051faa8::t_e6652e57aaf520 3,51-55,84-92,120-123,129,136-146
+src/main/platform/node/ProfileSnapshotControl.node.test.ts
+  s_61ededb051faa8::t_6e25f572f2e0b2 1,22
+src/main/platform/node/ProfileSnapshotControl.ts
+  s_61ededb051faa8::t_737c5a227c5ec3 71,82,227,232,281
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "54cdba57d5d90e53f29cba801365d85ef544dbac",
+  "prompts": {},
+  "sessions": {
+    "s_61ededb051faa8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19725-1673-78a3-85e3-bdba96788967",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
