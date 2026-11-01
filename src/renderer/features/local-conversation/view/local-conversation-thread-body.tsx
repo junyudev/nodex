@@ -1,9 +1,10 @@
-import { memo, useCallback, useState, type ReactNode } from "react";
+import { memo, useCallback, useId, useState, type ReactNode } from "react";
 import type { MotionValue } from "motion/react";
 import { appScope, useScopeHandle } from "@/lib/maitai";
 import { ThreadScope } from "@/lib/workbench-ui-scopes";
 import type {
   ThreadBodySurfaceModel,
+  ThreadBodyPresentation,
   ThreadBodyUiStateOverrides,
   ThreadPlanSidePanelState,
   ThreadStageActions,
@@ -15,6 +16,7 @@ import {
 import {
   EnsureLocalConversationThreadScrollController,
   LocalConversationThreadScrollLayout,
+  LocalConversationThreadScrollControllerProvider,
 } from "./local-conversation-thread-scroll-controller";
 import { ConversationRecoveryActionsProvider } from "./conversation-recovery-actions";
 import { HookFeedbackSettingsNavigationProvider } from "./hook-feedback-settings-navigation";
@@ -46,8 +48,11 @@ import {
   captureInlineVisualizationFollowUp,
   captureInlineVisualizationAnnotationInput,
 } from "../../../lib/inline-visualization/inline-visualization-follow-up-input";
+import { InlineVisualizationSurfaceProvider } from "./inline-visualization-window";
+import { SubagentActivityVisibilityContext } from "./subagent-activity-visibility";
 
 interface LocalConversationThreadBodyProps {
+  presentation?: ThreadBodyPresentation;
   model: ThreadBodySurfaceModel;
   actions: ThreadStageActions;
   isWorktreeThread?: boolean;
@@ -73,6 +78,7 @@ const ignoreRestoreSnapshotUpdate = () => {};
 const readEmptyRestoreSnapshot = () => EMPTY_LOCAL_CONVERSATION_THREAD_RESTORE_SNAPSHOT;
 
 function LocalConversationThreadBodyLayout({
+  presentation = "main",
   model,
   actions,
   isWorktreeThread = false,
@@ -125,6 +131,7 @@ function LocalConversationThreadBodyLayout({
       contentX={contentShiftX}
       footer={footer}
       initialRestoreSnapshot={initialRestoreSnapshot}
+      isMainThreadAnchorHost={presentation === "main"}
     >
       {leadingContent}
       {transcriptVisible ? (
@@ -136,6 +143,7 @@ function LocalConversationThreadBodyLayout({
                 onSubmitAnnotations={handleVisualizationAnnotationSubmit}
               >
                 <LocalConversationThreadBodyOwner
+                  presentation={presentation}
                   body={model.body}
                   projectId={model.projectId}
                   hostId={model.hostId}
@@ -210,6 +218,37 @@ function AttachedLocalConversationThreadBody({
   );
 }
 
+function LocalConversationThreadBodyPresentation({
+  presentation = "main",
+  model,
+  children,
+}: Pick<LocalConversationThreadBodyProps, "presentation" | "model"> & {
+  readonly children: ReactNode;
+}) {
+  const surfaceId = useId();
+  if (presentation === "main")
+    return (
+      <EnsureLocalConversationThreadScrollController>
+        {children}
+      </EnsureLocalConversationThreadScrollController>
+    );
+
+  return (
+    <LocalConversationThreadScrollControllerProvider>
+      <InlineVisualizationSurfaceProvider
+        id={`floating-thread:${surfaceId}`}
+        hostId={model.hostId}
+        threadId={model.threadId}
+        active
+      >
+        <SubagentActivityVisibilityContext value={false}>
+          {children}
+        </SubagentActivityVisibilityContext>
+      </InlineVisualizationSurfaceProvider>
+    </LocalConversationThreadScrollControllerProvider>
+  );
+}
+
 function LocalConversationThreadBodyScopedRoot(props: LocalConversationThreadBodyProps) {
   const { model } = props;
   const threadScopePath = useScopeHandle(ThreadScope).path;
@@ -252,8 +291,11 @@ function LocalConversationThreadBodyScopedRoot(props: LocalConversationThreadBod
                 onCompactAndRetry={props.actions.onCompactAndRetry}
                 onManageFailedProvider={props.actions.onManageFailedProvider}
               >
-                <EnsureLocalConversationThreadScrollController>
-                  {model.threadId ? (
+                <LocalConversationThreadBodyPresentation
+                  presentation={props.presentation}
+                  model={model}
+                >
+                  {props.presentation !== "floating" && model.threadId ? (
                     <AttachedLocalConversationThreadBody
                       key={model.threadId}
                       {...props}
@@ -268,7 +310,7 @@ function LocalConversationThreadBodyScopedRoot(props: LocalConversationThreadBod
                       onRestoreSnapshotChange={ignoreRestoreSnapshotUpdate}
                     />
                   )}
-                </EnsureLocalConversationThreadScrollController>
+                </LocalConversationThreadBodyPresentation>
               </ConversationRecoveryActionsProvider>
             </ConversationToolOutputProvider>
           </ConversationImageScopeProvider>
@@ -286,12 +328,18 @@ function LocalConversationThreadBodyComponent(props: LocalConversationThreadBody
       : props.model.projectId
         ? `project:${props.model.projectId}:new-thread`
         : "projectless:new-thread";
-  return <LocalConversationThreadBodyScopedRoot key={stableBodyIdentity} {...props} />;
+  return (
+    <LocalConversationThreadBodyScopedRoot
+      key={`${props.presentation ?? "main"}:${stableBodyIdentity}`}
+      {...props}
+    />
+  );
 }
 
 export const LocalConversationThreadBody = memo(
   LocalConversationThreadBodyComponent,
   (left, right) =>
+    left.presentation === right.presentation &&
     left.actions === right.actions &&
     left.isWorktreeThread === right.isWorktreeThread &&
     left.onForkFromTurnIntoWorktree === right.onForkFromTurnIntoWorktree &&

@@ -125,6 +125,7 @@ interface LocalConversationThreadScrollLayoutProps {
   scrollViewClassName?: string;
   contentWrapperClassName?: string;
   initialRestoreSnapshot?: LocalConversationThreadRestoreSnapshot;
+  isMainThreadAnchorHost?: boolean;
 }
 
 interface LocalConversationThreadScrollControllerContextValue extends LocalConversationThreadScrollControllerValue {
@@ -211,7 +212,12 @@ export function useLocalConversationThreadScrollController() {
   return context;
 }
 
-function LocalConversationThreadScrollControllerProvider({ children }: { children: ReactNode }) {
+/** Creates an independent viewport owner even inside another thread body or portal. */
+export function LocalConversationThreadScrollControllerProvider({
+  children,
+}: {
+  children: ReactNode;
+}) {
   const reducedMotion = useResolvedReducedMotion();
   const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null);
   const [isScrolledFromBottom, setIsScrolledFromBottom] = useState(false);
@@ -937,6 +943,7 @@ export const LocalConversationThreadScrollLayout = forwardRef<
     contentX,
     footer,
     initialRestoreSnapshot,
+    isMainThreadAnchorHost = true,
     scrollViewClassName,
     contentWrapperClassName,
   },
@@ -995,7 +1002,9 @@ export const LocalConversationThreadScrollLayout = forwardRef<
         onWheel={controller.onViewportWheel}
         onKeyDown={controller.onViewportKeyDown}
         {...{
-          [REMOTE_HOSTED_PIP_ANCHOR_HOST_ATTRIBUTE]: REMOTE_HOSTED_PIP_MAIN_THREAD_HOST_ID,
+          [REMOTE_HOSTED_PIP_ANCHOR_HOST_ATTRIBUTE]: isMainThreadAnchorHost
+            ? REMOTE_HOSTED_PIP_MAIN_THREAD_HOST_ID
+            : undefined,
         }}
         className={cn(THREAD_SCROLL_VIEWPORT_CLASS_NAME, scrollViewClassName)}
       >

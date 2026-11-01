@@ -76,6 +76,8 @@ export interface LocalConversationSearchSource {
   routeContextId: string;
   cwd?: string | null;
   projectlessOutputDirectory?: string | null;
+  /** Find indexes subagent lifecycle only where the thread body shows it. */
+  showSubagentActivity?: boolean;
   getTurns: () => LocalConversationSearchSourceTurn[];
   getProjectedEntries?: () => readonly CodexTimelineViewEntry[];
   readOwner?: () => CodexTranscriptReadOwner | null;
@@ -142,6 +144,7 @@ export function createLocalConversationSearchSource(input: LocalConversationSear
       canForkTurn: false,
       cwd: input.cwd,
       projectlessOutputDirectory: input.projectlessOutputDirectory,
+      showSubagentActivity: input.showSubagentActivity,
     });
     const units = model.searchUnits.filter((unit) => unit.text.length > 0);
     cachedUnitsByTurnKey.set(entry.turnKey, { turnIdentity, requestsIdentity, units });

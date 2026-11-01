@@ -20,6 +20,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Expanding the composer that floats over full-width content now shows the whole chat, not just the latest reply. It opens at the newest message and scrolls on its own without moving your place in the chat, with the same collapsed work, Find and message navigation as the chat itself.
 - Agents can retry Nodex tool calls safely with any `idempotencyKey` they choose, across turns and restarts. A rejected call now names each invalid argument and why.
 - Send to chat sends a Page selection to the chat beside the Page in one click or with `⌘⇧↵`, without choosing a chat or a mode; its chevron still opens the chat picker, which lists the Page's linked chats first. Add to composer (`⌥⌘↵`) puts the selection into that chat's draft so you can add a few words before sending. Both shortcuts can be changed in Settings → Keyboard shortcuts.
 - Waiting on another chat also returns once that chat starts waiting on you for an answer, a secret or an approval, and Agents see a chat's waiting state the same way whichever Agent runs it.

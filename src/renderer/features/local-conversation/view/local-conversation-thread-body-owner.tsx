@@ -81,7 +81,10 @@ import {
   type LocalConversationVirtualizedTurnListApi,
   type LocalConversationVirtualizedTurnListEntry,
 } from "./local-conversation-virtualized-turn-list";
-import type { ThreadUserMessageNavigationItem } from "../thread-stage-types";
+import type {
+  ThreadBodyPresentation,
+  ThreadUserMessageNavigationItem,
+} from "../thread-stage-types";
 import { LocalConversationForkFromTurnDialog } from "./local-conversation-fork-from-turn-dialog";
 import { useLocalConversationThreadScrollController } from "./local-conversation-thread-scroll-controller";
 import {
@@ -110,6 +113,7 @@ import {
 } from "./local-conversation-persisted-search";
 import { projectLocalConversationLegacyHistoryRows } from "./local-conversation-history-gap";
 import { LocalConversationSelectedTextActions } from "./local-conversation-selected-text-actions";
+import { useShowSubagentActivity } from "./subagent-activity-visibility";
 import {
   LocalConversationPromptRail,
   waitForLocalConversationPromptRailResidentTarget,
@@ -173,6 +177,7 @@ function createThreadBodySearchSource({
   bodyThreadId,
   cwd,
   projectlessOutputDirectory,
+  showSubagentActivity,
   threadId,
   transcriptOwner,
   reads,
@@ -181,6 +186,7 @@ function createThreadBodySearchSource({
   readonly bodyThreadId: string | null;
   readonly cwd: string | null | undefined;
   readonly projectlessOutputDirectory: string | null | undefined;
+  readonly showSubagentActivity: boolean;
   readonly threadId: string | null;
   readonly transcriptOwner: CodexTranscriptReadOwner | null;
   readonly reads: ReturnType<typeof createThreadBodySearchReadPort>;
@@ -189,6 +195,7 @@ function createThreadBodySearchSource({
     routeContextId: bodyThreadId ? `conversation:${bodyThreadId}` : "unavailable",
     cwd,
     projectlessOutputDirectory,
+    showSubagentActivity,
     getProjectedEntries: reads.readProjectedEntries,
     readOwner: () => transcriptOwner,
     getTurns: reads.readTurns,
@@ -528,7 +535,37 @@ function LocalConversationRestoredTurnList({
   );
 }
 
+/** Floating viewports have no restore lifecycle, including list teardown callbacks. */
+function LocalConversationPresentedTurnList({
+  presentation,
+  readRestoreSnapshot,
+  onRestoreSnapshotChange,
+  onRestoreStateChange,
+  onLatestTurnRestoreStateChange,
+  ...props
+}: LocalConversationRestoredTurnListProps & { readonly presentation: ThreadBodyPresentation }) {
+  if (presentation === "floating")
+    return (
+      <LocalConversationVirtualizedTurnList
+        {...props}
+        initialScrollOffset={0}
+        responseSpaceEnabled={false}
+      />
+    );
+
+  return (
+    <LocalConversationRestoredTurnList
+      {...props}
+      readRestoreSnapshot={readRestoreSnapshot}
+      onRestoreSnapshotChange={onRestoreSnapshotChange}
+      onRestoreStateChange={onRestoreStateChange}
+      onLatestTurnRestoreStateChange={onLatestTurnRestoreStateChange}
+    />
+  );
+}
+
 interface LocalConversationThreadBodyOwnerProps {
+  presentation?: ThreadBodyPresentation;
   body: ThreadBodyModel;
   projectId: string | null;
   hostId: string;
@@ -588,6 +625,7 @@ export type LocalConversationForkIntoWorktreeHandler = (
 ) => Promise<void>;
 
 export function LocalConversationThreadBodyOwner({
+  presentation = "main",
   body,
   projectId,
   hostId,
@@ -722,18 +760,20 @@ export function LocalConversationThreadBodyOwner({
   const canForkFromTurn = capabilityFlags.canForkFromTurn;
   const [firstSubmissionPresentation, setFirstSubmissionPresentation] =
     useState<CodexConversationTurn | null>(firstSubmissionTurn ?? null);
-  const presentation = firstSubmissionTurn ?? firstSubmissionPresentation;
-  const presentationClientId = presentation ? readCanonicalClientUserMessageId(presentation) : null;
+  const submittedTurnPresentation = firstSubmissionTurn ?? firstSubmissionPresentation;
+  const presentationClientId = submittedTurnPresentation
+    ? readCanonicalClientUserMessageId(submittedTurnPresentation)
+    : null;
   const shouldRetireFirstSubmission = Boolean(
-    presentation &&
-    ((presentation.threadId !== threadId && !firstSubmissionTurn) ||
+    submittedTurnPresentation &&
+    ((submittedTurnPresentation.threadId !== threadId && !firstSubmissionTurn) ||
       transcriptStructure?.turns.some(
         (row) => row.value.details.params.clientUserMessageId === presentationClientId,
       )),
   );
   // The launch owner may acknowledge its legacy canonical projection before this
   // subscription has committed a multipart reset. Only the read owner retires this row.
-  const retainedFirstSubmission = shouldRetireFirstSubmission ? null : presentation;
+  const retainedFirstSubmission = shouldRetireFirstSubmission ? null : submittedTurnPresentation;
   if (retainedFirstSubmission !== firstSubmissionPresentation)
     setFirstSubmissionPresentation(retainedFirstSubmission);
   const turnEntries = useMemo(
@@ -751,6 +791,7 @@ export function LocalConversationThreadBodyOwner({
           }),
     [conversation, parentTurns, transcriptOwner, transcriptStructure, retainedFirstSubmission],
   );
+  const showSubagentActivity = useShowSubagentActivity();
   const timelineProjection = useMemo(
     () =>
       transcriptOwner && parentTurns.length === 0
@@ -758,9 +799,10 @@ export function LocalConversationThreadBodyOwner({
             owner: transcriptOwner,
             structure: transcriptStructure,
             entries: turnEntries,
+            showSubagentActivity,
           })
         : { entries: turnEntries, historyRows: null },
-    [parentTurns.length, transcriptOwner, transcriptStructure, turnEntries],
+    [parentTurns.length, showSubagentActivity, transcriptOwner, transcriptStructure, turnEntries],
   );
   const displayedTurnEntries = useMemo(
     () =>
@@ -925,6 +967,7 @@ export function LocalConversationThreadBodyOwner({
         bodyThreadId: body.threadId,
         cwd,
         projectlessOutputDirectory,
+        showSubagentActivity,
         threadId,
         transcriptOwner,
         reads: searchReads,
@@ -934,6 +977,7 @@ export function LocalConversationThreadBodyOwner({
       body.threadId,
       cwd,
       projectlessOutputDirectory,
+      showSubagentActivity,
       threadId,
       transcriptOwner,
       searchReads,
@@ -1134,7 +1178,8 @@ export function LocalConversationThreadBodyOwner({
   const handleEditUserTurn = useCallback(
     async (input: { threadId: string; turnId: string; message: string }) => {
       onErrorMessage(null);
-      threadScrollController.prepareLatestTurnSubmitPlacement({ placeLatestTurn: true });
+      if (presentation === "main")
+        threadScrollController.prepareLatestTurnSubmitPlacement({ placeLatestTurn: true });
       try {
         await actions.onEditUserTurn(input);
       } catch (error) {
@@ -1144,7 +1189,7 @@ export function LocalConversationThreadBodyOwner({
         throw error;
       }
     },
-    [actions, onErrorMessage, threadScrollController],
+    [actions, onErrorMessage, presentation, threadScrollController],
   );
 
   const runForkChoice = useCallback(
@@ -1249,6 +1294,7 @@ export function LocalConversationThreadBodyOwner({
     [searchReads],
   );
   useChatMessageReveal({
+    enabled: presentation === "main",
     threadId: threadId ?? body.threadId,
     history,
     items: userMessageNavigationItems,
@@ -1277,16 +1323,18 @@ export function LocalConversationThreadBodyOwner({
 
   return (
     <>
-      <CodexThreadNavigationMarker
-        threadId={threadId}
-        isSideChat={isSideChat}
-        contentReady={
-          !body.showThreadStartProgressPanel &&
-          (body.emptyState.type === "none" ||
-            body.emptyState.type === "emptyThread" ||
-            body.emptyState.type === "archivedThread")
-        }
-      />
+      {presentation === "main" ? (
+        <CodexThreadNavigationMarker
+          threadId={threadId}
+          isSideChat={isSideChat}
+          contentReady={
+            !body.showThreadStartProgressPanel &&
+            (body.emptyState.type === "none" ||
+              body.emptyState.type === "emptyThread" ||
+              body.emptyState.type === "archivedThread")
+          }
+        />
+      ) : null}
       <LocalConversationPromptRail
         port={history?.promptRail ?? null}
         threadId={threadId ?? body.threadId}
@@ -1387,8 +1435,9 @@ export function LocalConversationThreadBodyOwner({
               />
             ) : null}
             <ThreadForkSubmissionContext value={forkingTurnId}>
-              <LocalConversationRestoredTurnList
+              <LocalConversationPresentedTurnList
                 key={conversation?.threadId ?? body.threadId ?? "unattached"}
+                presentation={presentation}
                 entries={virtualizedEntries}
                 historyRows={historyRows}
                 onHistoryRetentionBoundaryChange={reportHistoryViewport}

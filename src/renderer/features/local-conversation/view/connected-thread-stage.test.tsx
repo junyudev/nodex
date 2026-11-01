@@ -1197,7 +1197,7 @@ describe("ConnectedThreadStage archived resume behavior", () => {
       });
       const preview = await waitFor(() => {
         const node = document.querySelector<HTMLElement>(
-          '[data-floating-conversation-transcript="true"]',
+          '[data-floating-composer-transcript="true"]',
         );
         expect(node).not.toBeNull();
         return node!;

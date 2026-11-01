@@ -1,8 +1,6 @@
 import { useComposerDraftIntent, type ComposerChatKey } from "@/lib/composer-draft-intents";
 import { useConversationBodyPresentation } from "../use-conversation-body-presentation";
-import { useConversationReadState } from "../use-conversation-read-state";
-import type { ConversationReadActivityToken } from "../conversation-read-state-observer";
-import { subscribeCodexAppServerMessage } from "../app-server-message-bus";
+import { useShownConversationReadState } from "../use-shown-conversation-read-state";
 import { ConversationTaskDialog } from "./conversation-task-dialog";
 import { ConversationRuntimeContext } from "../conversation-runtime";
 import { useCodexConversationTranscriptStructure } from "../normalized-transcript-hooks";
@@ -44,6 +42,7 @@ import {
   resolveThreadStartProgressPresentation,
 } from "../projection/build-thread-body-model";
 import type {
+  ThreadBodyPresentation,
   ThreadBodySurfaceModel,
   ThreadBodyUiStateOverrides,
   ThreadFooterModel,
@@ -339,6 +338,27 @@ function ConnectedThreadStageHeader({
   );
 }
 
+interface ConnectedThreadStageBodyProps {
+  activeThreadId: string | null;
+  input: ConnectedThreadStageInput;
+  actions: ThreadStageActions;
+  composerScopeIdentity: string | null;
+  onForkFromTurnIntoWorktree?: (input: { threadId: string; targetTurnId: string }) => Promise<void>;
+  isWorktreeThread: boolean;
+  onErrorMessage: (message: string | null) => void;
+  contentShiftX?: MotionValue<number>;
+  footer?: ReactNode;
+  leadingContent?: ReactNode;
+  initialUiState?: ThreadBodyUiStateOverrides;
+  transcriptVisible?: boolean;
+  turnDiffHoverPreviewDisabled?: boolean;
+  presentedTurns?: CodexConversationTurn[];
+  firstSubmissionTurn?: CodexConversationTurn | null;
+  firstSubmissionActive?: boolean;
+  readOnly?: boolean;
+  presentation?: ThreadBodyPresentation;
+}
+
 function ConnectedThreadStageBody({
   activeThreadId,
   input,
@@ -357,25 +377,8 @@ function ConnectedThreadStageBody({
   firstSubmissionTurn,
   firstSubmissionActive = false,
   readOnly = false,
-}: {
-  activeThreadId: string | null;
-  input: ConnectedThreadStageInput;
-  actions: ThreadStageActions;
-  composerScopeIdentity: string | null;
-  onForkFromTurnIntoWorktree?: (input: { threadId: string; targetTurnId: string }) => Promise<void>;
-  isWorktreeThread: boolean;
-  onErrorMessage: (message: string | null) => void;
-  contentShiftX?: MotionValue<number>;
-  footer?: ReactNode;
-  leadingContent?: ReactNode;
-  initialUiState?: ThreadBodyUiStateOverrides;
-  transcriptVisible?: boolean;
-  turnDiffHoverPreviewDisabled?: boolean;
-  presentedTurns?: CodexConversationTurn[];
-  firstSubmissionTurn?: CodexConversationTurn | null;
-  firstSubmissionActive?: boolean;
-  readOnly?: boolean;
-}) {
+  presentation = "main",
+}: ConnectedThreadStageBodyProps) {
   const parentThreadId = useConversationParentThreadId(activeThreadId);
   const parentTurns = useConversationTurns(parentThreadId);
   const bodyPresentation = useConversationBodyPresentation(activeThreadId, parentTurns);
@@ -390,7 +393,7 @@ function ConnectedThreadStageBody({
       threadId: activeThreadId,
     },
     canonicalTurns,
-    activeThreadId !== null && !input.isNewThreadTab,
+    presentation === "main" && activeThreadId !== null && !input.isNewThreadTab,
     transcriptStructure?.turns,
   );
   const preferredHostId = input.activeThreadSummary?.executionHostId ?? null;
@@ -566,7 +569,61 @@ function ConnectedThreadStageBody({
       transcriptVisible={transcriptVisible}
       planSidePanelState={input.planSidePanelState ?? null}
       turnDiffHoverPreviewDisabled={turnDiffHoverPreviewDisabled}
+      presentation={presentation}
     />
+  );
+}
+
+type ConnectedFloatingThreadTranscriptProps = Omit<
+  ConnectedThreadStageBodyProps,
+  | "contentShiftX"
+  | "footer"
+  | "leadingContent"
+  | "initialUiState"
+  | "transcriptVisible"
+  | "turnDiffHoverPreviewDisabled"
+  | "presentedTurns"
+  | "firstSubmissionTurn"
+  | "firstSubmissionActive"
+  | "presentation"
+>;
+
+/**
+ * The chat, read inside an expanded floating composer, including a first message still being
+ * sent. It mounts only while shown, so it marks the conversation read as the main Conversation
+ * does while visible.
+ */
+function ConnectedFloatingThreadTranscript(props: ConnectedFloatingThreadTranscriptProps) {
+  const { activeThreadId, input } = props;
+  const { turns } = useConversationBodyPresentation(activeThreadId);
+  const firstSubmission = useSessionFirstSubmissionTurns(
+    {
+      projectId: input.projectId,
+      sessionId: input.sessionId ?? input.newThreadTarget?.sessionId ?? null,
+      threadId: activeThreadId,
+    },
+    turns,
+  );
+  const { onReadInteraction } = useShownConversationReadState({
+    conversationId: activeThreadId,
+    summary: input.activeThreadSummary,
+    shown: true,
+  });
+  return (
+    <div
+      className="flex min-h-0 flex-1 flex-col"
+      onPointerDownCapture={onReadInteraction}
+      onKeyDownCapture={onReadInteraction}
+    >
+      <ConnectedThreadStageBody
+        {...props}
+        presentation="floating"
+        turnDiffHoverPreviewDisabled={true}
+        presentedTurns={firstSubmission.turns}
+        firstSubmissionTurn={firstSubmission.presentationTurn}
+        firstSubmissionActive={firstSubmission.submission !== null}
+      />
+    </div>
   );
 }
 
@@ -582,6 +639,7 @@ export function ConnectedThreadStageFooter({
   rightPanelComposerOverlayTarget = null,
   rightPanelComposerOverlayPlacement,
   rightPanelComposerLeadingContent,
+  floatingTranscript,
   worktreeRuntimeAvailable = true,
 }: {
   activeThreadId: string | null;
@@ -595,6 +653,8 @@ export function ConnectedThreadStageFooter({
   rightPanelComposerOverlayTarget?: HTMLElement | null;
   rightPanelComposerOverlayPlacement?: FloatingComposerPlacement;
   rightPanelComposerLeadingContent?: ReactNode;
+  /** The chat an expanded floating composer shows, once it exists or is being started. */
+  floatingTranscript?: ReactNode;
   worktreeRuntimeAvailable?: boolean;
 }) {
   const preferredHostId = input.activeThreadSummary?.executionHostId ?? null;
@@ -1030,8 +1090,8 @@ export function ConnectedThreadStageFooter({
           target: rightPanelComposerOverlayTarget,
           placement: rightPanelComposerOverlayPlacement,
           leadingContent: rightPanelComposerLeadingContent,
+          transcript: floatingTranscript,
         }}
-        planSidePanelState={input.planSidePanelState ?? null}
       />
     </>
   );
@@ -1048,8 +1108,8 @@ export interface ConnectedThreadComposerDockProps extends ConnectedThreadStageIn
 }
 
 /**
- * Footer-only projection of a canonical Session/Thread. It deliberately owns
- * no transcript, virtualizer, scroll position, or app-shell header.
+ * Composer-only projection of a canonical Session/Thread. It owns no Conversation pane or
+ * app-shell header; its floating composer expands into its own view of the thread.
  */
 export function ConnectedThreadComposerDock({
   actions,
@@ -1165,6 +1225,21 @@ export function ConnectedThreadComposerDock({
         rightPanelComposerOverlayTarget={overlayTarget}
         rightPanelComposerOverlayPlacement={overlayPlacement}
         rightPanelComposerLeadingContent={leadingContent}
+        floatingTranscript={
+          activeThreadId !== null || firstSubmission !== null ? (
+            <ConnectedFloatingThreadTranscript
+              activeThreadId={activeThreadId}
+              input={input}
+              actions={actions}
+              composerScopeIdentity={composerScopeIdentity}
+              isWorktreeThread={Boolean(
+                summaryFields.managedWorktreePath ?? input.activeThreadSummary?.managedWorktreePath,
+              )}
+              onErrorMessage={setErrorMessage}
+              readOnly={archived}
+            />
+          ) : null
+        }
       />
     </EnsureLocalConversationThreadScrollController>
   );
@@ -1303,7 +1378,6 @@ function ConnectedThreadStageContent({
     resolveThreadStartProgressPresentation(input.threadStartProgress) === "panel",
   );
   const showNewThreadHome = isNewThreadRoute && !hasFirstSubmission && !hasThreadStartProgress;
-  const conversation = useConversation(activeThreadId);
   const residentParentThreadId = useConversationParentThreadId(activeThreadId);
   const parentThreadId =
     residentParentThreadId ?? input.activeThreadSummary?.source?.parentThreadId ?? null;
@@ -1402,41 +1476,10 @@ function ConnectedThreadStageContent({
     primaryRequest,
   );
   const threadLifecycleActive = routeActive || activeThreadHasRuntimeWork;
-  const latestRequestId =
-    conversation?.canonicalRequests?.at(-1)?.id ?? requests.at(-1)?.requestId ?? null;
-  const latestTurn = turns.at(-1) ?? null;
-  const [activityToken, setActivityToken] = useState<ConversationReadActivityToken | null>(null);
-  useEffect(
-    () =>
-      subscribeCodexAppServerMessage("thread-read-activity", (event) => {
-        if (event.hostId !== runtime.hostId || event.conversationId !== activeThreadId) return;
-        setActivityToken({
-          hostId: event.hostId,
-          threadId: event.conversationId,
-          activity: event.activity,
-        });
-      }),
-    [activeThreadId, runtime.hostId],
-  );
-  // Session unread belongs to Core; execution snapshots intentionally do not own it.
-  const hasUnreadTurn =
-    conversation?.hasUnreadTurn ?? input.activeThreadSummary?.hasUnreadTurn ?? false;
-  const { onReadInteraction } = useConversationReadState({
-    identity: activeThreadId ? JSON.stringify([runtime.hostId, activeThreadId]) : null,
-    active: routeActive && threadBodyVisible && (!runtimeSession || conversation !== null),
-    hasConversation: conversation !== null,
-    hasUnreadTurn,
-    hasPersistedUnreadTurn: input.activeThreadSummary?.hasUnreadTurn ?? false,
-    latestRequestId,
-    latestTurnId: latestTurn?.turnId ?? null,
-    latestTurnStatus: latestTurn?.status ?? null,
-    activityToken:
-      activityToken?.hostId === runtime.hostId && activityToken.threadId === activeThreadId
-        ? activityToken
-        : null,
-    onMarkRead: () => {
-      if (activeThreadId) void runtime.markRead(activeThreadId).catch(() => {});
-    },
+  const { onReadInteraction } = useShownConversationReadState({
+    conversationId: activeThreadId,
+    summary: input.activeThreadSummary,
+    shown: routeActive && threadBodyVisible,
   });
   const summaryPanelContentProps = useMemo(
     () => ({
@@ -1710,6 +1753,19 @@ function ConnectedThreadStageContent({
                   rightPanelComposerOverlayEnabled={rightPanelComposerOverlayEnabled && !isSideChat}
                   rightPanelComposerOverlayTarget={rightPanelComposerOverlayTarget}
                   rightPanelComposerOverlayPlacement={rightPanelComposerOverlayPlacement}
+                  floatingTranscript={
+                    activeThreadId !== null || hasFirstSubmission ? (
+                      <ConnectedFloatingThreadTranscript
+                        activeThreadId={activeThreadId}
+                        input={input}
+                        actions={actions}
+                        composerScopeIdentity={composerScopeIdentity}
+                        isWorktreeThread={activeThreadIsManagedWorktree}
+                        onForkFromTurnIntoWorktree={onForkFromTurnIntoWorktree}
+                        onErrorMessage={setErrorMessage}
+                      />
+                    ) : null
+                  }
                   worktreeRuntimeAvailable={worktreeRuntimeAvailable}
                 />
               )

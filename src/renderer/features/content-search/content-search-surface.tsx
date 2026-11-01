@@ -119,6 +119,7 @@ export function ContentSearchSurfaceView({
 
   return (
     <div
+      data-content-search-surface="true"
       className="pointer-events-none fixed top-2 z-[55] flex justify-end"
       style={{ right: "calc(16px + var(--safe-area-right, 0px))" }}
     >

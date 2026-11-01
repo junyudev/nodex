@@ -277,6 +277,23 @@ function runtimeFixture(toolWork = false, completed = false) {
   const owner = new AgentRuntimeConversationOwner(target, transport);
   return {
     owner,
+    grow(text: string) {
+      listener?.({
+        type: "event",
+        ...target,
+        event: {
+          sequence: ++sequence,
+          commandId: null,
+          event: {
+            id: `answer-growth:${sequence}`,
+            threadId: target.threadId,
+            occurredAt: at,
+            type: "turn-item.updated",
+            payload: { ...answer, text },
+          },
+        },
+      });
+    },
     complete() {
       listener?.({
         type: "event",
@@ -314,7 +331,11 @@ function runtimeFixture(toolWork = false, completed = false) {
 
 function mountRuntime(
   fixture: ReturnType<typeof runtimeFixture>,
-  { zoom = 1, height = 600 }: { zoom?: number; height?: number } = {},
+  {
+    zoom = 1,
+    height = 600,
+    responseSpaceEnabled = true,
+  }: { zoom?: number; height?: number; responseSpaceEnabled?: boolean } = {},
 ) {
   const store = createMaitaiStore();
   let controller: LocalConversationThreadScrollControllerValue | null = null;
@@ -349,6 +370,7 @@ function mountRuntime(
           footer={<div data-test-footer-revision={footerRevision} style={{ height: 80 }} />}
         >
           <LocalConversationVirtualizedTurnList
+            responseSpaceEnabled={responseSpaceEnabled}
             entries={[...projected.entries]}
             historyRows={projected.historyRows ?? undefined}
             conversationId={target.threadId}
@@ -408,6 +430,68 @@ function mountRuntime(
 }
 
 describe("completed runtime response scroll intent", () => {
+  test("a floating running transcript follows the bottom and holds history during streaming", async () => {
+    const fixture = runtimeFixture();
+    const view = mountRuntime(fixture, { height: 420, responseSpaceEnabled: false });
+    const answer = (paragraphs: number) =>
+      Array.from(
+        { length: paragraphs },
+        (_, index) =>
+          `Streaming paragraph ${index + 1}. ` +
+          "The application and report stay consistent. ".repeat(5),
+      ).join("\n\n");
+    try {
+      await view.settle();
+      const viewport = view.scroll().getScrollElement()!;
+      await act(async () => {
+        await frames(12);
+      });
+      expect(viewport.scrollHeight).toBeGreaterThan(viewport.clientHeight + 500);
+      expect(getThreadScrollDistanceFromBottomPx(viewport)).toBeLessThanOrEqual(1);
+      expect(view.scroll().getScrollMode()).toBe("stickToBottom");
+      expect(view.scroll().responseSpacerState).toBeNull();
+      await act(async () => {
+        fixture.grow(answer(20));
+        await frames(12);
+      });
+      expect(getThreadScrollDistanceFromBottomPx(viewport)).toBeLessThanOrEqual(1);
+
+      const bounds = viewport.getBoundingClientRect();
+      const iframe = window.frameElement?.getBoundingClientRect();
+      const session: CDPSession = cdp();
+      await act(async () => {
+        await session.send("Input.dispatchMouseEvent", {
+          type: "mouseWheel",
+          x: bounds.left + 200 + (iframe?.left ?? 0),
+          y: bounds.top + 180 + (iframe?.top ?? 0),
+          deltaX: 0,
+          deltaY: -180,
+        });
+        await frames(12);
+      });
+      expect(view.scroll().getScrollMode()).toBe("user");
+      const heldTop = viewport.scrollTop;
+      const height = viewport.scrollHeight;
+      await act(async () => {
+        fixture.grow(answer(30));
+        await frames(12);
+      });
+      expect(viewport.scrollHeight).toBeGreaterThan(height);
+      expect(Math.abs(viewport.scrollTop - heldTop)).toBeLessThanOrEqual(1);
+      expect(view.scroll().shouldFollowContentGrowth()).toBe(false);
+      expect(view.scroll().responseSpacerState).toBeNull();
+
+      await act(async () => {
+        view.scroll().scrollToBottom({ durationMs: 0 });
+        await frames(8);
+      });
+      expect(view.scroll().getScrollMode()).toBe("stickToBottom");
+      expect(getThreadScrollDistanceFromBottomPx(viewport)).toBeLessThanOrEqual(1);
+    } finally {
+      view.dispose();
+    }
+  });
+
   test("geometry reads preserve user intent while a completed continuation report reflows", async () => {
     const fixture = runtimeFixture();
     const view = mountRuntime(fixture);

@@ -120,6 +120,11 @@ export function projectNormalizedTimelineEntries(input: {
   readonly owner: CodexTranscriptReadOwner;
   readonly structure: CodexTranscriptStructure | null;
   readonly entries: readonly ConversationTurnListEntry[];
+  /**
+   * Hidden subagent activity is never promoted into a dedicated row; its items remain ordinary
+   * Turn items, which the Turn projection omits under the same setting. Defaults to shown.
+   */
+  readonly showSubagentActivity?: boolean;
 }): {
   readonly entries: readonly CodexTimelineViewEntry[];
   readonly historyRows: readonly CodexHistoryRow[] | null;
@@ -185,7 +190,11 @@ export function projectNormalizedTimelineEntries(input: {
     if (presentation?.type !== "wholeItem") return null;
     const address = JSON.stringify([turnId, raw.id]);
     if (wholeItemsByAddress.has(address)) return wholeItemsByAddress.get(address) ?? null;
-    const value = resolveTimelineWholeItemPresentation(raw, presentation);
+    const resolved = resolveTimelineWholeItemPresentation(raw, presentation);
+    const value =
+      resolved?.type === "subagentActivity" && input.showSubagentActivity === false
+        ? null
+        : resolved;
     wholeItemsByAddress.set(address, value);
     return value;
   };

@@ -12,6 +12,7 @@ import { useLocalConversationThreadScrollController } from "./local-conversation
 /** Installs history through its publishing owner, then reveals the real virtualized message row. */
 export function useChatMessageReveal(
   input: {
+    readonly enabled?: boolean;
     readonly threadId: string | null;
     readonly history: ConversationHistoryPort | undefined;
     readonly items: readonly ThreadUserMessageNavigationItem[];
@@ -22,6 +23,7 @@ export function useChatMessageReveal(
   const pending = useSyncExternalStore(store.subscribe, store.read);
   const reducedMotion = useResolvedReducedMotion();
   const scroll = useLocalConversationThreadScrollController();
+  const enabled = input.enabled ?? true;
   const reveal = useEffectEvent(async (messageId: string) => {
     const item = input.items.find((item) => item.messageId === messageId);
     if (!item) return null;
@@ -35,9 +37,9 @@ export function useChatMessageReveal(
   useEffect(
     () => () => {
       const current = store.read();
-      if (current?.threadId === input.threadId) store.consume(current);
+      if (enabled && current?.threadId === input.threadId) store.consume(current);
     },
-    [input.threadId, store],
+    [enabled, input.threadId, store],
   );
   const install = input.history?.promptRail?.installMessage;
   const sourceIdentity = input.history?.sourceIdentity ?? install;
@@ -47,6 +49,7 @@ export function useChatMessageReveal(
       input.history?.promptRail?.installMessage?.(messageId, signal) ?? Promise.resolve("stale"),
   );
   useEffect(() => {
+    if (!enabled) return;
     if (!pending || pending.threadId !== input.threadId) return;
     if (!pending.messageId) {
       store.consume(pending);
@@ -72,5 +75,5 @@ export function useChatMessageReveal(
         if (!controller.signal.aborted) store.consume(pending);
       });
     return () => controller.abort();
-  }, [pending, input.threadId, sourceIdentity, available, store]);
+  }, [enabled, pending, input.threadId, sourceIdentity, available, store]);
 }

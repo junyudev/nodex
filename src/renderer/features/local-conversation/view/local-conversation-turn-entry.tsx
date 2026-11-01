@@ -33,6 +33,7 @@ import { useCodexMcpApps } from "../use-codex-mcp-apps";
 import { ThreadTimestampSeparator } from "./shared/thread-timestamp-separator";
 import { useTurnEndResources } from "../use-turn-end-resources";
 import { LocalConversationEndResources } from "./local-conversation-end-resources";
+import { useShowSubagentActivity } from "./subagent-activity-visibility";
 
 interface LocalConversationTurnEntryProps {
   conversationId: string;
@@ -158,6 +159,7 @@ function LocalConversationTurnEntryComponent({
   onRendered?.(entry.turnKey);
   const { data: mcpApps } = useCodexMcpApps();
   const { data: mcpServerStatuses } = useMcpServerStatuses();
+  const showSubagentActivity = useShowSubagentActivity();
   const turnModel = useMemo(
     () =>
       materializedEntry
@@ -168,6 +170,7 @@ function LocalConversationTurnEntryComponent({
             canEditTurnUserPrefix: allowUserActions && canEditTurnUserPrefix,
             canForkTurn: allowUserActions && canForkTurn,
             canOpenSubagents: Boolean(onOpenThread),
+            showSubagentActivity,
             backgroundAgents:
               isTimelineEntry && entry.timelineDedicatedSubagentThreadIds
                 ? backgroundAgentRows?.filter(
@@ -190,6 +193,7 @@ function LocalConversationTurnEntryComponent({
       canEditTurnUserPrefix,
       canForkTurn,
       onOpenThread,
+      showSubagentActivity,
       backgroundAgentRows,
       materializedEntry,
       mcpApps,

@@ -428,6 +428,54 @@ function createMeasurementResponseSpace() {
 }
 
 describe("LocalConversationVirtualizedTurnList", () => {
+  test.each([true, false])(
+    "consumes submit placement only when response space is enabled (%s)",
+    async (responseSpaceEnabled) => {
+      installQueuedRequestAnimationFrame();
+      installTurnBlockSizes({ turn_1: 480, turn_2: 480 });
+      let controller: ReturnType<typeof useLocalConversationThreadScrollController> | null = null;
+      function Probe() {
+        const scroll = useLocalConversationThreadScrollController();
+        useLayoutEffect(() => {
+          controller = scroll;
+        });
+        return null;
+      }
+      const content = (texts: readonly string[]) => (
+        <TooltipProvider>
+          <EnsureLocalConversationThreadScrollController>
+            <LocalConversationThreadScrollLayout>
+              <Probe />
+              <LocalConversationVirtualizedTurnList
+                entries={buildTurnEntries(texts)}
+                conversationId="thread_1"
+                threadCwd="/tmp/project"
+                editableTurnIds={new Set()}
+                canForkFromTurn={false}
+                responseSpaceEnabled={responseSpaceEnabled}
+                scrollElement={null}
+              />
+            </LocalConversationThreadScrollLayout>
+          </EnsureLocalConversationThreadScrollController>
+        </TooltipProvider>
+      );
+      const view = render(content(["First answer"]));
+      const scroll = controller as ReturnType<
+        typeof useLocalConversationThreadScrollController
+      > | null;
+      if (!scroll) throw new Error("Missing scroll owner");
+      await act(async () => {
+        scroll.prepareLatestTurnSubmitPlacement({ placeLatestTurn: true });
+        await Promise.resolve();
+      });
+      expect(scroll.hasPendingLatestTurnSubmitPlacement()).toBe(true);
+      view.rerender(content(["First answer", "New answer"]));
+      expect(scroll.hasPendingLatestTurnSubmitPlacement()).toBe(!responseSpaceEnabled);
+      if (!responseSpaceEnabled) expect(scroll.responseSpacerState).toBeNull();
+      view.unmount();
+    },
+  );
+
   test("cancels pending navigation without waiting for a frame and releases viewer protection", async () => {
     installQueuedRequestAnimationFrame();
     installTurnBlockSizes({ turn_1: 300 });

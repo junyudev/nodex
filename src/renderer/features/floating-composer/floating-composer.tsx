@@ -143,9 +143,12 @@ const DOCK_SPRING = { type: "spring", bounce: 0.16, duration: 0.42 } as const;
 const INTERACTIVE_TARGET_SELECTOR =
   "button, a, input, textarea, select, label, [contenteditable='true'], [role='button'], [role='menuitem'], [role='separator']";
 const COMPOSER_INPUT_SELECTOR = "[data-codex-composer='true']";
-/** Portaled UI opened from inside the composer that still counts as the composer. */
+/**
+ * Portaled UI that still counts as the composer: menus and dialogs opened from it, Find over its
+ * transcript, and the transcript's selected-text actions.
+ */
 const COMPOSER_FLOATING_UI_SELECTOR =
-  "[data-slot='dropdown-positioner'], [data-slot='popover-positioner'], [role='menu'], [role='listbox'], [role='dialog']";
+  "[data-slot='dropdown-positioner'], [data-slot='popover-positioner'], [role='menu'], [role='listbox'], [role='dialog'], [data-content-search-surface], [data-selected-text-actions]";
 const ATTENTION_LABELS: Record<Exclude<FloatingComposerAttention, "none">, string> = {
   activity: "Running",
   request: "Needs input",
@@ -869,7 +872,7 @@ export function FloatingComposer({
   const showPreviews = Boolean(previews) && visible && !expanded && !dragging;
   const showBubblePreviews = Boolean(previews) && !visible && bubbleHovered && !bubbleDragging;
   const surfaceChromeClass =
-    "composer-surface-chrome pointer-events-none absolute bg-token-input-background/90 backdrop-blur-lg electron:dark:bg-token-dropdown-background";
+    "pointer-events-none absolute bg-token-input-background shadow-2xl ring-[0.5px] ring-token-border electron:dark:bg-token-dropdown-background";
 
   const status =
     attention === "none" ? null : (

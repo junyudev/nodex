@@ -108,6 +108,34 @@ describe("native created/subagent presentation identity", () => {
     expect(work?.timelineSlice.itemIds).toEqual(["other"]);
     expect(work?.timelineDedicatedSubagentThreadIds).toEqual(["child"]);
   });
+  test("hidden subagent activity is never promoted and stays ordinary Turn work", () => {
+    const started = activity("start"),
+      done = activity("done", "completed"),
+      other = activity("other", "started", "other");
+    const creation = created("created");
+    const { project } = timelineOwnerFixture(
+      {
+        data: [
+          nativeRow(started, 0),
+          receipt("start", 1),
+          nativeRow(other, 2),
+          nativeRow(done, 3),
+          nativeRow(creation, 4),
+          receipt("created", 5),
+        ],
+        nextCursor: null,
+        activeRealtimeSessionAtPageStart: null,
+      },
+      [started, other, done, creation],
+    );
+    const rows = project({ showSubagentActivity: false }).entries.filter(isCodexTimelineTurnEntry);
+    expect(rows.map((row) => row.timelineWholeItem?.type ?? null)).toEqual([
+      null,
+      "createdThreads",
+    ]);
+    expect(rows[0]?.timelineSlice.itemIds).toEqual(["start", "other", "done"]);
+    expect(rows[0]?.timelineDedicatedSubagentThreadIds).toBeUndefined();
+  });
   test("a keyed group is stable across unrelated text and updates/releases only its real native addresses", () => {
     const started = activity("start"),
       done = activity("done", "completed");

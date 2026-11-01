@@ -48,6 +48,8 @@ export interface BuildTurnRenderModelInput {
   timestampHoverOnly?: boolean;
   showFullTranscript?: boolean;
   canOpenSubagents?: boolean;
+  /** See `BuildRendererItemStreamInput.showSubagentActivity`; defaults to shown. */
+  showSubagentActivity?: boolean;
   backgroundAgents?: readonly ThreadComposerShellBackgroundAgentRowModel[];
   turnKey?: string;
   turnSearchKey?: string;
@@ -71,6 +73,7 @@ export interface SelectTurnRenderModelInput {
   timestampHoverOnly?: boolean;
   showFullTranscript?: boolean;
   canOpenSubagents?: boolean;
+  showSubagentActivity?: boolean;
   backgroundAgents?: readonly ThreadComposerShellBackgroundAgentRowModel[];
   cwd?: string | null;
   hostId?: string;
@@ -353,6 +356,7 @@ export function buildTurnRenderModel(input: BuildTurnRenderModelInput): ThreadTu
       input.workSegment?.presentation === "voice-work" ? [] : input.backgroundAgents,
     showFullTranscript: input.showFullTranscript,
     canOpenSubagents: input.canOpenSubagents,
+    showSubagentActivity: input.showSubagentActivity,
     turnId: input.turn.turnId,
     turnKey,
   });
@@ -471,6 +475,9 @@ export function createTurnRenderModelSelector(
     const surface = input.surface ?? "main";
     const canEditTurnUserPrefix = input.canEditTurnUserPrefix === true;
     const canForkTurn = input.canForkTurn === true;
+    const showSubagentActivity = input.showSubagentActivity !== false;
+    // Background agents only contribute subagent rows, so a hidden projection does not vary by them.
+    const backgroundAgents = showSubagentActivity ? input.backgroundAgents : undefined;
     const revision = buildVisibleConversationTurnRenderRevision(
       input.entry.turn,
       input.entry.requests,
@@ -483,6 +490,7 @@ export function createTurnRenderModelSelector(
       canForkTurn,
       input.showFullTranscript,
       input.canOpenSubagents,
+      showSubagentActivity,
       input.entry.isMostRecentTurn,
       input.cwd,
       input.hostId,
@@ -493,7 +501,7 @@ export function createTurnRenderModelSelector(
       resolveSelectorIdentity(input.mcpServerStatuses),
       input.entry.turnKey,
       input.entry.turnSearchKey,
-      (input.backgroundAgents ?? []).map((row) => [
+      (backgroundAgents ?? []).map((row) => [
         row.conversationId,
         row.parentTurnKey,
         row.displayName,
@@ -519,9 +527,10 @@ export function createTurnRenderModelSelector(
       timestampHoverOnly: input.timestampHoverOnly,
       canEditTurnUserPrefix,
       canForkTurn,
-      backgroundAgents: input.backgroundAgents,
+      backgroundAgents,
       showFullTranscript: input.showFullTranscript,
       canOpenSubagents: input.canOpenSubagents,
+      showSubagentActivity,
       turnKey: input.entry.turnKey,
       turnSearchKey: input.entry.turnSearchKey,
       cwd: input.cwd,

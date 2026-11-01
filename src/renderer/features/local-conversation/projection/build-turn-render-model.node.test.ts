@@ -469,6 +469,50 @@ describe("buildTurnRenderModel", () => {
     expect(model.blocks.some((block) => block.type === "subagentActivityInlineGroup")).toBe(true);
   });
 
+  test("projects hidden subagent activity as its own model whose work settles without the hidden agents", () => {
+    const entry = buildVisibleEntry(
+      buildTurn({
+        status: "completed",
+        itemIds: ["exec_1", "subagent_activity_1", "assistant_1"],
+        items: [
+          buildExecItem({ status: "completed" }),
+          buildSubagentActivityItem(),
+          buildAssistantItem(),
+        ],
+      }),
+    );
+    const backgroundAgents = [
+      buildBackgroundAgent(),
+      buildBackgroundAgent({ conversationId: "thread_unmentioned", displayName: "Critic" }),
+    ];
+    const selectModel = createTurnRenderModelSelector();
+    const shown = selectModel({ entry, backgroundAgents });
+    const hidden = selectModel({ entry, backgroundAgents, showSubagentActivity: false });
+    const subagentBlocks = (model: ThreadTurnModel) =>
+      model.agentBodyUnits.flatMap((unit) =>
+        (unit.block.type === "agentActivityGroup" ? unit.block.entries : [unit.block]).filter(
+          (block) => block.type === "subagentActivityInlineGroup",
+        ),
+      );
+
+    expect(selectModel({ entry, backgroundAgents, showSubagentActivity: true })).toBe(shown);
+    expect(selectModel({ entry, backgroundAgents, showSubagentActivity: false })).toBe(hidden);
+    // Background-agent updates refresh shown rows only; the hidden projection does not read them.
+    const settledAgents = [buildBackgroundAgent({ status: "done", statusSummary: "Audit done" })];
+    expect(selectModel({ entry, backgroundAgents: settledAgents })).not.toBe(shown);
+    expect(
+      selectModel({ entry, backgroundAgents: settledAgents, showSubagentActivity: false }),
+    ).toBe(hidden);
+    expect(subagentBlocks(shown)).toHaveLength(2);
+    expect(shown.defaultAgentBodyCollapsed).toBe(false);
+
+    expect(subagentBlocks(hidden)).toEqual([]);
+    expect(hidden.searchableText).not.toContain("Scout");
+    expect(hidden.searchableText).not.toContain("Critic");
+    expect(hidden.trailingBlocks.some((block) => block.type === "assistantMessage")).toBe(true);
+    expect(hidden.defaultAgentBodyCollapsed).toBe(true);
+  });
+
   test("projects one main-surface model per stable entry and action policy", () => {
     let projectionCount = 0;
     const selectModel = createTurnRenderModelSelector((input) => {

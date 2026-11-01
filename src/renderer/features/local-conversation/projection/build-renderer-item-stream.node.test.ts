@@ -1337,6 +1337,83 @@ describe("subagent lifecycle projection", () => {
     });
     expect(messageOnly.some((item) => item.type === "multiAgentAction")).toBe(true);
   });
+
+  test("hidden subagent activity omits agent tool calls, activity, messages, and fallback rows only", () => {
+    const input = {
+      entries: [
+        buildEntry({ itemId: "commentary", markdownText: "Delegating the audit" }),
+        buildEntry({
+          itemId: "spawn",
+          kind: "toolCall",
+          semanticKind: "multiAgentAction",
+          rawItem: {
+            type: "collabAgentToolCall",
+            tool: "spawnAgent",
+            status: "completed",
+            receiverThreads: [{ threadId: "a", thread: null }],
+            prompt: "Audit the parser",
+          },
+        }),
+        delegatedTaskEntry("before", "completed"),
+        activityEntry("a"),
+        activityEntry("message-a", {
+          agentThreadId: "a",
+          displayStatus: "updated",
+          isMessage: true,
+        }),
+        delegatedTaskEntry("after", "completed"),
+        buildEntry({
+          itemId: "answer",
+          markdownText: "Audit queued",
+          assistantPhase: "final_answer",
+        }),
+      ],
+      requests: [],
+      turnKey: "turn_1",
+      backgroundAgents: [backgroundAgent("a"), backgroundAgent("b")],
+    };
+    const shown = buildRendererItemStreamProjection(input);
+    expect(shown.items.map((item) => [item.id, item.type])).toEqual([
+      ["commentary", "assistantMessage"],
+      ["spawn", "multiAgentAction"],
+      ["before", "delegatedTask"],
+      ["a", "subagentActivityInlineGroup"],
+      ["message-a", "subagentActivityInlineGroup"],
+      ["after", "delegatedTask"],
+      ["answer", "assistantMessage"],
+      ["subagent-fallback:turn_1", "subagentActivityInlineGroup"],
+    ]);
+    expect(shown.subagentActivityState).toEqual({ hasActivity: true, hasActiveActivity: true });
+
+    const hidden = buildRendererItemStreamProjection({ ...input, showSubagentActivity: false });
+    // Everything else is projected exactly as shown, including delegated tasks kept apart by the
+    // hidden activity between them.
+    expect(hidden.items).toEqual(
+      shown.items.filter(
+        (item) => item.type !== "multiAgentAction" && item.type !== "subagentActivityInlineGroup",
+      ),
+    );
+    expect(hidden.items.map((item) => item.id)).toEqual([
+      "commentary",
+      "before",
+      "after",
+      "answer",
+    ]);
+    // Settled delegated tasks remain activity; the hidden running agents do not keep it active.
+    expect(hidden.subagentActivityState).toEqual({ hasActivity: true, hasActiveActivity: false });
+    expect(
+      buildRendererItemStreamProjection({
+        entries: [activityEntry("a")],
+        requests: [],
+        turnKey: "turn_1",
+        backgroundAgents: [backgroundAgent("b")],
+        showSubagentActivity: false,
+      }),
+    ).toEqual({
+      items: [],
+      subagentActivityState: { hasActivity: false, hasActiveActivity: false },
+    });
+  });
 });
 
 function delegatedTaskEntry(

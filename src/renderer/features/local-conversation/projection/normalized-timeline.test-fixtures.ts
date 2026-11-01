@@ -70,7 +70,7 @@ export function timelineOwnerFixture(
     ),
   };
   owner.applyEvent({ type: "reset", value: projectCodexTranscript(canonicalState) });
-  const project = () =>
+  const project = (options: { readonly showSubagentActivity?: boolean } = {}) =>
     projectNormalizedTimelineEntries({
       owner,
       structure: owner.readStructure(),
@@ -79,6 +79,7 @@ export function timelineOwnerFixture(
         structure: owner.readStructure()!,
         conversation: null,
       }),
+      ...options,
     });
   return { owner, state: canonicalState, project };
 }

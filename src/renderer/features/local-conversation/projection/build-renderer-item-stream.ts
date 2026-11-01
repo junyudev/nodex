@@ -27,6 +27,13 @@ export interface BuildRendererItemStreamInput {
   turnId?: string | null;
   showFullTranscript?: boolean;
   canOpenSubagents?: boolean;
+  /**
+   * Subagent lifecycle: multi-agent tool calls, subagent activity, and the fallback rows for this
+   * Turn's background agents. Defaults to shown. Hidden, the projection does not read background
+   * agents; its items still break adjacency like any other hidden raw item, and the returned
+   * activity state describes only what is shown.
+   */
+  showSubagentActivity?: boolean;
 }
 
 export interface BuildRendererItemStreamProjection {
@@ -38,6 +45,11 @@ type ProtocolThreadItemType = ThreadItem["type"];
 type RendererTranscriptType = ThreadTranscriptBlockModel["type"];
 
 const SEMANTIC_FALLBACK = "semanticFallback";
+
+const SUBAGENT_LIFECYCLE_TYPES: ReadonlySet<RendererTranscriptType> = new Set([
+  "multiAgentAction",
+  "subagentActivityInlineGroup",
+]);
 
 const PROTOCOL_THREAD_ITEM_RENDERER_TYPES = {
   userMessage: "userMessage",
@@ -726,18 +738,22 @@ function buildFallbackSubagentBlock(
 export function buildRendererItemStreamProjection(
   input: BuildRendererItemStreamInput,
 ): BuildRendererItemStreamProjection {
-  const projectedTranscriptEntries = filterRedundantSpawns(input).map(
-    (entry): ProjectedTranscriptEntry => {
-      const block = buildTranscriptBlock(entry, input.turnStatus);
-      return {
-        block,
-        subagentActivity:
-          block?.type === "subagentActivityInlineGroup" && !entry.subagentActivity?.isMessage
-            ? (entry.subagentActivity ?? null)
-            : null,
-      };
-    },
-  );
+  const showSubagentActivity = input.showSubagentActivity !== false;
+  const entries = showSubagentActivity ? filterRedundantSpawns(input) : input.entries;
+  const projectedTranscriptEntries = entries.map((entry): ProjectedTranscriptEntry => {
+    const projected = buildTranscriptBlock(entry, input.turnStatus);
+    const block =
+      projected && !showSubagentActivity && SUBAGENT_LIFECYCLE_TYPES.has(projected.type)
+        ? null
+        : projected;
+    return {
+      block,
+      subagentActivity:
+        block?.type === "subagentActivityInlineGroup" && !entry.subagentActivity?.isMessage
+          ? (entry.subagentActivity ?? null)
+          : null,
+    };
+  });
   const transcriptBlocks = resolveSubagentActivityGroups(
     groupDelegatedTasks(projectedTranscriptEntries),
     input,
@@ -752,7 +768,7 @@ export function buildRendererItemStreamProjection(
           : [],
     ),
   );
-  const fallback = buildFallbackSubagentBlock(input, representedIds);
+  const fallback = showSubagentActivity ? buildFallbackSubagentBlock(input, representedIds) : null;
   if (fallback) transcriptBlocks.push(fallback);
   const groups = transcriptBlocks.filter(
     (block) =>

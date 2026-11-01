@@ -286,6 +286,8 @@ export interface LocalConversationVirtualizedTurnListApi {
 }
 
 interface LocalConversationVirtualizedTurnListProps {
+  /** Main viewports lift new Turns with response space; floating viewports only follow the bottom. */
+  responseSpaceEnabled?: boolean;
   entries: LocalConversationVirtualizedTurnListEntry[];
   /** Keep interactive rows connected without mounting the interval between them and the viewport. */
   retainedTurnKeys?: readonly string[];
@@ -2216,6 +2218,7 @@ function createHistoryRequestScope(conversationId: string, source: object | unde
 }
 
 export function LocalConversationVirtualizedTurnList({
+  responseSpaceEnabled = true,
   entries,
   retainedTurnKeys = NO_RETAINED_TURN_KEYS,
   historyRows,
@@ -2324,8 +2327,9 @@ export function LocalConversationVirtualizedTurnList({
   const isLatestTurnInProgress = latest?.isInProgress ?? false;
   const initialRestore =
     initialLatestTurnRestoreState?.turnKey === latestTurnKey ? initialLatestTurnRestoreState : null;
-  const initialFollowMode =
-    isLatestTurnInProgress && (initialScrollOffset ?? 0) <= THREAD_NEAR_BOTTOM_THRESHOLD_PX
+  const initialFollowMode = !responseSpaceEnabled
+    ? "static"
+    : isLatestTurnInProgress && (initialScrollOffset ?? 0) <= THREAD_NEAR_BOTTOM_THRESHOLD_PX
       ? latestTurnPhase === "prework"
         ? "prework_follow"
         : "user_follow"
@@ -2345,7 +2349,10 @@ export function LocalConversationVirtualizedTurnList({
   const initialScrollOffsetRef = useRef(initialScrollOffset);
   const hasRestoredInitialScrollRef = useRef(false);
   const isInitialActivePlacement =
-    isLatestTurnInProgress && initialScrollOffset === null && initialRestore === null;
+    responseSpaceEnabled &&
+    isLatestTurnInProgress &&
+    initialScrollOffset === null &&
+    initialRestore === null;
   const needsInitialActivePlacementRef = useRef(isInitialActivePlacement);
   const placementKeyRef = useRef(isInitialActivePlacement ? null : placementKey);
   const latestTurnKeyRef = useRef(latestTurnKey);
@@ -2378,12 +2385,14 @@ export function LocalConversationVirtualizedTurnList({
       latestTurnFollowStateRef.current = next;
       if (force || next.followMode !== previous.followMode) {
         setFooterResizeViewportPreserveDisabled(
-          isLatestTurnInProgressRef.current && shouldAllowResponseSpacerGrowth(next.followMode),
+          responseSpaceEnabled &&
+            isLatestTurnInProgressRef.current &&
+            shouldAllowResponseSpacerGrowth(next.followMode),
         );
       }
       return next;
     },
-    [setFooterResizeViewportPreserveDisabled],
+    [responseSpaceEnabled, setFooterResizeViewportPreserveDisabled],
   );
   const holdLatestTurnViewport = useCallback(() => {
     hasRestoredInitialScrollRef.current = true;
@@ -2422,6 +2431,7 @@ export function LocalConversationVirtualizedTurnList({
     };
   }, [holdLatestTurnViewport, resumeLatestTurnFollowing, scrollResponseSpacerToBottom]);
   useLayoutEffect(() => {
+    if (!responseSpaceEnabled) return;
     registerResponseSpacerState(
       placementKey === null
         ? null
@@ -2433,7 +2443,7 @@ export function LocalConversationVirtualizedTurnList({
           },
     );
     return () => registerResponseSpacerState(null);
-  }, [placementKey, registerResponseSpacerState, responseSpace]);
+  }, [placementKey, registerResponseSpacerState, responseSpace, responseSpaceEnabled]);
   useLayoutEffect(
     () =>
       addUserScrollListener((distance, previous) => {
@@ -2491,6 +2501,7 @@ export function LocalConversationVirtualizedTurnList({
       turnElement,
       followContentHeightPx,
     }: LatestTurnHeightChange): ReturnType<LatestTurnHeightChangeHandler> => {
+      if (!responseSpaceEnabled) return;
       const expected = pendingExpectedLatestTurnHeightPxRef.current;
       if (heightPx !== null) {
         latestTurnHeightPxRef.current = heightPx;
@@ -2561,6 +2572,7 @@ export function LocalConversationVirtualizedTurnList({
       getLastScrollDistanceFromBottomPx,
       scrollToDistanceFromBottomPx,
       responseSpace,
+      responseSpaceEnabled,
       updateFollowState,
     ],
   );
@@ -2569,6 +2581,7 @@ export function LocalConversationVirtualizedTurnList({
     const previousPhase = latestTurnPhaseRef.current;
     placementKeyRef.current = placementKey;
     latestTurnPhaseRef.current = latestTurnPhase;
+    if (!responseSpaceEnabled) return;
     if (placementKey === null) {
       if (previousKey !== null) updateFollowState({ type: "latest_turn_removed" }, true);
       responseSpace.clear();
@@ -2624,6 +2637,7 @@ export function LocalConversationVirtualizedTurnList({
     latestTurnPhase,
     placementKey,
     responseSpace,
+    responseSpaceEnabled,
     updateFollowState,
   ]);
   useLayoutEffect(() => {
@@ -2706,10 +2720,11 @@ export function LocalConversationVirtualizedTurnList({
   }, [baseScrollController, onLatestTurnRestoreStateChange]);
   useLayoutEffect(() => {
     setFooterResizeViewportPreserveDisabled(
-      isLatestTurnInProgress &&
+      responseSpaceEnabled &&
+        isLatestTurnInProgress &&
         shouldAllowResponseSpacerGrowth(latestTurnFollowStateRef.current.followMode),
     );
-  }, [isLatestTurnInProgress, setFooterResizeViewportPreserveDisabled]);
+  }, [responseSpaceEnabled, isLatestTurnInProgress, setFooterResizeViewportPreserveDisabled]);
 
   // Save only when this mounted list retires, not when its viewport presentation changes.
   useLayoutEffect(() => {
@@ -2769,10 +2784,12 @@ export function LocalConversationVirtualizedTurnList({
         getResponseSpacerHeightPx={responseSpace.getHeightPx}
         restoreScrollDistanceFromBottomPx={restoreScrollDistanceFromBottomPx}
       />
-      <LocalConversationResponseSpaceElement
-        controller={responseSpace}
-        onReleased={handleResponseSpaceReleased}
-      />
+      {responseSpaceEnabled ? (
+        <LocalConversationResponseSpaceElement
+          controller={responseSpace}
+          onReleased={handleResponseSpaceReleased}
+        />
+      ) : null}
     </>
   );
 }

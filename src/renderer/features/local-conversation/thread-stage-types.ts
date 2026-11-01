@@ -1255,6 +1255,15 @@ export interface ThreadStageHeaderModel {
 
 export type ThreadSummaryPanelMode = "hidden" | "pinned" | "popover";
 
+/**
+ * Where a thread body is read. `main` is the Conversation pane. `floating` is the expanded
+ * floating composer's independent view of the same thread: it opens at the newest content, owns
+ * its scroll position for its mounted lifetime, never lifts a new turn to the top, omits subagent
+ * lifecycle (see `SubagentActivityVisibilityContext`), and leaves conversation-wide integrations
+ * (scroll restore, route navigation, message reveal, PiP anchoring) to the main body.
+ */
+export type ThreadBodyPresentation = "main" | "floating";
+
 export interface ThreadBodySurfaceModel {
   composerChatKey?: ComposerChatKey | null;
   readonly skills?: readonly CodexComposerSkill[];

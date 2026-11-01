@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { act, fireEvent, waitFor, within } from "@testing-library/react";
 import {
@@ -219,6 +220,9 @@ function isBefore(node: Element | null | undefined, nextNode: Element | null | u
   if (!node || !nextNode) return false;
   return Boolean(node.compareDocumentPosition(nextNode) & Node.DOCUMENT_POSITION_FOLLOWING);
 }
+
+/** Stands in for the connected thread an expanded floating composer shows. */
+const floatingThread = <p data-testid="floating-thread">Release notes are ready.</p>;
 
 function buildModelWithRenderableLatestTurn(): ThreadFooterModel {
   const baseModel = buildModel();
@@ -502,7 +506,7 @@ describe("LocalConversationFooter", () => {
     restoreMotionPreference();
   });
 
-  test("overlay mode renders portals and composer in fixture order and expands into the latest turn", async () => {
+  test("overlay mode renders portals and composer in fixture order and expands into its thread", async () => {
     const target = document.createElement("div");
     document.body.appendChild(target);
 
@@ -514,7 +518,7 @@ describe("LocalConversationFooter", () => {
             actions={buildActions()}
             errorMessage={null}
             onErrorMessage={() => {}}
-            rightPanelComposerOverlay={{ enabled: true, target }}
+            rightPanelComposerOverlay={{ enabled: true, target, transcript: floatingThread }}
           />
         </EnsureLocalConversationThreadScrollController>
       </TooltipProvider>,
@@ -524,7 +528,6 @@ describe("LocalConversationFooter", () => {
       const overlay = document.body.querySelector('[data-testid="right-panel-composer-overlay"]');
       if (!overlay) throw new Error("Expected right-panel overlay");
       expect(overlay.querySelector('[data-thread-find-composer="true"]') !== null).toBe(true);
-      expect(overlay.querySelector('[data-thread-catch-up-control="true"]') !== null).toBe(true);
       expect(overlay.querySelector('[data-thread-footer-stack="true"]') !== null).toBe(true);
       expect(overlay.querySelector("#above-composer-portal") !== null).toBe(true);
       expect(overlay.querySelector("#above-composer-queue-portal") !== null).toBe(true);
@@ -537,7 +540,8 @@ describe("LocalConversationFooter", () => {
       '[data-testid="right-panel-composer-overlay"]',
     ) as HTMLElement;
     const footerOwner = overlay.querySelector('[data-thread-find-composer="true"]');
-    const catchUpSlot = footerOwner?.querySelector('[data-thread-catch-up-control="true"]');
+    // The floating thread follows its own scroll, so the Conversation's catch-up control stays out.
+    expect(footerOwner?.querySelector('[data-thread-catch-up-control="true"]')).toBeNull();
     const footerStack = footerOwner?.querySelector('[data-thread-footer-stack="true"]');
     const aboveComposerPortal = footerStack?.querySelector("#above-composer-portal");
     const queuePortal = footerStack?.querySelector("#above-composer-queue-portal");
@@ -548,7 +552,6 @@ describe("LocalConversationFooter", () => {
       throw new Error("Expected overlay fixture nodes");
     }
 
-    expect(isBefore(catchUpSlot, footerStack)).toBe(true);
     expect(isBefore(aboveComposerPortal, queuePortal)).toBe(true);
     expect(isBefore(queuePortal, composerShell)).toBe(true);
 
@@ -566,8 +569,8 @@ describe("LocalConversationFooter", () => {
     expect(inputSlot?.getAttribute("data-composer-footer-row")).toBe("single-line");
     expect(inputSlot?.contains(prompt)).toBe(true);
     expect(overlay.querySelector('[data-composer-attachments="true"]')).toBeNull();
-    // The compact composer keeps its conversation folded away.
-    expect(overlay.querySelector('[data-floating-conversation-transcript="true"]')).toBeNull();
+    // The compact composer keeps its thread folded away.
+    expect(overlay.querySelector('[data-testid="floating-thread"]')).toBeNull();
 
     const expand = overlay.querySelector<HTMLElement>('button[aria-label="Expand composer"]');
     if (!expand) throw new Error("Expected the expand toggle");
@@ -577,10 +580,9 @@ describe("LocalConversationFooter", () => {
       await Promise.resolve();
     });
     await waitFor(() => {
-      expect(
-        overlay.querySelector('[data-floating-conversation-transcript="true"]'),
-      ).not.toBeNull();
-      expect(overlay.querySelector('button[aria-label="Copy"]') !== null).toBe(true);
+      expect(overlay.querySelector('[data-floating-composer-transcript="true"]')?.textContent).toBe(
+        "Release notes are ready.",
+      );
     });
     expect(
       overlay
@@ -604,6 +606,7 @@ describe("LocalConversationFooter", () => {
             rightPanelComposerOverlay={{
               enabled: true,
               target,
+              transcript: floatingThread,
               leadingContent: (
                 <div className="contents">
                   <button type="button" className="order-1">
@@ -644,27 +647,32 @@ describe("LocalConversationFooter", () => {
     ).toBe("false");
   });
 
-  test("keeps the Project Dock target when the latest turn has no renderable blocks", async () => {
+  test("expands a chat before its first turn, and keeps the Project Dock target without one", async () => {
     const target = document.createElement("div");
     document.body.appendChild(target);
-
-    render(
+    const base = buildModel();
+    const renderFooter = (transcript: ReactNode) => (
       <TooltipProvider>
         <EnsureLocalConversationThreadScrollController>
           <LocalConversationFooter
-            model={buildModel()}
+            model={buildModel({
+              conversation: base.conversation ? { ...base.conversation, turns: [] } : null,
+              body: { ...base.body, turnCount: 0, latestTurnId: null },
+            })}
             actions={buildActions()}
             errorMessage={null}
             onErrorMessage={() => {}}
             rightPanelComposerOverlay={{
               enabled: true,
               target,
+              transcript,
               leadingContent: <button type="button">Greet user</button>,
             }}
           />
         </EnsureLocalConversationThreadScrollController>
-      </TooltipProvider>,
+      </TooltipProvider>
     );
+    const view = render(renderFooter(null));
 
     const overlay = await waitFor(() => {
       const element = document.body.querySelector<HTMLElement>(
@@ -684,8 +692,17 @@ describe("LocalConversationFooter", () => {
         hidden: true,
       }),
     ).not.toBeNull();
-    // Without a renderable turn there is no conversation to expand into.
+    // Without a chat there is nothing to expand into.
     expect(overlay.querySelector('button[aria-label="Expand composer"]')).toBeNull();
+
+    // A chat expands as soon as it exists, before its first turn.
+    await act(async () => {
+      view.rerender(renderFooter(floatingThread));
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(overlay.querySelector('button[aria-label="Expand composer"]')).not.toBeNull();
+    });
   });
 
   test("unifies a Project-scoped new task without repeating its fixed Project", async () => {
@@ -780,7 +797,7 @@ describe("LocalConversationFooter", () => {
             actions={actions}
             errorMessage={null}
             onErrorMessage={() => {}}
-            rightPanelComposerOverlay={{ enabled: true, target }}
+            rightPanelComposerOverlay={{ enabled: true, target, transcript: floatingThread }}
           />
         </EnsureLocalConversationThreadScrollController>
       </TooltipProvider>
@@ -799,7 +816,7 @@ describe("LocalConversationFooter", () => {
       await Promise.resolve();
     });
     await waitFor(() => {
-      expect(document.body.querySelector('button[aria-label="Copy"]')).not.toBeNull();
+      expect(document.body.querySelector('[data-testid="floating-thread"]')).not.toBeNull();
     });
 
     await act(async () => {
@@ -812,7 +829,7 @@ describe("LocalConversationFooter", () => {
         .querySelector('button[aria-label="Expand composer"]')
         ?.getAttribute("aria-expanded"),
     ).toBe("false");
-    expect(document.body.querySelector('button[aria-label="Copy"]')).toBeNull();
+    expect(document.body.querySelector('[data-testid="floating-thread"]')).toBeNull();
   });
 
   test("floating multiline drafts retain the attachment tray layout", async () => {
@@ -997,7 +1014,7 @@ describe("LocalConversationFooter", () => {
               actions={buildActions()}
               errorMessage={null}
               onErrorMessage={() => {}}
-              rightPanelComposerOverlay={{ enabled: true, target }}
+              rightPanelComposerOverlay={{ enabled: true, target, transcript: floatingThread }}
             />
           </EnsureLocalConversationThreadScrollController>
         </TooltipProvider>,
@@ -1056,6 +1073,7 @@ describe("LocalConversationFooter", () => {
             rightPanelComposerOverlay={{
               enabled: true,
               target,
+              transcript: floatingThread,
               placement: { title: "Release notes" },
             }}
           />
@@ -1073,17 +1091,15 @@ describe("LocalConversationFooter", () => {
     });
     expect(onMarkConversationRead).toHaveBeenCalledTimes(1);
 
-    // Opening the response expands the composer, which reads the conversation.
+    // Opening the response expands the composer into its thread, which tracks reading itself.
     await act(async () => {
       fireEvent.click(open);
       await Promise.resolve();
     });
     await waitFor(() => {
-      expect(
-        document.body.querySelector('[data-floating-conversation-transcript="true"]'),
-      ).not.toBeNull();
+      expect(document.body.querySelector('[data-testid="floating-thread"]')).not.toBeNull();
     });
-    expect(onMarkConversationRead).toHaveBeenCalledTimes(2);
+    expect(onMarkConversationRead).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       view.rerender(renderFooter(false));

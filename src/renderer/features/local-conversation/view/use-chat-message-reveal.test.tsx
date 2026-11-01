@@ -52,3 +52,40 @@ it("installs and reveals the addressed steer rather than the Run's first message
   expect(store.read()).toBeNull();
   view.unmount();
 });
+
+it("leaves a reveal request pending across disabled floating mounts", async () => {
+  const store = createChatMessageRevealStore();
+  const installMessage = vi.fn(async () => "applied" as const);
+  const reveal = vi.fn(async () => document.createElement("div"));
+  store.request({ sessionId: "chat", threadId: "root", messageId: "steer" });
+  const pending = store.read();
+  for (let mount = 0; mount < 2; mount += 1) {
+    const view = renderHook(() =>
+      useChatMessageReveal(
+        {
+          enabled: false,
+          threadId: "root",
+          items: [],
+          reveal,
+          history: {
+            loadBoundary: async () => "stale",
+            promptRail: {
+              installMessage,
+              loadIndex: async () => null,
+              install: async () => "stale",
+            },
+          },
+        },
+        store,
+      ),
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(store.read()).toBe(pending);
+    view.unmount();
+    expect(store.read()).toBe(pending);
+  }
+  expect(installMessage).not.toHaveBeenCalled();
+  expect(reveal).not.toHaveBeenCalled();
+});

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { act, fireEvent, waitFor } from "@testing-library/react";
-import { useLayoutEffect, useState, type ReactNode } from "react";
+import { useContext, useLayoutEffect, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { NodexTooltipProvider } from "../../../components/ui/tooltip";
 import {
   appScope,
@@ -47,7 +48,15 @@ import { LocalConversationThreadBodyOwner } from "./local-conversation-thread-bo
 import {
   EnsureLocalConversationThreadScrollController,
   LocalConversationThreadScrollLayout,
+  useLocalConversationThreadScrollController,
+  type LocalConversationThreadScrollControllerValue,
 } from "./local-conversation-thread-scroll-controller";
+import {
+  InlineVisualizationSurfaceContext,
+  InlineVisualizationSurfaceProvider,
+} from "./inline-visualization-window";
+import * as threadViewState from "./local-conversation-thread-view-state";
+import { REMOTE_HOSTED_PIP_ANCHOR_HOST_ATTRIBUTE } from "../../../../shared/remote-hosted-pip";
 
 let idleCallbacks: IdleRequestCallback[] = [];
 const originalOffsetWidthDescriptor = Object.getOwnPropertyDescriptor(
@@ -1250,6 +1259,56 @@ describe("LocalConversationThreadBody", () => {
     ]);
   });
 
+  test.each(["main", "floating"] as const)(
+    "%s body shows subagent activity only in the main Conversation",
+    async (presentation) => {
+      const { LocalConversationThreadBody } = await import("./local-conversation-thread-body");
+      const subagentEntry: CodexConversationItem = {
+        threadId: "thread_1",
+        turnId: "turn_1",
+        itemId: "subagent_1",
+        type: "subAgentActivity",
+        kind: "systemEvent",
+        semanticKind: "subAgentActivity",
+        subagentActivity: {
+          agentThreadId: "thread_scout",
+          displayName: "Scout",
+          displayStatus: "active",
+          isMessage: false,
+        },
+        createdAt: 2,
+        updatedAt: 2,
+      };
+      const conversation = buildConversation({
+        turns: [
+          buildTurn({
+            itemIds: ["user_1", "subagent_1", "assistant_1"],
+            items: [buildUserEntry(), subagentEntry, buildAssistantEntry()],
+          }),
+        ],
+      });
+
+      const view = render(
+        <TooltipProvider>
+          <LocalConversationThreadBody
+            presentation={presentation}
+            model={buildModel({ conversation })}
+            actions={buildActions()}
+            onErrorMessage={() => {}}
+          />
+        </TooltipProvider>,
+      );
+      try {
+        expect(await view.findByText("Assistant message")).toBeTruthy();
+        expect(view.queryByRole("status", { name: "Subagents started working" }) !== null).toBe(
+          presentation === "main",
+        );
+      } finally {
+        view.unmount();
+      }
+    },
+  );
+
   test("lets the shared scroll layout own viewport and content wrappers", async () => {
     const { LocalConversationThreadBody } = await import("./local-conversation-thread-body");
     const { container } = render(
@@ -1364,6 +1423,240 @@ describe("LocalConversationThreadBody", () => {
         viewport,
       );
       expect(snapshot().distanceFromBottomPx).toBe(300);
+    },
+  );
+
+  test("gives a portalled floating body its own scroll owner and visualization surface", async () => {
+    const { LocalConversationThreadBody } = await import("./local-conversation-thread-body");
+    const probes = new Map<
+      string,
+      { scroll: LocalConversationThreadScrollControllerValue; surface: string | null }
+    >();
+    function Probe({ name }: { name: string }) {
+      const scroll = useLocalConversationThreadScrollController();
+      const surface = useContext(InlineVisualizationSurfaceContext);
+      useLayoutEffect(() => {
+        probes.set(name, { scroll, surface });
+      });
+      return null;
+    }
+    const model = buildModel();
+    const actions = buildActions();
+    const floating = (
+      <LocalConversationThreadBody
+        presentation="floating"
+        model={model}
+        actions={actions}
+        onErrorMessage={() => {}}
+        leadingContent={<Probe name="floating" />}
+      />
+    );
+    const view = render(
+      <TooltipProvider>
+        <InlineVisualizationSurfaceProvider
+          id="main-surface"
+          hostId="local"
+          threadId="thread_1"
+          active={false}
+        >
+          <LocalConversationThreadBody
+            model={model}
+            actions={actions}
+            transcriptVisible={false}
+            onErrorMessage={() => {}}
+            leadingContent={<Probe name="main" />}
+            footer={createPortal(floating, document.body)}
+          />
+        </InlineVisualizationSurfaceProvider>
+      </TooltipProvider>,
+    );
+    await settleAsyncRender();
+    const main = probes.get("main")!;
+    const dock = probes.get("floating")!;
+    expect(main.scroll.getScrollElement()).not.toBe(dock.scroll.getScrollElement());
+    expect(main.scroll.getScrollElement()).toBe(view.container.querySelector("[role='region']"));
+    expect(
+      dock.scroll
+        .getScrollElement()
+        ?.contains(view.baseElement.querySelector("[data-thread-find-target='conversation']")),
+    ).toBe(true);
+    expect(main.surface).toBe("main-surface");
+    expect(dock.surface).toBeTruthy();
+    expect(dock.surface).not.toBe(main.surface);
+    expect(
+      main.scroll.getScrollElement()?.hasAttribute(REMOTE_HOSTED_PIP_ANCHOR_HOST_ATTRIBUTE),
+    ).toBe(true);
+    expect(
+      dock.scroll.getScrollElement()?.hasAttribute(REMOTE_HOSTED_PIP_ANCHOR_HOST_ATTRIBUTE),
+    ).toBe(false);
+    await act(async () => {
+      dock.scroll.setScrollMode("user");
+      await Promise.resolve();
+    });
+    expect(main.scroll.getScrollMode()).toBe("stickToBottom");
+    expect(dock.scroll.getScrollMode()).toBe("user");
+    expect(probes.get("floating")?.surface).toBe(dock.surface);
+    view.unmount();
+  });
+
+  test("registers Find again after a floating transcript collapses and reopens", async () => {
+    const { LocalConversationThreadBody } = await import("./local-conversation-thread-body");
+    const model = buildModel({
+      conversation: buildConversation({
+        turns: [
+          buildTurn({
+            items: [buildUserEntry(), buildAssistantEntry({ markdownText: "Floating needle" })],
+          }),
+        ],
+      }),
+    });
+    const actions = buildActions();
+    const content = (expanded: boolean) => (
+      <TooltipProvider>
+        <ContentSearchProvider>
+          <FindControls />
+          {expanded ? (
+            <LocalConversationThreadBody
+              presentation="floating"
+              model={model}
+              actions={actions}
+              onErrorMessage={() => {}}
+            />
+          ) : null}
+        </ContentSearchProvider>
+      </TooltipProvider>
+    );
+    const view = render(content(true));
+    try {
+      for (let mount = 0; mount < 2; mount += 1) {
+        await view.findByText("Floating needle");
+        await act(async () => {
+          fireEvent.click(view.getByRole("button", { name: "Find thread text" }));
+          await Promise.resolve();
+        });
+        await waitFor(() =>
+          expect(view.getByLabelText("Find result").textContent).toBe("1 / 1 results"),
+        );
+        await waitFor(() =>
+          expect(view.container.querySelector("mark.codex-thread-find-active")?.textContent).toBe(
+            "needle",
+          ),
+        );
+        view.rerender(content(false));
+        await settleAsyncRender();
+        expect(view.container.querySelector("mark")).toBeNull();
+        view.rerender(content(true));
+      }
+    } finally {
+      view.unmount();
+    }
+  });
+
+  test.each(["main", "floating"] as const)(
+    "%s restores only its own viewport lifecycle when a saved conversation position exists",
+    async (presentation) => {
+      const { LocalConversationThreadBody } = await import("./local-conversation-thread-body");
+      const clientHeight = vi
+        .spyOn(HTMLElement.prototype, "clientHeight", "get")
+        .mockReturnValue(500);
+      const scrollHeight = vi
+        .spyOn(HTMLElement.prototype, "scrollHeight", "get")
+        .mockReturnValue(2_000);
+      let appHandle: ScopeHandle | null = null;
+      let controller: LocalConversationThreadScrollControllerValue | null = null;
+      function StoreProbe() {
+        const handle = useScopeHandle(appScope);
+        useLayoutEffect(() => {
+          appHandle = handle;
+        }, [handle]);
+        return null;
+      }
+      function ScrollProbe() {
+        const scroll = useLocalConversationThreadScrollController();
+        useLayoutEffect(() => {
+          controller = scroll;
+        });
+        return null;
+      }
+      const model = buildModel({
+        conversation: buildConversation({
+          statusType: "active",
+          turns: [buildTurn({ status: "inProgress", firstTurnWorkItemStartedAtMs: 10 })],
+        }),
+      });
+      const actions = buildActions();
+      const content = (mounted: boolean) => (
+        <TooltipProvider>
+          <StoreProbe />
+          {mounted ? (
+            <LocalConversationThreadBody
+              presentation={presentation}
+              model={model}
+              actions={actions}
+              onErrorMessage={() => {}}
+              leadingContent={<ScrollProbe />}
+            />
+          ) : null}
+        </TooltipProvider>
+      );
+      const view = render(content(false));
+      const handle = appHandle as ScopeHandle | null;
+      if (!handle) throw new Error("Missing restore owner");
+      const atom = localConversationThreadRestoreSnapshotFamily("thread_1");
+      const saved = {
+        ...EMPTY_LOCAL_CONVERSATION_THREAD_RESTORE_SNAPSHOT,
+        distanceFromBottomPx: 300,
+      };
+      await act(async () => {
+        handle.set(atom, saved);
+        await Promise.resolve();
+      });
+      const write = vi.spyOn(threadViewState, "updateLocalConversationThreadRestoreSnapshot");
+      const family = vi.spyOn(threadViewState, "localConversationThreadRestoreSnapshotFamily");
+      try {
+        for (let mount = 0; mount < 2; mount += 1) {
+          view.rerender(content(true));
+          await settleAsyncRender();
+          const scroll = controller as LocalConversationThreadScrollControllerValue | null;
+          if (!scroll) throw new Error("Missing viewport owner");
+          const viewport = view.getByRole("region", { name: "Conversation" });
+          await waitFor(() =>
+            expect(viewport.scrollTop).toBe(presentation === "floating" ? 1_500 : 1_200),
+          );
+          expect(scroll.getScrollMode()).toBe(
+            presentation === "floating" ? "stickToBottom" : "user",
+          );
+          expect(scroll.responseSpacerState === null).toBe(presentation === "floating");
+          await act(async () => {
+            viewport.dispatchEvent(new WheelEvent("wheel", { deltaY: -100, bubbles: true }));
+            viewport.scrollTop = 1_100;
+            viewport.dispatchEvent(new Event("scroll"));
+            await Promise.resolve();
+          });
+          expect(scroll.getScrollMode()).toBe("user");
+          view.rerender(content(false));
+          await settleAsyncRender();
+          if (presentation === "floating") {
+            expect(family).not.toHaveBeenCalled();
+            expect(write).not.toHaveBeenCalled();
+            expect(handle.get(atom)).toBe(saved);
+          } else {
+            expect(write).toHaveBeenCalled();
+            expect(handle.get(atom).distanceFromBottomPx).toBe(400);
+            // Each main mount starts from its most recent saved position.
+            await act(async () => {
+              handle.set(atom, saved);
+              await Promise.resolve();
+            });
+          }
+        }
+      } finally {
+        view.unmount();
+        family.mockRestore();
+        write.mockRestore();
+        clientHeight.mockRestore();
+        scrollHeight.mockRestore();
+      }
     },
   );
 
