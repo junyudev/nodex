@@ -1,0 +1,23 @@
+crates/nodex-core/src/administration/profile_clone.rs
+  s_b76aae7cd68efc::t_669d7ae73f2817 588,591-592
+crates/nodex-core/src/workspace/inbox_tests.rs
+  s_b76aae7cd68efc::t_6fc686bf6b7b3a 3749
+crates/nodex-cli/src/agent_interface.rs
+  s_b76aae7cd68efc::t_669d7ae73f2817 15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9d7607e361dbc8087ab80f78604e30bb92b9608c",
+  "prompts": {},
+  "sessions": {
+    "s_b76aae7cd68efc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "00593554-66c2-4983-a13f-0aa36ecb757f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
