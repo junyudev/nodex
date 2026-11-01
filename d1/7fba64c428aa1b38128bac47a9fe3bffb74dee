@@ -1,0 +1,89 @@
+src/renderer/components/workbench/codex-sidebar-actions.browser.test.tsx
+  s_de900885deb30b::t_fc6823f6372ed1 104
+src/renderer/lib/codex-sidebar-pagination.ts
+  s_de900885deb30b::t_00738fc5461fd1 1-2,8,18,21-22,35-36,42,45,48-65,67,72,74-75
+src/renderer/components/workbench/use-sidebar-pager-motion.ts
+  s_de900885deb30b::t_126e25fccf3105 9,34,36-38,60-76,85,87,91,93-94,97-101,103,105,118-119,123,126,134,149,169,171-174
+  s_de900885deb30b::t_ea06acb87873ab 50
+  s_de900885deb30b::t_6e03d79501d670 121-122
+  s_de900885deb30b::t_e7310c20d5b8a0 14-15,24,77-84,88,95,102,106-117,120,131,136-148,150-168,176
+  s_de900885deb30b::t_555eeb7ded738c 2,39-49,51-59
+  s_de900885deb30b::t_35508e61db7da6 1,3-8,10-13,16-21,27-33,35,86,89-90,92,96,104,124-125,127-130,132-133,135,170,175,177
+  s_de900885deb30b::t_6972e510108840 22-23,25-26
+src/renderer/components/workbench/workbench-session-sidebar.tsx
+  s_de900885deb30b::t_3de76c59fb3bae 122,242-243,258-261,428-429,469
+  s_de900885deb30b::t_6caf6b2e544d79 244-257,430-468,664-685,688-717
+src/renderer/components/workbench/sidebar-custom-sections.tsx
+  s_de900885deb30b::t_fa4c678e315d53 281-282,284,295-299,301-328,403
+  s_de900885deb30b::t_6caf6b2e544d79 66,362-402
+  s_de900885deb30b::t_345bc5d23a01ae 300
+scripts/scenarios/scenarios/sidebar-pagination.ts
+  s_de900885deb30b::t_85f3b1fbf0a507 51-54
+  s_de900885deb30b::t_ebdb6aa809a18a 1-50,55-119
+src/renderer/lib/codex-sidebar-pagination.node.test.ts
+  s_de900885deb30b::t_29df31f513e9fc 101
+  s_de900885deb30b::t_7bf2f2f87967aa 13-27,29-35,37-40,43-64,67,70-72,74-80,95,100,115-117,124,131-134,136-138
+  s_de900885deb30b::t_c3cb18a6a439d8 81-83,102-109
+docs/product-specs/workbench-shell.md
+  s_de900885deb30b::t_6972e510108840 20
+src/renderer/components/workbench/sidebar-pages-section.tsx
+  s_de900885deb30b::t_6caf6b2e544d79 30,350-363
+scripts/scenarios/registry.ts
+  s_de900885deb30b::t_e8ceea9d79330c 19,45
+src/renderer/components/workbench/sidebar-paginated-items.browser.test.tsx
+  s_de900885deb30b::t_7703b653942fb8 6,24-30,43-44,47,49-53,55,59,61,63,78,80-81,84,86,90-91,95,100
+  s_de900885deb30b::t_47653d209b6e23 58,68,77
+  s_de900885deb30b::t_c3cb18a6a439d8 74-75
+  s_de900885deb30b::t_b02f8962df9ad1 40-42,48,57,60,62,64-67,69,72-73,76,83,87-89,92,94,96-99,102-103
+  s_de900885deb30b::t_30851995f748c2 1-5,7-23,31-39,45-46,54,56,70-71,79,82,85,93,101,104
+src/renderer/components/workbench/workbench-shell.sidebar-projects.test.tsx
+  s_de900885deb30b::t_942fc667c3c882 712,756,760
+docs/development.md
+  s_de900885deb30b::t_2af5d8a67b0ef9 397-405
+src/renderer/components/workbench/sidebar-paginated-items.tsx
+  s_de900885deb30b::t_e6bef4d513f30b 46-52
+  s_de900885deb30b::t_4a42a2617bc007 120
+  s_de900885deb30b::t_555eeb7ded738c 13,67-68,131-134,137,142-159,162,164-167
+  s_de900885deb30b::t_aa4cf34c2e6694 2,4,11,193,197-209
+  s_de900885deb30b::t_bba15148965349 20,91,210-212
+  s_de900885deb30b::t_6caf6b2e544d79 194-196
+  s_de900885deb30b::t_cee43da06c7ac0 3,5-10,12,70-71,76,92-96,121,161,163,168-171
+  s_de900885deb30b::t_c3cb18a6a439d8 82-90,117-119
+  s_de900885deb30b::t_86bf32ec08d29d 80,122-123,126,139,141,182
+  s_de900885deb30b::t_45e97d0bfc9f7e 1
+  s_de900885deb30b::t_345bc5d23a01ae 33
+src/renderer/lib/codex-panel-motion.node.test.ts
+  s_de900885deb30b::t_54848b85f5a96e 3,15-16,18-19
+src/renderer/components/workbench/sidebar-pages-section.test.tsx
+  s_de900885deb30b::t_38c167377b0837 264,268-273,276-279,281-283,285-286,398,414,421,449,464-465
+CHANGELOG.md
+  s_de900885deb30b::t_6e01634a4684be 29
+tests/e2e/space-content-sidebar.spec.ts
+  s_de900885deb30b::t_398c30e7f6d6ea 59-63,93-103
+src/renderer/components/workbench/sidebar-paginated-items.test.tsx
+  s_de900885deb30b::t_cb5bc0803e40f4 117,132-133
+  s_de900885deb30b::t_e1d7272a7502cf 150-151
+  s_de900885deb30b::t_805f6d39a74bbe 58,68,88-116,118-131,134-149
+src/renderer/components/workbench/codex-sidebar.tsx
+  s_de900885deb30b::t_11aed4f9c2cd62 49-50,379,442
+  s_de900885deb30b::t_71c5a79325e81f 1384,1409
+src/renderer/lib/codex-panel-motion.ts
+  s_de900885deb30b::t_54848b85f5a96e 23-25
+  s_de900885deb30b::t_11aed4f9c2cd62 29-35
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d17fba64c428aa1b38128bac47a9fe3bffb74dee",
+  "prompts": {},
+  "sessions": {
+    "s_de900885deb30b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "060ee655-9b7c-4fef-be43-afa1b6d532d3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": null
+    }
+  }
+}
