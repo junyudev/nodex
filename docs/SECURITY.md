@@ -542,7 +542,7 @@ has.
   store startup; the retired selector and JavaScript SQLite/Yjs implementation
   are absent. Native launch validates a regular, executable,
   non-symlinked Core binary, then trusts readiness only after the existing
-  descriptor, capability, UDS, and handshake checks succeed; failed startup
+  descriptor, capability, local endpoint, and handshake checks succeed; failed startup
   never falls back to another authority.
 - Store preparation never restores JavaScript storage authority. Core accepts
   only an empty Store, the exact current catalog identity, or an exact declared
@@ -587,7 +587,7 @@ has.
 - Core lifecycle diagnostics use the same private runtime ancestry and atomic
   regular-file publication rules. The fixed-size `lifecycle.json` breadcrumb
   contains only bounded generation identity, phase, typed drain reason, and
-  stop outcome. It never contains the bearer capability, socket path, request
+  stop outcome. It never contains the bearer capability, endpoint, request
   payload, SQL, Document bytes, or user content; a symlink, unsafe mode, or
   malformed prior file disables only the breadcrumb.
 - Main fatal incidents are independent of verbose logging and optional telemetry.
