@@ -996,9 +996,24 @@ fn incompatible_idle_core_drains_before_a_replacement_starts() {
         .to_owned();
     drain_idle_core(&incumbent_descriptor, &auth);
     let mut replacements = [spawn(), spawn()];
-    let replacement_descriptors = replacements
+    let selections = replacements
         .iter_mut()
-        .map(read_ready_descriptor)
+        .map(read_selection_result)
+        .collect::<Vec<_>>();
+    let starter = selections
+        .iter()
+        .position(|selection| selection.disposition == CoreSelectionDisposition::Started)
+        .expect("one replacement owns the new authority");
+    assert_eq!(
+        selections
+            .iter()
+            .filter(|selection| selection.disposition == CoreSelectionDisposition::Started)
+            .count(),
+        1
+    );
+    let replacement_descriptors = selections
+        .iter()
+        .map(|selection| &selection.descriptor)
         .collect::<Vec<_>>();
     let replacement_descriptor = replacement_descriptors
         .first()
@@ -1025,9 +1040,11 @@ fn incompatible_idle_core_drains_before_a_replacement_starts() {
         replacement_descriptor.store_epoch,
         incumbent_descriptor.store_epoch
     );
-    for contender in replacements
+    // Windows launchers have a bootstrap PID distinct from the selected authority.
+    for (_, contender) in replacements
         .iter_mut()
-        .filter(|contender| contender.id() != replacement_descriptor.pid)
+        .enumerate()
+        .filter(|(index, _)| *index != starter)
     {
         assert!(
             contender
@@ -1041,10 +1058,7 @@ fn incompatible_idle_core_drains_before_a_replacement_starts() {
         .trim()
         .to_owned();
     drain_idle_core(replacement_descriptor, &replacement_auth);
-    let replacement = replacements
-        .iter_mut()
-        .find(|replacement| replacement.id() == replacement_descriptor.pid)
-        .expect("replacement Core process");
+    let replacement = &mut replacements[starter];
     assert!(replacement.wait().expect("wait for replacement").success());
 }
 
