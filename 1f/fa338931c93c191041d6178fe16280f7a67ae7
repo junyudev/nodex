@@ -1,7 +1,10 @@
 scripts/release/browser-runtime.test.ts
   s_6b185a1f90dfd0::t_c56e74d711e67c 8,37-58
+  s_6b185a1f90dfd0::t_79863c7249ad1a 8,37-56
+  s_6b185a1f90dfd0::t_ce75330b427cd3 57-58
 scripts/release/browser-runtime.ts
   s_6b185a1f90dfd0::t_bbc9e50784efac 68-85,185-187,190-193,204-206,226-228
+  s_6b185a1f90dfd0::t_9e153b871d8fbd 68-85,185-187,190-193,204-206,226-228
 ---
 {
   "schema_version": "authorship/3.0.0",
