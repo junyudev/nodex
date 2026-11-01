@@ -1,3 +1,4 @@
+import { resolveCoreExecutable } from "../core-client/core-launcher";
 import { SessionReminderRuntime } from "../host-runtime/SessionReminderRuntime";
 import { live as chatSearchLive } from "../chat-search/ChatSearch";
 import * as Effect from "effect/Effect";
@@ -251,6 +252,12 @@ export const live: Layer.Layer<
           const execution = yield* AgentRuntimeProfileSnapshot;
           yield* serveProfileSnapshotControl(
             config.nodexHome,
+            resolveCoreExecutable({
+              environment: config.environment,
+              isPackaged: config.isPackaged,
+              appResourcesPath: config.resourcesPath,
+              repositoryRoot: config.projectRootPath,
+            }),
             local.withProfileSnapshot,
             execution.withOptionalSnapshot,
           ).pipe(Effect.mapError((cause) => runtimeError("profile-snapshot-control", cause)));

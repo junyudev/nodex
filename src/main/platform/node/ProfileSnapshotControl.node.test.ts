@@ -1,3 +1,4 @@
+import { requiredNativeExecutable } from "../../../../scripts/testing/native-artifacts";
 import { mkdtempSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { connect, type Socket } from "node:net";
@@ -18,6 +19,7 @@ const fixture = (withExecutionSnapshot?: WithExecutionSnapshot) =>
     let paused = false;
     yield* serveProfileSnapshotControl(
       home,
+      requiredNativeExecutable("core-server"),
       (capture) =>
         Effect.acquireUseRelease(
           Effect.sync(() => {

@@ -1,6 +1,6 @@
+import { requiredNativeExecutable } from "../../../../scripts/testing/native-artifacts";
+import { verifyPrivatePaths } from "./private-filesystem";
 /* @effect-diagnostics preferSchemaOverJson:off -- Verifies the persisted incident JSON through the filesystem Adapter. */
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import { mkdtemp, readFile, readdir, rm, stat, symlink, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -47,7 +47,9 @@ it.live(
   () =>
     Effect.gen(function* () {
       const home = yield* profile;
-      const store = yield* MainFatalIncidentStore.pipe(Effect.provide(layerForHome(home)));
+      const store = yield* MainFatalIncidentStore.pipe(
+        Effect.provide(layerForHome(home, requiredNativeExecutable("core-server"))),
+      );
       const recordDirectory = path.join(home, "diagnostics/fatal");
       yield* Effect.promise(() => mkdir(recordDirectory, { recursive: true, mode: 0o700 }));
       yield* Effect.promise(() =>
@@ -75,30 +77,16 @@ it.live(
       assert.isAtMost(totalBytes, MAX_FATAL_INCIDENT_FILES * MAX_FATAL_INCIDENT_BYTES);
       if (process.platform !== "win32") {
         assert.strictEqual((yield* Effect.promise(() => stat(directory))).mode & 0o777, 0o700);
-        return;
       }
-      const { stdout } = yield* Effect.promise(() =>
-        promisify(execFile)(
-          "powershell.exe",
+      yield* Effect.promise(() =>
+        verifyPrivatePaths(
           [
-            "-NoProfile",
-            "-NonInteractive",
-            "-Command",
-            "$ErrorActionPreference='Stop'; $sid=[System.Security.Principal.WindowsIdentity]::GetCurrent().User; foreach ($p in @($env:NODEX_TEST_DIRECTORY,$env:NODEX_TEST_FILE)) { $acl=Get-Acl -LiteralPath $p; if ($acl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value -ne $sid.Value) { throw 'wrong owner' }; foreach ($rule in $acl.Access) { if ($rule.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value -ne $sid.Value -or $rule.AccessControlType -ne 'Allow') { throw 'foreign access' } }; if ($acl.Access.Count -eq 0) { throw 'missing access' } }; Write-Output 'private'",
+            { path: directory, directory: true },
+            { path: latest, directory: false },
           ],
-          {
-            env: {
-              ...Object.fromEntries(
-                Object.entries(process.env).filter(([key]) => key.toUpperCase() !== "PSMODULEPATH"),
-              ),
-              NODEX_TEST_DIRECTORY: directory,
-              NODEX_TEST_FILE: latest,
-            },
-            encoding: "utf8",
-          },
+          requiredNativeExecutable("core-server"),
         ),
       );
-      assert.strictEqual(stdout.trim(), "private");
     }),
   90_000,
 );
@@ -116,7 +104,7 @@ it.live("refuses symlinked diagnostic directories without writing outside the Pr
     );
     const result = yield* MainFatalIncidentStore.pipe(
       Effect.flatMap((store) => store.write(incident())),
-      Effect.provide(layerForHome(home)),
+      Effect.provide(layerForHome(home, requiredNativeExecutable("core-server"))),
       Effect.result,
     );
     assert.strictEqual(result._tag, "Failure");
@@ -131,7 +119,7 @@ it.live("rejects an oversized incident before publishing any record", () =>
       Effect.flatMap((store) =>
         store.write({ ...incident(), summary: "x".repeat(MAX_FATAL_INCIDENT_BYTES) }),
       ),
-      Effect.provide(layerForHome(home)),
+      Effect.provide(layerForHome(home, requiredNativeExecutable("core-server"))),
       Effect.result,
     );
     assert.strictEqual(result._tag, "Failure");

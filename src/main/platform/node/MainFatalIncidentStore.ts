@@ -1,5 +1,6 @@
 /* @effect-diagnostics asyncFunction:off -- Private atomic filesystem publication is a Node Adapter. */
 import { syncDirectory } from "../../durable-json-file";
+import { resolveCoreExecutable } from "../../core-client/core-launcher";
 import { makePrivatePaths } from "./private-filesystem";
 import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
@@ -47,7 +48,11 @@ const requirePrivateDirectory = async (directory: string): Promise<void> => {
   }
 };
 
-const writeIncident = async (nodexHome: string, incident: MainFatalIncident): Promise<string> => {
+const writeIncident = async (
+  nodexHome: string,
+  coreExecutable: string,
+  incident: MainFatalIncident,
+): Promise<string> => {
   if (!path.isAbsolute(nodexHome) || !UUID.test(incident.id)) {
     throw new Error("Invalid fatal incident identity");
   }
@@ -76,12 +81,15 @@ const writeIncident = async (nodexHome: string, incident: MainFatalIncident): Pr
   try {
     // Secure the empty file and its parents in one native call, before writing private bytes.
     if (process.platform === "win32")
-      await makePrivatePaths([
-        { path: nodexHome, directory: true },
-        { path: diagnostics, directory: true },
-        { path: directory, directory: true },
-        { path: temporary, directory: false },
-      ]);
+      await makePrivatePaths(
+        [
+          { path: nodexHome, directory: true },
+          { path: diagnostics, directory: true },
+          { path: directory, directory: true },
+          { path: temporary, directory: false },
+        ],
+        coreExecutable,
+      );
     for (const name of (await readdir(directory)).filter(
       (name) => TEMPORARY_NAME.test(name) && name !== path.basename(temporary),
     )) {
@@ -109,18 +117,31 @@ const writeIncident = async (nodexHome: string, incident: MainFatalIncident): Pr
   }
 };
 
-export const layerForHome = (nodexHome: string): Layer.Layer<MainFatalIncidentStore> =>
+export const layerForHome = (
+  nodexHome: string,
+  coreExecutable: string,
+): Layer.Layer<MainFatalIncidentStore> =>
   Layer.succeed(
     MainFatalIncidentStore,
     MainFatalIncidentStore.of({
       write: (incident) =>
         Effect.tryPromise({
-          try: () => writeIncident(nodexHome, incident),
+          try: () => writeIncident(nodexHome, coreExecutable, incident),
           catch: (cause) => new MainFatalIncidentStoreError({ cause }),
         }),
     }),
   );
 
 export const live: Layer.Layer<MainFatalIncidentStore, never, MainConfig> = Layer.unwrap(
-  Effect.map(MainConfig, (config) => layerForHome(config.nodexHome)),
+  Effect.map(MainConfig, (config) =>
+    layerForHome(
+      config.nodexHome,
+      resolveCoreExecutable({
+        environment: config.environment,
+        isPackaged: config.isPackaged,
+        appResourcesPath: config.resourcesPath,
+        repositoryRoot: config.projectRootPath,
+      }),
+    ),
+  ),
 );

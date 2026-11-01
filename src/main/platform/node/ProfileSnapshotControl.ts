@@ -68,7 +68,7 @@ const rendezvousSchema = Schema.fromJsonString(
   }),
 );
 
-const prepareSocket = async (profileHome: string) => {
+const prepareSocket = async (profileHome: string, coreExecutable: string) => {
   const directory = join(profileHome, "ipc");
   await mkdir(directory, { recursive: true, mode: 0o700 });
   const stat = await lstat(directory);
@@ -79,7 +79,7 @@ const prepareSocket = async (profileHome: string) => {
     (stat.uid !== process.getuid?.() || (stat.mode & 0o077) !== 0)
   )
     throw new Error("Profile snapshot IPC directory must be private and owned by this user");
-  await makePrivate(directory, true);
+  await makePrivate(directory, true, coreExecutable);
   const rendezvous = join(directory, "clone.json");
   const socketPath = join(directory, "clone.sock");
   const previous = await lstat(rendezvous).catch((error: NodeJS.ErrnoException) => {
@@ -224,11 +224,12 @@ const handleConnection = Effect.fn("ProfileSnapshotControl.handleConnection")(fu
 /** A private, connection-bound lease; only the Endpoint supervisor can stop or restart its Agent. */
 export const serveProfileSnapshotControl = Effect.fn("serveProfileSnapshotControl")(function* (
   profileHome: string,
+  coreExecutable: string,
   withSnapshot: CodexEndpoint["Service"]["withProfileSnapshot"],
   withExecutionSnapshot?: WithExecutionSnapshot,
 ) {
   const endpoint = yield* Effect.tryPromise({
-    try: () => prepareSocket(profileHome),
+    try: () => prepareSocket(profileHome, coreExecutable),
     catch: failure,
   });
   const sockets = new Set<Socket>();
@@ -277,7 +278,7 @@ export const serveProfileSnapshotControl = Effect.fn("serveProfileSnapshotContro
           `${JSON.stringify({ version: 1, endpoint: endpoint.endpoint, capability: endpoint.capability, pid: process.pid })}\n`,
           { flag: "wx", mode: 0o600 },
         );
-        await makePrivate(endpoint.rendezvous, false);
+        await makePrivate(endpoint.rendezvous, false, coreExecutable);
       },
       catch: failure,
     }),

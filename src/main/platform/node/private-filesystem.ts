@@ -2,34 +2,45 @@
 import { chmod } from "node:fs/promises";
 import { execFile } from "node:child_process";
 
+interface PrivatePath {
+  readonly path: string;
+  readonly directory: boolean;
+}
+
+/** Core's one-shot platform command runs without a daemon, Store or shell. */
+const nativePrivatePaths = (
+  entries: readonly PrivatePath[],
+  coreExecutable: string,
+  verify: boolean,
+): Promise<void> =>
+  new Promise((resolve, reject) => {
+    const child = execFile(
+      coreExecutable,
+      ["--private-filesystem"],
+      { windowsHide: true, timeout: 2_000, maxBuffer: 4096 },
+      (error) => (error ? reject(error) : resolve()),
+    );
+    child.stdin!.once("error", reject);
+    child.stdin!.end(JSON.stringify({ verify, entries }));
+  });
+
 /** Secure private files and inheritable directories with the native permission model. */
 export const makePrivatePaths = async (
-  entries: readonly { readonly path: string; readonly directory: boolean }[],
+  entries: readonly PrivatePath[],
+  coreExecutable: string,
 ): Promise<void> => {
-  if (process.platform !== "win32") {
-    await Promise.all(entries.map((entry) => chmod(entry.path, entry.directory ? 0o700 : 0o600)));
-    return;
-  }
-  const script = `$ErrorActionPreference='Stop'; $identity=[System.Security.Principal.WindowsIdentity]::GetCurrent(); $sid=$identity.User; foreach ($entry in (ConvertFrom-Json $env:NODEX_PRIVATE_ENTRIES)) { $p=$entry.path; $acl=Get-Acl -LiteralPath $p; $owner=$acl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value; if ($owner -ne $sid.Value -and $owner -ne $identity.Owner.Value) { throw 'Private filesystem entry has a different owner' }; $acl.SetOwner($sid); $acl.SetAccessRuleProtection($true,$false); foreach ($rule in @($acl.Access)) { $acl.RemoveAccessRuleSpecific($rule) }; $inherit=if ($entry.directory) { 'ContainerInherit,ObjectInherit' } else { 'None' }; $rule=[System.Security.AccessControl.FileSystemAccessRule]::new($sid,'FullControl',$inherit,'None','Allow'); $acl.AddAccessRule($rule); Set-Acl -LiteralPath $p -AclObject $acl }`;
-  await new Promise<void>((resolve, reject) =>
-    execFile(
-      "powershell.exe",
-      ["-NoProfile", "-NonInteractive", "-Command", script],
-      {
-        windowsHide: true,
-        timeout: 8_000,
-        env: {
-          // PowerShell 7's inherited module path can shadow Windows PowerShell's own modules.
-          ...Object.fromEntries(
-            Object.entries(process.env).filter(([key]) => key.toUpperCase() !== "PSMODULEPATH"),
-          ),
-          NODEX_PRIVATE_ENTRIES: JSON.stringify(entries),
-        },
-      },
-      (error) => (error ? reject(error) : resolve()),
-    ),
-  );
+  if (process.platform === "win32") return nativePrivatePaths(entries, coreExecutable, false);
+  await Promise.all(entries.map((entry) => chmod(entry.path, entry.directory ? 0o700 : 0o600)));
 };
 
-export const makePrivate = (filename: string, directory: boolean): Promise<void> =>
-  makePrivatePaths([{ path: filename, directory }]);
+/** Read the actual native owner and permissions without changing them. */
+export const verifyPrivatePaths = (
+  entries: readonly PrivatePath[],
+  coreExecutable: string,
+): Promise<void> => nativePrivatePaths(entries, coreExecutable, true);
+
+export const makePrivate = (
+  filename: string,
+  directory: boolean,
+  coreExecutable: string,
+): Promise<void> => makePrivatePaths([{ path: filename, directory }], coreExecutable);

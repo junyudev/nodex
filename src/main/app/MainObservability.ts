@@ -94,8 +94,7 @@ export const layer: Layer.Layer<
             // Backend logs also feed Sentry breadcrumbs, including with file logging off.
             backend.error("Main application failed", { incident });
             const storedPath = yield* incidents.write(incident).pipe(
-              // Windows publication includes a cold native ACL process, including on arm64.
-              Effect.timeout(config.platform === "win32" ? "10 seconds" : "2 seconds"),
+              Effect.timeout("2 seconds"),
               Effect.catch(() =>
                 Effect.sync(() => {
                   backend.warn("Could not save fatal incident", { incidentId: incident.id });

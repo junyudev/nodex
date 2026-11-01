@@ -16,6 +16,11 @@ on each CPU. Core-client exercises the real Rust Core over named pipes under hos
 Node; Main and integration use Electron's ABI. It is described in [CI](CI.md); packaging and artifacts are described in
 [the Windows release runbook](release-windows.md).
 
+Main's private files and snapshot rendezvous use the bundled Core's one-shot native
+filesystem command. The suites verify the actual owner and protected permissions,
+without depending on a PowerShell runtime. The typed suite owners prepare that Core
+executable before either host Node or Electron starts the tests.
+
 ## What each layer cannot prove
 
 - **Hosted runners** run as an administrator with UAC disabled and Defender real-time
