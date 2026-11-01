@@ -5,7 +5,6 @@ import { StatusIcon, type Status } from "./Board";
 import { ProviderMark, cx } from "./Window";
 import {
   ChevronDownIcon,
-  FolderIcon,
   LinkedChatsIcon,
   MoreIcon,
   PageCodeIcon,
@@ -16,6 +15,7 @@ import {
   PageStageHistoryIcon,
   PriorityPropertyIcon,
   PriorityValueIcon,
+  ProjectFolderOpenIcon,
   StatusPropertyIcon,
 } from "./icons";
 
@@ -137,52 +137,78 @@ export const PAGE_FILE_ICON: Record<PageFileKind, ReactNode> = {
 const fileCount = (folders: readonly PageFolder[]) =>
   folders.reduce((total, folder) => total + folder.files.length, 0);
 
+/** Where Files came from: the attaching chat with its provider mark, and how long ago. */
+function FileSource({
+  source,
+}: {
+  readonly source: { readonly chat: string; readonly provider: ProviderKind };
+}) {
+  return (
+    <span className="inline-flex min-w-0 items-center gap-1">
+      <ProviderMark kind={source.provider} className="size-2.5 shrink-0" />
+      <span className="truncate">{source.chat}</span>
+      <span className="shrink-0">· now</span>
+    </span>
+  );
+}
+
+const NONE_OPENED: readonly string[] = [];
+
 /**
- * The Files property: a count that opens into the Page's own file tree, right under the
- * properties, with where the files came from. Files an agent just added are marked new.
+ * The Files property (page-files-row.tsx): a count that discloses the Page's own file tree, laid
+ * across the Page's full width under the row. The tree starts open; the chat that attached every
+ * File is named once, beneath it. Files that arrived while the Page was open carry a new dot.
  */
 export function FilesProperty({
   folders,
-  open,
+  open = true,
   fresh = false,
   source,
   selected = null,
+  opened = NONE_OPENED,
 }: {
   readonly folders: readonly PageFolder[];
-  readonly open: boolean;
-  /** The files arrived moments ago. */
+  readonly open?: boolean;
+  /** The files arrived while the Page was open. */
   readonly fresh?: boolean;
-  /** Who added them, shown under the tree. */
+  /** The chat that attached them, named beneath the tree. */
   readonly source?: { readonly chat: string; readonly provider: ProviderKind };
   /** The file being pressed or previewed. */
   readonly selected?: string | null;
+  /** Files already opened, which no longer carry the new dot. */
+  readonly opened?: readonly string[];
 }) {
   const count = fileCount(folders);
+  const expanded = open && count > 0;
   return (
-    <PageProperty icon={<PageIcon />} label="Files">
-      {count === 0 ? (
-        <span className="px-1 text-app-faint">Empty</span>
-      ) : (
-        <motion.span
-          data-cursor-target="files"
-          initial={fresh ? { backgroundColor: "rgb(58 131 247 / 0.22)" } : false}
-          animate={{ backgroundColor: "rgb(58 131 247 / 0)" }}
-          transition={{ duration: 1.6 }}
-          className="inline-flex w-fit items-center gap-1.5 rounded-[5px] px-1 py-0.5 text-app-fg"
-        >
-          <FolderIcon className="size-[13px] text-app-faint" />
-          {count} files
-          {fresh && !open ? <span className="size-1.5 rounded-full bg-[#3a83f7]" /> : null}
-          <ChevronDownIcon
-            className={cx(
-              "size-3 text-app-faint transition-transform duration-200",
-              !open && "-rotate-90",
-            )}
-          />
-        </motion.span>
-      )}
+    <div>
+      <PageProperty icon={<PageIcon />} label="Files">
+        {count === 0 ? (
+          <span className="px-1 text-app-faint">Empty</span>
+        ) : (
+          <span className="flex min-w-0 items-center gap-1">
+            <span
+              data-cursor-target="files"
+              className="inline-flex w-fit shrink-0 items-center gap-1 rounded-[5px] px-1 py-0.5 text-app-fg"
+            >
+              {count} files
+              <ChevronDownIcon
+                className={cx(
+                  "size-3 text-app-faint transition-transform duration-200",
+                  !expanded && "-rotate-90",
+                )}
+              />
+            </span>
+            {!expanded && source ? (
+              <span className="flex min-w-0 items-center gap-1 text-app-faint">
+                from <FileSource source={source} />
+              </span>
+            ) : null}
+          </span>
+        )}
+      </PageProperty>
       <AnimatePresence initial={false}>
-        {open ? (
+        {expanded ? (
           <motion.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
@@ -190,29 +216,32 @@ export function FilesProperty({
             transition={{ duration: 0.32, ease: [0.2, 0.8, 0.2, 1] }}
             className="overflow-hidden"
           >
-            <div className="mt-1.5 mb-1 rounded-[10px] bg-app-fg/[0.025] py-1 ring-[0.5px] ring-app-line ring-inset">
+            <div className="mt-0.5 mb-1 rounded-[7px] px-1 py-1 ring-[0.5px] ring-app-line ring-inset">
               {folders.map((folder) => (
                 <div key={folder.name}>
-                  <div className="flex h-[26px] items-center gap-1.5 px-2 text-app-muted">
-                    <ChevronDownIcon className="size-3 text-app-faint" />
-                    <FolderIcon className="size-[13px] text-app-faint" />
+                  <div className="flex h-[23px] items-center gap-1.5 px-1 text-app-muted">
+                    <ProjectFolderOpenIcon className="size-[13px] text-app-faint" />
                     <span>{folder.name}</span>
                   </div>
                   {folder.files.map((file, index) => (
                     <motion.div
                       key={file.name}
-                      initial={{ opacity: 0, x: -4 }}
+                      initial={fresh ? { opacity: 0, x: -4 } : false}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: 0.12 + index * 0.06 }}
                       data-cursor-target={`file:${file.name}`}
                       className={cx(
-                        "mx-1 flex h-[27px] items-center gap-1.5 rounded-[6px] pr-2 pl-[30px]",
+                        "flex h-[23px] items-center gap-1.5 rounded-[5px] pr-1.5 pl-[17px]",
                         selected === file.name && "bg-app-hover",
                       )}
                     >
                       {PAGE_FILE_ICON[file.kind]}
-                      <span className="min-w-0 flex-1 truncate text-app-fg">{file.name}</span>
-                      <span className="shrink-0 text-[11px] text-app-faint tabular-nums">
+                      <span className="min-w-0 truncate text-app-fg">{file.name}</span>
+                      {fresh && !opened.includes(file.name) ? (
+                        <span className="size-1 shrink-0 rounded-full bg-[#3a83f7]" />
+                      ) : null}
+                      <span className="flex-1" />
+                      <span className="w-11 shrink-0 text-right text-[10.5px] text-app-faint tabular-nums">
                         {file.size}
                       </span>
                     </motion.div>
@@ -220,16 +249,15 @@ export function FilesProperty({
                 </div>
               ))}
               {source ? (
-                <div className="mt-0.5 flex items-center gap-1.5 border-t-[0.5px] border-app-line px-2.5 pt-1.5 pb-0.5 text-[10.5px] text-app-faint">
-                  <ProviderMark kind={source.provider} className="size-2.5" />
-                  From {source.chat} · now
+                <div className="mx-1 mt-1 flex items-center gap-1 border-t-[0.5px] border-app-line px-1 pt-1 text-[10.5px] text-app-faint">
+                  From <FileSource source={source} />
                 </div>
               ) : null}
             </div>
           </motion.div>
         ) : null}
       </AnimatePresence>
-    </PageProperty>
+    </div>
   );
 }
 

@@ -24,7 +24,7 @@ import {
 import { AgentDock } from "../replica/AgentDock";
 import { AppSidebar, type SidebarChat } from "../replica/Sidebar";
 import { Stage } from "../replica/Stage";
-import { FileView } from "../replica/Viewers";
+import { PageFileView } from "../replica/Viewers";
 import { CAPTURE_DEMOS } from "./capture-demos";
 import { Cursor } from "./Cursor";
 import { ColdStartFindings } from "./ColdStartFindings";
@@ -103,9 +103,6 @@ const CUES: readonly Cue[] = [
   { id: "open", at: 2300 },
   ...FINDINGS_AT.map((at, index) => ({ id: `finding:${index}`, at })),
   { id: "attach", at: 5600 },
-  { id: "aim:files", at: 6400 },
-  { id: "press:files", at: 6950 },
-  { id: "files", at: 7100 },
   { id: "aim:image", at: 8000 },
   { id: "press:image", at: 8550 },
   { id: "preview", at: 8700 },
@@ -134,15 +131,11 @@ export default function PagesDemo() {
     ? null
     : reached("aim:image")
       ? "file:flamegraph.png"
-      : reached("aim:files")
-        ? "files"
-        : reached("aim:card") && !open
-          ? "card:coldstart"
-          : null;
+      : reached("aim:card") && !open
+        ? "card:coldstart"
+        : null;
   const pressed =
-    (reached("press:card") && !open) ||
-    (reached("press:files") && !reached("files")) ||
-    (reached("press:image") && !reached("preview"));
+    (reached("press:card") && !open) || (reached("press:image") && !reached("preview"));
 
   return (
     <div ref={root} className="w-full">
@@ -176,7 +169,12 @@ export default function PagesDemo() {
                         />
                         {previewing ? (
                           <NewTab>
-                            <Tab icon={PAGE_FILE_ICON.image} label={FLAMEGRAPH.name} active />
+                            <Tab
+                              icon={PAGE_FILE_ICON.image}
+                              label={FLAMEGRAPH.name}
+                              active
+                              preview
+                            />
                           </NewTab>
                         ) : null}
                       </>
@@ -285,10 +283,10 @@ function ColdStartStage({ timeline }: { readonly timeline: Timeline }) {
           />
           <FilesProperty
             folders={reached("attach") ? COLD_START_FILES : []}
-            open={reached("files")}
             fresh={reached("attach")}
             source={{ chat: "Dashboard cold start", provider: "opencode" }}
             selected={reached("aim:image") ? FLAMEGRAPH.name : null}
+            opened={reached("preview") ? [FLAMEGRAPH.name] : []}
           />
         </>
       }
@@ -299,19 +297,16 @@ function ColdStartStage({ timeline }: { readonly timeline: Timeline }) {
   );
 }
 
-/** The flame graph the agent attached, opened from the Page in a file tab beside it. */
+/** The flame graph the agent attached, opened from the Page in a Page File tab beside it. */
 function FlamegraphFile() {
   return (
-    <FileView
-      path={["Dashboard cold start", "profile", FLAMEGRAPH.name]}
-      icon={PAGE_FILE_ICON.image}
-    >
+    <PageFileView page="Dashboard cold start" path={["profile", FLAMEGRAPH.name]}>
       <figure className="flex h-full flex-col items-center justify-center gap-3 px-4 pb-6">
         <Flamegraph />
-        <figcaption className="text-[11px] text-app-faint">
-          Main thread, first 2.3 s · 2400 × 720 · 86 KB
+        <figcaption className="text-[10px] text-app-faint tabular-nums">
+          2400 × 720 · {FLAMEGRAPH.size}
         </figcaption>
       </figure>
-    </FileView>
+    </PageFileView>
   );
 }

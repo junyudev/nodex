@@ -309,11 +309,14 @@ export function Tab({
   active = false,
   closable = label !== "Inbox",
   titleOnly = false,
+  preview = false,
 }: {
   readonly icon?: ReactNode;
   readonly label: string;
   readonly active?: boolean;
   readonly closable?: boolean;
+  /** A preview tab, which the next preview in its group replaces, reads in italics. */
+  readonly preview?: boolean;
   /** A full-view chat occupies the titlebar with a plain heading instead of a tab strip. */
   readonly titleOnly?: boolean;
 }) {
@@ -342,7 +345,12 @@ export function Tab({
         </span>
       ) : null}
       {/* Long titles fade out rather than ellipsize, as app-shell-tabs.tsx draws them. */}
-      <span className="min-w-0 flex-1 overflow-hidden whitespace-nowrap [mask-image:linear-gradient(to_right,#000_calc(100%-14px),transparent)]">
+      <span
+        className={cx(
+          "min-w-0 flex-1 overflow-hidden whitespace-nowrap [mask-image:linear-gradient(to_right,#000_calc(100%-14px),transparent)]",
+          preview && "italic",
+        )}
+      >
         {label}
       </span>
       {active && closable ? <CloseIcon className="size-[11.48px] text-app-faint" /> : null}

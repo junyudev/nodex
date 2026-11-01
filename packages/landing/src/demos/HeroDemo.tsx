@@ -14,15 +14,20 @@ import {
 } from "../replica/Chat";
 import { InboxAllClear, InboxCard, InboxComposer, type CardPhase } from "../replica/Inbox";
 import { ModelMenu } from "../replica/ModelMenu";
-import { ColdStartReport, FilesProperty, PagePanel, TaskProperties } from "../replica/Page";
+import {
+  ColdStartReport,
+  FilesProperty,
+  PAGE_FILE_ICON,
+  PagePanel,
+  TaskProperties,
+} from "../replica/Page";
 import { AppSidebar, type SidebarChat } from "../replica/Sidebar";
 import { Stage } from "../replica/Stage";
-import { BrowserView } from "../replica/Viewers";
+import { PageFileView } from "../replica/Viewers";
 import { CAPTURE_DEMOS } from "./capture-demos";
 import { AppWindow, NewTab, PaneHeader, PaneTab, Tab, TabGroupContent } from "../replica/Window";
 import {
   BoardIcon,
-  GlobeIcon,
   HistoryIcon,
   InboxIcon,
   PageIcon,
@@ -155,9 +160,6 @@ function buildSchedule(): Schedule {
     { id: "cold:attach", at: cold + 3200 },
     { id: "cold:review", at: cold + 3600 },
     { id: "cold:answer", at: cold + 4100 },
-    { id: "aim:files", at: cold + 4900 },
-    { id: "press:files", at: cold + 5450 },
-    { id: "files", at: cold + 5600 },
     { id: "aim:report", at: cold + 6500 },
     { id: "press:report", at: cold + 7050 },
     { id: "report", at: cold + 7200 },
@@ -182,7 +184,7 @@ function buildSchedule(): Schedule {
 const SCHEDULE = buildSchedule();
 
 /** Presses that open something: each ends at the cue of the same name. */
-const OPENING_PRESSES: readonly string[] = ["chat", "subagent", "cold", "files", "report"];
+const OPENING_PRESSES: readonly string[] = ["chat", "subagent", "cold", "report"];
 
 /**
  * The hero story in three chapters, one per headline line. The headline buttons
@@ -293,23 +295,21 @@ export default function HeroDemo({ controls = true }: { readonly controls?: bool
     ? null
     : reached("aim:report")
       ? "file:report.html"
-      : reached("aim:files")
-        ? "files"
-        : reached("aim:cold") && !reached("cold")
-          ? "chat:Dashboard cold start"
-          : reached("aim:subagent") && !reached("cold")
-            ? "subagent"
-            : reached("aim:lead") && !reached("aim:subagent")
-              ? "lead"
-              : reached("aim:chat") && !reached("chat")
-                ? "chat:Passkey sign-in"
-                : aiming
-                  ? `decision:${aiming.id}`
-                  : reached("aim:pick") && !reached("pick")
-                    ? "pick"
-                    : reached("aim:model") && !reached("pick")
-                      ? `model:${PASSKEYS.id}`
-                      : null;
+      : reached("aim:cold") && !reached("cold")
+        ? "chat:Dashboard cold start"
+        : reached("aim:subagent") && !reached("cold")
+          ? "subagent"
+          : reached("aim:lead") && !reached("aim:subagent")
+            ? "lead"
+            : reached("aim:chat") && !reached("chat")
+              ? "chat:Passkey sign-in"
+              : aiming
+                ? `decision:${aiming.id}`
+                : reached("aim:pick") && !reached("pick")
+                  ? "pick"
+                  : reached("aim:model") && !reached("pick")
+                    ? `model:${PASSKEYS.id}`
+                    : null;
   const pressingMenu =
     (reached("press:model") && !reached("menu")) || (reached("press:pick") && !reached("pick"));
 
@@ -392,17 +392,18 @@ export default function HeroDemo({ controls = true }: { readonly controls?: bool
                 />
                 {reportOpen ? (
                   <NewTab>
-                    <Tab icon={<GlobeIcon className="size-4" />} label={REPORT.name} active />
+                    <Tab icon={PAGE_FILE_ICON.html} label={REPORT.name} active preview />
                   </NewTab>
                 ) : null}
               </>
             ),
             content: reportOpen ? (
-              <BrowserView address={["Dashboard cold start", "profile", REPORT.name]}>
+              // In a side group this narrow, the app folds the path's folders away to keep its controls.
+              <PageFileView page="Dashboard cold start" path={[REPORT.name]} html>
                 <div className="absolute inset-0 p-3">
                   <ColdStartReport />
                 </div>
-              </BrowserView>
+              </PageFileView>
             ) : (
               <ColdStartPage timeline={timeline} />
             ),
@@ -767,10 +768,10 @@ function ColdStartPage({ timeline }: { readonly timeline: Timeline }) {
           />
           <FilesProperty
             folders={reached("cold:attach") ? COLD_START_FILES : []}
-            open={reached("files")}
             fresh={reached("cold:attach")}
             source={{ chat: "Dashboard cold start", provider: "opencode" }}
             selected={reached("aim:report") ? REPORT.name : null}
+            opened={reached("report") ? [REPORT.name] : []}
           />
         </>
       }

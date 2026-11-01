@@ -174,7 +174,7 @@ reader moves one plan's lead from GPT-6.1 Sol to Claude Opus before starting it,
 cleared Inbox shows how it plans; **Every agent.** opens that chat, where the reader points at
 its Claude lead, then opens one of its GPT subagents in the Subagents tab beside it and watches it
 finish in Codex; **All local.** opens a chat with its Page
-in the side tab group, where the agent attaches its report and the reader opens it. Icons beside the last two lines show what they cover, and a line's short caption appears
+in the side tab group, where the agent attaches its report and the reader opens it beside the Page. Icons beside the last two lines show what they cover, and a line's short caption appears
 only while its chapter plays. The sentence beside the headline is the README's tagline; change
 both together.
 Sections then cover cross-provider delegation, every provider's models and plans in one menu,
@@ -190,8 +190,10 @@ Product demos are scripted re-enactments built from replicas of the interface, n
 - Every capability a demo shows must ship with the release the site is published with. Plan
   the release and the site together when a demo leads the app.
 - Split tab groups follow the app: each group's tabs sit in the titlebar above its own pane,
-  and a chat's Page opens in the side group. A file opened from a Page's Files opens as a new
-  tab in that Page's group: HTML in a browser tab that renders it, any other file in a file tab.
+  and a chat's Page opens in the side group. A Page's Files read as a file tree across the Page's
+  width, naming the chat that attached them once beneath it, as the app draws them. A File opened
+  there becomes a preview tab right after its Page, with the path back to the Page above it:
+  HTML renders as the page it is and an image shows in its viewer.
 - The cleared Inbox copies the app's own summary of how it plans: the model it is Suggested by,
   each Model guide family beside what is left of its plan's weekly budget, and the reader's
   Routing preferences, in the app's labels and with the guide's one-line notes from
