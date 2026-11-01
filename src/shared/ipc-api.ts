@@ -873,6 +873,14 @@ export interface IpcApi
     args: [routingContext: ContentRoutingContext, input: PrepareDroppedFilesInput];
     result: PrepareDroppedFilesResult;
   };
+  "page-file-html:admit": {
+    args: [input: import("./page-file-html").PageFileHtmlAdmissionInput];
+    result: import("./page-file-html").PageFileHtmlAdmissionResult;
+  };
+  "page-file-html:release": {
+    args: [input: { readonly grant: string }];
+    result: boolean;
+  };
   "files:read": {
     args: [routingContext: ContentRoutingContext, input: ReadFileBytesInput];
     result: FileBytes;

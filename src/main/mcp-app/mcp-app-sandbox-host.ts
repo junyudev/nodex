@@ -31,6 +31,13 @@ import {
   type McpAppPendingAttachment,
 } from "./mcp-app-webview-attachment-policy";
 
+import {
+  denyGuestPermissionsAndDownloads,
+  forceIsolatedGuestPreferences,
+  lockGuestNavigation,
+  trackGuestUserGesture,
+} from "../guests/isolated-guest-policy";
+
 const PENDING_ATTACHMENT_TTL_MS = 30_000;
 
 export class McpAppSandboxCaptureError extends Schema.TaggedError<McpAppSandboxCaptureError>()(
@@ -53,7 +60,7 @@ interface OwnedMcpAppAttachment extends McpAppPendingAttachment {
 
 interface AttachedMcpAppGuest extends OwnedMcpAppAttachment {
   guest: WebContents;
-  lastUserGestureAt?: number;
+  gesture?: ReturnType<typeof trackGuestUserGesture>;
   active: boolean;
   presentationRevision: number;
   releaseDestruction: () => void;
@@ -233,21 +240,6 @@ function rewriteSandboxRequestHeaders(
         : '"Linux"';
   setRequestHeader(rewritten, "sec-ch-ua-platform", platform);
   return rewritten;
-}
-
-function isSameSandboxDocument(expected: string, candidate: string): boolean {
-  try {
-    const expectedUrl = new URL(expected);
-    const candidateUrl = new URL(candidate);
-    return (
-      candidateUrl.protocol === expectedUrl.protocol &&
-      candidateUrl.host === expectedUrl.host &&
-      candidateUrl.pathname === expectedUrl.pathname &&
-      candidateUrl.search === expectedUrl.search
-    );
-  } catch {
-    return false;
-  }
 }
 
 function isBlockedSandboxSubframeUrl(value: string): boolean {
@@ -443,16 +435,8 @@ class McpAppSandboxControllerState {
   configureSession(partition: string): Session {
     const sandboxSession = this.#platform.fromPartition(partition);
     if (this.#configuredSessions.has(sandboxSession)) return sandboxSession;
-    const onWillDownload = (event: Electron.Event, item: Electron.DownloadItem): void => {
-      event.preventDefault();
-      item.cancel();
-    };
+    const onWillDownload = denyGuestPermissionsAndDownloads(sandboxSession);
     this.#configuredSessions.set(sandboxSession, onWillDownload);
-    sandboxSession.setPermissionCheckHandler(() => false);
-    sandboxSession.setPermissionRequestHandler((_webContents, _permission, callback) => {
-      callback(false);
-    });
-    sandboxSession.on("will-download", onWillDownload);
     sandboxSession.webRequest.onBeforeRequest((details, callback) => {
       callback({
         cancel: !isAllowedMcpAppSandboxRequestUrl(details.url, {
@@ -627,28 +611,16 @@ class McpAppSandboxHostState implements McpAppSandboxHost {
       });
     });
 
-    Object.assign(webPreferences, {
-      allowRunningInsecureContent: false,
-      contextIsolation: true,
-      devTools: true,
-      disableDialogs: true,
-      nodeIntegration: false,
-      nodeIntegrationInSubFrames: false,
-      plugins: false,
-      preload: this.#options.guestPreloadPath,
-      sandbox: true,
-      session: sandboxSession,
-      webSecurity: true,
-      webviewTag: false,
-    });
+    forceIsolatedGuestPreferences(
+      webPreferences,
+      rawParams,
+      sandboxSession,
+      this.#options.guestPreloadPath,
+    );
     if (/^codex-inline-visualization-[0-9a-f]{16}$/u.test(decision.source.subdomain)) {
       webPreferences.focusOnNavigation = false;
     }
     rawParams.partition = partition;
-    delete rawParams.nodeintegration;
-    delete rawParams.preload;
-    delete rawParams.webpreferences;
-    delete (webPreferences as WebPreferences & { preloadURL?: string }).preloadURL;
   }
 
   handleDidAttach(guest: WebContents): boolean {
@@ -699,6 +671,7 @@ class McpAppSandboxHostState implements McpAppSandboxHost {
     this.#disposed = true;
     this.#releaseDestruction();
     for (const attached of this.#attachedGuests.values()) {
+      attached.gesture?.release();
       attached.releaseDestruction();
       this.#coordinator.unregisterGuest(attached.guest.id);
       if (!attached.guest.isDestroyed()) attached.guest.close();
@@ -713,9 +686,7 @@ class McpAppSandboxHostState implements McpAppSandboxHost {
       (value) => value.sandboxId === sandboxId && (initId === undefined || value.initId === initId),
     );
     if (!attached || !attached.active || attached.guest.isDestroyed()) return false;
-    const timestamp = attached.lastUserGestureAt;
-    delete attached.lastUserGestureAt;
-    return timestamp !== undefined && performance.now() - timestamp <= 5_000;
+    return attached.gesture?.consume() ?? false;
   }
 
   captureImage(
@@ -758,6 +729,7 @@ class McpAppSandboxHostState implements McpAppSandboxHost {
       (value) => value.sandboxId === sandboxId && value.initId === initId,
     );
     if (!attached) return false;
+    attached.gesture?.release();
     attached.releaseDestruction();
     this.#attachedGuests.delete(attached.guest.id);
     this.#coordinator.unregisterGuest(attached.guest.id);
@@ -782,51 +754,17 @@ class McpAppSandboxHostState implements McpAppSandboxHost {
     if (revision === attached.presentationRevision) return attached.active === active;
     attached.presentationRevision = revision;
     attached.active = active;
-    delete attached.lastUserGestureAt;
+    attached.gesture?.clear();
     return true;
   }
 
   #installGuestPolicy(attached: AttachedMcpAppGuest): void {
     const { guest, sourceUrl } = attached;
-    guest.on("before-mouse-event", (_event, input) => {
-      if (!attached.active) return;
-      if (input.type !== "mouseDown") return;
-      attached.lastUserGestureAt = performance.now();
-      guest.focus();
-    });
-    guest.on("before-input-event", (_event, input) => {
-      if (!attached.active) return;
-      if (input.type !== "keyDown" || input.isAutoRepeat || !["Enter", " "].includes(input.key))
-        return;
-      attached.lastUserGestureAt = performance.now();
-    });
-    guest.setWindowOpenHandler(() => ({ action: "deny" }));
-    guest.on("will-navigate", (event, url) => {
-      const navigation = event as Electron.Event & { url?: string };
-      const candidate = navigation.url ?? url;
-      if (!isSameSandboxDocument(sourceUrl, candidate)) event.preventDefault();
-    });
-    guest.on("will-frame-navigate", (event) => {
-      const navigation = event as Electron.Event & {
-        isMainFrame: boolean;
-        url: string;
-      };
-      const shouldBlock = navigation.isMainFrame
-        ? !isSameSandboxDocument(sourceUrl, navigation.url)
-        : isBlockedSandboxSubframeUrl(navigation.url);
-      if (shouldBlock) event.preventDefault();
-    });
-    guest.on("will-redirect", (event, url, _isInPlace, isMainFrame) => {
-      const redirect = event as Electron.Event & {
-        isMainFrame?: boolean;
-        url?: string;
-      };
-      const candidate = redirect.url ?? url;
-      const redirectIsMainFrame = redirect.isMainFrame ?? isMainFrame;
-      const shouldBlock = redirectIsMainFrame
-        ? !isSameSandboxDocument(sourceUrl, candidate)
-        : isBlockedSandboxSubframeUrl(candidate);
-      if (shouldBlock) event.preventDefault();
+    attached.gesture = trackGuestUserGesture(guest, () => attached.active);
+    lockGuestNavigation({
+      guest,
+      documentUrl: sourceUrl,
+      allowSubframe: (url) => !isBlockedSandboxSubframeUrl(url),
     });
     guest.on("did-fail-load", (_event, code, description, url, isMainFrame) => {
       if (code === -3) return;
@@ -856,6 +794,7 @@ class McpAppSandboxHostState implements McpAppSandboxHost {
       this.#showContextMenu(attached.ownerWebContents, guest);
     });
     attached.releaseDestruction = this.#coordinator.rendererDestruction.subscribe(guest, () => {
+      attached.gesture?.release();
       this.#attachedGuests.delete(guest.id);
       this.#coordinator.unregisterGuest(guest.id);
     });

@@ -270,7 +270,7 @@ Direct native destruction listeners outside this owner are forbidden by the Main
   of the Nodex Profile. Profile-owned runtime resources and desktop plugin identities remain
   separate. Core Thread bindings admit native conversations into Nodex; a shared account home
   does not grant external conversations a Profile binding. See [Configuration](CONFIGURATION.md#codex-home).
-- Browser, MCP App, Computer Use, Terminal, Git, worktree, and filesystem runtime aggregates.
+- Browser, MCP App, offline Page File preview, Computer Use, Terminal, Git, worktree, and filesystem runtime aggregates.
 - Revisioned Window Session catalog persistence and restore policy.
 
 Main is an Adapter, coordinator, and runtime host. It may bind Profile/Library/Project/Session identity, perform host preflight, and coordinate external effects around a Core command. It must not open Nodex's SQLite, reconstruct a semantic transaction, infer authorization from renderer state, or provide a fallback data authority when Core is unavailable. Read-only native Agent format inspection belongs to a version-bound platform Adapter and never substitutes for Core-owned Thread bindings.
@@ -1293,7 +1293,7 @@ These invariants cross subsystem boundaries. Narrower domain and feature invaria
 17. Window Session Scenes own presentation only. Durable content, Codex conversation state, Browser guests, Terminals, and collaborative sessions retain their deeper owners across React unmounts.
 18. Generated app-server protocol types are the raw Codex contract. Local conversation models are explicit canonical extensions or derived projections, never parallel guesses at protocol fields.
 19. Each Codex conversation has one effective owner peer. Main and window managers publish canonical mutations only while they own that stream; derived presentations and follower-local history reads cannot become competing publications.
-20. Browser and MCP App guests are sandboxed Main-owned runtimes. Renderer-authored preferences, DOM attributes, or URLs cannot create or broaden guest authority.
+20. Browser, MCP App and Page File preview guests are sandboxed Main-owned runtimes. Renderer-authored preferences, DOM attributes, or URLs cannot create or broaden guest authority. Page File preview admission and offline resource isolation are specified in [Security](SECURITY.md#offline-page-file-html-previews).
 21. There is no catch-all persistence or generic mutation boundary. New durable semantics enter an owning deep Module and its typed Interface.
 22. The Library owns File identity. Pages own relationships and paths; structural moves and copies preserve File IDs without changing shared content or global metadata. File and Page relationship identities remain separate.
 23. Native clipboard descriptors and Main lifecycle state are routing evidence only. Core's durable bundle and cut claim are the sole structural copy and move authority; every non-authoritative path remains portable content.

@@ -317,6 +317,8 @@ type QueryEndpointPolicy =
   | "worktrees:thread:availability";
 
 type ControlEndpointPolicy =
+  | "page-file-html:admit"
+  | "page-file-html:release"
   | "agent-runtime:session:observe"
   | "agent-runtime:session:unobserve"
   | "codex:visualization:consume-gesture"

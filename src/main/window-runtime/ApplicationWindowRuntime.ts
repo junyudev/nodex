@@ -24,6 +24,7 @@ import type {
 import { resolveBundledElectronPreload } from "../electron-preload-path";
 import { ComposerAppshotRuntime } from "../host-runtime/ComposerAppshotRuntime";
 import type { DesktopNotificationRuntime } from "../host-runtime/DesktopNotificationRuntime";
+import type { PageFileHtmlRuntime } from "../host-runtime/PageFileHtmlRuntime";
 import type { McpAppSandboxRuntime } from "../host-runtime/McpAppSandboxRuntime";
 import { safeSendToWindow } from "../ipc-safe-send";
 import { getLogger } from "../logging/logger";
@@ -48,6 +49,7 @@ export interface ApplicationWindowRuntimeOptions {
     ) => Effect.Effect<void>;
   };
   readonly desktopNotifications: DesktopNotificationRuntime["Service"];
+  readonly pageFileHtml: PageFileHtmlRuntime["Service"];
   readonly mcpAppSandbox: McpAppSandboxRuntime["Service"];
   readonly platform: NodeJS.Platform;
   readonly rendererClients: RendererClientRuntimeService;
@@ -92,6 +94,7 @@ export const live = (
 
         appshots.observeWindow(window);
         const webContentsId = window.webContents.id;
+        const pageFileHtmlHost = options.pageFileHtml.createHost(window.webContents);
         const mcpAppSandboxHost = options.mcpAppSandbox.createHost(window.webContents);
         const pendingBrowserAttachments = new Map<number, BrowserAuthorizedAttachment>();
 
@@ -106,6 +109,10 @@ export const live = (
             preload?: string;
             webpreferences?: string;
           };
+          if (pageFileHtmlHost.handlesPartition(webviewParams.partition)) {
+            pageFileHtmlHost.handleWillAttach(event, webPreferences, webviewParams);
+            return;
+          }
           if (mcpAppSandboxHost.handlesPartition(webviewParams.partition)) {
             mcpAppSandboxHost.handleWillAttach(event, webPreferences, webviewParams);
             return;
@@ -179,6 +186,7 @@ export const live = (
           delete (webPreferences as typeof webPreferences & { preloadURL?: string }).preloadURL;
         });
         window.webContents.on("did-attach-webview", (_event, guest) => {
+          if (pageFileHtmlHost.handleDidAttach(guest)) return;
           if (mcpAppSandboxHost.handleDidAttach(guest)) return;
           const pending = consumePendingBrowserWebviewAttachment(
             pendingBrowserAttachments,

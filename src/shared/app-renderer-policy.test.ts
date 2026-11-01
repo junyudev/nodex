@@ -22,8 +22,22 @@ describe("top-level renderer CSP", () => {
     expect(csp).toContain("https://prodregistryv2.org");
     expect(csp).toContain("img-src 'self' app: blob: data: https:");
     expect(csp).toContain("media-src 'self' app: blob: data:");
-    expect(csp).not.toContain("file:");
+    expect(csp.split(/[;\s]+/u)).not.toContain("file:");
     expect(csp).not.toContain("nodex-asset:");
+  });
+
+  test("embeds Page File guests without granting byte-fetch capability", () => {
+    const directives = new Map(
+      buildTopLevelRendererCsp({ mode: "production" })
+        .split("; ")
+        .map((directive) => {
+          const [name, ...sources] = directive.split(" ");
+          return [name, sources];
+        }),
+    );
+    expect(directives.get("frame-src")).toContain("nodex-page-file:");
+    expect(directives.get("child-src")).toContain("nodex-page-file:");
+    expect(directives.get("connect-src")).not.toContain("nodex-page-file:");
   });
 
   test("keeps authenticated WebSocket connections in Main", () => {

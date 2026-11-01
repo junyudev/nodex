@@ -59,6 +59,7 @@ import * as StructuralClipboardIpc from "../ipc/handlers/StructuralClipboardIpc"
 import * as NativeShellIpc from "../ipc/handlers/NativeShellIpc";
 import * as NativeResourceIpc from "../ipc/handlers/NativeResourceIpc";
 import * as PageSearchIpc from "../ipc/handlers/PageSearchIpc";
+import * as PageFileHtmlIpc from "../ipc/handlers/PageFileHtmlIpc";
 import * as FilesIpc from "../ipc/handlers/FilesIpc";
 import * as ProjectWorkspaceIpc from "../ipc/handlers/ProjectWorkspaceIpc";
 import * as InboxIpc from "../ipc/handlers/InboxIpc";
@@ -139,6 +140,7 @@ export const live = Layer.mergeAll(
   NativeResourceIpc.live,
   PageSearchIpc.live({}),
   FilesIpc.live,
+  PageFileHtmlIpc.live,
   ProjectWorkspaceIpc.live,
   InboxIpc.live,
   ProjectionDeliveryIpc.live,

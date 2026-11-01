@@ -138,6 +138,7 @@ describe("MCP App sandbox host Electron boundary", () => {
             sandbox: preferences.sandbox,
             contextIsolation: preferences.contextIsolation,
             nodeIntegration: preferences.nodeIntegration,
+            nodeIntegrationInWorker: preferences.nodeIntegrationInWorker,
             storagePath: guest.session.getStoragePath(),
             url: guest.getURL(),
             urlBeforeNavigation,
@@ -158,6 +159,7 @@ describe("MCP App sandbox host Electron boundary", () => {
         sandbox: true,
         contextIsolation: true,
         nodeIntegration: false,
+        nodeIntegrationInWorker: false,
         storagePath: null,
       });
       expect(guestFacts.urlBeforeNavigation).toMatch(/^nodex-mcp-sandbox:/u);

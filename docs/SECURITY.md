@@ -76,11 +76,52 @@ import accepts regular files, rejects symlinks and special nodes and preserves
 its bounded per-File and batch limits. Save destinations never reinterpret a
 Page logical path as a host filesystem path.
 
-Scripts and binaries remain inert managed content. Execution requires explicit
-materialization in a workspace. Backup restore hashes managed bytes before
-publication; collection is serialized with snapshots. Queued and submitted
-conversation inputs retain exact bytes independently of a source File and are
-read through the authenticated Profile and exact execution identity boundary.
+Managed content remains inert except for HTML, CSS and JavaScript in the isolated,
+offline Page File preview guest. Native execution requires explicit materialization
+in a workspace. Backup restore hashes managed bytes before publication; collection
+is serialized with snapshots. Queued and submitted conversation inputs retain exact
+bytes independently of a source File and are read through the authenticated
+Profile and exact execution identity boundary.
+
+## Offline Page File HTML previews
+
+Main admits a preview only for a current File related to its Page and identified
+as HTML by recorded MIME or its logical path. Each admission has a random
+`nodex-page-file://<grant>/<logical-path>` origin, a fresh non-persistent Session,
+and one owning window/renderer generation. The application renderer receives only
+an ephemeral URL and partition claim. Main validates that claim at attachment;
+DOM attributes never grant authority. Reports have no preload, Node, application
+bridge, native tools, nested webviews, permissions, popups or downloads.
+
+The guest loads the original document. Relative URLs resolve within that Page's
+explicit File entries through Core, including ordinary parent-directory URL
+resolution within the Page namespace. A body-only document uses its default name
+and has no siblings. There is no Library-wide lookup, arbitrary File-id lookup,
+default-name fallback, descendant Page access or directory listing. Core
+revalidates current Page membership and exact File version on each request, and
+Main rejects entries replaced during byte reads. Recorded MIME and `nosniff`
+prevent a filename from upgrading bytes into executable HTML.
+
+Offline access is enforced twice: every response carries an immutable header CSP
+restricting scripts, styles and connections to the exact guest origin (with local
+image/font/media data or blob exceptions), and the Session request gate cancels
+all other origins and schemes, including localhost, HTTP(S), WebSockets, host
+files, application resources and other grants. Non-proxied WebRTC UDP is disabled;
+a fixed unreachable proxy without direct or loopback bypass blocks TURN TCP and
+speculative connections, which bypass the request gate. Main verifies proxy
+resolution before admitting a guest. DNS prefetch is disabled. Frames, workers,
+objects, base URLs and form submissions are denied. The application renderer can
+embed the guest scheme but cannot fetch it. A credential-free HTTP(S) link can open in the
+system browser only after single-use native input in that exact guest.
+
+Only GET/HEAD reads are served. Paths decode once and reject encoded separators,
+backslashes, empty/dot segments and portable-path limit violations before Core
+resolution. HTML is limited to 5,000,000 bytes; each other resource to 64 MiB;
+each admission to 256 MiB, 2,000 requests and eight concurrent reads. Responses
+are never cached. Release, owner navigation or renderer loss, Store replacement
+and application shutdown revoke admission and interrupt pending reads. Closing a
+preview discards its origin storage; a later preview always gets a fresh Session.
+JavaScript can still consume CPU/memory or display deceptive report content.
 
 ## Agent attribution credentials
 

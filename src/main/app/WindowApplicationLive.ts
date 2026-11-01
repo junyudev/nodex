@@ -110,6 +110,10 @@ import { ApplicationInitializationRuntime } from "../host-runtime/ApplicationIni
 import * as WindowSessionCatalog from "../window-runtime/WindowSessionCatalog";
 import { WindowRuntime } from "../window-runtime/WindowRuntime";
 import { live as windowShutdownLive, WindowShutdown } from "../window-runtime/WindowShutdown";
+import {
+  PageFileHtmlRuntime,
+  live as pageFileHtmlRuntimeLive,
+} from "../host-runtime/PageFileHtmlRuntime";
 import { MainConfig } from "./MainConfig";
 import { NativeNotificationAuthorization } from "../platform/electron/NativeNotificationAuthorization";
 import { MainCleanup } from "./MainCleanup";
@@ -207,6 +211,7 @@ const applicationWindows = Layer.unwrap(
     const desktopNotifications = yield* DesktopNotificationRuntime;
     const config = yield* MainConfig;
     const mcpAppSandbox = yield* McpAppSandboxRuntime;
+    const pageFileHtml = yield* PageFileHtmlRuntime;
     const rendererClients = yield* RendererClientRuntime;
     const shell = yield* ApplicationWindowShellRuntime;
     const windows = yield* WindowRuntime;
@@ -216,6 +221,7 @@ const applicationWindows = Layer.unwrap(
       rendererConversations,
       desktopNotifications,
       mcpAppSandbox,
+      pageFileHtml,
       platform: config.platform as NodeJS.Platform,
       rendererClients,
       rendererLoaded: initialization.rendererLoaded,
@@ -230,6 +236,7 @@ const applicationWindows = Layer.unwrap(
       desktopNotifications,
       rendererClients,
       mcpAppSandbox,
+      pageFileHtmlRuntimeLive,
       composerAppshotRuntimeLive,
       windowShutdownLive(),
     ),
@@ -301,6 +308,7 @@ export const live: Layer.Layer<
   | ElectronPrivacy
   | ElectronClipboard
   | McpAppSandboxRuntime
+  | PageFileHtmlRuntime
   | RemoteHostedPipRuntime
   | RendererClientRuntime
   | WorkbenchAgentBridge

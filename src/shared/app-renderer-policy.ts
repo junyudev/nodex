@@ -75,8 +75,8 @@ export function buildTopLevelRendererCsp(input: {
     "media-src 'self' app: blob: data:",
     "worker-src 'self' blob:",
     `connect-src 'self' ${APP_FILESYSTEM_ORIGIN} blob: https://*.ingest.sentry.io https://*.ingest.us.sentry.io ${STATSIG_CONNECT_ORIGINS.join(" ")} ${developmentConnections.join(" ")}`.trim(),
-    "frame-src 'self' blob: nodex-mcp-sandbox: https: http:",
-    "child-src 'self' blob: nodex-mcp-sandbox: https: http:",
+    "frame-src 'self' blob: nodex-mcp-sandbox: nodex-page-file: https: http:",
+    "child-src 'self' blob: nodex-mcp-sandbox: nodex-page-file: https: http:",
   ];
   return directives.join("; ");
 }
