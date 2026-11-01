@@ -54,3 +54,11 @@ describe("app filesystem URL codec", () => {
     expect(restoreNativeAppFilesystemPath("/tmp/image.png")).toBe("/tmp/image.png");
   });
 });
+
+test.each(["C:\\media\\image.png", "D:/media/image.png", "\\\\server\\share\\image.png"])(
+  "keeps Windows media on the native protocol in development: %s",
+  (path) => {
+    expect(buildEnvironmentAwareFilesystemUrl(path, "http:")).toBe(buildAppFilesystemUrl(path));
+    expect(buildEnvironmentAwareFilesystemUrl(path, "https:")).toBe(buildAppFilesystemUrl(path));
+  },
+);

@@ -32,11 +32,18 @@ export function buildAppFilesystemUrl(filePath: string): string {
   return `${APP_FILESYSTEM_ORIGIN}${buildAppFilesystemPath(filePath)}`;
 }
 
-/** Used only by resource surfaces whose development owner is Vite. */
+/** Vite's Windows /@fs responder cannot serve files on a different drive. */
 export function buildEnvironmentAwareFilesystemUrl(
   filePath: string,
   rendererProtocol: string,
 ): string {
+  if (
+    WINDOWS_DRIVE_PATH.test(filePath) ||
+    RENDERER_WINDOWS_DRIVE_PATH.test(filePath) ||
+    WINDOWS_UNC_PATH.test(filePath) ||
+    RENDERER_UNC_PATH.test(filePath)
+  )
+    return buildAppFilesystemUrl(filePath);
   return rendererProtocol === "http:" || rendererProtocol === "https:"
     ? buildAppFilesystemPath(filePath)
     : buildAppFilesystemUrl(filePath);

@@ -266,8 +266,10 @@ describe("app protocol dispatch and origin gate", () => {
     const response = await handler(new Request(buildAppFilesystemUrl(imagePath)));
     const staticResponse = await handler(new Request("app://-/assets/main.js"));
     expect(calls).toEqual([
-      pathToFileURL(imagePath).toString(),
-      pathToFileURL(path.join(rendererRoot, "assets", "main.js")).toString(),
+      pathToFileURL(fs.realpathSync.native(imagePath)).toString(),
+      pathToFileURL(
+        fs.realpathSync.native(path.join(rendererRoot, "assets", "main.js")),
+      ).toString(),
     ]);
     await expect(response.text()).resolves.toBe("windows");
     await expect(staticResponse.text()).resolves.toBe("windows");
@@ -438,4 +440,26 @@ test("host assets require an opaque Main-issued capability", async () => {
   const nonImage = await handler(new Request(buildAppHostAssetUrl("authorized-text")));
   expect(nonImage.status).toBe(404);
   expect(calls).toEqual(["authorized-image", "forged", "authorized-text"]);
+});
+
+test("Windows file responses resolve a static symlink before native fetch and retain its addressed MIME", async () => {
+  const { rendererRoot } = createFixture();
+  const target = createTemporaryFile("bytes.bin", "image bytes");
+  const alias = path.join(rendererRoot, "alias.png");
+  fs.symlinkSync(target, alias);
+  const calls: string[] = [];
+  const handler = createAppProtocolHandler({
+    rendererRoot,
+    platform: "win32",
+    netFetch: async (url) => {
+      calls.push(url);
+      return new Response("image bytes", {
+        headers: { "Content-Type": "application/octet-stream" },
+      });
+    },
+  });
+  const response = await handler(new Request("app://-/alias.png"));
+  expect(calls).toEqual([pathToFileURL(fs.realpathSync.native(target)).href]);
+  expect(response.headers.get("Content-Type")).toBe("image/png");
+  expect(await response.text()).toBe("image bytes");
 });
