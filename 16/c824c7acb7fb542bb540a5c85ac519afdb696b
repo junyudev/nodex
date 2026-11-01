@@ -1,0 +1,27 @@
+docs/release-windows.md
+  s_9ad21099c264dd::t_f10e039f20b2bb 64-66
+scripts/ci/probe-windows-installer.ts
+  s_9ad21099c264dd::t_979e425a332f6f 142
+scripts/windows-pe.d.mts
+  s_9ad21099c264dd::t_d0074ef1a3ad13 6
+scripts/windows-pe.mjs
+  s_9ad21099c264dd::t_f65bc37f35b73d 8,21,27-33,44,62-69
+scripts/windows-pe.test.ts
+  s_9ad21099c264dd::t_7d087103261ce7 85-98
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "16c824c7acb7fb542bb540a5c85ac519afdb696b",
+  "prompts": {},
+  "sessions": {
+    "s_9ad21099c264dd": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1964f-2f03-7680-8da9-7c6d6ce01903",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
