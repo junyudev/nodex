@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 pub(super) mod history;
@@ -91,7 +91,7 @@ pub struct BlockTransferMetrics {
 }
 
 #[derive(Default)]
-struct BlockTransferMetricSet {
+pub(super) struct BlockTransferMetricSet {
     page_parent_prepare: DurationMetric,
     page_parent_reconstruct: DurationMetric,
     page_parent_decode: DurationMetric,
@@ -100,37 +100,32 @@ struct BlockTransferMetricSet {
     page_parent_apply: DurationMetric,
 }
 
-static BLOCK_TRANSFER_METRICS: OnceLock<BlockTransferMetricSet> = OnceLock::new();
-
-fn metrics() -> &'static BlockTransferMetricSet {
-    BLOCK_TRANSFER_METRICS.get_or_init(BlockTransferMetricSet::default)
-}
-
-pub(super) fn metric_snapshot() -> BlockTransferMetrics {
-    let metrics = metrics();
-    BlockTransferMetrics {
-        page_parent_prepare: metrics.page_parent_prepare.snapshot(),
-        page_parent_reconstruct: metrics.page_parent_reconstruct.snapshot(),
-        page_parent_decode: metrics.page_parent_decode.snapshot(),
-        page_parent_transform: metrics.page_parent_transform.snapshot(),
-        page_parent_encode: metrics.page_parent_encode.snapshot(),
-        page_parent_apply: metrics.page_parent_apply.snapshot(),
+impl BlockTransferMetricSet {
+    pub(super) fn snapshot(&self) -> BlockTransferMetrics {
+        BlockTransferMetrics {
+            page_parent_prepare: self.page_parent_prepare.snapshot(),
+            page_parent_reconstruct: self.page_parent_reconstruct.snapshot(),
+            page_parent_decode: self.page_parent_decode.snapshot(),
+            page_parent_transform: self.page_parent_transform.snapshot(),
+            page_parent_encode: self.page_parent_encode.snapshot(),
+            page_parent_apply: self.page_parent_apply.snapshot(),
+        }
     }
-}
 
-fn record_page_parent_prepare(
-    total: Duration,
-    reconstruct: Duration,
-    decode: Duration,
-    transform: Duration,
-    encode: Duration,
-) {
-    let metrics = metrics();
-    metrics.page_parent_prepare.record(total);
-    metrics.page_parent_reconstruct.record(reconstruct);
-    metrics.page_parent_decode.record(decode);
-    metrics.page_parent_transform.record(transform);
-    metrics.page_parent_encode.record(encode);
+    fn record_page_parent_prepare(
+        &self,
+        total: Duration,
+        reconstruct: Duration,
+        decode: Duration,
+        transform: Duration,
+        encode: Duration,
+    ) {
+        self.page_parent_prepare.record(total);
+        self.page_parent_reconstruct.record(reconstruct);
+        self.page_parent_decode.record(decode);
+        self.page_parent_transform.record(transform);
+        self.page_parent_encode.record(encode);
+    }
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -202,6 +197,7 @@ pub(super) struct PreparedTransferReadSet {
 }
 
 pub(super) struct PreparedPageParentTransfer {
+    metrics: Arc<BlockTransferMetricSet>,
     source_authority: DocumentAuthorityRow,
     source_engine: YrsDocumentEngine,
     source_materialization: DocumentMaterialization,
@@ -880,7 +876,9 @@ pub(super) fn requires_preparation(
     ))
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn prepare_for_apply(
+    metrics: &Arc<BlockTransferMetricSet>,
     connection: &Connection,
     cache: Option<&Arc<Mutex<crate::document::DocumentRuntimeCache>>>,
     context: &BoundModuleContext,
@@ -919,6 +917,7 @@ pub(super) fn prepare_for_apply(
         LibraryBlockTransferTarget::Library { .. } | LibraryBlockTransferTarget::DataSource { .. }
     ) {
         return prepare_page_parent_transfer(
+            metrics,
             connection,
             context,
             library_id,
@@ -3259,6 +3258,7 @@ fn apply_page_ownership_copy(
 }
 
 fn prepare_page_parent_transfer(
+    metrics: &Arc<BlockTransferMetricSet>,
     connection: &Connection,
     context: &BoundModuleContext,
     library_id: &str,
@@ -3557,7 +3557,7 @@ fn prepare_page_parent_transfer(
         .and_then(|prepared| prepared.placeholder_block_id.clone());
     let source_update = source_preparation.map(|prepared| prepared.update);
     let encode_duration = encode_started_at.elapsed();
-    record_page_parent_prepare(
+    metrics.record_page_parent_prepare(
         prepare_started_at.elapsed(),
         reconstruct_duration,
         decode_duration,
@@ -3565,6 +3565,7 @@ fn prepare_page_parent_transfer(
         encode_duration,
     );
     Ok(PreparedPageParentTransfer {
+        metrics: Arc::clone(metrics),
         source_authority,
         source_engine,
         source_materialization,
@@ -4527,7 +4528,8 @@ fn apply_page_parent_transfer(
                         event_sequence,
                         &now,
                     )?;
-                    metrics()
+                    prepared
+                        .metrics
                         .page_parent_apply
                         .record(apply_started_at.elapsed());
                     Ok(())
