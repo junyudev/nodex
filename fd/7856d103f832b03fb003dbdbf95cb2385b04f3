@@ -1,0 +1,158 @@
+src/shared/ipc-api.ts
+  s_4b207bbe152280::t_c055b51a6fa60c 1039-1040
+  s_7095a5752114b9::t_1c1f4413cebf07 1041-1042
+docs/product-specs/database-pages-and-views-behavior.md
+  s_7095a5752114b9::t_4d67528ab04845 81-83
+crates/nodex-core/src/workspace/page_chat.rs
+  s_e17141fc7a66d9::t_1f19c5068d6846 23,92-132,144,163,176-193
+crates/nodex-core/src/workspace/session_lifecycle.rs
+  s_e17141fc7a66d9::t_338dff7c002da4 10,56,145,349,439,467,478,482-500,506-515
+CONTEXT.md
+  s_7095a5752114b9::t_15dbe5198eb54b 539
+  s_7095a5752114b9::t_4d67528ab04845 403-404,535-538
+crates/nodex-core/src/database/mutation.rs
+  s_4b207bbe152280::t_90c15b5963933b 298-329
+src/renderer/components/workbench/use-workbench-panel-projection.tsx
+  s_5a199af1eba36e::t_aebd657839d6c6 118,268,722,817
+packages/core-protocol/src/compatibility.generated.ts
+  s_5a199af1eba36e::t_8bd7ed511c543d 24
+tests/e2e/workbench-shell-navigation.spec.ts
+  s_4b207bbe152280::t_ab9a478a17b8ef 266
+src/renderer/lib/page-chat-actions.ts
+  s_e17141fc7a66d9::t_a1a83ee90de0a5 56,75,77,88,106
+CHANGELOG.md
+  s_7095a5752114b9::t_4d67528ab04845 24
+docs/product-specs/nfm-editor-prompt-block-behavior.md
+  s_7095a5752114b9::t_4d67528ab04845 67-68
+src/main/ipc/handlers/ProjectWorkspaceIpc.ts
+  s_4b207bbe152280::t_c4fb564f3f5175 203-205
+crates/nodex-core/src/workspace/agent_runtime_cleanup.rs
+  s_e17141fc7a66d9::t_66b532e4221992 122
+src/main/ipc/handlers/ProjectWorkspaceIpc.test.ts
+  s_7095a5752114b9::t_38f44a88e71ee2 220,226
+src/main/project-application/ProjectWorkspace.node.test.ts
+  s_4b207bbe152280::t_78390f2c5def53 837-839,867-874
+src/renderer/components/workbench/workbench-library-page-surface.tsx
+  s_4b207bbe152280::t_4505000aae1015 52
+scripts/scenarios/adapters/core-client-seed-adapter.ts
+  s_4b207bbe152280::t_d5eca994f0be07 412,416-418
+src/renderer/lib/use-workbench-session-commands.ts
+  s_e17141fc7a66d9::t_4f6f7b694c8ecd 78,84,344-353,475,481,551,1519
+src/renderer/components/workbench/use-page-chat-send-port.ts
+  s_4b207bbe152280::t_9c23e85f6de940 37,55,177,204
+scripts/scenarios/scenarios/sidebar-chat-status.ts
+  s_4b207bbe152280::t_538a8938b15e90 156
+crates/nodex-core/src/workspace/session_mutation.rs
+  s_8df07eefe56282::t_9f231ce465ba4c 152-164
+src/renderer/components/workbench/workbench-runtime.tsx
+  s_4b207bbe152280::t_b98898470a0f8b 4528,4679
+src/renderer/lib/page-chat-runtime.ts
+  s_5a199af1eba36e::t_66e9efce3a0dbc 17-23,33-37,58-62
+src/renderer/components/workbench/workbench-shell.library-shell-navigation.test.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 841
+  s_7095a5752114b9::t_0acc75fb438dd9 891,893-896
+src/shared/ipc-endpoint-policy.ts
+  s_4b207bbe152280::t_46bef159c10316 717
+packages/core-protocol/src/generated.ts
+  s_5a199af1eba36e::t_b1344566fc54f7 7196,7204,7232,9148-9151,9829,9837,9865
+src/renderer/components/workbench/workbench-page-stage-panel.tsx
+  s_4b207bbe152280::t_165ac6fbe9b601 136,173-176,265
+src/renderer/lib/page-chat-actions.node.test.ts
+  s_e17141fc7a66d9::t_3581c9b8a9ccf5 4,26,49-50,67-68,70,74-75,84,92,100,108,116,118-119,124,129,132,140,145-146,149,151,158
+crates/nodex-core/src/workspace/inbox_tests.rs
+  s_5a199af1eba36e::t_2973ea18be3fd1 4170-4180,4196,4214,5533-5555,5587
+scripts/scenarios/scenarios/page-related-chat-activity.ts
+  s_4b207bbe152280::t_34d06e46f4ae79 118,131
+crates/nodex-core/src/database/property_semantics.rs
+  s_7095a5752114b9::t_1c1f4413cebf07 15
+scripts/scenarios/adapters/renderer-ipc-seed-adapter.ts
+  s_4b207bbe152280::t_32312cae94fdad 531,537-539
+crates/nodex-core-contracts/src/workspace.rs
+  s_5a199af1eba36e::t_c3879fd4048365 19,1635,1644,1674,2053,2057-2060
+packages/core-protocol/openapi.json
+  s_5a199af1eba36e::t_eefe7f1a65f529 30018-30019,30058-30059,30182-30183,38247,38264-38282,41066-41067,41106-41107,41230-41231
+scripts/scenarios/scenarios/inbox-triage.ts
+  s_4b207bbe152280::t_458879b0147fb8 213,460,473,486,499
+scripts/scenarios/scenarios/sidebar-custom-sections.ts
+  s_4b207bbe152280::t_6ebfc1ca981ad2 83,97
+src/main/core-client/profile-clone.node.test.ts
+  s_4b207bbe152280::t_9c3714f036b19b 284
+crates/nodex-core/src/database/mod.rs
+  s_4b207bbe152280::t_e90f111a7fc153 50
+crates/nodex-core/src/workspace/agent_runtime_binding.rs
+  s_4b207bbe152280::t_5387e59747348a 156,203
+scripts/scenarios/contracts.ts
+  s_4b207bbe152280::t_f3d2ae1d239813 117,120
+src/renderer/components/workbench/workbench-panel-surface.tsx
+  s_4b207bbe152280::t_629a2cf0a06f0a 66,110-113,188,383
+src/renderer/components/workbench/use-page-chat-send-port.test.tsx
+  s_5a199af1eba36e::t_94a1447f2818c2 9,65,78-80,100,107-109,129-145
+crates/nodex-core/src/workspace/page_handoff_tests.rs
+  s_4b207bbe152280::t_1260873236b08c 1-396
+scripts/scenarios/scenarios/landing-showcase.ts
+  s_4b207bbe152280::t_923d44b74a0333 57
+src/main/project-application/ProjectWorkspace.ts
+  s_8df07eefe56282::t_81c5c99e5b83ab 207-210,502-506,541-557,1642-1647
+src/renderer/lib/page-coordination-runtime.jsdom.test.ts
+  s_4b207bbe152280::t_eceb98130e7531 4,105,110
+scripts/scenarios/scenarios/sidebar-linked-page-status.ts
+  s_4b207bbe152280::t_71d42bced5f02c 203
+crates/nodex-core/src/workspace/mod.rs
+  s_5a199af1eba36e::t_067a7f3ef5e68c 25-26
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fd7856d103f832b03fb003dbdbf95cb2385b04f3",
+  "prompts": {},
+  "sessions": {
+    "s_4b207bbe152280": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a192d7-3b7e-70a1-8a29-08437fdb618b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_4b53f1a3b989a8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ac35893e-6c76-4a19-a11c-73b4be807a93",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_5a199af1eba36e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a192d6-975e-7d61-a4a2-907ce1bb9490",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_7095a5752114b9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ff5dab8b-6889-416a-8884-d0ab6d447946",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": null
+    },
+    "s_8df07eefe56282": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a192d1-c217-7fa1-8aa5-21543f076f34",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_e17141fc7a66d9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a192d7-321e-7462-8802-27b818b2b6ba",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
