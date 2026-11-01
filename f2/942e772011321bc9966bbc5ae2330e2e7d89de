@@ -1,0 +1,21 @@
+crates/nodex-core/src/library/block_transfer.rs
+  s_ef93f85750414a::t_97a832e4f9f98b 3,94,103-112,115-128,200,879,881,920,3261,3560,3568,4531-4532
+crates/nodex-core/src/library/mod.rs
+  s_ef93f85750414a::t_c09af3414ec185 97,118,151,156,605,620,4573-4577,4605-4614,4656-4660
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f2942e772011321bc9966bbc5ae2330e2e7d89de",
+  "prompts": {},
+  "sessions": {
+    "s_ef93f85750414a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1975c-d042-74f3-8106-b6eb6f221778",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
