@@ -1,0 +1,94 @@
+packages/agent-runtime/src/project/ProjectService.ts
+  s_8b58b89ca1a92a::t_c1a60d6d117fec 411-423,447
+packages/agent-runtime/src/orchestration-v2/Adapters/CodexAdapterV2.ts
+  s_8b58b89ca1a92a::t_c1a60d6d117fec 1,351,1141-1174,5668-5670,5683-5684,5686,6561-6562,6568-6573,6577-6598,6691-6692,6796-6797,7087,7091-7092,8047-8050,8761-8762
+packages/agent-runtime/src/orchestration-v2/RunRecovery.integration.test.ts
+  s_b9dac8f6ee16dd::t_a31a175ad3c969 1-955
+packages/agent-runtime/src/mcp/toolkits/task/tools.ts
+  s_8b58b89ca1a92a::t_c1a60d6d117fec 8,54-59,63
+packages/agent-runtime/src/orchestration-v2/ProviderRuntimeRecoveryService.ts
+  s_8b58b89ca1a92a::t_c1a60d6d117fec 1,12,198,200-214,362,379,403-408,510-513,646,650-653,789
+packages/agent-runtime/src/orchestration-v2/Orchestrator.ts
+  s_8b58b89ca1a92a::t_c1a60d6d117fec 1-6,514,2896-2924,3538-3540,3543-3544,3551-3556,4375-4563,4567-4573,4603,4645-4654,4663,4685,4702,4710-4716,4732,4755,4760,4773-4775,4811-4813,4845,4849-4864,4866,5121-5131,5138,5162,5181-5191,5213,5224,5324-5352,5697,9892-9895,10683-10699,10898-10917,10925,10927-10928,10932,11948-12012,12018,12594-12606,12612,12623,12677-12679,12888-12912,12914,13084-13085,13271-13295
+  s_b9dac8f6ee16dd::t_a4eeb1c6ae5117 13296
+packages/agent-runtime/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
+  s_8b58b89ca1a92a::t_c1a60d6d117fec 2877,2902-2903,2912,2937-2943,2978-2980,2987-2988,2990,3178,6457-6469,6483-6488,7668,7817,8349-8351,9567
+packages/agent-runtime/src/orchestration-v2/ProviderTurnStartService.ts
+  s_8b58b89ca1a92a::t_c1a60d6d117fec 1,163,191-215,316-318,365,373,418-421,439-466,468,471,474-482,633,1051-1055,1096-1125,1204,1311-1327,1400,1460,1552,1554-1560,1564,1573-1574,1595-1596,1598-1601,1603-1604,1606
+packages/agent-runtime/src/orchestration-v2/EffectWorker.ts
+  s_8b58b89ca1a92a::t_c1a60d6d117fec 1,115-133
+packages/agent-runtime/src/orchestration-v2/RunLivenessService.ts
+  s_8b58b89ca1a92a::t_c1a60d6d117fec 1-3,32-33,66-67,171-173,218-231
+packages/agent-runtime/src/orchestration-v2/RunRecovery.ts
+  s_8b58b89ca1a92a::t_c1a60d6d117fec 1-92
+packages/agent-runtime/src/orchestration-v2/ProjectionRecovery.test.ts
+  s_8b58b89ca1a92a::t_c1a60d6d117fec 129,217,223
+packages/agent-runtime/src/orchestration-v2/Adapters/CodexAdapterV2.test.ts
+  s_8b58b89ca1a92a::t_c1a60d6d117fec 9893-9910,10052-10054,10125-10134
+packages/agent-runtime/src/mcp/OrchestratorMcpService.ts
+  s_8b58b89ca1a92a::t_c1a60d6d117fec 1046,1054-1063
+packages/agent-runtime/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
+  s_8b58b89ca1a92a::t_c1a60d6d117fec 233-245,4425,4444-4483,5594-5640
+  s_b9dac8f6ee16dd::t_bc1b7f9631f99e 5641-5642
+packages/agent-runtime/src/orchestration-v2/CommandPolicy.test.ts
+  s_8b58b89ca1a92a::t_c1a60d6d117fec 1,143-184
+  s_b9dac8f6ee16dd::t_6ed28cb387977d 185-186
+packages/agent-runtime/src/orchestration-v2/CommandPolicy.ts
+  s_8b58b89ca1a92a::t_c1a60d6d117fec 31,126-127,136-138,451,462
+packages/agent-runtime/src/orchestration-v2/RunExecutionService.ts
+  s_b9dac8f6ee16dd::t_a31a175ad3c969 57-65,723-727,1175,1234-1430,1432,1474-1548,1811-1814,1885,2099,2102-2104,2190-2191,2202-2204
+packages/agent-runtime/src/orchestration-v2/DelegatedTaskState.ts
+  s_8b58b89ca1a92a::t_c1a60d6d117fec 12,87,91-93
+packages/agent-runtime/src/orchestration-v2/RunLivenessService.test.ts
+  s_8b58b89ca1a92a::t_c1a60d6d117fec 1-2,215-225,257,267-268
+packages/agent-runtime/src/orchestration-v2/ThreadDeletion.ts
+  s_8b58b89ca1a92a::t_c1a60d6d117fec 1,10,17-20,28-35,95-112,120-125,284-288
+packages/agent-runtime/src/mcp/toolkits/task/handlers.ts
+  s_b9dac8f6ee16dd::t_c9dab4fc12d3fe 15
+packages/agent-runtime/src/nodex/Interface.ts
+  s_b9dac8f6ee16dd::t_0e60a544f33934 109
+packages/agent-runtime/src/nodex/Service.ts
+  s_b9dac8f6ee16dd::t_892b1b9e5f14de 673
+packages/agent-runtime/src/orchestration-v2/ProjectionRecoveryQueries.ts
+  s_b9dac8f6ee16dd::t_f39b582b32f212 40-45
+packages/agent-runtime/src/orchestration-v2/ProjectionStore.ts
+  s_b9dac8f6ee16dd::t_1f8f36f9c5ea77 608,2278,7514,10292,11687
+packages/agent-runtime/src/orchestration-v2/runtimeLayer.ts
+  s_b9dac8f6ee16dd::t_a08305ccc77982 290-291
+packages/agent-runtime/src/orchestration-v2/testkit/OrchestratorScenario.ts
+  s_b9dac8f6ee16dd::t_2e3d2240acca77 166
+packages/agent-runtime/vendor/contracts/src/orchestrationV2.ts
+  s_b9dac8f6ee16dd::t_08eafbd9534066 733,869-883,918,2010,2553,2870,3453-3459
+packages/agent-runtime/vendor/contracts/src/orchestratorMcp.ts
+  s_b9dac8f6ee16dd::t_3f1eb81598daeb 33,211-218,225-226
+packages/agent-runtime/vendor/provider-core/src/server/ProviderAdapter.ts
+  s_b9dac8f6ee16dd::t_d613d517ebd0e5 436-437
+packages/agent-runtime/vendor/provider-core/src/server/failure.test.ts
+  s_b9dac8f6ee16dd::t_d55b34549083fa 232-244
+packages/agent-runtime/vendor/provider-core/src/server/failure.ts
+  s_b9dac8f6ee16dd::t_54ba5bef52fa7e 209-212,233-237
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a84c1a69aa015f3ea9b1b70ffaac3c4e377404d5",
+  "prompts": {},
+  "sessions": {
+    "s_8b58b89ca1a92a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c075d5c4-0b38-4f3d-8c6c-e4a048a9b857",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_b9dac8f6ee16dd": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a194db-b3b6-7011-83c5-09f9093ded5e",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
