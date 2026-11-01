@@ -55,6 +55,7 @@ it.effect("registers and releases Computer Use settings channels with the Main S
                 environmentPath: null,
                 homeDirectory: "/tmp",
                 initialProjectsDirectory: null,
+                isolatedRunId: null,
                 isDefaultApp: false,
                 isPackaged: false,
                 nodexHome: "/tmp/nodex-test",

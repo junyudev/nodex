@@ -108,7 +108,6 @@ import { CodexLocalLaunch, CodexPlatform } from "./CodexApplicationLive";
 import { CodexTurnPresentation } from "../codex-application/CodexTurnPresentation";
 import { MainApplicationError } from "./MainApplication";
 import { MainConfig } from "./MainConfig";
-import { ISOLATED_RUN_ID_ENV } from "../core-client/isolated-run-ownership";
 import {
   AGENT_RUNTIME_STARTUP_PROBE_ENV,
   AGENT_RUNTIME_STARTUP_EVIDENCE_FILE,
@@ -824,7 +823,7 @@ export const hostTools = Layer.effectDiscard(
     const execute = yield* makeHostTools;
     yield* activation.activate(execute);
     const config = yield* MainConfig;
-    const runId = config.environment[ISOLATED_RUN_ID_ENV];
+    const runId = config.isolatedRunId;
     if (config.environment[AGENT_RUNTIME_STARTUP_PROBE_ENV] === "1" && runId) {
       // Only an explicitly supervised disposable launch forces the otherwise lazy runtime.
       const runtime = yield* AgentRuntimeSupervisor;

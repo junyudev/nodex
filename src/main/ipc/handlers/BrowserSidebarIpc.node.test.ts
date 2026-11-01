@@ -141,6 +141,7 @@ it.effect(
                   environmentPath: null,
                   homeDirectory: "/tmp",
                   initialProjectsDirectory: null,
+                  isolatedRunId: null,
                   isDefaultApp: false,
                   isPackaged: false,
                   nodexHome: "/tmp/nodex-test",

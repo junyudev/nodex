@@ -218,6 +218,7 @@ function launchMainApplication(): void {
     environmentPath: bootstrapConfig.environment.PATH ?? null,
     homeDirectory: app.getPath("home"),
     initialProjectsDirectory: bootstrapConfig.environment.NODEX_INITIAL_PROJECTS_DIR ?? null,
+    isolatedRunId: primaryIsolatedRunId,
     isDefaultApp: process.defaultApp === true,
     isPackaged: app.isPackaged,
     nodexHome,

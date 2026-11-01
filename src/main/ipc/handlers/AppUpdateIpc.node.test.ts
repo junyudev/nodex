@@ -57,6 +57,7 @@ it.effect("registers and releases app update ingress with the Main Scope", () =>
                 environmentPath: null,
                 homeDirectory: "/tmp",
                 initialProjectsDirectory: null,
+                isolatedRunId: null,
                 isDefaultApp: false,
                 isPackaged: false,
                 nodexHome: "/tmp/nodex-test",

@@ -52,6 +52,7 @@ it.effect("registers and releases the Git worker renderer ingress with the Main 
                 environmentPath: null,
                 homeDirectory: "/tmp",
                 initialProjectsDirectory: null,
+                isolatedRunId: null,
                 isDefaultApp: false,
                 isPackaged: false,
                 nodexHome: "/tmp/nodex-test",

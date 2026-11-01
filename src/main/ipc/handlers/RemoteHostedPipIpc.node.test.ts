@@ -71,6 +71,7 @@ it.effect("registers and releases the Remote Hosted PiP ingress with the Main Sc
                 environmentPath: null,
                 homeDirectory: "/tmp",
                 initialProjectsDirectory: null,
+                isolatedRunId: null,
                 isDefaultApp: false,
                 isPackaged: false,
                 nodexHome: "/tmp/nodex-test",
