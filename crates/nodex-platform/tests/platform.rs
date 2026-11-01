@@ -129,3 +129,18 @@ fn filesystem_and_process_identity_are_available() {
     );
     assert_eq!(private_fs::link_count(&first).unwrap(), 2);
 }
+
+#[test]
+fn releasing_a_sealed_snapshot_entry_preserves_its_cached_source() {
+    let directory = tempfile::tempdir().unwrap();
+    let source = directory.path().join("cache");
+    let destination = directory.path().join("snapshot");
+    private_fs::write(&source, b"immutable").unwrap();
+    private_fs::set_mode(&source, 0o400).unwrap();
+    private_fs::link_immutable_file(&source, &destination).unwrap();
+    assert_eq!(std::fs::read(&destination).unwrap(), b"immutable");
+    private_fs::remove_immutable_file(&destination).unwrap();
+    assert!(!destination.exists());
+    private_fs::checked_metadata(&source, private_fs::EntryKind::File, Some(0o400)).unwrap();
+    private_fs::remove_immutable_file(&source).unwrap();
+}

@@ -174,3 +174,7 @@ pub fn path_key(path: &Path) -> io::Result<String> {
 pub fn link_immutable_file(source: &Path, destination: &Path) -> io::Result<()> {
     fs::hard_link(source, destination)
 }
+
+pub fn remove_immutable_file(path: &Path) -> io::Result<()> {
+    fs::remove_file(path)
+}

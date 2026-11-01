@@ -632,6 +632,11 @@ pub fn link_immutable_file(source: &Path, destination: &Path) -> io::Result<()> 
     super::copy(source, destination)?;
     set_mode(destination, 0o400)
 }
+/// Windows requires clearing the DOS read-only attribute before deleting a sealed file.
+pub fn remove_immutable_file(path: &Path) -> io::Result<()> {
+    set_mode(path, 0o600)?;
+    fs::remove_file(path)
+}
 #[cfg(test)]
 mod tests {
     use super::*;

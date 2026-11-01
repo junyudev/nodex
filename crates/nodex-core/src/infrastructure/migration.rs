@@ -5701,9 +5701,9 @@ mod tests {
           INSERT INTO projects(id,name,created,updated) VALUES ('a','A','today','today'),('b','B','today','today');
           INSERT INTO project_sources(project_id,root,root_key,"order",created,updated) VALUES ('a','/unique','/unique',0,'today','today'),('a','/shared','/shared',1,'today','today'),('b','/shared','/shared',0,'today','today');
           INSERT INTO codex_scheduled_automations(automation_id,kind,status,name,rrule,cwds_json,execution_environment,created_at,updated_at,next_run_at) VALUES
-          ('unique','cron','ACTIVE','Unique','FREQ=DAILY','["/unique",nodex_platform::fixture_path!("/shared")]','local',1,1,100),
-          ('shared','cron','ACTIVE','Shared','FREQ=DAILY','[nodex_platform::fixture_path!("/shared")]','local',1,1,100),
-          ('foreign','cron','ACTIVE','Foreign','FREQ=DAILY','[nodex_platform::fixture_path!("/foreign")]','local',1,1,100),
+          ('unique','cron','ACTIVE','Unique','FREQ=DAILY','["/unique","/shared"]','local',1,1,100),
+          ('shared','cron','ACTIVE','Shared','FREQ=DAILY','["/shared"]','local',1,1,100),
+          ('foreign','cron','ACTIVE','Foreign','FREQ=DAILY','["/foreign"]','local',1,1,100),
           ('projectless','cron','ACTIVE','Projectless','FREQ=DAILY','[]','local',1,1,100);"#).expect("historical targets");
         validate_schema_identity(&connection, 163).expect("published predecessor");
         with_immediate_transaction(&mut connection, |transaction| {

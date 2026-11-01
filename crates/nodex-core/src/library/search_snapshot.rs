@@ -1062,7 +1062,7 @@ fn remove_owned_file(path: &Path) -> Result<(), StoreError> {
             "Search snapshot cache entry is not a regular file",
         ));
     }
-    fs::remove_file(path).map_err(io_error)
+    nodex_platform::private_fs::remove_immutable_file(path).map_err(io_error)
 }
 
 fn remove_owned_tree(path: &Path) -> Result<(), StoreError> {
@@ -1090,7 +1090,7 @@ fn remove_owned_tree(path: &Path) -> Result<(), StoreError> {
                 "Search snapshot lease contains an unsupported entry",
             ));
         }
-        fs::remove_file(child).map_err(io_error)?;
+        nodex_platform::private_fs::remove_immutable_file(&child).map_err(io_error)?;
     }
     fs::remove_dir(path).map_err(io_error)
 }
