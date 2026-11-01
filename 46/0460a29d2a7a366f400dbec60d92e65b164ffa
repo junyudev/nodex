@@ -1,0 +1,192 @@
+src/renderer/features/local-conversation/use-turn-end-resources.test.tsx
+  s_aeb9559a27dc22::t_d4b858b2c32546 5,8,11-12,233-238
+  s_f7a266529d0a87::t_8727fb6c2920b3 47-51,91-95,108-109,116,118-120,123,133,141-143,148,157,177-232
+src/renderer/features/local-conversation/projection/bucketize-turn-items.node.test.ts
+  s_f7a266529d0a87::t_500930971f5c3d 10,50-57,215-241,994-1006
+  s_f7a266529d0a87::t_0ef653a1841853 1007
+docs/product-specs/codex-thread-transcript-behavior.md
+  s_f7a266529d0a87::t_51504c3cb82ae7 121
+  s_f7a266529d0a87::t_9df3c28d825e71 122
+src/shared/ipc-api.ts
+  s_aeb9559a27dc22::t_3adc7a69fdd7ce 1629-1631
+src/renderer/lib/use-workbench-thread-summary.ts
+  s_404e3bb5fc483e::t_2f5b5de65c8009 96,276
+src/shared/schemas/workspace-files.ts
+  s_aeb9559a27dc22::t_f3ffae22e033f9 10,54-60
+src/renderer/features/local-conversation/view/summary-panel/thread-floating-summary-panel.test.tsx
+  s_404e3bb5fc483e::t_a1ec317c202f22 235
+  s_404e3bb5fc483e::t_1b041b744011b5 33-43,60-68,234,236-250,403-404,2156,2213,3089,3138-3140,3235-3237,3253-3275,3277-3280,3282-3286,3288-3290,3296-3298,3303-3304,3306-3307,3310,3312-3313,3321-3322,3326-3327
+  s_404e3bb5fc483e::t_587387a215b1d9 3329
+src/renderer/features/local-conversation/projection/thread-summary-panel-output-model.ts
+  s_f7a266529d0a87::t_085665eb4d4ba4 1226
+  s_f7a266529d0a87::t_8727fb6c2920b3 676,688-690,707-712,714-715,881-882,885-893,901,912,924-927,939-944,1019,1024-1032,1034-1035,1039,1045-1092,1094,1103,1109,1121-1122,1126-1128,1133,1136-1156,1159-1162,1164-1203,1205-1223,1318-1323
+  s_f7a266529d0a87::t_12b67aeebc843b 1225,1227-1231
+  s_f7a266529d0a87::t_d1960705cce5a8 1,86,89,125,134,140-142,268,270,1224,1316
+src/shared/types.ts
+  s_aeb9559a27dc22::t_e16b5ba286d6c5 963,965,969-977
+src/main/git-worker/git-worker-module.ts
+  s_f7a266529d0a87::t_8727fb6c2920b3 169-171
+  s_f7a266529d0a87::t_c4de3ee4d9bdad 1,42,124,131,137,168,973
+docs/product-specs/thread-summary-panel-behavior.md
+  s_f7a266529d0a87::t_51504c3cb82ae7 123-127,129-132,134-155
+  s_f7a266529d0a87::t_9f04dc2f654468 67-69
+src/renderer/features/local-conversation/view/summary-panel/thread-summary-panel-header-action.tsx
+  s_404e3bb5fc483e::t_2f5b5de65c8009 23
+src/renderer/features/local-conversation/projection/build-turn-view-model.ts
+  s_f7a266529d0a87::t_dbdc2f4670d8c8 25,29
+  s_f7a266529d0a87::t_07f02b297bea35 63-64,265-284,559-565,578,692
+src/shared/schemas/workspace-files.test.ts
+  s_aeb9559a27dc22::t_e75eebb0752006 10,46
+src/renderer/features/local-conversation/use-turn-end-resources.ts
+  s_f7a266529d0a87::t_b7bb4108738556 74-75
+  s_f7a266529d0a87::t_8727fb6c2920b3 10-11,13,16-70,77-89,101-103,107,111-124
+  s_f7a266529d0a87::t_60f14fda148ed8 2-3,5,7-9,71-73,76,125
+src/renderer/features/local-conversation/view/local-conversation-thread-turn.tsx
+  s_f7a266529d0a87::t_cbd7215d9d51b9 495
+src/main/ipc/handlers/WorkspaceFileIpc.ts
+  s_4a5bd529b43322::t_a1953404e3ebf2 29,235,237,239-240
+src/renderer/features/local-conversation/view/local-conversation-end-resources.tsx
+  s_f7a266529d0a87::t_f0898bcb9cb5f0 2-3,5,7-39,41,49,51,56-60,62,84-86,93
+  s_f7a266529d0a87::t_859c9af5e18422 6,67-71
+  s_f7a266529d0a87::t_51be42a5f77727 61,63-66,72-83,88-89,91
+src/main/host-runtime/WorkspaceFileQueries.ts
+  s_f7a266529d0a87::t_f118f8de1c89d9 18-19,59,369,371-374,418
+  s_f7a266529d0a87::t_8727fb6c2920b3 375-382,384-385,387-393,395-399,402-415,417
+CHANGELOG.md
+  s_f7a266529d0a87::t_667f63bdfbafd1 28
+src/main/ipc/handlers/WorkspaceFileIpc.test.ts
+  s_aeb9559a27dc22::t_3aa3d52a488267 101,104,209
+src/renderer/features/local-conversation/view/shared/thread-resource-card.tsx
+  s_f7a266529d0a87::t_02854f892aa069 54
+  s_f7a266529d0a87::t_fd9744a389ab31 1-53,55-74
+src/renderer/lib/workspace-file-operations.ts
+  s_9d06964ba0d4b8::t_92e248c4be02e7 11-12,21-24
+src/renderer/features/local-conversation/projection/thread-output-presentation.ts
+  s_f7a266529d0a87::t_859c9af5e18422 177-185
+  s_f7a266529d0a87::t_51be42a5f77727 64-67,104,124-129,172-173
+  s_f7a266529d0a87::t_4d336df8da1bdc 138
+  s_f7a266529d0a87::t_68c771941f69e5 1-63,68-103,105-123,130-137,139-171,174-176
+src/renderer/features/local-conversation/view/blocks/local-conversation-block-renderer.tsx
+  s_f7a266529d0a87::t_247a8839fcca5a 2,409-415
+  s_f7a266529d0a87::t_26942ee02eafe1 416-419
+src/renderer/features/local-conversation/view/local-conversation-end-resources.test.tsx
+  s_f7a266529d0a87::t_3944532b1b94f0 4,6-8,11,15-24,30-32,35-41,45-47,51,55-67,71,73-74,78,82,91-192
+  s_f7a266529d0a87::t_cc43d1bd69c836 9-10
+  s_f7a266529d0a87::t_7219b914f771d6 85-87
+src/renderer/features/local-conversation/view/local-conversation-created-thread-cards.tsx
+  s_f7a266529d0a87::t_02854f892aa069 7-11,26,28-31,35-38,59,68,70-72,74
+src/renderer/features/local-conversation/projection/thread-summary-panel-output-model.node.test.ts
+  s_f7a266529d0a87::t_43a53b5d3224d5 50,153,170,534
+  s_f7a266529d0a87::t_8727fb6c2920b3 180,202,409-414,459-460,502,506,524-529
+src/renderer/features/local-conversation/projection/thread-output-presentation.node.test.ts
+  s_f7a266529d0a87::t_51be42a5f77727 2,15-18
+  s_f7a266529d0a87::t_2a2021d99023fd 40
+  s_f7a266529d0a87::t_2784473d5f72f3 1,3-14,19-39,41-131
+src/renderer/components/workbench/workbench-shell.layout-panel-actions.test.tsx
+  s_404e3bb5fc483e::t_f19ae90f17739c 2-3,5,72-97,2242,2283,2302,2362,2392,2416
+  s_404e3bb5fc483e::t_3889ace39646f5 2360
+  s_404e3bb5fc483e::t_a1ec317c202f22 2251-2256,2451-2454
+src/renderer/features/local-conversation/view/local-conversation-viewport-motion.browser.test.tsx
+  s_f7a266529d0a87::t_8727fb6c2920b3 45-51
+  s_f7a266529d0a87::t_11172707667abd 44
+src/renderer/features/local-conversation/projection/turn-end-resources.node.test.ts
+  s_f7a266529d0a87::t_8727fb6c2920b3 122,131,155-167,171-172,181-183,186-195,198-200,203-204,208-209,268-405,450,452,454-459,480,482-536
+  s_f7a266529d0a87::t_c454c47aa5eed1 1,6-9,406,429-449,451,453,460,462-479,481,538
+  s_f7a266529d0a87::t_a825dc5a1b08c5 408-428,461,537
+  s_f7a266529d0a87::t_085665eb4d4ba4 407
+src/renderer/features/local-conversation/thread-stage-types.ts
+  s_f7a266529d0a87::t_fa75f5e8973c50 3,698-708,986
+src/renderer/features/local-conversation/projection/build-turn-render-model.ts
+  s_f7a266529d0a87::t_dbdc2f4670d8c8 65-66,89-90,449,508,552
+  s_f7a266529d0a87::t_4085b1fdf4a231 28-31
+  s_aeb9559a27dc22::t_0838c25f3c4c74 350
+src/main/git-worker/git-path-source-states.ts
+  s_f7a266529d0a87::t_60a556dc8fc547 1-28,42-57
+  s_f7a266529d0a87::t_8727fb6c2920b3 29-41
+tests/e2e/turn-output-cards.spec.ts
+  s_f7a266529d0a87::t_a25cf44ece9d88 1-129,131-158,161-174,178,187-188,192,203-223
+  s_f7a266529d0a87::t_01602bc5d235e3 130
+  s_f7a266529d0a87::t_1b172256fd42b1 159-160,180-186
+  s_f7a266529d0a87::t_20daca868e937c 175-177,179,189-191,193-202
+src/renderer/features/local-conversation/projection/thread-summary-panel-section-model.ts
+  s_aeb9559a27dc22::t_0f54e5d708ec16 115
+src/main/host-runtime/WorkspaceFileQueries.node.test.ts
+  s_f7a266529d0a87::t_6b2624d0e35920 1-5,42,553-554
+  s_f7a266529d0a87::t_8727fb6c2920b3 164-171,252,254-258,266,271,273-277,349,475-552
+src/shared/git-worker-protocol.ts
+  s_f7a266529d0a87::t_a50af67321d75b 10-13,389,539,549,682
+  s_f7a266529d0a87::t_8727fb6c2920b3 540-548
+src/renderer/features/local-conversation/projection/normalized-timeline-entries.ts
+  s_aeb9559a27dc22::t_a23eb7dde04ea8 13,509
+src/renderer/features/local-conversation/view/use-thread-output-opener.tsx
+  s_f7a266529d0a87::t_cf95a2bf45a855 113
+  s_f7a266529d0a87::t_8c2f5e6c6647f2 1,3-38,41-56,61-107,114-148
+  s_f7a266529d0a87::t_51be42a5f77727 2,39-40,57-60,108-112
+src/shared/git-worker-protocol.test.ts
+  s_f7a266529d0a87::t_8727fb6c2920b3 11-37
+src/renderer/features/local-conversation/view/summary-panel/thread-floating-summary-panel.tsx
+  s_f7a266529d0a87::t_f609f1c9b33006 57,940-941,944
+  s_f7a266529d0a87::t_673917ae6bf598 34
+  s_f7a266529d0a87::t_859c9af5e18422 67
+  s_f7a266529d0a87::t_450ba9f5d2be95 59-66,942-943,945,1174-1184,1493,1495-1500,1503-1506,1700
+src/shared/ipc-endpoint-policy.ts
+  s_aeb9559a27dc22::t_b6a56fe035b4d2 308
+src/renderer/features/local-conversation/view/local-conversation-runtime-scroll-intent.browser.test.tsx
+  s_f7a266529d0a87::t_8727fb6c2920b3 47-53
+  s_aeb9559a27dc22::t_6ec9367b383b33 46,510,608
+src/renderer/features/local-conversation/view/local-conversation-voice-work.browser.test.tsx
+  s_f7a266529d0a87::t_8727fb6c2920b3 28-34
+  s_f7a266529d0a87::t_4aaf1c42754b46 27
+src/renderer/features/local-conversation/view/local-conversation-turn-entry.tsx
+  s_f7a266529d0a87::t_4085b1fdf4a231 186,205
+src/renderer/features/local-conversation/projection/thread-summary-panel-section-model.node.test.ts
+  s_aeb9559a27dc22::t_1c42c33190f049 37,52-53
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "460460a29d2a7a366f400dbec60d92e65b164ffa",
+  "prompts": {},
+  "sessions": {
+    "s_404e3bb5fc483e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1963f-f0a4-7e22-9330-c9b29551db62",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_4a5bd529b43322": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19612-51e1-7fe0-b316-085f55470a5c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_9d06964ba0d4b8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19611-b22a-7ef2-9bc9-75b7ac514216",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_aeb9559a27dc22": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19623-2eee-7f83-9b84-12e778f48aca",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_f7a266529d0a87": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6d174a31-7abb-4dcf-bdf5-e5129be4ca4a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": null
+    }
+  }
+}
