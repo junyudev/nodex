@@ -58,6 +58,7 @@ test("save copy preserves binary bytes, cancellation, and the source through sym
   const destination = join(root, "copy.bin");
   const bytes = Buffer.from([0, 255, 128, 1, 0, 3]);
   await writeFile(source, bytes);
+  await writeFile(destination, "previous contents");
   expect(
     await saveWorkspaceFileCopy({ path: source }, async (name) => {
       expect(name).toBe("source.bin");

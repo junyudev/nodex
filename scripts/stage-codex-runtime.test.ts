@@ -367,7 +367,9 @@ describe.skipIf(process.platform === "win32")("stage-codex-runtime", () => {
     expect(unexpectedFetch).not.toHaveBeenCalled();
     const firstEntrypoint = path.join(input.outputPath, "agent-runtime/bin/codex");
     const secondEntrypoint = path.join(secondOutputPath, "agent-runtime/bin/codex");
-    expect(statSync(firstEntrypoint).ino).not.toBe(statSync(secondEntrypoint).ino);
+    expect(statSync(firstEntrypoint, { bigint: true }).ino).not.toBe(
+      statSync(secondEntrypoint, { bigint: true }).ino,
+    );
     writeFileSync(firstEntrypoint, "tampered");
     expect(readFileSync(secondEntrypoint, "utf8")).toBe("app-server");
     await stageCodexRuntime(

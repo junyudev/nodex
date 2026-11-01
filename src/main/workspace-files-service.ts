@@ -405,13 +405,13 @@ export async function saveWorkspaceFileCopy(
   selectDestination: (defaultPath: string) => Promise<string | null>,
 ): Promise<{ path: string | null }> {
   const source = resolveFileRequestPath(input);
-  const sourceStats = await stat(source);
+  const sourceStats = await stat(source, { bigint: true });
   if (!sourceStats.isFile())
     throw new WorkspaceFileUserError("invalid_path", `${source} is not a file`);
   const destination = await selectDestination(basename(source));
   if (!destination) return { path: null };
   if (resolve(destination) === source) return { path: destination };
-  const destinationStats = await stat(destination).catch((error: unknown) => {
+  const destinationStats = await stat(destination, { bigint: true }).catch((error: unknown) => {
     if (readErrorCode(error) === "ENOENT") return null;
     throw error;
   });

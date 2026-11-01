@@ -396,7 +396,9 @@ describe("immutable artifact cache", () => {
     const outputBinary = path.join(outputPath, "versions", "binary");
     expect(fs.readlinkSync(path.join(outputPath, "binary"))).toBe(path.join("versions", "binary"));
     if (process.platform !== "win32") expect(fs.statSync(outputBinary).mode & 0o777).toBe(0o755);
-    expect(fs.statSync(outputBinary).ino).not.toBe(fs.statSync(sourceBinary).ino);
+    expect(fs.statSync(outputBinary, { bigint: true }).ino).not.toBe(
+      fs.statSync(sourceBinary, { bigint: true }).ino,
+    );
     fs.writeFileSync(outputBinary, "changed");
     expect(fs.readFileSync(sourceBinary, "utf8")).toBe("runtime");
 
@@ -467,9 +469,38 @@ describe("immutable artifact cache", () => {
 
     expect(fs.readFileSync(otherPath, "utf8")).toBe("other data");
     expect(fs.readFileSync(outputPath, "utf8")).toBe("runtime");
-    expect(fs.statSync(outputPath).ino).not.toBe(fs.statSync(otherPath).ino);
+    expect(fs.statSync(outputPath, { bigint: true }).ino).not.toBe(
+      fs.statSync(otherPath, { bigint: true }).ino,
+    );
     expect(() => cloneImmutableFile(sourcePath, sourcePath)).toThrow("different files");
     expect(fs.readFileSync(sourcePath, "utf8")).toBe("runtime");
+  });
+
+  test("clones distinct files whose native IDs collide when rounded to numbers", () => {
+    const root = makeRoot();
+    const sourcePath = path.join(root, "source");
+    const outputPath = path.join(root, "output");
+    fs.writeFileSync(sourcePath, "runtime");
+    fs.writeFileSync(outputPath, "previous runtime");
+    const stat = fs.statSync;
+    const inspect = (file: fs.PathLike, options?: fs.StatSyncOptions) => {
+      const entry = stat(file, options);
+      const identity = file === sourcePath ? 2n ** 53n : 2n ** 53n + 1n;
+      Object.defineProperty(entry, "ino", {
+        value: options?.bigint ? identity : Number(identity),
+      });
+      return entry;
+    };
+    const nativeStat = vi.spyOn(fs, "statSync").mockImplementation(inspect as typeof fs.statSync);
+    syncBuiltinESMExports();
+    try {
+      cloneImmutableFile(sourcePath, outputPath);
+      expect(fs.readFileSync(outputPath, "utf8")).toBe("runtime");
+      expect(fs.readFileSync(sourcePath, "utf8")).toBe("runtime");
+    } finally {
+      nativeStat.mockRestore();
+      syncBuiltinESMExports();
+    }
   });
 
   test("rejects nonempty, symlink, or nested directory destinations", () => {

@@ -202,14 +202,14 @@ describe.skipIf(process.platform === "win32")("stageBrowserRuntime", () => {
       "marketplace/plugins/browser/scripts/node_modules",
     );
     const activeRoot = path.join(runtimeRoot, BROWSER_RUNTIME_BUNDLE_DIRECTORY);
-    const activeRootInode = fs.statSync(activeRoot).ino;
+    const activeRootInode = fs.statSync(activeRoot, { bigint: true }).ino;
 
     await stageBrowserRuntime(stageOptions(sourceRoot, runtimeRoot));
 
     expect(
       (await resolveBrowserRuntimeBundle(resolveOptions(runtimeRoot, sourceRoot))).status,
     ).toBe("available");
-    expect(fs.statSync(activeRoot).ino).toBe(activeRootInode);
+    expect(fs.statSync(activeRoot, { bigint: true }).ino).toBe(activeRootInode);
   });
 
   test("preserves the previously active bundle when source verification fails", async () => {
