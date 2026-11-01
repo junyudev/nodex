@@ -1,5 +1,5 @@
+use nodex_platform::private_fs::symlink;
 use std::fs;
-use std::os::unix::fs::symlink;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
@@ -13,7 +13,7 @@ use nodex_core_contracts::{
     AdapterKind, BoundModuleContext, CoreErrorCode, LibraryId, ModuleApplyRequest,
     ModuleReadRequest, ProfileId, STORE_ADMINISTRATION_CONTRACT_VERSION, StoreEpoch,
 };
-use tempfile::TempDir;
+use nodex_platform::test_support::TempDir;
 
 use crate::infrastructure::schema::CURRENT_STORE_REVISION;
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode, with_immediate_transaction};
@@ -30,18 +30,19 @@ impl super::ProfileSnapshotParticipant for ExecutionParticipant {
     fn capture(&self, request: super::ProfileSnapshotCapture<'_>) -> Result<bool, StoreError> {
         let source = request.source_profile.join("agent-runtime");
         let destination = request.staging_profile.join("agent-runtime");
-        fs::create_dir_all(destination.join("native-history")).unwrap();
+        nodex_platform::private_fs::create_dir_all(destination.join("native-history")).unwrap();
         for name in ["agent-runtime.sqlite", "native-history/transcript.jsonl"] {
-            fs::copy(source.join(name), destination.join(name)).unwrap();
+            nodex_platform::private_fs::copy(source.join(name), destination.join(name)).unwrap();
         }
         Ok(true)
     }
 }
 
 fn write_execution(home: &Path, contents: &[u8]) {
-    fs::create_dir_all(home.join("agent-runtime/native-history")).unwrap();
-    fs::write(home.join("agent-runtime/agent-runtime.sqlite"), contents).unwrap();
-    fs::write(
+    nodex_platform::private_fs::create_dir_all(home.join("agent-runtime/native-history")).unwrap();
+    nodex_platform::private_fs::write(home.join("agent-runtime/agent-runtime.sqlite"), contents)
+        .unwrap();
+    nodex_platform::private_fs::write(
         home.join("agent-runtime/native-history/transcript.jsonl"),
         contents,
     )
@@ -122,7 +123,7 @@ fn altered_execution_history_and_failed_install_leave_the_current_profile_intact
         let backup_id = created.committed.value.backup_id.unwrap();
         write_execution(fixture.home(), b"current execution");
         if corrupt_snapshot {
-            fs::write(
+            nodex_platform::private_fs::write(
                 fixture
                     .home()
                     .join("backups")
@@ -196,7 +197,7 @@ impl Fixture {
         seed_project: bool,
         hook: impl Fn(&str) -> Result<(), StoreError> + Send + Sync + 'static,
     ) -> Self {
-        let home = tempfile::tempdir().expect("Profile home");
+        let home = nodex_platform::test_support::tempdir().expect("Profile home");
         let kernel = SqliteStoreKernel::open_test(home.path()).expect("fresh store");
         kernel
             .writer()
@@ -686,8 +687,9 @@ fn completes_the_backup_lifecycle_without_a_project() {
 #[test]
 fn reports_rust_readiness_and_publishes_a_valid_exact_retry_backup() {
     let fixture = Fixture::new();
-    fs::create_dir(fixture.home().join("assets")).expect("assets root");
-    fs::write(fixture.home().join("assets/managed.bin"), b"managed asset").expect("managed asset");
+    nodex_platform::private_fs::create_dir(fixture.home().join("assets")).expect("assets root");
+    nodex_platform::private_fs::write(fixture.home().join("assets/managed.bin"), b"managed asset")
+        .expect("managed asset");
 
     assert_eq!(
         fixture.read(StoreAdministrationRead::Status),
@@ -760,7 +762,8 @@ fn reports_rust_readiness_and_publishes_a_valid_exact_retry_backup() {
     assert!(second.committed.receipt.mutation.duplicate);
     assert!(second.event.is_none());
 
-    fs::create_dir(fixture.home().join("backups/not-a-backup")).expect("invalid backup dir");
+    nodex_platform::private_fs::create_dir(fixture.home().join("backups/not-a-backup"))
+        .expect("invalid backup dir");
     let StoreAdministrationReadValue::Backups { backups, capacity } = fixture.read(backups_read())
     else {
         panic!("backup list")
@@ -846,9 +849,9 @@ fn rejects_request_collisions_and_symlinked_assets_without_a_receipt() {
     assert_eq!(collision.code, CoreErrorCode::IdempotencyKeyReused);
 
     let assets = fixture.home().join("assets");
-    fs::create_dir(&assets).expect("assets root");
+    nodex_platform::private_fs::create_dir(&assets).expect("assets root");
     let outside = fixture.home().join("outside.bin");
-    fs::write(&outside, b"outside").expect("outside file");
+    nodex_platform::private_fs::write(&outside, b"outside").expect("outside file");
     symlink(&outside, assets.join("escape.bin")).expect("asset symlink");
     let rejected = fixture
         .module
@@ -1241,10 +1244,10 @@ fn restores_a_turned_page_then_collects_only_its_dormant_document() {
 #[test]
 fn restores_database_assets_epoch_and_exact_retry_with_a_safety_backup() {
     let fixture = Fixture::new();
-    fs::create_dir(fixture.home().join("assets")).expect("assets root");
+    nodex_platform::private_fs::create_dir(fixture.home().join("assets")).expect("assets root");
     let managed_hash = crate::document::sha256(b"backup asset");
     let managed_name = format!("{managed_hash}.blob");
-    fs::write(
+    nodex_platform::private_fs::write(
         fixture.home().join("assets").join(&managed_name),
         b"backup asset",
     )
@@ -1266,7 +1269,7 @@ fn restores_database_assets_epoch_and_exact_retry_with_a_safety_backup() {
     let queue_manifest_hash = crate::document::sha256(&queue_manifest);
     let queue_manifest_name = format!("{queue_manifest_hash}.blob");
     let queue_manifest_length = queue_manifest.len();
-    fs::write(
+    nodex_platform::private_fs::write(
         fixture.home().join("assets").join(&queue_manifest_name),
         &queue_manifest,
     )
@@ -1349,7 +1352,7 @@ fn restores_database_assets_epoch_and_exact_retry_with_a_safety_backup() {
             Ok(())
         })
         .expect("current marker");
-    fs::write(
+    nodex_platform::private_fs::write(
         fixture.home().join("assets").join(&managed_name),
         b"current asset",
     )
@@ -1500,8 +1503,9 @@ fn replacement_hook_failure_rolls_back_the_complete_source_store() {
             false,
         ))
     });
-    fs::create_dir(fixture.home().join("assets")).expect("assets root");
-    fs::write(fixture.home().join("assets/managed.bin"), b"backup asset").expect("backup asset");
+    nodex_platform::private_fs::create_dir(fixture.home().join("assets")).expect("assets root");
+    nodex_platform::private_fs::write(fixture.home().join("assets/managed.bin"), b"backup asset")
+        .expect("backup asset");
     fixture
         .kernel
         .writer()
@@ -1528,7 +1532,8 @@ fn replacement_hook_failure_rolls_back_the_complete_source_store() {
             Ok(())
         })
         .expect("current marker");
-    fs::write(fixture.home().join("assets/managed.bin"), b"current asset").expect("current asset");
+    nodex_platform::private_fs::write(fixture.home().join("assets/managed.bin"), b"current asset")
+        .expect("current asset");
 
     let error = fixture
         .module
@@ -1706,8 +1711,9 @@ fn adopts_a_committed_restore_after_the_pre_receipt_crash_boundary() {
 #[test]
 fn rejects_a_corrupt_restore_candidate_without_touching_the_live_store() {
     let fixture = Fixture::new();
-    fs::create_dir(fixture.home().join("assets")).expect("assets root");
-    fs::write(fixture.home().join("assets/managed.bin"), b"backup asset").expect("backup asset");
+    nodex_platform::private_fs::create_dir(fixture.home().join("assets")).expect("assets root");
+    nodex_platform::private_fs::write(fixture.home().join("assets/managed.bin"), b"backup asset")
+        .expect("backup asset");
     fixture
         .kernel
         .writer()
@@ -1734,8 +1740,9 @@ fn rejects_a_corrupt_restore_candidate_without_touching_the_live_store() {
             Ok(())
         })
         .expect("current marker");
-    fs::write(fixture.home().join("assets/managed.bin"), b"current asset").expect("current asset");
-    fs::write(
+    nodex_platform::private_fs::write(fixture.home().join("assets/managed.bin"), b"current asset")
+        .expect("current asset");
+    nodex_platform::private_fs::write(
         fixture
             .home()
             .join("backups")

@@ -333,23 +333,7 @@ pub(crate) const MAX_FILE_BYTES: usize = 64 * 1024 * 1024;
 
 // Validate the opened handle, not a preceding path stat. Never follow final symlinks or block on a FIFO.
 fn open_regular(path: &Path, write: bool) -> Result<File, CliError> {
-    use rustix::fs::{Mode, OFlags};
-    let access = if write {
-        OFlags::WRONLY | OFlags::CREATE
-    } else {
-        OFlags::RDONLY
-    };
-    let descriptor = rustix::fs::open(
-        path,
-        access | OFlags::CLOEXEC | OFlags::NOFOLLOW | OFlags::NONBLOCK,
-        Mode::RUSR | Mode::WUSR,
-    )
-    .map_err(|error| io_error(error.into()))?;
-    let file = File::from(descriptor);
-    if !file.metadata().map_err(io_error)?.is_file() {
-        return Err(invalid("File input and output paths must be regular files"));
-    }
-    Ok(file)
+    nodex_platform::private_fs::open_regular(path, write).map_err(io_error)
 }
 
 fn input_name(source: &Path, name: Option<String>) -> Result<String, CliError> {
@@ -417,13 +401,14 @@ fn io_error(error: io::Error) -> CliError {
 mod tests {
     use super::*;
 
+    #[cfg(unix)]
     #[test]
     fn regular_file_io_rejects_symlinks_and_special_files_before_truncation() {
-        let directory = tempfile::tempdir().unwrap();
+        let directory = nodex_platform::test_support::tempdir().unwrap();
         let target = directory.path().join("target.txt");
         std::fs::write(&target, b"keep").unwrap();
         let link = directory.path().join("link.txt");
-        std::os::unix::fs::symlink(&target, &link).unwrap();
+        nodex_platform::private_fs::symlink(&target, &link).unwrap();
         assert!(open_regular(&link, false).is_err());
         assert!(open_regular(&link, true).is_err());
         assert!(open_regular(directory.path(), false).is_err());

@@ -1,4 +1,5 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { connect } from "node:net";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
@@ -10,7 +11,7 @@ import { serveProfileSnapshotControl, type WithExecutionSnapshot } from "./Profi
 const fixture = (withExecutionSnapshot?: WithExecutionSnapshot) =>
   Effect.gen(function* () {
     const home = yield* Effect.acquireRelease(
-      Effect.sync(() => mkdtempSync("/tmp/nodex-snapshot-")),
+      Effect.sync(() => mkdtempSync(join(tmpdir(), "nodex-snapshot-"))),
       (home) => Effect.sync(() => rmSync(home, { force: true, recursive: true })),
     );
     const resumed = yield* Deferred.make<void>();
@@ -30,20 +31,31 @@ const fixture = (withExecutionSnapshot?: WithExecutionSnapshot) =>
         ),
       withExecutionSnapshot,
     );
+    const rendezvous = JSON.parse(readFileSync(join(home, "ipc/clone.json"), "utf8")) as {
+      endpoint: string;
+      capability: string;
+    };
     const socket = yield* Effect.acquireRelease(
-      Effect.sync(() => connect(join(home, "ipc/clone.sock"))),
+      Effect.sync(() => connect(rendezvous.endpoint)),
       (socket) => Effect.sync(() => socket.destroy()),
     );
     socket.on("error", () => {});
     const lines = createInterface({ input: socket })[Symbol.asyncIterator]();
     const read = Effect.promise(() => lines.next());
-    return { socket, read, resumed, paused: () => paused };
+    return {
+      socket,
+      read,
+      resumed,
+      paused: () => paused,
+      acquire: (capability = rendezvous.capability) =>
+        socket.write(`${JSON.stringify({ version: 1, capability })}\n`),
+    };
   });
 
 it.live("a live capture lease restores the source before acknowledging release", () =>
   Effect.gen(function* () {
     const f = yield* fixture();
-    f.socket.write('{"version":1}\n');
+    f.acquire();
     assert.strictEqual((yield* f.read).value, '{"version":1,"status":"ready"}');
     assert.isTrue(f.paused());
     f.socket.write('{"version":1,"release":true}\n');
@@ -55,7 +67,7 @@ it.live("a live capture lease restores the source before acknowledging release",
 it.live("a client that disappears during capture releases its source pause", () =>
   Effect.gen(function* () {
     const f = yield* fixture();
-    f.socket.write('{"version":1}\n');
+    f.acquire();
     yield* f.read;
     assert.isTrue(f.paused());
     f.socket.destroy();
@@ -103,7 +115,7 @@ it.live("lends only bounded snapshot evidence while holding both physical captur
           }),
       ),
     );
-    f.socket.write('{"version":1}\n');
+    f.acquire();
     const ready = (yield* f.read).value;
     assert.isTrue(ready!.length > 16384);
     assert.deepStrictEqual(JSON.parse(ready!), {
@@ -116,6 +128,15 @@ it.live("lends only bounded snapshot evidence while holding both physical captur
     f.socket.write('{"version":1,"release":true}\n');
     assert.strictEqual((yield* f.read).value, '{"version":1,"status":"resumed"}');
     assert.isFalse(executionHeld);
+    assert.isFalse(f.paused());
+  }),
+);
+
+it.live("an invalid capability never pauses the source", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture();
+    f.acquire("invalid");
+    assert.isTrue((yield* f.read).done);
     assert.isFalse(f.paused());
   }),
 );

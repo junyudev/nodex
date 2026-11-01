@@ -53210,7 +53210,7 @@
           "actual_store_format",
           "pid",
           "start_nonce",
-          "socket_path",
+          "endpoint",
           "profile_id",
           "store_epoch",
           "readiness_generation"
@@ -53221,6 +53221,9 @@
           },
           "artifact": {
             "$ref": "#/components/schemas/CoreArtifactIdentity"
+          },
+          "endpoint": {
+            "type": "string"
           },
           "manifest": {
             "$ref": "#/components/schemas/CoreCompatibilityManifest"
@@ -53240,9 +53243,6 @@
             "type": "integer",
             "format": "int64",
             "minimum": 0
-          },
-          "socket_path": {
-            "type": "string"
           },
           "start_nonce": {
             "type": "string"

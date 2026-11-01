@@ -327,7 +327,7 @@ mod tests {
                 name: "Lab".to_owned(),
                 description: String::new(),
                 appearance: None,
-                source_roots: vec!["/workspace/lab".to_owned()],
+                source_roots: vec![nodex_platform::fixture_path!("/workspace/lab").to_owned()],
                 page_key_prefix: Some("LAB".to_owned()),
             },
         );

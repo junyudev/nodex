@@ -1661,8 +1661,8 @@ mod tests {
         AdapterKind, BoundModuleContext, LibraryId, ProfileId, ProjectId,
         events::{DeliveryAddress, DeliveryAtomPayload},
     };
+    use nodex_platform::test_support::tempdir;
     use rusqlite::OptionalExtension;
-    use tempfile::tempdir;
 
     use super::*;
     use crate::infrastructure::module_receipts::{NewModuleReceipt, insert_module_receipt};

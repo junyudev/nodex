@@ -235,7 +235,7 @@ mod tests {
     #[test]
     fn ledger_collection_resumes_committed_discovery_and_rotates_past_retained_entries() {
         use crate::infrastructure::sqlite::with_immediate_transaction;
-        let directory = tempfile::tempdir().unwrap();
+        let directory = nodex_platform::test_support::tempdir().unwrap();
         let path = directory.path().join("ledger.db");
         let mut connection = fixture_at(&path);
         connection

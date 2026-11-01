@@ -1,7 +1,7 @@
-use std::fs::{self, File, OpenOptions};
+use nodex_platform::private_fs::OpenOptions;
+use std::fs::{self, File};
 use std::io::{Read, Write};
-use std::os::unix::ffi::OsStrExt;
-use std::os::unix::fs::MetadataExt;
+
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use std::time::Instant;
@@ -245,9 +245,7 @@ pub(super) fn backup_capacity(
         })
         .ok_or_else(|| internal("Estimated Backup byte length exceeds its bound"))?;
     let safety_margin_bytes = MIN_BACKUP_SAFETY_MARGIN_BYTES.max(estimated_next_backup_bytes / 10);
-    let filesystem = rustix::fs::statvfs(profile_home)
-        .map_err(|error| io_error(std::io::Error::from_raw_os_error(error.raw_os_error())))?;
-    let available_bytes = filesystem.f_bavail.saturating_mul(filesystem.f_frsize);
+    let available_bytes = nodex_platform::process::free_space(profile_home).map_err(io_error)?;
     let mut total_ready_bytes = 0_u64;
     let mut manual_ready_bytes = 0_u64;
     let mut automatic_ready_bytes = 0_u64;
@@ -281,7 +279,7 @@ pub(super) fn list_backup_jobs(profile_home: &Path) -> Result<Vec<BackupJobRecor
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
         Err(error) => return Err(io_error(error)),
     };
-    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+    if nodex_platform::private_fs::is_reparse_point(&metadata) || !metadata.is_dir() {
         return Err(invalid_profile(
             "Backup job control root must be a real directory",
         ));
@@ -305,7 +303,7 @@ pub(super) fn list_backup_jobs(profile_home: &Path) -> Result<Vec<BackupJobRecor
     let mut jobs = Vec::with_capacity(journals.len());
     for entry in journals {
         let metadata = fs::symlink_metadata(entry.path()).map_err(io_error)?;
-        if metadata.file_type().is_symlink()
+        if nodex_platform::private_fs::is_reparse_point(&metadata)
             || !metadata.is_file()
             || metadata.len() > MAX_BACKUP_JOB_BYTES
         {
@@ -351,7 +349,7 @@ pub(super) fn validate_backup_for_deletion(
         }
         Err(error) => return Err(io_error(error)),
     };
-    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+    if nodex_platform::private_fs::is_reparse_point(&metadata) || !metadata.is_dir() {
         return Err(invalid_profile(
             "Backup deletion target must be a real owned directory",
         ));
@@ -389,14 +387,16 @@ pub(super) fn stage_backup_deletions(
     let cleanup_digest = Sha256::digest(format!("backup-cleanup\0{operation_id}"));
     let cleanup = root.join(format!(".cleanup-{}", hex(&cleanup_digest)));
     match fs::symlink_metadata(&cleanup) {
-        Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_dir() => {
+        Ok(metadata)
+            if nodex_platform::private_fs::is_reparse_point(&metadata) || !metadata.is_dir() =>
+        {
             return Err(invalid_profile(
                 "Backup cleanup staging path must be a real owned directory",
             ));
         }
         Ok(_) => {}
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            fs::create_dir(&cleanup).map_err(io_error)?;
+            nodex_platform::private_fs::create_dir(&cleanup).map_err(io_error)?;
             sync_directory(&root)?;
         }
         Err(error) => return Err(io_error(error)),
@@ -411,7 +411,10 @@ pub(super) fn stage_backup_deletions(
             Ok(metadata) => metadata,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                 match fs::symlink_metadata(&staged) {
-                    Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_dir() => {
+                    Ok(metadata)
+                        if nodex_platform::private_fs::is_reparse_point(&metadata)
+                            || !metadata.is_dir() =>
+                    {
                         return Err(invalid_profile(
                             "Backup cleanup target must remain a real owned directory",
                         ));
@@ -423,7 +426,7 @@ pub(super) fn stage_backup_deletions(
             }
             Err(error) => return Err(io_error(error)),
         };
-        if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        if nodex_platform::private_fs::is_reparse_point(&metadata) || !metadata.is_dir() {
             return Err(invalid_profile(
                 "Backup deletion target must remain a real owned directory",
             ));
@@ -435,7 +438,7 @@ pub(super) fn stage_backup_deletions(
                 "Backup cleanup found duplicate published and staged directories",
             ));
         }
-        fs::rename(&directory, &staged).map_err(io_error)?;
+        nodex_platform::private_fs::atomic_replace(&directory, &staged).map_err(io_error)?;
         sync_directory(&root)?;
     }
     Ok(cleanup)
@@ -648,9 +651,7 @@ fn stage_backup_with_trigger(
     profile_snapshot: Option<&ProfileSnapshotSource>,
 ) -> Result<VerifiedStagedBackup, StoreError> {
     let participant_bytes = participant.estimated_bytes(profile_home, profile_snapshot)?;
-    let filesystem = rustix::fs::statvfs(profile_home)
-        .map_err(|error| io_error(std::io::Error::from_raw_os_error(error.raw_os_error())))?;
-    let available = filesystem.f_bavail.saturating_mul(filesystem.f_frsize);
+    let available = nodex_platform::process::free_space(profile_home).map_err(io_error)?;
     if available < participant_bytes.saturating_add(MIN_BACKUP_SAFETY_MARGIN_BYTES) {
         return Err(StoreError::new(
             StoreErrorCode::ResourceExhausted,
@@ -676,14 +677,15 @@ fn stage_backup_with_trigger(
     if final_directory.exists() {
         let record =
             adopt_published_backup(&final_directory, operation_id, request_hash, &backup_id)?;
-        let metadata = fs::symlink_metadata(&final_directory).map_err(io_error)?;
+        let identity =
+            nodex_platform::private_fs::file_identity(&final_directory).map_err(io_error)?;
         return Ok(VerifiedStagedBackup {
             record,
             root,
             staging_directory: final_directory.clone(),
             final_directory,
-            staging_device: metadata.dev(),
-            staging_inode: metadata.ino(),
+            staging_device: identity.device,
+            staging_inode: identity.inode,
         });
     }
     if let Some(record) = recover_staging_backup(
@@ -693,18 +695,19 @@ fn stage_backup_with_trigger(
         request_hash,
         &backup_id,
     )? {
-        let metadata = fs::symlink_metadata(&staging_directory).map_err(io_error)?;
+        let identity =
+            nodex_platform::private_fs::file_identity(&staging_directory).map_err(io_error)?;
         return Ok(VerifiedStagedBackup {
             record,
             root,
             staging_directory,
             final_directory,
-            staging_device: metadata.dev(),
-            staging_inode: metadata.ino(),
+            staging_device: identity.device,
+            staging_inode: identity.inode,
         });
     }
 
-    fs::create_dir(&staging_directory).map_err(io_error)?;
+    nodex_platform::private_fs::create_dir(&staging_directory).map_err(io_error)?;
     let result = stage_backup(
         connection,
         profile_home,
@@ -744,14 +747,15 @@ fn stage_backup_with_trigger(
             return Err(error);
         }
     };
-    let metadata = fs::symlink_metadata(&staging_directory).map_err(io_error)?;
+    let identity =
+        nodex_platform::private_fs::file_identity(&staging_directory).map_err(io_error)?;
     Ok(VerifiedStagedBackup {
         record,
         root,
         staging_directory,
         final_directory,
-        staging_device: metadata.dev(),
-        staging_inode: metadata.ino(),
+        staging_device: identity.device,
+        staging_inode: identity.inode,
     })
 }
 
@@ -762,10 +766,12 @@ pub(super) fn publish_verified_backup(
         return Ok(staged.record);
     }
     let metadata = fs::symlink_metadata(&staged.staging_directory).map_err(io_error)?;
-    if metadata.file_type().is_symlink()
+    let identity =
+        nodex_platform::private_fs::file_identity(&staged.staging_directory).map_err(io_error)?;
+    if nodex_platform::private_fs::is_reparse_point(&metadata)
         || !metadata.is_dir()
-        || metadata.dev() != staged.staging_device
-        || metadata.ino() != staged.staging_inode
+        || identity.device != staged.staging_device
+        || identity.inode != staged.staging_inode
     {
         return Err(corrupt(
             "Verified backup staging identity changed before publication",
@@ -776,7 +782,8 @@ pub(super) fn publish_verified_backup(
             "Verified backup publication found an unexpected destination",
         ));
     }
-    fs::rename(&staged.staging_directory, &staged.final_directory).map_err(io_error)?;
+    nodex_platform::private_fs::atomic_replace(&staged.staging_directory, &staged.final_directory)
+        .map_err(io_error)?;
     sync_directory(&staged.root)?;
     Ok(staged.record)
 }
@@ -786,10 +793,12 @@ pub(super) fn discard_verified_backup(staged: VerifiedStagedBackup) -> Result<()
         return Ok(());
     }
     let metadata = fs::symlink_metadata(&staged.staging_directory).map_err(io_error)?;
-    if metadata.file_type().is_symlink()
+    let identity =
+        nodex_platform::private_fs::file_identity(&staged.staging_directory).map_err(io_error)?;
+    if nodex_platform::private_fs::is_reparse_point(&metadata)
         || !metadata.is_dir()
-        || metadata.dev() != staged.staging_device
-        || metadata.ino() != staged.staging_inode
+        || identity.device != staged.staging_device
+        || identity.inode != staged.staging_inode
     {
         return Err(corrupt(
             "Verified backup staging identity changed before cleanup",
@@ -820,7 +829,8 @@ pub(super) fn publish_backup(
         return Ok(record);
     }
     let record = adopt_published_backup(&staging_directory, operation_id, request_hash, backup_id)?;
-    fs::rename(&staging_directory, &final_directory).map_err(io_error)?;
+    nodex_platform::private_fs::atomic_replace(&staging_directory, &final_directory)
+        .map_err(io_error)?;
     sync_directory(&root)?;
     Ok(record)
 }
@@ -848,6 +858,14 @@ fn stage_backup(
     let database_started_at = Instant::now();
     let mut database_busy_retries = 0u64;
     {
+        drop(
+            OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .mode(0o600)
+                .open(&database_path)
+                .map_err(io_error)?,
+        );
         let mut destination = Connection::open(&database_path)?;
         let backup = Backup::new(connection, &mut destination)?;
         let mut last_reported_at = Instant::now();
@@ -899,7 +917,7 @@ fn stage_backup(
             &assets_directory,
         )?
     } else {
-        fs::create_dir(&assets_directory).map_err(io_error)?;
+        nodex_platform::private_fs::create_dir(&assets_directory).map_err(io_error)?;
         sync_directory(&assets_directory)?;
         (0, empty_asset_tree_sha256())
     };
@@ -1152,7 +1170,7 @@ pub(super) fn copy_backup_to_profile(
             CopyDurability::Rebuildable,
         )?
     } else {
-        fs::create_dir(&assets).map_err(io_error)?;
+        nodex_platform::private_fs::create_dir(&assets).map_err(io_error)?;
         0
     };
     let evidence = backup
@@ -1185,7 +1203,7 @@ pub(super) fn stage_restore_candidate(
     require_directory(&root, "Backup root")?;
     let staging = root.join(staging_directory_name);
     remove_owned_restore_staging(&root, &staging)?;
-    fs::create_dir(&staging).map_err(io_error)?;
+    nodex_platform::private_fs::create_dir(&staging).map_err(io_error)?;
     let result = (|| {
         let database = staging.join(BACKUP_DATABASE_FILE_NAME);
         clone_or_copy_file(
@@ -1201,7 +1219,7 @@ pub(super) fn stage_restore_candidate(
                 CopyDurability::Durable,
             )?;
         } else {
-            fs::create_dir(&assets).map_err(io_error)?;
+            nodex_platform::private_fs::create_dir(&assets).map_err(io_error)?;
             sync_directory(&assets)?;
         }
         if backup
@@ -1341,7 +1359,7 @@ fn read_backup_root(root: &Path) -> Result<Option<Vec<fs::DirEntry>>, StoreError
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(error) => return Err(io_error(error)),
     };
-    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+    if nodex_platform::private_fs::is_reparse_point(&metadata) || !metadata.is_dir() {
         return Err(invalid_profile(
             "Backup root must be a real directory owned by the Profile",
         ));
@@ -1356,7 +1374,7 @@ fn read_backup_root(root: &Path) -> Result<Option<Vec<fs::DirEntry>>, StoreError
 fn prepare_backup_root(profile_home: &Path) -> Result<PathBuf, StoreError> {
     let root = profile_home.join("backups");
     if read_backup_root(&root)?.is_none() {
-        fs::create_dir(&root).map_err(io_error)?;
+        nodex_platform::private_fs::create_dir(&root).map_err(io_error)?;
         sync_directory(profile_home)?;
     }
     require_directory(&root, "Backup root")?;
@@ -1376,7 +1394,7 @@ fn clone_or_copy_file(
 ) -> Result<u64, StoreError> {
     // With the pinned Rust toolchain, std::fs::copy tries fclonefileat first on
     // macOS and falls back to fcopyfile when CoW is unavailable or cross-volume.
-    let bytes = fs::copy(source, destination).map_err(io_error)?;
+    let bytes = nodex_platform::private_fs::copy(source, destination).map_err(io_error)?;
     if matches!(durability, CopyDurability::Durable) {
         sync_file(destination)?;
     }
@@ -1391,7 +1409,7 @@ fn copy_assets(
     let metadata = match fs::symlink_metadata(source) {
         Ok(metadata) => metadata,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            fs::create_dir(destination).map_err(io_error)?;
+            nodex_platform::private_fs::create_dir(destination).map_err(io_error)?;
             if matches!(durability, CopyDurability::Durable) {
                 sync_directory(destination)?;
             }
@@ -1399,12 +1417,12 @@ fn copy_assets(
         }
         Err(error) => return Err(io_error(error)),
     };
-    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+    if nodex_platform::private_fs::is_reparse_point(&metadata) || !metadata.is_dir() {
         return Err(invalid_profile(
             "Managed assets root must be a real directory",
         ));
     }
-    fs::create_dir(destination).map_err(io_error)?;
+    nodex_platform::private_fs::create_dir(destination).map_err(io_error)?;
     let bytes = copy_directory(source, destination, durability)?;
     if matches!(durability, CopyDurability::Durable) {
         sync_directory(destination)?;
@@ -1422,18 +1440,18 @@ fn copy_assets_with_integrity(
     let metadata = match fs::symlink_metadata(source) {
         Ok(metadata) => metadata,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            fs::create_dir(destination).map_err(io_error)?;
+            nodex_platform::private_fs::create_dir(destination).map_err(io_error)?;
             sync_directory(destination)?;
             return Ok((0, empty_asset_tree_sha256()));
         }
         Err(error) => return Err(io_error(error)),
     };
-    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+    if nodex_platform::private_fs::is_reparse_point(&metadata) || !metadata.is_dir() {
         return Err(invalid_profile(
             "Managed assets root must be a real directory",
         ));
     }
-    fs::create_dir(destination).map_err(io_error)?;
+    nodex_platform::private_fs::create_dir(destination).map_err(io_error)?;
     let mut hasher = Sha256::new();
     hasher.update(ASSET_TREE_DIGEST_DOMAIN);
     let mut inspected = 0usize;
@@ -1474,7 +1492,7 @@ fn copy_and_digest_asset_directory(
         let source_path = entry.path();
         let destination_path = destination.join(entry.file_name());
         let metadata = fs::symlink_metadata(&source_path).map_err(io_error)?;
-        if metadata.file_type().is_symlink() {
+        if nodex_platform::private_fs::is_reparse_point(&metadata) {
             return Err(invalid_profile(
                 "Managed assets must not contain symbolic links",
             ));
@@ -1482,14 +1500,14 @@ fn copy_and_digest_asset_directory(
         let relative = source_path
             .strip_prefix(root)
             .map_err(|_| internal("Managed asset escaped its copy root"))?;
-        let relative_bytes = relative.as_os_str().as_bytes();
+        let relative_bytes = nodex_platform::process::path_bytes(relative);
         let relative_length = u64::try_from(relative_bytes.len())
             .map_err(|_| internal("Managed asset path exceeds its digest bound"))?;
         if metadata.is_dir() {
             hasher.update(b"d");
             hasher.update(relative_length.to_be_bytes());
             hasher.update(relative_bytes);
-            fs::create_dir(&destination_path).map_err(io_error)?;
+            nodex_platform::private_fs::create_dir(&destination_path).map_err(io_error)?;
             total = total
                 .checked_add(copy_and_digest_asset_directory(
                     root,
@@ -1558,13 +1576,13 @@ fn copy_directory(
         let source_path = entry.path();
         let destination_path = destination.join(entry.file_name());
         let metadata = fs::symlink_metadata(&source_path).map_err(io_error)?;
-        if metadata.file_type().is_symlink() {
+        if nodex_platform::private_fs::is_reparse_point(&metadata) {
             return Err(invalid_profile(
                 "Managed assets must not contain symbolic links",
             ));
         }
         if metadata.is_dir() {
-            fs::create_dir(&destination_path).map_err(io_error)?;
+            nodex_platform::private_fs::create_dir(&destination_path).map_err(io_error)?;
             total = total
                 .checked_add(copy_directory(&source_path, &destination_path, durability)?)
                 .ok_or_else(|| internal("Managed asset byte length exceeds its bound"))?;
@@ -1596,7 +1614,7 @@ fn inspect_source_directory(root: &Path) -> Result<u64, StoreError> {
     for entry in fs::read_dir(root).map_err(io_error)? {
         let entry = entry.map_err(io_error)?;
         let metadata = fs::symlink_metadata(entry.path()).map_err(io_error)?;
-        if metadata.file_type().is_symlink() {
+        if nodex_platform::private_fs::is_reparse_point(&metadata) {
             return Err(invalid_profile(
                 "Managed assets must not contain symbolic links",
             ));
@@ -1623,7 +1641,7 @@ fn inspect_optional_assets(root: &Path) -> Result<u64, StoreError> {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(0),
         Err(error) => return Err(io_error(error)),
     };
-    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+    if nodex_platform::private_fs::is_reparse_point(&metadata) || !metadata.is_dir() {
         return Err(invalid_profile(
             "Managed assets root must be a real directory",
         ));
@@ -1633,7 +1651,7 @@ fn inspect_optional_assets(root: &Path) -> Result<u64, StoreError> {
 
 fn sha256_regular_file(path: &Path) -> Result<String, StoreError> {
     let metadata = fs::symlink_metadata(path).map_err(io_error)?;
-    if metadata.file_type().is_symlink() || !metadata.is_file() {
+    if nodex_platform::private_fs::is_reparse_point(&metadata) || !metadata.is_file() {
         return Err(corrupt("Backup integrity evidence requires a regular file"));
     }
     let mut file = File::open(path).map_err(io_error)?;
@@ -1694,13 +1712,13 @@ fn digest_asset_directory(
         }
         let path = entry.path();
         let metadata = fs::symlink_metadata(&path).map_err(io_error)?;
-        if metadata.file_type().is_symlink() {
+        if nodex_platform::private_fs::is_reparse_point(&metadata) {
             return Err(corrupt("Backup assets contain a symbolic link"));
         }
         let relative = path
             .strip_prefix(root)
             .map_err(|_| internal("Backup asset escaped its digest root"))?;
-        let relative_bytes = relative.as_os_str().as_bytes();
+        let relative_bytes = nodex_platform::process::path_bytes(relative);
         let relative_length = u64::try_from(relative_bytes.len())
             .map_err(|_| internal("Backup asset path exceeds its digest bound"))?;
         if metadata.is_dir() {
@@ -1752,7 +1770,7 @@ fn inspect_directory(root: &Path) -> Result<u64, StoreError> {
     for entry in fs::read_dir(root).map_err(io_error)? {
         let entry = entry.map_err(io_error)?;
         let metadata = fs::symlink_metadata(entry.path()).map_err(io_error)?;
-        if metadata.file_type().is_symlink() {
+        if nodex_platform::private_fs::is_reparse_point(&metadata) {
             return Err(corrupt("Backup assets contain a symbolic link"));
         }
         let length = if metadata.is_dir() {
@@ -1779,7 +1797,7 @@ fn inspect_removable_tree(root: &Path, inspected: &mut usize) -> Result<(), Stor
             return Err(corrupt("Backup deletion tree exceeds its entry bound"));
         }
         let metadata = fs::symlink_metadata(entry.path()).map_err(io_error)?;
-        if metadata.file_type().is_symlink() {
+        if nodex_platform::private_fs::is_reparse_point(&metadata) {
             return Err(invalid_profile(
                 "Backup deletion tree must not contain symbolic links",
             ));
@@ -1931,13 +1949,13 @@ fn prepare_backup_job_directory(profile_home: &Path) -> Result<PathBuf, StoreErr
     let root = prepare_backup_root(profile_home)?;
     let control = root.join(BACKUP_CONTROL_DIRECTORY_NAME);
     if !control.exists() {
-        fs::create_dir(&control).map_err(io_error)?;
+        nodex_platform::private_fs::create_dir(&control).map_err(io_error)?;
         sync_directory(&root)?;
     }
     require_directory(&control, "Backup control root")?;
     let jobs = control.join(BACKUP_JOB_DIRECTORY_NAME);
     if !jobs.exists() {
-        fs::create_dir(&jobs).map_err(io_error)?;
+        nodex_platform::private_fs::create_dir(&jobs).map_err(io_error)?;
         sync_directory(&control)?;
     }
     require_directory(&jobs, "Backup job control root")?;
@@ -1954,7 +1972,7 @@ fn read_backup_job(
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(error) => return Err(io_error(error)),
     };
-    if metadata.file_type().is_symlink()
+    if nodex_platform::private_fs::is_reparse_point(&metadata)
         || !metadata.is_file()
         || metadata.len() > MAX_BACKUP_JOB_BYTES
     {
@@ -1983,7 +2001,7 @@ fn write_backup_job(profile_home: &Path, journal: &BackupJobJournal) -> Result<(
     let path = jobs.join(format!("{digest}.json"));
     let temporary = jobs.join(format!(".{digest}.tmp"));
     if let Ok(metadata) = fs::symlink_metadata(&temporary) {
-        if metadata.file_type().is_symlink() || !metadata.is_file() {
+        if nodex_platform::private_fs::is_reparse_point(&metadata) || !metadata.is_file() {
             return Err(invalid_profile(
                 "Backup job temporary journal is not an owned regular file",
             ));
@@ -1997,7 +2015,7 @@ fn write_backup_job(profile_home: &Path, journal: &BackupJobJournal) -> Result<(
         .map_err(io_error)?;
     file.write_all(&bytes).map_err(io_error)?;
     file.sync_all().map_err(io_error)?;
-    fs::rename(&temporary, &path).map_err(io_error)?;
+    nodex_platform::private_fs::atomic_replace(&temporary, &path).map_err(io_error)?;
     sync_directory(&jobs)
 }
 
@@ -2139,7 +2157,7 @@ fn write_manifest(directory: &Path, manifest: &BackupManifest) -> Result<(), Sto
 fn read_manifest(directory: &Path) -> Result<BackupManifest, StoreError> {
     let path = directory.join(BACKUP_MANIFEST_FILE_NAME);
     let metadata = fs::symlink_metadata(&path).map_err(io_error)?;
-    if metadata.file_type().is_symlink()
+    if nodex_platform::private_fs::is_reparse_point(&metadata)
         || !metadata.is_file()
         || metadata.len() > MAX_MANIFEST_BYTES
     {
@@ -2272,7 +2290,7 @@ fn hex(bytes: &[u8]) -> String {
 
 fn regular_file_length(path: &Path) -> Result<u64, StoreError> {
     let metadata = fs::symlink_metadata(path).map_err(io_error)?;
-    if metadata.file_type().is_symlink() || !metadata.is_file() {
+    if nodex_platform::private_fs::is_reparse_point(&metadata) || !metadata.is_file() {
         return Err(corrupt("Backup database is not a regular file"));
     }
     Ok(metadata.len())
@@ -2280,7 +2298,7 @@ fn regular_file_length(path: &Path) -> Result<u64, StoreError> {
 
 fn require_directory(path: &Path, label: &str) -> Result<(), StoreError> {
     let metadata = fs::symlink_metadata(path).map_err(io_error)?;
-    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+    if nodex_platform::private_fs::is_reparse_point(&metadata) || !metadata.is_dir() {
         return Err(invalid_profile(format!("{label} must be a real directory")));
     }
     Ok(())
@@ -2302,7 +2320,7 @@ fn remove_owned_staging_directory(root: &Path, staging: &Path) -> Result<(), Sto
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
         Err(error) => return Err(io_error(error)),
     };
-    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+    if nodex_platform::private_fs::is_reparse_point(&metadata) || !metadata.is_dir() {
         return Err(invalid_profile(
             "Backup staging path is not an owned directory",
         ));
@@ -2342,7 +2360,7 @@ fn remove_owned_restore_staging(root: &Path, staging: &Path) -> Result<(), Store
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
         Err(error) => return Err(io_error(error)),
     };
-    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+    if nodex_platform::private_fs::is_reparse_point(&metadata) || !metadata.is_dir() {
         return Err(invalid_profile(
             "Restore staging path is not an owned directory",
         ));
@@ -2355,7 +2373,7 @@ fn sync_tree(root: &Path) -> Result<(), StoreError> {
     for entry in fs::read_dir(root).map_err(io_error)? {
         let entry = entry.map_err(io_error)?;
         let metadata = fs::symlink_metadata(entry.path()).map_err(io_error)?;
-        if metadata.file_type().is_symlink() {
+        if nodex_platform::private_fs::is_reparse_point(&metadata) {
             return Err(invalid_profile(
                 "Backup staging tree must not contain symbolic links",
             ));
@@ -2374,17 +2392,11 @@ fn sync_tree(root: &Path) -> Result<(), StoreError> {
 }
 
 fn sync_file(path: &Path) -> Result<(), StoreError> {
-    File::open(path)
-        .map_err(io_error)?
-        .sync_all()
-        .map_err(io_error)
+    nodex_platform::private_fs::sync_file(path).map_err(io_error)
 }
 
 fn sync_directory(path: &Path) -> Result<(), StoreError> {
-    File::open(path)
-        .map_err(io_error)?
-        .sync_all()
-        .map_err(io_error)
+    nodex_platform::private_fs::sync_directory(path).map_err(io_error)
 }
 
 fn corrupt(message: impl Into<String>) -> StoreError {
@@ -2417,7 +2429,7 @@ fn io_error(error: std::io::Error) -> StoreError {
 
 #[cfg(test)]
 mod tests {
-    use tempfile::tempdir;
+    use nodex_platform::test_support::tempdir;
 
     use crate::administration::profile_clone::{
         ProfileCloneBackupSelection, ProfileCloneRequest, prepare_profile_clone,
@@ -2429,9 +2441,9 @@ mod tests {
     /// A historical backup package: preserve the frozen Store schema and add only Profile identity.
     fn publish_v3_predecessor_backup(source: &Path) -> (PathBuf, BackupManifest) {
         let published = source.join("backups/predecessor");
-        fs::create_dir_all(published.join("assets")).unwrap();
+        nodex_platform::private_fs::create_dir_all(published.join("assets")).unwrap();
         let database = published.join(BACKUP_DATABASE_FILE_NAME);
-        fs::write(
+        nodex_platform::private_fs::write(
             &database,
             include_bytes!("../../tests/fixtures/store-v174.db"),
         )
@@ -2446,7 +2458,8 @@ mod tests {
              VALUES ('library:predecessor','profile:predecessor','2026-10-01T00:00:00.000Z','2026-10-01T00:00:00.000Z');",
         ).unwrap();
         drop(connection);
-        fs::write(published.join("assets/retained.bin"), b"retained asset").unwrap();
+        nodex_platform::private_fs::write(published.join("assets/retained.bin"), b"retained asset")
+            .unwrap();
         let db_bytes = regular_file_length(&database).unwrap();
         let (assets_bytes, asset_tree_sha256) =
             digest_asset_tree(&published.join("assets")).unwrap();

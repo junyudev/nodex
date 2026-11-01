@@ -2,8 +2,7 @@ use std::collections::BTreeMap;
 use std::ffi::{OsStr, OsString};
 use std::fs;
 use std::io::Read;
-use std::os::unix::ffi::OsStrExt;
-use std::os::unix::fs::PermissionsExt;
+
 use std::path::{Component, Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::thread;
@@ -12,8 +11,6 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use nodex_core_contracts::library::LibrarySearchSnapshotLease;
 use sha2::{Digest, Sha256};
-use signal_hook::consts::SIGINT;
-use signal_hook::iterator::Signals;
 
 use crate::error::{CliError, CliErrorCode};
 
@@ -40,7 +37,7 @@ pub(crate) fn parse(arguments: Vec<OsString>) -> Result<RipgrepInvocation, CliEr
         ));
     }
     let total_bytes = arguments.iter().try_fold(0usize, |total, argument| {
-        total.checked_add(argument.as_os_str().as_bytes().len())
+        total.checked_add(argument.as_encoded_bytes().len())
     });
     if total_bytes.is_none_or(|total| total > MAX_ARGUMENT_BYTES) {
         return Err(unsupported("rg arguments exceed their byte bound"));
@@ -57,7 +54,7 @@ pub(crate) fn parse(arguments: Vec<OsString>) -> Result<RipgrepInvocation, CliEr
             index += 1;
             continue;
         }
-        if !flags_ended && argument.as_os_str().as_bytes().starts_with(b"-") {
+        if !flags_ended && argument.as_encoded_bytes().starts_with(b"-") {
             let consumed = validate_flag(argument, arguments.get(index + 1))?;
             forwarded.push(argument.clone());
             if consumed {
@@ -216,7 +213,7 @@ pub(crate) fn run(
 ) -> Result<RipgrepOutput, CliError> {
     validate_lease(lease)?;
     let executable = discover_rg_executable()?;
-    let mut signals = Signals::new([SIGINT]).map_err(|error| {
+    let mut signals = nodex_platform::process::Interrupt::new().map_err(|error| {
         CliError::new(
             CliErrorCode::CoreUnavailable,
             format!("could not install the ripgrep interrupt handler: {error}"),
@@ -229,6 +226,7 @@ pub(crate) fn run(
             "--with-filename",
             "--color=never",
             "--sort=path",
+            "--path-separator=/",
         ])
         .args(&invocation.forwarded)
         .arg("--")
@@ -256,10 +254,8 @@ pub(crate) fn run(
         .ok_or_else(|| internal("ripgrep stderr pipe is unavailable"))?;
     let stdout_reader = thread::spawn(move || read_pipe(stdout));
     let stderr_reader = thread::spawn(move || read_pipe(stderr));
-    let (status, interrupted) = wait_for_child(&mut child, || {
-        signals.pending().any(|signal| signal == SIGINT)
-    })?;
-    signals.handle().close();
+    let (status, interrupted) = wait_for_child(&mut child, || signals.pending())?;
+    drop(signals);
     let stdout = join_pipe(stdout_reader, "stdout")?;
     let stderr = join_pipe(stderr_reader, "stderr")?;
     if interrupted {
@@ -341,8 +337,8 @@ fn validate_lease(lease: &LibrarySearchSnapshotLease) -> Result<(), CliError> {
     })?;
     if !root.is_absolute()
         || !root_metadata.is_dir()
-        || root_metadata.file_type().is_symlink()
-        || root_metadata.permissions().mode() & 0o777 != 0o500
+        || nodex_platform::private_fs::is_reparse_point(&root_metadata)
+        || !nodex_platform::private_fs::has_mode(root, &root_metadata, 0o500).map_err(internal)?
     {
         return Err(CliError::new(
             CliErrorCode::SnapshotExpired,
@@ -357,8 +353,9 @@ fn validate_lease(lease: &LibrarySearchSnapshotLease) -> Result<(), CliError> {
         )
     })?;
     if !manifest.is_file()
-        || manifest.file_type().is_symlink()
-        || manifest.permissions().mode() & 0o777 != 0o400
+        || nodex_platform::private_fs::is_reparse_point(&manifest)
+        || !nodex_platform::private_fs::has_mode(&manifest_path, &manifest, 0o400)
+            .map_err(internal)?
     {
         return Err(CliError::new(
             CliErrorCode::SnapshotExpired,
@@ -404,8 +401,9 @@ fn validate_lease(lease: &LibrarySearchSnapshotLease) -> Result<(), CliError> {
                 )
             })?;
             if !metadata.is_file()
-                || metadata.file_type().is_symlink()
-                || metadata.permissions().mode() & 0o777 != 0o400
+                || nodex_platform::private_fs::is_reparse_point(&metadata)
+                || !nodex_platform::private_fs::has_mode(&physical, &metadata, 0o400)
+                    .map_err(internal)?
             {
                 return Err(CliError::new(
                     CliErrorCode::SnapshotExpired,
@@ -498,7 +496,11 @@ fn packaged_rg_path(cli_executable: &Path) -> Option<PathBuf> {
         return None;
     }
     let runtime_root = bin_dir.parent()?;
-    Some(runtime_root.join("codex-path").join("rg"))
+    Some(
+        runtime_root
+            .join("codex-path")
+            .join(nodex_platform::process::executable_name("rg")),
+    )
 }
 
 fn unsupported(message: impl Into<String>) -> CliError {
@@ -512,7 +514,7 @@ fn internal(error: impl std::fmt::Display) -> CliError {
 #[cfg(test)]
 mod tests {
     use nodex_core_contracts::library::LibraryPageProjectionFileKind;
-    use tempfile::tempdir;
+    use nodex_platform::test_support::tempdir;
 
     use super::*;
 
@@ -521,9 +523,10 @@ mod tests {
         let cli = Path::new("/Applications/Nodex.app/Contents/Resources/bin/nodex");
         assert_eq!(
             packaged_rg_path(cli),
-            Some(PathBuf::from(
-                "/Applications/Nodex.app/Contents/Resources/codex-path/rg",
-            )),
+            Some(
+                PathBuf::from("/Applications/Nodex.app/Contents/Resources/codex-path")
+                    .join(nodex_platform::process::executable_name("rg"))
+            ),
         );
         assert_eq!(
             packaged_rg_path(Path::new("/workspace/target/debug/nodex")),
@@ -623,13 +626,13 @@ mod tests {
         let directory = tempdir().expect("snapshot parent");
         let root = directory.path().join("snapshot");
         let page_root = root.join("pages/hash");
-        fs::create_dir_all(&page_root).expect("snapshot layout");
+        nodex_platform::private_fs::create_dir_all(&page_root).expect("snapshot layout");
         let meta_bytes = b"id: \"page-1\"\ntitle: \"CLI\"\nproperties: {}\nschedule: null\n";
         let body_bytes = b"## Runtime\nCore starts on demand.\n";
         let meta_path = page_root.join("meta.yaml");
         let body_path = page_root.join("body.md");
-        fs::write(&meta_path, meta_bytes).expect("metadata projection");
-        fs::write(&body_path, body_bytes).expect("body projection");
+        nodex_platform::private_fs::write(&meta_path, meta_bytes).expect("metadata projection");
+        nodex_platform::private_fs::write(&body_path, body_bytes).expect("body projection");
         let mut lease = LibrarySearchSnapshotLease {
             lease_id: "0".repeat(32),
             expires_at_unix_ms: i64::MAX,
@@ -679,20 +682,18 @@ mod tests {
             "expires_at_unix_ms": lease.expires_at_unix_ms,
             "manifest": lease.manifest,
         });
-        fs::write(
+        nodex_platform::private_fs::write(
             root.join("manifest.json"),
             serde_json::to_vec(&marker).expect("marker JSON"),
         )
         .expect("manifest marker");
         for file in [&meta_path, &body_path, &root.join("manifest.json")] {
-            fs::set_permissions(file, fs::Permissions::from_mode(0o400)).expect("immutable file");
+            nodex_platform::private_fs::set_mode(file, 0o400).expect("immutable file");
         }
-        fs::set_permissions(&page_root, fs::Permissions::from_mode(0o500))
-            .expect("immutable Page directory");
-        fs::set_permissions(root.join("pages"), fs::Permissions::from_mode(0o500))
+        nodex_platform::private_fs::set_mode(&page_root, 0o500).expect("immutable Page directory");
+        nodex_platform::private_fs::set_mode(root.join("pages"), 0o500)
             .expect("immutable pages directory");
-        fs::set_permissions(&root, fs::Permissions::from_mode(0o500))
-            .expect("immutable lease root");
+        nodex_platform::private_fs::set_mode(&root, 0o500).expect("immutable lease root");
 
         // Rebuild the typed value because `json!` above borrowed rather than consumed it.
         lease.manifest =
@@ -717,16 +718,15 @@ mod tests {
         assert_eq!(missing.exit_status, 1);
         assert!(missing.stdout.is_empty());
 
-        fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).expect("release root");
-        fs::set_permissions(root.join("pages"), fs::Permissions::from_mode(0o700))
-            .expect("release pages");
-        fs::set_permissions(&page_root, fs::Permissions::from_mode(0o700))
-            .expect("release Page directory");
+        nodex_platform::private_fs::set_mode(&root, 0o700).expect("release root");
+        nodex_platform::private_fs::set_mode(root.join("pages"), 0o700).expect("release pages");
+        nodex_platform::private_fs::set_mode(&page_root, 0o700).expect("release Page directory");
         for file in [&meta_path, &body_path, &root.join("manifest.json")] {
-            fs::set_permissions(file, fs::Permissions::from_mode(0o600)).expect("release file");
+            nodex_platform::private_fs::set_mode(file, 0o600).expect("release file");
         }
     }
 
+    #[cfg(unix)]
     #[test]
     fn interrupt_polling_terminates_the_child_and_returns_130_for_caller_cleanup() {
         let mut child = Command::new("/bin/sh")

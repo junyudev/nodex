@@ -265,7 +265,7 @@ mod tests {
         const OTHER: &str = "018f0000-0000-7000-8000-000000000902";
         const RETIRED: &str = "018f0000-0000-7000-8000-000000000903";
         const FRESH_OWNER: &str = "018f0000-0000-7000-8000-000000000904";
-        let directory = tempfile::tempdir().expect("Profile");
+        let directory = nodex_platform::test_support::tempdir().expect("Profile");
         let kernel = SqliteStoreKernel::open_test(directory.path()).expect("Store");
         kernel.writer().call(|connection| with_immediate_transaction(connection, |transaction| {
             transaction.execute_batch("INSERT INTO profiles(id, created_at, updated_at) VALUES ('profile', 'now', 'now');

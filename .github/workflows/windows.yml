@@ -55,6 +55,10 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-vite-plus
       - uses: ./.github/actions/setup-windows-rust
+      - name: Test native platform boundary
+        run: cargo test --locked -p nodex-platform --all-features
+      - name: Install native search test dependency
+        run: cargo install --locked ripgrep
       - name: Build workspace
         run: cargo build --locked --workspace --all-features --all-targets
       - name: Test workspace

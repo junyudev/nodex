@@ -44,8 +44,8 @@ pub(super) fn rewrite_as_predecessor(connection: &Connection, _revision: i64) {
 
 #[test]
 fn frozen_predecessor_rebuilds_the_complete_current_projection_bundle() {
-    let profile = tempfile::tempdir().unwrap();
-    fs::write(
+    let profile = nodex_platform::test_support::tempdir().unwrap();
+    nodex_platform::private_fs::write(
         profile.path().join("nodex.db"),
         include_bytes!("../../tests/fixtures/store-v188.db"),
     )
@@ -72,8 +72,8 @@ fn frozen_predecessor_rebuilds_the_complete_current_projection_bundle() {
 
 #[test]
 fn canonical_projection_corruption_is_rejected_before_backup() {
-    let profile = tempfile::tempdir().unwrap();
-    fs::write(
+    let profile = nodex_platform::test_support::tempdir().unwrap();
+    nodex_platform::private_fs::write(
         profile.path().join("nodex.db"),
         include_bytes!("../../tests/fixtures/store-v191.db"),
     )
@@ -102,8 +102,8 @@ fn canonical_projection_corruption_is_rejected_before_backup() {
 
 #[test]
 fn language_migration_rolls_back_column_content_and_epoch_together() {
-    let profile = tempfile::tempdir().unwrap();
-    fs::write(
+    let profile = nodex_platform::test_support::tempdir().unwrap();
+    nodex_platform::private_fs::write(
         profile.path().join("nodex.db"),
         include_bytes!("../../tests/fixtures/store-v191.db"),
     )

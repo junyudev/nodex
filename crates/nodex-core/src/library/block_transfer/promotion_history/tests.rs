@@ -38,7 +38,7 @@ fn context() -> BoundModuleContext {
 }
 
 struct Fixture {
-    _directory: tempfile::TempDir,
+    _directory: nodex_platform::test_support::TempDir,
     kernel: SqliteStoreKernel,
     library: LibraryModule,
     documents: OwnedDocumentModule,
@@ -52,7 +52,7 @@ impl Fixture {
     }
 
     fn new_with_context(context: BoundModuleContext) -> Self {
-        let directory = tempfile::tempdir().unwrap();
+        let directory = nodex_platform::test_support::tempdir().unwrap();
         let kernel = SqliteStoreKernel::open_test(directory.path()).unwrap();
         kernel.writer().call(|connection| with_immediate_transaction(connection, |transaction| {
             transaction.execute_batch("INSERT INTO profiles(id, created_at, updated_at) VALUES ('profile', 'now', 'now');

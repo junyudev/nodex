@@ -19,7 +19,7 @@ import { CORE_CLIENT_REQUIREMENTS, type components } from "@nodex/core-protocol"
 
 import { CoreClient, CoreModuleResponseError } from "./core-client";
 import { readCoreRuntimeConnection } from "./runtime-descriptor";
-import { CoreEventCompatibilityError } from "./uds-http";
+import { CoreEventCompatibilityError } from "./local-http";
 import type {
   CoreEventEnvelope,
   CoreEventSubscription,
@@ -31,6 +31,10 @@ import { applyResultCursor, applyResultDelivery, applyResultStoreEpoch } from ".
 const CORE_BINARY = requiredNativeExecutable("core-server");
 const CORE_STDERR_LIMIT = 16 * 1024;
 const CORE_STARTUP_TIMEOUT_MS = 35_000;
+const coreSelections = new WeakMap<
+  ChildProcessWithoutNullStreams,
+  components["schemas"]["CoreSelectionResult"]
+>();
 const coreStderr = new WeakMap<ChildProcessWithoutNullStreams, string>();
 
 const spawnCore = (nodexHome: string): ChildProcessWithoutNullStreams => {
@@ -58,7 +62,9 @@ const readDescriptor = (child: ChildProcessWithoutNullStreams): Promise<CoreRunt
     lines.once("line", (line) => {
       clearTimeout(timeout);
       lines.close();
-      resolve((JSON.parse(line) as components["schemas"]["CoreSelectionResult"]).descriptor);
+      const selection = JSON.parse(line) as components["schemas"]["CoreSelectionResult"];
+      coreSelections.set(child, selection);
+      resolve(selection.descriptor);
     });
     child.once("error", (error) => {
       clearTimeout(timeout);
@@ -75,6 +81,16 @@ const readDescriptor = (child: ChildProcessWithoutNullStreams): Promise<CoreRunt
       );
     });
   });
+
+const terminateSelectedCore = (child: ChildProcessWithoutNullStreams): void => {
+  const pid = coreSelections.get(child)?.descriptor.pid ?? child.pid;
+  if (pid === undefined) return;
+  try {
+    process.kill(pid);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+  }
+};
 
 const waitForExit = (child: ChildProcessWithoutNullStreams): Promise<number | null> => {
   if (child.exitCode !== null) return Promise.resolve(child.exitCode);
@@ -125,7 +141,7 @@ async function createInitialProject(client: CoreClient, nodexHome: string): Prom
   return applyResultCursor(committed);
 }
 
-describe("CoreClient over a Unix socket", () => {
+describe("CoreClient over a private local endpoint", () => {
   test("keeps shared File identity across desktop relations and streams exact authorized versions", async () => {
     const nodexHome = mkdtempSync(path.join(tmpdir(), "nodex-library-file-client-"));
     const child = spawnCore(nodexHome);
@@ -405,7 +421,7 @@ describe("CoreClient over a Unix socket", () => {
       await client.shutdown();
       await waitForExit(child);
     } finally {
-      if (child.exitCode === null) child.kill();
+      if (child.exitCode === null) terminateSelectedCore(child);
       await waitForExit(child).catch(() => null);
       rmSync(nodexHome, { recursive: true, force: true });
     }
@@ -489,7 +505,7 @@ describe("CoreClient over a Unix socket", () => {
     } finally {
       firstSubscription?.close();
       secondSubscription?.close();
-      if (child.exitCode === null) child.kill();
+      if (child.exitCode === null) terminateSelectedCore(child);
       await waitForExit(child).catch(() => null);
       rmSync(nodexHome, { recursive: true, force: true });
     }
@@ -508,7 +524,9 @@ describe("CoreClient over a Unix socket", () => {
       expect(descriptors[0]?.pid).toBe(descriptors[1]?.pid);
       expect(descriptors[0]?.start_nonce).toBe(descriptors[1]?.start_nonce);
       const winnerPid = descriptors[0]?.pid;
-      expect(children.some((child) => child.pid === winnerPid)).toBe(true);
+      expect(
+        children.filter((child) => coreSelections.get(child)?.disposition === "started"),
+      ).toHaveLength(1);
 
       const rootClient = await CoreClient.connect({
         nodexHome,
@@ -1205,7 +1223,7 @@ describe("CoreClient over a Unix socket", () => {
       documentSubscription?.close();
       subscription?.close();
       for (const child of children) {
-        if (child.exitCode === null) child.kill();
+        if (child.exitCode === null) terminateSelectedCore(child);
       }
       await Promise.all(children.map((child) => waitForExit(child).catch(() => null)));
       rmSync(nodexHome, { recursive: true, force: true });

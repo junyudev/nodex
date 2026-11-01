@@ -1,7 +1,8 @@
+use nodex_platform::private_fs::OpenOptions;
 use std::collections::BTreeSet;
-use std::fs::{self, File, OpenOptions};
+use std::fs::{self, File};
 use std::io::{Read, Write};
-use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
+
 use std::path::{Component, Path, PathBuf};
 use std::time::Duration;
 
@@ -359,11 +360,8 @@ pub(crate) fn create(
             projection.body_markdown.as_bytes(),
             PRIVATE_FILE_MODE,
         )?;
-        fs::set_permissions(
-            &base_root,
-            fs::Permissions::from_mode(READ_ONLY_DIRECTORY_MODE),
-        )
-        .map_err(|error| path_error(&base_root, error))?;
+        nodex_platform::private_fs::set_mode(&base_root, READ_ONLY_DIRECTORY_MODE)
+            .map_err(|error| path_error(&base_root, error))?;
         sync_directory(&base_root)?;
         sync_directory(&work_root)?;
         sync_directory(&staging)?;
@@ -372,7 +370,7 @@ pub(crate) fn create(
             fs::remove_dir(&destination.path)
                 .map_err(|error| path_error(&destination.path, error))?;
         }
-        fs::rename(&staging, &destination.path)
+        nodex_platform::private_fs::atomic_replace(&staging, &destination.path)
             .map_err(|error| path_error(&destination.path, error))?;
         sync_directory(&destination.parent)?;
         Ok(manifest)
@@ -1269,9 +1267,10 @@ fn write_apply_state(root: &Path, state: &DraftApplyState) -> Result<(), CliErro
         ));
     }
     write_new_file(&temporary, &bytes, PRIVATE_FILE_MODE)?;
-    fs::set_permissions(&temporary, fs::Permissions::from_mode(READ_ONLY_FILE_MODE))
+    nodex_platform::private_fs::set_mode(&temporary, READ_ONLY_FILE_MODE)
         .map_err(|error| path_error(&temporary, error))?;
-    fs::rename(&temporary, &path).map_err(|error| path_error(&path, error))?;
+    nodex_platform::private_fs::atomic_replace(&temporary, &path)
+        .map_err(|error| path_error(&path, error))?;
     sync_directory(root)
 }
 
@@ -1352,7 +1351,7 @@ fn draft_destination(output: &Path) -> Result<DraftDestination, CliError> {
 fn existing_absolute_path(path: &Path) -> Result<PathBuf, CliError> {
     let lexical = absolute_normalized_path(path)?;
     let metadata = fs::symlink_metadata(&lexical).map_err(|error| path_error(&lexical, error))?;
-    if metadata.file_type().is_symlink() {
+    if nodex_platform::private_fs::is_reparse_point(&metadata) {
         return Err(unsafe_path(&lexical, "draft root must not be a symlink"));
     }
     let canonical = lexical
@@ -1371,22 +1370,21 @@ fn absolute_normalized_path(path: &Path) -> Result<PathBuf, CliError> {
     } else {
         std::env::current_dir().map_err(internal)?.join(path)
     };
-    let mut normalized = PathBuf::from("/");
+    let mut normalized = PathBuf::new();
     for component in absolute.components() {
         match component {
-            Component::RootDir | Component::CurDir => {}
+            Component::RootDir => normalized.push(component.as_os_str()),
+            Component::CurDir => {}
             Component::Normal(value) => normalized.push(value),
             Component::ParentDir => {
                 if !normalized.pop() {
                     return Err(unsafe_path(path, "draft path escapes the filesystem root"));
                 }
             }
-            Component::Prefix(_) => {
-                return Err(unsafe_path(path, "draft path has an unsupported prefix"));
-            }
+            Component::Prefix(_) => normalized.push(component.as_os_str()),
         }
     }
-    if normalized == Path::new("/") {
+    if normalized.parent().is_none() {
         return Err(unsafe_path(
             path,
             "filesystem root cannot be a draft directory",
@@ -1396,15 +1394,15 @@ fn absolute_normalized_path(path: &Path) -> Result<PathBuf, CliError> {
 }
 
 fn validate_no_symlink_components(path: &Path) -> Result<(), CliError> {
-    let mut current = PathBuf::from("/");
+    let mut current = PathBuf::new();
     for component in path.components() {
-        let Component::Normal(value) = component else {
+        current.push(component.as_os_str());
+        if !matches!(component, Component::Normal(_)) {
             continue;
-        };
-        current.push(value);
+        }
         let metadata =
             fs::symlink_metadata(&current).map_err(|error| path_error(&current, error))?;
-        if metadata.file_type().is_symlink() {
+        if nodex_platform::private_fs::is_reparse_point(&metadata) {
             return Err(unsafe_path(
                 &current,
                 "draft path must not traverse a symlink",
@@ -1451,39 +1449,24 @@ fn validate_entries(
 }
 
 fn validate_directory(path: &Path, exact_mode: Option<u32>) -> Result<(), CliError> {
-    let metadata = fs::symlink_metadata(path).map_err(|error| path_error(path, error))?;
-    validate_owned_metadata(&metadata, path)?;
-    if !metadata.is_dir() {
-        return Err(unsafe_path(path, "draft path is not a directory"));
-    }
-    let mode = metadata.permissions().mode() & 0o777;
-    if exact_mode.is_some_and(|expected| mode != expected)
-        || (exact_mode.is_none() && mode & 0o022 != 0)
-    {
-        return Err(unsafe_path(path, "draft directory permissions are unsafe"));
-    }
+    nodex_platform::private_fs::checked_metadata(
+        path,
+        nodex_platform::private_fs::EntryKind::Directory,
+        exact_mode,
+    )
+    .map_err(|error| path_error(path, error))?;
     Ok(())
 }
 
 fn validate_private_file(path: &Path, read_only: bool) -> Result<File, CliError> {
-    let descriptor = rustix::fs::open(
-        path,
-        rustix::fs::OFlags::RDONLY | rustix::fs::OFlags::CLOEXEC | rustix::fs::OFlags::NOFOLLOW,
-        rustix::fs::Mode::empty(),
-    )
-    .map_err(|error| path_error(path, error))?;
-    let file = File::from(descriptor);
-    let metadata = file.metadata().map_err(|error| path_error(path, error))?;
-    validate_owned_metadata(&metadata, path)?;
-    if !metadata.is_file() {
-        return Err(unsafe_path(path, "draft entry is not a regular file"));
-    }
-    let mode = metadata.permissions().mode() & 0o777;
-    if (read_only && mode != READ_ONLY_FILE_MODE)
-        || (!read_only && (mode & 0o077 != 0 || mode & 0o400 == 0))
-    {
-        return Err(unsafe_path(path, "draft file permissions are unsafe"));
-    }
+    let file =
+        nodex_platform::private_fs::open_read(path).map_err(|error| path_error(path, error))?;
+    let validation = if read_only {
+        nodex_platform::private_fs::validate_private_handle(&file, READ_ONLY_FILE_MODE)
+    } else {
+        nodex_platform::private_fs::validate_private_read_handle(&file)
+    };
+    validation.map_err(|error| path_error(path, error))?;
     Ok(file)
 }
 
@@ -1508,21 +1491,13 @@ fn read_private_file(path: &Path, limit: usize, read_only: bool) -> Result<Vec<u
 }
 
 fn validate_owned_metadata(metadata: &fs::Metadata, path: &Path) -> Result<(), CliError> {
-    if metadata.file_type().is_symlink() {
-        return Err(unsafe_path(path, "draft paths must not be symlinks"));
-    }
-    if metadata.uid() != rustix::process::geteuid().as_raw() {
-        return Err(unsafe_path(
-            path,
-            "draft paths must be owned by the current user",
-        ));
-    }
-    Ok(())
+    nodex_platform::private_fs::require_owned(path, metadata)
+        .map_err(|error| path_error(path, error))
 }
 
 fn create_private_directory(path: &Path) -> Result<(), CliError> {
-    fs::create_dir(path).map_err(|error| path_error(path, error))?;
-    fs::set_permissions(path, fs::Permissions::from_mode(PRIVATE_DIRECTORY_MODE))
+    nodex_platform::private_fs::create_dir(path).map_err(|error| path_error(path, error))?;
+    nodex_platform::private_fs::set_mode(path, PRIVATE_DIRECTORY_MODE)
         .map_err(|error| path_error(path, error))?;
     validate_directory(path, Some(PRIVATE_DIRECTORY_MODE))
 }
@@ -1537,33 +1512,30 @@ fn write_new_file(path: &Path, bytes: &[u8], mode: u32) -> Result<(), CliError> 
         .map_err(|error| path_error(path, error))?;
     file.sync_all().map_err(|error| path_error(path, error))?;
     drop(file);
-    fs::set_permissions(path, fs::Permissions::from_mode(mode))
-        .map_err(|error| path_error(path, error))
+    nodex_platform::private_fs::set_mode(path, mode).map_err(|error| path_error(path, error))
 }
 
 fn sync_directory(path: &Path) -> Result<(), CliError> {
-    File::open(path)
-        .and_then(|directory| directory.sync_all())
-        .map_err(|error| path_error(path, error))
+    nodex_platform::private_fs::sync_directory(path).map_err(|error| path_error(path, error))
 }
 
 fn remove_known_file(path: &Path) -> Result<(), CliError> {
     let _file = validate_private_file(path, false)?;
-    fs::set_permissions(path, fs::Permissions::from_mode(PRIVATE_FILE_MODE))
+    nodex_platform::private_fs::set_mode(path, PRIVATE_FILE_MODE)
         .map_err(|error| path_error(path, error))?;
     fs::remove_file(path).map_err(|error| path_error(path, error))
 }
 
 fn remove_known_directory(path: &Path) -> Result<(), CliError> {
     validate_directory(path, None)?;
-    fs::set_permissions(path, fs::Permissions::from_mode(PRIVATE_DIRECTORY_MODE))
+    nodex_platform::private_fs::set_mode(path, PRIVATE_DIRECTORY_MODE)
         .map_err(|error| path_error(path, error))?;
     fs::remove_dir(path).map_err(|error| path_error(path, error))
 }
 
 fn unseal_directory(path: &Path) -> Result<(), CliError> {
     validate_directory(path, None)?;
-    fs::set_permissions(path, fs::Permissions::from_mode(PRIVATE_DIRECTORY_MODE))
+    nodex_platform::private_fs::set_mode(path, PRIVATE_DIRECTORY_MODE)
         .map_err(|error| path_error(path, error))
 }
 
@@ -1691,9 +1663,9 @@ fn internal(error: impl std::fmt::Display) -> CliError {
 
 #[cfg(test)]
 mod tests {
-    use std::os::unix::fs::symlink;
+    use nodex_platform::private_fs::symlink;
 
-    use tempfile::tempdir;
+    use nodex_platform::test_support::tempdir;
 
     use super::*;
 
@@ -1733,10 +1705,11 @@ mod tests {
         assert!(!draft_destination(&absent).unwrap().remove_empty);
 
         let empty = directory.path().join("empty");
-        fs::create_dir(&empty).expect("empty destination");
+        nodex_platform::private_fs::create_dir(&empty).expect("empty destination");
         assert!(draft_destination(&empty).unwrap().remove_empty);
 
-        fs::write(empty.join("user-file"), b"keep").expect("non-empty destination");
+        nodex_platform::private_fs::write(empty.join("user-file"), b"keep")
+            .expect("non-empty destination");
         let error = draft_destination(&empty).expect_err("non-empty destination must fail");
         assert_eq!(error.code, CliErrorCode::DraftUnsafePath);
 
@@ -1751,7 +1724,7 @@ mod tests {
         let directory = tempdir().expect("draft parent");
         let root = directory.path().join("draft");
         write_fixture(&root);
-        fs::write(root.join("unknown"), b"no").expect("unknown entry");
+        nodex_platform::private_fs::write(root.join("unknown"), b"no").expect("unknown entry");
         let error = load_layout(&root).expect_err("unknown draft entry");
         assert_eq!(error.code, CliErrorCode::DraftUnsafePath);
         fs::remove_file(root.join("unknown")).expect("remove unknown entry");
@@ -1771,26 +1744,20 @@ mod tests {
         let root = directory.path().join("draft");
         write_fixture(&root);
         let base_body = root.join(BASE_DIRECTORY).join(BODY_FILE);
-        fs::set_permissions(&base_body, fs::Permissions::from_mode(PRIVATE_FILE_MODE)).unwrap();
-        fs::write(&base_body, b"Tampered\n").expect("tampered base body");
-        fs::set_permissions(&base_body, fs::Permissions::from_mode(READ_ONLY_FILE_MODE)).unwrap();
+        nodex_platform::private_fs::set_mode(&base_body, PRIVATE_FILE_MODE).unwrap();
+        nodex_platform::private_fs::write(&base_body, b"Tampered\n").expect("tampered base body");
+        nodex_platform::private_fs::set_mode(&base_body, READ_ONLY_FILE_MODE).unwrap();
         let error = load_layout(&root).expect_err("base hash mismatch must fail");
         assert_eq!(error.code, CliErrorCode::DraftUnsafePath);
 
-        fs::set_permissions(
-            root.join(BASE_DIRECTORY),
-            fs::Permissions::from_mode(PRIVATE_DIRECTORY_MODE),
-        )
-        .unwrap();
-        fs::set_permissions(&base_body, fs::Permissions::from_mode(PRIVATE_FILE_MODE)).unwrap();
-        fs::write(&base_body, b"Body\n").expect("restore base body");
-        fs::set_permissions(&base_body, fs::Permissions::from_mode(READ_ONLY_FILE_MODE)).unwrap();
-        fs::set_permissions(
-            root.join(BASE_DIRECTORY),
-            fs::Permissions::from_mode(READ_ONLY_DIRECTORY_MODE),
-        )
-        .unwrap();
-        fs::write(
+        nodex_platform::private_fs::set_mode(root.join(BASE_DIRECTORY), PRIVATE_DIRECTORY_MODE)
+            .unwrap();
+        nodex_platform::private_fs::set_mode(&base_body, PRIVATE_FILE_MODE).unwrap();
+        nodex_platform::private_fs::write(&base_body, b"Body\n").expect("restore base body");
+        nodex_platform::private_fs::set_mode(&base_body, READ_ONLY_FILE_MODE).unwrap();
+        nodex_platform::private_fs::set_mode(root.join(BASE_DIRECTORY), READ_ONLY_DIRECTORY_MODE)
+            .unwrap();
+        nodex_platform::private_fs::write(
             root.join(WORK_DIRECTORY).join(BODY_FILE),
             b"missing final LF",
         )
@@ -1798,8 +1765,9 @@ mod tests {
         let error = load_draft(&root).expect_err("non-canonical body must fail");
         assert_eq!(error.code, CliErrorCode::DraftInvalidMarkdown);
 
-        fs::write(root.join(WORK_DIRECTORY).join(BODY_FILE), b"Body\n").unwrap();
-        fs::write(
+        nodex_platform::private_fs::write(root.join(WORK_DIRECTORY).join(BODY_FILE), b"Body\n")
+            .unwrap();
+        nodex_platform::private_fs::write(
             root.join(WORK_DIRECTORY).join(META_FILE),
             b"id: \"another-page\"\ntitle: \"Title\"\nproperties: {}\nschedule: null\n",
         )
@@ -1816,7 +1784,7 @@ mod tests {
         let original = load_draft(&root).expect("original draft");
         let original_id = draft_operation_id(&original, &original.work_metadata.title_markdown)
             .expect("original operation ID");
-        fs::write(
+        nodex_platform::private_fs::write(
             root.join(WORK_DIRECTORY).join(META_FILE),
             b"# harmless formatting\nschedule: null\nproperties: {}\ntitle: 'Title'\nid: 'page-1'\n",
         )
@@ -1837,7 +1805,11 @@ mod tests {
         let directory = tempdir().unwrap();
         let root = directory.path().join("draft");
         write_fixture(&root);
-        fs::write(root.join(WORK_DIRECTORY).join(BODY_FILE), b"Replacement\n").unwrap();
+        nodex_platform::private_fs::write(
+            root.join(WORK_DIRECTORY).join(BODY_FILE),
+            b"Replacement\n",
+        )
+        .unwrap();
         let loaded = load_draft(&root).unwrap();
         let mut current = draft_projection("body-etag", "Body\n");
         assert_eq!(
@@ -1871,8 +1843,11 @@ mod tests {
         let directory = tempdir().expect("draft parent");
         let root = directory.path().join("draft");
         write_fixture(&root);
-        fs::write(root.join(WORK_DIRECTORY).join(META_FILE), b"not: [valid")
-            .expect("invalid work metadata");
+        nodex_platform::private_fs::write(
+            root.join(WORK_DIRECTORY).join(META_FILE),
+            b"not: [valid",
+        )
+        .expect("invalid work metadata");
         discard(&root).expect("discard does not parse disposable work content");
         assert!(!root.exists());
     }
@@ -1882,12 +1857,13 @@ mod tests {
         let directory = tempdir().expect("draft parent");
         let root = directory.path().join("draft");
         write_fixture(&root);
-        fs::write(
+        nodex_platform::private_fs::write(
             root.join(WORK_DIRECTORY).join(META_FILE),
             b"id: \"page-1\"\ntitle: \"New title\"\nproperties: {}\nschedule: null\n",
         )
         .expect("work title");
-        fs::write(root.join(WORK_DIRECTORY).join(BODY_FILE), b"New body\n").expect("work body");
+        nodex_platform::private_fs::write(root.join(WORK_DIRECTORY).join(BODY_FILE), b"New body\n")
+            .expect("work body");
         let loaded = load_draft(&root).expect("changed draft");
         let title = loaded.work_metadata.title_markdown.clone();
         let operation_id = draft_operation_id(&loaded, &title).unwrap();
@@ -1923,7 +1899,7 @@ mod tests {
             .expect_err("marker cannot change accepted work");
         assert_eq!(error.code, CliErrorCode::DraftUnsafePath);
 
-        fs::write(
+        nodex_platform::private_fs::write(
             root.join(WORK_DIRECTORY).join(BODY_FILE),
             b"Changed after apply\n",
         )
@@ -2035,6 +2011,6 @@ mod tests {
         write_new_file(&base.join(IDENTITY_FILE), &identity, READ_ONLY_FILE_MODE).unwrap();
         write_new_file(&work.join(META_FILE), metadata, PRIVATE_FILE_MODE).unwrap();
         write_new_file(&work.join(BODY_FILE), body, PRIVATE_FILE_MODE).unwrap();
-        fs::set_permissions(&base, fs::Permissions::from_mode(READ_ONLY_DIRECTORY_MODE)).unwrap();
+        nodex_platform::private_fs::set_mode(&base, READ_ONLY_DIRECTORY_MODE).unwrap();
     }
 }

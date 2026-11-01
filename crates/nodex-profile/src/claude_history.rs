@@ -175,12 +175,12 @@ fn inventory_with_file_limit(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::os::unix::fs::symlink;
+    use nodex_platform::private_fs::symlink;
 
     #[test]
     fn rejects_aliases_outside_the_home_or_transcript_tree() {
         for target_kind in ["outside", "credentials", "directory"] {
-            let root = tempfile::tempdir().unwrap();
+            let root = nodex_platform::test_support::tempdir().unwrap();
             let home = root.path().join("claude");
             let link = home.join("projects/project/fork/subagents/agent-child.jsonl");
             files::private_directory(link.parent().unwrap()).unwrap();
@@ -207,7 +207,7 @@ mod tests {
 
     #[test]
     fn detects_a_fork_alias_changing_its_physical_transcript() {
-        let home = tempfile::tempdir().unwrap();
+        let home = nodex_platform::test_support::tempdir().unwrap();
         let targets = ["first", "second"].map(|session| {
             home.path().join(format!(
                 "projects/project/{session}/subagents/agent-child.jsonl"
@@ -232,7 +232,7 @@ mod tests {
 
     #[test]
     fn includes_session_file_history_but_ignores_unrelated_session_writes() {
-        let home = tempfile::tempdir().unwrap();
+        let home = nodex_platform::test_support::tempdir().unwrap();
         let selected = home.path().join("projects/project/fork.jsonl");
         let backup = home.path().join("file-history/fork/abc@v1");
         let unrelated = home.path().join("projects/project/parent.jsonl");
@@ -242,18 +242,18 @@ mod tests {
         let required = BTreeSet::from(["fork".into()]);
         let before = inventory(home.path(), &required).unwrap();
         assert_eq!(before.len(), 2);
-        fs::write(&unrelated, b"another session is running").unwrap();
+        nodex_platform::private_fs::write(&unrelated, b"another session is running").unwrap();
         assert_eq!(before, inventory(home.path(), &required).unwrap());
-        fs::write(&backup, b"changed checkpoint").unwrap();
+        nodex_platform::private_fs::write(&backup, b"changed checkpoint").unwrap();
         assert_ne!(before, inventory(home.path(), &required).unwrap());
         let before = inventory(home.path(), &required).unwrap();
-        fs::write(&selected, b"selected session changed").unwrap();
+        nodex_platform::private_fs::write(&selected, b"selected session changed").unwrap();
         assert_ne!(before, inventory(home.path(), &required).unwrap());
     }
 
     #[test]
     fn rejects_session_id_path_traversal() {
-        let home = tempfile::tempdir().unwrap();
+        let home = nodex_platform::test_support::tempdir().unwrap();
         for id in ["", ".", "..", "../other", "/outside", "first/second"] {
             assert!(inventory(home.path(), &BTreeSet::from([id.into()])).is_err());
         }
@@ -261,7 +261,7 @@ mod tests {
 
     #[test]
     fn bounds_top_level_transcripts_across_projects() {
-        let home = tempfile::tempdir().unwrap();
+        let home = nodex_platform::test_support::tempdir().unwrap();
         for project in ["first", "second", "third"] {
             files::create_file(
                 &home
@@ -282,7 +282,7 @@ mod tests {
 
     #[test]
     fn shares_one_file_bound_across_transcripts_delegated_history_and_checkpoints() {
-        let home = tempfile::tempdir().unwrap();
+        let home = nodex_platform::test_support::tempdir().unwrap();
         for relative in [
             "projects/project/selected.jsonl",
             "projects/project/selected/subagents/agent-child.jsonl",

@@ -1,8 +1,8 @@
 use nodex_core_contracts::{CoreError, CoreErrorCode, CoreErrorRecovery};
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
-use std::{os::unix::ffi::OsStrExt, path::Path};
 
 use rusqlite::limits::Limit;
 use rusqlite::{Connection, ErrorCode, OpenFlags, TransactionBehavior};
@@ -162,6 +162,17 @@ impl Default for QueryCancellation {
 }
 
 pub fn open_writer(path: &std::path::Path) -> Result<Connection, StoreError> {
+    // SQLite inherits its default owner from the process token. Create the file
+    // through the private boundary first so elevated Windows tokens retain user ownership.
+    drop(
+        nodex_platform::private_fs::open_regular(path, true).map_err(|error| {
+            StoreError::new(
+                StoreErrorCode::InvalidProfile,
+                format!("Could not open the private Store file: {error}"),
+                false,
+            )
+        })?,
+    );
     let flags = OpenFlags::SQLITE_OPEN_READ_WRITE
         | OpenFlags::SQLITE_OPEN_CREATE
         | OpenFlags::SQLITE_OPEN_NO_MUTEX;
@@ -205,12 +216,11 @@ pub fn open_immutable_reader(path: &Path) -> Result<Connection, StoreError> {
             false,
         )
     })?;
-    let encoded = canonical
-        .as_os_str()
-        .as_bytes()
+    let encoded = nodex_platform::process::uri_path_bytes(&canonical)
+        .map_err(|error| StoreError::new(StoreErrorCode::InvalidProfile, error.to_string(), false))?
         .iter()
         .map(|byte| match byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'/' | b'.' | b'_' | b'-' => {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'/' | b':' | b'.' | b'_' | b'-' => {
                 char::from(*byte).to_string()
             }
             _ => format!("%{byte:02X}"),
@@ -557,10 +567,23 @@ pub(crate) fn core_error(error: StoreError) -> CoreError {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn writer_creation_keeps_the_database_owned_by_the_current_user() {
+        let directory = nodex_platform::test_support::tempdir().unwrap();
+        let path = directory.path().join("nodex.db");
+        drop(super::open_writer(&path).unwrap());
+        nodex_platform::private_fs::checked_metadata(
+            &path,
+            nodex_platform::private_fs::EntryKind::File,
+            Some(0o600),
+        )
+        .unwrap();
+    }
+
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
 
-    use tempfile::tempdir;
+    use nodex_platform::test_support::tempdir;
 
     use super::*;
 

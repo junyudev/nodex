@@ -4,7 +4,7 @@ use std::process::{self, Command};
 
 use nodex_core::infrastructure::sqlite::{StoreError, open_writer, validate_store};
 use nodex_core::infrastructure::store::SqliteStoreKernel;
-use tempfile::tempdir;
+use nodex_platform::test_support::tempdir;
 
 const CRASH_WRITER_DATABASE_ENV: &str = "NODEX_TEST_CRASH_WRITER_DATABASE";
 const CRASH_WRITER_EXIT: i32 = 91;

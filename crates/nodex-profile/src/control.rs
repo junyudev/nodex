@@ -1,8 +1,11 @@
 //! A live Desktop lends an idle Agent snapshot window for exactly this socket lifetime.
+use nodex_platform::{
+    local_endpoint::{self, Stream},
+    private_fs::{self, EntryKind},
+};
 use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
-use std::os::unix::fs::{FileTypeExt, MetadataExt};
-use std::os::unix::net::UnixStream;
+
 use std::path::Path;
 use std::time::Duration;
 
@@ -13,7 +16,7 @@ use crate::files::invalid;
 const MAX_RESPONSE_BYTES: u64 = 1024 * 1024;
 
 pub(crate) struct SnapshotLease {
-    stream: UnixStream,
+    stream: Stream,
     execution: Option<ExecutionSnapshot>,
 }
 
@@ -47,46 +50,84 @@ struct Response {
     execution: Option<ExecutionSnapshot>,
 }
 
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Rendezvous {
+    version: u32,
+    endpoint: String,
+    capability: String,
+    pid: u32,
+}
+fn snapshot_endpoint_valid(endpoint: &str, directory: &Path) -> bool {
+    if cfg!(windows) {
+        return local_endpoint::valid_pipe_name(endpoint, "nodex-clone");
+    }
+    Path::new(endpoint) == directory.join("clone.sock")
+}
+
 impl SnapshotLease {
     /// An absent/stale endpoint selects offline capture, whose native writer check still applies.
     pub(crate) fn acquire(profile: &Path) -> Result<Option<Self>> {
         let directory = profile.join("ipc");
-        let socket = directory.join("clone.sock");
-        for (path, is_socket) in [(&directory, false), (&socket, true)] {
-            let metadata = match fs::symlink_metadata(path) {
-                Ok(metadata) => metadata,
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-                Err(error) => return Err(error.into()),
-            };
-            let expected_kind = if is_socket {
-                metadata.file_type().is_socket()
-            } else {
-                metadata.is_dir()
-            };
-            if !expected_kind
-                || metadata.uid() != rustix::process::geteuid().as_raw()
-                || metadata.mode() & 0o077 != 0
-            {
-                return Err(invalid(
-                    "Source Profile snapshot endpoint is not private and owned by this user",
-                ));
+        let rendezvous_path = directory.join("clone.json");
+        match fs::symlink_metadata(&directory) {
+            Ok(_) => {
+                private_fs::checked_metadata(&directory, EntryKind::Directory, Some(0o700))?;
             }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(error.into()),
         }
-        let mut stream = match UnixStream::connect(socket) {
-            Ok(stream) => stream,
-            Err(error)
-                if matches!(
-                    error.kind(),
-                    std::io::ErrorKind::ConnectionRefused | std::io::ErrorKind::NotFound
-                ) =>
-            {
-                return Ok(None);
-            }
+        let metadata = match fs::symlink_metadata(&rendezvous_path) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
             Err(error) => return Err(error.into()),
         };
+        private_fs::checked_metadata(&rendezvous_path, EntryKind::File, Some(0o600))?;
+        if metadata.len() > 4096 {
+            return Err(invalid("Profile snapshot rendezvous exceeds its bound"));
+        }
+        let rendezvous: Rendezvous =
+            serde_json::from_reader(private_fs::open_read(&rendezvous_path)?.take(4097))?;
+        if rendezvous.version != 1
+            || rendezvous.pid == 0
+            || rendezvous.capability.len() != 64
+            || !rendezvous
+                .capability
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit())
+            || !snapshot_endpoint_valid(&rendezvous.endpoint, &directory)
+        {
+            return Err(invalid("Profile snapshot rendezvous is invalid"));
+        }
+        if cfg!(unix) {
+            private_fs::checked_metadata(
+                Path::new(&rendezvous.endpoint),
+                EntryKind::Socket,
+                Some(0o600),
+            )?;
+        }
+        let mut stream =
+            match local_endpoint::connect(Path::new(&rendezvous.endpoint), Some(rendezvous.pid)) {
+                Ok(stream) => stream,
+                Err(error)
+                    if matches!(
+                        error.kind(),
+                        std::io::ErrorKind::ConnectionRefused | std::io::ErrorKind::NotFound
+                    ) =>
+                {
+                    return Ok(None);
+                }
+                Err(error) => return Err(error.into()),
+            };
         stream.set_read_timeout(Some(Duration::from_secs(75)))?;
         stream.set_write_timeout(Some(Duration::from_secs(5)))?;
-        stream.write_all(b"{\"version\":1}\n")?;
+        stream.write_all(
+            format!(
+                "{}\n",
+                serde_json::json!({"version":1,"capability":rendezvous.capability})
+            )
+            .as_bytes(),
+        )?;
         let mut lease = Self {
             stream,
             execution: None,
@@ -129,8 +170,8 @@ impl SnapshotLease {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::os::unix::fs::PermissionsExt;
-    use std::os::unix::net::UnixListener;
+
+    use nodex_platform::local_endpoint::BlockingListener;
 
     fn serve(profile: &Path, fail: bool) -> std::thread::JoinHandle<()> {
         serve_snapshot(profile, fail, None)
@@ -142,17 +183,34 @@ mod tests {
         execution: Option<serde_json::Value>,
     ) -> std::thread::JoinHandle<()> {
         let directory = profile.join("ipc");
-        fs::create_dir(&directory).unwrap();
-        fs::set_permissions(&directory, fs::Permissions::from_mode(0o700)).unwrap();
+        nodex_platform::private_fs::create_dir(&directory).unwrap();
+        nodex_platform::private_fs::set_mode(&directory, 0o700).unwrap();
         let path = directory.join("clone.sock");
-        let server = UnixListener::bind(&path).unwrap();
-        fs::set_permissions(path, fs::Permissions::from_mode(0o600)).unwrap();
+        let endpoint = if cfg!(windows) {
+            local_endpoint::random_endpoint("nodex-clone").unwrap()
+        } else {
+            path.to_string_lossy().into_owned()
+        };
+        let server = BlockingListener::bind(&endpoint).unwrap();
+        if cfg!(unix) {
+            private_fs::set_mode(&path, 0o600).unwrap();
+        }
+        let mut file = private_fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(directory.join("clone.json"))
+            .unwrap();
+        file.write_all(serde_json::json!({"version":1,"endpoint":endpoint,"capability":"a".repeat(64),"pid":std::process::id()}).to_string().as_bytes()).unwrap();
         std::thread::spawn(move || {
             let (mut socket, _) = server.accept().unwrap();
             let mut reader = BufReader::new(socket.try_clone().unwrap());
             let mut message = String::new();
             reader.read_line(&mut message).unwrap();
-            assert_eq!(message, "{\"version\":1}\n");
+            assert_eq!(
+                serde_json::from_str::<serde_json::Value>(&message).unwrap(),
+                serde_json::json!({"version":1,"capability":"a".repeat(64)})
+            );
             if fail {
                 socket
                     .write_all(
@@ -177,7 +235,7 @@ mod tests {
 
     #[test]
     fn admits_bounded_provider_metadata_larger_than_a_small_control_frame() {
-        let profile = tempfile::tempdir().unwrap();
+        let profile = nodex_platform::test_support::tempdir().unwrap();
         let providers = (0..256)
             .map(|index| {
                 serde_json::json!({
@@ -203,7 +261,7 @@ mod tests {
 
     #[test]
     fn lends_and_releases_a_live_snapshot_window() {
-        let profile = tempfile::tempdir().unwrap();
+        let profile = nodex_platform::test_support::tempdir().unwrap();
         let server = serve(profile.path(), false);
         SnapshotLease::acquire(profile.path())
             .unwrap()
@@ -215,7 +273,7 @@ mod tests {
 
     #[test]
     fn dropping_a_failed_capture_disconnects_the_source() {
-        let profile = tempfile::tempdir().unwrap();
+        let profile = nodex_platform::test_support::tempdir().unwrap();
         let server = serve(profile.path(), false);
         drop(SnapshotLease::acquire(profile.path()).unwrap());
         server.join().unwrap();
@@ -223,20 +281,21 @@ mod tests {
 
     #[test]
     fn preserves_source_refusal_instead_of_falling_back_to_live_copying() {
-        let profile = tempfile::tempdir().unwrap();
+        let profile = nodex_platform::test_support::tempdir().unwrap();
         let server = serve(profile.path(), true);
         let error = SnapshotLease::acquire(profile.path()).err().unwrap();
         assert!(error.to_string().contains("Agent is busy"));
         server.join().unwrap();
     }
 
+    #[cfg(unix)]
     #[test]
     fn rejects_public_endpoints_and_preserves_offline_capture() {
-        let profile = tempfile::tempdir().unwrap();
+        let profile = nodex_platform::test_support::tempdir().unwrap();
         assert!(SnapshotLease::acquire(profile.path()).unwrap().is_none());
         let directory = profile.path().join("ipc");
-        fs::create_dir(&directory).unwrap();
-        fs::set_permissions(&directory, fs::Permissions::from_mode(0o755)).unwrap();
+        nodex_platform::private_fs::create_dir(&directory).unwrap();
+        nodex_platform::private_fs::set_mode(&directory, 0o755).unwrap();
         assert!(SnapshotLease::acquire(profile.path()).is_err());
     }
 }

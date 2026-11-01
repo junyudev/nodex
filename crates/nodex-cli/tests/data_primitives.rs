@@ -19,9 +19,7 @@ const PAGE_B: &str = "019b1000-1000-7000-8000-000000000003";
 struct CoreGuard(u32);
 impl Drop for CoreGuard {
     fn drop(&mut self) {
-        let _ = Command::new("kill")
-            .args(["-TERM", &self.0.to_string()])
-            .status();
+        let _ = nodex_platform::process::terminate_process(self.0);
     }
 }
 
@@ -160,7 +158,7 @@ fn read(home: &Path, args: &[&str]) -> Vec<u8> {
 
 fn seed(client: &CoreClient, home: &Path) {
     let source = home.join("workspace");
-    fs::create_dir(&source).unwrap();
+    nodex_platform::private_fs::create_dir(&source).unwrap();
     let created = client
         .workspace_apply(
             None,
@@ -243,10 +241,11 @@ fn input_text(home: &Path, args: &[&str], payload: &str) -> Value {
 fn discovered_identities_drive_queries_atomic_edits_and_direct_browsing() {
     use nodex_core_contracts::DATABASE_CONTRACT_VERSION;
     use nodex_core_contracts::database::{DatabaseIntent, DatabasePropertySchema};
-    let directory = tempfile::tempdir().unwrap();
+    let directory = nodex_platform::test_support::tempdir().unwrap();
     let home = directory.path().join("profile");
-    fs::create_dir(&home).unwrap();
-    let core_binary = Path::new(env!("CARGO_BIN_EXE_nodex")).with_file_name("nodex-core");
+    nodex_platform::private_fs::create_dir(&home).unwrap();
+    let core_binary = Path::new(env!("CARGO_BIN_EXE_nodex"))
+        .with_file_name(nodex_platform::process::executable_name("nodex-core"));
     let client = connect_or_launch(&home, "data-cli-integration", Some(&core_binary)).unwrap();
     let _guard = CoreGuard(client.handshake.generation.pid);
     seed(&client, &home);
@@ -554,7 +553,7 @@ fn discovered_identities_drive_queries_atomic_edits_and_direct_browsing() {
 fn malformed_structured_inputs_fail_before_resolving_or_launching_a_profile() {
     use std::io::Write;
     use std::process::Stdio;
-    let directory = tempfile::tempdir().unwrap();
+    let directory = nodex_platform::test_support::tempdir().unwrap();
     let home = directory.path().join("must-not-exist");
     for args in [
         vec!["sql", "query", "SELECT :value", "--param", "value={"],
@@ -731,10 +730,11 @@ fn verify_direct_body_and_title_edits(home: &Path) {
 
 #[test]
 fn sql_success_envelopes_freeze_batch_targets_and_preserve_value_revision_fences() {
-    let directory = tempfile::tempdir().unwrap();
+    let directory = nodex_platform::test_support::tempdir().unwrap();
     let home = directory.path().join("profile");
-    fs::create_dir(&home).unwrap();
-    let core_binary = Path::new(env!("CARGO_BIN_EXE_nodex")).with_file_name("nodex-core");
+    nodex_platform::private_fs::create_dir(&home).unwrap();
+    let core_binary = Path::new(env!("CARGO_BIN_EXE_nodex"))
+        .with_file_name(nodex_platform::process::executable_name("nodex-core"));
     let client =
         connect_or_launch(&home, "batch-selection-integration", Some(&core_binary)).unwrap();
     let _guard = CoreGuard(client.handshake.generation.pid);
@@ -942,10 +942,11 @@ fn verify_database_override(client: &CoreClient, home: &Path) {
 
 #[test]
 fn one_markdown_language_covers_page_insert_and_batch_drafts() {
-    let directory = tempfile::tempdir().unwrap();
+    let directory = nodex_platform::test_support::tempdir().unwrap();
     let home = directory.path().join("profile");
-    fs::create_dir(&home).unwrap();
-    let core_binary = Path::new(env!("CARGO_BIN_EXE_nodex")).with_file_name("nodex-core");
+    nodex_platform::private_fs::create_dir(&home).unwrap();
+    let core_binary = Path::new(env!("CARGO_BIN_EXE_nodex"))
+        .with_file_name(nodex_platform::process::executable_name("nodex-core"));
     let client = connect_or_launch(&home, "gfm-body-integration", Some(&core_binary)).unwrap();
     let _guard = CoreGuard(client.handshake.generation.pid);
     seed(&client, &home);
@@ -990,10 +991,11 @@ fn one_markdown_language_covers_page_insert_and_batch_drafts() {
 
 #[test]
 fn exact_patch_receipt_retains_block_references_and_retries_without_recreating_content() {
-    let directory = tempfile::tempdir().unwrap();
+    let directory = nodex_platform::test_support::tempdir().unwrap();
     let home = directory.path().join("profile");
-    fs::create_dir(&home).unwrap();
-    let core_binary = Path::new(env!("CARGO_BIN_EXE_nodex")).with_file_name("nodex-core");
+    nodex_platform::private_fs::create_dir(&home).unwrap();
+    let core_binary = Path::new(env!("CARGO_BIN_EXE_nodex"))
+        .with_file_name(nodex_platform::process::executable_name("nodex-core"));
     let client =
         connect_or_launch(&home, "patch-identity-integration", Some(&core_binary)).unwrap();
     let _guard = CoreGuard(client.handshake.generation.pid);
@@ -1048,7 +1050,8 @@ fn exact_patch_receipt_retains_block_references_and_retries_without_recreating_c
     assert_eq!(hit["items"][0]["matches"][0]["block_id"], date_id);
 }
 
-/// Execute the published shell example itself, substituting only fixture observations.
+#[cfg(unix)]
+/// Execute the published POSIX shell example, substituting only fixture observations.
 fn help_example(home: &Path, path: &[&str], index: usize, substitutions: &[(&str, &str)]) -> Value {
     let args = std::iter::once("nodex")
         .chain(path.iter().copied())
@@ -1082,12 +1085,14 @@ fn help_example(home: &Path, path: &[&str], index: usize, substitutions: &[(&str
     value["result"].clone()
 }
 
+#[cfg(unix)]
 #[test]
 fn published_write_examples_preserve_existing_content_and_definitions() {
-    let directory = tempfile::tempdir().unwrap();
+    let directory = nodex_platform::test_support::tempdir().unwrap();
     let home = directory.path().join("profile");
-    fs::create_dir(&home).unwrap();
-    let core_binary = Path::new(env!("CARGO_BIN_EXE_nodex")).with_file_name("nodex-core");
+    nodex_platform::private_fs::create_dir(&home).unwrap();
+    let core_binary = Path::new(env!("CARGO_BIN_EXE_nodex"))
+        .with_file_name(nodex_platform::process::executable_name("nodex-core"));
     let client = connect_or_launch(&home, "help-examples", Some(&core_binary)).unwrap();
     let _guard = CoreGuard(client.handshake.generation.pid);
     seed(&client, &home);
@@ -1257,13 +1262,15 @@ fn published_write_examples_preserve_existing_content_and_definitions() {
     );
 }
 
+#[cfg(unix)]
 #[test]
 fn saved_filter_example_and_updates_return_exact_rows_and_preserve_unrelated_state() {
     use serde_json::json;
-    let directory = tempfile::tempdir().unwrap();
+    let directory = nodex_platform::test_support::tempdir().unwrap();
     let home = directory.path().join("profile");
-    fs::create_dir(&home).unwrap();
-    let core_binary = Path::new(env!("CARGO_BIN_EXE_nodex")).with_file_name("nodex-core");
+    nodex_platform::private_fs::create_dir(&home).unwrap();
+    let core_binary = Path::new(env!("CARGO_BIN_EXE_nodex"))
+        .with_file_name(nodex_platform::process::executable_name("nodex-core"));
     let client = connect_or_launch(&home, "cli-view-filter", Some(&core_binary)).unwrap();
     let _guard = CoreGuard(client.handshake.generation.pid);
     seed(&client, &home);
@@ -1420,11 +1427,11 @@ fn saved_filter_example_and_updates_return_exact_rows_and_preserve_unrelated_sta
 /// Exercise the file workflow with real Core authority, including the same-text ABA case.
 #[test]
 fn python_drafts_preserve_identity_merge_and_retry_but_reject_recreated_targets() {
-    use std::os::unix::fs::PermissionsExt;
-    let directory = tempfile::tempdir().unwrap();
+    let directory = nodex_platform::test_support::tempdir().unwrap();
     let home = directory.path().join("profile");
-    fs::create_dir(&home).unwrap();
-    let core_binary = Path::new(env!("CARGO_BIN_EXE_nodex")).with_file_name("nodex-core");
+    nodex_platform::private_fs::create_dir(&home).unwrap();
+    let core_binary = Path::new(env!("CARGO_BIN_EXE_nodex"))
+        .with_file_name(nodex_platform::process::executable_name("nodex-core"));
     let client =
         connect_or_launch(&home, "draft-identity-integration", Some(&core_binary)).unwrap();
     let _guard = CoreGuard(client.handshake.generation.pid);
@@ -1450,7 +1457,7 @@ fn python_drafts_preserve_identity_merge_and_retry_but_reject_recreated_targets(
         serde_json::from_slice(&fs::read(draft.join("base/identity.json")).unwrap()).unwrap();
     let date_id = before["blocks"][1]["block_id"].clone();
     let python = Command::new("python3").args(["-c",
-        "from pathlib import Path; import sys; p=Path(sys.argv[1]); s=p.read_text(); assert s.count('Release date: Friday.')==2; p.write_text(s.replace('Release date: Friday.', 'Release date: Monday.', 1))",
+        "from pathlib import Path; import sys; p=Path(sys.argv[1]); s=p.read_text(); assert s.count('Release date: Friday.')==2; p.write_bytes(s.replace('Release date: Friday.', 'Release date: Monday.', 1).encode('utf-8'))",
         draft.join("work/body.md").to_str().unwrap(),
     ]).output().unwrap();
     assert!(
@@ -1503,9 +1510,9 @@ fn python_drafts_preserve_identity_merge_and_retry_but_reject_recreated_targets(
     let mut pending: Value = serde_json::from_slice(&fs::read(&marker).unwrap()).unwrap();
     pending["status"] = "pending".into();
     pending["result"] = Value::Null;
-    fs::set_permissions(&marker, fs::Permissions::from_mode(0o600)).unwrap();
-    fs::write(&marker, serde_json::to_vec(&pending).unwrap()).unwrap();
-    fs::set_permissions(&marker, fs::Permissions::from_mode(0o400)).unwrap();
+    nodex_platform::private_fs::set_mode(&marker, 0o600).unwrap();
+    nodex_platform::private_fs::write(&marker, serde_json::to_vec(&pending).unwrap()).unwrap();
+    nodex_platform::private_fs::set_mode(&marker, 0o400).unwrap();
     let retried = success(&home, &["draft", "apply", draft.to_str().unwrap()]);
     assert_eq!(retried["duplicate"], true);
     assert_eq!(retried["head_seq"], applied["head_seq"]);
@@ -1514,10 +1521,11 @@ fn python_drafts_preserve_identity_merge_and_retry_but_reject_recreated_targets(
     // Delete/reinsert changes Block identity without changing the text ETag.
     let work_file = observed.join("work/body.md");
     let saved = fs::read_to_string(&work_file).unwrap();
-    fs::write(&work_file, saved.replace("Monday", "Tuesday")).unwrap();
+    nodex_platform::private_fs::write(&work_file, saved.replace("Monday", "Tuesday")).unwrap();
     let metadata = observed.join("work/meta.yaml");
     let saved_meta = fs::read_to_string(&metadata).unwrap();
-    fs::write(&metadata, saved_meta.replace("Page A", "Draft title")).unwrap();
+    nodex_platform::private_fs::write(&metadata, saved_meta.replace("Page A", "Draft title"))
+        .unwrap();
     let read_before = success(&home, &["read", PAGE_A]);
     let removal = format!(
         "*** Begin Patch\n*** Update Page: {PAGE_A}\n@@\n-Release date: Monday.\n*** End Patch\n"
@@ -1556,12 +1564,13 @@ fn python_drafts_preserve_identity_merge_and_retry_but_reject_recreated_targets(
 
 #[test]
 fn profile_sql_and_schema_work_without_project_routing_from_an_unrelated_directory() {
-    let directory = tempfile::tempdir().unwrap();
+    let directory = nodex_platform::test_support::tempdir().unwrap();
     let home = directory.path().join("profile");
     let cwd = directory.path().join("unrelated");
-    fs::create_dir(&home).unwrap();
-    fs::create_dir(&cwd).unwrap();
-    let core_binary = Path::new(env!("CARGO_BIN_EXE_nodex")).with_file_name("nodex-core");
+    nodex_platform::private_fs::create_dir(&home).unwrap();
+    nodex_platform::private_fs::create_dir(&cwd).unwrap();
+    let core_binary = Path::new(env!("CARGO_BIN_EXE_nodex"))
+        .with_file_name(nodex_platform::process::executable_name("nodex-core"));
     let client =
         connect_or_launch(&home, "profile-sql-cli-integration", Some(&core_binary)).unwrap();
     let _guard = CoreGuard(client.handshake.generation.pid);

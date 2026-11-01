@@ -1817,7 +1817,7 @@ fn resolve_home(cwd: &Path) -> Result<PathBuf, CliError> {
     crate::config::resolve_home(
         cwd,
         env::var_os("NODEX_HOME").as_deref(),
-        env::var_os("HOME").as_deref(),
+        env::var_os(nodex_platform::process::HOME_VARIABLE).as_deref(),
     )
 }
 
@@ -1990,7 +1990,7 @@ struct ProjectCandidate {
 mod tests {
     use super::*;
     use nodex_core_contracts::workspace::{ProjectAppearance, ProjectSource};
-    use tempfile::tempdir;
+    use nodex_platform::test_support::tempdir;
 
     fn project(id: &str, name: &str, root: &Path) -> ProjectWorkspaceProject {
         ProjectWorkspaceProject {

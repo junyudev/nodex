@@ -89,24 +89,32 @@ describe("native Core launcher", () => {
   test("resolves explicit, packaged, and development executables", () => {
     expect(
       resolveCoreExecutable({
-        environment: { NODEX_CORE_EXECUTABLE: "/opt/nodex/bin/nodex-core" },
+        environment: { NODEX_CORE_EXECUTABLE: path.resolve("fixtures/nodex-core-override") },
         isPackaged: false,
       }),
-    ).toBe("/opt/nodex/bin/nodex-core");
+    ).toBe(path.resolve("fixtures/nodex-core-override"));
     expect(
       resolveCoreExecutable({
         environment: {},
-        appResourcesPath: "/Applications/Nodex.app/Contents/Resources",
+        appResourcesPath: path.resolve("fixtures/resources"),
         isPackaged: true,
       }),
-    ).toBe("/Applications/Nodex.app/Contents/Resources/bin/nodex-core");
+    ).toBe(
+      path.resolve(
+        `fixtures/resources/bin/nodex-core${process.platform === "win32" ? ".exe" : ""}`,
+      ),
+    );
     expect(
       resolveCoreExecutable({
         isPackaged: false,
-        repositoryRoot: "/work/nodex",
+        repositoryRoot: path.resolve("fixtures/repository"),
         environment: {},
       }),
-    ).toBe("/work/nodex/target/debug/nodex-core");
+    ).toBe(
+      path.resolve(
+        `fixtures/repository/target/debug/nodex-core${process.platform === "win32" ? ".exe" : ""}`,
+      ),
+    );
     expect(() =>
       resolveCoreExecutable({
         environment: { NODEX_CORE_EXECUTABLE: "target/debug/nodex-core" },
@@ -155,10 +163,13 @@ describe("native Core launcher", () => {
       );
 
       await first.client.shutdown();
-      const socketPath = path.join(nodexHome, "run/core/core.sock");
-      await waitUntil(() => !existsSync(socketPath), "Core runtime socket remained after shutdown");
+      const socketPath = path.join(nodexHome, "run/core/core.json");
+      await waitUntil(
+        () => !existsSync(socketPath),
+        "Core runtime descriptor remained after shutdown",
+      );
     } finally {
-      if (first && existsSync(path.join(nodexHome, "run/core/core.sock"))) {
+      if (first && existsSync(path.join(nodexHome, "run/core/core.json"))) {
         await first.client.shutdown().catch(() => undefined);
       }
       rmSync(nodexHome, { recursive: true, force: true });
@@ -238,7 +249,7 @@ describe("native Core launcher", () => {
         if (incumbent) {
           await incumbent.client.shutdown().catch(() => undefined);
           await waitUntil(
-            () => !existsSync(path.join(directory, "run/core/core.sock")),
+            () => !existsSync(path.join(directory, "run/core/core.json")),
             "incumbent Core remained active after deadline-test shutdown",
           );
         }

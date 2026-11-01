@@ -199,6 +199,7 @@ const assertOwned = (stats: Stats, label: string): void => {
 };
 
 const assertMode = (stats: Stats, expected: number, label: string): void => {
+  if (process.platform === "win32") return;
   const actual = stats.mode & 0o777;
   if (actual === expected) return;
   throw new Error(`${label} has mode ${actual.toString(8)}; expected ${expected.toString(8)}`);
@@ -215,6 +216,7 @@ const inspectEntry = (entryPath: string, expectedMode: number, label: string): S
 export const parseCoreRuntimeDescriptor = (
   value: unknown,
   expectedSocketPath: string,
+  platform: NodeJS.Platform = process.platform,
 ): CoreRuntimeDescriptor => {
   if (!isRecord(value)) throw new Error("Core runtime descriptor must be an object");
 
@@ -227,7 +229,7 @@ export const parseCoreRuntimeDescriptor = (
       "actual_store_format",
       "pid",
       "start_nonce",
-      "socket_path",
+      "endpoint",
       "profile_id",
       "store_epoch",
       "readiness_generation",
@@ -247,7 +249,7 @@ export const parseCoreRuntimeDescriptor = (
     actual_store_format: parseStoreFormat(value.actual_store_format, "Core actual Store format"),
     pid: requireInteger(value, "pid", 1),
     start_nonce: requireString(value, "start_nonce"),
-    socket_path: requireString(value, "socket_path"),
+    endpoint: requireString(value, "endpoint"),
     profile_id: requireString(value, "profile_id"),
     store_epoch: requireString(value, "store_epoch"),
     readiness_generation: requireInteger(value, "readiness_generation", 1),
@@ -270,10 +272,11 @@ export const parseCoreRuntimeDescriptor = (
   if (!sameStoreFormat(descriptor.actual_store_format, descriptor.manifest.store.current)) {
     throw new Error("Core actual Store format does not match the manifest current format");
   }
-  if (!path.isAbsolute(descriptor.socket_path)) {
-    throw new Error("Core runtime descriptor socket_path must be absolute");
-  }
-  if (descriptor.socket_path !== expectedSocketPath) {
+  if (platform === "win32") {
+    if (!/^\\\\\.\\pipe\\nodex-core-[a-f0-9]{32}$/u.test(descriptor.endpoint)) {
+      throw new Error("Core runtime descriptor has an invalid local pipe endpoint");
+    }
+  } else if (!path.isAbsolute(descriptor.endpoint) || descriptor.endpoint !== expectedSocketPath) {
     throw new Error("Core runtime descriptor points outside the fixed runtime socket");
   }
   assertRuntimeCompatibility(descriptor);
@@ -314,8 +317,10 @@ export const readCoreRuntimeConnection = (nodexHome: string): CoreRuntimeConnect
   if (!authStats.isFile()) throw new Error("Core auth capability is not a file");
   if (authStats.size > MAX_AUTH_BYTES) throw new Error("Core auth capability is oversized");
 
-  const socketStats = inspectEntry(socketPath, PRIVATE_ENTRY_MODE, "Core socket");
-  if (!socketStats.isSocket()) throw new Error("Core socket path is not a Unix socket");
+  if (process.platform !== "win32") {
+    const socketStats = inspectEntry(socketPath, PRIVATE_ENTRY_MODE, "Core socket");
+    if (!socketStats.isSocket()) throw new Error("Core socket path is not a Unix socket");
+  }
 
   const descriptor = parseDescriptor(readFileSync(descriptorPath), socketPath);
   const authCapability = readFileSync(authPath, "utf8").trim();

@@ -2573,7 +2573,6 @@ fn not_found(message: &str) -> StoreError {
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
 
     use nodex_core_contracts::library::{
         LibraryIntent, LibraryRead, LibraryReadValue, LibraryRouteTarget,
@@ -2590,7 +2589,7 @@ mod tests {
         LIBRARY_CONTRACT_VERSION, LibraryId, ModuleApplyRequest, ModuleReadRequest,
         PROJECT_WORKSPACE_CONTRACT_VERSION, ProfileId, ProjectId, ProjectionImpact, StoreEpoch,
     };
-    use tempfile::{TempDir, tempdir};
+    use nodex_platform::test_support::{TempDir, tempdir};
 
     use crate::infrastructure::sqlite::{StoreErrorCode, with_immediate_transaction};
     use crate::infrastructure::store::SqliteStoreKernel;
@@ -2717,7 +2716,7 @@ mod tests {
     fn empty_module() -> (TempDir, SqliteStoreKernel, ProjectWorkspaceModule) {
         let directory = tempdir().expect("Profile");
         let home = directory.path().canonicalize().expect("absolute Profile");
-        fs::create_dir(home.join("assets")).expect("assets root");
+        nodex_platform::private_fs::create_dir(home.join("assets")).expect("assets root");
         let kernel = SqliteStoreKernel::open_test(&home).expect("fresh store");
         kernel
             .writer()
@@ -2770,9 +2769,9 @@ mod tests {
                     },
                 }),
                 source_roots: vec![
-                    "/workspace/native".to_owned(),
-                    "/workspace/native".to_owned(),
-                    "/workspace/secondary".to_owned(),
+                    nodex_platform::fixture_path!("/workspace/native").to_owned(),
+                    nodex_platform::fixture_path!("/workspace/native").to_owned(),
+                    nodex_platform::fixture_path!("/workspace/secondary").to_owned(),
                 ],
                 page_key_prefix: None,
             },
@@ -2846,7 +2845,9 @@ mod tests {
                         name: "Ordinary".to_owned(),
                         description: String::new(),
                         appearance: None,
-                        source_roots: vec!["/workspace/ordinary".to_owned()],
+                        source_roots: vec![
+                            nodex_platform::fixture_path!("/workspace/ordinary").to_owned(),
+                        ],
                         page_key_prefix: None,
                     },
                 ),
@@ -2903,7 +2904,9 @@ mod tests {
                         name: "My Project".to_owned(),
                         description: String::new(),
                         appearance: None,
-                        source_roots: vec!["/workspace/default-a".to_owned()],
+                        source_roots: vec![
+                            nodex_platform::fixture_path!("/workspace/default-a").to_owned(),
+                        ],
                         page_key_prefix: None,
                         starter_page: starter_page("concurrent-a"),
                     },
@@ -2920,7 +2923,9 @@ mod tests {
                         name: "My Project".to_owned(),
                         description: String::new(),
                         appearance: None,
-                        source_roots: vec!["/workspace/default-b".to_owned()],
+                        source_roots: vec![
+                            nodex_platform::fixture_path!("/workspace/default-b").to_owned(),
+                        ],
                         page_key_prefix: None,
                         starter_page: starter_page("concurrent-b"),
                     },
@@ -3069,7 +3074,9 @@ mod tests {
                         name: "My Project".to_owned(),
                         description: String::new(),
                         appearance: None,
-                        source_roots: vec!["/workspace/default-invalid".to_owned()],
+                        source_roots: vec![
+                            nodex_platform::fixture_path!("/workspace/default-invalid").to_owned(),
+                        ],
                         page_key_prefix: None,
                         starter_page: invalid_starter_page,
                     },
@@ -3121,7 +3128,7 @@ mod tests {
                 name: "My Project".to_owned(),
                 description: String::new(),
                 appearance: None,
-                source_roots: vec!["/workspace/default".to_owned()],
+                source_roots: vec![nodex_platform::fixture_path!("/workspace/default").to_owned()],
                 page_key_prefix: None,
                 starter_page: starter_page("replay"),
             },
@@ -3686,8 +3693,8 @@ mod tests {
                     },
                 }),
                 source_roots: Some(vec![
-                    "/workspace/updated".to_owned(),
-                    "/workspace/updated".to_owned(),
+                    nodex_platform::fixture_path!("/workspace/updated").to_owned(),
+                    nodex_platform::fixture_path!("/workspace/updated").to_owned(),
                 ]),
             },
         );
@@ -3750,7 +3757,9 @@ mod tests {
                         name: None,
                         description: None,
                         appearance: None,
-                        source_roots: Some(vec!["/workspace/source-only".to_owned()]),
+                        source_roots: Some(vec![
+                            nodex_platform::fixture_path!("/workspace/source-only").to_owned(),
+                        ]),
                     },
                 ),
             )
@@ -3926,7 +3935,7 @@ mod tests {
                 "workspace-roots-archived-owner",
                 ProjectWorkspaceIntent::ReplaceThreadWritableRoots {
                     thread_id: "thread-archived-owner".to_owned(),
-                    roots: vec!["/workspace/rejected".to_owned()],
+                    roots: vec![nodex_platform::fixture_path!("/workspace/rejected").to_owned()],
                 },
             ),
         ] {
@@ -4029,7 +4038,10 @@ mod tests {
         assert_eq!(stored.6, 5);
         assert_eq!(stored.7, "archived");
         assert_eq!(stored.8, 5);
-        assert_eq!(stored.9, "/workspace/source-only");
+        assert_eq!(
+            stored.9,
+            nodex_platform::fixture_path!("/workspace/source-only")
+        );
         assert_eq!((stored.10, stored.11), (0, 0));
         assert_eq!((stored.12, stored.13), (0, 0));
 

@@ -1115,6 +1115,7 @@ version = "0.5.0"
 dependencies = [
  "aes",
  "cbc",
+ "nodex-platform",
  "pbkdf2",
  "rusqlite",
  "security-framework",
@@ -1137,12 +1138,11 @@ dependencies = [
  "jsonschema",
  "nodex-core-contracts",
  "nodex-core-protocol",
+ "nodex-platform",
  "nodex-profile",
- "rustix",
  "serde",
  "serde_json",
  "sha2",
- "signal-hook",
  "similar",
  "tempfile",
  "thiserror",
@@ -1165,12 +1165,12 @@ dependencies = [
  "nodex-core-protocol",
  "nodex-markdown",
  "nodex-page-search-kernel",
+ "nodex-platform",
  "nodex-sqlite-query",
  "nodex-store-format",
  "regex",
  "rrule",
  "rusqlite",
- "rustix",
  "serde",
  "serde_json",
  "sha2",
@@ -1202,8 +1202,8 @@ dependencies = [
  "getrandom 0.4.3",
  "hex",
  "nodex-core-contracts",
+ "nodex-platform",
  "nodex-store-format",
- "rustix",
  "serde",
  "serde_json",
  "sha2",
@@ -1228,6 +1228,7 @@ dependencies = [
  "nodex-core",
  "nodex-core-contracts",
  "nodex-core-protocol",
+ "nodex-platform",
  "nodex-profile",
  "rustix",
  "serde",
@@ -1266,14 +1267,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "nodex-platform"
+version = "0.5.0"
+dependencies = [
+ "axum",
+ "getrandom 0.4.3",
+ "hex",
+ "rustix",
+ "signal-hook",
+ "tempfile",
+ "tokio",
+ "windows-sys",
+]
+
+[[package]]
 name = "nodex-profile"
 version = "0.5.0"
 dependencies = [
  "chrono",
  "hex",
  "nodex-core",
+ "nodex-platform",
  "rusqlite",
- "rustix",
  "serde",
  "serde_json",
  "sha2",

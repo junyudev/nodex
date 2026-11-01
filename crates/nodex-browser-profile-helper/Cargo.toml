@@ -6,6 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+nodex-platform.workspace = true
 aes.workspace = true
 cbc.workspace = true
 pbkdf2.workspace = true

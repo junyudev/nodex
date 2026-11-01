@@ -1,7 +1,11 @@
 use std::fs;
 use std::io::{self, BufRead, BufReader, Read, Write};
-use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt};
-use std::os::unix::net::UnixStream;
+
+use nodex_platform::{
+    local_endpoint,
+    private_fs::{self, EntryKind},
+    process::{self},
+};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc;
@@ -729,7 +733,7 @@ fn connected_stream_request(
     scope: ContextHeaders<'_>,
     maximum_response_bytes: usize,
 ) -> Result<RawHttpResponse, ClientError> {
-    let mut stream = UnixStream::connect(&client.socket)?;
+    let mut stream = local_endpoint::connect(&client.socket, Some(client.descriptor.pid))?;
     stream.set_read_timeout(Some(REQUEST_TIMEOUT))?;
     stream.set_write_timeout(Some(REQUEST_TIMEOUT))?;
     write!(
@@ -790,22 +794,24 @@ pub fn connect_or_launch(
         Some(path) => path.to_owned(),
         None => discover_core_executable()?,
     };
-    let mut child = Command::new(&executable)
-        .args([
-            "--home",
-            &home.to_string_lossy(),
-            "--selection-policy",
-            "compatible",
-            "--launcher",
-            "native-cli",
-        ])
-        .env("NODEX_LOG_CONSOLE", "false")
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|error| {
-            ClientError::Startup(format!("could not start {}: {error}", executable.display()))
-        })?;
+    let mut child = process::spawn_detached(
+        Command::new(&executable)
+            .args([
+                "--home",
+                &home.to_string_lossy(),
+                "--selection-policy",
+                "compatible",
+                "--launcher",
+                "native-cli",
+            ])
+            .env("NODEX_LOG_CONSOLE", "false")
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped()),
+    )
+    .map_err(|error| {
+        ClientError::Startup(format!("could not start {}: {error}", executable.display()))
+    })?;
     let selection = wait_for_selection_result(&mut child)?;
     wait_for_core(home, build_id, &mut child, &selection)
 }
@@ -825,7 +831,7 @@ pub fn discover_core_executable() -> Result<PathBuf, ClientError> {
     let sibling = current
         .parent()
         .ok_or_else(|| ClientError::CoreExecutable("CLI executable has no parent".to_owned()))?
-        .join("nodex-core");
+        .join(process::executable_name("nodex-core"));
     if sibling.is_file() {
         return Ok(sibling);
     }
@@ -937,10 +943,9 @@ impl RuntimeFiles {
         }
         let directory = home.join("run/core");
         validate_entry(&directory, EntryKind::Directory, RUNTIME_DIRECTORY_MODE)?;
-        let owner = fs::symlink_metadata(&directory)?.uid();
+
         let descriptor_path = directory.join("core.json");
-        let descriptor_metadata =
-            validate_owned_entry(&descriptor_path, owner, EntryKind::File, PRIVATE_MODE)?;
+        let descriptor_metadata = validate_entry(&descriptor_path, EntryKind::File, PRIVATE_MODE)?;
         if descriptor_metadata.len() > MAX_DESCRIPTOR_BYTES {
             return Err(ClientError::InvalidRuntime(
                 "runtime descriptor is oversized".to_owned(),
@@ -950,15 +955,19 @@ impl RuntimeFiles {
             .map_err(|_| {
                 ClientError::InvalidRuntime("runtime descriptor is invalid JSON".to_owned())
             })?;
-        let socket = directory.join("core.sock");
-        if Path::new(&descriptor.socket_path) != socket {
+        let expected_socket = directory.join("core.sock");
+        if !local_endpoint::validate_endpoint(&descriptor.endpoint, &expected_socket) {
             return Err(ClientError::InvalidRuntime(
                 "runtime descriptor socket does not match its managed path".to_owned(),
             ));
         }
-        validate_owned_entry(&socket, owner, EntryKind::Socket, PRIVATE_MODE)?;
+        let socket = PathBuf::from(&descriptor.endpoint);
+        if cfg!(unix) {
+            validate_entry(&socket, EntryKind::Socket, PRIVATE_MODE)?;
+        }
+        drop(local_endpoint::connect(&socket, Some(descriptor.pid))?);
         let auth_path = directory.join("core.auth");
-        let auth_metadata = validate_owned_entry(&auth_path, owner, EntryKind::File, PRIVATE_MODE)?;
+        let auth_metadata = validate_entry(&auth_path, EntryKind::File, PRIVATE_MODE)?;
         if auth_metadata.len() > MAX_AUTH_BYTES {
             return Err(ClientError::InvalidRuntime(
                 "runtime capability is oversized".to_owned(),
@@ -978,77 +987,18 @@ impl RuntimeFiles {
     }
 }
 
-#[derive(Clone, Copy)]
-enum EntryKind {
-    Directory,
-    File,
-    Socket,
-}
-
 fn validate_entry(path: &Path, kind: EntryKind, mode: u32) -> Result<fs::Metadata, ClientError> {
-    let metadata = fs::symlink_metadata(path)?;
-    let file_type = metadata.file_type();
-    let correct_kind = match kind {
-        EntryKind::Directory => file_type.is_dir(),
-        EntryKind::File => file_type.is_file(),
-        EntryKind::Socket => file_type.is_socket(),
-    };
-    if !correct_kind || file_type.is_symlink() {
-        return Err(ClientError::InvalidRuntime(format!(
-            "{} has an unsafe entry type",
-            path.display()
-        )));
-    }
-    if metadata.permissions().mode() & 0o777 != mode {
-        return Err(ClientError::InvalidRuntime(format!(
-            "{} must have mode {mode:o}",
-            path.display()
-        )));
-    }
-    if metadata.uid() != rustix::process::geteuid().as_raw() {
-        return Err(ClientError::InvalidRuntime(format!(
-            "{} is not owned by the current user",
-            path.display()
-        )));
-    }
-    Ok(metadata)
-}
-
-fn validate_owned_entry(
-    path: &Path,
-    owner: u32,
-    kind: EntryKind,
-    mode: u32,
-) -> Result<fs::Metadata, ClientError> {
-    let metadata = validate_entry(path, kind, mode)?;
-    if metadata.uid() != owner {
-        return Err(ClientError::InvalidRuntime(format!(
-            "{} does not share the runtime owner",
-            path.display()
-        )));
-    }
-    Ok(metadata)
+    Ok(private_fs::checked_metadata(path, kind, Some(mode))?)
 }
 
 fn ensure_home(home: &Path) -> Result<(), ClientError> {
     if !home.is_absolute() {
         return Err(ClientError::InvalidRuntime(
-            "Nodex home must be absolute".to_owned(),
+            "Nodex home must be absolute".into(),
         ));
     }
-    if !home.exists() {
-        fs::create_dir_all(home)?;
-        fs::set_permissions(home, fs::Permissions::from_mode(RUNTIME_DIRECTORY_MODE))?;
-    }
-    let metadata = fs::symlink_metadata(home)?;
-    if !metadata.is_dir()
-        || metadata.file_type().is_symlink()
-        || metadata.uid() != rustix::process::geteuid().as_raw()
-    {
-        return Err(ClientError::InvalidRuntime(
-            "Nodex home must be a current-user-owned directory".to_owned(),
-        ));
-    }
+    private_fs::create_dir_all(home)?;
+    private_fs::checked_metadata(home, EntryKind::Directory, None)?;
     Ok(())
 }
 
@@ -1153,7 +1103,7 @@ fn request_raw_bytes(
         MAX_ORDINARY_JSON_RESPONSE_BYTES
     };
     let request_timeout = request_timeout(path);
-    let mut stream = UnixStream::connect(socket)?;
+    let mut stream = local_endpoint::connect(socket, None)?;
     stream.set_read_timeout(Some(request_timeout))?;
     stream.set_write_timeout(Some(request_timeout))?;
     let content_type = headers

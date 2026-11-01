@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-use std::{env, fs::File, path::PathBuf};
+use std::{env, path::PathBuf};
 
 use nodex_core_protocol::{CoreSelectionPolicy, LauncherKind};
 
@@ -40,10 +40,7 @@ fn parse_arguments() -> Result<(PathBuf, CoreSelectionPolicy, LauncherKind), Str
 // Every launcher gets the same lifetime guarantee before any runtime threads start.
 // Desktop may already have detached us; a native CLI normally has not.
 fn isolate_process() -> Result<(), Box<dyn std::error::Error>> {
-    if rustix::process::getsid(None)? != rustix::process::getpid() {
-        rustix::process::setsid()?;
-    }
-    rustix::stdio::dup2_stdin(File::open("/dev/null")?)?;
+    nodex_platform::process::isolate_process()?;
     Ok(())
 }
 
@@ -64,6 +61,14 @@ fn main() {
             std::process::exit(2);
         }
     };
+    match nodex_platform::process::bootstrap_detached() {
+        Ok(Some(code)) => std::process::exit(code),
+        Ok(None) => {}
+        Err(error) => {
+            eprintln!("nodex-core isolation failed: {error}");
+            std::process::exit(1);
+        }
+    }
     if let Err(error) = isolate_process().and_then(|()| run(home, policy, launcher)) {
         eprintln!("nodex-core startup failed: {error}");
         std::process::exit(1);

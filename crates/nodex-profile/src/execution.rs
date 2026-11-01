@@ -1,7 +1,7 @@
 //! Captures the execution owner's durable identity, database and immutable attachments.
 use std::fs;
 use std::io::Read;
-use std::os::unix::fs::{DirBuilderExt, MetadataExt};
+
 use std::path::{Path, PathBuf};
 
 use nodex_core::administration::{ProfileCloneExecution, ProfileCloneThread};
@@ -42,7 +42,9 @@ pub(crate) struct RuntimeWriterLease {
 fn owner(directory: &Path) -> Result<Owner> {
     files::require_directory(directory)?;
     let meta = fs::symlink_metadata(directory)?;
-    if meta.uid() != rustix::process::geteuid().as_raw() || meta.mode() & 0o077 != 0 {
+    if nodex_platform::private_fs::require_owned(directory, &meta).is_err()
+        || !nodex_platform::private_fs::is_private(directory, &meta)?
+    {
         return Err(invalid(
             "Execution writer ownership must be private and user-owned",
         ));
@@ -59,12 +61,11 @@ fn owner(directory: &Path) -> Result<Owner> {
 }
 
 fn dead(pid: i32) -> bool {
-    rustix::process::Pid::from_raw(pid)
-        .is_some_and(|pid| rustix::process::test_kill_process(pid) == Err(rustix::io::Errno::SRCH))
+    u32::try_from(pid).is_ok_and(|pid| !nodex_platform::process::process_is_alive(pid))
 }
 
 fn claim(directory: &Path, owner: &Owner) -> Result<()> {
-    fs::DirBuilder::new().mode(0o700).create(directory)?;
+    nodex_platform::private_fs::create_dir(directory)?;
     use std::io::Write;
     files::create_file(&directory.join("owner.json"))?.write_all(&serde_json::to_vec(owner)?)?;
     Ok(())
@@ -305,8 +306,8 @@ mod tests {
 
     #[test]
     fn captures_identity_database_attachments_and_native_requirements_as_an_independent_closure() {
-        let source = tempfile::tempdir().unwrap();
-        let staging = tempfile::tempdir().unwrap();
+        let source = nodex_platform::test_support::tempdir().unwrap();
+        let staging = nodex_platform::test_support::tempdir().unwrap();
         let path = fixture(source.path());
         let (receipt, native) = capture(
             source.path(),
@@ -355,8 +356,8 @@ mod tests {
     #[test]
     fn rejects_wrong_identity_missing_threads_busy_work_and_mismatched_watermarks() {
         for variant in ["identity", "thread", "busy", "watermark"] {
-            let source = tempfile::tempdir().unwrap();
-            let staging = tempfile::tempdir().unwrap();
+            let source = nodex_platform::test_support::tempdir().unwrap();
+            let staging = nodex_platform::test_support::tempdir().unwrap();
             let path = fixture(source.path());
             let mut bindings = required();
             if variant == "identity" {
@@ -399,8 +400,8 @@ mod tests {
 
     #[test]
     fn missing_execution_storage_cannot_satisfy_a_bound_session() {
-        let source = tempfile::tempdir().unwrap();
-        let staging = tempfile::tempdir().unwrap();
+        let source = nodex_platform::test_support::tempdir().unwrap();
+        let staging = nodex_platform::test_support::tempdir().unwrap();
         assert!(
             capture(
                 source.path(),
@@ -421,7 +422,7 @@ mod tests {
 
     #[test]
     fn offline_capture_excludes_existing_and_replacement_writers_and_releases_ownership() {
-        let source = tempfile::tempdir().unwrap();
+        let source = nodex_platform::test_support::tempdir().unwrap();
         let lease = OfflineLease::acquire(source.path()).unwrap();
         let directory = source.path().join("agent-runtime/.writer.lock");
         assert_eq!(owner(&directory).unwrap().pid, std::process::id() as i32);

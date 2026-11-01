@@ -1,5 +1,3 @@
-use std::fs;
-
 use nodex_core_contracts::library::{LibraryIntent, LibraryWriteParent};
 use nodex_core_contracts::workspace::{
     ProjectSessionIntent, ProjectWorkspaceIntent, ProjectWorkspaceRead, ProjectWorkspaceReadValue,
@@ -9,7 +7,7 @@ use nodex_core_contracts::{
     AdapterKind, BoundModuleContext, LIBRARY_CONTRACT_VERSION, LibraryId, ModuleApplyRequest,
     ModuleReadRequest, PROJECT_WORKSPACE_CONTRACT_VERSION, ProfileId, ProjectId, StoreEpoch,
 };
-use tempfile::{TempDir, tempdir};
+use nodex_platform::test_support::{TempDir, tempdir};
 
 use crate::infrastructure::sqlite::with_immediate_transaction;
 use crate::infrastructure::store::SqliteStoreKernel;
@@ -40,7 +38,7 @@ pub(super) fn context() -> BoundModuleContext {
 pub(super) fn seeded_workspace() -> TestWorkspace {
     let directory = tempdir().expect("Profile");
     let home = directory.path().canonicalize().expect("absolute Profile");
-    fs::create_dir(home.join("assets")).expect("assets root");
+    nodex_platform::private_fs::create_dir(home.join("assets")).expect("assets root");
     let kernel = SqliteStoreKernel::open_test(&home).expect("fresh store");
     kernel
         .writer()
@@ -126,7 +124,10 @@ pub(super) fn create_project(
             name: project_id.to_owned(),
             description: String::new(),
             appearance: None,
-            source_roots: vec![format!("/workspace/{project_id}")],
+            source_roots: vec![format!(
+                "{}/{project_id}",
+                nodex_platform::fixture_path!("/workspace")
+            )],
             page_key_prefix: None,
         },
     );
@@ -164,7 +165,8 @@ pub(super) fn create_library_image(workspace: &TestWorkspace, file_id: &str) {
         .canonicalize()
         .expect("Profile")
         .join("assets");
-    fs::write(assets.join(format!("{hash}.blob")), &bytes).expect("blob bytes");
+    nodex_platform::private_fs::write(assets.join(format!("{hash}.blob")), &bytes)
+        .expect("blob bytes");
     let (blob_hash, length) = (hash.clone(), bytes.len() as i64);
     workspace
         .kernel

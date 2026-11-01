@@ -358,13 +358,13 @@ export function resolveCoreExecutable(input: ResolveCoreExecutableInput): string
     }
     return path.join(
       requireAbsolutePath(input.appResourcesPath, "App resources path"),
-      "bin/nodex-core",
+      `bin/nodex-core${process.platform === "win32" ? ".exe" : ""}`,
     );
   }
 
   return path.join(
     requireAbsolutePath(input.repositoryRoot ?? process.cwd(), "Core repository root"),
-    "target/debug/nodex-core",
+    `target/debug/nodex-core${process.platform === "win32" ? ".exe" : ""}`,
   );
 }
 
@@ -394,7 +394,9 @@ const expectedCoreArtifactDigest = (
     "bin/rust-core-runtime.json",
   );
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as NativeCoreManifest;
-  const expected = manifest.binaries?.find((binary) => binary.name === "nodex-core")?.sourceSha256;
+  const expected = manifest.binaries?.find(
+    (binary) => binary.name === `nodex-core${process.platform === "win32" ? ".exe" : ""}`,
+  )?.sourceSha256;
   if (typeof expected !== "string" || !/^[a-f0-9]{64}$/u.test(expected)) {
     throw new Error("Packaged native runtime manifest omits the Core artifact digest");
   }
@@ -441,6 +443,7 @@ export async function connectOrStartCore(
     ],
     {
       detached: true,
+      windowsHide: true,
       env: {
         ...process.env,
         ...input.environment,
@@ -503,11 +506,12 @@ export async function connectOrStartCore(
       input.signal,
     );
     const selectionMs = performance.now() - selectionStartedAt;
-    selectedAsAuthority = selection.disposition === "started";
+    selectedAsAuthority =
+      selection.disposition === "started" && selection.descriptor.pid === child.pid;
     if (selection.descriptor.artifact.sha256 !== expectedArtifactDigest) {
       throw new Error("Selected Core artifact does not match the launched candidate");
     }
-    const startedProcessId = selection.disposition === "started" ? (child.pid ?? null) : null;
+    const startedProcessId = selection.disposition === "started" ? selection.descriptor.pid : null;
     let lastConnectionError: unknown;
     const connectStartedAt = performance.now();
     const connectionDeadline = Date.now() + startupTimeoutMs;
@@ -517,7 +521,11 @@ export async function connectOrStartCore(
       if (exit.error) {
         throw new Error("Could not start native Rust Core", { cause: exit.error });
       }
-      if (exit.exited && !(selection.disposition === "reused" && exit.code === 0)) {
+      if (
+        exit.exited &&
+        selection.descriptor.pid === child.pid &&
+        !(selection.disposition === "reused" && exit.code === 0)
+      ) {
         const status = exit.code === null ? "without an exit code" : `with code ${exit.code}`;
         const diagnostic = exit.stderr.trim();
         const suffix = diagnostic ? `: ${diagnostic}` : "";

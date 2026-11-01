@@ -728,7 +728,7 @@ mod tests {
             };
             json!({"instanceId":provider.provider_instance_id,"driver":provider.driver,"continuation":{"groupKey":key}})
         }).collect();
-        fs::write(
+        nodex_platform::private_fs::write(
             profile.join("agent-runtime/provider-catalog.json"),
             json!({
                 "version":1,"identity":"a".repeat(64),"providers":providers
@@ -740,8 +740,8 @@ mod tests {
 
     #[test]
     fn offline_backup_uses_recorded_provider_homes_without_credentials() {
-        let source = tempfile::tempdir().unwrap();
-        let staged = tempfile::tempdir().unwrap();
+        let source = nodex_platform::test_support::tempdir().unwrap();
+        let staged = nodex_platform::test_support::tempdir().unwrap();
         let input = fixture(source.path());
         write_catalog(source.path(), &input);
         assert!(
@@ -796,8 +796,8 @@ mod tests {
             "missing-provider",
             "missing-history",
         ] {
-            let source = tempfile::tempdir().unwrap();
-            let staged = tempfile::tempdir().unwrap();
+            let source = nodex_platform::test_support::tempdir().unwrap();
+            let staged = nodex_platform::test_support::tempdir().unwrap();
             let input = fixture(source.path());
             write_catalog(source.path(), &input);
             let path = source.path().join("agent-runtime/provider-catalog.json");
@@ -823,7 +823,7 @@ mod tests {
                 .unwrap(),
                 _ => unreachable!(),
             }
-            fs::write(&path, catalog.to_string()).unwrap();
+            nodex_platform::private_fs::write(&path, catalog.to_string()).unwrap();
             assert!(
                 capture(ProfileSnapshotCapture {
                     source_profile: source.path(),
@@ -846,9 +846,9 @@ mod tests {
 
     #[test]
     fn materializes_claude_fork_transcript_aliases_as_independent_files() {
-        use std::os::unix::fs::symlink;
-        let source = tempfile::tempdir().unwrap();
-        let staged = tempfile::tempdir().unwrap();
+        use nodex_platform::private_fs::symlink;
+        let source = nodex_platform::test_support::tempdir().unwrap();
+        let staged = nodex_platform::test_support::tempdir().unwrap();
         let input = fixture(source.path());
         let claude = source.path().join("private-claude-account");
         let relative = std::path::PathBuf::from(format!(
@@ -857,7 +857,7 @@ mod tests {
         let alias = claude.join(&relative);
         let target = claude.join("projects/workspace/parent/subagents/agent-child.jsonl");
         files::private_directory(target.parent().unwrap()).unwrap();
-        fs::rename(&alias, &target).unwrap();
+        nodex_platform::private_fs::atomic_replace(&alias, &target).unwrap();
         files::private_directory(alias.parent().unwrap()).unwrap();
         symlink(&target, &alias).unwrap();
         assert!(
@@ -884,8 +884,8 @@ mod tests {
     #[test]
     fn captures_complete_two_provider_history_without_credentials_and_preserves_resume_identities()
     {
-        let source = tempfile::tempdir().unwrap();
-        let staged = tempfile::tempdir().unwrap();
+        let source = nodex_platform::test_support::tempdir().unwrap();
+        let staged = nodex_platform::test_support::tempdir().unwrap();
         let input = fixture(source.path());
         assert!(
             capture(ProfileSnapshotCapture {
@@ -959,8 +959,8 @@ mod tests {
     #[test]
     fn rejects_missing_or_foreign_native_history_and_child_session_roots_before_publication() {
         for failure in ["missing", "foreign", "child"] {
-            let source = tempfile::tempdir().unwrap();
-            let staged = tempfile::tempdir().unwrap();
+            let source = nodex_platform::test_support::tempdir().unwrap();
+            let staged = nodex_platform::test_support::tempdir().unwrap();
             let input = fixture(source.path());
             let transcript = source.path().join(format!(
                 "private-claude-account/projects/workspace/{CLAUDE_ID}.jsonl"
@@ -969,7 +969,11 @@ mod tests {
                 fs::remove_file(&transcript).unwrap();
             }
             if failure == "foreign" {
-                fs::write(&transcript, format!("{}\n", json!({"sessionId":"foreign"}))).unwrap();
+                nodex_platform::private_fs::write(
+                    &transcript,
+                    format!("{}\n", json!({"sessionId":"foreign"})),
+                )
+                .unwrap();
             }
             if failure == "child" {
                 rusqlite::Connection::open(&input.database_path).unwrap().execute("UPDATE orchestration_v2_projection_threads SET payload_json=?1 WHERE thread_id='thread:claude'",[json!({"lineage":{"rootThreadId":"thread:codex","parentThreadId":"thread:codex"}}).to_string()]).unwrap();

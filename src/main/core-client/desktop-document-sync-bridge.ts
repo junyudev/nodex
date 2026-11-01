@@ -1,5 +1,5 @@
 import { WebContentsDestructionSubscriptions } from "../platform/electron/WebContentsDestructionSubscriptions";
-import { CoreEventCompatibilityError } from "./uds-http";
+import { CoreEventCompatibilityError } from "./local-http";
 import { createHash } from "node:crypto";
 import { documentSessionError } from "./document-session-error";
 import * as Context from "effect/Context";

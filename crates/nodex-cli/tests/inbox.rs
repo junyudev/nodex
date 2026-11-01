@@ -1,5 +1,4 @@
 //! Run after `cargo build -p nodex-core-server`; the workspace test gate builds both binaries.
-use std::fs;
 use std::io::Write;
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -22,9 +21,7 @@ const PROJECT: &str = "019b1000-1000-7000-8000-000000000101";
 struct CoreGuard(u32);
 impl Drop for CoreGuard {
     fn drop(&mut self) {
-        let _ = Command::new("kill")
-            .args(["-TERM", &self.0.to_string()])
-            .status();
+        let _ = nodex_platform::process::terminate_process(self.0);
     }
 }
 
@@ -69,14 +66,15 @@ fn nodex(home: &Path, cwd: &Path, args: &[&str], stdin: Option<&str>) -> Value {
 
 #[test]
 fn command_line_sends_land_in_the_inbox_of_their_project() {
-    let directory = tempfile::tempdir().unwrap();
+    let directory = nodex_platform::test_support::tempdir().unwrap();
     let home = directory.path().join("profile");
     let workspace = directory.path().join("workspace");
     let elsewhere = directory.path().join("elsewhere");
     for path in [&home, &workspace, &elsewhere] {
-        fs::create_dir(path).unwrap();
+        nodex_platform::private_fs::create_dir(path).unwrap();
     }
-    let core_binary = Path::new(env!("CARGO_BIN_EXE_nodex")).with_file_name("nodex-core");
+    let core_binary = Path::new(env!("CARGO_BIN_EXE_nodex"))
+        .with_file_name(nodex_platform::process::executable_name("nodex-core"));
     let client = connect_or_launch(&home, "inbox-cli-integration", Some(&core_binary)).unwrap();
     let _guard = CoreGuard(client.handshake.generation.pid);
     let created = client

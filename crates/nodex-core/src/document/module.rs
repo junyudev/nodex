@@ -5836,8 +5836,8 @@ mod tests {
         AdapterKind, LIBRARY_CONTRACT_VERSION, LibraryId, ModuleApplyRequest, ModuleReadRequest,
         PageDocumentHeadImpact, ProfileId, ProjectId, ProjectionImpact,
     };
+    use nodex_platform::test_support::tempdir;
     use rusqlite::params;
-    use tempfile::tempdir;
 
     use crate::document::{
         BlockDocumentSchema, DocumentAwareness, DocumentBlockOperation, DocumentBlockUpdatePatch,
@@ -5873,7 +5873,7 @@ mod tests {
     const CREATED_TEMPLATE_CONTENT_ID: &str = "019bf52d-6870-7000-8000-000000000016";
 
     struct SeededModule {
-        _directory: tempfile::TempDir,
+        _directory: nodex_platform::test_support::TempDir,
         kernel: SqliteStoreKernel,
         module: OwnedDocumentModule,
         full_state: Vec<u8>,
@@ -6537,7 +6537,7 @@ mod tests {
     fn empty_project_module() -> SeededModule {
         let directory = tempdir().expect("Profile");
         let home = directory.path().canonicalize().expect("absolute Profile");
-        fs::create_dir(home.join("assets")).expect("assets root");
+        nodex_platform::private_fs::create_dir(home.join("assets")).expect("assets root");
         let kernel = SqliteStoreKernel::open_test(&home).expect("fresh Store");
         kernel
             .writer()
@@ -6606,7 +6606,7 @@ mod tests {
     fn canvas_module() -> SeededModule {
         let directory = tempdir().expect("Profile");
         let home = directory.path().canonicalize().expect("absolute Profile");
-        fs::create_dir(home.join("assets")).expect("assets root");
+        nodex_platform::private_fs::create_dir(home.join("assets")).expect("assets root");
         let kernel = SqliteStoreKernel::open_test(&home).expect("fresh Store");
         kernel
             .writer()

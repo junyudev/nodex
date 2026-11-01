@@ -45,7 +45,7 @@ impl ViewFixture {
                 name: "Fixture writer".into(),
                 description: String::new(),
                 appearance: None,
-                source_roots: vec!["/workspace/fixture".into()],
+                source_roots: vec![nodex_platform::fixture_path!("/workspace/fixture").into()],
                 page_key_prefix: None,
             },
         );

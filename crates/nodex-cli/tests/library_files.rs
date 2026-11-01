@@ -19,9 +19,7 @@ const PAGE_B: &str = "019b1000-1000-7000-8000-000000000003";
 struct CoreGuard(u32);
 impl Drop for CoreGuard {
     fn drop(&mut self) {
-        let _ = Command::new("kill")
-            .args(["-TERM", &self.0.to_string()])
-            .status();
+        let _ = nodex_platform::process::terminate_process(self.0);
     }
 }
 
@@ -93,7 +91,7 @@ fn read(home: &Path, args: &[&str]) -> Vec<u8> {
 
 fn seed(client: &CoreClient, home: &Path) {
     let source = home.join("workspace");
-    fs::create_dir(&source).unwrap();
+    nodex_platform::private_fs::create_dir(&source).unwrap();
     let created = client
         .workspace_apply(
             None,
@@ -140,9 +138,10 @@ fn seed(client: &CoreClient, home: &Path) {
 
 #[test]
 fn native_cli_shares_files_replaces_only_one_relation_and_replays_exact_writes() {
-    let temp = tempfile::tempdir().unwrap();
+    let temp = nodex_platform::test_support::tempdir().unwrap();
     let home = temp.path().canonicalize().unwrap();
-    let core_binary = Path::new(env!("CARGO_BIN_EXE_nodex")).with_file_name("nodex-core");
+    let core_binary = Path::new(env!("CARGO_BIN_EXE_nodex"))
+        .with_file_name(nodex_platform::process::executable_name("nodex-core"));
     assert!(
         core_binary.is_file(),
         "Run cargo build -p nodex-core-server before this test"
@@ -150,9 +149,9 @@ fn native_cli_shares_files_replaces_only_one_relation_and_replays_exact_writes()
     let client = connect_or_launch(&home, "file-cli-integration", Some(&core_binary)).unwrap();
     let _guard = CoreGuard(client.handshake.generation.pid);
     seed(&client, &home);
-    fs::write(home.join("alpha.txt"), b"alpha").unwrap();
-    fs::write(home.join("beta.txt"), b"beta").unwrap();
-    fs::write(home.join("local.txt"), b"local").unwrap();
+    nodex_platform::private_fs::write(home.join("alpha.txt"), b"alpha").unwrap();
+    nodex_platform::private_fs::write(home.join("beta.txt"), b"beta").unwrap();
+    nodex_platform::private_fs::write(home.join("local.txt"), b"local").unwrap();
     let a = format!("@{PAGE_A}");
     let b = format!("@{PAGE_B}");
 

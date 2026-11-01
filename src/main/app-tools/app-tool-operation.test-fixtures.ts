@@ -1,6 +1,6 @@
 import * as Effect from "effect/Effect";
 import type { AppToolOperationIdentity, AppToolOperationRequest } from "../core-client/types";
-import { CoreHttpError } from "../core-client/uds-http";
+import { CoreHttpError } from "../core-client/local-http";
 import { coreRuntimeError } from "../core-runtime/CoreRuntimeError";
 import type { CoreModules } from "../core-runtime/CoreModules";
 import { createStableOperationId } from "../core-runtime/operation-identity";

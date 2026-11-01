@@ -6,6 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+nodex-platform.workspace = true
 nodex-core-contracts.workspace = true
 nodex-sqlite-query.workspace = true
 nodex-store-format.workspace = true
@@ -19,7 +20,6 @@ getrandom.workspace = true
 hex.workspace = true
 regex.workspace = true
 rrule.workspace = true
-rustix.workspace = true
 rusqlite.workspace = true
 serde.workspace = true
 utoipa.workspace = true
@@ -33,5 +33,6 @@ unicode-normalization.workspace = true
 yrs.workspace = true
 
 [dev-dependencies]
+nodex-platform = { workspace = true, features = ["test-support"] }
 nodex-core-protocol.workspace = true
 tempfile = "3.27.0"

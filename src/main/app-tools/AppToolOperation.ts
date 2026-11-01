@@ -4,7 +4,7 @@ import { stableStringifyBlockPropertyJson } from "../../shared/block-property-mu
 import type { NodexAgentTurnContext } from "../../shared/nodex-agent-authority";
 import { OPERATION_IDENTITY_WINDOW_MS } from "../../shared/operation-identity";
 import { toCoreAgentTurnProvenance } from "../core-client/core-agent-execution-authorization";
-import { CoreHttpError } from "../core-client/uds-http";
+import { CoreHttpError } from "../core-client/local-http";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { createStableOperationId } from "../core-runtime/operation-identity";
 import type { AppToolInvocation } from "./AppToolInvocationInbox";

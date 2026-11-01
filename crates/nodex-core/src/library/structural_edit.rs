@@ -7749,8 +7749,8 @@ mod tests {
         AdapterKind, CoreErrorCode, LIBRARY_CONTRACT_VERSION, LibraryId, ModuleApplyRequest,
         ProfileId, ProjectId, StoreEpoch,
     };
+    use nodex_platform::test_support::tempdir;
     use serde_json::Value;
-    use tempfile::tempdir;
 
     use super::*;
     use crate::infrastructure::sqlite::with_immediate_transaction;

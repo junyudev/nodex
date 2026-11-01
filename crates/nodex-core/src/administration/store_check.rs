@@ -82,7 +82,7 @@ pub fn check_profile_store(profile_home: &Path) -> Result<ProfileStoreCheck, Sto
 
 #[cfg(test)]
 mod tests {
-    use tempfile::tempdir;
+    use nodex_platform::test_support::tempdir;
 
     use crate::infrastructure::migration::prepare_profile_store;
     use crate::infrastructure::sqlite::open_writer;

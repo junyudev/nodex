@@ -2,9 +2,10 @@
 //! Paths come from the Profile runtime, never a transport request. Owners keep
 //! the returned publication alive until their durable roots have committed.
 
-use std::fs::{self, File, OpenOptions};
+use nodex_platform::private_fs::OpenOptions;
+use std::fs::{self, File};
 use std::io::{Read, Write};
-use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+
 use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
@@ -37,8 +38,8 @@ impl BlobWriter {
         staging.push(".staging");
         let staging = PathBuf::from(staging);
         for directory in [root, staging.as_path()] {
-            fs::create_dir_all(directory).map_err(io_error)?;
-            fs::set_permissions(directory, fs::Permissions::from_mode(0o700)).map_err(io_error)?;
+            nodex_platform::private_fs::create_dir_all(directory).map_err(io_error)?;
+            nodex_platform::private_fs::set_mode(directory, 0o700).map_err(io_error)?;
         }
         let mut random = [0_u8; 24];
         getrandom::fill(&mut random).map_err(|error| {
@@ -100,9 +101,7 @@ impl BlobWriter {
             &content_hash,
             self.byte_length,
         )?;
-        File::open(&self.root)
-            .and_then(|directory| directory.sync_all())
-            .map_err(io_error)?;
+        nodex_platform::private_fs::sync_directory(&self.root).map_err(io_error)?;
         fs::remove_file(&self.temporary_path).map_err(io_error)?;
         Ok(PublishedBlob {
             content_hash,
@@ -132,7 +131,6 @@ pub(crate) fn open(
     validate_physical_name(physical_name)?;
     let file = OpenOptions::new()
         .read(true)
-        .custom_flags(rustix::fs::OFlags::NOFOLLOW.bits() as i32)
         .open(root.join(physical_name))
         .map_err(|_| corrupt("Managed Blob bytes are unavailable"))?;
     let metadata = file.metadata().map_err(io_error)?;
@@ -195,7 +193,7 @@ mod tests {
 
     #[test]
     fn publication_pins_bytes_until_durable_roots_commit_and_open_handles_survive_unlink() {
-        let home = tempfile::tempdir().unwrap();
+        let home = nodex_platform::test_support::tempdir().unwrap();
         let root = home.path().join("assets");
         let mut writer = BlobWriter::new(&root, 16).unwrap();
         writer.write_chunk(b"alpha").unwrap();
@@ -216,7 +214,7 @@ mod tests {
 
     #[test]
     fn failed_publication_keeps_existing_bytes_and_cleans_staging() {
-        let home = tempfile::tempdir().unwrap();
+        let home = nodex_platform::test_support::tempdir().unwrap();
         let root = home.path().join("assets");
         let mut writer = BlobWriter::new(&root, 5).unwrap();
         assert!(writer.write_chunk(b"too big").is_err());
@@ -224,7 +222,7 @@ mod tests {
         let mut writer = BlobWriter::new(&root, 5).unwrap();
         writer.write_chunk(b"alpha").unwrap();
         let name = format!("{}.blob", hex::encode(Sha256::digest(b"alpha")));
-        fs::write(root.join(&name), b"wrong").unwrap();
+        nodex_platform::private_fs::write(root.join(&name), b"wrong").unwrap();
         assert!(writer.finish().is_err());
         assert_eq!(fs::read(root.join(&name)).unwrap(), b"wrong");
         assert_eq!(
@@ -234,8 +232,8 @@ mod tests {
             0
         );
         let outside = home.path().join("outside");
-        fs::write(&outside, b"alpha").unwrap();
-        std::os::unix::fs::symlink(outside, root.join("symlink")).unwrap();
+        nodex_platform::private_fs::write(&outside, b"alpha").unwrap();
+        nodex_platform::private_fs::symlink(outside, root.join("symlink")).unwrap();
         assert!(open(&root, "symlink", 5).is_err());
         assert!(open(&root, "../outside", 5).is_err());
     }

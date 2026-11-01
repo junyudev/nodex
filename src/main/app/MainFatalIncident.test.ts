@@ -1,7 +1,7 @@
 import { expect, test } from "vite-plus/test";
 import * as Cause from "effect/Cause";
 import { coreRuntimeError } from "../core-runtime/CoreRuntimeError";
-import { CoreTransportError } from "../core-client/uds-http";
+import { CoreTransportError } from "../core-client/local-http";
 import { MainApplicationError, type MainExit } from "./MainExit";
 import { makeMainFatalIncident, fatalIncidentPresentation } from "./MainFatalIncident";
 

@@ -1,6 +1,7 @@
-use std::fs::{self, File, OpenOptions};
+use nodex_platform::private_fs::OpenOptions;
+use std::fs;
 use std::io::Write;
-use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+
 use std::path::{Path, PathBuf};
 
 use rusqlite::OptionalExtension;
@@ -84,10 +85,10 @@ pub fn read_store_replacement_journal(
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(error) => return Err(io_error(error)),
     };
-    if metadata.file_type().is_symlink()
+    if nodex_platform::private_fs::is_reparse_point(&metadata)
         || !metadata.is_file()
         || metadata.len() > MAX_JOURNAL_BYTES
-        || metadata.permissions().mode() & 0o077 != 0
+        || !nodex_platform::private_fs::is_private(&path, &metadata).map_err(io_error)?
     {
         return Err(invalid_profile(
             "Store replacement journal must be a bounded regular file",
@@ -269,9 +270,9 @@ pub fn rollback_store_replacement(
         validate_staged_candidate(profile_home, &journal.staging_directory_name)?;
         return reset_journal_to_prepared(profile_home, journal);
     }
-    if rollback_metadata
-        .is_some_and(|metadata| metadata.file_type().is_symlink() || !metadata.is_dir())
-    {
+    if rollback_metadata.is_some_and(|metadata| {
+        nodex_platform::private_fs::is_reparse_point(&metadata) || !metadata.is_dir()
+    }) {
         return Err(invalid_profile(
             "Store replacement rollback directory is unsafe",
         ));
@@ -385,7 +386,7 @@ pub fn cleanup_store_replacement(
     remove_owned_directory(&backup_root, &journal.rollback_directory_name, ".rollback-")?;
     let path = journal_path(profile_home);
     let metadata = fs::symlink_metadata(&path).map_err(io_error)?;
-    if metadata.file_type().is_symlink() || !metadata.is_file() {
+    if nodex_platform::private_fs::is_reparse_point(&metadata) || !metadata.is_file() {
         return Err(invalid_profile(
             "Store replacement journal cleanup target is unsafe",
         ));
@@ -424,7 +425,7 @@ pub fn validate_live_store(
 
 pub fn validate_store_path(path: &Path) -> Result<String, StoreError> {
     let metadata = fs::symlink_metadata(path).map_err(io_error)?;
-    if metadata.file_type().is_symlink() || !metadata.is_file() {
+    if nodex_platform::private_fs::is_reparse_point(&metadata) || !metadata.is_file() {
         return Err(invalid_profile(
             "Staged Store database must be a regular file",
         ));
@@ -493,7 +494,7 @@ fn validate_regular_tree(root: &Path) -> Result<(), StoreError> {
     let mut entry_count = 0usize;
     while let Some(directory) = pending.pop() {
         let metadata = fs::symlink_metadata(&directory).map_err(io_error)?;
-        if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        if nodex_platform::private_fs::is_reparse_point(&metadata) || !metadata.is_dir() {
             return Err(invalid_profile(
                 "Staged Store assets root must be a real directory",
             ));
@@ -509,7 +510,7 @@ fn validate_regular_tree(root: &Path) -> Result<(), StoreError> {
                 ));
             }
             let metadata = fs::symlink_metadata(entry.path()).map_err(io_error)?;
-            if metadata.file_type().is_symlink() {
+            if nodex_platform::private_fs::is_reparse_point(&metadata) {
                 return Err(invalid_profile(
                     "Staged Store assets must not contain symbolic links",
                 ));
@@ -596,7 +597,7 @@ fn validate_journal(
     }
     let root = backups_root(profile_home);
     let metadata = fs::symlink_metadata(&root).map_err(io_error)?;
-    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+    if nodex_platform::private_fs::is_reparse_point(&metadata) || !metadata.is_dir() {
         return Err(invalid_profile(
             "Store replacement backup root is not a real directory",
         ));
@@ -649,7 +650,7 @@ fn write_journal(profile_home: &Path, journal: &StoreReplacementJournal) -> Resu
     let temporary = profile_home.join(format!(".{JOURNAL_FILE_NAME}.tmp"));
     if temporary.exists() {
         let metadata = fs::symlink_metadata(&temporary).map_err(io_error)?;
-        if metadata.file_type().is_symlink() || !metadata.is_file() {
+        if nodex_platform::private_fs::is_reparse_point(&metadata) || !metadata.is_file() {
             return Err(invalid_profile(
                 "Store replacement journal temporary path is unsafe",
             ));
@@ -665,14 +666,14 @@ fn write_journal(profile_home: &Path, journal: &StoreReplacementJournal) -> Resu
     file.write_all(&bytes).map_err(io_error)?;
     file.sync_all().map_err(io_error)?;
     drop(file);
-    fs::rename(temporary, path).map_err(io_error)?;
+    nodex_platform::private_fs::atomic_replace(temporary, path).map_err(io_error)?;
     sync_directory(profile_home)
 }
 
 fn restore_companion(source: &Path, destination: &Path, expected: bool) -> Result<(), StoreError> {
     if destination.exists() {
         let metadata = fs::symlink_metadata(destination).map_err(io_error)?;
-        if metadata.file_type().is_symlink() || !metadata.is_file() {
+        if nodex_platform::private_fs::is_reparse_point(&metadata) || !metadata.is_file() {
             return Err(invalid_profile("Store companion cleanup target is unsafe"));
         }
         fs::remove_file(destination).map_err(io_error)?;
@@ -689,9 +690,9 @@ fn restore_companion(source: &Path, destination: &Path, expected: bool) -> Resul
 
 fn move_if_present(source: &Path, destination: &Path) -> Result<(), StoreError> {
     match fs::symlink_metadata(source) {
-        Ok(metadata) if metadata.file_type().is_symlink() => Err(invalid_profile(
-            "Store replacement source must not be a symbolic link",
-        )),
+        Ok(metadata) if nodex_platform::private_fs::is_reparse_point(&metadata) => Err(
+            invalid_profile("Store replacement source must not be a symbolic link"),
+        ),
         Ok(_) => move_required(source, destination),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
         Err(error) => Err(io_error(error)),
@@ -703,12 +704,12 @@ fn move_required(source: &Path, destination: &Path) -> Result<(), StoreError> {
         return Err(corrupt("Store replacement destination already exists"));
     }
     let metadata = fs::symlink_metadata(source).map_err(io_error)?;
-    if metadata.file_type().is_symlink() {
+    if nodex_platform::private_fs::is_reparse_point(&metadata) {
         return Err(invalid_profile(
             "Store replacement source must not be a symbolic link",
         ));
     }
-    fs::rename(source, destination).map_err(io_error)?;
+    nodex_platform::private_fs::atomic_replace(source, destination).map_err(io_error)?;
     if let Some(parent) = source.parent() {
         sync_directory(parent)?;
     }
@@ -724,7 +725,9 @@ fn prepare_owned_directory(root: &Path, name: &str, prefix: &str) -> Result<Path
     validate_owned_directory_name(name, prefix)?;
     let path = root.join(name);
     match fs::symlink_metadata(&path) {
-        Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_dir() => {
+        Ok(metadata)
+            if nodex_platform::private_fs::is_reparse_point(&metadata) || !metadata.is_dir() =>
+        {
             return Err(invalid_profile(
                 "Store replacement owned directory is unsafe",
             ));
@@ -733,7 +736,7 @@ fn prepare_owned_directory(root: &Path, name: &str, prefix: &str) -> Result<Path
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
         Err(error) => return Err(io_error(error)),
     }
-    fs::create_dir(&path).map_err(io_error)?;
+    nodex_platform::private_fs::create_dir(&path).map_err(io_error)?;
     sync_directory(root)?;
     Ok(path)
 }
@@ -742,7 +745,7 @@ fn require_owned_directory(root: &Path, name: &str, prefix: &str) -> Result<Path
     validate_owned_directory_name(name, prefix)?;
     let path = root.join(name);
     let metadata = fs::symlink_metadata(&path).map_err(io_error)?;
-    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+    if nodex_platform::private_fs::is_reparse_point(&metadata) || !metadata.is_dir() {
         return Err(invalid_profile(
             "Store replacement owned directory is unsafe",
         ));
@@ -758,7 +761,7 @@ fn remove_owned_directory(root: &Path, name: &str, prefix: &str) -> Result<(), S
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
         Err(error) => return Err(io_error(error)),
     };
-    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+    if nodex_platform::private_fs::is_reparse_point(&metadata) || !metadata.is_dir() {
         return Err(invalid_profile(
             "Store replacement cleanup directory is unsafe",
         ));
@@ -784,9 +787,13 @@ fn validate_owned_directory_name(name: &str, prefix: &str) -> Result<(), StoreEr
 
 fn regular_file_exists(path: &Path) -> Result<bool, StoreError> {
     match fs::symlink_metadata(path) {
-        Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => Err(
-            invalid_profile("Store replacement companion must be a regular file"),
-        ),
+        Ok(metadata)
+            if nodex_platform::private_fs::is_reparse_point(&metadata) || !metadata.is_file() =>
+        {
+            Err(invalid_profile(
+                "Store replacement companion must be a regular file",
+            ))
+        }
         Ok(_) => Ok(true),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
         Err(error) => Err(io_error(error)),
@@ -795,9 +802,13 @@ fn regular_file_exists(path: &Path) -> Result<bool, StoreError> {
 
 fn directory_exists(path: &Path) -> Result<bool, StoreError> {
     match fs::symlink_metadata(path) {
-        Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_dir() => Err(
-            invalid_profile("Store replacement assets must be a real directory"),
-        ),
+        Ok(metadata)
+            if nodex_platform::private_fs::is_reparse_point(&metadata) || !metadata.is_dir() =>
+        {
+            Err(invalid_profile(
+                "Store replacement assets must be a real directory",
+            ))
+        }
         Ok(_) => Ok(true),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
         Err(error) => Err(io_error(error)),
@@ -853,17 +864,11 @@ fn is_safe_backup_id(value: &str) -> bool {
 }
 
 fn sync_file(path: &Path) -> Result<(), StoreError> {
-    File::open(path)
-        .map_err(io_error)?
-        .sync_all()
-        .map_err(io_error)
+    nodex_platform::private_fs::sync_file(path).map_err(io_error)
 }
 
 fn sync_directory(path: &Path) -> Result<(), StoreError> {
-    File::open(path)
-        .map_err(io_error)?
-        .sync_all()
-        .map_err(io_error)
+    nodex_platform::private_fs::sync_directory(path).map_err(io_error)
 }
 
 fn invalid_profile(message: impl Into<String>) -> StoreError {
@@ -888,12 +893,12 @@ fn io_error(error: std::io::Error) -> StoreError {
 
 #[cfg(test)]
 mod tests {
-    use std::os::unix::fs::{PermissionsExt, symlink};
+    use nodex_platform::private_fs::symlink;
 
     use nodex_core_contracts::{AdapterKind, BoundModuleContext, LibraryId, ProfileId};
+    use nodex_platform::test_support::TempDir;
     use rusqlite::params;
     use serde_json::json;
-    use tempfile::TempDir;
 
     use super::*;
     use crate::infrastructure::module_receipts::{NewModuleReceipt, insert_module_receipt};
@@ -916,7 +921,7 @@ mod tests {
 
     impl ReplacementFixture {
         fn new() -> Self {
-            let home = tempfile::tempdir().expect("Profile home");
+            let home = nodex_platform::test_support::tempdir().expect("Profile home");
             let kernel = SqliteStoreKernel::open(home.path()).expect("fresh Store");
             kernel
                 .writer()
@@ -932,21 +937,23 @@ mod tests {
                 .expect("source fixture");
             drop(kernel);
 
-            fs::create_dir(home.path().join(ASSETS_DIRECTORY_NAME)).expect("source assets");
-            fs::write(
+            nodex_platform::private_fs::create_dir(home.path().join(ASSETS_DIRECTORY_NAME))
+                .expect("source assets");
+            nodex_platform::private_fs::write(
                 home.path().join(ASSETS_DIRECTORY_NAME).join("asset.bin"),
                 b"source asset",
             )
             .expect("source asset");
 
             let staging = home.path().join("backups").join(STAGING_NAME);
-            fs::create_dir_all(staging.join(ASSETS_DIRECTORY_NAME)).expect("staging assets");
-            fs::copy(
+            nodex_platform::private_fs::create_dir_all(staging.join(ASSETS_DIRECTORY_NAME))
+                .expect("staging assets");
+            nodex_platform::private_fs::copy(
                 live_database_path(home.path()),
                 staging.join(STORE_FILE_NAME),
             )
             .expect("candidate database");
-            fs::write(
+            nodex_platform::private_fs::write(
                 staging.join(ASSETS_DIRECTORY_NAME).join("asset.bin"),
                 b"candidate asset",
             )
@@ -1030,14 +1037,14 @@ mod tests {
             let fixture = ReplacementFixture::new();
             let profile = fixture.home();
             let staging = profile.join("backups").join(STAGING_NAME);
-            fs::create_dir(profile.join(EXECUTION_DIRECTORY_NAME)).unwrap();
-            fs::write(
+            nodex_platform::private_fs::create_dir(profile.join(EXECUTION_DIRECTORY_NAME)).unwrap();
+            nodex_platform::private_fs::write(
                 profile.join("agent-runtime/history.jsonl"),
                 b"source complete history",
             )
             .unwrap();
-            fs::create_dir(staging.join(EXECUTION_DIRECTORY_NAME)).unwrap();
-            fs::write(
+            nodex_platform::private_fs::create_dir(staging.join(EXECUTION_DIRECTORY_NAME)).unwrap();
+            nodex_platform::private_fs::write(
                 staging.join("agent-runtime/history.jsonl"),
                 b"candidate complete history",
             )
@@ -1062,7 +1069,7 @@ mod tests {
             )
             .unwrap();
             let rollback = profile.join("backups").join(ROLLBACK_NAME);
-            fs::create_dir(&rollback).unwrap();
+            nodex_platform::private_fs::create_dir(&rollback).unwrap();
             let moves = [
                 (
                     profile.join(STORE_FILE_NAME),
@@ -1087,7 +1094,7 @@ mod tests {
                 ),
             ];
             for (source, target) in moves.into_iter().take(completed_moves) {
-                fs::rename(source, target).unwrap();
+                nodex_platform::private_fs::atomic_replace(source, target).unwrap();
             }
             assert_eq!(
                 recover_interrupted_store_replacement(profile).unwrap(),
@@ -1121,7 +1128,7 @@ mod tests {
             .join("asset.bin");
         fs::remove_file(&candidate_asset).expect("remove candidate asset");
         let outside = fixture.home().join("outside.bin");
-        fs::write(&outside, b"outside").expect("outside file");
+        nodex_platform::private_fs::write(&outside, b"outside").expect("outside file");
         symlink(&outside, candidate_asset).expect("candidate symlink");
 
         let error = create_store_replacement_journal(
@@ -1141,15 +1148,13 @@ mod tests {
         assert!(!journal_path(fixture.home()).exists());
     }
 
+    #[cfg(unix)]
     #[test]
     fn startup_rejects_a_group_readable_replacement_journal() {
         let fixture = ReplacementFixture::new();
         fixture.create_journal();
-        fs::set_permissions(
-            journal_path(fixture.home()),
-            fs::Permissions::from_mode(0o640),
-        )
-        .expect("journal permissions");
+        nodex_platform::private_fs::set_mode(journal_path(fixture.home()), 0o640)
+            .expect("journal permissions");
 
         let error = match SqliteStoreKernel::open(fixture.home()) {
             Ok(_) => panic!("public journal must fail"),

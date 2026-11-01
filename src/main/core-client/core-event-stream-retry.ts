@@ -1,4 +1,4 @@
-import { CoreEventCompatibilityError, CoreHttpError } from "./uds-http";
+import { CoreEventCompatibilityError, CoreHttpError } from "./local-http";
 
 /** Shared retry classification for document and canvas SSE adapters. */
 export const isRetryableCoreEventStreamError = (error: unknown): boolean => {

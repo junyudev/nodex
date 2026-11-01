@@ -11,7 +11,7 @@ import { assert, it } from "@effect/vitest";
 import type { CoreGenerationClient } from "../core-client/core-generation-client";
 import type { LibraryReadSnapshot } from "../core-client/types";
 import { createFakeCoreHandshake, FakeCoreClient } from "../core-client/testing/fake-core-client";
-import { CoreTransportError } from "../core-client/uds-http";
+import { CoreTransportError } from "../core-client/local-http";
 import { MainShutdown, layer as shutdownLayer } from "../app/MainShutdown";
 import { CoreAuthority, CoreSessionAccess, live as authorityLive } from "./CoreAuthority";
 import { coreRuntimeError } from "./CoreRuntimeError";

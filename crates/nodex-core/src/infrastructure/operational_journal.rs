@@ -1431,7 +1431,7 @@ mod tests {
 
     #[test]
     fn receipt_backfill_cursor_uses_each_receipt_primary_key_without_a_union_sort() {
-        let directory = tempfile::tempdir().expect("Profile");
+        let directory = nodex_platform::test_support::tempdir().expect("Profile");
         let mut connection = open_writer(&directory.path().join("nodex.db")).expect("writer");
         prepare_test_current_store(&mut connection, Path::new("/__journal_plan_test__"))
             .expect("current Store");
@@ -1461,7 +1461,7 @@ mod tests {
 
     #[test]
     fn prune_candidates_use_bounded_ordered_index_plans() {
-        let directory = tempfile::tempdir().expect("Profile");
+        let directory = nodex_platform::test_support::tempdir().expect("Profile");
         let mut connection = open_writer(&directory.path().join("nodex.db")).expect("writer");
         prepare_test_current_store(&mut connection, Path::new("/__journal_prune_plan_test__"))
             .expect("current Store");
@@ -1568,7 +1568,7 @@ mod tests {
 
     #[test]
     fn bounded_pass_detaches_exact_receipts_and_advances_replay_floor() {
-        let directory = tempfile::tempdir().expect("Profile");
+        let directory = nodex_platform::test_support::tempdir().expect("Profile");
         let mut connection = open_writer(&directory.path().join("nodex.db")).expect("writer");
         prepare_test_current_store(&mut connection, Path::new("/__journal_test__"))
             .expect("current Store");
@@ -1632,7 +1632,7 @@ mod tests {
 
     #[test]
     fn migration_backfill_resumes_from_durable_commit_and_receipt_cursors() {
-        let directory = tempfile::tempdir().expect("Profile");
+        let directory = nodex_platform::test_support::tempdir().expect("Profile");
         let mut connection = open_writer(&directory.path().join("nodex.db")).expect("writer");
         prepare_test_current_store(&mut connection, Path::new("/__journal_backfill_test__"))
             .expect("current Store");
@@ -1761,7 +1761,7 @@ mod tests {
 
     #[test]
     fn pressure_flags_clear_when_the_other_journal_releases_the_global_envelope() {
-        let directory = tempfile::tempdir().expect("Profile");
+        let directory = nodex_platform::test_support::tempdir().expect("Profile");
         let mut connection = open_writer(&directory.path().join("nodex.db")).expect("writer");
         prepare_test_current_store(&mut connection, Path::new("/__journal_pressure_test__"))
             .expect("current Store");
@@ -1816,7 +1816,7 @@ mod tests {
 
     #[test]
     fn receipt_maintenance_is_due_at_each_time_count_and_byte_horizon() {
-        let directory = tempfile::tempdir().expect("Profile");
+        let directory = nodex_platform::test_support::tempdir().expect("Profile");
         let mut connection = open_writer(&directory.path().join("nodex.db")).expect("writer");
         prepare_test_current_store(&mut connection, Path::new("/__receipt_horizons_test__"))
             .expect("current Store");
@@ -1859,7 +1859,7 @@ mod tests {
 
     #[test]
     fn status_exposes_backfill_and_retention_progress_without_scanning_payloads() {
-        let directory = tempfile::tempdir().expect("Profile");
+        let directory = nodex_platform::test_support::tempdir().expect("Profile");
         let mut connection = open_writer(&directory.path().join("nodex.db")).expect("writer");
         prepare_test_current_store(&mut connection, Path::new("/__journal_status_test__"))
             .expect("current Store");
@@ -1888,7 +1888,7 @@ mod tests {
 
     #[test]
     fn physical_reclamation_advances_only_the_maintenance_coordinate() {
-        let directory = tempfile::tempdir().expect("Profile");
+        let directory = nodex_platform::test_support::tempdir().expect("Profile");
         let mut connection = open_writer(&directory.path().join("nodex.db")).expect("writer");
         prepare_test_current_store(&mut connection, Path::new("/__journal_vacuum_test__"))
             .expect("current Store");
@@ -1959,7 +1959,7 @@ mod tests {
 
     #[test]
     fn seal_capacity_prunes_a_bounded_slice_or_applies_backpressure() {
-        let directory = tempfile::tempdir().expect("Profile");
+        let directory = nodex_platform::test_support::tempdir().expect("Profile");
         let mut connection = open_writer(&directory.path().join("nodex.db")).expect("writer");
         prepare_test_current_store(&mut connection, Path::new("/__journal_capacity_test__"))
             .expect("current Store");
@@ -2025,7 +2025,7 @@ mod tests {
 
     #[test]
     fn receipt_capacity_keeps_legacy_overage_available_only_while_it_shrinks() {
-        let directory = tempfile::tempdir().expect("Profile");
+        let directory = nodex_platform::test_support::tempdir().expect("Profile");
         let mut connection = open_writer(&directory.path().join("nodex.db")).expect("writer");
         prepare_test_current_store(&mut connection, Path::new("/__receipt_capacity_test__"))
             .expect("current Store");

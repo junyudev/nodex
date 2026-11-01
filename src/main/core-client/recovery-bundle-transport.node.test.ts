@@ -1,5 +1,5 @@
 import { CORE_TRANSPORT_BUDGETS } from "@nodex/core-protocol";
-import { CoreHttpError } from "./uds-http";
+import { CoreHttpError } from "./local-http";
 import { expect, test } from "vite-plus/test";
 import { withCoreScenario } from "../../../scripts/scenarios/harness/core-scenario-harness";
 import { DOCUMENT_SYNC_RECOVERY_SCENARIO_ID } from "../../../scripts/scenarios/scenarios/document-sync-recovery";

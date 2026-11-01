@@ -5,7 +5,11 @@ use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-fn fixture() -> (tempfile::TempDir, SqliteStoreKernel, LibraryModule) {
+fn fixture() -> (
+    nodex_platform::test_support::TempDir,
+    SqliteStoreKernel,
+    LibraryModule,
+) {
     let directory = tempdir().unwrap();
     let kernel = SqliteStoreKernel::open_test(&directory.path().canonicalize().unwrap()).unwrap();
     kernel.writer().call(|connection| {
@@ -200,8 +204,8 @@ fn page_file_relations_do_not_expand_independent_file_authority() {
     };
     let bytes = b"public query attachment";
     let hash = crate::document::sha256(bytes);
-    std::fs::create_dir_all(directory.path().join("assets")).unwrap();
-    std::fs::write(
+    nodex_platform::private_fs::create_dir_all(directory.path().join("assets")).unwrap();
+    nodex_platform::private_fs::write(
         directory.path().join("assets").join(format!("{hash}.blob")),
         bytes,
     )

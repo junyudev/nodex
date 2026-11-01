@@ -1,0 +1,26 @@
+[package]
+name = "nodex-platform"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[features]
+test-support = ["dep:tempfile"]
+
+[dependencies]
+tempfile = { version = "3.27.0", optional = true }
+axum.workspace = true
+getrandom.workspace = true
+hex.workspace = true
+tokio = { workspace = true, features = ["io-util"] }
+
+[target.'cfg(unix)'.dependencies]
+signal-hook.workspace = true
+rustix = { workspace = true, features = ["stdio"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_Storage_FileSystem", "Win32_System_Console", "Win32_System_IO", "Win32_System_Ioctl", "Win32_System_Memory", "Win32_System_Pipes", "Win32_System_Threading", "Win32_System_Com", "Win32_System_Registry", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
+
+[dev-dependencies]
+tempfile = "3.27.0"

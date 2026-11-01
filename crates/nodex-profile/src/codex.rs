@@ -1,13 +1,14 @@
 //! Adapter for Codex's local conversation persistence (state layout 5 and JSONL rollouts).
 //! Native pagination indexes are part of the readable closure; credentials and queues are not.
 use std::collections::{BTreeMap, BTreeSet};
-use std::fs::{self, File, OpenOptions};
+use std::fs::{self, File};
 use std::io::{BufRead, BufReader, Read};
-use std::os::unix::fs::OpenOptionsExt;
+
 use std::path::{Component, Path, PathBuf};
 use std::time::Duration;
 
 use nodex_core::administration::ProfileCloneThread;
+use nodex_platform::private_fs::OpenOptions;
 use rusqlite::{Connection, OpenFlags};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -81,7 +82,6 @@ impl IdleWriters {
             .create(true)
             .truncate(false)
             .mode(0o600)
-            .custom_flags(rustix::fs::OFlags::NOFOLLOW.bits() as i32)
             .open(&path)?;
         lock.try_lock().map_err(|_| {
             invalid("Source Agent is busy; stop its runtime before cloning the Profile")
@@ -675,10 +675,16 @@ fn captured_alias_path(
     selected: &Path,
     captured: &BTreeMap<PathBuf, files::Fingerprint>,
 ) -> Result<PathBuf> {
-    if !selected.is_absolute()
-        || selected
-            .components()
-            .any(|part| !matches!(part, Component::RootDir | Component::Normal(_)))
+    let normalized = nodex_platform::private_fs::normalize_path(selected);
+    let selected = normalized.as_ref();
+    if nodex_platform::private_fs::has_traversal(selected)
+        || !selected.is_absolute()
+        || selected.components().any(|part| {
+            !matches!(
+                part,
+                Component::Prefix(_) | Component::RootDir | Component::Normal(_)
+            )
+        })
     {
         return Err(invalid(
             "Native conversation path is not a contained artifact",
@@ -737,7 +743,9 @@ fn relocate_state(
             }
             let actual = relative.to_string_lossy();
             let copied = rollout.relative.to_string_lossy();
-            if actual.trim_end_matches(".zst") != copied.trim_end_matches(".zst") {
+            if Path::new(actual.trim_end_matches(".zst"))
+                != Path::new(copied.trim_end_matches(".zst"))
+            {
                 return Err(invalid(
                     "Native selected rollout path does not match the copied artifact",
                 ));

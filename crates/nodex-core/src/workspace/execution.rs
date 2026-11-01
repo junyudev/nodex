@@ -1128,7 +1128,9 @@ mod tests {
 
     #[test]
     fn workspace_roots_match_codex_absolute_path_rules() {
-        assert!(valid_workspace_root("/workspace/a"));
+        assert!(valid_workspace_root(nodex_platform::fixture_path!(
+            "/workspace/a"
+        )));
         assert!(valid_workspace_root("C:\\workspace"));
         assert!(valid_workspace_root("\\\\server\\share"));
         assert!(valid_workspace_root("//server/share"));
@@ -1139,11 +1141,14 @@ mod tests {
         assert_eq!(
             normalize_roots_input(&[
                 "relative".to_owned(),
-                "/workspace/a".to_owned(),
-                "/workspace/a".to_owned(),
-                "/workspace/b".to_owned(),
+                nodex_platform::fixture_path!("/workspace/a").to_owned(),
+                nodex_platform::fixture_path!("/workspace/a").to_owned(),
+                nodex_platform::fixture_path!("/workspace/b").to_owned(),
             ]),
-            ["/workspace/a", "/workspace/b"]
+            [
+                nodex_platform::fixture_path!("/workspace/a"),
+                nodex_platform::fixture_path!("/workspace/b")
+            ]
         );
     }
 }

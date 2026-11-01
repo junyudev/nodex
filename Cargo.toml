@@ -8,6 +8,7 @@ members = [
   "crates/nodex-markdown",
   "crates/nodex-page-search-kernel",
   "crates/nodex-profile",
+  "crates/nodex-platform",
   "crates/nodex-core-server",
   "crates/nodex-store-format",
   "crates/nodex-sqlite-query",
@@ -21,6 +22,7 @@ rust-version = "1.99.1"
 license = "Apache-2.0"
 
 [workspace.dependencies]
+nodex-platform = { path = "crates/nodex-platform" }
 nodex-profile = { path = "crates/nodex-profile" }
 nodex-core = { path = "crates/nodex-core" }
 nodex-core-contracts = { path = "crates/nodex-core-contracts" }

@@ -68,8 +68,8 @@ fn install_historical_document(connection: &rusqlite::Connection) -> Result<(), 
 fn managed_asset_migration_preserves_content_history_and_missing_sources() {
     let seeded = seeded_module();
     let assets = seeded._directory.path().join("assets");
-    fs::create_dir_all(&assets).unwrap();
-    fs::write(assets.join("photo.png"), b"exact original bytes").unwrap();
+    nodex_platform::private_fs::create_dir_all(&assets).unwrap();
+    nodex_platform::private_fs::write(assets.join("photo.png"), b"exact original bytes").unwrap();
     seeded
         .kernel
         .writer()
@@ -226,7 +226,7 @@ fn document_commands_reject_temporary_media_without_committing() {
 fn managed_asset_migration_rejects_non_regular_sources_atomically() {
     let seeded = seeded_module();
     let assets = seeded._directory.path().join("assets");
-    fs::create_dir_all(assets.join("photo.png")).unwrap();
+    nodex_platform::private_fs::create_dir_all(assets.join("photo.png")).unwrap();
     seeded
         .kernel
         .writer()

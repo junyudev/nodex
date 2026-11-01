@@ -10,6 +10,7 @@ name = "nodex-core"
 path = "src/main.rs"
 
 [dependencies]
+nodex-platform.workspace = true
 nodex-core = { path = "../nodex-core" }
 nodex-profile.workspace = true
 nodex-core-contracts.workspace = true
@@ -24,7 +25,6 @@ getrandom.workspace = true
 hex.workspace = true
 hmac.workspace = true
 http-body-util.workspace = true
-rustix = { workspace = true, features = ["stdio"] }
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
@@ -33,5 +33,9 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 
 [dev-dependencies]
+nodex-platform = { workspace = true, features = ["test-support"] }
 tempfile = "3.27.0"
 tower = { version = "0.5.3", features = ["util"] }
+
+[target.'cfg(unix)'.dev-dependencies]
+rustix.workspace = true

@@ -2608,7 +2608,7 @@ mod reference_tests {
 
     #[test]
     fn new_view_references_require_live_database_and_source() {
-        let directory = tempfile::tempdir().unwrap();
+        let directory = nodex_platform::test_support::tempdir().unwrap();
         let kernel = SqliteStoreKernel::open_test(directory.path()).unwrap();
         kernel.writer().call(|connection| {
             connection.execute_batch(
@@ -2646,7 +2646,7 @@ mod reference_tests {
 
     #[test]
     fn chat_mentions_accept_sessions_across_the_profile() {
-        let directory = tempfile::tempdir().unwrap();
+        let directory = nodex_platform::test_support::tempdir().unwrap();
         let kernel = SqliteStoreKernel::open_test(directory.path()).unwrap();
         kernel
             .writer()
@@ -2692,7 +2692,7 @@ mod reference_tests {
 
     #[test]
     fn unavailable_references_can_only_retain_committed_occurrences() {
-        let directory = tempfile::tempdir().unwrap();
+        let directory = nodex_platform::test_support::tempdir().unwrap();
         let kernel = SqliteStoreKernel::open_test(directory.path()).unwrap();
         kernel
             .readers()

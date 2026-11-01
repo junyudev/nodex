@@ -11,7 +11,7 @@ import {
   CoreHttpError,
   CoreResponseTooLargeError,
   CoreTransportError,
-} from "./uds-http";
+} from "./local-http";
 
 type CoreError = components["schemas"]["CoreError"];
 

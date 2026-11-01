@@ -346,7 +346,7 @@ mod tests {
 
     #[test]
     fn library_file_catalog_stays_indexed_with_ten_thousand_files() {
-        let home = tempfile::tempdir().unwrap();
+        let home = nodex_platform::test_support::tempdir().unwrap();
         let kernel = SqliteStoreKernel::open_test(&home.path().canonicalize().unwrap()).unwrap();
         kernel
             .writer()

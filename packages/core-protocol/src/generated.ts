@@ -12437,6 +12437,7 @@ export interface components {
         readonly RuntimeDescriptor: {
             readonly actual_store_format: components["schemas"]["StoreFormatIdentity"];
             readonly artifact: components["schemas"]["CoreArtifactIdentity"];
+            readonly endpoint: string;
             readonly manifest: components["schemas"]["CoreCompatibilityManifest"];
             readonly manifest_digest: string;
             /** Format: int32 */
@@ -12444,7 +12445,6 @@ export interface components {
             readonly profile_id: string;
             /** Format: int64 */
             readonly readiness_generation: number;
-            readonly socket_path: string;
             readonly start_nonce: string;
             readonly store_epoch: string;
         };
