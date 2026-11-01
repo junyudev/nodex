@@ -1,0 +1,120 @@
+packages/agent-runtime/src/orchestration-v2/Adapters/CodexAdapterV2.ts
+  s_8b58b89ca1a92a::t_a411a4a35ca1da 2659,2667-2687,2713-2714,2716-2718,2755-2756,2771-2772,2788-2790,4170-4173,5526,5549,5902-5904,5913,6263-6264,6761,6763-6765
+  s_5abe0c82cde94d::t_66ce437f2bfa0f 1170-1175,2320-2328,2658,7018,7053-7054,7904-7913,8009-8018,8143-8152,8159,8167-8168,8185-8188,8653-8737
+packages/agent-runtime/src/orchestration-v2/ProviderObservation.ts
+  s_8b58b89ca1a92a::t_a411a4a35ca1da 1-69
+packages/agent-runtime/src/orchestration-v2/ProviderTurnStartService.ts
+  s_8b58b89ca1a92a::t_a411a4a35ca1da 479
+  s_5abe0c82cde94d::t_179df8d2ebbf73 1450-1461
+packages/agent-runtime/src/orchestration-v2/EffectOutbox.ts
+  s_568ad11f8029e2::t_249149db29ac25 7,34-39,144
+packages/agent-runtime/src/orchestration-v2/RunRecoveryPolicy.ts
+  s_8b58b89ca1a92a::t_5fb8e9fea58f4d 56-58
+  s_568ad11f8029e2::t_79bf116333f136 2,10,154-159,181-182,198
+  s_568ad11f8029e2::t_249149db29ac25 1,3-9,11-55,59-153,160-180,183-197,199-216
+packages/agent-runtime/src/orchestration-v2/EffectWorker.ts
+  s_568ad11f8029e2::t_79bf116333f136 113-118
+packages/agent-runtime/src/orchestration-v2/ProviderRuntimeRecoveryService.ts
+  s_8b58b89ca1a92a::t_a411a4a35ca1da 77,255-259
+  s_23804a86f2e450::t_4fbf2bf82e9a86 260-274
+packages/agent-runtime/src/orchestration-v2/ProviderSessionManager.test.ts
+  s_8b58b89ca1a92a::t_a411a4a35ca1da 5275,5297-5298,5300-5308,5319,5322-5323,5325-5327,5333-5337
+  s_5abe0c82cde94d::t_db853595ad3d1b 5338
+packages/agent-runtime/src/orchestration-v2/RunLivenessService.ts
+  s_8b58b89ca1a92a::t_a411a4a35ca1da 3-233
+  s_5abe0c82cde94d::t_47feb24b6bbb8e 1-2,234-253
+packages/agent-runtime/src/orchestration-v2/testkit/HistoryPressure.ts
+  s_8b58b89ca1a92a::t_a411a4a35ca1da 71
+packages/agent-runtime/src/orchestration-v2/RunExecutionService.test.ts
+  s_8b58b89ca1a92a::t_a411a4a35ca1da 3074,3112-3260,3263,3276-3279,3345,3397-3398,3419
+  s_5abe0c82cde94d::t_11808532cf563a 31-33,3006,3019,3027-3028,3065,3443-3447
+packages/agent-runtime/src/orchestration-v2/RunRecoveryPolicy.test.ts
+  s_568ad11f8029e2::t_dd4cd802296e0f 1-120,125-236,250-365
+  s_8b58b89ca1a92a::t_be02e8fe67d33a 121-124
+  s_568ad11f8029e2::t_79bf116333f136 237-249
+packages/agent-runtime/src/orchestration-v2/ProjectionStore.ts
+  s_8b58b89ca1a92a::t_a411a4a35ca1da 6641-6646,6688-6691,6788-6791,6813
+packages/agent-runtime/src/orchestration-v2/Adapters/CodexAdapterV2.test.ts
+  s_8b58b89ca1a92a::t_a411a4a35ca1da 2333,2336,2344,2366-2488
+  s_5abe0c82cde94d::t_cb56c51520fdb5 40,2254-2332,2334-2335,2337-2343,2345-2365,2489-2497
+packages/agent-runtime/src/orchestration-v2/ProviderSessionManager.ts
+  s_8b58b89ca1a92a::t_a411a4a35ca1da 647-648,656-663,1897-1911
+docs/product-specs/agent-runtime-behavior.md
+  s_8b58b89ca1a92a::t_a411a4a35ca1da 74-87
+packages/agent-runtime/src/orchestration-v2/RunExecutionService.ts
+  s_8b58b89ca1a92a::t_a411a4a35ca1da 39,713-714,741-747,749-754,788-796,1040-1048,1051-1052,1073,1092-1107,1170,1174-1175,1206-1212,1224-1225,1243-1251,1470-1481,1483-1491,1495-1509,1533-1565,1597,1601-1678,1680-1749,1751-1770,1805,1844,1877-1915,1917-1920
+  s_5abe0c82cde94d::t_a1d6a40310c4dd 32,38
+packages/agent-runtime/src/orchestration-v2/ProjectionRecoveryQueries.ts
+  s_8b58b89ca1a92a::t_a411a4a35ca1da 96-98
+packages/agent-runtime/src/orchestration-v2/FoundationPersistence.test.ts
+  s_8b58b89ca1a92a::t_a411a4a35ca1da 23-26,358-525
+packages/agent-runtime/src/orchestration-v2/ProviderObservation.test.ts
+  s_8b58b89ca1a92a::t_a411a4a35ca1da 1-42
+packages/agent-runtime/src/orchestration-v2/ProviderRuntimeRecoveryService.test.ts
+  s_8b58b89ca1a92a::t_a411a4a35ca1da 1589-1655
+packages/agent-runtime/src/orchestration-v2/RunLivenessService.test.ts
+  s_8b58b89ca1a92a::t_a411a4a35ca1da 129-346
+  s_5abe0c82cde94d::t_9078b249409a2c 1-128,347-358
+packages/agent-runtime/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
+  s_5abe0c82cde94d::t_7dc15352740ede 3931-3934,6462,6481-6487,6667-6668,10150-10161
+packages/agent-runtime/src/orchestration-v2/EventSink.ts
+  s_5abe0c82cde94d::t_eef010f289a28f 8,77-81,87-91,484-495
+packages/agent-runtime/src/orchestration-v2/runtimeLayer.ts
+  s_568ad11f8029e2::t_7ed36963a0f6e7 37,286-301,321,362
+packages/agent-runtime/vendor/contracts/src/orchestrationV2.ts
+  s_7095a5752114b9::t_d080d4ace8d537 239-243,650-651,1552,1560-1565,1569-1587,2503-2509
+packages/agent-runtime/vendor/provider-core/src/server/ProviderAdapter.ts
+  s_5abe0c82cde94d::t_5671e20ae36e02 377-389,391,435-436,475-476,594-600,602-605
+packages/agent-runtime/vendor/provider-core/src/server/failure.test.ts
+  s_5abe0c82cde94d::t_73a5f1a4ff7b18 210-231
+packages/agent-runtime/vendor/provider-core/src/server/failure.ts
+  s_5abe0c82cde94d::t_774e35da7bc7cb 32-68,108-109,212,225
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7f5d7058cb589e6a20b02d9a1901aeb6db53a378",
+  "prompts": {},
+  "sessions": {
+    "s_23804a86f2e450": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "de32fbc3-bf75-4676-9677-8df79da4e08c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_568ad11f8029e2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a194ad-45ed-7791-a5de-b227663342c9",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_5abe0c82cde94d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a194ac-e340-7f22-8d0f-cf3f8e52a5bf",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_7095a5752114b9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ff5dab8b-6889-416a-8884-d0ab6d447946",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_8b58b89ca1a92a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c075d5c4-0b38-4f3d-8c6c-e4a048a9b857",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
