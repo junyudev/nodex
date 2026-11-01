@@ -1,0 +1,65 @@
+src/main/app/AgentRuntimeApplicationLive.ts
+  s_66c8ad159691f2::t_563c71e94e5e93 106,592,599
+  s_66c8ad159691f2::t_cd799635b6d6ab 105
+tests/fixtures/agent-runtime-stdio.mjs
+  s_66c8ad159691f2::t_3708f51697b645 23-25
+packages/agent-runtime/src/nodex/ImportedExecution.test.ts
+  s_437d1b69acf515::t_6cec4273d049c7 22,31
+docs/reliability/backup-restore-and-maintenance.md
+  s_66c8ad159691f2::t_1b6b4648e886b2 156-159
+packages/agent-runtime/src/nodex/ImportedExecutionSettlement.ts
+  s_437d1b69acf515::t_6cec4273d049c7 17,31-33,79,316,319
+  s_437d1b69acf515::t_dbe043f6c983a8 29,80-91,231-235,242-246,275,287-291
+  s_437d1b69acf515::t_129412c636f812 123-125,127,140-142,144
+  s_437d1b69acf515::t_d91ef051033d25 1-5,7-16,18-20,22-28,30,34-39,41-78,92-122,128-132,149-230,236-241,247-274,276-283,286,292-315,317-318,320-321
+  s_437d1b69acf515::t_5840abc99658ee 6,133-139,145-148,284-285
+  s_437d1b69acf515::t_c24dd6ecfb9009 21,40
+  s_66c8ad159691f2::t_85d2bbfe542ca5 126,143
+packages/agent-runtime/src/nodex/ImportedExecutionSettlement.test.ts
+  s_437d1b69acf515::t_5846e6e188cbb8 374-375,407-408
+  s_437d1b69acf515::t_9520e1e804f565 603
+  s_437d1b69acf515::t_958226d46875be 466,480,684-687,704-705,755-764,767-771,775,779
+  s_437d1b69acf515::t_bcc868411dc755 1-44,49-61,63-68,70-97,126,152-175,193-196,205-206,224-241,299-316,332-342,344-356,488-491,520-525,639,673-674,784
+  s_437d1b69acf515::t_024d7d17e84333 475,578,611-613,765-766
+  s_437d1b69acf515::t_c61cdbffc7971a 48,69,98-102,127-132,151,176-192,197-204,242-298,317-320,322-331,357,409-465,481-487,492-519,526-561,567-573,579-593,604-609,617-638,640-672,675-683,693-703
+  s_437d1b69acf515::t_bc59b05dbc9cd4 321,565
+  s_437d1b69acf515::t_91469d2b153df6 103-125,133-150,208-223,358-373,376-406,467-474,476-479,562-564,566,574-577,595-602,610,614-616,688-692,706-754,772-774,776-778,780-783
+  s_437d1b69acf515::t_ec158812f1fe79 45-47,62,207,343,594
+docs/development.md
+  s_66c8ad159691f2::t_1b6b4648e886b2 500-502
+src/main/platform/node/AgentRuntimeProcess.ts
+  s_66c8ad159691f2::t_563c71e94e5e93 240-241,625
+docs/CLI.md
+  s_66c8ad159691f2::t_1b6b4648e886b2 42-44
+packages/agent-runtime/src/nodex/ImportedExecution.ts
+  s_66c8ad159691f2::t_a349f10c24c2ac 116,120,133-136,194
+  s_437d1b69acf515::t_6cec4273d049c7 18,237
+src/main/platform/node/AgentRuntimeProcess.node.test.ts
+  s_66c8ad159691f2::t_3708f51697b645 33-50
+docs/product-specs/backup-snapshots.md
+  s_66c8ad159691f2::t_04710c9bc78829 84-85
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7ef45c9f6766282e343f37f01874018ffa71531c",
+  "prompts": {},
+  "sessions": {
+    "s_437d1b69acf515": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19611-f985-7bb1-8992-f548b040da3f",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_66c8ad159691f2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b9f70a0e-ab44-41bb-a33b-e19f161ae88b",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
