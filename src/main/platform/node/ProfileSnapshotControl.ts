@@ -1,7 +1,7 @@
 /* @effect-diagnostics asyncFunction:off newPromise:off -- Node socket acquisition is a platform boundary owned by the application Scope. */
 import { chmod, lstat, mkdir, unlink, readFile, writeFile } from "node:fs/promises";
 import { randomBytes, timingSafeEqual } from "node:crypto";
-import { execFile } from "node:child_process";
+import { makePrivate } from "./private-filesystem";
 import { connect, createServer, type Socket } from "node:net";
 import { join } from "node:path";
 import * as Cause from "effect/Cause";
@@ -68,28 +68,6 @@ const rendezvousSchema = Schema.fromJsonString(
   }),
 );
 
-// Node cannot attach a DACL to a named pipe. Its rendezvous is protected on disk;
-// an unguessable pipe name and a connection-bound capability authenticate callers.
-const makePrivate = async (filename: string, directory: boolean): Promise<void> => {
-  if (process.platform !== "win32") return chmod(filename, directory ? 0o700 : 0o600);
-  const script = `$ErrorActionPreference='Stop'; $p=$env:NODEX_PRIVATE_PATH; $identity=[System.Security.Principal.WindowsIdentity]::GetCurrent(); $sid=$identity.User; $acl=Get-Acl -LiteralPath $p; $owner=$acl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value; if ($owner -ne $sid.Value -and $owner -ne $identity.Owner.Value) { throw 'Profile snapshot entry has a different owner' }; $acl.SetOwner($sid); $acl.SetAccessRuleProtection($true,$false); foreach ($rule in @($acl.Access)) { $acl.RemoveAccessRuleSpecific($rule) }; $inherit=if ($env:NODEX_PRIVATE_DIRECTORY -eq 'true') { 'ContainerInherit,ObjectInherit' } else { 'None' }; $rule=[System.Security.AccessControl.FileSystemAccessRule]::new($sid,'FullControl',$inherit,'None','Allow'); $acl.AddAccessRule($rule); Set-Acl -LiteralPath $p -AclObject $acl`;
-  await new Promise<void>((resolve, reject) =>
-    execFile(
-      "powershell.exe",
-      ["-NoProfile", "-NonInteractive", "-Command", script],
-      {
-        windowsHide: true,
-        env: {
-          ...process.env,
-          NODEX_PRIVATE_PATH: filename,
-          NODEX_PRIVATE_DIRECTORY: String(directory),
-        },
-      },
-      (error) => (error ? reject(error) : resolve()),
-    ),
-  );
-};
-
 const prepareSocket = async (profileHome: string) => {
   const directory = join(profileHome, "ipc");
   await mkdir(directory, { recursive: true, mode: 0o700 });
@@ -152,7 +130,7 @@ const prepareSocket = async (profileHome: string) => {
     rendezvous,
     endpoint:
       process.platform === "win32"
-        ? `\\.\pipe\nodex-clone-${randomBytes(16).toString("hex")}`
+        ? `\\\\.\\pipe\\nodex-clone-${randomBytes(16).toString("hex")}`
         : socketPath,
     capability: randomBytes(32).toString("hex"),
   };

@@ -1,4 +1,5 @@
 /* @effect-diagnostics asyncFunction:off -- Private atomic filesystem publication is a Node Adapter. */
+import { makePrivate } from "./private-filesystem";
 import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import { lstat, mkdir, open, readdir, rename, rm } from "node:fs/promises";
@@ -38,11 +39,12 @@ const requirePrivateDirectory = async (directory: string): Promise<void> => {
   if (
     !stats.isDirectory() ||
     stats.isSymbolicLink() ||
-    (stats.mode & 0o777) !== 0o700 ||
+    (process.platform !== "win32" && (stats.mode & 0o777) !== 0o700) ||
     (process.getuid && stats.uid !== process.getuid())
   ) {
     throw new Error("Fatal incident directory must be private and owned");
   }
+  if (process.platform === "win32") await makePrivate(directory, true);
 };
 
 const writeIncident = async (nodexHome: string, incident: MainFatalIncident): Promise<string> => {
@@ -89,6 +91,8 @@ const writeIncident = async (nodexHome: string, incident: MainFatalIncident): Pr
     )) {
       await rm(path.join(directory, name), { force: true });
     }
+    // Node cannot open Windows directory handles for fsync; file.sync above flushes the record.
+    if (process.platform === "win32") return destination;
     const handle = await open(directory, constants.O_RDONLY | constants.O_NOFOLLOW);
     try {
       await handle.sync();
