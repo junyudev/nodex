@@ -1,0 +1,19 @@
+src/main/platform/node/AgentRuntimeNativeHistory.ts
+  s_61ededb051faa8::t_620932e8fdbb5f 44,52-53,63,67-68
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "79ea4718b75f22a2325e9cfd70d16073d90118c4",
+  "prompts": {},
+  "sessions": {
+    "s_61ededb051faa8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19725-1673-78a3-85e3-bdba96788967",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
