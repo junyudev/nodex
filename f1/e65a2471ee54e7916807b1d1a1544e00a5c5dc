@@ -1,0 +1,174 @@
+src/renderer/components/workbench/workbench-testkit/workbench-shell-fixtures.ts
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 369-376
+src/renderer/lib/use-library-files.ts
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 14,401-425,428,434,437,441-442,444,448,454-459
+src/renderer/lib/workbench-panel-preview.node.test.ts
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 87,90,236-258
+  s_a5bb892838ce25::t_5fef6457ee86d3 259-260
+src/renderer/components/workbench/workbench-panel-surface.tsx
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 4-5,65-66,107-108,215,316-354,419
+src/renderer/lib/use-workbench-panel-controller.ts
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 298-323
+src/main/app-tools/WorkbenchOpenTarget.ts
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 45-67
+docs/product-specs/page-files-behavior.md
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 5,47-48,50-57,59-85,105-157
+  s_a5bb892838ce25::t_ec16c765135235 158
+src/renderer/components/workbench/workbench-library-page-surface.tsx
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 65,77,211-220
+src/renderer/lib/workbench-scene-command-lifecycle.ts
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 36
+src/renderer/lib/workbench-page-file-opener.ts
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 1-210
+src/shared/workbench-scene.ts
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 52,151,188-197,245,320,601-605,1431-1433
+tests/e2e/page-file-tabs.spec.ts
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 1-166
+CHANGELOG.md
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 9
+docs/product-specs/workbench-shell.md
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 30
+src/renderer/components/workbench/workbench-page-file-surface.tsx
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 1-117
+src/renderer/components/workbench/workbench-library-resource-surface.tsx
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 31,49,64
+src/shared/schemas/workbench-scene.ts
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 44-46,262-266,698-699,799-802
+  s_a5bb892838ce25::t_1afd4a3dbcd088 803
+src/renderer/components/board/page-stage/use-page-stage-controller.ts
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 54,415
+src/main/app-tools/WorkbenchOpenTarget.node.test.ts
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 1-67
+src/renderer/lib/page-file-tree.node.test.ts
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 1-113
+src/renderer/lib/workbench-panel-tab-model.ts
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 368
+src/renderer/components/board/page-stage/page-files-row.test.tsx
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 1,4,6-8,20-22,26-53,55-57,60-62,65-67,77-101,105-106,108-113,115-116,118-175,177,180-182,184-189,191-218,221
+src/renderer/components/workbench/workbench-new-tab-page.tsx
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 30,688-695
+src/renderer/components/workbench/content-tab-location.tsx
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 1-4,50,71,79-80,94-95,101-102,109-118,121-143
+  s_a5bb892838ce25::t_1e24bb1cb6bf4b 144
+src/renderer/lib/page-file-view-kind.ts
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 1-117
+src/renderer/lib/workbench-scene-navigator.ts
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 7-9,23,56-60,102-103,120,144-150,217,223,318-325,539,557-563,604,631-644,695
+  s_a5bb892838ce25::t_df5ad5741624ca 6
+src/renderer/lib/workbench-panel-projection.ts
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 211-226,228
+src/shared/workbench-session-view.ts
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 1,62,114
+src/renderer/lib/workbench-scene-navigator.node.test.ts
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 1,17-18,88-92,95-103,131-138,847-1058
+src/renderer/lib/workbench-page-file-surface-state.ts
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 1-85
+src/renderer/components/workbench/library-scene-breadcrumb.tsx
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 50,132-143
+src/renderer/components/workbench/workbench-page-stage-panel.tsx
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 131,165,447-456
+src/renderer/components/board/page-stage/page-files-row.tsx
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 2,6,54-63,72-73,653-703,706,708,710-720,724-731,734,743-779,781-817,820-825,827-829,831-836,838-843,846-847,849-850,854,856-931
+src/renderer/components/board/page-stage/use-page-stage-controller.test.tsx
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 292-320
+src/shared/types.ts
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 65,747,763,914
+src/renderer/lib/workbench-scene-commands.ts
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 335-349,474-479,490-510,512,517-519,523-535
+src/renderer/lib/workbench-scene-tab-presentation.ts
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 1,25-30
+src/main/app-tools/WorkbenchTabDescription.node.test.ts
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 1-78
+src/renderer/components/board/page-stage/page-file-tree-view.tsx
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 1-325
+src/renderer/components/board/page-stage/properties-section.test.tsx
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 6,158,386,404,411-412,414
+src/renderer/lib/workbench-panel-actions.node.test.ts
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 3-7,30-32
+  s_a5bb892838ce25::t_86908d743a4c99 33
+src/main/app-tools/WorkbenchContentRouting.ts
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 39-48,52-56,109-110,136-178
+src/shared/schemas/workbench-session-view.ts
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 2,195-199
+src/renderer/components/workbench/content-tab-location.test.tsx
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 10,18,100-139
+  s_a5bb892838ce25::t_a8a409202cd338 140
+src/renderer/lib/page-file-provenance.ts
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 1-65
+src/renderer/lib/page-file-view-kind.node.test.ts
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 1-36
+src/shared/schemas/workbench-page-file.ts
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 1-11
+src/renderer/components/workbench/workbench-scene-panels.tsx
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 110-111
+src/renderer/lib/workbench-panel-capabilities.ts
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 12
+src/renderer/components/workbench/use-workbench-panel-projection.tsx
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 100,107,202,254,259,307-309,336-338,723-724,796,821
+src/renderer/lib/workbench-panel-actions.ts
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 151,260
+src/renderer/lib/use-workbench-panel-openers.node.test.ts
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 1-24,166-342
+  s_a5bb892838ce25::t_94c0dd861c7b20 343
+src/renderer/lib/workbench-scene-surface-presenter.ts
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 76-80
+src/shared/workbench-session-view.test.ts
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 471-492
+src/shared/workbench-scene.test.ts
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 123,1166-1248
+src/renderer/lib/workbench-scene-commands.node.test.ts
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 1044-1128
+src/renderer/lib/use-workbench-panel-lifecycle.ts
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 51,210-213,271,306-307
+src/shared/nodex-app-tools/workbench-control-schemas.ts
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 13,85
+src/renderer/lib/page-file-tree.ts
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 1-189
+src/main/app-tools/WorkbenchTabDescription.ts
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 34-48
+src/renderer/lib/workbench-scene-presentation.ts
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 37
+src/renderer/lib/workbench-scene-preview.ts
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 3,30,38-46,64-68,85,121-140
+  s_a5bb892838ce25::t_73370c09805e93 141
+src/renderer/features/page-files/page-file-viewer.tsx
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 1-433
+src/main/app-tools/WorkbenchContentRouting.node.test.ts
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 4,103-214,216,218-219
+  s_a5bb892838ce25::t_0e7aa9fc44bb85 215,217
+src/shared/schemas/project-sessions.test.ts
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 179-205
+src/shared/schemas/project-sessions.ts
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 1,59,112
+src/renderer/components/board/page-stage/page-file-source.tsx
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 1-118
+src/renderer/lib/workbench-panel-preview.ts
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 27,36,38-39,131-132,168,193,223-224
+src/renderer/lib/use-workbench-panel-openers.ts
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 1-4,213-214,260-261,1393-1423,1536
+src/shared/schemas/content-routing-context.ts
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 1-14
+src/renderer/components/board/page-stage/types.ts
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 112-119
+src/renderer/components/workbench/workbench-runtime.tsx
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 71-73,897-899,923,925,927-931,933-950,952-954,2723-2748,2750-2751,2779,4326-4382,4417,4475,4619,4772-4773,4847,4932,4972-4973
+src/shared/nodex-app-tools/workbench.ts
+  s_a5bb892838ce25::t_f2c7f50dc2bb98 89-96,424-434,472
+  s_a5bb892838ce25::t_7cddcfb9c954ba 87-88
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f1e65a2471ee54e7916807b1d1a1544e00a5c5dc",
+  "prompts": {},
+  "sessions": {
+    "s_a5bb892838ce25": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e15d53ef-531c-43aa-afdd-245a08fa0ce0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

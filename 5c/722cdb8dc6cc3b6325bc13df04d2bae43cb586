@@ -1,0 +1,189 @@
+crates/nodex-core/src/workspace/test_support.rs
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 31
+src/main/agent-runtime/AgentRuntimeHost.ts
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 18,156-162,170,253
+crates/nodex-core/src/automation/mutation.rs
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 2241,2271,2378,4528
+crates/nodex-core/src/infrastructure/module_receipts.rs
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 567
+src/main/agent-runtime/AgentRuntimeHost.node.test.ts
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 84,190-194,208,269-273
+  s_a5bb892838ce25::t_de13516400581a 274-276
+src/main/codex-application/CodexConversationRelationships.node.test.ts
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 131
+src/main/core-client/CodexSubagentParityPerformance.stress.test.ts
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 442
+crates/nodex-core/src/library/mod.rs
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 968,1051,1391,1786,3641,3889,4225,6785,7433,7442
+src/main/platform/node/NodexCliShell.node.test.ts
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 80
+crates/nodex-core/src/library/mutation.rs
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 3961,3973
+src/main/codex-application/CodexConversationContext.node.test.ts
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 73,157
+crates/nodex-core/src/document/module.rs
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 2688,5894,5906,12142
+crates/nodex-core/src/library/block_transfer.rs
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 7520
+src/shared/library-files-transport.ts
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 313
+scripts/scenarios/contracts.ts
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 93-97
+src/main/codex-application/CodexTurnPreparation.node.test.ts
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 8-9,35-52
+crates/nodex-core-contracts/src/library.rs
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 1793
+crates/nodex-core/src/library/block_transfer/promotion_history/tests.rs
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 36
+src/main/codex-application/CodexTurnPermissionMaterialization.node.test.ts
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 7-8,121-138
+src/main/platform/node/NodexCliShell.ts
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 187-189,197-198,207-209
+crates/nodex-core/src/infrastructure/migration.rs
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 7824,8008,8318
+docs/CLI.md
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 325-334
+crates/nodex-core/src/infrastructure/event_log.rs
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 828,1674,1686,1812
+crates/nodex-core/src/library/structural_edit/editor_history.rs
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 286
+crates/nodex-core/src/library/structural_edit/history_owner.rs
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 283,533,755,1014,1059
+CONTEXT.md
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 214
+crates/nodex-core/src/library/file_queries.rs
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 338
+crates/nodex-core/src/workspace/mutation.rs
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 160,2704,2716
+crates/nodex-core/src/library/structural_edit.rs
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 8070,8490,8979,9759,10049
+crates/nodex-core-contracts/src/agent.rs
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 27-38
+crates/nodex-core/src/administration/tests.rs
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 253
+src/shared/library-files-transport.test.ts
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 181-185,214
+crates/nodex-core-server/tests/native_cli_client.rs
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 581-837
+crates/nodex-core/src/library/page_copy.rs
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 1654
+Cargo.toml
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 44
+crates/nodex-core/src/library/files.rs
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 483,566
+crates/nodex-core/src/read_budget_gate.rs
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 54
+docs/SECURITY.md
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 85-102
+scripts/scenarios/registry.ts
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 21,46
+crates/nodex-core-server/Cargo.toml
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 25
+crates/nodex-core/src/document/maintenance.rs
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 475
+docs/development.md
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 451-457
+docs/ARCHITECTURE.md
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 129-130
+crates/nodex-core/src/library/page_file_attachment.rs
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 9-12,16-21,95-96,98,119-122,136-138
+src/main/core-client/library-module-adapter.ts
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 100-101,2023-2028
+src/main/codex-application/CodexThreadDurableProjection.node.test.ts
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 151,221,367,448
+crates/nodex-cli/src/runtime.rs
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 29-31,206,213-222
+crates/nodex-core/src/infrastructure/store_replacement.rs
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 1313
+src/main/codex-application/CodexTurnPreparation.ts
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 8-9,238,252,545-558,563
+src/shared/agent-backend.ts
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 24-34
+crates/nodex-core/src/workspace/thread.rs
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 2988
+scripts/scenarios/scenarios/page-file-provenance.ts
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 1-270
+crates/nodex-core/src/document/history.rs
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 1170
+crates/nodex-core-server/src/lib.rs
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 4,209,3122,3212,3216-3290,4095-4096
+scripts/scenarios/adapters/renderer-ipc-seed-adapter.ts
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 320-322
+src/main/core-client/types.ts
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 29,247-248,269-272
+crates/nodex-core/src/database/mod.rs
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 368,380
+crates/nodex-core/src/library/structural_edit/storage_lifetime_tests.rs
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 72
+src/main/core-client/testing/fake-core-client.ts
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 323-326
+src/main/platform/node/NodexCliBootstrap.node.test.ts
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 33,66,85,96,103-109,128-209,403,432
+crates/nodex-core-contracts/src/lib.rs
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 56-67
+src/main/core-client/core-client.ts
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 47,238-255,295-300
+  s_a5bb892838ce25::t_93042461ad1834 301
+scripts/scenarios/fixtures/page-files/cold-start/trace.json
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 1
+scripts/testing/probe-agent-cli-bootstrap.ts
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 151,184
+crates/nodex-core/src/library/navigation.rs
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 3791
+crates/nodex-core-protocol/src/client.rs
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 92,136,142-153,699-701
+crates/nodex-core-server/src/agent_attribution.rs
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 1-151
+src/main/codex-application/CodexTurnAuthority.node.test.ts
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 25
+packages/core-protocol/openapi.json
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 53-92,2089-2118,2198-2207,21972
+src/main/core-client/page-file-provenance-scenario.node.test.ts
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 1-45
+crates/nodex-core/src/library/files/tests/page_attachment.rs
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 3,180-224,248
+scripts/scenarios/adapters/core-client-seed-adapter.ts
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 291-296,298,788,800
+crates/nodex-core-protocol/src/lib.rs
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 50-51,573-588,1029-1036,1267,1316-1317,1427
+crates/nodex-core/src/workspace/read.rs
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 878
+scripts/scenarios/fixtures/page-files/cold-start/report.html
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 1-286
+src/main/core-client/agent-eval-desktop-environment.node.test.ts
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 27
+crates/nodex-core/src/infrastructure/durable_mutation.rs
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 469
+src/main/platform/node/NodexCliBootstrap.ts
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 12-17,24-25,59,68,82-85,128
+CHANGELOG.md
+  s_a5bb892838ce25::t_06a2cd3664d5a9 9
+src/main/core-runtime/CoreModules.ts
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 17,94-95,223-225
+  s_a5bb892838ce25::t_13efd90bf7b283 226-227
+packages/core-protocol/src/generated.ts
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 23-38,454-465,488-493,5342,12551-12572,12575-12578,12580-12583
+  s_a5bb892838ce25::t_ea97ef76e3fedb 12573-12574,12579
+src/main/codex-application/CodexThreadSettingsRuntime.node.test.ts
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 179,339
+src/main/codex-application/CodexThreadTitlePersistence.node.test.ts
+  s_a5bb892838ce25::t_7e56bffe3e5f1c 125
+Cargo.lock
+  s_a5bb892838ce25::t_3e8806f0dc9fbe 1226
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5c722cdb8dc6cc3b6325bc13df04d2bae43cb586",
+  "prompts": {},
+  "sessions": {
+    "s_a5bb892838ce25": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e15d53ef-531c-43aa-afdd-245a08fa0ce0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
