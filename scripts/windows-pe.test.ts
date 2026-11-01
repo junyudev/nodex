@@ -82,3 +82,17 @@ test("inspects renamed PE images as part of the payload closure", () => {
   writeFileSync(join(root, "hidden-image.bin"), image(0xaa64));
   expect(() => verifyWindowsArchitectureClosure(root, "x64")).toThrow("architecture mismatch");
 });
+
+test("recognizes only the installed NSIS maintenance bootstrap outside the application CPU closure", () => {
+  const root = fixture();
+  writeFileSync(join(root, "Nodex.exe"), image(0xaa64));
+  writeFileSync(join(root, "Uninstall Nodex.exe"), image(0x14c));
+  expect(() => verifyWindowsArchitectureClosure(root, "arm64")).toThrow("Unsupported PE Machine");
+  expect(verifyWindowsArchitectureClosure(root, "arm64", { installed: true })).toEqual([
+    "Nodex.exe",
+  ]);
+  writeFileSync(join(root, "Uninstall Nodex.exe"), image(0x8664));
+  expect(() => verifyWindowsArchitectureClosure(root, "arm64", { installed: true })).toThrow(
+    "Unexpected NSIS uninstaller machine",
+  );
+});

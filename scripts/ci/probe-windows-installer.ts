@@ -139,7 +139,7 @@ async function main(): Promise<void> {
     const executable = join(installRoot, "Nodex.exe");
     if (!existsSync(executable))
       throw new Error(`NSIS did not install Nodex per-user: ${executable}`);
-    const images = verifyWindowsArchitectureClosure(installRoot, target.arch);
+    const images = verifyWindowsArchitectureClosure(installRoot, target.arch, { installed: true });
     const registration = queryProtocol();
     if (!registration?.includes("Nodex.exe"))
       throw new Error("NSIS did not register nodex:// for the current user");

@@ -61,7 +61,9 @@ vp run verify:runtime:win dist/win-unpacked x64
 
 For arm64, use `arm64` and electron-builder's `dist/win-arm64-unpacked` directory.
 NSIS's bootstrap is an installer launcher; its own machine type is distinct from
-the verified installed payload CPU.
+the verified installed payload CPU. The installed probe also recognizes only
+the exact NSIS maintenance uninstaller as a bootstrap; an application binary
+with a different CPU still fails, regardless of its extension.
 
 ## Native CI evidence
 

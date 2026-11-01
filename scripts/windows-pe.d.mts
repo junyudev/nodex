@@ -3,4 +3,5 @@ export function assertPeArchitecture(file: string, expected: "x64" | "arm64"): v
 export function verifyWindowsArchitectureClosure(
   root: string,
   expected: "x64" | "arm64",
+  options?: { readonly installed?: boolean },
 ): readonly string[];

@@ -5,7 +5,7 @@ import path from "node:path";
 const machines = { x64: 0x8664, arm64: 0xaa64 };
 
 /** Inspect the PE signature and COFF Machine, never a filename or emulation result. */
-export function readPeArchitecture(file) {
+function readPeMachine(file) {
   const descriptor = openSync(file, "r");
   const read = (length, position) => {
     const buffer = Buffer.alloc(length);
@@ -18,13 +18,17 @@ export function readPeArchitecture(file) {
     if (dos.readUInt16LE(0) !== 0x5a4d) throw new Error(`Not a Windows PE image: ${file}`);
     const pe = read(24, dos.readUInt32LE(0x3c));
     if (pe.readUInt32LE(0) !== 0x4550) throw new Error(`Invalid PE signature: ${file}`);
-    const machine = pe.readUInt16LE(4);
-    const architecture = Object.keys(machines).find((key) => machines[key] === machine);
-    if (!architecture) throw new Error(`Unsupported PE Machine 0x${machine.toString(16)}: ${file}`);
-    return architecture;
+    return pe.readUInt16LE(4);
   } finally {
     closeSync(descriptor);
   }
+}
+
+export function readPeArchitecture(file) {
+  const machine = readPeMachine(file);
+  const architecture = Object.keys(machines).find((key) => machines[key] === machine);
+  if (!architecture) throw new Error(`Unsupported PE Machine 0x${machine.toString(16)}: ${file}`);
+  return architecture;
 }
 
 export function assertPeArchitecture(file, expected) {
@@ -37,7 +41,7 @@ export function assertPeArchitecture(file, expected) {
 }
 
 /** Every executable, DLL, and addon in the payload must belong to its target CPU. */
-export function verifyWindowsArchitectureClosure(root, expected) {
+export function verifyWindowsArchitectureClosure(root, expected, options = {}) {
   const files = [];
   const visit = (file) => {
     const stat = lstatSync(file);
@@ -55,6 +59,14 @@ export function verifyWindowsArchitectureClosure(root, expected) {
       closeSync(descriptor);
     }
     if (!/\.(?:exe|dll|node)$/iu.test(file) && magic.readUInt16LE(0) !== 0x5a4d) return;
+    // NSIS adds this maintenance launcher during installation, after the app payload is sealed.
+    const relative = path.relative(root, file).split(path.sep).join("/");
+    if (options.installed === true && relative.toLowerCase() === "uninstall nodex.exe") {
+      const machine = readPeMachine(file);
+      if (machine !== 0x14c && machine !== machines[expected])
+        throw new Error(`Unexpected NSIS uninstaller machine: 0x${machine.toString(16)}: ${file}`);
+      return;
+    }
     assertPeArchitecture(file, expected);
     files.push(path.relative(root, file).split(path.sep).join("/"));
   };
