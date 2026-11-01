@@ -1,0 +1,22 @@
+src/shared/file-link-openers.test.ts
+  s_61ededb051faa8::t_4f573061d3f08d 71-72,114-128
+  s_61ededb051faa8::t_42311374d7afc1 129
+src/shared/file-link-openers.ts
+  s_61ededb051faa8::t_4f573061d3f08d 1-2,119,191-194,199,201
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3a6a5949c44da3858f3a62152867080ed7acf24d",
+  "prompts": {},
+  "sessions": {
+    "s_61ededb051faa8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19725-1673-78a3-85e3-bdba96788967",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
