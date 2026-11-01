@@ -1,0 +1,19 @@
+crates/nodex-core/src/infrastructure/migration.rs
+  s_23804a86f2e450::t_ab9c50972b2e79 8536-8539
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fcc87e90a94318d76c2ae20bb2a2704d005893cf",
+  "prompts": {},
+  "sessions": {
+    "s_23804a86f2e450": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "de32fbc3-bf75-4676-9677-8df79da4e08c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
