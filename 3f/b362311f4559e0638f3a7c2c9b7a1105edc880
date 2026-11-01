@@ -1,0 +1,31 @@
+docs/product-specs/windows-host-behavior.md
+  s_ef93f85750414a::t_734337a19376ce 12-18
+docs/release-windows.md
+  s_ef93f85750414a::t_849847114f8ee9 32-39,97-99
+electron-builder.yml
+  s_ef93f85750414a::t_2628e3a1846189 180
+resources/windows/installer.nsh
+  s_ef93f85750414a::t_c5716e79fd25be 1-16
+scripts/ci/probe-windows-installer.ts
+  s_ef93f85750414a::t_44edb1bf9c2a9c 79,110-131,134-147,159,173,244-245,247-249
+src/main/host-runtime/ApplicationHostRuntime.test.ts
+  s_ef93f85750414a::t_23a8329c48ab09 49-60
+src/main/host-runtime/ApplicationHostRuntime.ts
+  s_ef93f85750414a::t_9cdd164108b356 66,68
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3fb362311f4559e0638f3a7c2c9b7a1105edc880",
+  "prompts": {},
+  "sessions": {
+    "s_ef93f85750414a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1975c-d042-74f3-8106-b6eb6f221778",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
