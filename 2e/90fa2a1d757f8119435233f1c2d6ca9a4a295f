@@ -1,0 +1,21 @@
+crates/nodex-core/src/administration/backup.rs
+  s_3dc0b7647fcf0b::t_c90fdff270337c 861-868
+crates/nodex-core/src/infrastructure/sqlite.rs
+  s_3dc0b7647fcf0b::t_430392ae3dc4a6 165-175,570-582
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2e90fa2a1d757f8119435233f1c2d6ca9a4a295f",
+  "prompts": {},
+  "sessions": {
+    "s_3dc0b7647fcf0b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1964e-690a-72d0-a5e2-1468f0931284",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
