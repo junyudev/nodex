@@ -202,3 +202,51 @@ pub fn bootstrap_detached() -> io::Result<Option<i32>> {
     let status = detached(&mut command)?.wait()?;
     Ok(Some(status.code().unwrap_or(1)))
 }
+
+/// Launch the registered URI handler without a command shell or launcher error UI.
+pub fn launch_desktop_uri(uri: &str) -> io::Result<bool> {
+    let uri = uri.to_owned();
+    std::thread::spawn(move || {
+        use windows_sys::Win32::System::Com::{
+            COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE, CoInitializeEx, CoUninitialize,
+        };
+        use windows_sys::Win32::UI::Shell::{
+            SEE_MASK_FLAG_NO_UI, SEE_MASK_NOASYNC, SHELLEXECUTEINFOW, ShellExecuteExW,
+        };
+        use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+        let status = unsafe {
+            CoInitializeEx(
+                std::ptr::null(),
+                (COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE) as u32,
+            )
+        };
+        if status < 0 {
+            return Err(io::Error::other(format!(
+                "Could not initialize the desktop URI launcher ({status:#x})"
+            )));
+        }
+        struct Apartment;
+        impl Drop for Apartment {
+            fn drop(&mut self) {
+                unsafe {
+                    CoUninitialize();
+                }
+            }
+        }
+        let _apartment = Apartment;
+        let uri = crate::windows::wide(uri)?;
+        let verb = crate::windows::wide("open")?;
+        let mut information: SHELLEXECUTEINFOW = unsafe { std::mem::zeroed() };
+        information.cbSize = std::mem::size_of::<SHELLEXECUTEINFOW>() as u32;
+        information.fMask = SEE_MASK_FLAG_NO_UI | SEE_MASK_NOASYNC;
+        information.lpVerb = verb.as_ptr();
+        information.lpFile = uri.as_ptr();
+        information.nShow = SW_SHOWNORMAL;
+        if unsafe { ShellExecuteExW(&mut information) } == 0 {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(true)
+    })
+    .join()
+    .map_err(|_| io::Error::other("desktop URI launcher stopped unexpectedly"))?
+}

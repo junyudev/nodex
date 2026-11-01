@@ -88,3 +88,43 @@ pub fn command_names(command: &str) -> Vec<String> {
 pub fn bootstrap_detached() -> io::Result<Option<i32>> {
     Ok(None)
 }
+
+/// Dispatch an explicitly requested desktop URI; unsupported Unix desktops return false.
+pub fn launch_desktop_uri(uri: &str) -> io::Result<bool> {
+    if !cfg!(target_os = "macos") {
+        return Ok(false);
+    }
+    captured_launcher(std::process::Command::new("/usr/bin/open").arg(uri))?;
+    Ok(true)
+}
+
+fn captured_launcher(command: &mut std::process::Command) -> io::Result<()> {
+    let output = command.output()?;
+    if output.status.success() {
+        return Ok(());
+    }
+    let diagnostic = String::from_utf8_lossy(&output.stderr);
+    let diagnostic = diagnostic.trim();
+    let detail = if diagnostic.is_empty() {
+        String::new()
+    } else {
+        format!(": {diagnostic}")
+    };
+    Err(io::Error::other(format!(
+        "Desktop URI launcher exited with {}{detail}",
+        output.status
+    )))
+}
+
+#[cfg(test)]
+mod launcher_tests {
+    #[test]
+    fn failed_launch_diagnostics_are_captured_without_inheriting_process_streams() {
+        let error = super::captured_launcher(std::process::Command::new("/bin/sh").args([
+            "-c", "printf 'unstructured stdout'; printf 'missing handler\nretry unavailable\n' >&2; exit 7",
+        ])).unwrap_err();
+        let diagnostic = error.to_string();
+        assert!(diagnostic.contains("missing handler\nretry unavailable"));
+        assert!(!diagnostic.contains("unstructured stdout"));
+    }
+}

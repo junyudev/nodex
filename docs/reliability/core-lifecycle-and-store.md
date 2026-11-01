@@ -81,6 +81,8 @@ identity verification by the native client and authenticated protocol. Main prot
 the rendezvous DACL using the operating system ACL tools.
 
 Windows CLI defaults to `%USERPROFILE%\.nodex`, independently of `HOME`.
+Desktop links use the registered URI handler on Windows and macOS; launcher
+diagnostics stay inside the structured CLI error envelope.
 Managed Skill directories use junctions, which need no Developer Mode or symlink
 privilege. Only completed junctions are published, atomically and without replacing
 an existing target. Browser-profile import reports `unsupported_platform` outside macOS.

@@ -1,5 +1,4 @@
 use std::path::Path;
-use std::process::Command;
 
 use nodex_core_contracts::database::{DatabaseRead, DatabaseReadValue, DatabaseViewRecord};
 use nodex_core_contracts::library::{LibraryRead, LibraryReadValue};
@@ -160,44 +159,20 @@ fn launch(url: &str, print_only: bool) -> Result<OpenLaunchResult, CliError> {
             platform,
         });
     }
-    if platform != "macos" {
-        return Ok(OpenLaunchResult {
-            status: LaunchStatus::Unsupported,
-            platform,
-        });
-    }
-    run_launcher(Command::new("/usr/bin/open").arg(url))?;
-    Ok(OpenLaunchResult {
-        status: LaunchStatus::Launched,
-        platform,
-    })
-}
-
-// Launcher diagnostics belong to the CLI error envelope, never inherited process streams.
-fn run_launcher(command: &mut Command) -> Result<(), CliError> {
-    let output = command.output().map_err(|error| {
+    let launched = nodex_platform::process::launch_desktop_uri(url).map_err(|error| {
         CliError::new(
             CliErrorCode::OpenFailed,
             format!("Nodex could not launch the canonical deep link: {error}"),
         )
     })?;
-    if output.status.success() {
-        return Ok(());
-    }
-    let diagnostic = String::from_utf8_lossy(&output.stderr);
-    let diagnostic = diagnostic.trim();
-    let detail = if diagnostic.is_empty() {
-        String::new()
-    } else {
-        format!(": {diagnostic}")
-    };
-    Err(CliError::new(
-        CliErrorCode::OpenFailed,
-        format!(
-            "Nodex deep-link launcher exited with {}{detail}",
-            output.status
-        ),
-    ))
+    Ok(OpenLaunchResult {
+        status: if launched {
+            LaunchStatus::Launched
+        } else {
+            LaunchStatus::Unsupported
+        },
+        platform,
+    })
 }
 
 fn internal(error: impl std::fmt::Display) -> CliError {
@@ -207,23 +182,6 @@ fn internal(error: impl std::fmt::Display) -> CliError {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[cfg(unix)]
-    #[test]
-    fn launcher_failure_is_captured_in_one_structured_error() {
-        let error = run_launcher(Command::new("/bin/sh").args([
-            "-c", "printf 'unstructured stdout'; printf 'missing handler\nretry unavailable\n' >&2; exit 7",
-        ])).expect_err("failed injected launcher");
-        assert_eq!(error.code, CliErrorCode::OpenFailed);
-        assert!(error.message.contains("missing handler\nretry unavailable"));
-        assert!(!error.message.contains("unstructured stdout"));
-        let encoded = serde_json::to_string(&crate::error::ErrorEnvelope::new(&error))
-            .expect("error envelope");
-        assert_eq!(encoded.lines().count(), 1);
-        let envelope: serde_json::Value =
-            serde_json::from_str(&encoded).expect("parseable JSON error");
-        assert_eq!(envelope["error"]["code"], "OPEN_FAILED");
-    }
 
     #[test]
     fn print_mode_is_explicitly_non_launching() {
