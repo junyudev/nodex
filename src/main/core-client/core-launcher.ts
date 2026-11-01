@@ -440,7 +440,7 @@ export async function connectOrStartCore(
     signal: null,
     stderr: "",
   };
-  let selectedAsAuthority = false;
+  let authorityProcessId: number | null = null;
   const stderr = child.stderr as
     | (NonNullable<typeof child.stderr> & {
         unref?: () => void;
@@ -458,12 +458,11 @@ export async function connectOrStartCore(
     exit.code = code;
     exit.exited = true;
     exit.signal = signal;
-    const processId = child.pid;
-    if (!selectedAsAuthority || processId === undefined) return;
+    if (authorityProcessId === null) return;
     try {
       input.onAuthorityProcessExit?.({
         code,
-        processId,
+        processId: authorityProcessId,
         signal,
         stderr: exit.stderr.trim(),
       });
@@ -486,8 +485,8 @@ export async function connectOrStartCore(
       input.signal,
     );
     const selectionMs = performance.now() - selectionStartedAt;
-    selectedAsAuthority =
-      selection.disposition === "started" && selection.descriptor.pid === child.pid;
+    // Windows' bootstrap waits for the detached authority and relays its exit.
+    authorityProcessId = selection.disposition === "started" ? selection.descriptor.pid : null;
     if (selection.descriptor.artifact.sha256 !== expectedArtifactDigest) {
       throw new Error("Selected Core artifact does not match the launched candidate");
     }
@@ -501,11 +500,7 @@ export async function connectOrStartCore(
       if (exit.error) {
         throw new Error("Could not start native Rust Core", { cause: exit.error });
       }
-      if (
-        exit.exited &&
-        selection.descriptor.pid === child.pid &&
-        !(selection.disposition === "reused" && exit.code === 0)
-      ) {
+      if (exit.exited && authorityProcessId !== null) {
         const status = exit.code === null ? "without an exit code" : `with code ${exit.code}`;
         const diagnostic = exit.stderr.trim();
         const suffix = diagnostic ? `: ${diagnostic}` : "";

@@ -69,7 +69,9 @@ transient antivirus and indexer handles.
 On Windows, Core re-executes once through its native bootstrap, retaining the
 readiness pipes while the authority requests a detached process, a new process
 group, hidden console operation, and job breakaway. Desktop identifies the
-authority by its selected descriptor PID rather than the bootstrap PID. If the parent job forbids breakaway, creation
+authority by its selected descriptor PID. The bootstrap waits for that authority
+and relays its exit; Desktop observes bootstrap completion before releasing the
+launched process. If the parent job forbids breakaway, creation
 retries without that flag; a restrictive non-breakaway job can still constrain the
 Core lifetime. Direct invocation disconnects its console before runtime threads
 start. Ctrl-C, Ctrl-Break, console close, and system shutdown enter the same drain
