@@ -16,12 +16,14 @@ crates/nodex-core-contracts/src/library.rs
   s_e17141fc7a66d9::t_90510b9266c887 17,1785-1807,1813,1820-1822
 crates/nodex-core/schema/current.sql
   s_e17141fc7a66d9::t_0dfe405f430358 1740-1745,4524
+  s_693b7521d81978::t_044e641a6caf16 4524
 crates/nodex-core/schema/migrations/v195_to_v196.sql
   s_e17141fc7a66d9::t_1f5cbd56f210f5 1-7
 crates/nodex-core/src/document/integrity.rs
   s_e17141fc7a66d9::t_9a63c82818526c 67
 crates/nodex-core/src/infrastructure/migration.rs
   s_e17141fc7a66d9::t_b6c575d4580c7b 393-397,2564-2578,8489,8698-8783
+  s_693b7521d81978::t_5dc4d5d7a14811 393-397,2564-2567,2569-2572,2574-2578,8489
 crates/nodex-core/src/library/block_transfer.rs
   s_e17141fc7a66d9::t_44987f7b1c695d 3743,3841-3842,3930-3935,6885
 crates/nodex-core/src/library/block_transfer/promotion_history.rs
@@ -48,6 +50,7 @@ crates/nodex-core/src/query/schema.rs
   s_e17141fc7a66d9::t_3fe0478b5f2144 233-234
 crates/nodex-store-format/src/lib.rs
   s_e17141fc7a66d9::t_86f9f995ec1d16 253-256
+  s_693b7521d81978::t_b969cd8e4c8d22 253-254,256
 docs/CLI.md
   s_e17141fc7a66d9::t_13e1611acb62ad 321-337,341
 packages/core-protocol/openapi.json
@@ -91,6 +94,14 @@ src/shared/library-module-transport.test.ts
       "agent_id": {
         "tool": "codex",
         "id": "01a19523-075f-7270-9358-f28cf9aec9d2",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_693b7521d81978": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19523-5249-7b21-99b6-72950d66e89e",
         "model": "gpt-6.1-sol"
       },
       "human_author": "Jun Yu <junyu.dev@gmail.com>"
