@@ -21,15 +21,15 @@ describe("window navigation chrome", () => {
     expect(position.y).toBe(21);
   });
 
-  test("uses a transparent Windows titlebar overlay with theme symbols", () => {
+  test("uses a transparent Windows titlebar overlay that fills the scaled titlebar", () => {
     const lightOverlay = resolveCodexTitleBarOverlay(1, false);
     const darkOverlay = resolveCodexTitleBarOverlay(1.5, true);
 
     expect(lightOverlay.color).toBe(CODEX_TITLEBAR_OVERLAY_COLOR);
     expect(lightOverlay.symbolColor).toBe("#1f1f1f");
-    expect(lightOverlay.height).toBe(36);
+    expect(lightOverlay.height).toBe(44);
     expect(darkOverlay.symbolColor).toBe("#ffffff");
-    expect(darkOverlay.height).toBe(54);
+    expect(darkOverlay.height).toBe(66);
   });
 
   test("selects platform-specific titlebar options", () => {

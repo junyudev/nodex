@@ -8,12 +8,24 @@ const MAC_WINDOW_CONTROL_SIZE_PX = 14;
 const MAC_WINDOW_CONTROL_LEFT_PX = 16;
 const MAC_LEGACY_WINDOW_CONTROL_INSET_PX = 82;
 const MAC_MODERN_WINDOW_CONTROL_INSET_PX = 92;
-const MAC_WINDOW_CONTROL_GAP_PX = 6;
+const NATIVE_WINDOW_CONTROL_GAP_PX = 6;
 const NON_MAC_HEADER_INSET_PX = 12;
 
 export interface WorkbenchWindowControlPosition {
   readonly x: number;
   readonly y: number;
+}
+
+/** Horizontal space reserved by native window controls, in device-independent pixels. */
+export interface WorkbenchNativeControlInsets {
+  readonly left: number;
+  readonly right: number;
+}
+
+/** The subset of the Window Controls Overlay API that titlebar layout consumes. */
+export interface WorkbenchWindowControlsOverlay {
+  readonly visible: boolean;
+  getTitlebarAreaRect(): { readonly x: number; readonly width: number };
 }
 
 export function normalizeWorkbenchWindowZoom(windowZoom: number): number {
@@ -31,18 +43,52 @@ export function resolveWorkbenchMacWindowControlPosition(
   };
 }
 
+/** Native caption buttons fill the scaled titlebar so their hover targets match its height. */
+export function resolveWorkbenchWindowControlsOverlayHeight(windowZoom = 1): number {
+  return Math.round(WORKBENCH_TITLEBAR_HEIGHT_PX * normalizeWorkbenchWindowZoom(windowZoom));
+}
+
+/**
+ * Measure the caption-button reservation that the Window Controls Overlay leaves on each side of
+ * the titlebar area. The overlay reports CSS pixels of the zoomed page; multiplying by the page
+ * zoom factor recovers device-independent pixels, matching the macOS control reservation.
+ */
+export function measureWorkbenchWindowControlsOverlay(
+  overlay: WorkbenchWindowControlsOverlay | null | undefined,
+  viewportWidth: number,
+  pageZoomFactor = 1,
+): WorkbenchNativeControlInsets | null {
+  if (!overlay?.visible) return null;
+  const area = overlay.getTitlebarAreaRect();
+  if (!(area.width > 0) || !(viewportWidth > 0)) return null;
+  const zoom = normalizeWorkbenchWindowZoom(pageZoomFactor);
+  return {
+    left: Math.max(0, area.x) * zoom,
+    right: Math.max(0, viewportWidth - area.x - area.width) * zoom,
+  };
+}
+
 /** Convert the native control reservation into the scaled renderer's coordinate space. */
 export function resolveWorkbenchHeaderSafeInsets({
   isMacPlatform,
   userAgent,
   windowZoom = 1,
+  windowControlsOverlay = null,
 }: {
   readonly isMacPlatform: boolean;
   readonly userAgent: string;
   readonly windowZoom?: number;
+  /** Caption buttons drawn over the titlebar by the operating system, when present. */
+  readonly windowControlsOverlay?: WorkbenchNativeControlInsets | null;
 }): { readonly left: number; readonly right: number } {
   if (!isMacPlatform) {
-    return { left: NON_MAC_HEADER_INSET_PX, right: NON_MAC_HEADER_INSET_PX };
+    const zoom = normalizeWorkbenchWindowZoom(windowZoom);
+    const reserve = (nativeInset: number) =>
+      nativeInset > 0 ? nativeInset / zoom + NATIVE_WINDOW_CONTROL_GAP_PX : NON_MAC_HEADER_INSET_PX;
+    return {
+      left: reserve(windowControlsOverlay?.left ?? 0),
+      right: reserve(windowControlsOverlay?.right ?? 0),
+    };
   }
 
   const version = /mac os x (\d+)[_.](\d+)/i.exec(userAgent);
@@ -51,7 +97,7 @@ export function resolveWorkbenchHeaderSafeInsets({
     ? MAC_LEGACY_WINDOW_CONTROL_INSET_PX
     : MAC_MODERN_WINDOW_CONTROL_INSET_PX;
   return {
-    left: nativeInset / normalizeWorkbenchWindowZoom(windowZoom) + MAC_WINDOW_CONTROL_GAP_PX,
+    left: nativeInset / normalizeWorkbenchWindowZoom(windowZoom) + NATIVE_WINDOW_CONTROL_GAP_PX,
     right: 0,
   };
 }

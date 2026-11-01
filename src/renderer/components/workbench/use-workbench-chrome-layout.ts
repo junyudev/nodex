@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useState, type RefObject } from "react";
 import {
+  measureWorkbenchWindowControlsOverlay,
   normalizeWorkbenchWindowZoom,
   resolveWorkbenchHeaderSafeInsets,
+  type WorkbenchNativeControlInsets,
+  type WorkbenchWindowControlsOverlay,
 } from "../../../shared/workbench-window-chrome";
 import {
   WORKBENCH_NAVIGATION_RAIL_WIDTH_PX,
@@ -77,6 +80,22 @@ function readWindowZoom(root: HTMLElement | null): number {
   return normalizeWorkbenchWindowZoom(parsedZoom);
 }
 
+function readWindowControlsOverlay(): (WorkbenchWindowControlsOverlay & EventTarget) | undefined {
+  if (typeof navigator === "undefined") return undefined;
+  return (
+    navigator as Navigator & {
+      readonly windowControlsOverlay?: WorkbenchWindowControlsOverlay & EventTarget;
+    }
+  ).windowControlsOverlay;
+}
+
+function sameControlInsets(
+  left: WorkbenchNativeControlInsets | null,
+  right: WorkbenchNativeControlInsets | null,
+): boolean {
+  return left?.left === right?.left && left?.right === right?.right;
+}
+
 function readRootFontSize(): number {
   if (typeof window === "undefined") return 16;
   const parsedFontSize = Number.parseFloat(
@@ -135,6 +154,8 @@ export function useWorkbenchChromeLayout({
   });
   const rootFontSize = useMotionValue(readRootFontSize());
   const [windowZoom, setWindowZoom] = useState(1);
+  const [windowControlsOverlay, setWindowControlsOverlay] =
+    useState<WorkbenchNativeControlInsets | null>(null);
   const rightPanelRequestedWidth = useMotionValue(
     persistedRightPanelWidth ?? RIGHT_PANEL_DEFAULT_WIDTH,
   );
@@ -151,17 +172,26 @@ export function useWorkbenchChromeLayout({
   }, [activeSessionId, bottomPanelRequestedHeight, persistedBottomPanelHeight]);
 
   useEffect(() => {
+    const overlay = readWindowControlsOverlay();
     const measure = () => {
+      const pageZoomFactor = normalizeWorkbenchWindowZoom(window.api?.getWindowZoomFactor?.() ?? 1);
       rootFontSize.set(readRootFontSize());
-      setWindowZoom(
-        readWindowZoom(rootRef.current) *
-          normalizeWorkbenchWindowZoom(window.api?.getWindowZoomFactor?.() ?? 1),
+      setWindowZoom(readWindowZoom(rootRef.current) * pageZoomFactor);
+      const overlayInsets = measureWorkbenchWindowControlsOverlay(
+        overlay,
+        window.innerWidth,
+        pageZoomFactor,
+      );
+      setWindowControlsOverlay((current) =>
+        sameControlInsets(current, overlayInsets) ? current : overlayInsets,
       );
     };
     measure();
     window.addEventListener("resize", measure);
+    overlay?.addEventListener("geometrychange", measure);
     return () => {
       window.removeEventListener("resize", measure);
+      overlay?.removeEventListener("geometrychange", measure);
     };
   }, [rootFontSize, rootRef]);
 
@@ -290,6 +320,7 @@ export function useWorkbenchChromeLayout({
       isMacPlatform,
       userAgent: typeof navigator === "undefined" ? "" : navigator.userAgent,
       windowZoom,
+      windowControlsOverlay,
     });
   const collapsedHeaderLeftFallbackWidth =
     safeHeaderLeftWidth + LEFT_HEADER_COLLAPSED_RAIL_FALLBACK_WIDTH_PX;
