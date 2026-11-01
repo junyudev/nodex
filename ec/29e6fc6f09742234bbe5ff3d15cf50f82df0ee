@@ -1,0 +1,19 @@
+crates/nodex-platform/src/private_fs/windows.rs
+  s_3dc0b7647fcf0b::t_5c167514842182 335,337,360-367,376,378,380,393,408-409,416
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ec29e6fc6f09742234bbe5ff3d15cf50f82df0ee",
+  "prompts": {},
+  "sessions": {
+    "s_3dc0b7647fcf0b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1964e-690a-72d0-a5e2-1468f0931284",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
