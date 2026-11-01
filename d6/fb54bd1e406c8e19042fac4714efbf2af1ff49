@@ -1,0 +1,22 @@
+src/main/platform/node/NodexCliShell.ts
+  s_61ededb051faa8::t_4764d0234e5abe 50,130
+  s_61ededb051faa8::t_03ccb867ad3ee6 245
+src/main/platform/node/NodexCliShell.windows.test.ts
+  s_61ededb051faa8::t_b6f88f0a43f7ae 29,87
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d6fb54bd1e406c8e19042fac4714efbf2af1ff49",
+  "prompts": {},
+  "sessions": {
+    "s_61ededb051faa8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19725-1673-78a3-85e3-bdba96788967",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
