@@ -11,6 +11,7 @@ import {
 } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { basename, dirname, join } from "node:path";
+import { syncDirectorySync } from "../durable-json-file";
 import type {
   PersistedAtomEvent,
   PersistedAtomMutation,
@@ -49,12 +50,7 @@ function writePersistedAtomsFile(atomsPath: string, state: PersistedAtomState): 
   }
   try {
     renameSync(temporaryPath, atomsPath);
-    const directory = openSync(parent, "r");
-    try {
-      fsyncSync(directory);
-    } finally {
-      closeSync(directory);
-    }
+    syncDirectorySync(parent);
   } finally {
     rmSync(temporaryPath, { force: true });
   }

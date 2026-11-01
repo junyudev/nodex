@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { syncDirectorySync } from "./durable-json-file";
 import path from "node:path";
 import type { RemoteHostedPipTaskVisibility } from "../shared/remote-hosted-pip";
 
@@ -166,12 +167,7 @@ export function makeRemoteHostedPipPreferences(
       fs.closeSync(descriptor);
     }
     fs.renameSync(temporaryPath, filePath);
-    const directoryDescriptor = fs.openSync(directory, "r");
-    try {
-      fs.fsyncSync(directoryDescriptor);
-    } finally {
-      fs.closeSync(directoryDescriptor);
-    }
+    syncDirectorySync(directory);
     current = next;
     currentFileSignature = fileSignature();
   };

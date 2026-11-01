@@ -65,11 +65,13 @@ it.live("publishes private restart-readable incidents and bounds retained eviden
     let totalBytes = 0;
     for (const name of files) {
       const info = yield* Effect.promise(() => stat(path.join(directory, name)));
-      assert.strictEqual(info.mode & 0o777, 0o600);
+      if (process.platform !== "win32") assert.strictEqual(info.mode & 0o777, 0o600);
       totalBytes += info.size;
     }
     assert.isAtMost(totalBytes, MAX_FATAL_INCIDENT_FILES * MAX_FATAL_INCIDENT_BYTES);
-    assert.strictEqual((yield* Effect.promise(() => stat(directory))).mode & 0o777, 0o700);
+    if (process.platform !== "win32") {
+      assert.strictEqual((yield* Effect.promise(() => stat(directory))).mode & 0o777, 0o700);
+    }
   }),
 );
 
@@ -77,7 +79,13 @@ it.live("refuses symlinked diagnostic directories without writing outside the Pr
   Effect.gen(function* () {
     const home = yield* profile;
     const outside = yield* profile;
-    yield* Effect.promise(() => symlink(outside, path.join(home, "diagnostics")));
+    yield* Effect.promise(() =>
+      symlink(
+        outside,
+        path.join(home, "diagnostics"),
+        process.platform === "win32" ? "junction" : "dir",
+      ),
+    );
     const result = yield* MainFatalIncidentStore.pipe(
       Effect.flatMap((store) => store.write(incident())),
       Effect.provide(layerForHome(home)),

@@ -7,6 +7,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
+import { syncDirectory } from "../../durable-json-file";
 import { MainConfig } from "../../app/MainConfig";
 import type { MainFatalIncident } from "../../app/MainFatalIncident";
 
@@ -38,7 +39,7 @@ const requirePrivateDirectory = async (directory: string): Promise<void> => {
   if (
     !stats.isDirectory() ||
     stats.isSymbolicLink() ||
-    (stats.mode & 0o777) !== 0o700 ||
+    (process.platform !== "win32" && (stats.mode & 0o777) !== 0o700) ||
     (process.getuid && stats.uid !== process.getuid())
   ) {
     throw new Error("Fatal incident directory must be private and owned");
@@ -89,12 +90,7 @@ const writeIncident = async (nodexHome: string, incident: MainFatalIncident): Pr
     )) {
       await rm(path.join(directory, name), { force: true });
     }
-    const handle = await open(directory, constants.O_RDONLY | constants.O_NOFOLLOW);
-    try {
-      await handle.sync();
-    } finally {
-      await handle.close();
-    }
+    await syncDirectory(directory);
     return destination;
   } finally {
     await file.close();

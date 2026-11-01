@@ -32,6 +32,7 @@ import {
 import { resolveBrowserTabTitle } from "../shared/browser-url";
 import { createSecureRuntimeId } from "../shared/secure-runtime-id";
 import { getLogger } from "./logging/logger";
+import { syncDirectorySync } from "./durable-json-file";
 
 const WINDOW_SESSIONS_V3_FILE_NAME = "window-sessions-v3.json";
 const WINDOW_SESSIONS_V2_FILE_NAME = "window-sessions-v2.json";
@@ -1007,12 +1008,7 @@ export class WindowSessionState {
       }
       fs.renameSync(temporaryPath, this.statePath);
       fs.chmodSync(this.statePath, 0o600);
-      const directoryDescriptor = fs.openSync(directory, "r");
-      try {
-        fs.fsyncSync(directoryDescriptor);
-      } finally {
-        fs.closeSync(directoryDescriptor);
-      }
+      syncDirectorySync(directory);
     } catch (error) {
       try {
         fs.unlinkSync(temporaryPath);

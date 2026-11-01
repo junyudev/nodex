@@ -396,6 +396,8 @@ external cleanup fails closed and preserves recoverable state rather than claimi
 Isolated-run metadata retains exact file types, directory layout, generation and live-process
 fences on every host. Windows uses inherited directory ACLs instead of POSIX mode bits;
 metadata files are flushed before atomic publication without an unsupported directory fsync.
+The same publication rule applies to Window Sessions, persisted preferences, startup journals and
+fatal diagnostics, so desktop state creation cannot block Windows startup on directory flushing.
 
 ## Runtime-specific recovery
 
