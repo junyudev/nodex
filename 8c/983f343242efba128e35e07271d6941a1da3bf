@@ -1,0 +1,43 @@
+docs/product-specs/database-pages-and-views-behavior.md
+  s_7095a5752114b9::t_a72fd410b4753c 81-83
+  s_7095a5752114b9::t_d5fca92f02ed02 730-732,739,743-744
+  s_7095a5752114b9::t_e49ed23b1c4462 733-738,740
+docs/product-specs/scheduled-route-behavior.md
+  s_7095a5752114b9::t_d14a104cd7b67b 72
+docs/product-specs/nfm-editor-prompt-block-behavior.md
+  s_7095a5752114b9::t_d5db0091e45546 67-68
+CHANGELOG.md
+  s_7095a5752114b9::t_2c5d360659a907 20-21
+docs/product-specs/inbox-behavior.md
+  s_7095a5752114b9::t_d1a8deb0e5308f 174-175
+  s_7095a5752114b9::t_abf64085aa8c87 179
+CONTEXT.md
+  s_7095a5752114b9::t_58f277b85951eb 527-530
+  s_7095a5752114b9::t_de7f1495a584ce 389-400
+  s_7095a5752114b9::t_c7148537aa079e 576-577
+  s_5a199af1eba36e::t_3acc2851cd28b2 531
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8c983f343242efba128e35e07271d6941a1da3bf",
+  "prompts": {},
+  "sessions": {
+    "s_5a199af1eba36e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a192d6-975e-7d61-a4a2-907ce1bb9490",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_7095a5752114b9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ff5dab8b-6889-416a-8884-d0ab6d447946",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
