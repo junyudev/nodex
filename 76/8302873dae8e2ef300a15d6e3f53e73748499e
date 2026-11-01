@@ -1,0 +1,19 @@
+docs/references/markdown-interchange.md
+  s_b76aae7cd68efc::t_d4cfd66be56e1c 88-91
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "768302873dae8e2ef300a15d6e3f53e73748499e",
+  "prompts": {},
+  "sessions": {
+    "s_b76aae7cd68efc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "00593554-66c2-4983-a13f-0aa36ecb757f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
