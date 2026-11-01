@@ -1,0 +1,114 @@
+src/renderer/features/local-conversation/thread-stage-types.ts
+  s_fd402faa98738e::t_7f65bf7f032819 366-367,519-520,635,1249
+src/renderer/components/workbench/workbench-runtime.tsx
+  s_fd402faa98738e::t_44390a6256e8a1 2748
+  s_fd402faa98738e::t_9b8806267cd420 2367,2369
+  s_fd402faa98738e::t_7f65bf7f032819 5379-5381
+src/renderer/features/local-conversation/view/connected-thread-stage.tsx
+  s_fd402faa98738e::t_7f65bf7f032819 308
+src/shared/native-context-menu.ts
+  s_fd402faa98738e::t_a50e502910e2ca 9
+src/renderer/lib/chat-reminder.node.test.ts
+  s_fd402faa98738e::t_40dd8cb050d657 2-9,56,58-59,61-62,81-89
+  s_fd402faa98738e::t_96f9f03acd2f1f 1,10-35,39-55,57,60,63-80,90-97
+  s_fd402faa98738e::t_fd15291b82147b 36-38
+src/renderer/components/workbench/codex-sidebar.tsx
+  s_fd402faa98738e::t_4cc2056556658e 27,29,93-97,99,1583,1593-1594,1659-1666,1858-1864,1866-1875,1877-1880
+  s_fd402faa98738e::t_29b2f242c2543c 2139
+  s_fd402faa98738e::t_70d996a1b2345f 98,1507-1519,1667,1876
+src/shared/command-keybindings.ts
+  s_fd402faa98738e::t_44390a6256e8a1 578-585
+src/renderer/lib/use-workbench-session-commands.ts
+  s_fd402faa98738e::t_44390a6256e8a1 178,237,710-716,739
+CHANGELOG.md
+  s_fd402faa98738e::t_4b62b4c4efb188 12
+src/renderer/features/local-conversation/native-thread-stage-actions.ts
+  s_fd402faa98738e::t_7f65bf7f032819 31
+src/renderer/components/workbench/session-chat-tab-icon.tsx
+  s_fd402faa98738e::t_e070a3666276d8 4,7,19
+src/renderer/features/local-conversation/view/composer/composer-draft-state.ts
+  s_fd402faa98738e::t_46880a6564eb40 2,513,682,688-689
+  s_fd402faa98738e::t_1bd982c9011568 454-462,466,470,472-491,495-512,514-517,623,630-631
+  s_fd402faa98738e::t_fd15291b82147b 494
+src/renderer/components/workbench/command-palette-surface.tsx
+  s_fd402faa98738e::t_aee7407195a2f2 42,94,228-230
+  s_fd402faa98738e::t_715e775964416e 110-113
+src/renderer/components/workbench/session-context-menu-model.test.ts
+  s_fd402faa98738e::t_6fa1ed6603d59a 4,10,13,16-18,32,129,136-139,171,177,336-376
+  s_fd402faa98738e::t_6af73359d4e7ac 377
+src/renderer/components/workbench/workbench-command-palette-host.tsx
+  s_fd402faa98738e::t_a6d705220571f1 62-66,190-191,245-259
+  s_fd402faa98738e::t_dc50edf3738682 34-35
+src/renderer/components/workbench/use-workbench-sidebar-controller.ts
+  s_fd402faa98738e::t_e81445bcf73b98 39,1050
+  s_fd402faa98738e::t_0fe6a7319c3947 33,796-808,989-997
+  s_fd402faa98738e::t_699f6cac8b3cc0 1141,1143
+src/renderer/features/local-conversation/view/composer/local-conversation-thread-composer.tsx
+  s_fd402faa98738e::t_68a6c433554b9b 1135-1139
+src/renderer/components/workbench/workbench-session-thread-route.tsx
+  s_fd402faa98738e::t_7f65bf7f032819 108,204,430,468
+src/renderer/features/local-conversation/view/local-conversation-stage-header.tsx
+  s_fd402faa98738e::t_bdfc3333d6f794 6,40,64-69,77,89,131,192-234
+  s_fd402faa98738e::t_2dcdda8fe3a72f 235
+src/renderer/lib/chat-reminder.ts
+  s_fd402faa98738e::t_215ae1dca52779 1-55,59-79,118-119,126-129,135-148,177-181
+  s_fd402faa98738e::t_40dd8cb050d657 80-117,120-125,157-173,176
+  s_fd402faa98738e::t_e81445bcf73b98 149,155-156,174-175
+  s_fd402faa98738e::t_fd15291b82147b 56-58,130-134,150-154
+src/renderer/components/workbench/session-context-menu-model.ts
+  s_fd402faa98738e::t_fd15291b82147b 102,115-119
+  s_fd402faa98738e::t_afee98dcb6eb54 18,23,33,46-47,64-65,90-101,103-114,120-132,333
+docs/KEYBOARD_SHORTCUTS.md
+  s_fd402faa98738e::t_dcbc594fca25fe 39
+src/shared/session-context-menu-icons.ts
+  s_fd402faa98738e::t_a50e502910e2ca 3,91
+src/renderer/components/workbench/codex-sidebar.test.tsx
+  s_fd402faa98738e::t_f829d1819b6765 148-150,154-171,173-179,181-189
+  s_fd402faa98738e::t_66233073005944 8-15,118-147,151-153,172,180
+  s_fd402faa98738e::t_ca0556b80384d8 6-7
+  s_fd402faa98738e::t_98aaaf677cbf62 190-191
+src/renderer/lib/command-palette-commands.ts
+  s_fd402faa98738e::t_fd15291b82147b 367-378
+  s_fd402faa98738e::t_715e775964416e 34-37,138
+  s_fd402faa98738e::t_a6d705220571f1 18,24-33,50-56,69-71,107-109,137,139,353-366,379-391
+  s_fd402faa98738e::t_dc50edf3738682 38-49
+docs/product-specs/workbench-shell.md
+  s_fd402faa98738e::t_ecbc65265f7f48 14
+  s_fd402faa98738e::t_dcbc594fca25fe 15,243
+src/renderer/components/shared/icons/app-icons.tsx
+  s_fd402faa98738e::t_a50e502910e2ca 3446
+  s_fd402faa98738e::t_70057e93ae18cd 17
+src/shared/icon-geometry.ts
+  s_fd402faa98738e::t_a50e502910e2ca 107-110
+src/renderer/components/workbench/sidebar-status-indicator.tsx
+  s_fd402faa98738e::t_c763a913c5eb3b 2,7-8,64-75
+src/renderer/features/local-conversation/view/composer/composer-prompt-draft-atom.test.ts
+  s_fd402faa98738e::t_2f2d7df7dd474f 20,94-107,111-114
+  s_fd402faa98738e::t_fd15291b82147b 108-110,115-120
+  s_fd402faa98738e::t_02cfb395e3dec4 121-122
+src/renderer/lib/sidebar-status.ts
+  s_fd402faa98738e::t_c99b87f77df1c4 4-5,7-15,18,37,44-53
+  s_fd402faa98738e::t_5477d5d711d18f 54-55
+src/renderer/lib/sidebar-status.test.ts
+  s_fd402faa98738e::t_607dd69542adff 5,25-32
+  s_fd402faa98738e::t_b7a6e56bdc4efc 33-35
+src/renderer/lib/sidebar-thread-row-live-view.ts
+  s_fd402faa98738e::t_e070a3666276d8 7,24
+  s_fd402faa98738e::t_c316f5218ae8fc 23
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "22cc8b61038b78bb4682b638e820b164b9024906",
+  "prompts": {},
+  "sessions": {
+    "s_fd402faa98738e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e9ed185e-5142-4fe3-b1e7-a7a8706fc9a9",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
