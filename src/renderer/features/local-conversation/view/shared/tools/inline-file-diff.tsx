@@ -1,4 +1,5 @@
-import { FileDiff, type FileDiffMetadata, type FileDiffProps } from "@pierre/diffs/react";
+import type { FileDiffMetadata, FileDiffProps } from "@pierre/diffs/react";
+import { ReadOnlyFileDiff } from "@/components/ui/read-only-file-diff";
 import { useEffect, useRef, type CSSProperties } from "react";
 
 type InlineFileDiffOptions = NonNullable<FileDiffProps<undefined, undefined>["options"]>;
@@ -40,7 +41,7 @@ export function InlineFileDiff({
 
   return (
     <div ref={wrapperRef}>
-      <FileDiff fileDiff={fileDiff} className={className} style={style} options={options} />
+      <ReadOnlyFileDiff fileDiff={fileDiff} className={className} style={style} options={options} />
     </div>
   );
 }

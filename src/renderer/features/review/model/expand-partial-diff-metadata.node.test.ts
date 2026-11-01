@@ -38,9 +38,8 @@ describe("expandPartialDiffMetadata", () => {
     expect(result?.isPartial).toBe(false);
     expect(result?.deletionLines).toEqual(DELETION_LINES);
     expect(result?.additionLines).toEqual(ADDITION_LINES);
-    expect(result?.cacheKey).toBe(
-      `${metadata.cacheKey ?? metadata.name}:full:${metadata.prevObjectId ?? "none"}:${metadata.newObjectId ?? "none"}`,
-    );
+    expect(result?.deletionCharacterCount).toBe(DELETION_LINES.join("").length);
+    expect(result?.additionCharacterCount).toBe(ADDITION_LINES.join("").length);
     expect(
       result?.hunks.map((hunk) => ({
         additionLineIndex: hunk.additionLineIndex,
@@ -67,6 +66,19 @@ describe("expandPartialDiffMetadata", () => {
     ]);
     expect(result?.splitLineCount).toBe(8);
     expect(result?.unifiedLineCount).toBe(10);
+  });
+
+  test("changed full context gets a distinct highlight despite unchanged patch IDs", () => {
+    const metadata = parseMetadata();
+    const first = expandPartialDiffMetadata(metadata, DELETION_LINES, ADDITION_LINES);
+    const second = expandPartialDiffMetadata(
+      metadata,
+      ["other context\n", ...DELETION_LINES.slice(1)],
+      ["other context\n", ...ADDITION_LINES.slice(1)],
+    );
+    expect(first).not.toBeNull();
+    expect(second).not.toBeNull();
+    expect(first?.cacheKey).not.toBe(second?.cacheKey);
   });
 
   test("rejects mismatched collapsed and trailing context", () => {

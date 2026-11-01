@@ -1004,6 +1004,28 @@ describe("review diff panel", () => {
     expect(renderedFileDiff?.getAttribute("data-diff-indicators")).toBe("bars");
   });
 
+  test("invalidates full content when patch text changes with the same Git IDs and line counts", async () => {
+    const store = await import("@/features/review/data/review-full-content-store");
+    const readFullContent = vi.spyOn(store, "useReviewFullContentState");
+    const { ReviewDiffPanel } = await loadReviewDiffPanelModule();
+    const view = render(
+      <NodexTooltipProvider>
+        <ReviewDiffPanel conversation={buildConversation()} projectWorkspacePath="/tmp/codex" />
+      </NodexTooltipProvider>,
+    );
+    await waitFor(() => expect(readFullContent).toHaveBeenCalled());
+    const firstKey = readFullContent.mock.lastCall?.[0];
+    const changed = buildConversation();
+    changed.turns[0]!.diff = changed.turns[0]!.diff!.replace("true", "false");
+    view.rerender(
+      <NodexTooltipProvider>
+        <ReviewDiffPanel conversation={changed} projectWorkspacePath="/tmp/codex" />
+      </NodexTooltipProvider>,
+    );
+    await waitFor(() => expect(readFullContent.mock.lastCall?.[0]).not.toBe(firstKey));
+    readFullContent.mockRestore();
+  });
+
   test("folds repeated diff sections for the same path into one review entry", async () => {
     const { ReviewDiffPanel } = await loadReviewDiffPanelModule();
     const conversation = buildConversation();

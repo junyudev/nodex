@@ -160,6 +160,7 @@ import type {
   ReviewDiffAnnotationSide,
 } from "@/lib/types";
 import type { ReviewConversationProjection } from "@/features/review/model/review-conversation-projection";
+import { getSourceContentDigest } from "@/lib/source-content-version";
 import { recordReviewRuntimeEvent } from "@/features/review/testing/review-runtime-probe";
 import { cn } from "@/lib/utils";
 import { showNativeContextMenu } from "@/lib/native-context-menu";
@@ -957,11 +958,8 @@ function buildReviewFullContentKey(input: {
 }): string {
   const { entry } = input;
   const metadata = entry.fileDiff;
-  const metadataIdentity =
-    metadata?.cacheKey ??
-    `${metadata?.name ?? entry.displayPath}:${metadata?.prevObjectId ?? "none"}:${metadata?.newObjectId ?? "none"}:${entry.additions ?? 0}:${entry.deletions ?? 0}`;
   return JSON.stringify([
-    metadataIdentity,
+    getSourceContentDigest(entry.patchText),
     metadata?.prevName ?? "",
     metadata?.name ?? entry.displayPath,
     input.cwd ?? "",

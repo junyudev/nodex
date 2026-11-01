@@ -1,5 +1,5 @@
 import { parseDiffFromFile } from "@pierre/diffs";
-import { FileDiff } from "@pierre/diffs/react";
+import { ReadOnlyFileDiff } from "@/components/ui/read-only-file-diff";
 import { useMemo } from "react";
 import {
   NODEX_DIFF_HOST_CLASS,
@@ -7,7 +7,6 @@ import {
   getNodexReviewDiffOptions,
 } from "@/lib/diff-presentation";
 import { useTheme } from "@/lib/use-theme";
-import { getSourceContentVersion } from "@/lib/source-content-version";
 
 interface WorkspaceFileConflictProps {
   readonly filename: string;
@@ -31,12 +30,10 @@ export function WorkspaceFileConflict({
         {
           name: filename,
           contents: diskValue,
-          cacheKey: `${filename}:disk:${getSourceContentVersion(diskValue)}`,
         },
         {
           name: filename,
           contents: localValue,
-          cacheKey: `${filename}:local:${getSourceContentVersion(localValue)}`,
         },
       ),
     [diskValue, filename, localValue],
@@ -77,10 +74,9 @@ export function WorkspaceFileConflict({
         </button>
       </div>
       <div className="min-h-0 flex-1 overflow-auto">
-        <FileDiff
+        <ReadOnlyFileDiff
           fileDiff={fileDiff}
           options={options}
-          disableWorkerPool
           className={`${NODEX_DIFF_HOST_CLASS} min-h-full`}
           style={style}
         />

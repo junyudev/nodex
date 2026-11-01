@@ -1,4 +1,5 @@
 import type { FileDiffMetadata } from "@pierre/diffs/react";
+import { diffHighlightCacheKey } from "@/lib/diff-highlight-cache";
 
 const REVIEW_IGNORABLE_WHITESPACE = /[ \t\r\n\f\v]/g;
 
@@ -176,12 +177,14 @@ export function expandPartialDiffMetadata(
   );
   if (!layout) return null;
 
-  return {
+  const expanded: FileDiffMetadata = {
     ...metadata,
     ...layout,
     isPartial: false,
     deletionLines: [...deletionLines],
     additionLines: [...additionLines],
-    cacheKey: `${metadata.cacheKey ?? metadata.name}:full:${metadata.prevObjectId ?? "none"}:${metadata.newObjectId ?? "none"}`,
+    deletionCharacterCount: deletionLines.reduce((sum, line) => sum + line.length, 0),
+    additionCharacterCount: additionLines.reduce((sum, line) => sum + line.length, 0),
   };
+  return { ...expanded, cacheKey: diffHighlightCacheKey(expanded) };
 }

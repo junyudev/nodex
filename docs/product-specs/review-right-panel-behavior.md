@@ -1,7 +1,7 @@
 # Review Right Panel Behavior
 
 Status: Active
-Last updated: 2026-10-15
+Last updated: 2026-11-01
 
 ## Purpose
 
@@ -132,6 +132,16 @@ share the same watcher and initial generation.
 Git-backed Review builds its file list from machine-readable Git metadata before renderer diff parsing. The worker uses no-textconv/no-ext-diff, colorless Git diff commands and reads `--name-status -z`, `--numstat -z`, and `--raw -z` style metadata so binary files can be represented even when no textual hunk exists. File summaries include nullable line stats, raw status, old/new object ids, and a per-file revision identity when Git can provide one. Untracked discovery uses normal-status directory expansion and materializes at most 256 paths per completion result, reporting the omitted count. Untracked files are diffed with `git diff --no-index -- /dev/null <path>` instead of pre-reading the worktree file as UTF-8.
 
 The live summary is metadata-only and returns file summaries plus stage counts and `snapshotGeneration`; it never sends an aggregate textual patch as the normal render path. `review-diff` is the partial body loader and returns typed load statuses for binary, oversized, unsupported, timed-out, and load-failed rows instead of decoded text. Renderer parses each loaded path once and reuses that metadata/object identity across a tracked-to-complete publication, so adding untracked rows does not reparse or rerender already loaded tracked rows.
+
+Review syntax highlighting runs in shared workers. Changed lines appear in plain
+text while colors are pending, and returning to an unchanged diff reuses its
+finished highlight while it remains in the bounded renderer cache. In-flight
+highlighting continues when a row closes. Word-level and line-only rendering
+retain separate highlights. Cache identity includes both
+file texts and the partial/full hunk layout, so full-file hydration cannot adopt
+a patch-only AST. If workers are starting or unavailable, diffs above 64 KiB
+across both sides stay plain on the window thread. Existing file-safety and
+changed-line limits still apply.
 
 `Load full files` defaults on, but loading is row-local. A file must be expanded, partial, textual, changed, generated-classification-ready, and intersecting the viewport before it can request full content; new, deleted, pure-rename, gitlink, binary, oversized, collapsed, and offscreen rows do not request it. Requests wait 40ms and batch at most four Git objects per `git cat-file --batch` command. Each object is byte-parsed and capped at 5 MiB with a 30-second command timeout. Working-tree fallback is allowed only for a missing next-side object. Failed or unvalidated expansion keeps the partial diff visible.
 

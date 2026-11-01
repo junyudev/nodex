@@ -345,14 +345,23 @@ than inferring it from its DOM environment.
   and scroll containers do not reduce mounted DOM, parsing, or accessibility
   work.
 - Virtualization bounds DOM, not syntax work: Pierre tokenizes a whole file
-  before it paints. Source-palette surfaces take colors from the shared worker
-  pool in `@/lib/source-highlight-pool`, keyed by
-  `@/lib/source-highlight-cache`, and an editor starts its edit session only
-  from that pool's finished highlight, because Pierre highlights active edit
-  sessions on the window thread. Do not give such a surface `disableWorkerPool`
-  or a per-mount cache key. Wherever the pool is not working, or a surface uses
-  another palette, pass the language through `mainThreadSourceLanguage` so
-  large text stays plain instead of stalling the window.
+  before it paints. Source viewers/editors use `@/lib/source-highlight-pool`;
+  read-only Review, chat and conflict diffs use `ReadOnlyFileDiff`. The shared
+  pool lifecycle in `@/lib/highlight-pool` retains one renderer-lifetime pool
+  per render profile: source/line-only comparisons and word-level diffs. Pool
+  options own the palette, word-diff policy and token transformer; select the
+  matching profile instead of changing a live pool's options.
+- Highlight cache keys cover content, language and source identity; diff keys
+  additionally cover both texts, line boundaries, hunk layout and partial/full
+  hydration state. Keep keys independent of mounts and request generations.
+  Each pool bounds retained ASTs by text size as well as entry count. Read-only
+  diffs prime the cache so in-flight work survives a row unmount.
+- An editor starts its edit session only from its pool's finished highlight,
+  because Pierre highlights active edit sessions on the window thread. Do not
+  give a pooled source surface `disableWorkerPool`. Wherever a pool is not
+  working, or a surface uses another palette, pass the language through
+  `mainThreadSourceLanguage` so text above 64 KiB stays plain; count both sides
+  and all hydrated context for diffs.
 
 Feature-specific editor behavior belongs in the focused specifications listed
 in [Product specifications](product-specs/index.md). Rich-editor performance
