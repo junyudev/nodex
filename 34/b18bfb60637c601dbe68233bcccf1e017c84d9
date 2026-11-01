@@ -1,0 +1,19 @@
+crates/nodex-platform/tests/platform.rs
+  s_3dc0b7647fcf0b::t_f65e63d3323034 179-180
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "34b18bfb60637c601dbe68233bcccf1e017c84d9",
+  "prompts": {},
+  "sessions": {
+    "s_3dc0b7647fcf0b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1964e-690a-72d0-a5e2-1468f0931284",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
