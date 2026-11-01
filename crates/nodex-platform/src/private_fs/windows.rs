@@ -752,6 +752,32 @@ pub fn remove_immutable_file(path: &Path) -> io::Result<()> {
 mod tests {
     use super::*;
     #[test]
+    fn sealed_file_data_stays_read_only_when_its_dos_attribute_changes() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("sealed");
+        super::super::write(&path, b"immutable").unwrap();
+        set_mode(&path, 0o400).unwrap();
+        let mut permissions = fs::metadata(&path).unwrap().permissions();
+        #[expect(
+            clippy::permissions_set_readonly_false,
+            reason = "prove the protected DACL seals data independently of the DOS attribute"
+        )]
+        permissions.set_readonly(false);
+        fs::set_permissions(&path, permissions).unwrap();
+        assert_eq!(
+            OpenOptions::new()
+                .write(true)
+                .open(&path)
+                .unwrap_err()
+                .kind(),
+            io::ErrorKind::PermissionDenied
+        );
+        super::super::checked_metadata(&path, super::super::EntryKind::File, Some(0o400)).unwrap();
+        assert_eq!(fs::read(&path).unwrap(), b"immutable");
+        remove_immutable_file(&path).unwrap();
+    }
+
+    #[test]
     fn profile_initialization_converts_the_token_default_owner_before_admission() {
         let directory = tempfile::tempdir().unwrap();
         prepare_profile_root(directory.path()).unwrap();

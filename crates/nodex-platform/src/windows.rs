@@ -125,7 +125,9 @@ pub(crate) struct PrivateSecurity {
 impl PrivateSecurity {
     pub(crate) fn new(read_only: bool) -> io::Result<Self> {
         let sid = process_sid(None)?;
-        let access = if read_only { "FRFX" } else { "FA" };
+        // FILE_WRITE_ATTRIBUTES is required to atomically replace a sealed file.
+        // It does not grant data writes, appends, child creation, or deletion.
+        let access = if read_only { "0x001201a9" } else { "FA" };
         let sddl = wide(format!("O:{sid}D:P(A;OICI;{access};;;{sid})"))?;
         let mut descriptor = null_mut();
         if unsafe {
