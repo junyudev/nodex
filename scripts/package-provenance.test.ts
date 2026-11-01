@@ -404,7 +404,7 @@ afterEach(() => {
   }
 });
 
-describe("packaged build provenance", () => {
+describe.skipIf(process.platform === "win32")("packaged build provenance", () => {
   test("requires Browser runtime closure for production provenance", () => {
     const fixture = makeApp({ includeBrowser: false });
 

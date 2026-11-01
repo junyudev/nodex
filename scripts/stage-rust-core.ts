@@ -11,41 +11,42 @@ import {
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
+import { desktopBuildTarget, type DesktopBuildTarget } from "./desktop-build-target";
+import { assertPeArchitecture } from "./windows-pe.mjs";
 
 import {
   NATIVE_RUNTIME_BINARY_PATHS,
   sha256File,
   swiftTargetForNativeRuntime,
-  type NativeRuntimeArchitecture,
   type NativeRuntimeBinaryName,
   type NativeRuntimeManifest,
 } from "./native-runtime-manifest";
 import { replaceOwnedDirectory } from "./replace-owned-directory";
 
-type TargetArchitecture = NativeRuntimeArchitecture;
-
 interface Arguments {
-  readonly targetArch: TargetArchitecture;
+  readonly target: DesktopBuildTarget;
   readonly outputRoot: string;
   readonly signIdentity: string | null;
 }
 
-const TARGETS = {
-  arm64: "aarch64-apple-darwin",
-} as const satisfies Readonly<Record<TargetArchitecture, string>>;
-
-const expectedFileArchitecture = (architecture: TargetArchitecture): string => architecture;
+const expectedFileArchitecture = (architecture: string): string => architecture;
 
 const parseArguments = (argv: readonly string[]): Arguments => {
-  let targetArch: TargetArchitecture | null = null;
+  let targetArch: string = process.arch;
+  let targetPlatform: string = process.platform;
   let outputRoot: string | null = null;
   let signIdentity: string | null = null;
 
   for (let index = 0; index < argv.length; index += 1) {
     const value = argv[index];
     const next = argv[index + 1];
-    if (value === "--target-arch" && next === "arm64") {
+    if (value === "--target-arch" && next) {
       targetArch = next;
+      index += 1;
+      continue;
+    }
+    if (value === "--target-platform" && next) {
+      targetPlatform = next;
       index += 1;
       continue;
     }
@@ -67,7 +68,7 @@ const parseArguments = (argv: readonly string[]): Arguments => {
       "usage: stage-rust-core --target-arch arm64 --out <.generated/path> [--sign-identity <identity>]",
     );
   }
-  return { targetArch, outputRoot, signIdentity };
+  return { target: desktopBuildTarget(targetPlatform, targetArch), outputRoot, signIdentity };
 };
 
 const assertGeneratedOutput = (repositoryRoot: string, outputRoot: string): string => {
@@ -105,9 +106,9 @@ const readProductVersion = (repositoryRoot: string): string => {
   return version;
 };
 
-const stage = ({ targetArch, outputRoot, signIdentity }: Arguments): void => {
+const stage = ({ target: buildTarget, outputRoot, signIdentity }: Arguments): void => {
   const repositoryRoot = path.resolve(".");
-  const target = TARGETS[targetArch];
+  const target = buildTarget.rustTarget;
   const resolvedOutput = assertGeneratedOutput(repositoryRoot, outputRoot);
   assertNotSymlink(resolvedOutput);
   mkdirSync(resolvedOutput, { recursive: true, mode: 0o755 });
@@ -116,6 +117,40 @@ const stage = ({ targetArch, outputRoot, signIdentity }: Arguments): void => {
   mkdirSync(binDirectory, { mode: 0o755 });
 
   try {
+    if (buildTarget.platform === "win32") {
+      if (signIdentity) throw new Error("Use the Windows package signing policy for Authenticode");
+      const binaries = ["nodex-core", "nodex"].map((name) => {
+        const source = path.join(repositoryRoot, "target", target, "release", `${name}.exe`);
+        assertPeArchitecture(source, buildTarget.arch);
+        const destination = path.join(binDirectory, `${name}.exe`);
+        copyFileSync(source, destination);
+        return {
+          name,
+          bundlePath: `resources/bin/${name}.exe`,
+          file: `PE ${buildTarget.arch}`,
+          sourceSha256: sha256File(destination),
+          sourceSize: statSync(destination).size,
+        };
+      });
+      writeFileSync(
+        path.join(binDirectory, "rust-core-runtime.json"),
+        `${JSON.stringify(
+          {
+            schemaVersion: 4,
+            targetPlatform: "win32",
+            targetArch: buildTarget.arch,
+            rustTarget: target,
+            productVersion: readProductVersion(repositoryRoot),
+            binaries,
+          },
+          null,
+          2,
+        )}\n`,
+      );
+      replaceOwnedDirectory(binDirectory, path.join(resolvedOutput, "bin"));
+      return;
+    }
+    const targetArch = buildTarget.arch;
     const serviceSource = path.join(repositoryRoot, "resources", "macos", "nodex-service.swift");
     const serviceBuild = path.join(stagingRoot, ".nodex-service.build");
     execFileSync("xcrun", [
@@ -239,7 +274,7 @@ const stage = ({ targetArch, outputRoot, signIdentity }: Arguments): void => {
       schemaVersion: 4,
       targetPlatform: "darwin",
       targetArch,
-      rustTarget: target,
+      rustTarget: buildTarget.rustTarget,
       minimumMacOS: "15.0",
       productVersion: readProductVersion(repositoryRoot),
       binaries: entries,

@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { describe, expect, test } from "vite-plus/test";
 
+import { vitePlusCommand } from "./vite-plus-command";
 import type { DevelopmentEnvironmentHome } from "./development-environment-home";
 import {
   createDevLaunchPlan,
@@ -151,18 +152,13 @@ describe("dev launcher", () => {
       architecture: "arm64",
     });
     expect(plan.mode).toBe("hmr");
-    expect(plan.preparation).toContainEqual({
-      command: "pnpm",
-      args: ["--silent", "run", "build:agent-runtime", "--development"],
-    });
-    expect(plan.preparation[0]).toEqual({
-      command: "pnpm",
-      args: ["--silent", "run", "electron:prepare"],
-    });
+    expect(plan.preparation).toContainEqual(
+      vitePlusCommand(["run", "build:agent-runtime", "--development"]),
+    );
+    expect(plan.preparation[0]).toEqual(vitePlusCommand(["run", "electron:prepare"]));
     expect(plan.enabledFeatures).toEqual(["runtime-metrics"]);
-    expect(plan.application).toEqual({
-      command: "pnpm",
-      args: [
+    expect(plan.application).toEqual(
+      vitePlusCommand([
         "exec",
         "electron-vite",
         "dev",
@@ -173,8 +169,8 @@ describe("dev launcher", () => {
         "--",
         "-ApplePersistenceIgnoreState",
         "YES",
-      ],
-    });
+      ]),
+    );
     expect(plan.environment).toMatchObject({
       NODEX_HOME: HOME.nodexHome,
       CODEX_HOME: HOME.codexHome,
@@ -336,7 +332,7 @@ describe("dev launcher", () => {
       "electron:prepare",
       "core:binaries:build:release",
       "build",
-      "stage:codex-runtime:mac:cached",
+      "stage:codex-runtime:cached",
     ]);
     expect(plan.environment).toMatchObject({
       NODEX_BROWSER_PROFILE_HELPER_EXECUTABLE: path.join(
@@ -490,3 +486,18 @@ test("the launcher loads in plain Node, as `vp run dev` runs it", () => {
   );
   expect(usage).toContain("--from-profile");
 }, 90_000);
+
+test("uses Windows executable names and platform-neutral preparation for development", () => {
+  const plan = createDevLaunchPlan({
+    arguments: parseDevLauncherArguments([]),
+    environment: {},
+    home: HOME,
+    platform: "win32",
+    architecture: "x64",
+  });
+  expect(plan.environment.NODEX_CORE_EXECUTABLE).toBe(
+    path.join(HOME.repositoryRealpath, "target/debug/nodex-core.exe"),
+  );
+  expect(plan.preparation).toContainEqual(vitePlusCommand(["run", "stage:codex-runtime:cached"]));
+  expect(plan.application.args).not.toContain("-ApplePersistenceIgnoreState");
+});

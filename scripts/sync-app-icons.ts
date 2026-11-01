@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -118,7 +119,7 @@ function createIcnsFromPng(sourcePngPath: string): void {
   }
 }
 
-function main(): void {
+async function main(): Promise<void> {
   ensureSourceArtifactsExist();
 
   const canGenerateAppleArtifacts =
@@ -126,14 +127,42 @@ function main(): void {
 
   if (!canGenerateAppleArtifacts) {
     ensureDerivedArtifactsExist();
+    await createWindowsIcon();
     return;
   }
 
   rasterizeSvgToPng(sourceSvgPath, generatedIconPngPath, "2048");
   rasterizeSvgToPng(sourceSvgPath, generatedHighResPngPath, "3200");
   createIcnsFromPng(generatedIconPngPath);
+  await createWindowsIcon();
 }
 
-if (import.meta.main) {
-  main();
+/** Use the pinned packager's portable PNG-to-ICO conversion on every host. */
+async function createWindowsIcon(): Promise<void> {
+  const require = createRequire(import.meta.url);
+  const builderRequire = createRequire(require.resolve("electron-builder"));
+  const library = dirname(builderRequire.resolve("app-builder-lib/package.json"));
+  const { convertIcon } = builderRequire(join(library, "out/util/iconConverter.js")) as {
+    convertIcon(options: {
+      sources: string[];
+      fallbackSources: string[];
+      roots: string[];
+      format: "ico";
+      outDir: string;
+    }): Promise<unknown>;
+  };
+  await convertIcon({
+    sources: [generatedIconPngPath],
+    fallbackSources: [],
+    roots: [resourcesDir],
+    format: "ico",
+    outDir: resourcesDir,
+  });
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  void main().catch((error: unknown) => {
+    process.stderr.write(`${String(error)}\n`);
+    process.exitCode = 1;
+  });
 }

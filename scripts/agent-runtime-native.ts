@@ -15,6 +15,8 @@ import {
 } from "node:fs";
 import { createRequire } from "node:module";
 import { delimiter, dirname, join, relative } from "node:path";
+import { assertStandaloneNodeRuntime } from "./standalone-node-runtime";
+import { verifyWindowsArchitectureClosure } from "./windows-pe.mjs";
 import { agentRuntimeNativeDigest } from "./agent-runtime-native-inventory.mjs";
 import {
   assertBrowserRuntimeSourceClosure,
@@ -43,14 +45,22 @@ const sha256 = (value: string | Buffer) => createHash("sha256").update(value).di
 /** Use the same staged Node and verified artifact inventory as the execution process. */
 export function resolveAgentRuntimeNode(root: string): AgentRuntimeNode {
   const browserRoot = join(root, ".generated/codex-runtime/agent-runtime/browser-runtime");
-  const manifest = readBrowserRuntimeSourceManifest(browserRoot);
-  if (manifest.targetPlatform !== process.platform || manifest.targetArch !== process.arch) {
+  const standalone =
+    process.platform === "win32" && (process.arch === "x64" || process.arch === "arm64")
+      ? assertStandaloneNodeRuntime(root, process.arch)
+      : null;
+  const manifest = standalone ? null : readBrowserRuntimeSourceManifest(browserRoot);
+  if (
+    manifest &&
+    (manifest.targetPlatform !== process.platform || manifest.targetArch !== process.arch)
+  ) {
     throw new Error(
       `Agent Runtime native build requires a ${manifest.targetPlatform}-${manifest.targetArch} host`,
     );
   }
-  assertBrowserRuntimeSourceClosure(browserRoot, manifest);
-  const executable = join(browserRoot, ...manifest.entrypoints.node.split("/"));
+  if (manifest) assertBrowserRuntimeSourceClosure(browserRoot, manifest);
+  const executable =
+    standalone?.executable ?? join(browserRoot, ...manifest!.entrypoints.node.split("/"));
   const identity = JSON.parse(
     execFileSync(
       executable,
@@ -65,9 +75,9 @@ export function resolveAgentRuntimeNode(root: string): AgentRuntimeNode {
     ),
   ) as Omit<AgentRuntimeNode, "executable" | "sha256">;
   if (
-    identity.platform !== manifest.targetPlatform ||
-    identity.architecture !== manifest.targetArch ||
-    identity.version !== manifest.runtimeVersions.node.replace(/^v/u, "")
+    identity.platform !== process.platform ||
+    identity.architecture !== process.arch ||
+    identity.version !== (standalone?.version ?? manifest!.runtimeVersions.node.replace(/^v/u, ""))
   ) {
     throw new Error("Staged Node identity does not match the verified runtime manifest");
   }
@@ -171,7 +181,11 @@ export function materializeAgentRuntimeNative(root: string): AgentRuntimeNative 
     nodeGyp: sourceDigest(dirname(dirname(nodeGyp))),
     lock: sha256(readFileSync(join(root, "pnpm-lock.yaml"))),
     node,
-    toolchain: toolchainIdentity(),
+    toolchain: node.platform === "win32" ? "node-pty-napi-prebuild" : toolchainIdentity(),
+    prebuild:
+      node.platform === "win32"
+        ? agentRuntimeNativeDigest(join(packageRoot, `prebuilds/win32-${node.architecture}`))
+        : null,
   };
   const identity = sha256(JSON.stringify(provenance));
   const target = join(
@@ -208,41 +222,65 @@ export function materializeAgentRuntimeNative(root: string): AgentRuntimeNative 
   const builtPackage = join(output, "node_modules/node-pty");
   const previous = join(temporary, "previous");
   try {
-    cpSync(packageRoot, source, { recursive: true, filter: (file) => isSource(packageRoot, file) });
-    cpSync(addonRoot, join(source, "node_modules/node-addon-api"), { recursive: true });
-    execFileSync(
-      node.executable,
-      [
-        nodeGyp,
-        "rebuild",
-        "--dist-url=https://nodejs.org/download/release",
-        `--target=${node.version}`,
-        `--arch=${node.architecture}`,
-        `--devdir=${join(root, ".generated/agent-runtime-native/headers")}`,
-      ],
-      {
-        cwd: source,
-        stdio: "pipe",
-        timeout: 180_000,
-        env: agentRuntimeNativeBuildEnvironment(node, process.env),
-      },
-    );
-    mkdirSync(builtPackage, { recursive: true });
-    for (const name of ["package.json", "LICENSE", "lib", "third_party"]) {
-      if (!existsSync(join(source, name))) continue;
-      cpSync(join(source, name), join(builtPackage, name), {
+    if (node.platform === "win32") {
+      mkdirSync(builtPackage, { recursive: true });
+      for (const name of ["package.json", "LICENSE", "lib"])
+        cpSync(join(packageRoot, name), join(builtPackage, name), {
+          recursive: true,
+          filter: (file) => !/\.(?:test\.js(?:\.map)?|map)$/u.test(file),
+        });
+      // N-API builds are independent of Electron's ABI; retain only this CPU's closure.
+      cpSync(
+        join(packageRoot, `prebuilds/win32-${node.architecture}`),
+        join(builtPackage, "build/Release"),
+        {
+          recursive: true,
+          filter: (file) => !file.endsWith(".pdb"),
+        },
+      );
+      if (node.architecture !== "x64" && node.architecture !== "arm64")
+        throw new Error("Unsupported Windows Node architecture");
+      verifyWindowsArchitectureClosure(builtPackage, node.architecture);
+    } else {
+      cpSync(packageRoot, source, {
         recursive: true,
-        filter: (file) => !/\.(?:test\.js(?:\.map)?|map)$/u.test(file),
+        filter: (file) => isSource(packageRoot, file),
       });
+      cpSync(addonRoot, join(source, "node_modules/node-addon-api"), { recursive: true });
+      execFileSync(
+        node.executable,
+        [
+          nodeGyp,
+          "rebuild",
+          "--dist-url=https://nodejs.org/download/release",
+          `--target=${node.version}`,
+          `--arch=${node.architecture}`,
+          `--devdir=${join(root, ".generated/agent-runtime-native/headers")}`,
+        ],
+        {
+          cwd: source,
+          stdio: "pipe",
+          timeout: 180_000,
+          env: agentRuntimeNativeBuildEnvironment(node, process.env),
+        },
+      );
+      mkdirSync(builtPackage, { recursive: true });
+      for (const name of ["package.json", "LICENSE", "lib", "third_party"]) {
+        if (!existsSync(join(source, name))) continue;
+        cpSync(join(source, name), join(builtPackage, name), {
+          recursive: true,
+          filter: (file) => !/\.(?:test\.js(?:\.map)?|map)$/u.test(file),
+        });
+      }
+      const release = join(source, "build/Release");
+      mkdirSync(join(builtPackage, "build/Release"), { recursive: true });
+      for (const name of readdirSync(release)) {
+        if (!/\.node$|\.dll$|\.exe$|^spawn-helper$/u.test(name)) continue;
+        cpSync(join(release, name), join(builtPackage, "build/Release", name));
+      }
+      if (node.platform === "darwin")
+        chmodSync(join(builtPackage, "build/Release/spawn-helper"), 0o755);
     }
-    const release = join(source, "build/Release");
-    mkdirSync(join(builtPackage, "build/Release"), { recursive: true });
-    for (const name of readdirSync(release)) {
-      if (!/\.node$|\.dll$|\.exe$|^spawn-helper$/u.test(name)) continue;
-      cpSync(join(release, name), join(builtPackage, "build/Release", name));
-    }
-    if (node.platform === "darwin")
-      chmodSync(join(builtPackage, "build/Release/spawn-helper"), 0o755);
     execFileSync(node.executable, ["-e", "require(process.argv[1])", builtPackage], {
       timeout: 10_000,
     });

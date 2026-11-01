@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "version": "24.22.1",
+  "licenseSha256": "ed34dd8e3f0a78dbaf00d0444ce8e285b015b765379c2e17880455f70370f8e9",
+  "builds": {
+    "win32-x64": {
+      "sha256": "d702daa815eabbff763c7d3808e235cf031cf2ca70211b56847bc72f51e240e5",
+      "size": 93915464
+    },
+    "win32-arm64": {
+      "sha256": "8bea91dc437fe01e7d92ef0efc6c9eaf654369aaba9b2d3e9841552ea7b95a00",
+      "size": 82150728
+    }
+  }
+}

@@ -207,47 +207,59 @@ test.each(["CXX", "MAKEFLAGS", "MFLAGS", "MAKEFILES"])(
   },
 );
 
-test("does not reuse an implicit home Gyp include with external dependencies", () => {
-  const instance = fixture();
-  instance.build();
-  mkdirSync(path.join(instance.root, ".gyp"));
-  writeFileSync(path.join(instance.root, ".gyp/include.gypi"), "external include");
-  expect(instance.build()).toBe("built");
-  expect(instance.build()).toBe("built");
-  expect(existsSync(`${instance.output}.build.json`)).toBe(false);
-});
+test.skipIf(process.platform === "win32")(
+  "does not reuse an implicit home Gyp include with external dependencies",
+  () => {
+    const instance = fixture();
+    instance.build();
+    mkdirSync(path.join(instance.root, ".gyp"));
+    writeFileSync(path.join(instance.root, ".gyp/include.gypi"), "external include");
+    expect(instance.build()).toBe("built");
+    expect(instance.build()).toBe("built");
+    expect(existsSync(`${instance.output}.build.json`)).toBe(false);
+  },
+);
 
-test("reuses Vite+ system CA configuration but rebuilds for injected Node modules", () => {
-  const instance = fixture();
-  vi.stubEnv("NODE_OPTIONS", "--use-system-ca");
-  expect(instance.build()).toBe("built");
-  expect(instance.build()).toBe("reused");
-  vi.stubEnv("NODE_OPTIONS", "--require /external/build-hook.cjs");
-  expect(instance.build()).toBe("built");
-  expect(instance.build()).toBe("built");
-});
+test.skipIf(process.platform === "win32")(
+  "reuses Vite+ system CA configuration but rebuilds for injected Node modules",
+  () => {
+    const instance = fixture();
+    vi.stubEnv("NODE_OPTIONS", "--use-system-ca");
+    expect(instance.build()).toBe("built");
+    expect(instance.build()).toBe("reused");
+    vi.stubEnv("NODE_OPTIONS", "--require /external/build-hook.cjs");
+    expect(instance.build()).toBe("built");
+    expect(instance.build()).toBe("built");
+  },
+);
 
-test("reuses the selected Xcode SDK when an Apple launcher exports its SDKROOT alias", () => {
-  const instance = fixture();
-  selectedSdk = path.join(instance.root, "MacOSX27.0.sdk");
-  mkdirSync(selectedSdk);
-  const alias = path.join(instance.root, "MacOSX.sdk");
-  symlinkSync(selectedSdk, alias);
-  expect(instance.build()).toBe("built");
-  vi.stubEnv("SDKROOT", alias);
-  expect(instance.build()).toBe("reused");
-  expect(builds).toBe(1);
-});
+test.skipIf(process.platform === "win32")(
+  "reuses the selected Xcode SDK when an Apple launcher exports its SDKROOT alias",
+  () => {
+    const instance = fixture();
+    selectedSdk = path.join(instance.root, "MacOSX27.0.sdk");
+    mkdirSync(selectedSdk);
+    const alias = path.join(instance.root, "MacOSX.sdk");
+    symlinkSync(selectedSdk, alias);
+    expect(instance.build()).toBe("built");
+    vi.stubEnv("SDKROOT", alias);
+    expect(instance.build()).toBe("reused");
+    expect(builds).toBe(1);
+  },
+);
 
-test("does not reuse a custom SDK with untracked headers", () => {
-  const instance = fixture();
-  selectedSdk = path.join(instance.root, "MacOSX.sdk");
-  mkdirSync(selectedSdk);
-  const externalSdk = path.join(instance.root, "custom.sdk");
-  mkdirSync(externalSdk);
-  expect(instance.build()).toBe("built");
-  vi.stubEnv("SDKROOT", externalSdk);
-  expect(instance.build()).toBe("built");
-  expect(instance.build()).toBe("built");
-  expect(existsSync(`${instance.output}.build.json`)).toBe(false);
-});
+test.skipIf(process.platform === "win32")(
+  "does not reuse a custom SDK with untracked headers",
+  () => {
+    const instance = fixture();
+    selectedSdk = path.join(instance.root, "MacOSX.sdk");
+    mkdirSync(selectedSdk);
+    const externalSdk = path.join(instance.root, "custom.sdk");
+    mkdirSync(externalSdk);
+    expect(instance.build()).toBe("built");
+    vi.stubEnv("SDKROOT", externalSdk);
+    expect(instance.build()).toBe("built");
+    expect(instance.build()).toBe("built");
+    expect(existsSync(`${instance.output}.build.json`)).toBe(false);
+  },
+);

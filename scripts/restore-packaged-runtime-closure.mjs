@@ -3,6 +3,8 @@ import { createHash } from "node:crypto";
 import { constants, copyFileSync, lstatSync, readFileSync } from "node:fs";
 import path from "node:path";
 
+import { verifyWindowsArchitectureClosure } from "./windows-pe.mjs";
+
 import { assertPackagedAgentRuntimeNative } from "./agent-runtime-native-inventory.mjs";
 import { BROWSER_RUNTIME_SCHEMA_VERSION } from "../src/shared/browser-runtime-schema.mjs";
 
@@ -115,16 +117,31 @@ export const restorePackagedBrowserRuntimeClosure = ({
 };
 
 export default async function restorePackagedRuntimeClosure(context) {
-  if (context.electronPlatformName !== "darwin") return;
+  if (!["darwin", "win32"].includes(context.electronPlatformName)) return;
   const projectRoot = context.packager.projectDir;
-  const appPath = path.join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`);
+  const appPath =
+    context.electronPlatformName === "darwin"
+      ? path.join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`)
+      : context.appOutDir;
+  const resourcesPath =
+    context.electronPlatformName === "darwin"
+      ? path.join(appPath, "Contents/Resources")
+      : path.join(appPath, "resources");
   assertPackagedAgentRuntimeNative({
     sourceRoot: path.join(projectRoot, "out/agent-runtime/node_modules/node-pty"),
     packagedRoot: path.join(
-      appPath,
-      "Contents/Resources/app.asar.unpacked/out/agent-runtime/node_modules/node-pty",
+      resourcesPath,
+      "app.asar.unpacked/out/agent-runtime/node_modules/node-pty",
     ),
   });
+  if (context.electronPlatformName === "win32") {
+    // electron-builder Arch: x64=1, arm64=3. Reject every other target.
+    const arch = context.arch === 1 ? "x64" : context.arch === 3 ? "arm64" : null;
+    if (!arch) throw new Error(`Unsupported Windows package architecture: ${context.arch}`);
+    const files = verifyWindowsArchitectureClosure(appPath, arch);
+    console.log(`Verified ${files.length} Windows ${arch} native images.`);
+    return;
+  }
   const restored = restorePackagedBrowserRuntimeClosure({
     sourceBrowserRoot: path.join(projectRoot, ...stagedBrowserRuntimePath),
     packagedBrowserRoot: path.join(appPath, ...packagedBrowserRuntimePath),

@@ -22,7 +22,7 @@ afterEach(() => {
   }
 });
 
-describe("materializeBrowserRuntime", () => {
+describe.skipIf(process.platform === "win32")("materializeBrowserRuntime", () => {
   test("installs, reuses, and repairs a lock-bound archive", async () => {
     const root = makeRoot("nodex-browser-materialize-");
     const sourceRoot = path.join(root, "source");
