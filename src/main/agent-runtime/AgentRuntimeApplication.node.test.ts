@@ -10,11 +10,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import type { components } from "@nodex/core-protocol";
-import type {
-  AgentCommand,
-  AgentRuntimeMethod,
-  AgentRuntimeOperations,
-  AgentSnapshot,
+import {
+  DEFAULT_RUNTIME_MODE,
+  type AgentCommand,
+  type AgentRuntimeMethod,
+  type AgentRuntimeOperations,
+  type AgentSnapshot,
 } from "@nodex/agent-runtime/contracts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Effect from "effect/Effect";
@@ -1335,7 +1336,7 @@ it.effect("binds an independent imported chat before reading its history into th
       sourceNativeThreadId: codexImport.nativeSessionId,
       modelSelection: { instanceId: "codex", model: "model-b" },
       cwd: codexImport.cwd,
-      runtimeMode: "approval-required",
+      runtimeMode: DEFAULT_RUNTIME_MODE,
     });
     assert.equal(fixture.applied.length, 1);
     assert.deepEqual(fixture.applied[0]!.intent, {
@@ -7007,11 +7008,11 @@ it.effect(
       const first = yield* owner.launch(launch);
       assert.equal(
         f.snapshots.get(first.threadId)!.projection.thread.runtimeMode,
-        "approval-required",
+        DEFAULT_RUNTIME_MODE,
       );
       yield* settings.update({
         type: "update-agent-runtime",
-        input: { defaultRuntimeMode: "full-access" },
+        input: { defaultRuntimeMode: "approval-required" },
       });
       const second = yield* owner.launch({
         ...launch,
@@ -7019,10 +7020,13 @@ it.effect(
         sessionId: "session:changed-default",
         message: { ...launch.message, messageId: "message:changed-default" },
       });
-      assert.equal(f.snapshots.get(second.threadId)!.projection.thread.runtimeMode, "full-access");
+      assert.equal(
+        f.snapshots.get(second.threadId)!.projection.thread.runtimeMode,
+        "approval-required",
+      );
       assert.equal(
         (yield* owner.read({ sessionId: first.sessionId })).snapshot.projection.thread.runtimeMode,
-        "approval-required",
+        DEFAULT_RUNTIME_MODE,
       );
     }),
 );
