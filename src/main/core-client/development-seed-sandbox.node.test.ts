@@ -54,7 +54,9 @@ test.each(listScenarioIds())(
       expect(path.resolve(gitRoot)).toBe(source);
       const seed = new CoreClientSeedAdapter(runtime);
       const tasks = await seed.readScheduledTasks();
-      expect(tasks.flatMap((task) => task.cwds).every((cwd) => cwd === source)).toBe(true);
+      expect(tasks.flatMap((task) => task.cwds).every((cwd) => path.resolve(cwd) === source)).toBe(
+        true,
+      );
     } finally {
       if (runtime) {
         await runtime.rootClient.shutdown();

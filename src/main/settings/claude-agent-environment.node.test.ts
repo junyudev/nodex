@@ -105,7 +105,7 @@ it("normalizes account paths against the host home and preserves explicit custom
     },
     source,
   );
-  expect(saved.instances[0]?.configDirectory).toBe(path.join("/host/home", "claude-work"));
+  expect(saved.instances[0]?.configDirectory).toBe(path.resolve("/host/home", "claude-work"));
   expect(getClaudeLaunchConfiguration(source, "claude-default").instance.customModels).toEqual([
     model,
   ]);

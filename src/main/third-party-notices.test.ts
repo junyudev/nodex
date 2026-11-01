@@ -1,6 +1,6 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, normalize } from "node:path";
+import { join, normalize, resolve } from "node:path";
 import { afterEach, describe, expect, test } from "vite-plus/test";
 import {
   readThirdPartyNotices,
@@ -64,7 +64,7 @@ describe("third-party notices", () => {
       }),
     ).toEqual([
       normalize("/electron/resources/THIRD_PARTY_NOTICES.txt"),
-      normalize("/repo/nodex/.generated/build-resources/THIRD_PARTY_NOTICES.txt"),
+      resolve("/repo/nodex/.generated/build-resources/THIRD_PARTY_NOTICES.txt"),
       normalize("/repo/nodex/assets/THIRD_PARTY_NOTICES.txt"),
       normalize("/repo/nodex/electron/assets/THIRD_PARTY_NOTICES.txt"),
     ]);

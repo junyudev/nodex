@@ -713,7 +713,7 @@ it.effect("lists, deletes and restores the worktree an Agent chat works in", () 
   Effect.gen(function* () {
     const scope = yield* Scope.make();
     const agentThread = "nodex:thread:agent";
-    const worktreeGitRoot = path.normalize("/managed/260814-1200-abcdef01");
+    const worktreeGitRoot = path.resolve("/managed/260814-1200-abcdef01");
     let present = true;
     const archived: string[] = [];
     const removed: string[] = [];

@@ -11,7 +11,7 @@ describe("Codex dynamic first-turn context", () => {
       threadId,
     );
 
-    expect(directory).toBe(`/home/.codex/visualizations/2025/07/11/${threadId}`);
+    expect(directory).toBe(path.resolve("/home/.codex/visualizations/2025/07/11", threadId));
     expect(
       resolveCodexThreadVisualizationDirectory(path.resolve("/home/.codex"), "thread-test"),
     ).toBe(null);
@@ -20,9 +20,9 @@ describe("Codex dynamic first-turn context", () => {
   test("supports second-based UUIDv8 identities and uses the selected host path grammar", () => {
     const seconds = Date.parse("2026-10-12T00:00:00Z") / 1_000;
     const threadId = `${seconds.toString(16)}-0004-8000-8000-000000000000`;
-    expect(
-      resolveCodexThreadVisualizationDirectory(path.resolve("/home/.codex"), threadId, path.posix),
-    ).toBe(`/home/.codex/visualizations/2026/10/12/${threadId}`);
+    expect(resolveCodexThreadVisualizationDirectory("/home/.codex", threadId, path.posix)).toBe(
+      `/home/.codex/visualizations/2026/10/12/${threadId}`,
+    );
     expect(resolveCodexThreadVisualizationDirectory("C:\\Codex", threadId, path.win32)).toBe(
       `C:\\Codex\\visualizations\\2026\\10\\12\\${threadId}`,
     );
