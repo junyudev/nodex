@@ -1,0 +1,85 @@
+src/renderer/features/workspace-files/workspace-source-highlight.browser.test.tsx
+  s_a62e5887089e7e::t_261bf1b05cdf5e 121-123
+  s_a62e5887089e7e::t_de8a117d7450af 3,7,19,25-29,84-86,88-89,91,93,99,114
+  s_a62e5887089e7e::t_c414df6cb1d2a6 139-140
+  s_a62e5887089e7e::t_14574ecf163f0a 1,5-6,8,10-18,20-24,30,32-42,44-65,68-69,92,94-96,100-103,106-112,115-118,120,124,157-158
+  s_a62e5887089e7e::t_5f6e0a2d9dd620 4,131-138,141-149
+  s_a62e5887089e7e::t_4251c8a4336d64 2,9,31,43,70-83,87,90,97-98,104-105,113,119,125-130,150-156
+  s_a62e5887089e7e::t_47cc406e2a4dab 66-67
+src/renderer/lib/source-highlight-cache.ts
+  s_a62e5887089e7e::t_1c0a07e2706a04 1,3-18,20,22-34,36,38,53-72
+  s_a62e5887089e7e::t_1b34e96fd6b0a2 2,19,21,35,37,39-52
+vitest.renderer.config.ts
+  s_a62e5887089e7e::t_801c84b1a160fc 10,21
+src/renderer/lib/source-highlight-cache.node.test.ts
+  s_a62e5887089e7e::t_78315b86c1b453 3-4,9-13,39-65
+  s_a62e5887089e7e::t_e810783b20bd56 1-2,5-8,14-38,66-94
+src/renderer/components/ui/source-viewer.test.tsx
+  s_a62e5887089e7e::t_533f9a0210e6d6 3,28
+src/renderer/lib/source-content-version.ts
+  s_a62e5887089e7e::t_1b34e96fd6b0a2 13-14,26-30
+  s_a62e5887089e7e::t_6349a7964754e6 9-12,15-25,31
+src/renderer/lib/diff-presentation.ts
+  s_a62e5887089e7e::t_9399feae66d46b 17
+docs/FRONTEND.md
+  s_a62e5887089e7e::t_068083fa036ce4 353-355
+  s_a62e5887089e7e::t_475cb5ee3cd78d 347-352
+src/renderer/lib/highlight.worker.ts
+  s_a62e5887089e7e::t_65b22c9c4f5f14 1-4
+src/renderer/features/workspace-files/workspace-pierre-editor.test.tsx
+  s_a62e5887089e7e::t_533f9a0210e6d6 3-10,62
+electron.vite.config.ts
+  s_a62e5887089e7e::t_65b22c9c4f5f14 16,203
+  s_a62e5887089e7e::t_f1fd0488d8fde7 18,205
+src/renderer/components/ui/source-viewer.tsx
+  s_a62e5887089e7e::t_9a111815936863 67
+  s_a62e5887089e7e::t_a895c922fb6b6a 125-135
+  s_a62e5887089e7e::t_23dc34accf15f1 14-19,62-66,68-69,74-75,77
+config/renderer-vite-shared.ts
+  s_a62e5887089e7e::t_801c84b1a160fc 35-39
+  s_a62e5887089e7e::t_65b22c9c4f5f14 30-34
+vitest.browser.config.ts
+  s_a62e5887089e7e::t_65b22c9c4f5f14 11,30
+  s_a62e5887089e7e::t_801c84b1a160fc 13,28
+src/renderer/lib/source-highlight-pool.tsx
+  s_a62e5887089e7e::t_9df1b4ca061c4f 132-136
+  s_a62e5887089e7e::t_8fdffdda5eaf9c 98-99
+  s_a62e5887089e7e::t_5a26effe1b7af4 9,25-27,36-37,43-51,73-85,88-94,113
+  s_a62e5887089e7e::t_c09957bd530319 6-7,10,12-24,28-35,38-42,52-61,86-87,96-97,107-110,114-118,140
+  s_a62e5887089e7e::t_1c0a07e2706a04 11,95
+  s_a62e5887089e7e::t_65b22c9c4f5f14 8
+  s_a62e5887089e7e::t_16fa0b14a8d2c9 1-5
+  s_a62e5887089e7e::t_c93f2b31dd774f 62-72,100-106
+  s_a62e5887089e7e::t_f107b13e241a54 111-112,119-131,137-139
+src/renderer/features/workspace-files/workspace-pierre-editor.tsx
+  s_a62e5887089e7e::t_961ad0c9693b27 18,105-106,186,233-236,425
+  s_a62e5887089e7e::t_9df1b4ca061c4f 661-690,697-707,709-710,712-718
+  s_a62e5887089e7e::t_621b47fe420cd5 33,39-41,44,219,283,331,412,419-420,426,430
+  s_a62e5887089e7e::t_4f614c4de14c10 35-38
+  s_a62e5887089e7e::t_081c1d80aa5ef1 577,579-585,588,596
+  s_a62e5887089e7e::t_e099caf2bb0a61 34,42-43,148-150,198-203,237,310-311,332,342-386,399-400,408-411,414-418,421-424,427,432,595,691-696
+docs/product-specs/codex-workspace-behavior.md
+  s_a62e5887089e7e::t_475cb5ee3cd78d 187-193
+  s_a62e5887089e7e::t_068083fa036ce4 194-196
+CHANGELOG.md
+  s_a62e5887089e7e::t_475cb5ee3cd78d 60
+src/renderer/features/workspace-files/workspace-files-panel.tsx
+  s_a62e5887089e7e::t_a8511c8cccce2a 144,748-751
+  s_a62e5887089e7e::t_961ad0c9693b27 234-236,407,415-417,1440-1441
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "81c3d0a31ace74ad4b448c7e0316b585d16acabe",
+  "prompts": {},
+  "sessions": {
+    "s_a62e5887089e7e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2ec19bab-a0ee-4190-9ba2-f81423363c25",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": null
+    }
+  }
+}

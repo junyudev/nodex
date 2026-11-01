@@ -1,0 +1,55 @@
+src/renderer/lib/diff-highlight-cache.ts
+  s_a62e5887089e7e::t_c7d6e0b99f0006 1-39
+docs/FRONTEND.md
+  s_a62e5887089e7e::t_c7d6e0b99f0006 348-364
+src/renderer/features/review/model/expand-partial-diff-metadata.node.test.ts
+  s_a62e5887089e7e::t_c7d6e0b99f0006 41-42,71-81
+  s_a62e5887089e7e::t_14e9b76c29dc54 82-83
+src/renderer/features/review/model/expand-partial-diff-metadata.ts
+  s_a62e5887089e7e::t_c7d6e0b99f0006 2,180,186-187,189
+src/renderer/features/review/review-diff-highlight.browser.test.tsx
+  s_a62e5887089e7e::t_c7d6e0b99f0006 1-185
+src/renderer/components/workbench/review-diff-panel-deps.ts
+  s_a62e5887089e7e::t_c7d6e0b99f0006 2-3
+src/renderer/components/workbench/review-diff-panel.tsx
+  s_a62e5887089e7e::t_c7d6e0b99f0006 163,962
+src/renderer/lib/highlight-pool.tsx
+  s_a62e5887089e7e::t_c7d6e0b99f0006 1-84
+src/renderer/components/ui/read-only-file-diff.test.tsx
+  s_a62e5887089e7e::t_c7d6e0b99f0006 1-70
+src/renderer/lib/diff-highlight-cache.node.test.ts
+  s_a62e5887089e7e::t_c7d6e0b99f0006 1-48
+docs/product-specs/review-right-panel-behavior.md
+  s_a62e5887089e7e::t_c7d6e0b99f0006 4,136-144
+  s_a62e5887089e7e::t_9deb4cfbef057d 145
+src/renderer/lib/diff-highlight-pool.tsx
+  s_a62e5887089e7e::t_c7d6e0b99f0006 1-9
+src/renderer/features/workspace-files/workspace-file-conflict.tsx
+  s_a62e5887089e7e::t_c7d6e0b99f0006 2,77
+CHANGELOG.md
+  s_a62e5887089e7e::t_c7d6e0b99f0006 61
+src/renderer/lib/source-highlight-pool.tsx
+  s_a62e5887089e7e::t_c7d6e0b99f0006 6-14
+src/renderer/features/local-conversation/view/shared/tools/inline-file-diff.tsx
+  s_a62e5887089e7e::t_c7d6e0b99f0006 1-2,44
+src/renderer/components/ui/read-only-file-diff.tsx
+  s_a62e5887089e7e::t_c7d6e0b99f0006 1-83
+src/renderer/components/workbench/review-diff-panel.test.tsx
+  s_a62e5887089e7e::t_c7d6e0b99f0006 1007-1028
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f7c78df37c2a105b0e30a3a483abfd9c12239805",
+  "prompts": {},
+  "sessions": {
+    "s_a62e5887089e7e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2ec19bab-a0ee-4190-9ba2-f81423363c25",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
