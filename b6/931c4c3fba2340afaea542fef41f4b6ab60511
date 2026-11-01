@@ -1,0 +1,29 @@
+src/main/app-protocol.test.ts
+  s_61ededb051faa8::t_05e5c99afc23a0 359,405-417
+tests/fixtures/app-renderer-protocol/electron-main.ts
+  s_61ededb051faa8::t_77e1897cec5f43 18-23,58-66,69
+src/main/app-protocol.ts
+  s_61ededb051faa8::t_05e5c99afc23a0 408-411
+  s_61ededb051faa8::t_23ec003f904622 413
+src/main/app-renderer-protocol.integration.ts
+  s_61ededb051faa8::t_77e1897cec5f43 363-373
+  s_61ededb051faa8::t_792876060c0d15 374-376
+docs/SECURITY.md
+  s_61ededb051faa8::t_0020430b71ba9b 540
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b6931c4c3fba2340afaea542fef41f4b6ab60511",
+  "prompts": {},
+  "sessions": {
+    "s_61ededb051faa8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19725-1673-78a3-85e3-bdba96788967",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
