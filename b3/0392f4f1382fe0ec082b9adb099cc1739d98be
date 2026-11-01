@@ -1,0 +1,41 @@
+crates/nodex-core/schema/current.sql
+  s_693b7521d81978::t_044e641a6caf16 4518
+crates/nodex-core/src/document/integrity.rs
+  s_693b7521d81978::t_fa188b9606d444 24-26,62-76,84,217-231,249,252-255,257-264
+crates/nodex-core/src/document/materialization.rs
+  s_693b7521d81978::t_11de5539ba48ef 33
+crates/nodex-core/src/document/persistence.rs
+  s_693b7521d81978::t_81747c15fedb6c 1495-1515
+crates/nodex-core/src/infrastructure/migration.rs
+  s_693b7521d81978::t_5dc4d5d7a14811 51,394-398,662-664,2568-2588,3472-3474,8478-8480,8505,8850
+crates/nodex-core/src/infrastructure/migration_serializer_tests.rs
+  s_693b7521d81978::t_80c6f1f05de749 1-441
+crates/nodex-core/src/infrastructure/store_validation.rs
+  s_693b7521d81978::t_bee91e62ace26e 34,1254-1255
+crates/nodex-core/src/workspace/inbox_content.rs
+  s_693b7521d81978::t_06aa5dd7b48a5f 116-162,189-192
+crates/nodex-core/src/workspace/inbox_serialization.rs
+  s_693b7521d81978::t_5902bc9ff16c42 1-198
+crates/nodex-core/src/workspace/mod.rs
+  s_693b7521d81978::t_bfeb584a204de4 13,19-21
+crates/nodex-store-format/src/lib.rs
+  s_693b7521d81978::t_b969cd8e4c8d22 253-256
+docs/reliability/core-lifecycle-and-store.md
+  s_693b7521d81978::t_fc61cbae12cecd 246-251
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b30392f4f1382fe0ec082b9adb099cc1739d98be",
+  "prompts": {},
+  "sessions": {
+    "s_693b7521d81978": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19523-5249-7b21-99b6-72950d66e89e",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
