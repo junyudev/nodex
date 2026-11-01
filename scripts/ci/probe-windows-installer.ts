@@ -1,6 +1,6 @@
 import { execFileSync, spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { desktopBuildTarget } from "../desktop-build-target";
@@ -13,6 +13,11 @@ import {
 import { CoreClient } from "../../src/main/core-client/core-client";
 import { readCoreRuntimeConnection } from "../../src/main/core-client/runtime-descriptor";
 import { cleanupIsolatedCore } from "../isolated-core-cleanup";
+import {
+  AGENT_RUNTIME_STARTUP_PROBE_ENV,
+  AGENT_RUNTIME_STARTUP_EVIDENCE_FILE,
+  parseAgentRuntimeStartupEvidence,
+} from "../../src/shared/agent-runtime-startup-evidence";
 
 const delay = (ms: number) => new Promise<void>((resolveDelay) => setTimeout(resolveDelay, ms));
 const sha256 = (file: string) => createHash("sha256").update(readFileSync(file)).digest("hex");
@@ -166,6 +171,7 @@ async function main(): Promise<void> {
         NODEX_TELEMETRY_ENABLED: "false",
         NODEX_CORE_IDLE_TIMEOUT_MS: "30000",
         [ISOLATED_RUN_ID_ENV]: runId,
+        [AGENT_RUNTIME_STARTUP_PROBE_ENV]: "1",
       },
     });
     child.stdout?.on("data", (chunk: Buffer) => {
@@ -180,9 +186,22 @@ async function main(): Promise<void> {
     const deadline = Date.now() + 60_000;
     while (true) {
       if (child.exitCode !== null || child.signalCode !== null)
-        throw new Error(`Installed Nodex exited before Core readiness (exit ${child.exitCode})`);
+        throw new Error(
+          `Installed Nodex exited before Core and Agent readiness (exit ${child.exitCode})`,
+        );
       const claim = readIsolatedRunClaim(profile);
-      if (claim?.phase === "ready") {
+      const agentFile = join(profile, "run", AGENT_RUNTIME_STARTUP_EVIDENCE_FILE);
+      if (existsSync(agentFile) && statSync(agentFile).size > 4_096)
+        throw new Error("Agent Runtime startup diagnostic exceeds its bounded size");
+      const agent = existsSync(agentFile)
+        ? parseAgentRuntimeStartupEvidence(JSON.parse(readFileSync(agentFile, "utf8")), {
+            runId,
+            hostPid: child.pid!,
+          })
+        : null;
+      if (agent && agent.nodeSource !== "standalone")
+        throw new Error("Windows Agent Runtime did not use the verified standalone Node runtime");
+      if (claim?.phase === "ready" && agent) {
         if (claim.runId !== runId || claim.hostPid !== child.pid)
           throw new Error("Installed Nodex readiness belongs to another host generation");
         const { descriptor } = readCoreRuntimeConnection(profile);
@@ -206,12 +225,13 @@ async function main(): Promise<void> {
           corePid: descriptor.pid,
           coreSha256: expectedCoreSha256,
           authenticated: Boolean(client.handshake),
+          agent,
         };
         break;
       }
       if (Date.now() >= deadline)
         throw new Error(
-          `Installed Nodex did not become ready within 60s (host phase: ${claim?.phase ?? "unclaimed"}). Windows Core must support named pipes and publish run/core/core.json; Electron liveness alone does not satisfy this probe.`,
+          `Installed Nodex did not reach Core and Agent Runtime readiness within 60s (host phase: ${claim?.phase ?? "unclaimed"}, Agent Runtime: ${agent ? "ready" : "pending"}). Core must publish its named-pipe descriptor and the supervised Agent Runtime must complete its execution handshake.`,
         );
       await delay(100);
     }
@@ -222,7 +242,7 @@ async function main(): Promise<void> {
   }
   if (failures.length) throw new AggregateError(failures, failures.map(String).join("\n"));
   process.stdout.write(
-    `Installed ${target.key} Nodex, verified authenticated Core readiness, and removed the installation.\n`,
+    `Installed ${target.key} Nodex, verified authenticated Core and Agent Runtime readiness, and removed the installation.\n`,
   );
 }
 

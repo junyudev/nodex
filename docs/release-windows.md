@@ -72,6 +72,12 @@ The `Windows` workflow runs both native runner types. Its packaging cells upload
 - `nodex-windows-<arch>-<source-sha>`: the architecture-qualified installer.
 - `nodex-windows-probe-<arch>-<source-sha>`: startup logs and probe result JSON.
 
+The installed application must complete both authenticated Core startup and the
+Agent Runtime execution handshake using verified standalone Node. The explicit
+isolated probe needs no provider credentials; a live Electron process or a Core
+descriptor alone does not pass. Its bounded diagnostic excludes endpoints,
+provider configuration and secrets.
+
 The startup probe can also run on a disposable clean Windows machine:
 
 ```powershell

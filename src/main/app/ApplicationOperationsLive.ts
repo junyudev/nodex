@@ -41,7 +41,7 @@ const workspaceDependencies = Layer.unwrap(
   Effect.gen(function* () {
     const config = yield* MainConfig;
     const codex = yield* CodexPlatform;
-    const browser = codex.runtime.browserRuntime;
+    const node = codex.runtime.nodeRuntime;
     return workspaceDependencyLive({
       root: config.isPackaged
         ? `${config.resourcesPath}/workspace-runtime`
@@ -49,10 +49,10 @@ const workspaceDependencies = Layer.unwrap(
       platform: config.platform,
       arch: config.arch,
       node:
-        browser.status === "available"
+        node.status === "available"
           ? {
-              executable: browser.bundle.paths.node,
-              version: browser.bundle.manifest.runtimeVersions.node,
+              executable: node.executable,
+              version: node.version,
             }
           : null,
     });

@@ -1,3 +1,4 @@
+import type { NodeExecutionRuntime } from "./NodeExecutionRuntime";
 import { isAbsolute, join } from "node:path";
 
 /** The dev launcher supplies this opt-in only for a home with a scripted seed receipt. */
@@ -28,7 +29,7 @@ export const agentRuntimeEntrypoint = (input: {
 /** Disposable scenarios may select their own Node; packaged execution always uses verified assets. */
 export function agentRuntimeNodeExecutable(input: {
   readonly isPackaged: boolean;
-  readonly bundledExecutable: string | null;
+  readonly nodeRuntime: NodeExecutionRuntime;
   readonly environment: Readonly<Record<string, string | undefined>>;
 }): string {
   const override = (
@@ -41,6 +42,6 @@ export function agentRuntimeNodeExecutable(input: {
       throw new Error("Scenario Agent Runtime Node must be an absolute executable path");
     return override;
   }
-  if (input.bundledExecutable) return input.bundledExecutable;
+  if (input.nodeRuntime.status === "available") return input.nodeRuntime.executable;
   throw new Error("The verified Node execution runtime is unavailable");
 }

@@ -32,6 +32,10 @@ an explicit revoked child binding always denies access. Other local Agents
 receive a PowerShell command prefix with the same explicit Profile context.
 Remote execution hosts do not acquire local shell bindings.
 
+Agent execution uses the release-locked standalone Node runtime independently of
+Browser tooling. Both packaged and ordinary development launches verify its
+manifest, host architecture and executable bytes; they never substitute host Node.
+
 OpenCode setup downloads the official Windows standalone executable for the host
 architecture into the account's `.opencode\bin` directory. It verifies the version
 before selecting it, refuses to replace an existing installation and cleans up a

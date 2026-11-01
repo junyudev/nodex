@@ -302,6 +302,12 @@ DevTools port so different homes can run concurrently. Pass
 `0` through `65535` when a stable endpoint is needed. The command-line option
 overrides `NODEX_REMOTE_DEBUGGING_PORT` when both are set.
 
+Both Windows modes stage the release-locked standalone Node runtime through the
+desktop build owner. Main resolves `.generated/node-runtime/win32-<arch>` and
+verifies its manifest and executable before Agent execution. Ordinary launches do
+not use the launcher's host Node as a fallback. The explicit scripted-scenario
+runtime remains confined to its identified disposable seed.
+
 On macOS, every disposable Electron launch passes `-ApplePersistenceIgnoreState YES`:
 both isolated development modes, the Electron E2E harness, and Electron integration
 fixtures share one definition in `scripts/isolated-run/electron-arguments.ts`. This

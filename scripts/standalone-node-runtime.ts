@@ -8,12 +8,14 @@ import {
 } from "./immutable-artifact-cache";
 import { desktopBuildTarget, type WindowsArchitecture } from "./desktop-build-target";
 import { assertPeArchitecture } from "./windows-pe.mjs";
+import { parseStandaloneNodeManifest } from "../src/shared/node-runtime-metadata";
 
 interface NodeReleaseArtifact {
   readonly sha256: string;
   readonly size: number;
 }
 interface NodeReleaseLock {
+  readonly schemaVersion: number;
   readonly version: string;
   readonly builds: Readonly<Record<`win32-${WindowsArchitecture}`, NodeReleaseArtifact>>;
   readonly licenseSha256: string;
@@ -78,6 +80,13 @@ export function assertStandaloneNodeRuntime(
     readFileSync(join(root, "resources/agent-runtime/node-runtime.lock.json"), "utf8"),
   ) as NodeReleaseLock;
   const executable = join(standaloneNodeDirectory(root, arch), "node.exe");
+  parseStandaloneNodeManifest(
+    JSON.parse(
+      readFileSync(join(standaloneNodeDirectory(root, arch), "node-runtime.json"), "utf8"),
+    ),
+    arch,
+    lock,
+  );
   const build = lock.builds[`win32-${arch}`];
   if (statSync(executable).size !== build.size || digest(executable) !== build.sha256)
     throw new Error("Standalone Node differs from its release lock; stage the runtime first");

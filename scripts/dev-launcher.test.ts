@@ -492,17 +492,24 @@ test("the launcher loads in plain Node, as `vp run dev` runs it", () => {
   expect(usage).toContain("--from-profile");
 }, 90_000);
 
-test("uses Windows executable names and platform-neutral preparation for development", () => {
-  const plan = createDevLaunchPlan({
-    arguments: parseDevLauncherArguments([]),
-    environment: {},
-    home: HOME,
-    platform: "win32",
-    architecture: "x64",
-  });
-  expect(plan.environment.NODEX_CORE_EXECUTABLE).toBe(
-    path.join(HOME.repositoryRealpath, "target/debug/nodex-core.exe"),
-  );
-  expect(plan.preparation).toContainEqual(vitePlusCommand(["run", "stage:codex-runtime:cached"]));
-  expect(plan.application.args).not.toContain("-ApplePersistenceIgnoreState");
-});
+test.each([false, true])(
+  "prepares verified Windows execution assets in development (built: %s)",
+  (build) => {
+    const plan = createDevLaunchPlan({
+      arguments: parseDevLauncherArguments(build ? ["--build"] : []),
+      environment: { NODEX_DEV_AGENT_RUNTIME_NODE_EXECUTABLE: process.execPath },
+      home: HOME,
+      platform: "win32",
+      architecture: "x64",
+    });
+    expect(plan.environment.NODEX_CORE_EXECUTABLE).toBe(
+      path.join(
+        HOME.repositoryRealpath,
+        build ? "target/release/nodex-core.exe" : "target/debug/nodex-core.exe",
+      ),
+    );
+    expect(plan.preparation).toContainEqual(vitePlusCommand(["run", "stage:codex-runtime:cached"]));
+    expect(plan.application.args).not.toContain("-ApplePersistenceIgnoreState");
+    expect(plan.environment.NODEX_DEV_AGENT_RUNTIME_NODE_EXECUTABLE).toBeUndefined();
+  },
+);

@@ -94,16 +94,16 @@ export const flattenArtifactTemplateSkills = (
 ): readonly SkillMetadata[] => response.data.flatMap((entry) => entry.skills);
 
 export const resolveArtifactTemplatePickerRuntime = (input: {
-  readonly browserNodePath: string | null;
+  readonly nodePath: string | null;
   readonly isPackaged: boolean;
   readonly projectRootPath: string;
   readonly resourcesPath: string;
 }): ArtifactTemplatePickerRuntime | null => {
-  if (!input.browserNodePath) return null;
+  if (!input.nodePath) return null;
   const resourcesRoot = input.isPackaged
     ? input.resourcesPath
     : path.join(input.projectRootPath, "resources");
   const serverPath = path.join(resourcesRoot, "artifact-template-picker", "server.mjs");
   if (!existsSync(serverPath)) return null;
-  return { nodePath: input.browserNodePath, serverPath };
+  return { nodePath: input.nodePath, serverPath };
 };

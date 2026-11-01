@@ -4,11 +4,11 @@ Nodex supports Windows 11 on x64 (primary) and arm64. Windows evidence comes fro
 three layers. Each layer proves what the cheaper layer cannot; none substitutes for
 another.
 
-| Layer       | Environment                                                                            | Proves                                                                                                                               |
-| ----------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| Automated   | GitHub `windows-latest` (Windows Server, x64) and `windows-11-arm` (Windows 11, arm64) | Native builds, Rust and application suites, per-architecture packaging and closure, silent install, packaged Core startup, uninstall |
-| Interactive | Windows 11 arm64 virtual machine on an Apple silicon Mac                               | Windows semantics under a standard user: UI, input, shell integration, installer and upgrade flows, both architecture builds         |
-| Acceptance  | Physical x64 Windows 11 PC                                                             | GPU rendering, representative performance, power and session lifecycle, physical peripherals                                         |
+| Layer       | Environment                                                                            | Proves                                                                                                                                                 |
+| ----------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Automated   | GitHub `windows-latest` (Windows Server, x64) and `windows-11-arm` (Windows 11, arm64) | Native builds, Rust and application suites, per-architecture packaging and closure, silent install, packaged Core and Agent Runtime startup, uninstall |
+| Interactive | Windows 11 arm64 virtual machine on an Apple silicon Mac                               | Windows semantics under a standard user: UI, input, shell integration, installer and upgrade flows, both architecture builds                           |
+| Acceptance  | Physical x64 Windows 11 PC                                                             | GPU rendering, representative performance, power and session lifecycle, physical peripherals                                                           |
 
 The automated layer is defined in [`.github/workflows/windows.yml`](../.github/workflows/windows.yml)
 and described in [CI](CI.md); packaging and artifacts are described in
