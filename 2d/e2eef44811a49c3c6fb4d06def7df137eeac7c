@@ -1,0 +1,107 @@
+packages/agent-runtime/src/orchestration-v2/ProviderSessionManager.ts
+  s_8b58b89ca1a92a::t_802462641c3635 647-648,656-663,1897-1911
+packages/agent-runtime/src/orchestration-v2/Adapters/CodexAdapterV2.test.ts
+  s_8b58b89ca1a92a::t_802462641c3635 40,2254-2596
+  s_8b58b89ca1a92a::t_bed323ff53c941 2597
+packages/agent-runtime/src/orchestration-v2/ProjectionStore.ts
+  s_8b58b89ca1a92a::t_802462641c3635 64-66,127-128,368-380,1346-1349,1401-1415,1484,5453-5472,6697-6702,6744-6747,6844-6847,6869,9955,10034,10282-10288,10290-10306
+  s_8b58b89ca1a92a::t_1cc208eaa764cb 10289
+packages/agent-runtime/src/orchestration-v2/ProviderTurnStartService.ts
+  s_8b58b89ca1a92a::t_802462641c3635 479,1450-1461
+packages/agent-runtime/src/orchestration-v2/ProviderSessionManager.test.ts
+  s_8b58b89ca1a92a::t_802462641c3635 5275,5297-5298,5300-5308,5319,5322-5323,5325-5327,5333-5337
+  s_8b58b89ca1a92a::t_b722347d427d77 5338
+packages/agent-runtime/src/orchestration-v2/testkit/HistoryPressure.ts
+  s_8b58b89ca1a92a::t_802462641c3635 71
+docs/ARCHITECTURE.md
+  s_8b58b89ca1a92a::t_ae58bd8bde8024 1301
+src/shared/codex-conversation-state/codex-provider-recovery.ts
+  s_8b58b89ca1a92a::t_802462641c3635 5,31-33
+packages/agent-runtime/src/orchestration-v2/ProviderObservation.ts
+  s_8b58b89ca1a92a::t_802462641c3635 1-69
+packages/agent-runtime/src/orchestration-v2/ProviderRuntimeRecoveryService.test.ts
+  s_8b58b89ca1a92a::t_802462641c3635 1589-1655
+src/renderer/features/local-conversation/agent-runtime-transcript-projection.node.test.ts
+  s_8b58b89ca1a92a::t_e54f8c80f541dd 215-219
+  s_8b58b89ca1a92a::t_802462641c3635 166-169,191-214,220-227
+packages/agent-runtime/src/orchestration-v2/RunLivenessService.ts
+  s_8b58b89ca1a92a::t_a9fe5372b38b24 28,30
+  s_8b58b89ca1a92a::t_802462641c3635 1-27,29,31-272
+packages/agent-runtime/src/orchestration-v2/runtimeLayer.ts
+  s_8b58b89ca1a92a::t_802462641c3635 37,286-301,321,362
+src/shared/codex-conversation-state/codex-conversation-reducer.test.ts
+  s_8b58b89ca1a92a::t_802462641c3635 242-253
+src/shared/conversation-recovery.test.ts
+  s_8b58b89ca1a92a::t_802462641c3635 5,27-29,116-125
+  s_8b58b89ca1a92a::t_d967d6e2610233 126-127
+packages/agent-runtime/src/orchestration-v2/RunExecutionService.test.ts
+  s_8b58b89ca1a92a::t_802462641c3635 31-33,3006,3019,3027-3028,3074,3112-3260,3263,3276-3279,3345,3397-3398,3419,3443-3447
+  s_8b58b89ca1a92a::t_1d14ef6832fa2e 3065,3096
+packages/agent-runtime/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
+  s_8b58b89ca1a92a::t_802462641c3635 3931-3934,6486-6492,6673,10155-10166
+  s_8b58b89ca1a92a::t_e54f8c80f541dd 6462-6467
+  s_8b58b89ca1a92a::t_1d14ef6832fa2e 6672
+packages/agent-runtime/src/orchestration-v2/ProjectionRecovery.test.ts
+  s_8b58b89ca1a92a::t_802462641c3635 15-16,31-35,128,130-136,138-173,175-232,785-790,795-809
+  s_8b58b89ca1a92a::t_f62e2f98fd78f1 129,174
+  s_8b58b89ca1a92a::t_e54f8c80f541dd 137
+packages/agent-runtime/src/orchestration-v2/FoundationPersistence.test.ts
+  s_8b58b89ca1a92a::t_802462641c3635 23-26,358-525
+packages/agent-runtime/src/orchestration-v2/ProviderObservation.test.ts
+  s_8b58b89ca1a92a::t_802462641c3635 1-42
+packages/agent-runtime/src/orchestration-v2/ProviderTurnControlService.test.ts
+  s_8b58b89ca1a92a::t_802462641c3635 292
+src/renderer/features/local-conversation/projection/conversation-recovery-presentation.ts
+  s_8b58b89ca1a92a::t_802462641c3635 39-40,49-51
+src/renderer/features/local-conversation/projection/conversation-recovery-presentation.test.ts
+  s_8b58b89ca1a92a::t_802462641c3635 70-76
+packages/agent-runtime/src/orchestration-v2/RunExecutionService.ts
+  s_8b58b89ca1a92a::t_1d14ef6832fa2e 1694-1697,1916
+  s_8b58b89ca1a92a::t_802462641c3635 32,38-39,713-714,741-747,749-754,788-796,1040-1048,1051-1052,1073,1092-1107,1170,1174-1175,1206-1212,1224-1225,1243-1251,1470-1481,1483-1491,1495-1506,1508-1511,1535-1567,1599,1603-1680,1682-1693,1698-1753,1755-1774,1809,1848,1881-1915,1917-1919,1921-1924
+docs/product-specs/codex-thread-transcript-behavior.md
+  s_8b58b89ca1a92a::t_ae58bd8bde8024 607-609
+CHANGELOG.md
+  s_8b58b89ca1a92a::t_ae58bd8bde8024 51-52
+packages/agent-runtime/src/orchestration-v2/ProjectionRecoveryQueries.ts
+  s_8b58b89ca1a92a::t_802462641c3635 19-59,133-134,139
+  s_8b58b89ca1a92a::t_8a9ab69636d408 140
+packages/agent-runtime/src/orchestration-v2/RunLivenessService.test.ts
+  s_8b58b89ca1a92a::t_802462641c3635 1-401
+packages/agent-runtime/src/orchestration-v2/EventSink.ts
+  s_8b58b89ca1a92a::t_802462641c3635 8,77-81,87-91,484-495
+src/renderer/features/local-conversation/agent-runtime-transcript-projection.ts
+  s_8b58b89ca1a92a::t_802462641c3635 46,472-476,498-500,511,513
+src/shared/conversation-recovery.ts
+  s_8b58b89ca1a92a::t_802462641c3635 11-12,26-32,50-52,55-56
+packages/agent-runtime/src/orchestration-v2/ProviderRuntimeRecoveryService.ts
+  s_8b58b89ca1a92a::t_802462641c3635 254-273
+packages/agent-runtime/src/orchestration-v2/Adapters/CodexAdapterV2.ts
+  s_8b58b89ca1a92a::t_802462641c3635 99,1171-1176,2321-2329,2659-2660,2668-2688,2714-2715,2717-2719,2756-2757,2772-2773,2789-2791,4171-4174,5527,5550,5903-5905,5914,6264-6265,6762,6764-6766,7019,7054-7055,7905-7914,8010-8019,8144-8153,8160,8168-8169,8186-8189,8654-8750
+docs/product-specs/agent-runtime-behavior.md
+  s_8b58b89ca1a92a::t_802462641c3635 84,92
+  s_8b58b89ca1a92a::t_ae58bd8bde8024 74-83,85-91,93-101
+packages/agent-runtime/vendor/contracts/src/orchestrationV2.ts
+  s_8b58b89ca1a92a::t_05b241f99ad5ff 1545,1553-1558
+packages/agent-runtime/vendor/provider-core/src/server/ProviderAdapter.ts
+  s_8b58b89ca1a92a::t_296a41e5fc0295 377-389,391,435-436,475-476,594-600,602-605
+packages/agent-runtime/vendor/provider-core/src/server/failure.test.ts
+  s_8b58b89ca1a92a::t_a4b691a8bd49ce 210-261
+packages/agent-runtime/vendor/provider-core/src/server/failure.ts
+  s_8b58b89ca1a92a::t_1610b54f2e794d 32-71,111-112,212-215,222,230,236-240
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2de2eef44811a49c3c6fb4d06def7df137eeac7c",
+  "prompts": {},
+  "sessions": {
+    "s_8b58b89ca1a92a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c075d5c4-0b38-4f3d-8c6c-e4a048a9b857",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

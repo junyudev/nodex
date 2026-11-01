@@ -1,0 +1,31 @@
+packages/agent-runtime/src/persistence/SqliteReaderRecovery.test.ts
+  s_42ce6034f28784::t_2a888797b8ae36 1-64,68-78,80-89,92-98
+  s_42ce6034f28784::t_5a6a8df9fbfdd4 65-66,90-91
+  s_42ce6034f28784::t_9b0269f12f8c98 67,79
+packages/agent-runtime/vendor/shared/src/nodeSqliteClient.ts
+  s_fe7dc95f5a58ab::t_c5625cfb6c6b8b 621-623,625,635-640,643-647
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b2c5513c9f9ec25a9cc8d35d89da7327c49d8c82",
+  "prompts": {},
+  "sessions": {
+    "s_42ce6034f28784": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a194ac-7c00-75f1-a43a-23a62312754d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_fe7dc95f5a58ab": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "544dcfbc-fb2a-443f-beae-a1f75aa89ee3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
