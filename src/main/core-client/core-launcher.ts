@@ -506,7 +506,8 @@ export async function connectOrStartCore(
       input.signal,
     );
     const selectionMs = performance.now() - selectionStartedAt;
-    selectedAsAuthority = selection.disposition === "started" && selection.descriptor.pid === child.pid;
+    selectedAsAuthority =
+      selection.disposition === "started" && selection.descriptor.pid === child.pid;
     if (selection.descriptor.artifact.sha256 !== expectedArtifactDigest) {
       throw new Error("Selected Core artifact does not match the launched candidate");
     }
@@ -520,7 +521,11 @@ export async function connectOrStartCore(
       if (exit.error) {
         throw new Error("Could not start native Rust Core", { cause: exit.error });
       }
-      if (exit.exited && selection.descriptor.pid === child.pid && !(selection.disposition === "reused" && exit.code === 0)) {
+      if (
+        exit.exited &&
+        selection.descriptor.pid === child.pid &&
+        !(selection.disposition === "reused" && exit.code === 0)
+      ) {
         const status = exit.code === null ? "without an exit code" : `with code ${exit.code}`;
         const diagnostic = exit.stderr.trim();
         const suffix = diagnostic ? `: ${diagnostic}` : "";

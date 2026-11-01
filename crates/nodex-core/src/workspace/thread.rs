@@ -5254,7 +5254,7 @@ mod tests {
             item_id: "item-1".to_owned(),
             turn_id: Some("turn-builtin".to_owned()),
             command: " pnpm test ".to_owned(),
-            cwd: Some(" /workspace/a ".to_owned()),
+            cwd: Some(format!(" {} ", nodex_platform::fixture_path!("/workspace/a"))),
             process_id: Some(" process-1 ".to_owned()),
             os_pid: Some(42),
             terminal_session_id: Some(" terminal-1 ".to_owned()),
