@@ -1,0 +1,29 @@
+src/main/host-runtime/StoreAdministrationSchedulerRuntime.ts
+  s_66c8ad159691f2::t_3783a9a4df46eb 54-56,100-115,118-153
+  s_66c8ad159691f2::t_ad918e59028397 154-169
+docs/reliability/backup-restore-and-maintenance.md
+  s_66c8ad159691f2::t_7518696dea5c49 58-60
+CHANGELOG.md
+  s_66c8ad159691f2::t_1508798682ba7d 57
+docs/product-specs/backup-snapshots.md
+  s_66c8ad159691f2::t_803b86196faa28 47-53
+src/main/host-runtime/ApplicationSchedulers.test.ts
+  s_66c8ad159691f2::t_7c464754898ce2 1208-1267
+  s_66c8ad159691f2::t_161f4fd1a146d9 4,1136-1207,1268-1285
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b7ebdb9000140beccc732853227c0dcd133d9bd7",
+  "prompts": {},
+  "sessions": {
+    "s_66c8ad159691f2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b9f70a0e-ab44-41bb-a33b-e19f161ae88b",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
