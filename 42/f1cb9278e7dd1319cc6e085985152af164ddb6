@@ -1,0 +1,39 @@
+src/main/host-runtime/ApplicationHostRuntime.test.ts
+  s_3dc0b7647fcf0b::t_38f725c6fcae80 1,61
+src/main/nodex-home.test.ts
+  s_3dc0b7647fcf0b::t_43a02cf1871d34 7,29,54
+src/main/nodex-home.ts
+  s_3dc0b7647fcf0b::t_e02ae458e4d408 29-30
+src/main/platform/node/ClaudeExecutable.node.test.ts
+  s_437d1b69acf515::t_9b0e370a423c57 28,31,185-195
+src/main/platform/node/ClaudeExecutable.ts
+  s_437d1b69acf515::t_12a71335df0313 41-43,46-50,58,61
+src/main/platform/node/CodexAccountHome.test.ts
+  s_3dc0b7647fcf0b::t_d7b5ba35321bef 147-148
+src/main/platform/node/CodexAccountHome.ts
+  s_3dc0b7647fcf0b::t_f5b7c083950480 113-114,213,240,243,245-247
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "42f1cb9278e7dd1319cc6e085985152af164ddb6",
+  "prompts": {},
+  "sessions": {
+    "s_3dc0b7647fcf0b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1964e-690a-72d0-a5e2-1468f0931284",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_437d1b69acf515": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19611-f985-7bb1-8992-f548b040da3f",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
