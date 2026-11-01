@@ -1,50 +1,76 @@
 src/main/inbox-application/InboxApplication.ts
   s_23804a86f2e450::t_73b5a3047cac3c 386,398
+  s_23804a86f2e450::t_5dfecb13f8d9c4 386,398
 src/renderer/features/inbox/inbox-triage.test.tsx
   s_23804a86f2e450::t_73b5a3047cac3c 477,484,488,492,498
+  s_23804a86f2e450::t_5dfecb13f8d9c4 477,484,488,492,498
 crates/nodex-store-format/src/lib.rs
   s_23804a86f2e450::t_6dd5eea1709fa6 265-267
   s_23804a86f2e450::t_3a0f2d632122ad 268
+  s_23804a86f2e450::t_9a5175ab5de896 261-262
+  s_23804a86f2e450::t_42696dd072b3ac 268
 src/main/inbox-application/inbox-suggestions.ts
   s_23804a86f2e450::t_73b5a3047cac3c 15-16,138-140,144,215,217,236-237,273-274,317
+  s_23804a86f2e450::t_f4dd9fc4b34d38 15,215
+  s_23804a86f2e450::t_5dfecb13f8d9c4 16,138-140,144,217,236-237,273-274,317
 scripts/evals/inbox-routing.ts
   s_23804a86f2e450::t_73b5a3047cac3c 25,27-28,285,369-375,437,439-440,443
+  s_23804a86f2e450::t_5dfecb13f8d9c4 25,27-28,285,369-375,437,439-440,443
 crates/nodex-core/src/document/integrity.rs
   s_23804a86f2e450::t_6dd5eea1709fa6 67
 src/main/inbox-application/inbox-suggestions.node.test.ts
   s_23804a86f2e450::t_73b5a3047cac3c 457,475-476,494-495
+  s_23804a86f2e450::t_5dfecb13f8d9c4 457,475-476,494-495
 docs/product-specs/inbox-behavior.md
   s_23804a86f2e450::t_73b5a3047cac3c 314-324,328-336,376-379,393,499,555,564-565,767
+  s_23804a86f2e450::t_dea7896030bb68 314-323,329
+  s_23804a86f2e450::t_5dfecb13f8d9c4 324,328,330-336,376-379,393,499,555,564-565,767
 src/main/inbox-application/InboxRuntime.node.test.ts
   s_23804a86f2e450::t_73b5a3047cac3c 915
+  s_23804a86f2e450::t_5dfecb13f8d9c4 915
 src/renderer/features/inbox/inbox-agent-picker.tsx
   s_23804a86f2e450::t_73b5a3047cac3c 154,156
+  s_23804a86f2e450::t_5dfecb13f8d9c4 154,156
 src/main/inbox-application/inbox-confirmation.node.test.ts
   s_23804a86f2e450::t_73b5a3047cac3c 82-83,89
+  s_23804a86f2e450::t_5dfecb13f8d9c4 82-83,89
 crates/nodex-core/schema/current.sql
   s_23804a86f2e450::t_6dd5eea1709fa6 4543
 src/renderer/features/inbox/inbox-settings-page.tsx
   s_23804a86f2e450::t_73b5a3047cac3c 137
+  s_23804a86f2e450::t_5dfecb13f8d9c4 137
 crates/nodex-core/schema/migrations/v198_to_v199.sql
   s_23804a86f2e450::t_6dd5eea1709fa6 1-9
 CONTEXT.md
   s_23804a86f2e450::t_73b5a3047cac3c 612
+  s_23804a86f2e450::t_5dfecb13f8d9c4 612
 crates/nodex-core/src/infrastructure/migration.rs
   s_23804a86f2e450::t_9ef5d03a8756eb 408-412,2624-2632,8593-8600,8903,8975,8977,9016
   s_23804a86f2e450::t_73b5a3047cac3c 2633,8896-8902,8904-8974,8976,8978-9015,9017-9028
   s_23804a86f2e450::t_a8e98b8cd69add 2634-2638,9029-9030
+  s_23804a86f2e450::t_5dfecb13f8d9c4 2633,8897-8902,8904-8974,8976,8978-9015,9017-9028
+  s_23804a86f2e450::t_ee4d9d4518dbd0 403-407,2609-2613,2629-2632
+  s_23804a86f2e450::t_0878a3c4f4ec5b 8896
+  s_23804a86f2e450::t_c9cb37be7d46fc 2634-2638,9029-9030
 crates/nodex-core/src/workspace/inbox.rs
   s_23804a86f2e450::t_73b5a3047cac3c 21-23
+  s_23804a86f2e450::t_5dfecb13f8d9c4 21-23
 crates/nodex-core/src/workspace/inbox_tests.rs
   s_23804a86f2e450::t_73b5a3047cac3c 404-405,420,427,437,444-445,447,454,468-470
+  s_23804a86f2e450::t_5dfecb13f8d9c4 404-405,420,427,437,444-445,447,454,468-470
 src/renderer/features/inbox/inbox-agents-popover.test.tsx
   s_23804a86f2e450::t_73b5a3047cac3c 23
+  s_23804a86f2e450::t_5dfecb13f8d9c4 23
 src/shared/inbox.ts
   s_23804a86f2e450::t_73b5a3047cac3c 333,475
+  s_23804a86f2e450::t_5dfecb13f8d9c4 333,475
 CHANGELOG.md
   s_23804a86f2e450::t_73b5a3047cac3c 42-43
+  s_23804a86f2e450::t_5dfecb13f8d9c4 43
+  s_23804a86f2e450::t_12f7659d12c6e1 42
 scripts/scenarios/scenarios/inbox-triage.ts
   s_23804a86f2e450::t_73b5a3047cac3c 340-341
+  s_23804a86f2e450::t_5dfecb13f8d9c4 340-341
 packages/core-protocol/src/compatibility.generated.ts
   s_23804a86f2e450::t_9f79e0d6ab5524 42
 ---
