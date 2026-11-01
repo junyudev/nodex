@@ -76,6 +76,7 @@ async function main(): Promise<void> {
   let child: ReturnType<typeof spawn> | undefined;
   let output = "";
   let evidence: unknown;
+  let uninstallEvidence: unknown;
   const cleanup = async (): Promise<void> => {
     if (child?.pid && child.exitCode === null) {
       try {
@@ -106,21 +107,44 @@ async function main(): Promise<void> {
           /^Uninstall.*\.exe$/iu.test(name),
         );
         if (uninstallers.length !== 1) throw new Error("Installed NSIS uninstaller is missing");
-        // NSIS may move itself to TEMP; wait below for that cleanup process to finish.
-        execFileSync(join(installRoot, uninstallers[0]!), ["/S", "/currentuser"], {
-          stdio: "inherit",
-          timeout: 180_000,
-        });
-        const deadline = Date.now() + 30_000;
-        while (existsSync(installRoot) && Date.now() < deadline) await delay(200);
-        if (existsSync(installRoot))
-          throw new Error(`Uninstall left files: ${readdirSync(installRoot).join(", ")}`);
-        if (queryProtocol()) throw new Error("Uninstall left the nodex:// protocol registration");
-        for (const shortcut of [
+        // Start-Process -Wait waits for descendants too, including NSIS's relocated
+        // TEMP uninstaller. The install directory disappears before shortcut cleanup.
+        const command = `
+$ErrorActionPreference = 'Stop'
+$uninstaller = Start-Process -FilePath $env:NODEX_PROBE_UNINSTALLER -ArgumentList '/S', '/currentuser' -Wait -PassThru
+exit $uninstaller.ExitCode
+`;
+        execFileSync(
+          "powershell.exe",
+          [
+            "-NoProfile",
+            "-NonInteractive",
+            "-EncodedCommand",
+            Buffer.from(command, "utf16le").toString("base64"),
+          ],
+          {
+            env: { ...process.env, NODEX_PROBE_UNINSTALLER: join(installRoot, uninstallers[0]!) },
+            stdio: "inherit",
+            timeout: 180_000,
+          },
+        );
+        const shortcuts = [
           join(appData, "Microsoft/Windows/Start Menu/Programs/Nodex.lnk"),
           join(process.env.USERPROFILE!, "Desktop/Nodex.lnk"),
-        ])
-          if (existsSync(shortcut)) throw new Error(`Uninstall left a shortcut: ${shortcut}`);
+        ].filter(existsSync);
+        const remainingProtocol = queryProtocol();
+        uninstallEvidence = {
+          completed: true,
+          filesRemoved: !existsSync(installRoot),
+          protocolRemoved: remainingProtocol === null,
+          shortcutsRemoved: shortcuts.length === 0,
+          profilePreserved: existsSync(profile),
+        };
+        if (existsSync(installRoot))
+          throw new Error(`Uninstall left files: ${readdirSync(installRoot).join(", ")}`);
+        if (remainingProtocol) throw new Error("Uninstall left the nodex:// protocol registration");
+        if (shortcuts.length) throw new Error(`Uninstall left shortcuts: ${shortcuts.join(", ")}`);
+        if (!existsSync(profile)) throw new Error("Uninstall removed the Profile");
       } catch (error) {
         failures.push(error);
       }
@@ -132,7 +156,7 @@ async function main(): Promise<void> {
         writeFileSync(join(artifacts, name), readFileSync(join(logRoot, name)));
     writeFileSync(
       join(artifacts, "result.json"),
-      `${JSON.stringify({ evidence, failures: failures.map(String) }, null, 2)}\n`,
+      `${JSON.stringify({ evidence, uninstall: uninstallEvidence, failures: failures.map(String) }, null, 2)}\n`,
     );
   };
   try {
@@ -146,7 +170,7 @@ async function main(): Promise<void> {
       throw new Error(`NSIS did not install Nodex per-user: ${executable}`);
     const images = verifyWindowsArchitectureClosure(installRoot, target.arch, { installed: true });
     const registration = queryProtocol();
-    if (!registration?.includes("Nodex.exe"))
+    if (!registration?.includes(`"${executable}" "%1"`) || !registration.includes("URL Protocol"))
       throw new Error("NSIS did not register nodex:// for the current user");
     const core = join(installRoot, "resources/bin/nodex-core.exe");
     const expectedCoreSha256 = sha256(core);
@@ -217,7 +241,12 @@ async function main(): Promise<void> {
           buildId: "windows-installer-probe",
           requestTimeoutMs: 10_000,
         });
+        if (queryProtocol() !== registration)
+          throw new Error("Launching Nodex changed the installer's protocol registration");
         evidence = {
+          protocolRegistered: true,
+          protocolPreservedAfterLaunch: true,
+          namedPipe: true,
           target: target.key,
           installer: installers[0],
           images: images.length,

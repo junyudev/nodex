@@ -177,6 +177,7 @@ win:
         - "**/*"
 
 nsis:
+  include: resources/windows/installer.nsh
   oneClick: true
   perMachine: false
   allowElevation: false

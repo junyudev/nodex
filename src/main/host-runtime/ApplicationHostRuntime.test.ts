@@ -46,6 +46,18 @@ describe("ApplicationHostRuntime", () => {
     ),
   );
 
+  it.effect("leaves packaged Windows protocol registration with the installer", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const native = makeNative();
+        yield* build(native, { platform: "win32", isPackaged: true });
+
+        expect(native.setAppUserModelId).toHaveBeenCalledWith("app.jyu.nodex");
+        expect(native.setDefaultProtocolClient).not.toHaveBeenCalled();
+      }),
+    ),
+  );
+
   it.effect("requests macOS microphone access through the scoped host capability", () =>
     Effect.scoped(
       Effect.gen(function* () {

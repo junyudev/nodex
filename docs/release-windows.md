@@ -29,10 +29,14 @@ A target CPU different from the build host is rejected. The artifacts are:
 | arm64        | `dist/Nodex-<version>-win-arm64-setup.exe` |
 
 The one-click installer is per-user, includes no elevation helper, and requests no administrator access.
-Its application identity is `app.jyu.nodex`; it registers `nodex://` and installs
-under the user's Programs directory. The installed Profile defaults to
-`%USERPROFILE%\.nodex`. Uninstall removes the application and its registrations;
-it preserves the Profile. `vp run sync:icons` derives `resources/icon.ico` from
+Its application identity is `app.jyu.nodex`. It installs under the user's Programs
+directory and registers `nodex://` before first launch at
+`HKCU\Software\Classes\nodex`, with the URL Protocol marker and the command
+`"<install-directory>\Nodex.exe" "%1"`. NSIS owns packaged Windows registration;
+launching the application does not rewrite it. Uninstall removes application files,
+Start Menu/Desktop shortcuts and that protocol registration when it still points
+to this installation. The installed Profile defaults to `%USERPROFILE%\.nodex`;
+uninstall preserves it. `vp run sync:icons` derives `resources/icon.ico` from
 the committed PNG icon through the pinned packager's icon tooling.
 
 ## Runtime closure
@@ -90,7 +94,9 @@ launches with a fresh isolated Profile, and requires the exact host's ready clai
 plus a matching, authenticated named-pipe Core generation. A missing descriptor,
 Unix-only Core transport, stale digest, or startup exit fails with diagnostic
 logs. Its finally path stops the owned processes, silently uninstalls, and checks
-installation, shortcut and protocol cleanup even after a startup failure.
+installation, shortcut and protocol cleanup even after a startup failure. It waits
+for the entire NSIS process tree through PowerShell `Start-Process -Wait`, including
+the relocated TEMP uninstaller; directory removal alone is not uninstall completion.
 The probe retains its disposable Profile locally for diagnosis; CI uploads only
 the fresh probe's logs and result. It never uses credentials or a real Profile.
 

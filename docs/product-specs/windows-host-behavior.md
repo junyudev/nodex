@@ -9,6 +9,13 @@ Desktop notifications, clipboard, `nodex://` links, single-instance routing,
 menus, dictation, Terminals and local Agents use Windows host integrations.
 Notifications use the application identity `app.jyu.nodex`.
 
+The per-user installer registers `nodex://` before first launch under
+`HKCU\Software\Classes\nodex`, with a URL Protocol marker and the installed
+`"Nodex.exe" "%1"` command. Packaged launches leave this installer-owned handler
+unchanged. Uninstall removes application files and Start Menu/Desktop shortcuts,
+and removes the protocol key only if its command still points to that installation.
+The Profile is preserved.
+
 Background service installation, automatic app updates, Browser control,
 Computer control, Appshot and Apple DeviceCheck are unavailable on Windows.
 Main's host capability policy gates native acquisition. Existing typed feature
