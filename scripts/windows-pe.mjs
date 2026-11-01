@@ -47,7 +47,14 @@ export function verifyWindowsArchitectureClosure(root, expected) {
       return;
     }
     if (!stat.isFile()) throw new Error(`Windows payload contains a special file: ${file}`);
-    if (!/\.(?:exe|dll|node)$/iu.test(file)) return;
+    const descriptor = openSync(file, "r");
+    const magic = Buffer.alloc(2);
+    try {
+      readSync(descriptor, magic, 0, 2, 0);
+    } finally {
+      closeSync(descriptor);
+    }
+    if (!/\.(?:exe|dll|node)$/iu.test(file) && magic.readUInt16LE(0) !== 0x5a4d) return;
     assertPeArchitecture(file, expected);
     files.push(path.relative(root, file).split(path.sep).join("/"));
   };

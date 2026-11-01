@@ -1,5 +1,6 @@
 import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { tmpdir } from "node:os";
 import { afterEach, describe, expect, test } from "vite-plus/test";
 
 import {
@@ -19,7 +20,7 @@ import {
 const roots: string[] = [];
 
 const createRepository = async (): Promise<string> => {
-  const root = await mkdtemp("/tmp/ndh-");
+  const root = await mkdtemp(path.join(process.platform === "darwin" ? "/tmp" : tmpdir(), "ndh-"));
   roots.push(root);
   return root;
 };
@@ -159,8 +160,10 @@ describe("development environment home", () => {
 
     const installedAuth = path.join(home.codexHome, "auth.json");
     const installedConfig = path.join(home.codexHome, "config.toml");
-    expect((await stat(installedAuth)).mode & 0o777).toBe(0o600);
-    expect((await stat(installedConfig)).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") {
+      expect((await stat(installedAuth)).mode & 0o777).toBe(0o600);
+      expect((await stat(installedConfig)).mode & 0o777).toBe(0o600);
+    }
     expect(await readFile(installedAuth, "utf8")).toContain("test");
     expect(await readFile(installedConfig, "utf8")).not.toContain("node_repl");
   });

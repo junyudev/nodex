@@ -199,7 +199,7 @@ const materializeManagedRef = (
   ).stdout;
   const entries = tree
     .trim()
-    .split("\n")
+    .split(/\r?\n/u)
     .filter(Boolean)
     .map((line) => {
       const match = /^(\d{6}) blob [a-f0-9]+\t(.+)$/u.exec(line);

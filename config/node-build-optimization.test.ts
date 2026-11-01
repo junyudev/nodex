@@ -1,16 +1,17 @@
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { createRequire, SourceMap, type SourceMapPayload } from "node:module";
+import { SourceMap, type SourceMapPayload } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { expect, test } from "vite-plus/test";
+import { vitePlusCommand } from "../scripts/vite-plus-command";
 import { nodeBuildOptimizationArguments, type NodeBuildMode } from "./node-build-optimization";
 
 test("shrinks shipped Node code without losing reflective names or original error locations", () => {
   const root = mkdtempSync(join(tmpdir(), "nodex-node-optimization-"));
   const source = join(root, "diagnostic.ts");
-  const esbuild = createRequire(import.meta.url).resolve("esbuild/bin/esbuild");
+  const esbuild = vitePlusCommand(["exec", "esbuild"]);
   writeFileSync(
     source,
     [
@@ -26,7 +27,8 @@ test("shrinks shipped Node code without losing reflective names or original erro
   try {
     const build = (mode: NodeBuildMode) => {
       const output = join(root, mode, "diagnostic.mjs");
-      execFileSync(esbuild, [
+      execFileSync(esbuild.command, [
+        ...esbuild.args,
         source,
         "--bundle",
         "--platform=node",

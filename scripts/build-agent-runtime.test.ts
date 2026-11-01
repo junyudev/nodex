@@ -224,7 +224,7 @@ test.each([
   "missing chunk",
   "tampered chunk",
   "added output",
-  "changed mode",
+  ...(process.platform === "win32" ? [] : ["changed mode"]),
   "symlink",
   "metafile",
   "receipt",

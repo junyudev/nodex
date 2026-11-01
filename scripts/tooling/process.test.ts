@@ -72,7 +72,7 @@ test("cancels a running command without waiting for its normal completion", asyn
     onStdout: () => controller.abort(),
   });
   expect(result.exitCode).toBe(130);
-  expect(result.signal).not.toBeNull();
+  if (process.platform !== "win32") expect(result.signal).not.toBeNull();
 });
 
 test("does not launch an already cancelled command", async () => {

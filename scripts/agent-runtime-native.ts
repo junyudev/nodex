@@ -281,9 +281,17 @@ export function materializeAgentRuntimeNative(root: string): AgentRuntimeNative 
       if (node.platform === "darwin")
         chmodSync(join(builtPackage, "build/Release/spawn-helper"), 0o755);
     }
-    execFileSync(node.executable, ["-e", "require(process.argv[1])", builtPackage], {
-      timeout: 10_000,
-    });
+    execFileSync(
+      node.executable,
+      [
+        "-e",
+        `require(process.argv[1]); if (process.platform === "win32") { const path = require("node:path"); for (const name of ["conpty", "conpty_console_list", "pty"]) require(path.join(process.argv[1], "build/Release", name + ".node")); }`,
+        builtPackage,
+      ],
+      {
+        timeout: 10_000,
+      },
+    );
     const artifactDigest = agentRuntimeNativeDigest(builtPackage);
     writeFileSync(
       join(output, "manifest.json"),

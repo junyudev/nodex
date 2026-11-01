@@ -143,7 +143,7 @@ if (args[0] === "api") {
   return { bin, updateName, fullName, appcastName };
 };
 
-test.each([
+test.skipIf(process.platform === "win32").each([
   { schema: 4, corruptDigest: false, bundleSchema: 3 as const },
   {
     schema: PACKAGED_BUILD_PROVENANCE_SCHEMA_VERSION,

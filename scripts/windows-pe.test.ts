@@ -76,3 +76,9 @@ test("Windows targets select native Rust triples and omit macOS helpers", () => 
   ]);
   expect(() => desktopBuildTarget("win32", "ia32")).toThrow("Unsupported Nodex desktop target");
 });
+
+test("inspects renamed PE images as part of the payload closure", () => {
+  const root = fixture();
+  writeFileSync(join(root, "hidden-image.bin"), image(0xaa64));
+  expect(() => verifyWindowsArchitectureClosure(root, "x64")).toThrow("architecture mismatch");
+});

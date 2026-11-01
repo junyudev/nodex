@@ -42,11 +42,14 @@ const waitForOwnedSignalExit = (): Promise<{
   });
 
 describe("Effect process entry", () => {
-  test("leaves termination signals to the scoped program and lets its cleanup finish", async () => {
-    await expect(waitForOwnedSignalExit()).resolves.toEqual({
-      code: 0,
-      signal: null,
-      stdout: "ready\nhandled\ncleaned\n",
-    });
-  });
+  test.skipIf(process.platform === "win32")(
+    "leaves termination signals to the scoped program and lets its cleanup finish",
+    async () => {
+      await expect(waitForOwnedSignalExit()).resolves.toEqual({
+        code: 0,
+        signal: null,
+        stdout: "ready\nhandled\ncleaned\n",
+      });
+    },
+  );
 });

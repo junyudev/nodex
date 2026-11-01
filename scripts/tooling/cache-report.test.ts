@@ -12,7 +12,7 @@ import {
 
 const roots: string[] = [];
 const makeRoot = async () => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "nodex-space-report-"));
+  const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "nodex-space-report-")));
   roots.push(root);
   return root;
 };

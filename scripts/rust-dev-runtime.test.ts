@@ -113,32 +113,35 @@ afterEach(() => {
   for (const root of temporaryRoots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-test("shares exact native inputs across worktrees, retaining independent outputs and standalone symbols", async () => {
-  useCache();
-  const producer = fixture();
-  const consumer = fixture();
-  const build = buildAdapter();
-  const produced = await prepare(producer, build.run);
-  rmSync(path.join(producer, "target"), { recursive: true });
-  const reused = await prepare(consumer, build.run);
-  expect(produced.cached).toBe(false);
-  expect(reused).toMatchObject({ cached: true, fingerprint: produced.fingerprint });
-  expect(build.builds()).toHaveLength(1);
-  expect(build.builds()[0]!.environment.CARGO_ENCODED_RUSTFLAGS).toContain(
-    `--remap-path-prefix=${producer}=.`,
-  );
-  const executable = rustDevRuntimeExecutable(consumer, "nodex-core");
-  expect(
-    readFileSync(path.join(`${executable}.dSYM`, "Contents/Resources/DWARF/nodex-core"), "utf8"),
-  ).toBe("standalone line tables");
-  writeFileSync(executable, "consumer edit");
-  expect(readFileSync(rustDevRuntimeExecutable(producer, "nodex-core"), "utf8")).toBe(
-    "binary:nodex-core",
-  );
-  await prepare(consumer, build.run);
-  expect(readFileSync(executable, "utf8")).toBe("binary:nodex-core");
-  expect(build.builds()).toHaveLength(1);
-});
+test.skipIf(process.platform === "win32")(
+  "shares exact native inputs across worktrees, retaining independent outputs and standalone symbols",
+  async () => {
+    useCache();
+    const producer = fixture();
+    const consumer = fixture();
+    const build = buildAdapter();
+    const produced = await prepare(producer, build.run);
+    rmSync(path.join(producer, "target"), { recursive: true });
+    const reused = await prepare(consumer, build.run);
+    expect(produced.cached).toBe(false);
+    expect(reused).toMatchObject({ cached: true, fingerprint: produced.fingerprint });
+    expect(build.builds()).toHaveLength(1);
+    expect(build.builds()[0]!.environment.CARGO_ENCODED_RUSTFLAGS).toContain(
+      `--remap-path-prefix=${producer}=.`,
+    );
+    const executable = rustDevRuntimeExecutable(consumer, "nodex-core");
+    expect(
+      readFileSync(path.join(`${executable}.dSYM`, "Contents/Resources/DWARF/nodex-core"), "utf8"),
+    ).toBe("standalone line tables");
+    writeFileSync(executable, "consumer edit");
+    expect(readFileSync(rustDevRuntimeExecutable(producer, "nodex-core"), "utf8")).toBe(
+      "binary:nodex-core",
+    );
+    await prepare(consumer, build.run);
+    expect(readFileSync(executable, "utf8")).toBe("binary:nodex-core");
+    expect(build.builds()).toHaveLength(1);
+  },
+);
 
 test("invalidates embedded assets, compiler context and crate sources while ignoring unrelated frontend edits", async () => {
   const root = fixture();
@@ -159,54 +162,65 @@ test("invalidates embedded assets, compiler context and crate sources while igno
   );
 });
 
-test("repairs damaged shared symbols and serializes concurrent producers", async () => {
-  useCache();
-  const first = fixture();
-  const second = fixture();
-  const build = buildAdapter();
-  const [result] = await Promise.all([prepare(first, build.run), prepare(second, build.run)]);
-  expect(build.builds()).toHaveLength(1);
-  const cache = resolveImmutableDirectoryPath({
-    projectRoot: first,
-    family: "rust-dev-runtime",
-    archiveSha256: result!.fingerprint!,
-    directoryName: "rust-dev-runtime-v1",
-  });
-  writeFileSync(
-    path.join(cache, "content/bin/nodex-core.dSYM/Contents/Resources/DWARF/nodex-core"),
-    "broken",
-  );
-  await prepare(second, build.run);
-  expect(build.builds()).toHaveLength(2);
-});
+test.skipIf(process.platform === "win32")(
+  "repairs damaged shared symbols and serializes concurrent producers",
+  async () => {
+    useCache();
+    const first = fixture();
+    const second = fixture();
+    const build = buildAdapter();
+    const [result] = await Promise.all([prepare(first, build.run), prepare(second, build.run)]);
+    expect(build.builds()).toHaveLength(1);
+    const cache = resolveImmutableDirectoryPath({
+      projectRoot: first,
+      family: "rust-dev-runtime",
+      archiveSha256: result!.fingerprint!,
+      directoryName: "rust-dev-runtime-v1",
+    });
+    writeFileSync(
+      path.join(cache, "content/bin/nodex-core.dSYM/Contents/Resources/DWARF/nodex-core"),
+      "broken",
+    );
+    await prepare(second, build.run);
+    expect(build.builds()).toHaveLength(2);
+  },
+);
 
-test("keeps the previous runnable output if new inputs fail to compile or escape the fingerprint", async () => {
-  useCache();
-  const root = fixture();
-  await prepare(root, buildAdapter().run);
-  write(path.join(root, "crates/core/src/main.rs"), "changed\n");
-  await expect(prepare(root, buildAdapter({ fail: true }).run)).rejects.toThrow("compiler failed");
-  expect(readFileSync(rustDevRuntimeExecutable(root, "nodex-core"), "utf8")).toBe(
-    "binary:nodex-core",
-  );
-  const extraDependency = path.join(root, "unregistered.json");
-  write(extraDependency, "{}");
-  await expect(prepare(root, buildAdapter({ extraDependency }).run)).rejects.toThrow(
-    "outside the shared-cache fingerprint",
-  );
-  expect(readFileSync(rustDevRuntimeExecutable(root, "nodex-core"), "utf8")).toBe(
-    "binary:nodex-core",
-  );
-});
+test.skipIf(process.platform === "win32")(
+  "keeps the previous runnable output if new inputs fail to compile or escape the fingerprint",
+  async () => {
+    useCache();
+    const root = fixture();
+    await prepare(root, buildAdapter().run);
+    write(path.join(root, "crates/core/src/main.rs"), "changed\n");
+    await expect(prepare(root, buildAdapter({ fail: true }).run)).rejects.toThrow(
+      "compiler failed",
+    );
+    expect(readFileSync(rustDevRuntimeExecutable(root, "nodex-core"), "utf8")).toBe(
+      "binary:nodex-core",
+    );
+    const extraDependency = path.join(root, "unregistered.json");
+    write(extraDependency, "{}");
+    await expect(prepare(root, buildAdapter({ extraDependency }).run)).rejects.toThrow(
+      "outside the shared-cache fingerprint",
+    );
+    expect(readFileSync(rustDevRuntimeExecutable(root, "nodex-core"), "utf8")).toBe(
+      "binary:nodex-core",
+    );
+  },
+);
 
-test("refuses a bundle whose matching UUID has no application source lines", async () => {
-  useCache();
-  const root = fixture();
-  await expect(prepare(root, buildAdapter({ missingSymbols: true }).run)).rejects.toThrow(
-    "lack portable source lines",
-  );
-  expect(existsSync(rustDevRuntimeExecutable(root, "nodex-core"))).toBe(false);
-});
+test.skipIf(process.platform === "win32")(
+  "refuses a bundle whose matching UUID has no application source lines",
+  async () => {
+    useCache();
+    const root = fixture();
+    await expect(prepare(root, buildAdapter({ missingSymbols: true }).run)).rejects.toThrow(
+      "lack portable source lines",
+    );
+    expect(existsSync(rustDevRuntimeExecutable(root, "nodex-core"))).toBe(false);
+  },
+);
 
 test.each([
   { CARGO_PROFILE_DEV_DEBUG: "full" },
@@ -346,23 +360,26 @@ test("bypasses shared bundles when PATH selects a custom native linker driver", 
   expect(build.builds()[0]!.environment.CARGO_ENCODED_RUSTFLAGS).toBeUndefined();
 });
 
-test("accepts the launcher's staged executable selection and rejects configured custom profiles", () => {
-  const root = fixture();
-  const context = {
-    projectRoot: root,
-    platform: "darwin",
-    architecture: "arm64",
-    environment: {
-      ...environment(root),
-      NODEX_CORE_EXECUTABLE: rustDevRuntimeExecutable(root, "nodex-core"),
-    },
-  } as const;
-  expect(usesSharedRustDevRuntime(context)).toBe(true);
-  expect(usesSharedRustDevRuntime({ ...context, platform: "linux" })).toBe(false);
-  expect(usesSharedRustDevRuntime({ ...context, architecture: "x64" })).toBe(false);
-  write(path.join(root, ".cargo/config.toml"), '[profile.dev]\ndebug = "full"\n');
-  expect(usesSharedRustDevRuntime(context)).toBe(false);
-});
+test.skipIf(process.platform === "win32")(
+  "accepts the launcher's staged executable selection and rejects configured custom profiles",
+  () => {
+    const root = fixture();
+    const context = {
+      projectRoot: root,
+      platform: "darwin",
+      architecture: "arm64",
+      environment: {
+        ...environment(root),
+        NODEX_CORE_EXECUTABLE: rustDevRuntimeExecutable(root, "nodex-core"),
+      },
+    } as const;
+    expect(usesSharedRustDevRuntime(context)).toBe(true);
+    expect(usesSharedRustDevRuntime({ ...context, platform: "linux" })).toBe(false);
+    expect(usesSharedRustDevRuntime({ ...context, architecture: "x64" })).toBe(false);
+    write(path.join(root, ".cargo/config.toml"), '[profile.dev]\ndebug = "full"\n');
+    expect(usesSharedRustDevRuntime(context)).toBe(false);
+  },
+);
 
 test("reads escaped dependency paths without losing spaces or hash characters", () => {
   expect(

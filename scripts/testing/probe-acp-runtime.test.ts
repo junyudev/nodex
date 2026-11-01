@@ -66,7 +66,7 @@ test("manual probes refuse existing homes and preserve previous reports", async 
     host,
   );
   const environment = await createAcpProbeEnvironment(root, options);
-  expect(environment.manifest.repositoryRealpath).toBe(root);
+  expect(environment.manifest.repositoryRealpath).toBe(realpathSync(root));
   expect(JSON.parse(readFileSync(reportPath, "utf8"))).toEqual({ status: "running", home });
   writeFileSync(reportPath, "preserved evidence");
   await expect(createAcpProbeEnvironment(root, options)).rejects.toThrow("report already exists");
@@ -100,10 +100,10 @@ test("linked-worktree gates create separate owned homes and reports in the prima
   const options = parseAcpRuntimeProbeArguments(["--gate", ...target], host);
   const first = await createAcpProbeEnvironment(linked, options);
   const second = await createAcpProbeEnvironment(linked, options);
-  expect(first.home.startsWith(join(primary, "runs.local/acp-runtime-"))).toBe(true);
-  expect(first.reportPath.startsWith(join(primary, "notes.local/artifacts/acp-runtime-"))).toBe(
-    true,
-  );
+  expect(first.home.startsWith(join(realpathSync(primary), "runs.local/acp-runtime-"))).toBe(true);
+  expect(
+    first.reportPath.startsWith(join(realpathSync(primary), "notes.local/artifacts/acp-runtime-")),
+  ).toBe(true);
   expect(first.manifest.repositoryRealpath).toBe(realpathSync(linked));
   expect(first.manifest.environmentId).not.toBe(second.manifest.environmentId);
   expect(first.home).not.toBe(second.home);

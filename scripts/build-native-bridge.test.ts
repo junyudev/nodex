@@ -106,7 +106,9 @@ function fixture(name: "clipboard" | "devicecheck" | "notifications" = "clipboar
   };
 }
 
-test.each(["clipboard", "devicecheck", "notifications"] as const)(
+test
+  .skipIf(process.platform === "win32")
+  .each(["clipboard", "devicecheck", "notifications"] as const)(
   "reuses verified %s output without rebuilding or changing its bytes",
   (name) => {
     const instance = fixture(name);
@@ -120,7 +122,9 @@ test.each(["clipboard", "devicecheck", "notifications"] as const)(
   },
 );
 
-test.each(["source", "binding", "builder", "lock", "electron", "toolchain", "environment"])(
+test
+  .skipIf(process.platform === "win32")
+  .each(["source", "binding", "builder", "lock", "electron", "toolchain", "environment"])(
   "rebuilds after the %s input changes",
   (change) => {
     const instance = fixture();
@@ -147,7 +151,9 @@ test.each(["source", "binding", "builder", "lock", "electron", "toolchain", "env
   },
 );
 
-test.each(["missing", "tampered", "non-executable", "symlink", "bad-receipt", "minimum-macos"])(
+test
+  .skipIf(process.platform === "win32")
+  .each(["missing", "tampered", "non-executable", "symlink", "bad-receipt", "minimum-macos"])(
   "rebuilds %s cached output instead of trusting the receipt",
   (damage) => {
     const instance = fixture();
@@ -168,7 +174,7 @@ test.each(["missing", "tampered", "non-executable", "symlink", "bad-receipt", "m
   },
 );
 
-test.each(["13.0", "26.0"])(
+test.skipIf(process.platform === "win32").each(["13.0", "26.0"])(
   "rejects newly compiled macOS %s output before publication",
   (minimum) => {
     const instance = fixture();
@@ -182,20 +188,23 @@ test.each(["13.0", "26.0"])(
   },
 );
 
-test.each(["compiler", "architecture"])("does not publish failed %s output", (failure) => {
-  const instance = fixture();
-  failBuild = failure === "compiler";
-  architecture = failure === "architecture" ? "x86_64" : "arm64";
-  expect(() => instance.build()).toThrow();
-  expect(existsSync(instance.output)).toBe(false);
-  expect(existsSync(`${instance.output}.build.json`)).toBe(false);
-  failBuild = false;
-  architecture = "arm64";
-  expect(instance.build()).toBe("built");
-  expect(instance.build()).toBe("reused");
-});
+test.skipIf(process.platform === "win32").each(["compiler", "architecture"])(
+  "does not publish failed %s output",
+  (failure) => {
+    const instance = fixture();
+    failBuild = failure === "compiler";
+    architecture = failure === "architecture" ? "x86_64" : "arm64";
+    expect(() => instance.build()).toThrow();
+    expect(existsSync(instance.output)).toBe(false);
+    expect(existsSync(`${instance.output}.build.json`)).toBe(false);
+    failBuild = false;
+    architecture = "arm64";
+    expect(instance.build()).toBe("built");
+    expect(instance.build()).toBe("reused");
+  },
+);
 
-test.each(["CXX", "MAKEFLAGS", "MFLAGS", "MAKEFILES"])(
+test.skipIf(process.platform === "win32").each(["CXX", "MAKEFLAGS", "MFLAGS", "MAKEFILES"])(
   "does not reuse external %s overrides with untracked dependencies",
   (key) => {
     const instance = fixture();

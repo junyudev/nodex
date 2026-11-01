@@ -1,2 +1,4 @@
 # Runtime locks and official Skills bind exact text bytes on every build host.
 * text=auto eol=lf
+resources/agent-runtime/patches/*.patch -whitespace
+patches/*.patch -whitespace

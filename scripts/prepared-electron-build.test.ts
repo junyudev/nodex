@@ -148,7 +148,12 @@ const makeFixture = (): {
     ...(process.platform === "darwin"
       ? ["out/agent-runtime/node_modules/node-pty/build/Release/spawn-helper"]
       : []),
-    "out/agent-runtime/node_modules/node-pty/build/Release/pty.node",
+    ...(process.platform === "win32"
+      ? [
+          "out/agent-runtime/node_modules/node-pty/build/Release/conpty.node",
+          "out/agent-runtime/node_modules/node-pty/build/Release/conpty_console_list.node",
+        ]
+      : ["out/agent-runtime/node_modules/node-pty/build/Release/pty.node"]),
     "out/agent-runtime/LICENSE.t3code",
     "out/agent-runtime/node_modules/@anthropic-ai/claude-agent-sdk/package.json",
     "out/agent-runtime/node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs",
