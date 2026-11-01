@@ -335,9 +335,8 @@ covering every message stay above them. So turning the guide off and writing
 the same knowledge, or a different view, as preferences takes effect at least
 as strongly as the guide did.
 
-It uses the shared Agent Runtime utility policy, which is
-full-access with automatic native approvals; the prompt and output schema are
-behavioral constraints, not a separate tool or content permission boundary.
+It uses the shared Agent Runtime utility policy: read-only native execution without approval
+prompts. The prompt and output schema constrain its output.
 
 A Project's Inbox narrows that context to the Project. Its messages are already
 that Project's Pages, so a new chat starts in the Project, an existing chat must

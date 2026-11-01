@@ -68,8 +68,8 @@ not a resource permission request.
 
 A suggestion is advice. The suggestion Agent receives message text and a
 bounded routing context through the shared Runtime utility capability. Like
-other native utilities it uses full access and automatic approvals; its prompt
-asks only for structured advice and does not create a permission boundary. One
+other native utilities it runs read-only without approval prompts; its prompt
+asks only for structured advice. One
 pass covers one Inbox. A
 Project's Inbox narrows the context to that Project: its messages already belong
 there, so routing stays inside the Project except for filing in another one. Main validates every target

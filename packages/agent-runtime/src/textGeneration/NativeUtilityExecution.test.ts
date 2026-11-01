@@ -23,9 +23,12 @@ const fs = require("node:fs");
 const path = require("node:path");
 const args = process.argv.slice(2);
 const codex = args[0] === "exec";
-const required = codex ? "--dangerously-bypass-approvals-and-sandbox" : "--dangerously-skip-permissions";
-if (!args.includes(required) || ["--allowedTools", "--disallowedTools", "--tools"].some(flag => args.includes(flag))) {
-  process.stderr.write("Native utility was launched with a restricted execution policy");
+const valueOf = flag => args[args.indexOf(flag) + 1];
+const readOnly = codex
+  ? valueOf("--sandbox") === "read-only" && args.some((arg, index) => args[index - 1] === "--config" && arg === 'approval_policy="never"')
+  : valueOf("--permission-mode") === "dontAsk" && valueOf("--tools") === "Read,Grep,Glob" && valueOf("--allowedTools") === "Read,Grep,Glob";
+if (!readOnly || args.some(arg => arg.startsWith("--dangerously-"))) {
+  process.stderr.write("Native utility must be read-only without approval prompts");
   process.exit(7);
 }
 let prompt = "";
@@ -39,6 +42,7 @@ process.stdin.on("end", () => {
   }
   const investigation = !!schema.properties.stops;
   if (investigation && !prompt.includes("git diff")) throw new Error("Investigation task context was lost");
+  if (investigation && fs.readFileSync("workspace.txt", "utf8") !== "Review this workspace") throw new Error("Workspace is unreadable");
   const result = investigation ? { stops: [] } : { title: "Inspect exact native execution" };
   const ephemeral = args.includes(codex ? "--ephemeral" : "--no-session-persistence");
   fs.appendFileSync(path.join(process.env.NATIVE_UTILITY_PROOF_DIR, "accepted.jsonl"), JSON.stringify({ investigation, ephemeral, cwd: process.cwd() }) + "\\n");
@@ -49,12 +53,13 @@ process.stdin.on("end", () => {
 
 for (const driver of ["codex", "claude"] as const) {
   it.effect(
-    `${driver} utility tasks use automatic full access while retaining task context and structured output`,
+    `${driver} utilities run read-only without prompts and retain workspace reads and structured output`,
     () =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
         const directory = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-utility-policy-" });
+        yield* fs.writeFileString(path.join(directory, "workspace.txt"), "Review this workspace");
         const scriptPath = path.join(directory, "native-peer.cjs");
         yield* fs.writeFileString(scriptPath, cliPeer);
         const binaryPath =

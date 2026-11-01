@@ -145,10 +145,10 @@ an unknown or retired ID cannot fall back to native call metadata.
 MCP initialization may bind the credential's sole registered incarnation before the
 first Run is prepared. It never assigns a Run or resolves an ambiguous connection.
 
-Provider utility processes for titles, commit messages and change-request guides use the same
-full-access, automatic-approval native execution policy. Their task prompts and output schemas
-remain specific to their purpose; investigation instructions request observations without
-installing a tool allowlist, denylist or separate permission boundary.
+Provider utility processes for titles, commit messages and change-request guides run read-only
+with no approval prompts: Codex uses a read-only sandbox and Claude Code allows only reading and
+searching tools. Their task prompts and output schemas remain specific to their purpose;
+investigation can read the workspace but cannot change it or reach the network.
 
 Ephemeral structured generations follow the requesting client's lifetime. Cancelling a pending
 request interrupts its native utility process and releases temporary resources without stopping

@@ -203,7 +203,13 @@ it.effect("buffers an exact-host title completion that arrives before turn/start
     assert.strictEqual(threadStartRequests[0]?.serviceName, "source-service");
     assert.strictEqual(turnStartRequests[0]?.threadId, "thread-title-1");
     assert.strictEqual(turnStartRequests[0]?.turnTrigger, "thread_title");
-    assert.strictEqual(turnStartRequests[0]?.permissions, ":danger-full-access");
+    assert.strictEqual(threadStartRequests[0]?.sandbox, "read-only");
+    assert.strictEqual(threadStartRequests[0]?.approvalPolicy, "never");
+    assert.deepEqual(turnStartRequests[0]?.sandboxPolicy, {
+      type: "readOnly",
+      networkAccess: false,
+    });
+    assert.strictEqual(turnStartRequests[0]?.approvalPolicy, "never");
     assert.deepEqual(lifecycle, [
       "register:thread-title-1",
       "unsubscribe:thread-title-1",
@@ -573,7 +579,7 @@ it.effect("reconsiders a generated title in an exclude-turns fork of the source 
     assert.strictEqual(forkRequests[0]?.serviceTier, null);
     assert.strictEqual(forkRequests[0]?.cwd, "/repo");
     assert.strictEqual(forkRequests[0]?.approvalPolicy, "never");
-    assert.strictEqual(forkRequests[0]?.permissions, ":danger-full-access");
+    assert.strictEqual(forkRequests[0]?.sandbox, "read-only");
     assert.deepEqual(forkRequests[0]?.runtimeWorkspaceRoots, []);
     assert.strictEqual(forkRequests[0]?.ephemeral, true);
     assert.strictEqual(forkRequests[0]?.excludeTurns, true);

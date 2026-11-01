@@ -40,11 +40,10 @@ export interface Request<S extends Schema.Top> {
   /** The user's attachments, already listed in the prompt. Providers that accept images send them. */
   readonly attachments?: ReadonlyArray<ChatAttachment> | undefined;
   /**
-   * Set when the model must investigate `cwd` before answering: it may read files and run
-   * observational commands there, over as many turns as it needs. The task prompt asks it to
-   * change nothing; native execution still uses full access and automatic approval. Absent,
-   * the prompt carries everything needed. A runner without investigation capabilities fails
-   * rather than answering blind.
+   * Set when the model must investigate `cwd` before answering with read-only tools,
+   * over as many turns as it needs. All utility runs enforce read-only execution and
+   * never prompt for approval. Absent, the prompt carries everything needed. A runner
+   * without investigation capabilities fails rather than answering blind.
    */
   readonly investigate?: { readonly timeoutMs: number } | undefined;
   readonly jsonSchema?: Readonly<Record<string, unknown>>;

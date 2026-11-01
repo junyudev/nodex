@@ -39,6 +39,7 @@ import {
 import { makeClaudeEnvironment } from "../provider/Drivers/ClaudeHome.ts";
 
 const CLAUDE_TIMEOUT_MS = 180_000;
+const READ_ONLY_TOOLS = ["Read", "Grep", "Glob"];
 /**
  * Schema for the wrapper JSON returned by `claude -p --output-format json`.
  * Verbose mode wraps the result in an array of conversation messages.
@@ -219,8 +220,9 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
                   env: claudeEnvironment,
                   ...(claudeSettings.isolated ? { settingSources: [] } : {}),
                   model: resolveClaudeCatalogApiModelId(catalog, resolvedModelSelection),
-                  permissionMode: "bypassPermissions",
-                  allowDangerouslySkipPermissions: true,
+                  permissionMode: "dontAsk",
+                  tools: READ_ONLY_TOOLS,
+                  allowedTools: READ_ONLY_TOOLS,
                   persistSession: false,
                   settings,
                   ...(cliEffort ? { effort: cliEffort as NonNullable<Options["effort"]> } : {}),
@@ -273,7 +275,12 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
           ...(cliEffort ? ["--effort", cliEffort] : []),
           "--settings",
           settingsJson,
-          "--dangerously-skip-permissions",
+          "--permission-mode",
+          "dontAsk",
+          "--tools",
+          READ_ONLY_TOOLS.join(","),
+          "--allowedTools",
+          READ_ONLY_TOOLS.join(","),
           // A utility task is not a conversation: it never joins the user's Claude history.
           "--no-session-persistence",
         ],
