@@ -1,0 +1,47 @@
+src/renderer/features/workspace-files/workspace-pierre-editor.tsx
+  s_a62e5887089e7e::t_f99477d7c19615 352
+  s_a62e5887089e7e::t_f0f8c07d065d0e 59-62,110-111,192,242-251,348-349,358-361,397
+src/renderer/features/workspace-files/workspace-file-git-model.ts
+  s_a62e5887089e7e::t_cba8b5a368728e 51-58,297-300
+src/renderer/features/workspace-files/workspace-file-editor-diff.ts
+  s_a62e5887089e7e::t_f0f8c07d065d0e 9-11,15
+  s_a62e5887089e7e::t_b8fa02a4a74149 1-2,4-8,12-14,16-24,28-54
+docs/product-specs/workspace-file-git-data.md
+  s_a62e5887089e7e::t_a48c9144d7fe32 28-30,63-66
+  s_a62e5887089e7e::t_9beac0ac7999ce 67
+src/renderer/features/workspace-files/workspace-file-editor-diff.test.ts
+  s_a62e5887089e7e::t_f9fe14b1e47acc 3-12,20,33,46-78
+  s_a62e5887089e7e::t_8909e411c68abd 79
+src/renderer/features/workspace-files/workspace-files-panel.tsx
+  s_a62e5887089e7e::t_f99477d7c19615 121,239,411,753,1437,1451
+  s_a62e5887089e7e::t_cba8b5a368728e 1426-1436
+  s_a62e5887089e7e::t_f2d6f77beff48b 123
+src/renderer/features/workspace-files/workspace-file-change-blocks.ts
+  s_a62e5887089e7e::t_3cb3eba677a87d 1
+CHANGELOG.md
+  s_a62e5887089e7e::t_be452cafbddd59 50
+src/renderer/features/workspace-files/workspace-file-git-model.node.test.ts
+  s_a62e5887089e7e::t_c598965f0434ac 7,158-174
+  s_a62e5887089e7e::t_7393bb31f6aed0 175-176
+src/renderer/features/workspace-files/workspace-file-change-blocks.node.test.ts
+  s_a62e5887089e7e::t_3cb3eba677a87d 6,8-11
+src/renderer/features/workspace-files/workspace-pierre-editor.test.tsx
+  s_a62e5887089e7e::t_2966233a12fd49 16,109,273-302
+  s_a62e5887089e7e::t_a5512260aec243 303-304
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5b4e0274f37684875cba8819cc7da29029c0083c",
+  "prompts": {},
+  "sessions": {
+    "s_a62e5887089e7e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2ec19bab-a0ee-4190-9ba2-f81423363c25",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
