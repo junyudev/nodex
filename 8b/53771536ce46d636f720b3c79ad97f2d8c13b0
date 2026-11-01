@@ -1,0 +1,32 @@
+src/shared/app-protocol.ts
+  s_61ededb051faa8::t_781b8715ffa658 35,40-45
+  s_61ededb051faa8::t_9d74871cb1ba79 46
+src/main/app-protocol.ts
+  s_61ededb051faa8::t_781b8715ffa658 2,324-335
+electron.vite.config.ts
+  s_61ededb051faa8::t_b41900edcbf7db 167
+src/main/app-protocol.test.ts
+  s_61ededb051faa8::t_6ff5d38dea7d2d 269-272,444-465
+src/main/app-renderer-protocol.integration.ts
+  s_61ededb051faa8::t_6d512637ecfd60 9-13,18-21,74-78,112,116,212-213,260-270,275,307-311,349
+src/renderer/lib/app-resource-source.node.test.ts
+  s_61ededb051faa8::t_bc7d34bace1d7b 10
+src/shared/app-protocol.test.ts
+  s_61ededb051faa8::t_7c7556af7960d1 57-64
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8b53771536ce46d636f720b3c79ad97f2d8c13b0",
+  "prompts": {},
+  "sessions": {
+    "s_61ededb051faa8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19725-1673-78a3-85e3-bdba96788967",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
