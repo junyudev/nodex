@@ -1,0 +1,19 @@
+docs/landing-site.md
+  s_a5bb892838ce25::t_c77ad178fc6bf5 49-51
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "18304548af3a3e5d0cfe5c1d28d9453bde404195",
+  "prompts": {},
+  "sessions": {
+    "s_a5bb892838ce25": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e15d53ef-531c-43aa-afdd-245a08fa0ce0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
