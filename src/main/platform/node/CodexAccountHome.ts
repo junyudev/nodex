@@ -110,13 +110,8 @@ function assertPrivateFile(file: string, bound?: number): void {
   }
 }
 
-function sharedEntries(sharedHome: string, platform?: string): ReadonlySet<string> {
-  const entries = new Set<string>([
-    ...SHARED_DIRECTORIES,
-    ...SHARED_FILES.filter(
-      (entry) => platform !== "win32" || statIfPresent(join(sharedHome, entry)) !== null,
-    ),
-  ]);
+function sharedEntries(sharedHome: string): ReadonlySet<string> {
+  const entries = new Set<string>([...SHARED_DIRECTORIES, ...SHARED_FILES]);
   if (statIfPresent(sharedHome) === null) return entries;
   // Share the pinned runtime's state/config resources, never unknown account
   // credentials, cloud caches, installation identity or individual SQLite files.
@@ -215,7 +210,7 @@ export function inspectCodexAccountHome(input: {
       if (entry.endsWith(".config.toml"))
         assertSharedEntry(sharedHome, effectiveHome, entry, input.platform);
   }
-  for (const entry of sharedEntries(sharedHome, input.platform))
+  for (const entry of sharedEntries(sharedHome))
     assertSharedEntry(sharedHome, effectiveHome, entry, input.platform);
   return {
     mode: "overlay",
@@ -242,11 +237,14 @@ export function prepareCodexAccountHome(
     throw new Error("Codex account and shared directories must be on the same Windows volume.");
   for (const entry of SHARED_DIRECTORIES)
     mkdirSync(join(home.sharedHome, entry), { recursive: true, mode: 0o700 });
-  const entries = sharedEntries(home.sharedHome, input.platform);
+  const allEntries = sharedEntries(home.sharedHome);
   // Complete preflight precedes the first link, so an existing conflict cannot
   // partially redirect an independently used account's native state.
-  for (const entry of entries)
+  for (const entry of allEntries)
     assertSharedEntry(home.sharedHome, home.effectiveHome, entry, input.platform);
+  const entries = [...allEntries].filter(
+    (entry) => input.platform !== "win32" || statIfPresent(join(home.sharedHome, entry)) !== null,
+  );
   for (const entry of entries) {
     const link = join(home.effectiveHome, entry);
     if (statIfPresent(link) !== null) continue;

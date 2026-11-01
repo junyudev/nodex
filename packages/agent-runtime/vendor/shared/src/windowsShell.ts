@@ -30,4 +30,3 @@ export function sanitizeShellModeArgsForPlatform(
 ): Array<string> {
   return platform === "win32" ? args.map(escapeWindowsShellArg) : [...args];
 }
-

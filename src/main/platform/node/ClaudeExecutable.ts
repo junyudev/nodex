@@ -38,13 +38,16 @@ export const claudeExecutableCandidates = (
   const windows = platform === "win32";
   const path = windows ? win32 : posix;
   const home = claudeNativeHome(environment, platform);
-  if (binary.startsWith("~/") && !home) return [];
-  const expanded = binary.startsWith("~/") ? path.join(home!, binary.slice(2)) : binary;
+  const homeRelative = windows ? /^~[/\\]/u.test(binary) : binary.startsWith("~/");
+  if (homeRelative && !home) return [];
+  const expanded = homeRelative ? path.join(home!, binary.slice(2)) : binary;
   const roots = path.isAbsolute(expanded)
     ? [expanded]
-    : (claudeHostEnvironmentValue(environment, "PATH", platform) ?? "")
-        .split(windows ? ";" : delimiter)
-        .map((directory) => path.join(cwd ? path.resolve(cwd, directory) : directory, expanded));
+    : cwd && /[/\\]/u.test(expanded)
+      ? [path.resolve(cwd, expanded)]
+      : (claudeHostEnvironmentValue(environment, "PATH", platform) ?? "")
+          .split(windows ? ";" : delimiter)
+          .map((directory) => path.join(cwd ? path.resolve(cwd, directory) : directory, expanded));
   if (!windows || win32.extname(expanded)) return roots;
   const extensions = (
     claudeHostEnvironmentValue(environment, "PATHEXT", platform) ?? ".EXE;.CMD;.BAT;.PS1"
@@ -52,9 +55,10 @@ export const claudeExecutableCandidates = (
     .split(";")
     .map((extension) => extension.trim())
     .filter((extension) => /^\.[a-z0-9]+$/iu.test(extension));
+  // npm also emits an extensionless Unix shell file next to its Windows shim.
   return roots.flatMap((root) => [
-    root,
     ...extensions.map((extension) => `${root}${extension.toLowerCase()}`),
+    root,
   ]);
 };
 export const claudeWindowsPackageEntries = (launcher: string): readonly string[] => {

@@ -4,6 +4,7 @@ import { resolveNodexHomePath } from "./nodex-home";
 
 const baseOptions = {
   cwd: "/workspace/project",
+  platform: "linux",
   env: {},
   userHome: "/home/user",
 } satisfies Parameters<typeof resolveNodexHomePath>[0];
@@ -25,7 +26,7 @@ describe("resolveNodexHomePath", () => {
         ...baseOptions,
         env: { NODEX_HOME: "relative-profile" },
       }),
-    ).toBe(path.join(baseOptions.cwd, "relative-profile"));
+    ).toBe(path.posix.join(baseOptions.cwd, "relative-profile"));
   });
 
   test("ignores a blank environment override", () => {
@@ -50,7 +51,7 @@ describe("resolveNodexHomePath", () => {
         ...baseOptions,
         configuredHome: "project-profile",
       }),
-    ).toBe(path.join(baseOptions.cwd, "project-profile"));
+    ).toBe(path.posix.join(baseOptions.cwd, "project-profile"));
     expect(
       resolveNodexHomePath({
         ...baseOptions,

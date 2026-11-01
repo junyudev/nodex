@@ -26,7 +26,8 @@ function expandConfiguredHome(
 }
 
 export function resolveNodexHomePath(options: ResolveNodexHomePathOptions): string {
-  const platformPath = options.platform === "win32" ? path.win32 : path;
+  const platformPath =
+    options.platform === "win32" ? path.win32 : options.platform ? path.posix : path;
   const environmentHome = options.env.NODEX_HOME?.trim();
   if (environmentHome) {
     return resolvePath(environmentHome, options.cwd, platformPath);

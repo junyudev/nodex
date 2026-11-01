@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -57,7 +58,7 @@ describe("ApplicationHostRuntime", () => {
         yield* host.requestMicrophonePermission;
 
         expect(native.setDevelopmentDockIcon).toHaveBeenCalledWith(
-          "/workspace/nodex/resources/icon.png",
+          join("/workspace/nodex", "resources", "icon.png"),
         );
         expect(native.askForMicrophoneAccess).toHaveBeenCalledOnce();
       }),

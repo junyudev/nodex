@@ -144,7 +144,8 @@ describe("Codex account directory", () => {
   it("refuses to restart an account that lost a shared session or writer-lock link", () => {
     const input = fixture();
     const home = prepareCodexAccountHome(input);
-    rmSync(join(home.effectiveHome, "thread-writer-locks"));
+    rmSync(join(home.effectiveHome, "thread-writer-locks"), { recursive: true });
+    expect(existsSync(join(home.sharedHome, "thread-writer-locks"))).toBe(true);
     expect(() => assertCodexAccountHomeIdentity(home, input.platform)).toThrow(
       "lost its shared thread-writer-locks",
     );
