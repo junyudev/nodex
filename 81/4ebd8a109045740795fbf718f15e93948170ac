@@ -1,0 +1,71 @@
+docs/SECURITY.md
+  s_a5bb892838ce25::t_1269d0719260f1 81-84,113-114
+packages/landing/src/demos/HeroDemo.tsx
+  s_a5bb892838ce25::t_c06d9ad948ecb5 299-312
+  s_a5bb892838ce25::t_415b25187be210 401-402
+  s_a5bb892838ce25::t_eea1bbf10e9efd 17-23,26,187,298,395,406,774
+tests/e2e/page-file-tabs.spec.ts
+  s_a5bb892838ce25::t_c06d9ad948ecb5 157-159
+docs/product-specs/page-files-behavior.md
+  s_a5bb892838ce25::t_7f8c9e035accf1 150-151
+crates/nodex-core-server/tests/native_cli_client.rs
+  s_a5bb892838ce25::t_c06d9ad948ecb5 599-602,669-672,724-730,744-749,788-791
+packages/landing/src/replica/Window.tsx
+  s_a5bb892838ce25::t_eea1bbf10e9efd 312,318-319,348-353
+src/renderer/components/board/page-stage/page-files-row.test.tsx
+  s_a5bb892838ce25::t_a5a2d27e66562d 1,4,6-8,20-22,26-53,55-57,60-62,65-67,77-101,105-106,108-113,115-116,118-152,154-175,177,180-181,184-189,191,193-194,196-197,204-218,221
+  s_a5bb892838ce25::t_420d8dd0de4df0 153,182,192
+  s_a5bb892838ce25::t_9103ac44ea8c54 195,198-203
+packages/landing/src/replica/icons/shell.tsx
+  s_a5bb892838ce25::t_c06d9ad948ecb5 539-542
+src/renderer/features/page-files/page-file-viewer.tsx
+  s_a5bb892838ce25::t_c06d9ad948ecb5 6-10,52-53,230-233,281-282,302-304
+src/renderer/lib/page-file-tree.node.test.ts
+  s_a5bb892838ce25::t_c06d9ad948ecb5 21,71-76
+src/renderer/lib/use-library-files.ts
+  s_a5bb892838ce25::t_c06d9ad948ecb5 441-442
+docs/landing-site.md
+  s_a5bb892838ce25::t_98a72d740d1fed 177,193-196
+src/main/core-runtime/CoreModules.ts
+  s_a5bb892838ce25::t_c06d9ad948ecb5 223-226
+src/renderer/components/board/page-stage/page-file-source.tsx
+  s_a5bb892838ce25::t_c06d9ad948ecb5 30-32
+src/renderer/components/board/page-stage/properties-section.test.tsx
+  s_a5bb892838ce25::t_670f67b87f858a 6,158,386,404,411-412,414
+packages/landing/src/replica/Page.tsx
+  s_a5bb892838ce25::t_a19f132d491d10 18,140-154,156-158,162,166,169-170,172,176-177,180,182-207,209,217,220-221,227,232,237-242,250-251,258
+src/renderer/components/board/page-stage/page-files-row.tsx
+  s_a5bb892838ce25::t_c06d9ad948ecb5 687-688,714-716
+src/main/page-files/page-file-html-host.integration.ts
+  s_a5bb892838ce25::t_79ec829775e4b1 180-202
+  s_a5bb892838ce25::t_d66c72f091a602 179
+packages/landing/src/demos/PagesDemo.tsx
+  s_a5bb892838ce25::t_a4f27b87fb9391 27,134,172-177,289,300,303,306-307,310
+  s_a5bb892838ce25::t_c06d9ad948ecb5 135-136,138
+packages/landing/src/replica/Viewers.tsx
+  s_a5bb892838ce25::t_415b25187be210 8,42-45,50,53
+  s_a5bb892838ce25::t_c06d9ad948ecb5 29-31
+  s_a5bb892838ce25::t_fe541830dbdf68 3,10-15,17,20-21,23,28,32-36,39-41,46-49,51,54,71,73
+  s_a5bb892838ce25::t_c6f91e46bdae95 52
+crates/nodex-core/src/library/files/tests/page_attachment.rs
+  s_a5bb892838ce25::t_c06d9ad948ecb5 198-202
+src/renderer/components/board/page-stage/page-file-tree-view.tsx
+  s_a5bb892838ce25::t_c06d9ad948ecb5 128-129,172-177,278-280
+  s_a5bb892838ce25::t_420d8dd0de4df0 230
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "814ebd8a109045740795fbf718f15e93948170ac",
+  "prompts": {},
+  "sessions": {
+    "s_a5bb892838ce25": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e15d53ef-531c-43aa-afdd-245a08fa0ce0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
