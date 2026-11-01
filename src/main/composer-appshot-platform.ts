@@ -1,3 +1,4 @@
+import { hostCapabilities } from "./platform/host-capabilities";
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
@@ -198,7 +199,8 @@ export function makeComposerAppshotLivePlatform(
   return {
     platform: config.platform as NodeJS.Platform,
     processIdentifier: process.pid,
-    helperAvailable: () => config.platform === "darwin" && existsSync(helperExecutable),
+    helperAvailable: () =>
+      hostCapabilities(config.platform).appshot && existsSync(helperExecutable),
     readFrontmostWindow: (signal) => runComposerAppshotHelper(helperExecutable, signal),
     listWindowSources: (thumbnailSize) =>
       desktopCapturer.getSources({

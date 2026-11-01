@@ -215,10 +215,10 @@ export const live = (options: {
       let releaseGlobalSubscription = (): void => undefined;
       let releaseGlobalWindowSubscription = (): void => undefined;
 
-      if (config.platform === "darwin" || config.platform === "win32") {
+      if (config.capabilities.dictationBackend !== null) {
         const native = yield* Effect.acquireRelease(
           Effect.sync(() =>
-            config.platform === "darwin"
+            config.capabilities.dictationBackend === "macos"
               ? {
                   platform: "darwin" as const,
                   helper: new MacDictationNativeHelperClient(
@@ -231,7 +231,7 @@ export const live = (options: {
                 }
               : {
                   platform: "win32" as const,
-                  helper: createWindowsDictationNativeHelperClient(),
+                  helper: createWindowsDictationNativeHelperClient(config.platform),
                 },
           ),
           ({ helper }) => Effect.sync(() => helper.dispose()),

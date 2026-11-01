@@ -1,3 +1,4 @@
+import { hostCapabilities } from "../platform/host-capabilities";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -324,7 +325,7 @@ const make = (options: ComputerUseRuntimeLayerOptions) =>
     );
 
     const start: Effect.Effect<ComputerUseRuntimeStart> = Effect.gen(function* () {
-      if (options.host.platform !== "darwin") {
+      if (!hostCapabilities(options.host.platform).computerControl) {
         return {
           addon: null,
           result: unavailable(

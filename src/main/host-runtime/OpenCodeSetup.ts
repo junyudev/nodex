@@ -17,7 +17,7 @@ import type { OpenCodeExecutable, OpenCodeSetupState } from "../../shared/openco
 import { AgentRuntimeProviderConfiguration } from "../agent-runtime/AgentRuntimeProviderConfiguration";
 import { MainConfig } from "../app/MainConfig";
 import {
-  OPENCODE_INSTALL_COMMAND,
+  openCodeInstallCommand,
   OpenCodeInstallPlatform,
   type OpenCodeInstalledExecutable,
   type OpenCodeInstallOutput,
@@ -80,11 +80,11 @@ export const make = Effect.gen(function* () {
   const platform = yield* OpenCodeInstallPlatform;
   const providers = yield* AgentRuntimeProviderConfiguration;
   const config = yield* MainConfig;
-  const supported = config.platform === "darwin" || config.platform === "linux";
+  const supported = config.capabilities.openCode;
   const initial: OpenCodeSetupState = {
     revision: 0,
     supported,
-    command: OPENCODE_INSTALL_COMMAND,
+    command: openCodeInstallCommand(config.platform, config.arch),
     executable: { status: "missing" },
     installation: { phase: "idle" },
   };

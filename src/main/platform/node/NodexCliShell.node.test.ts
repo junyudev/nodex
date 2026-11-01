@@ -4,7 +4,8 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { expect, test } from "vite-plus/test";
+import { expect, test as platformTest } from "vite-plus/test";
+const test = platformTest.skipIf(process.platform === "win32");
 import {
   bindNodexCliShell,
   composeNodexCliShellEnvironment,

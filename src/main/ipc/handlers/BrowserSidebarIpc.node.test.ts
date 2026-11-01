@@ -1,3 +1,4 @@
+import { hostCapabilities } from "../../platform/host-capabilities";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as FiberSet from "effect/FiberSet";
@@ -129,6 +130,7 @@ it.effect(
               Layer.succeed(
                 MainConfig,
                 MainConfig.of({
+                  capabilities: hostCapabilities("darwin", "arm64"),
                   assistantStreamingDebug: false,
                   appVersion: "test",
                   arch: "arm64",

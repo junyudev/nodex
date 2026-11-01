@@ -1,3 +1,4 @@
+import { killChildProcessTree } from "../../process-tree";
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { promisify } from "node:util";
 import { setTimeout } from "node:timers/promises";
@@ -153,14 +154,16 @@ export function observeWindowsDictationRelease(
     },
     dispose: () => {
       active = false;
-      child.kill();
+      killChildProcessTree(child, "SIGKILL", "win32");
     },
   };
 }
 
 /** Windows uses OS shortcuts, modifier-state polling and foreground Ctrl+V. */
-export function createWindowsDictationNativeHelperClient(): WindowsDictationNativeHelperClient {
-  if (process.platform !== "win32") throw new Error("Windows dictation requires Windows");
+export function createWindowsDictationNativeHelperClient(
+  platform: string,
+): WindowsDictationNativeHelperClient {
+  if (platform !== "win32") throw new Error("Windows dictation requires Windows");
   return new WindowsDictationNativeHelperClient({
     clipboard: createWindowsDictationClipboardPort(clipboard),
     registerShortcut: (accelerator, onPressed) => globalShortcut.register(accelerator, onPressed),

@@ -23,12 +23,12 @@ test("Windows launch resolution accepts native environment casing and npm entryp
     USERPROFILE: "C:\\users\\dev",
   };
   expect(claudeExecutableCandidates("claude", environment, "win32", "C:\\workspace")).toEqual([
-    "C:\\workspace\\bin\\claude",
     "C:\\workspace\\bin\\claude.exe",
     "C:\\workspace\\bin\\claude.cmd",
-    "C:\\tools\\claude",
+    "C:\\workspace\\bin\\claude",
     "C:\\tools\\claude.exe",
     "C:\\tools\\claude.cmd",
+    "C:\\tools\\claude",
   ]);
   expect(claudeExecutableCandidates("~/bin/claude.exe", environment, "win32")).toEqual([
     "C:\\users\\dev\\bin\\claude.exe",
@@ -181,4 +181,15 @@ test("relative PATH entries belong to the explicit Claude workspace", async () =
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test("explicit relative Windows commands resolve against the execution workspace", () => {
+  expect(
+    claudeExecutableCandidates(
+      ".\\tools\\claude.exe",
+      { Path: "D:\\another" },
+      "win32",
+      "C:\\工作 workspace",
+    ),
+  ).toEqual(["C:\\工作 workspace\\tools\\claude.exe"]);
 });

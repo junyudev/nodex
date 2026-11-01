@@ -132,6 +132,8 @@ const platform: Layer.Layer<CodexPlatform, MainApplicationError, MainConfig | Ap
       );
       const scenarioRuntimeProjectRoot = scenarioAgentRuntimeProjectRoot(config);
       const runtime = yield* resolveCodexRuntimeEffect({
+        platform: config.platform,
+        architecture: config.arch,
         isPackaged: config.isPackaged,
         projectRootPath: scenarioRuntimeProjectRoot || config.projectRootPath,
         resourcesPath: config.resourcesPath,
@@ -201,12 +203,13 @@ const localLaunch = Layer.effect(
       ),
     );
     const accountArgs = codexAccountHomeLaunchArgs(codex.accountHome);
-    if (config.platform === "win32")
-      return CodexLocalLaunch.of({ configOverrides: [...featureArgs, ...accountArgs] });
-    const cliArgs = yield* Effect.tryPromise(() => prepareNodexCliShell(config.nodexHome)).pipe(
+    const cliArgs = yield* Effect.tryPromise(() =>
+      prepareNodexCliShell(config.nodexHome, config.platform),
+    ).pipe(
       Effect.andThen(
         Effect.tryPromise(() =>
           nodexCliShellLaunchArgs({
+            platform: config.platform,
             nodexHome: config.nodexHome,
             codexHome: codex.codexHome,
             searchPaths: codex.runtime.additionalSearchPaths,

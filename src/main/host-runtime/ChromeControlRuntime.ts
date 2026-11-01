@@ -1,3 +1,4 @@
+import { hostCapabilities } from "../platform/host-capabilities";
 import { createHash } from "node:crypto";
 import { constants as fsConstants, promises as fs } from "node:fs";
 import path from "node:path";
@@ -367,7 +368,7 @@ export const live = (options: ChromeControlRuntimeOptions): Layer.Layer<ChromeCo
       const bundle =
         options.browserRuntime.status === "available" ? options.browserRuntime.bundle : null;
       const chromeCapability = bundle?.manifest.capabilities.browserUse.backends.chrome ?? null;
-      const platformSupported = options.platform === "darwin";
+      const platformSupported = hostCapabilities(options.platform).browserControl;
       const descriptorArtifact =
         bundle && chromeCapability?.status === "available"
           ? bundle.manifest.artifacts.find(

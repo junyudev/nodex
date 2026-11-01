@@ -144,7 +144,7 @@ it.effect(
         status: "unusable",
         message: "Cannot read this executable",
       });
-      const unsupported = yield* harness(null, "win32");
+      const unsupported = yield* harness(null, "freebsd");
       expect((yield* unsupported.owner.read).supported).toBe(false);
       expect((yield* unsupported.owner.install).installation).toMatchObject({
         phase: "failed",

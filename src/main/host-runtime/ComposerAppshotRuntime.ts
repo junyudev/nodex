@@ -1,3 +1,4 @@
+import { hostCapabilities } from "../platform/host-capabilities";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -124,7 +125,8 @@ export const liveWithPlatform = (
           catch: (cause) => error(operation, cause),
         });
       const available = Effect.gen(function* () {
-        if ((yield* Ref.get(state)).closed || platform.platform !== "darwin") return false;
+        if ((yield* Ref.get(state)).closed || !hostCapabilities(platform.platform).appshot)
+          return false;
         return yield* Effect.try({
           try: platform.helperAvailable,
           catch: (cause) => error("check-availability", cause),

@@ -3,6 +3,7 @@ import {
   closeSync,
   fstatSync,
   lstatSync,
+  linkSync,
   mkdirSync,
   openSync,
   opendirSync,
@@ -138,10 +139,30 @@ function homeEntries(home: string): readonly string[] {
   }
 }
 
-function assertSharedEntry(sharedHome: string, accountHome: string, entry: string): void {
+function assertSharedEntry(
+  sharedHome: string,
+  accountHome: string,
+  entry: string,
+  platform?: string,
+): void {
   const link = join(accountHome, entry);
   const existing = statIfPresent(link);
   if (existing === null) return;
+  const target = join(sharedHome, entry);
+  const shared = statIfPresent(target);
+  if (
+    platform === "win32" &&
+    existing.isFile() &&
+    shared?.isFile() &&
+    existing.dev === shared.dev &&
+    existing.ino === shared.ino
+  )
+    return;
+  if (platform === "win32" && existing.isSymbolicLink() && shared) {
+    const actual = statSync(link);
+    const expected = statSync(target);
+    if (actual.dev === expected.dev && actual.ino === expected.ino) return;
+  }
   if (!existing.isSymbolicLink())
     throw new Error(
       `Codex account directory contains its own ${entry}. Choose a fresh account directory.`,
@@ -166,10 +187,6 @@ export function inspectCodexAccountHome(input: {
       sharedDirectoryIdentity: null,
       sharedEntryNames: [],
     };
-  if (input.platform === "win32")
-    throw new Error(
-      "Separate Codex account directories are unavailable on Windows. Use the native account directory.",
-    );
   const original = statIfPresent(input.accountHome);
   if (original?.isSymbolicLink())
     throw new Error("Codex account directory must be a real directory, not a symbolic link.");
@@ -190,10 +207,11 @@ export function inspectCodexAccountHome(input: {
         "Codex account directory contains its own conversation database. Choose a fresh account directory.",
       );
     for (const entry of entries)
-      if (entry.endsWith(".config.toml")) assertSharedEntry(sharedHome, effectiveHome, entry);
+      if (entry.endsWith(".config.toml"))
+        assertSharedEntry(sharedHome, effectiveHome, entry, input.platform);
   }
   for (const entry of sharedEntries(sharedHome))
-    assertSharedEntry(sharedHome, effectiveHome, entry);
+    assertSharedEntry(sharedHome, effectiveHome, entry, input.platform);
   return {
     mode: "overlay",
     sharedHome,
@@ -212,16 +230,33 @@ export function prepareCodexAccountHome(
   if (input.accountHome === null) return home;
   mkdirSync(home.sharedHome, { recursive: true, mode: 0o700 });
   mkdirSync(home.effectiveHome, { recursive: true, mode: 0o700 });
+  if (
+    input.platform === "win32" &&
+    statSync(home.sharedHome).dev !== statSync(home.effectiveHome).dev
+  )
+    throw new Error("Codex account and shared directories must be on the same Windows volume.");
   for (const entry of SHARED_DIRECTORIES)
     mkdirSync(join(home.sharedHome, entry), { recursive: true, mode: 0o700 });
-  const entries = sharedEntries(home.sharedHome);
+  const allEntries = sharedEntries(home.sharedHome);
   // Complete preflight precedes the first link, so an existing conflict cannot
   // partially redirect an independently used account's native state.
-  for (const entry of entries) assertSharedEntry(home.sharedHome, home.effectiveHome, entry);
+  for (const entry of allEntries)
+    assertSharedEntry(home.sharedHome, home.effectiveHome, entry, input.platform);
+  const entries = [...allEntries].filter(
+    (entry) => input.platform !== "win32" || statIfPresent(join(home.sharedHome, entry)) !== null,
+  );
   for (const entry of entries) {
     const link = join(home.effectiveHome, entry);
     if (statIfPresent(link) !== null) continue;
-    symlinkSync(join(home.sharedHome, entry), link);
+    const target = join(home.sharedHome, entry);
+    if (input.platform !== "win32") {
+      symlinkSync(target, link);
+      continue;
+    }
+    // Junctions need no Developer Mode or symlink privilege. Shared config uses
+    // same-volume file links; identity checks refuse diverged/replaced files.
+    if (statSync(target).isDirectory()) symlinkSync(target, link, "junction");
+    else linkSync(target, link);
   }
   const directory = statSync(home.effectiveHome);
   const sharedDirectory = statSync(home.sharedHome);
@@ -257,7 +292,7 @@ export function assertCodexAccountHomeIdentity(home: CodexAccountHome, platform:
       throw new Error(
         `Codex account directory lost its shared ${entry}. Restart Nodex to prepare it again.`,
       );
-    assertSharedEntry(home.sharedHome, home.effectiveHome, entry);
+    assertSharedEntry(home.sharedHome, home.effectiveHome, entry, platform);
   }
 }
 

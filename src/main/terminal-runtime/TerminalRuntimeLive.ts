@@ -1,3 +1,4 @@
+import type { MainConfig } from "../app/MainConfig";
 import * as Layer from "effect/Layer";
 import * as TerminalEnvironment from "../platform/node/TerminalEnvironment";
 import * as TerminalProcessMetrics from "../platform/node/TerminalProcessMetrics";
@@ -12,7 +13,9 @@ export const layer = TerminalSessions.live.pipe(Layer.provideMerge(TerminalRunti
  * one RuntimeMap, so a child process cannot outlive the same process-scoped owner used by the UI.
  */
 export const live: Layer.Layer<
-  TerminalSessions.TerminalSessions | TerminalRuntimeMap.TerminalRuntimeMap
+  TerminalSessions.TerminalSessions | TerminalRuntimeMap.TerminalRuntimeMap,
+  never,
+  MainConfig
 > = layer.pipe(
   Layer.provide(
     Layer.mergeAll(TerminalEnvironment.live, TerminalProcessMetrics.live, TerminalPty.live),

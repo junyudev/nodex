@@ -96,7 +96,7 @@ describe("Nodex per-Turn CLI connection", () => {
               null,
             ),
           ),
-        ).toBeNull();
+        ).toContain("unavailable");
         // A Codex shell names its task, so plain nodex reaches this Profile and Project.
         await prepareNodexCliShell(current.profile.nodexHome);
         const bound = await Effect.runPromise(

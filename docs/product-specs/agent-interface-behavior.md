@@ -5,7 +5,8 @@
 The packaged native `nodex` CLI and official Agent Skill are the default content
 interface for local shell-capable Agents and scripts. Direct reads, stdin
 writes, typed queries, property edits, and atomic Page creation share Core
-semantics with the desktop. See [CLI Reference](../CLI.md) for command behavior.
+semantics with the desktop. Windows supports task-bound PowerShell, cmd and Git Bash
+entrypoints; an explicit revoked child binding never inherits a parent binding. See [CLI Reference](../CLI.md) for command behavior.
 
 Native CLI calls use the authenticated current Profile and optional Project
 routing. Native application tools additionally carry the host-captured execution

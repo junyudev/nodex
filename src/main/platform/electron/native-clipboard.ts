@@ -7,6 +7,7 @@ export interface NativeClipboardSnapshot {
   readonly text?: string;
   readonly html?: string;
   readonly markdown?: string;
+  readonly structuralDescriptor?: string;
   readonly fileUrls: readonly string[];
 }
 
