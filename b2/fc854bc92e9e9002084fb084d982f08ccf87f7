@@ -1,0 +1,19 @@
+CHANGELOG.md
+  s_623cc4150dd212::t_feef2009feac86 60
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b2fc854bc92e9e9002084fb084d982f08ccf87f7",
+  "prompts": {},
+  "sessions": {
+    "s_623cc4150dd212": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e6f5fa0f-e628-4229-a0a3-5f544be52c08",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
