@@ -1,0 +1,227 @@
+CONTEXT.md
+  s_2992745f3503e0::t_c0add98f6acd99 41-45
+crates/nodex-core-contracts/src/collection_audit.rs
+  s_2992745f3503e0::t_f51e2df5df1111 70-71
+crates/nodex-core-contracts/src/workspace.rs
+  s_2992745f3503e0::t_7b2929933cf1c5 19,56-57,264-268,484,1348,1356-1361,2044-2061
+crates/nodex-core/schema/current.sql
+  s_693b7521d81978::t_d1237b3386178e 1015,4518-4537
+crates/nodex-core/schema/migrations/v195_to_v196.sql
+  s_693b7521d81978::t_de8f4cccb6d463 1-20
+crates/nodex-core/src/infrastructure/migration.rs
+  s_693b7521d81978::t_2afd2a493664e1 393-397,2564-2578,7791-7825,8524
+crates/nodex-core/src/workspace/agent_command.rs
+  s_693b7521d81978::t_9fa41156ce1c57 26-39
+crates/nodex-core/src/workspace/mod.rs
+  s_2992745f3503e0::t_a91e4381adea01 33-34
+crates/nodex-core/src/workspace/mutation.rs
+  s_693b7521d81978::t_9164cc65181116 1205,1207-1208
+crates/nodex-core/src/workspace/queued_message_state.rs
+  s_2992745f3503e0::t_08948b28b3b21e 31-89
+crates/nodex-core/src/workspace/read.rs
+  s_693b7521d81978::t_6fd0c2c61a3b41 44,61-85,781,809,844
+crates/nodex-core/src/workspace/session_mutation.rs
+  s_2992745f3503e0::t_283c595d765c5a 89-190,440-455,479-554,846-849
+crates/nodex-core/src/workspace/session_reminder_tests.rs
+  s_2992745f3503e0::t_9b4dcd803751e5 1-401
+crates/nodex-core/src/workspace/sidebar_section.rs
+  s_2992745f3503e0::t_c480f80a945e1e 98,121-122
+crates/nodex-core/src/workspace/task_window.rs
+  s_2992745f3503e0::t_ca4e1c09c63874 36,324
+crates/nodex-store-format/src/lib.rs
+  s_50bc651199cc10::t_ec65e757e620a0 253-256
+docs/ARCHITECTURE.md
+  s_2992745f3503e0::t_ca8889901dc6ac 114-121
+docs/product-specs/agent-interface-behavior.md
+  s_2992745f3503e0::t_d63e446f773522 471-494
+docs/product-specs/desktop-notification-behavior.md
+  s_2992745f3503e0::t_0af07a3e9a0397 10-11,313-343
+packages/core-protocol/openapi.json
+  s_50bc651199cc10::t_c0d7237b4dd5d5 35695-35709,38152-38249,43865-43879,43894-43899,43979-43984,51564-51603
+packages/core-protocol/src/compatibility.generated.ts
+  s_50bc651199cc10::t_ca0e9d68c2f2a3 24,42-43
+packages/core-protocol/src/generated.ts
+  s_50bc651199cc10::t_b39857335da145 8464-8466,9120-9140,10459-10462,10466,10485,12053-12058
+scripts/scenarios/adapters/core-client-seed-adapter.ts
+  s_693b7521d81978::t_900967a0f45229 469-477
+scripts/scenarios/adapters/renderer-ipc-seed-adapter.ts
+  s_693b7521d81978::t_767666e45eb31d 581-590
+scripts/scenarios/contracts.ts
+  s_2992745f3503e0::t_55ed8759123ac4 192
+scripts/scenarios/scenarios/board-dense.test.ts
+  s_693b7521d81978::t_e044a7cd23a630 309-312
+scripts/scenarios/scenarios/database-context-menu-performance.test.ts
+  s_693b7521d81978::t_fbf1824660d9ca 144-147
+scripts/scenarios/scenarios/sidebar-chat-status.ts
+  s_693b7521d81978::t_ce2feab877c155 12,24,37-48,186-192,226,230-239
+src/main/agent-runtime/AgentRuntimeApplication.node.test.ts
+  s_693b7521d81978::t_56ce72cfd167a7 172,410-417,430-431,1296,1350,5990-6001,6043-6053,7040-7043,7068-7111
+src/main/agent-runtime/AgentRuntimeApplication.ts
+  s_693b7521d81978::t_b218925fd362d4 1,1364-1365,2590,2619-2620,2743-2744
+src/main/app-tools/SessionControlAppTools.node.test.ts
+  s_693b7521d81978::t_0eba99536efaa4 131-140,513-536
+src/main/app-tools/SessionControlAppTools.ts
+  s_693b7521d81978::t_5b596ca3d380a6 14-15,52,82-83,87,89,96-98,115-117,119,124,128-150
+src/main/app/ApplicationOperationsLive.ts
+  s_693b7521d81978::t_c66fdd6383bee6 32,102-104
+src/main/app/MainApplicationLive.ts
+  s_2992745f3503e0::t_ccec48c45b080f 1,234,363
+src/main/automation-application/AutomationExecution.ts
+  s_693b7521d81978::t_91a945db443c61 439
+src/main/codex-application/CodexApplicationEventHub.ts
+  s_2992745f3503e0::t_556bfd2d650f9e 12
+src/main/codex-application/CodexNotificationAdmission.node.test.ts
+  s_2992745f3503e0::t_d0bd550fb341ac 312-398
+src/main/codex-application/CodexNotificationAdmission.ts
+  s_693b7521d81978::t_dd282e9ad97bc6 1-2,107-122,129,147
+src/main/codex-application/CodexSessionMessageReminders.ts
+  s_2992745f3503e0::t_f7d39327ff18aa 1-44
+src/main/codex-application/CodexSidebarSyncRuntime.ts
+  s_2992745f3503e0::t_99f18331b6b348 206
+src/main/codex-application/CodexThreadCatalogProjection.ts
+  s_e83cf0ef75c500::t_56dede0cf1c115 223
+src/main/codex-application/CodexTurnCommands.node.test.ts
+  s_2992745f3503e0::t_1fe71d9b4e7fae 197,435-459,692,3822-3831
+src/main/codex-application/CodexTurnCommands.ts
+  s_2992745f3503e0::t_2839ffd462ad02 1,836-847,1604,2416-2426
+src/main/codex-application/ManagedWorktreeCatalog.node.test.ts
+  s_2992745f3503e0::t_681b1e4e8e1bfd 202,221
+src/main/codex/codex-browser-transfer-capture.test.ts
+  s_2992745f3503e0::t_19f157c1d2a848 24
+src/main/codex/codex-thread-notification-handler.test.ts
+  s_693b7521d81978::t_4d0922d6ac5009 367-391
+src/main/codex/codex-thread-notification-handler.ts
+  s_693b7521d81978::t_0160d0bdb9de14 60-61,164-184
+src/main/core-client/project-workspace-adapter.ts
+  s_2992745f3503e0::t_3b9874dc11dfdc 106,790
+src/main/core-runtime/CoreApplicationProjectionRuntime.ts
+  s_2992745f3503e0::t_8fdd35653ad047 127,157
+src/main/host-runtime/SessionReminderRuntime.node.test.ts
+  s_2992745f3503e0::t_70dc9cd3d1e74d 1-196
+src/main/host-runtime/SessionReminderRuntime.ts
+  s_2992745f3503e0::t_c7faa769153ec8 1-156
+src/main/inbox-application/InboxRuntime.node.test.ts
+  s_2992745f3503e0::t_e966c54e8c66e3 135
+src/main/ipc/handlers/ProjectWorkspaceIpc.ts
+  s_693b7521d81978::t_1b81910d2bdd93 611-621
+src/main/project-application/ProjectLifecycleCommands.test.ts
+  s_2992745f3503e0::t_e7cc2e2e33491f 53
+src/main/project-application/ProjectWorkspace.ts
+  s_2992745f3503e0::t_ba084dd131daf4 23,62,178-184,337-353,1522-1536,1538-1577
+src/main/project-application/SessionMessageReminder.ts
+  s_693b7521d81978::t_5be876f2124131 1-21
+src/main/project-application/SessionReminderScenario.node.test.ts
+  s_693b7521d81978::t_1e10680f5797eb 1-19
+src/main/project-application/SessionUnread.ts
+  s_693b7521d81978::t_839db07283cb7d 1-29
+src/renderer/components/workbench/session-context-menu-model.test.ts
+  s_2992745f3503e0::t_efbed520a4c849 25
+src/renderer/components/workbench/sidebar-section-item-dnd.test.ts
+  s_2992745f3503e0::t_66b05afa78145c 38
+src/renderer/components/workbench/sidebar-session-drop.node.test.ts
+  s_2992745f3503e0::t_342d7bb7c20cfd 47
+src/renderer/components/workbench/workbench-testkit/panel-fixtures.ts
+  s_2992745f3503e0::t_a8e95beb463510 165
+src/renderer/components/workbench/workbench-testkit/workbench-shell-fixtures.ts
+  s_2992745f3503e0::t_09014a24dd6527 506
+src/renderer/features/browser-sidebar/browser-sidebar-panel.test.tsx
+  s_2992745f3503e0::t_7372ee1a5759c6 620
+src/renderer/features/local-conversation/agent-runtime-conversation-adapter.test.tsx
+  s_2992745f3503e0::t_970b2e47cd5a0f 1326
+src/renderer/features/workspace-files/workspace-files-panel.test.tsx
+  s_2992745f3503e0::t_52979e8f4e11f7 1073
+src/renderer/lib/codex-sidebar-thread-sync.node.test.ts
+  s_2992745f3503e0::t_290b7c892333ef 130
+src/renderer/lib/created-thread-navigation.node.test.ts
+  s_2992745f3503e0::t_7f296a04f084a1 22
+src/renderer/lib/page-stage-related-chat-candidates.node.test.ts
+  s_2992745f3503e0::t_ab19ebe762770c 19
+src/renderer/lib/project-agent-dock-controller.ts
+  s_2992745f3503e0::t_7b65d104a0a734 68
+src/renderer/lib/project-agent-dock-model.node.test.ts
+  s_2992745f3503e0::t_b863fd16a7e5b8 26
+src/renderer/lib/project-agent-dock-model.ts
+  s_2992745f3503e0::t_ce3fc6be346e41 220
+src/renderer/lib/project-session-query-cache.node.test.ts
+  s_2992745f3503e0::t_41d11645010a99 37
+src/renderer/lib/project-session-query-cache.ts
+  s_2992745f3503e0::t_3d94fe945d3c17 83
+src/renderer/lib/sidebar-runtime-group-activity.test.ts
+  s_2992745f3503e0::t_1bf15509d27e42 14
+src/renderer/lib/types.ts
+  s_2992745f3503e0::t_0bdecab241b7c6 83
+src/renderer/lib/use-browser-use-presentation-coordinator.test.tsx
+  s_2992745f3503e0::t_05a45f0b7f62cf 57
+src/renderer/lib/use-sidebar-runtime-group-activity.jsdom.test.ts
+  s_693b7521d81978::t_f949604e845442 63-69,89-97
+src/renderer/lib/use-workbench-session-catalog.test.tsx
+  s_693b7521d81978::t_ae788293a791c7 75,178,193-194,967-999
+src/renderer/lib/use-workbench-session-catalog.ts
+  s_693b7521d81978::t_218dab5e17d130 154-157,529-536,794
+src/renderer/lib/workbench-ui-scopes.test.tsx
+  s_2992745f3503e0::t_b20bac98aeb288 53
+src/renderer/lib/workspace-catalog-commands.ts
+  s_693b7521d81978::t_99e536edef83df 22,155-161,253,401-407
+src/shared/agent-runtime-api.ts
+  s_693b7521d81978::t_dcea9d700c65ec 57-58
+src/shared/codex-thread-notification.ts
+  s_2992745f3503e0::t_f60ea08aef81f8 21,88-94,96
+src/shared/ipc-api.ts
+  s_2992745f3503e0::t_8a6827825787e5 485,1250-1253
+src/shared/ipc-endpoint-policy.ts
+  s_2992745f3503e0::t_9410bfcd10f870 480
+src/shared/nodex-app-tools/session-control-schemas.test.ts
+  s_693b7521d81978::t_2d0dcf8a1a68c9 84-97
+src/shared/nodex-app-tools/session-control-schemas.ts
+  s_2992745f3503e0::t_4e736fcb87ed61 63-67,78-79
+src/shared/schemas/project-sessions.ts
+  s_2992745f3503e0::t_22663ebd928317 25,190-193
+src/shared/sidebar-sections.ts
+  s_2992745f3503e0::t_f68fa73c5ffb88 37
+src/shared/types.ts
+  s_2992745f3503e0::t_fc44d0e70ebacb 1131,1149,1209-1212,1415,1868
+src/shared/workspace-catalog-commands.ts
+  s_2992745f3503e0::t_242e91ed9c911e 13,84-87
+tests/e2e/large-content-fixture/main.tsx
+  s_2992745f3503e0::t_dcf87a4e1d2cca 59
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e916616f164aa3a2b92900b38585eb7115c2b1dd",
+  "prompts": {},
+  "sessions": {
+    "s_2992745f3503e0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19513-bec7-73e1-b3dd-bf7caf9dd32b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_50bc651199cc10": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19523-075f-7270-9358-f28cf9aec9d2",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_693b7521d81978": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19523-5249-7b21-99b6-72950d66e89e",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_e83cf0ef75c500": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19514-0e3a-7c91-8d4d-d1d2ed7b3e80",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
