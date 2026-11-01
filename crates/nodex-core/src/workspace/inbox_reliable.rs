@@ -608,10 +608,18 @@ fn decide(
         connection.execute("INSERT INTO inbox_decision_undo(token,operation_id,library_id,store_epoch,proposal_id,recipe_json) VALUES (?1,?2,?3,?4,?5,?6)",params![token,operation_id,library_id,scope.store_epoch(),proposal_id,encode(&recipe)?])?;
     }
     match &action {
-        ProjectWorkspaceInboxDispatchAction::NewChat { prompt, .. }
-        | ProjectWorkspaceInboxDispatchAction::SendToChat { prompt, .. } => {
+        ProjectWorkspaceInboxDispatchAction::NewChat {
+            prompt, additions, ..
+        }
+        | ProjectWorkspaceInboxDispatchAction::SendToChat {
+            prompt, additions, ..
+        } => {
             require_host(context)?;
             let mut text = prompt.trim().to_owned();
+            for addition in additions {
+                text.push_str("\n\n");
+                text.push_str(addition);
+            }
             text.push_str("\n\nOriginal Inbox messages:\n");
             let mut images = Vec::new();
             let mut numbers = HashMap::new();

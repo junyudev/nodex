@@ -56,9 +56,15 @@ export const inboxDispatchActionFromCore = (
         projectId: action.project_id ?? null,
         prompt: action.prompt,
         agent: action.agent ? inboxChatAgentFromCore(action.agent) : null,
+        additions: action.additions ?? [],
       };
     case "send_to_chat":
-      return { type: "send_to_chat", sessionId: action.session_id, prompt: action.prompt };
+      return {
+        type: "send_to_chat",
+        sessionId: action.session_id,
+        prompt: action.prompt,
+        additions: action.additions ?? [],
+      };
     case "move_to_project":
       return { type: "move_to_project", projectId: action.project_id };
   }
@@ -95,9 +101,15 @@ export const inboxDispatchActionToCore = (action: InboxDispatchAction): CoreInbo
         project_id: action.projectId,
         prompt: action.prompt,
         agent: action.agent ? chatAgentToCore(action.agent) : null,
+        additions: [...action.additions],
       };
     case "send_to_chat":
-      return { type: "send_to_chat", session_id: action.sessionId, prompt: action.prompt };
+      return {
+        type: "send_to_chat",
+        session_id: action.sessionId,
+        prompt: action.prompt,
+        additions: [...action.additions],
+      };
     case "move_to_project":
       return { type: "move_to_project", project_id: action.projectId };
   }

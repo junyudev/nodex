@@ -58,8 +58,14 @@ export type InboxDispatchAction =
       readonly prompt: string;
       /** What the chat runs on when chosen for this decision; the Inbox's own when null. */
       readonly agent: InboxChatAgent | null;
+      readonly additions: readonly string[];
     }
-  | { readonly type: "send_to_chat"; readonly sessionId: string; readonly prompt: string }
+  | {
+      readonly type: "send_to_chat";
+      readonly sessionId: string;
+      readonly prompt: string;
+      readonly additions: readonly string[];
+    }
   | { readonly type: "move_to_project"; readonly projectId: string }
   | {
       /** Run a scheduled task's waiting firing; the message's reviewed text is its instructions. */
@@ -79,7 +85,20 @@ export const inboxNewChatAction = (
   projectId,
   prompt,
   agent: null,
+  additions: [],
 });
+
+/** Most additions one chat decision carries, and the longest each may be. */
+export const MAX_INBOX_ADDITIONS = 12;
+export const MAX_INBOX_ADDITION_CHARS = 600;
+
+/**
+ * A chat prompt with the additions the user kept, as its chat receives them: each its own
+ * paragraph after the prompt. Additions say how to run the work or what to consult, never what to
+ * deliver, so dropping one never drops something the user asked for.
+ */
+export const inboxPromptWithAdditions = (prompt: string, additions: readonly string[]): string =>
+  [prompt.trim(), ...additions].join("\n\n");
 
 export type InboxSource =
   | { readonly kind: "user" }

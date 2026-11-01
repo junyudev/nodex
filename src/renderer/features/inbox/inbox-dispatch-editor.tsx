@@ -12,7 +12,12 @@ import { messageTextOf } from "../../../shared/message-content";
 import { NodexButton } from "@/components/ui/button";
 import { NodexOptionPicker } from "@/components/ui/dropdown";
 import { CompactChevronDownIcon } from "@/components/shared/icons";
-import { LIBRARY_INBOX, inboxNewChatAction, projectInbox } from "../../../shared/inbox";
+import {
+  LIBRARY_INBOX,
+  inboxNewChatAction,
+  inboxPromptWithAdditions,
+  projectInbox,
+} from "../../../shared/inbox";
 import { useInboxChatTargets } from "./use-inbox";
 import { cn } from "@/lib/utils";
 import { INBOX_ACTION_ICONS } from "./inbox-icon-action";
@@ -77,12 +82,13 @@ export function draftFromAction(
   switch (action.type) {
     case "keep":
       return { type: "keep", projectId: null, sessionId: null, prompt: fallbackPrompt };
+    // The editor writes plain text: the additions kept on the row become paragraphs of it.
     case "new_chat":
       return {
         type: "new_chat",
         projectId: action.projectId,
         sessionId: null,
-        prompt: action.prompt,
+        prompt: inboxPromptWithAdditions(action.prompt, action.additions),
         agent: action.agent,
       };
     case "send_to_chat":
@@ -90,7 +96,7 @@ export function draftFromAction(
         type: "send_to_chat",
         projectId: null,
         sessionId: action.sessionId,
-        prompt: action.prompt,
+        prompt: inboxPromptWithAdditions(action.prompt, action.additions),
       };
     case "move_to_project":
       return {
@@ -112,7 +118,7 @@ export function draftFromAction(
 
 /**
  * A new decision still reviews the complete source group of the previous handoff. It starts
- * from the action as the row has it, including a model chosen there.
+ * from the action as the row has it, including a model chosen there and the additions kept.
  */
 export function draftForInboxItem(
   item: InboxItem,
@@ -147,11 +153,12 @@ export function actionFromDraft(draft: InboxDispatchDraft): InboxDispatchAction 
             projectId: draft.projectId,
             prompt,
             agent: draft.agent ?? null,
+            additions: [],
           }
         : null;
     case "send_to_chat":
       return prompt && draft.sessionId
-        ? { type: "send_to_chat", sessionId: draft.sessionId, prompt }
+        ? { type: "send_to_chat", sessionId: draft.sessionId, prompt, additions: [] }
         : null;
     case "move_to_project":
       return draft.projectId ? { type: "move_to_project", projectId: draft.projectId } : null;

@@ -96,12 +96,21 @@ pub enum ProjectWorkspaceInboxDispatchAction {
     NewChat {
         project_id: Option<String>,
         prompt: String,
+        /// Sent after the prompt unless the user drops them: how to run or what to consult, never what to deliver.
+        #[serde(default)]
+        additions: Vec<String>,
         /// What the chat runs on when chosen for this decision; the Inbox's own otherwise.
         #[serde(default)]
         agent: Option<ProjectWorkspaceInboxChatAgent>,
     },
     /// Send a follow-up to one existing chat. Delivery waits until it is idle.
-    SendToChat { session_id: String, prompt: String },
+    SendToChat {
+        session_id: String,
+        prompt: String,
+        /// Sent after the prompt unless the user drops them: how to run or what to consult, never what to deliver.
+        #[serde(default)]
+        additions: Vec<String>,
+    },
     /// File the entries into one active Project: their Pages move into its primary
     /// Database and the entries are kept, without reopening there.
     MoveToProject { project_id: String },

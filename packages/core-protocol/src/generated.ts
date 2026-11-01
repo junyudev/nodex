@@ -9441,12 +9441,16 @@ export interface components {
             /** @enum {string} */
             readonly type: "keep";
         } | {
+            /** @description Sent after the prompt unless the user drops them: how to run or what to consult, never what to deliver. */
+            readonly additions?: readonly string[];
             readonly agent?: components["schemas"]["ProjectWorkspaceInboxChatAgent"] | null;
             readonly project_id?: string | null;
             readonly prompt: string;
             /** @enum {string} */
             readonly type: "new_chat";
         } | {
+            /** @description Sent after the prompt unless the user drops them: how to run or what to consult, never what to deliver. */
+            readonly additions?: readonly string[];
             readonly prompt: string;
             readonly session_id: string;
             /** @enum {string} */

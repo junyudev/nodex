@@ -8993,7 +8993,13 @@ mod tests {
             );
             let decoded_action: ProjectWorkspaceInboxDispatchAction =
                 serde_json::from_str(&encoded_action).unwrap();
-            assert_eq!(serde_json::to_value(decoded_action).unwrap(), action);
+            // A decision stored before additions existed reads as one without any.
+            let mut decoded_expectation = action.clone();
+            decoded_expectation["additions"] = json!([]);
+            assert_eq!(
+                serde_json::to_value(decoded_action).unwrap(),
+                decoded_expectation
+            );
             let expected_selection = stored_selection.as_ref().map(|_| selection.clone());
             assert_eq!(
                 encoded_selection

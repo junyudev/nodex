@@ -101,6 +101,7 @@ test("recovers Core loss while three Inbox chats run without repeating dispatch 
           basis: [item.basis],
           action: {
             type: "new_chat",
+            additions: [],
             projectId: project.id,
             prompt: `${prefix} ${index}`,
             agent: agents[index]!,

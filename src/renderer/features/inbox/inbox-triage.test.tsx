@@ -29,6 +29,7 @@ const proposal = (overrides: Partial<InboxProposal> = {}): InboxProposal => ({
   outdated: false,
   action: {
     type: "new_chat",
+    additions: [],
     projectId: "project:nodex",
     prompt: "Compare both positions.",
     agent: null,
@@ -484,6 +485,7 @@ describe("InboxTriage", () => {
     const led = proposal({
       action: {
         type: "new_chat",
+        additions: [],
         projectId: "project:nodex",
         prompt: "Build the usage dashboard. You may hand the aggregation API to GPT-6 Luna.",
         agent: opus,
@@ -496,6 +498,34 @@ describe("InboxTriage", () => {
     ).toContain("Work · Opus 5.5 · High");
     await click("New chat in Nodex");
     await waitFor(() => expect(commands.confirm).toHaveBeenCalledWith(led));
+  });
+
+  test("a suggestion's additions are sent unless unchecked, and Handle manually writes the kept ones into its prompt", async () => {
+    const offered = proposal({
+      action: {
+        type: "new_chat",
+        projectId: "project:nodex",
+        prompt: "Fix the scroll jump.",
+        agent: null,
+        additions: ["Hand the measurement work to GPT-6.1 Sol.", "Start from thread-body.tsx."],
+      },
+    });
+    const commands = renderTriage({ item: item({ proposal: offered }) });
+    const handOff = screen.getByRole("checkbox", {
+      name: "Hand the measurement work to GPT-6.1 Sol.",
+    });
+    expect(handOff.getAttribute("aria-checked")).toBe("true");
+    await act(async () => {
+      fireEvent.click(handOff);
+      await Promise.resolve();
+    });
+    expect(handOff.getAttribute("aria-checked")).toBe("false");
+    await click("New chat in Nodex");
+    const kept = { ...offered.action, additions: ["Start from thread-body.tsx."] };
+    await waitFor(() => expect(commands.confirm).toHaveBeenCalledWith(offered, kept));
+    expect(draftForInboxItem(item({ proposal: offered }), null, kept).prompt).toBe(
+      "Fix the scroll jump.\n\nStart from thread-body.tsx.",
+    );
   });
 
   test("Edit rewrites the message itself and asks nothing to run", async () => {
@@ -572,6 +602,7 @@ describe("InboxTriage", () => {
           projectId: "project:nodex",
           prompt: "Only list the trade-offs.",
           agent: null,
+          additions: [],
         },
         null,
       ),

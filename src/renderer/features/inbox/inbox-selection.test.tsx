@@ -132,7 +132,7 @@ describe("Inbox destination and Agent selection", () => {
       <InboxDispatchEditor
         initial={{
           ...draftFromAction(
-            { type: "send_to_chat", sessionId: "session:old", prompt: "Continue" },
+            { type: "send_to_chat", additions: [], sessionId: "session:old", prompt: "Continue" },
             "Continue",
           ),
           chat: chat("session:old", "Earlier research"),
@@ -159,7 +159,7 @@ describe("Inbox destination and Agent selection", () => {
     renderQuery(
       <InboxDispatchEditor
         initial={draftFromAction(
-          { type: "send_to_chat", sessionId: "session:new", prompt: "Continue" },
+          { type: "send_to_chat", additions: [], sessionId: "session:new", prompt: "Continue" },
           "Continue",
         )}
         projects={[]}
@@ -192,7 +192,7 @@ describe("Inbox destination and Agent selection", () => {
     await click("Send");
     // The chosen chat travels with the action, so the message can say where it went.
     expect(onSubmit).toHaveBeenCalledWith(
-      { type: "send_to_chat", sessionId: "session:old", prompt: "Continue" },
+      { type: "send_to_chat", sessionId: "session:old", prompt: "Continue", additions: [] },
       expect.objectContaining({ sessionId: "session:old", displayTitle: "Research findings" }),
     );
   });
@@ -204,6 +204,7 @@ describe("Inbox destination and Agent selection", () => {
         initial={draftFromAction(
           {
             type: "new_chat",
+            additions: [],
             projectId: null,
             prompt: "Compare both",
             agent: null,
@@ -228,6 +229,7 @@ describe("Inbox destination and Agent selection", () => {
         projectId: null,
         prompt: "Compare both",
         agent: { instanceId: "codex", model: null, reasoningEffort: "high", serviceTier: null },
+        additions: [],
       },
       null,
     );

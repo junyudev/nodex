@@ -1,6 +1,7 @@
 import { CoreApiError } from "@/lib/core-api-error";
 import type {
   InboxChat,
+  InboxChatAgent,
   InboxDispatchAction,
   InboxEntryKind,
   InboxFiring,
@@ -46,6 +47,38 @@ export const isChatAction = (
   action: InboxDispatchAction,
 ): action is Extract<InboxDispatchAction, { type: "new_chat" | "send_to_chat" }> =>
   action.type === "new_chat" || action.type === "send_to_chat";
+
+/**
+ * What a row changed on one suggestion before deciding: a model chosen on its decision in place of
+ * the suggestion's (null runs it on the Inbox's own), and the additions it unchecked.
+ */
+export interface InboxRowEdit {
+  readonly proposalId: string;
+  readonly agent?: InboxChatAgent | null;
+  readonly dropped: readonly number[];
+}
+
+/** The suggestion's action as its row has it, or null while the row changed nothing. */
+export function inboxRowAction(
+  action: InboxDispatchAction,
+  edit: InboxRowEdit | null,
+): InboxDispatchAction | null {
+  if (!edit) return null;
+  const choosesAgent =
+    edit.agent !== undefined && (action.type === "new_chat" || action.type === "run_task");
+  const dropsAdditions = edit.dropped.length > 0 && isChatAction(action);
+  if (!choosesAgent && !dropsAdditions) return null;
+  const withAgent =
+    choosesAgent && (action.type === "new_chat" || action.type === "run_task")
+      ? { ...action, agent: edit.agent ?? null }
+      : action;
+  return isChatAction(withAgent) && dropsAdditions
+    ? {
+        ...withAgent,
+        additions: withAgent.additions.filter((_, index) => !edit.dropped.includes(index)),
+      }
+    : withAgent;
+}
 
 /** Hands the work on: to a chat, or to a run of the scheduled task the message came from. */
 export const isWorkAction = (

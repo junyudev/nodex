@@ -609,7 +609,8 @@ a Project went, while the Project's own Properties apply to the Page.
 
 A Dispatch proposal is one typed action for one or more Inbox entries: keep,
 new chat, send to chat, move to Project, or run a Scheduled task's held Firing. A new chat may also name the Agent it
-runs on; any advice about delegating part of the work is prose in its prompt. It is versioned and records the
+runs on. A chat action's prompt holds what the user asked for; its optional additions hold what the suggestion added on
+its own, such as advice to delegate part of the work, each dropped before confirmation if the user unchecks it. It is versioned and records the
 message it was written for, its Markdown body and Library images; once that message changes it is outdated, still
 reviewable and confirmable, never withdrawn or replaced on its own. A proposal is advice. Only the user's
 confirmation, or a user-written dispatch, makes it Dispatch work. Confirmed chat

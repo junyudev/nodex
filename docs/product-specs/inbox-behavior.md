@@ -319,11 +319,20 @@ and how large it is, or check which Project or chat already owns it. Notes and
 reminders get no look, and it stops after a few reads or searches, as soon as
 more would not change the proposal. It decides where and how work runs and
 never does the work: it answers no question, investigates no cause, runs no
-build or test, and changes no file, Nodex content or other state. What a lookup
-finds that the chat needs goes into the proposed prompt with its file paths or
-links, and the rationale says what it checked. A Project's Inbox looks from
-that Project's primary source directory when it exists; anything else looks
-from the Profile's home.
+build or test, and changes no file, Nodex content or other state. The rationale
+says what it checked. A Project's Inbox looks from that Project's primary
+source directory when it exists; anything else looks from the Profile's home.
+
+A chat suggestion separates what the user asked for from what the suggestion
+adds on its own. Its prompt is what the user wants: the task, its scope and
+every requirement the user wrote, plus anything the suggestion is sure the chat
+must know, such as a finding that changes the task. Its additions are sentences
+the suggestion adds itself that the user might rather not send: how the chat
+could run the work, such as handing part of it to another model, or what it
+could consult, such as a file or link a lookup found. An addition never adds to
+what the chat delivers, and nothing the user asked for is ever an addition, so
+dropping one never drops a requirement. A suggestion carries as many additions
+as it finds worth offering, up to twelve of 600 characters each.
 
 A suggestion sees only what Nodex gives it: its prompt, the messages' images,
 and those two ways to look things up. It does not load the user's personal
@@ -375,9 +384,9 @@ one exact action:
 - **New chat:** start a chat in a Project or without one, with a prompt. While
   suggestions choose models, a new chat may also name what it runs on: an
   Agent, model and effort. When another model clearly suits part of the work,
-  the prompt says so in one sentence to the chat's Agent, which decides whether
-  and how to delegate it; a suggestion never plans subtasks or steps.
-- **Send to chat:** send a prompt to an existing chat.
+  an addition says so to the chat's Agent, which decides whether and how to
+  delegate it; a suggestion never plans subtasks or steps.
+- **Send to chat:** send a prompt, with its additions, to an existing chat.
 - **Move to Project:** file the message Page in another Project's Database.
 
 Every successful suggestion request produces a concrete action for every member.
@@ -436,8 +445,10 @@ and its row show one of these:
 - **Suggestion:**
   - for a new chat or a send to a chat, the prompt it will send, read like the
     message above it: the same size and color, the card's full width, and
-    collapsed after as many lines as a user message in a chat.
-    Other suggestions say what they do in a one-line summary;
+    collapsed after as many lines as a user message in a chat. Its additions
+    follow, one per line with a checkbox, all checked. Unchecking one fades and
+    strikes it through, and confirming then sends only the additions still
+    checked. Other suggestions say what they do in a one-line summary;
   - a primary action with its exact destination visible without hovering.
     Hovering it adds a chat suggestion's summary and the rationale. For a new
     chat it then says `Runs on` with the Agent's mark, name, model, effort and
@@ -493,7 +504,9 @@ Editing a grouped dispatch keeps its full membership and revision. Handling just
 one member requires an explicit new decision; the remaining members cannot keep
 an old prompt that still includes the removed work. Changing a suggestion's
 destination or prompt happens in `Handle manually`, which starts from that
-suggestion, including the model chosen on its decision. Manual target selection
+suggestion, including the model chosen on its decision; its prompt there is
+plain text holding the additions still checked, each as its own paragraph.
+Manual target selection
 searches eligible chats beyond the recent list. For a new chat, the dispatch
 editor shows what it runs on beside `Start chat`, as the composer shows its
 model beside Send, and opens the same model menu.
@@ -561,8 +574,9 @@ instructions.
 
 - **New chat:** Core creates the Session atomically with the confirmation, titled
   after the first message. Main then starts its first Turn. The prompt is the
-  confirmed prompt, then the original messages quoted as context with their
-  Page keys.
+  confirmed prompt, then each confirmed addition as its own paragraph, then the
+  original messages quoted as context with their Page keys. A send to a chat
+  composes its message the same way.
   The window that confirmed it puts the message Pages in the new chat's right
   panel, the first message's active and the rest as tabs after it, while the
   Inbox stays in view; opening the chat then shows what it was started from

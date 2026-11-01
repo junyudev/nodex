@@ -16,6 +16,7 @@ import {
   describeInboxSuggestionPause,
   inboxRowOffers,
   inboxPageRoutingContext,
+  inboxRowAction,
   inboxTimestampSeparators,
   inboxTriageModel,
   isInboxItemHandled,
@@ -56,6 +57,7 @@ const proposal = (overrides: Partial<InboxProposal> = {}): InboxProposal => ({
   outdated: false,
   action: {
     type: "new_chat",
+    additions: [],
     projectId: "project:nodex",
     prompt: "Research",
     agent: null,
@@ -329,7 +331,7 @@ describe("describeInboxOutcome", () => {
         item({
           proposal: proposal({
             state: "dispatching",
-            action: { type: "send_to_chat", sessionId: "session:1", prompt: "x" },
+            action: { type: "send_to_chat", additions: [], sessionId: "session:1", prompt: "x" },
             chat,
           }),
         }),
@@ -373,6 +375,7 @@ describe("describeInboxAction", () => {
       describeInboxAction(
         {
           type: "new_chat",
+          additions: [],
           projectId: "project:nodex",
           prompt: "x",
           agent: null,
@@ -396,7 +399,7 @@ describe("describeInboxAction", () => {
     };
     expect(
       describeInboxAction(
-        { type: "send_to_chat", sessionId: "session:1", prompt: "x" },
+        { type: "send_to_chat", additions: [], sessionId: "session:1", prompt: "x" },
         { targetProjectName: null, chat: busy },
       ),
     ).toEqual({ verb: "Queue", target: "Send to “Sidebar polish” after it finishes" });
@@ -769,5 +772,50 @@ describe("a scheduled task's waiting run", () => {
       describeInboxFiring(firing, { ...task, kind: "heartbeat" as const, projectId: null }, now),
     ).toMatch(/· Continues its chat$/u);
     expect(describeInboxFiring(firing, null, now)).toMatch(/^Due Yesterday, /u);
+  });
+});
+
+describe("inboxRowAction", () => {
+  const opus = {
+    instanceId: "claude",
+    model: "claude-opus-5-5",
+    reasoningEffort: "high",
+    serviceTier: null,
+  };
+  const chat = {
+    type: "new_chat" as const,
+    projectId: "project:nodex",
+    prompt: "Fix the scroll jump.",
+    agent: opus,
+    additions: ["Hand the measurement work to GPT-6.1 Sol.", "Start from thread-body.tsx."],
+  };
+
+  it("is null until the row changes something", () => {
+    expect(inboxRowAction(chat, null)).toBeNull();
+    expect(inboxRowAction(chat, { proposalId: "p", dropped: [] })).toBeNull();
+    // Dropping additions means nothing to an action that has none.
+    expect(inboxRowAction({ type: "keep" }, { proposalId: "p", dropped: [0] })).toBeNull();
+  });
+
+  it("keeps only the additions the row left checked, with any model chosen there", () => {
+    expect(inboxRowAction(chat, { proposalId: "p", dropped: [0] })).toEqual({
+      ...chat,
+      additions: ["Start from thread-body.tsx."],
+    });
+    expect(inboxRowAction(chat, { proposalId: "p", agent: null, dropped: [0, 1] })).toEqual({
+      ...chat,
+      agent: null,
+      additions: [],
+    });
+    const send = {
+      type: "send_to_chat" as const,
+      sessionId: "session:1",
+      prompt: "Continue.",
+      additions: ["Check the logs first."],
+    };
+    expect(inboxRowAction(send, { proposalId: "p", dropped: [0] })).toEqual({
+      ...send,
+      additions: [],
+    });
   });
 });

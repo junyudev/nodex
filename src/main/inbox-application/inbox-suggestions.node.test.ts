@@ -54,6 +54,7 @@ const raw = (overrides: Record<string, unknown>) => ({
   project_id: null,
   session_id: null,
   prompt: null,
+  additions: [],
   chat_instance_id: null,
   chat_model: null,
   chat_effort: null,
@@ -121,6 +122,7 @@ describe("validateInboxSuggestions", () => {
       projectId: "project:nodex",
       prompt: "Research the homepage; do not change code.",
       agent: null,
+      additions: [],
     });
   });
 
@@ -215,6 +217,7 @@ describe("validateInboxSuggestions", () => {
       projectId: null,
       prompt: "Answer the attached question with a clear explanation.",
       agent: null,
+      additions: [],
     });
   });
 
@@ -483,6 +486,7 @@ describe("planned new chats", () => {
         reasoningEffort: "high",
         serviceTier: null,
       },
+      additions: [],
     });
   });
 
@@ -493,6 +497,19 @@ describe("planned new chats", () => {
     ["a model without its Agent", { chat_instance_id: null }],
   ])("refuses %s, since Nodex starts the chat on it exactly", (_name, overrides) => {
     expect(() => validate(chosen(overrides))).toThrow(/Invalid Inbox suggestion/);
+  });
+
+  it("keeps a chat prompt's additions apart from it, and lets only a chat prompt have them", () => {
+    expect(
+      validate(chosen({ additions: ["  Hand the API to GPT-6.1 Sol.  "] })).suggestions[0]?.action,
+    ).toMatchObject({
+      prompt: "Redesign onboarding and its API.",
+      additions: ["Hand the API to GPT-6.1 Sol."],
+    });
+    expect(() => validate(raw({ additions: ["Read the spec first."] }))).toThrow(
+      /only a chat prompt has additions/,
+    );
+    expect(() => validate(chosen({ additions: ["   "] }))).toThrow(/an empty addition/);
   });
 
   it("lets only a new chat choose Agents", () => {

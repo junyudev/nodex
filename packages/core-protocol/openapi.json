@@ -39437,6 +39437,13 @@
               "type"
             ],
             "properties": {
+              "additions": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Sent after the prompt unless the user drops them: how to run or what to consult, never what to deliver."
+              },
               "agent": {
                 "oneOf": [
                   {
@@ -39474,6 +39481,13 @@
               "type"
             ],
             "properties": {
+              "additions": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Sent after the prompt unless the user drops them: how to run or what to consult, never what to deliver."
+              },
               "prompt": {
                 "type": "string"
               },

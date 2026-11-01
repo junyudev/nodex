@@ -51,6 +51,8 @@ const OPENING_TEXT_CHARS: i64 = 4_096;
 pub(super) const MAX_PROPOSAL_PAGES: usize = 16;
 const MAX_BULK_PAGES: usize = 200;
 const MAX_PROMPT_BYTES: usize = 32 * 1024;
+const MAX_ADDITIONS: usize = 12;
+const MAX_ADDITION_CHARS: usize = 600;
 const MAX_SUMMARY_CHARS: usize = 4_000;
 const MAX_RATIONALE_CHARS: usize = 4_000;
 const MAX_PRODUCED_BY_CHARS: usize = 256;
@@ -2202,6 +2204,7 @@ fn normalize_action(
         ProjectWorkspaceInboxDispatchAction::NewChat {
             project_id,
             prompt,
+            additions,
             agent,
         } => {
             if scope.is_some() && project_id.as_deref() != scope {
@@ -2218,10 +2221,15 @@ fn normalize_action(
             Ok(ProjectWorkspaceInboxDispatchAction::NewChat {
                 project_id: project_id.clone(),
                 prompt: normalize_prompt(prompt)?,
+                additions: normalize_additions(additions)?,
                 agent: agent.as_ref().map(normalize_chat_agent).transpose()?,
             })
         }
-        ProjectWorkspaceInboxDispatchAction::SendToChat { session_id, prompt } => {
+        ProjectWorkspaceInboxDispatchAction::SendToChat {
+            session_id,
+            prompt,
+            additions,
+        } => {
             validate_id("session_id", session_id)?;
             let authority =
                 super::session_mutation::require_session(connection, library_id, session_id)?;
@@ -2241,6 +2249,7 @@ fn normalize_action(
             Ok(ProjectWorkspaceInboxDispatchAction::SendToChat {
                 session_id: session_id.clone(),
                 prompt: normalize_prompt(prompt)?,
+                additions: normalize_additions(additions)?,
             })
         }
         ProjectWorkspaceInboxDispatchAction::MoveToProject { project_id } => {
@@ -2287,6 +2296,29 @@ fn normalize_prompt(prompt: &str) -> Result<String, StoreError> {
         return Err(invalid("A dispatch prompt exceeds its 32 KiB bound"));
     }
     Ok(prompt.to_owned())
+}
+
+fn normalize_additions(additions: &[String]) -> Result<Vec<String>, StoreError> {
+    if additions.len() > MAX_ADDITIONS {
+        return Err(invalid(&format!(
+            "A dispatch can have at most {MAX_ADDITIONS} additions"
+        )));
+    }
+    additions
+        .iter()
+        .map(|addition| {
+            let addition = addition.trim();
+            if addition.is_empty() {
+                return Err(invalid("A dispatch addition cannot be empty"));
+            }
+            if addition.chars().count() > MAX_ADDITION_CHARS {
+                return Err(invalid(&format!(
+                    "A dispatch addition cannot exceed {MAX_ADDITION_CHARS} characters"
+                )));
+            }
+            Ok(addition.to_owned())
+        })
+        .collect()
 }
 
 fn bounded_text(field: &str, value: &str, maximum: usize) -> Result<String, StoreError> {

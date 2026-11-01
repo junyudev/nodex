@@ -26,6 +26,7 @@ import {
 } from "@/components/shared/icons";
 import { NodexButton } from "@/components/ui/button";
 import { NodexTooltip } from "@/components/ui/tooltip";
+import { NodexCheckbox } from "@/components/ui/settings";
 import { cn } from "@/lib/utils";
 import {
   INBOX_ACTION_ICONS,
@@ -44,10 +45,12 @@ import {
   describeInboxAction,
   describeInboxFiring,
   inboxPageRoutingContext,
+  inboxRowAction,
   inboxRowOffers,
   inboxTriageModel,
   isChatAction,
   type InboxOutcome,
+  type InboxRowEdit,
   type InboxRowOffers,
 } from "./inbox-presentation";
 import { scheduledTaskChatAgent, useInboxFiringTask } from "./inbox-firing";
@@ -307,15 +310,21 @@ function ChatAgentMenu({
 
 /**
  * A chat suggestion is the prompt it will send, read like the message above it; where it goes
- * is on the decision. Other suggestions say what they do in one line.
+ * is on the decision. What the suggestion added on its own follows, each kept unless unchecked.
+ * Other suggestions say what they do in one line.
  */
 function SuggestionStrip({
   proposal,
   firingLine,
+  dropped,
+  onToggleAddition,
 }: {
   readonly proposal: InboxProposal;
   /** For a scheduled task's run, how it will go; its instructions are the message above. */
   readonly firingLine: string | null;
+  /** Additions unchecked on this row. */
+  readonly dropped: readonly number[];
+  readonly onToggleAddition: (index: number) => void;
 }) {
   // An outdated suggestion recedes, prompt included: it was written for text the message no
   // longer has.
@@ -345,6 +354,32 @@ function SuggestionStrip({
       ) : (
         <p className="min-w-0 text-sm leading-snug">{proposal.summary}</p>
       )}
+      {isChatAction(action) && action.additions.length > 0 ? (
+        <ul className="flex min-w-0 flex-col gap-1.5">
+          {action.additions.map((addition, index) => {
+            const kept = !dropped.includes(index);
+            return (
+              <li key={index} className="flex min-w-0 items-start gap-2">
+                <NodexCheckbox
+                  ariaLabel={addition}
+                  checked={kept}
+                  onCheckedChange={() => onToggleAddition(index)}
+                  className="mt-[3px]"
+                />
+                <div
+                  className={cn(
+                    "min-w-0 flex-1",
+                    !kept &&
+                      "line-through opacity-50 [--foreground:var(--color-token-description-foreground)]",
+                  )}
+                >
+                  <MessageText text={addition} />
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
     </div>
   );
 }
@@ -427,12 +462,8 @@ export function InboxTriage({
   /** Places the strip and the action row around the message. */
   readonly children: (parts: InboxTriageParts) => ReactNode;
 }) {
-  // A model chosen on the decision for one suggestion's new chat, in place of the one the
-  // suggestion chose; null runs it on the Inbox's own. Another suggestion starts afresh.
-  const [chatChoice, setChatChoice] = useState<{
-    readonly proposalId: string;
-    readonly agent: InboxChatAgent | null;
-  } | null>(null);
+  // What the row changed on this suggestion before deciding; another suggestion starts afresh.
+  const [rowEdit, setRowEdit] = useState<InboxRowEdit | null>(null);
   const task = useInboxFiringTask(item);
   const taskAgent = task ? scheduledTaskChatAgent(task) : null;
   const firing: InboxDispatchFiring | null = item.firing
@@ -448,16 +479,30 @@ export function InboxTriage({
     proposedAction?.type === "new_chat" || proposedAction?.type === "run_task"
       ? proposedAction
       : null;
-  const choice = chatChoice?.proposalId === item.proposal?.proposalId ? chatChoice : null;
-  // The suggestion's new chat or run as the row has it, once a model is chosen here.
-  const rowAction = suggested && choice ? { ...suggested, agent: choice.agent } : null;
+  const edit = rowEdit?.proposalId === item.proposal?.proposalId ? rowEdit : null;
+  // The suggestion as the row has it, once a model is chosen or an addition dropped here.
+  const rowAction = item.proposal ? inboxRowAction(item.proposal.action, edit) : null;
   // A new chat starts from the Inbox's own model; a scheduled run from its task's.
   const baseAgent = suggested?.type === "run_task" ? taskAgent : agents.settings.chatAgent;
-  const chatAgent = (rowAction ?? suggested)?.agent ?? baseAgent ?? agents.settings.chatAgent;
+  const chatAgent =
+    (edit?.agent !== undefined ? edit.agent : suggested?.agent) ??
+    baseAgent ??
+    agents.settings.chatAgent;
   const chooseAgent = (proposalId: string, agent: InboxChatAgent) =>
-    setChatChoice({
+    setRowEdit((current) => ({
       proposalId,
       agent: baseAgent && sameInboxChatAgent(agent, baseAgent) ? null : agent,
+      dropped: current?.proposalId === proposalId ? current.dropped : [],
+    }));
+  const toggleAddition = (proposalId: string, index: number) =>
+    setRowEdit((current) => {
+      const same = current?.proposalId === proposalId ? current : { proposalId, dropped: [] };
+      return {
+        ...same,
+        dropped: same.dropped.includes(index)
+          ? same.dropped.filter((dropped) => dropped !== index)
+          : [...same.dropped, index],
+      };
     });
   const [editing, setEditing] = useState<{
     readonly baseBody: string;
@@ -670,6 +715,8 @@ export function InboxTriage({
               <SuggestionStrip
                 proposal={proposal}
                 firingLine={item.firing ? describeInboxFiring(item.firing, task, new Date()) : null}
+                dropped={edit?.dropped ?? []}
+                onToggleAddition={(index) => toggleAddition(proposal.proposalId, index)}
               />
             </Settle>
           ),

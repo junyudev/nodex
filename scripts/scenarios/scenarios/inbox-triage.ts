@@ -241,6 +241,7 @@ const materializeInboxTriage = async (
     pageIds: [dispatched.pageId],
     action: {
       type: "send_to_chat",
+      additions: [],
       sessionId: working.sessionId,
       prompt: "Compare three assistant onboarding flows in one page. Do not change code.",
     },
@@ -259,6 +260,7 @@ const materializeInboxTriage = async (
     pageIds: [newChat.pageId],
     action: {
       type: "new_chat",
+      additions: [],
       projectId: project.id,
       prompt:
         "Compare positioning the homepage as a developer tool versus a personal assistant. Read the current homepage and notes, then deliver a short comparison and the decisions I need to make. Do not change code.",
@@ -274,6 +276,7 @@ const materializeInboxTriage = async (
     pageIds: [sendToChat.pageId],
     action: {
       type: "send_to_chat",
+      additions: [],
       sessionId: working.sessionId,
       prompt: "Also fix the hover flicker on Project rows in the sidebar.",
     },
@@ -315,6 +318,7 @@ const materializeInboxTriage = async (
     pageIds: [pictured.pageId],
     action: {
       type: "send_to_chat",
+      additions: [],
       sessionId: working.sessionId,
       prompt: "Also give the toolbar gear and the dialog close buttons accessible labels.",
     },
@@ -337,8 +341,12 @@ const materializeInboxTriage = async (
       type: "new_chat",
       projectId: project.id,
       prompt:
-        "Make Board columns collapse gracefully on narrow windows. Keep the wide layout unchanged. You may hand the breakpoint width arithmetic and its unit tests to GPT-6.1 Sol.",
-      // Interaction and visual work lead on Opus; the prompt offers the arithmetic to Sol.
+        "Make Board columns collapse gracefully on narrow windows. Keep the wide layout unchanged.",
+      // Interaction and visual work lead on Opus; the suggestion offers the arithmetic to Sol.
+      additions: [
+        "You may hand the breakpoint width arithmetic and its unit tests to GPT-6.1 Sol.",
+        "The Board's column layout lives in `src/renderer/components/board/`.",
+      ],
       agent: {
         instanceId: DEFAULT_CLAUDE_INSTANCE_ID,
         model: "claude-opus-5-5",
@@ -359,6 +367,7 @@ const materializeInboxTriage = async (
     pageIds: [projectSendToChat.pageId],
     action: {
       type: "send_to_chat",
+      additions: [],
       sessionId: working.sessionId,
       prompt: "Also keep sidebar section headers pinned while the list scrolls.",
     },

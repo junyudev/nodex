@@ -24,7 +24,7 @@ interface Decision {
   readonly promptIncludes?: readonly string[];
   /** The Agent a new chat should lead on; `default` expects the Inbox's own. */
   readonly lead?: "codex" | "claude" | "default";
-  /** An Agent whose model the prompt should offer part of the work to, in prose. */
+  /** An Agent whose model an addition should offer part of the work to. */
   readonly handsOffTo?: "codex" | "claude";
 }
 interface RoutingCase {
@@ -366,14 +366,14 @@ const exampleOutput = (value: RoutingCase) => ({
     session_id: decision.session ?? null,
     prompt:
       decision.action === "new_chat" || decision.action === "send_to_chat"
-        ? `Research the supplied scope; ${(decision.promptIncludes ?? []).join("; ")}${
-            decision.handsOffTo === "codex"
-              ? " You may hand the backend to GPT-6.1 Sol."
-              : decision.handsOffTo === "claude"
-                ? " You may hand the visual design to Opus 5.5."
-                : ""
-          }`
+        ? `Research the supplied scope; ${(decision.promptIncludes ?? []).join("; ")}`
         : null,
+    additions:
+      decision.handsOffTo === "codex"
+        ? ["You may hand the backend to GPT-6.1 Sol."]
+        : decision.handsOffTo === "claude"
+          ? ["You may hand the visual design to Opus 5.5."]
+          : [],
     chat_instance_id:
       decision.lead === "claude" ? CLAUDE : decision.lead === "codex" ? "codex" : null,
     chat_model:
@@ -436,8 +436,8 @@ function grade(value: RoutingCase, response: unknown): readonly string[] {
     if (
       expected.handsOffTo &&
       (actual.action.type !== "new_chat" ||
-        !(expected.handsOffTo === "claude" ? /opus|claude/i : /sol|gpt/i).test(
-          actual.action.prompt,
+        !actual.action.additions.some((addition) =>
+          (expected.handsOffTo === "claude" ? /opus|claude/i : /sol|gpt/i).test(addition),
         ))
     )
       errors.push("hand-off");

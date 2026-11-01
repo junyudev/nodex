@@ -1,6 +1,8 @@
 import { z } from "zod";
 import {
   INBOX_SUGGESTION_MODES,
+  MAX_INBOX_ADDITION_CHARS,
+  MAX_INBOX_ADDITIONS,
   MAX_INBOX_INSTRUCTIONS_CHARS,
   type InboxAgentBinding,
   type InboxChatAgent,
@@ -75,6 +77,11 @@ export const InboxChatAgentSchema = z
   })
   .strict() satisfies z.ZodType<InboxChatAgent>;
 
+const additions = z
+  .array(z.string().trim().min(1).max(MAX_INBOX_ADDITION_CHARS))
+  .max(MAX_INBOX_ADDITIONS)
+  .default([]);
+
 export const InboxDispatchActionSchema = z.discriminatedUnion("type", [
   z
     .object({
@@ -91,9 +98,10 @@ export const InboxDispatchActionSchema = z.discriminatedUnion("type", [
       projectId: id.nullable(),
       prompt,
       agent: InboxChatAgentSchema.nullable().default(null),
+      additions,
     })
     .strict(),
-  z.object({ type: z.literal("send_to_chat"), sessionId: id, prompt }).strict(),
+  z.object({ type: z.literal("send_to_chat"), sessionId: id, prompt, additions }).strict(),
   z.object({ type: z.literal("move_to_project"), projectId: id }).strict(),
 ]) satisfies z.ZodType<InboxDispatchAction>;
 

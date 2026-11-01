@@ -826,6 +826,7 @@ const suggestionOutput = (pageIds: string[], action = "send_to_chat") => ({
       chat_instance_id: null,
       chat_model: null,
       chat_effort: null,
+      additions: [],
       summary: action === "keep" ? "Keep these thoughts for later" : "Continue the investigation",
       rationale: null,
     },
