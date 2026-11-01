@@ -1,0 +1,43 @@
+pnpm-lock.yaml
+  s_ac9a2f013acd02::t_6f7fd833809572 247-248,731-732,1724-1725,1729-1730,1734-1735,1740-1741,1746-1747,1752-1753,1758-1759,1763-1764,1768-1770,9796,9799,9802,9805,9808,9811,9814,9817,9820,9826-9833
+src/renderer/components/workbench/workbench-rail-account-controls.test.tsx
+  s_9d06964ba0d4b8::t_d3115c7d36dd55 99
+packages/agent-runtime/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
+  s_9d06964ba0d4b8::t_5ee98ad74f570c 15,2275,2302-2304,2985-2990,4224-4269
+package.json
+  s_ac9a2f013acd02::t_756607b72d6e86 199
+src/main/agent-runtime/AgentRuntimeClaudeUsage.node.test.ts
+  s_9d06964ba0d4b8::t_6ddd3a1455fa07 35
+scripts/build-agent-runtime.test.ts
+  s_9d06964ba0d4b8::t_f7413b7bfa4c5c 125,129
+packages/agent-runtime/package.json
+  s_ac9a2f013acd02::t_19ade9d8ac0966 32
+packages/agent-runtime/src/provider/ClaudeProvider.status.test.ts
+  s_9d06964ba0d4b8::t_698baa9bcb887b 42
+docs/development.md
+  s_9d06964ba0d4b8::t_509b9a316ae13b 597-601
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ecd18ff9c8a83de26b8950e24bd702aa5b41c036",
+  "prompts": {},
+  "sessions": {
+    "s_9d06964ba0d4b8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19611-b22a-7ef2-9bc9-75b7ac514216",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_ac9a2f013acd02": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19610-1e62-70c1-a152-758b871db014",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
