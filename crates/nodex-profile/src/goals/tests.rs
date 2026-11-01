@@ -79,7 +79,8 @@ impl Fixture {
         let target = self
             .target
             .join(Path::new(source).strip_prefix(&self.source).unwrap());
-        nodex_platform::private_fs::normalize_path(&target)
+        local_reference_path(&target)
+            .unwrap()
             .to_str()
             .unwrap()
             .to_owned()
@@ -100,6 +101,39 @@ impl Fixture {
             )
             .unwrap()
     }
+}
+
+#[cfg(windows)]
+#[test]
+fn relocates_node_references_against_a_verbatim_native_home() {
+    let fixture = Fixture::new();
+    let original = fixture.attachment("pasted-text.txt", "source text");
+    let node_path = local_reference_path(Path::new(&original)).unwrap();
+    let node_path = node_path.to_str().unwrap();
+    fixture.registry(json!({
+        "attachmentPaths": [node_path],
+        "pendingRemovalPaths": [],
+        "textExcerptsByPath": {node_path: "excerpt"}
+    }));
+    fixture.copy();
+    fixture.run().unwrap();
+    let actual: Value = serde_json::from_slice(
+        &fs::read(fixture.staging.join("attachments").join(REGISTRY_FILE)).unwrap(),
+    )
+    .unwrap();
+    let target = local_reference_path(
+        &fixture
+            .target
+            .join("attachments")
+            .join(DIRECTORY)
+            .join("pasted-text.txt"),
+    )
+    .unwrap();
+    assert_eq!(actual["attachmentPaths"], json!([target.to_str().unwrap()]));
+    assert_eq!(
+        actual["textExcerptsByPath"][target.to_str().unwrap()],
+        "excerpt"
+    );
 }
 
 fn pointer(path: &str) -> String {
