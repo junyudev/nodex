@@ -176,7 +176,8 @@ fn concurrent_directory_links_publish_complete_targets_without_clobbering() {
         .collect();
     let winners = workers
         .into_iter()
-        .map(|worker| worker.join().unwrap()).filter(|winner| *winner)
+        .map(|worker| worker.join().unwrap())
+        .filter(|winner| *winner)
         .count();
     assert_eq!(winners, 1);
     assert_eq!(std::fs::read(target.join("owned")).unwrap(), b"unchanged");
