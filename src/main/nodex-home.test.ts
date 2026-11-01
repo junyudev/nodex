@@ -63,3 +63,17 @@ describe("resolveNodexHomePath", () => {
     expect(resolveNodexHomePath(baseOptions)).toBe("/home/user/.nodex");
   });
 });
+
+test("resolves Windows drive, UNC and tilde homes with Windows path semantics", () => {
+  const windows = { platform: "win32", cwd: "C:\\工作\\repo", userHome: "C:\\Users\\Ada", env: {} };
+  expect(resolveNodexHomePath(windows)).toBe("C:\\Users\\Ada\\.nodex");
+  expect(resolveNodexHomePath({ ...windows, configuredHome: "~\\My Profile" })).toBe(
+    "C:\\Users\\Ada\\My Profile",
+  );
+  expect(resolveNodexHomePath({ ...windows, env: { NODEX_HOME: "D:\\Profiles\\work" } })).toBe(
+    "D:\\Profiles\\work",
+  );
+  expect(
+    resolveNodexHomePath({ ...windows, env: { NODEX_HOME: "\\\\server\\profiles\\work" } }),
+  ).toBe("\\\\server\\profiles\\work");
+});

@@ -1,6 +1,12 @@
+import {
+  escapeWindowsShellArg,
+  sanitizeShellModeArgsForPlatform,
+} from "@nodex/agent-runtime/windows-shell";
 import { constants } from "node:fs";
-import { access, lstat, stat } from "node:fs/promises";
-import { delimiter, isAbsolute, join, resolve } from "node:path";
+import { access, lstat, stat, mkdtemp, rm } from "node:fs/promises";
+import { isAbsolute, join, resolve } from "node:path";
+import { hostCapabilities } from "../host-capabilities";
+import { claudeExecutableCandidates, claudeHostEnvironmentValue } from "./ClaudeExecutable";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -12,6 +18,29 @@ import { MainConfig } from "../../app/MainConfig";
 import { loadCodexLocalShellEnvironment } from "../../codex/codex-worktree-shell-environment";
 
 export const OPENCODE_INSTALL_COMMAND = "curl -fsSL https://opencode.ai/v2/install | /bin/bash";
+export const openCodeInstallCommand = (platform: string, architecture = "x64"): string =>
+  platform === "win32" ? openCodeWindowsInstallScript(architecture) : OPENCODE_INSTALL_COMMAND;
+
+export const openCodeWindowsInstallScript = (architecture: string): string => {
+  if (architecture !== "x64" && architecture !== "arm64")
+    throw new Error("Unsupported Windows architecture");
+  const artifact = architecture === "arm64" ? "arm64" : "x64-baseline";
+  return [
+    "$ErrorActionPreference = 'Stop'",
+    "$root = Join-Path $env:USERPROFILE '.opencode'",
+    "$temporary = if ($env:NODEX_OPENCODE_INSTALL_TEMP) { $env:NODEX_OPENCODE_INSTALL_TEMP } else { Join-Path $root ([Guid]::NewGuid().ToString()) }",
+    "New-Item -ItemType Directory -Path $temporary -Force | Out-Null",
+    "try {",
+    `Invoke-WebRequest -Uri 'https://opencode.ai/update/api/latest/cli/opencode/opencode-windows-${artifact}.zip' -OutFile (Join-Path $temporary 'opencode.zip')`,
+    "Expand-Archive -LiteralPath (Join-Path $temporary 'opencode.zip') -DestinationPath (Join-Path $temporary 'unpacked')",
+    "$binary = @(Get-ChildItem -LiteralPath (Join-Path $temporary 'unpacked') -Recurse -Filter 'opencode.exe')",
+    "if ($binary.Count -ne 1) { throw 'The download did not contain one OpenCode executable.' }",
+    "New-Item -ItemType Directory -Path (Join-Path $root 'bin') -Force | Out-Null",
+    "[IO.File]::Move($binary[0].FullName, (Join-Path $root 'bin\\opencode.exe'))",
+    "} finally { Remove-Item -LiteralPath $temporary -Recurse -Force }",
+  ].join("; ");
+};
+
 const MAXIMUM_INSTALL_OUTPUT_BYTES = 256 * 1024;
 const MAXIMUM_VERSION_OUTPUT_BYTES = 4 * 1024;
 
@@ -26,6 +55,7 @@ export interface OpenCodeInstallOutput {
 export interface OpenCodeInstallHost {
   readonly homeDirectory: string;
   readonly platform: string;
+  readonly arch?: string;
   readonly environment: Readonly<Record<string, string | undefined>>;
 }
 export class OpenCodeInstallPlatformError extends Schema.TaggedError<OpenCodeInstallPlatformError>()(
@@ -72,7 +102,10 @@ export const openCodeInstallEnvironment = (
     ),
   ),
   HOME: host.homeDirectory,
-  SHELL: host.environment.SHELL || (host.platform === "darwin" ? "/bin/zsh" : "/bin/bash"),
+  ...(host.platform === "win32" ? { USERPROFILE: host.homeDirectory } : {}),
+  ...(host.platform === "win32"
+    ? {}
+    : { SHELL: host.environment.SHELL || (host.platform === "darwin" ? "/bin/zsh" : "/bin/bash") }),
 });
 
 const failure = (
@@ -88,7 +121,12 @@ export const make = Effect.fn("OpenCodeInstallPlatform.make")(function* (
 ) {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const environment = openCodeInstallEnvironment(host);
-  const target = join(host.homeDirectory, ".opencode", "bin", "opencode");
+  const target = join(
+    host.homeDirectory,
+    ".opencode",
+    "bin",
+    host.platform === "win32" ? "opencode.exe" : "opencode",
+  );
   // The official installer also replaces its legacy launcher shims.
   const installationPaths = [
     "opencode",
@@ -107,10 +145,10 @@ export const make = Effect.fn("OpenCodeInstallPlatform.make")(function* (
       ),
     ),
   ).pipe(Effect.map((existing) => existing.some(Boolean)));
-  const supported = host.platform === "darwin" || host.platform === "linux";
+  const supported = hostCapabilities(host.platform).openCode;
   const checkHost = Effect.suspend(() => {
     if (!supported)
-      return failure("unsupported-platform", "OpenCode installation requires macOS or Linux.");
+      return failure("unsupported-platform", "OpenCode is unavailable on this platform.");
     if (!isAbsolute(host.homeDirectory))
       return failure("invalid-home", "The host home directory must be absolute.");
     return Effect.void;
@@ -161,7 +199,7 @@ export const make = Effect.fn("OpenCodeInstallPlatform.make")(function* (
     env: environment,
     extendEnv: false,
     shell: false,
-    detached: true,
+    detached: host.platform !== "win32",
     stdin: "ignore",
     stdout: "pipe",
     stderr: "pipe",
@@ -171,7 +209,13 @@ export const make = Effect.fn("OpenCodeInstallPlatform.make")(function* (
   const inspect = Effect.fn("OpenCodeInstallPlatform.inspect")(function* (binaryPath: string) {
     let stdout = "";
     yield* run(
-      ChildProcess.make(binaryPath, ["--version"], processOptions),
+      host.platform === "win32" && /\.(cmd|bat)$/iu.test(binaryPath)
+        ? ChildProcess.make(
+            escapeWindowsShellArg(binaryPath),
+            sanitizeShellModeArgsForPlatform(["--version"], "win32"),
+            { ...processOptions, shell: true },
+          )
+        : ChildProcess.make(binaryPath, ["--version"], processOptions),
       MAXIMUM_VERSION_OUTPUT_BYTES,
       ({ stream, data }) =>
         Effect.sync(() => {
@@ -193,7 +237,7 @@ export const make = Effect.fn("OpenCodeInstallPlatform.make")(function* (
   const find = Effect.fn("OpenCodeInstallPlatform.find")(function* (candidates: readonly string[]) {
     for (const candidate of candidates) {
       const executable = yield* Effect.tryPromise(() =>
-        access(candidate, constants.X_OK)
+        access(candidate, host.platform === "win32" ? constants.F_OK : constants.X_OK)
           .then(() => stat(candidate))
           .then((info) => (info.isFile() ? candidate : null)),
       ).pipe(Effect.orElseSucceed(() => null));
@@ -201,11 +245,13 @@ export const make = Effect.fn("OpenCodeInstallPlatform.make")(function* (
     }
     return null;
   });
-  const fromPath = (path: string | undefined, binary: string) =>
-    (path ?? "")
-      .split(delimiter)
-      .filter(isAbsolute)
-      .map((directory) => join(directory, binary));
+  const fromPath = (searchPath: string | undefined, binary: string) =>
+    claudeExecutableCandidates(
+      binary,
+      { ...environment, PATH: searchPath ?? "" },
+      host.platform,
+      host.homeDirectory,
+    );
   const probe = Effect.fn("OpenCodeInstallPlatform.probe")(function* (
     preferredBinaryPath = "opencode",
   ) {
@@ -215,13 +261,20 @@ export const make = Effect.fn("OpenCodeInstallPlatform.make")(function* (
       ? join(host.homeDirectory, preferredBinaryPath.slice(2))
       : resolve(host.homeDirectory, preferredBinaryPath);
     const primary = yield* find(
-      explicit ? [expanded] : fromPath(environment.PATH, preferredBinaryPath),
+      explicit
+        ? [expanded]
+        : fromPath(
+            claudeHostEnvironmentValue(environment, "PATH", host.platform),
+            preferredBinaryPath,
+          ),
     );
     if (primary) return yield* inspect(primary);
-    const loginPath = loadShellPath ? yield* loadShellPath : undefined;
+    const loginPath = host.platform !== "win32" && loadShellPath ? yield* loadShellPath : undefined;
     const discovered = yield* find([
       ...fromPath(loginPath, "opencode"),
-      ...(explicit ? fromPath(environment.PATH, "opencode") : []),
+      ...(explicit
+        ? fromPath(claudeHostEnvironmentValue(environment, "PATH", host.platform), "opencode")
+        : []),
       target,
     ]);
     if (discovered) return yield* inspect(discovered);
@@ -245,15 +298,52 @@ export const make = Effect.fn("OpenCodeInstallPlatform.make")(function* (
           "existing-installation",
           "An existing OpenCode installation will not be replaced.",
         );
-      yield* run(
-        ChildProcess.make(
-          "/bin/bash",
-          ["-o", "pipefail", "-c", OPENCODE_INSTALL_COMMAND],
-          processOptions,
-        ),
-        MAXIMUM_INSTALL_OUTPUT_BYTES,
-        onOutput,
-      ).pipe(
+      yield* Effect.gen(function* () {
+        const temporary =
+          host.platform === "win32"
+            ? yield* Effect.acquireRelease(
+                Effect.tryPromise({
+                  try: () => mkdtemp(join(host.homeDirectory, ".nodex-opencode-install-")),
+                  catch: (cause) =>
+                    failure(
+                      "process",
+                      "The OpenCode download directory could not be created.",
+                      cause,
+                    ),
+                }),
+                (directory) =>
+                  Effect.promise(() =>
+                    rm(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }),
+                  ),
+              )
+            : undefined;
+        return yield* run(
+          host.platform === "win32"
+            ? ChildProcess.make(
+                "powershell.exe",
+                [
+                  "-NoLogo",
+                  "-NoProfile",
+                  "-NonInteractive",
+                  "-ExecutionPolicy",
+                  "Bypass",
+                  "-Command",
+                  openCodeWindowsInstallScript(host.arch ?? "x64"),
+                ],
+                {
+                  ...processOptions,
+                  env: { ...environment, NODEX_OPENCODE_INSTALL_TEMP: temporary },
+                },
+              )
+            : ChildProcess.make(
+                "/bin/bash",
+                ["-o", "pipefail", "-c", OPENCODE_INSTALL_COMMAND],
+                processOptions,
+              ),
+          MAXIMUM_INSTALL_OUTPUT_BYTES,
+          onOutput,
+        );
+      }).pipe(
         Effect.scoped,
         Effect.timeoutOrElse({
           duration: "5 minutes",
@@ -274,7 +364,12 @@ export const live = Layer.effect(
     const config = yield* MainConfig;
     const environment = openCodeInstallEnvironment(config);
     const loginPath = Effect.tryPromise({
-      try: (signal) => loadCodexLocalShellEnvironment({ baseEnvironment: environment, signal }),
+      try: (signal) =>
+        loadCodexLocalShellEnvironment({
+          baseEnvironment: environment,
+          platform: config.platform as NodeJS.Platform,
+          signal,
+        }),
       catch: (cause) => failure("process", "The login shell path could not be read.", cause),
     }).pipe(
       Effect.map((value) => value.PATH),

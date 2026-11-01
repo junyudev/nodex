@@ -136,3 +136,20 @@ describe("clipboard paste inspector", () => {
     expect(payload.structuralEnvelope).toBeUndefined();
   });
 });
+
+test("recovers a structural private MIME claim without an HTML fallback", () => {
+  const payload = readClipboardPastePayload({
+    generation: 1,
+    fileUrls: [],
+    text: "Portable",
+    structuralDescriptor: JSON.stringify({
+      version: 1,
+      phase: "preparing",
+      writeClaim,
+      actionHint: "copy",
+    }),
+  });
+  expect(payload.structuralWriteClaim).toBe(writeClaim);
+  expect(payload.text).toBe("Portable");
+  expect(payload.structuralEnvelope).toBeUndefined();
+});

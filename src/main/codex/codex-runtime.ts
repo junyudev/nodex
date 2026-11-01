@@ -56,7 +56,11 @@ async function validateRuntimeArtifacts(
       if (stats.size !== artifact.size) {
         throw new Error(`Agent runtime artifact size does not match metadata: ${artifact.path}`);
       }
-      if (artifact.executable && (stats.mode & 0o111) === 0) {
+      if (
+        artifact.executable &&
+        metadata.targetPlatform !== "win32" &&
+        (stats.mode & 0o111) === 0
+      ) {
         throw new Error(`Agent runtime artifact is not executable: ${artifact.path}`);
       }
       if ((await readRuntimeArtifactSha256(artifactPath, signal)) !== artifact.sha256) {
@@ -88,6 +92,8 @@ async function validateRuntimeSearchPaths(
 }
 
 type ResolveCodexRuntimeOptions = {
+  platform?: string;
+  architecture?: string;
   browserRuntimePlatformArtifactVerifier?: BrowserRuntimePlatformArtifactVerifier;
   signal?: AbortSignal;
   isPackaged: boolean;
@@ -96,6 +102,8 @@ type ResolveCodexRuntimeOptions = {
 };
 
 async function resolveRuntimeFromRoot(input: {
+  platform?: string;
+  architecture?: string;
   signal?: AbortSignal;
   browserRuntimePlatformArtifactVerifier?: BrowserRuntimePlatformArtifactVerifier;
   missingBinaryMessage: string;
@@ -110,6 +118,11 @@ async function resolveRuntimeFromRoot(input: {
   }
 
   const metadata = await parseBundledRuntimeMetadata(metadataPath);
+  if (
+    (input.platform !== undefined && metadata.targetPlatform !== input.platform) ||
+    (input.architecture !== undefined && metadata.targetArch !== input.architecture)
+  )
+    throw new Error("Agent runtime target does not match this host.");
   await validateRuntimeArtifacts(input.runtimeRoot, metadata, input.signal);
   await validateRuntimeSearchPaths(input.runtimeRoot, metadata);
   const browserRuntime = await resolveBrowserRuntimeBundle({
@@ -170,12 +183,14 @@ export async function resolveCodexRuntime(
     }
 
     return resolveRuntimeFromRoot({
+      platform: options.platform,
+      architecture: options.architecture,
       browserRuntimePlatformArtifactVerifier: options.browserRuntimePlatformArtifactVerifier,
       signal: options.signal,
       source: "staged",
       runtimeRoot: path.join(projectRootPath, ".generated", "codex-runtime", "agent-runtime"),
       missingBinaryMessage:
-        "Pinned agent runtime is missing or incomplete. Run `pnpm run stage:codex-runtime:mac`.",
+        "Pinned agent runtime is missing or incomplete. Prepare the Agent runtime for this host.",
     });
   }
 
@@ -185,6 +200,8 @@ export async function resolveCodexRuntime(
   }
 
   return resolveRuntimeFromRoot({
+    platform: options.platform,
+    architecture: options.architecture,
     browserRuntimePlatformArtifactVerifier: options.browserRuntimePlatformArtifactVerifier,
     signal: options.signal,
     source: "bundled",

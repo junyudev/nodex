@@ -2,7 +2,11 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import { parseLocalFileLinkHref } from "../shared/file-link-openers";
-import { inspectNodexClipboardHtml, readNodexClipboardFragment } from "../shared/clipboard-paste";
+import {
+  decodeNodexStructuralClipboardDescriptor,
+  inspectNodexClipboardHtml,
+  readNodexClipboardFragment,
+} from "../shared/clipboard-paste";
 import type {
   ClipboardPastePayload,
   ClipboardPasteInspectionItem,
@@ -94,13 +98,18 @@ export function readClipboardPastePayload(
   };
   const items = inspectClipboardPasteItemsFromStrings([snapshot.fileUrls.join("\n")]).items;
   if (items.length > 0) payload.items = items;
+  const descriptor = snapshot.structuralDescriptor
+    ? decodeNodexStructuralClipboardDescriptor(snapshot.structuralDescriptor)
+    : null;
+  if (descriptor?.phase === "ready") payload.structuralEnvelope = descriptor.envelope;
+  if (descriptor) payload.structuralWriteClaim = descriptor.writeClaim;
   if (!snapshot.html) return payload;
   const inspected = inspectNodexClipboardHtml(snapshot.html);
   payload.html = inspected.fallbackHtml;
   const fragment = readNodexClipboardFragment(snapshot.html);
   if (fragment) payload.blocknoteHtml = fragment;
-  if (inspected.envelope) payload.structuralEnvelope = inspected.envelope;
-  if (inspected.hasStructuralFallback && inspected.writeClaim) {
+  if (!descriptor && inspected.envelope) payload.structuralEnvelope = inspected.envelope;
+  if (!descriptor && inspected.hasStructuralFallback && inspected.writeClaim) {
     payload.structuralWriteClaim = inspected.writeClaim;
   }
   return payload;

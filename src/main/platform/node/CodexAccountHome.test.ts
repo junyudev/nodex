@@ -30,7 +30,7 @@ const fixture = () => {
   const accountHome = join(root, "personal");
   mkdirSync(sharedHome);
   mkdirSync(accountHome);
-  return { root, sharedHome, accountHome, platform: "darwin" };
+  return { root, sharedHome, accountHome, platform: process.platform };
 };
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
@@ -63,8 +63,8 @@ describe("Codex account directory", () => {
     expect(readFileSync(join(home.effectiveHome, "config.toml"), "utf8")).toBe(
       readFileSync(join(home.sharedHome, "config.toml"), "utf8"),
     );
-    expect(readlinkSync(join(home.effectiveHome, "work.config.toml"))).toBe(
-      join(home.sharedHome, "work.config.toml"),
+    expect(readFileSync(join(home.effectiveHome, "work.config.toml"), "utf8")).toBe(
+      'model = "gpt-5"\n',
     );
     expect(readFileSync(join(home.effectiveHome, "auth.json"), "utf8")).toBe(
       "personal credentials",
@@ -125,12 +125,8 @@ describe("Codex account directory", () => {
     },
   );
 
-  it("fences account path replacement and never mutates unsupported Windows layouts", () => {
+  it("fences account path replacement", () => {
     const input = fixture();
-    expect(() => prepareCodexAccountHome({ ...input, platform: "win32" })).toThrow(
-      "unavailable on Windows",
-    );
-    expect(existsSync(join(input.sharedHome, "sessions"))).toBe(false);
     const home = prepareCodexAccountHome(input);
     renameSync(home.effectiveHome, `${home.effectiveHome}-old`);
     mkdirSync(home.effectiveHome);

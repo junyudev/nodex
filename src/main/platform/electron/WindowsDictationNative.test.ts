@@ -31,7 +31,12 @@ class MemoryItem {
 
 function childProcess() {
   const child = new EventEmitter() as ChildProcess;
-  Object.assign(child, { stdout: new EventEmitter(), kill: vi.fn() });
+  Object.assign(child, {
+    stdout: new EventEmitter(),
+    exitCode: null,
+    signalCode: null,
+    kill: vi.fn(),
+  });
   return child;
 }
 
@@ -140,10 +145,7 @@ describe("Windows native boundary", () => {
     expect(() => buildWindowsDictationReleaseScript([[1.5]])).toThrow("Invalid");
   });
 
-  it.skipIf(process.platform === "win32")(
-    "does not claim Windows native availability on another OS",
-    () => {
-      expect(createWindowsDictationNativeHelperClient).toThrow("requires Windows");
-    },
-  );
+  it("does not claim Windows native availability on another OS", () => {
+    expect(() => createWindowsDictationNativeHelperClient("darwin")).toThrow("requires Windows");
+  });
 });

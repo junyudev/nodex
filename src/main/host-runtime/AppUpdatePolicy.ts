@@ -1,3 +1,4 @@
+import { hostCapabilities } from "../platform/host-capabilities";
 import type { AppUpdateSettings, AppUpdateStatus } from "../../shared/types";
 import type { MacAppUpdaterEvent } from "../mac-app-updater";
 
@@ -20,10 +21,14 @@ const unsupportedRuntimeMessage = (input: {
   readonly platform: NodeJS.Platform;
   readonly updaterAvailable: boolean;
 }): string => {
-  if (input.isPackaged && input.platform === "darwin" && !input.isInApplicationsFolder) {
+  if (
+    input.isPackaged &&
+    hostCapabilities(input.platform).autoUpdate &&
+    !input.isInApplicationsFolder
+  ) {
     return "Move Nodex to Applications to enable app updates.";
   }
-  if (input.isPackaged && input.platform === "darwin" && !input.updaterAvailable) {
+  if (input.isPackaged && hostCapabilities(input.platform).autoUpdate && !input.updaterAvailable) {
     return "App updates are disabled in this build.";
   }
   return "App updates are only available in packaged macOS builds.";
@@ -40,7 +45,7 @@ export const initialAppUpdateState = (input: {
 }): AppUpdateRuntimeState => {
   const supported =
     input.isPackaged &&
-    input.platform === "darwin" &&
+    hostCapabilities(input.platform).autoUpdate &&
     input.isInApplicationsFolder &&
     input.updaterAvailable;
   return {

@@ -1,3 +1,4 @@
+import { testLayer } from "../app/MainConfig";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -58,7 +59,13 @@ it.live.skipIf(process.platform === "win32")(
       );
       const context = yield* Layer.build(
         TerminalRuntimeLive.layer.pipe(
-          Layer.provide(Layer.mergeAll(environment, TerminalProcessMetrics.live, TerminalPty.live)),
+          Layer.provide(
+            Layer.mergeAll(
+              environment,
+              TerminalProcessMetrics.live,
+              TerminalPty.live.pipe(Layer.provide(testLayer({ platform: process.platform }))),
+            ),
+          ),
         ),
       );
       const sessions = Context.get(context, TerminalSessions);

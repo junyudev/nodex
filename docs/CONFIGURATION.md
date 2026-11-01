@@ -172,7 +172,10 @@ uses the native home account. Sign into that directory using
 `CODEX_HOME=/path/to/account codex -c 'cli_auth_credentials_store="file"' login`.
 Account selection applies after restart and
 preserves existing native conversation IDs. Nodex supports one active local Codex account;
-independent account directories are available on macOS and Linux. Authentication and account model
+independent account directories are available on macOS, Linux and Windows. Windows shares
+state directories with junctions and existing configuration files with hard links, so account
+and shared homes must be on the same volume. Replaced shared configuration files fail validation
+rather than silently using divergent configuration. Recreate the affected account links before restarting. Authentication and account model
 caches remain private to the selected directory; source credentials are never copied. An empty
 account directory can also be signed into from Nodex after restart.
 
@@ -242,6 +245,7 @@ Disabling it prevents new connections and leaves existing durable task bindings 
 The default OpenCode instance is enabled for new, unconfigured Profiles and uses the
 installed `opencode` executable. Use **Agent > OpenCode** to disable it or configure an instance.
 If OpenCode is missing, Nodex can run its official installer after you choose to install it.
+On Windows, installation downloads the official standalone executable for x64 or arm64.
 Installation uses your operating-system user directory. Nodex verifies the installed
 executable and discovers it immediately, without requiring an application restart.
 Choose its profile directory or leave it empty for Nodex's isolated

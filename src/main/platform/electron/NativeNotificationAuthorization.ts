@@ -1,3 +1,4 @@
+import { hostCapabilities } from "../host-capabilities";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import * as Context from "effect/Context";
@@ -34,7 +35,7 @@ export const makeNativeNotificationAuthorization = Effect.fnUntraced(function* (
   readonly isSupported: () => boolean;
   readonly loadBridge: () => NativeNotificationBridge;
 }) {
-  if (options.platform !== "darwin") {
+  if (!hostCapabilities(options.platform).nativeNotificationAuthorization) {
     const read = Effect.sync((): DesktopNotificationAuthorization =>
       options.isSupported() ? "unknown" : "unsupported",
     );

@@ -9,9 +9,17 @@ export const resolveCodexProcessEnvironment = (input: {
 }) =>
   Effect.try({
     try: () => {
-      const inheritedPath = input.environment.PATH ?? "";
+      const windows = input.pathDelimiter === ";";
+      const inheritedPath =
+        Object.entries(input.environment).find(([name]) =>
+          windows ? name.toUpperCase() === "PATH" : name === "PATH",
+        )?.[1] ?? "";
       return {
-        ...input.environment,
+        ...Object.fromEntries(
+          Object.entries(input.environment).filter(([name]) =>
+            windows ? name.toUpperCase() !== "PATH" : name !== "PATH",
+          ),
+        ),
         CODEX_HOME: input.codexHome,
         PATH: [...input.additionalSearchPaths, inheritedPath]
           .filter(Boolean)

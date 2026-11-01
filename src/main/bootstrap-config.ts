@@ -101,9 +101,7 @@ export function resolveBootstrapConfig(
     );
   }
 
-  const homeDir = path.resolve(
-    options.homeDir ?? (environment.HOME?.trim() ? environment.HOME : homedir()),
-  );
+  const homeDir = path.resolve(options.homeDir ?? homedir());
   const exists = options.exists ?? existsSync;
   const readDocument =
     options.readDocument ??

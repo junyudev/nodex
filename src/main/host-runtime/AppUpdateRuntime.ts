@@ -1,3 +1,4 @@
+import { hostCapabilities } from "../platform/host-capabilities";
 import { resolve } from "node:path";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -54,11 +55,10 @@ export interface AppUpdateRuntimeOptions {
 }
 
 const createUpdaterPlatform = (config: MainConfigValue): MacAppUpdaterPlatform | null => {
-  if (!config.isPackaged || config.platform !== "darwin") return null;
-  if (config.arch !== "arm64") return null;
+  if (!config.isPackaged || !hostCapabilities(config.platform, config.arch).autoUpdate) return null;
   return createPackagedMacAppUpdaterPlatform({
     applicationBundlePath: resolve(config.resourcesPath, "..", ".."),
-    architecture: config.arch,
+    architecture: "arm64",
     resourcesPath: config.resourcesPath,
   });
 };

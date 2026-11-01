@@ -88,7 +88,14 @@ test("does not change custom executable commands or unsupported host paths", () 
   const input = { ...options("/home/user"), environment: { TOKEN: "instance-token" } };
   for (const binaryPath of ["custom-opencode", "/opt/bin/opencode", "~/bin/opencode"])
     expect(openCodeExecutableEnvironment({ ...input, binaryPath })).toEqual(input.environment);
-  expect(openCodeExecutableEnvironment({ ...input, platform: "win32" })).toEqual(input.environment);
+  expect(
+    openCodeExecutableEnvironment({
+      ...input,
+      platform: "win32",
+      homeDirectory: "C:\\Users\\Ada",
+      inheritedEnvironment: { Path: "C:\\Windows" },
+    }),
+  ).toEqual({ ...input.environment, PATH: "C:\\Windows;C:\\Users\\Ada\\.opencode\\bin" });
   expect(openCodeExecutableEnvironment({ ...input, homeDirectory: "" })).toEqual(input.environment);
 });
 

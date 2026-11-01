@@ -266,7 +266,7 @@ it.live.skipIf(process.platform === "win32")(
 
 it.effect("rejects unsupported hosts before attempting installation", () =>
   Effect.gen(function* () {
-    const platform = yield* make({ homeDirectory: "/user", platform: "win32", environment: {} });
+    const platform = yield* make({ homeDirectory: "/user", platform: "freebsd", environment: {} });
     const result = yield* Effect.result(platform.install(() => Effect.void));
     expect(result).toMatchObject({ _tag: "Failure", failure: { reason: "unsupported-platform" } });
   }).pipe(Effect.provide(NodeServices.layer)),

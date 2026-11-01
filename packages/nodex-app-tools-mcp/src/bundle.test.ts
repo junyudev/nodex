@@ -6,13 +6,13 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { build } from "esbuild";
 import { expect, it } from "vitest";
-import { listenAppToolsPipe } from "./pipe";
+import { appToolsPipePath, listenAppToolsPipe } from "./pipe";
 
 it("runs the standalone MCP bundle outside the repository dependency tree", async () => {
   const directory = await mkdtemp(join(tmpdir(), "nx-bundle-"));
   const entrypoint = join(directory, "server.mjs");
   const descriptor = {
-    path: join(directory, "host.sock"),
+    path: appToolsPipePath(directory, process.platform),
     instanceId: randomUUID(),
     token: randomUUID(),
   };

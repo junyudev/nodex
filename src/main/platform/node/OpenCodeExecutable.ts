@@ -1,4 +1,5 @@
-import { posix } from "node:path";
+import { claudeHostEnvironmentValue } from "./ClaudeExecutable";
+import { posix, win32 } from "node:path";
 
 /** Keep official user installs discoverable even before the login shell adds their directory. */
 export const openCodeExecutableEnvironment = (input: {
@@ -8,17 +9,32 @@ export const openCodeExecutableEnvironment = (input: {
   readonly homeDirectory: string;
   readonly platform: string;
 }): Readonly<Record<string, string>> => {
+  const windows = input.platform === "win32";
+  const path = windows ? win32 : posix;
   if (
     input.binaryPath !== "opencode" ||
-    input.platform === "win32" ||
-    !posix.isAbsolute(input.homeDirectory) ||
-    Object.hasOwn(input.environment, "PATH")
+    !path.isAbsolute(input.homeDirectory) ||
+    Object.keys(input.environment).some((key) =>
+      windows ? key.toUpperCase() === "PATH" : key === "PATH",
+    )
   )
     return input.environment;
 
-  const directory = posix.join(input.homeDirectory, ".opencode", "bin");
-  const searchPath = input.inheritedEnvironment.PATH ?? "/usr/bin:/bin";
-  if (searchPath.split(":").includes(directory)) return input.environment;
+  const directory = path.join(input.homeDirectory, ".opencode", "bin");
+  const searchPath =
+    claudeHostEnvironmentValue(input.inheritedEnvironment, "PATH", input.platform) ??
+    (windows ? "" : "/usr/bin:/bin");
+  if (
+    searchPath
+      .split(windows ? ";" : ":")
+      .some((entry) =>
+        windows ? entry.toLowerCase() === directory.toLowerCase() : entry === directory,
+      )
+  )
+    return input.environment;
 
-  return { ...input.environment, PATH: `${searchPath}:${directory}` };
+  return {
+    ...input.environment,
+    PATH: [searchPath, directory].filter(Boolean).join(windows ? ";" : ":"),
+  };
 };

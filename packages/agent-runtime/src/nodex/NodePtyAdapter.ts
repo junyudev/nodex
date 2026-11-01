@@ -1,5 +1,5 @@
 import * as NodeModule from "node:module";
-import * as NodeNet from "node:net";
+import { killWindowsPty, waitForWindowsPtyPid } from "./WindowsPty";
 
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -48,81 +48,11 @@ export const NodePtyModuleLoaderRef = Context.Reference<NodePtyModuleLoader>(
 );
 
 /**
- * node-pty defers creation to avoid blocking on named pipes:
- * https://github.com/microsoft/node-pty/pull/885 Its public API has no
- * readiness event. The private ready_datapipe handler sets pid before our
- * listener runs.
- */
-const waitForWindowsPid = (
-  process: import("node-pty").IPty,
-  trackedProcess: NodePtyProcess,
-  shell: string,
-) =>
-  Effect.callback<void, PtyAdapter.PtySpawnError>((resume) => {
-    const hasPid = () => Number.isInteger(process.pid) && process.pid > 0;
-    const failure = (cause: unknown) =>
-      Effect.fail(new PtyAdapter.PtySpawnError({ adapter: "node-pty", shell, cause }));
-
-    if (hasPid()) {
-      resume(Effect.void);
-      return;
-    }
-
-    if (!("_socket" in process) || !(process._socket instanceof NodeNet.Socket)) {
-      resume(failure(new Error("Windows PTY readiness socket is unavailable.")));
-      return;
-    }
-
-    const socket = process._socket;
-    const onReady = () => {
-      cleanup();
-      resume(
-        hasPid()
-          ? Effect.void
-          : failure(new Error("Windows PTY became ready without a valid PID.")),
-      );
-    };
-    const onError = (cause: Error) => {
-      cleanup();
-      resume(failure(cause));
-    };
-    const onClose = () => onError(new Error("Windows PTY closed before its PID was available."));
-    let stopExit = () => {};
-    const cleanup = () => {
-      socket.off("ready_datapipe", onReady);
-      socket.off("error", onError);
-      socket.off("close", onClose);
-      stopExit();
-    };
-    socket.once("ready_datapipe", onReady);
-    socket.once("error", onError);
-    socket.once("close", onClose);
-    stopExit = trackedProcess.onExit(({ exitCode }) =>
-      onError(
-        new Error(`Windows PTY exited before its PID was available (exit code ${exitCode}).`),
-      ),
-    );
-    return Effect.sync(cleanup);
-  });
-
-/**
  * Cancels Windows startup without waiting for the first output, unlike public kill().
  * The private agent can cancel the pending connection before a child exists.
  */
 const killStartingWindowsPty = (process: import("node-pty").IPty) =>
-  Effect.try(() => {
-    if (
-      "_agent" in process &&
-      typeof process._agent === "object" &&
-      process._agent !== null &&
-      "kill" in process._agent &&
-      typeof process._agent.kill === "function"
-    ) {
-      process._agent.kill();
-    } else {
-      process.kill();
-    }
-  }).pipe(
+  Effect.try(() => killWindowsPty(process)).pipe(
     Effect.catch((error) =>
       Effect.logWarning("failed to cancel Windows terminal startup", {
         terminalPid: process.pid,
@@ -260,7 +190,11 @@ const make = Effect.fn("NodePtyAdapter.make")(function* () {
           }),
       });
       if (platform === "win32") {
-        yield* waitForWindowsPid(ptyProcess.nativeProcess, ptyProcess.process, input.shell).pipe(
+        yield* waitForWindowsPtyPid(ptyProcess.nativeProcess).pipe(
+          Effect.mapError(
+            (cause) =>
+              new PtyAdapter.PtySpawnError({ adapter: "node-pty", shell: input.shell, cause }),
+          ),
           Effect.onError(() =>
             Effect.sync(() => ptyProcess.process.disposeExitSubscription()).pipe(
               Effect.andThen(killStartingWindowsPty(ptyProcess.nativeProcess)),

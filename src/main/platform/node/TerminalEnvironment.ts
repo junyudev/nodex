@@ -1,9 +1,9 @@
 import * as Context from "effect/Context";
-import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import fs from "node:fs";
-import os from "node:os";
+import { MainConfig } from "../../app/MainConfig";
+import { claudeExecutableCandidates, claudeHostEnvironmentValue } from "./ClaudeExecutable";
 import path from "node:path";
 import type { TerminalSize } from "../../../shared/types";
 import type { TerminalRuntimeConfig } from "../../terminal-runtime/TerminalRuntimeMap";
@@ -32,21 +32,51 @@ const directoryExists = (pathname: string): boolean => {
   }
 };
 
-const resolveCwd = (requested: string | null | undefined): string => {
+const resolveCwd = (requested: string | null | undefined, home: string): string => {
   const trimmed = requested?.trim();
   if (trimmed && directoryExists(trimmed)) return trimmed;
-  const home = os.homedir();
   if (home && directoryExists(home)) return home;
-  return process.cwd();
+  return home;
 };
 
-const resolveShell = (): Effect.Effect<string> =>
-  process.platform === "win32"
-    ? Effect.succeed("powershell.exe")
-    : Config.String("SHELL").pipe(
-        Config.withDefault("/bin/zsh"),
-        Effect.orElseSucceed(() => "/bin/zsh"),
-      );
+export const terminalShellCandidates = (
+  platform: string,
+  environment: Readonly<NodeJS.ProcessEnv>,
+): readonly string[] => {
+  if (platform !== "win32")
+    return [environment.SHELL || (platform === "darwin" ? "/bin/zsh" : "/bin/sh")];
+  const root = claudeHostEnvironmentValue(environment, "SystemRoot", platform);
+  return [
+    "pwsh.exe",
+    ...(root
+      ? [path.win32.join(root, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")]
+      : []),
+    "powershell.exe",
+    claudeHostEnvironmentValue(environment, "COMSPEC", platform) || "cmd.exe",
+  ];
+};
+
+const resolveShell = (
+  platform: string,
+  environment: Readonly<NodeJS.ProcessEnv>,
+  home: string,
+): string => {
+  const candidates = terminalShellCandidates(platform, environment);
+  if (platform !== "win32") return candidates[0]!;
+  for (const shell of candidates) {
+    const found = claudeExecutableCandidates(shell, environment, platform, home).find(
+      (candidate) => {
+        try {
+          return fs.statSync(candidate).isFile();
+        } catch {
+          return false;
+        }
+      },
+    );
+    if (found) return found;
+  }
+  return candidates.at(-1)!;
+};
 
 export const resolveTerminalCommand = (
   shell: string,
@@ -59,39 +89,48 @@ export const resolveTerminalCommand = (
   return [shell, "-i"];
 };
 
-const buildEnvironment = (): Readonly<Record<string, string>> => {
+const buildEnvironment = (
+  environment: Readonly<NodeJS.ProcessEnv>,
+  platform: string,
+): Readonly<Record<string, string>> => {
   const env: Record<string, string> = {};
-  for (const [key, value] of Object.entries(process.env)) {
+  for (const [key, value] of Object.entries(environment)) {
     if (typeof value === "string") env[key] = value;
   }
   env.TERM = "xterm-256color";
-  if (process.platform !== "win32") {
+  if (platform !== "win32") {
     delete env.TERMINFO;
     delete env.TERMINFO_DIRS;
   }
   return env;
 };
 
-export const live: Layer.Layer<TerminalEnvironment> = Layer.succeed(
+export const live = Layer.effect(
   TerminalEnvironment,
-  TerminalEnvironment.of({
-    resolve: (input) =>
-      Effect.gen(function* () {
-        const shell = yield* resolveShell();
-        const [command, ...args] = resolveTerminalCommand(shell, process.platform);
-        const size = input.size ?? { cols: 80, rows: 24 };
-        return {
-          sessionId: input.sessionId,
-          conversationId: input.conversationId ?? null,
-          projectSessionId: input.projectSessionId ?? null,
-          title: input.title ?? null,
-          command,
-          args,
-          cwd: resolveCwd(input.cwd),
-          env: buildEnvironment(),
-          cols: Math.max(2, Math.floor(size.cols)),
-          rows: Math.max(1, Math.floor(size.rows)),
-        } satisfies TerminalRuntimeConfig;
-      }),
+  Effect.gen(function* () {
+    const config = yield* MainConfig;
+    return TerminalEnvironment.of({
+      resolve: (input) =>
+        Effect.gen(function* () {
+          const shell = resolveShell(config.platform, config.environment, config.homeDirectory);
+          const [command, ...args] = resolveTerminalCommand(
+            shell,
+            config.platform as NodeJS.Platform,
+          );
+          const size = input.size ?? { cols: 80, rows: 24 };
+          return {
+            sessionId: input.sessionId,
+            conversationId: input.conversationId ?? null,
+            projectSessionId: input.projectSessionId ?? null,
+            title: input.title ?? null,
+            command,
+            args,
+            cwd: resolveCwd(input.cwd, config.homeDirectory),
+            env: buildEnvironment(config.environment, config.platform),
+            cols: Math.max(2, Math.floor(size.cols)),
+            rows: Math.max(1, Math.floor(size.rows)),
+          } satisfies TerminalRuntimeConfig;
+        }),
+    });
   }),
 );

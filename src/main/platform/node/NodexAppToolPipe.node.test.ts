@@ -17,16 +17,21 @@ it.effect("closing the owning Scope cancels host work and removes its private en
     const admitted = yield* Deferred.make<void>();
     const cancelled = yield* Deferred.make<void>();
     const scope = yield* Scope.make();
-    const descriptor = yield* acquireAppToolPipe({
-      listTools: Effect.succeed([]),
-      callTool: () =>
-        Effect.gen(function* () {
-          yield* Deferred.succeed(admitted, undefined);
-          return yield* Effect.never;
-        }).pipe(Effect.onInterrupt(() => Deferred.succeed(cancelled, undefined))),
-    }).pipe(Scope.provide(scope));
-    const directory = yield* Effect.tryPromise(() => stat(dirname(descriptor.path)));
-    expect(directory.mode & 0o777).toBe(0o700);
+    const descriptor = yield* acquireAppToolPipe(
+      {
+        listTools: Effect.succeed([]),
+        callTool: () =>
+          Effect.gen(function* () {
+            yield* Deferred.succeed(admitted, undefined);
+            return yield* Effect.never;
+          }).pipe(Effect.onInterrupt(() => Deferred.succeed(cancelled, undefined))),
+      },
+      process.platform,
+    ).pipe(Scope.provide(scope));
+    if (process.platform !== "win32") {
+      const directory = yield* Effect.tryPromise(() => stat(dirname(descriptor.path)));
+      expect(directory.mode & 0o777).toBe(0o700);
+    }
     const client = yield* Effect.acquireRelease(
       Effect.tryPromise(() => connectAppToolsPipe(descriptor)),
       (client) => Effect.sync(() => client.close()),
@@ -40,9 +45,11 @@ it.effect("closing the owning Scope cancels host work and removes its private en
     yield* Scope.close(scope, Exit.void);
     yield* Deferred.await(cancelled);
     expect(Exit.isFailure(yield* Fiber.join(pending))).toBe(true);
-    const removed = yield* Effect.tryPromise(() => stat(dirname(descriptor.path))).pipe(
-      Effect.exit,
-    );
-    expect(Exit.isFailure(removed)).toBe(true);
+    if (process.platform !== "win32") {
+      const removed = yield* Effect.tryPromise(() => stat(dirname(descriptor.path))).pipe(
+        Effect.exit,
+      );
+      expect(Exit.isFailure(removed)).toBe(true);
+    }
   }).pipe(Effect.scoped, Effect.provide(callbacks)),
 );

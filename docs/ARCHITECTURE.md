@@ -590,10 +590,13 @@ Main owns the bounded, untrusted widget-context preparation used by ordinary and
 Only a confirmed injection can advance the admitted conversation owner's context fingerprint;
 renderer owners and Main owners retain the same generation and role boundaries.
 
-Interactive login-shell discovery is owned once per Main or worktree-worker lifetime. The Main
+On POSIX hosts, interactive login-shell discovery is owned once per Main or worktree-worker lifetime.
+Windows resolves its captured environment directly. The Main
 bootstrap snapshots its inherited environment, process platform, and home directory into immutable
-configuration;
-host Modules do not reread ambient `process.env` or `process.platform`. The scoped
+configuration. `MainConfig` derives immutable native integration capabilities from that snapshot;
+platform adapters gate native acquisition through that policy and publish existing typed feature
+availability observations. See [Windows host behavior](product-specs/windows-host-behavior.md).
+Host Modules do not reread ambient `process.env` or `process.platform`. The scoped
 shell-environment runtime keeps one lazy discovery child in a `FiberHandle`; individual callers may
 stop waiting without canceling shared discovery, while release interrupts the child and rejects
 later admission. Each worker entry snapshots its inherited environment and platform once, then

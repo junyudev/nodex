@@ -58,7 +58,6 @@ export const buildAgentRuntimeCliContext = (
   codexShellTaskId: string | null,
   agentAttribution: string | null,
 ): Effect.Effect<string | null> => {
-  if (config.platform === "win32") return Effect.succeed(null);
   const projectId = authority.actorProjectId;
   if (codexShellTaskId)
     return buildNodexCliBootstrap(config, identity, {
@@ -74,11 +73,16 @@ export const buildAgentRuntimeCliContext = (
     try: async () => {
       const paths = nodexCliPaths(config);
       await Promise.all([
-        access(paths.executable, constants.X_OK),
+        access(paths.executable, config.platform === "win32" ? constants.F_OK : constants.X_OK),
         access(paths.skill, constants.R_OK),
       ]);
       if (!(await stat(paths.executable)).isFile() || !(await stat(paths.skill)).isFile())
         return null;
+      if (config.platform === "win32") {
+        const psQuote = (value: string) => "'" + value.replaceAll("'", "''") + "'";
+        const command = `$env:NODEX_HOME=${psQuote(config.nodexHome)}; $env:NODEX_AGENT_ATTRIBUTION=${psQuote(agentAttribution ?? "")}; & ${psQuote(paths.executable)} --expect-profile ${psQuote(identity.profileId)}${projectId ? ` --project ${psQuote(projectId)}` : ""}`;
+        return `For shell content work, use this PowerShell prefix followed by the command, including after changing directories: ${command}. Read the bundled Skill at ${psQuote(paths.skill)}. From cmd or Git Bash, invoke PowerShell with -NoProfile -Command and this prefix.`;
+      }
       const attribution = agentAttribution
         ? `${NODEX_AGENT_ATTRIBUTION_ENV}=${quote(agentAttribution)} `
         : "";
@@ -102,24 +106,23 @@ export const buildNodexCliBootstrap = (
   const unavailable = (reason: string) =>
     Effect.tryPromise({
       try: async () => {
-        await unbindNodexCliShell(config.nodexHome, task.threadId);
+        await unbindNodexCliShell(config.nodexHome, task.threadId, config.platform);
         return unavailableContext(reason);
       },
       catch: (cause) => new BootstrapUnavailable({ cause }),
     });
   if (task.hostId !== "local") return unavailable("remote execution host");
-  if (config.platform === "win32")
-    return unavailable("this shell bootstrap is not supported on Windows");
   const projectId = task.projectId;
   return Effect.tryPromise({
     try: async () => {
       const paths = nodexCliPaths(config);
-      await access(paths.executable, constants.X_OK);
+      await access(paths.executable, config.platform === "win32" ? constants.F_OK : constants.X_OK);
       await access(paths.skill, constants.R_OK);
       if (!(await stat(paths.executable)).isFile() || !(await stat(paths.skill)).isFile()) {
         throw new Error("The current CLI or bundled Skill is not a file");
       }
       await bindNodexCliShell({
+        platform: config.platform,
         nodexHome: config.nodexHome,
         threadId: task.threadId,
         executable: paths.executable,

@@ -1,3 +1,6 @@
+/* @effect-diagnostics asyncFunction:off -- Native clipboard calls are asynchronous platform operations. */
+import { MainConfig } from "../../app/MainConfig";
+import { makeElectronClipboardFallback } from "./ElectronClipboardFallback";
 import { createRequire } from "node:module";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -7,6 +10,7 @@ import type { NativeImage } from "electron";
 import { loadNativeClipboardBridge, type NativeClipboardBridge } from "./native-clipboard";
 import { readClipboardPastePayload } from "../../clipboard-paste-inspector";
 import {
+  decodeNodexStructuralClipboardDescriptor,
   inspectNodexClipboardHtml,
   type ClaimedClipboardPresentationWriteInput,
   type ClaimedClipboardPresentationWriteResult,
@@ -56,19 +60,28 @@ export interface ElectronClipboardPort {
 }
 
 export const makeElectronClipboardPort = (dependencies: {
-  readonly native: NativeClipboardBridge;
+  readonly native: {
+    readonly read: () =>
+      | ReturnType<NativeClipboardBridge["read"]>
+      | Promise<ReturnType<NativeClipboardBridge["read"]>>;
+    readonly update: (
+      ...args: Parameters<NativeClipboardBridge["update"]>
+    ) =>
+      | ReturnType<NativeClipboardBridge["update"]>
+      | Promise<ReturnType<NativeClipboardBridge["update"]>>;
+  };
   readonly nativeImage: ElectronNativeImageTarget;
   readonly writeText: (text: string) => Promise<void>;
   readonly writePng: (bytes: Uint8Array) => Promise<void>;
 }): ElectronClipboardPort => {
   const { native, nativeImage } = dependencies;
   return {
-    readPaste: Effect.try({
-      try: () => readClipboardPastePayload(native.read()),
+    readPaste: Effect.tryPromise({
+      try: async () => readClipboardPastePayload(await native.read()),
       catch: nativeReadError,
     }),
     replaceClaimedPresentation: (input) =>
-      Effect.sync(() => {
+      Effect.promise(async () => {
         if (
           !input ||
           typeof input.writeClaim !== "string" ||
@@ -78,11 +91,17 @@ export const makeElectronClipboardPort = (dependencies: {
           return { ok: false, failure: "write_failed" };
         }
         try {
-          const observed = native.read();
-          if (inspectNodexClipboardHtml(observed.html ?? "").writeClaim !== input.writeClaim) {
+          const observed = await native.read();
+          const descriptor = observed.structuralDescriptor
+            ? decodeNodexStructuralClipboardDescriptor(observed.structuralDescriptor)
+            : null;
+          if (
+            (descriptor?.writeClaim ??
+              inspectNodexClipboardHtml(observed.html ?? "").writeClaim) !== input.writeClaim
+          ) {
             return { ok: false, failure: "superseded" };
           }
-          const result = native.update(observed.generation, input.text, input.html);
+          const result = await native.update(observed.generation, input.text, input.html);
           return result === "written" ? { ok: true } : { ok: false, failure: result };
         } catch {
           return { ok: false, failure: "write_failed" };
@@ -123,24 +142,33 @@ export class ElectronClipboard extends Context.Service<ElectronClipboard, Electr
   "nodex/main/platform/electron/ElectronClipboard",
 ) {}
 
-export const live: Layer.Layer<ElectronClipboard> = Layer.sync(ElectronClipboard, () => {
-  const electron = require("electron") as typeof import("electron");
-  return ElectronClipboard.of(
-    makeElectronClipboardPort({
-      native: loadNativeClipboardBridge({
-        packaged: electron.app.isPackaged,
-        appPath: electron.app.getAppPath(),
-        resourcesPath: process.resourcesPath,
-        architecture: process.arch,
+export const live: Layer.Layer<ElectronClipboard, never, MainConfig> = Layer.effect(
+  ElectronClipboard,
+  Effect.gen(function* () {
+    const config = yield* MainConfig;
+    const electron = require("electron") as typeof import("electron");
+    return ElectronClipboard.of(
+      makeElectronClipboardPort({
+        native: config.capabilities.nativeClipboard
+          ? loadNativeClipboardBridge({
+              packaged: config.isPackaged,
+              appPath: config.projectRootPath,
+              resourcesPath: config.resourcesPath,
+              architecture: config.arch,
+            })
+          : makeElectronClipboardFallback(
+              electron.clipboard,
+              (formats) => new electron.ClipboardItem(formats),
+            ),
+        nativeImage: electron.nativeImage,
+        writeText: (text) => electron.clipboard.writeText(text),
+        writePng: (bytes) =>
+          electron.clipboard.write([
+            new electron.ClipboardItem({
+              "image/png": new Blob([new Uint8Array(bytes)], { type: "image/png" }),
+            }),
+          ]),
       }),
-      nativeImage: electron.nativeImage,
-      writeText: (text) => electron.clipboard.writeText(text),
-      writePng: (bytes) =>
-        electron.clipboard.write([
-          new electron.ClipboardItem({
-            "image/png": new Blob([new Uint8Array(bytes)], { type: "image/png" }),
-          }),
-        ]),
-    }),
-  );
-});
+    );
+  }),
+);
