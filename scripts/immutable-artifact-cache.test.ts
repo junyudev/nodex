@@ -20,7 +20,9 @@ const temporaryRoots: string[] = [];
 const HASH = "a".repeat(64);
 
 function makeRoot(): string {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-immutable-cache-"));
+  const root = fs.realpathSync.native(
+    fs.mkdtempSync(path.join(os.tmpdir(), "nodex-immutable-cache-")),
+  );
   temporaryRoots.push(root);
   return root;
 }
@@ -72,9 +74,11 @@ describe("immutable artifact cache", () => {
     const identity = immutableDirectoryDigest(source);
     cloneImmutableDirectory(source, clone);
     expect(immutableDirectoryDigest(clone)).toBe(identity);
-    fs.chmodSync(path.join(clone, "binary"), 0o644);
-    expect(immutableDirectoryDigest(clone)).not.toBe(identity);
-    fs.chmodSync(path.join(clone, "binary"), 0o755);
+    if (process.platform !== "win32") {
+      fs.chmodSync(path.join(clone, "binary"), 0o644);
+      expect(immutableDirectoryDigest(clone)).not.toBe(identity);
+      fs.chmodSync(path.join(clone, "binary"), 0o755);
+    }
     fs.writeFileSync(path.join(clone, "binary"), "changed");
     expect(immutableDirectoryDigest(clone)).not.toBe(identity);
     expect(immutableDirectoryDigest(source)).toBe(identity);
@@ -90,7 +94,7 @@ describe("immutable artifact cache", () => {
         family: "browser-runtime",
         projectRoot: "/repo/nodex",
       }),
-    ).toBe(`/repo/nodex/cache.local/browser-runtime/${HASH}/runtime.tar.gz`);
+    ).toBe(path.resolve("/repo/nodex", "cache.local/browser-runtime", HASH, "runtime.tar.gz"));
 
     expect(
       resolveImmutableArtifactPath({
@@ -100,7 +104,7 @@ describe("immutable artifact cache", () => {
         family: "browser-runtime",
         projectRoot: "/repo/nodex",
       }),
-    ).toBe(`/shared/browser/${HASH}/runtime.tar.gz`);
+    ).toBe(path.resolve("/shared/browser", HASH, "runtime.tar.gz"));
   });
 
   test("shares the primary checkout cache from linked Git worktrees while honoring overrides", () => {
@@ -143,7 +147,13 @@ describe("immutable artifact cache", () => {
         projectRoot: linkedRoot,
       }),
     ).toBe(
-      path.join(fs.realpathSync(primaryRoot), "cache.local", "browser-runtime", HASH, "source-v1"),
+      path.join(
+        fs.realpathSync.native(primaryRoot),
+        "cache.local",
+        "browser-runtime",
+        HASH,
+        "source-v1",
+      ),
     );
     expect(
       resolveImmutableArtifactPath({
@@ -315,12 +325,13 @@ describe("immutable artifact cache", () => {
 
     fs.chmodSync(path.join(contentPath, "binary"), 0o644);
     await ensureImmutableDirectory(input);
-    expect(fs.statSync(path.join(contentPath, "binary")).mode & 0o777).toBe(0o755);
+    if (process.platform !== "win32")
+      expect(fs.statSync(path.join(contentPath, "binary")).mode & 0o777).toBe(0o755);
 
     fs.writeFileSync(path.join(contentPath, "unexpected"), "unsealed");
     await ensureImmutableDirectory(input);
     expect(fs.existsSync(path.join(contentPath, "unexpected"))).toBe(false);
-    expect(generate).toHaveBeenCalledTimes(4);
+    expect(generate).toHaveBeenCalledTimes(process.platform === "win32" ? 3 : 4);
   });
 
   test("failed extraction or validation never publishes a partial directory", async () => {
@@ -383,8 +394,8 @@ describe("immutable artifact cache", () => {
 
     cloneImmutableDirectory(sourcePath, outputPath);
     const outputBinary = path.join(outputPath, "versions", "binary");
-    expect(fs.readlinkSync(path.join(outputPath, "binary"))).toBe("versions/binary");
-    expect(fs.statSync(outputBinary).mode & 0o777).toBe(0o755);
+    expect(fs.readlinkSync(path.join(outputPath, "binary"))).toBe(path.join("versions", "binary"));
+    if (process.platform !== "win32") expect(fs.statSync(outputBinary).mode & 0o777).toBe(0o755);
     expect(fs.statSync(outputBinary).ino).not.toBe(fs.statSync(sourceBinary).ino);
     fs.writeFileSync(outputBinary, "changed");
     expect(fs.readFileSync(sourceBinary, "utf8")).toBe("runtime");
@@ -392,9 +403,10 @@ describe("immutable artifact cache", () => {
     const dereferencedOutput = path.join(root, "file-clone");
     cloneImmutableFile(path.join(sourcePath, "binary"), dereferencedOutput);
     expect(fs.lstatSync(dereferencedOutput).isFile()).toBe(true);
-    expect(fs.statSync(dereferencedOutput).mode & 0o777).toBe(0o755);
+    if (process.platform !== "win32")
+      expect(fs.statSync(dereferencedOutput).mode & 0o777).toBe(0o755);
     fs.chmodSync(dereferencedOutput, 0o644);
-    expect(fs.statSync(sourceBinary).mode & 0o777).toBe(0o755);
+    if (process.platform !== "win32") expect(fs.statSync(sourceBinary).mode & 0o777).toBe(0o755);
   });
 
   test("clones contents into an existing empty root and preserves its source permissions", () => {
@@ -408,8 +420,9 @@ describe("immutable artifact cache", () => {
     cloneImmutableDirectory(sourcePath, outputPath);
 
     expect(fs.readdirSync(outputPath)).toEqual(["binary"]);
-    expect(fs.statSync(outputPath).mode & 0o777).toBe(0o751);
-    expect(fs.statSync(path.join(outputPath, "binary")).mode & 0o777).toBe(0o751);
+    if (process.platform !== "win32") expect(fs.statSync(outputPath).mode & 0o777).toBe(0o751);
+    if (process.platform !== "win32")
+      expect(fs.statSync(path.join(outputPath, "binary")).mode & 0o777).toBe(0o751);
   });
 
   test.skipIf(process.platform !== "darwin")(

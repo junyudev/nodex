@@ -12,7 +12,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { delimiter, dirname, extname, join, relative, resolve } from "node:path";
+import { delimiter, dirname, extname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { immutableDirectoryDigest } from "./immutable-artifact-cache";
 import { type NodeBuildMode } from "../config/node-build-optimization";
@@ -262,7 +262,7 @@ export const canReuseAgentRuntimeBuild = (root: string): boolean =>
   !(process.env.NODE_PATH ?? "")
     .split(delimiter)
     .filter(Boolean)
-    .some((path) => !resolve(path).startsWith(`${join(root, "node_modules")}/`)) &&
+    .some((path) => !resolve(path).startsWith(`${join(root, "node_modules")}${sep}`)) &&
   !process.env.ESBUILD_BINARY_PATH &&
   !/--(?:require|import|(?:experimental-)?loader)\b|(?:^|\s)-r/u.test(
     process.env.NODE_OPTIONS ?? "",

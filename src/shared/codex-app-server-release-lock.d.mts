@@ -25,6 +25,10 @@ export interface AgentRuntimeBuild extends CodexReleaseArchive {
   runtimeMetadataSha256: string;
 }
 
+export interface WindowsAgentRuntimeBuild extends AgentRuntimeBuild {
+  readonly requiredArtifacts: readonly string[];
+}
+
 export interface CodexSchemaToolAsset {
   archiveSha256: string;
   archiveSize: number;
@@ -37,7 +41,8 @@ export interface CodexSchemaToolAsset {
 export interface CodexAppServerReleaseLock {
   appServerRuntimeVersion: string;
   builds: Record<CodexReleaseTargetKey, CodexReleaseArchive> &
-    Record<AgentRuntimeTargetKey, AgentRuntimeBuild>;
+    Record<AgentRuntimeTargetKey, AgentRuntimeBuild> &
+    Record<`win32-${"arm64" | "x64"}`, WindowsAgentRuntimeBuild>;
   notices: {
     licensePath: string;
     licenseSha256: string;

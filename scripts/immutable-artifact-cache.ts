@@ -28,6 +28,7 @@ import type { ReadableStream as WebReadableStream } from "node:stream/web";
 export const LOCAL_ARTIFACT_CACHE_DIRECTORY = "cache.local";
 
 export type ImmutableArtifactFamily =
+  | "node-runtime"
   | "agent-runtime"
   | "browser-runtime"
   | "electron"

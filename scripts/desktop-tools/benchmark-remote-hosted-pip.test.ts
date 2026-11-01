@@ -27,81 +27,84 @@ describe("Remote Hosted PiP state evidence benchmark", () => {
     );
   });
 
-  test("proves bounded Main state and teardown without claiming signed-native parity", async () => {
-    const report = await runStateBenchmark({ replacementCount: 12, taskCycleCount: 4 });
+  test.skipIf(process.platform === "win32")(
+    "proves bounded Main state and teardown without claiming signed-native parity",
+    async () => {
+      const report = await runStateBenchmark({ replacementCount: 12, taskCycleCount: 4 });
 
-    expect(report).toMatchObject({
-      evidence: {
-        grade: "state-only",
-        productionBrowserTouched: false,
-        productionWindowTouched: false,
-        signedNative: false,
-      },
-      isolation: {
-        acceptedLocalCodexOccurrences: 1,
-        activeTaskIds: ["local-thread"],
-        attemptedOccurrences: 3,
-        rejectedNonLocalOccurrences: 2,
-      },
-      replacementCount: 12,
-      schemaVersion: 1,
-      status: "passed",
-      taskCycleCount: 4,
-      windowOwnership: {
-        afterTeardown: {
-          auxiliaryWindowCount: 0,
-          listenerCount: 0,
-          primaryWindowCount: 0,
-          registryEntryCount: 0,
+      expect(report).toMatchObject({
+        evidence: {
+          grade: "state-only",
+          productionBrowserTouched: false,
+          productionWindowTouched: false,
+          signedNative: false,
         },
-        beforeTeardown: {
-          auxiliaryWindowCount: 1,
-          primaryWindowCount: 3,
-          registryEntryCount: 4,
+        isolation: {
+          acceptedLocalCodexOccurrences: 1,
+          activeTaskIds: ["local-thread"],
+          attemptedOccurrences: 3,
+          rejectedNonLocalOccurrences: 2,
         },
-      },
-    });
-    expect(report.benchmarks.resourceGovernor).toMatchObject({
-      lifecycle: { count: 4 },
-      replacement: { count: 12 },
-      retained: {
-        finalDecodedBytes: 0,
-        finalPresentationCount: 0,
-        peakDecodedBytes: 4,
-        peakPresentationCount: 1,
-      },
-    });
-    expect(report.benchmarks.runtimeProjection).toMatchObject({
-      lifecycle: { count: 4 },
-      nativeFake: {
-        finalPresentationCount: 0,
-        peakPresentationCount: 1,
-        upsertCount: 16,
-      },
-      replacement: { count: 12 },
-      retained: {
-        activeBeforeHostRetirement: 1,
-        finalActiveTaskCount: 0,
-        finalPresentationCount: 0,
-        peakPresentationCount: 1,
-      },
-    });
-    expect(report.memory.samples.map((sample) => sample.stage)).toEqual([
-      "start",
-      "after-resource-governor",
-      "after-backend-isolation",
-      "after-runtime-projection",
-      "after-window-ownership-teardown",
-    ]);
-    expect(report.memory.peakRssBytes).toBeGreaterThan(0);
-    expect(report.evidence.doesNotProve).toHaveLength(3);
-    expect(report.evidence.requiredExternalGates).toHaveLength(4);
-    expect(report.benchmarks.runtimeProjection.memorySamples).toHaveLength(9);
-    expect(
-      report.benchmarks.runtimeProjection.memorySamples.every(
-        (sample) =>
-          sample.retainedPresentationCount <= 1 && sample.fakeNativePresentationCount <= 1,
-      ),
-    ).toBe(true);
-  });
+        replacementCount: 12,
+        schemaVersion: 1,
+        status: "passed",
+        taskCycleCount: 4,
+        windowOwnership: {
+          afterTeardown: {
+            auxiliaryWindowCount: 0,
+            listenerCount: 0,
+            primaryWindowCount: 0,
+            registryEntryCount: 0,
+          },
+          beforeTeardown: {
+            auxiliaryWindowCount: 1,
+            primaryWindowCount: 3,
+            registryEntryCount: 4,
+          },
+        },
+      });
+      expect(report.benchmarks.resourceGovernor).toMatchObject({
+        lifecycle: { count: 4 },
+        replacement: { count: 12 },
+        retained: {
+          finalDecodedBytes: 0,
+          finalPresentationCount: 0,
+          peakDecodedBytes: 4,
+          peakPresentationCount: 1,
+        },
+      });
+      expect(report.benchmarks.runtimeProjection).toMatchObject({
+        lifecycle: { count: 4 },
+        nativeFake: {
+          finalPresentationCount: 0,
+          peakPresentationCount: 1,
+          upsertCount: 16,
+        },
+        replacement: { count: 12 },
+        retained: {
+          activeBeforeHostRetirement: 1,
+          finalActiveTaskCount: 0,
+          finalPresentationCount: 0,
+          peakPresentationCount: 1,
+        },
+      });
+      expect(report.memory.samples.map((sample) => sample.stage)).toEqual([
+        "start",
+        "after-resource-governor",
+        "after-backend-isolation",
+        "after-runtime-projection",
+        "after-window-ownership-teardown",
+      ]);
+      expect(report.memory.peakRssBytes).toBeGreaterThan(0);
+      expect(report.evidence.doesNotProve).toHaveLength(3);
+      expect(report.evidence.requiredExternalGates).toHaveLength(4);
+      expect(report.benchmarks.runtimeProjection.memorySamples).toHaveLength(9);
+      expect(
+        report.benchmarks.runtimeProjection.memorySamples.every(
+          (sample) =>
+            sample.retainedPresentationCount <= 1 && sample.fakeNativePresentationCount <= 1,
+        ),
+      ).toBe(true);
+    },
+  );
 });

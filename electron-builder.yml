@@ -23,9 +23,9 @@ files:
   - "!node_modules/node-pty/src/**"
   - "!node_modules/node-pty/third_party/**"
   - "!node_modules/node-pty/typings/**"
-  - "!node_modules/node-pty/prebuilds/win32-*/**"
 asarUnpack:
   - "**/*.node"
+  - "node_modules/node-pty/**"
   - "out/main/app-tools/**"
   - "out/agent-runtime/**"
 npmRebuild: true
@@ -33,10 +33,6 @@ extraResources:
   # Preserve the verified Node dependency without Electron metadata rewriting.
   - from: out/agent-runtime/node_modules
     to: app.asar.unpacked/out/agent-runtime/node_modules
-    filter:
-      - "**/*"
-  - from: .generated/workspace-runtime/${arch}
-    to: workspace-runtime
     filter:
       - "**/*"
   - from: .generated/prepared-electron-build.json
@@ -47,46 +43,14 @@ extraResources:
       - "**/*"
   - from: resources/icon.png
     to: icon.png
-  - from: resources/nodex-notification.aiff
-    to: nodex-notification.aiff
   - from: resources/artifact-template-picker
     to: artifact-template-picker
     filter:
       - "server.mjs"
   - from: .generated/build-resources/THIRD_PARTY_NOTICES.txt
     to: THIRD_PARTY_NOTICES.txt
-  - from: .generated/codex-runtime/bin
-    to: bin
-    filter:
-      - nodex
-      - nodex-appshot-helper
-      - nodex-dictation-helper
-      - nodex-browser-profile-helper
-      - nodex-core
-      - rust-core-runtime.json
   - from: .generated/codex-runtime/agent-runtime
     to: .
-    filter:
-      - "**/*"
-  - from: .generated/sparkle-runtime/${arch}/nodex-sparkle.node
-    to: native/nodex-sparkle.node
-  - from: .generated/sparkle-runtime/${arch}/sparkle-runtime.json
-    to: native/sparkle-runtime.json
-  - from: .generated/clipboard-runtime/${arch}/nodex-clipboard.node
-    to: native/nodex-clipboard.node
-  - from: .generated/notifications-runtime/${arch}/nodex-notifications.node
-    to: native/nodex-notifications.node
-  - from: .generated/devicecheck-runtime/${arch}/nodex-devicecheck.node
-    to: native/nodex-devicecheck.node
-extraFiles:
-  - from: resources/macos/app.jyu.nodex.background-service.core.plist
-    to: Helpers/Nodex Service.app/Contents/Library/LaunchAgents/app.jyu.nodex.background-service.core.plist
-  - from: resources/macos/nodex-service-Info.plist
-    to: Helpers/Nodex Service.app/Contents/Info.plist
-  - from: .generated/codex-runtime/bin/nodex-service
-    to: Helpers/Nodex Service.app/Contents/MacOS/nodex-service
-  - from: .generated/sparkle-runtime/${arch}/Sparkle.framework
-    to: Frameworks/Sparkle.framework
     filter:
       - "**/*"
 extraMetadata:
@@ -98,6 +62,46 @@ protocols:
 
 # --- macOS ---
 mac:
+  files:
+    - "!node_modules/node-pty/prebuilds/win32-*/**"
+    - "!node_modules/node-pty/prebuilds/linux-*/**"
+  extraResources:
+    - from: .generated/workspace-runtime/${arch}
+      to: workspace-runtime
+      filter:
+        - "**/*"
+    - from: resources/nodex-notification.aiff
+      to: nodex-notification.aiff
+    - from: .generated/codex-runtime/bin
+      to: bin
+      filter:
+        - nodex
+        - nodex-appshot-helper
+        - nodex-dictation-helper
+        - nodex-browser-profile-helper
+        - nodex-core
+        - rust-core-runtime.json
+    - from: .generated/sparkle-runtime/${arch}/nodex-sparkle.node
+      to: native/nodex-sparkle.node
+    - from: .generated/sparkle-runtime/${arch}/sparkle-runtime.json
+      to: native/sparkle-runtime.json
+    - from: .generated/clipboard-runtime/${arch}/nodex-clipboard.node
+      to: native/nodex-clipboard.node
+    - from: .generated/notifications-runtime/${arch}/nodex-notifications.node
+      to: native/nodex-notifications.node
+    - from: .generated/devicecheck-runtime/${arch}/nodex-devicecheck.node
+      to: native/nodex-devicecheck.node
+  extraFiles:
+    - from: resources/macos/app.jyu.nodex.background-service.core.plist
+      to: Helpers/Nodex Service.app/Contents/Library/LaunchAgents/app.jyu.nodex.background-service.core.plist
+    - from: resources/macos/nodex-service-Info.plist
+      to: Helpers/Nodex Service.app/Contents/Info.plist
+    - from: .generated/codex-runtime/bin/nodex-service
+      to: Helpers/Nodex Service.app/Contents/MacOS/nodex-service
+    - from: .generated/sparkle-runtime/${arch}/Sparkle.framework
+      to: Frameworks/Sparkle.framework
+      filter:
+        - "**/*"
   icon: icon.icon
   sign: scripts/sign-macos-runtime.mjs
   minimumSystemVersion: 15.0.0
@@ -148,19 +152,38 @@ dmg:
       type: link
       path: /Applications
 
-# --- Windows (uncomment to enable) ---
-# win:
-#   target:
-#     - nsis
-#   artifactName: "${productName}-Setup-${version}.${ext}"
-# nsis:
-#   oneClick: false
-#   allowToChangeInstallationDirectory: true
+# --- Windows ---
+win:
+  icon: icon.ico
+  executableName: Nodex
+  signExecutable: false
+  requestedExecutionLevel: asInvoker
+  target:
+    - target: nsis
+      arch: [x64, arm64]
+  artifactName: "${productName}-${version}-win-${arch}-setup.${ext}"
+  files:
+    - "!node_modules/node-pty/prebuilds/!(win32-${arch})/**"
+  extraResources:
+    - from: .generated/codex-runtime/bin
+      to: bin
+      filter:
+        - nodex.exe
+        - nodex-core.exe
+        - rust-core-runtime.json
+    - from: .generated/node-runtime/win32-${arch}
+      to: node-runtime
+      filter:
+        - "**/*"
 
-# --- Linux (uncomment to enable) ---
-# linux:
-#   target:
-#     - AppImage
-#     - deb
-#   category: Development
-#   artifactName: "${productName}-${version}-${arch}.${ext}"
+nsis:
+  oneClick: true
+  perMachine: false
+  allowElevation: false
+  packElevateHelper: false
+  buildUniversalInstaller: false
+  runAfterFinish: false
+  deleteAppDataOnUninstall: false
+  shortcutName: Nodex
+  uninstallDisplayName: Nodex
+  artifactName: "${productName}-${version}-win-${arch}-setup.${ext}"

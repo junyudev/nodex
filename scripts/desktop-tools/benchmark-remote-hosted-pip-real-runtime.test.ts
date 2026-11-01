@@ -1,3 +1,4 @@
+import path from "node:path";
 import { describe, expect, test } from "vite-plus/test";
 import {
   classifyRealRuntimeStatus,
@@ -25,7 +26,7 @@ describe("Remote Hosted PiP real-runtime benchmark", () => {
       allowNativeUi: true,
       replacementCount: 12,
       requested: true,
-      runtimeRoot: "/tmp/runtime",
+      runtimeRoot: path.resolve("/tmp/runtime"),
       serviceReconnectCount: 2,
       taskCycleCount: 4,
       windowCycleCount: 3,

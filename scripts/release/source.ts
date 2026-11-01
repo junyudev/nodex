@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { readFileSync, realpathSync, statSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { isAbsolute, join, posix, relative, resolve } from "node:path";
+import { isAbsolute, join, posix, relative, resolve, sep } from "node:path";
 import { parse as parseToml } from "smol-toml";
 import { extractReleaseNotes, prepareChangelog } from "./changelog";
 import { compareStableVersions, normalizeStableVersion, tagForVersion } from "./model";
@@ -195,7 +195,7 @@ export function readReleaseSourceFiles(cwd: string): ReleaseSourceFiles {
     const local = relative(root, canonical);
     if (
       local === ".." ||
-      local.startsWith("../") ||
+      local.startsWith(`..${sep}`) ||
       isAbsolute(local) ||
       !statSync(canonical).isFile()
     ) {

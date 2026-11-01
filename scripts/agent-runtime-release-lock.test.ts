@@ -31,6 +31,20 @@ function makeLock(): Record<string, unknown> {
       runtimeMetadataSha256: _metadata,
       ...archive
     } = build(targetTriple);
+    if (targetTriple.includes("windows"))
+      return {
+        ...archive,
+        entrypointSha256: HASH,
+        runtimeMetadataSha256: HASH,
+        requiredArtifacts: [
+          "codex-package.json",
+          "bin/codex.exe",
+          "bin/codex-code-mode-host.exe",
+          "codex-path/rg.exe",
+          "codex-resources/codex-command-runner.exe",
+          "codex-resources/codex-windows-sandbox-setup.exe",
+        ],
+      };
     return archive;
   };
   const schemaTool = (targetTriple: string) => {

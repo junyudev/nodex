@@ -19,7 +19,7 @@ const options = (
   ...overrides,
 });
 
-describe("local macOS app installer", () => {
+describe.skipIf(process.platform === "win32")("local macOS app installer", () => {
   test("defaults to a fresh repository build and away from production", () => {
     const parsed = parseLocalMacInstallOptions(["--", "--install-cli"], "arm64", "/tmp/repository");
 

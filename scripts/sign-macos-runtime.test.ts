@@ -73,7 +73,7 @@ afterEach(() => {
   }
 });
 
-describe("applyMacSigningMode", () => {
+describe.skipIf(process.platform === "win32")("applyMacSigningMode", () => {
   const releaseOptions = {
     app: "/tmp/Nodex.app",
     platform: "darwin",
@@ -136,7 +136,7 @@ test("composed signing policies preserve the resolved platform for per-file opti
   });
 });
 
-describe("macOS code-object entitlement policy", () => {
+describe.skipIf(process.platform === "win32")("macOS code-object entitlement policy", () => {
   const appPath = "/tmp/Nodex.app";
   const policy = applyMacCodeObjectEntitlementPolicy({
     app: appPath,
@@ -172,39 +172,45 @@ describe("macOS code-object entitlement policy", () => {
   });
 });
 
-describe("desktop tool runtime vendor signing boundary", () => {
-  const appPath = "/tmp/Nodex.app";
-  const vendorRuntimePath = path.join(appPath, "Contents/Resources/browser-runtime");
+describe.skipIf(process.platform === "win32")(
+  "desktop tool runtime vendor signing boundary",
+  () => {
+    const appPath = "/tmp/Nodex.app";
+    const vendorRuntimePath = path.join(appPath, "Contents/Resources/browser-runtime");
 
-  test("preserves the complete signed runtime closure but not adjacent code", () => {
-    expect(
-      isPreservedBrowserRuntimeVendorCode(
-        appPath,
-        path.join(
-          vendorRuntimePath,
-          "runtime/lib/node_modules/@oai/sky/Codex Computer Use.app/Contents/MacOS/SkyComputerUseService",
+    test("preserves the complete signed runtime closure but not adjacent code", () => {
+      expect(
+        isPreservedBrowserRuntimeVendorCode(
+          appPath,
+          path.join(
+            vendorRuntimePath,
+            "runtime/lib/node_modules/@oai/sky/Codex Computer Use.app/Contents/MacOS/SkyComputerUseService",
+          ),
         ),
-      ),
-    ).toBe(true);
-    expect(
-      isPreservedBrowserRuntimeVendorCode(appPath, path.join(vendorRuntimePath, "native/sky.node")),
-    ).toBe(true);
-    expect(
-      isPreservedBrowserRuntimeVendorCode(appPath, path.join(vendorRuntimePath, "bin/node_repl")),
-    ).toBe(true);
-    expect(
-      isPreservedBrowserRuntimeVendorCode(appPath, `${vendorRuntimePath}.backup/native/sky.node`),
-    ).toBe(false);
-    expect(
-      isPreservedBrowserRuntimeVendorCode(
-        appPath,
-        path.join(appPath, "Contents/Resources/bin/nodex"),
-      ),
-    ).toBe(false);
-  });
-});
+      ).toBe(true);
+      expect(
+        isPreservedBrowserRuntimeVendorCode(
+          appPath,
+          path.join(vendorRuntimePath, "native/sky.node"),
+        ),
+      ).toBe(true);
+      expect(
+        isPreservedBrowserRuntimeVendorCode(appPath, path.join(vendorRuntimePath, "bin/node_repl")),
+      ).toBe(true);
+      expect(
+        isPreservedBrowserRuntimeVendorCode(appPath, `${vendorRuntimePath}.backup/native/sky.node`),
+      ).toBe(false);
+      expect(
+        isPreservedBrowserRuntimeVendorCode(
+          appPath,
+          path.join(appPath, "Contents/Resources/bin/nodex"),
+        ),
+      ).toBe(false);
+    });
+  },
+);
 
-describe("Codex runtime vendor signing boundary", () => {
+describe.skipIf(process.platform === "win32")("Codex runtime vendor signing boundary", () => {
   const appPath = "/tmp/Nodex.app";
 
   test("preserves every locked Codex artifact without exempting adjacent files", () => {
@@ -238,7 +244,7 @@ describe("Codex runtime vendor signing boundary", () => {
   });
 });
 
-describe("Sparkle code signing", () => {
+describe.skipIf(process.platform === "win32")("Sparkle code signing", () => {
   test("uses hardened runtime without an entitlement file", () => {
     expect(
       sparkleCodeSignArguments({
@@ -315,7 +321,7 @@ describe("Sparkle code signing", () => {
   });
 });
 
-describe("refreshSignedBrowserRuntimeManifest", () => {
+describe.skipIf(process.platform === "win32")("refreshSignedBrowserRuntimeManifest", () => {
   test.each([BROWSER_RUNTIME_SCHEMA_VERSION - 1, BROWSER_RUNTIME_SCHEMA_VERSION + 1])(
     "rejects schema-v%i before resealing the manifest",
     (schemaVersion) => {

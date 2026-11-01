@@ -1,3 +1,4 @@
+import { vitePlusCommand } from "../vite-plus-command";
 import { spawnSync } from "node:child_process";
 import {
   appendFileSync,
@@ -16,7 +17,6 @@ import rootConfiguration from "../../vite.config";
 import effectConfiguration from "../../tsconfig.effect.json";
 
 const root = path.resolve(import.meta.dirname, "../..");
-const executable = process.platform === "win32" ? "vp.cmd" : "vp";
 
 function fixtureWorkspace(run: (directory: string) => void): void {
   const directory = mkdtempSync(path.join(os.tmpdir(), "nodex-semantic-contract-"));
@@ -38,7 +38,8 @@ function fixtureWorkspace(run: (directory: string) => void): void {
 }
 
 function command(directory: string, args: readonly string[], environment: NodeJS.ProcessEnv = {}) {
-  const result = spawnSync(executable, args, {
+  const invocation = vitePlusCommand(args);
+  const result = spawnSync(invocation.command, invocation.args, {
     cwd: directory,
     encoding: "utf8",
     env: {

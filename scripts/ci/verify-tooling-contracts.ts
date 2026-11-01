@@ -1,3 +1,4 @@
+import { vitePlusCommand } from "../vite-plus-command";
 import {
   verifySemanticTaskCache,
   verifyTypedSemanticPolicy,
@@ -32,7 +33,7 @@ interface RunLintOptions {
 }
 
 const projectRoot = resolve(import.meta.dirname, "../..");
-const vpExecutable = process.platform === "win32" ? "vp.cmd" : "vp";
+const vpInvocation = vitePlusCommand([]);
 const directPnpmCommandPattern = /(?:^|[;&|()\s])pnpm(?:\.cmd)?(?:\s|$)/u;
 
 interface PackageManifest {
@@ -71,8 +72,15 @@ function runLint(
   options: RunLintOptions = {},
 ): { readonly report: LintReport; readonly status: number } {
   const result = spawnSync(
-    vpExecutable,
-    ["lint", ...(options.quiet === false ? [] : ["--quiet"]), "--format", "json", ...paths],
+    vpInvocation.command,
+    [
+      ...vpInvocation.args,
+      "lint",
+      ...(options.quiet === false ? [] : ["--quiet"]),
+      "--format",
+      "json",
+      ...paths,
+    ],
     {
       cwd: projectRoot,
       encoding: "utf8",
@@ -175,11 +183,15 @@ function verifyAdvisoryPolicy(): void {
 }
 
 function verifyWorkspaceTaskGraph(): void {
-  const result = spawnSync(vpExecutable, ["run", "--workspace-root", "fmt:check", "--help"], {
-    cwd: projectRoot,
-    encoding: "utf8",
-    env: process.env,
-  });
+  const result = spawnSync(
+    vpInvocation.command,
+    [...vpInvocation.args, "run", "--workspace-root", "fmt:check", "--help"],
+    {
+      cwd: projectRoot,
+      encoding: "utf8",
+      env: process.env,
+    },
+  );
   if (result.error) throw result.error;
   if (result.signal) {
     throw new Error(`Vite+ task graph probe terminated by ${result.signal}`);

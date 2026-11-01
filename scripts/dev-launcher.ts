@@ -1,3 +1,5 @@
+import { nativeExecutableName } from "./desktop-build-target";
+import { vitePlusCommand } from "./vite-plus-command";
 import { parseProfileConversationSnapshot } from "./profile-conversation-snapshot";
 import {
   resolveDevelopmentRendererPort,
@@ -254,8 +256,7 @@ export const parseDevLauncherArguments = (args: readonly string[]): DevLauncherA
 };
 
 const pnpmScript = (script: string, ...arguments_: readonly string[]): SupervisedCommandPlan => ({
-  command: "pnpm",
-  args: ["--silent", "run", script, ...arguments_],
+  ...vitePlusCommand(["run", script, ...arguments_]),
 });
 
 // electron-vite reads path.txt directly, bypassing Electron's lazy runtime download.
@@ -290,14 +291,19 @@ export const createDevLaunchPlan = (input: {
     ? path.join(input.home.repositoryRealpath, "target/debug")
     : rustDevCargoOutputDirectory(input.home.repositoryRealpath, input.environment);
   const usesCustomCargoOutput =
+    input.platform === "win32" ||
     cargoDevOutput !== path.join(input.home.repositoryRealpath, "target/debug");
   const customDevExecutables = usesCustomCargoOutput
     ? {
         [NODEX_BROWSER_PROFILE_HELPER_EXECUTABLE_ENV]:
           input.environment[NODEX_BROWSER_PROFILE_HELPER_EXECUTABLE_ENV] ??
-          path.join(cargoDevOutput, "nodex-browser-profile-helper"),
+          path.join(
+            cargoDevOutput,
+            nativeExecutableName("nodex-browser-profile-helper", input.platform),
+          ),
         [NODEX_CORE_EXECUTABLE_ENV]:
-          input.environment[NODEX_CORE_EXECUTABLE_ENV] ?? path.join(cargoDevOutput, "nodex-core"),
+          input.environment[NODEX_CORE_EXECUTABLE_ENV] ??
+          path.join(cargoDevOutput, nativeExecutableName("nodex-core", input.platform)),
       }
     : {};
   const managedDevFallbacks =
@@ -317,7 +323,9 @@ export const createDevLaunchPlan = (input: {
             )
             .map(([name, binary]) => [
               name,
-              usesCustomCargoOutput ? path.join(cargoDevOutput, binary) : undefined,
+              usesCustomCargoOutput
+                ? path.join(cargoDevOutput, nativeExecutableName(binary, input.platform))
+                : undefined,
             ]),
         );
   const environment: NodeJS.ProcessEnv = {
@@ -327,11 +335,11 @@ export const createDevLaunchPlan = (input: {
       ? {
           [NODEX_BROWSER_PROFILE_HELPER_EXECUTABLE_ENV]: path.join(
             input.home.repositoryRealpath,
-            "target/release/nodex-browser-profile-helper",
+            `target/release/${nativeExecutableName("nodex-browser-profile-helper", input.platform)}`,
           ),
           [NODEX_CORE_EXECUTABLE_ENV]: path.join(
             input.home.repositoryRealpath,
-            "target/release/nodex-core",
+            `target/release/${nativeExecutableName("nodex-core", input.platform)}`,
           ),
         }
       : usesSharedNativeRuntime
@@ -385,11 +393,12 @@ export const createDevLaunchPlan = (input: {
         prepareElectronRuntime,
         pnpmScript("core:binaries:build:release"),
         pnpmScript("build"),
-        pnpmScript("stage:codex-runtime:mac:cached"),
+        pnpmScript("stage:codex-runtime:cached"),
       ],
       application: {
-        command: "pnpm",
+        command: vitePlusCommand([]).command,
         args: [
+          ...vitePlusCommand([]).args,
           "exec",
           "electron",
           ".",
@@ -407,13 +416,14 @@ export const createDevLaunchPlan = (input: {
       prepareElectronRuntime,
       pnpmScript("build-resources:prepare"),
       pnpmScript("core:build:dev"),
-      pnpmScript("stage:codex-runtime:mac:cached"),
+      pnpmScript("stage:codex-runtime:cached"),
       pnpmScript("sync:icons"),
       pnpmScript("build:agent-runtime", "--development"),
     ],
     application: {
-      command: "pnpm",
+      command: vitePlusCommand([]).command,
       args: [
+        ...vitePlusCommand([]).args,
         "exec",
         "electron-vite",
         "dev",
@@ -523,8 +533,12 @@ export const nativeCliExecutable = (
       rustDevRuntimeExecutable(home.repositoryRealpath, "nodex-core")
   )
     return rustDevRuntimeExecutable(home.repositoryRealpath, "nodex");
-  if (build) return path.join(home.repositoryRealpath, "target/release/nodex");
-  return path.join(rustDevCargoOutputDirectory(home.repositoryRealpath, environment), "nodex");
+  if (build)
+    return path.join(home.repositoryRealpath, "target/release", nativeExecutableName("nodex"));
+  return path.join(
+    rustDevCargoOutputDirectory(home.repositoryRealpath, environment),
+    nativeExecutableName("nodex"),
+  );
 };
 
 /** Core's read-only verdict on whether this build can open a home's Store. */

@@ -86,6 +86,59 @@ Prepare additional architectures explicitly in a dedicated checkout by setting
 `supportedArchitectures` before installation; this installs optional packages,
 not cross-compiled native addons.
 
+### Windows 11 (x64 and arm64)
+
+Use a native toolchain for the CPU you are building. Install Git, the pinned
+Node version, [Rustup](https://rustup.rs/), and the
+[Vite+ CLI](https://viteplus.dev/guide/install). Install Visual Studio 2022
+Build Tools with **Desktop development with C++**, the Windows SDK, and the
+MSVC x64/x86 tools; arm64 development also needs the MSVC ARM64/ARM64EC tools.
+Install Python 3 for node-gyp. Use a Developer PowerShell with these tools on
+PATH when a native dependency needs rebuilding. Avoid an x64 Node installation
+when building the arm64 app. `node -p process.arch` and `rustc -vV` must report
+the intended native CPU and MSVC host.
+
+From the worktree root, in PowerShell:
+
+```powershell
+vp install --frozen-lockfile
+vp run core:binaries:prepare:dev
+vp run build
+vp run dev --home "$env:USERPROFILE/repo/nodex/runs.local/windows-build"
+vp run package:win:x64
+# On a native Windows arm64 machine:
+vp run package:win:arm64
+```
+
+Adjust the development home to the primary checkout's `runs.local` directory.
+It must be absolute and belong to this worktree. The installed Profile defaults
+to `%USERPROFILE%\.nodex`; development continues to use the launcher's isolated
+`<home>/.nodex`. Build and staging commands select the host CPU by default;
+`package:win` packages the host architecture. Cross-packaging is rejected.
+
+The install lifecycle prepares Electron and runs `electron-builder install-app-deps`
+for the native architecture. This owns Electron's `node-pty` dependency. The
+standalone Agent Runtime uses separately pinned Node `24.22.1` and the matching
+node-pty N-API prebuilds; it never reuses Electron's addon. The standalone Node
+executable and license are bound by `resources/agent-runtime/node-runtime.lock.json`.
+A real load under that Node and a PE-header inspection verify the private addon.
+
+Package scripts use typed entrypoints for target selection and environment
+variables. Vite+ interprets task commands through a shell; POSIX substitutions,
+inline assignments and parameter defaults are not portable to Windows. Internal
+launches use the pinned Vite+ executable or its Node entrypoint directly, avoiding
+`.cmd` shims and shell quoting. `scripts/desktop-build-target.ts` owns the supported
+native targets and their runtime sets.
+
+Windows builds stage Codex, Node, Core, CLI, official Agent Skills and legal
+notices. Browser/Computer Use, the Python workspace runtime, Sparkle and the
+macOS native bridges/helpers are omitted. Core and CLI filenames end in `.exe`.
+`stage:codex-runtime:cached` is the host-neutral development prerequisite;
+`stage:native-runtime:win` stages the complete Windows release runtime.
+Every PE executable, DLL and addon is checked for the target CPU during staging
+and again after packaging. See [Windows release packaging](release-windows.md)
+for installer verification and the unsigned release boundary.
+
 ### Worktrees
 
 Follow [Worktrees and local artifacts](../AGENTS.md#worktrees-and-local-artifacts).
@@ -599,7 +652,7 @@ use the SDK's `/unstable` v1 entrypoint to retain the negotiated lifecycle and
 callback features covered by the Runtime's v1/v2 wire compatibility tests.
 
 ACP terminal sign-in uses a separate `node-pty` build for the verified staged Node.
-The macOS production build prepares that pinned runtime from the verified cache first.
+The production build prepares that pinned runtime from the verified cache first.
 `build:agent-runtime` materializes it under
 `.generated/agent-runtime-native/<platform>-<arch>/` from a private source copy and
 packages its JavaScript, native addon and helpers inside
@@ -623,7 +676,7 @@ modes require a matching host and staged Node; missing binaries or failed checks
 exit unsuccessfully. The full probe covers input, resize, EOF, credential recheck,
 cancellation and descendant cleanup. A successful terminal exit alone does not
 establish authentication. macOS arm64 is the verified release target; Linux and
-Windows require the same probe on their actual hosts before support is claimed.
+Windows require the same probe on their actual hosts before terminal sign-in support is claimed.
 
 Package local macOS installers:
 

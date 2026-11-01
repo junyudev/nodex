@@ -1,3 +1,4 @@
+import { vitePlusCommand } from "./vite-plus-command";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
@@ -49,6 +50,7 @@ export interface ThirdPartyLegalEntry {
 
 export interface ThirdPartyNoticesGenerationOptions {
   readonly repositoryRoot?: string;
+  readonly targetPlatform?: string;
 }
 
 function normalizeText(text: string): string {
@@ -103,9 +105,12 @@ async function packageDirectorySupportsTargetOs(
   return packageSupportsTargetOs(manifest.os, targetOs);
 }
 
-async function collectPnpmEntries(repositoryRoot: string): Promise<ThirdPartyLegalEntry[]> {
-  const pnpmExecutable = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
-  const { stdout } = await execFileAsync(pnpmExecutable, ["licenses", "list", "--json"], {
+async function collectPnpmEntries(
+  repositoryRoot: string,
+  targetPlatform: string,
+): Promise<ThirdPartyLegalEntry[]> {
+  const invocation = vitePlusCommand(["pm", "licenses", "list", "--json"]);
+  const { stdout } = await execFileAsync(invocation.command, invocation.args, {
     cwd: repositoryRoot,
     encoding: "utf8",
     maxBuffer: 64 * 1024 * 1024,
@@ -119,7 +124,7 @@ async function collectPnpmEntries(repositoryRoot: string): Promise<ThirdPartyLeg
         await Promise.all(
           packageRecord.paths.map(
             async (packageDirectory, index): Promise<ThirdPartyLegalEntry | null> => {
-              if (!(await packageDirectorySupportsTargetOs(packageDirectory, "darwin"))) {
+              if (!(await packageDirectorySupportsTargetOs(packageDirectory, targetPlatform))) {
                 return null;
               }
 
@@ -191,18 +196,35 @@ async function readCombinedLegalFiles(paths: string[]): Promise<string | null> {
 
 async function collectBundledRuntimeEntries(
   repositoryRoot: string,
+  targetPlatform: string,
 ): Promise<ThirdPartyLegalEntry[]> {
   const codexRoot = join(repositoryRoot, "resources", "third-party", "codex");
 
   return [
-    {
-      homepage: "https://sparkle-project.org/",
-      identity: "Sparkle 2.9.4",
-      legalText: await readCombinedLegalFiles([
-        join(repositoryRoot, "resources", "sparkle", "LICENSE"),
-      ]),
-      license: "MIT and bundled third-party notices",
-    },
+    ...(targetPlatform === "darwin"
+      ? [
+          {
+            homepage: "https://sparkle-project.org/",
+            identity: "Sparkle 2.9.4",
+            legalText: await readCombinedLegalFiles([
+              join(repositoryRoot, "resources", "sparkle", "LICENSE"),
+            ]),
+            license: "MIT and bundled third-party notices",
+          },
+        ]
+      : []),
+    ...(targetPlatform === "win32"
+      ? [
+          {
+            homepage: "https://nodejs.org/",
+            identity: "Node.js standalone runtime",
+            license: "MIT and bundled third-party notices",
+            legalText: await readCombinedLegalFiles([
+              join(repositoryRoot, "resources/third-party/node/LICENSE"),
+            ]),
+          },
+        ]
+      : []),
     {
       homepage: "https://github.com/openai/codex",
       identity: "Codex app-server runtime",
@@ -265,9 +287,15 @@ export async function generateThirdPartyNotices(
 ): Promise<string> {
   const repositoryRoot = resolve(options.repositoryRoot ?? REPOSITORY_ROOT);
   const [pnpmEntries, cargoEntries, runtimeEntries] = await Promise.all([
-    collectPnpmEntries(repositoryRoot),
+    collectPnpmEntries(
+      repositoryRoot,
+      options.targetPlatform ?? (process.platform === "win32" ? "win32" : "darwin"),
+    ),
     collectCargoEntries(repositoryRoot),
-    collectBundledRuntimeEntries(repositoryRoot),
+    collectBundledRuntimeEntries(
+      repositoryRoot,
+      options.targetPlatform ?? (process.platform === "win32" ? "win32" : "darwin"),
+    ),
   ]);
   return renderThirdPartyNotices([...pnpmEntries, ...cargoEntries, ...runtimeEntries]);
 }

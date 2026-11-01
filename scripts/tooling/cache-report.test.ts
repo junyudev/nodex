@@ -12,7 +12,7 @@ import {
 
 const roots: string[] = [];
 const makeRoot = async () => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "nodex-space-report-"));
+  const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "nodex-space-report-")));
   roots.push(root);
   return root;
 };
@@ -77,7 +77,7 @@ test("reports isolated checkout paths and the shared primary cache without visit
     globalDirectories: [],
     environment: {},
   });
-  expect(report.worktrees.map((worktree) => worktree.path)).toEqual([consumer]);
+  expect(report.worktrees.map((worktree) => path.normalize(worktree.path))).toEqual([consumer]);
   expect(report.shared[0].logicalBytes).toBe(6);
   expect(report.shared[0].path).toBe(path.join(await fs.realpath(primary), "cache.local"));
   const all = await createCacheReport({
@@ -86,7 +86,7 @@ test("reports isolated checkout paths and the shared primary cache without visit
     globalDirectories: [],
     environment: { NODEX_BUILD_CACHE_DIR: path.join(root, "test-cache") },
   });
-  expect(all.worktrees.map((worktree) => worktree.path)).toEqual([
+  expect(all.worktrees.map((worktree) => path.normalize(worktree.path))).toEqual([
     await fs.realpath(primary),
     await fs.realpath(consumer),
   ]);

@@ -99,7 +99,7 @@ afterEach(() => {
   }
 });
 
-describe("stageBrowserRuntime", () => {
+describe.skipIf(process.platform === "win32")("stageBrowserRuntime", () => {
   test("atomically installs a source closure that passes runtime verification", async () => {
     const sourceRoot = makeRoot("nodex-browser-source-");
     const runtimeRoot = makeRoot("nodex-browser-destination-");

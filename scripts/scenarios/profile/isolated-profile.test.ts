@@ -83,7 +83,8 @@ describe("isolated scenario Profile", () => {
     });
     retained.push(copied);
     expect(await readFile(path.join(copied.codexHome, "auth.json"), "utf8")).toBe("top-secret");
-    expect((await stat(path.join(copied.codexHome, "auth.json"))).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32")
+      expect((await stat(path.join(copied.codexHome, "auth.json"))).mode & 0o777).toBe(0o600);
     expect(await readFile(copied.manifestPath, "utf8")).not.toContain("top-secret");
 
     const authOnly = await createIsolatedProfile({
@@ -108,7 +109,8 @@ describe("isolated scenario Profile", () => {
     expect(await readFile(path.join(configOnly.codexHome, "config.toml"), "utf8")).toContain(
       "gpt-test",
     );
-    expect((await stat(path.join(configOnly.codexHome, "config.toml"))).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32")
+      expect((await stat(path.join(configOnly.codexHome, "config.toml"))).mode & 0o777).toBe(0o600);
     await expect(
       readFile(path.join(configOnly.codexHome, "auth.json"), "utf8"),
     ).rejects.toMatchObject({ code: "ENOENT" });

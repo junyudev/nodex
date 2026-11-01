@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { SourceMap } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -20,7 +20,7 @@ const targets = ["main", "preload", "renderer"] as const;
 let fixtureDirectory: string;
 
 beforeAll(async () => {
-  fixtureDirectory = await mkdtemp(join(tmpdir(), "nodex-electron-minify-"));
+  fixtureDirectory = await realpath(await mkdtemp(join(tmpdir(), "nodex-electron-minify-")));
   await writeFile(join(fixtureDirectory, "entry.js"), fixtureSource);
   vi.stubEnv("SENTRY_AUTH_TOKEN", "");
   vi.stubEnv("SENTRY_RELEASE", "");

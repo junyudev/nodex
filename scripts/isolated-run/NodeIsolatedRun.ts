@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { setTimeout as delayTimer } from "node:timers/promises";
 import type { IsolatedRunSupervisorDependencies } from "../isolated-run-contract";
@@ -15,7 +15,7 @@ export const liveIsolatedRunSupervisorDependencies: IsolatedRunSupervisorDepende
   generateRunId: randomUUID,
   isProcessGroupAlive: (processGroupId) => {
     try {
-      process.kill(-processGroupId, 0);
+      process.kill(process.platform === "win32" ? processGroupId : -processGroupId, 0);
       return true;
     } catch (error) {
       if (isFileSystemError(error, "ESRCH")) return false;
@@ -27,12 +27,24 @@ export const liveIsolatedRunSupervisorDependencies: IsolatedRunSupervisorDepende
   signalSource: process,
   signalProcessGroup: (processGroupId, signal) => {
     try {
+      if (process.platform === "win32") {
+        execFileSync("taskkill.exe", ["/PID", String(processGroupId), "/T", "/F"], {
+          stdio: "ignore",
+          timeout: 5_000,
+        });
+        return;
+      }
       process.kill(-processGroupId, signal);
     } catch (error) {
       if (!isFileSystemError(error, "ESRCH")) throw error;
     }
   },
-  spawnChild: (command, args, options) => spawn(command, [...args], options),
+  spawnChild: (command, args, options) =>
+    spawn(command, [...args], {
+      ...options,
+      detached: process.platform !== "win32",
+      windowsHide: true,
+    }),
 };
 
 export const resolveIsolatedRunSupervisorDependencies = (

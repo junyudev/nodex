@@ -48,7 +48,7 @@ afterEach(() => {
 describe("build resources", () => {
   test("resolves the generated resource directory from a repository root", () => {
     expect(resolveBuildResources("/repo/nodex").root).toBe(
-      "/repo/nodex/.generated/build-resources",
+      path.resolve("/repo/nodex", ".generated/build-resources"),
     );
   });
 
