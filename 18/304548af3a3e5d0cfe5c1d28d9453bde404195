@@ -14,6 +14,14 @@ docs/landing-site.md
         "model": "claude-opus-5-5"
       },
       "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_b76aae7cd68efc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "00593554-66c2-4983-a13f-0aa36ecb757f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
     }
   }
 }

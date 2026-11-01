@@ -87,6 +87,14 @@ src/shared/library-module-transport.test.ts
       },
       "human_author": "Jun Yu <junyu.dev@gmail.com>"
     },
+    "s_50bc651199cc10": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19523-075f-7270-9358-f28cf9aec9d2",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
     "s_a4d65a7155d5da": {
       "agent_id": {
         "tool": "codex",
