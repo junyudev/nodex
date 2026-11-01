@@ -1,6 +1,6 @@
 import * as fs from "node:fs/promises";
-import { constants as fsConstants } from "node:fs";
 import path from "node:path";
+import { openRegularFile } from "../../platform/node/open-regular-file";
 
 import {
   FILE_IMPORT_MAX_BYTES,
@@ -16,14 +16,13 @@ export interface LocalFileCandidate {
 
 /**
  * Reads exactly one opened regular file object with bounded memory.
- * Opening with O_NOFOLLOW and validating through the handle closes the path
- * replacement window between metadata validation and byte access.
+ * Reject symlinks and compare entry identities with the opened handle before reading.
+ * This also protects Windows, where Node does not expose O_NOFOLLOW.
  */
 export async function readLocalFile(filePath: string): Promise<Uint8Array> {
-  const handle = await fs.open(filePath, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
+  const handle = await openRegularFile(filePath);
   try {
     const initial = await handle.stat({ bigint: true });
-    if (!initial.isFile()) throw new Error("Files only accept regular files");
     if (initial.size > BigInt(FILE_MAX_BYTES)) {
       throw new Error("File exceeds the 64 MiB limit");
     }
