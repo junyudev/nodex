@@ -3892,7 +3892,7 @@ mod tests {
         AdapterKind, CoreErrorCode, LibraryId, LocalProjectionScope, ModuleReadRequest,
         OWNED_DOCUMENT_CONTRACT_VERSION, ProfileId, ProjectId,
     };
-    use tempfile::tempdir;
+    use nodex_platform::test_support::tempdir;
 
     use crate::document::OwnedDocumentModule;
     use crate::infrastructure::store::SqliteStoreKernel;
@@ -4258,7 +4258,11 @@ mod tests {
             .expect("Page View authority state")
     }
 
-    fn seeded_library() -> (tempfile::TempDir, SqliteStoreKernel, LibraryModule) {
+    fn seeded_library() -> (
+        nodex_platform::test_support::TempDir,
+        SqliteStoreKernel,
+        LibraryModule,
+    ) {
         let directory = tempdir().expect("Profile");
         let home = directory.path().canonicalize().expect("absolute Profile");
         let kernel = SqliteStoreKernel::open_test(&home).expect("fresh store");

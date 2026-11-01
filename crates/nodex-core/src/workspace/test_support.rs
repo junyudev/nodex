@@ -7,7 +7,7 @@ use nodex_core_contracts::{
     AdapterKind, BoundModuleContext, LIBRARY_CONTRACT_VERSION, LibraryId, ModuleApplyRequest,
     ModuleReadRequest, PROJECT_WORKSPACE_CONTRACT_VERSION, ProfileId, ProjectId, StoreEpoch,
 };
-use tempfile::{TempDir, tempdir};
+use nodex_platform::test_support::{TempDir, tempdir};
 
 use crate::infrastructure::sqlite::with_immediate_transaction;
 use crate::infrastructure::store::SqliteStoreKernel;

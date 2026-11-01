@@ -446,7 +446,7 @@ describe("Core HTTP request failures", () => {
   });
 });
 
-describe("UDS Core event replay boundaries", () => {
+describe("Local Core event replay boundaries", () => {
   test("classifies a missing Core socket as definitive generation loss", async () => {
     const directory = mkdtempSync(path.join(tmpdir(), "nodex-core-uds-missing-"));
     directories.push(directory);

@@ -870,6 +870,7 @@ fn open_segment(config: &LoggingConfig, date: &str) -> io::Result<(File, PathBuf
         match OpenOptions::new()
             .create_new(true)
             .append(true)
+            .read(true)
             .mode(LOG_FILE_MODE)
             .open(&path)
         {
@@ -1044,8 +1045,8 @@ fn test_runtime() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use nodex_platform::test_support::tempdir;
     use serde_json::json;
-    use tempfile::tempdir;
 
     fn config(log_dir: PathBuf) -> LoggingConfig {
         LoggingConfig {

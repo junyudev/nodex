@@ -1,2 +1,3 @@
+* text=auto eol=lf
 resources/agent-runtime/patches/*.patch -whitespace
 patches/*.patch -whitespace

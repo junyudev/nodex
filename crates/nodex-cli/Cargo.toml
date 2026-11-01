@@ -29,5 +29,6 @@ yaml-rust2.workspace = true
 utoipa.workspace = true
 
 [dev-dependencies]
+nodex-platform = { workspace = true, features = ["test-support"] }
 jsonschema = { version = "=0.60.2", default-features = false }
 tempfile = "3.27.0"

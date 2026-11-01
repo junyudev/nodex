@@ -33,5 +33,6 @@ unicode-normalization.workspace = true
 yrs.workspace = true
 
 [dev-dependencies]
+nodex-platform = { workspace = true, features = ["test-support"] }
 nodex-core-protocol.workspace = true
 tempfile = "3.27.0"

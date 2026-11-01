@@ -3,7 +3,11 @@ use nodex_core_contracts::CoreErrorCode;
 use nodex_core_contracts::database::DatabaseViewPropertyFilter;
 use nodex_core_contracts::database_configuration::DatabaseConfigurationScript;
 
-fn fixture() -> (tempfile::TempDir, SqliteStoreKernel, DatabaseModule) {
+fn fixture() -> (
+    nodex_platform::test_support::TempDir,
+    SqliteStoreKernel,
+    DatabaseModule,
+) {
     let directory = tempdir().unwrap();
     let kernel = SqliteStoreKernel::open_test(&directory.path().canonicalize().unwrap()).unwrap();
     kernel.writer().call(|connection| {

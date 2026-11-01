@@ -53222,6 +53222,9 @@
           "artifact": {
             "$ref": "#/components/schemas/CoreArtifactIdentity"
           },
+          "endpoint": {
+            "type": "string"
+          },
           "manifest": {
             "$ref": "#/components/schemas/CoreCompatibilityManifest"
           },
@@ -53240,9 +53243,6 @@
             "type": "integer",
             "format": "int64",
             "minimum": 0
-          },
-          "endpoint": {
-            "type": "string"
           },
           "start_nonce": {
             "type": "string"

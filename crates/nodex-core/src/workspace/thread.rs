@@ -2972,7 +2972,7 @@ mod tests {
         AdapterKind, BoundModuleContext, CoreErrorCode, LibraryId, ModuleApplyRequest,
         ModuleReadRequest, PROJECT_WORKSPACE_CONTRACT_VERSION, ProfileId, ProjectId, StoreEpoch,
     };
-    use tempfile::{TempDir, tempdir};
+    use nodex_platform::test_support::{TempDir, tempdir};
 
     use super::{MAX_PATH_BYTES, validate_runtime_options};
     use crate::infrastructure::sqlite::with_immediate_transaction;

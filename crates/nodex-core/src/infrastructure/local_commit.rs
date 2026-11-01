@@ -2608,7 +2608,7 @@ fn corrupt(message: &str) -> StoreError {
 
 #[cfg(test)]
 mod tests {
-    use tempfile::tempdir;
+    use nodex_platform::test_support::tempdir;
 
     use crate::infrastructure::sqlite::with_immediate_transaction;
     use crate::infrastructure::store::SqliteStoreKernel;

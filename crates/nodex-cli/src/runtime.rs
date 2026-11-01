@@ -1990,7 +1990,7 @@ struct ProjectCandidate {
 mod tests {
     use super::*;
     use nodex_core_contracts::workspace::{ProjectAppearance, ProjectSource};
-    use tempfile::tempdir;
+    use nodex_platform::test_support::tempdir;
 
     fn project(id: &str, name: &str, root: &Path) -> ProjectWorkspaceProject {
         ProjectWorkspaceProject {

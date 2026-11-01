@@ -5,3 +5,6 @@ pub mod private_fs;
 pub mod process;
 #[cfg(windows)]
 mod windows;
+
+#[cfg(feature = "test-support")]
+pub mod test_support;

@@ -245,7 +245,7 @@ mod tests {
     use std::fs;
 
     use nodex_core_protocol::{CoreArtifactIdentity, canonical_manifest_digest, store_format};
-    use tempfile::tempdir;
+    use nodex_platform::test_support::tempdir;
 
     use super::*;
 

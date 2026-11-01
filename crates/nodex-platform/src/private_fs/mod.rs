@@ -116,3 +116,13 @@ pub fn write(path: impl AsRef<Path>, contents: impl AsRef<[u8]>) -> io::Result<(
         .open(path)?;
     file.write_all(contents.as_ref())
 }
+pub fn copy(source: impl AsRef<Path>, target: impl AsRef<Path>) -> io::Result<u64> {
+    let mut input = open_read(source.as_ref())?;
+    let mut output = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(target)?;
+    io::copy(&mut input, &mut output)
+}

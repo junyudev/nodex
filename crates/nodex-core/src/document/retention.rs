@@ -2087,7 +2087,7 @@ mod tests {
     use std::thread;
     use std::time::{Duration, Instant};
 
-    use tempfile::TempDir;
+    use nodex_platform::test_support::TempDir;
 
     use crate::database::page_key::{
         UniquePageKeyResolution, create_page_key_namespace, ensure_database_page_key,
@@ -2116,7 +2116,7 @@ mod tests {
 
     impl Fixture {
         fn new() -> Self {
-            let home = tempfile::tempdir().expect("Profile home");
+            let home = nodex_platform::test_support::tempdir().expect("Profile home");
             let kernel = SqliteStoreKernel::open_test(home.path()).expect("fresh store");
             kernel
                 .writer()

@@ -2,7 +2,7 @@
 use crate::Result;
 use crate::files::invalid;
 use rusqlite::{Connection, params_from_iter};
-use std::path::{Component, Path};
+use std::path::Path;
 
 const THREAD_EVENTS: &[&str] = &[
     "thread.created",
@@ -36,6 +36,18 @@ fn has_column(connection: &Connection, table: &str, field: &str) -> Result<bool>
     )?)
 }
 
+fn normalized_value(value: &str) -> String {
+    if std::path::MAIN_SEPARATOR == '/' {
+        return value.to_owned();
+    }
+    format!("replace(replace(replace({value},char(92),'/'),'//?/UNC/','//'),'//?/','')")
+}
+fn owned_path(value: &str, source: &str) -> String {
+    format!(
+        "({value}={source} OR substr({value},1,length({source})+1)={source} || '/') AND instr({value},'/../')=0 AND instr({value},'/./')=0 AND substr({value},-3)<>'/..' AND substr({value},-2)<>'/.'"
+    )
+}
+
 fn column(
     connection: &Connection,
     table: &str,
@@ -46,7 +58,12 @@ fn column(
     if !has_column(connection, table, field)? {
         return Ok(());
     }
-    connection.execute(&format!("UPDATE {table} SET {field}=?2 || substr({field},length(?1)+1) WHERE ({field}=?1 OR substr({field},1,length(?1)+1)=?1 || '/') AND instr({field},'/../')=0 AND instr({field},'/./')=0"), [source, target])?;
+    let value = normalized_value(field);
+    let condition = owned_path(&value, "?1");
+    connection.execute(
+        &format!("UPDATE {table} SET {field}=?2 || substr({value},length(?1)+1) WHERE {condition}"),
+        [source, target],
+    )?;
     Ok(())
 }
 
@@ -63,18 +80,25 @@ fn json_field(
     if !has_column(connection, table, field)? {
         return Ok(());
     }
-    let event_filter = events.map_or(String::new(), |events| {
-        format!("event_type IN ({}) AND ", vec!["?"; events.len()].join(","))
-    });
-    let value = format!("json_extract({field},?)");
+    let events = events.unwrap_or_default();
+    let event_filter = if events.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "event_type IN ({}) AND ",
+            (0..events.len())
+                .map(|index| format!("?{}", index + 4))
+                .collect::<Vec<_>>()
+                .join(",")
+        )
+    };
+    let value = normalized_value(&format!("json_extract({field},?3)"));
+    let owned = owned_path(&value, "?1");
     let sql = format!(
-        "UPDATE {table} SET {field}=json_set({field},?,? || substr({value},length(?)+1)) WHERE {event_filter}{condition} json_type({field},?)='text' AND ({value}=? OR substr({value},1,length(?)+1)=? || '/') AND instr({value},'/../')=0 AND instr({value},'/./')=0"
+        "UPDATE {table} SET {field}=json_set({field},?3,?2 || substr({value},length(?1)+1)) WHERE {event_filter}{condition} json_type({field},?3)='text' AND {owned}"
     );
-    let mut arguments = vec![selector, target, selector, source];
-    arguments.extend(events.unwrap_or_default());
-    arguments.extend([
-        selector, selector, source, selector, source, source, selector, selector,
-    ]);
+    let mut arguments = vec![source, target, selector];
+    arguments.extend(events);
     connection.execute(&sql, params_from_iter(arguments))?;
     Ok(())
 }
@@ -83,21 +107,18 @@ fn json_field(
 pub(crate) fn relocate(connection: &Connection, source: &Path, target: &Path) -> Result<()> {
     if !source.is_absolute()
         || !target.is_absolute()
-        || [source, target].iter().any(|path| {
-            path.components()
-                .any(|part| matches!(part, Component::ParentDir | Component::CurDir))
-        })
+        || [source, target]
+            .iter()
+            .any(|path| nodex_platform::private_fs::has_traversal(path))
     {
         return Err(invalid(
             "Execution relocation requires canonical absolute Profile paths",
         ));
     }
-    let source = source
-        .to_str()
-        .ok_or_else(|| invalid("Source Profile path is not UTF-8"))?;
-    let target = target
-        .to_str()
-        .ok_or_else(|| invalid("Target Profile path is not UTF-8"))?;
+    let source_key = nodex_platform::private_fs::path_key(source)?;
+    let target_key = nodex_platform::private_fs::path_key(target)?;
+    let source = source_key.as_str();
+    let target = target_key.as_str();
     if source == target {
         return Ok(());
     }
@@ -195,13 +216,88 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    #[cfg(windows)]
+    #[test]
+    fn relocates_windows_drive_and_verbatim_paths_without_traversing_siblings() {
+        let connection = Connection::open_in_memory().unwrap();
+        connection
+            .execute_batch("CREATE TABLE projection_projects(workspace_root TEXT)")
+            .unwrap();
+        let paths = [
+            r"C:\source\tasks\a",
+            r"\\?\C:\source\tasks\b",
+            r"C:\source-other\repo",
+            r"C:\source\tasks\..\outside",
+        ];
+        for path in paths {
+            connection
+                .execute("INSERT INTO projection_projects VALUES (?1)", [path])
+                .unwrap();
+        }
+        relocate(
+            &connection,
+            Path::new(r"\\?\C:\source"),
+            Path::new(r"C:\clone"),
+        )
+        .unwrap();
+        let mut statement = connection
+            .prepare("SELECT workspace_root FROM projection_projects ORDER BY rowid")
+            .unwrap();
+        let actual = statement
+            .query_map([], |row| row.get::<_, String>(0))
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap();
+        assert_eq!(
+            actual,
+            vec!["C:/clone/tasks/a", "C:/clone/tasks/b", paths[2], paths[3]]
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn preserves_literal_backslashes_in_unix_profile_names() {
+        let connection = Connection::open_in_memory().unwrap();
+        connection
+            .execute_batch("CREATE TABLE projection_projects(workspace_root TEXT)")
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO projection_projects VALUES (?1)",
+                [r"/source\literal/tasks/a"],
+            )
+            .unwrap();
+        relocate(
+            &connection,
+            Path::new(r"/source\literal"),
+            Path::new(r"/clone\literal"),
+        )
+        .unwrap();
+        let actual: String = connection
+            .query_row(
+                "SELECT workspace_root FROM projection_projects",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(actual, r"/clone\literal/tasks/a");
+    }
+
     #[test]
     fn relocates_owned_fields_and_replay_without_changing_history_or_external_workspaces() {
         let connection = Connection::open_in_memory().unwrap();
         connection.execute_batch("CREATE TABLE orchestration_v2_projection_threads(payload_json TEXT); CREATE TABLE orchestration_events(event_type TEXT,payload_json TEXT); CREATE TABLE projection_projects(workspace_root TEXT,favicon_path TEXT); CREATE TABLE scheduled_tasks(workspace_strategy_json TEXT)").unwrap();
-        let source = "/profile/source";
-        let target = "/profile/clone";
-        let body = json!({"worktreePath":"/profile/source/tasks/root", "message":{"cwd":"/profile/source/do-not-change"}, "nativeThreadRef":"native-id"});
+        let source = if cfg!(windows) {
+            "C:/profile/source"
+        } else {
+            "/profile/source"
+        };
+        let target = if cfg!(windows) {
+            "C:/profile/clone"
+        } else {
+            "/profile/clone"
+        };
+        let body = json!({"worktreePath":format!("{source}/tasks/root"), "message":{"cwd":format!("{source}/do-not-change")}, "nativeThreadRef":"native-id"});
         connection
             .execute(
                 "INSERT INTO orchestration_v2_projection_threads VALUES (?1)",
@@ -213,7 +309,7 @@ mod tests {
             ("message.updated", body.clone()),
             (
                 "project.created",
-                json!({"workspaceRoot":"/external/repo", "repositoryIdentity":{"rootPath":"/profile/source/tasks/repo"}}),
+                json!({"workspaceRoot":"/external/repo", "repositoryIdentity":{"rootPath":format!("{source}/tasks/repo")}}),
             ),
         ] {
             connection
@@ -226,14 +322,14 @@ mod tests {
         connection
             .execute(
                 "INSERT INTO projection_projects VALUES (?1,?2)",
-                ["/profile/source-other/repo", "/profile/source/icon.png"],
+                [format!("{source}-other/repo"), format!("{source}/icon.png")],
             )
             .unwrap();
         connection
             .execute(
                 "INSERT INTO scheduled_tasks VALUES (?1)",
                 [
-                    json!({"type":"existing_worktree", "worktreePath":"/profile/source/tasks/a"})
+                    json!({"type":"existing_worktree", "worktreePath":format!("{source}/tasks/a")})
                         .to_string(),
                 ],
             )
@@ -247,7 +343,7 @@ mod tests {
             )
             .unwrap();
         let projected: serde_json::Value = serde_json::from_str(&projected).unwrap();
-        assert_eq!(projected["worktreePath"], "/profile/clone/tasks/root");
+        assert_eq!(projected["worktreePath"], format!("{target}/tasks/root"));
         assert_eq!(projected["message"], body["message"]);
         assert_eq!(projected["nativeThreadRef"], body["nativeThreadRef"]);
         let untouched: String = connection
@@ -268,8 +364,8 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(workspace, "/profile/source-other/repo");
+        assert_eq!(workspace, format!("{source}-other/repo"));
         let replay: String = connection.query_row("SELECT json_extract(payload_json,'$.repositoryIdentity.rootPath') FROM orchestration_events WHERE event_type='project.created'", [], |row| row.get(0)).unwrap();
-        assert_eq!(replay, "/profile/clone/tasks/repo");
+        assert_eq!(replay, format!("{target}/tasks/repo"));
     }
 }

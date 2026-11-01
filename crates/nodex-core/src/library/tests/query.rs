@@ -5,7 +5,11 @@ use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-fn fixture() -> (tempfile::TempDir, SqliteStoreKernel, LibraryModule) {
+fn fixture() -> (
+    nodex_platform::test_support::TempDir,
+    SqliteStoreKernel,
+    LibraryModule,
+) {
     let directory = tempdir().unwrap();
     let kernel = SqliteStoreKernel::open_test(&directory.path().canonicalize().unwrap()).unwrap();
     kernel.writer().call(|connection| {

@@ -458,12 +458,12 @@ mod tests {
     }
 
     struct Fixture {
-        home: tempfile::TempDir,
+        home: nodex_platform::test_support::TempDir,
         kernel: SqliteStoreKernel,
     }
 
     fn fixture() -> Fixture {
-        let home = tempfile::tempdir().unwrap();
+        let home = nodex_platform::test_support::tempdir().unwrap();
         let kernel = SqliteStoreKernel::open_test(&home.path().canonicalize().unwrap()).unwrap();
         kernel.writer().call(|connection| {
             with_immediate_transaction(connection, |transaction| {

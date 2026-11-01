@@ -121,7 +121,7 @@ fn config_error(path: &Path, error: impl std::fmt::Display) -> CliError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
+    use nodex_platform::test_support::tempdir;
 
     #[test]
     fn environment_home_has_priority_and_resolves_from_cwd() {
@@ -137,15 +137,17 @@ mod tests {
         let user_home = directory.path().join("user");
         let project = directory.path().join("workspace/project");
         let cwd = project.join("src/module");
-        fs::create_dir_all(user_home.join(".nodex")).expect("user config directory");
-        fs::create_dir_all(project.join(".nodex")).expect("project config directory");
-        fs::create_dir_all(&cwd).expect("cwd");
-        fs::write(
+        nodex_platform::private_fs::create_dir_all(user_home.join(".nodex"))
+            .expect("user config directory");
+        nodex_platform::private_fs::create_dir_all(project.join(".nodex"))
+            .expect("project config directory");
+        nodex_platform::private_fs::create_dir_all(&cwd).expect("cwd");
+        nodex_platform::private_fs::write(
             user_home.join(".nodex/config.toml"),
             "[server]\nhome = \"~/user-profile\"\n",
         )
         .expect("user config");
-        fs::write(
+        nodex_platform::private_fs::write(
             project.join(".nodex/config.toml"),
             "title = \"Nodex\"\n[server]\nhome = \"project-profile\"\n",
         )
@@ -165,9 +167,10 @@ mod tests {
     fn malformed_configuration_fails_with_its_path() {
         let directory = tempdir().expect("root");
         let user_home = directory.path().join("user");
-        fs::create_dir_all(user_home.join(".nodex")).expect("config directory");
+        nodex_platform::private_fs::create_dir_all(user_home.join(".nodex"))
+            .expect("config directory");
         let path = user_home.join(".nodex/config.toml");
-        fs::write(&path, "[server\nhome = true").expect("invalid config");
+        nodex_platform::private_fs::write(&path, "[server\nhome = true").expect("invalid config");
         let error = resolve_home(directory.path(), None, Some(user_home.as_os_str()))
             .expect_err("malformed config must fail closed");
         assert_eq!(error.code, CliErrorCode::CoreUnavailable);

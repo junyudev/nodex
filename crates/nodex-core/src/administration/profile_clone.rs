@@ -457,7 +457,7 @@ fn io_error(error: std::io::Error) -> StoreError {
 mod tests {
     use std::io::{Read, Seek, SeekFrom, Write};
 
-    use tempfile::tempdir;
+    use nodex_platform::test_support::tempdir;
 
     use crate::infrastructure::store::SqliteStoreKernel;
 

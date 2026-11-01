@@ -2670,7 +2670,7 @@ mod tests {
 
     #[test]
     fn preparation_resumes_after_rollback_and_reopen_without_exposing_partial_ranks() {
-        let directory = tempfile::tempdir().unwrap();
+        let directory = nodex_platform::test_support::tempdir().unwrap();
         let path = directory.path().join("order.db");
         let mut connection = Connection::open(&path).unwrap();
         install_order_fixture(&connection);
@@ -2822,7 +2822,7 @@ mod tests {
 
     #[test]
     fn preparation_request_is_durable_after_the_semantic_transaction_rolls_back() {
-        let directory = tempfile::tempdir().unwrap();
+        let directory = nodex_platform::test_support::tempdir().unwrap();
         let path = directory.path().join("preparation.db");
         let mut connection = Connection::open(&path).unwrap();
         install_order_fixture(&connection);

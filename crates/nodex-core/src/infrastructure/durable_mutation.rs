@@ -447,10 +447,10 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     use nodex_core_contracts::{AdapterKind, LibraryId, ProfileId, ProjectId, ProjectionImpact};
+    use nodex_platform::test_support::tempdir;
     use rusqlite::OptionalExtension;
     use serde::{Deserialize, Serialize};
     use serde_json::json;
-    use tempfile::tempdir;
 
     use super::*;
     use crate::infrastructure::event_log::{NewChangeLogEntry, append_change_log};

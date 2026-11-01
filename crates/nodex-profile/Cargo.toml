@@ -20,4 +20,5 @@ utoipa.workspace = true
 zstd = "0.14.3"
 
 [dev-dependencies]
+nodex-platform = { workspace = true, features = ["test-support"] }
 tempfile = "3.27.0"

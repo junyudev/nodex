@@ -141,3 +141,32 @@ pub fn sync_file(path: &Path) -> io::Result<()> {
 pub fn prepare_profile_root(path: &Path) -> io::Result<()> {
     super::checked_metadata(path, super::EntryKind::Directory, None).map(|_| ())
 }
+/// A private readable handle may be sealed; cleanup owners restore write access later.
+pub fn validate_private_read_handle(file: &File) -> io::Result<Metadata> {
+    let metadata = file.metadata()?;
+    if metadata.is_file()
+        && metadata.uid() == rustix::process::geteuid().as_raw()
+        && metadata.mode() & 0o077 == 0
+        && metadata.mode() & 0o400 != 0
+    {
+        return Ok(metadata);
+    }
+    Err(io::Error::new(
+        io::ErrorKind::PermissionDenied,
+        "unsafe private readable file handle",
+    ))
+}
+pub fn has_traversal(path: &Path) -> bool {
+    path.as_os_str()
+        .as_encoded_bytes()
+        .split(|byte| *byte == b'/')
+        .any(|part| part == b".." || part == b".")
+}
+pub fn normalize_path(path: &Path) -> std::borrow::Cow<'_, Path> {
+    std::borrow::Cow::Borrowed(path)
+}
+pub fn path_key(path: &Path) -> io::Result<String> {
+    path.to_str()
+        .map(str::to_owned)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "path is not UTF-8"))
+}

@@ -3588,9 +3588,9 @@ mod tests {
     use nodex_platform::private_fs::symlink;
     use std::fs;
 
+    use nodex_platform::test_support::tempdir;
     use rusqlite::OptionalExtension;
     use serde_json::{Value, json};
-    use tempfile::tempdir;
 
     use super::super::sqlite::open_writer;
     use super::*;
@@ -7592,7 +7592,7 @@ mod tests {
 
     #[test]
     fn native_claude_migration_preserves_existing_backend_sessions() {
-        let directory = tempfile::tempdir().expect("fixture directory");
+        let directory = nodex_platform::test_support::tempdir().expect("fixture directory");
         let path = directory.path().join("nodex.db");
         nodex_platform::private_fs::write(
             &path,

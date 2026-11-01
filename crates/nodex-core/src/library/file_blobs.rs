@@ -398,7 +398,7 @@ fn invalid(message: impl Into<String>) -> StoreError {
 #[cfg(test)]
 mod tests {
 
-    use tempfile::tempdir;
+    use nodex_platform::test_support::tempdir;
 
     use crate::infrastructure::store::SqliteStoreKernel;
     use crate::library::LibraryModule;

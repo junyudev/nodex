@@ -675,10 +675,16 @@ fn captured_alias_path(
     selected: &Path,
     captured: &BTreeMap<PathBuf, files::Fingerprint>,
 ) -> Result<PathBuf> {
-    if !selected.is_absolute()
-        || selected
-            .components()
-            .any(|part| !matches!(part, Component::RootDir | Component::Normal(_)))
+    let normalized = nodex_platform::private_fs::normalize_path(selected);
+    let selected = normalized.as_ref();
+    if nodex_platform::private_fs::has_traversal(selected)
+        || !selected.is_absolute()
+        || selected.components().any(|part| {
+            !matches!(
+                part,
+                Component::Prefix(_) | Component::RootDir | Component::Normal(_)
+            )
+        })
     {
         return Err(invalid(
             "Native conversation path is not a contained artifact",
@@ -737,7 +743,9 @@ fn relocate_state(
             }
             let actual = relative.to_string_lossy();
             let copied = rollout.relative.to_string_lossy();
-            if actual.trim_end_matches(".zst") != copied.trim_end_matches(".zst") {
+            if Path::new(actual.trim_end_matches(".zst"))
+                != Path::new(copied.trim_end_matches(".zst"))
+            {
                 return Err(invalid(
                     "Native selected rollout path does not match the copied artifact",
                 ));

@@ -90,7 +90,8 @@ impl Relocation<'_> {
                 "Managed attachment reference exceeds its path byte limit",
             ));
         }
-        let path = Path::new(raw);
+        let normalized = nodex_platform::private_fs::normalize_path(Path::new(raw));
+        let path = normalized.as_ref();
         if !path.starts_with(&self.source) {
             return Ok(None);
         }

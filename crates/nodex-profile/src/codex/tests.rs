@@ -63,7 +63,7 @@ fn state(home: &Path, selections: &[(&str, &Path)]) {
 
 #[test]
 fn captures_the_active_native_home_into_an_independent_profile_home() {
-    let root = tempfile::tempdir().unwrap();
+    let root = nodex_platform::test_support::tempdir().unwrap();
     let source = root.path().join("profile");
     let native = root.path().join("native/.codex");
     let target = root.path().join("snapshot");
@@ -103,7 +103,7 @@ fn captures_the_active_native_home_into_an_independent_profile_home() {
 #[test]
 fn captures_new_account_overlay_conversations_from_the_shared_physical_history() {
     for compressed in [false, true] {
-        let root = tempfile::tempdir().unwrap();
+        let root = nodex_platform::test_support::tempdir().unwrap();
         let source = root.path().join("profile");
         let shared = root.path().join("shared");
         let account = root.path().join("account");
@@ -174,7 +174,7 @@ fn captures_new_account_overlay_conversations_from_the_shared_physical_history()
 
 #[test]
 fn rejects_account_aliases_that_select_history_outside_the_shared_tree() {
-    let root = tempfile::tempdir().unwrap();
+    let root = nodex_platform::test_support::tempdir().unwrap();
     let source = root.path().join("source");
     let shared = source.join("agent");
     let (relative, _) = write_rollout(&shared, ROOT, ROOT, Value::Null, false, false);
@@ -203,7 +203,7 @@ fn rejects_account_aliases_that_select_history_outside_the_shared_tree() {
 
 #[test]
 fn rejects_account_aliases_with_symlinked_rollout_artifacts() {
-    let root = tempfile::tempdir().unwrap();
+    let root = nodex_platform::test_support::tempdir().unwrap();
     let source = root.path().join("source");
     let shared = source.join("agent");
     let (relative, _) = write_rollout(&shared, ROOT, ROOT, Value::Null, false, false);
@@ -225,7 +225,7 @@ fn rejects_account_aliases_with_symlinked_rollout_artifacts() {
 
 #[test]
 fn rejects_invalid_active_home_receipts_instead_of_falling_back_to_legacy_history() {
-    let root = tempfile::tempdir().unwrap();
+    let root = nodex_platform::test_support::tempdir().unwrap();
     let source = root.path().join("source");
     let receipt = source.join("runtime/agent/codex-home.json");
     files::private_directory(receipt.parent().unwrap()).unwrap();
@@ -267,7 +267,7 @@ fn rejects_invalid_active_home_receipts_instead_of_falling_back_to_legacy_histor
 
 #[test]
 fn accepts_absent_and_known_history_modes_but_rejects_malformed_present_values() {
-    let root = tempfile::tempdir().unwrap();
+    let root = nodex_platform::test_support::tempdir().unwrap();
     let source = root.path().join("source");
     let agent = source.join("agent");
     let (relative, _) = write_rollout(&agent, ROOT, ROOT, Value::Null, false, false);
@@ -309,7 +309,7 @@ fn accepts_absent_and_known_history_modes_but_rejects_malformed_present_values()
 
 #[test]
 fn bounds_projection_rows_and_bytes_including_oversized_thread_cells() {
-    let root = tempfile::tempdir().unwrap();
+    let root = nodex_platform::test_support::tempdir().unwrap();
     let connection = Connection::open(root.path().join("thread_history_1.sqlite")).unwrap();
     connection.execute_batch(
         "CREATE TABLE thread_history_projection_state(thread_id TEXT PRIMARY KEY, next_rollout_byte_offset INTEGER, next_rollout_ordinal INTEGER);
@@ -354,7 +354,7 @@ fn bounds_projection_rows_and_bytes_including_oversized_thread_cells() {
 
 #[test]
 fn bounds_rollout_metadata_before_retaining_the_index() {
-    let root = tempfile::tempdir().unwrap();
+    let root = nodex_platform::test_support::tempdir().unwrap();
     let (relative, _) = write_rollout(root.path(), ROOT, ROOT, Value::Null, false, false);
     let paths = [relative];
     let bytes = 2 * ROOT.len() + paths[0].as_os_str().len();
@@ -382,7 +382,7 @@ fn bounds_rollout_metadata_before_retaining_the_index() {
 
 #[test]
 fn bounds_selected_paths_and_rolls_back_relocation_when_a_later_row_exceeds_budget() {
-    let root = tempfile::tempdir().unwrap();
+    let root = nodex_platform::test_support::tempdir().unwrap();
     let source = root.path().join("source");
     let target = root.path().join("target");
     let selections = [
@@ -515,7 +515,7 @@ fn rejects_oversized_native_selection_cells_before_relocation() {
 
 #[test]
 fn resolves_plain_compression_siblings_but_rejects_unrelated_duplicate_identities() {
-    let root = tempfile::tempdir().unwrap();
+    let root = nodex_platform::test_support::tempdir().unwrap();
     let source = root.path().join("source");
     let target = root.path().join("target");
     let agent = source.join("agent");
@@ -548,7 +548,7 @@ fn resolves_plain_compression_siblings_but_rejects_unrelated_duplicate_identitie
 
 #[test]
 fn keeps_selected_revert_archives_inherited_bytes_and_metadata_in_an_independent_home() {
-    let root = tempfile::tempdir().unwrap();
+    let root = nodex_platform::test_support::tempdir().unwrap();
     let source = root.path().join("source");
     let target = root.path().join("target");
     let agent = source.join("agent");
@@ -626,7 +626,7 @@ fn keeps_selected_revert_archives_inherited_bytes_and_metadata_in_an_independent
 
 #[test]
 fn rejects_unfinished_rollouts_even_without_required_threads() {
-    let root = tempfile::tempdir().unwrap();
+    let root = nodex_platform::test_support::tempdir().unwrap();
     let source = root.path().join("source");
     let target = root.path().join("target");
     let agent = source.join("agent");
@@ -641,7 +641,7 @@ fn rejects_unfinished_rollouts_even_without_required_threads() {
 
 #[test]
 fn distinguishes_missing_native_history_from_remote_and_other_backend_threads() {
-    let root = tempfile::tempdir().unwrap();
+    let root = nodex_platform::test_support::tempdir().unwrap();
     let threads = [
         thread(ROOT),
         ProfileCloneThread {
@@ -667,7 +667,7 @@ fn distinguishes_missing_native_history_from_remote_and_other_backend_threads() 
 
 #[test]
 fn paginated_history_requires_its_matching_native_projection() {
-    let root = tempfile::tempdir().unwrap();
+    let root = nodex_platform::test_support::tempdir().unwrap();
     let source = root.path().join("source");
     let agent = source.join("agent");
     let (relative, _) = write_rollout(&agent, ROOT, ROOT, Value::Null, false, false);
@@ -721,7 +721,7 @@ fn paginated_history_requires_its_matching_native_projection() {
 
 #[test]
 fn missing_or_cyclic_ancestry_cannot_be_published_as_recoverable() {
-    let root = tempfile::tempdir().unwrap();
+    let root = nodex_platform::test_support::tempdir().unwrap();
     let source = root.path().join("source");
     let agent = source.join("agent");
     write_rollout(
@@ -760,7 +760,7 @@ fn missing_or_cyclic_ancestry_cannot_be_published_as_recoverable() {
 
 #[test]
 fn native_metadata_is_required_to_select_a_reverted_history() {
-    let root = tempfile::tempdir().unwrap();
+    let root = nodex_platform::test_support::tempdir().unwrap();
     let source = root.path().join("source");
     write_rollout(&source.join("agent"), ROOT, ROOT, Value::Null, false, false);
     write_rollout(
@@ -784,7 +784,7 @@ fn native_metadata_is_required_to_select_a_reverted_history() {
 #[test]
 fn detects_missing_and_invalid_inherited_history_cutoffs() {
     for (position, ordinal) in [(1, 1), (999999, 1), (0, 99)] {
-        let root = tempfile::tempdir().unwrap();
+        let root = nodex_platform::test_support::tempdir().unwrap();
         let source = root.path().join("source");
         write_rollout(&source.join("agent"), ROOT, ROOT, Value::Null, false, false);
         write_rollout(
@@ -808,7 +808,7 @@ fn detects_missing_and_invalid_inherited_history_cutoffs() {
 
 #[test]
 fn rejects_live_writers_and_releases_coordination_on_failure() {
-    let root = tempfile::tempdir().unwrap();
+    let root = nodex_platform::test_support::tempdir().unwrap();
     let source = root.path().join("source");
     let agent = source.join("agent");
     write_rollout(&agent, ROOT, ROOT, Value::Null, false, false);
@@ -840,7 +840,7 @@ fn rejects_live_writers_and_releases_coordination_on_failure() {
 
 #[test]
 fn captures_committed_wal_data_and_rejects_changes_during_capture() {
-    let root = tempfile::tempdir().unwrap();
+    let root = nodex_platform::test_support::tempdir().unwrap();
     let path = root.path().join("state_5.sqlite");
     let writer = Connection::open(&path).unwrap();
     writer.execute_batch("PRAGMA journal_mode=WAL; CREATE TABLE example(value TEXT); INSERT INTO example VALUES('from WAL');").unwrap();
@@ -870,7 +870,7 @@ fn captures_committed_wal_data_and_rejects_changes_during_capture() {
 
 #[test]
 fn rejects_symlinks_and_native_paths_into_another_home() {
-    let root = tempfile::tempdir().unwrap();
+    let root = nodex_platform::test_support::tempdir().unwrap();
     let source = root.path().join("source");
     let agent = source.join("agent");
     let (relative, _) = write_rollout(&agent, ROOT, ROOT, Value::Null, false, false);

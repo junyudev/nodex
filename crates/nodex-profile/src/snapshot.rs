@@ -740,8 +740,8 @@ mod tests {
 
     #[test]
     fn offline_backup_uses_recorded_provider_homes_without_credentials() {
-        let source = tempfile::tempdir().unwrap();
-        let staged = tempfile::tempdir().unwrap();
+        let source = nodex_platform::test_support::tempdir().unwrap();
+        let staged = nodex_platform::test_support::tempdir().unwrap();
         let input = fixture(source.path());
         write_catalog(source.path(), &input);
         assert!(
@@ -796,8 +796,8 @@ mod tests {
             "missing-provider",
             "missing-history",
         ] {
-            let source = tempfile::tempdir().unwrap();
-            let staged = tempfile::tempdir().unwrap();
+            let source = nodex_platform::test_support::tempdir().unwrap();
+            let staged = nodex_platform::test_support::tempdir().unwrap();
             let input = fixture(source.path());
             write_catalog(source.path(), &input);
             let path = source.path().join("agent-runtime/provider-catalog.json");
@@ -847,8 +847,8 @@ mod tests {
     #[test]
     fn materializes_claude_fork_transcript_aliases_as_independent_files() {
         use nodex_platform::private_fs::symlink;
-        let source = tempfile::tempdir().unwrap();
-        let staged = tempfile::tempdir().unwrap();
+        let source = nodex_platform::test_support::tempdir().unwrap();
+        let staged = nodex_platform::test_support::tempdir().unwrap();
         let input = fixture(source.path());
         let claude = source.path().join("private-claude-account");
         let relative = std::path::PathBuf::from(format!(
@@ -884,8 +884,8 @@ mod tests {
     #[test]
     fn captures_complete_two_provider_history_without_credentials_and_preserves_resume_identities()
     {
-        let source = tempfile::tempdir().unwrap();
-        let staged = tempfile::tempdir().unwrap();
+        let source = nodex_platform::test_support::tempdir().unwrap();
+        let staged = nodex_platform::test_support::tempdir().unwrap();
         let input = fixture(source.path());
         assert!(
             capture(ProfileSnapshotCapture {
@@ -959,8 +959,8 @@ mod tests {
     #[test]
     fn rejects_missing_or_foreign_native_history_and_child_session_roots_before_publication() {
         for failure in ["missing", "foreign", "child"] {
-            let source = tempfile::tempdir().unwrap();
-            let staged = tempfile::tempdir().unwrap();
+            let source = nodex_platform::test_support::tempdir().unwrap();
+            let staged = nodex_platform::test_support::tempdir().unwrap();
             let input = fixture(source.path());
             let transcript = source.path().join(format!(
                 "private-claude-account/projects/workspace/{CLAUDE_ID}.jsonl"

@@ -894,7 +894,7 @@ mod tests {
         AdapterKind, BoundModuleContext, CoreErrorCode, LibraryId, ModuleReadRequest,
         PROJECT_WORKSPACE_CONTRACT_VERSION, ProfileId, ProjectId,
     };
-    use tempfile::{TempDir, tempdir};
+    use nodex_platform::test_support::{TempDir, tempdir};
 
     use crate::infrastructure::sqlite::with_immediate_transaction;
     use crate::infrastructure::store::SqliteStoreKernel;

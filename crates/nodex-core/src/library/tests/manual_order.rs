@@ -21,7 +21,7 @@ fn context() -> BoundModuleContext {
 }
 
 fn fixture() -> (
-    tempfile::TempDir,
+    nodex_platform::test_support::TempDir,
     SqliteStoreKernel,
     LibraryModule,
     DatabaseModule,

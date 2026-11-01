@@ -18,7 +18,7 @@ use nodex_core_contracts::{
 };
 use nodex_core_protocol::ResponseEnvelope;
 use nodex_core_protocol::client::{CoreClient, connect_or_launch};
-use tempfile::tempdir;
+use nodex_platform::test_support::tempdir;
 
 struct ProcessGuard(u32);
 
@@ -250,9 +250,10 @@ fn native_client_cold_starts_reuses_and_reads_the_authenticated_core() {
     assert_thread_asset_streams(&client, project_id);
 
     drop(second);
+    client.shutdown().expect("authenticated cleanup");
     drop(client);
-    drop(guard);
     wait_for_runtime_cleanup(&home);
+    drop(guard);
 }
 
 fn assert_library_file_streams(client: &CoreClient, project_id: &str, unrelated_page_id: &str) {
@@ -836,9 +837,10 @@ fn agent_attribution_credentials_name_the_attaching_session() {
         LibraryPageFileAttachmentActor::External
     );
 
+    client.shutdown().expect("authenticated cleanup");
     drop(client);
-    drop(guard);
     wait_for_runtime_cleanup(&home);
+    drop(guard);
 }
 
 #[cfg(windows)]

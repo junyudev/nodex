@@ -1386,7 +1386,7 @@ fn clone_or_copy_file(
 ) -> Result<u64, StoreError> {
     // With the pinned Rust toolchain, std::fs::copy tries fclonefileat first on
     // macOS and falls back to fcopyfile when CoW is unavailable or cross-volume.
-    let bytes = fs::copy(source, destination).map_err(io_error)?;
+    let bytes = nodex_platform::private_fs::copy(source, destination).map_err(io_error)?;
     if matches!(durability, CopyDurability::Durable) {
         sync_file(destination)?;
     }
@@ -2421,7 +2421,7 @@ fn io_error(error: std::io::Error) -> StoreError {
 
 #[cfg(test)]
 mod tests {
-    use tempfile::tempdir;
+    use nodex_platform::test_support::tempdir;
 
     use crate::administration::profile_clone::{
         ProfileCloneBackupSelection, ProfileCloneRequest, prepare_profile_clone,

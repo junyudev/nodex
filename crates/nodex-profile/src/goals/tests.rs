@@ -1,8 +1,8 @@
 use super::*;
 use nodex_platform::private_fs::symlink;
+use nodex_platform::test_support::{TempDir, tempdir};
 use serde_json::{Value, json};
 use std::fs;
-use tempfile::{TempDir, tempdir};
 
 const DIRECTORY: &str = "11111111-1111-4111-8111-111111111111";
 const OTHER_DIRECTORY: &str = "22222222-2222-4222-8222-222222222222";

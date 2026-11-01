@@ -1184,8 +1184,8 @@ fn corrupt(message: impl Into<String>) -> StoreError {
 
 #[cfg(test)]
 mod tests {
+    use nodex_platform::test_support::tempdir;
     use rusqlite::params;
-    use tempfile::tempdir;
 
     use crate::infrastructure::store::SqliteStoreKernel;
 

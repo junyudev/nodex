@@ -1632,7 +1632,7 @@ mod tests {
         ModuleApplyRequest, ModuleReadRequest, OWNED_DOCUMENT_CONTRACT_VERSION, ProfileId,
         ProjectId, StoreEpoch,
     };
-    use tempfile::{TempDir, tempdir};
+    use nodex_platform::test_support::{TempDir, tempdir};
 
     use crate::document::OwnedDocumentModule;
     use crate::infrastructure::sqlite::with_immediate_transaction;

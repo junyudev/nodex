@@ -487,9 +487,160 @@ pub fn lock_is_contended(error: &io::Error) -> bool {
 pub fn sync_file(path: &Path) -> io::Result<()> {
     OpenOptions::new().write(true).open(path)?.sync_all()
 }
+/// Secure the Profile before SQLite or Desktop can create inheriting artifacts.
+pub fn prepare_profile_root(path: &Path) -> io::Result<()> {
+    let metadata = super::entry_metadata(path, super::EntryKind::Directory)?;
+    if require_owned(path, &metadata).is_ok() {
+        if has_mode(path, &metadata, 0o700)? {
+            return Ok(());
+        }
+        return set_mode(path, 0o700);
+    }
+    // Elevated tokens can default newly created directories to the Administrators
+    // owner. Initialization replaces only this token's default owner, before any
+    // Profile content is read, then applies the strict current-user contract.
+    let file = open_metadata(path)?;
+    let mut descriptor = null_mut();
+    let mut owner = null_mut();
+    let status = unsafe {
+        GetSecurityInfo(
+            file.as_raw_handle(),
+            SE_FILE_OBJECT,
+            OWNER_SECURITY_INFORMATION,
+            &mut owner,
+            null_mut(),
+            null_mut(),
+            null_mut(),
+            &mut descriptor,
+        )
+    };
+    if status != 0 {
+        return Err(io::Error::from_raw_os_error(status as i32));
+    }
+    let _allocation = LocalAllocation(descriptor);
+    if sid_string(owner)? != crate::windows::default_owner_sid()? {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "Profile home belongs to another user",
+        ));
+    }
+    let file = handle(unsafe {
+        CreateFileW(
+            wide(path)?.as_ptr(),
+            WRITE_OWNER | WRITE_DAC | READ_CONTROL | FILE_READ_ATTRIBUTES,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+            null(),
+            OPEN_EXISTING,
+            FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
+            null_mut(),
+        )
+    })?;
+    let file: File = file.into();
+    if is_reparse_point(&file.metadata()?) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "Profile home must not be a reparse point",
+        ));
+    }
+    let security = PrivateSecurity::new(false)?;
+    let mut owner = null_mut();
+    let mut acl = null_mut();
+    let mut present = 0;
+    let mut defaulted = 0;
+    if unsafe { GetSecurityDescriptorOwner(security.descriptor(), &mut owner, &mut defaulted) } == 0
+        || unsafe {
+            GetSecurityDescriptorDacl(
+                security.descriptor(),
+                &mut present,
+                &mut acl,
+                &mut defaulted,
+            )
+        } == 0
+    {
+        return Err(io::Error::last_os_error());
+    }
+    let status = unsafe {
+        SetSecurityInfo(
+            file.as_raw_handle(),
+            SE_FILE_OBJECT,
+            OWNER_SECURITY_INFORMATION
+                | DACL_SECURITY_INFORMATION
+                | PROTECTED_DACL_SECURITY_INFORMATION,
+            owner,
+            null_mut(),
+            acl,
+            null_mut(),
+        )
+    };
+    if status != 0 {
+        return Err(io::Error::from_raw_os_error(status as i32));
+    }
+    super::checked_metadata(path, super::EntryKind::Directory, Some(0o700)).map(|_| ())
+}
+
+/// A private readable handle may be sealed; cleanup owners restore write access later.
+pub fn validate_private_read_handle(file: &File) -> io::Result<Metadata> {
+    security(file, true, None)?;
+    let metadata = file.metadata()?;
+    if !metadata.is_file() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "expected regular file",
+        ));
+    }
+    Ok(metadata)
+}
+
+pub fn has_traversal(path: &Path) -> bool {
+    path.as_os_str()
+        .as_encoded_bytes()
+        .split(|byte| matches!(byte, b'/' | b'\\'))
+        .any(|part| part == b".." || part == b".")
+}
+
+pub fn normalize_path(path: &Path) -> std::borrow::Cow<'_, Path> {
+    use std::os::windows::ffi::{OsStrExt, OsStringExt};
+    let units: Vec<_> = path
+        .as_os_str()
+        .encode_wide()
+        .map(|unit| {
+            if unit == u16::from(b'/') {
+                u16::from(b'\\')
+            } else {
+                unit
+            }
+        })
+        .collect();
+    std::borrow::Cow::Owned(std::path::PathBuf::from(std::ffi::OsString::from_wide(
+        &units,
+    )))
+}
+pub fn path_key(path: &Path) -> io::Result<String> {
+    let path = path
+        .to_str()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "path is not UTF-8"))?;
+    Ok(path
+        .strip_prefix(r"\\?\UNC\")
+        .map(|path| format!("//{path}"))
+        .unwrap_or_else(|| path.strip_prefix(r"\\?\").unwrap_or(path).to_owned())
+        .replace('\\', "/"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn profile_initialization_converts_the_token_default_owner_before_admission() {
+        let directory = tempfile::tempdir().unwrap();
+        prepare_profile_root(directory.path()).unwrap();
+        super::super::checked_metadata(
+            directory.path(),
+            super::super::EntryKind::Directory,
+            Some(0o700),
+        )
+        .unwrap();
+    }
+
     #[test]
     fn private_validation_rejects_a_protected_acl_that_grants_everyone_read_access() {
         use windows_sys::Win32::Security::Authorization::{
@@ -534,7 +685,7 @@ mod tests {
         let file = handle(unsafe {
             CreateFileW(
                 wide(&path).unwrap().as_ptr(),
-                WRITE_DAC,
+                WRITE_DAC | READ_CONTROL,
                 FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
                 null(),
                 OPEN_EXISTING,
@@ -562,9 +713,4 @@ mod tests {
                 .is_err()
         );
     }
-}
-/// Secure the Profile before SQLite or Desktop can create inheriting artifacts.
-pub fn prepare_profile_root(path: &Path) -> io::Result<()> {
-    super::checked_metadata(path, super::EntryKind::Directory, None)?;
-    set_mode(path, 0o700)
 }

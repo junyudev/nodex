@@ -354,7 +354,7 @@ mod tests {
 
     #[test]
     fn finalizes_idle_history_past_retained_unowned_document_sessions() {
-        let home = tempfile::tempdir().expect("Profile home");
+        let home = nodex_platform::test_support::tempdir().expect("Profile home");
         let kernel = SqliteStoreKernel::open_test(home.path()).expect("fresh store");
         kernel
             .writer()

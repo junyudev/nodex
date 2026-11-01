@@ -306,8 +306,8 @@ mod tests {
 
     #[test]
     fn captures_identity_database_attachments_and_native_requirements_as_an_independent_closure() {
-        let source = tempfile::tempdir().unwrap();
-        let staging = tempfile::tempdir().unwrap();
+        let source = nodex_platform::test_support::tempdir().unwrap();
+        let staging = nodex_platform::test_support::tempdir().unwrap();
         let path = fixture(source.path());
         let (receipt, native) = capture(
             source.path(),
@@ -356,8 +356,8 @@ mod tests {
     #[test]
     fn rejects_wrong_identity_missing_threads_busy_work_and_mismatched_watermarks() {
         for variant in ["identity", "thread", "busy", "watermark"] {
-            let source = tempfile::tempdir().unwrap();
-            let staging = tempfile::tempdir().unwrap();
+            let source = nodex_platform::test_support::tempdir().unwrap();
+            let staging = nodex_platform::test_support::tempdir().unwrap();
             let path = fixture(source.path());
             let mut bindings = required();
             if variant == "identity" {
@@ -400,8 +400,8 @@ mod tests {
 
     #[test]
     fn missing_execution_storage_cannot_satisfy_a_bound_session() {
-        let source = tempfile::tempdir().unwrap();
-        let staging = tempfile::tempdir().unwrap();
+        let source = nodex_platform::test_support::tempdir().unwrap();
+        let staging = nodex_platform::test_support::tempdir().unwrap();
         assert!(
             capture(
                 source.path(),
@@ -422,7 +422,7 @@ mod tests {
 
     #[test]
     fn offline_capture_excludes_existing_and_replacement_writers_and_releases_ownership() {
-        let source = tempfile::tempdir().unwrap();
+        let source = nodex_platform::test_support::tempdir().unwrap();
         let lease = OfflineLease::acquire(source.path()).unwrap();
         let directory = source.path().join("agent-runtime/.writer.lock");
         assert_eq!(owner(&directory).unwrap().pid, std::process::id() as i32);

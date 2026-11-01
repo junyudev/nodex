@@ -9,7 +9,7 @@ use nodex_core_contracts::library::{
 use rusqlite::hooks::{AuthAction, AuthContext, Authorization};
 
 pub(super) struct Fixture {
-    _directory: tempfile::TempDir,
+    _directory: nodex_platform::test_support::TempDir,
     pub(super) kernel: SqliteStoreKernel,
     pub(super) library: LibraryModule,
     workspace: ProjectWorkspaceModule,

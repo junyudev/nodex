@@ -513,7 +513,7 @@ fn internal(error: impl std::fmt::Display) -> CliError {
 #[cfg(test)]
 mod tests {
     use nodex_core_contracts::library::LibraryPageProjectionFileKind;
-    use tempfile::tempdir;
+    use nodex_platform::test_support::tempdir;
 
     use super::*;
 
@@ -625,13 +625,13 @@ mod tests {
         let directory = tempdir().expect("snapshot parent");
         let root = directory.path().join("snapshot");
         let page_root = root.join("pages/hash");
-        fs::create_dir_all(&page_root).expect("snapshot layout");
+        nodex_platform::private_fs::create_dir_all(&page_root).expect("snapshot layout");
         let meta_bytes = b"id: \"page-1\"\ntitle: \"CLI\"\nproperties: {}\nschedule: null\n";
         let body_bytes = b"## Runtime\nCore starts on demand.\n";
         let meta_path = page_root.join("meta.yaml");
         let body_path = page_root.join("body.md");
-        fs::write(&meta_path, meta_bytes).expect("metadata projection");
-        fs::write(&body_path, body_bytes).expect("body projection");
+        nodex_platform::private_fs::write(&meta_path, meta_bytes).expect("metadata projection");
+        nodex_platform::private_fs::write(&body_path, body_bytes).expect("body projection");
         let mut lease = LibrarySearchSnapshotLease {
             lease_id: "0".repeat(32),
             expires_at_unix_ms: i64::MAX,
@@ -681,7 +681,7 @@ mod tests {
             "expires_at_unix_ms": lease.expires_at_unix_ms,
             "manifest": lease.manifest,
         });
-        fs::write(
+        nodex_platform::private_fs::write(
             root.join("manifest.json"),
             serde_json::to_vec(&marker).expect("marker JSON"),
         )

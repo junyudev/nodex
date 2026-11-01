@@ -370,7 +370,7 @@ fn require_owned_real_directory(path: &Path, metadata: &fs::Metadata) -> Result<
 }
 
 fn create_directory_without_clobber(path: &Path) -> Result<(), CliError> {
-    match fs::create_dir(path) {
+    match nodex_platform::private_fs::create_dir(path) {
         Ok(()) => Ok(()),
         Err(error) if error.kind() == io::ErrorKind::AlreadyExists => Ok(()),
         Err(error) => Err(target_raced(

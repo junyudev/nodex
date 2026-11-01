@@ -896,9 +896,9 @@ mod tests {
     use nodex_platform::private_fs::symlink;
 
     use nodex_core_contracts::{AdapterKind, BoundModuleContext, LibraryId, ProfileId};
+    use nodex_platform::test_support::TempDir;
     use rusqlite::params;
     use serde_json::json;
-    use tempfile::TempDir;
 
     use super::*;
     use crate::infrastructure::module_receipts::{NewModuleReceipt, insert_module_receipt};
@@ -921,7 +921,7 @@ mod tests {
 
     impl ReplacementFixture {
         fn new() -> Self {
-            let home = tempfile::tempdir().expect("Profile home");
+            let home = nodex_platform::test_support::tempdir().expect("Profile home");
             let kernel = SqliteStoreKernel::open(home.path()).expect("fresh Store");
             kernel
                 .writer()
@@ -948,7 +948,7 @@ mod tests {
             let staging = home.path().join("backups").join(STAGING_NAME);
             nodex_platform::private_fs::create_dir_all(staging.join(ASSETS_DIRECTORY_NAME))
                 .expect("staging assets");
-            fs::copy(
+            nodex_platform::private_fs::copy(
                 live_database_path(home.path()),
                 staging.join(STORE_FILE_NAME),
             )

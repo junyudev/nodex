@@ -126,7 +126,7 @@ impl Drop for Interrupt {
 pub fn terminate_process(pid: u32) -> io::Result<()> {
     let process = handle(unsafe {
         OpenProcess(
-            windows_sys::Win32::System::Threading::PROCESS_TERMINATE,
+            windows_sys::Win32::System::Threading::PROCESS_TERMINATE | PROCESS_SYNCHRONIZE,
             0,
             pid,
         )
@@ -136,6 +136,14 @@ pub fn terminate_process(pid: u32) -> io::Result<()> {
     } == 0
     {
         return Err(io::Error::last_os_error());
+    }
+    if unsafe { WaitForSingleObject(process.as_raw_handle(), 5000) }
+        != windows_sys::Win32::Foundation::WAIT_OBJECT_0
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::TimedOut,
+            "process did not exit after termination",
+        ));
     }
     Ok(())
 }

@@ -734,7 +734,7 @@ mod tests {
     use nodex_platform::private_fs::symlink;
     use std::io::BufRead;
 
-    use tempfile::tempdir;
+    use nodex_platform::test_support::tempdir;
 
     use super::*;
 

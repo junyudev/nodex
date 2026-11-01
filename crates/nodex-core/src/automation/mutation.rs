@@ -2188,9 +2188,9 @@ mod tests {
         AUTOMATION_CONTRACT_VERSION, AdapterKind, BoundModuleContext, LibraryId,
         ModuleApplyRequest, ModuleReadRequest, ProfileId, ProjectId, StoreEpoch,
     };
+    use nodex_platform::test_support::{TempDir, tempdir};
     use rusqlite::params;
     use serde_json::{Value, json};
-    use tempfile::{TempDir, tempdir};
 
     use crate::automation::AutomationModule;
     use crate::database::DatabaseModule;

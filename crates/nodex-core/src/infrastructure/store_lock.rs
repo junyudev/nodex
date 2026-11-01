@@ -32,9 +32,7 @@ impl ProfileStoreLock {
                 false,
             )
         })?;
-        if nodex_platform::private_fs::is_reparse_point(&metadata)
-            || nodex_platform::private_fs::prepare_profile_root(profile_home).is_err()
-        {
+        if nodex_platform::private_fs::is_reparse_point(&metadata) {
             return Err(StoreError::new(
                 StoreErrorCode::InvalidProfile,
                 "Profile home must not be a symlink",
@@ -42,6 +40,7 @@ impl ProfileStoreLock {
             ));
         }
 
+        nodex_platform::private_fs::prepare_profile_root(profile_home).map_err(io_error)?;
         let directory = profile_home.join("run/core");
         nodex_platform::private_fs::create_dir_all(&directory).map_err(io_error)?;
         if nodex_platform::private_fs::is_reparse_point(
@@ -99,7 +98,7 @@ fn io_error(error: std::io::Error) -> StoreError {
 #[cfg(test)]
 mod tests {
 
-    use tempfile::tempdir;
+    use nodex_platform::test_support::tempdir;
 
     use super::*;
 

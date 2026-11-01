@@ -1461,15 +1461,12 @@ fn validate_directory(path: &Path, exact_mode: Option<u32>) -> Result<(), CliErr
 fn validate_private_file(path: &Path, read_only: bool) -> Result<File, CliError> {
     let file =
         nodex_platform::private_fs::open_read(path).map_err(|error| path_error(path, error))?;
-    nodex_platform::private_fs::validate_private_handle(
-        &file,
-        if read_only {
-            READ_ONLY_FILE_MODE
-        } else {
-            PRIVATE_FILE_MODE
-        },
-    )
-    .map_err(|error| path_error(path, error))?;
+    let validation = if read_only {
+        nodex_platform::private_fs::validate_private_handle(&file, READ_ONLY_FILE_MODE)
+    } else {
+        nodex_platform::private_fs::validate_private_read_handle(&file)
+    };
+    validation.map_err(|error| path_error(path, error))?;
     Ok(file)
 }
 
@@ -1668,7 +1665,7 @@ fn internal(error: impl std::fmt::Display) -> CliError {
 mod tests {
     use nodex_platform::private_fs::symlink;
 
-    use tempfile::tempdir;
+    use nodex_platform::test_support::tempdir;
 
     use super::*;
 
@@ -1708,10 +1705,11 @@ mod tests {
         assert!(!draft_destination(&absent).unwrap().remove_empty);
 
         let empty = directory.path().join("empty");
-        fs::create_dir(&empty).expect("empty destination");
+        nodex_platform::private_fs::create_dir(&empty).expect("empty destination");
         assert!(draft_destination(&empty).unwrap().remove_empty);
 
-        fs::write(empty.join("user-file"), b"keep").expect("non-empty destination");
+        nodex_platform::private_fs::write(empty.join("user-file"), b"keep")
+            .expect("non-empty destination");
         let error = draft_destination(&empty).expect_err("non-empty destination must fail");
         assert_eq!(error.code, CliErrorCode::DraftUnsafePath);
 
@@ -1726,7 +1724,7 @@ mod tests {
         let directory = tempdir().expect("draft parent");
         let root = directory.path().join("draft");
         write_fixture(&root);
-        fs::write(root.join("unknown"), b"no").expect("unknown entry");
+        nodex_platform::private_fs::write(root.join("unknown"), b"no").expect("unknown entry");
         let error = load_layout(&root).expect_err("unknown draft entry");
         assert_eq!(error.code, CliErrorCode::DraftUnsafePath);
         fs::remove_file(root.join("unknown")).expect("remove unknown entry");
@@ -1747,7 +1745,7 @@ mod tests {
         write_fixture(&root);
         let base_body = root.join(BASE_DIRECTORY).join(BODY_FILE);
         nodex_platform::private_fs::set_mode(&base_body, PRIVATE_FILE_MODE).unwrap();
-        fs::write(&base_body, b"Tampered\n").expect("tampered base body");
+        nodex_platform::private_fs::write(&base_body, b"Tampered\n").expect("tampered base body");
         nodex_platform::private_fs::set_mode(&base_body, READ_ONLY_FILE_MODE).unwrap();
         let error = load_layout(&root).expect_err("base hash mismatch must fail");
         assert_eq!(error.code, CliErrorCode::DraftUnsafePath);
@@ -1755,11 +1753,11 @@ mod tests {
         nodex_platform::private_fs::set_mode(root.join(BASE_DIRECTORY), PRIVATE_DIRECTORY_MODE)
             .unwrap();
         nodex_platform::private_fs::set_mode(&base_body, PRIVATE_FILE_MODE).unwrap();
-        fs::write(&base_body, b"Body\n").expect("restore base body");
+        nodex_platform::private_fs::write(&base_body, b"Body\n").expect("restore base body");
         nodex_platform::private_fs::set_mode(&base_body, READ_ONLY_FILE_MODE).unwrap();
         nodex_platform::private_fs::set_mode(root.join(BASE_DIRECTORY), READ_ONLY_DIRECTORY_MODE)
             .unwrap();
-        fs::write(
+        nodex_platform::private_fs::write(
             root.join(WORK_DIRECTORY).join(BODY_FILE),
             b"missing final LF",
         )
@@ -1767,8 +1765,9 @@ mod tests {
         let error = load_draft(&root).expect_err("non-canonical body must fail");
         assert_eq!(error.code, CliErrorCode::DraftInvalidMarkdown);
 
-        fs::write(root.join(WORK_DIRECTORY).join(BODY_FILE), b"Body\n").unwrap();
-        fs::write(
+        nodex_platform::private_fs::write(root.join(WORK_DIRECTORY).join(BODY_FILE), b"Body\n")
+            .unwrap();
+        nodex_platform::private_fs::write(
             root.join(WORK_DIRECTORY).join(META_FILE),
             b"id: \"another-page\"\ntitle: \"Title\"\nproperties: {}\nschedule: null\n",
         )
@@ -1785,7 +1784,7 @@ mod tests {
         let original = load_draft(&root).expect("original draft");
         let original_id = draft_operation_id(&original, &original.work_metadata.title_markdown)
             .expect("original operation ID");
-        fs::write(
+        nodex_platform::private_fs::write(
             root.join(WORK_DIRECTORY).join(META_FILE),
             b"# harmless formatting\nschedule: null\nproperties: {}\ntitle: 'Title'\nid: 'page-1'\n",
         )
@@ -1806,7 +1805,11 @@ mod tests {
         let directory = tempdir().unwrap();
         let root = directory.path().join("draft");
         write_fixture(&root);
-        fs::write(root.join(WORK_DIRECTORY).join(BODY_FILE), b"Replacement\n").unwrap();
+        nodex_platform::private_fs::write(
+            root.join(WORK_DIRECTORY).join(BODY_FILE),
+            b"Replacement\n",
+        )
+        .unwrap();
         let loaded = load_draft(&root).unwrap();
         let mut current = draft_projection("body-etag", "Body\n");
         assert_eq!(
@@ -1840,8 +1843,11 @@ mod tests {
         let directory = tempdir().expect("draft parent");
         let root = directory.path().join("draft");
         write_fixture(&root);
-        fs::write(root.join(WORK_DIRECTORY).join(META_FILE), b"not: [valid")
-            .expect("invalid work metadata");
+        nodex_platform::private_fs::write(
+            root.join(WORK_DIRECTORY).join(META_FILE),
+            b"not: [valid",
+        )
+        .expect("invalid work metadata");
         discard(&root).expect("discard does not parse disposable work content");
         assert!(!root.exists());
     }
@@ -1851,12 +1857,13 @@ mod tests {
         let directory = tempdir().expect("draft parent");
         let root = directory.path().join("draft");
         write_fixture(&root);
-        fs::write(
+        nodex_platform::private_fs::write(
             root.join(WORK_DIRECTORY).join(META_FILE),
             b"id: \"page-1\"\ntitle: \"New title\"\nproperties: {}\nschedule: null\n",
         )
         .expect("work title");
-        fs::write(root.join(WORK_DIRECTORY).join(BODY_FILE), b"New body\n").expect("work body");
+        nodex_platform::private_fs::write(root.join(WORK_DIRECTORY).join(BODY_FILE), b"New body\n")
+            .expect("work body");
         let loaded = load_draft(&root).expect("changed draft");
         let title = loaded.work_metadata.title_markdown.clone();
         let operation_id = draft_operation_id(&loaded, &title).unwrap();
@@ -1892,7 +1899,7 @@ mod tests {
             .expect_err("marker cannot change accepted work");
         assert_eq!(error.code, CliErrorCode::DraftUnsafePath);
 
-        fs::write(
+        nodex_platform::private_fs::write(
             root.join(WORK_DIRECTORY).join(BODY_FILE),
             b"Changed after apply\n",
         )

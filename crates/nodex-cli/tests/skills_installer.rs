@@ -12,8 +12,8 @@ use nodex_cli::skills::bundle::{
     OFFICIAL_SKILL_FILES, digest_skill_tree, verify_for_executable, verify_stable_for_executable,
 };
 use nodex_cli::skills::{InstallerEnvironment, SkillAgent, execute_skills_with_environment};
+use nodex_platform::test_support::TempDir;
 use serde_json::{Value, json};
-use tempfile::TempDir;
 
 struct Fixture {
     _temp: TempDir,
@@ -24,16 +24,17 @@ struct Fixture {
 
 impl Fixture {
     fn new(name: &str) -> Self {
-        let temp = tempfile::tempdir().expect("temp");
+        let temp = nodex_platform::test_support::tempdir().expect("temp");
         let home = temp.path().join("home");
-        fs::create_dir(&home).expect("home");
+        nodex_platform::private_fs::create_dir(&home).expect("home");
         let executable = temp.path().join(if cfg!(windows) {
             format!("{name}/resources/bin/nodex.exe")
         } else {
             format!("{name}.app/Contents/Resources/bin/nodex")
         });
-        fs::create_dir_all(executable.parent().expect("bin")).expect("app layout");
-        fs::write(&executable, b"test executable").expect("executable");
+        nodex_platform::private_fs::create_dir_all(executable.parent().expect("bin"))
+            .expect("app layout");
+        nodex_platform::private_fs::write(&executable, b"test executable").expect("executable");
         let bundle_root = executable
             .parent()
             .expect("bin")
@@ -42,8 +43,12 @@ impl Fixture {
             .join("agent-skills");
         let bundle_source = bundle_root.join("skills/nodex");
         copy_official_skill(&bundle_source);
-        fs::write(bundle_root.join("README.md"), b"Official Nodex Skills\n").expect("README");
-        fs::write(
+        nodex_platform::private_fs::write(
+            bundle_root.join("README.md"),
+            b"Official Nodex Skills\n",
+        )
+        .expect("README");
+        nodex_platform::private_fs::write(
             bundle_root.join("LICENSE"),
             fs::read(repository_root().join("LICENSE")).expect("root license"),
         )
@@ -72,7 +77,7 @@ impl Fixture {
                 "totalBytes": digest.total_bytes
             }]
         });
-        fs::write(
+        nodex_platform::private_fs::write(
             bundle_root.join("release-manifest.json"),
             format!(
                 "{}\n",
@@ -117,8 +122,9 @@ fn copy_official_skill(destination: &Path) {
     let source = repository_root().join("agent-skills/nodex");
     for relative in OFFICIAL_SKILL_FILES {
         let target = destination.join(relative);
-        fs::create_dir_all(target.parent().expect("parent")).expect("target parent");
-        fs::copy(source.join(relative), target).expect("copy Skill file");
+        nodex_platform::private_fs::create_dir_all(target.parent().expect("parent"))
+            .expect("target parent");
+        nodex_platform::private_fs::copy(source.join(relative), target).expect("copy Skill file");
     }
 }
 
@@ -252,7 +258,7 @@ fn json_mutations_require_confirmation_and_dry_run_never_writes() {
 fn honors_claude_config_dir_and_reports_compatible_external_directories() {
     let fixture = Fixture::new("Nodex");
     let custom_claude = fixture.home.join("custom-claude");
-    fs::create_dir(&custom_claude).expect("custom Claude root");
+    nodex_platform::private_fs::create_dir(&custom_claude).expect("custom Claude root");
     let mut environment = fixture.environment();
     environment.claude_config_dir = Some(custom_claude.clone());
     execute_skills_with_environment(
@@ -301,8 +307,9 @@ fn honors_claude_config_dir_and_reports_compatible_external_directories() {
 fn conflicts_fail_closed_before_any_selected_target_is_written() {
     let fixture = Fixture::new("Nodex");
     let claude = fixture.target(SkillAgent::ClaudeCode);
-    fs::create_dir_all(claude.parent().expect("Claude skills")).expect("parent");
-    fs::write(&claude, b"user file").expect("conflict");
+    nodex_platform::private_fs::create_dir_all(claude.parent().expect("Claude skills"))
+        .expect("parent");
+    nodex_platform::private_fs::write(&claude, b"user file").expect("conflict");
 
     let error = execute_skills_with_environment(
         install_args(SkillAgent::ALL.to_vec()),
@@ -322,8 +329,9 @@ fn conflicts_fail_closed_before_any_selected_target_is_written() {
 fn different_external_directory_and_parent_symlink_traversal_are_conflicts() {
     let different = Fixture::new("different");
     let target = different.target(SkillAgent::Codex);
-    fs::create_dir_all(&target).expect("different directory");
-    fs::write(target.join("SKILL.md"), b"different\n").expect("different Skill");
+    nodex_platform::private_fs::create_dir_all(&target).expect("different directory");
+    nodex_platform::private_fs::write(target.join("SKILL.md"), b"different\n")
+        .expect("different Skill");
     let error = execute_skills_with_environment(
         install_args(vec![SkillAgent::Codex]),
         true,
@@ -334,8 +342,8 @@ fn different_external_directory_and_parent_symlink_traversal_are_conflicts() {
 
     let traversed = Fixture::new("traversed");
     let outside = traversed.home.join("outside-skills");
-    fs::create_dir(&outside).expect("outside");
-    fs::create_dir(traversed.home.join(".agents")).expect("Codex root");
+    nodex_platform::private_fs::create_dir(&outside).expect("outside");
+    nodex_platform::private_fs::create_dir(traversed.home.join(".agents")).expect("Codex root");
     symlink(&outside, traversed.home.join(".agents/skills")).expect("parent symlink");
     let error = execute_skills_with_environment(
         install_args(vec![SkillAgent::Codex]),
@@ -351,7 +359,7 @@ fn different_external_directory_and_parent_symlink_traversal_are_conflicts() {
 fn an_owned_config_root_symlink_is_allowed_but_its_skills_child_must_be_real() {
     let fixture = Fixture::new("config-root-link");
     let actual_root = fixture.home.join("codex-config");
-    fs::create_dir(&actual_root).expect("actual config root");
+    nodex_platform::private_fs::create_dir(&actual_root).expect("actual config root");
     symlink(&actual_root, fixture.home.join(".agents")).expect("config root symlink");
     execute_skills_with_environment(
         install_args(vec![SkillAgent::Codex]),
@@ -374,7 +382,8 @@ fn foreign_relative_and_broken_symlinks_are_never_adopted() {
     ] {
         let fixture = Fixture::new(name);
         let target = fixture.target(SkillAgent::Codex);
-        fs::create_dir_all(target.parent().expect("skills")).expect("parent");
+        nodex_platform::private_fs::create_dir_all(target.parent().expect("skills"))
+            .expect("parent");
         symlink(raw_target, &target).expect("conflicting symlink");
         let error = execute_skills_with_environment(
             install_args(vec![SkillAgent::Codex]),
@@ -402,8 +411,9 @@ fn doctor_reports_but_never_changes_a_legacy_codex_target() {
     )
     .expect("current install");
     let legacy = fixture.home.join(".codex/skills/nodex");
-    fs::create_dir_all(&legacy).expect("legacy directory");
-    fs::write(legacy.join("user.md"), b"user managed\n").expect("legacy content");
+    nodex_platform::private_fs::create_dir_all(&legacy).expect("legacy directory");
+    nodex_platform::private_fs::write(legacy.join("user.md"), b"user managed\n")
+        .expect("legacy content");
     let doctor = json_output(
         execute_skills_with_environment(
             SkillsArgs {
@@ -515,7 +525,7 @@ fn an_app_move_makes_the_old_link_a_report_only_conflict() {
 #[test]
 fn bundle_verifier_rejects_unknown_links_hardlinks_and_special_files() {
     let unknown = Fixture::new("unknown");
-    fs::write(
+    nodex_platform::private_fs::write(
         unknown.bundle_source.join("references/not-allowlisted.md"),
         b"unknown",
     )

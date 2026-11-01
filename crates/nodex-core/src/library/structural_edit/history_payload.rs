@@ -472,7 +472,7 @@ mod tests {
 
     #[test]
     fn detached_payload_preserves_tokens_and_resumes_only_committed_copies() {
-        let profile = tempfile::tempdir().expect("Profile");
+        let profile = nodex_platform::test_support::tempdir().expect("Profile");
         let path = profile.path().join("nodex.db");
         let mut connection = Connection::open(&path).expect("Store");
         crate::infrastructure::schema::install_current_schema(&mut connection).expect("schema");

@@ -235,7 +235,7 @@ mod tests {
 
     #[test]
     fn admits_bounded_provider_metadata_larger_than_a_small_control_frame() {
-        let profile = tempfile::tempdir().unwrap();
+        let profile = nodex_platform::test_support::tempdir().unwrap();
         let providers = (0..256)
             .map(|index| {
                 serde_json::json!({
@@ -261,7 +261,7 @@ mod tests {
 
     #[test]
     fn lends_and_releases_a_live_snapshot_window() {
-        let profile = tempfile::tempdir().unwrap();
+        let profile = nodex_platform::test_support::tempdir().unwrap();
         let server = serve(profile.path(), false);
         SnapshotLease::acquire(profile.path())
             .unwrap()
@@ -273,7 +273,7 @@ mod tests {
 
     #[test]
     fn dropping_a_failed_capture_disconnects_the_source() {
-        let profile = tempfile::tempdir().unwrap();
+        let profile = nodex_platform::test_support::tempdir().unwrap();
         let server = serve(profile.path(), false);
         drop(SnapshotLease::acquire(profile.path()).unwrap());
         server.join().unwrap();
@@ -281,7 +281,7 @@ mod tests {
 
     #[test]
     fn preserves_source_refusal_instead_of_falling_back_to_live_copying() {
-        let profile = tempfile::tempdir().unwrap();
+        let profile = nodex_platform::test_support::tempdir().unwrap();
         let server = serve(profile.path(), true);
         let error = SnapshotLease::acquire(profile.path()).err().unwrap();
         assert!(error.to_string().contains("Agent is busy"));
@@ -291,7 +291,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn rejects_public_endpoints_and_preserves_offline_capture() {
-        let profile = tempfile::tempdir().unwrap();
+        let profile = nodex_platform::test_support::tempdir().unwrap();
         assert!(SnapshotLease::acquire(profile.path()).unwrap().is_none());
         let directory = profile.path().join("ipc");
         nodex_platform::private_fs::create_dir(&directory).unwrap();

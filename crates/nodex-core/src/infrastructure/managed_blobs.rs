@@ -193,7 +193,7 @@ mod tests {
 
     #[test]
     fn publication_pins_bytes_until_durable_roots_commit_and_open_handles_survive_unlink() {
-        let home = tempfile::tempdir().unwrap();
+        let home = nodex_platform::test_support::tempdir().unwrap();
         let root = home.path().join("assets");
         let mut writer = BlobWriter::new(&root, 16).unwrap();
         writer.write_chunk(b"alpha").unwrap();
@@ -214,7 +214,7 @@ mod tests {
 
     #[test]
     fn failed_publication_keeps_existing_bytes_and_cleans_staging() {
-        let home = tempfile::tempdir().unwrap();
+        let home = nodex_platform::test_support::tempdir().unwrap();
         let root = home.path().join("assets");
         let mut writer = BlobWriter::new(&root, 5).unwrap();
         assert!(writer.write_chunk(b"too big").is_err());

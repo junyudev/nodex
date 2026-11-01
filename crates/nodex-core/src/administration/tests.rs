@@ -13,7 +13,7 @@ use nodex_core_contracts::{
     AdapterKind, BoundModuleContext, CoreErrorCode, LibraryId, ModuleApplyRequest,
     ModuleReadRequest, ProfileId, STORE_ADMINISTRATION_CONTRACT_VERSION, StoreEpoch,
 };
-use tempfile::TempDir;
+use nodex_platform::test_support::TempDir;
 
 use crate::infrastructure::schema::CURRENT_STORE_REVISION;
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode, with_immediate_transaction};
@@ -32,7 +32,7 @@ impl super::ProfileSnapshotParticipant for ExecutionParticipant {
         let destination = request.staging_profile.join("agent-runtime");
         nodex_platform::private_fs::create_dir_all(destination.join("native-history")).unwrap();
         for name in ["agent-runtime.sqlite", "native-history/transcript.jsonl"] {
-            fs::copy(source.join(name), destination.join(name)).unwrap();
+            nodex_platform::private_fs::copy(source.join(name), destination.join(name)).unwrap();
         }
         Ok(true)
     }
@@ -197,7 +197,7 @@ impl Fixture {
         seed_project: bool,
         hook: impl Fn(&str) -> Result<(), StoreError> + Send + Sync + 'static,
     ) -> Self {
-        let home = tempfile::tempdir().expect("Profile home");
+        let home = nodex_platform::test_support::tempdir().expect("Profile home");
         let kernel = SqliteStoreKernel::open_test(home.path()).expect("fresh store");
         kernel
             .writer()

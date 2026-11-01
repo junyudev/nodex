@@ -85,13 +85,16 @@ pub(crate) fn read_file(path: &Path) -> Result<File> {
 }
 
 pub(crate) fn relative_path(root: &Path, path: &Path) -> Result<PathBuf> {
-    let relative = path.strip_prefix(root).map_err(|_| {
+    let root = nodex_platform::private_fs::normalize_path(root);
+    let path = nodex_platform::private_fs::normalize_path(path);
+    let relative = path.strip_prefix(root.as_ref()).map_err(|_| {
         invalid(format!(
             "Native conversation path is outside its Codex home: {}",
             path.display()
         ))
     })?;
-    if relative.as_os_str().is_empty()
+    if nodex_platform::private_fs::has_traversal(path.as_ref())
+        || relative.as_os_str().is_empty()
         || relative
             .components()
             .any(|p| !matches!(p, Component::Normal(_)))

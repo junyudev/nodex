@@ -19,8 +19,8 @@ use nodex_core_protocol::{
     ShutdownResponse, ShutdownStatus, VersionRange, canonical_manifest_digest,
     core_client_requirements, core_compatibility_manifest,
 };
+use nodex_platform::test_support::tempdir;
 use sha2::{Digest, Sha256};
-use tempfile::tempdir;
 
 fn log_identity(identity: &str) -> String {
     let digest = Sha256::digest(identity.as_bytes());
@@ -1352,7 +1352,8 @@ fn compatibility_policy_reuses_while_electron_artifact_policy_replaces_without_a
     let old_bin = old_bundle.join("Contents/Resources/bin");
     nodex_platform::private_fs::create_dir_all(&old_bin).expect("old app runtime directory");
     let old_executable = old_bin.join(nodex_platform::process::executable_name("nodex-core"));
-    fs::copy(env!("CARGO_BIN_EXE_nodex-core"), &old_executable).expect("copy old packaged Core");
+    nodex_platform::private_fs::copy(env!("CARGO_BIN_EXE_nodex-core"), &old_executable)
+        .expect("copy old packaged Core");
     nodex_platform::private_fs::set_mode(&old_executable, 0o755)
         .expect("old packaged Core is executable");
 
@@ -1389,7 +1390,8 @@ fn compatibility_policy_reuses_while_electron_artifact_policy_replaces_without_a
     let new_bin = new_bundle.join("Contents/Resources/bin");
     nodex_platform::private_fs::create_dir_all(&new_bin).expect("new app runtime directory");
     let new_executable = new_bin.join(nodex_platform::process::executable_name("nodex-core"));
-    fs::copy(env!("CARGO_BIN_EXE_nodex-core"), &new_executable).expect("copy new packaged Core");
+    nodex_platform::private_fs::copy(env!("CARGO_BIN_EXE_nodex-core"), &new_executable)
+        .expect("copy new packaged Core");
     fs::OpenOptions::new()
         .append(true)
         .open(&new_executable)

@@ -34,6 +34,15 @@ pub(crate) fn handle(raw: HANDLE) -> io::Result<OwnedHandle> {
 }
 
 pub(crate) fn process_sid(pid: Option<u32>) -> io::Result<String> {
+    token_sid(pid, windows_sys::Win32::Security::TokenUser)
+}
+pub(crate) fn default_owner_sid() -> io::Result<String> {
+    token_sid(None, windows_sys::Win32::Security::TokenOwner)
+}
+fn token_sid(
+    pid: Option<u32>,
+    information: windows_sys::Win32::Security::TOKEN_INFORMATION_CLASS,
+) -> io::Result<String> {
     use std::os::windows::io::AsRawHandle;
     let process = pid
         .map(|pid| handle(unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) }))
@@ -49,13 +58,19 @@ pub(crate) fn process_sid(pid: Option<u32>) -> io::Result<String> {
     let token = handle(token)?;
     let mut length = 0;
     unsafe {
-        GetTokenInformation(token.as_raw_handle(), TokenUser, null_mut(), 0, &mut length);
+        GetTokenInformation(
+            token.as_raw_handle(),
+            information,
+            null_mut(),
+            0,
+            &mut length,
+        );
     }
     let mut buffer = vec![0usize; (length as usize).div_ceil(size_of::<usize>())];
     if unsafe {
         GetTokenInformation(
             token.as_raw_handle(),
-            TokenUser,
+            information,
             buffer.as_mut_ptr().cast(),
             length,
             &mut length,
@@ -64,8 +79,18 @@ pub(crate) fn process_sid(pid: Option<u32>) -> io::Result<String> {
     {
         return Err(io::Error::last_os_error());
     }
-    // SAFETY: successful TokenUser query initialized a suitably aligned TOKEN_USER.
-    sid_string(unsafe { (*(buffer.as_ptr().cast::<TOKEN_USER>())).User.Sid })
+    // SAFETY: the successful query initialized the requested token structure in aligned storage.
+    let sid = if information == TokenUser {
+        unsafe { (*(buffer.as_ptr().cast::<TOKEN_USER>())).User.Sid }
+    } else {
+        unsafe {
+            (*(buffer
+                .as_ptr()
+                .cast::<windows_sys::Win32::Security::TOKEN_OWNER>()))
+            .Owner
+        }
+    };
+    sid_string(sid)
 }
 
 pub(crate) fn sid_string(sid: *mut c_void) -> io::Result<String> {

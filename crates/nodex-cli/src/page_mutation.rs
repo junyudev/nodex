@@ -826,7 +826,7 @@ mod tests {
 
     #[test]
     fn block_json_uses_the_closed_core_semantic_contract() {
-        let directory = tempfile::tempdir().unwrap();
+        let directory = nodex_platform::test_support::tempdir().unwrap();
         let draft_path = directory.path().join("block.json");
         std::fs::write(
             &draft_path,

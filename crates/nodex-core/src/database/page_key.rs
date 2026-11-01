@@ -852,7 +852,7 @@ fn corrupt(message: impl Into<String>) -> StoreError {
 #[cfg(test)]
 mod tests {
 
-    use tempfile::{TempDir, tempdir};
+    use nodex_platform::test_support::{TempDir, tempdir};
 
     use crate::infrastructure::migration::prepare_profile_store;
     use crate::infrastructure::sqlite::{open_writer, with_immediate_transaction};

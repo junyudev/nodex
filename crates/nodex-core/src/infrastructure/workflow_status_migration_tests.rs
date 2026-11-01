@@ -8,8 +8,8 @@ use nodex_core_contracts::{
     AdapterKind, BoundModuleContext, LIBRARY_CONTRACT_VERSION, LibraryId, ModuleApplyRequest,
     ProfileId, StoreEpoch,
 };
+use nodex_platform::test_support::{TempDir, tempdir};
 use serde::Serialize;
-use tempfile::{TempDir, tempdir};
 
 fn key(kind: &str, value: &impl Serialize) -> String {
     format!(

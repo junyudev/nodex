@@ -208,7 +208,7 @@ fn duration_millis(duration: std::time::Duration) -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use tempfile::tempdir;
+    use nodex_platform::test_support::tempdir;
 
     use super::*;
 

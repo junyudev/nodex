@@ -947,9 +947,9 @@ mod tests {
         AdapterKind, DATABASE_CONTRACT_VERSION, DeliveryAtomKind, LibraryId, LocalProjectionPatch,
         LocalProjectionScope, OWNED_DOCUMENT_CONTRACT_VERSION, ProfileId, ProjectId,
     };
+    use nodex_platform::test_support::tempdir;
     use rusqlite::params;
     use sha2::{Digest, Sha256};
-    use tempfile::tempdir;
 
     use crate::database::DatabaseModule;
     use crate::document::OwnedDocumentModule;

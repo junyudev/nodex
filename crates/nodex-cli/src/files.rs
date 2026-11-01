@@ -404,7 +404,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn regular_file_io_rejects_symlinks_and_special_files_before_truncation() {
-        let directory = tempfile::tempdir().unwrap();
+        let directory = nodex_platform::test_support::tempdir().unwrap();
         let target = directory.path().join("target.txt");
         std::fs::write(&target, b"keep").unwrap();
         let link = directory.path().join("link.txt");

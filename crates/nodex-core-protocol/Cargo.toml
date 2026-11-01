@@ -16,3 +16,6 @@ serde_json.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
 utoipa.workspace = true
+
+[dev-dependencies]
+nodex-platform = { workspace = true, features = ["test-support"] }

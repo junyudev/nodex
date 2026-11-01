@@ -265,7 +265,7 @@ fn unavailable(selected_home: String, message: impl Into<String>) -> ServiceRepo
 #[cfg(test)]
 mod tests {
 
-    use tempfile::tempdir;
+    use nodex_platform::test_support::tempdir;
 
     use super::*;
 
@@ -291,7 +291,7 @@ mod tests {
     fn adapter_protocol_is_bounded_and_passes_the_selected_profile() {
         let directory = tempdir().expect("adapter");
         let adapter = directory.path().join("nodex-service");
-        fs::write(
+        nodex_platform::private_fs::write(
             &adapter,
             "#!/bin/sh\nprintf '{\"version\":1,\"adapter\":\"sm_app_service\",\"supported\":true,\"status\":\"enabled\",\"configured_home\":\"%s\",\"message\":null}' \"$3\"\n",
         )
@@ -312,7 +312,7 @@ mod tests {
     fn unknown_adapter_status_fails_closed() {
         let directory = tempdir().expect("adapter");
         let adapter = directory.path().join("nodex-service");
-        fs::write(
+        nodex_platform::private_fs::write(
             &adapter,
             "#!/bin/sh\nprintf '%s' '{\"version\":1,\"adapter\":\"sm_app_service\",\"supported\":true,\"status\":\"maybe\",\"configured_home\":null,\"message\":null}'\n",
         )
