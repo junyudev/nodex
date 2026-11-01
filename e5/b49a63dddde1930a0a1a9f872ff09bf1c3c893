@@ -1,0 +1,40 @@
+src/renderer/lib/page-file-tree.ts
+  s_a5bb892838ce25::t_77ff179e6d2c12 1-189
+src/renderer/components/board/page-stage/page-file-tree-view.tsx
+  s_a5bb892838ce25::t_2ca786fff3a375 1-306
+src/renderer/lib/page-file-view-kind.ts
+  s_a5bb892838ce25::t_39aff9422bec6c 1-21,32-94,97-117
+  s_a5bb892838ce25::t_48fe3a66364748 22-31,95-96
+src/renderer/lib/use-library-files.ts
+  s_a5bb892838ce25::t_972042af27b6ee 434,437,441,443,447,453-458
+  s_a5bb892838ce25::t_4a8be8a1896a9c 14
+  s_a5bb892838ce25::t_0b0cbd44161eeb 401-425,428
+src/renderer/lib/page-file-view-kind.node.test.ts
+  s_a5bb892838ce25::t_48fe3a66364748 1-36
+src/renderer/lib/page-file-tree.node.test.ts
+  s_a5bb892838ce25::t_ed5e4195b554be 1-109
+src/renderer/features/page-files/page-file-viewer.tsx
+  s_a5bb892838ce25::t_c9f1557b08f1b9 1-421
+scripts/scenarios/fixtures/page-files/cold-start/trace.json
+  s_a5bb892838ce25::t_c37eb9cc34a200 1
+scripts/scenarios/fixtures/page-files/cold-start/report.html
+  s_a5bb892838ce25::t_2e3da95f6923bc 1-286
+src/renderer/lib/page-file-provenance.ts
+  s_a5bb892838ce25::t_b4c354407c1694 1-65
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e5b49a63dddde1930a0a1a9f872ff09bf1c3c893",
+  "prompts": {},
+  "sessions": {
+    "s_a5bb892838ce25": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e15d53ef-531c-43aa-afdd-245a08fa0ce0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
