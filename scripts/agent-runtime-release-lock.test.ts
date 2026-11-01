@@ -61,6 +61,7 @@ function makeLock(): Record<string, unknown> {
     },
     packageManifest: {
       entrypoint: "bin/codex",
+      execServer: "bin/codex-exec-server",
       layoutVersion: 1,
       pathDir: "codex-path",
       resourcesDir: "codex-resources",
@@ -159,6 +160,10 @@ test("requires exact supported targets and the canonical runtime artifacts", () 
   expect(() => parseCodexAppServerReleaseLock(packageLayoutDrift)).toThrow(
     "canonical release package",
   );
+
+  const execServerDrift = makeLock();
+  (execServerDrift.packageManifest as Record<string, unknown>).execServer = "bin/other";
+  expect(() => parseCodexAppServerReleaseLock(execServerDrift)).toThrow("package exec server");
 
   const noticeDrift = makeLock();
   (noticeDrift.notices as Record<string, unknown>).noticePath = "NOTICE";

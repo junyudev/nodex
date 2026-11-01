@@ -343,7 +343,7 @@ export const agentActivityV2McpStatusResolvedAppItem = {
 
 const MCP_STATUS_APP_CONTEXT = {
   data: [{
-    name: "status_server",
+    toolListMeta: null, name: "status_server",
     runtimeStatus: null,
     pluginId: null,
     httpOrigin: null,

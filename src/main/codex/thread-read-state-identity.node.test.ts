@@ -61,7 +61,12 @@ it("resolves storage-backed identities from account/read without legacy auth tok
   });
   expect(
     readThreadStateIdentityFromAccount({
-      account: { type: "chatgpt", email: "person@example.com", planType: "pro" },
+      account: {
+        workspaceName: null,
+        type: "chatgpt",
+        email: "person@example.com",
+        planType: "pro",
+      },
       requiresOpenaiAuth: true,
     }),
   ).toBeNull();

@@ -187,7 +187,7 @@ export function serializeCodexReadThreadProtocolItem(
         ...identity,
         status: item.status,
         revisedPrompt: item.revisedPrompt,
-        result: item.result,
+        ...("fileId" in item ? { fileId: item.fileId } : { result: item.result }),
         savedPath: item.savedPath ?? null,
       };
     case "enteredReviewMode":

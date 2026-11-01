@@ -35,7 +35,7 @@ const unanswered: ServerProvider = {
 };
 const ready: ServerProvider = {
   ...pending,
-  version: "0.163.0",
+  version: "0.166.0",
   status: "ready",
   auth: { status: "authenticated" },
   message: undefined,

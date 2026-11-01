@@ -26,6 +26,7 @@ Every package includes these runtime entrypoints and resources:
 - `codex-package.json`
 - `bin/codex`
 - `bin/codex-code-mode-host`
+- `bin/codex-exec-server`
 - `codex-path/rg`
 
 The release lock also enumerates the complete voice runtime, shared libraries,
@@ -106,6 +107,17 @@ Upgrade runtime provenance separately from protocol or product changes:
    for the macOS arm64 package before merging.
    Review the basic probe's model IDs and visible default, and verify that loaded
    Thread metadata agrees with its configured model and reasoning effort.
+
+While establishing a new Browser pair, stage Codex alone through the staging
+script's optional Browser input, then regenerate the protocol:
+
+```bash
+vp exec tsx scripts/stage-codex-runtime.ts --target-platform darwin --target-arch arm64 --out .generated/codex-runtime
+vp exec tsx scripts/codex-schemas.ts generate
+```
+
+This leaves Browser admission unchanged. The complete runtime gates still require
+the tested exact pair before merging.
 
 Model availability belongs to the running app-server's `model/list` response.
 For authenticated comparisons, use the same account and client initialization,

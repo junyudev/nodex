@@ -10,6 +10,7 @@ function statuses(server = "calendar"): ProtocolListMcpServerStatusResponse {
   return {
     data: [
       {
+        toolListMeta: null,
         name: server,
         runtimeStatus: null,
         pluginId: null,

@@ -22,12 +22,15 @@ const writeScenarioAgentRuntime = (
 ): AgentRuntimeFixture => {
   const runtimeRoot = path.join(repositoryRoot, ".generated/codex-runtime/agent-runtime");
   const executable = path.join(runtimeRoot, "bin/codex");
+  const execServerBody = "#!/bin/sh\nexit 1\n";
+  const execServer = path.join(runtimeRoot, "bin/codex-exec-server");
   const packagePath = path.join(runtimeRoot, "codex-package.json");
   fs.mkdirSync(path.dirname(executable), { recursive: true });
   fs.mkdirSync(path.join(runtimeRoot, "codex-path"), { recursive: true });
   fs.mkdirSync(path.join(runtimeRoot, "codex-resources"), { recursive: true });
   const packageBody = JSON.stringify({
     entrypoint: "bin/codex",
+    execServer: "bin/codex-exec-server",
     layoutVersion: 1,
     pathDir: "codex-path",
     resourcesDir: "codex-resources",
@@ -37,10 +40,12 @@ const writeScenarioAgentRuntime = (
   });
   fs.writeFileSync(executable, executableBody, { mode: 0o755 });
   fs.writeFileSync(packagePath, packageBody);
+  fs.writeFileSync(execServer, execServerBody, { mode: 0o755 });
   fs.chmodSync(executable, 0o755);
 
   const artifacts = [
     ["bin/codex", executableBody, true],
+    ["bin/codex-exec-server", execServerBody, true],
     ["codex-package.json", packageBody, false],
   ] as const;
   const metadata = {

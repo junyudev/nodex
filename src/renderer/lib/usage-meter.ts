@@ -274,6 +274,8 @@ const CHATGPT_PLAN_LABELS: Readonly<Record<PlanType, string | null>> = {
   pro: "Pro",
   prolite: "Pro Lite",
   promax: "Pro Max",
+  sci: "Academic Researchers",
+  sci_plus: "Academic Researchers Plus",
   team: "Team",
   business: "Business",
   self_serve_business_prolite: "Business",

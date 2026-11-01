@@ -59,6 +59,7 @@ import type { ThreadTokenUsage } from "@nodex/codex-app-server-protocol/v2/Threa
 import { isCodexProtocolThreadItem } from "../codex-protocol-thread-item";
 import type { CodexQueuedFollowUp } from "../codex-queued-follow-up-state";
 import { normalizeCodexServiceTier } from "../codex-service-tier";
+import { codexImageInputSource } from "../codex-image-input";
 import type {
   CodexFileChangeLineCounts,
   CodexImportedMarkdownImage,
@@ -1328,7 +1329,11 @@ export function materializeCodexCanonicalProtocolItem(
       typeof item.savedPath === "string" ? normalizeCodexImageSource(item.savedPath) : null;
     return {
       ...item,
-      src: savedSource ?? normalizeCodexImageSource(item.result),
+      src:
+        savedSource ??
+        ("fileId" in item
+          ? codexImageInputSource({ type: "image", fileId: item.fileId })
+          : normalizeCodexImageSource(item.result)),
     } satisfies CodexCanonicalImageGenerationItem;
   }
 

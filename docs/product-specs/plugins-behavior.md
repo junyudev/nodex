@@ -325,6 +325,7 @@ Open apps may recreate data afterwards, and sessions first created after the sna
 with their own empty state. Clear requests serialize and attempt every session/cache even
 after a failure. Partial failure returns a typed failure instead of reporting success.
 
+Hook event summaries include the native before-model-request and after-model-response events.
 Plugin hook inventory filters native hook metadata by the exact owning plugin ID and counts
 untrusted or modified hooks as needing review. Rootless contexts explicitly mark hook inventory unavailable; their zero scanned review count
 does not establish that the plugin is trusted. Hook summaries and scheduled tasks remain available directly on native detail.

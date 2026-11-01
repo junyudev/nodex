@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test } from "vite-plus/test";
 import { readCodexAppServerReleaseLock } from "./agent-runtime-release-lock";
+import { AGENT_RUNTIME_LAYOUT_VERSION } from "../src/shared/codex-runtime-metadata";
 import {
   projectBrowserPeerRuntimeIdentity,
   projectBundledAppServerRuntimeIdentity,
@@ -262,6 +263,7 @@ const writeAgentRuntime = (root: string, resources: string): string => {
     >;
     packageManifest: {
       entrypoint: string;
+      execServer: string;
       layoutVersion: number;
       pathDir: string;
       resourcesDir: string;
@@ -288,6 +290,7 @@ const writeAgentRuntime = (root: string, resources: string): string => {
     ],
     ["bin/codex", { contents: Buffer.from("app-server\n"), executable: true }],
     ["bin/codex-code-mode-host", { contents: Buffer.from("code-mode\n"), executable: true }],
+    [packageManifest.execServer, { contents: Buffer.from("exec-server\n"), executable: true }],
     ["codex-path/rg", { contents: Buffer.from("ripgrep\n"), executable: true }],
     ["third-party/codex/LICENSE", { contents: Buffer.from("license\n"), executable: false }],
     ["third-party/codex/NOTICE", { contents: Buffer.from("notice\n"), executable: false }],
@@ -321,7 +324,7 @@ const writeAgentRuntime = (root: string, resources: string): string => {
     appServerRuntimeVersion: lock.packageManifest.version,
     artifacts,
     entrypoint: packageManifest.entrypoint,
-    layoutVersion: 5,
+    layoutVersion: AGENT_RUNTIME_LAYOUT_VERSION,
     packageManifest,
     protocolSchemaFingerprint: lock.protocolSchema.sha256,
     releaseAsset: {

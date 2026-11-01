@@ -1,4 +1,4 @@
-export const AGENT_RUNTIME_LAYOUT_VERSION = 5;
+export const AGENT_RUNTIME_LAYOUT_VERSION = 6;
 export const AGENT_RUNTIME_METADATA_FILENAME = "agent-runtime.json";
 
 const SHA256 = /^[a-f0-9]{64}$/u;
@@ -39,6 +39,7 @@ const packageManifest = (value) => {
     !isObject(value) ||
     !hasExactKeys(value, [
       "entrypoint",
+      "execServer",
       "layoutVersion",
       "pathDir",
       "resourcesDir",
@@ -52,6 +53,8 @@ const packageManifest = (value) => {
     !nonEmpty(value.target) ||
     !nonEmpty(value.entrypoint) ||
     !safePath(value.entrypoint) ||
+    !nonEmpty(value.execServer) ||
+    !safePath(value.execServer) ||
     !nonEmpty(value.resourcesDir) ||
     !safePath(value.resourcesDir) ||
     !nonEmpty(value.pathDir) ||
@@ -61,6 +64,7 @@ const packageManifest = (value) => {
   }
   return {
     entrypoint: value.entrypoint,
+    execServer: value.execServer,
     layoutVersion: value.layoutVersion,
     pathDir: value.pathDir,
     resourcesDir: value.resourcesDir,
@@ -178,6 +182,9 @@ export function parseBundledAgentRuntimeMetadata(value) {
     parsedPackageManifest.entrypoint !== value.entrypoint ||
     parsedPackageManifest.version !== value.appServerRuntimeVersion ||
     parsedPackageManifest.target !== value.targetTriple ||
+    !artifacts.some(
+      (entry) => entry.path === parsedPackageManifest.execServer && entry.executable,
+    ) ||
     parsedReleaseAsset.tag !== parsedSourceRevision.tag ||
     !artifactPaths.has("codex-package.json") ||
     !value.searchPaths.includes(parsedPackageManifest.pathDir)

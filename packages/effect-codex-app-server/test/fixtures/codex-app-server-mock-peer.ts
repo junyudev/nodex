@@ -74,6 +74,7 @@ const handleMethod = (message: Record<string, unknown>) => {
       respond(message.id as number | string, {
         account: {
           type: "chatgpt",
+          workspaceName: null,
           email: "mock@example.com",
           planType: "plus",
         },

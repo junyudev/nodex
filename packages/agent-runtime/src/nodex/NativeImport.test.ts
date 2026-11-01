@@ -250,6 +250,7 @@ const fixture = (
                     {
                       ...user,
                       item: {
+                        generationId: null,
                         type: "imageGeneration",
                         id: "image:source",
                         result: "/source/private.png",
@@ -1244,6 +1245,7 @@ for (const kind of ["imageGeneration", "dynamicToolCall", "functionCallOutput"] 
         item:
           kind === "imageGeneration"
             ? {
+                generationId: null,
                 type: kind,
                 id: "media:source",
                 status: "completed",

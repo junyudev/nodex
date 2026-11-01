@@ -2,6 +2,7 @@ export const CODEX_APP_SERVER_REQUIRED_ARTIFACTS = Object.freeze([
   "codex-package.json",
   "bin/codex",
   "bin/codex-code-mode-host",
+  "bin/codex-exec-server",
   "codex-path/rg",
 ]);
 
@@ -259,6 +260,7 @@ export function parseCodexAppServerReleaseLock(value) {
     value.packageManifest.variant !== "codex" ||
     !hasExactKeys(value.packageManifest, [
       "entrypoint",
+      "execServer",
       "layoutVersion",
       "pathDir",
       "resourcesDir",
@@ -275,6 +277,10 @@ export function parseCodexAppServerReleaseLock(value) {
   const entrypoint = relativePath(value.packageManifest.entrypoint, "packageManifest.entrypoint");
   if (entrypoint !== "bin/codex") {
     throw new Error("Codex package entrypoint must be bin/codex");
+  }
+  const execServer = relativePath(value.packageManifest.execServer, "packageManifest.execServer");
+  if (execServer !== "bin/codex-exec-server") {
+    throw new Error("Codex package exec server must be bin/codex-exec-server");
   }
   const packageLayoutVersion = positiveInteger(
     value.packageManifest.layoutVersion,
@@ -336,6 +342,7 @@ export function parseCodexAppServerReleaseLock(value) {
     },
     packageManifest: {
       entrypoint,
+      execServer,
       layoutVersion: packageLayoutVersion,
       pathDir: packagePathDir,
       resourcesDir: packageResourcesDir,

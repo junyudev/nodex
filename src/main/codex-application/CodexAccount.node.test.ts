@@ -27,7 +27,12 @@ it.effect("owns account, login, rate-limit, and notification state behind one in
       const response: unknown = (() => {
         if (method === "account/read") {
           return {
-            account: { type: "chatgpt", email: "agent@example.com", planType: "plus" },
+            account: {
+              workspaceName: null,
+              type: "chatgpt",
+              email: "agent@example.com",
+              planType: "plus",
+            },
             requiresOpenaiAuth: false,
           };
         }
@@ -157,7 +162,12 @@ it.effect("keeps invalidated auth signed out when an older refresh completes", (
           yield* Deferred.succeed(readStarted, undefined);
           yield* Deferred.await(releaseRead);
           return {
-            account: { type: "chatgpt", email: "stale@example.com", planType: "plus" },
+            account: {
+              workspaceName: null,
+              type: "chatgpt",
+              email: "stale@example.com",
+              planType: "plus",
+            },
             requiresOpenaiAuth: false,
           };
         });
@@ -288,7 +298,12 @@ it.effect("retries an account read that failed until the account is known", () =
             return requests.filter((request) => request === "account/read").length === 1
               ? Effect.fail(new Error("workspace routing discovery failed"))
               : Effect.succeed({
-                  account: { type: "chatgpt", email: "agent@example.com", planType: "pro" },
+                  account: {
+                    workspaceName: null,
+                    type: "chatgpt",
+                    email: "agent@example.com",
+                    planType: "pro",
+                  },
                   requiresOpenaiAuth: false,
                 });
           }),
@@ -337,7 +352,12 @@ it.effect(
             Effect.suspend((): Effect.Effect<unknown, Error> => {
               if (method === "account/read")
                 return Effect.succeed({
-                  account: { type: "chatgpt", email: state.email, planType: "pro" },
+                  account: {
+                    workspaceName: null,
+                    type: "chatgpt",
+                    email: state.email,
+                    planType: "pro",
+                  },
                   requiresOpenaiAuth: false,
                 });
               if (method !== "account/rateLimits/read")
@@ -440,7 +460,12 @@ it.effect(
                 return Effect.succeed({ rateLimits: { primary: { usedPercent: 25 } } });
               if (unavailable) return Effect.fail(new Error("Offline"));
               return Effect.succeed({
-                account: { type: "chatgpt", email: "agent@example.com", planType: "pro" },
+                account: {
+                  workspaceName: null,
+                  type: "chatgpt",
+                  email: "agent@example.com",
+                  planType: "pro",
+                },
                 requiresOpenaiAuth: false,
               });
             }),

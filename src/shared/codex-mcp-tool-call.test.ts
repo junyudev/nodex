@@ -44,6 +44,7 @@ function buildStatuses(
   return {
     data: [
       {
+        toolListMeta: null,
         name: "docs",
         runtimeStatus: null,
         pluginId: null,

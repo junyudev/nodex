@@ -1172,8 +1172,28 @@ describe("protocol-backed canonical conversation state", () => {
     expect(state.turns[0]?.items[0] === agentActivityV2MultiActionCommandItem).toBe(true);
   });
 
+  test.each([
+    { source: { fileId: "file_123" }, expected: "file-service://file_123" },
+    {
+      source: { fileId: "file_123", savedPath: "/images/generated.png" },
+      expected: "/images/generated.png",
+    },
+  ])("materializes a generated image reference $source", ({ source, expected }) => {
+    const item = {
+      type: "imageGeneration",
+      id: "generated-1",
+      status: "completed",
+      revisedPrompt: null,
+      failure: null,
+      generationId: null,
+      ...source,
+    } satisfies ThreadItem;
+    expect(materializeCodexCanonicalProtocolItem(item)).toEqual({ ...item, src: expected });
+  });
+
   test("materializes hydrated image and collaboration items with exact app-side fields", () => {
     const image = {
+      generationId: null,
       type: "imageGeneration",
       id: "hydrated-image",
       status: "completed",

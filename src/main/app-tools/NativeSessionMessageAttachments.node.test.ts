@@ -132,6 +132,7 @@ it("maps only producer-owned Native attachment coordinates", () => {
   assert.deepEqual(
     nativeSessionAttachmentResource(
       {
+        generationId: null,
         type: "imageGeneration",
         id: "generated",
         status: "completed",

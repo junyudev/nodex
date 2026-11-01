@@ -6,10 +6,16 @@ import type * as CodexClient from "effect-codex-app-server/client";
 
 import {
   applyPreferredCodexDefaultModel,
+  codexPlanLabel,
   codexProbeStepBudgetMs,
   mapCodexModelCapabilities,
   requestCodexChatGptModels,
 } from "./CodexProvider.ts";
+
+it("labels the current academic research plans", () => {
+  assert.equal(codexPlanLabel("sci"), "ChatGPT Academic Researchers Subscription");
+  assert.equal(codexPlanLabel("sci_plus"), "ChatGPT Academic Researchers Plus Subscription");
+});
 
 it("gives an optional probe step its own limit, but never past the probe's deadline", () => {
   assert.strictEqual(codexProbeStepBudgetMs(3_000, 1_000, 9_000), 3_000);

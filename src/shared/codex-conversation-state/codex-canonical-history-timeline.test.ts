@@ -31,7 +31,13 @@ const shell = (id = "turn"): Turn => ({
   completedAt: null,
   durationMs: null,
 });
-const plan = (id: string): ThreadItem => ({ type: "plan", id, text: "large payload" });
+const plan = (id: string): ThreadItem => ({
+  type: "plan",
+  id,
+  text: "large payload",
+  startedAtMs: null,
+  completedAtMs: null,
+});
 const metadata = () =>
   createCodexCanonicalHydratedConversationState(
     { ...buildAgentActivityV2CorpusThread([]), id: "thread", turns: [] },

@@ -14,6 +14,8 @@ export const CLIENT_REQUEST_METHODS = {
   "thread/start": "thread/start",
   "thread/resume": "thread/resume",
   "thread/fork": "thread/fork",
+  "thread/sample": "thread/sample",
+  "thread/sample/cancel": "thread/sample/cancel",
   "thread/archive": "thread/archive",
   "thread/delete": "thread/delete",
   "thread/unsubscribe": "thread/unsubscribe",
@@ -38,6 +40,7 @@ export const CLIENT_REQUEST_METHODS = {
   "thread/section/move": "thread/section/move",
   "thread/settings/update": "thread/settings/update",
   "thread/memoryMode/set": "thread/memoryMode/set",
+  "thread/memory/read": "thread/memory/read",
   "memory/status": "memory/status",
   "memory/reset": "memory/reset",
   "rollout/compress": "rollout/compress",
@@ -146,8 +149,11 @@ export const CLIENT_REQUEST_METHODS = {
   "account/login/start": "account/login/start",
   "account/bedrock/discover": "account/bedrock/discover",
   "account/bedrock/setup": "account/bedrock/setup",
+  "account/gcp/setup": "account/gcp/setup",
   "account/bedrock/checkGovCloudRequirements": "account/bedrock/checkGovCloudRequirements",
   "account/login/cancel": "account/login/cancel",
+  "accountSession/list": "accountSession/list",
+  "accountSession/switch": "accountSession/switch",
   "account/logout": "account/logout",
   "account/rateLimits/read": "account/rateLimits/read",
   "account/rateLimitResetCredit/consume": "account/rateLimitResetCredit/consume",
@@ -155,6 +161,7 @@ export const CLIENT_REQUEST_METHODS = {
   "account/workspaceMessages/read": "account/workspaceMessages/read",
   "account/sendAddCreditsNudgeEmail": "account/sendAddCreditsNudgeEmail",
   "feedback/upload": "feedback/upload",
+  "feedback/save": "feedback/save",
   "command/exec": "command/exec",
   "command/exec/write": "command/exec/write",
   "command/exec/terminate": "command/exec/terminate",
@@ -305,6 +312,8 @@ export interface ClientRequestParamsByMethod {
   readonly "thread/start": CodexSchema.V2ThreadStartParams;
   readonly "thread/resume": CodexSchema.V2ThreadResumeParams;
   readonly "thread/fork": CodexSchema.V2ThreadForkParams;
+  readonly "thread/sample": CodexSchema.V2ThreadSampleParams;
+  readonly "thread/sample/cancel": CodexSchema.V2ThreadSampleCancelParams;
   readonly "thread/archive": CodexSchema.V2ThreadArchiveParams;
   readonly "thread/delete": CodexSchema.V2ThreadDeleteParams;
   readonly "thread/unsubscribe": CodexSchema.V2ThreadUnsubscribeParams;
@@ -329,6 +338,7 @@ export interface ClientRequestParamsByMethod {
   readonly "thread/section/move": CodexSchema.V2ThreadSectionMoveParams;
   readonly "thread/settings/update": CodexSchema.V2ThreadSettingsUpdateParams;
   readonly "thread/memoryMode/set": CodexSchema.V2ThreadMemoryModeSetParams;
+  readonly "thread/memory/read": CodexSchema.V2ThreadMemoryReadParams;
   readonly "memory/status": CodexSchema.V2MemoryStatusParams;
   readonly "memory/reset": undefined;
   readonly "rollout/compress": undefined;
@@ -437,8 +447,11 @@ export interface ClientRequestParamsByMethod {
   readonly "account/login/start": CodexSchema.V2LoginAccountParams;
   readonly "account/bedrock/discover": CodexSchema.V2BedrockDiscoverParams;
   readonly "account/bedrock/setup": CodexSchema.V2BedrockSetupParams;
+  readonly "account/gcp/setup": CodexSchema.V2GcpSetupParams;
   readonly "account/bedrock/checkGovCloudRequirements": CodexSchema.V2BedrockCheckGovCloudRequirementsParams;
   readonly "account/login/cancel": CodexSchema.V2CancelLoginAccountParams;
+  readonly "accountSession/list": CodexSchema.V2AccountSessionsListParams;
+  readonly "accountSession/switch": CodexSchema.V2AccountSessionsSwitchParams;
   readonly "account/logout": undefined;
   readonly "account/rateLimits/read":
     | CodexSchema.V2NullableGetAccountRateLimitsParams__GetAccountRateLimitsParams
@@ -450,6 +463,7 @@ export interface ClientRequestParamsByMethod {
   readonly "account/workspaceMessages/read": undefined;
   readonly "account/sendAddCreditsNudgeEmail": CodexSchema.V2SendAddCreditsNudgeEmailParams;
   readonly "feedback/upload": CodexSchema.V2FeedbackUploadParams;
+  readonly "feedback/save": CodexSchema.V2FeedbackSaveParams;
   readonly "command/exec": CodexSchema.V2CommandExecParams;
   readonly "command/exec/write": CodexSchema.V2CommandExecWriteParams;
   readonly "command/exec/terminate": CodexSchema.V2CommandExecTerminateParams;
@@ -487,6 +501,8 @@ export interface ClientRequestResponsesByMethod {
   readonly "thread/start": CodexSchema.V2ThreadStartResponse;
   readonly "thread/resume": CodexSchema.V2ThreadResumeResponse;
   readonly "thread/fork": CodexSchema.V2ThreadForkResponse;
+  readonly "thread/sample": CodexSchema.V2ThreadSampleResponse;
+  readonly "thread/sample/cancel": CodexSchema.V2ThreadSampleCancelResponse;
   readonly "thread/archive": CodexSchema.V2ThreadArchiveResponse;
   readonly "thread/delete": CodexSchema.V2ThreadDeleteResponse;
   readonly "thread/unsubscribe": CodexSchema.V2ThreadUnsubscribeResponse;
@@ -511,6 +527,7 @@ export interface ClientRequestResponsesByMethod {
   readonly "thread/section/move": CodexSchema.V2ThreadSectionMoveResponse;
   readonly "thread/settings/update": CodexSchema.V2ThreadSettingsUpdateResponse;
   readonly "thread/memoryMode/set": CodexSchema.V2ThreadMemoryModeSetResponse;
+  readonly "thread/memory/read": CodexSchema.V2ThreadMemoryReadResponse;
   readonly "memory/status": CodexSchema.V2MemoryStatusResponse;
   readonly "memory/reset": CodexSchema.V2MemoryResetResponse;
   readonly "rollout/compress": CodexSchema.V2RolloutCompressResponse;
@@ -619,8 +636,11 @@ export interface ClientRequestResponsesByMethod {
   readonly "account/login/start": CodexSchema.V2LoginAccountResponse;
   readonly "account/bedrock/discover": CodexSchema.V2BedrockDiscoverResponse;
   readonly "account/bedrock/setup": CodexSchema.V2BedrockSetupResponse;
+  readonly "account/gcp/setup": CodexSchema.V2GcpSetupResponse;
   readonly "account/bedrock/checkGovCloudRequirements": CodexSchema.V2BedrockCheckGovCloudRequirementsResponse;
   readonly "account/login/cancel": CodexSchema.V2CancelLoginAccountResponse;
+  readonly "accountSession/list": CodexSchema.V2AccountSessionsResponse;
+  readonly "accountSession/switch": CodexSchema.V2AccountSessionsSwitchResponse;
   readonly "account/logout": CodexSchema.V2LogoutAccountResponse;
   readonly "account/rateLimits/read": CodexSchema.V2GetAccountRateLimitsResponse;
   readonly "account/rateLimitResetCredit/consume": CodexSchema.V2ConsumeAccountRateLimitResetCreditResponse;
@@ -628,6 +648,7 @@ export interface ClientRequestResponsesByMethod {
   readonly "account/workspaceMessages/read": CodexSchema.V2GetWorkspaceMessagesResponse;
   readonly "account/sendAddCreditsNudgeEmail": CodexSchema.V2SendAddCreditsNudgeEmailResponse;
   readonly "feedback/upload": CodexSchema.V2FeedbackUploadResponse;
+  readonly "feedback/save": CodexSchema.V2FeedbackSaveResponse;
   readonly "command/exec": CodexSchema.V2CommandExecResponse;
   readonly "command/exec/write": CodexSchema.V2CommandExecWriteResponse;
   readonly "command/exec/terminate": CodexSchema.V2CommandExecTerminateResponse;
@@ -787,6 +808,8 @@ export const CLIENT_REQUEST_PARAMS = {
   "thread/start": CodexSchema.V2ThreadStartParams,
   "thread/resume": CodexSchema.V2ThreadResumeParams,
   "thread/fork": CodexSchema.V2ThreadForkParams,
+  "thread/sample": CodexSchema.V2ThreadSampleParams,
+  "thread/sample/cancel": CodexSchema.V2ThreadSampleCancelParams,
   "thread/archive": CodexSchema.V2ThreadArchiveParams,
   "thread/delete": CodexSchema.V2ThreadDeleteParams,
   "thread/unsubscribe": CodexSchema.V2ThreadUnsubscribeParams,
@@ -811,6 +834,7 @@ export const CLIENT_REQUEST_PARAMS = {
   "thread/section/move": CodexSchema.V2ThreadSectionMoveParams,
   "thread/settings/update": CodexSchema.V2ThreadSettingsUpdateParams,
   "thread/memoryMode/set": CodexSchema.V2ThreadMemoryModeSetParams,
+  "thread/memory/read": CodexSchema.V2ThreadMemoryReadParams,
   "memory/status": CodexSchema.V2MemoryStatusParams,
   "memory/reset": undefined,
   "rollout/compress": undefined,
@@ -923,8 +947,11 @@ export const CLIENT_REQUEST_PARAMS = {
   "account/login/start": CodexSchema.V2LoginAccountParams,
   "account/bedrock/discover": CodexSchema.V2BedrockDiscoverParams,
   "account/bedrock/setup": CodexSchema.V2BedrockSetupParams,
+  "account/gcp/setup": CodexSchema.V2GcpSetupParams,
   "account/bedrock/checkGovCloudRequirements": CodexSchema.V2BedrockCheckGovCloudRequirementsParams,
   "account/login/cancel": CodexSchema.V2CancelLoginAccountParams,
+  "accountSession/list": CodexSchema.V2AccountSessionsListParams,
+  "accountSession/switch": CodexSchema.V2AccountSessionsSwitchParams,
   "account/logout": undefined,
   "account/rateLimits/read": Schema.UndefinedOr(
     CodexSchema.V2NullableGetAccountRateLimitsParams__GetAccountRateLimitsParams,
@@ -936,6 +963,7 @@ export const CLIENT_REQUEST_PARAMS = {
   "account/workspaceMessages/read": undefined,
   "account/sendAddCreditsNudgeEmail": CodexSchema.V2SendAddCreditsNudgeEmailParams,
   "feedback/upload": CodexSchema.V2FeedbackUploadParams,
+  "feedback/save": CodexSchema.V2FeedbackSaveParams,
   "command/exec": CodexSchema.V2CommandExecParams,
   "command/exec/write": CodexSchema.V2CommandExecWriteParams,
   "command/exec/terminate": CodexSchema.V2CommandExecTerminateParams,
@@ -974,6 +1002,8 @@ export const CLIENT_REQUEST_RESPONSES = {
   "thread/start": CodexSchema.V2ThreadStartResponse,
   "thread/resume": CodexSchema.V2ThreadResumeResponse,
   "thread/fork": CodexSchema.V2ThreadForkResponse,
+  "thread/sample": CodexSchema.V2ThreadSampleResponse,
+  "thread/sample/cancel": CodexSchema.V2ThreadSampleCancelResponse,
   "thread/archive": CodexSchema.V2ThreadArchiveResponse,
   "thread/delete": CodexSchema.V2ThreadDeleteResponse,
   "thread/unsubscribe": CodexSchema.V2ThreadUnsubscribeResponse,
@@ -998,6 +1028,7 @@ export const CLIENT_REQUEST_RESPONSES = {
   "thread/section/move": CodexSchema.V2ThreadSectionMoveResponse,
   "thread/settings/update": CodexSchema.V2ThreadSettingsUpdateResponse,
   "thread/memoryMode/set": CodexSchema.V2ThreadMemoryModeSetResponse,
+  "thread/memory/read": CodexSchema.V2ThreadMemoryReadResponse,
   "memory/status": CodexSchema.V2MemoryStatusResponse,
   "memory/reset": CodexSchema.V2MemoryResetResponse,
   "rollout/compress": CodexSchema.V2RolloutCompressResponse,
@@ -1106,9 +1137,12 @@ export const CLIENT_REQUEST_RESPONSES = {
   "account/login/start": CodexSchema.V2LoginAccountResponse,
   "account/bedrock/discover": CodexSchema.V2BedrockDiscoverResponse,
   "account/bedrock/setup": CodexSchema.V2BedrockSetupResponse,
+  "account/gcp/setup": CodexSchema.V2GcpSetupResponse,
   "account/bedrock/checkGovCloudRequirements":
     CodexSchema.V2BedrockCheckGovCloudRequirementsResponse,
   "account/login/cancel": CodexSchema.V2CancelLoginAccountResponse,
+  "accountSession/list": CodexSchema.V2AccountSessionsResponse,
+  "accountSession/switch": CodexSchema.V2AccountSessionsSwitchResponse,
   "account/logout": CodexSchema.V2LogoutAccountResponse,
   "account/rateLimits/read": CodexSchema.V2GetAccountRateLimitsResponse,
   "account/rateLimitResetCredit/consume": CodexSchema.V2ConsumeAccountRateLimitResetCreditResponse,
@@ -1116,6 +1150,7 @@ export const CLIENT_REQUEST_RESPONSES = {
   "account/workspaceMessages/read": CodexSchema.V2GetWorkspaceMessagesResponse,
   "account/sendAddCreditsNudgeEmail": CodexSchema.V2SendAddCreditsNudgeEmailResponse,
   "feedback/upload": CodexSchema.V2FeedbackUploadResponse,
+  "feedback/save": CodexSchema.V2FeedbackSaveResponse,
   "command/exec": CodexSchema.V2CommandExecResponse,
   "command/exec/write": CodexSchema.V2CommandExecWriteResponse,
   "command/exec/terminate": CodexSchema.V2CommandExecTerminateResponse,

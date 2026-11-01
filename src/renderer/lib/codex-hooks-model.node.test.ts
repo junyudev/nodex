@@ -23,6 +23,7 @@ function hook(
     statusMessage: null,
     sourcePath: "/tmp/hooks.json",
     pluginId: null,
+    environmentId: null,
     displayOrder: 0n,
     enabled: true,
     isManaged: false,
@@ -55,6 +56,23 @@ test("summarizes interrupt hooks as a first-class event", () => {
     installed: 1,
     needsReview: 0,
   });
+});
+
+test("includes model request hooks in event summaries", () => {
+  const summaries = summarizeCodexHookEvents([
+    hook({ key: "before-model", source: "user", eventName: "preModelRequest" }),
+    hook({
+      key: "after-model",
+      source: "user",
+      eventName: "postModelRequest",
+      trustStatus: "untrusted",
+    }),
+  ]);
+
+  expect(summaries.slice(0, 2)).toEqual([
+    { eventName: "preModelRequest", active: 1, installed: 1, needsReview: 0 },
+    { eventName: "postModelRequest", active: 0, installed: 1, needsReview: 1 },
+  ]);
 });
 
 describe("Codex Hooks source grouping", () => {

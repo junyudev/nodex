@@ -59,8 +59,10 @@ Run all runtime probes with:
 vp run test:agent-runtime-conformance
 ```
 
-The probes also use the scripted model server with a real staged app-server,
-but stop below the Electron product workflow. They are the faster owner for
+The probes use the scripted model server with a real staged app-server,
+but stop below the Electron product workflow. Configure the scripted provider in
+the disposable `CODEX_HOME/config.toml` before launch; Thread overrides do not
+change the app-server's selected provider. The probes are the faster owner for
 provider wire formats, transport selection, tool round trips, multi-agent tool
 advertising, resume behavior, and worktree handoff protocol. A probe should not
 duplicate a user workflow already owned by the deterministic Electron smoke.

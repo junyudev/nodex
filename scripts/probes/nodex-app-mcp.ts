@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import * as Effect from "effect/Effect";
+import { stringify as stringifyToml } from "smol-toml";
 import type { ServerNotification } from "@nodex/codex-app-server-protocol";
 import type { ThreadStartResponse, TurnStartResponse } from "@nodex/codex-app-server-protocol/v2";
 import { ScopedCallbackRuntime } from "../../src/main/app/ScopedCallbackRuntime";
@@ -12,6 +13,7 @@ import {
   type CodexProbeClient,
 } from "../codex-probe-session";
 import { ScriptedModelServer, responses } from "../scenarios/runtime/scripted-model-server";
+import { resolvePrimaryCheckoutRoot } from "../immutable-artifact-cache";
 
 const repository = resolve(".");
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -63,8 +65,9 @@ const probe = async (callbacks: ScopedCallbackRuntime["Service"]) => {
     args.length === 0 || (args.length === 2 && args[0] === "--home"),
     "Usage: probe:app-tools-mcp [--home runs.local/NAME]",
   );
-  const parent = resolve(args[1] ?? "runs.local/app-tools-probe");
-  assert.ok(parent.startsWith(resolve("runs.local") + sep), "Probe home must be under runs.local");
+  const runsRoot = join(resolvePrimaryCheckoutRoot(repository), "runs.local");
+  const parent = resolve(args[1] ?? join(runsRoot, "app-tools-probe"));
+  assert.ok(parent.startsWith(runsRoot + sep), "Probe home must be under runs.local");
   await mkdir(parent, { recursive: true, mode: 0o700 });
   const root = await mkdtemp(join(parent, "run-"));
   const home = join(root, "codex");
@@ -114,6 +117,19 @@ const probe = async (callbacks: ScopedCallbackRuntime["Service"]) => {
     })),
   });
   try {
+    await writeFile(
+      join(home, "config.toml"),
+      stringifyToml({
+        model_provider: "nodex-probe",
+        model_providers: {
+          "nodex-probe": {
+            ...model.providerConfig("nodex-probe"),
+            env_key: "NODEX_MCP_PROBE_API_KEY",
+          },
+        },
+      }),
+      { mode: 0o600 },
+    );
     await callbacks.runPromise(
       withCodexProbeSession(
         callbacks,
@@ -143,10 +159,6 @@ const probe = async (callbacks: ScopedCallbackRuntime["Service"]) => {
                 approvalPolicy: "never",
                 dynamicTools: [],
                 config: {
-                  "model_providers.nodex-probe": {
-                    ...model.providerConfig("nodex-probe"),
-                    env_key: "NODEX_MCP_PROBE_API_KEY",
-                  },
                   "features.plugins": false,
                   "features.code_mode": {
                     direct_only_tool_namespaces: mode === "direct" ? ["mcp__nodex_app"] : [],

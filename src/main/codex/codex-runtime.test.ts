@@ -38,12 +38,14 @@ function writeRuntime(rootPath: string): void {
         target: "aarch64-apple-darwin",
         variant: "codex",
         entrypoint: "bin/codex",
+        execServer: "bin/codex-exec-server",
         resourcesDir: "codex-resources",
         pathDir: "codex-path",
       }),
     ],
     ["bin/codex", "#!/bin/sh\necho codex-app-server\n"],
     ["bin/codex-code-mode-host", "#!/bin/sh\necho host\n"],
+    ["bin/codex-exec-server", "#!/bin/sh\necho exec-server\n"],
     ["codex-path/rg", "#!/bin/sh\necho rg\n"],
     ["codex-resources/zsh/bin/zsh", "#!/bin/sh\necho zsh\n"],
   ]);
@@ -83,6 +85,7 @@ function writeRuntime(rootPath: string): void {
         target: "aarch64-apple-darwin",
         variant: "codex",
         entrypoint: "bin/codex",
+        execServer: "bin/codex-exec-server",
         resourcesDir: "codex-resources",
         pathDir: "codex-path",
       },
@@ -200,20 +203,23 @@ describe("codex-runtime", () => {
     }
   });
 
-  test("throws before startup when the bundled runtime omits a declared artifact", async () => {
-    const fixture = makeBundledRuntimeFixture();
-    try {
-      fs.rmSync(path.join(fixture.resourcesPath, "bin", "codex-code-mode-host"));
-      await expect(
-        resolveCodexRuntime({
-          isPackaged: true,
-          resourcesPath: fixture.resourcesPath,
-        }),
-      ).rejects.toThrow("artifact is missing: bin/codex-code-mode-host");
-    } finally {
-      fixture.cleanup();
-    }
-  });
+  test.each(["codex-code-mode-host", "codex-exec-server"])(
+    "rejects a missing bundled %s",
+    async (name) => {
+      const fixture = makeBundledRuntimeFixture();
+      try {
+        fs.rmSync(path.join(fixture.resourcesPath, "bin", name));
+        await expect(
+          resolveCodexRuntime({
+            isPackaged: true,
+            resourcesPath: fixture.resourcesPath,
+          }),
+        ).rejects.toThrow(`artifact is missing: bin/${name}`);
+      } finally {
+        fixture.cleanup();
+      }
+    },
+  );
 
   test("throws before startup when a staged runtime artifact was modified", async () => {
     const fixture = makeStagedRuntimeFixture();

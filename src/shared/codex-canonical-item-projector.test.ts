@@ -122,6 +122,7 @@ function generatedItems(): readonly CodexCanonicalItem[] {
     { type: "imageView", id: "image-view", path: "/tmp/one.png" },
     { type: "sleep", id: "sleep", durationMs: 10 },
     {
+      generationId: null,
       type: "imageGeneration",
       id: "generated-image",
       status: "completed",
@@ -225,7 +226,7 @@ describe("projectCodexCanonicalTurnItemViews", () => {
       questions: [{ title: "Which scope?", options: ["Project", "Library"] }],
     } satisfies ThreadItem;
     const parsed = parseCodexProtocolThreadItem(message);
-    expect(parsed).toEqual(message);
+    expect(parsed).toEqual({ ...message, startedAtMs: null, completedAtMs: null });
     if (!parsed) throw new Error("Async question must cross the protocol boundary");
 
     const views = project([materializeCodexCanonicalProtocolItem(parsed)], {

@@ -169,6 +169,7 @@ const fakeEndpoint = (input: {
                       id: request.id,
                       result: {
                         account: {
+                          workspaceName: null,
                           type: "chatgpt",
                           email: input.accountEmail ?? `${input.hostId}@example.com`,
                           planType: "plus",

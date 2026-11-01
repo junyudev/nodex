@@ -60,6 +60,7 @@ test("binds final runtime verification to the complete canonical metadata digest
   const executablePaths = new Set([
     lock.packageManifest.entrypoint,
     "bin/codex-code-mode-host",
+    "bin/codex-exec-server",
     "codex-path/rg",
     "codex-resources/voice/bin/codex-voice-host",
   ]);

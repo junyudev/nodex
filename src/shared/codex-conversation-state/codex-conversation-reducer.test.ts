@@ -1114,6 +1114,7 @@ describe("canonical item lifecycle reducer", () => {
 
   test("materializes only the bundle-defined image and collaboration extensions", () => {
     const image = {
+      generationId: null,
       type: "imageGeneration",
       id: "image-generation",
       status: "completed",

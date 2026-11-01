@@ -76,6 +76,7 @@ it.layer(NodeServices.layer)("effect-codex-app-server client", (it) => {
         assert.equal(account.requiresOpenaiAuth, false);
         assert.deepEqual(account.account, {
           type: "chatgpt",
+          workspaceName: null,
           email: "mock@example.com",
           planType: "plus",
         });

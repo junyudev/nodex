@@ -1272,6 +1272,7 @@ it.effect("returns Plugin Creator's native ID only after native callability is v
 
 it.effect("filters plugin hook metadata by its exact owner and counts trust review states", () => {
   const hook: import("@nodex/codex-app-server-protocol/v2/HookMetadata").HookMetadata = {
+    environmentId: null,
     key: "review",
     eventName: "sessionStart",
     timeoutSec: 0n,

@@ -32,6 +32,7 @@ function createArchive(
     path.join(packageRoot, "codex-package.json"),
     `${JSON.stringify({
       entrypoint: "bin/codex",
+      execServer: "bin/codex-exec-server",
       layoutVersion: 1,
       pathDir: "codex-path",
       resourcesDir: "codex-resources",
@@ -43,6 +44,7 @@ function createArchive(
   const executableArtifacts = new Set([
     "bin/codex",
     "bin/codex-code-mode-host",
+    "bin/codex-exec-server",
     "codex-path/rg",
     "codex-resources/voice/bin/codex-voice-host",
   ]);

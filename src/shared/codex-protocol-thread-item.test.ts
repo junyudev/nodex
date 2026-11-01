@@ -19,7 +19,11 @@ describe("generated Codex ThreadItem runtime boundary", () => {
     ] satisfies ThreadItem[];
 
     expect(values.every(isCodexProtocolThreadItem)).toBe(true);
-    expect(parseCodexProtocolThreadItem(values[0])).toEqual(values[0]);
+    expect(parseCodexProtocolThreadItem(values[0])).toEqual({
+      ...values[0],
+      startedAtMs: null,
+      completedAtMs: null,
+    });
   });
 
   it("rejects an invalid nested field", () => {
@@ -43,7 +47,11 @@ describe("generated Codex ThreadItem runtime boundary", () => {
         content: [{ type: "image", detail: "original", ...source }],
       } satisfies ThreadItem;
 
-      expect(parseCodexProtocolThreadItem(item)).toEqual(item);
+      expect(parseCodexProtocolThreadItem(item)).toEqual({
+        ...item,
+        startedAtMs: null,
+        completedAtMs: null,
+      });
     },
   );
 
@@ -54,6 +62,39 @@ describe("generated Codex ThreadItem runtime boundary", () => {
         id: "image-1",
         clientId: null,
         content: [{ type: "image", detail: "original" }],
+      }),
+    ).toBeNull();
+  });
+
+  it.each([{ result: "aW1hZ2U=" }, { fileId: "file_123" }])(
+    "preserves a generated image source and lifecycle times %j",
+    (source) => {
+      const item = {
+        type: "imageGeneration",
+        id: "generated-1",
+        status: "completed",
+        revisedPrompt: null,
+        failure: null,
+        generationId: null,
+        transparentBackground: false,
+        startedAtMs: 1_000,
+        completedAtMs: 2_000,
+        ...source,
+      } satisfies ThreadItem;
+
+      expect(parseCodexProtocolThreadItem(item)).toEqual(item);
+    },
+  );
+
+  it("rejects a generated image without a source", () => {
+    expect(
+      parseCodexProtocolThreadItem({
+        type: "imageGeneration",
+        id: "generated-1",
+        status: "completed",
+        revisedPrompt: null,
+        failure: null,
+        generationId: null,
       }),
     ).toBeNull();
   });

@@ -56,6 +56,7 @@ test("advertises model context only for an admitted Composer and rejects retired
     statuses: {
       data: [
         {
+          toolListMeta: null,
           name: "charts",
           runtimeStatus: null,
           pluginId: null,
@@ -142,6 +143,7 @@ test("sends resolved host styles initially and refreshes an attached App when on
     statuses: {
       data: [
         {
+          toolListMeta: null,
           name: "calendar",
           runtimeStatus: null,
           pluginId: null,

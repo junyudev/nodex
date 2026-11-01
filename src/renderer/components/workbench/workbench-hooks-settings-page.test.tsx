@@ -11,6 +11,7 @@ function hook(
   overrides: Partial<CommandHookMetadata> & Pick<CommandHookMetadata, "key" | "source">,
 ): CommandHookMetadata {
   return {
+    environmentId: null,
     eventName: "stop",
     handlerType: "command",
     matcher: null,
@@ -127,6 +128,7 @@ describe("Hooks settings", () => {
 
   test("shows MCP tool handler identity in hook details", () => {
     const mcpHook: HookMetadata = {
+      environmentId: null,
       key: "mcp-tool",
       eventName: "postToolUse",
       handlerType: "mcpTool",

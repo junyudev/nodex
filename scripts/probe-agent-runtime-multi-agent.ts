@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
+import { stringify as stringifyToml } from "smol-toml";
 import type { ServerNotification } from "@nodex/codex-app-server-protocol";
 import { ScopedCallbackRuntime } from "../src/main/app/ScopedCallbackRuntime";
 import { resolveCodexRuntime } from "../src/main/codex/codex-runtime";
@@ -647,6 +648,23 @@ async function probeMultiAgentPromise(
   const server = await startSemanticServer(state);
   let observedSubagentActivityEvents = 0;
   try {
+    const providerId = "nodex-semantic-provider";
+    const providerConfig = {
+      name: providerId,
+      base_url: `${server.baseUrl}/v1`,
+      env_key: "NODEX_SEMANTIC_API_KEY",
+      wire_api: "responses",
+      request_max_retries: 0,
+      stream_max_retries: 0,
+    };
+    writeFileSync(
+      path.join(stateHome, "config.toml"),
+      stringifyToml({
+        model_provider: providerId,
+        model_providers: { [providerId]: providerConfig },
+      }),
+      { mode: 0o600 },
+    );
     await callbacks.runPromise(
       withCodexProbeSession(
         callbacks,
@@ -676,17 +694,7 @@ async function probeMultiAgentPromise(
           };
           client.on("notification", listener);
           try {
-            const providerId = "nodex-semantic-provider";
-            const providerConfig = {
-              name: providerId,
-              base_url: `${server.baseUrl}/v1`,
-              env_key: "NODEX_SEMANTIC_API_KEY",
-              wire_api: "responses",
-              request_max_retries: 0,
-              stream_max_retries: 0,
-            };
             const config = {
-              [`model_providers.${providerId}`]: providerConfig,
               "features.plugins": false,
               "features.code_mode": false,
               "features.code_mode_only": false,

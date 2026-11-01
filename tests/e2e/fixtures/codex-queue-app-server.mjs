@@ -466,7 +466,7 @@ const handle = (message) => {
       return;
     case "account/read":
       respond(id, {
-        account: { type: "chatgpt", email: "queue@example.com", planType: "plus" },
+        account: { type: "chatgpt", workspaceName: null, email: "queue@example.com", planType: "plus" },
         requiresOpenaiAuth: false,
       });
       return;
