@@ -1,0 +1,113 @@
+.gitattributes
+  s_96ff75d3bdf36b::t_152f61d792fe93 3-4
+config/electron-build-optimization.test.ts
+  s_9ad21099c264dd::t_20007a36647ad2 1,23
+config/node-build-optimization.test.ts
+  s_96ff75d3bdf36b::t_f13cff9d42dfe7 3,8,14,30-31
+config/renderer-vite-shared.test.ts
+  s_437d1b69acf515::t_576101c33fcb36 53,56-58
+config/test-environment.test.ts
+  s_437d1b69acf515::t_11b4c0709a1660 14-18
+packages/landing/src/landing-build.test.ts
+  s_9ad21099c264dd::t_ca5238f0815b5b 7,18-30
+resources/agent-runtime/node-runtime.lock.json
+  s_96ff75d3bdf36b::t_d36497ee8c74d3 4
+scripts/agent-eval/assessment.test.ts
+  s_9ad21099c264dd::t_ed61a565ac777a 1-2,8,51,63,158,178,239
+scripts/agent-runtime-build-cache.ts
+  s_96ff75d3bdf36b::t_05fd84bdabed6a 15,265
+scripts/agent-runtime-native-windows.test.ts
+  s_9ad21099c264dd::t_046eac9714ce68 1-59
+scripts/agent-runtime-native.test.ts
+  s_96ff75d3bdf36b::t_e697caee3266b6 5,17,140
+scripts/agent-runtime-native.ts
+  s_9ad21099c264dd::t_5d1310fa3a1139 284-294
+scripts/build-agent-runtime.test.ts
+  s_96ff75d3bdf36b::t_ca6c36e918b4f0 227
+scripts/build-native-bridge.test.ts
+  s_437d1b69acf515::t_d390b1cc2fab58 109-111,125-127,154-156,177,191-205,207
+scripts/build-resources.test.ts
+  s_96ff75d3bdf36b::t_88963438c75670 51
+scripts/ci/verify-semantic-tooling.ts
+  s_437d1b69acf515::t_0e5ed06f01247e 1,41-42
+scripts/ci/verify-source-type-ownership.ts
+  s_96ff75d3bdf36b::t_801668f2f488c1 1,18,53-54
+scripts/ci/verify-static.ts
+  s_437d1b69acf515::t_2d15c407ec046d 1,171-175
+scripts/ci/verify-tooling-contracts.ts
+  s_437d1b69acf515::t_16a124fb9d334a 1,36,75-83,186-194
+scripts/codex-schema-tool.test.ts
+  s_437d1b69acf515::t_0aa36b711afd25 14-31,33-37
+scripts/desktop-tools/benchmark-remote-hosted-pip-real-runtime.test.ts
+  s_9ad21099c264dd::t_bfe28ae1ac4775 1,29
+scripts/desktop-tools/benchmark-remote-hosted-pip.test.ts
+  s_9ad21099c264dd::t_55b816e3ddb76e 30-33,35-40,42-46,48-109
+scripts/desktop-tools/run-chrome-control-disposable-e2e.test.ts
+  s_9ad21099c264dd::t_aa90551a56d342 73,75-76
+scripts/development-environment-home.test.ts
+  s_9ad21099c264dd::t_feb87b2c8288df 3,23,163-166
+scripts/effect-process-entry.test.ts
+  s_437d1b69acf515::t_f29742b7bcc6d5 45-54
+scripts/immutable-artifact-cache.test.ts
+  s_9ad21099c264dd::t_9f05d9ab2f4178 23,75-79,95,105,320-321,389-390,398-399,401,415-417
+scripts/prepared-electron-build.test.ts
+  s_9ad21099c264dd::t_ca1c17831cba16 151-156
+scripts/publish-official-agent-skills.ts
+  s_9ad21099c264dd::t_0f3d9630341f35 202
+scripts/release/browser-runtime.test.ts
+  s_437d1b69acf515::t_9b3907ec8b6f1f 20-37,39-42,44-91,136-139,141-144,146-151,153-158
+scripts/release/source.ts
+  s_96ff75d3bdf36b::t_2b585c755fe90c 4,198
+scripts/release/sparkle-history.test.ts
+  s_96ff75d3bdf36b::t_f8f2ea71b7bafb 146
+scripts/release/sparkle.test.ts
+  s_437d1b69acf515::t_598ca4ccef378f 40-58,71-106,108-109
+scripts/rust-dev-runtime.test.ts
+  s_437d1b69acf515::t_97d1290c323a47 116-144,165-187,189-211,213-223,363-382
+scripts/scenarios/profile/isolated-profile.test.ts
+  s_9ad21099c264dd::t_404b900e55ec9b 86-87,112-113
+scripts/scenarios/runtime/scripted-acp-registry-fixture.test.ts
+  s_437d1b69acf515::t_df650ac53d6259 19-30,39-71,73-82,85-118,120,123-124,127-156,158,160-161
+scripts/testing/probe-acp-runtime.test.ts
+  s_9ad21099c264dd::t_b03d0d25cb2597 69,103-106
+scripts/tooling/cache-report.test.ts
+  s_9ad21099c264dd::t_bffe3009022e81 15
+scripts/tooling/process.test.ts
+  s_96ff75d3bdf36b::t_0b6c1c1641dab6 75
+scripts/windows-pe.mjs
+  s_9ad21099c264dd::t_cf614880161c62 50-57
+scripts/windows-pe.test.ts
+  s_9ad21099c264dd::t_35ca49176b9e0b 79-84
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e6062d818ebaf75f36ea6de8e693429df655c685",
+  "prompts": {},
+  "sessions": {
+    "s_437d1b69acf515": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19611-f985-7bb1-8992-f548b040da3f",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_96ff75d3bdf36b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19650-f065-71b3-84a9-bed1ca4b5a2a",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_9ad21099c264dd": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1964f-2f03-7680-8da9-7c6d6ce01903",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
