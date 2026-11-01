@@ -1,0 +1,22 @@
+docs/ARCHITECTURE.md
+  s_3dc0b7647fcf0b::t_74238f51e78944 1323
+  s_3dc0b7647fcf0b::t_0e911a7871cb5f 1325
+docs/SECURITY.md
+  s_3dc0b7647fcf0b::t_648e9978f1510d 545,590
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "35a8ab2524d740433740dacc2e4e380bf8d7a12b",
+  "prompts": {},
+  "sessions": {
+    "s_3dc0b7647fcf0b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1964e-690a-72d0-a5e2-1468f0931284",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
