@@ -1,0 +1,19 @@
+src/main/ipc/handlers/ProjectWorkspaceIpc.test.ts
+  s_693b7521d81978::t_3697c92c2124e1 236,238
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d53b002d39ba92748027d8b9b6adb30d733742cf",
+  "prompts": {},
+  "sessions": {
+    "s_693b7521d81978": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19523-5249-7b21-99b6-72950d66e89e",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
