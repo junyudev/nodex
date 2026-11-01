@@ -504,10 +504,13 @@ pub enum PageFileCommand {
 pub struct PageFileListArgs {
     /// Page ID, Page key, or uniquely resolvable title path.
     pub page: String,
+    /// Filter Files by logical path or name.
     #[arg(long)]
     pub query: Option<String>,
+    /// Continue from the cursor returned by the previous list.
     #[arg(long)]
     pub cursor: Option<String>,
+    /// Maximum Files to return, from 1 through 100.
     #[arg(long, value_parser = clap::value_parser!(u32).range(1..=100))]
     pub limit: Option<u32>,
 }
