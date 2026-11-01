@@ -41,10 +41,27 @@ test("projects actual assistant start independently of hydration and projection 
     observedAtMs: 20000,
   });
   expect(projected.assistantMessageStartedAtMsById).toEqual({ answer: 2500 });
+  expect(projected.finalAssistantStartedAtMs).toBe(2500);
+  expect(projected.assistantResponseWorkDurationMs).toBe(0);
   expect(projected.turnStartedAtMs).toBe(1000);
   expect(projected.completedAt).toBeNull();
   expect(
     buildCodexCanonicalTurnSummary("child", next.turns[0]!, ["answer"])
       .assistantMessageStartedAtMsById,
   ).toEqual({ answer: 2500 });
+});
+
+test("response summaries carry the recorded work interval", () => {
+  const state = conversationFixture("child", [{ ...turnFixture("turn", "completed") }]);
+  expect(
+    buildCodexCanonicalTurnSummary(
+      "child",
+      {
+        ...state.turns[0]!,
+        finalAssistantStartedAtMs: 8000,
+        assistantResponseWorkDurationMs: 7000,
+      },
+      ["answer"],
+    ),
+  ).toMatchObject({ finalAssistantStartedAtMs: 8000, assistantResponseWorkDurationMs: 7000 });
 });

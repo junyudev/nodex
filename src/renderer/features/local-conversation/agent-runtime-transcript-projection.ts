@@ -637,6 +637,8 @@ export function projectAgentRuntimeItem(
         type: "agentMessage",
         id,
         text: item.text,
+        startedAtMs: agentRuntimeTime(item.startedAt),
+        completedAtMs: agentRuntimeTime(item.completedAt),
         ...(importedImages.length ? { importedImages } : {}),
         phase: null,
         memoryCitation: item.memoryCitation

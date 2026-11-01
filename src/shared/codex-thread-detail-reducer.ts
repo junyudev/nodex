@@ -21,7 +21,13 @@ export function mergeCodexTurnSummary(
     firstTurnWorkItemStartedAtMs:
       incoming.firstTurnWorkItemStartedAtMs ?? existing.firstTurnWorkItemStartedAtMs,
     finalAssistantStartedAtMs:
-      incoming.finalAssistantStartedAtMs ?? existing.finalAssistantStartedAtMs,
+      incoming.finalAssistantStartedAtMs === undefined
+        ? existing.finalAssistantStartedAtMs
+        : incoming.finalAssistantStartedAtMs,
+    assistantResponseWorkDurationMs:
+      incoming.assistantResponseWorkDurationMs === undefined
+        ? existing.assistantResponseWorkDurationMs
+        : incoming.assistantResponseWorkDurationMs,
     startedAt: incoming.startedAt ?? existing.startedAt,
     completedAt: incoming.completedAt ?? existing.completedAt,
     durationMs: incoming.durationMs ?? existing.durationMs,

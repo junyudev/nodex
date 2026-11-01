@@ -1220,8 +1220,13 @@ describe("buildTurnRenderModel", () => {
         status: "completed",
         firstTurnWorkItemStartedAtMs: 1_000,
         finalAssistantStartedAtMs: 8_000,
+        assistantResponseWorkDurationMs: 7_000,
         itemIds: ["user_1", "exec_1", "assistant_1"],
-        items: [buildUserItem(), buildExecItem({ status: "completed" }), buildAssistantItem()],
+        items: [
+          buildUserItem(),
+          buildExecItem({ status: "completed", startedAtMs: 1_000 }),
+          buildAssistantItem({ startedAtMs: 8_000 }),
+        ],
       }),
       requests: [],
       isLatestTurn: false,
@@ -1476,4 +1481,54 @@ test("a working sibling keeps a delegated group active after its first task fini
   expect(model.liveActivity.fallback.isVisible).toBe(false);
   expect(model.defaultAgentBodyCollapsed).toBe(false);
   expect(model.agentBodyUnits).toHaveLength(1);
+});
+
+test.each([100_000, -100_000])(
+  "worked duration stays on one clock with execution-host skew of %sms",
+  (skew) => {
+    const observedStart = 1000;
+    const model = buildTurnRenderModel({
+      turn: buildTurn({
+        status: "completed",
+        firstTurnWorkItemStartedAtMs: observedStart,
+        finalAssistantStartedAtMs: 8000 + skew,
+        assistantResponseWorkDurationMs: 7000,
+        items: [
+          buildUserItem(),
+          buildExecItem({ status: "completed", startedAtMs: 1000 + skew }),
+          buildAssistantItem({ startedAtMs: 8000 + skew }),
+        ],
+      }),
+      requests: [],
+      isLatestTurn: true,
+      isStreamingTurn: false,
+    });
+    expect(model.workedForItem).toMatchObject({
+      status: "worked",
+      startedAtMs: observedStart,
+      completedAtMs: 8000,
+    });
+    expect(model.buckets.latestAssistantMessage?.assistantMessageActions?.sentAtMs).toBe(
+      8000 + skew,
+    );
+  },
+);
+
+test("a response start cannot complete worked duration without a recorded work start", () => {
+  const model = buildTurnRenderModel({
+    turn: buildTurn({
+      status: "completed",
+      firstTurnWorkItemStartedAtMs: 1000,
+      finalAssistantStartedAtMs: 108_000,
+      items: [
+        buildUserItem(),
+        buildExecItem({ status: "completed" }),
+        buildAssistantItem({ startedAtMs: 108_000 }),
+      ],
+    }),
+    requests: [],
+    isLatestTurn: true,
+    isStreamingTurn: false,
+  });
+  expect(model.workedForItem).toBeNull();
 });

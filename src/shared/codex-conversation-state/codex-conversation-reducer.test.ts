@@ -9,6 +9,7 @@ import type { Thread, ThreadItem } from "@nodex/codex-app-server-protocol/v2";
 import { createCodexQueuedFollowUp } from "../codex-queued-follow-up-state";
 import {
   createCodexCanonicalConversationState,
+  createCodexCanonicalTurnState,
   mergeCodexCanonicalTurnState,
   type CodexCanonicalConversationState,
   type CodexCanonicalSteeringUserMessageItem,
@@ -471,7 +472,7 @@ describe("canonical item lifecycle reducer", () => {
     );
     expect(completed.turns[0]?.finalAssistantStartedAtMs).toBeNull();
     expect(completed.turns[0]?.status).toBe("inProgress");
-    expect(completed.turns[0]?.items).toContainEqual(item);
+    expect(completed.turns[0]?.items).toContainEqual({ ...item, startedAtMs: 100 });
   });
 
   test("keeps first-arrival order and replaces completed raw items in their original slots", () => {
@@ -522,8 +523,8 @@ describe("canonical item lifecycle reducer", () => {
     );
     const turn = completed.turns[0]!;
 
-    expect(turn.items[0] === completedA).toBe(true);
-    expect(turn.items[1] === startedB).toBe(true);
+    expect(turn.items[0]).toEqual({ ...completedA, startedAtMs: 1000 });
+    expect(turn.items[1]).toEqual({ ...startedB, startedAtMs: 1010 });
     expect(JSON.stringify(turn.items.map((item) => item.id))).toBe(
       JSON.stringify(["command-a", "command-b"]),
     );
@@ -571,7 +572,7 @@ describe("canonical item lifecycle reducer", () => {
     );
 
     expect(afterSecond.turns[0]?.items.length).toBe(1);
-    expect(afterSecond.turns[0]?.items[0] === second).toBe(true);
+    expect(afterSecond.turns[0]?.items[0]).toEqual({ ...second, startedAtMs: 2500 });
     expect(afterSecond.turns[0]?.commandExecutionStartedAtMsById?.["command-repeat"]).toBe(2500);
     expect(clock.calls()).toBe(1);
   });
@@ -621,7 +622,7 @@ describe("canonical item lifecycle reducer", () => {
     expect(afterDelayedStart.turns[0]?.lifecycleStatusByItemId?.["command-order"]).toBe(
       "completed",
     );
-    expect(afterDelayedStart.turns[0]?.items[0]).toEqual(completed);
+    expect(afterDelayedStart.turns[0]?.items[0]).toEqual({ ...completed, startedAtMs: 21000 });
   });
 
   test("completion infers a missing command start but never overwrites an observed start", () => {
@@ -782,10 +783,13 @@ describe("canonical item lifecycle reducer", () => {
     );
 
     expect(hidden.turns[0]?.items.length).toBe(1);
-    expect(hidden.turns[0]?.items[0] === enteredReview).toBe(true);
-    expect(mismatchedCompletion.turns[0]?.items[0] === enteredReview).toBe(true);
+    expect(hidden.turns[0]?.items[0]).toEqual({ ...enteredReview, startedAtMs: 5500 });
+    expect(mismatchedCompletion.turns[0]?.items[0]).toEqual({
+      ...enteredReview,
+      startedAtMs: 5500,
+    });
     expect(visibleAgain.turns[0]?.items.length).toBe(1);
-    expect(visibleAgain.turns[0]?.items[0] === command).toBe(true);
+    expect(visibleAgain.turns[0]?.items[0]).toEqual({ ...command, startedAtMs: 5520 });
     expect(visibleAgain.turns[0]?.lifecycleStatusByItemId?.[command.id]).toBe("inProgress");
     expect(clock.calls()).toBe(1);
   });
@@ -843,7 +847,7 @@ describe("canonical item lifecycle reducer", () => {
     expect(clock.calls()).toBe(1);
   });
 
-  test("agent start uses independent wall-clock sites and completion does not refresh them", () => {
+  test("agent response uses its recorded start while live work keeps the observer clock", () => {
     const started = {
       questions: null,
       type: "agentMessage",
@@ -885,15 +889,16 @@ describe("canonical item lifecycle reducer", () => {
       },
       clock.context,
     );
-    expect(afterComplete.turns[0]?.finalAssistantStartedAtMs).toBe(70001);
+    expect(afterComplete.turns[0]?.finalAssistantStartedAtMs).toBe(7000);
+    expect(afterComplete.turns[0]?.assistantResponseWorkDurationMs).toBe(0);
     expect(afterComplete.turns[0]?.assistantMessageStartedAtMsById).toEqual({
       "agent-message": 7000,
     });
-    expect(afterComplete.turns[0]?.firstTurnWorkItemStartedAtMs).toBe(70002);
+    expect(afterComplete.turns[0]?.firstTurnWorkItemStartedAtMs).toBe(70001);
     expect(afterStart.turns[0]?.lifecycleStatusByItemId?.["agent-message"]).toBe("inProgress");
     expect(afterComplete.turns[0]?.lifecycleStatusByItemId?.["agent-message"]).toBe("completed");
-    expect(afterComplete.turns[0]?.items[0] === completed).toBe(true);
-    expect(clock.calls()).toBe(2);
+    expect(afterComplete.turns[0]?.items[0]).toEqual({ ...completed, startedAtMs: 7000 });
+    expect(clock.calls()).toBe(1);
   });
 
   test("missing started turns clone latest context while clearing exact lifecycle fields", () => {
@@ -947,7 +952,7 @@ describe("canonical item lifecycle reducer", () => {
     expect((synthesized.params.attachments ?? []).length).toBe(0);
     expect(synthesized.commandExecutionStartedAtMsById?.surviving).toBe(3);
     expect(synthesized.interruptedCommandExecutionItemIds?.[0]).toBe("surviving");
-    expect(synthesized.items[0] === command).toBe(true);
+    expect(synthesized.items[0]).toMatchObject(command);
     expect(state.turns.length).toBe(1);
   });
 
@@ -988,7 +993,7 @@ describe("canonical item lifecycle reducer", () => {
     expect(next.turns).toHaveLength(1);
     expect(next.turns[0]?.turnId).toBe("turn_racing");
     expect(next.turns[0]?.params.input).toEqual(placeholder.params.input);
-    expect(next.turns[0]?.items).toEqual([assistant]);
+    expect(next.turns[0]?.items).toEqual([{ ...assistant, startedAtMs: 8000 }]);
   });
 
   test("context compaction rebinds the in-progress placeholder and keeps manual source", () => {
@@ -1302,7 +1307,7 @@ describe("canonical item lifecycle reducer", () => {
     );
 
     expect(afterOrdinary.turns[0]?.items.length).toBe(0);
-    expect(afterHeartbeat.turns[0]?.items[0] === heartbeat).toBe(true);
+    expect(afterHeartbeat.turns[0]?.items[0]).toMatchObject(heartbeat);
     expect(clock.calls()).toBe(0);
   });
 
@@ -1866,4 +1871,80 @@ test("retains independent assistant start timestamps across repeats and terminal
     commentary: 1200,
     final: 4000,
   });
+  expect(repeated.turns[0]?.finalAssistantStartedAtMs).toBe(4000);
+  expect(completed.turns[0]?.finalAssistantStartedAtMs).toBe(4000);
+});
+
+test("native response timing and work duration survive reload independently of observer clock skew", () => {
+  const reasoning: ThreadItem = {
+    type: "reasoning",
+    id: "hidden-thought",
+    summary: [],
+    content: [],
+  };
+  const response: ThreadItem = {
+    type: "agentMessage",
+    id: "response",
+    text: "Done",
+    phase: "final_answer",
+    memoryCitation: null,
+    delivery: null,
+    questions: null,
+  };
+  const notifyStart = (
+    state: CodexCanonicalConversationState,
+    item: ThreadItem,
+    startedAtMs: number,
+  ) =>
+    reduceLifecycle(
+      state,
+      {
+        method: "item/started",
+        params: {
+          threadId: THREAD_ID,
+          turnId: TURN_ID,
+          item,
+          startedAtMs,
+        },
+      },
+      { now: () => 100_000 },
+    );
+  const thinking = notifyStart(buildState(), reasoning, 1000);
+  const started = notifyStart(thinking, response, 8000);
+  const completed = reduceLifecycle(
+    started,
+    {
+      method: "item/completed",
+      params: {
+        threadId: THREAD_ID,
+        turnId: TURN_ID,
+        item: response,
+        completedAtMs: 9000,
+      },
+    },
+    { now: () => 200_000 },
+  );
+  const live = completed.turns[0]!;
+  expect(live.firstTurnWorkItemStartedAtMs).toBe(100_000);
+  expect(live.finalAssistantStartedAtMs).toBe(8000);
+  expect(live.assistantResponseWorkDurationMs).toBe(7000);
+  const [thought, answer] = live.items;
+  if (thought?.type !== "reasoning" || answer?.type !== "agentMessage")
+    throw new Error("Missing response items");
+  const reloaded = createCodexCanonicalTurnState(
+    {
+      id: TURN_ID,
+      rootTurnId: null,
+      items: [thought, answer],
+      itemsView: "full",
+      status: "completed",
+      error: null,
+      startedAt: 1,
+      completedAt: 9,
+      durationMs: 8000,
+    },
+    live.params,
+  );
+  expect(reloaded.finalAssistantStartedAtMs).toBe(live.finalAssistantStartedAtMs);
+  expect(reloaded.assistantResponseWorkDurationMs).toBe(live.assistantResponseWorkDurationMs);
 });

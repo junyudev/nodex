@@ -1,3 +1,7 @@
+import {
+  resolveAssistantResponseStartedAtMs,
+  resolveAssistantResponseWorkDurationMs,
+} from "../codex-assistant-response-timing";
 import notificationSchema from "@nodex/codex-app-server-protocol/runtime-schemas/ServerNotification.schema.json";
 import { mergeCodexItemCompletionEvidence } from "./codex-item-completion";
 import {
@@ -190,7 +194,15 @@ export async function readCanonicalHistoryItems(
       return CodexProtocolThreadItemSchema.parse(entry);
     if (entry.turnId !== turnId && !(client.hostId === "durable" && entry.turnId === undefined))
       throw new Error(`thread/items/list returned item for unexpected turn ${entry.turnId}`);
-    return CodexProtocolThreadItemSchema.parse(entry.item);
+    return CodexProtocolThreadItemSchema.parse({
+      ...entry.item,
+      ...(entry.startedAtMs != null && entry.item.startedAtMs == null
+        ? { startedAtMs: entry.startedAtMs }
+        : {}),
+      ...(entry.completedAtMs != null && entry.item.completedAtMs == null
+        ? { completedAtMs: entry.completedAtMs }
+        : {}),
+    });
   });
   return {
     items: sortDirection === "desc" ? items.reverse() : items,
@@ -913,6 +925,14 @@ export class CanonicalHistoryItemLoader implements Disposable {
               target.itemsPagination.olderItemId !== pagination.olderItemId
             )
               return;
+            target.assistantResponseWorkDurationMs = resolveAssistantResponseWorkDurationMs(merged);
+            target.finalAssistantStartedAtMs = resolveAssistantResponseStartedAtMs(
+              {
+                items: merged,
+                assistantMessageStartedAtMsById: target.assistantMessageStartedAtMsById,
+              },
+              target,
+            );
             target.items = merged as Draft<CodexCanonicalTurnState["items"]>;
             const completionEvidence: Record<string, boolean> = {};
             for (const itemEntry of page.entries) {

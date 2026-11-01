@@ -60,6 +60,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Hovering an Agent's reply now shows when it arrived. Claude Code, Codex, OpenCode and ACP chats keep each reply's time, and it stays the same after you reopen a chat or restart Nodex.
 - Automatic snapshots now keep their schedule when you restart Nodex often. The next one is due one interval after your newest snapshot, Nodex takes an overdue one shortly after it starts, and a failed attempt is retried sooner instead of waiting a full interval.
 - A Claude Code chat whose transcript was removed from Claude's history now continues instead of failing. Like Codex chats, its next message starts a fresh Claude session that receives the chat's earlier messages.
 - The Changed files list in Files and Review no longer blinks while Git status refreshes. It keeps showing the current list until the refreshed one is ready, including in repositories with untracked files.

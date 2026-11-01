@@ -2927,6 +2927,8 @@ export interface CodexTurnSummary {
   turnStartedAtMs?: number | null;
   firstTurnWorkItemStartedAtMs?: number | null;
   finalAssistantStartedAtMs?: number | null;
+  /** Execution-host elapsed work before the selected response, without observer-clock skew. */
+  assistantResponseWorkDurationMs?: number | null;
   assistantMessageStartedAtMsById?: Record<string, number>;
   startedAt?: number | null;
   completedAt?: number | null;

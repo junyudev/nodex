@@ -279,9 +279,12 @@ function resolveWorkedForCompletedAtMs(
   const finalAssistantStartedAtMs = resolveFiniteTimestamp(turn.finalAssistantStartedAtMs);
   if (finalAssistantStartedAtMs === null) return null;
 
-  return hasRenderableFinalAssistantContent(items[boundaryIndex])
-    ? finalAssistantStartedAtMs
-    : null;
+  if (!hasRenderableFinalAssistantContent(items[boundaryIndex])) return null;
+  const startedAtMs = resolveFiniteTimestamp(turn.firstTurnWorkItemStartedAtMs);
+  if (startedAtMs === null) return null;
+  const durationMs = resolveFiniteTimestamp(turn.assistantResponseWorkDurationMs);
+  // Live work starts on the observer clock. Add an execution-host interval instead of mixing clocks.
+  return durationMs === null ? null : startedAtMs + durationMs;
 }
 
 function buildWorkedForItem(

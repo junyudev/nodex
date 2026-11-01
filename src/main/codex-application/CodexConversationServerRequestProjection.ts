@@ -40,6 +40,7 @@ export const buildCodexCanonicalTurnSummary = (
     ? {}
     : { firstTurnWorkItemStartedAtMs: turn.firstTurnWorkItemStartedAtMs }),
   finalAssistantStartedAtMs: turn.finalAssistantStartedAtMs,
+  assistantResponseWorkDurationMs: turn.assistantResponseWorkDurationMs,
   ...(turn.assistantMessageStartedAtMsById === undefined
     ? {}
     : { assistantMessageStartedAtMsById: { ...turn.assistantMessageStartedAtMsById } }),

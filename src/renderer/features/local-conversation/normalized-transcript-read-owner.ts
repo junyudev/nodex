@@ -475,6 +475,7 @@ export class CodexTranscriptReadOwner {
             completedAtMs: null,
             firstTurnWorkItemStartedAtMs: null,
             finalAssistantStartedAtMs: null,
+            assistantResponseWorkDurationMs: null,
           }),
       ...(work
         ? {
@@ -488,6 +489,11 @@ export class CodexTranscriptReadOwner {
             finalAssistantStartedAtMs: isVoice
               ? work.completedAtMs
               : details.finalAssistantStartedAtMs,
+            assistantResponseWorkDurationMs: isVoice
+              ? work.startedAtMs !== null && work.completedAtMs !== null
+                ? Math.max(0, work.completedAtMs - work.startedAtMs)
+                : null
+              : details.assistantResponseWorkDurationMs,
           }
         : {}),
     };
@@ -563,6 +569,7 @@ export class CodexTranscriptReadOwner {
       turnStartedAtMs: canonical.turnStartedAtMs,
       firstTurnWorkItemStartedAtMs: canonical.firstTurnWorkItemStartedAtMs ?? null,
       finalAssistantStartedAtMs: canonical.finalAssistantStartedAtMs,
+      assistantResponseWorkDurationMs: canonical.assistantResponseWorkDurationMs,
       assistantMessageStartedAtMsById: canonical.assistantMessageStartedAtMsById,
       commandExecutionStartedAtMsById: canonical.commandExecutionStartedAtMsById,
       interruptedCommandExecutionItemIds: canonical.interruptedCommandExecutionItemIds

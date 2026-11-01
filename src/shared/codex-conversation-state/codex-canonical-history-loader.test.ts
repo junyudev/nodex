@@ -900,3 +900,70 @@ describe("canonical history operation ownership", () => {
     expect(residentConversationTurns(f.read())[0]?.items[0]?.id).toBe("match");
   });
 });
+
+test("item pages recover envelope starts without allowing older commentary to replace the reply", async () => {
+  const f = harness();
+  const reply: ThreadItem = {
+    type: "agentMessage",
+    id: "reply",
+    text: "Done",
+    phase: "final_answer",
+    memoryCitation: null,
+    delivery: null,
+    questions: null,
+  };
+  f.handle(async () => ({
+    data: [{ turnId: "turn", item: reply, startedAtMs: 5000, completedAtMs: 9000 }],
+    nextCursor: "earlier",
+    backwardsCursor: null,
+  }));
+  using loader = new CanonicalHistoryItemLoader(f.client);
+  await loader.loadTurnItems("conversation", "turn", false);
+  expect(residentConversationTurns(f.read())[0]?.finalAssistantStartedAtMs).toBe(5000);
+  expect(residentConversationTurns(f.read())[0]?.items[0]).toMatchObject({
+    startedAtMs: 5000,
+    completedAtMs: 9000,
+  });
+  f.handle(async () => ({
+    data: [
+      {
+        turnId: "turn",
+        item: { ...reply, id: "commentary", phase: "commentary", startedAtMs: 70_000 },
+        startedAtMs: 2000,
+        completedAtMs: 3000,
+      },
+    ],
+    nextCursor: null,
+    backwardsCursor: null,
+  }));
+  await loader.loadTurnItems("conversation", "turn", false);
+  expect(residentConversationTurns(f.read())[0]?.finalAssistantStartedAtMs).toBe(5000);
+  expect(residentConversationTurns(f.read())[0]?.items[0]).toMatchObject({ startedAtMs: 70_000 });
+});
+
+test("completed-only item history does not invent a response start", async () => {
+  const f = harness();
+  f.handle(async () => ({
+    data: [
+      {
+        turnId: "turn",
+        item: {
+          type: "agentMessage",
+          id: "reply",
+          text: "Done",
+          phase: "final_answer",
+          memoryCitation: null,
+          delivery: null,
+          questions: null,
+        },
+        startedAtMs: null,
+        completedAtMs: 9000,
+      },
+    ],
+    nextCursor: null,
+    backwardsCursor: null,
+  }));
+  using loader = new CanonicalHistoryItemLoader(f.client);
+  await loader.loadTurnItems("conversation", "turn", false);
+  expect(residentConversationTurns(f.read())[0]?.finalAssistantStartedAtMs).toBeNull();
+});

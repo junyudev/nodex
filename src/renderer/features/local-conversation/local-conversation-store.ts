@@ -1408,6 +1408,7 @@ function materializeOwnerCanonicalTurn(
     turnStartedAtMs: canonicalTurn.turnStartedAtMs,
     firstTurnWorkItemStartedAtMs: canonicalTurn.firstTurnWorkItemStartedAtMs ?? null,
     finalAssistantStartedAtMs: canonicalTurn.finalAssistantStartedAtMs,
+    assistantResponseWorkDurationMs: canonicalTurn.assistantResponseWorkDurationMs,
     assistantMessageStartedAtMsById:
       canonicalTurn.assistantMessageStartedAtMsById === undefined
         ? undefined
@@ -1455,6 +1456,7 @@ function buildOwnerCanonicalTurnPlaceholder(
     turnStartedAtMs: canonicalTurn.turnStartedAtMs,
     firstTurnWorkItemStartedAtMs: canonicalTurn.firstTurnWorkItemStartedAtMs ?? null,
     finalAssistantStartedAtMs: canonicalTurn.finalAssistantStartedAtMs,
+    assistantResponseWorkDurationMs: canonicalTurn.assistantResponseWorkDurationMs,
     assistantMessageStartedAtMsById:
       canonicalTurn.assistantMessageStartedAtMsById === undefined
         ? undefined
