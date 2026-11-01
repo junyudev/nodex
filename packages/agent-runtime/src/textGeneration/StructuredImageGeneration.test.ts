@@ -121,7 +121,9 @@ it.live.each([false, true])(
       assert.deepEqual(options?.allowedTools, ["Read", "Grep", "Glob"]);
       assert.strictEqual(options?.persistSession, false);
       assert.strictEqual(options?.pathToClaudeCodeExecutable, isolated ? undefined : binaryPath);
-      if (isolated) assert.deepEqual(options?.settingSources, []);
+      assert.deepEqual(options?.settingSources, []);
+      assert.strictEqual(options?.strictMcpConfig, true);
+      assert.deepEqual(options?.extraArgs, { "disable-slash-commands": null });
       assert.strictEqual(options?.env?.NATIVE_TEST, "claude");
       assert.strictEqual(close.mock.calls.length, 1);
       const error = yield* runtime

@@ -163,6 +163,7 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
     maxOutputBytes,
     timeoutMs,
     webSearch,
+    isolated,
   }: TextGenerationOperations.Request<S>): Effect.fn.Return<
     S["Type"],
     TextGenerationError,
@@ -212,6 +213,15 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
         effectiveConfig.binaryPath || "codex",
         [
           "exec",
+          ...(isolated
+            ? [
+                "--ignore-user-config",
+                "--config",
+                "skills.include_instructions=false",
+                "--config",
+                "project_doc_max_bytes=0",
+              ]
+            : []),
           ...codexExecLaunchArgs(launchArgs),
           "--ephemeral",
           "--skip-git-repo-check",

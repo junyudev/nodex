@@ -37,8 +37,8 @@ interface FakeCodexInput {
   requireServiceTier?: string;
   requireReasoningEffort?: string;
   forbidReasoningEffort?: boolean;
-  requireArg?: string;
-  forbidArg?: string;
+  requireArg?: string | ReadonlyArray<string>;
+  forbidArg?: string | ReadonlyArray<string>;
   stdinMustContain?: string;
   stdinMustNotContain?: string;
 }
@@ -98,11 +98,11 @@ function makeFakeCodexBinary(dir: string, input: FakeCodexInput) {
         '  process.stderr.write(message + "\\n");',
         "  process.exit(code);",
         "}",
-        "if (check.requireArg !== null && !originalArgs.includes(` ${check.requireArg} `)) {",
-        '  fail("missing arg: " + check.requireArg, 8);',
+        "for (const arg of [check.requireArg].flat()) {",
+        '  if (arg !== null && !originalArgs.includes(` ${arg} `)) fail("missing arg: " + arg, 8);',
         "}",
-        "if (check.forbidArg !== null && originalArgs.includes(` ${check.forbidArg} `)) {",
-        '  fail("forbidden arg: " + check.forbidArg, 9);',
+        "for (const arg of [check.forbidArg].flat()) {",
+        '  if (arg !== null && originalArgs.includes(` ${arg} `)) fail("forbidden arg: " + arg, 9);',
         "}",
         'if (check.requireImage && !seenImage) fail("missing --image input", 2);',
         "if (check.expectedImages !== null) {",
@@ -206,6 +206,11 @@ it.layer(layerCodexTextGenerationTest)("CodexTextGeneration", (it) => {
             "  Add important change to the system with too much detail and a trailing period.\nsecondary line",
           body: "\n- added migration\n- updated tests\n",
         }),
+        forbidArg: [
+          "--ignore-user-config",
+          "skills.include_instructions=false",
+          "project_doc_max_bytes=0",
+        ],
         stdinMustNotContain: "branch must be a short semantic git branch fragment",
       },
       (textGeneration) =>
@@ -259,9 +264,14 @@ it.layer(layerCodexTextGenerationTest)("CodexTextGeneration", (it) => {
       withFakeCodexEnv(
         {
           output: JSON.stringify({ route: "keep" }),
-          ...(webSearch
-            ? { requireArg: '--config web_search="live"' }
-            : { forbidArg: 'web_search="live"' }),
+          requireArg: [
+            "--ignore-user-config",
+            "--config skills.include_instructions=false",
+            "--config project_doc_max_bytes=0",
+            ...(webSearch ? ['--config web_search="live"'] : []),
+          ],
+          requireReasoningEffort: "xhigh",
+          ...(!webSearch ? { forbidArg: 'web_search="live"' } : {}),
         },
         (textGeneration) =>
           Effect.gen(function* () {
@@ -269,13 +279,42 @@ it.layer(layerCodexTextGenerationTest)("CodexTextGeneration", (it) => {
               yield* textGeneration.generateStructured!({
                 cwd: process.cwd(),
                 prompt: "Route this message",
-                modelSelection: DEFAULT_TEST_MODEL_SELECTION,
+                modelSelection: createModelSelection(ProviderInstanceId.make("codex"), "gpt-5.4", [
+                  { id: "reasoningEffort", value: "xhigh" },
+                ]),
                 outputSchema: { type: "object", properties: { route: { type: "string" } } },
                 webSearch,
               }),
             ).toEqual({ route: "keep" });
           }),
       ),
+  );
+
+  it.effect("preserves managed provider launch overrides for isolated structured generation", () =>
+    withFakeCodexEnv(
+      {
+        output: JSON.stringify({ title: "Managed title" }),
+        managedRuntime: true,
+        launchArgs:
+          "-c 'model_provider=\"openai_token_sharing\"' -c 'model_providers.openai_token_sharing.env_key=\"ACCESS_TOKEN\"' --strict-config --listen off",
+        requireArg: [
+          "--ignore-user-config",
+          "--config skills.include_instructions=false",
+          "--config project_doc_max_bytes=0",
+          '-c model_provider="openai_token_sharing"',
+          '-c model_providers.openai_token_sharing.env_key="ACCESS_TOKEN"',
+          "--strict-config",
+        ],
+        forbidArg: "--listen",
+      },
+      (generation) =>
+        generation.generateStructured!({
+          cwd: process.cwd(),
+          prompt: "Suggest a title",
+          modelSelection: DEFAULT_TEST_MODEL_SELECTION,
+          outputSchema: { type: "object", properties: { title: { type: "string" } } },
+        }),
+    ),
   );
 
   it.effect("omits a persisted service tier for managed ChatGPT text generation", () =>

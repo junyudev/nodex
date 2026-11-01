@@ -48,7 +48,7 @@ process.stdin.on("end", () => {
   if (investigation && fs.readFileSync("workspace.txt", "utf8") !== "Review this workspace") throw new Error("Workspace is unreadable");
   const result = investigation ? { stops: [] } : { title: "Inspect exact native execution" };
   const ephemeral = args.includes(codex ? "--ephemeral" : "--no-session-persistence");
-  fs.appendFileSync(path.join(process.env.NATIVE_UTILITY_PROOF_DIR, "accepted.jsonl"), JSON.stringify({ investigation, ephemeral, web, cwd: process.cwd() }) + "\\n");
+  fs.appendFileSync(path.join(process.env.NATIVE_UTILITY_PROOF_DIR, "accepted.jsonl"), JSON.stringify({ investigation, ephemeral, web, cwd: process.cwd(), args }) + "\\n");
   if (codex) fs.writeFileSync(args[args.indexOf("--output-last-message") + 1], JSON.stringify(result));
   else process.stdout.write(JSON.stringify({ structured_output: result }));
 });
@@ -148,6 +148,7 @@ for (const driver of ["codex", "claude"] as const) {
                 ephemeral: boolean;
                 web: boolean;
                 cwd: string;
+                args: string[];
               },
           );
         assert.deepEqual(
@@ -162,6 +163,26 @@ for (const driver of ["codex", "claude"] as const) {
         // Utility tasks never leave a conversation in the user's native history.
         assert.isTrue(accepted.every((row) => row.ephemeral));
         assert.strictEqual(accepted[1]?.cwd, yield* fs.realPath(directory));
+        const isolationFlags =
+          driver === "codex"
+            ? [
+                "--ignore-user-config",
+                "skills.include_instructions=false",
+                "project_doc_max_bytes=0",
+              ]
+            : ["--setting-sources", "--strict-mcp-config", "--disable-slash-commands"];
+        for (const [index, { args, cwd }] of accepted.entries()) {
+          const isolated = index >= 2;
+          for (const flag of isolationFlags) assert.strictEqual(args.includes(flag), isolated);
+          if (!isolated) continue;
+          assert.strictEqual(cwd, yield* fs.realPath(directory));
+          if (driver === "codex") continue;
+          assert.strictEqual(args[args.indexOf("--setting-sources") + 1], "");
+          assert.strictEqual(
+            JSON.parse(args[args.indexOf("--settings") + 1]!).disableAllHooks,
+            true,
+          );
+        }
       }).pipe(
         Effect.provide(
           ServerConfig.layerTest(process.cwd(), { prefix: "nodex-utility-runtime-" }).pipe(

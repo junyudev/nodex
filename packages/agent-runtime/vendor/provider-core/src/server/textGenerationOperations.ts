@@ -36,6 +36,8 @@ export interface Request<S extends Schema.Top> {
   readonly prompt: string;
   readonly images?: StructuredGenerationInput["images"];
   readonly webSearch?: StructuredGenerationInput["webSearch"];
+  /** The run sees only what Nodex supplies, never the user's personal Agent environment or project instruction files. */
+  readonly isolated?: boolean;
   readonly outputSchema: S;
   readonly modelSelection: ModelSelection;
   /** The user's attachments, already listed in the prompt. Providers that accept images send them. */
@@ -210,6 +212,7 @@ export function fromRunner(
       return run({
         ...input,
         operation: "generateStructured",
+        isolated: true,
         outputSchema: Schema.Unknown,
         jsonSchema: input.outputSchema,
       });

@@ -137,6 +137,7 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
     maxOutputBytes,
     timeoutMs,
     webSearch,
+    isolated,
   }: TextGenerationOperations.Request<S>): Effect.fn.Return<
     S["Type"],
     TextGenerationError,
@@ -222,7 +223,13 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
                 options: {
                   cwd,
                   env: claudeEnvironment,
-                  ...(claudeSettings.isolated ? { settingSources: [] } : {}),
+                  ...(isolated || claudeSettings.isolated ? { settingSources: [] } : {}),
+                  ...(isolated
+                    ? {
+                        strictMcpConfig: true,
+                        extraArgs: { "disable-slash-commands": null },
+                      }
+                    : {}),
                   model: resolveClaudeCatalogApiModelId(catalog, resolvedModelSelection),
                   permissionMode: "dontAsk",
                   tools: readTools,
@@ -270,6 +277,9 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
         claudeSettings.binaryPath || "claude",
         [
           "-p",
+          ...(isolated
+            ? ["--setting-sources", "", "--strict-mcp-config", "--disable-slash-commands"]
+            : []),
           "--output-format",
           "json",
           "--json-schema",
