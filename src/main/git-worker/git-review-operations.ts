@@ -148,7 +148,11 @@ function normalizeGitReviewRepositoryPath(value: string): string {
 }
 
 function buildGitReviewRepositoryKey(identity: GitReviewRepositoryIdentity): string {
-  return JSON.stringify([identity.hostId, identity.commonDir, identity.root]);
+  return JSON.stringify([
+    identity.hostId,
+    normalizeGitReviewRepositoryPath(identity.commonDir),
+    normalizeGitReviewRepositoryPath(identity.root),
+  ]);
 }
 
 function buildGitReviewRepositoryCwdKey(hostId: string, cwd: string): string {
