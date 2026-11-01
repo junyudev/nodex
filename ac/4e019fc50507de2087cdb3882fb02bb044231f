@@ -1,0 +1,41 @@
+crates/nodex-core/src/infrastructure/sqlite.rs
+  s_66c8ad159691f2::t_7518696dea5c49 415-416,421-424
+  s_66c8ad159691f2::t_46fc08aa9564d6 417-419,577-645
+  s_9bbfa414d0a0f1::t_d4bacf1b6589de 420,646
+crates/nodex-core/src/infrastructure/migration.rs
+  s_66c8ad159691f2::t_7518696dea5c49 3360-3361,3366,3546-3547,3550
+crates/nodex-core/src/administration/backup.rs
+  s_9d06964ba0d4b8::t_169b803bc49e47 852-853
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ac4e019fc50507de2087cdb3882fb02bb044231f",
+  "prompts": {},
+  "sessions": {
+    "s_66c8ad159691f2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b9f70a0e-ab44-41bb-a33b-e19f161ae88b",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_9bbfa414d0a0f1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1961a-934d-74c1-add2-edcd65413e2d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_9d06964ba0d4b8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19611-b22a-7ef2-9bc9-75b7ac514216",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
