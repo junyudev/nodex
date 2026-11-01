@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { basename, dirname, join, resolve } from "node:path";
+import path, { join } from "node:path";
 import type {
   CodexLiveFileAttachment,
   CodexPastedTextAttachment,
@@ -74,6 +74,7 @@ export interface MaterializedPastedTextAttachmentSources {
 
 export interface PastedTextAttachmentManagerOptions {
   readonly attachmentsRoot: string;
+  readonly pathStyle?: "native" | "posix";
   readonly fileSystem?: Partial<AttachmentFileSystem>;
   readonly createUuid?: () => string;
   readonly hostId?: string;
@@ -81,6 +82,7 @@ export interface PastedTextAttachmentManagerOptions {
 
 export class PastedTextAttachmentManager {
   readonly #attachmentsRoot: string;
+  readonly #path: typeof path;
   readonly #fileSystem: AttachmentFileSystem;
   readonly #createUuid: () => string;
   readonly #hostId: string | undefined;
@@ -88,7 +90,8 @@ export class PastedTextAttachmentManager {
   #registryWrite: Promise<void> = Promise.resolve();
 
   constructor(options: PastedTextAttachmentManagerOptions) {
-    this.#attachmentsRoot = resolve(options.attachmentsRoot);
+    this.#path = options.pathStyle === "posix" ? path.posix : path;
+    this.#attachmentsRoot = this.#path.resolve(options.attachmentsRoot);
     this.#fileSystem = { ...defaultAttachmentFileSystem, ...options.fileSystem };
     this.#createUuid = options.createUuid ?? randomUUID;
     this.#hostId = options.hostId;
@@ -216,9 +219,9 @@ export class PastedTextAttachmentManager {
   }): Promise<CodexLiveFileAttachment> {
     const state = await this.#getState();
     await this.#retryPendingRemovals(state);
-    const directoryPath = join(this.#attachmentsRoot, this.#createUuid());
+    const directoryPath = this.#path.join(this.#attachmentsRoot, this.#createUuid());
     await this.#fileSystem.createDirectory(directoryPath);
-    const filePath = join(directoryPath, input.filename);
+    const filePath = this.#path.join(directoryPath, input.filename);
     await this.#fileSystem.writeFile(filePath, input.data);
     state.attachmentPaths.add(filePath);
     if (input.textExcerpt?.length) state.textExcerptsByPath.set(filePath, input.textExcerpt);
@@ -312,7 +315,7 @@ export class PastedTextAttachmentManager {
   }
 
   #registryPath(): string {
-    return join(this.#attachmentsRoot, PASTED_TEXT_ATTACHMENT_REGISTRY_FILE);
+    return this.#path.join(this.#attachmentsRoot, PASTED_TEXT_ATTACHMENT_REGISTRY_FILE);
   }
 }
 
@@ -322,6 +325,7 @@ export type ThreadGoalDraftMaterializationInput =
 
 export interface ThreadGoalAttachmentDirectoryManagerOptions {
   readonly attachmentsRoot: string;
+  readonly pathStyle?: "native" | "posix";
   readonly fileSystem?: Partial<AttachmentFileSystem>;
   readonly createUuid?: () => string;
   readonly targetHostId?: string;
@@ -331,6 +335,7 @@ export interface ThreadGoalAttachmentDirectoryManagerOptions {
 
 export class ThreadGoalAttachmentDirectoryManager {
   readonly #attachmentsRoot: string;
+  readonly #path: typeof path;
   readonly #fileSystem: AttachmentFileSystem;
   readonly #createUuid: () => string;
   readonly #targetHostId: string | undefined;
@@ -339,7 +344,8 @@ export class ThreadGoalAttachmentDirectoryManager {
   readonly #directories = new Set<string>();
 
   constructor(options: ThreadGoalAttachmentDirectoryManagerOptions) {
-    this.#attachmentsRoot = resolve(options.attachmentsRoot);
+    this.#path = options.pathStyle === "posix" ? path.posix : path;
+    this.#attachmentsRoot = this.#path.resolve(options.attachmentsRoot);
     this.#fileSystem = { ...defaultAttachmentFileSystem, ...options.fileSystem };
     this.#createUuid = options.createUuid ?? randomUUID;
     this.#targetHostId = options.targetHostId;
@@ -348,7 +354,7 @@ export class ThreadGoalAttachmentDirectoryManager {
   }
 
   async createDirectory(): Promise<{ path: string }> {
-    const directoryPath = join(this.#attachmentsRoot, this.#createUuid());
+    const directoryPath = this.#path.join(this.#attachmentsRoot, this.#createUuid());
     await this.#fileSystem.createDirectory(directoryPath);
     this.#directories.add(directoryPath);
     return { path: directoryPath };
@@ -361,7 +367,7 @@ export class ThreadGoalAttachmentDirectoryManager {
   }): Promise<CodexLiveFileAttachment> {
     await this.#assertOwnedDirectory(input.directoryPath);
     const label = sanitizeAttachmentFilename(input.filename);
-    const filePath = join(input.directoryPath, label);
+    const filePath = this.#path.join(input.directoryPath, label);
     await this.#fileSystem.writeFile(filePath, Buffer.from(input.contentsBase64, "base64"));
     return {
       label,
@@ -488,7 +494,7 @@ export class ThreadGoalAttachmentDirectoryManager {
       }
 
       const fileReference = buildThreadGoalObjectiveFileReference(
-        join(await ensureAttachmentDirectory(), THREAD_GOAL_OBJECTIVE_FILE),
+        this.#path.join(await ensureAttachmentDirectory(), THREAD_GOAL_OBJECTIVE_FILE),
       );
       await writeAttachment({
         filename: THREAD_GOAL_OBJECTIVE_FILE,
@@ -510,10 +516,10 @@ export class ThreadGoalAttachmentDirectoryManager {
     if (!this.#directories.has(directoryPath)) {
       throw new Error("Unknown thread goal attachment directory");
     }
-    const directoryName = basename(directoryPath);
+    const directoryName = this.#path.basename(directoryPath);
     if (
       !V4_UUID_PATTERN.test(directoryName) ||
-      directoryPath !== join(this.#attachmentsRoot, directoryName)
+      directoryPath !== this.#path.join(this.#attachmentsRoot, directoryName)
     ) {
       throw new Error("Invalid thread goal attachment directory");
     }
@@ -526,12 +532,20 @@ export function getThreadGoalAttachmentsRoot(basePath: string): string {
 
 export async function readThreadGoalEditableObjective(input: {
   attachmentsRoot: string;
+  pathStyle?: "native" | "posix";
   objective: string;
   readFile?: (path: string) => Promise<string>;
 }): Promise<string> {
   const filePath = parseThreadGoalObjectiveFileReference(input.objective);
   if (filePath === null) return input.objective;
-  if (!isOwnedThreadGoalObjectiveFilePath(input.attachmentsRoot, filePath)) return input.objective;
+  if (
+    !isOwnedThreadGoalObjectiveFilePath(
+      input.attachmentsRoot,
+      filePath,
+      input.pathStyle === "posix" ? path.posix : path,
+    )
+  )
+    return input.objective;
   return input.readFile ? await input.readFile(filePath) : await readFile(filePath, "utf8");
 }
 
@@ -740,10 +754,16 @@ function isRemoteImageUrl(source: string): boolean {
   return /^https?:\/\//i.test(source);
 }
 
-function isOwnedThreadGoalObjectiveFilePath(attachmentsRoot: string, filePath: string): boolean {
-  const resolvedRoot = resolve(attachmentsRoot);
-  const resolvedFilePath = resolve(filePath);
-  const directoryName = basename(dirname(resolvedFilePath));
+function isOwnedThreadGoalObjectiveFilePath(
+  attachmentsRoot: string,
+  filePath: string,
+  filePaths = path,
+): boolean {
+  const resolvedRoot = filePaths.resolve(attachmentsRoot);
+  const resolvedFilePath = filePaths.resolve(filePath);
+  const directoryName = filePaths.basename(filePaths.dirname(resolvedFilePath));
   if (!THREAD_GOAL_OBJECTIVE_DIRECTORY_PATTERN.test(directoryName)) return false;
-  return resolvedFilePath === join(resolvedRoot, directoryName, THREAD_GOAL_OBJECTIVE_FILE);
+  return (
+    resolvedFilePath === filePaths.join(resolvedRoot, directoryName, THREAD_GOAL_OBJECTIVE_FILE)
+  );
 }

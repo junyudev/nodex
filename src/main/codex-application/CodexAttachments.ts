@@ -239,11 +239,13 @@ export const live: Layer.Layer<
       const fileSystem = makeHostFileSystem(hostId);
       const pastedText = new PastedTextAttachmentManager({
         attachmentsRoot,
+        pathStyle: host.descriptor.kind === "ssh" ? "posix" : "native",
         fileSystem,
         hostId,
       });
       const goals = new ThreadGoalAttachmentDirectoryManager({
         attachmentsRoot,
+        pathStyle: host.descriptor.kind === "ssh" ? "posix" : "native",
         fileSystem,
         targetHostId: hostId,
         localHostId: gateway.localHostId,
@@ -329,8 +331,9 @@ export const live: Layer.Layer<
                 .basename(resource.name.replaceAll("\\", "/"))
                 .replaceAll(/[^A-Za-z0-9._-]/gu, "_")
                 .slice(-100) || "attachment";
-            const directory = path.posix.join(manager.attachmentsRoot, "resources", sha256);
-            const filePath = path.posix.join(
+            const filePaths = manager.descriptor.kind === "ssh" ? path.posix : path;
+            const directory = filePaths.join(manager.attachmentsRoot, "resources", sha256);
+            const filePath = filePaths.join(
               directory,
               `${digest(resource.name).slice(0, 16)}-${name}`,
             );
@@ -488,6 +491,7 @@ export const live: Layer.Layer<
           const manager = await forHost(hostId);
           return await readThreadGoalEditableObjective({
             attachmentsRoot: manager.attachmentsRoot,
+            pathStyle: manager.descriptor.kind === "ssh" ? "posix" : "native",
             objective,
             readFile: async (filePath) =>
               (await manager.fileSystem.readFile(filePath)).toString("utf8"),
