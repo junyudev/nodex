@@ -1,0 +1,69 @@
+src/renderer/features/local-conversation/view/shared/tools/inline-file-diff.tsx
+  s_6b4b7378f23226::t_c24d1de7e96ccd 1-2,44
+docs/product-specs/review-right-panel-behavior.md
+  s_6b4b7378f23226::t_b69ef52b217a1d 4,136-145
+src/renderer/lib/diff-highlight-cache.node.test.ts
+  s_6b4b7378f23226::t_089d64c8cdc600 1-48
+src/renderer/lib/diff-highlight-cache.ts
+  s_6b4b7378f23226::t_145368dc9a29f4 1-39
+CHANGELOG.md
+  s_a62e5887089e7e::t_be452cafbddd59 49
+src/renderer/features/review/model/expand-partial-diff-metadata.node.test.ts
+  s_6b4b7378f23226::t_74651c6b445f03 41-42,71-83
+src/renderer/lib/source-highlight-pool.tsx
+  s_6b4b7378f23226::t_1f281a0a3a57be 6-14
+src/renderer/lib/highlight-pool.tsx
+  s_6b4b7378f23226::t_072f4cb902fe29 1-84
+src/renderer/components/ui/read-only-file-diff.tsx
+  s_6b4b7378f23226::t_c23871ca3d1fde 1-83
+vitest.browser.config.ts
+  s_6b4b7378f23226::t_d8b86dc189121e 11,30
+docs/FRONTEND.md
+  s_6b4b7378f23226::t_9358a29a79addc 348-364
+src/renderer/lib/diff-highlight-pool.tsx
+  s_6b4b7378f23226::t_f30afc2e0076ac 1-9
+src/renderer/components/ui/read-only-file-diff.test.tsx
+  s_6b4b7378f23226::t_0830b7fe8f9881 1-70
+config/renderer-vite-shared.ts
+  s_6b4b7378f23226::t_7b33b3afa0a033 30-34
+electron.vite.config.ts
+  s_6b4b7378f23226::t_fd75724c0b1e54 16,203
+src/renderer/features/review/review-diff-highlight.browser.test.tsx
+  s_6b4b7378f23226::t_749b20ad3aa6e2 1-185
+src/renderer/components/workbench/review-diff-panel-deps.ts
+  s_6b4b7378f23226::t_9d011bfb5c79f2 2-3
+src/renderer/features/workspace-files/workspace-file-conflict.tsx
+  s_6b4b7378f23226::t_29438c82941a4b 2,77
+src/renderer/lib/highlight.worker.ts
+  s_6b4b7378f23226::t_8c81e0886d4e10 1-4
+src/renderer/features/review/model/expand-partial-diff-metadata.ts
+  s_6b4b7378f23226::t_b86b5de40d0165 2,180,186-187,189
+src/renderer/components/workbench/review-diff-panel.tsx
+  s_6b4b7378f23226::t_c1ec8417995098 163,962
+src/renderer/components/workbench/review-diff-panel.test.tsx
+  s_6b4b7378f23226::t_3470d013191e8c 1007-1028
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3532fcfb6fe07c7820c36e2de08e2b2fa4aee7a1",
+  "prompts": {},
+  "sessions": {
+    "s_6b4b7378f23226": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a195d1-49b5-7493-9766-3a7f654db998",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_a62e5887089e7e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2ec19bab-a0ee-4190-9ba2-f81423363c25",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": null
+    }
+  }
+}
