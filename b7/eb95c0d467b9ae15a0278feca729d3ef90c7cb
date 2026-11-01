@@ -1,0 +1,441 @@
+src/main/ipc/handlers/ApplicationSettingsIpc.ts
+  s_305b2dde7b2b5c::t_a394262ebc38c1 1-4,88,202-209,696-714
+src/renderer/lib/link-opening-settings.ts
+  s_305b2dde7b2b5c::t_e035f8aa4da62f 1-124
+src/main/browser-application/BrowserState.test.ts
+  s_d21324d71a938d::t_18be1662d9a548 118-129,161,166,168,173-174,181-183,186-190,205,274,306,750-1082
+  s_3dc0b7647fcf0b::t_07c1b0b1f163af 30-31,1083-1227
+src/renderer/features/browser-sidebar/browser-sidebar-ui-model.ts
+  s_c95bc4214613a4::t_acf2c77211dfe4 11-12,55,57
+src/renderer/lib/renderer-transport.ts
+  s_305b2dde7b2b5c::t_a073f325e2ead8 12-17
+src/main/host-runtime/SessionPolicyRuntime.test.ts
+  s_d21324d71a938d::t_b114ad446253f2 5-8,15-22,44-52,72-86,98-178
+src/renderer/lib/web-link-context-menu.ts
+  s_305b2dde7b2b5c::t_a315c794b1e553 3,8,85-89
+src/shared/ipc-endpoint-policy.ts
+  s_c95bc4214613a4::t_684d9773fff0a9 292,298,762
+src/main/settings/ApplicationSettings.ts
+  s_305b2dde7b2b5c::t_3853062fef9f19 1-5,92-93,140,179,197,304,371-373,397,421-423,450
+src/renderer/features/browser-sidebar/browser-sidebar-panel.tsx
+  s_c95bc4214613a4::t_a7b03a98346e95 79-80,83-84,308,328,346,367,408-429,469-476,480-496,520-521,997-998,1016,1027,3437-3438
+  s_c95bc4214613a4::t_7c6864e42a4b69 1,78,1262,1303-1321,1323-1326
+  s_f7a266529d0a87::t_5557636a7a5d3d 2-5,1202,1215-1221,1327-1328,1749,1755,1763-1764,1785-1790,1792-1813
+src/main/window-runtime/application-window-link-opening.test.ts
+  s_305b2dde7b2b5c::t_9d4d1c4cb3b777 1-77
+src/renderer/features/browser-sidebar/browser-sidebar-hidden-webview-hosts.tsx
+  s_c95bc4214613a4::t_acf2c77211dfe4 16,261
+src/renderer/features/browser-sidebar/browser-address-suggestions.ts
+  s_c95bc4214613a4::t_acf2c77211dfe4 1,43,46-49
+src/shared/browser-address-input.test.ts
+  s_c95bc4214613a4::t_2327a6f04b7e1a 40
+  s_c95bc4214613a4::t_67e5c8bc66208d 1-39,41-91
+src/renderer/lib/link-opening.ts
+  s_d21324d71a938d::t_4a6e98b6df9e88 1-66
+src/renderer/components/workbench/workbench-link-opening.ts
+  s_b708cefbbd2f84::t_a3925d9183ca7f 1-144
+  s_3dc0b7647fcf0b::t_713bfd874a7aa5 145-168
+src/main/browser/browser-context-menu.test.ts
+  s_3dc0b7647fcf0b::t_c9fa78eb5902ae 37,115-116,126,129,142-144
+src/main/browser-use/browser-use-policy-store.test.ts
+  s_c95bc4214613a4::t_8479f8f50605eb 81,90-91
+src/main/settings/ApplicationSettings.test-support.ts
+  s_c95bc4214613a4::t_3ce176ef728909 1,14,22
+src/main/browser/browser-history-store.test.ts
+  s_c95bc4214613a4::t_694f9a8fa34e3b 54,63-65
+src/main/browser-use/browser-use-iab-api.test.ts
+  s_d21324d71a938d::t_848d68eac725d5 12,138,140,193-196,201-218,792,807-822,859-893
+src/renderer/features/browser-sidebar/browser-address-suggestions.test.tsx
+  s_c95bc4214613a4::t_67e5c8bc66208d 86-105,218
+src/main/browser/browser-webview-attachment-policy.test.ts
+  s_c95bc4214613a4::t_982e5e43441478 62,83-84,86
+src/renderer/lib/web-link-context-menu.jsdom.test.ts
+  s_305b2dde7b2b5c::t_682ec3d6483e01 81-98
+src/renderer/lib/link-opening-settings.test.tsx
+  s_305b2dde7b2b5c::t_1e619c5ba56e10 1-88
+src/main/browser/browser-session-request-policy.ts
+  s_3dc0b7647fcf0b::t_32800c8944e592 1-44
+docs/SECURITY.md
+  s_c95bc4214613a4::t_58f2a8ac585161 437-462
+  s_69a84f6a140ac0::t_32410d9fc565cd 463-472
+src/main/ipc/handlers/NativeShellIpc.ts
+  s_d21324d71a938d::t_52fe16e9024a81 323-324
+  s_9c452b7027f5e4::t_b773eeab557975 15,43-63,281-283
+src/main/browser/browser-session-request-policy.test.ts
+  s_d21324d71a938d::t_92457363ccbeb1 1-61
+docs/product-specs/workbench-shell.md
+  s_305b2dde7b2b5c::t_a11bfbf220e891 164-205
+src/renderer/features/browser-sidebar/browser-sidebar-webview-manager.ts
+  s_c95bc4214613a4::t_acf2c77211dfe4 17,952
+src/renderer/lib/web-link-navigation.test.tsx
+  s_305b2dde7b2b5c::t_f3092e0f46c8aa 1-79
+src/main/browser/browser-context-menu.ts
+  s_3dc0b7647fcf0b::t_ac7a35d721f4fc 2,30,107-117,119
+src/shared/ipc-api.ts
+  s_c95bc4214613a4::t_ce2234f3b3784e 1525,1535-1542,3138-3139
+  s_623cc4150dd212::t_18293c3cebdb03 1522-1524
+src/main/external-navigation.node.test.ts
+  s_3dc0b7647fcf0b::t_948ae4d3ee5399 4,8-17,19-28
+src/main/settings/application-settings-persistence.ts
+  s_305b2dde7b2b5c::t_bd18baf8592b5e 1-5,136-138,1470-1502
+src/main/external-navigation.ts
+  s_d21324d71a938d::t_9c05cae5817e5a 1,3,5-6
+src/main/browser/browser-history-store.ts
+  s_c95bc4214613a4::t_0f79c318e81e51 20,237
+src/renderer/lib/link-opening.node.test.ts
+  s_d21324d71a938d::t_82a31cf26da4c6 1-57
+src/shared/browser-address-input.ts
+  s_c95bc4214613a4::t_9be45b38d6fdee 80
+  s_c95bc4214613a4::t_acf2c77211dfe4 1-79,81-99
+src/main/settings/ApplicationSettings.test.ts
+  s_305b2dde7b2b5c::t_e7ca7579e87dc3 42-83
+src/main/browser-use/browser-use-policy-store.ts
+  s_d21324d71a938d::t_a972a471e114bd 235
+src/main/browser/browser-page-store.ts
+  s_d21324d71a938d::t_a0f0d60d0a5118 24,35,37
+src/main/window-runtime/ApplicationWindowRuntime.ts
+  s_305b2dde7b2b5c::t_609babda28a0f5 5,8-11,44-48,90-94,100,115-155,160-161,226-228,240-241
+src/renderer/features/browser-sidebar/browser-sidebar-panel.test.tsx
+  s_c95bc4214613a4::t_919e952f34f556 87-101,104-160,162-163,167,178-179,182-187,189-190,192,194,202,205-210,217-219,237-238,244,247-252,254-256,260,264-265,269-271,276-278,281-283
+  s_c95bc4214613a4::t_59f10b88080e97 102-103
+  s_b708cefbbd2f84::t_62166ed5e32a7f 15-16,22-25,57,161,164-166,168-177,180-181,188,191,193,195-201,203-204,211-216,220-236,239-243,245-246,253,257-259,261-263,266-268,272-275,279-280,284-295
+src/renderer/features/browser-sidebar/browser-sidebar-ui-model.jsdom.test.ts
+  s_c95bc4214613a4::t_67e5c8bc66208d 29-31
+src/shared/link-opening.test.ts
+  s_305b2dde7b2b5c::t_a8e151293344ed 1-193
+src/shared/browser/browser-schemas.ts
+  s_3dc0b7647fcf0b::t_1897e225abea08 24,47-48,200-221,292,298,463-475
+  s_b708cefbbd2f84::t_751c95859a0195 2
+src/shared/link-opening-settings.ts
+  s_305b2dde7b2b5c::t_11c29bb111cfe7 1-33
+src/main/browser/browser-download-service.ts
+  s_d21324d71a938d::t_aead5590ae3caa 31,53,61,89,106,304-311,314-315,318,320-325,350,352-357,430-431,437
+src/renderer/lib/web-link-navigation.tsx
+  s_d21324d71a938d::t_0b12d2eb4e8902 1-2,14-27,33-73
+src/renderer/features/browser-sidebar/browser-address-suggestions.node.test.ts
+  s_c95bc4214613a4::t_67e5c8bc66208d 88-98
+src/main/browser-application/BrowserState.ts
+  s_d21324d71a938d::t_cd3f09e1876a44 48,50-55,98-99,160-192,331-334,343,381,396-471,503-508,510,746,783-885,956,1105,1140,1147,1229-1249,1262-1266,1536-1538,1666,1697,1701,1707-1716,1725-1730,1772-1810,2114,2119,2125-2131,2229-2232,2234,2265,2329,2341-2350,2354,2359,2384,2434,2440,2461-2463,2493-2499,2504,2512-2520,2543-2560,2569-2571,2573-2585,2587-2589,2660-2661,2744,2860,3057,3159,3196-3204,3215-3216,3236-3238,3259-3265,3375-3380
+  s_69a84f6a140ac0::t_0f2ae0eab6b281 2-12
+src/shared/browser/browser-schemas.test.ts
+  s_3dc0b7647fcf0b::t_8db23e684041a7 32-50
+  s_3dc0b7647fcf0b::t_e714733fc31295 176-211
+src/main/browser-use/browser-use-iab-api.ts
+  s_d21324d71a938d::t_027a47c0983f30 14,82-86,228,263,283-299,444,534-537,702-705,720-723,867,875-878,1050-1054,1058-1062
+src/shared/browser-url.test.ts
+  s_c95bc4214613a4::t_49aa758f7f4966 2,4-5,7-9
+src/main/browser/browser-local-server-runtime.ts
+  s_d21324d71a938d::t_d6aa1fb91f5d3b 322,337
+src/main/browser/browser-download-service.test.ts
+  s_d21324d71a938d::t_df57aa6d49d5a3 32-36,38,64-69,85,87,150-153,167-216
+src/main/host-runtime/SessionPolicyRuntime.ts
+  s_305b2dde7b2b5c::t_0e19f6e5ce025f 4-11,23-62,64-78,83,85-86,89-104,106-129,131-133
+src/renderer/components/workbench/workbench-runtime.tsx
+  s_305b2dde7b2b5c::t_23593a4114599d 1-4,74-77,185-189,2715-2748,2750-2762,2781
+  s_b708cefbbd2f84::t_a1d8d6a9777383 2763-2770,2772,2774-2780,2782-2790,3058-3061,4792-4795,4861,6012-6014
+src/renderer/components/workbench/workbench-link-opening.node.test.ts
+  s_b708cefbbd2f84::t_68f7a707b71682 1-166
+  s_b708cefbbd2f84::t_2bc043b8dbb609 167-270
+src/renderer/lib/electron-renderer-transport.ts
+  s_305b2dde7b2b5c::t_a6b56b519a7af6 369-382
+src/shared/browser-sidebar.ts
+  s_3dc0b7647fcf0b::t_ea710e3ad61d95 36-39,265,549-554,559,563
+  s_b708cefbbd2f84::t_95d2378ae15eaa 1-7,556-558,560-562,564-572
+docs/CONFIGURATION.md
+  s_305b2dde7b2b5c::t_0346390d8e2d0a 378-396
+src/shared/link-opening.ts
+  s_d21324d71a938d::t_a0759c16328774 1-158
+src/main/host-runtime/ApplicationSchedulers.test.ts
+  s_f7a266529d0a87::t_3ce06a1f426cff 355
+src/main/browser-application/BrowserApplication.ts
+  s_d21324d71a938d::t_a36720034d41c7 31-35,101-106,148-151,153,195,230,263-265,267-268,282,317-320,338-340,342
+  s_3022e59a160914::t_162179eae8594b 3-5,372,381
+src/renderer/features/browser-sidebar/browser-sidebar-webview-manager.jsdom.test.ts
+  s_c95bc4214613a4::t_919e952f34f556 90-111
+src/main/host-runtime/AppUpdateRuntime.test.ts
+  s_f7a266529d0a87::t_3ce06a1f426cff 110
+src/main/browser/browser-page-store.test.ts
+  s_d21324d71a938d::t_5619c21b3c8395 67-89
+src/main/window-runtime/application-window-link-opening.ts
+  s_305b2dde7b2b5c::t_d374d1c8ef2acb 1-37
+CHANGELOG.md
+  s_f7a266529d0a87::t_d45bc8f4526d2f 9,29-31,90-93
+docs/product-specs/codex-thread-transcript-behavior.md
+  s_86459a5a6c2825::t_848b39731adbbc 123,473-479,555
+docs/product-specs/message-content-behavior.md
+  s_86459a5a6c2825::t_8332fcf8f7fbe4 32-43
+docs/product-specs/nfm-editor-link-behavior.md
+  s_86459a5a6c2825::t_abd47db1b86d66 100-106
+docs/product-specs/thread-summary-panel-behavior.md
+  s_86459a5a6c2825::t_6d6b471b08736f 149-162
+src/main/browser/browser-permission-store.ts
+  s_b708cefbbd2f84::t_3d953e0da9d87a 1-156
+src/main/browser/browser-session-permissions.test.ts
+  s_69a84f6a140ac0::t_fe8d619502880e 1-273,275-355,357-425,427-428
+src/main/browser/browser-session-permissions.ts
+  s_69a84f6a140ac0::t_fce5c47fd75b7c 1-402,405-443
+src/main/browser/browser-site-info-provider.test.ts
+  s_b708cefbbd2f84::t_36b45b655a6194 12,18-23,33-34,45,50
+src/main/browser/browser-site-info-provider.ts
+  s_b708cefbbd2f84::t_5ac5121225a745 5,8-10,34,58-60
+src/main/file-open-applications.test.ts
+  s_9c452b7027f5e4::t_b7df4c09c2b983 50,53,70,72-74,78-116,166,168
+src/main/file-open-applications.ts
+  s_9c452b7027f5e4::t_f1d77412a51de8 4-7,23-24,56-60,77-78
+src/main/host-runtime/BrowserProfileRuntime.ts
+  s_b708cefbbd2f84::t_0c3ead4cfa3b2f 186
+src/main/ipc/handlers/ApplicationSettingsIpc.test.ts
+  s_f7a266529d0a87::t_287a83de05a6f2 153-154
+src/main/ipc/handlers/CodexVisualizationIpc.node.test.ts
+  s_86459a5a6c2825::t_04496c0ce8645b 145,162,306-319
+src/main/ipc/handlers/CodexVisualizationIpc.ts
+  s_86459a5a6c2825::t_f034aab852da21 12,149,155-160
+src/main/ipc/handlers/CodexWorkspaceIpc.ts
+  s_f7a266529d0a87::t_034fa4a0c851bb 87,2166-2167
+src/main/ipc/handlers/NativeShellIpc.test.ts
+  s_209d4d98df3af1::t_877cfa57891fe2 6,10,20-26,39-40,71,76,83-160,222
+src/renderer/components/board/editor/nfm-link-toolbar-surface.tsx
+  s_86459a5a6c2825::t_25d941f3c81f3f 4,42,173-179
+src/renderer/components/board/editor/nfm-link-toolbar.tsx
+  s_86459a5a6c2825::t_02a821fa763c11 1-2,34,432-433,554,558,571,578-583
+src/renderer/components/board/editor/readonly-nfm-blocknote-preview.tsx
+  s_86459a5a6c2825::t_84bb3da0450ed1 1,54-57,337-340,382,386,419,431,438-446,449-457,481-489,491,498-511,521-523,535-542
+src/renderer/components/message/message-document.tsx
+  s_86459a5a6c2825::t_8125861d07e03d 5,44-65
+src/renderer/components/shared/file-link-anchor.test.tsx
+  s_86459a5a6c2825::t_ba0629970666db 1,6-8,22,153,173-176,190-287
+src/renderer/components/shared/file-link-anchor.tsx
+  s_86459a5a6c2825::t_e624f47b620a72 1,20-24,74-77,94-104,106-119,128-130,229-230,242-243,245-247,257,263,267-268,289-290,302,311-313,321,325,337-343,348-350,358,362
+src/renderer/components/shared/icons/generic-icons.tsx
+  s_f7a266529d0a87::t_d2e2778b9a85e9 64-76,319-343
+src/renderer/components/workbench/keyboard-shortcuts-settings-page.tsx
+  s_f7a266529d0a87::t_9cd064e80f1073 24-28,337-340
+src/renderer/components/workbench/link-opening-settings-controls.test.tsx
+  s_f7a266529d0a87::t_7340e9eaa18e21 1-112
+src/renderer/components/workbench/link-opening-settings-controls.tsx
+  s_b708cefbbd2f84::t_7f8edaf3780d7d 1-134
+src/renderer/components/workbench/review-diff-panel.test.tsx
+  s_86459a5a6c2825::t_d5ec3fc2e0b7ed 60,3178,3239-3243
+src/renderer/components/workbench/review-diff-panel.tsx
+  s_86459a5a6c2825::t_6bc5ac3375e990 138-139,1714,2002-2007,2055
+src/renderer/components/workbench/use-workbench-panel-projection.tsx
+  s_3dc0b7647fcf0b::t_ae6dc6486f7be9 131,281,742,809
+src/renderer/components/workbench/workbench-settings-search-catalog.ts
+  s_f7a266529d0a87::t_89c7d93b2bd15f 592-593,875-878
+src/renderer/components/workbench/workbench-shell.browser-requests.test.tsx
+  s_b708cefbbd2f84::t_bb11334b48047e 1-156
+src/renderer/features/browser-sidebar/browser-permission-prompt.test.tsx
+  s_f7a266529d0a87::t_0f55d1e5dae3a7 1-140
+src/renderer/features/browser-sidebar/browser-permission-prompt.tsx
+  s_f7a266529d0a87::t_245e970f24d82d 1-274
+src/renderer/features/browser-sidebar/browser-settings-pages.test.tsx
+  s_f7a266529d0a87::t_1850d661dfa578 4,6,39,75-82,93-98
+src/renderer/features/browser-sidebar/browser-settings-pages.tsx
+  s_f7a266529d0a87::t_93acbaecb735ee 2,205
+src/renderer/features/browser-sidebar/browser-sidebar-commands.ts
+  s_b708cefbbd2f84::t_a2e17a70a788a1 53,61,63
+src/renderer/features/local-conversation/projection/thread-output-presentation.node.test.ts
+  s_b708cefbbd2f84::t_fe9b43e57ea04b 95,99
+src/renderer/features/local-conversation/projection/thread-output-presentation.ts
+  s_f7a266529d0a87::t_8b201a593e6bee 139,142,150,154
+src/renderer/features/local-conversation/view/conversation-markdown-inline.tsx
+  s_f7a266529d0a87::t_2054ef93b4edef 40,44,62,224
+src/renderer/features/local-conversation/view/conversation-markdown-targets.test.tsx
+  s_3dc0b7647fcf0b::t_6b4c48899c774c 191,394-399
+src/renderer/features/local-conversation/view/inline-visualization-frame.tsx
+  s_f7a266529d0a87::t_4782acfa72218e 1-2,66,80,82,92-93
+src/renderer/features/local-conversation/view/local-conversation-end-resources.test.tsx
+  s_f7a266529d0a87::t_9eb441a1490f05 1-2,4,6-7,10-15,17-32,34-36,38-49,51,54-55,63-70,77-78,83,86,88,91-92,99-103,106-109,111-114,117-118,120-123,125-128,131-145,148,153-160,162-163,165-166,169,172,174,177,179-181,183
+src/renderer/features/local-conversation/view/local-conversation-end-resources.tsx
+  s_f7a266529d0a87::t_e5def76952b3a0 1-14,16,31-32,35-38,59-174,177,182,189-191
+src/renderer/features/local-conversation/view/shared/markdown/markdown-core.tsx
+  s_86459a5a6c2825::t_a9e0a3f2160a17 13,134-152
+src/renderer/features/local-conversation/view/shared/thread-resource-card.tsx
+  s_623cc4150dd212::t_412b875a1abcf7 11-13,17-20,25,31,33,37-42,45-51,53-67,69-70
+src/renderer/features/local-conversation/view/shared/tools/mcp-capability-view-frame.tsx
+  s_86459a5a6c2825::t_07ef7ec212d041 1,43,80-81,94
+src/renderer/features/local-conversation/view/summary-panel/thread-floating-summary-panel.test.tsx
+  s_f7a266529d0a87::t_0cd18c73ba14c0 36-40,45-46,411,3209,3250-3256,3282,3286,3288,3295,3313-3319,3344,3346-3369,3371,3377,3380-3381,3383-3394,3396-3406,3408-3414,3416-3421
+src/renderer/features/local-conversation/view/summary-panel/thread-floating-summary-panel.tsx
+  s_f7a266529d0a87::t_ee3538ecf0b56d 3-11,66-67,601-638,1223-1226,1228,1538,1540-1544
+src/renderer/features/local-conversation/view/use-thread-output-destination.ts
+  s_623cc4150dd212::t_cc4abed9c0a309 1-30
+src/renderer/features/local-conversation/view/use-thread-output-opener.tsx
+  s_623cc4150dd212::t_f74b18acd88435 1,4-8,10-21,23,31-38,43-44,46-58,80-82,84,86-103,105,107-127,130-179,181-218,247-249,254,257-299
+src/renderer/lib/file-reference-context-menu.jsdom.test.ts
+  s_86459a5a6c2825::t_c13f6bcf0a865d 23,60-64,113-141
+src/renderer/lib/file-reference-context-menu.ts
+  s_86459a5a6c2825::t_2f03faae7c3eb9 6-7,29-31,46-49,71,76,80-85,112-116
+src/renderer/lib/file-reference-intent.tsx
+  s_86459a5a6c2825::t_2ba4c06dfd1d66 1-18
+src/renderer/lib/file-reference-open-targets.node.test.ts
+  s_9c452b7027f5e4::t_f9dbc47a6647e2 44,55,65-90
+src/renderer/lib/file-reference-open-targets.ts
+  s_209d4d98df3af1::t_148ba339c529cb 20,44
+src/renderer/lib/file-reference-opening.test.ts
+  s_86459a5a6c2825::t_01bacf4fd2262a 1-74
+src/renderer/lib/file-reference-opening.ts
+  s_86459a5a6c2825::t_8e0d488a320ea2 1-39
+src/renderer/lib/file-reference-router.node.test.ts
+  s_86459a5a6c2825::t_87b1213d8ea0d8 1,8-35,60,72,97,142-143,145-149,151-156,158-217
+src/renderer/lib/file-reference-router.tsx
+  s_3dc0b7647fcf0b::t_7854e9b46f92ee 2-6,14-23,37-39,61,105,110,113,116,125-168,190,192,194-203,221,226,260,277
+src/renderer/lib/file-system-operations.ts
+  s_623cc4150dd212::t_fe06ce0e7f3422 6,61-64
+src/renderer/lib/inline-visualization/inline-visualization-runtime.jsdom.test.ts
+  s_86459a5a6c2825::t_0fcc02ed7a197a 24,855-891
+src/renderer/lib/inline-visualization/inline-visualization-runtime.test.ts
+  s_69a84f6a140ac0::t_b4b6dae7793837 42
+src/renderer/lib/inline-visualization/inline-visualization-runtime.ts
+  s_86459a5a6c2825::t_f47ac2bb2745f5 1-3,100,162,164-166,243-244,607,609,614-622
+src/renderer/lib/link-activation.jsdom.test.ts
+  s_86459a5a6c2825::t_96cd9c89c1c70e 1-38
+src/renderer/lib/link-activation.ts
+  s_86459a5a6c2825::t_cf14d901f5313a 1-30
+src/renderer/lib/markdown/conversation-markdown-targets.ts
+  s_b708cefbbd2f84::t_0d43c4cb4e25e4 1,61
+src/renderer/lib/mcp-app/mcp-app-host-dispatcher.test.ts
+  s_86459a5a6c2825::t_4c58db12916c17 1,5-13,53-125
+src/renderer/lib/mcp-app/mcp-app-host-dispatcher.ts
+  s_3dc0b7647fcf0b::t_aa1025137dcc0a 1-3,68-72,195-200,203-214
+src/renderer/lib/mcp-app/mcp-app-runtime.ts
+  s_3dc0b7647fcf0b::t_923aece6f97632 1-2,24-26,291-295
+src/renderer/lib/nfm-link-actions.jsdom.test.ts
+  s_3dc0b7647fcf0b::t_7529054de10ebe 1,9-10,20,173-177,211-225
+src/renderer/lib/nfm-link-actions.ts
+  s_86459a5a6c2825::t_4bd3e5efb284e0 3,10-13,29,62,76-77,139,141,144,153-160,164,198-200,215-219,227-231,293,296-298,305-316,321
+src/renderer/lib/terminal-link-opening.jsdom.test.ts
+  s_86459a5a6c2825::t_f2fc442bea7039 1-47
+src/renderer/lib/use-terminal.ts
+  s_86459a5a6c2825::t_64b6b17acd4921 4-8,266-287,290,316,323-329,433-436
+src/renderer/lib/use-workbench-panel-command-router.ts
+  s_3dc0b7647fcf0b::t_869b4272faf88e 99,165,188,211,229,232,730
+src/renderer/lib/workbench-scene-navigator.ts
+  s_3dc0b7647fcf0b::t_d9606f051e2d00 107
+src/shared/browser-profile.ts
+  s_b708cefbbd2f84::t_ea69d32a4b939a 169
+src/shared/browser/browser-permissions.ts
+  s_b708cefbbd2f84::t_8388e2f7bd0b45 1-47
+src/shared/file-link-openers.test.ts
+  s_3dc0b7647fcf0b::t_d742a7e2429ad6 71-72
+src/shared/file-link-openers.ts
+  s_86459a5a6c2825::t_d77505ee04e52e 117,143-146,148-149,151-152,154-158,162-186,197-203,210
+src/shared/file-open-applications.ts
+  s_623cc4150dd212::t_0c2502fac314e3 5-6,14
+src/shared/mcp-app/mcp-app-navigation.test.ts
+  s_86459a5a6c2825::t_4d6d9de03c78aa 1-23
+src/shared/mcp-app/mcp-app-navigation.ts
+  s_86459a5a6c2825::t_ae9e9eacc8a692 1-30
+src/shared/system-default-browser.ts
+  s_623cc4150dd212::t_a141ae4e4b026b 1-6
+tests/e2e/turn-output-cards.spec.ts
+  s_f7a266529d0a87::t_0b06336821e2fa 173-178,197,208-218
+src/main/platform/electron/BrowserElectronPlatform.ts
+  s_69a84f6a140ac0::t_7905a520c99eec 6,46,69,76,87
+src/renderer/features/local-conversation/view/use-thread-output-opener.test.tsx
+  s_9c452b7027f5e4::t_6ea8dd0a47abbb 1-282
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b7eb95c0d467b9ae15a0278feca729d3ef90c7cb",
+  "prompts": {},
+  "sessions": {
+    "s_209d4d98df3af1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a196fb-7d04-7be2-a5ec-b48f8c56d0b0",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_3022e59a160914": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1def126e-fd62-476f-9393-67b0835f01b6",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_305b2dde7b2b5c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a196cc-6591-79d2-9561-0adbbb75ae39",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_3dc0b7647fcf0b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1964e-690a-72d0-a5e2-1468f0931284",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_623cc4150dd212": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e6f5fa0f-e628-4229-a0a3-5f544be52c08",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_69a84f6a140ac0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a196e3-5cb9-7762-ba9b-5f49c747f9bd",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_86459a5a6c2825": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a196e3-00be-74f1-af80-569f113c022d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_9c452b7027f5e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a196fe-e1d8-78e2-9c3f-0e5b715ad561",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_b708cefbbd2f84": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1964e-d1d0-7381-9ea9-cb7cf0748ec9",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_c95bc4214613a4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a196cb-d7b6-7b12-8b6e-9689ec57acc2",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_d21324d71a938d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a196cb-8771-75a2-aad0-adda768ac82a",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_f7a266529d0a87": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6d174a31-7abb-4dcf-bdf5-e5129be4ca4a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
