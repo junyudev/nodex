@@ -1,0 +1,49 @@
+docs/product-specs/codex-thread-transcript-behavior.md
+  s_a5bb892838ce25::t_ee73c660e49c0a 208-210
+docs/product-specs/database-pages-and-views-behavior.md
+  s_a5bb892838ce25::t_87b9d6975d85b6 111-112
+docs/product-specs/scheduled-route-behavior.md
+  s_a5bb892838ce25::t_392c7d5460d75f 147-150
+docs/product-specs/workbench-shell.md
+  s_a5bb892838ce25::t_a657d87627ac04 27
+src/renderer/components/workbench/use-workbench-sidebar-controller.ts
+  s_a5bb892838ce25::t_33510aa062b4dd 402
+src/renderer/components/workbench/workbench-session-thread-route.tsx
+  s_a5bb892838ce25::t_848353081b9ccd 465
+src/renderer/components/workbench/workbench-shell.selection-read-state.test.tsx
+  s_a5bb892838ce25::t_ba6af3b46958f5 1-56
+src/renderer/features/local-conversation/conversation-read-state-observer.node.test.ts
+  s_a5bb892838ce25::t_cc6e9b5bf9b891 1,3-4,10-32
+src/renderer/features/local-conversation/conversation-read-state-observer.ts
+  s_a5bb892838ce25::t_75a08d62bbfc13 3-13
+src/renderer/features/local-conversation/thread-stage-types.ts
+  s_a5bb892838ce25::t_76e4655c3b15ac 366-367
+src/renderer/features/local-conversation/use-conversation-read-state.test.tsx
+  s_a5bb892838ce25::t_778f2de7a96f95 1,3,30,41,65-76,87-91,100-101,111,121-122,134,150,167,187,190,192,214,231,242-243,255-382
+src/renderer/features/local-conversation/use-conversation-read-state.ts
+  s_a5bb892838ce25::t_caf9bdbedf2ec0 4,19-20,28,30-32,63,81-82,84-118,120,146-147,149-152
+src/renderer/features/local-conversation/use-shown-conversation-read-state.test.tsx
+  s_a5bb892838ce25::t_eb97d4039c892f 1-116
+src/renderer/features/local-conversation/use-shown-conversation-read-state.ts
+  s_a5bb892838ce25::t_aff75931fbd971 12,16-17,23,28-29,51-67,86
+src/renderer/features/local-conversation/view/connected-thread-stage.test.tsx
+  s_a5bb892838ce25::t_197de31db177d9 41,2384-2386,2424-2426,2466-2480,2544,2552
+src/renderer/features/local-conversation/view/connected-thread-stage.tsx
+  s_a5bb892838ce25::t_02799b67c68dc5 619,1482,1487-1489
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f19d403e28bfd2490f132118bc3ccb82f7f8e6eb",
+  "prompts": {},
+  "sessions": {
+    "s_a5bb892838ce25": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e15d53ef-531c-43aa-afdd-245a08fa0ce0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
