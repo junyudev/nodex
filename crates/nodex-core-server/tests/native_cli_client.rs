@@ -24,9 +24,7 @@ struct ProcessGuard(u32);
 
 impl Drop for ProcessGuard {
     fn drop(&mut self) {
-        let _ = Command::new("kill")
-            .args(["-TERM", &self.0.to_string()])
-            .status();
+        let _ = nodex_platform::process::terminate_process(self.0);
     }
 }
 
@@ -69,7 +67,7 @@ fn native_client_cold_starts_reuses_and_reads_the_authenticated_core() {
     assert_eq!(schema_version, expected_schema_version);
 
     let source = home.join("source");
-    fs::create_dir(&source).expect("Project source");
+    nodex_platform::private_fs::create_dir(&source).expect("Project source");
     let project_id = "019b1000-1000-7000-8000-000000000001";
     let page_id = "019b1000-1000-7000-8000-000000000002";
     let document_id = "019b1000-1000-7000-8000-000000000003";
@@ -493,6 +491,7 @@ fn verify_native_recovery_bundle(client: &CoreClient, document_id: &str) {
 }
 
 #[test]
+#[cfg(unix)]
 fn native_core_survives_launcher_exit_and_process_group_cleanup() {
     use std::os::unix::process::CommandExt;
     use std::process::Stdio;
@@ -507,7 +506,7 @@ fn native_core_survives_launcher_exit_and_process_group_cleanup() {
             Some(Path::new(env!("CARGO_BIN_EXE_nodex-core"))),
         )
         .expect("native launcher starts Core");
-        fs::write(
+        nodex_platform::private_fs::write(
             home.join("launcher-ready"),
             client.descriptor.pid.to_string(),
         )
@@ -615,7 +614,13 @@ fn raw_post(
     use std::io::{Read, Write};
     let directory = home.join("run/core");
     let auth = fs::read_to_string(directory.join("core.auth")).unwrap();
-    let mut stream = std::os::unix::net::UnixStream::connect(directory.join("core.sock")).unwrap();
+    let descriptor: nodex_core_protocol::RuntimeDescriptor =
+        serde_json::from_slice(&fs::read(directory.join("core.json")).unwrap()).unwrap();
+    let mut stream = nodex_platform::local_endpoint::connect(
+        Path::new(&descriptor.endpoint),
+        Some(descriptor.pid),
+    )
+    .unwrap();
     let headers = headers
         .iter()
         .map(|(name, value)| format!("{name}: {value}\r\n"))
@@ -653,7 +658,7 @@ fn agent_attribution_credentials_name_the_attaching_session() {
     let page_id = "019b1000-1000-7000-8000-0000000000a2";
     let session_id = "019b1000-1000-7000-8000-0000000000a3";
     let source = home.join("source");
-    fs::create_dir(&source).unwrap();
+    nodex_platform::private_fs::create_dir(&source).unwrap();
     let workspace = |operation: &str, intent| {
         let response = client
             .workspace_apply(
@@ -833,5 +838,36 @@ fn agent_attribution_credentials_name_the_attaching_session() {
 
     drop(client);
     drop(guard);
+    wait_for_runtime_cleanup(&home);
+}
+
+#[cfg(windows)]
+#[test]
+fn shared_core_survives_the_windows_bootstrap_process() {
+    use std::io::BufRead;
+    use std::process::Stdio;
+    let directory = tempdir().unwrap();
+    let home = directory.path().canonicalize().unwrap();
+    let mut selector = Command::new(env!("CARGO_BIN_EXE_nodex-core"))
+        .args(["--home", home.to_str().unwrap()])
+        .env("NODEX_LOG_CONSOLE", "false")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    let mut line = String::new();
+    std::io::BufReader::new(selector.stdout.take().unwrap())
+        .read_line(&mut line)
+        .unwrap();
+    let selection: nodex_core_protocol::CoreSelectionResult = serde_json::from_str(&line).unwrap();
+    let _guard = ProcessGuard(selection.descriptor.pid);
+    assert_ne!(selector.id(), selection.descriptor.pid);
+    selector.kill().unwrap();
+    selector.wait().unwrap();
+    let client = CoreClient::connect(&home, "bootstrap-survival").unwrap();
+    assert_eq!(client.descriptor.pid, selection.descriptor.pid);
+    client.health().unwrap();
+    client.shutdown().unwrap();
+    drop(client);
     wait_for_runtime_cleanup(&home);
 }

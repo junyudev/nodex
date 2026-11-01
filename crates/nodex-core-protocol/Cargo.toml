@@ -6,11 +6,11 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+nodex-platform.workspace = true
 nodex-core-contracts.workspace = true
 nodex-store-format.workspace = true
 getrandom.workspace = true
 hex.workspace = true
-rustix.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true

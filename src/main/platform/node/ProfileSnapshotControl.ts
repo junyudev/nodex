@@ -1,5 +1,7 @@
 /* @effect-diagnostics asyncFunction:off newPromise:off -- Node socket acquisition is a platform boundary owned by the application Scope. */
-import { chmod, lstat, mkdir, unlink } from "node:fs/promises";
+import { chmod, lstat, mkdir, unlink, readFile, writeFile } from "node:fs/promises";
+import { randomBytes, timingSafeEqual } from "node:crypto";
+import { execFile } from "node:child_process";
 import { connect, createServer, type Socket } from "node:net";
 import { join } from "node:path";
 import * as Cause from "effect/Cause";
@@ -23,7 +25,9 @@ export class ProfileSnapshotControlError extends Schema.TaggedError<ProfileSnaps
 const failure = (cause: unknown) =>
   new ProfileSnapshotControlError({ message: "Profile snapshot coordination failed", cause });
 const MAX_RESPONSE_BYTES = 1024 * 1024;
-const requestSchema = Schema.fromJsonString(Schema.Struct({ version: Schema.Literal(1) }));
+const requestSchema = Schema.fromJsonString(
+  Schema.Struct({ version: Schema.Literal(1), capability: Schema.String }),
+);
 const releaseSchema = Schema.fromJsonString(
   Schema.Struct({ version: Schema.Literal(1), release: Schema.Literal(true) }),
 );
@@ -55,40 +59,108 @@ const encodeResponse = Schema.encodeSync(
   ),
 );
 
-const prepareSocket = async (profileHome: string): Promise<string> => {
+const rendezvousSchema = Schema.fromJsonString(
+  Schema.Struct({
+    version: Schema.Literal(1),
+    endpoint: Schema.String,
+    capability: Schema.String,
+    pid: Schema.Int,
+  }),
+);
+
+// Node cannot attach a DACL to a named pipe. Its rendezvous is protected on disk;
+// an unguessable pipe name and a connection-bound capability authenticate callers.
+const makePrivate = async (filename: string, directory: boolean): Promise<void> => {
+  if (process.platform !== "win32") return chmod(filename, directory ? 0o700 : 0o600);
+  const script = `$ErrorActionPreference='Stop'; $p=$env:NODEX_PRIVATE_PATH; $sid=[System.Security.Principal.WindowsIdentity]::GetCurrent().User; $acl=Get-Acl -LiteralPath $p; if ($acl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value -ne $sid.Value) { throw 'Profile snapshot entry has a different owner' }; $acl.SetAccessRuleProtection($true,$false); foreach ($rule in @($acl.Access)) { $acl.RemoveAccessRuleSpecific($rule) }; $inherit=if ($env:NODEX_PRIVATE_DIRECTORY -eq 'true') { 'ContainerInherit,ObjectInherit' } else { 'None' }; $rule=[System.Security.AccessControl.FileSystemAccessRule]::new($sid,'FullControl',$inherit,'None','Allow'); $acl.AddAccessRule($rule); Set-Acl -LiteralPath $p -AclObject $acl`;
+  await new Promise<void>((resolve, reject) =>
+    execFile(
+      "powershell.exe",
+      ["-NoProfile", "-NonInteractive", "-Command", script],
+      {
+        windowsHide: true,
+        env: {
+          ...process.env,
+          NODEX_PRIVATE_PATH: filename,
+          NODEX_PRIVATE_DIRECTORY: String(directory),
+        },
+      },
+      (error) => (error ? reject(error) : resolve()),
+    ),
+  );
+};
+
+const prepareSocket = async (profileHome: string) => {
   const directory = join(profileHome, "ipc");
   await mkdir(directory, { recursive: true, mode: 0o700 });
   const stat = await lstat(directory);
-  if (!stat.isDirectory() || stat.uid !== process.getuid?.() || (stat.mode & 0o077) !== 0)
+  if (!stat.isDirectory() || stat.isSymbolicLink())
+    throw new Error("Profile snapshot IPC directory must be a real directory");
+  if (
+    process.platform !== "win32" &&
+    (stat.uid !== process.getuid?.() || (stat.mode & 0o077) !== 0)
+  )
     throw new Error("Profile snapshot IPC directory must be private and owned by this user");
-  const filename = join(directory, "clone.sock");
-  const previous = await lstat(filename).catch((error: NodeJS.ErrnoException) => {
+  await makePrivate(directory, true);
+  const rendezvous = join(directory, "clone.json");
+  const socketPath = join(directory, "clone.sock");
+  const previous = await lstat(rendezvous).catch((error: NodeJS.ErrnoException) => {
     if (error.code === "ENOENT") return null;
     throw error;
   });
-  if (!previous) return filename;
-  if (!previous.isSocket() || previous.uid !== stat.uid)
-    throw new Error("Refusing to replace an unowned Profile snapshot endpoint");
-  await new Promise<void>((resolve, reject) => {
-    const probe = connect(filename);
-    probe.setTimeout(1000, () => probe.destroy(new Error("Profile endpoint probe timed out")));
-    probe.once("connect", () => {
-      probe.destroy();
-      reject(new Error("Another Desktop owns this Profile snapshot endpoint"));
+  if (previous) {
+    if (!previous.isFile() || previous.isSymbolicLink() || previous.size > 4096)
+      throw new Error("Profile snapshot rendezvous must be a bounded regular file");
+    if (
+      process.platform !== "win32" &&
+      (previous.uid !== stat.uid || (previous.mode & 0o077) !== 0)
+    )
+      throw new Error("Profile snapshot rendezvous must be private");
+    const prior = Schema.decodeUnknownSync(rendezvousSchema)(await readFile(rendezvous, "utf8"));
+    if (
+      process.platform === "win32"
+        ? !/^\\\\\.\\pipe\\nodex-clone-[a-f0-9]{32}$/u.test(prior.endpoint)
+        : prior.endpoint !== socketPath
+    )
+      throw new Error("Profile snapshot endpoint is invalid");
+    await new Promise<void>((resolve, reject) => {
+      const probe = connect(prior.endpoint);
+      probe.setTimeout(1000, () => probe.destroy(new Error("Profile endpoint probe timed out")));
+      probe.once("connect", () => {
+        probe.destroy();
+        reject(new Error("Another Desktop owns this Profile snapshot endpoint"));
+      });
+      probe.once("error", (error: NodeJS.ErrnoException) => {
+        if (error.code === "ECONNREFUSED" || error.code === "ENOENT") resolve();
+        else reject(error);
+      });
     });
-    probe.once("error", (error: NodeJS.ErrnoException) => {
-      if (error.code === "ECONNREFUSED" || error.code === "ENOENT") resolve();
-      else reject(error);
+    await unlink(rendezvous);
+  }
+  if (process.platform !== "win32") {
+    const previousSocket = await lstat(socketPath).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return null;
+      throw error;
     });
-  });
-  await unlink(filename).catch((error: NodeJS.ErrnoException) => {
-    if (error.code !== "ENOENT") throw error;
-  });
-  return filename;
+    if (previousSocket) {
+      if (!previousSocket.isSocket() || previousSocket.uid !== stat.uid)
+        throw new Error("Refusing to replace an unowned Profile snapshot socket");
+      await unlink(socketPath);
+    }
+  }
+  return {
+    rendezvous,
+    endpoint:
+      process.platform === "win32"
+        ? `\\.\pipe\nodex-clone-${randomBytes(16).toString("hex")}`
+        : socketPath,
+    capability: randomBytes(32).toString("hex"),
+  };
 };
 
 const handleConnection = Effect.fn("ProfileSnapshotControl.handleConnection")(function* (
   socket: Socket,
+  capability: string,
   withSnapshot: CodexEndpoint["Service"]["withProfileSnapshot"],
   withExecutionSnapshot?: WithExecutionSnapshot,
 ) {
@@ -138,10 +210,14 @@ const handleConnection = Effect.fn("ProfileSnapshotControl.handleConnection")(fu
       }
       socket.write(line, (error) => resume(error ? Effect.fail(failure(error)) : Effect.void));
     });
-  yield* Queue.take(messages).pipe(
+  const request = yield* Queue.take(messages).pipe(
     Effect.flatMap(Schema.decodeEffect(requestSchema)),
     Effect.timeout("5 seconds"),
   );
+  const supplied = Buffer.from(request.capability);
+  const expected = Buffer.from(capability);
+  if (supplied.length !== expected.length || !timingSafeEqual(supplied, expected))
+    return yield* Effect.fail(failure("Invalid snapshot capability"));
   const capture = (snapshot?: AgentRuntimeProfileSnapshotSource) =>
     withSnapshot(
       send("ready", undefined, snapshot).pipe(
@@ -173,7 +249,7 @@ export const serveProfileSnapshotControl = Effect.fn("serveProfileSnapshotContro
   withSnapshot: CodexEndpoint["Service"]["withProfileSnapshot"],
   withExecutionSnapshot?: WithExecutionSnapshot,
 ) {
-  const filename = yield* Effect.tryPromise({
+  const endpoint = yield* Effect.tryPromise({
     try: () => prepareSocket(profileHome),
     catch: failure,
   });
@@ -197,21 +273,44 @@ export const serveProfileSnapshotControl = Effect.fn("serveProfileSnapshotContro
     sockets.add(socket);
     socket.once("close", () => sockets.delete(socket));
     run(
-      Effect.scoped(handleConnection(socket, withSnapshot, withExecutionSnapshot)).pipe(
-        Effect.ignore,
-      ),
+      Effect.scoped(
+        handleConnection(socket, endpoint.capability, withSnapshot, withExecutionSnapshot),
+      ).pipe(Effect.ignore),
     );
   });
   yield* Effect.tryPromise({
     try: () =>
       new Promise<void>((resolve, reject) => {
         server.once("error", reject);
-        server.listen(filename, () => {
+        server.listen(endpoint.endpoint, () => {
           server.off("error", reject);
           resolve();
         });
       }),
     catch: failure,
   });
-  yield* Effect.tryPromise({ try: () => chmod(filename, 0o600), catch: failure });
+  if (process.platform !== "win32")
+    yield* Effect.tryPromise({ try: () => chmod(endpoint.endpoint, 0o600), catch: failure });
+  yield* Effect.acquireRelease(
+    Effect.tryPromise({
+      try: async () => {
+        await writeFile(
+          endpoint.rendezvous,
+          `${JSON.stringify({ version: 1, endpoint: endpoint.endpoint, capability: endpoint.capability, pid: process.pid })}\n`,
+          { flag: "wx", mode: 0o600 },
+        );
+        await makePrivate(endpoint.rendezvous, false);
+      },
+      catch: failure,
+    }),
+    () =>
+      Effect.promise(async () => {
+        const current = await readFile(endpoint.rendezvous, "utf8").catch(() => null);
+        if (
+          current &&
+          Schema.decodeUnknownSync(rendezvousSchema)(current).capability === endpoint.capability
+        )
+          await unlink(endpoint.rendezvous);
+      }),
+  );
 });

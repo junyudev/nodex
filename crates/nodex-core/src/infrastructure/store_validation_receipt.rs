@@ -1,6 +1,7 @@
-use std::fs::{self, File, OpenOptions};
+use nodex_platform::private_fs::OpenOptions;
+use std::fs;
 use std::io::{self, Write};
-use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
+
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -165,16 +166,14 @@ pub(crate) fn persist(
         file.sync_all()
             .map_err(|error| io_error("Store validation receipt could not be synced", error))?;
         drop(file);
-        fs::rename(&temporary, &path)
+        nodex_platform::private_fs::atomic_replace(&temporary, &path)
             .map_err(|error| io_error("Store validation receipt could not be published", error))?;
-        File::open(directory)
-            .and_then(|directory| directory.sync_all())
-            .map_err(|error| {
-                io_error(
-                    "Store validation receipt directory could not be synced",
-                    error,
-                )
-            })
+        nodex_platform::private_fs::sync_directory(directory).map_err(|error| {
+            io_error(
+                "Store validation receipt directory could not be synced",
+                error,
+            )
+        })
     })();
     if result.is_err() {
         let _ = fs::remove_file(&temporary);
@@ -196,37 +195,22 @@ fn remove_receipt(path: &Path) -> Result<(), StoreError> {
             false,
         )
     })?;
-    File::open(directory)
-        .and_then(|directory| directory.sync_all())
-        .map_err(|error| {
-            io_error(
-                "Store validation receipt removal could not be synced",
-                error,
-            )
-        })
+    nodex_platform::private_fs::sync_directory(directory).map_err(|error| {
+        io_error(
+            "Store validation receipt removal could not be synced",
+            error,
+        )
+    })
 }
 
-fn validate_private_regular_file(path: &Path, metadata: &fs::Metadata) -> Result<(), StoreError> {
-    if metadata.file_type().is_symlink() || !metadata.is_file() {
-        return Err(StoreError::new(
-            StoreErrorCode::InvalidProfile,
-            "Store validation receipt must be a regular file",
-            false,
-        ));
-    }
-    if metadata.uid() != rustix::process::geteuid().as_raw()
-        || metadata.permissions().mode() & 0o777 != PRIVATE_FILE_MODE
-    {
-        return Err(StoreError::new(
-            StoreErrorCode::InvalidProfile,
-            format!(
-                "Store validation receipt has unsafe ownership or mode: {}",
-                path.display()
-            ),
-            false,
-        ));
-    }
-    Ok(())
+fn validate_private_regular_file(path: &Path, _metadata: &fs::Metadata) -> Result<(), StoreError> {
+    nodex_platform::private_fs::checked_metadata(
+        path,
+        nodex_platform::private_fs::EntryKind::File,
+        Some(PRIVATE_FILE_MODE),
+    )
+    .map(|_| ())
+    .map_err(|error| io_error("Store validation receipt is unsafe", error))
 }
 
 fn valid_receipt(receipt: &StoreValidationReceipt) -> bool {

@@ -1,13 +1,14 @@
 //! Adapter for Codex's local conversation persistence (state layout 5 and JSONL rollouts).
 //! Native pagination indexes are part of the readable closure; credentials and queues are not.
 use std::collections::{BTreeMap, BTreeSet};
-use std::fs::{self, File, OpenOptions};
+use std::fs::{self, File};
 use std::io::{BufRead, BufReader, Read};
-use std::os::unix::fs::OpenOptionsExt;
+
 use std::path::{Component, Path, PathBuf};
 use std::time::Duration;
 
 use nodex_core::administration::ProfileCloneThread;
+use nodex_platform::private_fs::OpenOptions;
 use rusqlite::{Connection, OpenFlags};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -81,7 +82,6 @@ impl IdleWriters {
             .create(true)
             .truncate(false)
             .mode(0o600)
-            .custom_flags(rustix::fs::OFlags::NOFOLLOW.bits() as i32)
             .open(&path)?;
         lock.try_lock().map_err(|_| {
             invalid("Source Agent is busy; stop its runtime before cloning the Profile")

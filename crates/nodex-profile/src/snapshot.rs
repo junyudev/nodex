@@ -728,7 +728,7 @@ mod tests {
             };
             json!({"instanceId":provider.provider_instance_id,"driver":provider.driver,"continuation":{"groupKey":key}})
         }).collect();
-        fs::write(
+        nodex_platform::private_fs::write(
             profile.join("agent-runtime/provider-catalog.json"),
             json!({
                 "version":1,"identity":"a".repeat(64),"providers":providers
@@ -823,7 +823,7 @@ mod tests {
                 .unwrap(),
                 _ => unreachable!(),
             }
-            fs::write(&path, catalog.to_string()).unwrap();
+            nodex_platform::private_fs::write(&path, catalog.to_string()).unwrap();
             assert!(
                 capture(ProfileSnapshotCapture {
                     source_profile: source.path(),
@@ -846,7 +846,7 @@ mod tests {
 
     #[test]
     fn materializes_claude_fork_transcript_aliases_as_independent_files() {
-        use std::os::unix::fs::symlink;
+        use nodex_platform::private_fs::symlink;
         let source = tempfile::tempdir().unwrap();
         let staged = tempfile::tempdir().unwrap();
         let input = fixture(source.path());
@@ -857,7 +857,7 @@ mod tests {
         let alias = claude.join(&relative);
         let target = claude.join("projects/workspace/parent/subagents/agent-child.jsonl");
         files::private_directory(target.parent().unwrap()).unwrap();
-        fs::rename(&alias, &target).unwrap();
+        nodex_platform::private_fs::atomic_replace(&alias, &target).unwrap();
         files::private_directory(alias.parent().unwrap()).unwrap();
         symlink(&target, &alias).unwrap();
         assert!(
@@ -969,7 +969,11 @@ mod tests {
                 fs::remove_file(&transcript).unwrap();
             }
             if failure == "foreign" {
-                fs::write(&transcript, format!("{}\n", json!({"sessionId":"foreign"}))).unwrap();
+                nodex_platform::private_fs::write(
+                    &transcript,
+                    format!("{}\n", json!({"sessionId":"foreign"})),
+                )
+                .unwrap();
             }
             if failure == "child" {
                 rusqlite::Connection::open(&input.database_path).unwrap().execute("UPDATE orchestration_v2_projection_threads SET payload_json=?1 WHERE thread_id='thread:claude'",[json!({"lineage":{"rootThreadId":"thread:codex","parentThreadId":"thread:codex"}}).to_string()]).unwrap();

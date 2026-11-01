@@ -208,6 +208,7 @@ fn internal(error: impl std::fmt::Display) -> CliError {
 mod tests {
     use super::*;
 
+    #[cfg(unix)]
     #[test]
     fn launcher_failure_is_captured_in_one_structured_error() {
         let error = run_launcher(Command::new("/bin/sh").args([

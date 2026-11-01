@@ -53210,7 +53210,7 @@
           "actual_store_format",
           "pid",
           "start_nonce",
-          "socket_path",
+          "endpoint",
           "profile_id",
           "store_epoch",
           "readiness_generation"
@@ -53241,7 +53241,7 @@
             "format": "int64",
             "minimum": 0
           },
-          "socket_path": {
+          "endpoint": {
             "type": "string"
           },
           "start_nonce": {

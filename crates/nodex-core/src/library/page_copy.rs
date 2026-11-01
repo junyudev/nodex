@@ -1663,7 +1663,7 @@ mod tests {
     fn seeded_kernel() -> (TempDir, SqliteStoreKernel) {
         let directory = tempdir().expect("Profile");
         let home = directory.path().canonicalize().expect("absolute Profile");
-        std::fs::create_dir(home.join("assets")).expect("assets root");
+        nodex_platform::private_fs::create_dir(home.join("assets")).expect("assets root");
         let kernel = SqliteStoreKernel::open_test(&home).expect("fresh store");
         kernel
             .writer()

@@ -46,7 +46,7 @@ const DEFAULT_REQUEST_DEADLINES_MS: Readonly<Record<CoreRequestClass, number>> =
   maintenance: CORE_TRANSPORT_BUDGETS.maintenance_request_deadline_ms,
 };
 
-export interface UdsHttpTransportOptions {
+export interface LocalHttpTransportOptions {
   readonly maximumJsonResponseBytes?: number;
   readonly requestTimeoutMs?: number;
 }
@@ -229,7 +229,7 @@ interface ProjectionLiveStreamOptions {
   readonly onRepair: (repair: ProjectionLiveRepair) => void;
 }
 
-export class UdsHttpTransport {
+export class LocalHttpTransport {
   readonly #maximumJsonResponseBytes: number;
   readonly #transportLivenessTimeoutMs: number;
   #eventContract: CoreEventContract | null = null;
@@ -237,7 +237,7 @@ export class UdsHttpTransport {
   constructor(
     readonly socketPath: string,
     readonly authCapability: string,
-    options: UdsHttpTransportOptions = {},
+    options: LocalHttpTransportOptions = {},
   ) {
     this.#maximumJsonResponseBytes = boundedPositiveInteger(
       options.maximumJsonResponseBytes ?? MAX_JSON_RESPONSE_BYTES,

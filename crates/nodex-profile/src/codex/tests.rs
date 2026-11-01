@@ -1,7 +1,7 @@
 use super::*;
+use nodex_platform::private_fs::symlink;
 use serde_json::json;
 use std::io::Write;
-use std::os::unix::fs::symlink;
 
 const ROOT: &str = "11111111-1111-7111-8111-111111111111";
 const CHILD: &str = "22222222-2222-7222-8222-222222222222";
@@ -69,11 +69,12 @@ fn captures_the_active_native_home_into_an_independent_profile_home() {
     let target = root.path().join("snapshot");
     let (relative, _) = write_rollout(&native, ROOT, ROOT, Value::Null, false, false);
     state(&native, &[(ROOT, &relative)]);
-    fs::write(native.join("auth.json"), "private").unwrap();
-    fs::write(native.join("config.toml"), "model = 'native-model'\n").unwrap();
+    nodex_platform::private_fs::write(native.join("auth.json"), "private").unwrap();
+    nodex_platform::private_fs::write(native.join("config.toml"), "model = 'native-model'\n")
+        .unwrap();
     let receipt = source.join("runtime/agent/codex-home.json");
     files::private_directory(receipt.parent().unwrap()).unwrap();
-    fs::write(
+    nodex_platform::private_fs::write(
         &receipt,
         json!({"version":1,"codexHome":native}).to_string(),
     )
@@ -138,7 +139,7 @@ fn captures_new_account_overlay_conversations_from_the_shared_physical_history()
             .unwrap();
         let home_receipt = source.join("runtime/agent/codex-home.json");
         files::private_directory(home_receipt.parent().unwrap()).unwrap();
-        fs::write(
+        nodex_platform::private_fs::write(
             &home_receipt,
             json!({"version":1,"codexHome":shared}).to_string(),
         )
@@ -233,7 +234,7 @@ fn rejects_invalid_active_home_receipts_instead_of_falling_back_to_legacy_histor
         json!({"version":1,"codexHome":"relative"}),
         json!({"version":1}),
     ] {
-        fs::write(&receipt, value.to_string()).unwrap();
+        nodex_platform::private_fs::write(&receipt, value.to_string()).unwrap();
         let error = source_codex_home(&source).unwrap_err();
         assert!(
             error
@@ -241,7 +242,7 @@ fn rejects_invalid_active_home_receipts_instead_of_falling_back_to_legacy_histor
                 .contains("Invalid active Codex home receipt")
         );
     }
-    fs::write(&receipt, " ".repeat(16_385)).unwrap();
+    nodex_platform::private_fs::write(&receipt, " ".repeat(16_385)).unwrap();
     assert!(
         source_codex_home(&source)
             .unwrap_err()
@@ -250,7 +251,7 @@ fn rejects_invalid_active_home_receipts_instead_of_falling_back_to_legacy_histor
     );
     fs::remove_file(&receipt).unwrap();
     let other = root.path().join("receipt.json");
-    fs::write(
+    nodex_platform::private_fs::write(
         &other,
         json!({"version":1,"codexHome":"/native"}).to_string(),
     )
@@ -276,7 +277,7 @@ fn accepts_absent_and_known_history_modes_but_rejects_malformed_present_values()
     for (mode, paginated) in [("legacy", false), ("paginated", true)] {
         let mut meta = original.clone();
         meta["payload"]["history_mode"] = json!(mode);
-        fs::write(agent.join(&relative), format!("{meta}\n")).unwrap();
+        nodex_platform::private_fs::write(agent.join(&relative), format!("{meta}\n")).unwrap();
         assert_eq!(
             read_rollout(&agent, &relative).unwrap().paginated,
             paginated
@@ -295,7 +296,7 @@ fn accepts_absent_and_known_history_modes_but_rejects_malformed_present_values()
     {
         let mut meta = original.clone();
         meta["payload"]["history_mode"] = mode;
-        fs::write(agent.join(&relative), format!("{meta}\n")).unwrap();
+        nodex_platform::private_fs::write(agent.join(&relative), format!("{meta}\n")).unwrap();
         let target = root.path().join(format!("invalid-{index}"));
         let error = capture(&source, &target, &target, &[thread(ROOT)]).unwrap_err();
         assert!(
@@ -575,7 +576,7 @@ fn keeps_selected_revert_archives_inherited_bytes_and_metadata_in_an_independent
         "queue_1.sqlite",
         "logs_2.sqlite",
     ] {
-        fs::write(
+        nodex_platform::private_fs::write(
             agent.join(name),
             if name == "config.toml" {
                 ""
@@ -590,7 +591,8 @@ fn keeps_selected_revert_archives_inherited_bytes_and_metadata_in_an_independent
     assert_eq!(result.captured_thread_count, 2);
     assert!(result.missing_thread_ids.is_empty());
     assert_eq!(result.rollout_count, 3);
-    fs::rename(&source, root.path().join("source-unavailable")).unwrap();
+    nodex_platform::private_fs::atomic_replace(&source, root.path().join("source-unavailable"))
+        .unwrap();
     let db = Connection::open(target.join("agent/state_5.sqlite")).unwrap();
     let (selected, title): (String, String) = db
         .query_row(
@@ -632,7 +634,7 @@ fn rejects_unfinished_rollouts_even_without_required_threads() {
     let path = agent.join(relative);
     let mut bytes = fs::read(&path).unwrap();
     bytes.pop();
-    fs::write(&path, bytes).unwrap();
+    nodex_platform::private_fs::write(&path, bytes).unwrap();
     let error = capture(&source, &target, &target, &[]).unwrap_err();
     assert!(error.to_string().contains("unfinished record"));
 }
@@ -673,7 +675,7 @@ fn paginated_history_requires_its_matching_native_projection() {
         serde_json::from_slice(&fs::read(agent.join(&relative)).unwrap()).unwrap();
     meta["payload"]["history_mode"] = json!("paginated");
     let bytes = format!("{meta}\n");
-    fs::write(agent.join(&relative), &bytes).unwrap();
+    nodex_platform::private_fs::write(agent.join(&relative), &bytes).unwrap();
     let clone = |name: &str| {
         capture(
             &source,
@@ -893,7 +895,7 @@ fn rejects_symlinks_and_native_paths_into_another_home() {
     fs::remove_file(agent.join("state_5.sqlite")).unwrap();
     let file = agent.join(&relative);
     let moved = agent.join("original");
-    fs::rename(&file, &moved).unwrap();
+    nodex_platform::private_fs::atomic_replace(&file, &moved).unwrap();
     symlink(&moved, &file).unwrap();
     assert!(
         capture(

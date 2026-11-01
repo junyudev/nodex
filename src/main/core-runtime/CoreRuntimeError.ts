@@ -5,7 +5,7 @@ import {
   CoreEventCompatibilityError,
   CoreHttpError,
   isDefinitiveCoreGenerationLoss,
-} from "../core-client/uds-http";
+} from "../core-client/local-http";
 
 export const CoreRuntimeFailureReason = Schema.Literals([
   "launch",

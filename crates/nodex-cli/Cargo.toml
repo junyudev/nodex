@@ -10,6 +10,7 @@ name = "nodex"
 path = "src/main.rs"
 
 [dependencies]
+nodex-platform.workspace = true
 nodex-profile.workspace = true
 nodex-core-contracts.workspace = true
 nodex-core-protocol.workspace = true
@@ -21,8 +22,6 @@ hex.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
-signal-hook.workspace = true
-rustix.workspace = true
 similar.workspace = true
 thiserror.workspace = true
 toml.workspace = true

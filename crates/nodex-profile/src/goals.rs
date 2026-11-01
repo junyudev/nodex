@@ -1,10 +1,11 @@
 //! Relocates current Nodex-managed goal references in an unpublished native snapshot.
 //! Formats are owned by `src/main/thread-goal-attachments.ts`; rollouts are never rewritten.
 
+use nodex_platform::private_fs::OpenOptions;
 use std::collections::BTreeMap;
-use std::fs::OpenOptions;
+
 use std::io::{Read, Write};
-use std::os::unix::fs::OpenOptionsExt;
+
 use std::path::{Path, PathBuf};
 
 use rusqlite::{Connection, OpenFlags};
@@ -352,11 +353,7 @@ fn write_text(path: &Path, text: &str) -> Result<()> {
         return Err(invalid("Relocated references exceed their text byte limit"));
     }
     files::fingerprint(path)?;
-    let mut file = OpenOptions::new()
-        .write(true)
-        .truncate(true)
-        .custom_flags(rustix::fs::OFlags::NOFOLLOW.bits() as i32)
-        .open(path)?;
+    let mut file = OpenOptions::new().write(true).truncate(true).open(path)?;
     file.write_all(text.as_bytes())?;
     file.flush()?;
     Ok(())

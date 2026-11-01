@@ -695,7 +695,7 @@ fn validate_assets(
     missing_asset_policy: MissingAssetPolicy,
 ) -> Result<usize, StoreError> {
     let metadata = fs::symlink_metadata(assets_root).map_err(io_error)?;
-    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+    if nodex_platform::private_fs::is_reparse_point(&metadata) || !metadata.is_dir() {
         return Err(corrupt(
             "Restore candidate managed assets root is not a real directory",
         ));
@@ -707,7 +707,7 @@ fn validate_assets(
         };
         let metadata = fs::symlink_metadata(entry.path()).map_err(io_error)?;
         if !safe_asset_file_name(&file_name)
-            || metadata.file_type().is_symlink()
+            || nodex_platform::private_fs::is_reparse_point(&metadata)
             || !metadata.is_file()
         {
             return Err(corrupt(
@@ -839,7 +839,7 @@ fn read_asset(
         }
         Err(error) => return Err(io_error(error)),
     };
-    if metadata.file_type().is_symlink()
+    if nodex_platform::private_fs::is_reparse_point(&metadata)
         || !metadata.is_file()
         || maximum_bytes.is_some_and(|maximum| metadata.len() > maximum)
     {
@@ -1036,7 +1036,8 @@ mod tests {
                 .expect("snapshot preserves missing evidence"),
             1
         );
-        fs::write(assets.path().join("missing.png"), b"available").expect("managed asset");
+        nodex_platform::private_fs::write(assets.path().join("missing.png"), b"available")
+            .expect("managed asset");
         assert_eq!(
             validate_assets(&connection, assets.path(), MissingAssetPolicy::Reject,)
                 .expect("complete restore closure"),
@@ -1092,7 +1093,8 @@ mod tests {
             )
             .expect("managed Blob evidence");
         let assets = tempdir().expect("assets");
-        fs::write(assets.path().join("file-test.blob"), b"forged-bytes!").expect("tampered Blob");
+        nodex_platform::private_fs::write(assets.path().join("file-test.blob"), b"forged-bytes!")
+            .expect("tampered Blob");
 
         let error = validate_assets(&connection, assets.path(), MissingAssetPolicy::Reject)
             .expect_err("restore must reject a tampered File Blob");

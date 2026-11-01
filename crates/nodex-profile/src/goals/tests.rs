@@ -1,7 +1,7 @@
 use super::*;
+use nodex_platform::private_fs::symlink;
 use serde_json::{Value, json};
 use std::fs;
-use std::os::unix::fs::symlink;
 use tempfile::{TempDir, tempdir};
 
 const DIRECTORY: &str = "11111111-1111-4111-8111-111111111111";
@@ -276,7 +276,11 @@ fn source_may_be_unavailable_and_external_or_non_generated_references_are_untouc
         ("prose", &prose),
     ]);
     fixture.copy();
-    fs::rename(&fixture.source, fixture.source.with_file_name("hidden")).unwrap();
+    nodex_platform::private_fs::atomic_replace(
+        &fixture.source,
+        fixture.source.with_file_name("hidden"),
+    )
+    .unwrap();
     fixture.run().unwrap();
     assert_eq!(
         fixture.objective("owned"),
@@ -353,7 +357,7 @@ fn bounds_rows_strings_and_file_reads_before_retaining_them() {
         )
         .is_err()
     );
-    fs::write(&path, "12345").unwrap();
+    nodex_platform::private_fs::write(&path, "12345").unwrap();
     assert!(
         read_text(
             &path,

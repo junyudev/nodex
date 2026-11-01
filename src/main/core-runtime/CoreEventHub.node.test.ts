@@ -23,7 +23,7 @@ import {
   type CoreEventDeliveryService,
   type CoreEventHubService,
 } from "./CoreEventHub";
-import { CoreTransportError } from "../core-client/uds-http";
+import { CoreTransportError } from "../core-client/local-http";
 import { classifyCoreOperationFailure, coreRuntimeError } from "./CoreRuntimeError";
 
 interface OpenedStream {

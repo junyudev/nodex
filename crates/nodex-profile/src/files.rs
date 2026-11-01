@@ -1,7 +1,8 @@
+use nodex_platform::private_fs::OpenOptions;
 use std::collections::BTreeMap;
-use std::fs::{self, File, OpenOptions};
+use std::fs::{self, File};
 use std::io::{Read, Write};
-use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt};
+
 use std::path::{Component, Path, PathBuf};
 
 use crate::{ProfileCloneError, Result};
@@ -29,24 +30,22 @@ pub(crate) fn invalid(message: impl Into<String>) -> ProfileCloneError {
 
 pub(crate) fn fingerprint(path: &Path) -> Result<Fingerprint> {
     let meta = fs::symlink_metadata(path)?;
-    if !meta.is_file() || meta.file_type().is_symlink() {
-        return Err(invalid(format!(
-            "Conversation artifact must be a regular file: {}",
-            path.display()
-        )));
+    if !meta.is_file() || nodex_platform::private_fs::is_reparse_point(&meta) {
+        return Err(invalid("Conversation artifact must be a regular file"));
     }
+    let identity = nodex_platform::private_fs::file_identity(path)?;
     Ok(Fingerprint {
-        device: meta.dev(),
-        inode: meta.ino(),
+        device: identity.device,
+        inode: identity.inode,
         length: meta.len(),
-        modified: (meta.mtime(), meta.mtime_nsec()),
-        changed: (meta.ctime(), meta.ctime_nsec()),
+        modified: identity.modified,
+        changed: identity.changed,
     })
 }
 
 pub(crate) fn require_directory(path: &Path) -> Result<()> {
     let meta = fs::symlink_metadata(path)?;
-    if !meta.is_dir() || meta.file_type().is_symlink() {
+    if !meta.is_dir() || nodex_platform::private_fs::is_reparse_point(&meta) {
         return Err(invalid(format!(
             "Conversation directory must be a real directory: {}",
             path.display()
@@ -64,10 +63,7 @@ pub(crate) fn exists(path: &Path) -> Result<bool> {
 }
 
 pub(crate) fn private_directory(path: &Path) -> Result<()> {
-    fs::DirBuilder::new()
-        .recursive(true)
-        .mode(0o700)
-        .create(path)?;
+    nodex_platform::private_fs::create_dir_all(path)?;
     require_directory(path)
 }
 
@@ -85,10 +81,7 @@ pub(crate) fn create_file(path: &Path) -> Result<File> {
 
 pub(crate) fn read_file(path: &Path) -> Result<File> {
     fingerprint(path)?;
-    Ok(OpenOptions::new()
-        .read(true)
-        .custom_flags(rustix::fs::OFlags::NOFOLLOW.bits() as i32)
-        .open(path)?)
+    Ok(OpenOptions::new().read(true).open(path)?)
 }
 
 pub(crate) fn relative_path(root: &Path, path: &Path) -> Result<PathBuf> {

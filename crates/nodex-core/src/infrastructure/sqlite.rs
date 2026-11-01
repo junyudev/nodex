@@ -1,8 +1,8 @@
 use nodex_core_contracts::{CoreError, CoreErrorCode, CoreErrorRecovery};
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
-use std::{os::unix::ffi::OsStrExt, path::Path};
 
 use rusqlite::limits::Limit;
 use rusqlite::{Connection, ErrorCode, OpenFlags, TransactionBehavior};
@@ -205,12 +205,11 @@ pub fn open_immutable_reader(path: &Path) -> Result<Connection, StoreError> {
             false,
         )
     })?;
-    let encoded = canonical
-        .as_os_str()
-        .as_bytes()
+    let encoded = nodex_platform::process::uri_path_bytes(&canonical)
+        .map_err(|error| StoreError::new(StoreErrorCode::InvalidProfile, error.to_string(), false))?
         .iter()
         .map(|byte| match byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'/' | b'.' | b'_' | b'-' => {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'/' | b':' | b'.' | b'_' | b'-' => {
                 char::from(*byte).to_string()
             }
             _ => format!("%{byte:02X}"),

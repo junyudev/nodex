@@ -1,7 +1,8 @@
-use std::fs::{self, OpenOptions};
+use nodex_platform::private_fs::OpenOptions;
+use std::fs::{self};
 use std::io::{BufRead, BufReader, Read, Write};
-use std::os::unix::fs::PermissionsExt;
-use std::os::unix::net::{UnixListener, UnixStream};
+
+use nodex_platform::local_endpoint::{self, BlockingListener, Stream};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
@@ -72,7 +73,8 @@ fn request_bytes_with_headers(
     body: &[u8],
     headers: &[(&str, &str)],
 ) -> String {
-    let mut stream = UnixStream::connect(socket).expect("connect to Core socket");
+    let mut stream = local_endpoint::connect(std::path::Path::new(socket), None)
+        .expect("connect to Core socket");
     let headers = headers
         .iter()
         .map(|(name, value)| format!("{name}: {value}\r\n"))
@@ -107,13 +109,9 @@ fn request_bytes_with_headers(
     response
 }
 
-fn open_sse(
-    socket: &str,
-    auth: &str,
-    path: &str,
-    headers: &[(&str, &str)],
-) -> BufReader<UnixStream> {
-    let mut stream = UnixStream::connect(socket).expect("connect SSE to Core socket");
+fn open_sse(socket: &str, auth: &str, path: &str, headers: &[(&str, &str)]) -> BufReader<Stream> {
+    let mut stream = local_endpoint::connect(std::path::Path::new(socket), None)
+        .expect("connect SSE to Core socket");
     stream
         .set_read_timeout(Some(Duration::from_secs(5)))
         .expect("bound SSE read timeout");
@@ -180,7 +178,7 @@ fn bind_test_client(descriptor: &RuntimeDescriptor, auth: &str, connection_id: &
     })
     .expect("handshake JSON");
     let response = request(
-        &descriptor.socket_path,
+        &descriptor.endpoint,
         auth,
         "POST",
         "/core/v1/handshake",
@@ -234,7 +232,7 @@ fn drain_idle_core(descriptor: &RuntimeDescriptor, auth: &str) {
     loop {
         assert!(Instant::now() < deadline, "Core never became idle");
         let response = request(
-            &descriptor.socket_path,
+            &descriptor.endpoint,
             auth,
             "POST",
             "/core/v1/admin/shutdown",
@@ -287,20 +285,16 @@ fn concurrent_launchers_reuse_one_authenticated_profile_core() {
         "core.json",
         "core.auth",
         "lifecycle.json",
-    ] {
-        let mode = fs::symlink_metadata(runtime.join(name))
-            .expect("runtime entry")
-            .permissions()
-            .mode()
-            & 0o777;
+    ]
+    .into_iter()
+    .filter(|name| cfg!(unix) || *name != "core.sock")
+    {
+        let mode = nodex_platform::private_fs::effective_mode(runtime.join(name))
+            .expect("runtime permissions");
         assert_eq!(mode, 0o600, "{name}");
     }
     assert_eq!(
-        fs::metadata(&runtime)
-            .expect("runtime directory")
-            .permissions()
-            .mode()
-            & 0o777,
+        nodex_platform::private_fs::effective_mode(&runtime).expect("filesystem access"),
         0o700
     );
 
@@ -308,19 +302,19 @@ fn concurrent_launchers_reuse_one_authenticated_profile_core() {
         .expect("auth capability")
         .trim()
         .to_owned();
-    let unauthorized = request(&expected.socket_path, "wrong", "GET", "/core/v1/health", "");
+    let unauthorized = request(&expected.endpoint, "wrong", "GET", "/core/v1/health", "");
     assert!(
         unauthorized.starts_with("HTTP/1.1 401"),
         "unexpected unauthorized response: {unauthorized:?}"
     );
     const PRIVATE_PATH_SENTINEL: &str = "PRIVATE_PATH_MUST_NOT_REACH_CORE_LOGS";
     let unknown_path = format!("/{PRIVATE_PATH_SENTINEL}");
-    let unknown = request(&expected.socket_path, "wrong", "GET", &unknown_path, "");
+    let unknown = request(&expected.endpoint, "wrong", "GET", &unknown_path, "");
     assert!(
         unknown.starts_with("HTTP/1.1 401"),
         "unexpected unknown-path response: {unknown:?}"
     );
-    let health = request(&expected.socket_path, &auth, "GET", "/core/v1/health", "");
+    let health = request(&expected.endpoint, &auth, "GET", "/core/v1/health", "");
     assert!(health.starts_with("HTTP/1.1 200"));
     assert!(health.contains(&format!("\"pid\":{}", expected.pid)));
 
@@ -335,7 +329,7 @@ fn concurrent_launchers_reuse_one_authenticated_profile_core() {
     })
     .expect("handshake JSON");
     let response = request(
-        &expected.socket_path,
+        &expected.endpoint,
         &auth,
         "POST",
         "/core/v1/handshake",
@@ -363,7 +357,7 @@ fn concurrent_launchers_reuse_one_authenticated_profile_core() {
     })
     .expect("downgrade JSON");
     let downgrade = request(
-        &expected.socket_path,
+        &expected.endpoint,
         &auth,
         "POST",
         "/core/v1/handshake",
@@ -382,7 +376,7 @@ fn concurrent_launchers_reuse_one_authenticated_profile_core() {
     })
     .expect("rebind JSON");
     let rebound = request(
-        &expected.socket_path,
+        &expected.endpoint,
         &auth,
         "POST",
         "/core/v1/handshake",
@@ -400,7 +394,7 @@ fn concurrent_launchers_reuse_one_authenticated_profile_core() {
     })
     .to_string();
     let read = request_with_headers(
-        &expected.socket_path,
+        &expected.endpoint,
         &auth,
         "POST",
         "/core/v1/modules/library/read",
@@ -438,7 +432,7 @@ fn concurrent_launchers_reuse_one_authenticated_profile_core() {
     })
     .to_string();
     let initial_project = request_with_headers(
-        &expected.socket_path,
+        &expected.endpoint,
         &auth,
         "POST",
         "/core/v1/modules/workspace/apply",
@@ -466,7 +460,7 @@ fn concurrent_launchers_reuse_one_authenticated_profile_core() {
         ("x-nodex-connection-binding", connection_binding.as_str()),
     ];
     let apply = request_with_headers(
-        &expected.socket_path,
+        &expected.endpoint,
         &auth,
         "POST",
         "/core/v1/modules/library/apply",
@@ -499,7 +493,7 @@ fn concurrent_launchers_reuse_one_authenticated_profile_core() {
     })
     .to_string();
     let logged_apply = request_with_headers(
-        &expected.socket_path,
+        &expected.endpoint,
         &auth,
         "POST",
         "/core/v1/modules/library/apply",
@@ -513,7 +507,7 @@ fn concurrent_launchers_reuse_one_authenticated_profile_core() {
         .expect("logged commit sequence");
 
     let replay = request_with_headers(
-        &expected.socket_path,
+        &expected.endpoint,
         &auth,
         "POST",
         "/core/v1/modules/library/apply",
@@ -547,7 +541,7 @@ fn concurrent_launchers_reuse_one_authenticated_profile_core() {
     })
     .to_string();
     let created_database = request_with_headers(
-        &expected.socket_path,
+        &expected.endpoint,
         &auth,
         "POST",
         "/core/v1/modules/library/apply",
@@ -568,7 +562,7 @@ fn concurrent_launchers_reuse_one_authenticated_profile_core() {
     })
     .expect("Database Property window JSON");
     let database_read = request_with_headers(
-        &expected.socket_path,
+        &expected.endpoint,
         &auth,
         "POST",
         "/core/v1/modules/database/read",
@@ -601,7 +595,7 @@ fn concurrent_launchers_reuse_one_authenticated_profile_core() {
     })
     .to_string();
     let database_apply = request_with_headers(
-        &expected.socket_path,
+        &expected.endpoint,
         &auth,
         "POST",
         "/core/v1/modules/database/apply",
@@ -619,7 +613,7 @@ fn concurrent_launchers_reuse_one_authenticated_profile_core() {
     let malformed_workspace = malformed_workspace.to_string();
     for (body, status) in [("{", "400"), (malformed_workspace.as_str(), "422")] {
         let response = request_with_headers(
-            &expected.socket_path,
+            &expected.endpoint,
             &auth,
             "POST",
             "/core/v1/modules/workspace/apply",
@@ -639,7 +633,7 @@ fn concurrent_launchers_reuse_one_authenticated_profile_core() {
     }
 
     let oversized = request(
-        &expected.socket_path,
+        &expected.endpoint,
         &auth,
         "POST",
         "/core/v1/handshake",
@@ -654,7 +648,7 @@ fn concurrent_launchers_reuse_one_authenticated_profile_core() {
     );
 
     let invalid_utf8 = request_bytes_with_headers(
-        &expected.socket_path,
+        &expected.endpoint,
         &auth,
         "POST",
         "/core/v1/handshake",
@@ -665,7 +659,7 @@ fn concurrent_launchers_reuse_one_authenticated_profile_core() {
 
     let deep_json = format!("{}0{}", "[".repeat(34), "]".repeat(34));
     let deep_json = request(
-        &expected.socket_path,
+        &expected.endpoint,
         &auth,
         "POST",
         "/core/v1/handshake",
@@ -674,7 +668,7 @@ fn concurrent_launchers_reuse_one_authenticated_profile_core() {
     assert!(deep_json.starts_with("HTTP/1.1 400"));
 
     let handoff = request(
-        &expected.socket_path,
+        &expected.endpoint,
         &auth,
         "POST",
         "/core/v1/admin/shutdown",
@@ -689,7 +683,7 @@ fn concurrent_launchers_reuse_one_authenticated_profile_core() {
     let mut forged_descriptor = expected.clone();
     forged_descriptor.start_nonce = "f".repeat(32);
     let forged_handoff = request(
-        &expected.socket_path,
+        &expected.endpoint,
         &auth,
         "POST",
         "/core/v1/admin/shutdown",
@@ -706,7 +700,7 @@ fn concurrent_launchers_reuse_one_authenticated_profile_core() {
         .expect("Workspace contract")
         .versions = nodex_core_protocol::VersionRange::exact(1);
     let downgrade_handoff = request(
-        &expected.socket_path,
+        &expected.endpoint,
         &auth,
         "POST",
         "/core/v1/admin/shutdown",
@@ -715,7 +709,7 @@ fn concurrent_launchers_reuse_one_authenticated_profile_core() {
     assert!(downgrade_handoff.starts_with("HTTP/1.1 200"));
     assert_eq!(response_json(&downgrade_handoff)["status"], "incompatible");
     let legacy_handoff = request(
-        &expected.socket_path,
+        &expected.endpoint,
         &auth,
         "POST",
         "/core/v1/admin/shutdown",
@@ -724,7 +718,7 @@ fn concurrent_launchers_reuse_one_authenticated_profile_core() {
     assert!(legacy_handoff.starts_with("HTTP/1.1 422"));
 
     let unbound_shutdown = request(
-        &expected.socket_path,
+        &expected.endpoint,
         &auth,
         "POST",
         "/core/v1/admin/shutdown",
@@ -733,12 +727,12 @@ fn concurrent_launchers_reuse_one_authenticated_profile_core() {
     assert!(unbound_shutdown.starts_with("HTTP/1.1 401"));
 
     let mut event_stream = open_sse(
-        &expected.socket_path,
+        &expected.endpoint,
         &auth,
         "/core/v1/events?after=0",
         &connection_headers,
     );
-    let health = wait_for_event_replay_metrics(&expected.socket_path, &auth);
+    let health = wait_for_event_replay_metrics(&expected.endpoint, &auth);
     assert_eq!(health["status"], "ready");
     assert_eq!(health["metrics"]["active_event_subscriptions"], 1);
     assert!(health["metrics"]["active_clients"].as_u64().unwrap() >= 1);
@@ -766,7 +760,7 @@ fn concurrent_launchers_reuse_one_authenticated_profile_core() {
     assert_eq!(health["metrics"]["dropped_log_records"], 0);
 
     let shutdown = request_with_headers(
-        &expected.socket_path,
+        &expected.endpoint,
         &auth,
         "POST",
         "/core/v1/admin/shutdown",
@@ -799,11 +793,7 @@ fn concurrent_launchers_reuse_one_authenticated_profile_core() {
 
     let log_directory = home.join("logs");
     assert_eq!(
-        fs::metadata(&log_directory)
-            .expect("Core log directory")
-            .permissions()
-            .mode()
-            & 0o777,
+        nodex_platform::private_fs::effective_mode(&log_directory).expect("filesystem access"),
         0o700
     );
     let mut log_entries = Vec::new();
@@ -817,7 +807,7 @@ fn concurrent_launchers_reuse_one_authenticated_profile_core() {
         }
         let metadata = fs::symlink_metadata(entry.path()).expect("Core log metadata");
         assert!(metadata.file_type().is_file());
-        assert_eq!(metadata.permissions().mode() & 0o777, 0o600);
+        assert!(nodex_platform::private_fs::is_private(&entry.path(), &metadata).unwrap());
         let contents = fs::read_to_string(entry.path()).expect("Core log contents");
         raw_logs.push_str(&contents);
         for line in contents.lines().filter(|line| !line.is_empty()) {
@@ -874,7 +864,7 @@ fn concurrent_launchers_reuse_one_authenticated_profile_core() {
         "connection:lifecycle",
         "page:logging-correlation",
         home.to_str().expect("UTF-8 home"),
-        expected.socket_path.as_str(),
+        expected.endpoint.as_str(),
     ] {
         assert!(
             !raw_logs.contains(forbidden),
@@ -948,7 +938,7 @@ fn live_electron_host_and_event_stream_prevent_idle_exit() {
         ("x-nodex-connection-binding", binding.as_str()),
     ];
     let mut event_stream = open_sse(
-        &descriptor.socket_path,
+        &descriptor.endpoint,
         &auth,
         "/core/v1/events?after=0",
         &headers,
@@ -957,7 +947,7 @@ fn live_electron_host_and_event_stream_prevent_idle_exit() {
     std::thread::sleep(Duration::from_millis(800));
     assert_eq!(core.try_wait().expect("poll active Core"), None);
     let health = response_json(&request(
-        &descriptor.socket_path,
+        &descriptor.endpoint,
         &auth,
         "GET",
         "/core/v1/health",
@@ -968,7 +958,7 @@ fn live_electron_host_and_event_stream_prevent_idle_exit() {
     assert_eq!(health["metrics"]["active_event_subscriptions"], 1);
 
     let shutdown = request_with_headers(
-        &descriptor.socket_path,
+        &descriptor.endpoint,
         &auth,
         "POST",
         "/core/v1/admin/shutdown",
@@ -1075,7 +1065,9 @@ fn workspace_contract_mismatch_is_replaced_before_a_projectless_session_request(
     assert!(seed.wait().expect("wait for seed Core idle exit").success());
 
     let runtime = home.join("run/core");
-    let socket = runtime.join("core.sock");
+    let socket = std::path::PathBuf::from(
+        local_endpoint::new_core_endpoint(&runtime.join("core.sock")).unwrap(),
+    );
     let descriptor_path = runtime.join("core.json");
     let auth_path = runtime.join("core.auth");
     let lock_path = runtime.join("core.lock");
@@ -1086,12 +1078,12 @@ fn workspace_contract_mismatch_is_replaced_before_a_projectless_session_request(
         .write(true)
         .open(&lock_path)
         .expect("open fixture Profile lock");
-    fs::set_permissions(&lock_path, fs::Permissions::from_mode(0o600))
-        .expect("private fixture lock");
+    nodex_platform::private_fs::set_mode(&lock_path, 0o600).expect("private fixture lock");
     lock.lock_exclusive().expect("hold fixture Profile lock");
-    let listener = UnixListener::bind(&socket).expect("bind stale Core fixture");
-    fs::set_permissions(&socket, fs::Permissions::from_mode(0o600))
-        .expect("private fixture socket");
+    let listener = BlockingListener::bind(&socket).expect("bind stale Core fixture");
+    if cfg!(unix) {
+        nodex_platform::private_fs::set_mode(&socket, 0o600).expect("private fixture socket");
+    }
 
     let mut stale_manifest = core_compatibility_manifest();
     let workspace = stale_manifest
@@ -1112,16 +1104,16 @@ fn workspace_contract_mismatch_is_replaced_before_a_projectless_session_request(
         actual_store_format: seeded_descriptor.actual_store_format.clone(),
         pid: std::process::id(),
         start_nonce: "c".repeat(32),
-        socket_path: socket.to_string_lossy().into_owned(),
+        endpoint: socket.to_string_lossy().into_owned(),
         profile_id: seeded_descriptor.profile_id.clone(),
         store_epoch: seeded_descriptor.store_epoch.clone(),
         readiness_generation: 1,
     };
     let fixture_auth = "d".repeat(64);
-    fs::write(&auth_path, format!("{fixture_auth}\n")).expect("fixture auth");
-    fs::set_permissions(&auth_path, fs::Permissions::from_mode(0o600))
-        .expect("private fixture auth");
-    fs::write(
+    nodex_platform::private_fs::write(&auth_path, format!("{fixture_auth}\n"))
+        .expect("fixture auth");
+    nodex_platform::private_fs::set_mode(&auth_path, 0o600).expect("private fixture auth");
+    nodex_platform::private_fs::write(
         &descriptor_path,
         format!(
             "{}\n",
@@ -1129,7 +1121,7 @@ fn workspace_contract_mismatch_is_replaced_before_a_projectless_session_request(
         ),
     )
     .expect("fixture descriptor");
-    fs::set_permissions(&descriptor_path, fs::Permissions::from_mode(0o600))
+    nodex_platform::private_fs::set_mode(&descriptor_path, 0o600)
         .expect("private fixture descriptor");
 
     let expected_stale_generation = RuntimeGenerationIdentity::from(&stale_descriptor);
@@ -1238,7 +1230,7 @@ fn workspace_contract_mismatch_is_replaced_before_a_projectless_session_request(
     })
     .expect("handshake JSON");
     let handshake = response_json(&request(
-        &selected.socket_path,
+        &selected.endpoint,
         &selected_auth,
         "POST",
         "/core/v1/handshake",
@@ -1276,7 +1268,7 @@ fn workspace_contract_mismatch_is_replaced_before_a_projectless_session_request(
     })
     .to_string();
     let initial_project = request_with_headers(
-        &selected.socket_path,
+        &selected.endpoint,
         &selected_auth,
         "POST",
         "/core/v1/modules/workspace/apply",
@@ -1299,7 +1291,7 @@ fn workspace_contract_mismatch_is_replaced_before_a_projectless_session_request(
     })
     .to_string();
     let raw_response = request_with_headers(
-        &selected.socket_path,
+        &selected.endpoint,
         &selected_auth,
         "POST",
         "/core/v1/modules/workspace/apply",
@@ -1314,7 +1306,7 @@ fn workspace_contract_mismatch_is_replaced_before_a_projectless_session_request(
     assert_eq!(response["status"], "ok", "{response}");
 
     let session = response_json(&request_with_headers(
-        &selected.socket_path,
+        &selected.endpoint,
         &selected_auth,
         "POST",
         "/core/v1/modules/workspace/read",
@@ -1340,7 +1332,7 @@ fn workspace_contract_mismatch_is_replaced_before_a_projectless_session_request(
     );
 
     let shutdown = response_json(&request_with_headers(
-        &selected.socket_path,
+        &selected.endpoint,
         &selected_auth,
         "POST",
         "/core/v1/admin/shutdown",
@@ -1355,13 +1347,13 @@ fn workspace_contract_mismatch_is_replaced_before_a_projectless_session_request(
 fn compatibility_policy_reuses_while_electron_artifact_policy_replaces_without_a_second_writer() {
     let directory = tempdir().expect("disposable update installation");
     let home = directory.path().join("profile");
-    fs::create_dir(&home).expect("Profile home");
+    nodex_platform::private_fs::create_dir(&home).expect("Profile home");
     let old_bundle = directory.path().join("Old Nodex.app");
     let old_bin = old_bundle.join("Contents/Resources/bin");
-    fs::create_dir_all(&old_bin).expect("old app runtime directory");
-    let old_executable = old_bin.join("nodex-core");
+    nodex_platform::private_fs::create_dir_all(&old_bin).expect("old app runtime directory");
+    let old_executable = old_bin.join(nodex_platform::process::executable_name("nodex-core"));
     fs::copy(env!("CARGO_BIN_EXE_nodex-core"), &old_executable).expect("copy old packaged Core");
-    fs::set_permissions(&old_executable, fs::Permissions::from_mode(0o755))
+    nodex_platform::private_fs::set_mode(&old_executable, 0o755)
         .expect("old packaged Core is executable");
 
     let mut incumbent = Command::new(&old_executable)
@@ -1395,8 +1387,8 @@ fn compatibility_policy_reuses_while_electron_artifact_policy_replaces_without_a
 
     let new_bundle = directory.path().join("New Nodex.app");
     let new_bin = new_bundle.join("Contents/Resources/bin");
-    fs::create_dir_all(&new_bin).expect("new app runtime directory");
-    let new_executable = new_bin.join("nodex-core");
+    nodex_platform::private_fs::create_dir_all(&new_bin).expect("new app runtime directory");
+    let new_executable = new_bin.join(nodex_platform::process::executable_name("nodex-core"));
     fs::copy(env!("CARGO_BIN_EXE_nodex-core"), &new_executable).expect("copy new packaged Core");
     fs::OpenOptions::new()
         .append(true)
@@ -1404,7 +1396,7 @@ fn compatibility_policy_reuses_while_electron_artifact_policy_replaces_without_a
         .expect("open new packaged Core")
         .write_all(b"\nNodex distinct artifact fixture\n")
         .expect("different artifact digest");
-    fs::set_permissions(&new_executable, fs::Permissions::from_mode(0o755))
+    nodex_platform::private_fs::set_mode(&new_executable, 0o755)
         .expect("new packaged Core is executable");
     let mut current_app = Command::new(&new_executable)
         .args([

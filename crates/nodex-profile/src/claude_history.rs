@@ -175,7 +175,7 @@ fn inventory_with_file_limit(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::os::unix::fs::symlink;
+    use nodex_platform::private_fs::symlink;
 
     #[test]
     fn rejects_aliases_outside_the_home_or_transcript_tree() {
@@ -242,12 +242,12 @@ mod tests {
         let required = BTreeSet::from(["fork".into()]);
         let before = inventory(home.path(), &required).unwrap();
         assert_eq!(before.len(), 2);
-        fs::write(&unrelated, b"another session is running").unwrap();
+        nodex_platform::private_fs::write(&unrelated, b"another session is running").unwrap();
         assert_eq!(before, inventory(home.path(), &required).unwrap());
-        fs::write(&backup, b"changed checkpoint").unwrap();
+        nodex_platform::private_fs::write(&backup, b"changed checkpoint").unwrap();
         assert_ne!(before, inventory(home.path(), &required).unwrap());
         let before = inventory(home.path(), &required).unwrap();
-        fs::write(&selected, b"selected session changed").unwrap();
+        nodex_platform::private_fs::write(&selected, b"selected session changed").unwrap();
         assert_ne!(before, inventory(home.path(), &required).unwrap());
     }
 

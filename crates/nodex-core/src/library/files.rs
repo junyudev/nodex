@@ -502,10 +502,10 @@ mod tests {
                 .unwrap();
         }
         let assets = home.path().join("assets");
-        fs::create_dir_all(&assets).unwrap();
+        nodex_platform::private_fs::create_dir_all(&assets).unwrap();
         for bytes in [b"alpha".as_slice(), b"beta".as_slice()] {
             let hash = crate::document::sha256(bytes);
-            fs::write(assets.join(format!("{hash}.blob")), bytes).unwrap();
+            nodex_platform::private_fs::write(assets.join(format!("{hash}.blob")), bytes).unwrap();
             let length = bytes.len() as i64;
             kernel.writer().call(move |connection| {
                 connection.execute("INSERT INTO managed_blobs(content_hash, physical_asset_name, byte_length, created_at) VALUES (?1, ?2, ?3, ?4)", params![hash, format!("{hash}.blob"), length, NOW])?;

@@ -189,7 +189,7 @@ fn generate_for_document(
     first_xml_text.insert(&mut transaction, xml_end, " · Rust XML");
     drop(transaction);
     let update = document.transact().encode_state_as_update_v1(&before);
-    fs::write(output_update, update)?;
+    nodex_platform::private_fs::write(output_update, update)?;
     Ok(summarize(&document))
 }
 
@@ -244,7 +244,7 @@ fn roundtrip_matrix_block_tree(
     let update = target
         .transact()
         .encode_state_as_update_v1(&yrs::StateVector::default());
-    fs::write(output_update, update)?;
+    nodex_platform::private_fs::write(output_update, update)?;
     Ok(summarize(&target))
 }
 
@@ -266,7 +266,7 @@ fn generate_awareness(
         "cursor": { "anchor": 8, "head": 8 },
     });
     awareness.set_local_state(&state)?;
-    fs::write(output_update, awareness.update()?.encode_v1())?;
+    nodex_platform::private_fs::write(output_update, awareness.update()?.encode_v1())?;
     Ok(AwarenessSummary {
         client_id: awareness.client_id().get(),
         state,
@@ -425,7 +425,7 @@ fn run_randomized_corpus(
         let rust_update = rust_document
             .transact()
             .encode_state_as_update_v1(&base_vector);
-        fs::write(
+        nodex_platform::private_fs::write(
             rust_update_root.join(format!("{}.bin", case.seed)),
             rust_update,
         )?;
@@ -478,7 +478,7 @@ fn run_semantic_operations(
         &corpus.operations,
         false,
     )?;
-    fs::write(output_update, &prepared.update_v1)?;
+    nodex_platform::private_fs::write(output_update, &prepared.update_v1)?;
     let materialization = serde_json::to_value(prepared.materialization)?;
     Ok(SemanticOperationSummary {
         materialization: project_materialization(&materialization),
@@ -520,7 +520,7 @@ fn run_markdown_patch(
             format!("bridge-markdown-{next_id}")
         },
     )?;
-    fs::write(output_update, &prepared.update_v1)?;
+    nodex_platform::private_fs::write(output_update, &prepared.update_v1)?;
     let materialization = serde_json::to_value(prepared.materialization)?;
     Ok(SemanticOperationSummary {
         materialization: project_materialization(&materialization),
@@ -558,7 +558,7 @@ fn run_subtree_copy(
         },
         &mut |source| format!("bridge-copy-{source}"),
     )?;
-    fs::write(output_update, &prepared.target.update_v1)?;
+    nodex_platform::private_fs::write(output_update, &prepared.target.update_v1)?;
     let materialization = serde_json::to_value(prepared.target.materialization)?;
     Ok(SemanticOperationSummary {
         materialization: project_materialization(&materialization),

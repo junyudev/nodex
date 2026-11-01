@@ -30,7 +30,7 @@ pub(crate) fn resolve_home(
     let user_home = nonblank_os(user_home).map(PathBuf::from).ok_or_else(|| {
         CliError::new(
             CliErrorCode::CoreUnavailable,
-            "HOME is unavailable and NODEX_HOME is not set",
+            "The OS user home is unavailable and NODEX_HOME is not set",
         )
     })?;
     let user_config = user_home.join(".nodex/config.toml");

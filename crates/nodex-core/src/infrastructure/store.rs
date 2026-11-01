@@ -83,7 +83,7 @@ impl SqliteStoreKernel {
         recover_interrupted_store_replacement(profile_home)?;
         let database_path = profile_home.join(STORE_FILE_NAME);
         if fs::symlink_metadata(&database_path)
-            .is_ok_and(|metadata| metadata.file_type().is_symlink())
+            .is_ok_and(|metadata| nodex_platform::private_fs::is_reparse_point(&metadata))
         {
             return Err(StoreError::new(
                 StoreErrorCode::InvalidProfile,

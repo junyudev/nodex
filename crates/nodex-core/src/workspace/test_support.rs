@@ -1,5 +1,3 @@
-use std::fs;
-
 use nodex_core_contracts::library::{LibraryIntent, LibraryWriteParent};
 use nodex_core_contracts::workspace::{
     ProjectSessionIntent, ProjectWorkspaceIntent, ProjectWorkspaceRead, ProjectWorkspaceReadValue,
@@ -40,7 +38,7 @@ pub(super) fn context() -> BoundModuleContext {
 pub(super) fn seeded_workspace() -> TestWorkspace {
     let directory = tempdir().expect("Profile");
     let home = directory.path().canonicalize().expect("absolute Profile");
-    fs::create_dir(home.join("assets")).expect("assets root");
+    nodex_platform::private_fs::create_dir(home.join("assets")).expect("assets root");
     let kernel = SqliteStoreKernel::open_test(&home).expect("fresh store");
     kernel
         .writer()
@@ -164,7 +162,8 @@ pub(super) fn create_library_image(workspace: &TestWorkspace, file_id: &str) {
         .canonicalize()
         .expect("Profile")
         .join("assets");
-    fs::write(assets.join(format!("{hash}.blob")), &bytes).expect("blob bytes");
+    nodex_platform::private_fs::write(assets.join(format!("{hash}.blob")), &bytes)
+        .expect("blob bytes");
     let (blob_hash, length) = (hash.clone(), bytes.len() as i64);
     workspace
         .kernel

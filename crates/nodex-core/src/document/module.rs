@@ -6537,7 +6537,7 @@ mod tests {
     fn empty_project_module() -> SeededModule {
         let directory = tempdir().expect("Profile");
         let home = directory.path().canonicalize().expect("absolute Profile");
-        fs::create_dir(home.join("assets")).expect("assets root");
+        nodex_platform::private_fs::create_dir(home.join("assets")).expect("assets root");
         let kernel = SqliteStoreKernel::open_test(&home).expect("fresh Store");
         kernel
             .writer()
@@ -6606,7 +6606,7 @@ mod tests {
     fn canvas_module() -> SeededModule {
         let directory = tempdir().expect("Profile");
         let home = directory.path().canonicalize().expect("absolute Profile");
-        fs::create_dir(home.join("assets")).expect("assets root");
+        nodex_platform::private_fs::create_dir(home.join("assets")).expect("assets root");
         let kernel = SqliteStoreKernel::open_test(&home).expect("fresh Store");
         kernel
             .writer()

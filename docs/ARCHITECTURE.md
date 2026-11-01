@@ -231,7 +231,7 @@ Chat discovery is one Main-owned capability across every chat picker. Main ranks
 
 ### Native Core
 
-The Rust Core is the only production authority allowed to open `nodex.db`, write the WAL, reconstruct durable Yrs/Canvas Documents, execute semantic transactions, advance projections, or maintain receipts and history. It runs as one detached process per Profile and exposes authenticated HTTP/1.1 over a Profile-private Unix socket. Core owns its process isolation independently of the client that starts it; caller lifetime cannot terminate an authority later shared by Desktop and CLI. See [Core Lifecycle and Store Reliability](reliability/core-lifecycle-and-store.md).
+The Rust Core is the only production authority allowed to open `nodex.db`, write the WAL, reconstruct durable Yrs/Canvas Documents, execute semantic transactions, advance projections, or maintain receipts and history. It runs as one detached process per Profile and exposes authenticated HTTP/1.1 over a Profile-private local endpoint. Core owns its process isolation independently of the client that starts it; caller lifetime cannot terminate an authority later shared by Desktop and CLI. See [Core Lifecycle and Store Reliability](reliability/core-lifecycle-and-store.md).
 
 Core is organized as seven deep semantic Modules under [`crates/nodex-core/src`](../crates/nodex-core/src):
 
@@ -247,7 +247,7 @@ Core is organized as seven deep semantic Modules under [`crates/nodex-core/src`]
 
 Each public Module presents a versioned `read` Interface and, where it owns mutations, an `apply` Interface in [`crates/nodex-core-contracts`](../crates/nodex-core-contracts). Module implementations may share internal transaction kernels, but callers may not compose several public Module calls and call the result atomic. A cross-domain mutation belongs to one owning aggregate that invokes the other domain seams inside the same Core transaction.
 
-[`crates/nodex-core-protocol`](../crates/nodex-core-protocol) owns authenticated transport envelopes, compatibility negotiation, generated OpenAPI artifacts, event versions, and bounded codecs. [`crates/nodex-core-server`](../crates/nodex-core-server) owns socket transport, connections, process lifecycle, stream admission, and health metrics. Transport code depends on semantic contracts; semantic Modules never depend on transport code.
+[`crates/nodex-core-protocol`](../crates/nodex-core-protocol) owns authenticated transport envelopes, compatibility negotiation, generated OpenAPI artifacts, event versions, and bounded codecs. [`crates/nodex-core-server`](../crates/nodex-core-server) owns local endpoint transport, connections, process lifecycle, stream admission, and health metrics. Transport code depends on semantic contracts; semantic Modules never depend on transport code. `nodex-platform` owns operating-system filesystem, process, and local IPC primitives for all native crates.
 
 Core Server also owns one request-execution boundary for synchronous Module work. It admits bounded `interactive`, `background`, and `maintenance` classes, preserves capacity for interactive requests, runs admitted work outside async transport workers, and carries one absolute deadline and cancellation token through reader checkout, writer queueing, and SQLite execution. Electron supplies request identity and intent but does not decide when Core work has actually stopped. A semantic deadline, caller cancellation, admission overload, and authority/transport loss are distinct typed outcomes.
 

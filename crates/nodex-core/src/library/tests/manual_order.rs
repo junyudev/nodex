@@ -159,8 +159,8 @@ fn promotion_round_trip(mode: LibraryBlockTransferMode) {
         .unwrap();
     let bytes = b"shared file bytes";
     let hash = crate::document::sha256(bytes);
-    std::fs::create_dir_all(directory.path().join("assets")).unwrap();
-    std::fs::write(
+    nodex_platform::private_fs::create_dir_all(directory.path().join("assets")).unwrap();
+    nodex_platform::private_fs::write(
         directory.path().join("assets").join(format!("{hash}.blob")),
         bytes,
     )

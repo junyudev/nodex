@@ -19,7 +19,7 @@ import { CORE_CLIENT_REQUIREMENTS, type components } from "@nodex/core-protocol"
 
 import { CoreClient, CoreModuleResponseError } from "./core-client";
 import { readCoreRuntimeConnection } from "./runtime-descriptor";
-import { CoreEventCompatibilityError } from "./uds-http";
+import { CoreEventCompatibilityError } from "./local-http";
 import type {
   CoreEventEnvelope,
   CoreEventSubscription,

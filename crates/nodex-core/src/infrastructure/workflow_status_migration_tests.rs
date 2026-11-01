@@ -32,7 +32,7 @@ fn operation_id(label: &str) -> String {
 
 fn predecessor() -> (TempDir, Connection) {
     let home = tempdir().unwrap();
-    fs::write(
+    nodex_platform::private_fs::write(
         home.path().join("nodex.db"),
         include_bytes!("../../tests/fixtures/store-v191.db"),
     )

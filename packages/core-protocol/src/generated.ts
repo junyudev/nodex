@@ -12444,7 +12444,7 @@ export interface components {
             readonly profile_id: string;
             /** Format: int64 */
             readonly readiness_generation: number;
-            readonly socket_path: string;
+            readonly endpoint: string;
             readonly start_nonce: string;
             readonly store_epoch: string;
         };

@@ -1,7 +1,7 @@
 //! Captures the execution owner's durable identity, database and immutable attachments.
 use std::fs;
 use std::io::Read;
-use std::os::unix::fs::{DirBuilderExt, MetadataExt};
+
 use std::path::{Path, PathBuf};
 
 use nodex_core::administration::{ProfileCloneExecution, ProfileCloneThread};
@@ -42,7 +42,9 @@ pub(crate) struct RuntimeWriterLease {
 fn owner(directory: &Path) -> Result<Owner> {
     files::require_directory(directory)?;
     let meta = fs::symlink_metadata(directory)?;
-    if meta.uid() != rustix::process::geteuid().as_raw() || meta.mode() & 0o077 != 0 {
+    if nodex_platform::private_fs::require_owned(directory, &meta).is_err()
+        || !nodex_platform::private_fs::is_private(directory, &meta)?
+    {
         return Err(invalid(
             "Execution writer ownership must be private and user-owned",
         ));
@@ -59,12 +61,11 @@ fn owner(directory: &Path) -> Result<Owner> {
 }
 
 fn dead(pid: i32) -> bool {
-    rustix::process::Pid::from_raw(pid)
-        .is_some_and(|pid| rustix::process::test_kill_process(pid) == Err(rustix::io::Errno::SRCH))
+    u32::try_from(pid).is_ok_and(|pid| !nodex_platform::process::process_is_alive(pid))
 }
 
 fn claim(directory: &Path, owner: &Owner) -> Result<()> {
-    fs::DirBuilder::new().mode(0o700).create(directory)?;
+    nodex_platform::private_fs::create_dir(directory)?;
     use std::io::Write;
     files::create_file(&directory.join("owner.json"))?.write_all(&serde_json::to_vec(owner)?)?;
     Ok(())

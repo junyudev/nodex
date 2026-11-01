@@ -1,9 +1,9 @@
+use nodex_platform::private_fs::OpenOptions;
 use std::collections::{BTreeMap, VecDeque};
 use std::env;
-use std::fs::{self, File, OpenOptions};
+use std::fs::{self, File};
 use std::io::{self, BufWriter, Write};
-use std::os::unix::ffi::OsStrExt;
-use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
+
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, mpsc};
@@ -838,8 +838,8 @@ fn prepare_log_directory(path: &Path) -> io::Result<()> {
     match fs::symlink_metadata(path) {
         Ok(metadata) => validate_log_directory(path, &metadata),
         Err(error) if error.kind() == io::ErrorKind::NotFound => {
-            fs::create_dir_all(path)?;
-            fs::set_permissions(path, fs::Permissions::from_mode(LOG_DIRECTORY_MODE))?;
+            nodex_platform::private_fs::create_dir_all(path)?;
+            nodex_platform::private_fs::set_mode(path, LOG_DIRECTORY_MODE)?;
             let metadata = fs::symlink_metadata(path)?;
             validate_log_directory(path, &metadata)
         }
@@ -847,17 +847,13 @@ fn prepare_log_directory(path: &Path) -> io::Result<()> {
     }
 }
 
-fn validate_log_directory(path: &Path, metadata: &fs::Metadata) -> io::Result<()> {
-    if !metadata.file_type().is_dir()
-        || metadata.uid() != current_uid()
-        || metadata.mode() & 0o7777 != LOG_DIRECTORY_MODE
-    {
-        return Err(io::Error::new(
-            io::ErrorKind::PermissionDenied,
-            format!("unsafe Core log directory: {}", path.display()),
-        ));
-    }
-    Ok(())
+fn validate_log_directory(path: &Path, _metadata: &fs::Metadata) -> io::Result<()> {
+    nodex_platform::private_fs::checked_metadata(
+        path,
+        nodex_platform::private_fs::EntryKind::Directory,
+        Some(LOG_DIRECTORY_MODE),
+    )
+    .map(|_| ())
 }
 
 fn open_segment(config: &LoggingConfig, date: &str) -> io::Result<(File, PathBuf)> {
@@ -897,17 +893,7 @@ fn open_segment(config: &LoggingConfig, date: &str) -> io::Result<(File, PathBuf
 }
 
 fn validate_opened_log_file(file: &File) -> io::Result<fs::Metadata> {
-    let metadata = file.metadata()?;
-    if !metadata.file_type().is_file()
-        || metadata.uid() != current_uid()
-        || metadata.mode() & 0o7777 != LOG_FILE_MODE
-    {
-        return Err(io::Error::new(
-            io::ErrorKind::PermissionDenied,
-            "unsafe Core log segment",
-        ));
-    }
-    Ok(metadata)
+    nodex_platform::private_fs::validate_private_handle(file, LOG_FILE_MODE)
 }
 
 #[derive(Clone)]
@@ -942,12 +928,7 @@ fn log_segments(config: &LoggingConfig) -> io::Result<Vec<LogSegment>> {
 }
 
 fn open_existing_log_file(path: &Path) -> io::Result<File> {
-    let descriptor = rustix::fs::open(
-        path,
-        rustix::fs::OFlags::RDONLY | rustix::fs::OFlags::CLOEXEC | rustix::fs::OFlags::NOFOLLOW,
-        rustix::fs::Mode::empty(),
-    )?;
-    Ok(File::from(descriptor))
+    nodex_platform::private_fs::open_read(path)
 }
 
 fn remove_unlocked_segment(path: &Path) -> io::Result<bool> {
@@ -955,7 +936,7 @@ fn remove_unlocked_segment(path: &Path) -> io::Result<bool> {
     validate_opened_log_file(&file)?;
     match file.try_lock_exclusive() {
         Ok(()) => {}
-        Err(error) if error.kind() == io::ErrorKind::WouldBlock => return Ok(false),
+        Err(error) if nodex_platform::private_fs::lock_is_contended(&error) => return Ok(false),
         Err(error) => return Err(error),
     }
     fs::remove_file(path)?;
@@ -1012,12 +993,8 @@ fn current_date() -> String {
     Utc::now().format("%Y-%m-%d").to_string()
 }
 
-fn current_uid() -> u32 {
-    rustix::process::getuid().as_raw()
-}
-
 fn profile_segment_prefix(home: &Path) -> String {
-    let digest = Sha256::digest(home.as_os_str().as_bytes());
+    let digest = Sha256::digest(nodex_platform::process::path_bytes(home));
     format!("{LOG_PREFIX}{}-", &hex::encode(digest)[..16])
 }
 
@@ -1218,16 +1195,13 @@ mod tests {
         }
         writer.flush().expect("flush logs");
         assert_eq!(
-            fs::metadata(&log_dir).expect("log directory").mode() & 0o777,
+            nodex_platform::private_fs::effective_mode(&log_dir).expect("filesystem access"),
             0o700
         );
         let segments = log_segments(&config).expect("log segments");
         assert!(segments.len() > 1);
         assert!(segments.iter().all(|segment| {
-            fs::metadata(&segment.path)
-                .expect("segment metadata")
-                .mode()
-                & 0o777
+            nodex_platform::private_fs::effective_mode(&segment.path).expect("filesystem access")
                 == 0o600
         }));
     }
@@ -1280,10 +1254,9 @@ mod tests {
         let config = config(temporary.path().join("logs"));
         prepare_log_directory(&config.log_dir).expect("log directory");
         let target = temporary.path().join("target.log");
-        fs::write(&target, "outside\n").expect("symlink target");
-        fs::set_permissions(&target, fs::Permissions::from_mode(LOG_FILE_MODE))
-            .expect("private target");
-        std::os::unix::fs::symlink(&target, segment_path(&config, &current_date(), 0))
+        nodex_platform::private_fs::write(&target, "outside\n").expect("symlink target");
+        nodex_platform::private_fs::set_mode(&target, LOG_FILE_MODE).expect("private target");
+        nodex_platform::private_fs::symlink(&target, segment_path(&config, &current_date(), 0))
             .expect("matching symlink");
 
         assert!(SegmentWriter::open(config).is_err());

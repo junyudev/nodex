@@ -2,7 +2,7 @@ use std::env;
 use std::ffi::OsString;
 use std::fs;
 use std::io;
-use std::os::unix::fs::MetadataExt;
+
 use std::path::{Path, PathBuf};
 
 use clap::ValueEnum;
@@ -78,12 +78,14 @@ pub struct InstallerEnvironment {
 
 impl InstallerEnvironment {
     pub fn current() -> Result<Self, CliError> {
-        let home = env::var_os("HOME")
+        let home = env::var_os(nodex_platform::process::HOME_VARIABLE)
             .filter(|value| !value.is_empty())
             .map(PathBuf::from)
-            .ok_or_else(|| unsupported("HOME is required for global Agent Skill setup"))?;
+            .ok_or_else(|| {
+                unsupported("The OS user home is required for global Agent Skill setup")
+            })?;
         if !home.is_absolute() {
-            return Err(unsupported("HOME must be an absolute path"));
+            return Err(unsupported("The OS user home must be an absolute path"));
         }
         let claude_config_dir = env::var_os("CLAUDE_CONFIG_DIR")
             .filter(|value| !value.is_empty())
@@ -176,7 +178,11 @@ fn resolve_target(
 fn command_on_path(path: Option<&std::ffi::OsStr>, command: &str) -> bool {
     path.into_iter()
         .flat_map(env::split_paths)
-        .any(|directory| fs::symlink_metadata(directory.join(command)).is_ok())
+        .any(|directory| {
+            nodex_platform::process::command_names(command)
+                .iter()
+                .any(|name| fs::symlink_metadata(directory.join(name)).is_ok())
+        })
 }
 
 fn config_root_exists(path: &Path) -> bool {
@@ -205,7 +211,7 @@ pub fn classify_target(target: SkillTarget, bundle: &VerifiedSkillBundle) -> Cla
         }
     };
 
-    if metadata.file_type().is_symlink() {
+    if nodex_platform::private_fs::is_reparse_point(&metadata) {
         return match fs::read_link(&target.path) {
             Ok(raw) if raw.is_absolute() && raw.as_path() == bundle.skill_source.as_path() => {
                 ClassifiedSkillTarget {
@@ -231,7 +237,7 @@ pub fn classify_target(target: SkillTarget, bundle: &VerifiedSkillBundle) -> Cla
     }
 
     if metadata.file_type().is_dir() {
-        if metadata.uid() != rustix::process::geteuid().as_raw() {
+        if nodex_platform::private_fs::require_owned(&target.path, &metadata).is_err() {
             return ClassifiedSkillTarget {
                 detail: Some("directory is not owned by the current user".to_owned()),
                 target,
@@ -312,7 +318,7 @@ pub fn ensure_parent(target: &SkillTarget) -> Result<(), CliError> {
 
 fn inspect_config_root(path: &Path) -> Result<(), CliError> {
     match fs::symlink_metadata(path) {
-        Ok(metadata) if metadata.file_type().is_symlink() => {
+        Ok(metadata) if nodex_platform::private_fs::is_reparse_point(&metadata) => {
             let canonical = path.canonicalize().map_err(|error| {
                 target_conflict(
                     path,
@@ -351,10 +357,10 @@ fn inspect_config_root(path: &Path) -> Result<(), CliError> {
 }
 
 fn require_owned_real_directory(path: &Path, metadata: &fs::Metadata) -> Result<(), CliError> {
-    if !metadata.file_type().is_dir() || metadata.file_type().is_symlink() {
+    if !metadata.file_type().is_dir() || nodex_platform::private_fs::is_reparse_point(metadata) {
         return Err(target_conflict(path, "path is not a real directory"));
     }
-    if metadata.uid() != rustix::process::geteuid().as_raw() {
+    if nodex_platform::private_fs::require_owned(path, metadata).is_err() {
         return Err(target_conflict(
             path,
             "directory is not owned by the current user",

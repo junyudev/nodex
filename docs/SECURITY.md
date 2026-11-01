@@ -562,19 +562,28 @@ has.
   operation-owned staging root, and restore retains the single fsynced Store
   replacement journal. Exact retries verify the Core-authored intent hash and
   original Manifest before completing any pending filesystem phase.
-- The native Core runtime validates the Profile, `run`, and `run/core`
-  ancestry without following symlinks; requires current-user ownership; and
-  requires 0700 for `run/core` plus 0600 and the expected file type for the
-  lock, socket, descriptor, and bearer capability. It removes a stale socket
-  only after acquiring the lifetime lock and proving the existing entry is the
-  current user's Unix socket. Runtime cleanup similarly removes only the exact
-  start-nonce generation after validating every target.
-- Profile clone coordination uses a current-user-owned `0700` IPC directory and
-  `0600` Unix socket. Its bounded, versioned protocol grants only a connection-bound
-  idle Agent snapshot window; it accepts no executable, capture path, credentials,
-  or content. The Endpoint supervisor controls only its owned local stdio process,
-  preserves active work, and resumes after release or disconnect. Native capture
-  still requires its independent writer fence and source consistency checks.
+- The native Core runtime validates the Profile and runtime ancestry without
+  following filesystem aliases. Unix uses current-user ownership, `0700`
+  directories and `0600` files and sockets. Windows uses current-user owner SID,
+  protected user-only DACLs, and reparse-point refusal, including junctions. Only
+  an acquired lifetime lock authorizes stale Unix socket removal. Windows creates
+  a new unguessable pipe name for each generation; no stale pipe name is reused.
+  Cleanup remains fenced by the exact start nonce and validated owned targets.
+- Windows Core pipes use an exclusive first instance, reject remote clients and
+  grant access only to the current user SID. Core checks the kernel-reported client
+  PID and process-token user SID before HTTP admission. Native clients verify the
+  server PID against the descriptor and its process-token user SID. Pipe-name
+  validation accepts only the exact local `nodex-core` grammar; bearer authentication
+  and generation-bound connection registration remain mandatory.
+- Profile clone coordination uses a private `ipc/clone.json` rendezvous with a
+  bounded endpoint, server PID and random capability. Its versioned protocol
+  authenticates acquisition before granting a connection-bound idle snapshot
+  window. It accepts no executable, capture path or content. Unix uses a private
+  socket; Windows uses a separate random pipe. Node cannot set an explicit pipe
+  DACL, so the Windows endpoint depends on its unguessable name, user-only
+  rendezvous DACL and capability authentication. The native client also verifies
+  the server process identity. Release or disconnect resumes the source; native
+  capture still requires independent writer fencing and consistency checks.
 - Core lifecycle diagnostics use the same private runtime ancestry and atomic
   regular-file publication rules. The fixed-size `lifecycle.json` breadcrumb
   contains only bounded generation identity, phase, typed drain reason, and
@@ -592,15 +601,15 @@ has.
   when diagnostics are enabled. Unsafe storage disables only incident publication.
 - Optional background registration uses a signed nested application and its bundled `SMAppService` LaunchAgent; it never installs a root helper or writes a launchd plist outside the signed bundle. The selected absolute Profile path is the only persisted input, stored as a private regular file below the current user's Application Support directory. The controller rejects symlinked configuration and executable entries, bounds configuration and control output, and executes the fixed sibling Core without a shell.
 - Every native-Core HTTP request is authenticated by a fresh per-start
-  capability and same-UID Unix peer credentials. Handshake registers the
-  logical connection against peer PID/UID, client build, protocol, Adapter
+  capability and verified local peer identity. Handshake registers the
+  logical connection against peer PID and OS user identity, client build, protocol, Adapter
   kind, and start nonce; later Module, event, and lifecycle requests require
   that exact connection binding. The only pre-handshake lifecycle exception is
   incompatible-version handoff: it still requires the bearer capability,
-  same-UID/PID UDS credentials, genuinely disjoint protocol ranges, and an
+  same-user local peer credentials, genuinely disjoint protocol ranges, and an
   exact match for every descriptor-generation identity field, and it can drain
   only an otherwise idle Core. Compatible process reuse requires a live
-  authenticated handshake matching the fixed-path descriptor. Neither a stale
+  authenticated handshake matching the private descriptor. Neither a stale
   descriptor, recycled PID, self-declared build, nor failed/legacy handoff is
   process authority, and the launcher never kills the claimed process.
 - The native Core transport rejects declared or streamed body overflow before

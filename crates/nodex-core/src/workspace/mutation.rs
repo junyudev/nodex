@@ -2573,7 +2573,6 @@ fn not_found(message: &str) -> StoreError {
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
 
     use nodex_core_contracts::library::{
         LibraryIntent, LibraryRead, LibraryReadValue, LibraryRouteTarget,
@@ -2717,7 +2716,7 @@ mod tests {
     fn empty_module() -> (TempDir, SqliteStoreKernel, ProjectWorkspaceModule) {
         let directory = tempdir().expect("Profile");
         let home = directory.path().canonicalize().expect("absolute Profile");
-        fs::create_dir(home.join("assets")).expect("assets root");
+        nodex_platform::private_fs::create_dir(home.join("assets")).expect("assets root");
         let kernel = SqliteStoreKernel::open_test(&home).expect("fresh store");
         kernel
             .writer()

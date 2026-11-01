@@ -1,7 +1,8 @@
+use nodex_platform::private_fs::OpenOptions;
 use std::collections::BTreeMap;
-use std::fs::{self, OpenOptions};
+use std::fs::{self};
 use std::io::Write;
-use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
+
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -118,7 +119,7 @@ impl SearchSnapshotStore {
         let reused_tree = self.reusable_key.as_ref() == Some(&cache_key)
             && fs::symlink_metadata(self.reusable_path()).is_ok();
         if reused_tree {
-            fs::rename(self.reusable_path(), &staging)
+            nodex_platform::private_fs::atomic_replace(self.reusable_path(), &staging)
                 .map_err(io_error)
                 .map_err(|error| {
                     snapshot_context(error, "could not adopt the reusable lease tree")
@@ -158,21 +159,17 @@ impl SearchSnapshotStore {
                 }
 
                 for directory in page_directories {
-                    fs::set_permissions(
-                        &directory,
-                        fs::Permissions::from_mode(READ_ONLY_DIRECTORY_MODE),
-                    )
+                    nodex_platform::private_fs::set_mode(&directory, READ_ONLY_DIRECTORY_MODE)
+                        .map_err(io_error)
+                        .map_err(|error| {
+                            snapshot_context(error, "could not seal a leased Page directory")
+                        })?;
+                }
+                nodex_platform::private_fs::set_mode(&pages_root, READ_ONLY_DIRECTORY_MODE)
                     .map_err(io_error)
                     .map_err(|error| {
-                        snapshot_context(error, "could not seal a leased Page directory")
+                        snapshot_context(error, "could not seal the leased pages root")
                     })?;
-                }
-                fs::set_permissions(
-                    &pages_root,
-                    fs::Permissions::from_mode(READ_ONLY_DIRECTORY_MODE),
-                )
-                .map_err(io_error)
-                .map_err(|error| snapshot_context(error, "could not seal the leased pages root"))?;
             }
 
             let marker = LeaseMarker {
@@ -184,15 +181,12 @@ impl SearchSnapshotStore {
                 .map_err(|_| internal("Search snapshot manifest could not be encoded"))?;
             write_immutable_file(&staging.join("manifest.json"), &marker_bytes)
                 .map_err(|error| snapshot_context(error, "could not publish the lease manifest"))?;
-            fs::rename(&staging, &destination)
+            nodex_platform::private_fs::atomic_replace(&staging, &destination)
                 .map_err(io_error)
                 .map_err(|error| snapshot_context(error, "could not publish the lease root"))?;
-            fs::set_permissions(
-                &destination,
-                fs::Permissions::from_mode(READ_ONLY_DIRECTORY_MODE),
-            )
-            .map_err(io_error)
-            .map_err(|error| snapshot_context(error, "could not seal the lease root"))?;
+            nodex_platform::private_fs::set_mode(&destination, READ_ONLY_DIRECTORY_MODE)
+                .map_err(io_error)
+                .map_err(|error| snapshot_context(error, "could not seal the lease root"))?;
             Ok(())
         })();
 
@@ -299,7 +293,9 @@ impl SearchSnapshotStore {
                 continue;
             }
             validate_lease_id(name)?;
-            if metadata.permissions().mode() & 0o777 != READ_ONLY_DIRECTORY_MODE {
+            if !nodex_platform::private_fs::has_mode(&path, &metadata, READ_ONLY_DIRECTORY_MODE)
+                .map_err(io_error)?
+            {
                 remove_owned_tree(&path)?;
                 self.lease_keys.remove(name);
                 continue;
@@ -360,13 +356,10 @@ impl SearchSnapshotStore {
         if fs::symlink_metadata(&reusable).is_ok() {
             remove_owned_tree(&reusable)?;
         }
-        fs::set_permissions(
-            lease_root,
-            fs::Permissions::from_mode(PRIVATE_DIRECTORY_MODE),
-        )
-        .map_err(io_error)?;
+        nodex_platform::private_fs::set_mode(lease_root, PRIVATE_DIRECTORY_MODE)
+            .map_err(io_error)?;
         remove_owned_file(&lease_root.join("manifest.json"))?;
-        fs::rename(lease_root, &reusable).map_err(io_error)?;
+        nodex_platform::private_fs::atomic_replace(lease_root, &reusable).map_err(io_error)?;
         self.reusable_key = Some(key);
         Ok(())
     }
@@ -412,7 +405,7 @@ impl SearchSnapshotStore {
         let temporary = parent.join(format!(".{}.{}.tmp", file.sha256, random_hex(8)?));
         let result = (|| {
             write_immutable_file(&temporary, &file.bytes)?;
-            fs::rename(&temporary, &path).map_err(io_error)?;
+            nodex_platform::private_fs::atomic_replace(&temporary, &path).map_err(io_error)?;
             validate_immutable_file(&path, &file.sha256)?
                 .then_some(())
                 .ok_or_else(|| {
@@ -985,9 +978,8 @@ fn ensure_owned_directory(path: &Path) -> Result<(), StoreError> {
 }
 
 fn create_owned_directory(path: &Path) -> Result<(), StoreError> {
-    fs::create_dir(path).map_err(io_error)?;
-    fs::set_permissions(path, fs::Permissions::from_mode(PRIVATE_DIRECTORY_MODE))
-        .map_err(io_error)?;
+    nodex_platform::private_fs::create_dir(path).map_err(io_error)?;
+    nodex_platform::private_fs::set_mode(path, PRIVATE_DIRECTORY_MODE).map_err(io_error)?;
     require_owned_directory(path)
 }
 
@@ -999,7 +991,7 @@ fn require_owned_directory(path: &Path) -> Result<(), StoreError> {
             "Search snapshot storage contains a non-directory component",
         ));
     }
-    if metadata.permissions().mode() & 0o077 != 0 {
+    if !nodex_platform::private_fs::is_private(path, &metadata).map_err(io_error)? {
         return Err(invalid_profile(
             "Search snapshot storage is accessible outside the current user",
         ));
@@ -1008,18 +1000,7 @@ fn require_owned_directory(path: &Path) -> Result<(), StoreError> {
 }
 
 fn validate_owned_metadata(metadata: &fs::Metadata, path: &Path) -> Result<(), StoreError> {
-    if metadata.file_type().is_symlink() {
-        return Err(invalid_profile(format!(
-            "Search snapshot storage must not contain symlinks: {}",
-            path.display()
-        )));
-    }
-    if metadata.uid() != rustix::process::geteuid().as_raw() {
-        return Err(invalid_profile(
-            "Search snapshot storage is not owned by the current user",
-        ));
-    }
-    Ok(())
+    nodex_platform::private_fs::require_owned(path, metadata).map_err(io_error)
 }
 
 fn validate_immutable_file(path: &Path, expected_sha256: &str) -> Result<bool, StoreError> {
@@ -1029,7 +1010,10 @@ fn validate_immutable_file(path: &Path, expected_sha256: &str) -> Result<bool, S
         Err(error) => return Err(io_error(error)),
     };
     validate_owned_metadata(&metadata, path)?;
-    if !metadata.is_file() || metadata.permissions().mode() & 0o777 != READ_ONLY_FILE_MODE {
+    if !metadata.is_file()
+        || !nodex_platform::private_fs::has_mode(path, &metadata, READ_ONLY_FILE_MODE)
+            .map_err(io_error)?
+    {
         return Ok(false);
     }
     let bytes = fs::read(path).map_err(io_error)?;
@@ -1043,7 +1027,7 @@ fn write_immutable_file(path: &Path, bytes: &[u8]) -> Result<(), StoreError> {
     file.write_all(bytes).map_err(io_error)?;
     file.sync_all().map_err(io_error)?;
     drop(file);
-    fs::set_permissions(path, fs::Permissions::from_mode(READ_ONLY_FILE_MODE)).map_err(io_error)
+    nodex_platform::private_fs::set_mode(path, READ_ONLY_FILE_MODE).map_err(io_error)
 }
 
 fn link_immutable_file(
@@ -1091,8 +1075,7 @@ fn remove_owned_tree(path: &Path) -> Result<(), StoreError> {
     if !metadata.is_dir() {
         return Err(invalid_profile("Search snapshot lease is not a directory"));
     }
-    fs::set_permissions(path, fs::Permissions::from_mode(PRIVATE_DIRECTORY_MODE))
-        .map_err(io_error)?;
+    nodex_platform::private_fs::set_mode(path, PRIVATE_DIRECTORY_MODE).map_err(io_error)?;
     for entry in fs::read_dir(path).map_err(io_error)? {
         let entry = entry.map_err(io_error)?;
         let child = entry.path();
@@ -1115,7 +1098,10 @@ fn remove_owned_tree(path: &Path) -> Result<(), StoreError> {
 fn read_lease_marker(path: &Path) -> Result<LeaseMarker, StoreError> {
     let metadata = fs::symlink_metadata(path).map_err(io_error)?;
     validate_owned_metadata(&metadata, path)?;
-    if !metadata.is_file() || metadata.permissions().mode() & 0o777 != READ_ONLY_FILE_MODE {
+    if !metadata.is_file()
+        || !nodex_platform::private_fs::has_mode(path, &metadata, READ_ONLY_FILE_MODE)
+            .map_err(io_error)?
+    {
         return Err(invalid_profile(
             "Search snapshot manifest is missing or mutable",
         ));

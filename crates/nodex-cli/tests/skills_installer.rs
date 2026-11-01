@@ -1,5 +1,5 @@
+use nodex_platform::private_fs::symlink;
 use std::fs;
-use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Barrier};
 use std::thread;
@@ -27,9 +27,11 @@ impl Fixture {
         let temp = tempfile::tempdir().expect("temp");
         let home = temp.path().join("home");
         fs::create_dir(&home).expect("home");
-        let executable = temp
-            .path()
-            .join(format!("{name}.app/Contents/Resources/bin/nodex"));
+        let executable = temp.path().join(if cfg!(windows) {
+            format!("{name}/resources/bin/nodex.exe")
+        } else {
+            format!("{name}.app/Contents/Resources/bin/nodex")
+        });
         fs::create_dir_all(executable.parent().expect("bin")).expect("app layout");
         fs::write(&executable, b"test executable").expect("executable");
         let bundle_root = executable
@@ -557,20 +559,23 @@ fn bundle_verifier_rejects_unknown_links_hardlinks_and_special_files() {
         CliErrorCode::SkillBundleInvalid
     );
 
-    let special = Fixture::new("special");
-    let short_socket = special._temp.path().join("unexpected.socket");
-    let _listener = std::os::unix::net::UnixListener::bind(&short_socket).expect("socket");
-    fs::rename(
-        &short_socket,
-        special.bundle_source.join("unexpected.socket"),
-    )
-    .expect("move socket into bundle");
-    assert_eq!(
-        verify_for_executable(&special.executable)
-            .expect_err("bundle socket")
-            .code,
-        CliErrorCode::SkillBundleInvalid
-    );
+    #[cfg(unix)]
+    {
+        let special = Fixture::new("special");
+        let short_socket = special._temp.path().join("unexpected.socket");
+        let _listener = std::os::unix::net::UnixListener::bind(&short_socket).expect("socket");
+        nodex_platform::private_fs::atomic_replace(
+            &short_socket,
+            special.bundle_source.join("unexpected.socket"),
+        )
+        .expect("move socket into bundle");
+        assert_eq!(
+            verify_for_executable(&special.executable)
+                .expect_err("bundle socket")
+                .code,
+            CliErrorCode::SkillBundleInvalid
+        );
+    }
 }
 
 #[test]

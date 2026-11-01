@@ -200,8 +200,8 @@ fn page_file_relations_do_not_expand_independent_file_authority() {
     };
     let bytes = b"public query attachment";
     let hash = crate::document::sha256(bytes);
-    std::fs::create_dir_all(directory.path().join("assets")).unwrap();
-    std::fs::write(
+    nodex_platform::private_fs::create_dir_all(directory.path().join("assets")).unwrap();
+    nodex_platform::private_fs::write(
         directory.path().join("assets").join(format!("{hash}.blob")),
         bytes,
     )

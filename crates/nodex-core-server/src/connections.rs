@@ -2,57 +2,13 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, Weak};
 use std::time::{Duration, Instant};
 
-use axum::extract::connect_info::Connected;
-use axum::serve::IncomingStream;
 use nodex_core_contracts::AdapterKind;
-use tokio::net::UnixListener;
+pub(crate) use nodex_platform::local_endpoint::PeerIdentity;
 
 const MAX_CONNECTIONS: usize = 1_024;
 const MAX_EVENT_SUBSCRIPTIONS: usize = 2_048;
 const MAX_EVENT_SUBSCRIPTIONS_PER_CONNECTION: usize = 64;
 const STALE_CONNECTION_AGE: Duration = Duration::from_secs(24 * 60 * 60);
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct PeerIdentity {
-    pub(crate) uid: Option<u32>,
-    pub(crate) gid: Option<u32>,
-    pub(crate) pid: Option<u32>,
-}
-
-impl PeerIdentity {
-    fn unavailable() -> Self {
-        Self {
-            uid: None,
-            gid: None,
-            pid: None,
-        }
-    }
-
-    pub(crate) fn is_authenticated_owner(&self, owner_uid: u32) -> bool {
-        self.uid == Some(owner_uid) && self.gid.is_some() && self.pid.is_some()
-    }
-}
-
-impl Connected<IncomingStream<'_, UnixListener>> for PeerIdentity {
-    fn connect_info(stream: IncomingStream<'_, UnixListener>) -> Self {
-        let credential = match stream.io().peer_cred() {
-            Ok(credential) => credential,
-            Err(error) => {
-                tracing::warn!(
-                    subsystem = "transport",
-                    error = %error,
-                    "Disconnected Unix peer could not be authenticated"
-                );
-                return Self::unavailable();
-            }
-        };
-        Self {
-            uid: Some(credential.uid()),
-            gid: Some(credential.gid()),
-            pid: credential.pid().and_then(|pid| u32::try_from(pid).ok()),
-        }
-    }
-}
 
 #[derive(Clone)]
 pub(crate) struct BoundConnection {
@@ -292,18 +248,8 @@ impl ConnectionRegistry {
     }
 }
 
-pub(crate) fn peer_process_is_alive(raw_pid: Option<u32>) -> bool {
-    let Some(raw_pid) = raw_pid.and_then(|pid| i32::try_from(pid).ok()) else {
-        return false;
-    };
-    let Some(pid) = rustix::process::Pid::from_raw(raw_pid) else {
-        return false;
-    };
-    match rustix::process::test_kill_process(pid) {
-        Ok(()) | Err(rustix::io::Errno::PERM) => true,
-        Err(rustix::io::Errno::SRCH) => false,
-        Err(_) => true,
-    }
+pub(crate) fn peer_process_is_alive(pid: Option<u32>) -> bool {
+    pid.is_some_and(nodex_platform::process::process_is_alive)
 }
 
 fn unauthorized(message: &'static str) -> ConnectionRegistryError {
@@ -352,8 +298,7 @@ mod tests {
 
     fn peer(pid: u32) -> PeerIdentity {
         PeerIdentity {
-            uid: Some(501),
-            gid: Some(20),
+            user: Some(nodex_platform::process::current_user().unwrap()),
             pid: Some(pid),
         }
     }
@@ -362,7 +307,9 @@ mod tests {
     fn unavailable_peer_credentials_fail_closed_without_panicking() {
         let unavailable = PeerIdentity::unavailable();
 
-        assert!(!unavailable.is_authenticated_owner(501));
+        assert!(
+            !unavailable.is_authenticated_owner(&nodex_platform::process::current_user().unwrap())
+        );
         assert_ne!(unavailable, peer(10));
     }
 
