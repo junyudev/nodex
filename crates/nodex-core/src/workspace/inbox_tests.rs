@@ -1188,9 +1188,9 @@ fn routing_context_includes_ordered_project_sources_and_empty_rootless_projects(
     let workspace = seeded_workspace();
     let module = &workspace.module;
     let source_roots = vec![
-        "/workspace/z-primary".to_owned(),
-        "/workspace/a-secondary".to_owned(),
-        "/workspace/m-tertiary".to_owned(),
+        nodex_platform::fixture_path!("/workspace/z-primary").to_owned(),
+        nodex_platform::fixture_path!("/workspace/a-secondary").to_owned(),
+        nodex_platform::fixture_path!("/workspace/m-tertiary").to_owned(),
     ];
     apply_host(
         module,
@@ -4737,13 +4737,19 @@ mod scheduled {
                     name: "Folders".into(),
                     description: String::new(),
                     appearance: None,
-                    source_roots: vec!["/workspace/first".into(), "/workspace/second".into()],
+                    source_roots: vec![
+                        nodex_platform::fixture_path!("/workspace/first").into(),
+                        nodex_platform::fixture_path!("/workspace/second").into(),
+                    ],
                     page_key_prefix: None,
                 },
             );
             let mut input = task_input();
             input.project_id = Some("project:folders".into());
-            input.cwds = Some(vec!["/workspace/first".into(), "/workspace/second".into()]);
+            input.cwds = Some(vec![
+                nodex_platform::fixture_path!("/workspace/first").into(),
+                nodex_platform::fixture_path!("/workspace/second").into(),
+            ]);
             setup(&workspace, input);
             let scope = ProjectWorkspaceInboxScope::Project {
                 project_id: "project:folders".into(),
@@ -4767,7 +4773,7 @@ mod scheduled {
                     dispatch_id: Some(lease.dispatch_id.clone()),
                     session_id: None,
                     session_title: None,
-                    source_cwd: Some("/workspace/first".into()),
+                    source_cwd: Some(nodex_platform::fixture_path!("/workspace/first").into()),
                 },
             );
             create_session_thread(
@@ -4819,7 +4825,7 @@ mod scheduled {
                     dispatch_id: Some(lease.dispatch_id),
                     session_id: None,
                     session_title: None,
-                    source_cwd: Some("/workspace/second".into()),
+                    source_cwd: Some(nodex_platform::fixture_path!("/workspace/second").into()),
                 },
             );
             assert_eq!(
@@ -5093,7 +5099,9 @@ mod scheduled {
         );
         let mut input = task_input();
         input.project_id = Some("project:scheduled".into());
-        input.cwds = Some(vec!["/workspace/project:scheduled".into()]);
+        input.cwds = Some(vec![
+            nodex_platform::fixture_path!("/workspace/project:scheduled").into(),
+        ]);
         setup(&workspace, input);
         let held = window_in(
             &workspace.module,

@@ -226,6 +226,7 @@ pub(crate) fn run(
             "--with-filename",
             "--color=never",
             "--sort=path",
+            "--path-separator=/",
         ])
         .args(&invocation.forwarded)
         .arg("--")

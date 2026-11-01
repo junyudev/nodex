@@ -213,7 +213,11 @@ pub fn classify_target(target: SkillTarget, bundle: &VerifiedSkillBundle) -> Cla
 
     if nodex_platform::private_fs::is_reparse_point(&metadata) {
         return match fs::read_link(&target.path) {
-            Ok(raw) if raw.is_absolute() && raw.as_path() == bundle.skill_source.as_path() => {
+            Ok(raw)
+                if raw.is_absolute()
+                    && nodex_platform::private_fs::path_key(&raw).ok()
+                        == nodex_platform::private_fs::path_key(&bundle.skill_source).ok() =>
+            {
                 ClassifiedSkillTarget {
                     target,
                     state: SkillTargetState::ManagedCurrent,

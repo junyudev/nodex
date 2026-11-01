@@ -20,3 +20,15 @@ pub fn tempdir() -> io::Result<TempDir> {
         path,
     })
 }
+
+/// A host-absolute lexical fixture path, without requiring an existing drive entry.
+#[macro_export]
+macro_rules! fixture_path {
+    ($path:literal) => {{
+        if cfg!(windows) {
+            concat!("C:", $path)
+        } else {
+            $path
+        }
+    }};
+}

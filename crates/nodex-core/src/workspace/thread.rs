@@ -3114,9 +3114,9 @@ mod tests {
                 instance_config_id: instance.to_owned(),
             },
             native_session_id: "native-uuid".to_owned(),
-            native_home: "/native/home".to_owned(),
+            native_home: nodex_platform::fixture_path!("/native/home").to_owned(),
             title: "Native conversation".to_owned(),
-            cwd: "/workspace/worktree".to_owned(),
+            cwd: nodex_platform::fixture_path!("/workspace/worktree").to_owned(),
             created_at: 10,
             updated_at: 20,
         }
@@ -3152,10 +3152,10 @@ mod tests {
             vec!["session-1"]
         );
         assert!(
-            matches!(read(&module,ProjectWorkspaceRead::Thread {thread_id:"thread-1".to_owned()}),ProjectWorkspaceReadValue::Thread {thread} if thread.session_id.as_deref()==Some("session-1") && thread.cwd.as_deref()==Some("/workspace/worktree"))
+            matches!(read(&module,ProjectWorkspaceRead::Thread {thread_id:"thread-1".to_owned()}),ProjectWorkspaceReadValue::Thread {thread} if thread.session_id.as_deref()==Some("session-1") && thread.cwd.as_deref()==Some(nodex_platform::fixture_path!("/workspace/worktree")))
         );
         assert!(
-            matches!(read(&module,ProjectWorkspaceRead::ThreadBackendSession {thread_id:"thread-1".to_owned()}),ProjectWorkspaceReadValue::ThreadBackendSession {session:Some(session)} if session.backend_session_id=="native-uuid" && session.native_home.as_deref()==Some("/native/home") && session.native_state.as_ref().is_some_and(|state|state.ever_saved))
+            matches!(read(&module,ProjectWorkspaceRead::ThreadBackendSession {thread_id:"thread-1".to_owned()}),ProjectWorkspaceReadValue::ThreadBackendSession {session:Some(session)} if session.backend_session_id=="native-uuid" && session.native_home.as_deref()==Some(nodex_platform::fixture_path!("/native/home")) && session.native_state.as_ref().is_some_and(|state|state.ever_saved))
         );
         let mut other_project = native_attach_intent("session-3", "thread-3", "claude-a");
         if let ProjectWorkspaceIntent::AttachNativeSession { project_id, .. } = &mut other_project {
@@ -3278,7 +3278,7 @@ mod tests {
             vec!["session-1"]
         );
         assert!(
-            matches!(read(&module,ProjectWorkspaceRead::ThreadBackendSession {thread_id:"thread-1".to_owned()}),ProjectWorkspaceReadValue::ThreadBackendSession {session:Some(session)} if session.native_home.as_deref()==Some("/native/home") && session.backend_session_id=="native-uuid")
+            matches!(read(&module,ProjectWorkspaceRead::ThreadBackendSession {thread_id:"thread-1".to_owned()}),ProjectWorkspaceReadValue::ThreadBackendSession {session:Some(session)} if session.native_home.as_deref()==Some(nodex_platform::fixture_path!("/native/home")) && session.backend_session_id=="native-uuid")
         );
         kernel
             .writer()
@@ -3374,7 +3374,10 @@ mod tests {
                     &context(),
                     request(
                         "native:wrong-home",
-                        rebind(Some("/other/home".to_owned()), "other-uuid")
+                        rebind(
+                            Some(nodex_platform::fixture_path!("/other/home").to_owned()),
+                            "other-uuid"
+                        )
                     )
                 )
                 .is_err()
@@ -3399,7 +3402,7 @@ mod tests {
             )
             .expect("trusted UUID replacement");
         assert!(
-            matches!(read(&module,ProjectWorkspaceRead::ThreadBackendSession {thread_id:"thread-1".to_owned()}),ProjectWorkspaceReadValue::ThreadBackendSession {session:Some(session)} if session.backend_session_id=="replaced-uuid" && session.native_home.as_deref()==Some("/native/home"))
+            matches!(read(&module,ProjectWorkspaceRead::ThreadBackendSession {thread_id:"thread-1".to_owned()}),ProjectWorkspaceReadValue::ThreadBackendSession {session:Some(session)} if session.backend_session_id=="replaced-uuid" && session.native_home.as_deref()==Some(nodex_platform::fixture_path!("/native/home")))
         );
     }
 
@@ -3412,9 +3415,9 @@ mod tests {
             project_id: None,
             backend_binding: AgentBackendBinding::Codex,
             native_session_id: "codex-uuid".to_owned(),
-            native_home: "/native/codex".to_owned(),
+            native_home: nodex_platform::fixture_path!("/native/codex").to_owned(),
             title: "CLI conversation".to_owned(),
-            cwd: "/workspace".to_owned(),
+            cwd: nodex_platform::fixture_path!("/workspace").to_owned(),
             created_at: 10,
             updated_at: 20,
         };
@@ -3800,7 +3803,7 @@ mod tests {
             for (operation, home, session_id) in [
                 (
                     "thread-backend-home-changed",
-                    Some("/another/profile".to_owned()),
+                    Some(nodex_platform::fixture_path!("/another/profile").to_owned()),
                     "native-session-1",
                 ),
                 (
@@ -3934,11 +3937,16 @@ mod tests {
                         thread_id: "thread:1".to_owned(),
                         location: ProjectWorkspaceThreadExecutionLocation {
                             execution_host_id: "ssh:build-box".to_owned(),
-                            cwd: Some("/worktrees/shared/nested".to_owned()),
-                            managed_worktree_path: Some("/worktrees/shared".to_owned()),
+                            cwd: Some(
+                                nodex_platform::fixture_path!("/worktrees/shared/nested")
+                                    .to_owned(),
+                            ),
+                            managed_worktree_path: Some(
+                                nodex_platform::fixture_path!("/worktrees/shared").to_owned(),
+                            ),
                             runtime_workspace_roots: vec![
-                                "/worktrees/shared".to_owned(),
-                                "/workspace/additional".to_owned(),
+                                nodex_platform::fixture_path!("/worktrees/shared").to_owned(),
+                                nodex_platform::fixture_path!("/workspace/additional").to_owned(),
                             ],
                             projectless_output_directory: None,
                             projectless_workspace_browser_root: None,
@@ -3958,7 +3966,10 @@ mod tests {
         assert_eq!(after.consumers[0].execution_host_id, "ssh:build-box");
         assert_eq!(
             after.consumers[0].runtime_workspace_roots,
-            ["/worktrees/shared", "/workspace/additional"]
+            [
+                nodex_platform::fixture_path!("/worktrees/shared"),
+                nodex_platform::fixture_path!("/workspace/additional")
+            ]
         );
 
         for index in 2..=3 {
@@ -3971,9 +3982,15 @@ mod tests {
                             thread_id: format!("thread:{index}"),
                             location: ProjectWorkspaceThreadExecutionLocation {
                                 execution_host_id: "local".to_owned(),
-                                cwd: Some("/worktrees/shared".to_owned()),
-                                managed_worktree_path: Some("/worktrees/shared".to_owned()),
-                                runtime_workspace_roots: vec!["/worktrees/shared".to_owned()],
+                                cwd: Some(
+                                    nodex_platform::fixture_path!("/worktrees/shared").to_owned(),
+                                ),
+                                managed_worktree_path: Some(
+                                    nodex_platform::fixture_path!("/worktrees/shared").to_owned(),
+                                ),
+                                runtime_workspace_roots: vec![
+                                    nodex_platform::fixture_path!("/worktrees/shared").to_owned(),
+                                ],
                                 projectless_output_directory: None,
                                 projectless_workspace_browser_root: None,
                             },
@@ -4072,18 +4089,31 @@ mod tests {
                             expected_project_id: Some("project:default".to_owned()),
                             thread_patch: Some(Box::new(ProjectWorkspaceThreadPatch {
                                 project_id: Some(Some("project:default".to_owned())),
-                                cwd: Some(Some("/worktrees/atomic/nested".to_owned())),
-                                managed_worktree_path: Some(Some("/worktrees/atomic".to_owned())),
+                                cwd: Some(Some(
+                                    nodex_platform::fixture_path!("/worktrees/atomic/nested")
+                                        .to_owned(),
+                                )),
+                                managed_worktree_path: Some(Some(
+                                    nodex_platform::fixture_path!("/worktrees/atomic").to_owned(),
+                                )),
                                 ..ProjectWorkspaceThreadPatch::default()
                             })),
                             execution_location: Some(Box::new(
                                 ProjectWorkspaceThreadExecutionLocation {
                                     execution_host_id: "local".to_owned(),
-                                    cwd: Some("/worktrees/atomic/nested".to_owned()),
-                                    managed_worktree_path: Some("/worktrees/atomic".to_owned()),
+                                    cwd: Some(
+                                        nodex_platform::fixture_path!("/worktrees/atomic/nested")
+                                            .to_owned(),
+                                    ),
+                                    managed_worktree_path: Some(
+                                        nodex_platform::fixture_path!("/worktrees/atomic")
+                                            .to_owned(),
+                                    ),
                                     runtime_workspace_roots: vec![
-                                        "/worktrees/atomic".to_owned(),
-                                        "/workspace/additional".to_owned(),
+                                        nodex_platform::fixture_path!("/worktrees/atomic")
+                                            .to_owned(),
+                                        nodex_platform::fixture_path!("/workspace/additional")
+                                            .to_owned(),
                                     ],
                                     projectless_output_directory: None,
                                     projectless_workspace_browser_root: None,
@@ -4109,7 +4139,10 @@ mod tests {
         );
         assert_eq!(
             after.consumers[0].runtime_workspace_roots,
-            ["/worktrees/atomic", "/workspace/additional"]
+            [
+                nodex_platform::fixture_path!("/worktrees/atomic"),
+                nodex_platform::fixture_path!("/workspace/additional")
+            ]
         );
     }
 
@@ -4290,8 +4323,12 @@ mod tests {
                     model_id: Some(Some("claude-opus-4-1".to_owned())),
                     reasoning_effort: Some(Some("Thinking".to_owned())),
                     service_tier: Some(Some("priority".to_owned())),
-                    cwd: Some(Some("/workspace/root".to_owned())),
-                    managed_worktree_path: Some(Some("/workspace/worktree".to_owned())),
+                    cwd: Some(Some(
+                        nodex_platform::fixture_path!("/workspace/root").to_owned(),
+                    )),
+                    managed_worktree_path: Some(Some(
+                        nodex_platform::fixture_path!("/workspace/worktree").to_owned(),
+                    )),
                     status: Some(ProjectWorkspaceThreadStatus {
                         status_type: CodexThreadStatusType::Active,
                         active_flags: vec![CodexThreadActiveFlag::WaitingOnApproval],
@@ -5158,8 +5195,8 @@ mod tests {
                         roots: vec![
                             "relative".to_owned(),
                             " /workspace/ignored ".to_owned(),
-                            "/workspace/a".to_owned(),
-                            "/workspace/a".to_owned(),
+                            nodex_platform::fixture_path!("/workspace/a").to_owned(),
+                            nodex_platform::fixture_path!("/workspace/a").to_owned(),
                         ],
                     },
                 ),
@@ -5172,7 +5209,10 @@ mod tests {
                     "execution-roots-merge",
                     ProjectWorkspaceIntent::MergeThreadWritableRoots {
                         thread_id: "thread-root".to_owned(),
-                        roots: vec!["/workspace/b".to_owned(), "/workspace/a".to_owned()],
+                        roots: vec![
+                            nodex_platform::fixture_path!("/workspace/b").to_owned(),
+                            nodex_platform::fixture_path!("/workspace/a").to_owned(),
+                        ],
                     },
                 ),
             )
@@ -5185,7 +5225,13 @@ mod tests {
         ) else {
             panic!("Thread read");
         };
-        assert_eq!(thread.writable_roots, ["/workspace/a", "/workspace/b"]);
+        assert_eq!(
+            thread.writable_roots,
+            [
+                nodex_platform::fixture_path!("/workspace/a"),
+                nodex_platform::fixture_path!("/workspace/b")
+            ]
+        );
 
         module
             .apply(
@@ -5268,7 +5314,10 @@ mod tests {
             processes.items[0].thread_title.as_deref(),
             Some("Root execution")
         );
-        assert_eq!(processes.items[0].cwd.as_deref(), Some("/workspace/a"));
+        assert_eq!(
+            processes.items[0].cwd.as_deref(),
+            Some(nodex_platform::fixture_path!("/workspace/a"))
+        );
         assert_eq!(processes.items[0].command, "pnpm test:all");
         assert_eq!(processes.items[0].started_at_ms, 10);
         assert_eq!(processes.items[0].updated_at_ms, 30);

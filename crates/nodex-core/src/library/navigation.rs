@@ -3805,7 +3805,9 @@ mod tests {
                     name: "Research".to_owned(),
                     description: String::new(),
                     appearance: None,
-                    source_roots: vec!["/workspace/research".to_owned()],
+                    source_roots: vec![
+                        nodex_platform::fixture_path!("/workspace/research").to_owned(),
+                    ],
                     page_key_prefix: None,
                     starter_page: ProjectWorkspaceStarterPage {
                         page_id: "page:starter".to_owned(),

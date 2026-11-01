@@ -124,7 +124,10 @@ pub(super) fn create_project(
             name: project_id.to_owned(),
             description: String::new(),
             appearance: None,
-            source_roots: vec![format!("/workspace/{project_id}")],
+            source_roots: vec![format!(
+                "{}/{project_id}",
+                nodex_platform::fixture_path!("/workspace")
+            )],
             page_key_prefix: None,
         },
     );

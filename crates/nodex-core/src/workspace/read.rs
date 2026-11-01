@@ -1131,7 +1131,7 @@ mod tests {
         );
         assert_eq!(
             projects[0].primary_workspace_root.as_deref(),
-            Some("/workspace/one")
+            Some(nodex_platform::fixture_path!("/workspace/one"))
         );
         assert_eq!(projects[0].sources.len(), 2);
         assert!(projects[0].pinned);
@@ -1255,7 +1255,10 @@ mod tests {
                 .iter()
                 .map(|worktree| worktree.path.as_str())
                 .collect::<Vec<_>>(),
-            vec!["/worktrees/shared", "/worktrees/zeta"]
+            vec![
+                nodex_platform::fixture_path!("/worktrees/shared"),
+                nodex_platform::fixture_path!("/worktrees/zeta")
+            ]
         );
 
         let foreign_session = module

@@ -250,7 +250,7 @@ mod tests {
             title: "Created chat".into(),
             observation: Some(Box::new(ProjectWorkspaceCodexThreadObservation {
                 project_id: None,
-                cwd: Some("/remote/work".into()),
+                cwd: Some(nodex_platform::fixture_path!("/remote/work").into()),
                 thread_name: Some("Remote title".into()),
                 thread_source: Some("appServer".into()),
                 thread_preview: "Native preview".into(),

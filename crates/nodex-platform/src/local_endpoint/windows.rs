@@ -2,11 +2,15 @@ use super::PeerIdentity;
 use crate::windows::{PrivateSecurity, handle, process_sid, wide};
 use axum::extract::connect_info::Connected;
 use axum::serve::{IncomingStream, Listener};
+use std::future::Future;
 use std::io::{self, Read, Write};
-use std::os::windows::io::{AsRawHandle, OwnedHandle};
+use std::os::windows::io::{AsHandle, AsRawHandle, OwnedHandle};
 use std::path::Path;
+use std::pin::Pin;
 use std::ptr::{null, null_mut};
+use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tokio::net::windows::named_pipe::{NamedPipeServer, ServerOptions};
 use windows_sys::Win32::Foundation::{
     ERROR_BROKEN_PIPE, ERROR_IO_PENDING, ERROR_PIPE_BUSY, ERROR_PIPE_NOT_CONNECTED, GENERIC_READ,
@@ -48,7 +52,7 @@ fn instance(endpoint: &str, first: bool) -> io::Result<NamedPipeServer> {
     }
 }
 impl Listener for LocalListener {
-    type Io = NamedPipeServer;
+    type Io = Connection;
     type Addr = String;
     async fn accept(&mut self) -> (Self::Io, Self::Addr) {
         loop {
@@ -69,7 +73,13 @@ impl Listener for LocalListener {
             if !peer.is_authenticated_owner(&crate::process::current_user().unwrap_or_default()) {
                 continue;
             }
-            return (connected, self.endpoint.clone());
+            return (
+                Connection {
+                    pipe: connected,
+                    drain: None,
+                },
+                self.endpoint.clone(),
+            );
         }
     }
     fn local_addr(&self) -> io::Result<Self::Addr> {
@@ -91,7 +101,67 @@ fn peer(stream: &NamedPipeServer) -> PeerIdentity {
 }
 impl Connected<IncomingStream<'_, LocalListener>> for PeerIdentity {
     fn connect_info(stream: IncomingStream<'_, LocalListener>) -> Self {
-        peer(stream.io())
+        peer(&stream.io().pipe)
+    }
+}
+
+/// Draining before close is required by Windows: closing a pipe discards unread bytes.
+/// Tokio pipe shutdown itself is a no-op, so HTTP must await the native drain off-thread.
+#[derive(Debug)]
+pub struct Connection {
+    pipe: NamedPipeServer,
+    drain: Option<tokio::task::JoinHandle<io::Result<()>>>,
+}
+impl AsyncRead for Connection {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buffer: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        Pin::new(&mut self.pipe).poll_read(cx, buffer)
+    }
+}
+impl AsyncWrite for Connection {
+    fn poll_write(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        bytes: &[u8],
+    ) -> Poll<io::Result<usize>> {
+        Pin::new(&mut self.pipe).poll_write(cx, bytes)
+    }
+    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        Pin::new(&mut self.pipe).poll_flush(cx)
+    }
+    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        if self.drain.is_none() {
+            let handle = match self.pipe.as_handle().try_clone_to_owned() {
+                Ok(handle) => handle,
+                Err(error) => return Poll::Ready(Err(error)),
+            };
+            self.drain = Some(tokio::task::spawn_blocking(move || {
+                if unsafe {
+                    windows_sys::Win32::Storage::FileSystem::FlushFileBuffers(
+                        handle.as_raw_handle(),
+                    )
+                } != 0
+                {
+                    return Ok(());
+                }
+                let error = io::Error::last_os_error();
+                if matches!(
+                    error.raw_os_error().map(|code| code as u32),
+                    Some(ERROR_BROKEN_PIPE | ERROR_PIPE_NOT_CONNECTED)
+                ) {
+                    return Ok(());
+                }
+                Err(error)
+            }));
+        }
+        match Pin::new(self.drain.as_mut().expect("drain initialized")).poll(cx) {
+            Poll::Ready(Ok(result)) => Poll::Ready(result),
+            Poll::Ready(Err(error)) => Poll::Ready(Err(io::Error::other(error))),
+            Poll::Pending => Poll::Pending,
+        }
     }
 }
 
@@ -342,6 +412,29 @@ fn blocking_instance(endpoint: &Path, first: bool) -> io::Result<Stream> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn shutdown_drains_every_response_byte_before_closing_the_pipe() {
+        use tokio::io::AsyncWriteExt;
+        let endpoint = super::super::random_endpoint("nodex-core").unwrap();
+        let mut listener = LocalListener::bind(&endpoint).unwrap();
+        let server = tokio::spawn(async move {
+            let (mut connection, _) = listener.accept().await;
+            connection.write_all(&vec![42; 256 * 1024]).await.unwrap();
+            connection.shutdown().await.unwrap();
+        });
+        let received = tokio::task::spawn_blocking(move || {
+            let mut client = connect(Path::new(&endpoint), Some(std::process::id())).unwrap();
+            std::thread::sleep(Duration::from_millis(50));
+            let mut bytes = Vec::new();
+            client.read_to_end(&mut bytes).unwrap();
+            bytes
+        })
+        .await
+        .unwrap();
+        server.await.unwrap();
+        assert_eq!(received, vec![42; 256 * 1024]);
+    }
+
     #[tokio::test]
     async fn first_instance_and_server_identity_are_enforced() {
         let endpoint = super::super::random_endpoint("nodex-core").unwrap();

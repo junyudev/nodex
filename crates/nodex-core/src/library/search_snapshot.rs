@@ -1040,7 +1040,7 @@ fn link_immutable_file(
             "Search snapshot cache entry failed validation before assembly",
         ));
     }
-    fs::hard_link(source, destination).map_err(io_error)?;
+    nodex_platform::private_fs::link_immutable_file(source, destination).map_err(io_error)?;
     if !validate_immutable_file(destination, expected)? {
         let _ = fs::remove_file(destination);
         return Err(invalid_profile(

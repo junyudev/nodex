@@ -626,6 +626,12 @@ pub fn path_key(path: &Path) -> io::Result<String> {
         .replace('\\', "/"))
 }
 
+// Sealed files cannot grant the mutation access required to create another NTFS link.
+// Materialize a separately sealed private copy while preserving the immutable contract.
+pub fn link_immutable_file(source: &Path, destination: &Path) -> io::Result<()> {
+    super::copy(source, destination)?;
+    set_mode(destination, 0o400)
+}
 #[cfg(test)]
 mod tests {
     use super::*;

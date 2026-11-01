@@ -54,7 +54,8 @@ point, including directory junctions. Profile initialization converts the curren
 token’s default directory owner to its user SID before reading content; this
 handles elevated Windows accounts without accepting another user’s owner SID.
 Immutable search snapshots use read-only
-access, restored only by the cleanup owner. Files are flushed before publication.
+access, restored only by the cleanup owner. Unix shares sealed files by hard link;
+Windows creates independently sealed copies. Files are flushed before publication.
 Directory synchronization is a no-op on Windows; replacement requests write-through
 and retries sharing/access/lock violations for at most one second to tolerate
 transient antivirus and indexer handles.

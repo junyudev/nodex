@@ -170,3 +170,7 @@ pub fn path_key(path: &Path) -> io::Result<String> {
         .map(str::to_owned)
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "path is not UTF-8"))
 }
+
+pub fn link_immutable_file(source: &Path, destination: &Path) -> io::Result<()> {
+    fs::hard_link(source, destination)
+}

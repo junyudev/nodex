@@ -3877,7 +3877,7 @@ pub async fn run_with_selection(
     let mut selection_reason = CoreSelectionReason::StartedNoIncumbent;
     match lock.try_lock_exclusive() {
         Ok(()) => {}
-        Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+        Err(error) if nodex_platform::private_fs::lock_is_contended(&error) => {
             match paths.wait_for_running_core(&lock, &candidate)? {
                 ExistingCore::LockAcquired => {}
                 ExistingCore::Reuse(descriptor, reason) => {

@@ -92,7 +92,7 @@ impl Relocation<'_> {
         }
         let normalized = nodex_platform::private_fs::normalize_path(Path::new(raw));
         let path = normalized.as_ref();
-        if !path.starts_with(&self.source) {
+        if !path.starts_with(nodex_platform::private_fs::normalize_path(&self.source).as_ref()) {
             return Ok(None);
         }
         let relative = files::relative_path(&self.source, path)?;
@@ -163,7 +163,7 @@ impl Relocation<'_> {
             }
             return Ok(updated);
         };
-        if Path::new(raw)
+        if nodex_platform::private_fs::normalize_path(Path::new(raw))
             .file_name()
             .is_none_or(|name| name != OBJECTIVE_FILE)
         {

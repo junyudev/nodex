@@ -1366,7 +1366,12 @@ fn compatibility_policy_reuses_while_electron_artifact_policy_replaces_without_a
         .expect("start Core from old app bundle");
     let incumbent_descriptor = read_ready_descriptor(&mut incumbent);
 
-    fs::remove_dir_all(&old_bundle).expect("delete old app bundle after update");
+    if cfg!(windows) {
+        fs::rename(&old_bundle, old_bundle.with_extension("retired"))
+            .expect("retire the running app bundle after update");
+    } else {
+        fs::remove_dir_all(&old_bundle).expect("delete old app bundle after update");
+    }
     assert!(!old_executable.exists());
 
     let mut compatible_new_app = Command::new(env!("CARGO_BIN_EXE_nodex-core"))

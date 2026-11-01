@@ -460,14 +460,16 @@ fn bounds_selected_paths_and_rolls_back_relocation_when_a_later_row_exceeds_budg
     );
     for (id, path) in selections {
         assert_eq!(
-            connection
-                .query_row(
-                    "SELECT rollout_path FROM threads WHERE id = ?1",
-                    [id],
-                    |row| row.get::<_, String>(0)
-                )
-                .unwrap(),
-            target.join(path).to_str().unwrap()
+            PathBuf::from(
+                connection
+                    .query_row(
+                        "SELECT rollout_path FROM threads WHERE id = ?1",
+                        [id],
+                        |row| row.get::<_, String>(0)
+                    )
+                    .unwrap()
+            ),
+            target.join(path)
         );
     }
     assert_eq!(
@@ -877,8 +879,10 @@ fn rejects_symlinks_and_native_paths_into_another_home() {
     state(&agent, &[(ROOT, &relative)]);
     let db = Connection::open(agent.join("state_5.sqlite")).unwrap();
     db.execute(
-        "UPDATE threads SET rollout_path='/another/profile/sessions/rollout.jsonl'",
-        [],
+        "UPDATE threads SET rollout_path=?1",
+        [nodex_platform::fixture_path!(
+            "/another/profile/sessions/rollout.jsonl"
+        )],
     )
     .unwrap();
     assert!(

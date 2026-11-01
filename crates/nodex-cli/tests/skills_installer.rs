@@ -103,10 +103,16 @@ impl Fixture {
 
     fn target(&self, agent: SkillAgent) -> PathBuf {
         match agent {
-            SkillAgent::Codex => self.home.join(".agents/skills/nodex"),
-            SkillAgent::ClaudeCode => self.home.join(".claude/skills/nodex"),
+            SkillAgent::Codex => self.home.join(".agents").join("skills").join("nodex"),
+            SkillAgent::ClaudeCode => self.home.join(".claude").join("skills").join("nodex"),
         }
     }
+}
+
+fn read_managed_link(path: impl AsRef<Path>) -> std::io::Result<PathBuf> {
+    let raw = fs::read_link(path)?;
+    assert!(raw.is_absolute());
+    fs::canonicalize(raw)
 }
 
 fn repository_root() -> PathBuf {
@@ -176,7 +182,7 @@ fn installs_global_codex_and_claude_targets_as_exact_absolute_symlinks() {
     assert_eq!(result["targets"][0]["outcome"], "installed");
     assert_eq!(result["targets"][1]["outcome"], "installed");
     for agent in SkillAgent::ALL {
-        let raw = fs::read_link(fixture.target(agent)).expect("managed symlink");
+        let raw = read_managed_link(fixture.target(agent)).expect("managed symlink");
         assert!(raw.is_absolute());
         assert_eq!(raw, fixture.bundle_source);
     }
@@ -268,7 +274,7 @@ fn honors_claude_config_dir_and_reports_compatible_external_directories() {
     )
     .expect("custom install");
     assert_eq!(
-        fs::read_link(custom_claude.join("skills/nodex")).expect("Claude symlink"),
+        read_managed_link(custom_claude.join("skills/nodex")).expect("Claude symlink"),
         fixture.bundle_source
     );
 
@@ -368,7 +374,7 @@ fn an_owned_config_root_symlink_is_allowed_but_its_skills_child_must_be_real() {
     )
     .expect("install through owned config root");
     assert_eq!(
-        fs::read_link(actual_root.join("skills/nodex")).expect("managed target"),
+        read_managed_link(actual_root.join("skills/nodex")).expect("managed target"),
         fixture.bundle_source
     );
 }
@@ -441,7 +447,7 @@ fn interrupted_multi_target_install_converges_on_idempotent_retry() {
             .expect_err("injected failure");
     assert_eq!(error.code, CliErrorCode::Internal);
     assert_eq!(
-        fs::read_link(fixture.target(SkillAgent::Codex)).expect("first target"),
+        read_managed_link(fixture.target(SkillAgent::Codex)).expect("first target"),
         fixture.bundle_source
     );
     assert!(fs::symlink_metadata(fixture.target(SkillAgent::ClaudeCode)).is_err());
@@ -482,7 +488,7 @@ fn concurrent_installers_converge_through_no_clobber_reclassification() {
         handle.join().expect("thread").expect("converged install");
     }
     assert_eq!(
-        fs::read_link(fixture.target(SkillAgent::Codex)).expect("managed target"),
+        read_managed_link(fixture.target(SkillAgent::Codex)).expect("managed target"),
         fixture.bundle_source
     );
 }
@@ -517,7 +523,7 @@ fn an_app_move_makes_the_old_link_a_report_only_conflict() {
     .expect_err("new App cannot own old link");
     assert_eq!(remove_error.code, CliErrorCode::SkillTargetConflict);
     assert_eq!(
-        fs::read_link(first.target(SkillAgent::Codex)).expect("old link preserved"),
+        read_managed_link(first.target(SkillAgent::Codex)).expect("old link preserved"),
         first.bundle_source
     );
 }
