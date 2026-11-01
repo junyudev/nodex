@@ -17,6 +17,7 @@ import path from "node:path";
 import { describe, expect, test } from "vite-plus/test";
 
 import {
+  type CoreAuthorityProcessExit,
   connectOrStartCore,
   parseCoreStartupEventFrame,
   processGroupPresent,
@@ -130,6 +131,7 @@ describe("native Core launcher", () => {
     const resources = path.join(root, "resources");
     const nodexHome = path.join(root, "profile");
     mkdirSync(nodexHome, { mode: 0o700 });
+    mkdirSync(path.join(nodexHome, "run"), { mode: 0o700 });
     const executable = resolveCoreExecutable({
       appResourcesPath: resources,
       environment: {},
@@ -143,6 +145,7 @@ describe("native Core launcher", () => {
       JSON.stringify({ binaries: [{ name: "nodex-core", sourceSha256: digest }] }),
     );
     let launched: Awaited<ReturnType<typeof connectOrStartCore>> | undefined;
+    let authorityExit: CoreAuthorityProcessExit | undefined;
     try {
       launched = await connectOrStartCore({
         appResourcesPath: resources,
@@ -150,6 +153,9 @@ describe("native Core launcher", () => {
         environment: {},
         isPackaged: true,
         nodexHome,
+        onAuthorityProcessExit: (event) => {
+          authorityExit = event;
+        },
       });
       expect(launched.executablePath).toBe(executable);
       expect(launched.client.handshake.generation.artifact_sha256).toBe(digest);
@@ -158,7 +164,13 @@ describe("native Core launcher", () => {
       if (launched) {
         await launched.client.shutdown();
         const pid = launched.client.handshake.generation.pid;
-        await waitUntil(() => !processExists(pid), "Packaged Core remained alive after shutdown");
+        // Windows retains the copied executable until the child and its pipes close.
+        await waitUntil(
+          () => authorityExit !== undefined,
+          "Packaged Core did not close after shutdown",
+        );
+        expect(authorityExit).toMatchObject({ processId: pid, code: 0, signal: null });
+        expect(processExists(pid)).toBe(false);
       }
       rmSync(root, { recursive: true, force: true });
     }

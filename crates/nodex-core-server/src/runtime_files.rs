@@ -153,7 +153,9 @@ impl RuntimePaths {
     pub(crate) fn prepare(home: &Path) -> io::Result<Self> {
         validate_home(home)?;
         let run = home.join("run");
-        prepare_owned_directory(&run, None)?;
+        // Desktop and isolated-run supervisors can create this shared directory first.
+        private_fs::create_dir_all(&run)?;
+        private_fs::prepare_private_path(&run, EntryKind::Directory)?;
         let directory = run.join("core");
         prepare_owned_directory(&directory, Some(RUNTIME_DIRECTORY_MODE))?;
         Ok(Self {
@@ -773,6 +775,29 @@ mod tests {
 
         let error = RuntimePaths::prepare(&home).expect_err("symlink must be rejected");
         assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+    }
+
+    #[test]
+    fn runtime_directory_admits_a_supervisor_created_run_directory() {
+        let directory = tempdir().expect("temporary Profile");
+        let home = directory.path().canonicalize().expect("absolute Profile");
+        let run = home.join("run");
+        // Match Node mkdir: elevated Windows tokens can use their default group owner.
+        fs::create_dir(&run).expect("supervisor run directory");
+        let marker = run.join("supervisor.json");
+        fs::write(&marker, b"supervisor evidence").expect("supervisor marker");
+
+        let paths = RuntimePaths::prepare(&home).expect("admit shared run directory");
+
+        private_fs::checked_metadata(&run, EntryKind::Directory, Some(RUNTIME_DIRECTORY_MODE))
+            .expect("shared directory has current-user private access");
+        private_fs::checked_metadata(
+            &paths.directory,
+            EntryKind::Directory,
+            Some(RUNTIME_DIRECTORY_MODE),
+        )
+        .expect("Core directory stays private");
+        assert_eq!(fs::read(marker).unwrap(), b"supervisor evidence");
     }
 
     #[cfg(unix)]

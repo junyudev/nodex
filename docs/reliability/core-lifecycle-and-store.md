@@ -52,9 +52,9 @@ Core's native platform boundary owns private file creation, ownership validation
 no-follow opens, process identity, free space, and atomic replacement. Unix uses
 0700 directories, 0600 files and effective-user ownership. Windows uses protected
 DACLs granting only the current user, verifies owner SID, and refuses every reparse
-point, including directory junctions. Profile initialization converts the current
-token’s default directory owner to its user SID before reading content; this
-handles elevated Windows accounts without accepting another user’s owner SID.
+point, including directory junctions. Profile and shared `run` directory initialization
+convert the current token’s default directory owner to its user SID before reading
+content; this handles elevated Windows accounts without accepting another user’s owner SID.
 Immutable search snapshots use read-only
 access, restored only by the cleanup owner. Unix shares sealed files by hard link;
 Windows creates independently sealed copies. The read-only DACL denies content
