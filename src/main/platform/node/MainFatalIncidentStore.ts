@@ -1,6 +1,6 @@
 /* @effect-diagnostics asyncFunction:off -- Private atomic filesystem publication is a Node Adapter. */
 import { syncDirectory } from "../../durable-json-file";
-import { makePrivate } from "./private-filesystem";
+import { makePrivatePaths } from "./private-filesystem";
 import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import { lstat, mkdir, open, readdir, rename, rm } from "node:fs/promises";
@@ -45,7 +45,6 @@ const requirePrivateDirectory = async (directory: string): Promise<void> => {
   ) {
     throw new Error("Fatal incident directory must be private and owned");
   }
-  if (process.platform === "win32") await makePrivate(directory, true);
 };
 
 const writeIncident = async (nodexHome: string, incident: MainFatalIncident): Promise<string> => {
@@ -66,9 +65,6 @@ const writeIncident = async (nodexHome: string, incident: MainFatalIncident): Pr
   await requirePrivateDirectory(directory);
   // The Profile's single Main process publishes one final exit. Recover unpublished
   // files left by a previous process so interrupted publication cannot grow retention.
-  for (const name of (await readdir(directory)).filter((name) => TEMPORARY_NAME.test(name))) {
-    await rm(path.join(directory, name), { force: true });
-  }
   const publishedName = `${timestamp}-${incident.id}.json`;
   const destination = path.join(directory, publishedName);
   const temporary = path.join(directory, `${randomUUID()}.tmp`);
@@ -78,6 +74,19 @@ const writeIncident = async (nodexHome: string, incident: MainFatalIncident): Pr
     0o600,
   );
   try {
+    // Secure the empty file and its parents in one native call, before writing private bytes.
+    if (process.platform === "win32")
+      await makePrivatePaths([
+        { path: nodexHome, directory: true },
+        { path: diagnostics, directory: true },
+        { path: directory, directory: true },
+        { path: temporary, directory: false },
+      ]);
+    for (const name of (await readdir(directory)).filter(
+      (name) => TEMPORARY_NAME.test(name) && name !== path.basename(temporary),
+    )) {
+      await rm(path.join(directory, name), { force: true });
+    }
     await file.writeFile(bytes);
     await file.sync();
     await file.close();

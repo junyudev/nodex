@@ -103,7 +103,13 @@ it.live(
         const scope = yield* Scope.make();
         const context = yield* Layer.buildWithScope(
           layer.pipe(
-            Layer.provide(Layer.mergeAll(configLayer({ nodexHome: home }), cleanupLayer, store)),
+            Layer.provide(
+              Layer.mergeAll(
+                configLayer({ nodexHome: home, platform: process.platform }),
+                cleanupLayer,
+                store,
+              ),
+            ),
           ),
           scope,
         );
