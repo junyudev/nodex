@@ -1,0 +1,25 @@
+src/main/app-tools/SessionPresentationTarget.ts
+  s_61ededb051faa8::t_6f084b6da37772 1,138
+src/main/codex/codex-worktree-worker-operation.ts
+  s_61ededb051faa8::t_c27c0344e7dd81 1,175
+src/main/git-repository-identity-service.ts
+  s_61ededb051faa8::t_e735f623efb5f6 1,106
+src/main/git-worker/git-review-operations.ts
+  s_61ededb051faa8::t_78bfe73868ba29 151-155
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "93698acacb28c2924cda44dd8e4d1f31b4257978",
+  "prompts": {},
+  "sessions": {
+    "s_61ededb051faa8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19725-1673-78a3-85e3-bdba96788967",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
