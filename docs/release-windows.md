@@ -93,7 +93,8 @@ registration. It installs with `/S /currentuser`, verifies the installed payload
 launches with a fresh isolated Profile, and requires the exact host's ready claim
 plus a matching, authenticated named-pipe Core generation. A missing descriptor,
 Unix-only Core transport, stale digest, or startup exit fails with diagnostic
-logs. Its finally path stops the owned processes, silently uninstalls, and checks
+logs. Its finally path shuts down the authenticated Core generation before stopping
+the owned desktop processes, silently uninstalls, and checks
 installation, shortcut and protocol cleanup even after a startup failure. It waits
 for the entire NSIS process tree through PowerShell `Start-Process -Wait`, including
 the relocated TEMP uninstaller; directory removal alone is not uninstall completion.

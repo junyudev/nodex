@@ -1,8 +1,10 @@
-import { execFileSync, spawn } from "node:child_process";
+import { execFile, execFileSync, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { once } from "node:events";
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import { desktopBuildTarget } from "../desktop-build-target";
 import { verifyWindowsArchitectureClosure } from "../windows-pe.mjs";
 import {
@@ -20,6 +22,7 @@ import {
   parseAgentRuntimeStartupEvidence,
 } from "../../src/shared/agent-runtime-startup-evidence";
 
+const execute = promisify(execFile);
 const delay = (ms: number) => new Promise<void>((resolveDelay) => setTimeout(resolveDelay, ms));
 const protocolKey = "HKCU\\Software\\Classes\\nodex";
 const queryProtocol = (): string | null => {
@@ -78,23 +81,31 @@ async function main(): Promise<void> {
   let evidence: unknown;
   let uninstallEvidence: unknown;
   const cleanup = async (): Promise<void> => {
-    if (child?.pid && child.exitCode === null) {
-      try {
-        execFileSync("taskkill.exe", ["/PID", String(child.pid), "/T", "/F"], {
-          stdio: "ignore",
-          timeout: 10_000,
-        });
-      } catch (error) {
-        failures.push(error);
-      }
-      await delay(500);
-    }
     try {
-      const cleanup = await cleanupIsolatedCore({ lease, nodexHome: profile, runId });
+      // Shut down the authenticated authority before terminating Electron's process tree.
+      const cleanup = await cleanupIsolatedCore({
+        lease,
+        nodexHome: profile,
+        runId,
+        releaseLeaseOnSuccess: false,
+      });
       if (!cleanup.safeToDeleteRunRoot)
         failures.push(new Error(`Core cleanup failed: ${cleanup.reason ?? cleanup.status}`));
     } catch (error) {
       failures.push(error);
+    }
+    if (child?.pid && child.exitCode === null) {
+      try {
+        await Promise.all([
+          once(child, "close", { signal: AbortSignal.timeout(10_000) }),
+          execute("taskkill.exe", ["/PID", String(child.pid), "/T", "/F"], {
+            windowsHide: true,
+            timeout: 10_000,
+          }),
+        ]);
+      } catch (error) {
+        failures.push(error);
+      }
     }
     try {
       lease.release();
