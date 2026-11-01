@@ -1,0 +1,255 @@
+.gitattributes
+  s_b708cefbbd2f84::t_6c94829eb1a91f 1
+crates/nodex-cli/Cargo.toml
+  s_3dc0b7647fcf0b::t_72cf4bfece8dcf 32
+crates/nodex-cli/src/config.rs
+  s_3dc0b7647fcf0b::t_3d275a2202858f 124,140-145,150,170-171,173
+crates/nodex-cli/src/draft.rs
+  s_3dc0b7647fcf0b::t_2caefc3b6f7378 1464-1469,1668,1708,1711-1712,1727,1748,1756,1760,1768-1770,1787,1808-1812,1846-1850,1860,1865-1866,1902
+crates/nodex-cli/src/files.rs
+  s_3dc0b7647fcf0b::t_8fc9a697a8da93 407
+crates/nodex-cli/src/page_mutation.rs
+  s_3dc0b7647fcf0b::t_fb14e51fce02e3 829
+crates/nodex-cli/src/ripgrep.rs
+  s_3dc0b7647fcf0b::t_c86c9993d87d58 516,628,633-634,684
+crates/nodex-cli/src/runtime.rs
+  s_3dc0b7647fcf0b::t_1c4ae5096b9132 1993
+crates/nodex-cli/src/service.rs
+  s_3dc0b7647fcf0b::t_2d6b5018104c3e 268,294,315
+crates/nodex-cli/src/skills/target.rs
+  s_3dc0b7647fcf0b::t_3f1ba8099506e8 373
+crates/nodex-cli/tests/agent_interface.rs
+  s_3dc0b7647fcf0b::t_990ac1b7a86aa4 8,93,153
+crates/nodex-cli/tests/data_primitives.rs
+  s_3dc0b7647fcf0b::t_e7e049cf537eb9 161,244,246,556,733,735,945,947,994,996,1091,1093,1269,1271,1430,1432,1514,1524,1527-1528,1567,1570-1571
+crates/nodex-cli/tests/inbox.rs
+  s_9ad21099c264dd::t_3b60319a2f64ba 69,74
+crates/nodex-cli/tests/library_files.rs
+  s_3dc0b7647fcf0b::t_d63b27a04400b8 94,141,152-154
+crates/nodex-cli/tests/presentation.rs
+  s_3dc0b7647fcf0b::t_6655678e5530ae 6
+crates/nodex-cli/tests/skills_installer.rs
+  s_3dc0b7647fcf0b::t_9abefdc359849e 15,27,29,35-37,46-51,80,125-127,261,310-312,332-334,345-346,362,385-386,414-416,528
+crates/nodex-core-protocol/Cargo.toml
+  s_3dc0b7647fcf0b::t_0358c57e08096d 19-21
+crates/nodex-core-server/Cargo.toml
+  s_3dc0b7647fcf0b::t_ddd78222880b2a 36
+crates/nodex-core-server/src/lifecycle_summary.rs
+  s_3dc0b7647fcf0b::t_05d86951b89d33 248
+crates/nodex-core-server/src/logging.rs
+  s_3dc0b7647fcf0b::t_b1afb98cf25e5b 873,1048
+crates/nodex-core-server/src/request_execution.rs
+  s_3dc0b7647fcf0b::t_c7bb1f560c36ca 577
+crates/nodex-core-server/src/runtime_files.rs
+  s_3dc0b7647fcf0b::t_b07e96cdb8e08e 737
+crates/nodex-core-server/tests/lifecycle.rs
+  s_3dc0b7647fcf0b::t_6624b962e7439b 22,1355-1356,1393-1394
+crates/nodex-core-server/tests/native_cli_client.rs
+  s_3dc0b7647fcf0b::t_de76792010b50b 21,253,256,840,843
+crates/nodex-core/Cargo.toml
+  s_3dc0b7647fcf0b::t_93069be9267332 36
+crates/nodex-core/src/administration/backup.rs
+  s_3dc0b7647fcf0b::t_5d501821ded927 1389,2424
+crates/nodex-core/src/administration/profile_clone.rs
+  s_3dc0b7647fcf0b::t_b61ad1adce5b61 460
+crates/nodex-core/src/administration/restore.rs
+  s_3dc0b7647fcf0b::t_30d2efeb354fd0 897
+crates/nodex-core/src/administration/store_check.rs
+  s_3dc0b7647fcf0b::t_c1b0f3500d7193 85
+crates/nodex-core/src/administration/tests.rs
+  s_3dc0b7647fcf0b::t_2b6a3e2bdc00ba 16,35,200
+crates/nodex-core/src/automation/mutation.rs
+  s_3dc0b7647fcf0b::t_73c88e618344e6 2191
+crates/nodex-core/src/database/manual_order.rs
+  s_3dc0b7647fcf0b::t_18047499f6f7d5 2673,2825
+crates/nodex-core/src/database/mod.rs
+  s_3dc0b7647fcf0b::t_0b11bfe69e0428 299
+crates/nodex-core/src/database/page_key.rs
+  s_3dc0b7647fcf0b::t_53beaeb759ef9b 855
+crates/nodex-core/src/database/tests/configuration.rs
+  s_3dc0b7647fcf0b::t_06822fd0b81dd0 6-10
+crates/nodex-core/src/document/integrity.rs
+  s_3dc0b7647fcf0b::t_0ea552f1422feb 336
+crates/nodex-core/src/document/maintenance.rs
+  s_3dc0b7647fcf0b::t_438a2624604366 357
+crates/nodex-core/src/document/module.rs
+  s_3dc0b7647fcf0b::t_c7e40eed1f0f25 5839,5876
+crates/nodex-core/src/document/persistence.rs
+  s_3dc0b7647fcf0b::t_1260c650e5c7ca 2611,2649,2695
+crates/nodex-core/src/document/retention.rs
+  s_3dc0b7647fcf0b::t_c2252300153845 2090,2119
+crates/nodex-core/src/infrastructure/durable_mutation.rs
+  s_3dc0b7647fcf0b::t_64553ed9afaaa0 450
+crates/nodex-core/src/infrastructure/event_log.rs
+  s_3dc0b7647fcf0b::t_84d1678282b5a9 1664
+crates/nodex-core/src/infrastructure/local_commit.rs
+  s_3dc0b7647fcf0b::t_25cea402181854 2611
+crates/nodex-core/src/infrastructure/managed_blobs.rs
+  s_3dc0b7647fcf0b::t_32991867c21e5b 196,217
+crates/nodex-core/src/infrastructure/migration.rs
+  s_3dc0b7647fcf0b::t_0e951004a0f63f 3591,7595
+crates/nodex-core/src/infrastructure/migration_derivation_tests.rs
+  s_3dc0b7647fcf0b::t_e2b18a83055e60 47,75,105
+crates/nodex-core/src/infrastructure/migration_serializer_tests.rs
+  s_3dc0b7647fcf0b::t_94a10881d26ea0 11-12
+crates/nodex-core/src/infrastructure/module_receipts.rs
+  s_3dc0b7647fcf0b::t_09bb79256ede65 600
+crates/nodex-core/src/infrastructure/operational_journal.rs
+  s_3dc0b7647fcf0b::t_c504e97a07fb8f 1434,1464,1571,1635,1764,1819,1862,1891,1962,2028
+crates/nodex-core/src/infrastructure/schema.rs
+  s_3dc0b7647fcf0b::t_7c2d3f5eece620 153
+crates/nodex-core/src/infrastructure/sqlite.rs
+  s_3dc0b7647fcf0b::t_74d6d142c4483e 562
+crates/nodex-core/src/infrastructure/store.rs
+  s_3dc0b7647fcf0b::t_da9167ec31f82a 211
+crates/nodex-core/src/infrastructure/store_lock.rs
+  s_3dc0b7647fcf0b::t_757bfecec20b74 35,43,101
+crates/nodex-core/src/infrastructure/store_replacement.rs
+  s_3dc0b7647fcf0b::t_fcaf4e80b580da 899,924,951
+crates/nodex-core/src/infrastructure/store_validation.rs
+  s_3dc0b7647fcf0b::t_d70833c564f070 1187
+crates/nodex-core/src/infrastructure/workflow_status_migration_tests.rs
+  s_3dc0b7647fcf0b::t_bc6f7faf6b8e08 11
+crates/nodex-core/src/infrastructure/writer.rs
+  s_3dc0b7647fcf0b::t_956164cb907ea8 1098
+crates/nodex-core/src/library/block_transfer/promotion_history/tests.rs
+  s_3dc0b7647fcf0b::t_ef83ff8214b9ae 41,55
+crates/nodex-core/src/library/file_blobs.rs
+  s_3dc0b7647fcf0b::t_e5bab38f95f920 401
+crates/nodex-core/src/library/file_queries.rs
+  s_3dc0b7647fcf0b::t_552e28b5864ad3 349
+crates/nodex-core/src/library/files.rs
+  s_3dc0b7647fcf0b::t_ec86a70157eeb0 461,466
+crates/nodex-core/src/library/history.rs
+  s_3dc0b7647fcf0b::t_ec3a91c6d9b238 1243
+crates/nodex-core/src/library/mod.rs
+  s_3dc0b7647fcf0b::t_934ecfd3c43d3c 950
+crates/nodex-core/src/library/mutation.rs
+  s_3dc0b7647fcf0b::t_3c1174a0525228 3895,4261-4265
+crates/nodex-core/src/library/mutation_ledger.rs
+  s_3dc0b7647fcf0b::t_ff6c24bed221b6 238
+crates/nodex-core/src/library/navigation.rs
+  s_3dc0b7647fcf0b::t_31c335bebcdd4e 3737
+crates/nodex-core/src/library/page_copy.rs
+  s_3dc0b7647fcf0b::t_3fb859422c82e6 1635
+crates/nodex-core/src/library/page_search.rs
+  s_3dc0b7647fcf0b::t_b20e2c92c562c7 2006
+crates/nodex-core/src/library/structural_edit.rs
+  s_3dc0b7647fcf0b::t_4df84829da2d55 7752
+crates/nodex-core/src/library/structural_edit/editor_history.rs
+  s_3dc0b7647fcf0b::t_3585934cfabe13 268
+crates/nodex-core/src/library/structural_edit/history_owner.rs
+  s_3dc0b7647fcf0b::t_2994380b98cd94 721,1006,1068
+crates/nodex-core/src/library/structural_edit/history_payload.rs
+  s_3dc0b7647fcf0b::t_2ee0871870e12b 475
+crates/nodex-core/src/library/structural_edit/storage_lifetime_tests.rs
+  s_3dc0b7647fcf0b::t_75dbe9cc75a642 59
+crates/nodex-core/src/library/tests/agent_surface.rs
+  s_3dc0b7647fcf0b::t_f5cd654bb28c0b 12
+crates/nodex-core/src/library/tests/manual_order.rs
+  s_3dc0b7647fcf0b::t_b44b8206f7542d 24
+crates/nodex-core/src/library/tests/query.rs
+  s_3dc0b7647fcf0b::t_7f6d65c1b8a9c3 8-12
+crates/nodex-core/src/workspace/mutation.rs
+  s_3dc0b7647fcf0b::t_39b9a8fd9ced01 2592
+crates/nodex-core/src/workspace/read.rs
+  s_3dc0b7647fcf0b::t_90136d42dde61b 897
+crates/nodex-core/src/workspace/test_support.rs
+  s_3dc0b7647fcf0b::t_58e82e38035952 10
+crates/nodex-core/src/workspace/thread.rs
+  s_3dc0b7647fcf0b::t_3aed43db1c830d 2975
+crates/nodex-core/tests/rusqlite_compatibility.rs
+  s_3dc0b7647fcf0b::t_5e4e0fb6829d69 5
+crates/nodex-core/tests/store_recovery.rs
+  s_3dc0b7647fcf0b::t_3e213ac5ae7d7e 7
+crates/nodex-platform/Cargo.toml
+  s_3dc0b7647fcf0b::t_8053f6e770ed37 8-10,12
+crates/nodex-platform/src/lib.rs
+  s_3dc0b7647fcf0b::t_147f3c9ba84ce4 8-10
+crates/nodex-platform/src/private_fs/mod.rs
+  s_3dc0b7647fcf0b::t_5216e12f5a4a9c 119-128
+crates/nodex-platform/src/private_fs/unix.rs
+  s_3dc0b7647fcf0b::t_a21ca8d75b22f7 144-172
+crates/nodex-platform/src/process/windows.rs
+  s_66c8ad159691f2::t_b244dc05649b31 129,140-147
+crates/nodex-platform/src/test_support.rs
+  s_3dc0b7647fcf0b::t_dec9ffb967c93c 1-22
+crates/nodex-platform/src/windows.rs
+  s_3dc0b7647fcf0b::t_dffa4ecd0cba0f 37-45,61-67,73,82-93
+crates/nodex-profile/Cargo.toml
+  s_3dc0b7647fcf0b::t_ee351ccbb181b4 23
+crates/nodex-profile/src/claude_history.rs
+  s_3dc0b7647fcf0b::t_639086f5beb442 183,210,235,256,264,285
+crates/nodex-profile/src/codex/tests.rs
+  s_3dc0b7647fcf0b::t_dc4356a9a8f9af 66,106,177,206,228,270,312,357,385,518,551,629,644,670,724,763,787,811,843,873
+crates/nodex-profile/src/control.rs
+  s_3dc0b7647fcf0b::t_69635fe78f2519 238,264,276,284,294
+crates/nodex-profile/src/execution.rs
+  s_3dc0b7647fcf0b::t_30e01657de84c0 309-310,359-360,403-404,425
+crates/nodex-profile/src/execution_relocation.rs
+  s_b708cefbbd2f84::t_08c4677370f9ba 5,39-50,61-66,83-96,98,100-101,110-112,118-121,219-285,290-300,312,325,332,346,367,369
+crates/nodex-profile/src/goals/tests.rs
+  s_3dc0b7647fcf0b::t_93f1e004fad3af 3
+crates/nodex-profile/src/snapshot.rs
+  s_3dc0b7647fcf0b::t_6b8aacb0d2dfbc 743-744,799-800,850-851,887-888,962-963
+docs/reliability/core-lifecycle-and-store.md
+  s_3dc0b7647fcf0b::t_b5091d8eb05027 53-56
+packages/core-protocol/openapi.json
+  s_b708cefbbd2f84::t_d174ee1c38e41b 53225-53227
+packages/core-protocol/src/generated.ts
+  s_b708cefbbd2f84::t_4a724581fe0946 12440
+src/main/core-client/core-client.node.test.ts
+  s_3dc0b7647fcf0b::t_23263159710b5b 34-37,65-67,85-94,144,424,508,527-529,1226
+src/main/core-client/core-launcher.node.test.ts
+  s_3dc0b7647fcf0b::t_fcc353dcd5078c 92,95,99,102-106,110,113-117,166-170,172,252
+src/main/core-client/local-http.node.test.ts
+  s_3dc0b7647fcf0b::t_9060a980ea072c 449
+src/main/platform/node/ProfileSnapshotControl.ts
+  s_b708cefbbd2f84::t_a131879dfc8c17 75
+crates/nodex-profile/src/codex.rs
+  s_3dc0b7647fcf0b::t_d679eff02131c3 678-687,746-748
+crates/nodex-profile/src/files.rs
+  s_3dc0b7647fcf0b::t_e03c86ee4fdf50 88-90,96-97
+crates/nodex-profile/src/goals.rs
+  s_3dc0b7647fcf0b::t_282345f30cb366 93-94
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "dacf0f8dec62261fe3964e71919a0c4bcf360d48",
+  "prompts": {},
+  "sessions": {
+    "s_3dc0b7647fcf0b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1964e-690a-72d0-a5e2-1468f0931284",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_66c8ad159691f2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b9f70a0e-ab44-41bb-a33b-e19f161ae88b",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_9ad21099c264dd": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1964f-2f03-7680-8da9-7c6d6ce01903",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_b708cefbbd2f84": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1964e-d1d0-7381-9ea9-cb7cf0748ec9",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
