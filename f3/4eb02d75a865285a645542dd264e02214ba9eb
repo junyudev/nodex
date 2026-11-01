@@ -1,0 +1,37 @@
+src/main/window-navigation-chrome.test.ts
+  s_3022e59a160914::t_676fc22733ab8a 24,30,32
+src/shared/workbench-window-chrome.test.ts
+  s_3022e59a160914::t_839427e4823e70 87,92,96-97
+  s_3022e59a160914::t_676fc22733ab8a 3,6,76-86,88-91,93-95,98-130
+src/renderer/components/workbench/use-workbench-chrome-layout.ts
+  s_3022e59a160914::t_4955ef4d976e79 3,6-7,83-98,157-158,175,177,179-186
+  s_b708cefbbd2f84::t_43ab664c5ad8d5 191,194,323
+src/main/window-navigation-chrome.ts
+  s_3022e59a160914::t_08544dd6cd1d77 3,63
+src/shared/workbench-window-chrome.ts
+  s_3022e59a160914::t_08544dd6cd1d77 11,19-30,46-70,76,81-82,85-91,100
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f34eb02d75a865285a645542dd264e02214ba9eb",
+  "prompts": {},
+  "sessions": {
+    "s_3022e59a160914": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1def126e-fd62-476f-9393-67b0835f01b6",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_b708cefbbd2f84": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1964e-d1d0-7381-9ea9-cb7cf0748ec9",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
