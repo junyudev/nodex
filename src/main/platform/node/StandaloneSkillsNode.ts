@@ -1,4 +1,4 @@
-import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeServices from "./NodeServices";
 import * as Layer from "effect/Layer";
 import { live as skillsLive } from "../../codex-application/StandaloneSkills";
 import { nodeLive as gitLive } from "./GitCommandPlatformNode";

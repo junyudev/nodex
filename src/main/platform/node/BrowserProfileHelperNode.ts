@@ -5,7 +5,7 @@ import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
-import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeServices from "./NodeServices";
 import path from "node:path";
 import {
   BrowserProfileHelperError,

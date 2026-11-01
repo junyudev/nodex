@@ -23,16 +23,7 @@ test.runIf(process.platform === "win32")(
       const exited = once(child, "exit");
       killChildProcessTree(child, "SIGTERM", "win32");
       await exited;
-      await expect
-        .poll(() => {
-          try {
-            process.kill(descendant!, 0);
-            return true;
-          } catch {
-            return false;
-          }
-        })
-        .toBe(false);
+      expect(() => process.kill(descendant!, 0)).toThrow(/ESRCH/u);
     } finally {
       killChildProcessTree(child, "SIGKILL", "win32");
     }
@@ -69,16 +60,7 @@ test.runIf(process.platform === "win32")(
       await expect(command).rejects.toThrow("Request canceled");
       expect(pids).toHaveLength(2);
       for (const pid of pids) {
-        await expect
-          .poll(() => {
-            try {
-              process.kill(pid, 0);
-              return true;
-            } catch {
-              return false;
-            }
-          })
-          .toBe(false);
+        expect(() => process.kill(pid, 0)).toThrow(/ESRCH/u);
       }
     } finally {
       controller.abort();

@@ -10,7 +10,7 @@ import { projectCodexConversationThreadSettings } from "../codex-application/Cod
 import { codexVisualizationPassiveParts } from "../../shared/codex-visualization-passive-context";
 import { createHash } from "node:crypto";
 import { join, resolve } from "node:path";
-import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeServices from "../platform/node/NodeServices";
 import type {
   AgentRuntimeConfiguration,
   AgentRuntimeOperations,

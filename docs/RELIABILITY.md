@@ -340,6 +340,12 @@ independent per-subsystem disposer list. Layer dependencies determine release or
 Scopes release their own resources, and Effect combines finalizer failures into the closing Cause
 while continuing the remaining finalizers. Any physical release that can hang owns its bounded
 deadline or escalation policy at the platform adapter rather than in a global shutdown coordinator.
+Main's Node process capability uses the shared process-tree release boundary on Windows. Cancellation,
+timeout, and explicit termination capture the live tree's native process handles, request termination,
+and force remaining members after a bounded grace period. Release waits for every captured member to
+exit before settling, so its executable and working directory can be removed immediately. A release
+deadline failure remains observable; cleanup must not hide it with filesystem retries. POSIX process
+group behavior remains owned by the native spawner.
 The same first-wins decision races application acquisition and readiness, so a signal or first
 `before-quit` during startup interrupts in-flight work and rolls back everything already acquired.
 `before-quit` never consults a partially published runtime or performs window cleanup itself; it
