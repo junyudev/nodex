@@ -1,4 +1,5 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn } from "node:child_process";
+import { killChildProcessTree } from "../process-tree";
 
 export interface CodexGitCommandResult {
   readonly stdout: string;
@@ -29,19 +30,6 @@ export function createCodexRequestCanceledError(): Error {
 
 export function throwIfCodexRequestAborted(signal?: AbortSignal): void {
   if (signal?.aborted) throw createCodexRequestCanceledError();
-}
-
-function killProcessGroup(child: ChildProcess, signal: NodeJS.Signals): void {
-  const pid = child.pid;
-  if (process.platform !== "win32" && pid != null) {
-    try {
-      process.kill(-pid, signal);
-      return;
-    } catch {
-      // The process group may already have exited or may not have been created.
-    }
-  }
-  child.kill(signal);
 }
 
 /** Runs Git without a shell and reaps its entire process group after cancel/timeout. */
@@ -96,11 +84,11 @@ export function runCodexGitCommand(
     };
     const terminate = () => {
       if (child.exitCode !== null || child.signalCode !== null) return;
-      killProcessGroup(child, "SIGTERM");
+      killChildProcessTree(child, "SIGTERM");
       if (killEscalationId) return;
       killEscalationId = setTimeout(() => {
         if (child.exitCode === null && child.signalCode === null) {
-          killProcessGroup(child, "SIGKILL");
+          killChildProcessTree(child, "SIGKILL");
         }
       }, KILL_ESCALATION_MS);
       killEscalationId.unref();
