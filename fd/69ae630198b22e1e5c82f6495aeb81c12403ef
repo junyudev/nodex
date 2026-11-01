@@ -1,0 +1,21 @@
+src/shared/markdown/paste.ts
+  s_50bc651199cc10::t_c1d4e15f7fe481 9-14,103-104,112
+src/shared/markdown/markdown-paste.test.ts
+  s_50bc651199cc10::t_cb9eec6e6d4b4d 3,184-187,200-236
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fd69ae630198b22e1e5c82f6495aeb81c12403ef",
+  "prompts": {},
+  "sessions": {
+    "s_50bc651199cc10": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19523-075f-7270-9358-f28cf9aec9d2",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
