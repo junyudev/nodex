@@ -1,0 +1,157 @@
+src/renderer/lib/project-session-query-cache.ts
+  s_4e599f808c4b7e::t_80dd726b48bbc6 3
+  s_4e599f808c4b7e::t_2bf5170be5a8c7 230-240
+  s_4e599f808c4b7e::t_a5d7a79bb24dc2 241-242
+src/renderer/features/local-conversation/view/shared/delegated-task-row.test.tsx
+  s_4e599f808c4b7e::t_d57b66ac7716c4 153
+  s_4e599f808c4b7e::t_7a12ea3cbd5e3e 8,22,30,36-39,140-152,154-167,269-323,334
+  s_4e599f808c4b7e::t_740caf201a89b3 324,328,332,341
+src/main/agent-runtime/AgentRuntimeApplication.ts
+  s_4e599f808c4b7e::t_cc35a2eb5f4a1c 3148-3153,3778-3815
+  s_4e599f808c4b7e::t_e355b3949a6035 94
+  s_4e599f808c4b7e::t_e0b24fc8eee945 88-90
+  s_4e599f808c4b7e::t_db1ec46422f6f7 87,3816-3817
+src/renderer/features/local-conversation/view/shared/conversation-attribution.tsx
+  s_4e599f808c4b7e::t_cc2a5ceab125f4 1-6,8-74,79-86,90-93,97,102,106-110,112-113,116-118
+  s_4e599f808c4b7e::t_798ccb4047668a 75-78,87
+  s_4e599f808c4b7e::t_72f129b63b2fa9 114,119-122
+src/shared/agent-runtime-api.ts
+  s_4e599f808c4b7e::t_5024a5c13807d1 378-381
+src/renderer/features/local-conversation/view/shared/delegated-task-row.tsx
+  s_4e599f808c4b7e::t_508571ce630115 15,225-310,318,320,324,326,328-341,343
+  s_4e599f808c4b7e::t_e2692a1d3c8306 34-72,109,160,166-176
+  s_4e599f808c4b7e::t_a4899ade8a60cc 342
+src/renderer/lib/query-keys.ts
+  s_4e599f808c4b7e::t_2bf5170be5a8c7 171-174
+src/renderer/features/local-conversation/view/shared/agent-identity.tsx
+  s_4e599f808c4b7e::t_b1c28343e71df0 1-57
+  s_4e599f808c4b7e::t_950f44b8dc8d2d 58-60
+src/shared/codex-conversation-state/codex-conversation-state.ts
+  s_4e599f808c4b7e::t_430922eba7c152 435-436,493-494
+src/renderer/features/local-conversation/agent-identity-presentation.node.test.ts
+  s_4e599f808c4b7e::t_1f1c074c62521a 1-69
+  s_4e599f808c4b7e::t_88a3fcb48935b5 70-78
+src/renderer/features/local-conversation/view/blocks/local-conversation-block-renderer.tsx
+  s_4e599f808c4b7e::t_05b336f1a2be7a 201,436
+  s_4e599f808c4b7e::t_c79e2b04b2a32c 199
+src/main/ipc/handlers/AgentRuntimeIpc.ts
+  s_4e599f808c4b7e::t_5024a5c13807d1 133-137
+src/renderer/features/local-conversation/view/subagents-panel/subagents-panel.test.tsx
+  s_4e599f808c4b7e::t_7929faea02df77 119-142
+  s_4e599f808c4b7e::t_a26c665881925b 90-91,95-96,100,102-104,106
+  s_4e599f808c4b7e::t_3b1baab2e911a8 2
+  s_4e599f808c4b7e::t_3a8c5a48d7bb51 143-144
+src/renderer/features/local-conversation/view/subagents-panel/subagents-panel.tsx
+  s_4e599f808c4b7e::t_01da1f3329c7cc 16-17,137-143,508-511,513,515,519,521,539,541,546
+src/shared/ipc-endpoint-policy.ts
+  s_4e599f808c4b7e::t_5024a5c13807d1 111
+src/renderer/lib/conversation-identity.ts
+  s_4e599f808c4b7e::t_2bf5170be5a8c7 8
+  s_4e599f808c4b7e::t_117e0f9f21ef5e 3,49-51,54-56,64,66-67
+  s_4e599f808c4b7e::t_53d4083f4e8bc4 1-2,4-7,9-48,52-53,57-63,65,68-71
+src/renderer/features/local-conversation/view/shared/request-cards/local-conversation-request-cards.tsx
+  s_4e599f808c4b7e::t_303d652cb7bbcd 164
+src/renderer/features/local-conversation/agent-runtime-subagent-overview.node.test.ts
+  s_4e599f808c4b7e::t_c0e3e729327069 148-167
+src/renderer/features/local-conversation/view/shared/transcript-divider.test.tsx
+  s_4e599f808c4b7e::t_1e1878e9fe40dc 4,12-13,15,21,30-31,34,36-43,48-57
+src/renderer/lib/conversation-identity.node.test.ts
+  s_4e599f808c4b7e::t_db2b32b1974386 1-70
+src/shared/types.ts
+  s_4e599f808c4b7e::t_430922eba7c152 4497-4500,4630-4631
+src/renderer/features/local-conversation/agent-runtime-transcript-projection.ts
+  s_5a199af1eba36e::t_da4d6e9183394d 40,447,452,454,733
+src/renderer/components/workbench/workbench-auxiliary-conversation-panels.tsx
+  s_4e599f808c4b7e::t_c497743a18b1e1 297-306,435-436,477-478
+  s_4e599f808c4b7e::t_2e7ff28260012d 47
+src/shared/agent-runtime-provider.ts
+  s_4e599f808c4b7e::t_99018e01b80909 105-112
+  s_4e599f808c4b7e::t_78cc0cdfcc4b25 113-114
+src/renderer/features/local-conversation/agent-runtime-subagent-overview.ts
+  s_4e599f808c4b7e::t_210c74d34f24da 9,47
+  s_4e599f808c4b7e::t_bfaff3f98337ef 10-12
+src/renderer/features/local-conversation/view/blocks/local-conversation-block-leaves.tsx
+  s_4e599f808c4b7e::t_303d652cb7bbcd 948-964,968,972,1674,1677-1679,1685-1690
+  s_4e599f808c4b7e::t_508571ce630115 686-691,701,703
+  s_4e599f808c4b7e::t_8999e69c4bcf6e 793-799
+src/renderer/components/workbench/workbench-agent-runtime-panels.tsx
+  s_4e599f808c4b7e::t_2e7ff28260012d 42-45,100,103-104,106,110
+src/renderer/features/local-conversation/agent-runtime-conversation-owner.ts
+  s_4e599f808c4b7e::t_b163bd419e289c 2009-2010
+  s_4e599f808c4b7e::t_404a36a96e0bae 44-46
+  s_4e599f808c4b7e::t_7dfea338d07b58 43
+src/renderer/features/local-conversation/projection/build-renderer-item-stream.node.test.ts
+  s_4e599f808c4b7e::t_85b47de332346c 1433
+src/main/agent-runtime/AgentRuntimeApplication.node.test.ts
+  s_4e599f808c4b7e::t_3fcbd4ffe6f415 5044-5082
+  s_5a199af1eba36e::t_b9a576db8c9b54 5030-5043,5083-5085
+src/renderer/features/local-conversation/agent-identity-presentation.ts
+  s_4e599f808c4b7e::t_93049a438dc924 1-61
+  s_4e599f808c4b7e::t_70eb6bced28acd 62-75
+src/renderer/features/local-conversation/view/shared/request-cards/local-conversation-request-cards.test.tsx
+  s_4e599f808c4b7e::t_7249401ccc67cc 1,6,468-477,479-492,494-495,497,500-501
+src/renderer/features/local-conversation/agent-runtime-delegated-tasks.ts
+  s_4e599f808c4b7e::t_01a1e606b1f156 51-52
+  s_4e599f808c4b7e::t_5017e59b44b7dc 4
+src/renderer/features/local-conversation/view/shared/subagent-activity-inline.tsx
+  s_4e599f808c4b7e::t_8999e69c4bcf6e 6-7,19-22,28-29,38-40,55-59
+src/renderer/features/local-conversation/projection/delegated-task-read-query.node.test.ts
+  s_4e599f808c4b7e::t_85b47de332346c 17
+src/renderer/features/local-conversation/view/local-conversation-turn-entry.test.tsx
+  s_4e599f808c4b7e::t_85b47de332346c 1011
+src/renderer/features/local-conversation/projection/build-turn-render-model.node.test.ts
+  s_4e599f808c4b7e::t_85b47de332346c 1293,1464
+src/main/codex-application/CodexSubagentDirectoryProjection.ts
+  s_4e599f808c4b7e::t_fe20a3a5417136 108-109
+src/renderer/features/local-conversation/view/shared/transcript-divider.tsx
+  s_4e599f808c4b7e::t_3de281ce3a7715 1,8-9,28,30-35
+src/shared/schemas/agent-runtime-api.ts
+  s_4e599f808c4b7e::t_5024a5c13807d1 15
+src/renderer/lib/agent-runtime-runtime.ts
+  s_4e599f808c4b7e::t_5024a5c13807d1 236-237,327
+  s_4e599f808c4b7e::t_3c2b1098bcaa12 50
+src/shared/conversation-identity.ts
+  s_4e599f808c4b7e::t_53f6aec71a416b 1-48
+  s_4e599f808c4b7e::t_f0c8cc4eb33329 49-50
+src/renderer/features/local-conversation/view/blocks/local-conversation-block-leaves.test.tsx
+  s_4e599f808c4b7e::t_d3bc9745f9cce7 1659-1662,1683,1694-1697,1699-1711,1716-1730
+  s_4e599f808c4b7e::t_87ae97150bd82e 14-15,462-514,517-551
+  s_4e599f808c4b7e::t_05b336f1a2be7a 552
+src/shared/agent-runtime-subagent-display.ts
+  s_4e599f808c4b7e::t_bfaff3f98337ef 1-2,4,34-43
+  s_4e599f808c4b7e::t_b303eb18824d9c 44-48
+CHANGELOG.md
+  s_4e599f808c4b7e::t_3a58259c12aaa9 24
+docs/product-specs/agent-runtime-behavior.md
+  s_4e599f808c4b7e::t_65933b45003549 548,571-587,604,616-625,870,876-878
+src/renderer/features/local-conversation/agent-runtime-transcript-projection.node.test.ts
+  s_4e599f808c4b7e::t_b40519a74af550 636,645,725,738-755
+src/renderer/features/local-conversation/projection/bucketize-turn-items.node.test.ts
+  s_4e599f808c4b7e::t_c8ec8f14499122 2039
+tests/e2e/agent-cross-provider-delegation.spec.ts
+  s_4e599f808c4b7e::t_d81890a871bc6a 16,87-95,103-107,109-117,119-125,153-157
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0f886179aada07537e89730771ad6491353fb355",
+  "prompts": {},
+  "sessions": {
+    "s_4e599f808c4b7e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "026a871a-c352-4ed4-acc4-38a2ff2e26fb",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_5a199af1eba36e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a192d6-975e-7d61-a4a2-907ce1bb9490",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

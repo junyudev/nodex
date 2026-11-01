@@ -1,0 +1,84 @@
+src/main/platform/node/AgentRuntimeEntrypoint.node.test.ts
+  s_8df07eefe56282::t_7ad3c3094e3e97 2-6,29-36,44
+  s_8df07eefe56282::t_fc45ad78638fb5 37-43,45-63
+scripts/dev-launcher.ts
+  s_8df07eefe56282::t_23812a231ba8dd 43,352-353,355-356
+  s_8df07eefe56282::t_7ad3c3094e3e97 357-360
+  s_8df07eefe56282::t_cf3a7d4e58263a 354
+  s_8df07eefe56282::t_d9e1f457a33040 361-363
+docs/development.md
+  s_8df07eefe56282::t_7ad3c3094e3e97 411-450
+src/main/core-client/scenario-infrastructure.node.test.ts
+  s_8df07eefe56282::t_e288782dca0983 10,13-25
+  s_8df07eefe56282::t_5a4c430bd5c079 26-30
+src/main/platform/node/AgentRuntimeEntrypoint.ts
+  s_8df07eefe56282::t_23812a231ba8dd 3-13,16
+  s_8df07eefe56282::t_d267a519f96864 14-15,34-39
+scripts/scenarios/runtime/cross-provider-peer.mjs
+  s_8df07eefe56282::t_9fad852c805452 82-85,87-88,95-96,252,310,401-402,407,414,437,472,488-490
+  s_8df07eefe56282::t_352a3863f71e39 449
+  s_8df07eefe56282::t_0ed2ba7b373427 89-94,400
+  s_8df07eefe56282::t_562eeec0f88f8c 446
+  s_8df07eefe56282::t_3f18206af0cafd 1-81,86,97-251,253-309,311-399,403-406,408-413,415-436,438-445,447-448,450-471,473-487,491-1050
+scripts/dev-launcher.test.ts
+  s_8df07eefe56282::t_7ad3c3094e3e97 33-46
+  s_8df07eefe56282::t_09b49f97f22966 47-58
+tests/e2e/agent-cross-provider-delegation.spec.ts
+  s_8df07eefe56282::t_11461f8cceb8a6 1-3,8-18,21-25,28-34,40-41,43,45,49,53,62-66,75,87,97-101,127-128,133,143-147
+  s_8df07eefe56282::t_5a06d8ec632c4a 42
+  s_8df07eefe56282::t_2dc695ab30b4c5 4-7,19-20,26-27,35-37,44,46-48,50-52,54-61,67-74,76-86,88-96,102-121,124-126,129-132,134-142
+  s_8df07eefe56282::t_47d06afe9a3147 38-39
+  s_8df07eefe56282::t_e288782dca0983 122-123
+src/main/app/CodexApplicationLive.ts
+  s_8df07eefe56282::t_23812a231ba8dd 105,133,136
+scripts/scenarios/harness/development-seed.ts
+  s_8df07eefe56282::t_cf3a7d4e58263a 63-68
+  s_8df07eefe56282::t_2602d9a380c7fc 11,17,62,69
+  s_8df07eefe56282::t_90254fd679496c 70
+scripts/scenarios/runtime/cross-provider-delegation.ts
+  s_8df07eefe56282::t_676f126f3250bd 30-32,34-41,44-46,48-54,57-59,61-67,70-72,74-82,85-117,121-133,135-170,172
+  s_8df07eefe56282::t_2602d9a380c7fc 1-29,33,42-43,47,55-56,60,68-69,73,83-84,118-120,134,171,173
+scripts/scenarios/scenarios/agent-cross-provider-delegation.ts
+  s_8df07eefe56282::t_584a176e57ed15 1-49
+  s_8df07eefe56282::t_f9e20cf0b55e38 50-60
+scripts/scenarios/registry.ts
+  s_8df07eefe56282::t_584a176e57ed15 6,32
+scripts/scenarios/runtime/scripted-opencode-agent.mjs
+  s_8df07eefe56282::t_481eb6fa3412f3 4-5,12-17,58-64,79-93,118,151-153,162-189,200,205-206,244-247,332-351,373
+tests/e2e/agent-runtime-agent-switch.spec.ts
+  s_8df07eefe56282::t_f8c9b36a805373 62
+tests/e2e/agent-runtime-cross-provider.spec.ts
+  s_8df07eefe56282::t_5ceb8729e268c2 38
+tests/e2e/agent-runtime-delegation-pressure.spec.ts
+  s_8df07eefe56282::t_48a89bb67a8d0e 89
+tests/e2e/agent-runtime-quiet-launch.spec.ts
+  s_8df07eefe56282::t_5e3470c5a09434 32
+tests/e2e/codex-created-thread-navigation.spec.ts
+  s_8df07eefe56282::t_aae912b3706846 36
+tests/e2e/core-recovery-inbox.spec.ts
+  s_8df07eefe56282::t_bacf156af559f1 19
+tests/e2e/side-chat-context.spec.ts
+  s_8df07eefe56282::t_75559bbfc1a894 88
+tests/e2e/side-chat-save.spec.ts
+  s_8df07eefe56282::t_88ea638662e3a1 74
+tests/e2e/thread-read-state.spec.ts
+  s_8df07eefe56282::t_c7a1db1c72ec06 18
+tests/e2e/thread-selection-actions.spec.ts
+  s_8df07eefe56282::t_694f89f7921584 34
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "62268fe23bcb77e5b070b2ac36f644c1e26cea55",
+  "prompts": {},
+  "sessions": {
+    "s_8df07eefe56282": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a192d1-c217-7fa1-8aa5-21543f076f34",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
