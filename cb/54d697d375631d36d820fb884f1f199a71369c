@@ -1,0 +1,40 @@
+packages/agent-runtime/src/textGeneration/CodexTextGeneration.ts
+  s_29c17bc1ab7bc9::t_ee191245fdc8ab 166,216-224
+packages/agent-runtime/src/textGeneration/NativeUtilityExecution.test.ts
+  s_29c17bc1ab7bc9::t_80ebe2f6f09ea1 44,130-135,144-148,150-160,162-163
+  s_29c17bc1ab7bc9::t_004599bcddebbb 149,161
+packages/agent-runtime/src/textGeneration/CodexTextGeneration.test.ts
+  s_29c17bc1ab7bc9::t_56388e643e0bc9 102,105,274
+  s_29c17bc1ab7bc9::t_80ebe2f6f09ea1 40-41,101,104,209-213,267-273,282-284,293-298,300-317
+  s_29c17bc1ab7bc9::t_370d88c33b6040 299,318-319
+packages/agent-runtime/src/textGeneration/ClaudeTextGeneration.ts
+  s_29c17bc1ab7bc9::t_ee191245fdc8ab 136,221-227,274-276
+packages/agent-runtime/src/textGeneration/StructuredImageGeneration.test.ts
+  s_29c17bc1ab7bc9::t_80ebe2f6f09ea1 120-122
+packages/agent-runtime/vendor/provider-core/src/server/textGenerationOperations.ts
+  s_a5bb892838ce25::t_2c6b7848845805 39-40,216
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "cb54d697d375631d36d820fb884f1f199a71369c",
+  "prompts": {},
+  "sessions": {
+    "s_29c17bc1ab7bc9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19505-cb71-7ee0-a01b-c8d34337e966",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_a5bb892838ce25": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e15d53ef-531c-43aa-afdd-245a08fa0ce0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
