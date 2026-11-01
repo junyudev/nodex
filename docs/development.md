@@ -383,7 +383,9 @@ Playwright, focuses a Page, or performs assertions.
 
 `sidebar/chat-status` creates waiting, running, unread, and quiet chats in
 Status Project, two Projects for comparing collapsed status priority, and a
-Review Section with waiting and unread chats. Expand Status Project and leave
+Review Section with waiting and unread chats. Status Project also holds a chat
+with a reminder an hour away and one whose reminder is already due, which the
+Desktop host delivers as unread at startup; both sit behind Show more. Expand Status Project and leave
 Collapsed Waiting and Collapsed Unread collapsed for review; Project disclosure
 state is local to the renderer and is not seeded. Unread examples use threadless
 Sessions so they remain unread without Agent authentication. No Agent is started:

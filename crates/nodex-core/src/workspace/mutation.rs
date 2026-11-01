@@ -1203,8 +1203,10 @@ pub(super) fn apply(
                     workspace,
                 ),
                 ProjectWorkspaceIntent::SetQueuedMessageState { state } => {
+                    let session_ids = super::queued_message_state::accept_user_messages(transaction, state)?;
                     super::queued_message_state::write(transaction, state)?;
-                    thread::finish_thread_mutation(transaction, &library_id, &context, &store_epoch, &request.operation_id, &request_hash, "set_queued_message_state", vec![], vec![], vec![], vec![])
+                    let scopes = if session_ids.is_empty() { vec![] } else { vec![nodex_core_contracts::workspace::ProjectSessionInvalidationScope::All] };
+                    thread::finish_thread_mutation(transaction, &library_id, &context, &store_epoch, &request.operation_id, &request_hash, "set_queued_message_state", scopes, vec![], session_ids, vec![])
                 }
                 ProjectWorkspaceIntent::SelectThreadReadStateIdentity { identity_key, execution_host_keys } => {
                     super::thread_read_state::project(transaction, identity_key.as_deref(), execution_host_keys)?;

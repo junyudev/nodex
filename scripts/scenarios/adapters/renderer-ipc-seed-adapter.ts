@@ -584,6 +584,16 @@ export class RendererIpcSeedAdapter implements ScenarioSeedPort {
     return await this.#invoke("project-sessions:get", sessionId);
   }
 
+  async setSessionReminder(sessionId: string, remindAt: string | null): Promise<void> {
+    unwrapCoreResult(
+      await this.#invoke("project-sessions:set-reminder", {
+        operationId: createBoundedOperationId("scenario.session.reminder"),
+        payload: { sessionId, remindAt },
+      }),
+      "Session reminder",
+    );
+  }
+
   async setSessionUnread(sessionId: string, unread: boolean): Promise<void> {
     unwrapCoreResult(
       await this.#invoke("project-sessions:mark-unread", {

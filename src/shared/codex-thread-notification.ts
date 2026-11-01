@@ -18,7 +18,7 @@ export interface CodexNotificationConversationFacts {
   parentThreadId: string | null;
   source: unknown;
   sideConversationParentNavigationPath: string | null;
-  /** A Runtime-bound conversation opens through its product Session, not native Thread lookup. */
+  /** A Session notification opens through its product Session instead of native Thread lookup. */
   runtimeSessionId?: string | null;
 }
 
@@ -85,7 +85,15 @@ export function buildCodexAsyncQuestionNotificationId(
   return JSON.stringify(["async-question", hostId, threadId, turnId, questionId]);
 }
 
+export interface SessionReminderNotificationEvent {
+  type: "session-reminder";
+  hostId: string;
+  conversation: CodexNotificationConversationFacts;
+  remindAt: string;
+}
+
 export type CodexThreadNotificationEvent =
+  | SessionReminderNotificationEvent
   | CodexAsyncQuestionNotificationEvent
   | CodexAsyncQuestionResolvedNotificationEvent
   | CodexTurnCompletedNotificationEvent

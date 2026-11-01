@@ -436,6 +436,7 @@ export const live: Layer.Layer<
         const changes = yield* subscribeExecutionChanges(supervisor.get());
         yield* Effect.gen(function* () {
           yield* application.launch({
+            messageOrigin: "automation",
             launchId: identity("launch", [definition.id, dispatchId, index]),
             acceptedAt: run.createdAt,
             sessionId,

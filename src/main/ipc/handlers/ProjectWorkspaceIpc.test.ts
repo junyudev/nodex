@@ -124,7 +124,13 @@ it.effect("owns Project and Project Session ingress with the Main Scope", () =>
     const pinnedOrderInputs: BuiltinSidebarReorderCommandInput[] = [];
     const placementInputs: (readonly string[])[] = [];
     const placements: readonly SessionSidebarPlacement[] = [
-      { sessionId: "session:one", projectId: project.id, sectionId: "section:one", unread: true },
+      {
+        sessionId: "session:one",
+        projectId: project.id,
+        sectionId: "section:one",
+        unread: true,
+        remindAt: null,
+      },
     ];
     const workspace = ProjectWorkspace.of({
       createPageFor: (input: CreatePageForCommand) =>
@@ -227,8 +233,9 @@ it.effect("owns Project and Project Session ingress with the Main Scope", () =>
       scope,
     );
 
-    assert.strictEqual(handlers.size, 50);
+    assert.strictEqual(handlers.size, 51);
     assert.isTrue(handlers.has("projects:create"));
+    assert.isTrue(handlers.has("project-sessions:set-reminder"));
     assert.isTrue(handlers.has("projects:update"));
     assert.isTrue(handlers.has("project-sessions:fork"));
     assert.isTrue(handlers.has("project-session-threads:detach"));

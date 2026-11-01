@@ -23,6 +23,20 @@ pub(super) fn admit<'a>(
     if matches!(intent.as_ref(), ProjectWorkspaceIntent::AgentCommand { .. }) {
         return Err(denied("Agent command envelopes cannot be nested"));
     }
+    if matches!(
+        intent.as_ref(),
+        ProjectWorkspaceIntent::MutateSession {
+            intent: nodex_core_contracts::workspace::ProjectSessionIntent::ConsumeReminder { .. }
+                | nodex_core_contracts::workspace::ProjectSessionIntent::DeferReminderDelivery { .. }
+                | nodex_core_contracts::workspace::ProjectSessionIntent::CompleteReminderDelivery { .. }
+                | nodex_core_contracts::workspace::ProjectSessionIntent::RecordUserMessage { .. },
+            ..
+        }
+    ) {
+        return Err(denied(
+            "Reminder delivery and user-message acceptance belong to the Desktop Host",
+        ));
+    }
     Ok(intent)
 }
 

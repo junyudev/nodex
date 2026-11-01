@@ -1,3 +1,5 @@
+import { recordAcceptedNativeUserMessage } from "./CodexSessionMessageReminders";
+import type { ThreadItem } from "@nodex/codex-app-server-protocol/v2";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import {
@@ -102,12 +104,29 @@ export const make: Effect.Effect<
     return Effect.void;
   };
 
+  // Only live protocol acceptance enters here. History hydration and viewing do not.
+  const acceptUserMessage = (hostId: string | undefined, threadId: string, item: ThreadItem) =>
+    Effect.gen(function* () {
+      if (!hostId || item.type !== "userMessage") return;
+      yield* recordAcceptedNativeUserMessage(core, {
+        hostId,
+        threadId,
+        messageId: item.clientId ?? item.id,
+        content: item.content,
+      });
+    }).pipe(
+      Effect.catchCause((cause) =>
+        Effect.logError("Accepted chat message could not cancel its reminder", cause),
+      ),
+    );
+
   return CodexNotificationAdmission.of({
     decide: ({ notification, threadId, hostId }) =>
       Effect.gen(function* () {
         if (notification.method === "turn/started") {
           for (const item of notification.params.turn.items) {
             if (item.type !== "userMessage") continue;
+            yield* acceptUserMessage(hostId, notification.params.threadId, item);
             yield* presentation
               .observeUserMessage(
                 notification.params.threadId,
@@ -125,6 +144,7 @@ export const make: Effect.Effect<
           notification.method === "item/started" &&
           notification.params.item.type === "userMessage"
         ) {
+          yield* acceptUserMessage(hostId, notification.params.threadId, notification.params.item);
           yield* presentation
             .observeUserMessage(
               notification.params.threadId,

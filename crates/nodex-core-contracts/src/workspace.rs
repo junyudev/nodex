@@ -16,7 +16,7 @@ use crate::inbox::{
 };
 use crate::{ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 55;
+pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 56;
 
 /// Host-only admission: the model chooses an opaque key, never a clock or operation envelope.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -53,6 +53,8 @@ pub enum ProjectWorkspaceTaskPlacementScope {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ProjectWorkspaceRead {
+    /// The earliest chat reminder or unfinished delivery, at most one item.
+    NextSessionReminder,
     QueuedMessageState,
     ThreadReadState {
         identity_key: String,
@@ -259,6 +261,11 @@ pub enum ProjectWorkspaceRead {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ProjectWorkspaceReadValue {
+    NextSessionReminder {
+        session: Option<ProjectWorkspaceSessionSummary>,
+        delivery: Option<ProjectWorkspaceSessionReminderDelivery>,
+        next_wake_at: Option<String>,
+    },
     CodexThreadSession {
         thread: Box<ProjectWorkspaceThread>,
         session: ProjectWorkspaceSessionSummary,
@@ -474,6 +481,7 @@ pub struct ProjectWorkspaceSessionSidebarPlacement {
     pub project_id: Option<String>,
     pub section_id: Option<String>,
     pub unread: bool,
+    pub remind_at: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -1337,11 +1345,18 @@ pub struct ProjectWorkspaceSessionSummary {
     pub archived: bool,
     pub archived_at: Option<String>,
     pub unread: bool,
+    pub remind_at: Option<String>,
     pub thread_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub execution_ref: Option<ProjectWorkspaceSessionExecutionRef>,
     pub created_at: String,
     pub updated_at: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceSessionReminderDelivery {
+    pub delivery_id: String,
+    pub remind_at: String,
 }
 
 /// Immutable execution coordinates; presentation and execution state come from the runtime.
@@ -2028,6 +2043,24 @@ pub enum ProjectSessionIntent {
     },
     SetUnread {
         unread: bool,
+    },
+    SetReminder {
+        remind_at: Option<String>,
+    },
+    /// Host delivery claims only the exact due reminder it observed.
+    ConsumeReminder {
+        remind_at: String,
+        deliver: bool,
+    },
+    CompleteReminderDelivery {
+        delivery_id: String,
+    },
+    DeferReminderDelivery {
+        delivery_id: String,
+    },
+    /// Accepted user sends are deduplicated by their exact message identity.
+    RecordUserMessage {
+        message_id: String,
     },
     SetArchived {
         archived: bool,

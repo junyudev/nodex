@@ -50,6 +50,7 @@ const session = (
   pinnedOrder: null,
   archived: false,
   archivedAt: null,
+  remindAt: null,
   unread: false,
   executionRef: { runtimeId: "engine", threadId: identity.threadId },
   thread: null,

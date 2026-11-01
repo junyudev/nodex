@@ -1,3 +1,4 @@
+import { SessionReminderRuntime } from "../host-runtime/SessionReminderRuntime";
 import { live as chatSearchLive } from "../chat-search/ChatSearch";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -230,6 +231,7 @@ export const live: Layer.Layer<
         const projectionDelivery = yield* ProjectionDeliveryRuntime;
         const coreEventHub = yield* CoreEventHub;
         const reminderScheduler = yield* ReminderSchedulerRuntime;
+        const sessionReminders = yield* SessionReminderRuntime;
         const storeSchedulers = yield* StoreAdministrationSchedulerRuntime;
         const projectWorkspace = yield* ProjectWorkspace;
         const browser = yield* BrowserApplication;
@@ -358,6 +360,7 @@ export const live: Layer.Layer<
               reminderScheduler.activate({
                 openReminder: applicationWindows.sendReminderOpen,
               }),
+              sessionReminders.activate,
               scheduledAutomations.activate,
               storeSchedulers.activate,
             ],

@@ -38,6 +38,11 @@ Page Linked chats, sidebar placement and Workbench presentation refer to this id
 A Session's execution reference identifies its conversation without making those
 relationships owners of the conversation or its delegated tasks.
 
+### Chat reminder
+
+A Chat reminder makes a chat unread again at a chosen time. A message the person
+sends into the chat or archiving it cancels its reminder.
+
 ### Thread
 
 A Thread is an execution conversation with its own history, model selection and Runs.

@@ -41,6 +41,7 @@ struct SessionRow {
     archived: i64,
     archived_at: Option<String>,
     unread: i64,
+    remind_at: Option<String>,
     thread_id: Option<String>,
     thread_name: Option<String>,
     thread_preview: Option<String>,
@@ -57,6 +58,31 @@ pub(super) fn read(
     request: ProjectWorkspaceRead,
 ) -> Result<ProjectWorkspaceReadValue, StoreError> {
     match request {
+        ProjectWorkspaceRead::NextSessionReminder => {
+            let work = connection.query_row(
+                "WITH work AS (SELECT id AS session_id,remind_at AS wake_at,remind_at,NULL AS delivery_id FROM project_sessions WHERE archived=0 AND remind_at IS NOT NULL UNION ALL SELECT session_id,next_attempt_at AS wake_at,remind_at,delivery_id FROM project_session_reminder_deliveries) SELECT session.id,work.wake_at,work.remind_at,work.delivery_id FROM work JOIN project_sessions session ON session.id=work.session_id WHERE session.archived=0 AND (session.project_id IS NULL OR EXISTS (SELECT 1 FROM projects owner WHERE owner.id=session.project_id AND owner.library_id=?1)) ORDER BY work.wake_at,session.id,work.delivery_id LIMIT 1",
+                [library_id], |row| Ok((row.get::<_,String>(0)?, row.get::<_,String>(1)?, row.get::<_,String>(2)?, row.get::<_,Option<String>>(3)?)),
+            ).optional()?;
+            let Some((id, wake_at, remind_at, delivery_id)) = work else {
+                return Ok(ProjectWorkspaceReadValue::NextSessionReminder {
+                    session: None,
+                    delivery: None,
+                    next_wake_at: None,
+                });
+            };
+            let session = read_session(connection, library_id, &id)?.map(session_summary);
+            let delivery = delivery_id.map(|delivery_id| {
+                nodex_core_contracts::workspace::ProjectWorkspaceSessionReminderDelivery {
+                    delivery_id,
+                    remind_at,
+                }
+            });
+            Ok(ProjectWorkspaceReadValue::NextSessionReminder {
+                session,
+                delivery,
+                next_wake_at: Some(wake_at),
+            })
+        }
         ProjectWorkspaceRead::InboxChatTargets {
             scope,
             query,
@@ -752,7 +778,7 @@ fn read_session(
                session.archived_at, session.unread, \
                thread.thread_id, thread.thread_name, \
                thread.thread_preview, session.created_at, session.updated_at, \
-               execution.runtime_id, execution.runtime_thread_id \
+               execution.runtime_id, execution.runtime_thread_id, session.remind_at \
              FROM project_sessions session \
              LEFT JOIN project_session_threads link ON link.session_id = session.id \
              LEFT JOIN codex_threads thread ON thread.thread_id = link.thread_id \
@@ -780,6 +806,7 @@ fn session_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SessionRow> {
         archived: row.get(6)?,
         archived_at: row.get(7)?,
         unread: row.get(8)?,
+        remind_at: row.get(16)?,
         thread_id: row.get(9)?,
         thread_name: row.get(10)?,
         thread_preview: row.get(11)?,
@@ -814,6 +841,7 @@ fn session_summary(row: SessionRow) -> ProjectWorkspaceSessionSummary {
         archived: row.archived == 1,
         archived_at: row.archived_at,
         unread: row.unread == 1,
+        remind_at: row.remind_at,
         thread_id: row.thread_id,
         execution_ref: row.execution_ref,
         created_at: row.created_at,

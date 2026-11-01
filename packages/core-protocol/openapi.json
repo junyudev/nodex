@@ -35894,6 +35894,21 @@
             "oneOf": [
               {
                 "type": "object",
+                "description": "The earliest chat reminder or unfinished delivery, at most one item.",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "next_session_reminder"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "object",
                 "required": [
                   "kind"
                 ],
@@ -38331,6 +38346,104 @@
               },
               "unread": {
                 "type": "boolean"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "set_reminder"
+                ]
+              },
+              "remind_at": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Host delivery claims only the exact due reminder it observed.",
+            "required": [
+              "remind_at",
+              "deliver",
+              "kind"
+            ],
+            "properties": {
+              "deliver": {
+                "type": "boolean"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "consume_reminder"
+                ]
+              },
+              "remind_at": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "delivery_id",
+              "kind"
+            ],
+            "properties": {
+              "delivery_id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "complete_reminder_delivery"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "delivery_id",
+              "kind"
+            ],
+            "properties": {
+              "delivery_id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "defer_reminder_delivery"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Accepted user sends are deduplicated by their exact message identity.",
+            "required": [
+              "message_id",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "record_user_message"
+                ]
+              },
+              "message_id": {
+                "type": "string"
               }
             }
           },
@@ -43972,6 +44085,21 @@
           "identity"
         ]
       },
+      "ProjectWorkspaceSessionReminderDelivery": {
+        "type": "object",
+        "required": [
+          "delivery_id",
+          "remind_at"
+        ],
+        "properties": {
+          "delivery_id": {
+            "type": "string"
+          },
+          "remind_at": {
+            "type": "string"
+          }
+        }
+      },
       "ProjectWorkspaceSessionSidebarPlacement": {
         "type": "object",
         "description": "Durable placement for joining bounded live activity without loading Session rows.",
@@ -43981,6 +44109,12 @@
         ],
         "properties": {
           "project_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "remind_at": {
             "type": [
               "string",
               "null"
@@ -44060,6 +44194,12 @@
             "format": "int64"
           },
           "project_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "remind_at": {
             "type": [
               "string",
               "null"
@@ -51644,6 +51784,46 @@
                   },
                   "value": {
                     "oneOf": [
+                      {
+                        "type": "object",
+                        "required": [
+                          "kind"
+                        ],
+                        "properties": {
+                          "delivery": {
+                            "oneOf": [
+                              {
+                                "$ref": "#/components/schemas/ProjectWorkspaceSessionReminderDelivery"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "next_session_reminder"
+                            ]
+                          },
+                          "next_wake_at": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "session": {
+                            "oneOf": [
+                              {
+                                "$ref": "#/components/schemas/ProjectWorkspaceSessionSummary"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      },
                       {
                         "type": "object",
                         "required": [

@@ -151,6 +151,10 @@ export interface WorkbenchSessionCatalog {
     projectId: string | null,
     orderedSessionIds: readonly string[],
   ) => Promise<void>;
+  readonly setReminder: (
+    session: ProjectSession,
+    remindAt: string | null,
+  ) => Promise<ProjectSession | null>;
   readonly markUnread: (session: ProjectSession, unread: boolean) => Promise<ProjectSession | null>;
   readonly setPinned: (session: ProjectSession, pinned: boolean) => Promise<ProjectSession | null>;
   readonly rename: (session: ProjectSession, title: string) => Promise<ProjectSession>;
@@ -522,6 +526,14 @@ export function useWorkbenchSessionCatalog({
     async (sessionId: string) => await prefetchProjectSessionDetail(queryClient, sessionId),
     [queryClient],
   );
+  const setReminder = useCallback(
+    async (session: ProjectSession, remindAt: string | null): Promise<ProjectSession | null> => {
+      const updated = await workspaceSessionCommands.setReminder(session.id, { remindAt });
+      seedProjectSessionDetail(queryClient, updated);
+      return updated;
+    },
+    [queryClient],
+  );
   const markUnread = useCallback(
     async (session: ProjectSession, unread: boolean): Promise<ProjectSession | null> => {
       const updated = await workspaceSessionCommands.markUnread(session.id, { unread });
@@ -779,6 +791,7 @@ export function useWorkbenchSessionCatalog({
     readCurrent: readCurrentProjectSessionDetail,
     reorder,
     markUnread,
+    setReminder,
     setPinned,
     rename,
     archive,

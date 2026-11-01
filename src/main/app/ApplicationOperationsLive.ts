@@ -29,6 +29,7 @@ import { resolveInitialProjectJournalPath } from "../initial-project/initial-pro
 import { live as coreApplicationProjectionLive } from "../core-runtime/CoreApplicationProjectionRuntime";
 import { live as projectionDeliveryLive } from "../core-runtime/ProjectionDeliveryRuntime";
 import { live as coreEventHubLive } from "../core-runtime/CoreEventHub";
+import { live as sessionReminderLive } from "../host-runtime/SessionReminderRuntime";
 import { live as reminderSchedulerLive } from "../host-runtime/ReminderSchedulerRuntime";
 import { CodexPlatform } from "./CodexApplicationLive";
 import { MainConfig } from "./MainConfig";
@@ -98,7 +99,9 @@ const projectionDelivery = projectionDeliveryLive.pipe(
   Layer.provideMerge(coreApplicationProjection),
 );
 const coreEvents = coreEventHubLive({}).pipe(Layer.provideMerge(projectionDelivery));
-const reminders = reminderSchedulerLive({}).pipe(Layer.provideMerge(coreEvents));
+const reminders = Layer.merge(reminderSchedulerLive({}), sessionReminderLive).pipe(
+  Layer.provideMerge(coreEvents),
+);
 const agentBackends = agentBackendApplicationLive.pipe(
   Layer.provideMerge(Layer.merge(agentBackendRegistryLive, nativeMetadata)),
   Layer.provideMerge(reminders),

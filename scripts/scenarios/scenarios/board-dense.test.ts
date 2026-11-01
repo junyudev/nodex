@@ -306,6 +306,10 @@ class RecordingSeedPort implements ScenarioSeedPort {
     throw new Error("Session inspection is not part of this scenario");
   }
 
+  async setSessionReminder(): Promise<never> {
+    throw new Error("Session reminders are outside this scenario");
+  }
+
   async setSessionUnread(): Promise<never> {
     throw new Error("Session unread state is not part of this scenario");
   }

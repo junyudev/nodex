@@ -10,6 +10,7 @@ import type {
   ProjectSessionPinnedOrderInput,
   ProjectSessionRenameInput,
   ProjectSessionUnreadInput,
+  ProjectSessionReminderInput,
   ProjectSessionUpdateInput,
 } from "./types";
 import type {
@@ -79,6 +80,10 @@ export interface ProjectSessionRenameCommandPayload extends ProjectSessionIdenti
 
 export interface ProjectSessionPinnedCommandPayload
   extends ProjectSessionIdentityPayload, ProjectSessionPinnedInput {}
+
+export type ProjectSessionReminderCommandInput = OperationIdentifiedCommand<
+  ProjectSessionIdentityPayload & ProjectSessionReminderInput
+>;
 
 export interface ProjectSessionUnreadCommandPayload
   extends ProjectSessionIdentityPayload, ProjectSessionUnreadInput {}

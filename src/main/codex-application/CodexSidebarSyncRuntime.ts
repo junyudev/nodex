@@ -203,6 +203,7 @@ export const make = (options: CodexSidebarSyncRuntimeOptions = {}) =>
             pinned: task.pinned,
             pinnedOrder: task.pinnedOrder,
             unread: task.unread,
+            remindAt: task.remindAt,
             archived: task.archived || thread.archived,
             statusType: thread.statusType,
             statusActiveFlags: [...thread.statusActiveFlags],

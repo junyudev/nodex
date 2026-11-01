@@ -132,6 +132,7 @@ const session = (bound = false): ProjectSession => ({
   pinnedOrder: null,
   archived: false,
   archivedAt: null,
+  remindAt: null,
   unread: false,
   thread: null,
   executionRef: bound ? { runtimeId: "runtime:one", threadId: "thread:one" } : null,

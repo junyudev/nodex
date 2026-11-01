@@ -57,6 +57,8 @@ function resolveNavigation(
     };
   }
   const sessionId = event.conversation.runtimeSessionId?.trim() ?? "";
+  if (sessionId && event.conversation.conversationId === `session:${sessionId}`)
+    return { navigationPath: `session:${encodeURIComponent(sessionId)}`, activateTabId: null };
   const threadPath = `thread:${encodeURIComponent(event.conversation.conversationId)}`;
   return {
     navigationPath:
@@ -159,6 +161,27 @@ export const makeCodexThreadNotificationHandler =
     }
 
     const settings = options.getSettings();
+    if (event.type === "session-reminder") {
+      if (
+        settings.turnMode === "off" ||
+        (settings.turnMode === "unfocused" && options.isAppForegrounded()) ||
+        options.isConversationPresentedInForeground(event.conversation.conversationId)
+      )
+        return;
+      const id = JSON.stringify([
+        "session-reminder",
+        event.conversation.runtimeSessionId,
+        event.remindAt,
+      ]);
+      showNotification(options, event, {
+        id,
+        occurrenceId: id,
+        kind: "reminder",
+        title: event.conversation.title?.trim() || "Chat",
+        body: "You asked to come back to this chat.",
+      });
+      return;
+    }
     if (event.type === "turn-completed") {
       const decision = decideCodexTurnNotification(event, {
         turnMode: settings.turnMode,

@@ -21,6 +21,7 @@ function makeSession(hasThread = false): ProjectSession {
     pinnedOrder: null,
     archived: false,
     archivedAt: null,
+    remindAt: null,
     unread: false,
     thread: hasThread
       ? {

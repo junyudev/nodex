@@ -124,6 +124,7 @@ export const live: Layer.Layer<
         });
       }
       if (planned.sessions) {
+        codexEvents.publish({ kind: "sessionOrganizationChanged", value: null });
         yield* notifications.notifyProjectSessionInvalidation(planned.sessions);
       }
       if (workspaceEvent.inboxChanged) {
@@ -153,6 +154,7 @@ export const live: Layer.Layer<
         });
         yield* notifications.notifyProjectsChanged("update");
         yield* notifications.notifyProjectSessionInvalidation(allProjectSessionInvalidation());
+        codexEvents.publish({ kind: "sessionOrganizationChanged", value: null });
         yield* notifications.notifyInboxChanged({ reason: "inbox" });
       },
     );

@@ -60,6 +60,11 @@ export const sessionControlSchemas = {
       .optional(),
     idempotencyKey,
   }),
+  set_session_reminder: z.strictObject({
+    sessionId: id.optional(),
+    remindAt: z.iso.datetime({ offset: true }).nullable(),
+    idempotencyKey,
+  }),
   set_session_unread: z.strictObject({
     sessionId: id.optional(),
     unread: z.boolean(),
@@ -70,6 +75,8 @@ export const sessionControlSchemas = {
 const descriptions: Record<keyof typeof sessionControlSchemas, string> = {
   stop_session:
     "Stop a Session's running work as the user's Stop does: end its current turn, hold queued messages and stop delegated tasks. Idle Sessions are unchanged. The calling Session cannot stop itself. Use only when the user authorized it. Reuse idempotencyKey and identical arguments to retry without repeating the change.",
+  set_session_reminder:
+    "Remind the user to return to a chat by marking it unread at remindAt, an ISO 8601 instant with an offset no more than 366 days ahead, or null to clear. Omit sessionId for your calling Session. A user message or archive cancels it. Reuse idempotencyKey and identical arguments to retry without repeating the change.",
   set_session_unread:
     "Mark a Nodex Session read or unread, as its sidebar shows. Omit sessionId for your calling Session. Reuse idempotencyKey and identical arguments to retry without repeating the change.",
   session_queue:

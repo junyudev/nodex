@@ -80,6 +80,7 @@ export function projectSessionToSummary(session: ProjectSession): ProjectSession
     archived: session.archived,
     archivedAt: session.archivedAt,
     unread: session.unread,
+    remindAt: session.remindAt,
     thread: session.thread,
     executionRef: session.executionRef ?? null,
     createdAt: session.createdAt,

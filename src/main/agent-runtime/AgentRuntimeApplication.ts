@@ -1,3 +1,4 @@
+import { recordAcceptedUserMessage } from "../project-application/SessionMessageReminder";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
 import { readPromptTurns } from "./AgentRuntimePromptTurns";
 import { UNKNOWN_PROMPT_TURN, type PromptTurnsInput } from "../../shared/prompt-turn";
@@ -1360,6 +1361,8 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         : command,
       input.modeLimit,
     );
+    if (!provenance && !input.sender && input.messageOrigin !== "automation")
+      yield* recordAcceptedUserMessage(core, input.sessionId, message.messageId);
     if (deferWorktree) {
       const outcome = yield* connection.request("run.outcome", {
         threadId,
@@ -2584,6 +2587,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       ),
       input.modeLimit,
     );
+    if (!agent) yield* recordAcceptedUserMessage(core, input.sessionId, prepared.message.messageId);
     const sideChatTitle = yield* titleSideChatRequest(connection, loaded, prepared.message, agent);
     if (interactive) yield* options.interactiveState!.sent(loaded.threadId, interactive.key);
     return { ...result, ...(sideChatTitle ? { sideChatTitle } : {}) };
@@ -2612,6 +2616,8 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       fingerprint: input.fingerprint,
     });
     if (!result) return null;
+    if ((yield* CoreApplicationAgent) === null)
+      yield* recordAcceptedUserMessage(core, input.sessionId, input.messageId);
     const sideChatTitle = yield* titleSideChatRequest(
       connection,
       { binding, threadId },
@@ -2734,6 +2740,8 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       ...(input.senderThreadId === undefined ? {} : { senderThreadId: input.senderThreadId }),
       ...(input.senderRunId === undefined ? {} : { senderRunId: input.senderRunId }),
     });
+    if (!agent && !input.senderThreadId)
+      yield* recordAcceptedUserMessage(core, input.sessionId, prepared.messageId);
     const sideChatTitle = yield* titleSideChatRequest(
       connection,
       loaded,

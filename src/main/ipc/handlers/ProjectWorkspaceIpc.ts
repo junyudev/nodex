@@ -611,6 +611,17 @@ export const live: Layer.Layer<
         ),
       ),
     );
+    yield* handleLocalCommitCommand("project-sessions:set-reminder", (event, command) =>
+      authorize(event).pipe(
+        Effect.andThen(
+          catalogCommand(
+            "project-sessions:set-reminder",
+            command,
+            projects.setProjectSessionReminder(command),
+          ),
+        ),
+      ),
+    );
     yield* handleLocalCommitCommand("project-sessions:mark-unread", (event, command) =>
       authorize(event).pipe(
         Effect.andThen(

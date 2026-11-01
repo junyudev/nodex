@@ -7,8 +7,8 @@ Active
 ## Purpose
 
 This document is the source of truth for Nodex OS-level notifications produced
-by Codex task lifecycle events and by Agent Runtime Sessions. Browser delivery, in-app toasts, reminder
-notifications, and remote cloud-task watchers are separate features.
+by Codex task lifecycle events, Agent Runtime Sessions, and chat reminders. Browser
+delivery, in-app toasts, Page reminders, and remote cloud-task watchers are separate features.
 
 ## Notification Families
 
@@ -310,3 +310,34 @@ Its navigation path names the Session (`session:<id>/thread:<root>`), so opening
 the notification selects that Session directly rather than resolving a native
 Thread, and a reply is an ordinary follow-up through the Session's execution
 owner.
+
+## Chat reminders
+
+A chat reminder is one nullable instant on its Session. At the chosen time, Desktop
+compares and clears the exact stored instant before delivery. A concurrent reschedule
+survives, and another timer, window, or restarted host cannot deliver the consumed
+reminder again. Core retains unfinished unread delivery across a host restart or
+unavailable native identity. Failed unread delivery is deferred without blocking
+other reminders; notification settlement consumes that delivery once. Rescheduling,
+clearing, a user message, or archive cancels unfinished delivery too.
+Archived chats have no reminder. A user-authored message cancels the
+reminder; Agent messages and merely reading the chat leave it in place.
+
+One Profile-scoped Desktop owner arms a single timer for the earliest reminder. Core
+organization changes from any window, Agent tool, or CLI re-arm it. Startup, restored
+Core connectivity, and system resume catch up overdue reminders without periodic
+polling. A focused window presenting that conversation consumes the reminder without
+an unread write or notification. This uses the same surface-aware presentation
+registry as Session task notifications.
+
+Otherwise delivery uses the same unread owner as `set_session_unread`: Core for
+Runtime Sessions and threadless drafts, authenticated Codex identity read state for
+native Threads. Its notification title is the chat title and its body is
+`You asked to come back to this chat.` It is open-only and navigates directly through
+`session:<id>/thread:<root>` to the Session. Drafts retain their Session identity.
+Native notification attempts settle before presentation and are not replayed after
+restart. System permission or process termination can prevent visible delivery.
+The existing turn notification preference and native authorization gate apply;
+suppressed or denied presentation does not undo the unread transition. Opening the
+chat in a focused conversation surface dismisses its reminder notification through
+the ordinary notification lifecycle.

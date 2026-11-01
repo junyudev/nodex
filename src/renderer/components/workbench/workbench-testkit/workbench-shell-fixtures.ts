@@ -511,6 +511,7 @@ export function makeSession(overrides: SessionFixtureOverrides = {}): ProjectSes
     pinnedOrder: sessionOverrides.pinnedOrder ?? (databaseViewStarter ? 0 : null),
     archived: sessionOverrides.archived ?? false,
     archivedAt: sessionOverrides.archivedAt ?? null,
+    remindAt: sessionOverrides.remindAt ?? null,
     unread: sessionOverrides.unread ?? false,
   };
 }

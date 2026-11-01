@@ -81,3 +81,17 @@ describe("Session controls", () => {
     expect(read.held).toBe(true);
   });
 });
+
+it("requires a reminder instant with an offset or an explicit null", () => {
+  const schema = sessionControlSchemas.set_session_reminder;
+  for (const remindAt of [null, "2026-11-02T09:00:00Z", "2026-11-02T10:00:00+01:00"])
+    expect(schema.parse({ remindAt })).toEqual({ remindAt });
+  for (const input of [
+    {},
+    { remindAt: "tomorrow" },
+    { remindAt: "2026-11-02T09:00:00" },
+    { remindAt: "2026-02-30T09:00:00Z" },
+    { remindAt: null, execution: { threadId: "child" } },
+  ])
+    expect(schema.safeParse(input).success).toBe(false);
+});

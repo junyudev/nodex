@@ -194,6 +194,7 @@ export interface ScenarioSeedPort {
   readSession(sessionId: string): Promise<ProjectSession | null>;
   /** Threadless Session unread remains independent of native read-state identities. */
   setSessionUnread(sessionId: string, unread: boolean): Promise<void>;
+  setSessionReminder(sessionId: string, remindAt: string | null): Promise<void>;
   readPageChatActivity(pageIds: readonly string[]): Promise<PageChatActivitySummaryResult>;
   readPageChats(pageId: string): Promise<PageChatWindow>;
   createSidebarSection(input: SidebarSectionCreateInput): Promise<SidebarSectionSummary>;

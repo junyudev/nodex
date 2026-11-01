@@ -22,6 +22,7 @@ function makeSession(overrides: Partial<ProjectSession> = {}): ProjectSession {
     pinnedOrder: null,
     archived: false,
     archivedAt: null,
+    remindAt: null,
     unread: false,
     thread: null,
     createdAt: now,

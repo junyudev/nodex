@@ -468,6 +468,30 @@ and the authenticated Codex identity read-state owner for native Codex Threads. 
 includes `operationId`, `sessionId`, the accepted `unread` value and the owner's `receipt`.
 It never starts or replaces a Session's execution.
 
+`set_session_reminder` accepts `remindAt` (an ISO 8601 instant with an offset, or
+`null` to clear), optional `sessionId` (the caller by default), and optional
+`idempotencyKey`. One reminder belongs to each root Session, independently of its
+execution kind. Setting replaces the previous time. Core normalizes it to a UTC
+millisecond string and accepts past times as immediately due; times more than
+366 days ahead are rejected. The result contains `operationId`, `sessionId`, the
+accepted `remindAt`, and the Workspace owner's `receipt`. It uses the same captured
+execution authority and durable exact-retry admission as `set_session_unread`.
+
+A reminder makes the chat unread again at its time. Archiving or an accepted
+user-authored message cancels it. Reading the chat, Agent tool messages, delegated
+results, and automatic notifications do not cancel it. A fork starts without a
+reminder. Runtime launch, message, send and replay admission cover the composer,
+Project Agent Dock, Prompt sends, and user-confirmed Inbox dispatch across providers.
+Native chats cancel at accepted start/steer acknowledgements, live user-message
+acceptance, and durable queue admission.
+Agent delegation envelopes and tool output retain their sender provenance. Core
+remembers accepted user-message identities so retrying an old send cannot cancel a
+newer reminder. Execution and Core are separate durable owners, so the host confirms
+cancellation after execution accepts the message; retries settle that confirmation.
+Native local queue acceptance cancels the reminder in the queue-write transaction.
+Delivery and its foreground-presentation exception follow
+[Desktop Notification Behavior](desktop-notification-behavior.md#chat-reminders).
+
 `session_queue` addresses an unarchived `sessionId`, with optional Runtime `execution: {threadId}`.
 Its actions mirror the conversation queue:
 

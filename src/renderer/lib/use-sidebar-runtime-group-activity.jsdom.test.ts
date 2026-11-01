@@ -60,7 +60,13 @@ describe("sidebar Runtime placement query", () => {
       subscribeConnection: () => () => {},
     };
     let placements: SessionSidebarPlacement[] = [
-      { sessionId: "live", projectId: "project", sectionId: "inherited", unread: false },
+      {
+        sessionId: "live",
+        projectId: "project",
+        sectionId: "inherited",
+        unread: false,
+        remindAt: null,
+      },
     ];
     mocks.read.mockReset().mockImplementation(async () => placements);
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -80,7 +86,15 @@ describe("sidebar Runtime placement query", () => {
         expect(view.result.current.sections.get("inherited")?.waitingCount).toBe(1),
       );
       expect(mocks.read).toHaveBeenCalledTimes(1);
-      placements = [{ sessionId: "live", projectId: "moved", sectionId: "direct", unread: true }];
+      placements = [
+        {
+          sessionId: "live",
+          projectId: "moved",
+          sectionId: "direct",
+          unread: true,
+          remindAt: null,
+        },
+      ];
       await act(async () => {
         await client.invalidateQueries({ queryKey: SIDEBAR_SECTIONS_QUERY_KEY });
       });

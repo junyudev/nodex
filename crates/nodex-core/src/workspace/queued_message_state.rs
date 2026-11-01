@@ -28,6 +28,65 @@ pub(super) fn write(connection: &Connection, state: &State) -> Result<(), StoreE
     connection.execute("INSERT INTO codex_queued_message_state(singleton,state_json) VALUES (1,?1) ON CONFLICT(singleton) DO UPDATE SET state_json=excluded.state_json", params![serde_json::to_string(state).map_err(|error| StoreError::new(StoreErrorCode::InvalidInput, format!("Invalid queued message state: {error}"), false))?])?;
     Ok(())
 }
+/// Full queue replacement admits only newly submitted person-authored identities. Reordering,
+/// editing and loading an existing capture cannot cancel a subsequently scheduled reminder.
+pub(super) fn accept_user_messages(
+    connection: &Connection,
+    state: &State,
+) -> Result<Vec<String>, StoreError> {
+    let previous = read(connection)?;
+    let mut changed = std::collections::BTreeSet::new();
+    for (thread_id, messages) in state {
+        let session_id = connection
+            .query_row(
+                "SELECT session_id FROM project_session_threads WHERE thread_id=?1",
+                [thread_id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?;
+        let Some(session_id) = session_id else {
+            continue;
+        };
+        for message in messages {
+            let Some(message_id) = message.get("id").and_then(Value::as_str) else {
+                continue;
+            };
+            super::session_mutation::validate_id("message_id", message_id)?;
+            if previous.get(thread_id).is_some_and(|items| {
+                items
+                    .iter()
+                    .any(|item| item.get("id").and_then(Value::as_str) == Some(message_id))
+            }) {
+                continue;
+            }
+            let Some(prompt) = message.pointer("/context/prompt").and_then(Value::as_str) else {
+                continue;
+            };
+            let prompt = prompt.trim();
+            // The native protocol's delegation envelope is the sender provenance of tool input.
+            if (prompt.starts_with("<codex_delegation>") && prompt.ends_with("</codex_delegation>"))
+                || (prompt.starts_with("<realtime_delegation>")
+                    && prompt.ends_with("</realtime_delegation>"))
+                || message
+                    .pointer("/context/turnTrigger")
+                    .is_some_and(|value| !value.is_null())
+            {
+                continue;
+            }
+            let inserted = connection.execute("INSERT INTO project_session_user_message_receipts(session_id,message_id) VALUES (?1,?2) ON CONFLICT DO NOTHING", params![session_id,message_id])?;
+            if inserted == 0 {
+                continue;
+            }
+            let cancelled = connection.execute(
+                "DELETE FROM project_session_reminder_deliveries WHERE session_id=?1",
+                [&session_id],
+            )?;
+            if connection.execute("UPDATE project_sessions SET remind_at=NULL,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?1 AND remind_at IS NOT NULL", [&session_id])? + cancelled > 0 { changed.insert(session_id.clone()); }
+        }
+    }
+    Ok(changed.into_iter().collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

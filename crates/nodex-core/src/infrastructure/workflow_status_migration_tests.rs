@@ -337,8 +337,16 @@ fn v196_deleted_pages_keep_readable_restore_evidence_and_verified_receipts() {
         connection.execute("UPDATE core_module_receipts SET result_json=?1 WHERE operation_id=?2",params![raw,delete_operation])?;
         let commit:i64=connection.query_row("SELECT local_commit_seq FROM core_module_receipts WHERE operation_id=?1",[&delete_operation],|row|row.get(0))?;
         super::super::local_commit::refresh_migrated_receipt(connection,commit,&hex::encode(Sha256::digest(raw.as_bytes())))?;
-        connection.execute("DELETE FROM core_store_migration_history WHERE target_revision=197", [])?;
+        connection.execute("DELETE FROM core_store_migration_history WHERE target_revision>=197", [])?;
         connection.execute("UPDATE data_source_properties SET config_json=replace(replace(replace(replace(config_json,'\"doing\"','\"build\"'),'\"done\"','\"ship\"'),'\"Doing\"','\"Build\"'),'\"Done\"','\"Ship\"') WHERE id='status'", [])?;
+        // v198 added chat reminders; a v196 Store has none of their schema.
+        connection.execute_batch(
+            "DROP TRIGGER project_session_archive_cancels_reminder;
+             DROP TABLE project_session_user_message_receipts;
+             DROP TABLE project_session_reminder_deliveries;
+             DROP INDEX idx_project_sessions_reminder;
+             ALTER TABLE project_sessions DROP COLUMN remind_at;",
+        )?;
         connection.pragma_update(None,"user_version",196)?;
         Ok(())
     }).unwrap();

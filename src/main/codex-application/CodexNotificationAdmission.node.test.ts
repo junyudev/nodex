@@ -309,3 +309,90 @@ it.effect("binds submit presentation only when notification user-message identit
     }),
   ),
 );
+
+it.effect("cancels reminders only for live person-authored native messages", () =>
+  Effect.gen(function* () {
+    const accepted: string[] = [];
+    const core = {
+      workspace: {
+        read: () =>
+          Effect.succeed({
+            value: {
+              kind: "codex_thread_session",
+              thread: {
+                thread_id: "chat-thread",
+                backend_binding: { kind: "codex" },
+                execution_host_id: "remote",
+                parent_thread_id: null,
+                thread_source: null,
+                status: { status_type: "idle", active_flags: [] },
+              },
+              session: {
+                id: "chat",
+                project_id: null,
+                display_title: "Chat",
+                no_thread_fallback_title: "Chat",
+              },
+            },
+          }),
+        apply: (input: { intent: { intent: { message_id: string } } }) =>
+          Effect.sync(() => {
+            accepted.push(input.intent.intent.message_id);
+            return {};
+          }),
+      },
+    } as unknown as CoreModules["Service"];
+    const { admission } = yield* makeHarness([], core);
+    const send = (id: string, text: string) =>
+      admission.decide({
+        hostId: "remote",
+        threadId: "chat-thread",
+        notification: {
+          method: "item/started",
+          params: {
+            threadId: "chat-thread",
+            turnId: "turn",
+            startedAtMs: 1,
+            item: {
+              type: "userMessage",
+              id,
+              clientId: id,
+              content: [{ type: "text", text, text_elements: [] }],
+            },
+          },
+        },
+      });
+    yield* send("person", "Continue here");
+    yield* send(
+      "agent",
+      "<codex_delegation><source_thread_id>agent</source_thread_id><input>Update</input></codex_delegation>",
+    );
+    yield* admission.decide({
+      hostId: "remote",
+      threadId: "chat-thread",
+      notification: {
+        method: "item/started",
+        params: {
+          threadId: "chat-thread",
+          turnId: "turn",
+          startedAtMs: 1,
+          item: {
+            type: "userMessage",
+            id: "agent-with-attachment",
+            clientId: "agent-with-attachment",
+            content: [
+              {
+                type: "text",
+                text: "<codex_delegation><source_thread_id>agent</source_thread_id><input>Update</input></codex_delegation>",
+                text_elements: [],
+              },
+              { type: "text", text: "Attached file context", text_elements: [] },
+            ],
+          },
+        },
+      },
+    });
+    yield* send("automatic", "<realtime_delegation><input>Update</input></realtime_delegation>");
+    assert.deepEqual(accepted, ["person"]);
+  }),
+);

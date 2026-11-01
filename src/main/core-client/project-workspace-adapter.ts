@@ -103,6 +103,7 @@ export const projectWorkspaceSessionSidebarPlacementFromCore = (
   projectId: placement.project_id ?? null,
   sectionId: placement.section_id ?? null,
   unread: placement.unread,
+  remindAt: placement.remind_at ?? null,
 });
 
 export const projectWorkspaceSidebarSectionSummaryFromCore = (
@@ -786,6 +787,7 @@ const fromCoreSessionSummary = (
   archived: session.archived,
   archivedAt: session.archived_at ?? null,
   unread: session.unread,
+  remindAt: session.remind_at ?? null,
   thread,
   createdAt: session.created_at,
   updatedAt: session.updated_at,

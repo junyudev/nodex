@@ -95,7 +95,7 @@ pub(super) fn read_session_sidebar_placements(
     connection
         .prepare(
             "WITH requested(session_id) AS (SELECT DISTINCT value FROM json_each(?2)) \
-             SELECT session.id, session.project_id, session.unread, \
+             SELECT session.id, session.project_id, session.unread, session.remind_at, \
                CASE WHEN NOT EXISTS (SELECT 1 FROM project_session_side_chats side \
                  WHERE side.session_id = session.id) THEN COALESCE( \
                  (SELECT item.section_id FROM workspace_sidebar_section_items item \
@@ -118,7 +118,8 @@ pub(super) fn read_session_sidebar_placements(
                 session_id: row.get(0)?,
                 project_id: row.get(1)?,
                 unread: row.get(2)?,
-                section_id: row.get(3)?,
+                remind_at: row.get(3)?,
+                section_id: row.get(4)?,
             })
         })?
         .collect::<rusqlite::Result<Vec<_>>>()

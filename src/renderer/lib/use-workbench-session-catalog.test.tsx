@@ -72,6 +72,7 @@ function makeSummary(
     pinnedOrder: null,
     archived: false,
     archivedAt: null,
+    remindAt: null,
     unread: false,
     thread: null,
     createdAt: "2026-01-01T00:00:00.000Z",
@@ -174,6 +175,7 @@ const WORKSPACE_SESSION_COMMANDS = new Set([
   "project-sessions:create",
   "project-sessions:ensure-default-draft",
   "project-sessions:mark-unread",
+  "project-sessions:set-reminder",
   "project-sessions:reorder",
   "project-sessions:set-pinned",
 ]);
@@ -188,6 +190,8 @@ function legacyWorkspaceSessionArgs(channel: string, payload: Record<string, unk
   if (channel === "project-sessions:reorder") {
     return [payload.projectId, payload.orderedSessionIds];
   }
+  if (channel === "project-sessions:set-reminder")
+    return [payload.sessionId, { remindAt: payload.remindAt }];
   if (channel === "project-sessions:mark-unread") {
     return [payload.sessionId, { unread: payload.unread }];
   }
@@ -958,6 +962,39 @@ describe("useWorkbenchSessionCatalog", () => {
     expect(
       client.getQueryData<ProjectSession>(queryKeys.projectSessions.detail(current.id))?.unread,
     ).toBe(true);
+  });
+
+  test("commits accepted reminder times and clearing to detail and summary", async () => {
+    const current = makeSummary("session:alpha", "alpha") as ProjectSession;
+    const remindAt = "2026-11-02T09:00:00.000Z";
+    invokeMock.mockImplementation(
+      (channel: string, value: string | null, input?: { remindAt: string | null }) => {
+        if (channel === "workspace:tasks:list")
+          return Promise.resolve(makeWindow(value === "alpha" ? [current] : []));
+        if (channel === "project-sessions:get") return Promise.resolve(current);
+        if (channel === "project-sessions:set-reminder")
+          return Promise.resolve({ ...current, remindAt: input!.remindAt });
+        throw new Error(`Unexpected channel: ${channel}`);
+      },
+    );
+    const { client, hook } = createHarness(makeWindowPort());
+    await waitFor(() => expect(hook.result.current.selectedDetailReady).toBe(true));
+    await act(async () => {
+      await hook.result.current.setReminder(current, remindAt);
+    });
+    expect(
+      client.getQueryData<ProjectSession>(queryKeys.projectSessions.detail(current.id))?.remindAt,
+    ).toBe(remindAt);
+    expect(
+      client.getQueryData<ProjectSessionSummaryWindow>(queryKeys.projectSessions.summaries("alpha"))
+        ?.items[0]?.remindAt,
+    ).toBe(remindAt);
+    await act(async () => {
+      await hook.result.current.setReminder(current, null);
+    });
+    expect(
+      client.getQueryData<ProjectSession>(queryKeys.projectSessions.detail(current.id))?.remindAt,
+    ).toBeNull();
   });
 
   test("does not let a failed pin operation roll a newer cache update back", async () => {

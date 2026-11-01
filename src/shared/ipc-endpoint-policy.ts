@@ -479,6 +479,7 @@ type CoreLocalCommitCommandEndpointPolicy =
   | "project-sessions:ensure-default-draft"
   | "project-sessions:record-opened"
   | "project-sessions:mark-unread"
+  | "project-sessions:set-reminder"
   | "project-sessions:rename"
   | "project-sessions:reorder"
   | "project-sessions:set-pinned"

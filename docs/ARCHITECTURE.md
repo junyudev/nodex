@@ -111,6 +111,14 @@ Project                              execution context
 
 One Profile owns one Library. Library owns durable content; Project owns execution and presentation context. Archiving or deleting a Project never owns, moves, or deletes Library content.
 
+Core owns each Session's nullable chat reminder, exact-value consumption, and
+unfinished delivery receipts. One
+Profile-scoped Desktop scheduler observes that authority, uses the existing native
+identity or Core Session unread owner, and publishes through the desktop notification
+owner. User-message acceptance confirms cancellation through Workspace with durable
+message identities; execution history stays with its existing owner. See
+[Desktop Notification Behavior](product-specs/desktop-notification-behavior.md#chat-reminders).
+
 An Agent Runtime bound Session retains its Core product identity while its root Thread
 has one external execution owner. Core atomically admits the immutable reference and
 Page links, and records exact execution leases for verified Runs. Native and external

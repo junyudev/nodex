@@ -16,6 +16,7 @@ const session = (overrides: Partial<ProjectSession> = {}): ProjectSession => ({
   pinnedOrder: null,
   archived: false,
   archivedAt: null,
+  remindAt: null,
   unread: false,
   thread: null,
   createdAt: "2026-08-24T00:00:00Z",

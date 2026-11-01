@@ -475,6 +475,15 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
     );
   }
 
+  async setSessionReminder(sessionId: string, remindAt: string | null): Promise<void> {
+    await runScenarioProjectWorkspace(this.#runtime, (workspace) =>
+      workspace.setProjectSessionReminder({
+        operationId: createBoundedOperationId("scenario.session.reminder"),
+        payload: { sessionId, remindAt },
+      }),
+    );
+  }
+
   async setSessionUnread(sessionId: string, unread: boolean): Promise<void> {
     await runScenarioProjectWorkspace(this.#runtime, (workspace) =>
       workspace.markProjectSessionUnread({

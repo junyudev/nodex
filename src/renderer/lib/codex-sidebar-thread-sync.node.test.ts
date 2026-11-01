@@ -127,6 +127,7 @@ function makeSession(input: {
     pinnedOrder: input.pinnedOrder ?? null,
     archived: false,
     archivedAt: null,
+    remindAt: null,
     unread: false,
     thread: null,
     createdAt: "2026-01-01T00:00:00.000Z",

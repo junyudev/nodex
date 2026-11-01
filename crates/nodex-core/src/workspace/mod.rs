@@ -32,6 +32,8 @@ mod session_activity;
 mod session_lifecycle;
 mod session_listing;
 mod session_mutation;
+#[cfg(test)]
+mod session_reminder_tests;
 mod session_usage;
 mod sidebar;
 mod sidebar_builtin;

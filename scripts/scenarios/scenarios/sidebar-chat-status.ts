@@ -9,7 +9,7 @@ import {
 } from "../contracts";
 
 export const SIDEBAR_CHAT_STATUS_SCENARIO_ID = "sidebar/chat-status" as const;
-export const SIDEBAR_CHAT_STATUS_SCENARIO_REVISION = 2 as const;
+export const SIDEBAR_CHAT_STATUS_SCENARIO_REVISION = 3 as const;
 
 const PROJECTS = {
   statusProject: "Status Project",
@@ -21,6 +21,7 @@ type ChatRecipe = {
   readonly projectKey: keyof typeof PROJECTS;
   readonly title: string;
   readonly inReview?: boolean;
+  readonly reminder?: "pending" | "due";
 } & (
   | {
       readonly thread: Pick<
@@ -33,6 +34,18 @@ type ChatRecipe = {
 );
 
 const CHATS = {
+  pendingReminder: {
+    projectKey: "statusProject",
+    title: "Reminder set",
+    unread: false,
+    reminder: "pending",
+  },
+  dueReminder: {
+    projectKey: "statusProject",
+    title: "Reminder due",
+    unread: false,
+    reminder: "due",
+  },
   waitingApproval: {
     projectKey: "statusProject",
     title: "Waiting for approval",
@@ -170,6 +183,13 @@ const materialize = async (
     entityIdsByKey[key] = chat.sessionId;
     if (chat.threadId) entityIdsByKey[`${key}Thread`] = chat.threadId;
     if (recipe.unread) await port.setSessionUnread(chat.sessionId, true);
+    if (recipe.reminder)
+      await port.setSessionReminder(
+        chat.sessionId,
+        new Date(
+          Date.now() + (recipe.reminder === "pending" ? 60 * 60 * 1000 : -60 * 1000),
+        ).toISOString(),
+      );
     if (!recipe.inReview) continue;
     await port.moveSidebarSectionItem({
       item: { kind: "session", sessionId: chat.sessionId },
@@ -203,9 +223,19 @@ const inspect = async (
       session.projectId !== requireId(manifest, recipe.projectKey) ||
       session.displayTitle !== recipe.title ||
       session.archived ||
-      session.unread !== Boolean(recipe.unread)
+      (recipe.reminder !== "due" && session.unread !== Boolean(recipe.unread))
     ) {
       throw new Error(`sidebar/chat-status Chat ${key} did not materialize`);
+    }
+    if (recipe.reminder === "pending" && !session.remindAt) {
+      throw new Error(`sidebar/chat-status Chat ${key} must have a pending reminder`);
+    }
+    if (
+      recipe.reminder === "due" &&
+      session.remindAt &&
+      Date.parse(session.remindAt) > Date.now()
+    ) {
+      throw new Error(`sidebar/chat-status Chat ${key} must have an overdue reminder`);
     }
     if (!recipe.thread && session.thread !== null) {
       throw new Error(`sidebar/chat-status Chat ${key} must be threadless`);

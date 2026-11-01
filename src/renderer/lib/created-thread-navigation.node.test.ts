@@ -19,6 +19,7 @@ const session: ProjectSession = {
   pinnedOrder: null,
   archived: false,
   archivedAt: null,
+  remindAt: null,
   unread: false,
   createdAt: "now",
   updatedAt: "now",

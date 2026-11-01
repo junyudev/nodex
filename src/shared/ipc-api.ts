@@ -482,6 +482,7 @@ import type {
   ProjectSessionRenameCommandInput,
   ProjectSessionReorderCommandInput,
   ProjectSessionUnreadCommandInput,
+  ProjectSessionReminderCommandInput,
   ProjectSessionOpenedCommandInput,
   ProjectSessionUpdateCommandInput,
   BuiltinSidebarReorderCommandInput,
@@ -1257,6 +1258,10 @@ export interface IpcApi
   "project-sessions:record-opened": {
     args: [command: ProjectSessionOpenedCommandInput];
     result: CoreLocalCommitResult<void>;
+  };
+  "project-sessions:set-reminder": {
+    args: [command: ProjectSessionReminderCommandInput];
+    result: CoreLocalCommitResult<ProjectSession>;
   };
   "project-sessions:mark-unread": {
     args: [command: ProjectSessionUnreadCommandInput];

@@ -26,7 +26,7 @@ describe("sidebar/chat-status over the real Core transport", () => {
         const observed = requireSidebarChatStatusFacts(await inspectScenario(manifest, seed));
         expect(observed.projectIdsByKey.statusProject).toBe(manifest.projectId);
         expect(new Set(Object.values(observed.projectIdsByKey)).size).toBe(3);
-        expect(new Set(Object.values(observed.sessionIdsByKey)).size).toBe(11);
+        expect(new Set(Object.values(observed.sessionIdsByKey)).size).toBe(13);
 
         const chats = Object.fromEntries(
           await Promise.all(
@@ -90,7 +90,12 @@ describe("sidebar/chat-status over the real Core transport", () => {
             unread: true,
             thread: null,
           },
+          pendingReminder: { displayTitle: "Reminder set", unread: false, thread: null },
+          dueReminder: { displayTitle: "Reminder due", unread: false, thread: null },
         });
+        // Without a Desktop host nothing delivers reminders, so the overdue one is still pending.
+        expect(Date.parse(chats.pendingReminder.remindAt)).toBeGreaterThan(Date.now());
+        expect(Date.parse(chats.dueReminder.remindAt)).toBeLessThanOrEqual(Date.now());
         const review = await seed.listSidebarSectionItems(observed.reviewSectionId);
         expect(
           review.items.map((item) => (item.kind === "session" ? item.session.id : null)),

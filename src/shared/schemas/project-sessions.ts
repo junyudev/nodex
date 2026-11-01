@@ -23,6 +23,7 @@ import type {
   ProjectSessionPinnedInput,
   ProjectSessionPinnedOrderInput,
   ProjectSessionUnreadInput,
+  ProjectSessionReminderInput,
   ProjectSessionListOptions,
   ProjectSessionForkInput,
 } from "../types";
@@ -188,6 +189,10 @@ export const ProjectSessionPinnedInputSchema = z.object({
 export const ProjectSessionPinnedOrderInputSchema = z.object({
   orderedSessionIds: z.array(z.string()),
 }) satisfies z.ZodType<ProjectSessionPinnedOrderInput>;
+
+export const ProjectSessionReminderInputSchema = z.strictObject({
+  remindAt: z.iso.datetime({ offset: true }).nullable(),
+}) satisfies z.ZodType<ProjectSessionReminderInput>;
 
 export const ProjectSessionUnreadInputSchema = z.object({
   unread: z.boolean(),

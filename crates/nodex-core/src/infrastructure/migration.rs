@@ -400,6 +400,11 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 197,
         apply: migrate_v196_to_v197,
     },
+    MigrationStep {
+        from_revision: 197,
+        to_revision: 198,
+        apply: migrate_v197_to_v198,
+    },
 ];
 
 fn resolve_migration_path(
@@ -2591,6 +2596,21 @@ fn migrate_v196_to_v197(
         params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
             context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
             evidence.to_string()],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
+fn migrate_v197_to_v198(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v197_to_v198.sql"))?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            r#"{"session_reminders":true}"#],
     )?;
     connection.pragma_update(None, "user_version", context.target_revision)?;
     Ok(())
@@ -7813,6 +7833,41 @@ mod tests {
     }
 
     #[test]
+    fn session_reminder_migration_preserves_chats_and_cancels_on_every_archive_path() {
+        let profile = tempdir().expect("Profile");
+        install_intermediate_fixture(profile.path(), 197);
+        let mut connection = open_writer(&profile.path().join("nodex.db")).unwrap();
+        connection.execute("INSERT INTO project_sessions(id,project_id,no_thread_fallback_title,\"order\",pinned,unread,created_at,updated_at) VALUES ('reminder-chat',NULL,'Return here',0,1,1,'2026-01-01T00:00:00.000Z','2026-01-01T00:00:00.000Z')", []).unwrap();
+        let prepared = prepare_profile_store(&mut connection, profile.path()).unwrap();
+        assert_eq!(prepared.migrated_from_version, Some(197));
+        validate_schema_identity(&connection, CURRENT_STORE_REVISION).unwrap();
+        let organization: (i64, i64, Option<String>) = connection
+            .query_row(
+                "SELECT pinned,unread,remind_at FROM project_sessions WHERE id='reminder-chat'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(organization, (1, 1, None));
+        connection.execute("UPDATE project_sessions SET remind_at='2026-01-02T00:00:00.000Z' WHERE id='reminder-chat'", []).unwrap();
+        connection.execute("UPDATE project_sessions SET archived=1,archived_at='2026-01-01T00:00:00.000Z' WHERE id='reminder-chat'", []).unwrap();
+        let reminder: Option<String> = connection
+            .query_row(
+                "SELECT remind_at FROM project_sessions WHERE id='reminder-chat'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(reminder, None);
+        assert_eq!(
+            prepare_profile_store(&mut connection, profile.path())
+                .unwrap()
+                .migrated_from_version,
+            None
+        );
+    }
+
+    #[test]
     fn inbox_importance_migration_leaves_waiting_messages_unmarked() {
         use crate::infrastructure::store::SqliteStoreKernel;
         use crate::workspace::ProjectWorkspaceModule;
@@ -8513,7 +8568,10 @@ mod tests {
             .unwrap()
             .collect::<rusqlite::Result<Vec<_>>>()
             .unwrap();
-        assert_eq!(steps, vec![(193, 194), (194, 195), (195, 196), (196, 197)]);
+        assert_eq!(
+            steps,
+            vec![(193, 194), (194, 195), (195, 196), (196, 197), (197, 198)]
+        );
         let states = connection
             .prepare("SELECT page_id,suggestion_state FROM inbox_entries ORDER BY page_id")
             .unwrap()

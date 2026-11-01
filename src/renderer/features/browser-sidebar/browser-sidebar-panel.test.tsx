@@ -617,6 +617,7 @@ const activeSession: WorkbenchSessionRenderProjection = {
   pinnedOrder: null,
   archived: false,
   archivedAt: null,
+  remindAt: null,
   unread: false,
   panels: {
     right: {

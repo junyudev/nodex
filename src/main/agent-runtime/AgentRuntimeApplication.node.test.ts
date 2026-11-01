@@ -170,6 +170,7 @@ const setup = (
   >();
   const calls: Array<{ method: AgentRuntimeMethod; input: unknown }> = [];
   const applied: ProjectWorkspaceApplyInput[] = [];
+  const acceptedUserMessages: string[] = [];
   const receipt = new Map<string, string>();
   const actors: unknown[] = [];
   const order: string[] = [];
@@ -407,6 +408,14 @@ const setup = (
       if (previous !== undefined && previous !== encoded)
         return yield* Effect.fail(new Error("Immutable request changed"));
       if (previous !== undefined) return {};
+      if (
+        input.intent.kind === "mutate_session" &&
+        input.intent.intent.kind === "record_user_message"
+      ) {
+        if (!acceptedUserMessages.includes(input.intent.intent.message_id))
+          acceptedUserMessages.push(input.intent.intent.message_id);
+        return {};
+      }
       applied.push(input);
       receipt.set(input.operationId, encoded);
       const intent = input.intent;
@@ -419,6 +428,8 @@ const setup = (
         if (binding) bindings.set(intent.session_id, { ...binding, project_id: intent.project_id });
         return {};
       }
+      if (intent.kind === "mutate_session" && intent.intent.kind === "record_user_message")
+        return {};
       if (intent.kind === "mutate_session" && intent.intent.kind === "set_fallback_title") {
         const current = titles.get(intent.session_id) ?? "Task";
         if (intent.intent.replaces == null || current === intent.intent.replaces)
@@ -1283,6 +1294,7 @@ const setup = (
     imports,
     calls,
     applied,
+    acceptedUserMessages,
     actors,
     order,
     state,
@@ -5976,6 +5988,18 @@ it.effect(
           initialPageIds: [],
           modelSelection: { instanceId: "claude", model: "model-a" },
         });
+        yield* core.workspace.apply(
+          {
+            operationId: createOperationId("test.source-reminder"),
+            intent: {
+              kind: "mutate_session",
+              session_id: source.sessionId,
+              intent: { kind: "set_reminder", remind_at: "2020-01-01T00:00:00.000Z" },
+            },
+          },
+          undefined,
+          projectId,
+        );
         const side = yield* owner.createSideChat({
           source: { sessionId: source.sessionId },
           sessionId: "side:real-core-title",
@@ -6017,6 +6041,17 @@ it.effect(
           acceptedAt,
         });
         assert.equal(yield* displayTitle(saved.sessionId), "Inspect the launch checklist");
+        const reminderFor = (sessionId: string) =>
+          core.workspace
+            .read({ kind: "session", session_id: sessionId }, undefined, projectId)
+            .pipe(
+              Effect.map((snapshot) =>
+                snapshot.value.kind === "session" ? snapshot.value.session.remind_at : undefined,
+              ),
+            );
+        assert.equal(yield* reminderFor(source.sessionId), "2020-01-01T00:00:00.000Z");
+        assert.equal(yield* reminderFor(side.sessionId), null);
+        assert.equal(yield* reminderFor(saved.sessionId), null);
         yield* core.workspace.apply(
           {
             operationId: createOperationId("test.side-chat.rename"),
@@ -7029,4 +7064,48 @@ it.effect(
         DEFAULT_RUNTIME_MODE,
       );
     }),
+);
+
+it.effect("only person-authored accepted Runtime sends confirm reminder cancellation", () =>
+  Effect.gen(function* () {
+    const f = setup();
+    const owner = yield* f.owner;
+    const started = yield* owner.launch(launch);
+    const accepted = () => f.acceptedUserMessages;
+    assert.deepEqual(accepted(), [launch.message.messageId]);
+    yield* owner.message({
+      sessionId: started.sessionId,
+      message: { messageId: "person", text: "Continue" },
+    });
+    assert.deepEqual(accepted(), [launch.message.messageId, "person"]);
+    yield* owner
+      .message({
+        sessionId: started.sessionId,
+        message: { messageId: "agent", text: "Agent update" },
+      })
+      .pipe(Effect.provideService(CoreApplicationAgent, agent));
+    assert.deepEqual(accepted(), [launch.message.messageId, "person"]);
+    yield* owner.sendMessage({
+      sessionId: started.sessionId,
+      mode: "queue",
+      message: { messageId: "inbox", text: "Confirmed send" },
+    });
+    assert.deepEqual(accepted(), [launch.message.messageId, "person", "inbox"]);
+    yield* owner.sendMessage({
+      sessionId: started.sessionId,
+      mode: "queue",
+      senderThreadId: "agent-source",
+      message: { messageId: "forwarded", text: "Forwarded update" },
+    });
+    assert.deepEqual(accepted(), [launch.message.messageId, "person", "inbox"]);
+  }),
+);
+
+it.effect("automatic launches do not confirm a person-authored message", () =>
+  Effect.gen(function* () {
+    const f = setup();
+    const owner = yield* f.owner;
+    yield* owner.launch({ ...launch, messageOrigin: "automation" });
+    assert.deepEqual(f.acceptedUserMessages, []);
+  }),
 );

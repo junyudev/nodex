@@ -1323,6 +1323,7 @@ describe("Agent Runtime conversation adapter", () => {
         pinnedOrder: null,
         archived: false,
         archivedAt: null,
+        remindAt: null,
         unread: false,
         thread: null,
         executionRef: { runtimeId: "engine", threadId: "engine-thread" },

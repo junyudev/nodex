@@ -19,6 +19,7 @@ import type {
   ProjectSessionPinnedOrderInput,
   ProjectSessionRenameInput,
   ProjectSessionUnreadInput,
+  ProjectSessionReminderInput,
   ProjectSessionUpdateInput,
 } from "../../shared/types";
 import { createUuidV7 } from "../../shared/uuid-v7";
@@ -151,6 +152,13 @@ export const workspaceCatalogCommandDefinitions = {
     owner: "workbench-session-catalog",
     protocol: receiptFenced("pending"),
   }),
+  sessionSetReminder: defineLocalCommitRendererCommand({
+    key: "workspace.session.set-reminder",
+    channel: "project-sessions:set-reminder",
+    authority: "core",
+    owner: "workbench-session-catalog",
+    protocol: receiptFenced("pending"),
+  }),
   sessionMarkUnread: defineLocalCommitRendererCommand({
     key: "workspace.session.mark-unread",
     channel: "project-sessions:mark-unread",
@@ -242,6 +250,7 @@ const {
   sessionUnarchive: sessionUnarchiveCommand,
   sessionRecordOpened: sessionRecordOpenedCommand,
   sessionMarkUnread: sessionMarkUnreadCommand,
+  sessionSetReminder: sessionSetReminderCommand,
   sidebarCreate: sidebarCreateCommand,
   sidebarRename: sidebarRenameCommand,
   sidebarDelete: sidebarDeleteCommand,
@@ -387,6 +396,13 @@ export const workspaceSessionCommands = {
       await invokeLocalCommitCommand(sessionRecordOpenedCommand, {
         operationId: operation("session.record-opened"),
         payload: { sessionId },
+      })
+    ).value,
+  setReminder: async (sessionId: string, input: ProjectSessionReminderInput) =>
+    (
+      await invokeLocalCommitCommand(sessionSetReminderCommand, {
+        operationId: operation("session.set-reminder"),
+        payload: { sessionId, ...input },
       })
     ).value,
   markUnread: async (sessionId: string, input: ProjectSessionUnreadInput) =>

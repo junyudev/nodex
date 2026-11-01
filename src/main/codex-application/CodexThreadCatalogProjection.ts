@@ -220,6 +220,7 @@ export const projectCoreWorkspaceTask = (task: CoreWorkspaceTask): ProjectSessio
   archived: task.session.archived,
   archivedAt: task.session.archived_at ?? null,
   unread: task.session.unread,
+  remindAt: task.session.remind_at ?? null,
   thread: task.thread
     ? {
         sessionId: task.session.id,

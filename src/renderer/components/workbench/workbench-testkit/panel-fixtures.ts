@@ -162,6 +162,7 @@ export function makeTestWorkbenchSession(
     pinnedOrder: null,
     archived: false,
     archivedAt: null,
+    remindAt: null,
     unread: false,
     thread: input.thread ?? null,
     createdAt: TIMESTAMP,

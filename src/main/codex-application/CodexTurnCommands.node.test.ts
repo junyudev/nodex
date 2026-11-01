@@ -194,6 +194,7 @@ const makeHarness = (input: {
       Effect.provideService(Scope.Scope, scope),
     );
     const events: string[] = [];
+    const acceptedUserMessages: string[] = [];
     const queueReads: ThreadQueueListParams[] = [];
     const queueLocks = new QueuedMessageLocks();
     const queued = {
@@ -431,8 +432,31 @@ const makeHarness = (input: {
     } as unknown as ProjectWorkspace["Service"]);
     const core = CoreModules.of({
       workspace: {
-        read: () => Effect.die("unused"),
-        apply: () => Effect.die("unused"),
+        read: (request: { thread_id: string }) =>
+          Effect.succeed({
+            value: {
+              kind: "codex_thread_session",
+              thread: {
+                thread_id: request.thread_id,
+                backend_binding: { kind: "codex" },
+                execution_host_id: OWNER_HOST,
+                thread_source: null,
+                status: { status_type: "idle", active_flags: [] },
+              },
+              session: {
+                id: "session:thread-a",
+                project_id: null,
+                no_thread_fallback_title: "Task",
+                display_title: "Task",
+                remind_at: null,
+              },
+            },
+          }),
+        apply: (command: { intent: { intent: { message_id: string } } }) =>
+          Effect.sync(() => {
+            acceptedUserMessages.push(command.intent.intent.message_id);
+            return {};
+          }),
       },
     } as unknown as CoreModuleClients);
     let actionHandler:
@@ -665,6 +689,7 @@ const makeHarness = (input: {
       Effect.provideService(Scope.Scope, scope),
     );
     return {
+      acceptedUserMessages,
       presentation,
       aggregate,
       commands,
@@ -3792,5 +3817,15 @@ it.effect(
       assert.equal(result._tag, "Failure");
       assert.equal(harness.requests(), 0);
       yield* Scope.close(harness.scope, Exit.void);
+    }),
+);
+
+it.effect(
+  "confirms a person's native send at its acknowledgement without waiting for protocol echo",
+  () =>
+    Effect.gen(function* () {
+      const h = yield* makeHarness({ request: () => Effect.succeed(response()) });
+      yield* h.commands.start("thread-a", "Continue", { clientUserMessageId: "person-message" });
+      assert.deepEqual(h.acceptedUserMessages, ["person-message"]);
     }),
 );

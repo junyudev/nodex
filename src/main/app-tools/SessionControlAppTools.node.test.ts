@@ -128,6 +128,16 @@ const fixture = Effect.gen(function* () {
             backendBinding: { kind: "codex" },
           },
         })),
+      setProjectSessionReminder: (input: {
+        payload: { sessionId: string; remindAt: string | null };
+      }) =>
+        Effect.sync(() => {
+          record("core-reminder", input);
+          return {
+            value: { remindAt: input.payload.remindAt },
+            apply: { receipt: "core-receipt" },
+          };
+        }),
       markProjectSessionUnread: (input: { payload: { sessionId: string; unread: boolean } }) =>
         Effect.sync(() => {
           record("core-unread", input);
@@ -498,5 +508,29 @@ it.effect("carries the admission ceiling to Runtime queue and Stop controls", ()
       const input = f.calls.find((call) => call.name === name)?.input as { modeLimit?: unknown };
       assert.deepEqual(input.modeLimit, { runtimeMode: "full-access", interactionMode: "default" });
     }
+  }),
+);
+
+it.effect("sets, clears and exactly replays reminders for Runtime, native and draft Sessions", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture;
+    for (const backend of ["runtime", "native", "draft"] as const) {
+      f.setBackend(backend);
+      for (const remindAt of ["2026-11-02T09:00:00.000Z", null]) {
+        const args = { sessionId: "target", remindAt, idempotencyKey: `${backend}-${remindAt}` };
+        const first = yield* f.execute("set_session_reminder", args);
+        assert.equal(first.structuredContent?.remindAt, remindAt);
+        f.nextTurn();
+        assert.deepEqual(yield* f.execute("set_session_reminder", args), first);
+      }
+    }
+    assert.lengthOf(
+      f.calls.filter((call) => call.name === "core-reminder"),
+      6,
+    );
+    assert.lengthOf(
+      f.calls.filter((call) => call.name === "native-unread" || call.name === "core-unread"),
+      0,
+    );
   }),
 );

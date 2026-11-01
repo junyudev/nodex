@@ -364,3 +364,28 @@ describe("Codex thread notification handler", () => {
     ]);
   });
 });
+
+test("chat reminders respect settings and presentation and open their exact Session", () => {
+  const runtime = setup({ turnMode: "always", questionsEnabled: true });
+  const event = {
+    type: "session-reminder" as const,
+    hostId: "local",
+    remindAt: "2026-11-02T09:00:00.000Z",
+    conversation: conversation({ title: "Return here", runtimeSessionId: "chat" }),
+  };
+  runtime.source.eventListener!(event);
+  expect(runtime.shown[0]).toMatchObject({
+    kind: "reminder",
+    title: "Return here",
+    body: "You asked to come back to this chat.",
+    navigationPath: "session:chat/thread:thread-1",
+  });
+  runtime.actions[0]!({ notificationId: runtime.shown[0]!.id, actionId: null, actionType: "open" });
+  expect(runtime.dispatched[0]?.navigationPath).toBe("session:chat/thread:thread-1");
+  runtime.setPresented(true);
+  runtime.source.eventListener!(event);
+  expect(runtime.shown).toHaveLength(1);
+  const disabled = setup({ turnMode: "off", questionsEnabled: true });
+  disabled.source.eventListener!(event);
+  expect(disabled.shown).toHaveLength(0);
+});

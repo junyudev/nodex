@@ -11,7 +11,8 @@ import { make as makeAppToolOperation } from "./AppToolOperation";
 import { toCoreAgentTurnProvenance } from "../core-client/core-agent-execution-authorization";
 import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
 import { CodexTurnAuthority } from "../codex-application/CodexTurnAuthority";
-import { CodexThreadReadState } from "../codex-application/CodexThreadReadState";
+import { makeSetSessionUnread } from "../project-application/SessionUnread";
+import { projectAgentBackendBindingFromCore } from "../core-client/project-workspace-adapter";
 import { make as makeNativeControls } from "../codex-application/CodexSessionControls";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import { resolveAppToolCallingSession } from "./AppToolCallingSession";
@@ -48,8 +49,8 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
     const core = yield* CoreAuthority;
     const admitOperation = yield* makeAppToolOperation;
     const workspace = yield* ProjectWorkspace;
+    const setSessionUnread = yield* makeSetSessionUnread;
     const application = yield* AgentRuntimeApplication;
-    const readState = yield* CodexThreadReadState;
     const native = yield* makeNativeControls;
     const access = yield* makeAuthority;
     return Effect.fn("SessionControlAppTools.execute")(function* (input: AppToolInvocation) {
@@ -78,23 +79,23 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
       if (!operation.success) return operation.result;
       const { operationId } = operation;
       const provenance = toCoreAgentTurnProvenance(core.identity.profileId, authority);
+      const organization =
+        input.name === "set_session_unread" || input.name === "set_session_reminder";
       const execute = Effect.gen(function* () {
         if (input.name === "stop_session" && sessionId === caller.sessionId)
           return toolFailure("cannot_stop_calling_session");
-        if (input.name === "set_session_unread") yield* access.authorize(sessionId);
+        if (organization) yield* access.authorize(sessionId);
         else yield* access.check(callerTarget, target);
-        const source =
-          input.name === "set_session_unread" ? null : yield* access.inspect(callerTarget);
+        const source = organization ? null : yield* access.inspect(callerTarget);
         const modeLimit = source
           ? { runtimeMode: source.runtimeMode, interactionMode: source.interactionMode }
           : undefined;
         if (!input.caller.isActive()) return toolFailure("call_withdrawn");
         const perform = Effect.gen(function* () {
           // Revalidate lifecycle and permission facts immediately before crossing the control owner.
-          const session =
-            input.name === "set_session_unread"
-              ? yield* access.authorize(sessionId)
-              : (yield* access.check(callerTarget, target)).session;
+          const session = organization
+            ? yield* access.authorize(sessionId)
+            : (yield* access.check(callerTarget, target)).session;
           const beforeNativeControl = Effect.gen(function* () {
             const { session: current, facts } = yield* access.check(callerTarget, target);
             const ceilingError = source && facts ? sessionMessageCeilingError(source, facts) : null;
@@ -111,35 +112,42 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
               );
           });
           if (!input.caller.isActive()) return toolFailure("call_withdrawn");
-          if (input.name === "set_session_unread") {
-            const args = sessionControlSchemas.set_session_unread.parse(input.arguments);
-            if (
-              session.thread &&
-              !session.session.execution_ref &&
-              session.thread.backend_binding.kind === "codex"
-            ) {
-              const changed = yield* readState.set({
-                threadId: session.thread.thread_id,
-                hasUnreadTurn: args.unread,
-              });
-              return toolSuccess({
-                operationId,
-                sessionId,
-                unread: args.unread,
-                receipt: { changed },
-              });
-            }
-            const result = yield* workspace.markProjectSessionUnread({
+          if (input.name === "set_session_reminder") {
+            const args = sessionControlSchemas.set_session_reminder.parse(input.arguments);
+            const result = yield* workspace.setProjectSessionReminder({
               operationId,
-              payload: { sessionId, unread: args.unread },
+              payload: { sessionId, remindAt: args.remindAt },
             });
             return toolSuccess({
               operationId,
               sessionId,
-              unread: result.value.unread,
+              remindAt: result.value.remindAt,
               receipt: result.apply,
             });
           }
+          if (input.name === "set_session_unread") {
+            const args = sessionControlSchemas.set_session_unread.parse(input.arguments);
+            const productSession = {
+              id: session.session.id,
+              executionRef: session.session.execution_ref
+                ? {
+                    runtimeId: session.session.execution_ref.runtime_id,
+                    threadId: session.session.execution_ref.thread_id,
+                  }
+                : null,
+              thread: session.thread
+                ? {
+                    threadId: session.thread.thread_id,
+                    backendBinding: projectAgentBackendBindingFromCore(
+                      session.thread.backend_binding,
+                    ),
+                  }
+                : null,
+            };
+            const receipt = yield* setSessionUnread(productSession, args.unread, operationId);
+            return toolSuccess({ operationId, sessionId, unread: args.unread, receipt });
+          }
+
           if (input.name === "stop_session") {
             const args = sessionControlSchemas.stop_session.parse(input.arguments);
             const reason = args.reason

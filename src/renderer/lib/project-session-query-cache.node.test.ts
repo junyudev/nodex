@@ -34,6 +34,7 @@ function createSession(overrides: Partial<ProjectSession> = {}): ProjectSession 
     pinnedOrder: overrides.pinnedOrder ?? null,
     archived: overrides.archived ?? false,
     archivedAt: overrides.archivedAt ?? null,
+    remindAt: overrides.remindAt ?? null,
     unread: overrides.unread ?? false,
     thread: overrides.thread ?? null,
     executionRef: overrides.executionRef ?? null,

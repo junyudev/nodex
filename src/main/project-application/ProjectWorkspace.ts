@@ -20,6 +20,7 @@ import {
   PageChatWindowInputSchema,
   ProjectSessionCreateInputSchema,
   ProjectSessionRenameInputSchema,
+  ProjectSessionReminderInputSchema,
   ProjectSessionThreadLinkInputSchema,
   ProjectSessionUpdateInputSchema,
 } from "../../shared/schemas/project-sessions";
@@ -58,6 +59,7 @@ import type {
   ProjectSessionRenameCommandInput,
   ProjectSessionReorderCommandInput,
   ProjectSessionUnreadCommandInput,
+  ProjectSessionReminderCommandInput,
   ProjectSessionOpenedCommandInput,
   ProjectSessionUpdateCommandInput,
   BuiltinSidebarReorderCommandInput,
@@ -172,6 +174,13 @@ export class ProjectWorkspaceError extends Schema.TaggedError<ProjectWorkspaceEr
 ) {}
 
 type ProjectWorkspaceEffect<A> = Effect.Effect<A, ProjectWorkspaceError>;
+
+export interface SessionReminderWork {
+  readonly session: ProjectSession;
+  readonly remindAt: string;
+  readonly deliveryId: string | null;
+  readonly wakeAt: string;
+}
 
 export interface ProjectWorkspaceCommandResult<Value> {
   readonly value: Value;
@@ -329,6 +338,23 @@ export interface ProjectWorkspaceService {
   readonly recordProjectSessionOpened: (
     command: ProjectSessionOpenedCommandInput,
   ) => ProjectWorkspaceEffect<ProjectWorkspaceCommandResult<void>>;
+  readonly nextSessionReminder: ProjectWorkspaceEffect<SessionReminderWork | null>;
+  readonly consumeSessionReminder: (
+    sessionId: string,
+    remindAt: string,
+    deliver: boolean,
+  ) => ProjectWorkspaceEffect<boolean>;
+  readonly completeSessionReminder: (
+    sessionId: string,
+    deliveryId: string,
+  ) => ProjectWorkspaceEffect<boolean>;
+  readonly deferSessionReminder: (
+    sessionId: string,
+    deliveryId: string,
+  ) => ProjectWorkspaceEffect<void>;
+  readonly setProjectSessionReminder: (
+    command: ProjectSessionReminderCommandInput,
+  ) => ProjectWorkspaceEffect<ProjectWorkspaceCommandResult<ProjectSession>>;
   readonly markProjectSessionUnread: (
     command: ProjectSessionUnreadCommandInput,
   ) => ProjectWorkspaceEffect<ProjectWorkspaceCommandResult<ProjectSession>>;
@@ -1519,7 +1545,62 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
       },
     );
 
+    const setProjectSessionReminder = Effect.fn("ProjectWorkspace.setProjectSessionReminder")(
+      function* (command: ProjectSessionReminderCommandInput) {
+        const { sessionId } = command.payload;
+        const { remindAt } = yield* evaluate("session.reminder.validate", () =>
+          ProjectSessionReminderInputSchema.parse({ remindAt: command.payload.remindAt }),
+        );
+        yield* requireSession(sessionId);
+        const applied = yield* applyWithId("session.reminder.set", command.operationId, {
+          kind: "mutate_session",
+          session_id: sessionId,
+          intent: { kind: "set_reminder", remind_at: remindAt },
+        });
+        return { value: yield* requireSession(sessionId), apply: applied };
+      },
+    );
     const service = ProjectWorkspace.of({
+      setProjectSessionReminder,
+      nextSessionReminder: read("session.reminder.next", { kind: "next_session_reminder" }).pipe(
+        Effect.flatMap((snapshot) => {
+          const value = expectVariant(snapshot, "next_session_reminder");
+          if (!value.session || !value.next_wake_at) return Effect.succeed(null);
+          const session = value.session;
+          return requireSession(session.id).pipe(
+            Effect.map((current) => ({
+              session: current,
+              remindAt: value.delivery?.remind_at ?? session.remind_at!,
+              deliveryId: value.delivery?.delivery_id ?? null,
+              wakeAt: value.next_wake_at!,
+            })),
+          );
+        }),
+      ),
+      consumeSessionReminder: (sessionId, remindAt, deliver) =>
+        applyWithId("session.reminder.consume", createOperationId("session.reminder.consume"), {
+          kind: "mutate_session",
+          session_id: sessionId,
+          intent: { kind: "consume_reminder", remind_at: remindAt, deliver },
+        }).pipe(
+          Effect.map((result) => result.outcome.affected_session_ids.includes(sessionId)),
+          Effect.catchIf(isNotFound, () => Effect.succeed(false)),
+        ),
+      completeSessionReminder: (sessionId, deliveryId) =>
+        applyWithId("session.reminder.complete", createOperationId("session.reminder.complete"), {
+          kind: "mutate_session",
+          session_id: sessionId,
+          intent: { kind: "complete_reminder_delivery", delivery_id: deliveryId },
+        }).pipe(
+          Effect.map((result) => result.outcome.affected_session_ids.includes(sessionId)),
+          Effect.catchIf(isNotFound, () => Effect.succeed(false)),
+        ),
+      deferSessionReminder: (sessionId, deliveryId) =>
+        applyWithId("session.reminder.defer", createOperationId("session.reminder.defer"), {
+          kind: "mutate_session",
+          session_id: sessionId,
+          intent: { kind: "defer_reminder_delivery", delivery_id: deliveryId },
+        }).pipe(Effect.asVoid),
       readProjectBootstrap,
       listProjects,
       listProjectWindow,

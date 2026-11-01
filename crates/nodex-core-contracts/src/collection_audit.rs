@@ -67,7 +67,8 @@ fn workspace_policy(read: &ProjectWorkspaceRead) -> ReadBudgetPolicy {
         | ProjectWorkspaceRead::SessionSidebarPlacements { .. }
         | ProjectWorkspaceRead::PageChatActivitySummaries { .. } => ReadBudgetPolicy::BoundedBatch,
         ProjectWorkspaceRead::ManagedWorktreeLifecycleSnapshot => ReadBudgetPolicy::FixedDomain,
-        ProjectWorkspaceRead::ProjectBootstrap
+        ProjectWorkspaceRead::NextSessionReminder
+        | ProjectWorkspaceRead::ProjectBootstrap
         | ProjectWorkspaceRead::Project { .. }
         | ProjectWorkspaceRead::Session { .. }
         | ProjectWorkspaceRead::AgentRuntimeSessionBinding { .. }

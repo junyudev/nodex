@@ -34,6 +34,7 @@ export interface SessionSidebarPlacement {
   readonly projectId: string | null;
   readonly sectionId: string | null;
   readonly unread: boolean;
+  readonly remindAt: string | null;
 }
 
 export interface SidebarSectionWindow {

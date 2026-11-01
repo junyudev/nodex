@@ -8529,6 +8529,9 @@ export interface components {
             readonly contract_version: number;
             readonly read: {
                 /** @enum {string} */
+                readonly kind: "next_session_reminder";
+            } | {
+                /** @enum {string} */
                 readonly kind: "queued_message_state";
             } | {
                 readonly identity_key: string;
@@ -9181,6 +9184,27 @@ export interface components {
             /** @enum {string} */
             readonly kind: "set_unread";
             readonly unread: boolean;
+        } | {
+            /** @enum {string} */
+            readonly kind: "set_reminder";
+            readonly remind_at?: string | null;
+        } | {
+            readonly deliver: boolean;
+            /** @enum {string} */
+            readonly kind: "consume_reminder";
+            readonly remind_at: string;
+        } | {
+            readonly delivery_id: string;
+            /** @enum {string} */
+            readonly kind: "complete_reminder_delivery";
+        } | {
+            readonly delivery_id: string;
+            /** @enum {string} */
+            readonly kind: "defer_reminder_delivery";
+        } | {
+            /** @enum {string} */
+            readonly kind: "record_user_message";
+            readonly message_id: string;
         } | {
             readonly archived: boolean;
             /** @enum {string} */
@@ -10506,9 +10530,14 @@ export interface components {
         };
         /** @enum {string} */
         readonly ProjectWorkspaceSessionOrder: "conversation" | "identity";
+        readonly ProjectWorkspaceSessionReminderDelivery: {
+            readonly delivery_id: string;
+            readonly remind_at: string;
+        };
         /** @description Durable placement for joining bounded live activity without loading Session rows. */
         readonly ProjectWorkspaceSessionSidebarPlacement: {
             readonly project_id?: string | null;
+            readonly remind_at?: string | null;
             readonly section_id?: string | null;
             readonly session_id: string;
             readonly unread: boolean;
@@ -10527,6 +10556,7 @@ export interface components {
             /** Format: int64 */
             readonly pinned_order?: number | null;
             readonly project_id?: string | null;
+            readonly remind_at?: string | null;
             readonly thread_id?: string | null;
             readonly unread: boolean;
             readonly updated_at: string;
@@ -12094,6 +12124,12 @@ export interface components {
                 readonly contract_version: number;
                 readonly store_epoch: components["schemas"]["StoreEpoch"];
                 readonly value: {
+                    readonly delivery?: components["schemas"]["ProjectWorkspaceSessionReminderDelivery"] | null;
+                    /** @enum {string} */
+                    readonly kind: "next_session_reminder";
+                    readonly next_wake_at?: string | null;
+                    readonly session?: components["schemas"]["ProjectWorkspaceSessionSummary"] | null;
+                } | {
                     /** @enum {string} */
                     readonly kind: "codex_thread_session";
                     readonly session: components["schemas"]["ProjectWorkspaceSessionSummary"];

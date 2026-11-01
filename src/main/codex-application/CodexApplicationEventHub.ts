@@ -9,6 +9,7 @@ import type { CodexHostMessage } from "../../shared/types";
 import { MAIN_OBSERVATION_EVENT_CAPACITY } from "../runtime-limits";
 
 export type CodexApplicationEvent =
+  | { readonly kind: "sessionOrganizationChanged"; readonly value: null }
   | { readonly kind: "queuedMessageStateChanged"; readonly value: null }
   | { readonly kind: "conversationTurnSteered"; readonly value: string }
   | { readonly kind: "conversationTurnInterruptStarted"; readonly value: string }

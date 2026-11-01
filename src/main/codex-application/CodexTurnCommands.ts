@@ -1,3 +1,4 @@
+import { recordAcceptedNativeUserMessage } from "./CodexSessionMessageReminders";
 import { RUNTIME_MODE_RANK, type AgentDispatchModeLimit } from "@nodex/agent-runtime/contracts";
 import type { CodexCanonicalPermissionContext } from "../../shared/types";
 import { assertCodexFailedTurnContinuation } from "../../shared/codex-conversation-state/codex-failed-turn-continuation";
@@ -832,6 +833,18 @@ export const make: Effect.Effect<
               ),
             )) as unknown as TurnStartResponse;
           nativeAccepted = true;
+          yield* recordAcceptedNativeUserMessage(core, {
+            hostId: options.connection.manager.hostId,
+            threadId: plan.threadId,
+            messageId: plan.clientUserMessageId,
+            content: plan.request.input,
+            toolOutput: plan.request.toolOutput,
+            turnTrigger: plan.request.turnTrigger,
+          }).pipe(
+            Effect.catchCause((cause) =>
+              Effect.logWarning("Accepted native message reminder cancellation failed", cause),
+            ),
+          );
 
           if (options.serverQueuedSubmission)
             queued.recordAcceptedSend({
@@ -1588,6 +1601,7 @@ export const make: Effect.Effect<
           cwd: conversations.current(threadId)?.readCanonicalState()?.cwd ?? null,
           context: {
             prompt,
+            turnTrigger: "agent_message",
             fileAttachments: captured.fileAttachments,
             addedFiles: captured.addedFiles,
             commentAttachments: captured.commentAttachments,
@@ -2397,6 +2411,17 @@ export const make: Effect.Effect<
                     entry.outcomeUnknown =
                       encodeCodexNativeRequestFailure(error).delivery?.stage === "outcome-unknown";
                   }),
+                ),
+              );
+              yield* recordAcceptedNativeUserMessage(core, {
+                hostId: entry.manager.hostId,
+                threadId: entry.input.conversationId,
+                messageId: clientUserMessageId,
+                content: entry.input.input,
+                toolOutput: entry.input.toolOutput,
+              }).pipe(
+                Effect.catchCause((cause) =>
+                  Effect.logWarning("Accepted native steer reminder cancellation failed", cause),
                 ),
               );
               yield* Effect.try({

@@ -1133,6 +1133,7 @@ export interface ProjectSession {
   archived: boolean;
   archivedAt: string | null;
   unread: boolean;
+  remindAt: string | null;
   thread: ProjectSessionThreadLink | null;
   executionRef?: { readonly runtimeId: string; readonly threadId: string } | null;
   createdAt: string;
@@ -1150,6 +1151,7 @@ export interface ProjectSessionSummary {
   archived: boolean;
   archivedAt: string | null;
   unread: boolean;
+  remindAt: string | null;
   thread: ProjectSessionThreadSummary | null;
   executionRef?: { readonly runtimeId: string; readonly threadId: string } | null;
   createdAt: string;
@@ -1207,6 +1209,10 @@ export interface ProjectSessionPinnedInput {
 
 export interface ProjectSessionPinnedOrderInput {
   orderedSessionIds: string[];
+}
+
+export interface ProjectSessionReminderInput {
+  remindAt: string | null;
 }
 
 export interface ProjectSessionUnreadInput {
@@ -1411,6 +1417,7 @@ export interface CodexSidebarThreadItem {
   pinned: boolean;
   pinnedOrder: number | null;
   unread: boolean;
+  remindAt?: string | null;
   needsAttention?: boolean;
   archived: boolean;
   statusType: CodexThreadStatusType;
@@ -1863,7 +1870,7 @@ export interface UpdateThreadNotificationSettingsInput {
   questionsEnabled: boolean;
 }
 
-export type DesktopNotificationKind = "turn-complete" | "question";
+export type DesktopNotificationKind = "turn-complete" | "question" | "reminder";
 
 export interface DesktopNotificationAction {
   id: string;

@@ -50,6 +50,7 @@ function projectSession(threadId: string | null = null): ProjectSession {
     pinnedOrder: null,
     archived: false,
     archivedAt: null,
+    remindAt: null,
     unread: false,
     thread: threadId
       ? {

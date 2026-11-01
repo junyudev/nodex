@@ -86,6 +86,108 @@ pub(super) fn mutate_session(
             &authority,
             *unread,
         ),
+        ProjectSessionIntent::SetReminder { remind_at } => set_session_reminder(
+            connection,
+            library_id,
+            context,
+            store_epoch,
+            operation_id,
+            request_hash,
+            session_id,
+            &authority,
+            remind_at.as_deref(),
+            None,
+            false,
+        ),
+        ProjectSessionIntent::ConsumeReminder { remind_at, deliver } => set_session_reminder(
+            connection,
+            library_id,
+            context,
+            store_epoch,
+            operation_id,
+            request_hash,
+            session_id,
+            &authority,
+            None,
+            Some(remind_at),
+            *deliver,
+        ),
+        ProjectSessionIntent::DeferReminderDelivery { delivery_id } => {
+            validate_id("delivery_id", delivery_id)?;
+            connection.execute("UPDATE project_session_reminder_deliveries SET next_attempt_at=strftime('%Y-%m-%dT%H:%M:%fZ','now','+30 seconds') WHERE delivery_id=?1 AND session_id=?2", params![delivery_id,session_id])?;
+            finish_session_mutation(
+                connection,
+                library_id,
+                context,
+                store_epoch,
+                operation_id,
+                request_hash,
+                "defer_session_reminder",
+                session_id,
+                &authority,
+                Vec::new(),
+                SessionInvalidationKind::None,
+                sqlite_now(connection)?,
+            )
+        }
+        ProjectSessionIntent::CompleteReminderDelivery { delivery_id } => {
+            validate_id("delivery_id", delivery_id)?;
+            let changed = connection.execute("DELETE FROM project_session_reminder_deliveries WHERE delivery_id=?1 AND session_id=?2", params![delivery_id,session_id])?;
+            finish_session_mutation(
+                connection,
+                library_id,
+                context,
+                store_epoch,
+                operation_id,
+                request_hash,
+                "complete_session_reminder",
+                session_id,
+                &authority,
+                Vec::new(),
+                if changed == 1 {
+                    SessionInvalidationKind::SummaryAndDetail
+                } else {
+                    SessionInvalidationKind::None
+                },
+                sqlite_now(connection)?,
+            )
+        }
+        ProjectSessionIntent::RecordUserMessage { message_id } => {
+            validate_id("message_id", message_id)?;
+            let accepted = connection.execute(
+                "INSERT INTO project_session_user_message_receipts(session_id, message_id) VALUES (?1, ?2) ON CONFLICT DO NOTHING",
+                params![session_id, message_id],
+            )?;
+            if accepted == 1 {
+                return set_session_reminder(
+                    connection,
+                    library_id,
+                    context,
+                    store_epoch,
+                    operation_id,
+                    request_hash,
+                    session_id,
+                    &authority,
+                    None,
+                    None,
+                    false,
+                );
+            }
+            finish_session_mutation(
+                connection,
+                library_id,
+                context,
+                store_epoch,
+                operation_id,
+                request_hash,
+                "record_session_user_message",
+                session_id,
+                &authority,
+                Vec::new(),
+                SessionInvalidationKind::None,
+                sqlite_now(connection)?,
+            )
+        }
         ProjectSessionIntent::SetArchived { archived } => set_session_archived(
             connection,
             library_id,
@@ -348,6 +450,22 @@ fn set_session_unread(
     unread: bool,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
     let now = sqlite_now(connection)?;
+    if unread && authority.archived {
+        return finish_session_mutation(
+            connection,
+            library_id,
+            context,
+            store_epoch,
+            operation_id,
+            request_hash,
+            "set_session_unread",
+            session_id,
+            authority,
+            Vec::new(),
+            SessionInvalidationKind::None,
+            now,
+        );
+    }
     let changed = connection.execute(
         "UPDATE project_sessions SET unread = ?1, updated_at = ?2 WHERE id = ?3",
         params![i64::from(unread), now, session_id],
@@ -367,6 +485,82 @@ fn set_session_unread(
         authority,
         authority.thread_id.iter().cloned().collect(),
         SessionInvalidationKind::SummaryAndDetail,
+        now,
+    )
+}
+
+/// Reminder instants have one canonical UTC millisecond representation in storage and projections.
+#[allow(clippy::too_many_arguments)]
+fn set_session_reminder(
+    connection: &Connection,
+    library_id: &str,
+    context: &BoundModuleContext,
+    store_epoch: &str,
+    operation_id: &str,
+    request_hash: &str,
+    session_id: &str,
+    authority: &SessionAuthority,
+    remind_at: Option<&str>,
+    expected: Option<&str>,
+    deliver: bool,
+) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
+    use chrono::{DateTime, Duration, SecondsFormat};
+    let now = sqlite_now(connection)?;
+    let clock =
+        DateTime::parse_from_rfc3339(&now).map_err(|_| corrupt("Store clock is invalid"))?;
+    let normalized = remind_at
+        .map(|value| {
+            let instant = DateTime::parse_from_rfc3339(value)
+                .map_err(|_| invalid("remind_at must be an ISO 8601 instant with an offset"))?;
+            if instant > clock + Duration::days(366) {
+                return Err(invalid(
+                    "remind_at must be no more than 366 days in the future",
+                ));
+            }
+            if authority.archived {
+                return Err(invalid("Archived Sessions cannot have a reminder"));
+            }
+            Ok(instant
+                .to_utc()
+                .to_rfc3339_opts(SecondsFormat::Millis, true))
+        })
+        .transpose()?;
+    let changed = connection.execute(
+        "UPDATE project_sessions SET remind_at = ?1, updated_at = ?2 WHERE id = ?3 AND remind_at IS NOT ?1 AND (?4 IS NULL OR (remind_at = ?4 AND remind_at <= ?2 AND archived = 0))",
+        params![normalized, now, session_id, expected],
+    )?;
+    let changed = if expected.is_none() {
+        changed
+            + connection.execute(
+                "DELETE FROM project_session_reminder_deliveries WHERE session_id=?1",
+                [session_id],
+            )?
+    } else {
+        changed
+    };
+    if changed > 0 && deliver {
+        connection.execute("INSERT INTO project_session_reminder_deliveries(delivery_id,session_id,remind_at,next_attempt_at) VALUES (?1,?2,?3,?4)", params![operation_id,session_id,expected,now])?;
+    }
+    finish_session_mutation(
+        connection,
+        library_id,
+        context,
+        store_epoch,
+        operation_id,
+        request_hash,
+        if expected.is_some() {
+            "consume_session_reminder"
+        } else {
+            "set_session_reminder"
+        },
+        session_id,
+        authority,
+        Vec::new(),
+        if changed > 0 {
+            SessionInvalidationKind::SummaryAndDetail
+        } else {
+            SessionInvalidationKind::None
+        },
         now,
     )
 }
@@ -662,7 +856,10 @@ pub(super) fn finish_session_mutation(
             project_catalog_change: None,
             change_project_id,
             project_ids,
-            session_ids: vec![session_id.to_owned()],
+            session_ids: match invalidation {
+                SessionInvalidationKind::None => Vec::new(),
+                SessionInvalidationKind::SummaryAndDetail => vec![session_id.to_owned()],
+            },
             thread_ids,
             session_summary_scopes: match invalidation {
                 SessionInvalidationKind::None => Vec::new(),
