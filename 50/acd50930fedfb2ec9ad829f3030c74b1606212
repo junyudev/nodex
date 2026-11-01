@@ -1,0 +1,35 @@
+config/test-suites.ts
+  s_ef93f85750414a::t_f0da396b8fd580 65-69
+docs/RELIABILITY.md
+  s_ef93f85750414a::t_bbc01c1808ef9d 399-400
+src/main/durable-json-file.test.ts
+  s_ef93f85750414a::t_e091a7f67fdd1d 1-25
+src/main/durable-json-file.ts
+  s_ef93f85750414a::t_56649a568408a4 1,35-36,38,51-64
+src/main/local-store/persisted-atoms.ts
+  s_ef93f85750414a::t_b45f6059a97d4e 14,53
+src/main/platform/node/MainFatalIncidentStore.node.test.ts
+  s_ef93f85750414a::t_3e91077479c0a4 68,72-74,82-88
+src/main/platform/node/MainFatalIncidentStore.ts
+  s_ef93f85750414a::t_3e216e7a505250 10,42,93
+src/main/remote-hosted-pip-preference-store.ts
+  s_ef93f85750414a::t_fd0ea05f4b54d7 2,170
+src/main/window-session-state.ts
+  s_ef93f85750414a::t_0013285a47e37a 35,1011
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "50acd50930fedfb2ec9ad829f3030c74b1606212",
+  "prompts": {},
+  "sessions": {
+    "s_ef93f85750414a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1975c-d042-74f3-8106-b6eb6f221778",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
