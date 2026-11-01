@@ -1,0 +1,44 @@
+src/main/git-worker/live-query-registry.test.ts
+  s_96ff75d3bdf36b::t_16414707282741 87-90,103-111,114-118,252-254,258,274-276
+  s_96ff75d3bdf36b::t_9183c56dfd3167 10-11,82-86,91-95,98-102,112-113,119-127,136,140-141,145,148,152,156-158,162-176,178-179,184-191,195-201,205-208,210,213,219-228,234-240,242-248,255-257,259-261,268-273,277-278,280
+  s_96ff75d3bdf36b::t_a9bb41d67ff93d 96-97,159-161,177,180-183,192-194,202-204,214-218,229-233,262-267
+  s_96ff75d3bdf36b::t_5a82fde513b471 279,281
+src/renderer/features/review/data/git-query.node.test.ts
+  s_a62e5887089e7e::t_3b335c80985566 9,69-227
+  s_a62e5887089e7e::t_ee5b60fe699a65 228-229
+src/main/git-worker/live-query-registry.ts
+  s_96ff75d3bdf36b::t_43643826e101fc 14,289-290,300-302,309,314,316
+  s_96ff75d3bdf36b::t_cd74dc0051e867 294-299,304-307,310-313
+src/renderer/features/review/data/git-query.ts
+  s_a62e5887089e7e::t_0e6528ee313061 105-134,144-146
+  s_a62e5887089e7e::t_4bda979c1940f5 251-252,271,275-286,306-311
+  s_a62e5887089e7e::t_4319846097aeee 3,31-39,156,158-162,175,180-182,187-193,225
+docs/product-specs/review-right-panel-behavior.md
+  s_a62e5887089e7e::t_d18091a2d2673e 121
+CHANGELOG.md
+  s_a62e5887089e7e::t_6fd205479e047c 57
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "93b3605ed7354daf6d8809b1644a116815b5f786",
+  "prompts": {},
+  "sessions": {
+    "s_96ff75d3bdf36b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19650-f065-71b3-84a9-bed1ca4b5a2a",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_a62e5887089e7e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2ec19bab-a0ee-4190-9ba2-f81423363c25",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
