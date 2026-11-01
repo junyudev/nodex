@@ -1,19 +1,4 @@
-import { parseDiffFromFile, type FileDiffMetadata } from "@pierre/diffs";
-
-/** A full-content diff of a file; `null` content is a missing side, such as a deleted file. */
-export function workspaceFileDiffFromContents(input: {
-  readonly path: string;
-  readonly oldPath?: string;
-  readonly oldContent: string | null;
-  readonly newContent: string | null;
-}): FileDiffMetadata {
-  return parseDiffFromFile(
-    input.oldContent === null
-      ? null
-      : { name: input.oldPath ?? input.path, contents: input.oldContent },
-    input.newContent === null ? null : { name: input.path, contents: input.newContent },
-  );
-}
+import type { FileDiffMetadata } from "@pierre/diffs";
 
 export interface WorkspaceFileChangedSection {
   readonly additionLineIndex: number;

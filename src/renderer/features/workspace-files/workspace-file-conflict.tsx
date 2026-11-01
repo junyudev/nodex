@@ -1,4 +1,5 @@
-import { parseDiffFromFile } from "@pierre/diffs";
+import { FileBlankIcon } from "@/components/shared/icons/file-viewer-icons";
+import { EmptyState } from "@/components/ui/empty-state";
 import { ReadOnlyFileDiff } from "@/components/ui/read-only-file-diff";
 import { useMemo } from "react";
 import {
@@ -7,6 +8,7 @@ import {
   getNodexReviewDiffOptions,
 } from "@/lib/diff-presentation";
 import { useTheme } from "@/lib/use-theme";
+import { compareWorkspaceFileContents } from "./workspace-file-editor-diff";
 
 interface WorkspaceFileConflictProps {
   readonly filename: string;
@@ -24,18 +26,14 @@ export function WorkspaceFileConflict({
   onKeepLocal,
 }: WorkspaceFileConflictProps) {
   const { resolved } = useTheme();
-  const fileDiff = useMemo(
+  // Bounded like every comparison: a version too large or slow to diff stays a choice.
+  const comparison = useMemo(
     () =>
-      parseDiffFromFile(
-        {
-          name: filename,
-          contents: diskValue,
-        },
-        {
-          name: filename,
-          contents: localValue,
-        },
-      ),
+      compareWorkspaceFileContents({
+        path: filename,
+        oldContent: diskValue,
+        newContent: localValue,
+      }),
     [diskValue, filename, localValue],
   );
   const options = useMemo(
@@ -55,7 +53,9 @@ export function WorkspaceFileConflict({
         <div className="min-w-0 flex-1">
           <div className="text-sm font-medium text-token-text-primary">File changed on disk</div>
           <div className="truncate text-xs text-token-text-secondary">
-            Compare the disk version (left) with your local changes (right).
+            {comparison.status === "ready"
+              ? "Compare the disk version (left) with your local changes (right)."
+              : "Choose the version to keep."}
           </div>
         </div>
         <button
@@ -74,12 +74,20 @@ export function WorkspaceFileConflict({
         </button>
       </div>
       <div className="min-h-0 flex-1 overflow-auto">
-        <ReadOnlyFileDiff
-          fileDiff={fileDiff}
-          options={options}
-          className={`${NODEX_DIFF_HOST_CLASS} min-h-full`}
-          style={style}
-        />
+        {comparison.status === "ready" ? (
+          <ReadOnlyFileDiff
+            fileDiff={comparison.diff}
+            options={options}
+            className={`${NODEX_DIFF_HOST_CLASS} min-h-full`}
+            style={style}
+          />
+        ) : (
+          <EmptyState
+            className="h-full min-h-0 px-4"
+            icon={<FileBlankIcon aria-hidden="true" />}
+            title="This comparison is too large to show"
+          />
+        )}
       </div>
     </div>
   );

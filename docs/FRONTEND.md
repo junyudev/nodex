@@ -362,6 +362,10 @@ than inferring it from its DOM environment.
   working, or a surface uses another palette, pass the language through
   `mainThreadSourceLanguage` so text above 64 KiB stays plain; count both sides
   and all hydrated context for diffs.
+- A line diff computed in the renderer is bounded by text size and time, as
+  `compareWorkspaceFileContents` does with jsdiff's `timeout`; past either
+  limit the surface shows the plain text and says so, rather than diffing
+  without a bound.
 
 Feature-specific editor behavior belongs in the focused specifications listed
 in [Product specifications](product-specs/index.md). Rich-editor performance

@@ -118,7 +118,9 @@ import {
   type WorkspacePierreEditorHandle,
   type WorkspacePierreEditorProps,
 } from "./workspace-pierre-editor";
+import type { WorkspaceFileComparisonLimit } from "./workspace-file-editor-diff";
 import { useWorkspaceFileBlame, useWorkspaceFileGit } from "./use-workspace-file-git";
+import { WorkspaceFileComparisonTooLargeError } from "./workspace-file-git-model";
 import { formatWorkspaceFileActiveLineBlame } from "./workspace-file-blame-model";
 import {
   useWorkspaceFileActiveLineBlame,
@@ -234,6 +236,7 @@ interface WorkspaceFileEditorBinding {
   /** The file is readable but waits for its highlight before it can be edited. */
   readonly highlightPending: boolean;
   readonly onHighlightPendingChange: (pending: boolean) => void;
+  readonly onComparisonLimitChange: (limit: WorkspaceFileComparisonLimit | null) => void;
 }
 
 function WorkspaceFilePreview({
@@ -405,6 +408,7 @@ function WorkspaceFilePreview({
           comparison={editor.comparison}
           onChangeNavigationChange={editor.onChangeNavigationChange}
           onHighlightPendingChange={editor.onHighlightPendingChange}
+          onComparisonLimitChange={editor.onComparisonLimitChange}
           activeLineBlame={editor.activeLineBlame}
         />
         <div className="flex h-6 shrink-0 items-center justify-end border-t-[0.5px] border-token-border px-2 text-[11px] text-(--color-codex-description)">
@@ -746,6 +750,7 @@ export function WorkspaceFilesPanel({
   const [changeNavigation, setChangeNavigation] =
     useState<WorkspaceFileChangeNavigationState | null>(null);
   const [highlightPending, setHighlightPending] = useState(false);
+  const [comparisonLimit, setComparisonLimit] = useState<WorkspaceFileComparisonLimit | null>(null);
   // A quick highlight finishes before the status would be worth reading.
   const visibleHighlightPending =
     useDebouncedValue(highlightPending, HIGHLIGHT_PENDING_STATUS_DELAY_MS) && highlightPending;
@@ -1418,14 +1423,18 @@ export function WorkspaceFilesPanel({
       : null,
     notice: !comparing
       ? null
-      : comparisonQuery.error
-        ? {
-            message: comparisonQuery.error.message || "File comparison could not be read",
-            onRetry: () => void comparisonQuery.refetch(),
-          }
-        : comparisonQuery.isSuccess && comparisonQuery.data === null
-          ? { message: "No changes to this file" }
-          : null,
+      : // Past the Git read limit or the editor's diff limit alike, the file shows plain.
+        comparisonQuery.error instanceof WorkspaceFileComparisonTooLargeError ||
+          comparisonLimit !== null
+        ? { message: "This comparison is too large to show" }
+        : comparisonQuery.error
+          ? {
+              message: comparisonQuery.error.message || "File comparison could not be read",
+              onRetry: () => void comparisonQuery.refetch(),
+            }
+          : comparisonQuery.isSuccess && comparisonQuery.data === null
+            ? { message: "No changes to this file" }
+            : null,
     activeLineBlame:
       activeLineBlame.enabled && savedContent !== null && blameLines.size > 0
         ? {
@@ -1439,6 +1448,7 @@ export function WorkspaceFilesPanel({
     onChangeNavigationChange: setChangeNavigation,
     highlightPending: visibleHighlightPending,
     onHighlightPendingChange: setHighlightPending,
+    onComparisonLimitChange: setComparisonLimit,
   };
 
   const openControl: WorkspaceFileOpenControl | null =

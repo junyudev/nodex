@@ -13,6 +13,7 @@ import type { EditorViewState } from "@pierre/diffs/edit";
 import { settleAsyncRender } from "../../test/dom";
 import { installAsyncRequestAnimationFrame } from "../../test/browser-globals";
 import { WorkspacePierreEditor, type WorkspacePierreEditorHandle } from "./workspace-pierre-editor";
+import { WORKSPACE_FILE_COMPARISON_MAX_CHARACTERS } from "./workspace-file-editor-diff";
 import { buildFileReferenceContextMenu } from "@/lib/file-reference-context-menu";
 import type { CapturedFileReferenceContextMenu } from "@/lib/file-reference-context-menu";
 import { showNativeContextMenu } from "@/lib/native-context-menu";
@@ -105,6 +106,7 @@ vi.mock("@pierre/diffs/react", () => ({
           type="button"
           data-testid="editable-pierre-file"
           data-editable={item?.edit}
+          data-item-type={item?.type}
           onClick={() =>
             item && onItemEditChange?.({ file: { name: "file", contents: "edited" } }, item)
           }
@@ -266,6 +268,38 @@ describe("WorkspacePierreEditor", () => {
     expect(editor.getAttribute("data-editable")).toBe("true");
     editor.click();
     expect(onChange).toHaveBeenCalledWith("edited");
+  });
+
+  test("shows a comparison too large to diff as the plain editable file and says why", async () => {
+    const limit = vi.fn();
+    const navigation = vi.fn();
+    const base = `${"x".repeat(WORKSPACE_FILE_COMPARISON_MAX_CHARACTERS)}\n`;
+    const editorFor = (comparing: boolean) => (
+      <WorkspacePierreEditor
+        value={`${base}tail`}
+        filename="file.txt"
+        language={null}
+        sourceIdentity="file"
+        documentVersion={0}
+        ariaLabel="Editor"
+        comparison={comparing ? { oldContent: base, oldPath: "file.txt", layout: "unified" } : null}
+        onComparisonLimitChange={limit}
+        onChangeNavigationChange={navigation}
+        onChange={() => undefined}
+      />
+    );
+    const view = render(editorFor(true));
+    await settleAsyncRender();
+
+    const surface = view.getByTestId("editable-pierre-file");
+    expect(surface.getAttribute("data-item-type")).toBe("file");
+    expect(surface.getAttribute("data-editable")).toBe("true");
+    expect(limit).toHaveBeenLastCalledWith("too-large");
+    expect(navigation).toHaveBeenLastCalledWith(null);
+
+    view.rerender(editorFor(false));
+    await settleAsyncRender();
+    expect(limit).toHaveBeenLastCalledWith(null);
   });
 
   test("uses the backward selection start and centers the preceding additions block", async () => {

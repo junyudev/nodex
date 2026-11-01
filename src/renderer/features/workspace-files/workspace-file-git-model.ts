@@ -48,6 +48,14 @@ export class WorkspaceFileGitStaleError extends Error {
   }
 }
 
+/** A base or snapshot past the Git read limit; retrying cannot read it. */
+export class WorkspaceFileComparisonTooLargeError extends Error {
+  constructor() {
+    super("File comparison base is too large");
+    this.name = "WorkspaceFileComparisonTooLargeError";
+  }
+}
+
 type Summary = Extract<GitReviewSummaryResult, { type: "success" }>;
 
 function findFile(summary: Summary, root: string, path: string) {
@@ -286,12 +294,10 @@ async function readContents(
   if (result.value.results.length !== requests.length)
     throw new Error("File comparison base could not be read");
   return result.value.results.map((content) => {
-    if (content.type !== "success")
-      throw new Error(
-        content.error.type === "too-large"
-          ? "File comparison base is too large"
-          : "File comparison base could not be read",
-      );
+    if (content.type !== "success") {
+      if (content.error.type === "too-large") throw new WorkspaceFileComparisonTooLargeError();
+      throw new Error("File comparison base could not be read");
+    }
     return content.lines.join("");
   });
 }

@@ -56,7 +56,10 @@ import {
   workspaceFileChangeNavigation,
   type WorkspaceFileChangeNavigationState,
 } from "./workspace-file-change-blocks";
-import { workspaceFileEditorDiffFromContents } from "./workspace-file-editor-diff";
+import {
+  compareWorkspaceFileContents,
+  type WorkspaceFileComparisonLimit,
+} from "./workspace-file-editor-diff";
 import { formatAcceleratorLabel } from "../../../shared/command-keybindings";
 import { canShowNativeContextMenu } from "@/lib/native-context-menu";
 import { buildFileReferenceContextMenu } from "@/lib/file-reference-context-menu";
@@ -104,6 +107,8 @@ export interface WorkspacePierreEditorProps {
   readonly onChangeNavigationChange?: (state: WorkspaceFileChangeNavigationState | null) => void;
   /** True while the file stays read-only waiting for its highlight. */
   readonly onHighlightPendingChange?: (pending: boolean) => void;
+  /** Why the comparison shows the plain file instead, or null when it shows changes. */
+  readonly onComparisonLimitChange?: (limit: WorkspaceFileComparisonLimit | null) => void;
   readonly activeLineBlame?: {
     readonly savedContent: string;
     readonly labelForSavedLine: (lineNumber: number) => string | null;
@@ -184,6 +189,7 @@ export function WorkspacePierreEditor({
   activeLineBlame,
   onChangeNavigationChange,
   onHighlightPendingChange,
+  onComparisonLimitChange,
   onChange,
   revealLocation,
   onRevealComplete,
@@ -233,7 +239,16 @@ export function WorkspacePierreEditor({
   const reportHighlightPending = useEffectEvent((pending: boolean) => {
     onHighlightPendingChange?.(pending);
   });
-  useEffect(() => () => reportHighlightPending(false), []);
+  const reportComparisonLimit = useEffectEvent((limit: WorkspaceFileComparisonLimit | null) => {
+    onComparisonLimitChange?.(limit);
+  });
+  useEffect(
+    () => () => {
+      reportHighlightPending(false);
+      reportComparisonLimit(null);
+    },
+    [],
+  );
   const highlightState = useSourceHighlightPoolState();
   const { resolved } = useTheme();
   const { codeFontSize } = useCodeFontSize();
@@ -330,15 +345,20 @@ export function WorkspacePierreEditor({
     const revision = ++revisionRef.current;
     const fileKey = fileIdentity ?? sourceIdentity;
     const editable = snapshotContent === null;
-    const diff =
+    // A comparison too large or slow to diff here shows the plain file instead.
+    const comparisonResult =
       oldContent === undefined
         ? undefined
-        : workspaceFileEditorDiffFromContents({
+        : compareWorkspaceFileContents({
             path: filename,
             oldPath,
             oldContent,
             newContent: content,
           });
+    const diff = comparisonResult?.status === "ready" ? comparisonResult.diff : undefined;
+    reportComparisonLimit(
+      comparisonResult && comparisonResult.status !== "ready" ? comparisonResult.status : null,
+    );
     const itemFor = (
       renderLanguage: SupportedLanguages | null | undefined,
       edit: boolean,
@@ -374,7 +394,7 @@ export function WorkspacePierreEditor({
     // Only the pool tokenizes large text; on this thread it stays plain.
     const localLanguage = mainThreadSourceLanguage(
       language,
-      content.length + (oldContent?.length ?? 0),
+      content.length + (diff ? (oldContent?.length ?? 0) : 0),
     );
     // Editing tokenizes on this thread, so an editable source waits read-only for
     // the pool's highlight and edits from it, including while the pool starts.

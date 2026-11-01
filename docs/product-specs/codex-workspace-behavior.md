@@ -184,7 +184,10 @@ Git status decorations. Its file context menu shares external opening, native
 Save as, full-path copying, and composer attachment behavior with Review.
 
 Editable files use bounded reads, recoverable drafts, compare-and-swap save,
-watcher refresh, and explicit external-change conflict presentation. Source
+watcher refresh, and explicit external-change conflict presentation. The
+conflict compares the disk version with local changes under the same limits
+as Show changes; past them it keeps the choice of version and says the
+comparison is too large to show. Source
 text shows at once as plain text; syntax highlighting runs in background
 workers and never blocks the window. Editing starts from the finished
 highlight, so a file stays read-only, with a delayed Highlighting… status,

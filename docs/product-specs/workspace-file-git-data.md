@@ -25,8 +25,9 @@ branch; otherwise it lists Unstaged changes.
 Uncommitted obtains the HEAD blob from the staged summary. When that file has no staged change,
 its index baseline is also HEAD. Branch review summaries describe committed changes; a file with
 only working-tree edits reads the merge-base blob explicitly. An added or untracked file has an
-empty base. Renames retain the old path. Conflicts, missing base objects, incomplete summaries,
-unreadable blobs and oversized blobs remain explicit failures. Snapshot reads never substitute
+empty base. Renames retain the old path. Conflicts, missing base objects, incomplete summaries
+and unreadable blobs remain explicit failures; a blob past the read limit makes the comparison
+too large to show. Snapshot reads never substitute
 disk content. A stale repository generation cannot publish mixed comparison contents.
 
 Comparison and blame queries include a saved revision, supplied as the disk modification time or
@@ -58,6 +59,11 @@ Changing the layout preserves the live edit session and undo history. Changing t
 document revision, entering or leaving a snapshot, or switching between a plain document and a
 comparison starts a new edit session; the current draft and caret are retained when the document
 revision is unchanged.
+
+A comparison is computed only within bounded window-thread work: when a blob is past the Git read
+limit, either side exceeds 2 MiB of text, or the line diff does not finish within 25 ms, the
+editor shows the plain file, still editable or read-only as its source allows, with the notice
+"This comparison is too large to show" and no retry.
 
 The text surface offers Undo, Redo, Cut, Copy, Paste and Select all in its context menu, with a
 divider after Redo. Undo and Redo follow the current editor history. Editable files keep Cut,

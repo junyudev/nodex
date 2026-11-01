@@ -2,11 +2,13 @@ import { describe, expect, test } from "vite-plus/test";
 import {
   workspaceFileChangeNavigation,
   workspaceFileChangedSections,
-  workspaceFileDiffFromContents,
 } from "./workspace-file-change-blocks";
+import { compareWorkspaceFileContents } from "./workspace-file-editor-diff";
 
-function compare(oldContent: string | null, newContent: string | null) {
-  return workspaceFileDiffFromContents({ path: "file.txt", oldContent, newContent });
+function compare(oldContent: string, newContent: string) {
+  const comparison = compareWorkspaceFileContents({ path: "file.txt", oldContent, newContent });
+  if (comparison.status !== "ready") throw new Error(`comparison ${comparison.status}`);
+  return comparison.diff;
 }
 
 describe("workspace file change blocks", () => {

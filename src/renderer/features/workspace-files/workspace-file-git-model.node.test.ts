@@ -4,6 +4,7 @@ import type { GitReviewFileSummary, GitReviewSummaryResult } from "../../../shar
 import type { GitWorkerMethod, GitWorkerMethodMap } from "../../../shared/git-worker-protocol";
 import {
   loadWorkspaceFileComparison,
+  WorkspaceFileComparisonTooLargeError,
   WorkspaceFileGitStaleError,
   type WorkspaceFileGitInput,
   type WorkspaceFileGitRead,
@@ -152,6 +153,25 @@ describe("workspace file Git comparison", () => {
         worker.read,
       ),
     ).rejects.toThrow("File comparison has unresolved conflicts");
+  });
+
+  test("reports a base past the Git read limit as too large rather than unreadable", async () => {
+    const worker = fakeWorker({ unstaged: [file] });
+    const read: WorkspaceFileGitRead = async (method, params) =>
+      method === "review-cat-file"
+        ? ({
+            type: "success",
+            value: {
+              snapshotGeneration: 1,
+              results: (params as GitWorkerMethodMap["review-cat-file"]["params"]).requests.map(
+                () => ({ type: "error", error: { type: "too-large", limitBytes: 5_242_880 } }),
+              ),
+            },
+          } as GitWorkerMethodMap[typeof method]["result"])
+        : await worker.read(method, params);
+    await expect(loadWorkspaceFileComparison(input, read)).rejects.toBeInstanceOf(
+      WorkspaceFileComparisonTooLargeError,
+    );
   });
 
   test("staged deletion keeps the base and has no snapshot new side", async () => {
