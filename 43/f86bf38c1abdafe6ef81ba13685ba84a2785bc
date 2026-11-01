@@ -1,0 +1,41 @@
+.github/workflows/windows.yml
+  s_9ad21099c264dd::t_b0fb6fbf0bd2eb 107-110,115-116
+config/test-environment.test.ts
+  s_9ad21099c264dd::t_8e014c08522337 16
+docs/release-windows.md
+  s_9ad21099c264dd::t_8f25d8747bb2c2 21-23
+package.json
+  s_9ad21099c264dd::t_f3f06c4725f73f 204-205
+packages/landing/src/landing-build.test.ts
+  s_9ad21099c264dd::t_113fcf398767a0 2,10-12
+scripts/ci/verify-source-type-ownership.test.ts
+  s_9ad21099c264dd::t_64ad1673b8e982 2-10,58-63
+scripts/desktop-build.ts
+  s_9ad21099c264dd::t_1dc6bbf4e0a78a 108,113-116,135,137
+scripts/dev-launcher.test.ts
+  s_9ad21099c264dd::t_66fd8d6a44d1ef 5,17,19-24,49,182,235,251-253,256,262,288
+scripts/electron-builder-config.test.ts
+  s_9ad21099c264dd::t_1d6b9e9da7acec 7,53,65
+scripts/immutable-artifact-cache.test.ts
+  s_9ad21099c264dd::t_bfa0158654d63c 23-25,150-156,334
+scripts/testing/probe-acp-runtime.test.ts
+  s_9ad21099c264dd::t_f0fbd65c325344 19,69,103-105,107-109,111
+scripts/tooling/cache-report.test.ts
+  s_9ad21099c264dd::t_db64cd59eba83a 80,89
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "43f86bf38c1abdafe6ef81ba13685ba84a2785bc",
+  "prompts": {},
+  "sessions": {
+    "s_9ad21099c264dd": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1964f-2f03-7680-8da9-7c6d6ce01903",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
