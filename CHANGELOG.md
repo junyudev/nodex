@@ -59,6 +59,7 @@ All notable changes to this project will be documented in this file.
 
 - Automatic snapshots now keep their schedule when you restart Nodex often. The next one is due one interval after your newest snapshot, Nodex takes an overdue one shortly after it starts, and a failed attempt is retried sooner instead of waiting a full interval.
 - A Claude Code chat whose transcript was removed from Claude's history now continues instead of failing. Like Codex chats, its next message starts a fresh Claude session that receives the chat's earlier messages.
+- The Changed files list in Files and Review no longer blinks while Git status refreshes. It keeps showing the current list until the refreshed one is ready, including in repositories with untracked files.
 - A stage you rename in a Database now shows its new name everywhere: Board columns, List groups, filters, Page search, mentions and Move to no longer fall back to the default name.
 - Agent replies are no longer marked failed when Nodex, not the Agent, has a hiccup. A local read failure could fail several running replies at once with "Provider turn failed." while their Agents kept working and even finished; Nodex now reconnects to the Agent and keeps the real outcome, and failures that start in Nodex say what happened.
 - A delegated task can no longer stay "working" forever after a failure. Every running reply is checked against its Agent, so a follow-up sent into a task that was still finishing its previous turn completes with that turn instead of hanging, and its delegating Agent is woken when it ends.

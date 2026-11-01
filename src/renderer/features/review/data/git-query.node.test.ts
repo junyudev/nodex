@@ -6,6 +6,7 @@ import type {
   GitWorkerMethodMap,
 } from "../../../../shared/git-worker-protocol";
 import {
+  acceptsGitLiveUpdate,
   buildGitWorkerQueryKey,
   createGitLiveWorkerQuery,
   GitLiveQueryCoordinator,
@@ -63,6 +64,167 @@ function subscriptionId(client: FakeGitWorkerClient): string {
 
 afterEach(() => {
   vi.useRealTimers();
+});
+
+function statsResult(fileCount: number) {
+  return {
+    cwd: "/repo",
+    baseRef: "main",
+    files: [],
+    fileCount,
+    additions: fileCount,
+    deletions: 0,
+    untrackedFilesOmitted: 0,
+    isGitRepository: true,
+    currentBranch: "feature",
+    defaultBranch: "main",
+    errorMessage: null,
+  };
+}
+
+/** One observed live query on a fake worker, with a controllable window focus. */
+async function observeLiveStats(seed?: ReturnType<typeof statsResult>) {
+  const queryClient = new QueryClient();
+  const workerClient = new FakeGitWorkerClient();
+  let focus = () => {};
+  const coordinator = new GitLiveQueryCoordinator(queryClient, workerClient, (listener) => {
+    focus = listener;
+    return () => {};
+  });
+  const options = createGitLiveWorkerQuery(
+    { method: "branch-diff-stats", params: { cwd: "/repo" } },
+    workerClient,
+  );
+  if (seed) queryClient.setQueryData(options.queryKey, seed);
+  const release = new QueryObserver(queryClient, options).subscribe(() => undefined);
+  await Promise.resolve();
+  const emit = (update: {
+    generation: number;
+    phase: "tracked" | "complete";
+    fileCount: number;
+    requiresRecovery?: boolean;
+  }) =>
+    workerClient.emit({
+      type: "git-live-query-event",
+      workerId: "git",
+      event: {
+        type: "git-live-query-updated",
+        subscriptionId: subscriptionId(workerClient),
+        generation: update.generation,
+        requiresRecovery: update.requiresRecovery ?? false,
+        phase: update.phase,
+        method: "branch-diff-stats",
+        result: statsResult(update.fileCount),
+      },
+    });
+  const shownFileCount = () =>
+    (queryClient.getQueryData(options.queryKey) as ReturnType<typeof statsResult>).fileCount;
+  const recoveries = () =>
+    workerClient.requests.filter((request) => request.method === "recover-live-query").length;
+  return {
+    workerClient,
+    emit,
+    shownFileCount,
+    recoveries,
+    focus: () => focus(),
+    dispose: () => {
+      release();
+      coordinator.dispose();
+    },
+  };
+}
+
+describe("live update completeness", () => {
+  test.each([
+    ["accepts the first result", null, { generation: 1, phase: "tracked" }, true],
+    [
+      "completes the same generation",
+      { generation: 1, phase: "tracked" },
+      { generation: 1, phase: "complete" },
+      true,
+    ],
+    [
+      "keeps a complete result over a later partial one",
+      { generation: 1, phase: "complete" },
+      { generation: 2, phase: "tracked" },
+      false,
+    ],
+    [
+      "replaces a complete result with a later complete one",
+      { generation: 1, phase: "complete" },
+      { generation: 2, phase: "complete" },
+      true,
+    ],
+    [
+      "ignores a repeated complete result",
+      { generation: 2, phase: "complete" },
+      { generation: 2, phase: "complete" },
+      false,
+    ],
+    [
+      "ignores an older generation",
+      { generation: 3, phase: "tracked" },
+      { generation: 2, phase: "complete" },
+      false,
+    ],
+    [
+      "starts afresh after resubscribing, still never partial over complete",
+      { generation: null, phase: "complete" },
+      { generation: 1, phase: "tracked" },
+      false,
+    ],
+    [
+      "accepts any generation's complete result after resubscribing",
+      { generation: null, phase: "complete" },
+      { generation: 1, phase: "complete" },
+      true,
+    ],
+  ] as const)("%s", (_name, accepted, update, expected) => {
+    expect(acceptsGitLiveUpdate(accepted, update)).toBe(expected);
+  });
+
+  test("keeps showing a complete list while a newer partial phase arrives", async () => {
+    const live = await observeLiveStats();
+    live.emit({ generation: 3, phase: "complete", fileCount: 10 });
+    live.emit({ generation: 4, phase: "tracked", fileCount: 0 });
+    expect(live.shownFileCount()).toBe(10);
+    live.emit({ generation: 4, phase: "complete", fileCount: 9 });
+    expect(live.shownFileCount()).toBe(9);
+    live.emit({ generation: 3, phase: "complete", fileCount: 1 });
+    expect(live.shownFileCount()).toBe(9);
+    live.dispose();
+  });
+
+  test("keeps cached and pre-restart lists until a complete result replaces them", async () => {
+    const live = await observeLiveStats(statsResult(5));
+    live.emit({ generation: 1, phase: "tracked", fileCount: 0 });
+    expect(live.shownFileCount()).toBe(5);
+    live.emit({ generation: 1, phase: "complete", fileCount: 6 });
+    expect(live.shownFileCount()).toBe(6);
+
+    live.workerClient.emit({ type: "worker-restarted", workerId: "git", epoch: 2 });
+    live.emit({ generation: 0, phase: "tracked", fileCount: 0 });
+    expect(live.shownFileCount()).toBe(6);
+    live.emit({ generation: 0, phase: "complete", fileCount: 7 });
+    expect(live.shownFileCount()).toBe(7);
+    live.dispose();
+  });
+
+  test("catches up a degraded watch when the window regains focus, not on a timer", async () => {
+    vi.useFakeTimers();
+    const live = await observeLiveStats();
+    live.emit({ generation: 1, phase: "complete", fileCount: 1, requiresRecovery: true });
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(live.recoveries()).toBe(0);
+
+    live.focus();
+    expect(live.recoveries()).toBe(1);
+
+    live.emit({ generation: 2, phase: "complete", fileCount: 1, requiresRecovery: false });
+    live.focus();
+    expect(live.recoveries()).toBe(1);
+    live.dispose();
+  });
 });
 
 describe("Git query adapter", () => {
