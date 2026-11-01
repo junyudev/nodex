@@ -1,6 +1,6 @@
 import { mkdtempSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { connect } from "node:net";
+import { connect, type Socket } from "node:net";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { assert, it } from "@effect/vitest";
@@ -36,12 +36,19 @@ const fixture = (withExecutionSnapshot?: WithExecutionSnapshot) =>
       capability: string;
     };
     const socket = yield* Effect.acquireRelease(
-      Effect.sync(() => connect(rendezvous.endpoint)),
+      Effect.tryPromise(
+        () =>
+          new Promise<Socket>((resolve, reject) => {
+            const socket = connect(rendezvous.endpoint);
+            socket.once("connect", () => resolve(socket));
+            socket.once("error", reject);
+          }),
+      ),
       (socket) => Effect.sync(() => socket.destroy()),
     );
     socket.on("error", () => {});
     const lines = createInterface({ input: socket })[Symbol.asyncIterator]();
-    const read = Effect.promise(() => lines.next());
+    const read = Effect.promise(() => lines.next()).pipe(Effect.timeout("10 seconds"));
     return {
       socket,
       read,
