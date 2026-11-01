@@ -25,7 +25,7 @@ it.layer(NodeServices.layer)("native execution peer", (it) => {
           copyFile(
             resolve(
               import.meta.dirname,
-              "../../../tests/e2e/fixtures/agent-runtime-cross-provider-peer.mjs",
+              "../../../scripts/scenarios/runtime/cross-provider-peer.mjs",
             ),
             executable,
           ),
