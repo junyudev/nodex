@@ -1,0 +1,23 @@
+src/shared/browser-url-policy.ts
+  s_f7a266529d0a87::t_5205a1526f66a3 1-107,111-201
+  s_f7a266529d0a87::t_9fe248eb408a25 108-110
+src/shared/browser-url-policy.node.test.ts
+  s_f7a266529d0a87::t_9fe248eb408a25 16-24,47-51,101-107,113-116,119-137,142-147,150-155,158-163,166-170,173-177,182-184,191-196,198-203,206-209
+  s_f7a266529d0a87::t_a0d773112e217f 1-15,25-46,52-100,108-112,117-118,138-141,148-149,156-157,164-165,171-172,178-181,185-190,197,204-205,210-212
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0e32945b915003c9324f99904a7549f209dd165a",
+  "prompts": {},
+  "sessions": {
+    "s_f7a266529d0a87": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6d174a31-7abb-4dcf-bdf5-e5129be4ca4a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
