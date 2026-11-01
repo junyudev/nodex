@@ -1,0 +1,19 @@
+crates/nodex-core-server/tests/lifecycle.rs
+  s_3dc0b7647fcf0b::t_b01cde41f8093b 999,1001-1016,1043-1044,1046-1047,1061
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "10b71cf8a1d478d936c06beb626fa1c41f365c20",
+  "prompts": {},
+  "sessions": {
+    "s_3dc0b7647fcf0b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1964e-690a-72d0-a5e2-1468f0931284",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
