@@ -112,12 +112,11 @@ impl Relocation<'_> {
         files::require_directory(&staging_root.join(directory))?;
         let copied = staging_root.join(directory).join(filename);
         files::fingerprint(&copied)?;
-        let relocated = self
-            .target
-            .join(relative)
-            .into_os_string()
-            .into_string()
-            .map_err(|_| invalid("Managed attachment destination is not UTF-8"))?;
+        let destination = self.target.join(relative);
+        let relocated = nodex_platform::private_fs::normalize_path(&destination)
+            .to_str()
+            .ok_or_else(|| invalid("Managed attachment destination is not UTF-8"))?
+            .to_owned();
         if relocated.len() > MAX_PATH_BYTES {
             return Err(invalid(
                 "Managed attachment destination exceeds its path byte limit",

@@ -76,8 +76,10 @@ impl Fixture {
     }
 
     fn target_path(&self, source: &str) -> String {
-        self.target
-            .join(Path::new(source).strip_prefix(&self.source).unwrap())
+        let target = self
+            .target
+            .join(Path::new(source).strip_prefix(&self.source).unwrap());
+        nodex_platform::private_fs::normalize_path(&target)
             .to_str()
             .unwrap()
             .to_owned()
