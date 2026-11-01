@@ -444,7 +444,7 @@ describe("dev launcher", () => {
       }),
     );
     expect(rejection).toContain(
-      "/tmp/nodex-dev holds a v178 Store this build cannot open: v178 physical schema fingerprint is a; expected b",
+      `${HOME.root} holds a v178 Store this build cannot open: v178 physical schema fingerprint is a; expected b`,
     );
     expect(rejection).toContain("Start a new --home, or rerun with --delete");
 

@@ -84,7 +84,7 @@
     "devicecheck-bridge:build": "tsx scripts/build-devicecheck-bridge.ts",
     "core:build:dev": "tsx scripts/desktop-build.ts core-dev",
     "core:build:mac:arm64": "tsx scripts/desktop-build.ts stage-rust darwin arm64",
-    "core:benchmark:rust": "cargo build --release -p nodex-core-server && NODEX_MEASURE_RUST_CORE_RUNTIME=1 vp test run --config vitest.core-client.config.ts src/main/core-client/rust-core-runtime-benchmark.node.test.ts",
+    "core:benchmark:rust": "cargo build --release -p nodex-core-server && tsx scripts/run-with-environment.ts NODEX_MEASURE_RUST_CORE_RUNTIME=1 -- vp test run --config vitest.core-client.config.ts src/main/core-client/rust-core-runtime-benchmark.node.test.ts",
     "core:fixtures:yjs-yrs": "tsx scripts/run-with-environment.ts NODEX_GENERATE_YJS_YRS_FIXTURES=1 -- vp test run --config vitest.node.config.ts src/shared/block-documents/yjs-yrs-fixture-generator.test.ts",
     "core:module-boundaries": "tsx scripts/audit-rust-core-boundaries.ts",
     "version-surfaces:audit": "tsx scripts/audit-version-surfaces.ts",

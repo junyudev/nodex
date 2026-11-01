@@ -31,6 +31,7 @@ describe("source type ownership", () => {
         join(directory, "node_modules"),
         "junction",
       );
+      writeFileSync(join(directory, ".gitignore"), "node_modules/\n");
       writeFileSync(
         join(directory, "package.json"),
         JSON.stringify({ private: true, packageManager: "pnpm@12.15.0" }),
