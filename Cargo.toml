@@ -100,6 +100,11 @@ split-debuginfo = "unpacked"
 [profile.dev.package.sha2]
 opt-level = 3
 
+# Bundled SQLite compiled without optimization runs Store work several times slower,
+# so debug builds and tests would exercise request deadlines unrepresentatively.
+[profile.dev.package.libsqlite3-sys]
+opt-level = 3
+
 [profile.wasm-release]
 # WebAssembly the app loads: small over fast, since it ships with every window.
 inherits = "release"
