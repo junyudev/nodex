@@ -28,6 +28,7 @@ CHANGELOG.md
   s_a5bb892838ce25::t_f2c7f50dc2bb98 9
 docs/product-specs/workbench-shell.md
   s_a5bb892838ce25::t_f2c7f50dc2bb98 30
+  s_a5bb892838ce25::t_f09bfc95e219f2 27
 src/renderer/components/workbench/workbench-page-file-surface.tsx
   s_a5bb892838ce25::t_f2c7f50dc2bb98 1-117
 src/renderer/components/workbench/workbench-library-resource-surface.tsx
