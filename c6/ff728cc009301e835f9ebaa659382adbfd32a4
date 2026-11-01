@@ -1,0 +1,115 @@
+CONTEXT.md
+  s_e17141fc7a66d9::t_45e42aaf01c860 203-212
+crates/nodex-cli/src/agent_interface.rs
+  s_e17141fc7a66d9::t_1ad1b55f282932 731-740,1527,1691
+crates/nodex-cli/src/agent_interface/schema.rs
+  s_a4d65a7155d5da::t_31ca4e0e081d7c 98-99,101-102
+crates/nodex-cli/src/cli.rs
+  s_e17141fc7a66d9::t_4cfc410e6e082c 483-484,503-514
+crates/nodex-cli/src/files.rs
+  s_e17141fc7a66d9::t_566e87792c73f4 12,30
+crates/nodex-cli/src/page_files.rs
+  s_4b207bbe152280::t_794e17678888d6 3-5,7-8,13-14,20-27,39,55,61-71,141-201
+crates/nodex-cli/tests/library_files.rs
+  s_e17141fc7a66d9::t_298f7748cfa3a5 202-238
+crates/nodex-core-contracts/src/library.rs
+  s_e17141fc7a66d9::t_90510b9266c887 17,1785-1807,1813,1820-1822
+crates/nodex-core/schema/current.sql
+  s_e17141fc7a66d9::t_0dfe405f430358 1740-1745,4524
+crates/nodex-core/schema/migrations/v195_to_v196.sql
+  s_e17141fc7a66d9::t_1f5cbd56f210f5 1-7
+crates/nodex-core/src/document/integrity.rs
+  s_e17141fc7a66d9::t_9a63c82818526c 67
+crates/nodex-core/src/infrastructure/migration.rs
+  s_e17141fc7a66d9::t_b6c575d4580c7b 393-397,2564-2578,8489,8698-8783
+crates/nodex-core/src/library/block_transfer.rs
+  s_e17141fc7a66d9::t_44987f7b1c695d 3743,3841-3842,3930-3935,6885
+crates/nodex-core/src/library/block_transfer/promotion_history.rs
+  s_a4d65a7155d5da::t_ef877a217ce2bc 581,1149
+crates/nodex-core/src/library/files.rs
+  s_4b207bbe152280::t_c8c31dca7ba7f5 433,453-459,2272-2274,2358-2361,2456-2459,2526-2537,2672-2683,2711-2723,2754-2757,2786-2797,3192,3198,3308-3319,3362-3367,3378-3383,3391-3396
+crates/nodex-core/src/library/files/tests/page_attachment.rs
+  s_a4d65a7155d5da::t_a9d73eed479f65 1-507
+crates/nodex-core/src/library/mod.rs
+  s_e17141fc7a66d9::t_1c447ac15d5d1a 35
+crates/nodex-core/src/library/mutation.rs
+  s_e17141fc7a66d9::t_e07d180f746fb3 220,225
+crates/nodex-core/src/library/page_file_attachment.rs
+  s_e17141fc7a66d9::t_9194f1611cbf57 1-159
+crates/nodex-core/src/library/page_file_entries.rs
+  s_e17141fc7a66d9::t_2a7bfc697762c6 4-6,17-25,36,40,61-62,104,117,150-152,164-165,359,367,394,412-413,419-421,495,520-521,552,558
+crates/nodex-core/src/library/page_file_entry_mutation.rs
+  s_e17141fc7a66d9::t_bceb46e7d303d0 22,71,87,99,115,157,271,324,336-347,351
+crates/nodex-core/src/library/page_file_inventory.rs
+  s_e17141fc7a66d9::t_2e66a24d7ea7f8 7,14,18,72-74,82-83,161-162,171
+crates/nodex-core/src/library/query.rs
+  s_f7fa97ab093d49::t_187d002ca4dad5 228-243
+crates/nodex-core/src/query/schema.rs
+  s_e17141fc7a66d9::t_3fe0478b5f2144 233-234
+crates/nodex-store-format/src/lib.rs
+  s_e17141fc7a66d9::t_86f9f995ec1d16 253-256
+docs/CLI.md
+  s_e17141fc7a66d9::t_13e1611acb62ad 321-337,341
+packages/core-protocol/openapi.json
+  s_4b207bbe152280::t_e3aac89ae737d3 21847-21935,22263,22267-22277
+packages/core-protocol/src/compatibility.generated.ts
+  s_4b207bbe152280::t_05cb87db5d674d 12,42-43
+packages/core-protocol/src/generated.ts
+  s_4b207bbe152280::t_1a9dd478de6a17 5295-5318,5399
+src/main/core-client/library-files-scenario.node.test.ts
+  s_e17141fc7a66d9::t_7d4471139c401a 25-33
+src/renderer/components/board/page-stage/page-files-row.test.tsx
+  s_e17141fc7a66d9::t_174f43758e3e02 45-55
+src/renderer/components/board/page-stage/properties-section.test.tsx
+  s_a4d65a7155d5da::t_e75ed7ac41b10c 57
+src/renderer/components/library/library-files-dialog.test.tsx
+  s_e17141fc7a66d9::t_8b72d326a33e15 40-45
+src/shared/library-files-transport.test.ts
+  s_e17141fc7a66d9::t_285ac46bf4d1d8 5,141-262
+src/shared/library-files-transport.ts
+  s_e17141fc7a66d9::t_f9454a205eef79 17-18,305-337,343,345-349
+src/shared/library-files.ts
+  s_e17141fc7a66d9::t_4382118ac5ceb6 18-19
+src/shared/library-module-transport.test.ts
+  s_e17141fc7a66d9::t_35154f9fbc7cc3 1084-1091,1116
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c6ff728cc009301e835f9ebaa659382adbfd32a4",
+  "prompts": {},
+  "sessions": {
+    "s_4b207bbe152280": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a192d7-3b7e-70a1-8a29-08437fdb618b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_a4d65a7155d5da": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a192d7-b584-7662-990a-81bd87b15095",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_e17141fc7a66d9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a192d7-321e-7462-8802-27b818b2b6ba",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_f7fa97ab093d49": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a192e1-5ad5-7c50-8c8d-54f57563ed5e",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
