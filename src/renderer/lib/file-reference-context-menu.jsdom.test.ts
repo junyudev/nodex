@@ -20,7 +20,7 @@ vi.mock("./workspace-file-operations", () => ({
   readWorkspaceFileText: ports.read,
 }));
 vi.mock("./clipboard", () => ({ writeTextToClipboard: ports.copy }));
-vi.mock("./file-system-operations", () => ({ openExternalUrl: ports.external }));
+vi.mock("./link-opening", () => ({ openLink: ports.external }));
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -57,9 +57,11 @@ test("editor file actions retain the real destinations and clicked GitHub line w
   );
   expect(open).not.toHaveBeenCalled();
   await menu.select("file-reference:github");
-  expect(ports.external).toHaveBeenCalledExactlyOnceWith(
-    "https://github.com/team/project/blob/main/file.ts#L7",
-  );
+  expect(ports.external).toHaveBeenCalledExactlyOnceWith({
+    url: "https://github.com/team/project/blob/main/file.ts#L7",
+    hostId: "local",
+    initiator: "file_context_menu",
+  });
 });
 
 test("remote editor menus expose save and content actions without local applications or reveal", async () => {
@@ -107,4 +109,33 @@ test("Open file alone does not introduce an empty destination separator", async 
   });
   expect(menu.items[0]).toMatchObject({ id: "file-reference:open", label: "Open file" });
   expect(menu.items.some((item) => item.type === "separator")).toBe(false);
+});
+
+test.each([true, false])("HTML menu keeps the caller's side-panel intent %s", async (sidePanel) => {
+  const open = vi.fn(async () => true);
+  const menu = await buildFileReferenceContextMenu({
+    target: { path: "/repo/report.htm" },
+    label: "Report",
+    open,
+    sidePanel,
+    browserAvailable: true,
+  });
+  const id = sidePanel ? "file-reference:open" : "file-reference:browser";
+  expect(menu.items[0]).toMatchObject({ id, label: sidePanel ? "Open file" : "View in browser" });
+  await menu.select(id);
+  expect(open).toHaveBeenCalledWith(
+    { path: "/repo/report.htm" },
+    expect.objectContaining({ sidePanel }),
+  );
+});
+test("remote HTML never advertises a local browser", async () => {
+  const menu = await buildFileReferenceContextMenu({
+    hostId: "ssh:build",
+    target: { path: "/repo/report.html" },
+    label: "Report",
+    open: vi.fn(),
+    sidePanel: false,
+    browserAvailable: true,
+  });
+  expect(menu.items.some((item) => item.id === "file-reference:browser")).toBe(false);
 });

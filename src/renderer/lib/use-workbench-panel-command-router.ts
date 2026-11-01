@@ -96,6 +96,7 @@ interface WorkbenchPanelCommandRouterInput {
   readonly createSessionViewTab: (
     input: WorkbenchTabCreateInput,
   ) => Promise<WorkbenchTabProjection | null>;
+  readonly onOpenBrowserTab: (request: BrowserSidebarOpenNewTabRequest) => Promise<void>;
   readonly resolveProjectDefaultDatabaseViewId: (projectId: string | null) => string | null;
   readonly openPageStage: (
     projectId: string,
@@ -161,6 +162,7 @@ export function useWorkbenchPanelCommandRouter({
   panelOpeners,
   sessionCommands,
   createSessionViewTab,
+  onOpenBrowserTab,
   resolveProjectDefaultDatabaseViewId,
   openPageStage,
   commandKeymapState,
@@ -183,11 +185,7 @@ export function useWorkbenchPanelCommandRouter({
   const { createManualTab } = sessionCommands;
 
   const createBrowserTabToRight = useCallback(
-    async (
-      sourceTab: WorkbenchTabProjection,
-      duplicate: boolean,
-      openRequest?: BrowserSidebarOpenNewTabRequest,
-    ) => {
+    async (sourceTab: WorkbenchTabProjection, duplicate: boolean) => {
       if (!activeSession) return;
       const sessionProjectId = activeSession.projectId;
       const panelId = sourceTab.panelId;
@@ -204,14 +202,13 @@ export function useWorkbenchPanelCommandRouter({
       const created = await createSessionViewTab({
         sessionId: activeSession.id,
         panelId,
-        presentation: openRequest?.background ? "background" : "activate",
         targetLeafId: sourceLeaf.id,
         targetIndex: sourceIndex + 1,
         openerTabId: sourceTab.id,
         kind: "browser",
         title: duplicate
           ? sourceTab.title || resolveBrowserTabTitle(undefined, undefined)
-          : resolveBrowserTabTitle(openRequest?.url, openRequest?.url),
+          : resolveBrowserTabTitle(undefined, undefined),
         config: duplicate
           ? {
               projectId: sessionProjectId,
@@ -229,15 +226,10 @@ export function useWorkbenchPanelCommandRouter({
                 ? { deviceToolbarVisible: sourceConfig.deviceToolbarVisible }
                 : {}),
             }
-          : {
-              projectId: sessionProjectId,
-              ...(openRequest ? { url: openRequest.url } : {}),
-            },
+          : { projectId: sessionProjectId },
       });
       if (!created) return;
-      if (!openRequest?.background) {
-        await setActivePanelTab(panelId, created.id, { openPanel: true, leafId: sourceLeaf.id });
-      }
+      await setActivePanelTab(panelId, created.id, { openPanel: true, leafId: sourceLeaf.id });
     },
     [activeSession, createSessionViewTab, setActivePanelTab],
   );
@@ -735,6 +727,7 @@ export function useWorkbenchPanelCommandRouter({
 
   return {
     createBrowserTabToRight,
+    openBrowserTab: onOpenBrowserTab,
     reloadBrowserTab,
     openPanelDestinationFromPicker,
     resolveActivePanelCapabilities,

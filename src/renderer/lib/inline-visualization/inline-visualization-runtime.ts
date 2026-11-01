@@ -1,3 +1,6 @@
+import { parseMcpAppLinkRequest } from "../../../shared/mcp-app/mcp-app-navigation";
+import { openLink } from "../link-opening";
+import type { LinkOpenRequest } from "../../../shared/link-opening";
 import { deriveMcpAppSandboxIdentity } from "../../../shared/mcp-app/mcp-app-sandbox-contract";
 import type { InlineVisualizationPreparedLease } from "./inline-visualization-prepared";
 import {
@@ -94,7 +97,7 @@ interface HostCallbacks {
   readonly height: (value: unknown) => void;
   readonly interact: () => void;
   readonly mode: (mode: "inline" | "fullscreen") => "inline" | "fullscreen";
-  readonly openExternal: (href: string) => Promise<void>;
+  readonly openExternal: (href: string, openMode?: "tab" | "popup") => Promise<void>;
   readonly followUp?: McpAppFollowUpHandler;
   readonly download?: (value: unknown) => Promise<void>;
   readonly updateWidgetState?: McpAppHostApiHandlers["updateWidgetState"];
@@ -156,10 +159,11 @@ export function createInlineVisualizationHostHandlers(
     notifyNavigation: () => undefined,
     notifySecurityPolicyViolation: () => undefined,
     openExternal: (value) => {
-      const href = asRecord(value)?.href;
-      if (typeof href !== "string") return deny();
+      const request = parseMcpAppLinkRequest(value);
       callbacks.interact();
-      return callbacks.openExternal(href);
+      return request.openMode
+        ? callbacks.openExternal(request.href, request.openMode)
+        : callbacks.openExternal(request.href);
     },
     requestDisplayMode: (value) => {
       const mode = asRecord(value)?.mode;
@@ -236,6 +240,8 @@ function movePreparedGuest(lease: InlineVisualizationPreparedLease, target: HTML
 
 export function createInlineVisualizationRuntime(input: {
   readonly scopeId: string;
+  readonly hostId?: string;
+  readonly openLink?: (request: LinkOpenRequest) => Promise<boolean>;
   readonly html: string;
   readonly mountTarget?: HTMLElement;
   readonly claimStandby?: (locale: string) => InlineVisualizationPreparedLease | null;
@@ -598,11 +604,21 @@ export function createInlineVisualizationRuntime(input: {
           }),
           mode: setDisplayMode,
           openExternal: async (href) => {
+            if (input.allowInteractions === false) throw new Error("Interactions are disabled");
             if (!active) throw new Error("The interactive response is inactive");
-            await invokePlainCommand(openExternalCommand, {
+            const allowed = await invokePlainCommand(openExternalCommand, {
               sandboxId: identity.sandboxId,
               initId: connected?.initId,
               href,
+            });
+            if (!allowed || signal.aborted || !active || href.startsWith("nodex:")) return;
+            const url = new URL(href);
+            url.searchParams.delete("utm_source");
+            await (input.openLink ?? openLink)({
+              url: url.toString(),
+              hostId: input.hostId,
+              initiator: "inline_visualization",
+              source: "manual",
             });
           },
           followUp: followUp

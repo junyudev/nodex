@@ -1,5 +1,8 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import { WebContentsDestructionSubscriptions } from "../platform/electron/WebContentsDestructionSubscriptions";
+import { makeBrowserPermissionStore } from "../browser/browser-permission-store";
+import type { BrowserSessionPermissions } from "../browser/browser-session-permissions";
 import { ElectronClipboard } from "../platform/electron/ElectronClipboard";
 import * as FileSystem from "effect/FileSystem";
 import * as FiberSet from "effect/FiberSet";
@@ -25,7 +28,11 @@ import type {
   BrowserUsePresentationRequest,
   BrowserUseTabState,
 } from "../../shared/browser-sidebar";
-import { BrowserState, type BrowserLocalServerThumbnailAdmission } from "./BrowserState";
+import {
+  BrowserState,
+  type BrowserLocalServerThumbnailAdmission,
+  type BrowserNavigationBlockedEvent,
+} from "./BrowserState";
 import { makeBrowserForkTransfer, type BrowserForkTransfer } from "./BrowserForkTransfer";
 import {
   makeBrowserHistoryRuntime,
@@ -91,6 +98,12 @@ export interface BrowserGuestHost {
   readonly getIdentity: (guestWebContentsId: number) => BrowserSidebarTabIdentity | null;
   readonly getOwnerWebContentsId: (guestWebContentsId: number) => number | null;
   readonly isAuthorized: (guestWebContentsId: number) => boolean;
+  readonly routeNavigation: (guestWebContentsId: number | undefined, url: string) => boolean;
+  readonly isNavigationRestricted: (
+    guestWebContentsId: number | undefined,
+    url: string,
+    resourceType?: string,
+  ) => boolean;
   readonly isRegisteredStorage: (
     identity: BrowserSidebarTabIdentity,
     browserStorageId: string | undefined,
@@ -132,7 +145,12 @@ export interface BrowserProjection {
 
 /** Narrow synchronous adapter used by the physical IAB Promise protocol. */
 export interface BrowserAutomationHost {
+  readonly assertNavigationAllowed: (identity: BrowserSidebarTabIdentity, url: string) => void;
+  readonly subscribeNavigationBlocked: (
+    listener: (event: BrowserNavigationBlockedEvent) => void,
+  ) => () => void;
   readonly getTab: BrowserProjection["getTab"];
+  readonly isControlled: (identity: BrowserSidebarTabIdentity) => boolean;
   readonly getWebContents: BrowserProjection["getWebContents"];
   readonly isVisible: (route: BrowserUseRouteIdentity, browserTabId: string) => boolean;
   readonly listTabs: (
@@ -174,6 +192,7 @@ export class BrowserApplication extends Context.Service<
     readonly history: BrowserHistoryRuntime;
     readonly localServers: BrowserLocalServerRuntime;
     readonly localServerThumbnail: BrowserLocalServerThumbnailRuntime;
+    readonly permissions: BrowserSessionPermissions;
     readonly projection: BrowserProjection;
     readonly webviewDestroyed: (
       event: BrowserSidebarWebviewDestroyed,
@@ -208,6 +227,7 @@ export const live = (
     BrowserApplication,
     Effect.gen(function* () {
       const siteStatus = yield* BrowserSiteStatusRuntime;
+      const rendererDestruction = yield* WebContentsDestructionSubscriptions;
       const assets = yield* TemporaryAssets;
       const electronNet = yield* ElectronNet;
       const clipboard = yield* ElectronClipboard;
@@ -240,7 +260,12 @@ export const live = (
       const pages = yield* makeBrowserPageRuntime(
         `${userDataPath}/browser-sidebar-page-states.json`,
       ).pipe(Effect.mapError((cause) => applicationError("initialize-pages", cause)));
+      const permissionStore = yield* makeBrowserPermissionStore(
+        `${userDataPath}/browser-permissions.json`,
+      ).pipe(Effect.mapError((cause) => applicationError("initialize-permissions", cause)));
       const state = new BrowserState({
+        rendererDestruction,
+        permissionStore,
         clipboard,
         earlyPageRestores,
         electron: browserElectronPlatform,
@@ -254,6 +279,7 @@ export const live = (
         saveBrowserImage: assets.saveUploadedImage,
         webContentsListeners,
       });
+      yield* Effect.addFinalizer(() => Effect.sync(() => state.permissions.dispose()));
 
       const applyCommand = (command: BrowserSidebarCommand, context: BrowserCommandContext = {}) =>
         state
@@ -288,6 +314,10 @@ export const live = (
           state.getOwnerWebContentsIdForGuest(guestWebContentsId),
         isAuthorized: (guestWebContentsId) =>
           state.isAuthorizedGuestWebContents(guestWebContentsId),
+        routeNavigation: (guestWebContentsId, url) =>
+          state.routeBrowserNavigation(guestWebContentsId, url),
+        isNavigationRestricted: (guestWebContentsId, url, resourceType) =>
+          state.isRestrictedBrowserNavigation(guestWebContentsId, url, resourceType),
         isRegisteredStorage: (identity, browserStorageId) =>
           state.isRegisteredBrowserStorage(identity, browserStorageId),
         prepareHistoryRestore: (route, guestWebContentsId) =>
@@ -305,7 +335,11 @@ export const live = (
           state.startBrowserImageDrag(guestWebContentsId, sourceUrl),
       };
       const automation: BrowserAutomationHost = {
+        assertNavigationAllowed: (identity, url) =>
+          state.assertBrowserUseNavigationAllowed(identity, url),
+        subscribeNavigationBlocked: (listener) => state.subscribeNavigationBlocked(listener),
         getTab: projection.getTab,
+        isControlled: (identity) => state.isBrowserUseIdentity(identity),
         getWebContents: projection.getWebContents,
         isVisible: (route, browserTabId) =>
           state.isBrowserVisibleForBrowserUse(route, browserTabId),
@@ -335,6 +369,7 @@ export const live = (
         history,
         localServers,
         localServerThumbnail,
+        permissions: state.permissions,
         projection,
         webviewDestroyed: (event) => state.handleWebviewDestroyed(event),
         webviewHostCreated: (event, ownerWebContentsId) =>
@@ -343,4 +378,4 @@ export const live = (
             .pipe(Effect.mapError((cause) => applicationError("register-webview", cause))),
       });
     }),
-  );
+  ).pipe(Layer.provide(WebContentsDestructionSubscriptions.live));

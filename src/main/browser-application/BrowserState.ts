@@ -1,4 +1,15 @@
 import { randomUUID } from "node:crypto";
+import type { WebContentsDestructionSubscriptions } from "../platform/electron/WebContentsDestructionSubscriptions";
+import {
+  BrowserSessionPermissions,
+  type BrowserPermissionPage,
+  type BrowserPermissionRuntimeError,
+} from "../browser/browser-session-permissions";
+import {
+  permissionOrigin,
+  type BrowserPermissionStore,
+  type BrowserPermissionStoreError,
+} from "../browser/browser-permission-store";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
@@ -34,12 +45,14 @@ import {
   type BrowserUseCursorState,
   type BrowserUseTabState,
 } from "../../shared/browser-sidebar";
+import { isBlankBrowserUrl } from "../../shared/browser-url";
 import {
-  isAllowedBrowserExternalUrl,
-  isAllowedBrowserNavigationUrl,
-  isBlankBrowserUrl,
-  normalizeBrowserNavigationUrl,
-} from "../../shared/browser-url";
+  isExternallyOpenableUrl,
+  isErrorPageExternalUrl,
+  isHttpUrl,
+  isLocalUrl,
+  isBrowserUseNavigationUrl,
+} from "../../shared/browser-url-policy";
 import { type BrowserPageRuntime, type BrowserSerializedPage } from "../browser/browser-page-store";
 import {
   type BrowserRuntimeRegistry,
@@ -82,6 +95,8 @@ type BrowserUseCommand = Extract<
 >;
 
 interface BrowserStateDeps {
+  rendererDestruction?: Pick<WebContentsDestructionSubscriptions["Service"], "subscribe">;
+  permissionStore?: BrowserPermissionStore;
   clipboard: Pick<
     import("../platform/electron/ElectronClipboard").ElectronClipboardPort,
     "writeImage" | "writeText"
@@ -140,6 +155,39 @@ interface BrowserUseCapturedRoute {
 interface PendingBrowserUsePresentation {
   request: BrowserUsePresentationRequest;
   expiresAt: number;
+}
+
+export interface BrowserNavigationBlockedEvent extends BrowserSidebarTabIdentity {
+  readonly errorText: string;
+  readonly resourceType: string;
+  readonly url: string;
+}
+
+const directBrowserUrl = (value: string | null | undefined): string => value || "about:blank";
+const browserUseNavigationError = (url: string): string =>
+  `Blocked browser navigation by Browser Use URL policy: ${url}`;
+
+function isBrowserUseSubframeExemption(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (
+      url.protocol === "data:" ||
+      (url.protocol === "about:" && ["blank", "srcdoc"].includes(url.pathname))
+    );
+  } catch {
+    return false;
+  }
+}
+
+function browserChromeSurface(value: string): "downloads" | "history" | null {
+  try {
+    const url = new URL(value.replace(/^chrome:\/{0,3}/i, "chrome://"));
+    if (url.protocol !== "chrome:" || url.username || url.password || url.port) return null;
+    const host = decodeURIComponent(url.hostname).toLowerCase();
+    return host === "downloads" || host === "history" ? host : null;
+  } catch {
+    return null;
+  }
 }
 
 const BROWSER_USE_PRESENTATION_TIMEOUT_MS = 15_000;
@@ -243,9 +291,7 @@ function isBrowserContextMenuParams(
     Number.isFinite(value.x) &&
     Number.isFinite(value.y) &&
     typeof value.linkURL === "string" &&
-    value.linkURL.length <= 16_384 &&
     typeof value.srcURL === "string" &&
-    value.srcURL.length <= 16_384 &&
     BROWSER_CONTEXT_MENU_MEDIA_TYPES.has(value.mediaType) &&
     typeof value.hasImageContents === "boolean" &&
     typeof value.isEditable === "boolean" &&
@@ -282,6 +328,10 @@ interface ActiveBrowserImageDrag extends BrowserSidebarTabIdentity {
 }
 
 export class BrowserState {
+  private readonly rendererDestruction: BrowserStateDeps["rendererDestruction"];
+  readonly permissions: BrowserSessionPermissions;
+  private readonly permissionNavigationVersions = new Map<number, number>();
+  private readonly permissionInputTimes = new Map<number, number>();
   private readonly tabs = new Map<string, BrowserSidebarTabSnapshot>();
   private readonly webContentsTabIds = new Map<number, string>();
   private readonly attachedWebviewOwnership = new Map<number, AttachedBrowserWebviewOwnership>();
@@ -290,6 +340,7 @@ export class BrowserState {
   private readonly earlyPageRestores: BrowserEarlyPageRestoreRuntime<BrowserSidebarTabSnapshot>;
   private readonly pendingTeardowns = new Map<string, PendingWebviewTeardown>();
   private readonly browserUseTabs = new Map<string, BrowserUseTabState>();
+  private readonly browserUseNavigationRestrictions = new Set<string>();
   private readonly deviceToolbarStates = new Map<
     string,
     BrowserSidebarTabSnapshot["deviceToolbarState"]
@@ -327,6 +378,7 @@ export class BrowserState {
   private teardownSequence = 0;
 
   constructor(deps: BrowserStateDeps) {
+    this.rendererDestruction = deps.rendererDestruction;
     this.clipboard = deps.clipboard;
     this.earlyPageRestores = deps.earlyPageRestores;
     this.events = deps.events;
@@ -341,6 +393,82 @@ export class BrowserState {
     this.webContentsListeners = deps.webContentsListeners;
     this.saveBrowserImage = deps.saveBrowserImage;
     this.siteStatus = deps.siteStatus;
+    this.permissions = new BrowserSessionPermissions(
+      {
+        findPage: (id) => this.getPermissionPage(id),
+        publish: (identity, permissionPrompts) => {
+          const key = browserTabKey(identity);
+          if (this.tabs.has(key)) this.updateTab(key, { permissionPrompts });
+        },
+        systemStatus: (permission) => {
+          if (
+            process.platform !== "darwin" ||
+            (permission !== "camera" && permission !== "microphone")
+          )
+            return "unknown";
+          return this.electron.getMediaAccessStatus?.(permission) ?? "unknown";
+        },
+        openSystemSettings: async (permission) => {
+          const pane =
+            permission === "camera"
+              ? "Camera"
+              : permission === "microphone"
+                ? "Microphone"
+                : "LocationServices";
+          await this.electron.openExternal(
+            `x-apple.systempreferences:com.apple.preference.security?Privacy_${pane}`,
+          );
+        },
+      },
+      deps.permissionStore,
+    );
+  }
+
+  private getPermissionPage(webContentsId: number): BrowserPermissionPage | null {
+    const ownership = this.runtimeRegistry.getGuestOwnership(webContentsId);
+    if (!ownership) return null;
+    const key = browserTabKey(ownership);
+    const tab = this.tabs.get(key);
+    const contents = this.electron.webContentsFromId(webContentsId);
+    const owner = this.electron.webContentsFromId(ownership.ownerWebContentsId);
+    if (
+      !tab ||
+      (tab.webContentsId !== null && tab.webContentsId !== webContentsId) ||
+      !contents ||
+      contents.isDestroyed() ||
+      (contents.isCrashed?.() ?? tab.lifecycleState === "crashed") ||
+      !owner ||
+      owner.isDestroyed() ||
+      this.pendingTeardowns.has(key) ||
+      tab.lifecycleState === "closing" ||
+      tab.lifecycleState === "closed"
+    )
+      return null;
+    // Electron can request permission after attachment and before the renderer's
+    // host-created acknowledgement. The admitted native route already owns it.
+    const route = {
+      ...ownership,
+      mountGeneration: tab.webContentsId === null ? ownership.mountGeneration : tab.mountGeneration,
+    };
+    if (!this.runtimeRegistry.matchHost(ownership.ownerWebContentsId, route).ok) return null;
+    return {
+      ...route,
+      webContentsId,
+      url: contents.getURL() || tab.url,
+      navigationVersion: this.permissionNavigationVersions.get(webContentsId) ?? 0,
+      presented: tab.presented === true,
+      hasUserGesture:
+        performance.now() - (this.permissionInputTimes.get(webContentsId) ?? -Infinity) <= 5_000,
+    };
+  }
+
+  private invalidatePermissionNavigation(webContentsId: number, url: string): void {
+    this.permissionNavigationVersions.set(
+      webContentsId,
+      (this.permissionNavigationVersions.get(webContentsId) ?? 0) + 1,
+    );
+    this.permissionInputTimes.delete(webContentsId);
+    this.permissions.navigation(webContentsId, url);
   }
 
   authorizeWebviewAttachment(
@@ -372,7 +500,14 @@ export class BrowserState {
 
   releaseRendererOwner(ownerWebContentsId: number): void {
     this.clearBrowserImageDrag(ownerWebContentsId);
+    for (const [guestId, ownership] of this.attachedWebviewOwnership) {
+      if (ownership.ownerWebContentsId !== ownerWebContentsId) continue;
+      this.permissions.release(guestId);
+      const key = this.webContentsTabIds.get(guestId);
+      if (key) this.browserUseNavigationRestrictions.delete(key);
+    }
     this.runtimeRegistry.releaseOwner(ownerWebContentsId);
+    this.webContentsListeners.release(ownerWebContentsId);
     this.events.publish({ kind: "browserUseOwnerReleased", value: { ownerWebContentsId } });
   }
 
@@ -608,7 +743,7 @@ export class BrowserState {
 
   startBrowserImageDrag(guestWebContentsId: number, sourceUrl: string): boolean {
     const ownership = this.attachedWebviewOwnership.get(guestWebContentsId);
-    if (!ownership || sourceUrl.length === 0 || sourceUrl.length > 16_384) {
+    if (!ownership || sourceUrl.length === 0) {
       return false;
     }
     try {
@@ -643,6 +778,109 @@ export class BrowserState {
   isBrowserUseIdentity(identity: BrowserSidebarTabIdentity): boolean {
     const tab = this.browserUseTabs.get(browserTabKey(identity));
     return Boolean(tab && !tab.released);
+  }
+
+  private readonly navigationBlockedListeners = new Set<
+    (event: BrowserNavigationBlockedEvent) => void
+  >();
+
+  subscribeNavigationBlocked(listener: (event: BrowserNavigationBlockedEvent) => void): () => void {
+    this.navigationBlockedListeners.add(listener);
+    return () => this.navigationBlockedListeners.delete(listener);
+  }
+
+  assertBrowserUseNavigationAllowed(identity: BrowserSidebarTabIdentity, url: string): void {
+    if (isBrowserUseNavigationUrl(url)) {
+      const key = browserTabKey(identity);
+      this.browserUseNavigationRestrictions.add(key);
+      const tab = this.tabs.get(key);
+      if (tab) this.syncBackgroundThrottling(tab);
+      return;
+    }
+    this.reportNavigationBlocked(identity, url, "mainFrame");
+    throw new Error(browserUseNavigationError(url));
+  }
+
+  isRestrictedBrowserNavigation(
+    webContentsId: number | null | undefined,
+    url: string,
+    resourceType = "mainFrame",
+  ): boolean {
+    if (webContentsId == null) return false;
+    const tab = this.currentTabForGuest(webContentsId);
+    if (!tab || !this.browserUseNavigationRestrictions.has(browserTabKey(tab))) return false;
+    if (resourceType === "subFrame" && isBrowserUseSubframeExemption(url)) return false;
+    if (isBrowserUseNavigationUrl(url)) return false;
+    this.reportNavigationBlocked(tab, url, resourceType);
+    return true;
+  }
+
+  routeBrowserNavigation(webContentsId: number | undefined, url: string): boolean {
+    const tab = webContentsId === undefined ? null : this.currentTabForGuest(webContentsId);
+    return tab !== null && this.routeBrowserSurface(tab, url);
+  }
+
+  private currentTabForGuest(webContentsId: number): BrowserSidebarTabSnapshot | null {
+    const key = this.webContentsTabIds.get(webContentsId);
+    const current = key ? this.tabs.get(key) : null;
+    if (current?.webContentsId === webContentsId) return current;
+    const ownership = this.attachedWebviewOwnership.get(webContentsId);
+    if (!ownership) return null;
+    const tab = this.tabs.get(browserTabKey(ownership.identity));
+    if (
+      !tab ||
+      (ownership.browserStorageId !== undefined &&
+        tab.browserStorageId !== ownership.browserStorageId)
+    )
+      return null;
+    return tab;
+  }
+
+  private reportNavigationBlocked(
+    identity: BrowserSidebarTabIdentity,
+    url: string,
+    resourceType: string,
+  ): void {
+    const event = {
+      ...browserIdentity(identity),
+      errorText: browserUseNavigationError(url),
+      resourceType,
+      url,
+    };
+    this.logger.warn("Blocked Browser Use navigation", event);
+    for (const listener of this.navigationBlockedListeners) listener(event);
+  }
+
+  private isCurrentBrowserGuest(webContentsId: number, contents: BrowserWebContentsLike): boolean {
+    const key = this.webContentsTabIds.get(webContentsId);
+    return (
+      !contents.isDestroyed() &&
+      key !== undefined &&
+      this.tabs.get(key)?.webContentsId === webContentsId
+    );
+  }
+
+  private routeBrowserSurface(identity: BrowserSidebarTabIdentity, url: string): boolean {
+    const surface = browserChromeSurface(url);
+    if (!surface) return false;
+    this.events.publish({
+      kind: "openNewTab",
+      value: { ...browserIdentity(identity), url, background: false, browserSurface: surface },
+    });
+    return true;
+  }
+
+  private syncBackgroundThrottling(tab: BrowserSidebarTabSnapshot): void {
+    const contents = this.getAttachedWebContents(tab) as
+      | (BrowserWebContentsLike & { setBackgroundThrottling?: (enabled: boolean) => void })
+      | null;
+    if (!contents || contents.isDestroyed()) return;
+    const agent = this.browserUseTabs.get(browserTabKey(tab));
+    const active =
+      tab.visible ||
+      this.browserUseNavigationRestrictions.has(browserTabKey(tab)) ||
+      agent?.captureActive === true;
+    contents.setBackgroundThrottling?.(!(isLocalUrl(tab.pendingUrl ?? tab.url) && active));
   }
 
   setDownloadActive(identity: BrowserSidebarTabIdentity, activeDownload: boolean): void {
@@ -715,6 +953,7 @@ export class BrowserState {
         if (hadOrdinaryTab) this.unregisterTab(key);
 
         this.browserUseTabs.delete(key);
+        this.browserUseNavigationRestrictions.delete(key);
         this.browserUseCursors.delete(key);
         this.browserUseViewportSizes.delete(key);
         this.browserUseCaptureSurfaces.delete(key);
@@ -863,8 +1102,7 @@ export class BrowserState {
     };
     const key = browserTabKey(identity);
     const existing = this.tabs.get(key);
-    const requestedUrl = normalizeBrowserNavigationUrl(input.initialUrl);
-    const url = isAllowedBrowserNavigationUrl(requestedUrl) ? requestedUrl : "about:blank";
+    const url = directBrowserUrl(input.initialUrl);
     const deviceToolbarState = this.getDeviceToolbarTabState(identity);
     const viewport = viewportFromDeviceToolbarState(
       deviceToolbarState,
@@ -899,13 +1137,14 @@ export class BrowserState {
       projectId: input.projectId,
       url,
       pendingUrl: input.initialUrl === undefined ? undefined : url,
-      errorMessage: url === requestedUrl ? undefined : "Blocked an unsupported Browser URL",
+      errorMessage: undefined,
       deviceToolbarVisible: deviceToolbarState.toolbarState.isEnabled,
       viewport,
       deviceToolbarState,
       updatedAt: Date.now(),
     });
     this.emitState();
+    this.routeBrowserSurface(snapshot, url);
     return snapshot;
   }
 
@@ -987,6 +1226,27 @@ export class BrowserState {
     identity: BrowserSidebarTabIdentity | BrowserAttachmentRoute,
     browserStorageId?: string,
   ): void {
+    const owner = this.electron.webContentsFromId(ownerWebContentsId);
+    if (owner && !owner.isDestroyed())
+      this.webContentsListeners.acquire(ownerWebContentsId, () => {
+        const release = () => this.releaseRendererOwner(ownerWebContentsId);
+        const releaseDestruction = this.rendererDestruction?.subscribe(owner, release);
+        const navigation = (...args: unknown[]) => {
+          const details = args[0] as
+            | { isMainFrame?: boolean; isSameDocument?: boolean }
+            | undefined;
+          const mainFrame = details?.isMainFrame ?? args[3];
+          const sameDocument = details?.isSameDocument ?? args[2];
+          if (mainFrame === true && sameDocument !== true) release();
+        };
+        owner.on("render-process-gone", release);
+        owner.on("did-start-navigation", navigation);
+        return () => {
+          releaseDestruction?.();
+          owner.removeListener("render-process-gone", release);
+          owner.removeListener("did-start-navigation", navigation);
+        };
+      });
     this.attachedWebviewOwnership.set(guestWebContentsId, {
       ownerWebContentsId,
       identity: browserIdentity(identity),
@@ -999,6 +1259,11 @@ export class BrowserState {
           }
         : {}),
     });
+    const key = browserTabKey(identity);
+    const contents = this.electron.webContentsFromId(guestWebContentsId);
+    if (!contents || !this.tabs.has(key)) return;
+    this.webContentsTabIds.set(guestWebContentsId, key);
+    this.ensureWebContentsListeners(key, guestWebContentsId, contents);
   }
 
   prepareAttachedWebviewHistoryRestore(
@@ -1268,6 +1533,9 @@ export class BrowserState {
               ownerWebContentsId: context.ownerWebContentsId,
               rendererInstanceId: command.rendererInstanceId,
             });
+            for (const webContentsId of this.webContentsTabIds.keys()) {
+              if (!this.getPermissionPage(webContentsId)) this.permissions.release(webContentsId);
+            }
             return { ok: true };
           } catch (error) {
             return { ok: false, message: readBoundedErrorMessage(error) };
@@ -1395,10 +1663,7 @@ export class BrowserState {
           } else {
             this.preparedPagesByStorageId.delete(browserStorageId);
           }
-          const requestedInitialUrl = normalizeBrowserNavigationUrl(command.initialUrl);
-          const fallbackInitialUrl = isAllowedBrowserNavigationUrl(requestedInitialUrl)
-            ? requestedInitialUrl
-            : "about:blank";
+          const fallbackInitialUrl = directBrowserUrl(command.initialUrl);
           const initialUrl = savedPage?.url ?? fallbackInitialUrl;
           const snapshot = this.upsertTab({
             ...browserIdentity(command),
@@ -1429,18 +1694,26 @@ export class BrowserState {
             activeDownload: false,
             lifecycleState: "cold",
             restoreResult: savedPage ? "snapshot-ready" : "missing",
-            errorMessage:
-              fallbackInitialUrl === requestedInitialUrl
-                ? undefined
-                : "Blocked an unsupported Browser URL",
+            errorMessage: undefined,
             updatedAt: Date.now(),
           });
           this.emitState();
+          this.routeBrowserSurface(snapshot, initialUrl);
           return { ok: true, snapshot };
         }
 
         if (command.type === "open-external") {
           let url = command.url;
+          const current =
+            "browserConversationId" in command ? this.tabs.get(browserTabKey(command)) : null;
+          const fromErrorPage =
+            command.fromErrorPage || (url === undefined && current?.failure !== undefined);
+          if (fromErrorPage) {
+            const failedUrl = current?.failure?.failedUrl;
+            if (!failedUrl || (url !== undefined && url !== failedUrl))
+              return { ok: false, message: "Browser error page is no longer current" };
+            url = failedUrl;
+          }
           if (
             url === undefined &&
             "browserConversationId" in command &&
@@ -1449,8 +1722,12 @@ export class BrowserState {
             url = this.tabs.get(browserTabKey(command))?.url;
           }
           if (isBlankBrowserUrl(url)) return { ok: false, message: "Browser tab has no page URL" };
-          const externalUrl = normalizeBrowserNavigationUrl(url);
-          if (!isAllowedBrowserExternalUrl(externalUrl)) {
+          const externalUrl = directBrowserUrl(url);
+          if (
+            !(fromErrorPage
+              ? isErrorPageExternalUrl(externalUrl)
+              : isExternallyOpenableUrl(externalUrl))
+          ) {
             return { ok: false, message: "This URL cannot be opened externally" };
           }
           yield* tryPlatformPromise("open-external", () => this.electron.openExternal(externalUrl));
@@ -1491,6 +1768,45 @@ export class BrowserState {
         const key = browserTabKey(command);
         const tab = this.tabs.get(key);
         if (!tab) return { ok: false, message: "Browser tab is not registered" };
+
+        if (
+          command.type === "respond-permission" ||
+          command.type === "open-permission-system-settings"
+        ) {
+          const operation: Effect.Effect<
+            BrowserSidebarCommandResult,
+            BrowserPermissionStoreError | BrowserPermissionRuntimeError
+          > =
+            command.type === "respond-permission"
+              ? this.permissions.respond(command, context.ownerWebContentsId)
+              : this.permissions.openSystemSettings(command, context.ownerWebContentsId);
+          return yield* operation.pipe(
+            Effect.mapError(
+              (cause) => new BrowserStateOperationError({ operation: command.type, cause }),
+            ),
+          );
+        }
+
+        if (command.type === "reset-site-permissions") {
+          const page =
+            tab.webContentsId === null ? null : this.getPermissionPage(tab.webContentsId);
+          if (
+            !page ||
+            !page.presented ||
+            page.ownerWebContentsId !== context.ownerWebContentsId ||
+            permissionOrigin(page.url) !== command.origin
+          )
+            return { ok: false, message: "Browser site is no longer current" };
+          yield* this.permissions
+            .reset(command.origin, command.permission)
+            .pipe(
+              Effect.mapError(
+                (cause) =>
+                  new BrowserStateOperationError({ operation: "reset-site-permissions", cause }),
+              ),
+            );
+          return { ok: true };
+        }
 
         if (command.type === "set-title") {
           const snapshot = this.updateTab(key, { title: command.title.trim() || "New tab" });
@@ -1795,15 +2111,22 @@ export class BrowserState {
           if (!contents.isDestroyed()) contents.inspectElement(point.x, point.y);
         },
         openExternal: (url) => {
-          if (isAllowedBrowserExternalUrl(url)) {
+          if (isExternallyOpenableUrl(url)) {
             this.fork(Effect.promise(() => this.electron.openExternal(url)).pipe(Effect.asVoid));
           }
         },
         openLink: (url) => {
-          if (!isAllowedBrowserNavigationUrl(url)) return;
+          if (!isHttpUrl(url)) return;
           this.events.publish({
             kind: "openNewTab",
             value: { ...identity, url, background: false },
+          });
+        },
+        openWindow: (url) => {
+          if (!isHttpUrl(url)) return;
+          this.events.publish({
+            kind: "openNewTab",
+            value: { ...identity, url, background: false, openInNewWindow: true },
           });
         },
         reload: () => {
@@ -1903,13 +2226,12 @@ export class BrowserState {
     rawUrl: string,
   ): Effect.Effect<BrowserSidebarCommandResult> {
     const key = browserTabKey(tab);
-    const url = normalizeBrowserNavigationUrl(rawUrl);
-    if (!isAllowedBrowserNavigationUrl(url)) {
-      return Effect.succeed({
-        ok: false,
-        message: "This URL is not allowed in the built-in Browser",
-      });
+    const url = directBrowserUrl(rawUrl);
+    if (this.browserUseNavigationRestrictions.has(key) && !isBrowserUseNavigationUrl(url)) {
+      this.reportNavigationBlocked(tab, url, "mainFrame");
+      return Effect.succeed({ ok: false, message: browserUseNavigationError(url) });
     }
+    if (this.routeBrowserSurface(tab, url)) return Effect.succeed({ ok: true });
     if (isBlankBrowserUrl(url)) {
       const snapshot = this.updateTab(key, {
         url: "about:blank",
@@ -1940,6 +2262,7 @@ export class BrowserState {
           );
         }
       }
+      this.releaseBrowserUseTab(tab);
       this.requestDestroyWebview(key, "reset");
       return Effect.succeed({ ok: true, snapshot });
     }
@@ -2003,6 +2326,7 @@ export class BrowserState {
   private upsertTab(snapshot: BrowserSidebarTabSnapshot): BrowserSidebarTabSnapshot {
     const next = deriveBrowserSnapshot(snapshot);
     this.tabs.set(browserTabKey(next), next);
+    this.syncBackgroundThrottling(next);
     return next;
   }
 
@@ -2014,13 +2338,25 @@ export class BrowserState {
   ): BrowserSidebarTabSnapshot {
     const current = this.tabs.get(key);
     if (!current) throw new Error("Browser tab is not registered");
+    const pageChanged =
+      current.webContentsId !== null &&
+      ((patch.webContentsId !== undefined && patch.webContentsId !== current.webContentsId) ||
+        (patch.mountGeneration !== undefined && patch.mountGeneration !== current.mountGeneration));
+    const navigated =
+      current.webContentsId !== null && patch.url !== undefined && patch.url !== current.url;
+    if (pageChanged && current.webContentsId !== null)
+      this.permissions.release(current.webContentsId);
+    if (navigated && current.webContentsId !== null)
+      this.invalidatePermissionNavigation(current.webContentsId, patch.url!);
     const next = {
       ...current,
       ...patch,
+      ...(pageChanged || navigated ? { permissionPrompts: [] } : {}),
       updatedAt: Date.now(),
     } satisfies BrowserSidebarTabSnapshot;
     const derived = deriveBrowserSnapshot(next);
     this.tabs.set(key, derived);
+    this.syncBackgroundThrottling(derived);
     this.emitState();
     const browserUseTab = this.browserUseTabs.get(key);
     if (browserUseTab) {
@@ -2045,6 +2381,7 @@ export class BrowserState {
       this.webContentsListeners.release(tab.webContentsId);
     }
     this.tabs.delete(tabId);
+    this.browserUseNavigationRestrictions.delete(tabId);
     this.deviceToolbarStates.delete(tabId);
     this.emitState();
   }
@@ -2094,17 +2431,13 @@ export class BrowserState {
     if (contents) this.ensureWebContentsListeners(key, event.webContentsId, contents);
 
     this.pendingTeardowns.delete(key);
-    const requestedInitialUrl = normalizeBrowserNavigationUrl(event.initialUrl);
-    const initialUrl = isAllowedBrowserNavigationUrl(requestedInitialUrl)
-      ? requestedInitialUrl
-      : "about:blank";
+    const initialUrl = directBrowserUrl(event.initialUrl);
     const snapshot = this.updateTab(key, {
       webContentsId: event.webContentsId,
       mountGeneration: event.mountGeneration,
       url: isBlankBrowserUrl(current.url) ? initialUrl : current.url,
       title: event.title?.trim() || current.title,
-      errorMessage:
-        initialUrl === requestedInitialUrl ? undefined : "Blocked an unsupported Browser URL",
+      errorMessage: undefined,
       presented: event.hostKind === "panel",
       visible: event.hostKind === "panel",
       lastSelectedAt: event.hostKind === "panel" ? Date.now() : current.lastSelectedAt,
@@ -2125,6 +2458,9 @@ export class BrowserState {
     const detachedWebContentsId =
       typeof webContentsId === "number" ? webContentsId : current.webContentsId;
     if (detachedWebContentsId !== null && detachedWebContentsId !== undefined) {
+      this.permissions.release(detachedWebContentsId);
+      this.permissionNavigationVersions.delete(detachedWebContentsId);
+      this.permissionInputTimes.delete(detachedWebContentsId);
       const contents = this.electron.webContentsFromId(detachedWebContentsId);
       if (contents) this.fork(this.pageEmulation.release(contents));
       this.webContentsTabIds.delete(detachedWebContentsId);
@@ -2154,26 +2490,33 @@ export class BrowserState {
     this.webContentsListeners.acquire(webContentsId, () => {
       contents.setWindowOpenHandler(({ url: targetUrl, disposition }) => {
         const ownership = this.attachedWebviewOwnership.get(webContentsId);
-        const canOpenAsBrowserTab =
-          isAllowedBrowserNavigationUrl(targetUrl) &&
-          (targetUrl === "about:blank" ||
-            ["http:", "https:"].includes(new URL(targetUrl).protocol));
-        if (ownership && canOpenAsBrowserTab) {
+        if (
+          this.isRestrictedBrowserNavigation(webContentsId, targetUrl) ||
+          disposition === "other"
+        ) {
+          return { action: "deny" };
+        }
+        if (ownership && this.isCurrentBrowserGuest(webContentsId, contents)) {
           this.events.publish({
             kind: "openNewTab",
             value: {
               ...browserIdentity(ownership.identity),
-              url: targetUrl,
+              url: directBrowserUrl(targetUrl),
               background: disposition === "background-tab",
             },
           });
-        } else if (isAllowedBrowserExternalUrl(targetUrl)) {
-          this.fork(
-            Effect.promise(() => this.electron.openExternal(targetUrl)).pipe(Effect.asVoid),
-          );
         }
         return { action: "deny" };
       });
+
+      const initialTab = this.tabs.get(tabId);
+      if (initialTab && isLocalUrl(initialTab.pendingUrl ?? initialTab.url)) {
+        (
+          contents as BrowserWebContentsLike & {
+            setBackgroundThrottling?: (enabled: boolean) => void;
+          }
+        ).setBackgroundThrottling?.(false);
+      }
 
       const disposers: Array<() => void> = [];
       const add = (eventName: string, listener: (...args: unknown[]) => void) => {
@@ -2197,6 +2540,24 @@ export class BrowserState {
         if (!isBrowserContextMenuParams(params)) return;
         this.showBrowserContextMenu(webContentsId, contents, params);
       });
+      // Electron omits Chromium's user_gesture flag from permission callbacks.
+      // Only native input ingress can establish this short-lived activation.
+      for (const name of ["before-input-event", "before-mouse-event"]) {
+        add(name, (...args) => {
+          const input = args[1] as { type?: string } | undefined;
+          if (input?.type === "keyDown" || input?.type === "mouseDown")
+            this.permissionInputTimes.set(webContentsId, performance.now());
+        });
+      }
+      add("did-start-navigation", (...args) => {
+        const event = args[0] as { isMainFrame?: boolean } | undefined;
+        const mainFrame = event?.isMainFrame ?? (typeof args[3] === "boolean" ? args[3] : true);
+        if (mainFrame)
+          this.invalidatePermissionNavigation(
+            webContentsId,
+            readUrlFromEventArgs(args, contents.getURL()),
+          );
+      });
       add("did-start-loading", () => {
         this.updateTabForWebContents(webContentsId, contents, {
           isLoading: true,
@@ -2205,29 +2566,27 @@ export class BrowserState {
           failure: undefined,
         });
       });
-      const preventUnsafeTopFrameNavigation = (...args: unknown[]) => {
+      const preventRestrictedNavigation = (args: unknown[]) => {
+        const event = args[0] as { preventDefault?: () => void; isMainFrame?: boolean } | undefined;
+        const isMainFrame = event?.isMainFrame ?? (typeof args[3] === "boolean" ? args[3] : true);
         const url = readUrlFromEventArgs(args, "");
-        if (isAllowedBrowserNavigationUrl(url)) return;
-        const event = args[0] as { preventDefault?: () => void } | undefined;
-        event?.preventDefault?.();
-        this.updateTabForWebContents(webContentsId, contents, {
-          isLoading: false,
-          isWaitingForResponse: false,
-          pendingUrl: undefined,
-          failure: {
-            kind: "blocked",
-            failedUrl: url,
-            policy: "navigation-policy",
-          },
-          errorMessage: "This URL is blocked by the built-in Browser policy",
-        });
-        this.logger.warn("Blocked unsafe Browser top-frame navigation", {
-          webContentsId,
-          hasUrl: url.length > 0,
-        });
+        if (
+          this.isRestrictedBrowserNavigation(
+            webContentsId,
+            url,
+            isMainFrame ? "mainFrame" : "subFrame",
+          )
+        ) {
+          event?.preventDefault?.();
+          return;
+        }
+        if (!isMainFrame) return;
+        const current = this.tabs.get(this.webContentsTabIds.get(webContentsId) ?? "");
+        if (current && this.routeBrowserSurface(current, url)) event?.preventDefault?.();
       };
-      add("will-navigate", preventUnsafeTopFrameNavigation);
-      add("will-redirect", preventUnsafeTopFrameNavigation);
+      for (const eventName of ["will-frame-navigate", "will-navigate", "will-redirect"]) {
+        add(eventName, (...args) => preventRestrictedNavigation(args));
+      }
       add("did-stop-loading", () => {
         const snapshot = this.updateTabForWebContents(webContentsId, contents, {
           isLoading: false,
@@ -2298,6 +2657,8 @@ export class BrowserState {
         this.handleLoadFailure(webContentsId, contents, args),
       );
       add("render-process-gone", (...args) => {
+        this.permissions.release(webContentsId);
+        this.permissionInputTimes.delete(webContentsId);
         const tabKey = this.webContentsTabIds.get(webContentsId);
         const tab = tabKey ? this.tabs.get(tabKey) : null;
         if (!tabKey || !tab) return;
@@ -2380,7 +2741,7 @@ export class BrowserState {
         : contents.getTitle() || current.title || "New tab";
 
     return this.updateTab(tabId, {
-      url: normalizeBrowserNavigationUrl(url),
+      url: directBrowserUrl(url),
       title,
       isLoading: contents.isLoading(),
       canGoBack: contents.canGoBack(),
@@ -2496,10 +2857,7 @@ export class BrowserState {
           page.identity.browserConversationId === identity.browserConversationId &&
           page.identity.browserViewScopeId === identity.browserViewScopeId &&
           page.identity.browserTabId === identity.browserTabId;
-        const hasSafeNavigation =
-          isAllowedBrowserNavigationUrl(page.url) &&
-          page.navigation.entries.every((entry) => isAllowedBrowserNavigationUrl(entry.url));
-        if (hasMatchingIdentity && hasSafeNavigation) return Effect.succeed(page);
+        if (hasMatchingIdentity) return Effect.succeed(page);
 
         this.invalidatedPageStorageIds.add(browserStorageId);
         return pageStore.delete(browserStorageId).pipe(
@@ -2696,12 +3054,7 @@ export class BrowserState {
       });
       return Effect.void;
     }
-    if (
-      entries.length === 0 ||
-      currentIndex < 0 ||
-      currentIndex >= entries.length ||
-      entries.some((entry) => !isAllowedBrowserNavigationUrl(entry.url))
-    ) {
+    if (entries.length === 0 || currentIndex < 0 || currentIndex >= entries.length) {
       return Effect.void;
     }
 
@@ -2803,6 +3156,7 @@ export class BrowserState {
   ): void {
     const tab = this.tabs.get(tabId);
     if (!tab || tab.webContentsId === null) return;
+    this.permissions.release(tab.webContentsId);
 
     const teardownId = `browser-webview-teardown-${++this.teardownSequence}`;
     const request: BrowserSidebarDestroyWebviewRequest = {
@@ -2839,6 +3193,15 @@ export class BrowserState {
     if (command.type === "browser-use-upsert-tab") {
       const key = browserTabKey(command.tab);
       const conversationScopeKey = browserConversationScopeKey(command.tab);
+      if (command.tab.released) this.browserUseNavigationRestrictions.delete(key);
+      if (!command.tab.released) {
+        const current = this.tabs.get(key);
+        const contents = current ? this.getAttachedWebContents(current) : null;
+        this.assertBrowserUseNavigationAllowed(
+          command.tab,
+          contents?.getURL() || current?.url || command.tab.url,
+        );
+      }
       this.browserUseTabs.set(key, {
         ...command.tab,
         updatedAt: Date.now(),
@@ -2849,6 +3212,8 @@ export class BrowserState {
           command.tab.browserTabId,
         );
       }
+      const snapshot = this.tabs.get(key);
+      if (snapshot) this.syncBackgroundThrottling(snapshot);
       this.emitBrowserUseState();
       return;
     }
@@ -2868,6 +3233,9 @@ export class BrowserState {
         });
       }
       this.browserUseTabs.delete(key);
+      this.browserUseNavigationRestrictions.delete(key);
+      const snapshot = this.tabs.get(key);
+      if (snapshot) this.syncBackgroundThrottling(snapshot);
       this.browserUseCursors.delete(key);
       this.browserUseViewportSizes.delete(key);
       this.browserUseCaptureSurfaces.delete(key);
@@ -2888,6 +3256,13 @@ export class BrowserState {
     if (command.type === "browser-use-set-active-tab") {
       const conversationScopeKey = browserConversationScopeKey(command);
       if (command.browserTabId === null) {
+        for (const tab of this.browserUseTabs.values()) {
+          if (browserConversationScopeKey(tab) !== conversationScopeKey) continue;
+          const key = browserTabKey(tab);
+          this.browserUseNavigationRestrictions.delete(key);
+          const snapshot = this.tabs.get(key);
+          if (snapshot) this.syncBackgroundThrottling(snapshot);
+        }
         this.browserUseActiveTabIdsByConversationScope.delete(conversationScopeKey);
       } else {
         this.browserUseActiveTabIdsByConversationScope.set(
@@ -2997,18 +3372,12 @@ function isBrowserUseCommand(command: BrowserSidebarCommand): command is Browser
 }
 
 function readUrlFromEventArgs(args: unknown[], fallback: string): string {
-  for (const arg of args) {
-    if (typeof arg !== "string") continue;
-    if (
-      arg.startsWith("http:") ||
-      arg.startsWith("https:") ||
-      arg.startsWith("file:") ||
-      arg.startsWith("about:")
-    ) {
-      return arg;
-    }
-  }
-  return fallback;
+  const event = args[0] as { url?: unknown } | undefined;
+  if (typeof event?.url === "string") return event.url;
+  return (
+    args.find((arg): arg is string => typeof arg === "string" && /^[a-z][a-z\d+.-]*:/i.test(arg)) ??
+    fallback
+  );
 }
 
 function readTitleFromEventArgs(args: unknown[], fallback: string): string {

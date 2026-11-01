@@ -146,13 +146,20 @@ explicit outputs and projectless deliverables remain, but an edited Project
 file whose Git state is unknown is not promoted.
 
 Rows and turn cards show file-type artwork and name a generic entry file by its
-folder, such as `report/index.html`. Opening is the same on both surfaces:
-images open in the image viewer, HTML on this device opens rendered in the
-default browser, web resources open as links, and other files open in Files on
-the Chat's execution host, falling back to the desktop opener for local files.
-Destinations outside Nodex show an open-in mark on hover. The context menu, or
-Shift+F10, offers the file's destinations (Open file, Open in an app, Copy path,
-Reveal) or the link's actions.
+folder, such as `report/index.html`. File outputs use the same side-panel file
+intent on both surfaces: eligible local HTML opens rendered in Nodex's Browser;
+other files, including images and remote files, open in Files on the Chat's
+execution host. Website, Google Drive and app URLs use the shared link destination
+settings and activation modifiers. A website represented by a local HTML path
+uses file opening instead.
+
+Open in choices offer an explicit in-app preview, actual native destinations,
+and their system-default designation when known. Local files additionally offer
+Show in Finder, Show in File Explorer or Show in File Manager, and Download a
+copy. Website choices offer explicit Nodex Browser opening, available native
+browsers and Copy link. Native choices do not change the preferred opener.
+Destination discovery has a loading state. Context-click and Shift+F10 retain
+the same file and URL context-menu actions used by message links.
 
 Sources is an icon-only accessible list. It does not add a duplicate text-pill
 representation of the same integrations, and it shows `No sources yet` when no

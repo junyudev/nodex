@@ -1,3 +1,5 @@
+import { openLink } from "@/lib/link-opening";
+import { useLinkOpening } from "@/lib/web-link-navigation";
 import {
   useEffect,
   useLayoutEffect,
@@ -61,6 +63,7 @@ function VisualizationFrame({
   record: InlineVisualizationFrameSnapshot;
 }) {
   const { id, fragment, stateIdentity, documentRevision, active, attempt } = record;
+  const links = useLinkOpening();
   const html = fragment.contents;
   const scopeId = JSON.stringify([id, documentRevision]);
   const canExpand = active && record.canExpand;
@@ -74,9 +77,9 @@ function VisualizationFrame({
   const [boundary, setBoundary] = useState<HTMLDivElement | null>(null);
   const [expandButton, setExpandButton] = useState<HTMLButtonElement | null>(null);
   // Conversation lifecycle changes update actions without replacing the retained document.
-  const callbacks = useRef({ reviewFollowUp, canExpand });
+  const callbacks = useRef({ reviewFollowUp, canExpand, openLink: links?.openLink });
   useLayoutEffect(() => {
-    callbacks.current = { reviewFollowUp, canExpand };
+    callbacks.current = { reviewFollowUp, canExpand, openLink: links?.openLink };
   });
   const stateHostId = stateIdentity?.hostId;
   const stateThreadId = stateIdentity?.threadId;
@@ -86,6 +89,8 @@ function VisualizationFrame({
     const value = createInlineVisualizationRuntime({
       scopeId,
       html,
+      hostId: stateHostId,
+      openLink: (request) => callbacks.current.openLink?.(request) ?? openLink(request),
       mountTarget: surface,
       ...(attempt === 0 ? { claimStandby: (locale) => owner.claimStandby(locale) } : {}),
       initialHeight: owner.readFrame(id)?.initialHeight,

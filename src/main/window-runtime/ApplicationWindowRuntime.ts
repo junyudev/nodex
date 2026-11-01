@@ -2,9 +2,13 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
+import * as Schema from "effect/Schema";
 import { BrowserWindow, shell } from "electron";
 import { BROWSER_SIDEBAR_PARTITION } from "../../shared/browser-sidebar";
-import { isAllowedBrowserExternalUrl } from "../../shared/browser-url";
+import { resolveLinkOpenRequest } from "../../shared/link-opening";
+import { getWorkbenchSceneReturnLocation } from "../../shared/workbench-layout";
+import { ApplicationSettings } from "../settings/ApplicationSettings";
+import { installApplicationWindowLinkRouting } from "./application-window-link-opening";
 import type { AppUpdateStatus } from "../../shared/types";
 import type { WindowSessionRecord } from "../../shared/window-session";
 import { MainCleanup } from "../app/MainCleanup";
@@ -36,6 +40,11 @@ import {
   createApplicationWindowCoordinator,
   type ApplicationWindowCoordinator,
 } from "./application-window-coordinator";
+
+class ApplicationWindowLinkOpenError extends Schema.TaggedError<ApplicationWindowLinkOpenError>()(
+  "ApplicationWindowLinkOpenError",
+  { cause: Schema.Defect() },
+) {}
 
 export interface ApplicationWindowRuntimeOptions {
   readonly appUpdates: {
@@ -78,12 +87,17 @@ export const live = (
 ): Layer.Layer<
   ApplicationWindowRuntime,
   never,
-  ComposerAppshotRuntime | MainCleanup | ScopedCallbackRuntime | WindowShutdown
+  | ApplicationSettings
+  | ComposerAppshotRuntime
+  | MainCleanup
+  | ScopedCallbackRuntime
+  | WindowShutdown
 > =>
   Layer.effect(
     ApplicationWindowRuntime,
     Effect.gen(function* () {
       const appshots = yield* ComposerAppshotRuntime;
+      const settings = yield* ApplicationSettings;
       const callbacks = yield* ScopedCallbackRuntime;
       const cleanup = yield* MainCleanup;
       const windowShutdown = yield* WindowShutdown;
@@ -98,13 +112,53 @@ export const live = (
         const mcpAppSandboxHost = options.mcpAppSandbox.createHost(window.webContents);
         const pendingBrowserAttachments = new Map<number, BrowserAuthorizedAttachment>();
 
-        window.webContents.setWindowOpenHandler(({ url }) => {
-          if (isAllowedBrowserExternalUrl(url)) void shell.openExternal(url);
-          return { action: "deny" };
+        installApplicationWindowLinkRouting({
+          webContents: window.webContents,
+          isAppUrl: (url) => {
+            try {
+              const candidate = new URL(url);
+              const expected = new URL(window.webContents.getURL());
+              return candidate.protocol === expected.protocol && candidate.host === expected.host;
+            } catch {
+              return false;
+            }
+          },
+          openLink: (request) =>
+            callbacks.fork(
+              settings.snapshot().pipe(
+                Effect.flatMap((snapshot) => {
+                  if (window.isDestroyed()) return Effect.void;
+                  const location = getWorkbenchSceneReturnLocation(
+                    options.windows.bootstrap(webContentsId).layout.location,
+                  );
+                  const resolved = resolveLinkOpenRequest({
+                    request,
+                    preferences: snapshot.linkOpening,
+                    browserAvailable: location.kind === "project" || location.kind === "session",
+                  });
+                  if (!resolved) return Effect.void;
+                  if (resolved.target === "in-app-browser")
+                    return Effect.sync(() => {
+                      safeSendToWindow(window, "link:open-requested", [
+                        { ...resolved, openTarget: "in-app-browser" },
+                      ]);
+                    });
+                  return Effect.tryPromise({
+                    try: () => shell.openExternal(resolved.url),
+                    catch: (cause) => new ApplicationWindowLinkOpenError({ cause }),
+                  }).pipe(Effect.asVoid);
+                }),
+                Effect.catch((cause) =>
+                  Effect.sync(() => logger.warn("Could not open link", { cause })),
+                ),
+              ),
+            ),
         });
         window.webContents.on("will-attach-webview", (event, webPreferences, params) => {
           const webviewParams = params as typeof params & {
             instanceId?: number | string;
+            allowpopups?: string;
+            disablewebsecurity?: string;
             nodeintegration?: string;
             preload?: string;
             webpreferences?: string;
@@ -169,6 +223,9 @@ export const live = (
           Object.assign(webPreferences, {
             allowRunningInsecureContent: false,
             contextIsolation: true,
+            devTools: true,
+            navigateOnDragDrop: true,
+            transparent: false,
             nodeIntegration: false,
             nodeIntegrationInSubFrames: false,
             nodeIntegrationInWorker: false,
@@ -180,6 +237,8 @@ export const live = (
             webviewTag: false,
           });
           params.partition = BROWSER_SIDEBAR_PARTITION;
+          delete webviewParams.allowpopups;
+          delete webviewParams.disablewebsecurity;
           delete webviewParams.nodeintegration;
           delete webviewParams.preload;
           delete webviewParams.webpreferences;

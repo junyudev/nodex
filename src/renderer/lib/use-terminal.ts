@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { ClipboardAddon } from "@xterm/addon-clipboard";
 import { FitAddon } from "@xterm/addon-fit";
+import { snapshotLinkActivation } from "./link-activation";
+import { openLink } from "./link-opening";
+import type { LinkOpenRequest } from "../../shared/link-opening";
+import { useLinkOpening } from "./web-link-navigation";
+import { useFileReferenceRouter } from "./file-reference-router";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Terminal, type IDisposable, type ITheme } from "@xterm/xterm";
 import {
@@ -258,8 +263,31 @@ function fitAndResize(terminalId: string, term: Terminal, fit: FitAddon): Termin
   }
 }
 
+/** OSC 8 and detected web links share the same activation and host snapshot. */
+export function installTerminalLinkOpening(
+  terminal: Pick<Terminal, "options" | "loadAddon">,
+  readOwner: () => {
+    readonly hostId: string;
+    readonly openLink: (request: LinkOpenRequest) => Promise<boolean>;
+  },
+): void {
+  const activate = (event: MouseEvent, url: string) => {
+    event.preventDefault();
+    const owner = readOwner();
+    void owner.openLink({
+      url,
+      hostId: owner.hostId,
+      initiator: "terminal_link_click",
+      activation: snapshotLinkActivation(event),
+    });
+  };
+  terminal.options.linkHandler = { activate };
+  terminal.loadAddon(new WebLinksAddon(activate));
+}
+
 export interface UseTerminalOptions {
   terminalId: string;
+  hostId?: string;
   visible: boolean;
   cwd: string;
   conversationId?: string | null;
@@ -285,12 +313,20 @@ export interface UseTerminalReturn {
 
 export function useTerminal({
   terminalId,
+  hostId: explicitHostId,
   visible,
   cwd,
   conversationId,
   projectSessionId,
   onNewTerminalTab,
 }: UseTerminalOptions): UseTerminalReturn {
+  const links = useLinkOpening();
+  const files = useFileReferenceRouter();
+  const linkOwner = useRef({
+    open: links?.openLink ?? openLink,
+    hostId: explicitHostId ?? files.hostId,
+  });
+  linkOwner.current = { open: links?.openLink ?? openLink, hostId: explicitHostId ?? files.hostId };
   const normalizedCwd = cwd.trim();
   const hasValidCwd = normalizedCwd.length > 0;
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -394,7 +430,10 @@ export function useTerminal({
 
     term.loadAddon(new ClipboardAddon());
     term.loadAddon(fit);
-    term.loadAddon(new WebLinksAddon());
+    installTerminalLinkOpening(term, () => ({
+      openLink: linkOwner.current.open,
+      hostId: linkOwner.current.hostId,
+    }));
     term.open(container);
     installCodexKeyHandler(term, terminalId, () => {
       onNewTerminalTabRef.current?.();

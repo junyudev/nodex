@@ -1,3 +1,7 @@
+import { createLinkRouter, desktopLinkOpeningAdapter } from "@/lib/link-opening";
+import { LinkOpeningProvider } from "@/lib/web-link-navigation";
+import { createWorkbenchLinkPresenter, linkBrowserOwner } from "./workbench-link-opening";
+import { resolveRendererTransport } from "@/lib/renderer-transport";
 import { composerDraftIntents } from "@/lib/composer-draft-intents";
 import { openWorkbenchSceneFile } from "@/lib/workbench-scene-file-opener";
 import { prepareWorkbenchSceneSurfaceClose } from "@/lib/workbench-scene-command-lifecycle";
@@ -67,7 +71,10 @@ import {
 import { HistoryPanel } from "./workbench-history-panel";
 import { useTerminalSessionStoreVersion } from "@/lib/terminal-session-store";
 import { BrowserSidebarHiddenWebviewHosts } from "@/features/browser-sidebar/browser-sidebar-hidden-webview-hosts";
-import { useBrowserSidebarRendererState } from "@/features/browser-sidebar/browser-sidebar-renderer-state-store";
+import {
+  useBrowserSidebarRendererState,
+  browserSidebarRendererStateStore,
+} from "@/features/browser-sidebar/browser-sidebar-renderer-state-store";
 import { updateWorkbenchPageFileConfig } from "@/lib/workbench-page-file-surface-state";
 import { WorkbenchPageFileSurface } from "./workbench-page-file-surface";
 import { orderWorkbenchScenePreview } from "@/lib/workbench-scene-preview";
@@ -175,7 +182,11 @@ import {
 import { agentRuntimeRuntime } from "@/lib/agent-runtime-runtime";
 import { createUuidV7 } from "../../../shared/uuid-v7";
 import type { DesktopNotificationActionInvocation } from "../../../shared/types";
-import { makeBrowserSidebarTabKey } from "../../../shared/browser-sidebar";
+import {
+  makeBrowserSidebarTabKey,
+  makeBrowserSidebarConversationScopeKey,
+  type BrowserSidebarOpenNewTabRequest,
+} from "../../../shared/browser-sidebar";
 import {
   APP_SHELL_ROUTE_THREAD_SCOPE_DESCRIPTOR,
   SelectedAppShellHeaderContent,
@@ -2701,33 +2712,82 @@ export function WorkbenchRuntime({
     },
     [activeOwnedSceneOwner, projects, sceneNavigator],
   );
-  const browserLinkSessionId = activeSession?.id;
-  const browserLinkOwner = useMemo(
-    () =>
-      activeOwnedSceneOwner ??
-      (browserLinkSessionId ? { kind: "session" as const, sessionId: browserLinkSessionId } : null),
-    [activeOwnedSceneOwner, browserLinkSessionId],
+  const linkWindowOwner = workbenchWindow.owner;
+  const linkBrowserAvailable = linkBrowserOwner(workbenchWindow.location) !== null;
+  const linkPresenterForOwner = useCallback(
+    (owner: WorkbenchSceneOwner | null) =>
+      createWorkbenchLinkPresenter({
+        getOwner: () => owner,
+        getScene: (owner) =>
+          linkWindowOwner.read().windowState.scenesByOwnerKey[makeWorkbenchSceneKey(owner)] ??
+          materializeInitialWorkbenchScene(owner),
+        updateScene: (owner, update) =>
+          linkWindowOwner.setScene(owner, (previous) =>
+            update(previous ?? materializeInitialWorkbenchScene(owner)),
+          ),
+        getBrowserState: (owner) => {
+          const state = browserSidebarRendererStateStore.getSnapshot();
+          const browserConversationId =
+            owner.kind === "session" ? owner.sessionId : makeWorkbenchSceneKey(owner);
+          const scope = { browserViewScopeId: windowSessionId, browserConversationId };
+          return {
+            tabs: state.state.tabs.filter(
+              (tab) =>
+                tab.browserViewScopeId === windowSessionId &&
+                tab.browserConversationId === browserConversationId,
+            ),
+            agentActiveTabId:
+              state.browserUseState.activeBrowserTabIdsByConversationScope[
+                makeBrowserSidebarConversationScopeKey(scope)
+              ],
+          };
+        },
+        navigator: sceneNavigator,
+        openWindow: (url) => openWorkbenchWindow({ browserUrl: url }),
+      }),
+    [linkWindowOwner, sceneNavigator, windowSessionId],
   );
-  const supportsBrowserLinkNavigation =
-    browserLinkOwner?.kind === "project" || browserLinkOwner?.kind === "session";
-  const openLinkInBrowserTab = useCallback(
-    async (url: string): Promise<boolean> => {
-      if (browserLinkOwner?.kind !== "project" && browserLinkOwner?.kind !== "session")
-        return false;
-      const result = await sceneNavigator.presentPanelSurface({
-        owner: browserLinkOwner,
-        request: { kind: "browser", config: { url } },
-        target: { panelId: "right" },
-        mode: "durable",
-        navigation: "background",
-      });
-      return result.status === "presented";
+  const openBrowserTabRequest = useCallback(
+    async (owner: WorkbenchSceneOwner, request: BrowserSidebarOpenNewTabRequest) => {
+      const conversationId =
+        owner.kind === "session" ? owner.sessionId : makeWorkbenchSceneKey(owner);
+      if (
+        request.browserViewScopeId !== windowSessionId ||
+        request.browserConversationId !== conversationId
+      )
+        return;
+      await linkPresenterForOwner(owner)(
+        {
+          url: request.url,
+          source: "manual",
+          initiator: "window_open",
+          target: "in-app-browser",
+          disposition: request.background ? "new-background-tab" : "new-tab",
+          download: false,
+          ...(request.openInNewWindow ? { presentationIntent: "new-window" as const } : {}),
+        },
+        request.browserTabId,
+      );
     },
-    [browserLinkOwner, sceneNavigator],
+    [linkPresenterForOwner, windowSessionId],
   );
-  const openLinkInBrowserWindow = useCallback(
-    (url: string) => openWorkbenchWindow({ browserUrl: url }),
-    [],
+  const linkRouter = useMemo(() => {
+    const getOwner = () => linkBrowserOwner(linkWindowOwner.read().windowState.location);
+    return createLinkRouter({
+      ...desktopLinkOpeningAdapter,
+      browserAvailable: linkBrowserAvailable,
+      browser: () => {
+        const owner = getOwner();
+        return { available: owner !== null, open: linkPresenterForOwner(owner) };
+      },
+    });
+  }, [linkBrowserAvailable, linkWindowOwner, linkPresenterForOwner]);
+  useEffect(
+    () =>
+      resolveRendererTransport().subscribeLinkOpenRequests?.((request) => {
+        void linkRouter.openLink(request).catch(() => toast.danger("Unable to open link"));
+      }),
+    [linkRouter],
   );
   const presentOwnedScenePageFile = useCallback<
     import("@/lib/workbench-page-file-opener").OpenPageFileTabHandler
@@ -2995,6 +3055,10 @@ export function WorkbenchRuntime({
     panelOpeners,
     sessionCommands,
     createSessionViewTab,
+    onOpenBrowserTab: async (request) => {
+      if (!activeSession) return;
+      await openBrowserTabRequest({ kind: "session", sessionId: activeSession.id }, request);
+    },
     resolveProjectDefaultDatabaseViewId,
     openPageStage,
     commandKeymapState,
@@ -4725,11 +4789,10 @@ export function WorkbenchRuntime({
               };
             }}
             onOpenNewTab={(request) => {
-              void openProjectSceneManualSurface(activeProject.id, "browser", {
-                panelId: context.panelId,
-                targetLeafId: leafId,
-                url: request.url,
-              });
+              return openBrowserTabRequest(
+                { kind: "project", projectId: activeProject.id },
+                request,
+              );
             }}
             boundsSyncTrigger={
               context.panelId === "right"
@@ -4795,6 +4858,7 @@ export function WorkbenchRuntime({
       pageChatCommands,
       presentProjectSceneSurface,
       openBrowserSettings,
+      openBrowserTabRequest,
       openProjectSceneCanvas,
       openProjectSceneManualSurface,
       openProjectScenePage,
@@ -5638,8 +5702,6 @@ export function WorkbenchRuntime({
         <NodexTooltipProvider>
           <FileReferenceRouterProvider
             openWorkspaceFileTab={openWorkspaceFileTab}
-            openBrowserTab={supportsBrowserLinkNavigation ? openLinkInBrowserTab : undefined}
-            openBrowserWindow={supportsBrowserLinkNavigation ? openLinkInBrowserWindow : undefined}
             workspaceRoot={
               projectWorkspaceRootOrNull(activeSessionProject) ?? activeSession?.thread?.cwd ?? null
             }
@@ -5947,7 +6009,9 @@ export function WorkbenchRuntime({
   return (
     <AgentSettingsNavigationProvider openAgentSettings={openAgentSettings}>
       <ScheduledNavigationProvider value={scheduledNavigation}>
-        <WorkbenchNewTabPortProvider port={newTabPort}>{workbench}</WorkbenchNewTabPortProvider>
+        <WorkbenchNewTabPortProvider port={newTabPort}>
+          <LinkOpeningProvider router={linkRouter}>{workbench}</LinkOpeningProvider>
+        </WorkbenchNewTabPortProvider>
       </ScheduledNavigationProvider>
     </AgentSettingsNavigationProvider>
   );

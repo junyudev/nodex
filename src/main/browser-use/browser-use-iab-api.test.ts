@@ -9,6 +9,7 @@ import type {
   BrowserSidebarTabSnapshot,
   BrowserUseTabState,
 } from "../../shared/browser-sidebar";
+import type { BrowserNavigationBlockedEvent } from "../browser-application/BrowserState";
 import type { BrowserWebContentsLike } from "../platform/electron/BrowserElectronPlatform";
 import {
   makeBrowserUseIabApi,
@@ -134,8 +135,9 @@ class FakeWebContents extends EventEmitter {
   getTitle() {
     return "Example";
   }
+  url = "https://example.com";
   getURL() {
-    return "https://example.com";
+    return this.url;
   }
   goBack() {}
   goForward() {}
@@ -188,8 +190,30 @@ class FakeBrowserService extends EventEmitter {
     return this.snapshots.get(this.key(identity)) ?? null;
   }
 
+  isControlled(identity: BrowserSidebarTabIdentity): boolean {
+    return this.tabs.get(this.key(identity))?.released === false;
+  }
+
   getWebContents(): BrowserWebContentsLike {
     return this.contents as unknown as BrowserWebContentsLike;
+  }
+
+  assertNavigationAllowed(_identity: BrowserSidebarTabIdentity, url: string): void {
+    if (url === "about:blank" || ["http:", "https:"].includes(new URL(url).protocol)) return;
+    this.emit("navigationBlocked", {
+      ..._identity,
+      url,
+      resourceType: "mainFrame",
+      errorText: "Browser Use navigation URL is not allowed",
+    });
+    throw new Error("Browser Use navigation URL is not allowed");
+  }
+
+  subscribeNavigationBlocked(listener: (event: BrowserNavigationBlockedEvent) => void): () => void {
+    this.on("navigationBlocked", listener);
+    return () => {
+      this.off("navigationBlocked", listener);
+    };
   }
 
   upsertTab(tab: BrowserUseTabState): void {
@@ -765,12 +789,7 @@ describe("BrowserUseIabApi", () => {
         turn_id: "turn-1",
       })) as { id: number };
 
-      for (const url of [
-        "file:///tmp/private",
-        "javascript:alert(1)",
-        "https://user:password@example.com/private",
-        "chrome://settings",
-      ]) {
+      for (const url of ["file:///tmp/private", "javascript:alert(1)", "chrome://settings"]) {
         await expect(
           api.dispatch("executeCdp", {
             session_id: "thread-1",
@@ -785,6 +804,22 @@ describe("BrowserUseIabApi", () => {
         expect.objectContaining({ method: "Page.navigate" }),
       );
 
+      for (const url of [
+        "https://user:password@example.com/private",
+        "about:blank",
+        `https://example.com/${"x".repeat(20_000)}`,
+      ]) {
+        await api.dispatch("executeCdp", {
+          session_id: "thread-1",
+          target: { tabId: tab.id },
+          method: "Page.navigate",
+          commandParams: { url },
+        });
+        expect(service.contents.debugger.commands.at(-1)).toMatchObject({
+          method: "Page.navigate",
+          params: { url },
+        });
+      }
       await api.dispatch("executeCdp", {
         session_id: "thread-1",
         turn_id: "turn-1",
@@ -819,6 +854,41 @@ describe("BrowserUseIabApi", () => {
         }),
       ).rejects.toThrow("not allowed");
     }),
+  );
+
+  it.effect(
+    "checks the live current page before attaching and forwards blocked navigation events",
+    () =>
+      withApi(async ({ api, service }) => {
+        const tab = (await api.dispatch("createTab", { session_id: "thread-1" })) as { id: number };
+        const events: BrowserUseCdpEvent[] = [];
+        api.addCdpEventListener((event) => events.push(event));
+        service.contents.url = "file:///tmp/private";
+        await expect(
+          api.dispatch("attach", { session_id: "thread-1", tabId: tab.id }),
+        ).rejects.toThrow("not allowed");
+        expect(events.at(-1)).toMatchObject({
+          method: "Page.navigationBlocked",
+          source: { tabId: tab.id },
+          params: {
+            url: "file:///tmp/private",
+            resourceType: "mainFrame",
+            errorText: expect.any(String),
+          },
+        });
+        service.contents.url = "https://example.com";
+        await api.releaseSessionControl();
+        const count = events.length;
+        service.emit("navigationBlocked", {
+          browserConversationId: "conversation-1",
+          browserViewScopeId: "scope-1",
+          browserTabId: "released-tab",
+          url: "file:///tmp/private",
+          errorText: "blocked",
+          resourceType: "subFrame",
+        });
+        expect(events).toHaveLength(count);
+      }),
   );
 
   it.effect("forwards one-route download grants and deterministic turn finalization", () =>

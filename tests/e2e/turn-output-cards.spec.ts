@@ -170,8 +170,12 @@ test("a turn's deliverable appears as a card and in the summary, while its sourc
         // The ignored report is the turn's output; the tracked page source is a change for Review.
         const card = page.getByRole("button", { name: "Open report/index.html", exact: true });
         await expect(card).toBeVisible({ timeout: 30_000 });
-        await expect(card).toContainText("HTML");
-        await expect(card).toContainText("notes.local");
+        const cardSurface = card.locator("xpath=..");
+        await expect(cardSurface).toContainText("HTML");
+        await expect(cardSurface).toContainText("notes.local");
+        await expect(
+          page.getByRole("button", { name: "Open report/index.html in", exact: true }),
+        ).toBeVisible();
         await expect(page.getByRole("button", { name: /^Open (src\/)?index\.html$/u })).toHaveCount(
           0,
         );
@@ -190,7 +194,7 @@ test("a turn's deliverable appears as a card and in the summary, while its sourc
         ).toBeVisible();
         await expect(page.getByRole("button", { name: /^index\.html$/u })).toHaveCount(0);
         await card.scrollIntoViewIfNeeded();
-        const cardBytes = await card.screenshot({ animations: "disabled" });
+        const cardBytes = await cardSurface.screenshot({ animations: "disabled" });
         await testInfo.attach("turn-output-card.png", {
           body: cardBytes,
           contentType: "image/png",
@@ -201,6 +205,17 @@ test("a turn's deliverable appears as a card and in the summary, while its sourc
             cardBytes,
           );
         await capture(page, testInfo, "turn-output-card-and-summary.png");
+
+        // A local HTML deliverable renders in the in-app Browser as the page it is.
+        await card.click();
+        const address = page
+          .getByRole("combobox", { name: "Search or enter a URL" })
+          .or(page.getByRole("textbox", { name: "Search or enter a URL" }));
+        await expect(address.first()).toHaveValue(/report\/index\.html/u, { timeout: 30_000 });
+        await expect(page.getByRole("tab", { name: /Release readiness/u })).toBeVisible({
+          timeout: 30_000,
+        });
+        await capture(page, testInfo, "turn-output-html-in-browser.png");
       } catch (error) {
         await testInfo.attach("runtime.log", {
           body: await readBoundedElectronRuntimeLogs(harness.profile, 256_000),

@@ -589,6 +589,8 @@ export const SETTINGS_SEARCH_PANELS = {
       {
         title: "Keyboard shortcuts",
         messages: [
+          "Open web link in default browser",
+          "Hold the assigned keys while clicking a web link to open it in your default system browser",
           "Search keyboard shortcuts",
           "Search shortcuts",
           "Search by keystrokes",
@@ -870,6 +872,10 @@ export const SETTINGS_SEARCH_CATALOG = {
   browser: {
     messages: [
       "Browser",
+      "Web URL and link open destination",
+      "Local URL open destination",
+      "Where local development sites open by default",
+      "Default browser",
       "Built-in Browser Profile",
       "Import browser data",
       "Cookies",

@@ -28,6 +28,7 @@ interface BrowserDownloadItem {
   getFilename(): string;
   getReceivedBytes(): number;
   getTotalBytes(): number;
+  getURL(): string;
   getURLChain(): string[];
   isPaused(): boolean;
   on(
@@ -49,7 +50,7 @@ interface BrowserDownloadSession {
     listener: (
       event: { preventDefault(): void },
       item: BrowserDownloadItem,
-      webContents: { id: number },
+      webContents: { id: number } | undefined,
     ) => void,
   ): void;
   removeListener(
@@ -57,7 +58,7 @@ interface BrowserDownloadSession {
     listener: (
       event: { preventDefault(): void },
       item: BrowserDownloadItem,
-      webContents: { id: number },
+      webContents: { id: number } | undefined,
     ) => void,
   ): void;
 }
@@ -85,6 +86,7 @@ export interface BrowserDownloadRuntimeOptions {
 }
 
 interface BrowserDownloadGrant {
+  readonly webContentsId: number;
   readonly expiresAt: number;
   readonly sourceUrl: string;
 }
@@ -101,7 +103,7 @@ export class BrowserDownloadRuntimeError extends Schema.TaggedError<BrowserDownl
 
 export interface BrowserDownloadRuntime {
   readonly grantAgentDownload: (
-    identity: BrowserSidebarTabIdentity,
+    identity: BrowserSidebarTabIdentity & { readonly webContentsId: number },
     sourceUrl: string,
     ttlMs?: number,
   ) => void;
@@ -299,16 +301,28 @@ export const makeBrowserDownloadRuntime = (
       );
     };
 
+    const pruneGrants = (): Map<string, BrowserDownloadGrant> => {
+      const current = new Map(
+        [...MutableRef.get(grants)].filter(([, grant]) => grant.expiresAt >= now()),
+      );
+      MutableRef.set(grants, current);
+      return current;
+    };
+
     const consumeAgentGrantIfRequired = (
       identity: BrowserSidebarTabIdentity,
-      sourceUrlChain: readonly string[],
+      finalUrl: string,
+      webContentsId: number,
     ): boolean => {
-      if (!isAgentControlled(identity)) return true;
       const key = identityKey(identity);
-      const current = MutableRef.get(grants);
+      const current = pruneGrants();
       const grant = current.get(key);
-      MutableRef.set(grants, new Map([...current].filter(([candidate]) => candidate !== key)));
-      return Boolean(grant && grant.expiresAt >= now() && sourceUrlChain.includes(grant.sourceUrl));
+      const matches = grant?.sourceUrl === finalUrl && grant.webContentsId === webContentsId;
+      if (matches) {
+        current.delete(key);
+        MutableRef.set(grants, current);
+      }
+      return matches || !isAgentControlled(identity);
     };
 
     const commitDownload = (
@@ -333,11 +347,14 @@ export const makeBrowserDownloadRuntime = (
     const listener = (
       event: { preventDefault(): void },
       item: BrowserDownloadItem,
-      webContents: { id: number },
+      webContents: { id: number } | undefined,
     ): void => {
-      const identity = options.resolveIdentity(webContents.id);
-      const sourceUrlChain = item.getURLChain();
-      if (identity === null || !consumeAgentGrantIfRequired(identity, sourceUrlChain)) {
+      const identity = webContents ? options.resolveIdentity(webContents.id) : null;
+      if (
+        !webContents ||
+        identity === null ||
+        !consumeAgentGrantIfRequired(identity, item.getURL(), webContents.id)
+      ) {
         event.preventDefault();
         item.cancel();
         return;
@@ -410,18 +427,14 @@ export const makeBrowserDownloadRuntime = (
 
     return {
       grantAgentDownload: (identity, sourceUrl, ttlMs = 10_000) => {
-        try {
-          const parsed = new URL(sourceUrl);
-          if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return;
-        } catch {
-          return;
-        }
-        const current = MutableRef.get(grants);
+        if (sourceUrl.length === 0) return;
+        const current = pruneGrants();
         MutableRef.set(
           grants,
           new Map(current).set(identityKey(identity), {
             expiresAt: now() + Math.max(1, Math.min(ttlMs, 10_000)),
             sourceUrl,
+            webContentsId: identity.webContentsId,
           }),
         );
       },

@@ -3,6 +3,7 @@ import type {
   FileOpenApplicationsResult,
   OpenFileWithApplicationInput,
 } from "../../shared/file-open-applications";
+import type { SystemDefaultBrowser } from "../../shared/system-default-browser";
 import { defineRendererCommand, invokePlainCommand, invokeRendererQuery } from "./renderer-command";
 
 const openFileLinkCommand = defineRendererCommand({
@@ -55,6 +56,10 @@ export async function openExternalUrl(url: string): Promise<boolean> {
 
 export function listAvailableFileLinkOpeners(): Promise<FileLinkOpenerId[]> {
   return invokeRendererQuery("shell:file-link-openers:list-available");
+}
+
+export function readSystemDefaultBrowser(): Promise<SystemDefaultBrowser | null> {
+  return invokeRendererQuery("shell:default-browser:get");
 }
 
 export function readFileOpenApplications(path: string): Promise<FileOpenApplicationsResult> {

@@ -85,6 +85,17 @@ describe("Browser address suggestions", () => {
     expect(buildBrowserAddressSuggestions("localhost:3000", [])[0]).toMatchObject({ kind: "url" });
   });
 
+  test("classifies typed paths and schemes with the same normalization as address submission", () => {
+    expect(buildBrowserAddressSuggestions("/tmp/page.html", [])[0]).toMatchObject({ kind: "url" });
+    expect(buildBrowserAddressSuggestions("/tmp/page.html\n", [])[0]).toMatchObject({
+      kind: "search",
+    });
+    expect(buildBrowserAddressSuggestions("javascript:alert(1)", [])[0]).toMatchObject({
+      kind: "search",
+    });
+    expect(buildBrowserAddressSuggestions("github.io", [])[0]).toMatchObject({ kind: "search" });
+  });
+
   test.each(["www.example.com", "HTTPS://example.com", "custom+scheme:page", "about:blank"])(
     "suppresses workspace suggestions for %s",
     (query) => {

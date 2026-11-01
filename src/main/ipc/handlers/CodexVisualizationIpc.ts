@@ -9,7 +9,7 @@ import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { requireTrustedAppRendererSender } from "../../platform/electron/TrustedRendererSender";
 import { ElectronClipboard } from "../../platform/electron/ElectronClipboard";
 import { resolveVisualizationImageCrop } from "../../../shared/visualization-image-capture";
-import { requireCredentialFreeHttpsUrl } from "../../../shared/external-navigation-url";
+import { requireMcpAppNavigationUrl } from "../../../shared/mcp-app/mcp-app-navigation";
 import {
   isValidMcpAppInitId,
   isValidMcpAppSandboxId,
@@ -146,17 +146,18 @@ export const live: Layer.Layer<
         Effect.flatMap((input) =>
           Effect.gen(function* () {
             const href = yield* Effect.try({
-              try: () => requireCredentialFreeHttpsUrl(input.href),
+              try: () => requireMcpAppNavigationUrl(input.href),
               catch: (cause) =>
                 new CodexVisualizationIpcError({ operation: "external-url", cause }),
             });
             if (!sandboxes.consumeUserGesture(event.sender, input.sandboxId, input.initId))
               return false;
-            yield* Effect.tryPromise({
-              try: () => shell.openExternal(href),
-              catch: (cause) =>
-                new CodexVisualizationIpcError({ operation: "open-external", cause }),
-            });
+            if (href.startsWith("nodex:"))
+              yield* Effect.tryPromise({
+                try: () => shell.openExternal(href),
+                catch: (cause) =>
+                  new CodexVisualizationIpcError({ operation: "open-external", cause }),
+              });
             return true;
           }),
         ),

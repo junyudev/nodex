@@ -3,11 +3,11 @@ import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Scope from "effect/Scope";
 import { assert, it } from "@effect/vitest";
-import { vi } from "vite-plus/test";
+import { afterEach, vi } from "vite-plus/test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import type { IpcMainInvokeEvent } from "electron";
+import { app, type IpcMainInvokeEvent, type NativeImage } from "electron";
 import { testLayer as mainConfigLayer } from "../../app/MainConfig";
 import { ElectronDesktop } from "../../platform/electron/ElectronDesktop";
 import { makeTestElectronIpc } from "../../platform/electron/ElectronIpc.test-support";
@@ -17,6 +17,13 @@ import { live } from "./NativeShellIpc";
 import { readFileOpenApplications, openFileWithApplication } from "../../file-link-opener";
 import { requireTrustedAppRendererSender } from "../../platform/electron/TrustedRendererSender";
 
+vi.mock("electron", async (original) => ({
+  ...(await original<typeof import("electron")>()),
+  app: {
+    getApplicationInfoForProtocol: vi.fn(),
+    getApplicationNameForProtocol: vi.fn(),
+  },
+}));
 vi.mock("../../platform/electron/TrustedRendererSender", () => ({
   requireTrustedAppRendererSender: vi.fn(),
 }));
@@ -28,6 +35,8 @@ vi.mock("../../file-link-opener", async (original) => {
     openFileWithApplication: vi.fn(),
   };
 });
+
+afterEach(() => vi.restoreAllMocks());
 
 it.effect("owns native menu and shell ingress with the Main Scope", () =>
   Effect.gen(function* () {
@@ -59,15 +68,94 @@ it.effect("owns native menu and shell ingress with the Main Scope", () =>
       scope,
     );
 
-    assert.strictEqual(channels.size, 9);
+    assert.strictEqual(channels.size, 10);
     assert.isTrue(channels.has("native-context-menu:show"));
     assert.isTrue(channels.has("shell:open-external-url"));
     assert.isTrue(channels.has("shell:file-link-openers:list-available"));
     assert.isTrue(channels.has("shell:path-context:get"));
+    assert.isTrue(channels.has("shell:default-browser:get"));
 
     yield* Scope.close(scope, Exit.void);
     assert.strictEqual(channels.size, 0);
   }),
+);
+
+it.effect(
+  "reads the HTTPS default browser with name-only and unknown fallbacks behind trusted ingress",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const iconDataUrl = "data:image/png;base64,fixture";
+        const info = vi.spyOn(app, "getApplicationInfoForProtocol").mockResolvedValue({
+          name: "Safari",
+          path: "/Applications/Safari.app",
+          icon: { isEmpty: () => false, toDataURL: () => iconDataUrl } as NativeImage,
+        });
+        const name = vi.spyOn(app, "getApplicationNameForProtocol").mockReturnValue("Firefox");
+        const handlers = new Map<string, (event: IpcMainInvokeEvent) => Effect.Effect<unknown>>();
+        let owned = true;
+        const ipc = makeTestElectronIpc({
+          handle: (channel, handler) =>
+            Effect.sync(() => {
+              handlers.set(channel, handler);
+            }),
+          on: () => Effect.die("unused"),
+        });
+        const scope = yield* Effect.acquireRelease(Scope.make(), (scope) =>
+          Scope.close(scope, Exit.void),
+        );
+        yield* Layer.buildWithScope(
+          live.pipe(
+            Layer.provide(
+              Layer.mergeAll(
+                Layer.succeed(ElectronIpc, ipc),
+                mainConfigLayer(),
+                Layer.succeed(ElectronDesktop, {} as ElectronDesktop["Service"]),
+                Layer.succeed(WindowRuntime, {
+                  has: () => owned,
+                } as unknown as WindowRuntime["Service"]),
+              ),
+            ),
+          ),
+          scope,
+        );
+        const event = { sender: { id: 77 } } as unknown as IpcMainInvokeEvent;
+        const query = handlers.get("shell:default-browser:get")!;
+        assert.deepStrictEqual(yield* query(event), {
+          name: "Safari",
+          iconDataUrl,
+          appPath: "/Applications/Safari.app",
+        });
+        assert.deepStrictEqual(info.mock.lastCall, ["https://"]);
+        assert.strictEqual(name.mock.calls.length, 0);
+
+        info.mockRejectedValue(new Error("Application information is unavailable"));
+        assert.deepStrictEqual(yield* query(event), {
+          name: "Firefox",
+          iconDataUrl: null,
+          appPath: null,
+        });
+        assert.deepStrictEqual(name.mock.lastCall, ["https://"]);
+        name.mockReturnValue("");
+        assert.strictEqual(yield* query(event), null);
+        name.mockImplementation(() => {
+          throw new Error("No protocol handler");
+        });
+        assert.strictEqual(yield* query(event), null);
+
+        info.mockClear();
+        name.mockClear();
+        owned = false;
+        assert.strictEqual((yield* Effect.result(query(event)))._tag, "Failure");
+        owned = true;
+        vi.mocked(requireTrustedAppRendererSender).mockImplementationOnce(() => {
+          throw new Error("Untrusted frame");
+        });
+        assert.strictEqual((yield* Effect.result(query(event)))._tag, "Failure");
+        assert.strictEqual(info.mock.calls.length, 0);
+        assert.strictEqual(name.mock.calls.length, 0);
+      }),
+    ),
 );
 
 it.effect(
@@ -131,6 +219,7 @@ it.effect(
             name: "Player",
             appPath: "/Applications/Player.app",
             iconDataUrl: null,
+            isSystemDefault: true,
           },
           applications: [],
         };

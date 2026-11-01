@@ -1,11 +1,11 @@
 import type { NativeContextMenuItem } from "../../shared/native-context-menu";
 import { writeTextToClipboardStrict } from "./clipboard";
-import { openExternalUrl } from "./file-system-operations";
+import { openLink, type LinkRouter } from "./link-opening";
 import { showNativeContextMenu } from "./native-context-menu";
 import { defineRendererCommand, invokePlainCommand } from "./renderer-command";
 import { toast } from "@/components/ui/toast";
 
-export interface WebLinkNavigation {
+export interface WebLinkNavigation extends Partial<LinkRouter> {
   readonly openTab?: (url: string) => Promise<boolean>;
   readonly openWindow?: (url: string) => Promise<boolean>;
   readonly isDefaultBrowser?: boolean;
@@ -82,5 +82,9 @@ export async function openWebLinkContextMenu(input: {
     selected === "open-in-external-browser" &&
     (!input.navigation?.openTab || !input.navigation.isDefaultBrowser)
   )
-    await openExternalUrl(input.url);
+    await (input.navigation?.openLink ?? openLink)({
+      url: input.url,
+      initiator: "link_context_menu",
+      openTarget: "external-browser",
+    });
 }

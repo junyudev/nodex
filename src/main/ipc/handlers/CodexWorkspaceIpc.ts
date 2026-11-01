@@ -84,7 +84,7 @@ import { CodexThreadTitlePersistence } from "../../codex-application/CodexThread
 import { CodexTurnCommands } from "../../codex-application/CodexTurnCommands";
 import { CodexTurnPresentation } from "../../codex-application/CodexTurnPresentation";
 import { createUuidV7 } from "../../../shared/uuid-v7";
-import { requireCredentialFreeHttpsUrl } from "../../../shared/external-navigation-url";
+import { requireMcpAppNavigationUrl } from "../../../shared/mcp-app/mcp-app-navigation";
 import type { CodexTurnPresentationTicket } from "../../../shared/nodex-app-tools/turn-presentation";
 import { ConversationCommands } from "../../codex-application/ConversationCommands";
 import { ManagedWorktreeCatalog } from "../../codex-application/ManagedWorktreeCatalog";
@@ -2163,7 +2163,8 @@ export const live = Layer.effectDiscard(
 
     registerPlainCommand("mcp-app:open-external", async (event, value) => {
       requireTrustedAppRendererSender(event, "MCP external navigation");
-      await shell.openExternal(requireCredentialFreeHttpsUrl(value));
+      const href = requireMcpAppNavigationUrl(value);
+      if (href.startsWith("nodex:")) await shell.openExternal(href);
     });
 
     registerEffectControl(

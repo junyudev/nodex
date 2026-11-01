@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Sites in the built-in Browser can ask for your camera, microphone, location, notifications and other permissions. The request appears under the address bar, where you allow it while visiting, allow it this time or never allow it; Site information lists what each site may do and resets it, and a permission your system blocks offers to open System Settings.
 - Sort chats by Last updated or Manual order from the options menu in the sidebar's Projects header. Manual order keeps the chats you arrange where you put them, with new and never-arranged chats above them by activity, and switching between the two keeps your arrangement.
 - A Page's Files read as a file tree, and each File opens in a tab beside its Page. Folders, kinds and sizes sit across the Page's full width, with which chat or person attached each File and when. HTML reports render as the pages they are, with their images and data from the same Page, in an offline preview that cannot reach the network or your files; images, PDFs, Markdown and code open in their own viewers. A report an Agent attaches again updates the open tab.
 - Agents that Nodex runs are named on the Files they attach through the `nodex` CLI, so each File records the chat it came from. Files attached from your own terminal are recorded as added from the command line, and `nodex page file list` reports who attached each File and when.
@@ -25,7 +26,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
-- Files an Agent makes for you now appear as cards under its reply and in the chat summary's Outputs, in Project chats too. Each card names the file with its kind and folder; HTML reports open rendered in your browser, images open in the viewer, and right-click offers every other way to open the file. Code the Agent edits in your repository stays in Review instead of showing up as an output, while a report it writes to an ignored folder such as `notes.local/` counts.
+- Links now open where you choose. Web links open in your default browser and local development sites in Nodex's Browser unless you change either in Settings → Browser, and local HTML files always open in the Browser. ⌘-click sends a web link to your default browser (change or unassign it in Settings → Keyboard shortcuts), ⌘⇧-click opens it in a new Browser tab, a middle-click opens it in a background tab, and ⌥-click saves it. The same rules apply to links in chats, Pages, terminals, MCP apps and interactive replies, and to files you click in chats.
+- The built-in Browser opens what a desktop browser opens. Type a file path to view a local file, follow `file:` and `data:` links, and open pages whose links carry a sign-in; a page that opens a new window gets a tab right beside it, and its links offer Open in new tab, Open in new window and Open in external browser.
+- Files an Agent makes for you now appear as cards under its reply and in the chat summary's Outputs, in Project chats too. Each card names the file with its kind and folder; HTML reports open in Nodex's Browser as the pages they are, other files open in a preview, and Open in lists every app that can open the file, with Show in Finder and Download a copy. Code the Agent edits in your repository stays in Review instead of showing up as an output, while a report it writes to an ignored folder such as `notes.local/` counts.
 - Backups no longer wait for your Agents. Creating a snapshot from Settings → Backups or with `nodex backup create` works while chats are replying, and never pauses Codex, Claude Code or another Agent, including ones you run outside Nodex. A snapshot holds your Pages, Databases, Library Files and Projects and how your chats are organized; chat transcripts and each Agent's own history are no longer copied into every snapshot, which keeps snapshots small and quick.
 - Restoring a snapshot rewinds your content, not your chats. Pages, Databases, Files and Projects return to the snapshot, while chats keep their latest messages and continue with their Agents; chats started after the snapshot stay, and chats you deleted stay deleted. Replies that are still running stop before Nodex restarts.
 - Page stages are now Triage, Plan, Doing, Review and Done, words that fit any kind of work. Build is now Doing and Ship is now Done; your Pages keep their stage, and a stage you renamed keeps your name. Command-line and API callers use `doing` and `done`. Review now means waiting on someone else's verdict; checking an Agent's work round after round stays in Doing, where the Page's chat activity shows whose turn it is.
@@ -83,6 +86,10 @@ All notable changes to this project will be documented in this file.
 - A queued message in a chat on another machine no longer reads its image paths from this computer.
 - Copying from a Page no longer puts a backslash before periods, commas, question marks and `&`. A parenthesis or bracket in a paragraph used to leave most punctuation after it escaped, both in what you pasted into a chat or another app and in the text Agents read and edit. Now a backslash appears only where the character would otherwise become formatting, existing Pages are rewritten when Nodex updates, and web addresses copy without one, so they still open wherever you paste them.
 - Web and mail addresses in plain text pasted into a Page now become links, while each line keeps exactly its text.
+
+### Security
+
+- While an Agent controls a Browser tab, it can take that tab only to web pages: redirects, embedded frames and pop-ups are checked the whole time it is in control, and the tab is yours again as soon as the Agent lets go.
 
 ## [0.5.0] - 2026-10-29
 

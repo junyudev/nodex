@@ -1,8 +1,5 @@
 import type { MenuItemConstructorOptions } from "electron";
-import {
-  isAllowedBrowserExternalUrl,
-  isAllowedBrowserNavigationUrl,
-} from "../../shared/browser-url";
+import { isExternallyOpenableUrl, isHttpUrl } from "../../shared/browser-url-policy";
 
 export interface BrowserContextMenuParams {
   x: number;
@@ -30,6 +27,7 @@ interface BrowserContextMenuActions {
   inspect(point: { x: number; y: number }): void;
   openExternal(url: string): void;
   openLink(url: string): void;
+  openWindow(url: string): void;
   reload(): void;
 }
 
@@ -106,13 +104,19 @@ export function buildBrowserContextMenuTemplate({
   const hasLink = params.linkURL.length > 0;
   if (hasLink) {
     const itemCountBeforeLinkActions = template.length;
-    if (isAllowedBrowserNavigationUrl(params.linkURL)) {
-      template.push({
-        label: "Open link in new tab",
-        click: () => actions.openLink(params.linkURL),
-      });
+    if (isHttpUrl(params.linkURL)) {
+      template.push(
+        {
+          label: "Open in new tab",
+          click: () => actions.openLink(params.linkURL),
+        },
+        {
+          label: "Open in new window",
+          click: () => actions.openWindow(params.linkURL),
+        },
+      );
     }
-    if (isAllowedBrowserExternalUrl(params.linkURL)) {
+    if (isExternallyOpenableUrl(params.linkURL)) {
       template.push({
         label: "Open in external browser",
         click: () => actions.openExternal(params.linkURL),

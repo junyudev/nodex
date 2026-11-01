@@ -1,3 +1,10 @@
+import type {
+  BrowserGeolocationAccuracy,
+  BrowserPermissionAction,
+  BrowserPermissionPrompt,
+  BrowserSitePermissionName,
+} from "./browser/browser-permissions";
+
 export const BROWSER_SIDEBAR_PARTITION = "persist:codex-browser-app";
 export const BROWSER_SIDEBAR_ROUTE_PARTITION_PREFIX = "persist:codex-browser-app-route:";
 
@@ -26,6 +33,10 @@ export interface BrowserSidebarTabIdentity {
 export interface BrowserSidebarOpenNewTabRequest extends BrowserSidebarTabIdentity {
   url: string;
   background: boolean;
+  /** The receiving Workbench opens this Browser tab in a detached window. */
+  openInNewWindow?: boolean;
+  /** Browser-owned chrome URLs open these application surfaces. */
+  browserSurface?: "downloads" | "history";
 }
 
 export interface BrowserSidebarImageDragStateEvent extends BrowserSidebarTabIdentity {
@@ -251,6 +262,7 @@ export const DEFAULT_BROWSER_SIDEBAR_FIND_STATE: BrowserSidebarFindState = {
 };
 
 export interface BrowserSidebarTabSnapshot extends BrowserSidebarTabIdentity {
+  permissionPrompts?: BrowserPermissionPrompt[];
   browserStorageId?: string;
   projectId: string | null;
   webContentsId: number | null;
@@ -534,9 +546,30 @@ export type BrowserSidebarCommand =
   | BrowserSidebarTargetedCommand<{ type: "go-forward" }>
   | BrowserSidebarTargetedCommand<{ type: "reload"; ignoreCache?: boolean }>
   | BrowserSidebarTargetedCommand<{ type: "stop" }>
-  | { type: "open-external"; url: string }
-  | BrowserSidebarTargetedCommand<{ type: "open-external"; url?: undefined }>
+  | { type: "open-external"; url: string; fromErrorPage?: boolean }
+  | BrowserSidebarTargetedCommand<{
+      type: "open-external";
+      url?: undefined;
+      fromErrorPage?: boolean;
+    }>
   | BrowserSidebarTargetedCommand<{ type: "close-tab" }>
+  | BrowserSidebarTargetedCommand<{
+      type: "respond-permission";
+      promptId: string;
+      mountGeneration: number;
+      action: BrowserPermissionAction;
+      geolocationAccuracy?: BrowserGeolocationAccuracy;
+    }>
+  | BrowserSidebarTargetedCommand<{
+      type: "open-permission-system-settings";
+      promptId: string;
+      mountGeneration: number;
+    }>
+  | BrowserSidebarTargetedCommand<{
+      type: "reset-site-permissions";
+      origin: string;
+      permission?: BrowserSitePermissionName;
+    }>
   | BrowserSidebarTargetedCommand<{ type: "set-title"; title: string }>
   | BrowserSidebarTargetedCommand<{ type: "set-favicon"; faviconUrl?: string }>
   | BrowserSidebarTargetedCommand<{ type: "step-zoom"; delta: number; showBanner?: boolean }>

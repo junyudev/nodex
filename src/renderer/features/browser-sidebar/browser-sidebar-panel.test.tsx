@@ -12,10 +12,16 @@ import type { WorkbenchTabProjection } from "@/lib/types";
 import type { WorkbenchSessionRenderProjection } from "@/lib/workbench-session-presentation";
 import { render, settleAsyncRender } from "../../test/dom";
 import { browserSidebarRendererWebviewManager } from "./browser-sidebar-webview-manager";
+import { openLink } from "@/lib/link-opening";
+import { LinkOpeningProvider } from "@/lib/web-link-navigation";
 
 let BrowserSidebarPanel: (typeof import("./browser-sidebar-panel"))["BrowserSidebarPanel"];
 let invokeCalls: unknown[][] = [];
 let apiListeners = new Map<string, Set<(payload: unknown) => void>>();
+
+vi.mock("@/lib/link-opening", () => ({
+  openLink: vi.fn(async () => true),
+}));
 
 vi.mock("@/lib/api", () => ({
   invoke: async (channel: string, ...args: unknown[]) => {
@@ -48,6 +54,7 @@ beforeAll(async () => {
 
 beforeEach(() => {
   invokeCalls = [];
+  vi.mocked(openLink).mockClear();
   apiListeners = new Map();
   Object.defineProperty(window, "api", {
     configurable: true,
@@ -77,6 +84,215 @@ afterEach(async () => {
 });
 
 describe("BrowserSidebarPanel chrome", () => {
+  test.each(["file:///tmp/page.html", "data:text/html,hello"])(
+    "preserves the trusted initial URL %s when registering and mounting the tab",
+    async (url) => {
+      const tab = { ...loadedBrowserTab, config: { ...loadedBrowserTab.config, url } };
+      const view = render(
+        <BrowserSidebarPanel
+          tab={tab}
+          activeSession={{ ...activeSession, tabs: [tab] }}
+          browserViewScopeId="window-session-1"
+          isVisible
+          onRefreshSessions={async () => []}
+        />,
+      );
+      await settleAsyncRender();
+
+      const input = view.getByPlaceholderText("Search or enter a URL") as HTMLInputElement;
+      expect(input.value).toBe(url);
+      expect(readBrowserCommandCalls("register-tab")).toEqual([
+        expect.objectContaining({ initialUrl: url }),
+      ]);
+      expect(document.body.querySelector("webview")?.getAttribute("src")).toBe(url);
+    },
+  );
+
+  test.each([
+    ["https://example.com/", true],
+    ["http://localhost:3000/", true],
+    ["http://app.localhost/", true],
+    ["http://0.0.0.0:8080/", true],
+    ["http://example.com/", false],
+    ["file:///tmp/page.html", false],
+    ["data:text/html,hello", false],
+    ["mailto:hello@example.com", false],
+  ] as const)("limits the failure-state external action for %s", async (url, allowed) => {
+    const routedOpen = vi.fn(async () => true);
+    const view = render(
+      <LinkOpeningProvider router={{ browserAvailable: true, openLink: routedOpen }}>
+        <BrowserSidebarPanel
+          tab={loadedBrowserTab}
+          activeSession={{ ...activeSession, tabs: [loadedBrowserTab] }}
+          browserViewScopeId="window-session-1"
+          isVisible
+          onRefreshSessions={async () => []}
+        />
+      </LinkOpeningProvider>,
+    );
+    await settleAsyncRender();
+    await emitApiEvent("browser-sidebar-state", {
+      tabs: [
+        makeBrowserSnapshot("window-session-1", {
+          url,
+          failure: { kind: "dns", failedUrl: url, code: -105 },
+        }),
+      ],
+    });
+    await view.findByRole("heading", { name: "This site can’t be reached" });
+    const action = view.queryByRole("button", { name: "Open externally" });
+    if (!allowed) {
+      expect(action).toBeNull();
+      expect(readBrowserCommandCalls("open-external")).toEqual([]);
+      return;
+    }
+    expect(action).not.toBeNull();
+    await act(async () => {
+      fireEvent.click(action!);
+      await Promise.resolve();
+    });
+    expect(readBrowserCommandCalls("open-external")).toEqual([
+      {
+        type: "open-external",
+        browserConversationId: "session-1",
+        browserViewScopeId: "window-session-1",
+        browserTabId: "tab-browser",
+        fromErrorPage: true,
+      },
+    ]);
+    expect(routedOpen).not.toHaveBeenCalled();
+    expect(openLink).not.toHaveBeenCalled();
+  });
+
+  test.each([undefined, "https://pending.example/"])(
+    "routes the external button through the Workbench with pending URL %s",
+    async (pendingUrl) => {
+      const routedOpen = vi.fn(async () => true);
+      const view = render(
+        <LinkOpeningProvider router={{ browserAvailable: true, openLink: routedOpen }}>
+          <BrowserSidebarPanel
+            tab={loadedBrowserTab}
+            activeSession={activeSession}
+            browserViewScopeId="window-session-1"
+            isVisible
+            onRefreshSessions={async () => []}
+          />
+        </LinkOpeningProvider>,
+      );
+      await settleAsyncRender();
+      await emitApiEvent("browser-sidebar-state", {
+        tabs: [makeBrowserSnapshot("window-session-1", { pendingUrl })],
+      });
+      await act(async () => {
+        fireEvent.click(view.getByRole("button", { name: "Open externally" }));
+        await Promise.resolve();
+      });
+      expect(routedOpen).toHaveBeenCalledWith({
+        url: pendingUrl ?? loadedBrowserTab.config.url,
+        initiator: "open_in_browser_bridge",
+        openTarget: "external-browser",
+      });
+      expect(openLink).not.toHaveBeenCalled();
+      expect(readBrowserCommandCalls("open-external")).toEqual([]);
+    },
+  );
+
+  test("uses the semantic fallback for the external button without a Workbench router", async () => {
+    const view = render(
+      <BrowserSidebarPanel
+        tab={loadedBrowserTab}
+        activeSession={activeSession}
+        browserViewScopeId="window-session-1"
+        isVisible
+        onRefreshSessions={async () => []}
+      />,
+    );
+    await settleAsyncRender();
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Open externally" }));
+      await Promise.resolve();
+    });
+    expect(openLink).toHaveBeenCalledWith({
+      url: loadedBrowserTab.config.url,
+      initiator: "open_in_browser_bridge",
+      openTarget: "external-browser",
+    });
+    expect(readBrowserCommandCalls("open-external")).toEqual([]);
+  });
+
+  test.each(["downloads", "history"] as const)(
+    "opens Browser %s requests in the existing application UI",
+    async (browserSurface) => {
+      const onOpenNewTab = vi.fn();
+      const onOpenBrowserSettings = vi.fn();
+      const view = render(
+        <BrowserSidebarPanel
+          tab={loadedBrowserTab}
+          activeSession={activeSession}
+          browserViewScopeId="window-session-1"
+          isVisible
+          onRefreshSessions={async () => []}
+          onOpenNewTab={onOpenNewTab}
+          onOpenBrowserSettings={onOpenBrowserSettings}
+        />,
+      );
+      await settleAsyncRender();
+      const request = {
+        browserConversationId: "session-1",
+        browserViewScopeId: "window-session-1",
+        browserTabId: "tab-browser",
+        browserSurface,
+        url: `chrome://${browserSurface}/?q=report`,
+        background: false,
+      };
+      for (const patch of [
+        { browserConversationId: "another-session" },
+        { browserViewScopeId: "another-window" },
+        { browserTabId: "another-tab" },
+      ]) {
+        await emitApiEvent("browser-sidebar-open-new-tab", { ...request, ...patch });
+      }
+      expect(onOpenBrowserSettings).not.toHaveBeenCalled();
+      expect(view.queryByRole("button", { name: "Close downloads" })).toBeNull();
+
+      await emitApiEvent("browser-sidebar-open-new-tab", request);
+      if (browserSurface === "downloads") {
+        expect(await view.findByRole("button", { name: "Close downloads" })).toBeDefined();
+        expect(onOpenBrowserSettings).not.toHaveBeenCalled();
+      } else {
+        expect(onOpenBrowserSettings).toHaveBeenCalledExactlyOnceWith("history");
+      }
+      expect(onOpenNewTab).not.toHaveBeenCalled();
+      expect(readBrowserCommandCalls("navigate")).toEqual([]);
+    },
+  );
+
+  test("forwards tab and detached-window requests with the opener's identity", async () => {
+    const onOpenNewTab = vi.fn();
+    render(
+      <BrowserSidebarPanel
+        tab={loadedBrowserTab}
+        activeSession={activeSession}
+        browserViewScopeId="window-session-1"
+        isVisible
+        onRefreshSessions={async () => []}
+        onOpenNewTab={onOpenNewTab}
+      />,
+    );
+    await settleAsyncRender();
+    for (const extra of [{ background: true }, { background: false, openInNewWindow: true }]) {
+      const request = {
+        browserConversationId: "session-1",
+        browserViewScopeId: "window-session-1",
+        browserTabId: "tab-browser",
+        url: "https://popup.example/",
+        ...extra,
+      };
+      await emitApiEvent("browser-sidebar-open-new-tab", request);
+      expect(onOpenNewTab).toHaveBeenLastCalledWith(request);
+    }
+  });
+
   test("renders address input inside a no-drag island within the draggable toolbar", async () => {
     const view = render(
       <BrowserSidebarPanel

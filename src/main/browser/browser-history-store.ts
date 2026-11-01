@@ -17,7 +17,7 @@ const MAX_HISTORY_BYTES = 8 * 1_024 * 1_024;
 const BrowserHistoryRecordSchema = z
   .object({
     id: z.string().regex(/^[a-f0-9]{64}$/u),
-    url: z.string().min(1).max(16_384),
+    url: z.string().min(1),
     title: z.string().max(2_048),
     lastVisitedAt: z.number().finite().nonnegative(),
     visitCount: z.number().int().positive(),
@@ -234,9 +234,7 @@ const normalizeHistoryUrl = (value: string): string | null => {
   } catch {
     return null;
   }
-  if ((url.protocol !== "http:" && url.protocol !== "https:") || url.username || url.password) {
-    return null;
-  }
+  if (url.href === "about:blank") return null;
   return url.href;
 };
 

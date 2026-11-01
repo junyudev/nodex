@@ -1,7 +1,10 @@
 import { posix } from "node:path";
 export { prioritizedBundleIdsForFile } from "../shared/file-open-applications";
 import { z } from "zod";
-import type { FileOpenApplicationsResult } from "../shared/file-open-applications";
+import type {
+  FileOpenApplication,
+  FileOpenApplicationsResult,
+} from "../shared/file-open-applications";
 
 export const MAX_FILE_OPEN_APPLICATIONS = 20;
 
@@ -17,7 +20,8 @@ const application = z.object({
 
 /**
  * LaunchServices can return duplicate versions and the app itself; keep only usable alternatives
- * in its order. A well-known viewer for the type becomes the default when it is installed.
+ * in its order. A well-known viewer becomes the primary destination; the OS association
+ * retains the system-default designation independently of that promotion.
  */
 export function parseLaunchServicesApplications(
   output: string,
@@ -49,6 +53,11 @@ export function parseLaunchServicesApplications(
       application: { name: parsed.data.name, appPath, iconDataUrl: null },
     };
   };
+  const systemDefault = read(result.data.defaultApplication);
+  const describe = (value: NonNullable<ReturnType<typeof read>>): FileOpenApplication => ({
+    ...value.application,
+    isSystemDefault: value.application.appPath === systemDefault?.application.appPath,
+  });
   const ordered = new Map<string, NonNullable<ReturnType<typeof read>>>();
   for (const entry of [result.data.defaultApplication, ...result.data.applications]) {
     const value = read(entry);
@@ -62,14 +71,11 @@ export function parseLaunchServicesApplications(
   };
   // A stable sort keeps the system default ahead of the remaining LaunchServices order.
   const [first, ...rest] = candidates.toSorted((a, b) => rank(a.bundleId) - rank(b.bundleId));
-  const systemDefault = read(result.data.defaultApplication);
   const promoted =
     first && (systemDefault !== null || rank(first.bundleId) < prioritizedBundleIds.length);
   return {
-    defaultApplication: promoted ? first.application : null,
-    applications: (promoted ? rest : candidates)
-      .slice(0, MAX_FILE_OPEN_APPLICATIONS)
-      .map((value) => value.application),
+    defaultApplication: promoted ? describe(first) : null,
+    applications: (promoted ? rest : candidates).slice(0, MAX_FILE_OPEN_APPLICATIONS).map(describe),
   };
 }
 

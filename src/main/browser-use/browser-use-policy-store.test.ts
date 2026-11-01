@@ -78,7 +78,7 @@ it.layer(NodeServices.layer)("Browser Use policy runtime", (it) => {
     }),
   );
 
-  it.effect("quarantines invalid TOML and fails closed for invalid origins", () =>
+  it.effect("quarantines invalid TOML without treating non-origin pages as explicit denials", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
@@ -87,7 +87,8 @@ it.layer(NodeServices.layer)("Browser Use policy runtime", (it) => {
       yield* fs.writeFileString(filePath, "[origins\n");
       const runtime = yield* makeBrowserUsePolicyRuntime(filePath, () => 4_321);
       assert.isFalse(runtime.snapshot().fullCdpAccessEnabled);
-      assert.isTrue(runtime.isExplicitlyDenied("origin", "file:///tmp/private"));
+      assert.isFalse(runtime.isExplicitlyDenied("origin", "file:///tmp/private"));
+      assert.isFalse(runtime.isExplicitlyDenied("origin", "about:blank"));
       assert.deepEqual(yield* fs.readDirectory(root), ["config.toml.corrupt-4321"]);
     }),
   );

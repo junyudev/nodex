@@ -57,6 +57,7 @@ vi.mock("@/lib/file-reference-open-targets", () => ({
   readFileReferenceOpenTargets: menuPorts.readTargets,
   openFileReferenceTarget: menuPorts.openTarget,
 }));
+vi.mock("@/lib/link-opening", () => ({ openLink: menuPorts.openUrl }));
 vi.mock("@/lib/native-context-menu", () => ({ showNativeContextMenu: menuPorts.showMenu }));
 vi.mock("@/lib/workspace-file-operations", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/workspace-file-operations")>()),
@@ -3174,7 +3175,7 @@ describe("review diff panel", () => {
         ),
       );
       expect(openWorkspaceFileTab).not.toHaveBeenCalled();
-      expect(readFileLinkOpener()).toBe(action === "open-primary" ? "cursor" : "vscode");
+      expect(readFileLinkOpener()).toBe("cursor");
     },
   );
 
@@ -3235,9 +3236,11 @@ describe("review diff panel", () => {
         fireEvent.contextMenu(view.container.querySelector("[data-file-diff]")!);
       });
       await waitFor(() =>
-        expect(menuPorts.openUrl).toHaveBeenCalledWith(
-          "https://github.com/example/project/blob/feature/menu/src/example.ts",
-        ),
+        expect(menuPorts.openUrl).toHaveBeenCalledWith({
+          url: "https://github.com/example/project/blob/feature/menu/src/example.ts",
+          hostId,
+          initiator: "review_github_link",
+        }),
       );
       expect(menuPorts.github).toHaveBeenCalledExactlyOnceWith({
         hostId,

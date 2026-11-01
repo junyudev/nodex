@@ -33,11 +33,17 @@ import { buildThreadHandoffOperation } from "../../../../test/thread-handoff-fix
 const outputOpeners = vi.hoisted(() => ({
   openFile: vi.fn(),
   openDefault: vi.fn(),
+  openLink: vi.fn(),
+}));
+vi.mock("@/lib/link-opening", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/link-opening")>()),
+  openLink: outputOpeners.openLink,
 }));
 vi.mock("@/lib/file-reference-router", () => ({
   useFileReferenceRouter: () => ({ open: outputOpeners.openFile }),
 }));
-vi.mock("@/lib/file-system-operations", () => ({
+vi.mock("@/lib/file-system-operations", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/file-system-operations")>()),
   openPathWithDefaultApplication: outputOpeners.openDefault,
 }));
 
@@ -402,6 +408,7 @@ describe("ThreadFloatingSummaryPanel", () => {
     mockInvokeImpl = null;
     outputOpeners.openFile.mockReset().mockResolvedValue(true);
     outputOpeners.openDefault.mockReset().mockResolvedValue(true);
+    outputOpeners.openLink.mockReset().mockResolvedValue(true);
     Object.defineProperty(window, "api", {
       configurable: true,
       value: { invoke: invokeForTest, on: () => () => undefined },
@@ -3199,7 +3206,7 @@ describe("ThreadFloatingSummaryPanel", () => {
     });
   });
 
-  test("opens generated image output rows in the image preview dialog", async () => {
+  test("opens generated image output rows in the file preview", async () => {
     const { ThreadFloatingSummaryPanel } = await import("./thread-floating-summary-panel");
     const turns = [
       {
@@ -3240,14 +3247,13 @@ describe("ThreadFloatingSummaryPanel", () => {
       fireEvent.click(outputRow as HTMLElement);
     });
 
-    const preview = await view.findByTestId("summary-image-preview");
-    const previewImage = preview.querySelector("img");
-    if (!(previewImage instanceof HTMLImageElement)) {
-      throw new Error("expected generated image preview dialog");
-    }
-    expect(previewImage.alt).toBe("Generated image 1");
-    expect(previewImage.src).toBe("app://fs/@fs/repo/project/generated-one.png");
-    expect(invokeCalls.some((call) => call[0] === "shell:open-file-link")).toBe(false);
+    await waitFor(() =>
+      expect(outputOpeners.openFile).toHaveBeenCalledWith(
+        { path: "/repo/project/generated-one.png" },
+        expect.objectContaining({ sidePanel: true, title: "Generated image 1" }),
+      ),
+    );
+    expect(outputOpeners.openDefault).not.toHaveBeenCalled();
   });
 
   for (const extension of ["md", "pdf"]) {
@@ -3273,19 +3279,20 @@ describe("ThreadFloatingSummaryPanel", () => {
       await waitFor(() =>
         expect(outputOpeners.openFile).toHaveBeenCalledWith(
           { path },
-          {
+          expect.objectContaining({
             hostId: "ssh:remote",
             cwd: "/repo/project/dist",
             workspaceRoot: "/repo/project",
+            sidePanel: true,
             title: `report.${extension}`,
-          },
+          }),
         ),
       );
       expect(outputOpeners.openDefault).not.toHaveBeenCalled();
     });
   }
 
-  test("opens a local HTML summary output with the default application", async () => {
+  test("hands a local HTML summary output to the file router, never the default application", async () => {
     const { ThreadFloatingSummaryPanel } = await import("./thread-floating-summary-panel");
     const path = "/repo/project/dist/report.html";
     const view = renderSummary(
@@ -3303,8 +3310,13 @@ describe("ThreadFloatingSummaryPanel", () => {
     const row = await view.findByRole("button", { name: "report.html" });
     await clickAndAct(row);
 
-    await waitFor(() => expect(outputOpeners.openDefault).toHaveBeenCalledWith(path));
-    expect(outputOpeners.openFile).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(outputOpeners.openFile).toHaveBeenCalledWith(
+        { path },
+        expect.objectContaining({ sidePanel: true, title: "report.html" }),
+      ),
+    );
+    expect(outputOpeners.openDefault).not.toHaveBeenCalled();
   });
 
   test("reports when a summary output cannot be opened", async () => {
@@ -3329,99 +3341,84 @@ describe("ThreadFloatingSummaryPanel", () => {
     await waitFor(() => expect(onErrorMessage).toHaveBeenLastCalledWith("Could not open output"));
   });
 
-  test("opens URL summary panel output rows through the browser opener", async () => {
+  test("opens URL summary panel output rows through link routing", async () => {
     const { ThreadFloatingSummaryPanel } = await import("./thread-floating-summary-panel");
-    const originalOpen = window.open;
-    const openedUrls: string[] = [];
-    Object.defineProperty(window, "open", {
-      configurable: true,
-      value: (url?: string | URL) => {
-        openedUrls.push(String(url ?? ""));
-        return null;
-      },
-    });
-
-    try {
-      const driveUrl = "https://docs.google.com/document/d/doc-123/edit";
-      const turns = [
-        {
-          items: [
-            {
-              itemId: "drive-tool",
-              type: "mcpToolCall",
-              mcpToolCall: {
-                callId: "drive-tool",
-                functionName: "google-drive__create_document",
-                pluginId: null,
-                mcpAppResourceUri: undefined,
-                source: null,
-                invocation: {
-                  server: "google-drive",
-                  tool: "create_document",
-                  arguments: {},
+    const driveUrl = "https://docs.google.com/document/d/doc-123/edit";
+    const turns = [
+      {
+        items: [
+          {
+            itemId: "drive-tool",
+            type: "mcpToolCall",
+            mcpToolCall: {
+              callId: "drive-tool",
+              functionName: "google-drive__create_document",
+              pluginId: null,
+              mcpAppResourceUri: undefined,
+              source: null,
+              invocation: {
+                server: "google-drive",
+                tool: "create_document",
+                arguments: {},
+              },
+              result: {
+                type: "success",
+                content: [],
+                structuredContent: {
+                  title: "Reference Roadmap",
+                  document_url: driveUrl,
                 },
-                result: {
-                  type: "success",
+                raw: {
                   content: [],
                   structuredContent: {
                     title: "Reference Roadmap",
                     document_url: driveUrl,
                   },
-                  raw: {
-                    content: [],
-                    structuredContent: {
-                      title: "Reference Roadmap",
-                      document_url: driveUrl,
-                    },
-                    _meta: null,
-                  },
+                  _meta: null,
                 },
-                durationMs: null,
-                completed: true,
               },
+              durationMs: null,
+              completed: true,
             },
-            {
-              itemId: "assistant",
-              type: "agentMessage",
-              kind: "assistantMessage",
-              semanticKind: "assistantMessage",
-              markdownText: `Created [Draft](${driveUrl}).`,
-            },
-          ],
-          status: "completed",
-        },
-      ] as unknown as CodexConversationTurn[];
+          },
+          {
+            itemId: "assistant",
+            type: "agentMessage",
+            kind: "assistantMessage",
+            semanticKind: "assistantMessage",
+            markdownText: `Created [Draft](${driveUrl}).`,
+          },
+        ],
+        status: "completed",
+      },
+    ] as unknown as CodexConversationTurn[];
 
-      const view = renderSummary(
-        <ThreadFloatingSummaryPanel
-          mounted
-          open
-          activeThreadId="thread-1"
-          cwd={null}
-          projectWorkspacePath={null}
-          turns={turns}
-          onErrorMessage={() => undefined}
-        />,
-      );
+    const view = renderSummary(
+      <ThreadFloatingSummaryPanel
+        mounted
+        open
+        activeThreadId="thread-1"
+        cwd={null}
+        projectWorkspacePath={null}
+        turns={turns}
+        onErrorMessage={() => undefined}
+      />,
+    );
 
-      const outputRow = view
-        .getByText("Reference Roadmap")
-        .closest("[role='button']") as HTMLElement | null;
-      expect(Boolean(outputRow)).toBe(true);
-      await act(async () => {
-        fireEvent.click(outputRow as HTMLElement);
-      });
+    const outputRow = view
+      .getByText("Reference Roadmap")
+      .closest("[role='button']") as HTMLElement | null;
+    expect(Boolean(outputRow)).toBe(true);
+    await act(async () => {
+      fireEvent.click(outputRow as HTMLElement);
+    });
 
-      await waitFor(() => {
-        expect(openedUrls.join(",")).toBe(driveUrl);
-      });
-      expect(invokeCalls.some((call) => call[0] === "shell:open-file-link")).toBe(false);
-    } finally {
-      Object.defineProperty(window, "open", {
-        configurable: true,
-        value: originalOpen,
-      });
-    }
+    await waitFor(() =>
+      expect(outputOpeners.openLink).toHaveBeenCalledWith(
+        expect.objectContaining({ url: driveUrl, initiator: "mcp_app_resource" }),
+      ),
+    );
+    expect(invokeCalls.some((call) => call[0] === "shell:open-file-link")).toBe(false);
   });
 
   for (const projectless of [false, true]) {

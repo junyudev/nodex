@@ -1,3 +1,4 @@
+import { useThreadMentionRuntime } from "./thread-mention-chip";
 import { markdownBlocksForEditor } from "../../../../shared/nodex-markdown/blocknote";
 import { inlineImageInlineContentSpec } from "./inline-image-inline-content";
 import { BoardIcon, PageIcon } from "@/components/shared/icons";
@@ -50,6 +51,10 @@ import { editorCodeBlockOptions } from "./code-block-options";
 import { createNfmCodeBlockSpec } from "./nfm-code-block-spec";
 import { imageBlockSpec } from "./image-block";
 import { openNfmResolvedLinkAction, resolveNfmLinkAction } from "@/lib/nfm-link-actions";
+import { useFileReferenceIntent } from "@/lib/file-reference-intent";
+import { isEligibleMarkdownLinkContext, snapshotLinkActivation } from "@/lib/link-activation";
+import { useLinkOpening, useWebLinkNavigation } from "@/lib/web-link-navigation";
+import { openWebLinkContextMenu } from "@/lib/web-link-context-menu";
 import { useFileReferenceRouter } from "@/lib/file-reference-router";
 import { openFileReferenceContextMenu } from "@/components/shared/file-link-anchor";
 import { useTheme } from "@/lib/use-theme";
@@ -329,6 +334,10 @@ function ReadonlyNfmPreviewContent({
 }: ReadonlyMarkdownBlockNotePreviewProps) {
   const fileRuntime = useFilePlacementRuntime();
   const fileReferenceRouter = useFileReferenceRouter();
+  const sessionHost = useThreadMentionRuntime();
+  const linkOpening = useLinkOpening();
+  const webNavigation = useWebLinkNavigation();
+  const linkIntent = useFileReferenceIntent();
   const hostRuntime = useBlockReferenceHostRuntime();
   const { resolved: themeMode } = useTheme();
   const previewDocument = useMemo(() => createReadonlyNfmPreviewDocument(content), [content]);
@@ -370,10 +379,11 @@ function ReadonlyNfmPreviewContent({
       void fileReferenceRouter.open(action.target, {
         cwd: projectWorkspacePath,
         workspaceRoot: projectWorkspacePath,
+        sidePanel: linkIntent.sidePanel,
         ...options,
       });
     },
-    [fileReferenceRouter, projectWorkspacePath],
+    [fileReferenceRouter, projectWorkspacePath, linkIntent.sidePanel],
   );
 
   const findAnchorAction = useCallback(
@@ -406,7 +416,7 @@ function ReadonlyNfmPreviewContent({
 
       if (resolved.action.kind === "local-file" || resolved.action.kind === "workspace-file") {
         openLocalReference(resolved.action, {
-          external: event.metaKey || event.ctrlKey || event.altKey || event.shiftKey,
+          activation: snapshotLinkActivation(event),
           mode: "preview",
         });
         return;
@@ -418,16 +428,33 @@ function ReadonlyNfmPreviewContent({
         undefined,
         hostRuntime?.openPage
           ? {
+              openSession: sessionHost.openSession,
               openPage: (targetPageId) =>
                 hostRuntime.openPage?.({
                   routingContext: hostRuntime.contentRoutingContext,
                   pageId: targetPageId,
                 }),
             }
-          : undefined,
+          : { openSession: sessionHost.openSession },
+        {
+          openLink: linkOpening?.openLink,
+          hostId: fileReferenceRouter.hostId,
+          activation: snapshotLinkActivation(event),
+          markdownContext:
+            linkIntent.markdownContext &&
+            isEligibleMarkdownLinkContext(resolved.anchor, snapshotLinkActivation(event)),
+        },
       );
     },
-    [findAnchorAction, hostRuntime, openLocalReference],
+    [
+      findAnchorAction,
+      hostRuntime,
+      openLocalReference,
+      linkOpening,
+      fileReferenceRouter.hostId,
+      linkIntent.markdownContext,
+      sessionHost.openSession,
+    ],
   );
 
   const handleDoubleClickCapture = useCallback(
@@ -449,20 +476,39 @@ function ReadonlyNfmPreviewContent({
       if (event.button !== 1) return;
       const resolved = findAnchorAction(event);
       if (!resolved?.action) return;
-      if (resolved.action.kind !== "local-file" && resolved.action.kind !== "workspace-file")
-        return;
-
       event.preventDefault();
       event.stopPropagation();
-      openLocalReference(resolved.action, { external: true });
+      if (resolved.action.kind === "local-file" || resolved.action.kind === "workspace-file") {
+        openLocalReference(resolved.action, { activation: snapshotLinkActivation(event) });
+        return;
+      }
+      void openNfmResolvedLinkAction(resolved.action, undefined, undefined, undefined, undefined, {
+        openLink: linkOpening?.openLink,
+        hostId: fileReferenceRouter.hostId,
+        activation: snapshotLinkActivation(event),
+      });
     },
-    [findAnchorAction, openLocalReference],
+    [findAnchorAction, openLocalReference, linkOpening, fileReferenceRouter.hostId],
   );
 
   const handleContextMenuCapture = useCallback(
     (event: ReactMouseEvent<HTMLDivElement>) => {
       const resolved = findAnchorAction(event);
       if (!resolved?.action) return;
+      if (resolved.action.kind === "web-url") {
+        event.preventDefault();
+        event.stopPropagation();
+        const anchor = resolved.anchor;
+        void openWebLinkContextMenu({
+          url: resolved.action.url,
+          navigation: webNavigation,
+          x: event.clientX,
+          y: event.clientY,
+          selectedText: anchor.ownerDocument.getSelection()?.toString(),
+          isCurrent: () => anchor.isConnected && !anchor.closest("[inert]"),
+        }).catch(() => undefined);
+        return;
+      }
       if (resolved.action.kind !== "local-file" && resolved.action.kind !== "workspace-file")
         return;
 
@@ -472,6 +518,9 @@ function ReadonlyNfmPreviewContent({
       void openFileReferenceContextMenu({
         target: resolved.action.target,
         label,
+        sidePanel: linkIntent.sidePanel,
+        browserAvailable: linkOpening?.browserAvailable,
+        openLink: linkOpening?.openLink,
         open: (target, options) =>
           fileReferenceRouter.open(target, {
             cwd: projectWorkspacePath,
@@ -483,7 +532,14 @@ function ReadonlyNfmPreviewContent({
         y: event.clientY,
       }).catch(() => undefined);
     },
-    [fileReferenceRouter, findAnchorAction, projectWorkspacePath],
+    [
+      fileReferenceRouter,
+      findAnchorAction,
+      projectWorkspacePath,
+      linkIntent.sidePanel,
+      linkOpening,
+      webNavigation,
+    ],
   );
 
   return (

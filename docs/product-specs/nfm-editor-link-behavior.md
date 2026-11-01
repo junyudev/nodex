@@ -97,6 +97,13 @@ This is intentionally narrower than autolink behavior:
 - autolink decides whether plain text should become a link automatically
 - manual link editing decides how the submitted link target should be stored
 
+Web link activation in the Open action and read-only Page content uses the shared
+[Workbench link-opening rules](workbench-shell.md#link-opening), including the
+platform modifier snapshot and middle-click. Local files use the shared file
+reference owner and retain their directory and line location. Native target
+choices do not update the preferred opener. Nodex Page and Session destinations
+remain product navigation rather than Browser URLs.
+
 ## Submit-Time URL Rules
 
 The editor applies exactly one transformation at submit time:

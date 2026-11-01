@@ -15,14 +15,13 @@ import { BrowserSidebarTabIdentitySchema } from "../../shared/browser/browser-sc
 const MAX_PAGE_COUNT = 100;
 const MAX_NAVIGATION_ENTRIES = 500;
 const MAX_STORE_BYTES = 64 * 1_024 * 1_024;
-const MAX_URL_LENGTH = 16_384;
 const MAX_TITLE_LENGTH = 2_048;
 const MAX_PAGE_STATE_LENGTH = 2 * 1_024 * 1_024;
 
 const BrowserNavigationEntrySchema = z
   .object({
     title: z.string().max(MAX_TITLE_LENGTH),
-    url: z.string().max(MAX_URL_LENGTH),
+    url: z.string(),
     pageState: z.string().max(MAX_PAGE_STATE_LENGTH).optional(),
   })
   .strict();
@@ -33,9 +32,9 @@ const BrowserSerializedPageSchema = z
     runtime: z.literal("electron-webview"),
     browserStorageId: z.string().min(1).max(512),
     identity: BrowserSidebarTabIdentitySchema,
-    faviconUrl: z.string().max(MAX_URL_LENGTH).optional(),
+    faviconUrl: z.string().optional(),
     title: z.string().max(MAX_TITLE_LENGTH),
-    url: z.string().max(MAX_URL_LENGTH),
+    url: z.string(),
     updatedAt: z.number().finite().nonnegative(),
     navigation: z
       .object({

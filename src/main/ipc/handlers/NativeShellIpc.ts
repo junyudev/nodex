@@ -12,6 +12,7 @@ import {
 import { homedir } from "node:os";
 import { isAbsolute, sep } from "node:path";
 import type { NativeContextMenuItem } from "../../../shared/native-context-menu";
+import type { SystemDefaultBrowser } from "../../../shared/system-default-browser";
 import {
   buildSessionContextMenuIconSvg,
   getNativeContextMenuIconSvg,
@@ -38,6 +39,27 @@ export class NativeShellIpcError extends Schema.TaggedError<NativeShellIpcError>
   "NativeShellIpcError",
   { operation: Schema.String, cause: Schema.Defect() },
 ) {}
+
+async function readSystemDefaultBrowser(): Promise<SystemDefaultBrowser | null> {
+  try {
+    const info = await app.getApplicationInfoForProtocol("https://");
+    const name = info.name.trim();
+    if (name)
+      return {
+        name,
+        iconDataUrl: info.icon.isEmpty() ? null : info.icon.toDataURL(),
+        appPath: info.path || null,
+      };
+  } catch {
+    // Some platforms expose only the handler's name.
+  }
+  try {
+    const name = app.getApplicationNameForProtocol("https://").trim();
+    return name ? { name, iconDataUrl: null, appPath: null } : null;
+  } catch {
+    return null;
+  }
+}
 
 const menuTemplate = (
   items: readonly NativeContextMenuItem[],
@@ -256,6 +278,9 @@ export const live: Layer.Layer<
         ),
       ),
     );
+    yield* handleQuery("shell:default-browser:get", (event) =>
+      authorize(event).pipe(Effect.andThen(run("read-default-browser", readSystemDefaultBrowser))),
+    );
     yield* handleQuery("file-open-applications", (event, input: unknown) =>
       authorize(event).pipe(
         Effect.andThen(
@@ -295,7 +320,8 @@ export const live: Layer.Layer<
       authorize(event).pipe(
         Effect.andThen(
           run("open-external-url", async () => {
-            await desktop.shell.openExternal(parseExternalNavigationUrl(value).toString());
+            parseExternalNavigationUrl(value);
+            await desktop.shell.openExternal(value);
             return true;
           }),
         ),

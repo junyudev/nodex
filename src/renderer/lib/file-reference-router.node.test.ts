@@ -1,9 +1,37 @@
-import { describe, expect, test, vi } from "vite-plus/test";
+import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import {
   createFileReferenceRouter,
   openFileReferenceExternally,
   resolveFileReferenceTarget,
 } from "./file-reference-router";
+
+const operations = vi.hoisted(() => ({
+  metadata: vi.fn(),
+  save: vi.fn(),
+  targets: vi.fn(),
+  native: vi.fn(),
+  external: vi.fn(),
+}));
+vi.mock("./workspace-file-operations", () => ({
+  readWorkspaceFileMetadata: operations.metadata,
+  saveWorkspaceFileCopy: operations.save,
+}));
+vi.mock("./file-reference-open-targets", () => ({
+  readFileReferenceOpenTargets: operations.targets,
+  openFileReferenceTarget: operations.native,
+}));
+vi.mock("./file-system-operations", () => ({ openFileLink: operations.external }));
+beforeEach(() => {
+  vi.clearAllMocks();
+  operations.metadata.mockResolvedValue({ isFile: true });
+  operations.save.mockResolvedValue({ path: "/downloads/copy" });
+  operations.targets.mockResolvedValue({
+    primary: { id: "application:editor", label: "Editor", appPath: "/Applications/Editor.app" },
+    alternatives: [],
+  });
+  operations.native.mockResolvedValue(true);
+  operations.external.mockResolvedValue(true);
+});
 
 describe("file reference router", () => {
   test.each([
@@ -29,7 +57,7 @@ describe("file reference router", () => {
   });
   test("a relative remote request without a captured directory cannot reach Files or a native opener", async () => {
     const openWorkspaceFileTab = vi.fn(async () => true);
-    const router = createFileReferenceRouter({ opener: "vscode", port: { openWorkspaceFileTab } });
+    const router = createFileReferenceRouter({ port: { openWorkspaceFileTab } });
     expect(await router.open({ path: "src/file.ts" }, { hostId: "ssh:source" })).toBe(false);
     expect(openWorkspaceFileTab).not.toHaveBeenCalled();
   });
@@ -41,7 +69,7 @@ describe("file reference router", () => {
       current = false;
       return false;
     });
-    const router = createFileReferenceRouter({ opener: "vscode", port: { openWorkspaceFileTab } });
+    const router = createFileReferenceRouter({ port: { openWorkspaceFileTab } });
     expect(await router.open({ path: "/tmp/source.ts" }, { isCurrent })).toBe(false);
     expect(openWorkspaceFileTab).not.toHaveBeenCalled();
     current = true;
@@ -66,7 +94,7 @@ describe("file reference router", () => {
   });
   test("passes a remote host to Files and never falls back to a local opener", async () => {
     const openWorkspaceFileTab = vi.fn(async () => false);
-    const router = createFileReferenceRouter({ opener: "vscode", port: { openWorkspaceFileTab } });
+    const router = createFileReferenceRouter({ port: { openWorkspaceFileTab } });
     const target = { path: "C:/repo/file.md" };
     await expect(router.open(target, { hostId: "remote-ssh-discovered:win" })).resolves.toBe(false);
     expect(openWorkspaceFileTab).toHaveBeenCalledWith(
@@ -81,7 +109,6 @@ describe("file reference router", () => {
   test("uses the panel port for an ordinary file reference", async () => {
     const openWorkspaceFileTab = vi.fn(async () => true);
     const router = createFileReferenceRouter({
-      opener: "vscode",
       port: { openWorkspaceFileTab },
     });
 
@@ -112,21 +139,80 @@ describe("file reference router", () => {
     });
   });
 
-  test("falls back to Finder when the selected external opener cannot open", async () => {
-    const openExternal = vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true);
-
+  test("does not change the destination when a native opener fails", async () => {
+    const openExternal = vi.fn().mockResolvedValue(false);
     await expect(
-      openFileReferenceExternally(
-        { path: "/workspace/project/src/index.ts", line: 19 },
-        "vscode",
-        openExternal,
-      ),
-    ).resolves.toBe(true);
-
-    expect(openExternal).toHaveBeenNthCalledWith(
-      2,
-      { path: "/workspace/project/src/index.ts", line: 19 },
-      "fileManager",
-    );
+      openFileReferenceExternally({ path: "/repo/file.ts" }, "vscode", openExternal),
+    ).resolves.toBe(false);
+    expect(openExternal).toHaveBeenCalledExactlyOnceWith({ path: "/repo/file.ts" }, "vscode");
   });
+});
+
+test("local HTML renders internally independent of URL preferences, preserving native path escaping", async () => {
+  const openLink = vi.fn(async () => true);
+  const panel = vi.fn(async () => true);
+  const router = createFileReferenceRouter({
+    port: { openWorkspaceFileTab: panel },
+    links: { browserAvailable: true, openLink },
+  });
+  expect(await router.open({ path: "/repo/a #?%.HTML" }, { sidePanel: true })).toBe(true);
+  expect(openLink).toHaveBeenCalledExactlyOnceWith({
+    url: "file:///repo/a%20%23%3F%25.HTML",
+    hostId: "local",
+    initiator: "open_in_browser_bridge",
+    source: "manual",
+    openTarget: "in-app-browser",
+  });
+  expect(panel).not.toHaveBeenCalled();
+});
+test("modified local HTML retains side-panel source view while a user reference chooses its real native target", async () => {
+  const openLink = vi.fn(async () => true);
+  const panel = vi.fn(async () => true);
+  const router = createFileReferenceRouter({
+    port: { openWorkspaceFileTab: panel },
+    links: { browserAvailable: true, openLink },
+  });
+  const target = { path: "/repo/a.html" };
+  const activation = { platform: "darwin", metaKey: true };
+  await router.open(target, { activation });
+  expect(panel).toHaveBeenCalledWith(
+    expect.objectContaining({ path: target.path, mode: "preview" }),
+  );
+  await router.open(target, { sidePanel: false, activation });
+  expect(operations.native).toHaveBeenCalledWith(
+    expect.objectContaining({ appPath: "/Applications/Editor.app" }),
+    target,
+  );
+  expect(openLink).not.toHaveBeenCalled();
+});
+test("a directory named like HTML opens the file manager and a location stays in Files", async () => {
+  const openLink = vi.fn(async () => true);
+  const panel = vi.fn(async () => true);
+  const router = createFileReferenceRouter({
+    port: { openWorkspaceFileTab: panel },
+    links: { browserAvailable: true, openLink },
+  });
+  operations.metadata.mockResolvedValueOnce({ isFile: false });
+  await router.open({ path: "/repo/folder.html" });
+  expect(operations.external).toHaveBeenCalledExactlyOnceWith(
+    { path: "/repo/folder.html" },
+    "fileManager",
+  );
+  await router.open({ path: "/repo/a.html", line: 7, column: 3 });
+  expect(panel).toHaveBeenCalledWith(expect.objectContaining({ location: { line: 7, column: 3 } }));
+  expect(openLink).not.toHaveBeenCalled();
+});
+test("remote HTML retains its Files host and never enters local metadata or URL conversion", async () => {
+  const openLink = vi.fn(async () => true);
+  const panel = vi.fn(async () => true);
+  const router = createFileReferenceRouter({
+    port: { openWorkspaceFileTab: panel },
+    links: { browserAvailable: true, openLink },
+  });
+  await router.open({ path: "/repo/a.html" }, { hostId: "ssh:build", mode: "durable" });
+  expect(panel).toHaveBeenCalledWith(
+    expect.objectContaining({ hostId: "ssh:build", mode: "durable" }),
+  );
+  expect(openLink).not.toHaveBeenCalled();
+  expect(operations.metadata).not.toHaveBeenCalled();
 });

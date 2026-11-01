@@ -39,6 +39,48 @@ afterEach(() => {
 });
 
 describe("ApplicationSettings", () => {
+  it.effect(
+    "persists link destinations independently, validates shortcuts, and publishes saved changes",
+    () =>
+      Effect.gen(function* () {
+        const { root, settingsPath } = fixture('[plugin]\nname = "keep"\n');
+        const input = { environment: {}, hostHomeDirectory: root, settingsPath };
+        const settings = yield* makeApplicationSettings(input);
+        const defaults = {
+          openLinkInTarget: "external-browser",
+          openLocalUrlInTarget: "in-app-browser",
+          externalBrowserLinkShortcut: "primary",
+        } as const;
+        assert.deepEqual((yield* settings.snapshot()).linkOpening, defaults);
+        const changed = {
+          openLinkInTarget: "in-app-browser",
+          openLocalUrlInTarget: "external-browser",
+          externalBrowserLinkShortcut: "alt",
+        } as const;
+        const observed = yield* Deferred.make<void>();
+        const changes = yield* settings.linkOpeningSettingsChanges.pipe(
+          Stream.tap(() => Deferred.succeed(observed, undefined)),
+          Stream.take(2),
+          Stream.runCollect,
+          Effect.forkScoped,
+        );
+        yield* Deferred.await(observed);
+        yield* settings.update({ type: "update-link-opening", input: changed });
+        assert.deepEqual(yield* Fiber.join(changes), [defaults, changed]);
+        const reopened = yield* makeApplicationSettings(input);
+        assert.deepEqual((yield* reopened.snapshot()).linkOpening, changed);
+        const rejected = yield* Effect.result(
+          settings.update({
+            type: "update-link-opening",
+            input: { ...changed, externalBrowserLinkShortcut: "ctrl" as never },
+          }),
+        );
+        assert.strictEqual(rejected._tag, "Failure");
+        assert.deepEqual((yield* settings.snapshot()).linkOpening, changed);
+        assert.deepEqual(parseToml(readFileSync(settingsPath, "utf8")).plugin, { name: "keep" });
+      }),
+  );
+
   it.effect("persists Profile predictions and publishes only successful effective changes", () =>
     Effect.gen(function* () {
       const { root, settingsPath } = fixture('[plugin]\nname = "keep"\n');

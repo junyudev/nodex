@@ -375,6 +375,25 @@ console logs, current-page URLs, forms, clicks, and error/replay payloads from
 the default safe event set. The bundled Browser runtime has its own ambient
 network policy and is not enabled by Nodex telemetry preferences.
 
+## Link destinations
+
+Main owns the Profile's Browser link preferences in `[server]`. Settings changes
+are validated, saved atomically, and published to every open Desktop window.
+
+| Key                              | Values                                          | Effective default  |
+| -------------------------------- | ----------------------------------------------- | ------------------ |
+| `open_link_in_target`            | `in-app-browser`, `external-browser`            | `external-browser` |
+| `open_local_url_in_target`       | `in-app-browser`, `external-browser`            | `in-app-browser`   |
+| `external_browser_link_shortcut` | `unassigned`, `primary`, `alt`, `primary-shift` | `primary`          |
+
+**Web URL and link open destination** controls ordinary HTTP(S) links.
+**Local URL open destination** controls local development sites and local file
+URLs. The keyboard preference **Open web link in default browser** matches
+⌘ on macOS and Ctrl elsewhere; its assigned gesture applies only to HTTP(S)
+links without an explicit destination. These choices are independent of Agent
+Browser Use permission. A context without a Project or Session Browser owner
+opens links externally. See [Workbench link opening](product-specs/workbench-shell.md#link-opening).
+
 ## Related documentation
 
 - [Development](development.md) for local run and isolated Profile commands.

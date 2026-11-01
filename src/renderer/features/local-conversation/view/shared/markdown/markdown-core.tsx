@@ -10,6 +10,7 @@ import { ConversationVisualizationContext } from "../../inline-visualization-con
 import { LocalConversationInlineVisualization } from "../../local-conversation-inline-visualization";
 import { resolveInlineVisualizationMode } from "../../../../../lib/inline-visualization/inline-visualization-presentation";
 import { MARKDOWN_CONTENT_CLASS_NAME } from "@/components/shared/inline-markdown-code";
+import { FileReferenceIntentProvider } from "@/lib/file-reference-intent";
 import { FileLinkWorkspaceProvider } from "@/lib/file-link-workspace";
 import {
   FileMarkdownMediaProvider,
@@ -130,23 +131,25 @@ export function MarkdownCore({
         <FileMarkdownMediaProvider scope={fileMediaScope}>
           {dialect === "conversation" ? (
             <ConversationMarkdownItemSourceProvider source={nativeSource}>
-              <ConversationResources>
-                <ConversationTokenRenderer
-                  source={content}
-                  sourceIdentity={sourceIdentity}
-                  streaming={parseIncompleteMarkdown}
-                  animate={animateStreamingText}
-                  adaptive={adaptiveStreaming}
-                  components={conversationComponents}
-                  renderDirective={
-                    visualizationContext
-                      ? renderVisualizedConversationDirective
-                      : renderConversationDirective
-                  }
-                  renderInline={renderConversationInline}
-                  className={`[&>*:first-child]:mt-0 [&>*:last-child]:mb-0 ${MARKDOWN_CONTENT_CLASS_NAME}`}
-                />
-              </ConversationResources>
+              <FileReferenceIntentProvider sidePanel markdownContext>
+                <ConversationResources>
+                  <ConversationTokenRenderer
+                    source={content}
+                    sourceIdentity={sourceIdentity}
+                    streaming={parseIncompleteMarkdown}
+                    animate={animateStreamingText}
+                    adaptive={adaptiveStreaming}
+                    components={conversationComponents}
+                    renderDirective={
+                      visualizationContext
+                        ? renderVisualizedConversationDirective
+                        : renderConversationDirective
+                    }
+                    renderInline={renderConversationInline}
+                    className={`[&>*:first-child]:mt-0 [&>*:last-child]:mb-0 ${MARKDOWN_CONTENT_CLASS_NAME}`}
+                  />
+                </ConversationResources>
+              </FileReferenceIntentProvider>
             </ConversationMarkdownItemSourceProvider>
           ) : content ? (
             <MarkdownDocumentSurface

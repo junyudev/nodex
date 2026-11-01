@@ -1,4 +1,4 @@
-import { normalizeBrowserNavigationUrl } from "../../../shared/browser-url";
+import { normalizeBrowserAddressInput } from "../../../shared/browser-address-input";
 
 export interface BrowserAddressWorkspaceCandidate {
   readonly id: string;
@@ -40,10 +40,13 @@ export function buildBrowserAddressSuggestions<T extends BrowserAddressWorkspace
 ): readonly BrowserAddressSuggestion<T>[] {
   const title = value.trim();
   if (!title) return [];
-  const url = normalizeBrowserNavigationUrl(title);
+  const url = normalizeBrowserAddressInput(value);
   const typed: BrowserAddressSuggestion<T> = {
     id: "typed",
-    kind: url === `https://www.google.com/search?q=${encodeURIComponent(title)}` ? "search" : "url",
+    kind:
+      url === `https://www.google.com/search?${new URLSearchParams({ q: title }).toString()}`
+        ? "search"
+        : "url",
     title,
   };
   const query = readBrowserAddressWorkspaceQuery(title);

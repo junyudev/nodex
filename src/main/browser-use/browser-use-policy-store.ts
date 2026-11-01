@@ -232,7 +232,7 @@ export const makeBrowserUsePolicyRuntime = (
       try {
         origin = normalizeBrowserUsePolicyOrigin(urlOrOrigin);
       } catch {
-        return true;
+        return false;
       }
       const current = Ref.getUnsafe(state).snapshot;
       const originDenied = current.deniedOrigins.includes(origin);

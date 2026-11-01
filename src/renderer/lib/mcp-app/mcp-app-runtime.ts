@@ -1,3 +1,5 @@
+import { openLink } from "../link-opening";
+import type { LinkOpenRequest } from "../../../shared/link-opening";
 import { deriveMcpAppSandboxIdentity } from "../../../shared/mcp-app/mcp-app-sandbox-contract";
 import {
   MCP_APP_MAX_HEIGHT,
@@ -19,6 +21,9 @@ type McpAppDisplayMode = "inline" | "side-panel" | "fullscreen";
 export type McpAppRuntimeStatus = "error" | "loading" | "ready";
 
 export interface McpAppRuntimeConfig {
+  isFirstParty?: boolean;
+  hostId?: string;
+  openLink?: (request: LinkOpenRequest) => Promise<boolean>;
   capabilityId: string;
   currentToolName: string;
   resource: McpRenderableResource;
@@ -283,6 +288,11 @@ export class McpAppRuntime {
             threadId: this.#config.threadId,
           }),
         scope,
+        hostId: this.#config.hostId,
+        openLink: (request) => (this.#config.openLink ?? openLink)(request),
+        getDisplayMode: () => (this.#displayMode === "fullscreen" ? "modal" : this.#displayMode),
+        isFirstParty: this.#config.isFirstParty === true,
+        isCurrent: () => !this.#abortController.signal.aborted && this.element.isConnected,
         onBackgroundColor: (value) => {
           if (typeof value !== "string" || typeof CSS === "undefined") return;
           if (CSS.supports("color", value)) this.webview.style.backgroundColor = value;

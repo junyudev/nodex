@@ -434,14 +434,42 @@ has.
   messages are enumerated and rebound to that registered guest route; remote
   pages receive no Node, filesystem, arbitrary IPC/invoke, or credential
   capability.
-- Browser address, popup, external-protocol, page-context, and IPC navigation
-  all pass the same URL policy. `javascript:`, `data:`, credential-bearing URLs,
-  and unknown protocols never reach `loadURL`; external protocols require an
-  allowed scheme plus user-owned action. The Browser Profile grants only
-  top-frame sanitized clipboard writes by default. Permission check and request
-  handlers deny notifications, media, subframes, and all unrecognized
-  permissions; downloads require either a user action or an exact short-lived
-  Browser Use grant.
+- Browser navigation has distinct entry-point policies. Ordinary user and trusted
+  application loads pass their URL directly to Chromium, with empty tabs represented
+  by `about:blank`; they have no universal scheme, userinfo, or URL-length filter.
+  Address input normalization belongs to the address bar. Explicit external opening
+  accepts HTTP(S), file, mailto, sms, tel, supported VS Code links and the narrowly
+  validated password-manager broker URL. Error-page external opening accepts HTTPS
+  and local HTTP and requires the current tab failure. Link context-menu Browser
+  choices accept HTTP(S). Popups deny `other` and open other dispositions in Browser
+  tabs, preserving background selection and opener placement.
+- Browser Use claims and current-page assertions activate a per-page navigation
+  restriction. Explicit navigation, page navigation/redirect hooks and Session
+  main-frame/subframe requests admit HTTP(S) or exact `about:blank` while control is
+  active; subframes additionally admit `data:`, `about:blank` and `about:srcdoc`.
+  Claiming a page first validates its current URL. Release, deactivation and reset
+  clear the restriction. Blocked navigation is reported to the controlling Agent.
+  Origin approval rules remain separate; a non-origin URL is not itself an explicit
+  origin denial. Session requests also follow managed application network
+  requirements: internal/local-content schemes and the exact development renderer
+  origin are admitted; an active domain restriction otherwise admits only HTTPS/WSS
+  on allowed exact domains.
+- Browser permissions are Main-owned origin decisions shared by ordinary and Agent
+  tabs. Browser-default capabilities do not prompt; sensitive capabilities publish
+  an origin-attributed prompt on the requesting tab. Responses require its current
+  owner, renderer and host generations, presented mount, live page and unchanged
+  navigation. Allow and block decisions persist privately in the Browser Profile;
+  one-time grants expire when the tab leaves its origin or closes. Dismissal does
+  not retain a decision. Navigation, guest/renderer loss and teardown dismiss pending
+  requests. Site information reports effective permissions and can reset one or all
+  decisions for its current origin. Native input activation permits sanitized
+  clipboard writes without a prompt; there is no blanket main-frame grant. Device
+  and display capture remain blocked without a chooser. macOS camera/microphone
+  denial offers the corresponding privacy settings pane; stock Electron exposes
+  neither location OS status nor geolocation accuracy selection.
+- Ordinary registered-page downloads are allowed without a separate gesture token. Agent-controlled downloads require a
+  one-use grant matching the final download URL exactly, valid for ten seconds;
+  unmatched downloads do not consume it. Unknown download pages are rejected.
 - Browser credentials are encrypted synchronously with Electron `safeStorage`
   in a private Main-owned vault. Renderer results contain summary identity only;
   plaintext is decrypted only for an origin-matched one-use fill command to the

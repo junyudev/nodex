@@ -1,14 +1,26 @@
 import { createContext, useContext, useMemo, type ReactNode } from "react";
-import { type FileLinkOpenerId, type FileLinkTarget } from "../../shared/file-link-openers";
+import {
+  type FileLinkOpenerId,
+  type FileLinkTarget,
+  buildFileUrl,
+} from "../../shared/file-link-openers";
 import type { PanelId } from "./types";
 import { openFileLink, type FileLinkOpenPort } from "./file-system-operations";
-import { useFileLinkOpener } from "./use-file-link-opener";
 import {
   canonicalWorkbenchFilePath,
   WorkbenchAbsoluteFilePathSchema,
 } from "../../shared/workbench-resource-identity";
 import type { WorkspaceFileShowChanges } from "@/features/workspace-files/workspace-file-types";
-import { WebLinkNavigationProvider } from "./web-link-navigation";
+import { isBrowserHtmlFilePath } from "../../shared/browser-url-policy";
+import { decideFileReferenceOpen } from "./file-reference-opening";
+import type { LinkActivation } from "../../shared/link-opening";
+import {
+  readFileReferenceOpenTargets,
+  openFileReferenceTarget,
+} from "./file-reference-open-targets";
+import { readWorkspaceFileMetadata, saveWorkspaceFileCopy } from "./workspace-file-operations";
+import type { LinkRouter } from "./link-opening";
+import { WebLinkNavigationProvider, useLinkOpening } from "./web-link-navigation";
 import type { WebLinkNavigation } from "./web-link-context-menu";
 
 export type FileReferenceTarget = FileLinkTarget;
@@ -22,6 +34,9 @@ export interface FileReferenceOpenInput {
   readonly panelId?: PanelId;
   readonly mode?: "preview" | "durable";
   readonly external?: boolean;
+  readonly sidePanel?: boolean;
+  readonly previewSource?: boolean;
+  readonly activation?: LinkActivation;
   readonly opener?: FileLinkOpenerId;
   readonly isCurrent?: () => boolean;
 }
@@ -43,6 +58,7 @@ export interface FileReferenceRouterPort {
 }
 
 export interface FileReferenceRouter {
+  readonly browserAvailable?: boolean;
   readonly open: (
     target: FileReferenceTarget,
     options?: FileReferenceOpenInput,
@@ -86,31 +102,18 @@ export async function openFileReferenceExternally(
   isCurrent?: () => boolean,
 ): Promise<boolean> {
   if (isCurrent?.() === false) return false;
-  try {
-    const opened = await openExternal(target, opener);
-    if (opened) return true;
-  } catch {
-    // Try the deterministic file-manager fallback below.
-  }
-
-  if (opener === "fileManager") return false;
-  if (isCurrent?.() === false) return false;
-
-  try {
-    return await openExternal(target, "fileManager");
-  } catch {
-    return false;
-  }
+  return await openExternal(target, opener).catch(() => false);
 }
 
 export function createFileReferenceRouter({
-  opener,
   port,
+  links,
 }: {
-  readonly opener: FileLinkOpenerId;
   readonly port?: FileReferenceRouterPort | null;
+  readonly links?: LinkRouter;
 }): FileReferenceRouter {
   return {
+    browserAvailable: links?.browserAvailable ?? false,
     open: async (target, options) => {
       if (options?.isCurrent?.() === false) return false;
       const resolvedTarget = resolveFileReferenceTarget(
@@ -119,8 +122,50 @@ export function createFileReferenceRouter({
       );
       if (!resolvedTarget) return false;
       const hostId = options?.hostId ?? "local";
-      const external = options?.external === true;
-      if (!external && port) {
+      let directory = options?.kind === "directory" || /[\\/]$/u.test(target.path);
+      if (
+        !options?.kind &&
+        hostId === "local" &&
+        links?.browserAvailable &&
+        isBrowserHtmlFilePath(resolvedTarget.path)
+      ) {
+        const metadata = await readWorkspaceFileMetadata({ hostId, path: resolvedTarget.path });
+        directory = !metadata.isFile;
+      }
+      if (options?.isCurrent?.() === false) return false;
+      const decision = decideFileReferenceOpen({
+        target: resolvedTarget,
+        hostId,
+        directory,
+        browserAvailable: links?.browserAvailable ?? false,
+        sidePanel: options?.sidePanel,
+        previewSource: options?.previewSource,
+        explicitTarget: options?.external === true || options?.opener !== undefined,
+        activation: options?.activation,
+      });
+      if (decision === "save") {
+        const saved = await saveWorkspaceFileCopy({ hostId, path: resolvedTarget.path });
+        return saved.path !== null;
+      }
+      if (decision === "browser")
+        return links!.openLink({
+          url: buildFileUrl(resolvedTarget),
+          hostId,
+          initiator: "open_in_browser_bridge",
+          source: "manual",
+          openTarget: "in-app-browser",
+        });
+      if (decision === "file-manager")
+        return (
+          hostId === "local" &&
+          openFileReferenceExternally(
+            resolvedTarget,
+            "fileManager",
+            openFileLink,
+            options?.isCurrent,
+          )
+        );
+      if (decision === "files" && port) {
         const openedInPanel = await port.openWorkspaceFileTab({
           cwd: options?.cwd,
           hostId,
@@ -142,17 +187,20 @@ export function createFileReferenceRouter({
               }
             : {}),
         });
-        if (openedInPanel) return true;
-        if (options?.isCurrent?.() === false) return false;
+        return openedInPanel;
       }
-
+      if (decision === "files" && hostId !== "local") return false;
       if (hostId !== "local") return false;
-      return openFileReferenceExternally(
-        resolvedTarget,
-        options?.opener ?? opener,
-        openFileLink,
-        options?.isCurrent,
-      );
+      if (options?.opener)
+        return openFileReferenceExternally(
+          resolvedTarget,
+          options.opener,
+          openFileLink,
+          options.isCurrent,
+        );
+      const targets = await readFileReferenceOpenTargets(resolvedTarget.path);
+      if (options?.isCurrent?.() === false || !targets.primary) return false;
+      return openFileReferenceTarget(targets.primary, resolvedTarget);
     },
   };
 }
@@ -170,12 +218,12 @@ export function FileReferenceRouterProvider({
   readonly openBrowserWindow?: WebLinkNavigation["openWindow"];
   readonly workspaceRoot?: string | null;
 }) {
-  const { opener } = useFileLinkOpener();
+  const links = useLinkOpening();
   const port = useMemo<FileReferenceRouterPort | null>(() => {
     if (!openWorkspaceFileTab) return null;
     return { openWorkspaceFileTab };
   }, [openWorkspaceFileTab]);
-  const router = useMemo(() => createFileReferenceRouter({ opener, port }), [opener, port]);
+  const router = useMemo(() => createFileReferenceRouter({ port, links }), [port, links]);
   const value = useMemo<FileReferenceRouterContextValue>(
     () => ({
       ...router,
@@ -209,6 +257,7 @@ export function FileReferenceHostProvider({
   const parent = useFileReferenceRouter();
   const value = useMemo<FileReferenceRouterContextValue>(
     () => ({
+      browserAvailable: parent.browserAvailable,
       hostId,
       workspaceRoot,
       open: (target, options) =>
@@ -225,7 +274,6 @@ export function FileReferenceHostProvider({
 
 export function useFileReferenceRouter(): FileReferenceRouterContextValue {
   const context = useContext(FileReferenceRouterContext);
-  const { opener } = useFileLinkOpener();
-  const fallbackRouter = useMemo(() => createFileReferenceRouter({ opener }), [opener]);
+  const fallbackRouter = useMemo(() => createFileReferenceRouter({}), []);
   return context ?? { ...fallbackRouter, hostId: "local", workspaceRoot: null };
 }

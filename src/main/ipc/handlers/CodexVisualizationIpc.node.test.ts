@@ -142,7 +142,7 @@ it.effect("routes visualization reads only from the trusted app frame", () =>
   ),
 );
 
-it.effect("requires and consumes the owning guest's gesture once before opening HTTPS", () =>
+it.effect("requires and consumes the owning guest's gesture once before authorizing HTTPS", () =>
   setup(({ handlers, gestures, grant }) =>
     Effect.gen(function* () {
       openExternal.mockClear();
@@ -159,7 +159,7 @@ it.effect("requires and consumes the owning guest's gesture once before opening 
         [owner.sender, sandboxId, "document-one"],
         [owner.sender, sandboxId, "document-one"],
       ]);
-      assert.deepEqual(openExternal.mock.calls, [["https://example.com/plot"]]);
+      assert.deepEqual(openExternal.mock.calls, []);
     }),
   ),
 );
@@ -300,6 +300,20 @@ it.effect("validates a resumable guest presentation before dispatching to its ow
         "Failure",
       );
       assert.strictEqual(presentations.length, 1);
+    }),
+  ),
+);
+
+it.effect("Nodex resource navigation requires the same single-use guest gesture", () =>
+  setup(({ handlers, grant }) =>
+    Effect.gen(function* () {
+      openExternal.mockClear();
+      const input = { sandboxId, initId: "document-one", href: "nodex://sessions/session-1" };
+      const handler = handlers.get("codex:visualization:open-external")!;
+      assert.strictEqual(yield* handler(event(), input), false);
+      grant();
+      assert.strictEqual(yield* handler(event(), input), true);
+      assert.deepEqual(openExternal.mock.calls, [["nodex://sessions/session-1"]]);
     }),
   ),
 );

@@ -9,12 +9,18 @@ const identity = {
   browserTabId: "tab",
 };
 
-it.effect("returns Main-owned origin, cookie count, and fail-closed permissions", () =>
+it.effect("returns Main-owned origin, cookie count, and current permission decisions", () =>
   Effect.gen(function* () {
     const cookies = { get: vi.fn(async () => [{}, {}]) };
     const runtime = makeBrowserSiteInfoRuntime(
       { getTabSnapshot: () => ({ url: "https://example.com/path?private=1" }) },
       cookies,
+      {
+        sitePermissions: () => [
+          { permission: "camera", state: "allow" },
+          { permission: "notifications", state: "ask" },
+        ],
+      },
     );
 
     const siteInfo = yield* runtime.get(identity);
@@ -24,8 +30,8 @@ it.effect("returns Main-owned origin, cookie count, and fail-closed permissions"
       connection: "secure",
       cookieCount: 2,
     });
-    assert.deepInclude(siteInfo.permissions, { permission: "camera", state: "block" });
-    assert.deepInclude(siteInfo.permissions, { permission: "notifications", state: "block" });
+    assert.deepInclude(siteInfo.permissions, { permission: "camera", state: "allow" });
+    assert.deepInclude(siteInfo.permissions, { permission: "notifications", state: "ask" });
     assert.deepEqual(cookies.get.mock.calls[0], [{ url: "https://example.com/path?private=1" }]);
   }),
 );
@@ -36,10 +42,12 @@ it.effect("classifies localhost separately from insecure remote HTTP", () =>
     const local = makeBrowserSiteInfoRuntime(
       { getTabSnapshot: () => ({ url: "http://localhost:3000/" }) },
       cookieStore,
+      { sitePermissions: () => [] },
     );
     const remote = makeBrowserSiteInfoRuntime(
       { getTabSnapshot: () => ({ url: "http://example.com/" }) },
       cookieStore,
+      { sitePermissions: () => [] },
     );
 
     assert.strictEqual((yield* local.get(identity)).connection, "local");

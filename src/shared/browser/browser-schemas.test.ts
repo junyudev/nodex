@@ -29,6 +29,25 @@ describe("Browser IPC schemas", () => {
     });
   });
 
+  test("admits URLs beyond the general transport byte budget while retaining non-URL bounds", () => {
+    const url = `data:text/html,${"x".repeat(80_000)}`;
+    expect(parseBrowserSidebarCommand({ type: "navigate", ...identity, url })).toMatchObject({
+      url,
+    });
+    expect(
+      parseBrowserSidebarWebviewHostCreated({
+        ...identity,
+        rendererInstanceId: "renderer-1",
+        hostGeneration: 1,
+        projectId: null,
+        hostKind: "panel",
+        mountGeneration: 1,
+        webContentsId: 42,
+        initialUrl: url,
+      }),
+    ).toMatchObject({ initialUrl: url });
+  });
+
   test("validates generation-bound host presentation and theme sync", () => {
     expect(
       parseBrowserSidebarCommand({
@@ -153,4 +172,40 @@ describe("Browser IPC schemas", () => {
       }).success,
     ).toBe(false);
   });
+});
+
+test("validates permission responses and origin permission reset commands", () => {
+  const response = {
+    ...identity,
+    type: "respond-permission",
+    promptId: "permission-1",
+    mountGeneration: 2,
+    action: "allow-this-time",
+  };
+  expect(parseBrowserSidebarCommand(response)).toEqual(response);
+  expect(() => parseBrowserSidebarCommand({ ...response, promptId: "" })).toThrow();
+  expect(() => parseBrowserSidebarCommand({ ...response, action: "accept" })).toThrow();
+  expect(() => parseBrowserSidebarCommand({ ...response, mountGeneration: 0 })).toThrow();
+  expect(() =>
+    parseBrowserSidebarCommand({ ...response, action: "deny", geolocationAccuracy: "precise" }),
+  ).toThrow();
+  expect(() =>
+    parseBrowserSidebarCommand({ ...response, geolocationAccuracy: "street" }),
+  ).toThrow();
+  expect(
+    parseBrowserSidebarCommand({
+      ...identity,
+      type: "reset-site-permissions",
+      origin: "https://example.com",
+      permission: "camera",
+    }),
+  ).toMatchObject({ permission: "camera" });
+  expect(() =>
+    parseBrowserSidebarCommand({
+      ...identity,
+      type: "reset-site-permissions",
+      origin: "https://example.com",
+      permission: "unknown",
+    }),
+  ).toThrow();
 });

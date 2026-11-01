@@ -1,3 +1,4 @@
+import { useThreadMentionRuntime } from "@/components/board/editor/thread-mention-chip";
 import { FileLinkWorkspaceContext } from "@/lib/file-link-workspace";
 import {
   useContext,
@@ -16,7 +17,11 @@ export { openFileReferenceContextMenu } from "@/lib/file-reference-context-menu"
 import { resolveNfmLinkAction, resolveNfmLinkTooltipLabel } from "@/lib/nfm-link-actions";
 import { cn } from "@/lib/utils";
 import { openWebLinkContextMenu } from "@/lib/web-link-context-menu";
-import { useWebLinkNavigation } from "@/lib/web-link-navigation";
+import { isEligibleMarkdownLinkContext, snapshotLinkActivation } from "@/lib/link-activation";
+import { useFileReferenceIntent } from "@/lib/file-reference-intent";
+import { openLink } from "@/lib/link-opening";
+import { useBlockReferenceHostRuntime } from "@/components/block-documents/block-reference-runtime-context";
+import { useLinkOpening, useWebLinkNavigation } from "@/lib/web-link-navigation";
 
 interface FileLinkAnchorProps {
   href?: string;
@@ -66,6 +71,10 @@ export function FileLinkAnchor({
   showLocalFileTooltip = false,
   projectWorkspacePath,
 }: FileLinkAnchorProps) {
+  const links = useLinkOpening();
+  const intent = useFileReferenceIntent();
+  const pageHost = useBlockReferenceHostRuntime();
+  const sessionHost = useThreadMentionRuntime();
   const inheritedWorkspacePath = useContext(FileLinkWorkspaceContext);
   const router = useFileReferenceRouter();
   const webNavigation = useWebLinkNavigation();
@@ -82,8 +91,32 @@ export function FileLinkAnchor({
       event.preventDefault();
       event.stopPropagation();
       if (action.kind === "blocked" || action.kind === "unresolved-file-like") return;
+      if (action.kind === "session") {
+        sessionHost.openSession?.(action.sessionId);
+        return;
+      }
+      if (action.kind === "page") {
+        void pageHost?.openPage?.({
+          routingContext: pageHost.contentRoutingContext,
+          pageId: action.pageId,
+        });
+        return;
+      }
       if (action.kind === "web-url") {
-        window.open(action.url, "_blank", "noopener,noreferrer");
+        const element = event.currentTarget;
+        const activation = snapshotLinkActivation(event);
+        const markdownContext =
+          intent.markdownContext &&
+          links?.browserAvailable === true &&
+          isEligibleMarkdownLinkContext(element, activation);
+        void (links?.openLink ?? openLink)({
+          url: action.url,
+          hostId: router.hostId,
+          initiator: "markdown_link_click",
+          activation,
+          markdownContext,
+          ...(!/^https?:/iu.test(action.url) ? { useExternalBrowser: true } : {}),
+        });
       }
     };
 
@@ -92,6 +125,9 @@ export function FileLinkAnchor({
         href={href}
         data-agent-activity-file-link
         onClick={handleClick}
+        onAuxClick={(event) => {
+          if (event.button === 1) handleClick(event);
+        }}
         onContextMenu={(event) => {
           if (action?.kind !== "web-url" || !/^https?:\/\//iu.test(action.url)) return;
           event.preventDefault();
@@ -190,6 +226,8 @@ export function FileReferenceButton({
   hostId: explicitHostId,
   tooltipLabel,
   isCurrent: sourceIsCurrent,
+  sidePanel: explicitSidePanel,
+  mode = "preview",
 }: {
   readonly target: Readonly<FileLinkTarget>;
   readonly href?: string;
@@ -201,7 +239,12 @@ export function FileReferenceButton({
   readonly hostId?: string;
   readonly tooltipLabel?: string | null;
   readonly isCurrent?: () => boolean;
+  readonly sidePanel?: boolean;
+  readonly mode?: "preview" | "durable";
 }) {
+  const intent = useFileReferenceIntent();
+  const sidePanel = explicitSidePanel ?? intent.sidePanel;
+  const links = useLinkOpening();
   const isCurrent = sourceIsCurrent ?? isCurrentReference;
   const inheritedWorkspace = useContext(FileLinkWorkspaceContext);
   const router = useFileReferenceRouter();
@@ -211,14 +254,18 @@ export function FileReferenceButton({
       ? projectWorkspacePath
       : (inheritedWorkspace?.workspacePath ?? router.workspaceRoot);
   const cwd = explicitCwd !== undefined ? explicitCwd : (inheritedWorkspace?.cwd ?? workspacePath);
+  const kind = /[\\/]$/u.test(target.path) ? "directory" : undefined;
   const resolvedTarget = resolveFileReferenceTarget(target, cwd ?? workspacePath);
   const open = (options?: Parameters<typeof router.open>[1]) => {
     if (!resolvedTarget || !isCurrent()) return;
     void router.open(resolvedTarget, {
       hostId,
+      ...(kind ? { kind } : {}),
       cwd,
       workspaceRoot: workspacePath,
       title: label,
+      sidePanel,
+      mode,
       ...(sourceIsCurrent ? { isCurrent } : {}),
       ...options,
     });
@@ -239,8 +286,8 @@ export function FileReferenceButton({
         event.preventDefault();
         event.stopPropagation();
         open({
-          external: event.metaKey || event.ctrlKey || event.altKey || event.shiftKey,
-          mode: "preview",
+          activation: snapshotLinkActivation(event),
+          mode,
         });
       }}
       onDoubleClick={(event) => {
@@ -252,7 +299,7 @@ export function FileReferenceButton({
         if (event.button !== 1) return;
         event.preventDefault();
         event.stopPropagation();
-        open({ external: true });
+        open({ activation: snapshotLinkActivation(event) });
       }}
       onKeyDown={(event) => {
         if (event.key === "ContextMenu" || (event.key === "F10" && event.shiftKey)) {
@@ -261,6 +308,9 @@ export function FileReferenceButton({
           const bounds = event.currentTarget.getBoundingClientRect();
           void openFileReferenceContextMenu({
             hostId,
+            sidePanel,
+            browserAvailable: links?.browserAvailable,
+            openLink: links?.openLink,
             target: resolvedTarget,
             label,
             isCurrent,
@@ -268,9 +318,11 @@ export function FileReferenceButton({
               isCurrent() &&
               router.open(nextTarget, {
                 hostId,
+                ...(kind ? { kind } : {}),
                 cwd,
                 workspaceRoot: workspacePath,
                 title: label,
+                sidePanel,
                 ...(sourceIsCurrent ? { isCurrent } : {}),
                 ...options,
               }),
@@ -282,11 +334,20 @@ export function FileReferenceButton({
         if (event.key !== "Enter" && event.key !== " ") return;
         event.preventDefault();
         event.stopPropagation();
-        open({ mode: "preview" });
+        if (event.key === "Enter") open({ activation: snapshotLinkActivation(event), mode });
+      }}
+      onKeyUp={(event) => {
+        if (event.key !== " ") return;
+        event.preventDefault();
+        event.stopPropagation();
+        open({ activation: snapshotLinkActivation(event), mode });
       }}
       onContextMenu={(event) => {
         void handleFileReferenceContextMenu(event, {
           hostId,
+          sidePanel,
+          browserAvailable: links?.browserAvailable,
+          openLink: links?.openLink,
           target: resolvedTarget,
           label,
           isCurrent,
@@ -294,9 +355,11 @@ export function FileReferenceButton({
             isCurrent() &&
             router.open(nextTarget, {
               hostId,
+              ...(kind ? { kind } : {}),
               cwd,
               workspaceRoot: workspacePath,
               title: label,
+              sidePanel,
               ...(sourceIsCurrent ? { isCurrent } : {}),
               ...options,
             }),

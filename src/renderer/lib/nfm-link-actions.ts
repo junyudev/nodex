@@ -1,12 +1,16 @@
 import {
   parseLocalFileLinkHref,
+  parseFileReferenceLocation,
   type FileLinkOpenerId,
   type FileLinkTarget,
 } from "../../shared/file-link-openers";
 import { readFileLinkOpener } from "./file-link-opener-settings";
 import { openFileLink, type FileLinkOpenPort } from "./file-system-operations";
 import { DEFAULT_NFM_AUTOLINK_SETTINGS, shouldAutoLinkValue } from "./nfm-autolink-settings";
-import { parsePageDeepLink } from "../../shared/nodex-deeplink";
+import { openLink } from "./link-opening";
+import type { LinkOpenRequest } from "../../shared/link-opening";
+import { isExternallyOpenableUrl } from "../../shared/browser-url-policy";
+import { parsePageDeepLink, parseSessionDeepLink } from "../../shared/nodex-deeplink";
 
 const LIKELY_RELATIVE_FILE_SUFFIXES = new Set([
   "avif",
@@ -22,6 +26,7 @@ const LIKELY_RELATIVE_FILE_SUFFIXES = new Set([
   "go",
   "heic",
   "html",
+  "htm",
   "java",
   "jpeg",
   "jpg",
@@ -54,6 +59,7 @@ const LIKELY_RELATIVE_FILE_SUFFIXES = new Set([
 ]);
 
 export type NfmResolvedLinkAction =
+  | { kind: "session"; href: string; sessionId: string }
   | { kind: "page"; href: string; pageId: string }
   | { kind: "local-file" | "workspace-file"; href: string; target: FileLinkTarget }
   | { kind: "web-url"; href: string; url: string }
@@ -67,7 +73,8 @@ export interface NfmLinkNavigation {
 }
 
 export interface NfmPageLinkNavigation {
-  readonly openPage: (pageId: string) => void | Promise<void>;
+  readonly openSession?: (sessionId: string) => void | Promise<void>;
+  readonly openPage?: (pageId: string) => void | Promise<void>;
 }
 
 function hasExplicitProtocol(value: string): boolean {
@@ -76,46 +83,6 @@ function hasExplicitProtocol(value: string): boolean {
 
 function isLiteralAnchorOrQuery(value: string): boolean {
   return value.startsWith("#") || value.startsWith("?");
-}
-
-function splitHash(value: string): { pathPart: string; fragment: string } {
-  const hashIndex = value.indexOf("#");
-  if (hashIndex < 0) {
-    return { pathPart: value, fragment: "" };
-  }
-
-  return {
-    pathPart: value.slice(0, hashIndex),
-    fragment: value.slice(hashIndex + 1),
-  };
-}
-
-function parsePositiveInteger(value: string | undefined): number | undefined {
-  if (!value) return undefined;
-
-  const parsed = Number.parseInt(value, 10);
-  if (!Number.isSafeInteger(parsed) || parsed <= 0) return undefined;
-  return parsed;
-}
-
-function parseLineColumnFragment(
-  fragment: string,
-): Pick<FileLinkTarget, "line" | "column" | "endLine" | "endColumn"> {
-  const match = /^L(\d+)(?:C(\d+))?(?:-L?(\d+)(?:C(\d+))?)?$/i.exec(fragment.trim());
-  if (!match) return {};
-
-  const line = parsePositiveInteger(match[1]);
-  const column = parsePositiveInteger(match[2]);
-  if (!line) return {};
-
-  const endLine = parsePositiveInteger(match[3]);
-  const endColumn = parsePositiveInteger(match[4]);
-  return {
-    line,
-    ...(column ? { column } : {}),
-    ...(endLine ? { endLine } : {}),
-    ...(endColumn ? { endColumn } : {}),
-  };
 }
 
 function isWindowsAbsolutePath(value: string): boolean {
@@ -169,11 +136,12 @@ function resolveRelativePathAgainstWorkspace(
     resolvedSegments.push(segment);
   }
 
+  const directory = /[\\/]$/u.test(trimmedRelativePath);
   if (windowsBase) {
-    return resolvedSegments.join("\\");
+    return resolvedSegments.join("\\") + (directory ? "\\" : "");
   }
 
-  return `/${resolvedSegments.join("/")}`;
+  return `/${resolvedSegments.join("/")}${directory ? "/" : ""}`;
 }
 
 function resolveWorkspaceFileTarget(
@@ -182,13 +150,19 @@ function resolveWorkspaceFileTarget(
 ): FileLinkTarget | null {
   if (!projectWorkspacePath?.trim()) return null;
 
-  const { pathPart, fragment } = splitHash(href);
-  const resolvedPath = resolveRelativePathAgainstWorkspace(projectWorkspacePath, pathPart);
+  const target = parseFileReferenceLocation(href);
+  let path: string;
+  try {
+    path = decodeURIComponent(target.path);
+  } catch {
+    return null;
+  }
+  const resolvedPath = resolveRelativePathAgainstWorkspace(projectWorkspacePath, path);
   if (!resolvedPath) return null;
 
   return {
+    ...target,
     path: resolvedPath,
-    ...parseLineColumnFragment(fragment),
   };
 }
 
@@ -221,6 +195,9 @@ export function resolveNfmLinkAction(
   const trimmed = href.trim();
   if (!trimmed) return null;
 
+  const sessionTarget = parseSessionDeepLink(trimmed);
+  if (sessionTarget) return { kind: "session", href: trimmed, sessionId: sessionTarget.sessionId };
+
   const pageTarget = parsePageDeepLink(trimmed);
   if (pageTarget) {
     return { kind: "page", href: trimmed, pageId: pageTarget.pageId };
@@ -235,7 +212,11 @@ export function resolveNfmLinkAction(
     return { kind: "literal-anchor", href: trimmed };
   }
 
-  if (shouldAutoLinkValue(trimmed, DEFAULT_NFM_AUTOLINK_SETTINGS)) {
+  if (
+    isExternallyOpenableUrl(trimmed) ||
+    (parseFileReferenceLocation(trimmed).line === undefined &&
+      shouldAutoLinkValue(trimmed, DEFAULT_NFM_AUTOLINK_SETTINGS))
+  ) {
     return {
       kind: "web-url",
       href: trimmed,
@@ -243,7 +224,11 @@ export function resolveNfmLinkAction(
     };
   }
 
-  if (isLikelyRelativeFileLike(trimmed)) {
+  if (
+    !isExternallyOpenableUrl(trimmed) &&
+    (parseFileReferenceLocation(trimmed).line !== undefined ||
+      isLikelyRelativeFileLike(parseFileReferenceLocation(trimmed).path))
+  ) {
     const workspaceTarget = resolveWorkspaceFileTarget(trimmed, projectWorkspacePath);
     if (workspaceTarget) {
       return { kind: "workspace-file", href: trimmed, target: workspaceTarget };
@@ -305,23 +290,35 @@ export async function openNfmResolvedLinkAction(
   openFile: FileLinkOpenPort = openFileLink,
   navigation: NfmLinkNavigation = {
     assign: (href) => window.location.assign(href),
-    open: (url, target, features) => {
-      window.open(url, target, features);
-    },
+    open: () => undefined,
   },
   pageNavigation?: NfmPageLinkNavigation,
+  linkRequest?: Omit<LinkOpenRequest, "url" | "initiator"> & {
+    readonly openLink?: typeof openLink;
+  },
 ): Promise<boolean> {
   if (action.kind === "blocked" || action.kind === "unresolved-file-like") {
     return false;
   }
 
   if (action.kind === "web-url") {
-    navigation.open(action.url, "_blank", "noopener,noreferrer");
+    const { openLink: open = openLink, ...request } = linkRequest ?? {};
+    return open({
+      ...request,
+      url: action.url,
+      initiator: "markdown_link_click",
+      ...(!/^https?:/iu.test(action.url) ? { useExternalBrowser: true } : {}),
+    });
+  }
+
+  if (action.kind === "session") {
+    if (!pageNavigation?.openSession) return false;
+    await pageNavigation.openSession(action.sessionId);
     return true;
   }
 
   if (action.kind === "page") {
-    if (!pageNavigation) return false;
+    if (!pageNavigation?.openPage) return false;
     await pageNavigation.openPage(action.pageId);
     return true;
   }

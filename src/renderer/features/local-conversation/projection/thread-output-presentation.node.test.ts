@@ -92,11 +92,11 @@ describe("describeThreadOutput", () => {
 describe("resolveThreadOutputOpenAction", () => {
   test("renders HTML in the default browser and images in the viewer on this device", () => {
     expect(resolveThreadOutputOpenAction(file(`${cwd}/report/index.html`), "local")).toEqual({
-      type: "default-app",
+      type: "files",
       path: `${cwd}/report/index.html`,
     });
     expect(resolveThreadOutputOpenAction(file(`${cwd}/after.PNG`), "local")).toEqual({
-      type: "image-preview",
+      type: "files",
       path: `${cwd}/after.PNG`,
     });
     expect(resolveThreadOutputOpenAction(file(`${cwd}/notes.md`), "local")).toEqual({

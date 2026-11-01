@@ -1,6 +1,14 @@
 import type { CodexSubagentRow } from "../../../../../shared/codex-subagent-row-model";
 import { PictureInPicture2, Slash } from "@/components/shared/icons/generic-icons";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import {
   BranchStatusIcon,
   ChevronDownIcon,
@@ -55,10 +63,8 @@ import {
   type BackgroundSubagentCompactStripModel,
 } from "../../projection/background-subagent-summary-model";
 import { useThreadSummaryOutputRows } from "../../use-turn-end-resources";
-import {
-  describeThreadOutput,
-  isExternalThreadOutputOpen,
-} from "../../projection/thread-output-presentation";
+import { describeThreadOutput } from "../../projection/thread-output-presentation";
+import { useThreadOutputDestination } from "../use-thread-output-destination";
 import {
   isContextMenuKey,
   ThreadOutputIcon,
@@ -588,6 +594,44 @@ function BackgroundSubagentRowTrailing({
       additions={row.diffStats.linesAdded}
       deletions={row.diffStats.linesRemoved}
       className="shrink-0 text-sm"
+    />
+  );
+}
+
+/** One output in the summary, marked when opening it leaves Nodex. */
+function ThreadSummaryOutputRow({
+  row,
+  cwd,
+  hostId,
+  outputs,
+  onOpen,
+}: {
+  row: ThreadSummaryPanelOutputRow;
+  cwd: string | null | undefined;
+  hostId: string;
+  outputs: ReturnType<typeof useThreadOutputOpener>;
+  onOpen: (
+    row: ThreadSummaryPanelOutputRow,
+    event: ReactMouseEvent<HTMLElement> | ReactKeyboardEvent<HTMLElement>,
+  ) => void;
+}) {
+  const destination = useThreadOutputDestination(row, hostId);
+  return (
+    <ThreadSummaryPanelRow
+      label={describeThreadOutput(row, cwd).title}
+      title={row.title}
+      icon={<ThreadOutputIcon row={row} className="size-4" />}
+      trailing={
+        destination === "external-browser" ? (
+          <OpenInIcon className="icon-xs" aria-hidden />
+        ) : undefined
+      }
+      interactive
+      onClick={(event) => onOpen(row, event)}
+      onContextMenu={(event) => outputs.openContextMenu(row, event)}
+      onKeyDown={(event) => {
+        if (isContextMenuKey(event)) outputs.openContextMenu(row, event);
+      }}
     />
   );
 }
@@ -1176,9 +1220,12 @@ export function ThreadSummaryPanelSurface({
     cwd,
     workspaceRoot: projectWorkspacePath,
   });
-  const handleOpenOutput = (row: ThreadSummaryPanelOutputRow, origin: HTMLElement) => {
+  const handleOpenOutput = (
+    row: ThreadSummaryPanelOutputRow,
+    event: ReactMouseEvent<HTMLElement> | ReactKeyboardEvent<HTMLElement>,
+  ) => {
     onErrorMessage(null);
-    void outputs.open(row, origin).then((opened) => {
+    void outputs.openFromEvent(row, event).then((opened) => {
       if (!opened) onErrorMessage("Could not open output");
     });
   };
@@ -1488,22 +1535,13 @@ export function ThreadSummaryPanelSurface({
                       }
                     >
                       {outputRows.map((row) => (
-                        <ThreadSummaryPanelRow
+                        <ThreadSummaryOutputRow
                           key={row.id}
-                          label={describeThreadOutput(row, cwd).title}
-                          title={row.title}
-                          icon={<ThreadOutputIcon row={row} className="size-4" />}
-                          trailing={
-                            isExternalThreadOutputOpen(row, sourceRoot?.hostId ?? "local") ? (
-                              <OpenInIcon className="icon-xs" aria-hidden />
-                            ) : undefined
-                          }
-                          interactive
-                          onClick={(event) => handleOpenOutput(row, event.currentTarget)}
-                          onContextMenu={(event) => outputs.openContextMenu(row, event)}
-                          onKeyDown={(event) => {
-                            if (isContextMenuKey(event)) outputs.openContextMenu(row, event);
-                          }}
+                          row={row}
+                          cwd={cwd}
+                          hostId={sourceRoot?.hostId ?? "local"}
+                          outputs={outputs}
+                          onOpen={handleOpenOutput}
                         />
                       ))}
                     </ThreadSummaryPanelSection>

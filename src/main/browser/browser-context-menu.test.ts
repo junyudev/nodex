@@ -34,6 +34,7 @@ function makeActions() {
     inspect: vi.fn(),
     openExternal: vi.fn(),
     openLink: vi.fn(),
+    openWindow: vi.fn(),
     reload: vi.fn(),
   };
 }
@@ -111,7 +112,8 @@ describe("buildBrowserContextMenuTemplate", () => {
         item.type === "separator" ? "separator" : (item.role ?? item.label),
       ),
     ).toEqual([
-      "Open link in new tab",
+      "Open in new tab",
+      "Open in new window",
       "Open in external browser",
       "separator",
       "Copy link address",
@@ -121,10 +123,10 @@ describe("buildBrowserContextMenuTemplate", () => {
       "separator",
       "Inspect",
     ]);
-    expect(editableTemplate[6]?.enabled).toBe(false);
+    expect(editableTemplate[7]?.enabled).toBe(false);
   });
 
-  test("never exposes credential-bearing or script links", () => {
+  test("offers HTTP links with credentials in all link destinations", () => {
     const template = buildBrowserContextMenuTemplate({
       actions: makeActions(),
       canAnnotate: false,
@@ -137,6 +139,9 @@ describe("buildBrowserContextMenuTemplate", () => {
     });
 
     expect(template.map((item) => item.label).filter(Boolean)).toEqual([
+      "Open in new tab",
+      "Open in new window",
+      "Open in external browser",
       "Copy link address",
       "Inspect",
     ]);

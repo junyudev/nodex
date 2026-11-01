@@ -114,7 +114,7 @@ function decodeFileUrlPath(value: string): string | null {
     if (url.protocol !== "file:") return null;
     const path = decodeURIComponent(url.pathname);
     if (url.host && url.host !== "localhost") return `//${url.host}${path}`;
-    return path;
+    return /^\/[a-z]:[\\/]/iu.test(path) ? path.slice(1) : path;
   } catch {
     return null;
   }
@@ -140,40 +140,48 @@ export function normalizeFileLinkOpenerId(value: unknown): FileLinkOpenerId {
   return DEFAULT_FILE_LINK_OPENER_ID;
 }
 
-export function parseLocalFileLinkHref(href: string): FileLinkTarget | null {
-  if (typeof href !== "string") return null;
+/** One location grammar for native paths, URI paths and relative Markdown references. */
+export function parseFileReferenceLocation(value: string): FileLinkTarget {
+  const hash = /#(L\d+(?:C\d+)?(?:[-–]L?\d+(?:C\d+)?)?)$/iu.exec(value);
+  if (hash)
+    return {
+      path: value.slice(0, hash.index),
+      ...parseLineColumnFragment(hash[1]!.replace("–", "-")),
+    };
+  const suffix = /:(\d+)(?::(\d+))?(?:[-–](\d+)(?::(\d+))?)?$/u.exec(value);
+  if (!suffix || !parsePositiveInteger(suffix[1])) return { path: value };
+  return {
+    path: value.slice(0, suffix.index),
+    line: parsePositiveInteger(suffix[1]),
+    ...(parsePositiveInteger(suffix[2]) ? { column: parsePositiveInteger(suffix[2]) } : {}),
+    ...(parsePositiveInteger(suffix[3]) ? { endLine: parsePositiveInteger(suffix[3]) } : {}),
+    ...(parsePositiveInteger(suffix[4]) ? { endColumn: parsePositiveInteger(suffix[4]) } : {}),
+  };
+}
 
+export function parseLocalFileLinkHref(href: string): FileLinkTarget | null {
   const trimmed = href.trim();
   if (!trimmed) return null;
-
-  if (trimmed.startsWith("file://")) {
-    const path = decodeFileUrlPath(trimmed);
-    if (!path || !isAbsoluteLocalPath(path)) return null;
-
-    const fragment = (() => {
-      try {
-        return new URL(trimmed).hash.replace(/^#/, "");
-      } catch {
-        return "";
-      }
-    })();
-
-    return {
-      path,
-      ...parseLineColumnFragment(fragment),
-    };
+  if (trimmed.startsWith("file:")) {
+    try {
+      const url = new URL(trimmed);
+      const location = parseFileReferenceLocation(url.pathname);
+      url.pathname = location.path;
+      const path = decodeFileUrlPath(url.toString());
+      if (!path || !isAbsoluteLocalPath(path)) return null;
+      return { ...location, path, ...parseLineColumnFragment(url.hash.slice(1)) };
+    } catch {
+      return null;
+    }
   }
-
-  const hashIndex = trimmed.indexOf("#");
-  const rawPath = hashIndex >= 0 ? trimmed.slice(0, hashIndex) : trimmed;
-  const fragment = hashIndex >= 0 ? trimmed.slice(hashIndex + 1) : "";
-
-  if (!isAbsoluteLocalPath(rawPath)) return null;
-
-  return {
-    path: rawPath,
-    ...parseLineColumnFragment(fragment),
-  };
+  const reference = parseFileReferenceLocation(trimmed);
+  const target = reference.line ? reference : { path: reference.path.split("#")[0]! };
+  if (!isAbsoluteLocalPath(target.path)) return null;
+  try {
+    return { ...target, path: decodeURIComponent(target.path) };
+  } catch {
+    return null;
+  }
 }
 
 export function formatFileLinkLocation(target: FileLinkTarget): string {
@@ -186,12 +194,19 @@ export function formatFileLinkLocation(target: FileLinkTarget): string {
 }
 
 export function buildFileUrl(target: FileLinkTarget): string {
-  const encodedPath = encodeURI(target.path);
+  const encodedPath = target.path
+    .replace(/\\/gu, "/")
+    .split("/")
+    .map((part, index) =>
+      index === 0 && /^[a-z]:$/iu.test(part) ? part : encodeURIComponent(part),
+    )
+    .join("/");
   const fragment = target.line
     ? `#L${target.line}${target.column ? `C${target.column}` : ""}${target.endLine ? `-L${target.endLine}${target.endColumn ? `C${target.endColumn}` : ""}` : ""}`
     : "";
   if (/^[a-zA-Z]:[\\/]/.test(target.path)) {
     return `file:///${encodedPath.replace(/\\/g, "/")}${fragment}`;
   }
+  if (encodedPath.startsWith("//")) return `file://${encodedPath.slice(2)}${fragment}`;
   return `file://${encodedPath}${fragment}`;
 }

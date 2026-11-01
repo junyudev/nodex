@@ -3,7 +3,6 @@ import {
   type BrowserSidebarPhysicalHostIdentity,
   type BrowserSidebarTabIdentity,
 } from "../../shared/browser-sidebar";
-import { isAllowedBrowserNavigationUrl } from "../../shared/browser-url";
 import type {
   BrowserAttachmentAuthorizationResult,
   BrowserAuthorizedAttachment,
@@ -16,7 +15,6 @@ type BrowserAttachmentAuthorizationFailureReason = Extract<
 
 export type BrowserWebviewAttachmentRejectionReason =
   | "invalid-route"
-  | "navigation-url-blocked"
   | "storage-identity-mismatch"
   | "window-session-mismatch"
   | `authorization-${BrowserAttachmentAuthorizationFailureReason}`;
@@ -89,9 +87,6 @@ export function decideBrowserWebviewAttachment(
   }
   if (input.ownerBrowserViewScopeId !== route.browserViewScopeId) {
     return { ok: false, reason: "window-session-mismatch", route };
-  }
-  if (!isAllowedBrowserNavigationUrl(input.src)) {
-    return { ok: false, reason: "navigation-url-blocked", route };
   }
 
   const authorization = input.authorizeAttachment(route);

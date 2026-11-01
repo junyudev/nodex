@@ -64,6 +64,29 @@ it.layer(NodeServices.layer)("Browser page runtime", (it) => {
     ),
   );
 
+  it.effect("round-trips file, credentialed and long data URLs without a navigation cap", () =>
+    withPages(({ filePath }) =>
+      Effect.gen(function* () {
+        const pages = yield* makeBrowserPageRuntime(filePath);
+        const url = `data:text/html,${"x".repeat(80_000)}`;
+        const snapshot = page("browser:urls", {
+          url,
+          navigation: {
+            currentIndex: 2,
+            entries: [
+              { title: "Local", url: "file:///tmp/index.html" },
+              { title: "Web", url: "https://user:secret@example.com/" },
+              { title: "Data", url },
+            ],
+          },
+        });
+        yield* pages.set(snapshot);
+        const reloaded = yield* makeBrowserPageRuntime(filePath);
+        assert.deepEqual(yield* reloaded.get("browser:urls"), snapshot);
+      }),
+    ),
+  );
+
   it.effect("keeps at most 500 navigation entries and 100 pages", () =>
     withPages(({ filePath }) =>
       Effect.gen(function* () {

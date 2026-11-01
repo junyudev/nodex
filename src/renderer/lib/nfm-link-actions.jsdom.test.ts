@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import type { FileLinkTarget } from "../../shared/file-link-openers";
 import {
   openNfmResolvedLinkAction,
@@ -6,6 +6,8 @@ import {
   resolveNfmLinkTooltipLabel,
 } from "./nfm-link-actions";
 
+const links = vi.hoisted(() => ({ open: vi.fn(async () => true) }));
+vi.mock("./link-opening", () => ({ openLink: links.open }));
 const originalWindowOpen = window.open;
 const originalApi = window.api;
 
@@ -15,6 +17,7 @@ let invokeCalls: unknown[][] = [];
 
 describe("markdown link actions", () => {
   beforeEach(() => {
+    links.open.mockClear();
     windowOpenCalls = [];
     locationAssignCalls = [];
     invokeCalls = [];
@@ -167,9 +170,11 @@ describe("markdown link actions", () => {
     const action = resolveNfmLinkAction("example.com");
     await openNfmResolvedLinkAction(action!);
 
-    expect(JSON.stringify(windowOpenCalls)).toBe(
-      JSON.stringify([["https://example.com", "_blank", "noopener,noreferrer"]]),
-    );
+    expect(links.open).toHaveBeenCalledExactlyOnceWith({
+      url: "https://example.com",
+      initiator: "markdown_link_click",
+    });
+    expect(windowOpenCalls).toEqual([]);
   });
 
   test("opens file links through the desktop bridge", async () => {
@@ -202,5 +207,20 @@ describe("markdown link actions", () => {
     });
 
     expect(JSON.stringify(locationAssignCalls)).toBe(JSON.stringify([["#section"]]));
+  });
+  test.each(["src/a.ts:7:2-9:4", "src/a.ts#L7C2-L9C4"])(
+    "resolves the shared authored range %s",
+    (href) => {
+      expect(resolveNfmLinkAction(href, "/repo")).toMatchObject({
+        kind: "workspace-file",
+        target: { path: "/repo/src/a.ts", line: 7, column: 2, endLine: 9, endColumn: 4 },
+      });
+    },
+  );
+  test("relative extensionless references can carry a line location", () => {
+    expect(resolveNfmLinkAction("README:7", "/repo")).toMatchObject({
+      kind: "workspace-file",
+      target: { path: "/repo/README", line: 7 },
+    });
   });
 });

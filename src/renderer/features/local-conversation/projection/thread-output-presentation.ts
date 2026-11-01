@@ -20,13 +20,10 @@ export interface ThreadOutputPresentation {
 
 export type ThreadOutputOpenAction =
   | { readonly type: "web"; readonly url: string }
-  | { readonly type: "image-preview"; readonly path: string }
-  | { readonly type: "default-app"; readonly path: string }
   | { readonly type: "files"; readonly path: string };
 
 const GENERIC_ENTRY_NAMES = new Set(["index.html", "index.htm", "index.md", "readme.md", "readme"]);
 const IMAGE_EXTENSIONS = new Set(["apng", "avif", "gif", "jpeg", "jpg", "png", "svg", "webp"]);
-const HTML_EXTENSIONS = new Set(["htm", "html", "xhtml"]);
 const KIND_BY_EXTENSION: Readonly<Record<string, string>> = {
   csv: "CSV",
   doc: "Word document",
@@ -139,14 +136,10 @@ export function describeThreadOutput(
   }
 }
 
-/**
- * Images open in the in-place viewer and HTML renders in the default browser on this
- * device; every other file opens in Files. Remote files always stay in Files, whose host
- * identity reaches them.
- */
+/** Output kind determines URL versus file intent; the shared owners choose the destination. */
 export function resolveThreadOutputOpenAction(
   row: ThreadSummaryPanelOutputRow,
-  hostId: string,
+  _hostId: string,
 ): ThreadOutputOpenAction {
   switch (row.kind) {
     case "google-drive":
@@ -154,32 +147,10 @@ export function resolveThreadOutputOpenAction(
       return { type: "web", url: row.url };
     case "website":
       if (/^https?:\/\//iu.test(row.target)) return { type: "web", url: row.target };
-      return resolvePathOpenAction(row.target, false, hostId);
+      return { type: "files", path: row.target };
     case "file":
     case "image":
     case "generated-image":
-      return resolvePathOpenAction(row.path, row.kind !== "file", hostId);
+      return { type: "files", path: row.path };
   }
-}
-
-function resolvePathOpenAction(
-  path: string,
-  image: boolean,
-  hostId: string,
-): ThreadOutputOpenAction {
-  if (hostId !== "local") return { type: "files", path };
-  const extension = extensionOf(splitPath(path).name);
-  if (image || (extension && IMAGE_EXTENSIONS.has(extension)))
-    return { type: "image-preview", path };
-  if (extension && HTML_EXTENSIONS.has(extension)) return { type: "default-app", path };
-  return { type: "files", path };
-}
-
-/** Whether opening leaves Nodex, which surfaces mark with an open-in affordance. */
-export function isExternalThreadOutputOpen(
-  row: ThreadSummaryPanelOutputRow,
-  hostId: string,
-): boolean {
-  const { type } = resolveThreadOutputOpenAction(row, hostId);
-  return type === "web" || type === "default-app";
 }

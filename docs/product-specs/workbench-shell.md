@@ -161,6 +161,48 @@ it stale; ordinary submission cannot offer it.
 - A worktree start is recovered from the Main-synchronized pending-worktree collection by the bound `projectSessionId`, never from Dock-local memory. Until the exact pending entry resolves to a real Thread, its client identity remains in the same Thread/Composer scope, the target row shows compact setup progress or failure attention, and both composer availability and the action boundary prevent a second start. `View setup details` explicitly opens the existing recovery route; reload, retry, continue, work-locally, and cancellation follow [Codex Worktree Creation Behavior](codex-worktree-creation-behavior.md).
 - Dock target and visibility are persisted Scene presentation but are excluded from Back/Forward history. If exact hydration proves that a bound Session was archived, deleted, or moved to another Project, sending is disabled and the Dock returns safely to its retained new-chat draft. A bounded summary window that does not contain the binding is never sufficient evidence.
 
+### Link opening
+
+The Desktop Profile owns separate web and local URL destinations plus the
+external-browser click shortcut. The shared link decision consumes their
+effective values; the Workbench link owner executes Browser presentation in the
+Scene captured when activation begins, while Main validates and opens external
+URLs. The trusted app-shell popup and main-frame navigation fallback uses the
+same decision. Browser pages retain their own navigation and popup policy.
+
+Ordinary web URLs default to the system browser. Local development URLs and
+local file URLs default to Nodex. Explicit external destinations and
+`useExternalBrowser` take precedence. An exact external shortcut takes
+precedence over tab disposition; otherwise a new-tab or background-tab request
+selects Nodex. Internal destinations require a Project or Session Scene that can
+host a Browser surface, independently of Agent Browser Use permission. Settings
+and other temporary routes use their return Scene. Library and Library Inbox
+have no Browser owner, so their links open externally.
+
+- Plain activation follows the effective destination. Eligible Markdown links
+  can request split view beside the chat.
+- Primary activation (⌘ on macOS, Ctrl elsewhere) requests a background tab;
+  Primary+Shift requests a foreground tab. With the default shortcut, Primary
+  HTTP(S) activation opens externally instead. Both Ctrl and Meta together never
+  match the external shortcut.
+- Middle activation requests a background tab, or a foreground tab with Shift,
+  and never matches the external shortcut. Shift alone follows the destination.
+- Alt alone saves an HTTP(S) link unless Alt is assigned to external opening.
+  Eligible Markdown Primary+Alt activation explicitly opens Nodex in full view.
+
+Default Browser presentation activates a tab whose committed or pending URL
+matches, preferring the Agent-active match and otherwise the last match. If none
+matches, it creates a foreground tab. Explicit new-tab dispositions always
+create another tab. New tabs open in the right panel; background tabs reveal it
+without changing its current selection. An empty panel may select its first tab.
+Split and full-width intents control the Browser panel's presentation, and
+new-window intent uses a detached Browser window.
+
+App-shell native popups are denied. HTTP(S) popups follow destination settings;
+Electron background-tab disposition becomes a background Browser-tab request,
+while other dispositions use default presentation. Permitted non-HTTP schemes
+open externally. External URL validation applies regardless of entry point.
+
 ## Storage Ownership
 
 - SQLite owns shared Project Session domain data:

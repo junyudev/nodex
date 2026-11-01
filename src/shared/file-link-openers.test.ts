@@ -68,8 +68,8 @@ describe("file link openers", () => {
     ["file:///workspace/my%20doc.md", "/workspace/my doc.md"],
     ["file://localhost/workspace/my%20doc.md", "/workspace/my doc.md"],
     ["file://LOCALHOST/workspace/my%20doc.md", "/workspace/my doc.md"],
-    ["file:///C:/workspace/my%20doc.md", "/C:/workspace/my doc.md"],
-    ["file://localhost/C:/workspace/my%20doc.md", "/C:/workspace/my doc.md"],
+    ["file:///C:/workspace/my%20doc.md", "C:/workspace/my doc.md"],
+    ["file://localhost/C:/workspace/my%20doc.md", "C:/workspace/my doc.md"],
   ])("keeps %s local", (href, path) => {
     expect(parseLocalFileLinkHref(href)).toEqual({ path });
   });

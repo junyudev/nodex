@@ -21,7 +21,7 @@ import type { CodexVisualizationWidgetState } from "../../../shared/codex-visual
 const boundary = vi.hoisted(() => ({
   connect: vi.fn<(input: ConnectInput) => Promise<ConnectedMcpAppSandbox>>(),
   gesture: vi.fn<(key: string, input: unknown) => Promise<boolean>>(),
-  external: vi.fn<(command: unknown, input: unknown) => Promise<void>>(async () => undefined),
+  external: vi.fn<(command: unknown, input: unknown) => Promise<boolean>>(async () => true),
   image: vi.fn<(key: string, input: unknown) => Promise<Uint8Array>>(
     async () => new Uint8Array([1, 2]),
   ),
@@ -851,4 +851,41 @@ describe("inline visualization runtime lifecycle", () => {
     expect(attempt.run).not.toHaveBeenCalled();
     expect(runtime.element.isConnected).toBe(false);
   });
+});
+
+test("visualization links use preferences only after Main consumes the guest gesture", async () => {
+  const openLink = vi.fn(async () => true);
+  mountRuntime({ openLink, hostId: "ssh:source" });
+  const attempt = await readAttempt(0);
+  boundary.external.mockResolvedValueOnce(false);
+  await attempt.input.handlers.openExternal({
+    href: "https://example.com/plot?utm_source=widget&view=1",
+  });
+  expect(openLink).not.toHaveBeenCalled();
+  boundary.external.mockResolvedValueOnce(true);
+  await attempt.input.handlers.openExternal({
+    href: "https://example.com/plot?utm_source=widget&view=1",
+  });
+  expect(openLink).toHaveBeenCalledExactlyOnceWith({
+    url: "https://example.com/plot?view=1",
+    hostId: "ssh:source",
+    initiator: "inline_visualization",
+    source: "manual",
+  });
+  expect(boundary.external).toHaveBeenCalledWith(
+    expect.objectContaining({ channel: "codex:visualization:open-external" }),
+    expect.objectContaining({ href: "https://example.com/plot?utm_source=widget&view=1" }),
+  );
+});
+test("a pending visualization navigation cannot outlive its active presentation", async () => {
+  const authorization = deferred<boolean>();
+  const openLink = vi.fn(async () => true);
+  const runtime = mountRuntime({ openLink });
+  const attempt = await readAttempt(0);
+  boundary.external.mockImplementationOnce(() => authorization.promise);
+  const pending = attempt.input.handlers.openExternal({ href: "https://example.com/" });
+  runtime.setActive(false);
+  authorization.resolve(true);
+  await pending;
+  expect(openLink).not.toHaveBeenCalled();
 });
