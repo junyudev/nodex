@@ -42,6 +42,29 @@ export const make = Effect.gen(function* () {
       sceneOwner.kind === "library" || sceneOwner.kind === "inbox" || projectId === null
         ? { kind: "library" as const }
         : { kind: "project" as const, projectId };
+    if (target.kind === "page_file") {
+      const surface = {
+        id: "pending",
+        titleSnapshot: "",
+        kind: "page_file" as const,
+        config: { routingContext, pageId: target.pageId, fileId: target.fileId, logicalPath: null },
+      };
+      const description = yield* content.describePageFile({
+        authority,
+        callId: input.callId,
+        surface,
+      });
+      if (description.status !== "available") return null;
+      return {
+        kind: "page_file",
+        titleSnapshot: description.title.slice(0, 2_000),
+        config: {
+          ...surface.config,
+          logicalPath: description.logicalPath,
+          titleSnapshot: description.title.slice(0, 2_000),
+        },
+      };
+    }
     if (target.kind === "page" || target.kind === "view" || target.kind === "canvas") {
       const surface: WorkbenchContentSurface =
         target.kind === "page"

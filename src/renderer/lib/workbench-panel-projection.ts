@@ -208,18 +208,24 @@ export function buildSessionPanelRenderModel(
         leaf.id,
         previewTabsByPanel,
       );
+      const tabsWithPreview: ProjectSessionRenderableTab[] = [
+        ...durableTabs,
+        ...sideChatTabs,
+        ...mcpAppTabs,
+        ...planTabs,
+        ...automationTabs,
+        ...backgroundAgentTabs,
+        ...processOutputTabs,
+        ...imageEditorTabs,
+      ];
+      if (previewTab)
+        tabsWithPreview.splice(
+          previewTab.previewTargetIndex ?? tabsWithPreview.length,
+          0,
+          previewTab,
+        );
       const renderableTabs = orderWorkbenchPanelTabs<ProjectSessionRenderableTab>(
-        [
-          ...durableTabs,
-          ...sideChatTabs,
-          ...mcpAppTabs,
-          ...planTabs,
-          ...automationTabs,
-          ...backgroundAgentTabs,
-          ...processOutputTabs,
-          ...imageEditorTabs,
-          ...(previewTab ? [previewTab] : []),
-        ],
+        tabsWithPreview,
         input.tabOrderByPanelGroup?.[
           makeWorkbenchSessionPanelSlotKey(session.id, panelId, leaf.id)
         ],

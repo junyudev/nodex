@@ -1,6 +1,7 @@
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import type { NodexAgentTurnContext } from "../../shared/nodex-agent-authority";
+import { coreRuntimeError } from "../core-runtime/CoreRuntimeError";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { make, type WorkbenchContentSurface } from "./WorkbenchContentRouting";
@@ -94,6 +95,123 @@ it.effect("missing surfaces and disconnected Core return structural unavailabili
     ] as unknown as CoreModules["Service"]["library"]["read"][]) {
       const owner = yield* setup(read);
       assert.deepEqual(yield* owner.describe({ authority, callId: "call", surface: page }), {
+        status: "unavailable",
+      });
+    }
+  }),
+);
+
+it.effect("validates a Page File through its Page and the canonical Core relation", () =>
+  Effect.gen(function* () {
+    const requests: string[] = [];
+    const owner = yield* setup((read) => {
+      requests.push(read.kind);
+      return Effect.succeed({
+        value:
+          read.kind === "agent_surface_description"
+            ? {
+                kind: "agent_surface_description",
+                value: {
+                  status: "available",
+                  kind: "page",
+                  page_id: "page",
+                  title: "Current Page",
+                  library_id: "library",
+                  displayed_routing_context: { kind: "library" },
+                },
+              }
+            : {
+                kind: "resolved_page_file",
+                value: {
+                  logical_path: "output/current.html",
+                  file: {
+                    file_id: "file",
+                    library_id: "library",
+                    default_name: "old.html",
+                    lifecycle: "live",
+                  },
+                },
+              },
+      } as never);
+    });
+    assert.deepEqual(
+      yield* owner.describePageFile({
+        authority,
+        callId: "call",
+        surface: {
+          id: "surface",
+          kind: "page_file",
+          titleSnapshot: "Stale",
+          config: {
+            routingContext: { kind: "library" },
+            pageId: "page",
+            fileId: "file",
+            logicalPath: "old.html",
+          },
+        },
+      }),
+      {
+        status: "available",
+        kind: "page_file",
+        pageId: "page",
+        pageTitle: "Current Page",
+        fileId: "file",
+        libraryId: "library",
+        title: "current.html",
+        logicalPath: "output/current.html",
+        displayedRoutingContext: { kind: "library" },
+      },
+    );
+    assert.deepEqual(requests, ["agent_surface_description", "resolve_page_file"]);
+  }),
+);
+
+it.effect("does not describe an unrelated or trashed File or a missing Page", () =>
+  Effect.gen(function* () {
+    const surface = {
+      id: "surface",
+      kind: "page_file" as const,
+      titleSnapshot: "private",
+      config: {
+        routingContext: { kind: "library" as const },
+        pageId: "page",
+        fileId: "file",
+        logicalPath: null,
+      },
+    };
+    for (const failure of ["page", "relation", "trashed"] as const) {
+      const owner = yield* setup((read) => {
+        if (read.kind === "agent_surface_description")
+          return Effect.succeed({
+            value: {
+              kind: "agent_surface_description",
+              value:
+                failure === "page"
+                  ? { status: "unavailable" }
+                  : {
+                      status: "available",
+                      kind: "page",
+                      page_id: "page",
+                      title: "Page",
+                      library_id: "library",
+                      displayed_routing_context: { kind: "library" },
+                    },
+            },
+          } as never);
+        if (failure === "relation")
+          return Effect.fail(
+            coreRuntimeError({
+              operation: "resolve_page_file",
+              reason: "request",
+              retryable: false,
+              message: "File is not used by the Page",
+            }),
+          );
+        return Effect.succeed({
+          value: { kind: "resolved_page_file", value: { file: { lifecycle: "trashed" } } },
+        } as never);
+      });
+      assert.deepEqual(yield* owner.describePageFile({ authority, callId: "call", surface }), {
         status: "unavailable",
       });
     }

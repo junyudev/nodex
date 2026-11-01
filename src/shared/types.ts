@@ -62,6 +62,7 @@ import type {
   WorkbenchDbViewSurfaceConfig,
   WorkbenchPageStageSurfaceConfig,
   WorkbenchCanvasStageSurfaceConfig,
+  WorkbenchPageFileSurfaceConfig,
 } from "./workbench-scene";
 import type { WorkbenchImageEditorSurfaceConfig } from "./workbench-image-editor";
 import type { BrowserSidebarDeviceToolbarState } from "./browser-sidebar";
@@ -743,6 +744,7 @@ export interface ProjectPinnedOrderInput {
 export type WorkbenchTabKind =
   | "db_view"
   | "page_stage"
+  | "page_file"
   | "canvas_stage"
   | "terminal"
   | "browser"
@@ -758,6 +760,7 @@ export type ProjectSessionSingletonTabKind = (typeof PROJECT_SESSION_SINGLETON_T
 
 export type WorkbenchProjectionDbViewTabConfig = WorkbenchDbViewSurfaceConfig;
 export type WorkbenchProjectionPageStageTabConfig = WorkbenchPageStageSurfaceConfig;
+export type WorkbenchProjectionPageFileTabConfig = WorkbenchPageFileSurfaceConfig;
 export type WorkbenchProjectionCanvasStageTabConfig = WorkbenchCanvasStageSurfaceConfig;
 
 export interface WorkbenchProjectionTerminalTabConfig {
@@ -908,6 +911,7 @@ export interface WorkbenchProjectionBrowserTabConfig {
 export interface WorkbenchProjectionTabConfigByKind {
   db_view: WorkbenchProjectionDbViewTabConfig;
   page_stage: WorkbenchProjectionPageStageTabConfig;
+  page_file: WorkbenchPageFileSurfaceConfig;
   canvas_stage: WorkbenchProjectionCanvasStageTabConfig;
   terminal: WorkbenchProjectionTerminalTabConfig;
   browser: WorkbenchProjectionBrowserTabConfig;

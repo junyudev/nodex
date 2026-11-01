@@ -176,3 +176,30 @@ describe("project session Review config", () => {
     ).toThrow();
   });
 });
+
+describe("Page File configuration", () => {
+  const config = {
+    routingContext: { kind: "library" },
+    pageId: "page",
+    fileId: "file",
+    logicalPath: "profile/report.html",
+    titleSnapshot: "report.html",
+  };
+  test("round-trips placed and body-only File identities", () => {
+    expect(parseWorkbenchProjectionTabConfig("page_file", config)).toEqual(config);
+    expect(
+      parseWorkbenchProjectionTabConfig("page_file", { ...config, logicalPath: null }).logicalPath,
+    ).toBeNull();
+  });
+  test("rejects runtime capabilities and incomplete resource identity", () => {
+    for (const patch of [
+      { url: "https://example.com" },
+      { grant: "secret" },
+      { fileId: "" },
+      { logicalPath: "" },
+    ])
+      expect(() =>
+        parseWorkbenchProjectionTabConfig("page_file", { ...config, ...patch }),
+      ).toThrow();
+  });
+});

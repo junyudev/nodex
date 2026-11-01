@@ -97,13 +97,14 @@ type ProjectSession = WorkbenchSessionRenderProjection;
 type SurfaceProps = ComponentProps<typeof WorkbenchTabProjectionPanel>;
 type PanelLifecycle = Pick<
   ReturnType<typeof useWorkbenchPanelLifecycle>,
-  "closeEphemeralPanelTab" | "closeTab" | "updateActivePanel"
+  "closeEphemeralPanelTab" | "closeTab" | "updateActivePanel" | "pinPreviewTab"
 >;
 type PanelOpeners = Pick<
   ReturnType<typeof useWorkbenchPanelOpeners>,
   | "openCanvasStage"
   | "openMcpAppSidePanel"
   | "openPageTab"
+  | "openPageFileTab"
   | "openWorkspaceFileTab"
   | "recreateSideChatPanelTab"
 >;
@@ -198,6 +199,7 @@ interface WorkbenchPanelProjectionInput {
 
 function getTabIcon(kind: WorkbenchTabProjection["kind"]): ComponentType<{ className?: string }> {
   if (kind === "image_editor") return ImageEditorTabIcon;
+  if (kind === "page_file") return resolveFileResourceIcon();
   return getPanelNewTabAction(kind).Icon;
 }
 
@@ -249,11 +251,12 @@ export function useWorkbenchPanelProjection({
 }: WorkbenchPanelProjectionInput) {
   const panelControllerRef = useRef(controller);
   panelControllerRef.current = controller;
-  const { closeEphemeralPanelTab, closeTab, updateActivePanel } = lifecycle;
+  const { closeEphemeralPanelTab, closeTab, updateActivePanel, pinPreviewTab } = lifecycle;
   const {
     openCanvasStage,
     openMcpAppSidePanel,
     openPageTab,
+    openPageFileTab,
     openWorkspaceFileTab,
     recreateSideChatPanelTab,
   } = openers;
@@ -301,7 +304,9 @@ export function useWorkbenchPanelProjection({
                 tab.title,
                 resolveTerminalTabIndex(session, tab),
               )
-            : tab.title;
+            : !transientPanelTab && tab.kind === "page_file"
+              ? (tab.config.titleSnapshot ?? tab.config.logicalPath?.split("/").at(-1) ?? "File")
+              : tab.title;
         const pageStageLibraryId =
           !transientPanelTab && tab.kind === "page_stage"
             ? tab.config.routingContext.kind === "library"
@@ -328,7 +333,9 @@ export function useWorkbenchPanelProjection({
         const filesIcon =
           !transientPanelTab && tab.kind === "files"
             ? resolveFileResourceIcon("path" in tab.config ? tab.config.path : undefined)
-            : null;
+            : !transientPanelTab && tab.kind === "page_file"
+              ? resolveFileResourceIcon(tab.config.logicalPath ?? tab.config.titleSnapshot)
+              : null;
         const browserTabSnapshot =
           !transientPanelTab && tab.kind === "browser"
             ? browserTabSnapshotByKey.get(
@@ -713,6 +720,8 @@ export function useWorkbenchPanelProjection({
                 relatedChatCandidates={pageStageRelatedChatCandidates}
                 presentedPageIds={presentedPageIds}
                 onOpenCanvasStage={openCanvasStage}
+                onOpenPageFile={openPageFileTab}
+                onPinPreviewTab={(panelId, tabId) => void pinPreviewTab(panelId, tabId)}
                 onOpenPageTab={openPageTab}
                 onOpenPageInNewChat={openPageInNewChat}
                 onOpenRelatedChat={openProjectSessionById}
@@ -784,6 +793,7 @@ export function useWorkbenchPanelProjection({
       };
     },
     [
+      pinPreviewTab,
       activateReviewTab,
       addToChatComposer,
       browserTabSnapshotByKey,
@@ -808,6 +818,7 @@ export function useWorkbenchPanelProjection({
       openCanvasStage,
       openMcpAppSidePanel,
       openPageTab,
+      openPageFileTab,
       openPageInNewChat,
       openProjectSessionById,
       linkPageToChat,

@@ -1,8 +1,9 @@
 import { FileDetailsMetadata, FileListMetadata } from "@/components/shared/file-metadata";
-import { type DragEvent, useEffect, useRef, useState } from "react";
+import { type DragEvent, useEffect, useId, useRef, useState } from "react";
 
 import {
   ActivitySpinnerIcon,
+  ChevronDownIcon,
   DownloadIcon,
   DeleteIcon,
   FolderOpenIcon,
@@ -16,7 +17,6 @@ import {
 import { NodexIconButton } from "@/components/ui/button";
 import { FileDetailsToolbar } from "@/components/shared/file-details-toolbar";
 import { ColorfulFileResourceIcon } from "@/components/shared/file-resource-icon";
-import { DATABASE_PAGE_PROPERTY_OUTLINED_TOKEN_CLASS_NAME } from "@/components/database/property-value-chip";
 import {
   DATABASE_PAGE_PROPERTY_EMPTY_TRIGGER_CLASS_NAME,
   PropertyEmptyValue,
@@ -51,7 +51,16 @@ import {
 } from "@/lib/library-file-commands";
 import { pickAndPrepareFiles, prepareDroppedFiles } from "@/lib/api";
 import { saveAuthorizedFile } from "@/lib/library-file-resources";
-import { appScope, useScopeHandle } from "@/lib/maitai";
+import { writeTextToClipboard } from "@/lib/clipboard";
+import {
+  appScope,
+  scopedAtom,
+  scopedAtomFamily,
+  useScopedAtom,
+  useScopeHandle,
+} from "@/lib/maitai";
+import { buildPageFileTree, type PageFileTreeProvenance } from "@/lib/page-file-tree";
+import { toPageFileTreeFile } from "@/lib/page-file-provenance";
 import { openModal, type ModalCloseProps } from "@/lib/modal-registry";
 import { useLibraryMetadata } from "@/lib/use-library-navigation";
 import { usePageFile } from "@/lib/use-library-files";
@@ -60,6 +69,8 @@ import { cn } from "@/lib/utils";
 import type { PageStageController } from "./use-page-stage-controller";
 import { pageStagePropertyAddControl } from "./property-value-styles";
 import { PageStagePropertyRow } from "./property-row";
+import { PageFileSourceLabel, usePageFileSources } from "./page-file-source";
+import { PageFileTreeView } from "./page-file-tree-view";
 
 interface PageFilesRowProps {
   readonly controller: PageStageController;
@@ -639,20 +650,88 @@ function PageFilesDialogContent({
 
 const rowLabel = (item: LibraryPageFileItem): string => item.logical_path ?? item.file.default_name;
 
+interface PageFilesDisclosure {
+  readonly expanded: boolean;
+  /** Shows every row instead of the first screenful. */
+  readonly showAll: boolean;
+  readonly collapsedFolders: readonly string[];
+}
+
+const DEFAULT_DISCLOSURE: PageFilesDisclosure = {
+  expanded: true,
+  showAll: false,
+  collapsedFolders: [],
+};
+
+/** How each Page's Files tree was left in this window: folded, folders closed, fully shown. */
+const pageFilesDisclosureFamily = scopedAtomFamily({
+  scope: appScope,
+  debugLabel: "page-files-disclosure",
+  key: (pageId: string) => pageId,
+  create: () =>
+    scopedAtom<PageFilesDisclosure>(appScope, DEFAULT_DISCLOSURE, {
+      debugLabel: "disclosure",
+    }),
+});
+
+/** Rows shown before `Show all`, so a long tree never pushes the Page body far down. */
+const PAGE_FILE_TREE_ROW_LIMIT = 10;
+
+/** File IDs that appeared after this Page's Files first loaded, until each is opened. */
+function useFreshPageFileIds(pageId: string, fileIds: readonly string[] | null) {
+  const [state, setState] = useState<{
+    readonly pageId: string;
+    readonly baseline: ReadonlySet<string> | null;
+    readonly opened: ReadonlySet<string>;
+  }>({ pageId, baseline: null, opened: new Set() });
+  const current =
+    state.pageId === pageId ? state : { pageId, baseline: null, opened: new Set<string>() };
+  if (fileIds && current.baseline === null) {
+    setState({ ...current, baseline: new Set(fileIds) });
+  } else if (current !== state) {
+    setState(current);
+  }
+  const fresh = new Set(
+    current.baseline && fileIds
+      ? fileIds.filter((id) => !current.baseline!.has(id) && !current.opened.has(id))
+      : [],
+  );
+  const markOpened = (fileId: string): void =>
+    setState((previous) => ({ ...previous, opened: new Set([...previous.opened, fileId]) }));
+  return { fresh, markOpened };
+}
+
 export function PageFilesRow({ baseFiles, controller, hidden = false }: PageFilesRowProps) {
   const appHandle = useScopeHandle(appScope);
+  const metadata = useLibraryMetadata();
   const pageId = controller.page?.id ?? "";
+  const routingContext = controller.contentRoutingContext;
   const inventory = baseFiles.inventory ?? EMPTY_INVENTORY(pageId);
-  const visible = inventory.files.filter((item) => item.body_count === 0).slice(0, 2);
-  const remainingUnplaced = Math.max(0, inventory.unplaced_total - visible.length);
-  const hiddenCount = remainingUnplaced + inventory.placed_total;
-  const summaryShowsInPage = remainingUnplaced === 0 && inventory.placed_total > 0;
+  const [disclosure, setDisclosure] = useScopedAtom(pageFilesDisclosureFamily(pageId));
+  const treeId = useId();
+  const files = inventory.files.map(toPageFileTreeFile);
+  const tree = buildPageFileTree(files, new Set(disclosure.collapsedFolders));
+  const sourceOf = usePageFileSources(
+    files.flatMap((file) => (file.sourceKey ? [file.sourceKey] : [])),
+  );
+  const { fresh, markOpened } = useFreshPageFileIds(
+    pageId,
+    baseFiles.inventory ? inventory.files.map((item) => item.file.file_id) : null,
+  );
 
   if (!controller.page) return null;
 
+  const authority = metadata.data
+    ? {
+        contentRoutingContext: routingContext,
+        storeEpoch: metadata.data.storeEpoch,
+        libraryId: metadata.data.libraryId,
+      }
+    : null;
+
   const openFiles = (initialFileId?: string): void => {
     openModal(appHandle, PageFilesDialog, {
-      routingContext: controller.contentRoutingContext,
+      routingContext,
       pageId,
       ...(initialFileId ? { initialFileId } : {}),
       onChanged: async () => {
@@ -661,95 +740,194 @@ export function PageFilesRow({ baseFiles, controller, hidden = false }: PageFile
     });
   };
 
+  const openFile = (item: LibraryPageFileItem, openMode: "preview" | "durable"): void => {
+    markOpened(item.file.file_id);
+    if (!controller.openPageFile) {
+      openFiles(item.file.file_id);
+      return;
+    }
+    void controller.openPageFile({
+      routingContext,
+      pageId,
+      fileId: item.file.file_id,
+      logicalPath: item.logical_path ?? null,
+      title: item.logical_path?.split("/").at(-1) ?? item.file.default_name,
+      openMode,
+    });
+  };
+
+  const renderSource = (provenance: PageFileTreeProvenance, className?: string) => {
+    const presentation = sourceOf(provenance.sourceKey);
+    return presentation ? (
+      <PageFileSourceLabel
+        provenance={provenance}
+        presentation={presentation}
+        onOpenChat={
+          controller.onOpenRelatedChat
+            ? (sessionId) => void controller.handleOpenRelatedChat(sessionId)
+            : undefined
+        }
+        className={className}
+      />
+    ) : null;
+  };
+
+  const visibleRows = disclosure.showAll ? tree.rows : tree.rows.slice(0, PAGE_FILE_TREE_ROW_LIMIT);
+  const hiddenRows = tree.rows.length - visibleRows.length;
+  const expanded = disclosure.expanded && inventory.total > 0;
+  const summary = `${inventory.total} ${inventory.total === 1 ? "file" : "files"}`;
+
   return (
-    <PageStagePropertyRow hidden={hidden} icon={<FileIcon />} label="Files">
-      <div className="min-w-0 flex-1">
-        {baseFiles.error && !baseFiles.inventory ? (
-          <button
-            type="button"
-            className="min-h-7 text-xs text-(--red-text)"
-            onClick={() => void baseFiles.refresh()}
-          >
-            Couldn’t load Files · Retry
-          </button>
-        ) : null}
-        {baseFiles.loading && !baseFiles.inventory ? (
-          <div
-            role="status"
-            aria-label="Loading Page Files"
-            className="flex h-7 items-center px-1.5 text-(--foreground-tertiary)"
-          >
-            <ActivitySpinnerIcon className="size-3.5" />
-          </div>
-        ) : null}
-        {!baseFiles.loading && !baseFiles.error && inventory.total === 0 ? (
-          <button
-            type="button"
-            className={cn(
-              "flex min-h-6 min-w-0 items-center text-left text-sm focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-token-focus-border",
-              DATABASE_PAGE_PROPERTY_EMPTY_TRIGGER_CLASS_NAME,
-            )}
-            onClick={() => openFiles()}
-            aria-label="Add Page Files"
-            aria-busy={baseFiles.loading}
-          >
-            <PropertyEmptyValue className="truncate" />
-          </button>
-        ) : null}
-        {inventory.total > 0 ? (
-          <div className="flex min-h-7 flex-wrap items-center gap-1 py-0.5">
-            {visible.map((item) => (
-              <button
-                key={item.file.file_id}
-                type="button"
-                data-page-file-chip="true"
-                aria-label={`Open ${rowLabel(item)}`}
-                className={cn(
-                  DATABASE_PAGE_PROPERTY_OUTLINED_TOKEN_CLASS_NAME,
-                  "max-w-64 gap-1 text-token-text-secondary outline-none hover:bg-token-foreground/5 focus-visible:ring-2 focus-visible:ring-token-focus-border",
-                )}
-                onClick={() => openFiles(item.file.file_id)}
-              >
-                <ColorfulFileResourceIcon
-                  path={rowLabel(item)}
-                  mimeType={item.file.mime_type}
-                  className="size-3.5 shrink-0"
-                />
-                <span className="truncate">{rowLabel(item)}</span>
-                {item.body_count > 0 ? (
-                  <span className="text-token-description-foreground">· {item.body_count}</span>
-                ) : null}
-              </button>
-            ))}
-            {hiddenCount > 0 ? (
+    <div hidden={hidden} data-page-files-property="true">
+      <PageStagePropertyRow icon={<FileIcon />} label="Files">
+        <div className="min-w-0 flex-1">
+          {baseFiles.error && !baseFiles.inventory ? (
+            <button
+              type="button"
+              className="min-h-7 text-xs text-(--red-text)"
+              onClick={() => void baseFiles.refresh()}
+            >
+              Couldn’t load Files · Retry
+            </button>
+          ) : null}
+          {baseFiles.loading && !baseFiles.inventory ? (
+            <div
+              role="status"
+              aria-label="Loading Page Files"
+              className="flex h-7 items-center px-1.5 text-(--foreground-tertiary)"
+            >
+              <ActivitySpinnerIcon className="size-3.5" />
+            </div>
+          ) : null}
+          {!baseFiles.loading && !baseFiles.error && inventory.total === 0 ? (
+            <button
+              type="button"
+              className={cn(
+                "flex min-h-6 min-w-0 items-center text-left text-sm focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-token-focus-border",
+                DATABASE_PAGE_PROPERTY_EMPTY_TRIGGER_CLASS_NAME,
+              )}
+              onClick={() => openFiles()}
+              aria-label="Add Page Files"
+              aria-busy={baseFiles.loading}
+            >
+              <PropertyEmptyValue className="truncate" />
+            </button>
+          ) : null}
+          {inventory.total > 0 ? (
+            <div className="group/page-files-summary flex min-h-7 min-w-0 items-center gap-1 text-sm">
               <button
                 type="button"
-                aria-label={
-                  summaryShowsInPage
-                    ? `Open ${inventory.placed_total} ${inventory.placed_total === 1 ? "File" : "Files"} shown in Page`
-                    : `Open ${hiddenCount} more Page Files`
+                aria-expanded={expanded}
+                aria-controls={treeId}
+                className="flex shrink-0 cursor-interaction items-center gap-1 rounded-sm px-1 py-0.5 text-token-text-primary hover:bg-token-foreground/5 focus-visible:outline-2 focus-visible:outline-token-focus-border"
+                onClick={() =>
+                  setDisclosure((current) => ({ ...current, expanded: !current.expanded }))
                 }
+              >
+                {summary}
+                {!expanded && fresh.size > 0 ? (
+                  <span aria-label="New files" className="size-1.5 rounded-full bg-info-solid" />
+                ) : null}
+                <ChevronDownIcon
+                  className={cn(
+                    "icon-2xs text-(--foreground-tertiary) transition-transform",
+                    !expanded && "-rotate-90",
+                  )}
+                />
+              </button>
+              {tree.provenance && !expanded ? (
+                <span className="flex min-w-0 items-center gap-1 text-(--foreground-tertiary)">
+                  <span className="shrink-0">from</span>
+                  {renderSource(tree.provenance, "min-w-0")}
+                </span>
+              ) : null}
+              <button
+                type="button"
+                aria-label="Add Page Files"
+                aria-busy={baseFiles.loading}
                 className={cn(
-                  DATABASE_PAGE_PROPERTY_OUTLINED_TOKEN_CLASS_NAME,
-                  "text-token-description-foreground",
+                  pageStagePropertyAddControl,
+                  "ms-auto opacity-0 group-hover/page-files-summary:opacity-60 focus-visible:opacity-100",
                 )}
                 onClick={() => openFiles()}
               >
-                {summaryShowsInPage ? `${inventory.placed_total} in page` : `+${hiddenCount}`}
+                <PlusIcon className="icon-2xs" />
               </button>
-            ) : null}
-            <button
-              type="button"
-              aria-label="Add Page Files"
-              aria-busy={baseFiles.loading}
-              className={pageStagePropertyAddControl}
-              onClick={() => openFiles()}
-            >
-              <PlusIcon className="icon-2xs" />
-            </button>
-          </div>
-        ) : null}
-      </div>
-    </PageStagePropertyRow>
+            </div>
+          ) : null}
+        </div>
+      </PageStagePropertyRow>
+      {expanded ? (
+        <PageFileTreeView
+          id={treeId}
+          rows={visibleRows}
+          freshFileIds={fresh}
+          renderSource={(provenance) => renderSource(provenance)}
+          onToggleFolder={(path) =>
+            setDisclosure((current) => ({
+              ...current,
+              collapsedFolders: current.collapsedFolders.includes(path)
+                ? current.collapsedFolders.filter((folder) => folder !== path)
+                : [...current.collapsedFolders, path],
+            }))
+          }
+          onOpen={openFile}
+          onSave={(item) => {
+            if (!authority) return;
+            void saveAuthorizedFile(
+              { ...authority, readSource: { kind: "page", page_id: pageId } },
+              fileSource(item.file.file_id),
+              rowLabel(item).split("/").at(-1) ?? item.file.default_name,
+            ).catch((error: unknown) =>
+              toast.danger(error instanceof Error ? error.message : "Couldn’t save File"),
+            );
+          }}
+          onCopyPath={(item) => void writeTextToClipboard(rowLabel(item))}
+          onManage={(item) => openFiles(item.file.file_id)}
+          onRemovePath={
+            authority
+              ? (item) =>
+                  void removePageEntry(authority, pageId, inventory.revision, item.file.file_id)
+                    .then(async () => {
+                      await baseFiles.refresh();
+                      toast.success(
+                        item.body_count > 0
+                          ? "Page path removed; the File stays in the Page content"
+                          : "Removed from the Page; the File stays in the Library",
+                      );
+                    })
+                    .catch((error: unknown) => toast.danger(mutationMessage(error)))
+              : undefined
+          }
+          caption={
+            tree.provenance ? (
+              <>
+                <span className="shrink-0">From</span>
+                {renderSource(tree.provenance, "min-w-0")}
+              </>
+            ) : null
+          }
+          footer={
+            hiddenRows > 0 || baseFiles.hasMore ? (
+              <button
+                type="button"
+                className="mx-1 mt-0.5 flex h-7 w-[calc(100%-0.5rem)] cursor-interaction items-center rounded-md px-2 text-xs text-(--foreground-tertiary) hover:bg-token-foreground/5 hover:text-(--foreground-secondary) disabled:opacity-60"
+                disabled={baseFiles.loadingMore}
+                onClick={() => {
+                  setDisclosure((current) => ({ ...current, showAll: true }));
+                  if (hiddenRows === 0) void baseFiles.loadMore();
+                }}
+              >
+                {baseFiles.loadingMore
+                  ? "Loading…"
+                  : hiddenRows > 0
+                    ? `Show ${hiddenRows} more`
+                    : `Show more of ${inventory.total} files`}
+              </button>
+            ) : null
+          }
+        />
+      ) : null}
+    </div>
   );
 }

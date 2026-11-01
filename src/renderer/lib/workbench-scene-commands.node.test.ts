@@ -1041,3 +1041,88 @@ describe("resource-preserving preview promotion", () => {
     ).toEqual({ selection: "pending" });
   });
 });
+
+test.each([false, true])(
+  "opens a Page File after its Page in the authored group order (Page preview: %s)",
+  async (preview) => {
+    const sceneOwner = { kind: "library" as const };
+    const source = page("source");
+    const scene = seededScene(sceneOwner, preview ? [page("sibling")] : [source, page("sibling")]);
+    const subject = fixture(scene);
+    const groupId = scene.panels.right.layout.activeLeafId;
+    const slot = makeWorkbenchPanelSlotKey("library", "right", groupId);
+    if (preview) {
+      subject.owner.dispatchEphemeral({
+        type: "update",
+        field: "previewSurfacesByPanel",
+        update: { [slot]: source },
+      });
+      subject.owner.dispatchEphemeral({
+        type: "update",
+        field: "tabOrderByPanelGroup",
+        update: { [slot]: ["source", "sibling"] },
+      });
+    }
+    const receipt = await subject.execute({
+      kind: "open_tab",
+      panelId: "right",
+      groupId,
+      surface: {
+        kind: "page_file",
+        titleSnapshot: "report.html",
+        config: {
+          routingContext: { kind: "library" },
+          pageId: "page:source",
+          fileId: "file",
+          logicalPath: "report.html",
+        },
+      },
+    });
+    expect(receipt).toMatchObject({ applied: true, persisted: true, error: null });
+    expect(subject.observe().groups.find((group) => group.groupId === groupId)?.tabIds).toEqual([
+      "source",
+      receipt.tabId,
+      "sibling",
+    ]);
+    const persisted = subject.owner.read().windowState.scenesByOwnerKey.library!;
+    expect(persisted.panelSurfacesById.source?.kind).toBe("page_stage");
+    expect(subject.lifecycle.close).not.toHaveBeenCalled();
+    expect(
+      WorkbenchSceneSnapshotSchema.parse(JSON.parse(JSON.stringify(persisted))).panelSurfacesById[
+        receipt.tabId!
+      ],
+    ).toMatchObject({ kind: "page_file", config: { fileId: "file" } });
+  },
+);
+
+test("Page Files honor an explicit source tab ahead of the default parent-Page placement", async () => {
+  const scene = seededScene({ kind: "library" }, [page("parent"), page("source"), page("sibling")]);
+  const subject = fixture(scene);
+  const groupId = scene.panels.right.layout.activeLeafId;
+  const receipt = await subject.executor.execute(
+    subject.envelope({
+      kind: "open_tab",
+      panelId: "right",
+      groupId,
+      surface: {
+        kind: "page_file",
+        titleSnapshot: "File",
+        config: {
+          routingContext: { kind: "library" },
+          pageId: "page:parent",
+          fileId: "file",
+          logicalPath: null,
+        },
+      },
+    }),
+    () => true,
+    { open: { targetIndex: 2, openerTabId: "source" } },
+  );
+  expect(receipt.error).toBeNull();
+  expect(subject.observe().groups.find((group) => group.groupId === groupId)?.tabIds).toEqual([
+    "parent",
+    "source",
+    receipt.tabId,
+    "sibling",
+  ]);
+});

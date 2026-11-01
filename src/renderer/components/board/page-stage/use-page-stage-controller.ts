@@ -51,6 +51,7 @@ interface UsePageStageControllerResult {
   onRemoveRelatedChat?: (sessionId: string) => Promise<void>;
   onRetryRelatedChats?: () => Promise<void> | void;
   onLoadMoreRelatedChats?: () => Promise<void> | void;
+  openPageFile?: PageStageProps["onOpenPageFile"];
   handleClose: () => Promise<void>;
   handleDelete: () => Promise<void>;
   handleToggleContentWidth: () => void;
@@ -411,6 +412,7 @@ export function usePageStageController(
     onRemoveRelatedChat,
     onRetryRelatedChats,
     onLoadMoreRelatedChats,
+    openPageFile: props.onOpenPageFile,
     handleClose,
     handleDelete,
     handleToggleContentWidth,

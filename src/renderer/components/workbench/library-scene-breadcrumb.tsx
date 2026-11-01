@@ -47,7 +47,7 @@ export function libraryTargetForLibrarySurface(
   surface: WorkbenchSurfaceDescriptor | null,
 ): LibraryRouteTarget | null {
   if (!surface) return null;
-  if (surface.kind === "page_stage") {
+  if (surface.kind === "page_stage" || surface.kind === "page_file") {
     return surface.config.routingContext.kind === "library"
       ? { kind: "page", pageId: surface.config.pageId }
       : null;
@@ -129,9 +129,18 @@ export function LibrarySceneBreadcrumb({ scene }: { readonly scene: WorkbenchSce
       : undefined,
   );
   const childTitle =
-    target && root && (target.kind === "view" || !areLibraryResourceTargetsEqual(target, root))
-      ? surfaceTitle
-      : null;
+    surface?.kind === "page_file"
+      ? [
+          target && root && target.kind !== "view" && !areLibraryResourceTargetsEqual(target, root)
+            ? navigation.activeTargetNode?.title
+            : null,
+          surface.config.logicalPath ?? surface.config.titleSnapshot ?? "File",
+        ]
+          .filter(Boolean)
+          .join(" / ")
+      : target && root && (target.kind === "view" || !areLibraryResourceTargetsEqual(target, root))
+        ? surfaceTitle
+        : null;
 
   return (
     <AppShellHeaderContentRegistrar

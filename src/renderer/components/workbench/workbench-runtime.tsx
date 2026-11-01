@@ -68,6 +68,9 @@ import { HistoryPanel } from "./workbench-history-panel";
 import { useTerminalSessionStoreVersion } from "@/lib/terminal-session-store";
 import { BrowserSidebarHiddenWebviewHosts } from "@/features/browser-sidebar/browser-sidebar-hidden-webview-hosts";
 import { useBrowserSidebarRendererState } from "@/features/browser-sidebar/browser-sidebar-renderer-state-store";
+import { updateWorkbenchPageFileConfig } from "@/lib/workbench-page-file-surface-state";
+import { WorkbenchPageFileSurface } from "./workbench-page-file-surface";
+import { orderWorkbenchScenePreview } from "@/lib/workbench-scene-preview";
 import { WorkspaceFilesPanel, type WorkspaceFilesTab } from "@/features/workspace-files";
 import {
   ContentSearchProvider,
@@ -891,7 +894,9 @@ export function WorkbenchRuntime({
     () =>
       createWorkbenchSceneNavigator({
         getScene: (owner) =>
-          workbenchWindowRef.current.scenesByOwnerKey[makeWorkbenchSceneKey(owner)],
+          workbenchWindowRef.current.owner.read().windowState.scenesByOwnerKey[
+            makeWorkbenchSceneKey(owner)
+          ],
         presentDurable: (input, surface) => {
           const capability = sceneCommandsRef.current;
           if (!capability)
@@ -915,14 +920,38 @@ export function WorkbenchRuntime({
         preview: {
           prepareReplace: (owner, entry) => prepareWorkbenchSceneSurfaceClose(owner, entry.surface),
           list(owner) {
+            const state = workbenchWindowRef.current.owner.read();
             const scene =
-              workbenchWindowRef.current.scenesByOwnerKey[makeWorkbenchSceneKey(owner)] ??
+              state.windowState.scenesByOwnerKey[makeWorkbenchSceneKey(owner)] ??
               materializeInitialWorkbenchScene(owner);
-            return listWorkbenchScenePreviewEntries(scene, previewSurfacesByPanelRef.current);
+            return listWorkbenchScenePreviewEntries(
+              scene,
+              state.ephemeralPanels.previewSurfacesByPanel,
+              state.ephemeralPanels.tabOrderByPanelGroup,
+            );
           },
-          set(owner, panelId, leafId, surface) {
+          set(owner, panelId, leafId, surface, targetIndex) {
+            if (surface && targetIndex !== undefined) {
+              const scene =
+                workbenchWindowRef.current.owner.read().windowState.scenesByOwnerKey[
+                  makeWorkbenchSceneKey(owner)
+                ];
+              if (scene)
+                panelControllerRef.current.updateTabOrderByPanelGroup((current) =>
+                  orderWorkbenchScenePreview(
+                    scene,
+                    panelId,
+                    leafId,
+                    surface.id,
+                    targetIndex,
+                    current,
+                  ),
+                );
+            }
             const slotKey = makeWorkbenchScenePreviewSlotKey(owner, panelId, leafId);
-            const next = { ...previewSurfacesByPanelRef.current };
+            const next = {
+              ...workbenchWindowRef.current.owner.read().ephemeralPanels.previewSurfacesByPanel,
+            };
             if (surface) {
               next[slotKey] = surface;
             } else {
@@ -2691,7 +2720,35 @@ export function WorkbenchRuntime({
     (url: string) => openWorkbenchWindow({ browserUrl: url }),
     [],
   );
+  const presentOwnedScenePageFile = useCallback<
+    import("@/lib/workbench-page-file-opener").OpenPageFileTabHandler
+  >(
+    async (input) => {
+      if (!activeOwnedSceneOwner) return false;
+      const result = await sceneNavigator.presentPanelSurface({
+        owner: activeOwnedSceneOwner,
+        request: {
+          kind: "page_file",
+          titleSnapshot: input.title,
+          config: {
+            routingContext: input.routingContext,
+            pageId: input.pageId,
+            fileId: input.fileId,
+            logicalPath: input.logicalPath,
+            titleSnapshot: input.title,
+          },
+        },
+        target: { panelId: "right", placement: input.placement },
+        mode: input.openMode ?? "durable",
+        navigation: "background",
+      });
+      return result.status === "presented";
+    },
+    [activeOwnedSceneOwner, sceneNavigator],
+  );
   const panelOpeners = useWorkbenchPanelOpeners({
+    preparePageFilePreviewClose: prepareWorkbenchSceneSurfaceClose,
+    presentOwnedScenePageFile,
     presentOwnedSceneFile,
     activeProjectId,
     activeSession,
@@ -2719,6 +2776,7 @@ export function WorkbenchRuntime({
     openPlanSidePanel,
     openAutomationSidePanel,
     openWorkspaceFileTab,
+    openPageFileTab,
   } = panelOpeners;
   const openExistingSideChatRef = useRef(openExistingSideChat);
   openExistingSideChatRef.current = openExistingSideChat;
@@ -4265,6 +4323,63 @@ export function WorkbenchRuntime({
       updateSceneSurfacePresentation,
     ],
   );
+  const renderOwnedScenePageFileSurface = useCallback(
+    (
+      surface: Extract<WorkbenchSurfaceDescriptor, { kind: "page_file" }>,
+      context: { readonly active: boolean; readonly panelId: PanelId },
+    ) => {
+      if (!activeOwnedScene || !activeOwnedSceneOwner) return null;
+      const owner = activeOwnedSceneOwner;
+      const leaf = findWorkbenchPanelLeafForTab(
+        activeOwnedScenePresentation?.scene.panels[context.panelId].layout ??
+          activeOwnedScene.panels[context.panelId].layout,
+        surface.id,
+      );
+      return (
+        <WorkbenchPageFileSurface
+          surface={surface}
+          isActive={context.active}
+          onClose={() => void executeSceneCommand(owner, { kind: "close_tab", tabId: surface.id })}
+          onPinPreview={() => {
+            if (leaf)
+              sceneNavigator.pinPreview({
+                owner,
+                panelId: context.panelId,
+                leafId: leaf.id,
+                surfaceId: surface.id,
+              });
+          }}
+          onUpdateConfig={(patch) =>
+            updateWorkbenchPageFileConfig(workbenchWindow.owner, owner, surface.id, patch)
+          }
+          onOpenPage={({ routingContext, pageId, title }) => {
+            void sceneNavigator.presentPanelSurface({
+              owner,
+              request: {
+                kind: "page_stage",
+                titleSnapshot: title,
+                config: { routingContext, pageId, titleSnapshot: title },
+              },
+              target: {
+                panelId: context.panelId,
+                placement: { kind: "same-group", sourceSurfaceId: surface.id },
+              },
+              mode: "durable",
+              navigation: "background",
+            });
+          }}
+        />
+      );
+    },
+    [
+      activeOwnedScene,
+      activeOwnedSceneOwner,
+      activeOwnedScenePresentation,
+      executeSceneCommand,
+      sceneNavigator,
+      workbenchWindow.owner,
+    ],
+  );
   const renderProjectSceneSurface = useCallback(
     (
       surface: WorkbenchSurfaceDescriptor,
@@ -4299,6 +4414,7 @@ export function WorkbenchRuntime({
         });
       };
 
+      if (surface.kind === "page_file") return renderOwnedScenePageFileSurface(surface, context);
       if (surface.kind === "inbox") {
         const projectId = inboxScopeProjectId(surface.config.scope);
         if (!projectId) return null;
@@ -4356,6 +4472,7 @@ export function WorkbenchRuntime({
       ) {
         return (
           <WorkbenchLibraryResourceSurface
+            onOpenPageFile={openPageFileTab}
             surface={surface}
             owner={workbenchWindow.owner}
             sceneOwner={activeProjectScene.owner}
@@ -4499,6 +4616,7 @@ export function WorkbenchRuntime({
         };
         return (
           <PageStageSessionTab
+            onOpenPageFile={openPageFileTab}
             tab={tab}
             project={projects.find((item) => item.id === pageAccessProjectId) ?? null}
             closeRef={pageStageCloseRef}
@@ -4651,6 +4769,8 @@ export function WorkbenchRuntime({
       return null;
     },
     [
+      renderOwnedScenePageFileSurface,
+      openPageFileTab,
       renderOwnedSceneFileSurface,
       executeSceneCommand,
       activeProject,
@@ -4724,6 +4844,7 @@ export function WorkbenchRuntime({
         });
       };
 
+      if (surface.kind === "page_file") return renderOwnedScenePageFileSurface(surface, context);
       if (surface.kind === "files") return renderOwnedSceneFileSurface(surface, context);
 
       if (surface.kind === "inbox") {
@@ -4808,6 +4929,7 @@ export function WorkbenchRuntime({
       if (surface.kind === "page_stage") {
         return (
           <WorkbenchLibraryPageSurface
+            onOpenPageFile={openPageFileTab}
             pageId={surface.config.pageId}
             surfaceId={surface.id}
             isActivePanelTab={context.active}
@@ -4847,6 +4969,8 @@ export function WorkbenchRuntime({
       );
     },
     [
+      renderOwnedScenePageFileSurface,
+      openPageFileTab,
       renderOwnedSceneFileSurface,
       executeSceneCommand,
       activeLibraryScene,

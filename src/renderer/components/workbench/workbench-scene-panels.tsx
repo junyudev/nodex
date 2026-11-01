@@ -107,7 +107,8 @@ function makePanelItems(
             )
           : undefined;
       const title =
-        scene.owner.kind === "library" || scene.owner.kind === "inbox"
+        surface.kind !== "page_file" &&
+        (scene.owner.kind === "library" || scene.owner.kind === "inbox")
           ? surface.titleSnapshot.trim() || presentation.title
           : presentation.title;
       const titleSource =

@@ -33,6 +33,7 @@ export async function prepareWorkbenchSceneSurfaceClose(
   sceneOwner: WorkbenchSceneOwner,
   surface: WorkbenchSurfaceDescriptor,
 ): Promise<boolean> {
+  if (surface.kind === "page_file") return true;
   if (surface.kind === "files") return workspaceTextDocumentRegistry.flush(surface.id);
   if (surface.kind === "page_stage") {
     const lease = documentSessionRegistry.get(workbenchPageEditorKey(sceneOwner, surface.id));

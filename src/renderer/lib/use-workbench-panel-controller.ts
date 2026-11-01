@@ -295,27 +295,32 @@ function capitalize<Value extends string>(value: Value): Capitalize<Value> {
   return `${value.charAt(0).toUpperCase()}${value.slice(1)}` as Capitalize<Value>;
 }
 
-const EPHEMERAL_PANEL_FIELDS = [
-  "previewTabsByPanel",
-  "previewSurfacesByPanel",
-  "sideChatTabsBySession",
-  "sideChatActiveTabByPanel",
-  "mcpAppTabsBySession",
-  "mcpAppActiveTabByPanel",
-  "planTabsBySession",
-  "planActiveTabByPanel",
-  "automationTabsBySession",
-  "automationActiveTabByPanel",
-  "backgroundAgentTabsBySession",
-  "backgroundAgentActiveTabByPanel",
-  "processOutputTabsBySession",
-  "processOutputActiveTabByPanel",
-  "imageEditorTabsBySession",
-  "imageEditorActiveTabByPanel",
-  "pendingProcessOutputOpen",
-  "activePlanKeyBySession",
-  "panelCollapsedOverrides",
-] as const satisfies readonly WorkbenchEphemeralPanelStateField[];
+/** Every ephemeral field gets an `update…` command; a new field without one fails to compile. */
+const EPHEMERAL_PANEL_FIELD_SET: Record<WorkbenchEphemeralPanelStateField, true> = {
+  previewTabsByPanel: true,
+  previewSurfacesByPanel: true,
+  sideChatTabsBySession: true,
+  sideChatActiveTabByPanel: true,
+  mcpAppTabsBySession: true,
+  mcpAppActiveTabByPanel: true,
+  planTabsBySession: true,
+  planActiveTabByPanel: true,
+  automationTabsBySession: true,
+  automationActiveTabByPanel: true,
+  backgroundAgentTabsBySession: true,
+  backgroundAgentActiveTabByPanel: true,
+  processOutputTabsBySession: true,
+  processOutputActiveTabByPanel: true,
+  imageEditorTabsBySession: true,
+  imageEditorActiveTabByPanel: true,
+  pendingProcessOutputOpen: true,
+  activePlanKeyBySession: true,
+  panelCollapsedOverrides: true,
+  tabOrderByPanelGroup: true,
+};
+const EPHEMERAL_PANEL_FIELDS = Object.keys(
+  EPHEMERAL_PANEL_FIELD_SET,
+) as readonly WorkbenchEphemeralPanelStateField[];
 
 export function useWorkbenchPanelController({
   mutateScene,

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { WorkbenchPageFileSurfaceConfigSchema } from "./workbench-page-file";
 import {
   WorkbenchFileHostIdSchema,
   WorkbenchSurfaceIdSchema,
@@ -191,6 +192,11 @@ export const WorkbenchSessionViewTabSchema = z
         config: WorkbenchPageStageTabConfigSchema,
       })
       .strict(),
+    z.strictObject({
+      ...tabBaseSchema,
+      kind: z.literal("page_file"),
+      config: WorkbenchPageFileSurfaceConfigSchema,
+    }),
     z
       .object({
         ...tabBaseSchema,

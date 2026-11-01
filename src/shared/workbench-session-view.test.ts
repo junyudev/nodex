@@ -468,3 +468,25 @@ describe("WorkbenchSessionView", () => {
     ).toThrow();
   });
 });
+
+test("Page File descriptors survive the panel codec and normalization", () => {
+  const tab: WorkbenchSessionViewTab = {
+    id: "page-file",
+    kind: "page_file",
+    titleSnapshot: "report.html",
+    stateKey: 0,
+    state: null,
+    config: {
+      routingContext: { kind: "library" },
+      pageId: "page",
+      fileId: "file",
+      logicalPath: null,
+    },
+  };
+  const view = createWorkbenchSessionViewTab(materializedView(), { panelId: "bottom", tab });
+  expect(
+    normalizeWorkbenchSessionView(
+      WorkbenchSessionViewSnapshotSchema.parse(JSON.parse(JSON.stringify(view))),
+    ).tabsById[tab.id],
+  ).toEqual(tab);
+});

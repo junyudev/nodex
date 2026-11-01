@@ -2,7 +2,7 @@
 
 Status: Active
 
-Last Updated: 2026-09-26
+Last Updated: 2026-11-01
 
 Page Files is the Page-local view of Library Files related to one Page. It lets a
 person organize a File under a portable path, see Files used in the Page body,
@@ -44,19 +44,45 @@ path.
 
 ## Page Stage
 
-Every Page Stage can expose one compact `Files` Property row. Opening the Page or
-rendering the closed row reads metadata only and never loads File bytes. The row
-summarizes Files related to the current Page and opens the complete Page Files
-surface.
+Every Page Stage can expose one `Files` Property row. Opening the Page or
+rendering the row reads metadata only and never loads File bytes.
+
+The row summarizes the Page's Files as a count and, when one origin attached
+every File, names it: `3 files from <chat> · 2m`. It discloses the Files tree,
+which spans the full width of the Properties beneath the row rather than the
+value column, so folders, names, origins and sizes keep their own room. The tree
+starts open; whether it is open, which folders are folded and whether it shows
+every row are remembered for each Page in the window. A tree longer than ten rows
+shows its first ten and `Show N more`; an inventory longer than one loaded window
+continues with `Show more`.
 
 A File with an explicit path and no body occurrence is an unplaced entry. These
-entries are the most useful compact-row preview because they are otherwise not
-visible in the editor. Files already visible in the body are summarized without
-repeating every attachment or image. When the quiet Properties disclosure owns
-the row, body-only changes do not make the surrounding Property layout jump
-while the Page remains mounted.
+entries make the row informative; Files already visible in the body do not. When
+the quiet Properties disclosure owns the row, body-only changes do not make the
+surrounding Property layout jump while the Page remains mounted.
 
-The open surface provides a bounded, searchable inventory. All current-Profile
+The tree reads Page paths as folders: folders first, then Files, in natural name
+order. Each File shows its kind icon, name and byte size. Files used only in the
+Page body follow under `In page` with their File names; they have no path and no
+attachment origin. Files that arrive while the Page is open carry a quiet new
+mark until opened, and a folded tree shows the mark on its summary.
+
+Each attachment origin appears once, on the narrowest node it covers: the summary
+when one origin attached every File, a folder when one origin attached
+everything in it, otherwise the File itself. An origin is the attaching chat with
+its provider mark, `You`, or `Command line`, followed by how long ago; its
+tooltip gives the exact time, and a chat's name opens that chat. A chat that no
+longer exists reads `Deleted chat`.
+
+Activating a File opens it in a tab beside its Page (see
+[Opening Files](#opening-files)); Arrow keys move through the tree, Right and
+Left unfold and fold folders, and Enter opens. A File's context menu offers
+Open, Open in new tab, Save…, Copy path, Manage in Page files… and Remove from
+Page, which reads Remove path while the body still uses the File. The row's `+`
+and Manage open the Page Files manager. A Page shown outside a tab group opens
+the manager on the File instead.
+
+The manager provides a bounded, searchable inventory. All current-Profile
 Page relationships can be managed once their inventory is loaded; Page lifecycle
 and manifest revisions remain the mutation boundary. It distinguishes the
 optional Page path from body usage and exposes actions appropriate to each
@@ -75,6 +101,60 @@ relationship:
 An entry replacement changes only the selected Page/File relation. Updating the
 shared File is a separate Library action with explicit wording because all
 head-following Page body occurrences and entries will see the new content.
+
+## Attachment provenance
+
+Each explicit entry records who attached it and when. Core stamps the time, and
+no caller names its own actor:
+
+- the desktop app attaches as the local person;
+- an Agent that Nodex runs carries a credential Core issued for its chat, so the
+  entry names that product Session and its backend family (Codex, Claude,
+  OpenCode or ACP), captured at attachment so a later provider change does not
+  rewrite it;
+- any other caller, such as the CLI run by hand or by an Agent Nodex did not
+  start, is external;
+- entries that predate provenance have an unknown origin and no time.
+
+Renaming, moving and copying an entry, whole-Page copy, clipboard paste and
+structural restore keep its provenance. Replacing an entry's File, as `nodex page
+file put` does at an occupied path, or removing and re-attaching it records a new
+origin and time. Shared File updates and global renames leave it unchanged.
+Body-only uses have none. File creation and version evidence describe the File,
+not who attached it to a Page.
+
+## Opening Files
+
+A Page File opens as a tab in its Page's tab group, immediately after the Page
+tab, so the Page stays one click away. A click opens a preview tab that the next
+preview in that group replaces; a double click, Cmd/Ctrl-click, Open in new tab,
+or switching between preview and source keeps the tab. Opening a File that
+already has a tab activates it. The tab follows its entry: a renamed path keeps
+the tab, and when the entry's File is replaced, as an Agent does when it attaches
+a new report at the same path, the tab moves to the new File. A tab whose File
+left the Page says so and offers to open the Page.
+
+The tab's header is the path back to the Page, `<Page> / folder / file`, and its
+Page segment opens the Page. Its controls are View source or View preview for
+HTML, Markdown and SVG, Reload for an HTML preview, Save…, and a menu with Copy
+path, Manage in Page files… and Open in Library….
+
+Each File presents as itself:
+
+- HTML renders as the page it is, in an isolated offline preview (see
+  [Security](../SECURITY.md#offline-page-file-html-previews)). Relative URLs resolve
+  among the same Page's explicit entries, so `profile/report.html` can show
+  `flamegraph.png` and fetch `trace.json` beside it. Nothing reaches the network:
+  a report's scripts, styles and fonts must be inline or attached to the Page. A
+  web link the person clicks opens in the system browser. The preview reloads
+  when the File changes, and a report with a dark color scheme shows it while the
+  app is dark.
+- Markdown renders; images show with their dimensions and size; PDFs, audio and
+  video play in their viewers.
+- Text, JSON and code show as source with line numbers. Single-line JSON is
+  indented for reading; Save keeps the original bytes.
+- Text and source views read at most 2 MiB. Other formats say they can't be
+  previewed and remain saveable.
 
 ## Import and path conflicts
 

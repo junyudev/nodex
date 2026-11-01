@@ -41,7 +41,9 @@ import {
   WorkbenchPanelStateSchema,
 } from "./workbench-session-view";
 import { parseDatabaseId } from "../database-identities";
-import type { ContentRoutingContext } from "../content-routing-context";
+import { ContentRoutingContextSchema } from "./content-routing-context";
+import { WorkbenchPageFileSurfaceConfigSchema } from "./workbench-page-file";
+export { ContentRoutingContextSchema } from "./content-routing-context";
 import type { LibraryPlacedResourceTarget } from "../library-module";
 
 const idSchema = z.string().min(1).max(512);
@@ -126,16 +128,6 @@ const WorkbenchConversationSurfaceConfigSchema = z
     sessionId: idSchema,
   })
   .strict();
-
-export const ContentRoutingContextSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("library") }).strict(),
-  z
-    .object({
-      kind: z.literal("project"),
-      projectId: idSchema,
-    })
-    .strict(),
-]) satisfies z.ZodType<ContentRoutingContext>;
 
 const WorkbenchDbViewSurfaceConfigFields = {
   routingContext: ContentRoutingContextSchema,
@@ -267,6 +259,11 @@ export const WorkbenchSurfaceDescriptorSchema = z
         config: WorkbenchPageStageSurfaceConfigSchema,
       })
       .strict(),
+    z.strictObject({
+      ...surfaceBaseSchema,
+      kind: z.literal("page_file"),
+      config: WorkbenchPageFileSurfaceConfigSchema,
+    }),
     z
       .object({
         ...surfaceBaseSchema,
@@ -698,7 +695,8 @@ function isRawScenePanelSurfaceAllowed(ownerKind: unknown, surface: unknown): bo
     return false;
   }
   if ((routingContext as Record<string, unknown>).kind !== "library") return false;
-  if (record.kind === "page_stage" || record.kind === "canvas_stage") return true;
+  if (record.kind === "page_stage" || record.kind === "page_file" || record.kind === "canvas_stage")
+    return true;
   if (record.kind !== "db_view") return false;
   const target = configRecord.target;
   return (
@@ -797,6 +795,11 @@ function migrateWorkbenchSceneSnapshot(value: unknown): unknown {
       : null;
   if (record?.version === WORKBENCH_SCENE_VERSION) {
     return stripOwnerInvalidPanelSurfacesFromScene(stripDatabaseLayoutsFromScene(value));
+  }
+  if (record?.version === 9) {
+    return stripOwnerInvalidPanelSurfacesFromScene(
+      stripDatabaseLayoutsFromScene({ ...record, version: WORKBENCH_SCENE_VERSION }),
+    );
   }
   if (record?.version === 8) {
     return stripOwnerInvalidPanelSurfacesFromScene(

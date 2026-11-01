@@ -289,3 +289,32 @@ describe("usePageStageController", () => {
     expect(propertyUpdates).toEqual(["assignee"]);
   });
 });
+
+test("exposes the current Page File opener with the exact resource and open mode", async () => {
+  const opened: unknown[] = [];
+  const props = buildProps({
+    onOpenPageFile: async (input) => {
+      opened.push(input);
+    },
+  });
+  const result = renderController(props);
+  await settleAsyncRender();
+  const input = {
+    routingContext: { kind: "project" as const, projectId: "project-1" },
+    pageId: "page-1",
+    fileId: "file-1",
+    logicalPath: "output/report.html",
+    title: "report.html",
+    openMode: "preview" as const,
+  };
+  await act(async () => {
+    await result.controller.openPageFile?.(input);
+    await Promise.resolve();
+  });
+  expect(opened).toEqual([input]);
+  await act(async () => {
+    result.rerender({ ...props, onOpenPageFile: undefined });
+    await Promise.resolve();
+  });
+  expect(result.controller.openPageFile).toBeUndefined();
+});

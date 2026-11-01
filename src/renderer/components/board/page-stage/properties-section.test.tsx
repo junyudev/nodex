@@ -3,7 +3,7 @@ import { act, fireEvent } from "@testing-library/react";
 import type { ReactElement } from "react";
 
 import type { PageStageCorePage } from "@/lib/page-stage-page";
-import { render } from "@/test/dom";
+import { renderWithAppMaitai } from "@/test/app-maitai";
 import { TestQueryProvider } from "@/test/query";
 import { PageStagePropertiesSection } from "./properties-section";
 import type { PageStageController } from "./use-page-stage-controller";
@@ -155,7 +155,7 @@ const buildController = (overrides: Partial<PageStageController> = {}): PageStag
   }) as PageStageController;
 
 const renderProperties = (element: ReactElement) =>
-  render(<TestQueryProvider>{element}</TestQueryProvider>);
+  renderWithAppMaitai(element, { wrapper: TestQueryProvider });
 
 describe("PageStagePropertiesSection", () => {
   test("keeps empty Files available behind the shared disclosure", async () => {
@@ -383,7 +383,7 @@ describe("PageStagePropertiesSection", () => {
 
     const view = renderProperties(<PageStagePropertiesSection controller={buildController()} />);
 
-    expect(await view.findByRole("button", { name: "Open brief.txt" })).toBeTruthy();
+    expect(await view.findByRole("treeitem", { name: "brief.txt" })).toBeTruthy();
     expect(view.queryByRole("button", { name: /more propert/u })).toBeNull();
   });
 
@@ -401,16 +401,17 @@ describe("PageStagePropertiesSection", () => {
 
     const view = renderProperties(<PageStagePropertiesSection controller={buildController()} />);
     const more = await view.findByRole("button", { name: "1 more property" });
-    expect(view.queryByRole("button", { name: "Open 1 File shown in Page" })).toBeNull();
+    expect(view.queryByRole("treeitem", { name: "image.png" })).toBeNull();
 
     await act(async () => {
       fireEvent.click(more);
       await Promise.resolve();
     });
 
-    expect(view.getByRole("button", { name: "Open 1 File shown in Page" }).textContent).toBe(
-      "1 in page",
+    expect(view.getByRole("button", { name: /^1 file/u }).getAttribute("aria-expanded")).toBe(
+      "true",
     );
+    expect(view.getByRole("treeitem", { name: "image.png" })).toBeTruthy();
     expect(view.queryByText("Empty", { exact: true })).toBeNull();
   });
 });

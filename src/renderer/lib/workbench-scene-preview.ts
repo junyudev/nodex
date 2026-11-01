@@ -1,5 +1,6 @@
 import {
   activateWorkbenchPanelLeaf,
+  findWorkbenchPanelLeaf,
   insertWorkbenchPanelTabInBackground,
   listWorkbenchPanelLeaves,
   reorderWorkbenchPanelLeafTabs,
@@ -26,6 +27,7 @@ export function makeWorkbenchScenePreviewSlotKey(
 export function listWorkbenchScenePreviewEntries(
   scene: WorkbenchSceneSnapshot,
   previewSurfacesByPanel: Readonly<Record<string, WorkbenchSurfaceDescriptor>>,
+  tabOrderByPanelGroup: Readonly<Record<string, readonly string[]>> = {},
 ): WorkbenchScenePreviewEntry[] {
   const entries: WorkbenchScenePreviewEntry[] = [];
   for (const panelId of ["right", "bottom"] as const) {
@@ -33,7 +35,15 @@ export function listWorkbenchScenePreviewEntries(
       const surface =
         previewSurfacesByPanel[makeWorkbenchScenePreviewSlotKey(scene.owner, panelId, leaf.id)];
       if (!surface || scene.panelSurfacesById[surface.id]) continue;
-      entries.push({ panelId, leafId: leaf.id, surface });
+      const index = tabOrderByPanelGroup[
+        makeWorkbenchScenePreviewSlotKey(scene.owner, panelId, leaf.id)
+      ]?.indexOf(surface.id);
+      entries.push({
+        panelId,
+        leafId: leaf.id,
+        surface,
+        ...(index !== undefined && index >= 0 ? { targetIndex: index } : {}),
+      });
     }
   }
   return entries;
@@ -51,7 +61,11 @@ export function projectWorkbenchScenePreviews(
   readonly scene: WorkbenchSceneSnapshot;
   readonly previewSurfaceIds: ReadonlySet<string>;
 } {
-  const entries = listWorkbenchScenePreviewEntries(scene, previewSurfacesByPanel);
+  const entries = listWorkbenchScenePreviewEntries(
+    scene,
+    previewSurfacesByPanel,
+    tabOrderByPanelGroup,
+  );
   if (entries.length === 0 && Object.keys(tabOrderByPanelGroup).length === 0) {
     return { scene, previewSurfaceIds: new Set() };
   }
@@ -68,6 +82,7 @@ export function projectWorkbenchScenePreviews(
       layout = insertWorkbenchPanelTabInBackground(layout, {
         tabId: entry.surface.id,
         targetLeafId: entry.leafId,
+        targetIndex: entry.targetIndex,
       });
       layout = activateWorkbenchPanelLeaf(layout, entry.leafId, entry.surface.id);
       panelSurfacesById[entry.surface.id] = entry.surface;
@@ -102,4 +117,25 @@ export function projectWorkbenchScenePreviews(
     },
     previewSurfaceIds,
   };
+}
+
+/** Install a preview at a requested position while retaining the group's authored mixed order. */
+export function orderWorkbenchScenePreview(
+  scene: WorkbenchSceneSnapshot,
+  panelId: PanelId,
+  leafId: string,
+  surfaceId: string,
+  targetIndex: number,
+  current: Record<string, readonly string[]>,
+): Record<string, readonly string[]> {
+  const key = makeWorkbenchScenePreviewSlotKey(scene.owner, panelId, leafId);
+  const leaf = findWorkbenchPanelLeaf(scene.panels[panelId].layout, leafId);
+  const ids = orderWorkbenchPanelTabs(
+    (leaf?.tabIds ?? []).map((id) => ({ id })),
+    current[key],
+  )
+    .map((tab) => tab.id)
+    .filter((id) => id !== surfaceId);
+  ids.splice(targetIndex, 0, surfaceId);
+  return { ...current, [key]: ids };
 }

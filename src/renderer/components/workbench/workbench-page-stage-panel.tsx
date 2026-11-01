@@ -128,6 +128,7 @@ export function PageStageSessionTab({
   onEnsureDefaultDraftSessionForProject,
   onRefreshSessions,
   onOpenPageTab,
+  onOpenPageFile,
   onOpenCanvasStage,
   onOpenThread,
   onOpenRelatedChat,
@@ -161,6 +162,7 @@ export function PageStageSessionTab({
   ) => Promise<WorkbenchSessionRenderProjection>;
   onRefreshSessions: (projectId: string) => Promise<WorkbenchSessionRenderProjection[]>;
   onOpenPageTab: OpenPageTabHandler;
+  onOpenPageFile?: import("@/lib/workbench-page-file-opener").OpenPageFileTabHandler;
   onOpenCanvasStage: OpenCanvasStageHandler;
   onOpenThread: (threadId: string) => Promise<void>;
   onOpenRelatedChat?: (sessionId: string) => Promise<void> | void;
@@ -442,6 +444,16 @@ export function PageStageSessionTab({
               });
             }}
             onOpenCodexThread={onOpenThread}
+            onOpenPageFile={
+              onOpenPageFile
+                ? async (input) => {
+                    await onOpenPageFile({
+                      ...input,
+                      placement: { kind: "same-group", sourceSurfaceId: tab.id },
+                    });
+                  }
+                : undefined
+            }
             onOpenPage={async ({ routingContext, pageId, titleSnapshot, sourceBlockId }) => {
               if (routingContext.kind !== "project") return;
               await onOpenPageTab(routingContext.projectId, pageId, titleSnapshot, {

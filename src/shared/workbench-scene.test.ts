@@ -120,7 +120,7 @@ function sceneV2Fields(
 }
 
 function toLegacySurface(surface: WorkbenchSurfaceDescriptor): WorkbenchSurfaceDescriptorV3 {
-  if (surface.kind === "image_editor") {
+  if (surface.kind === "image_editor" || surface.kind === "page_file") {
     throw new Error("Image editor surfaces did not exist in legacy Scenes");
   }
   if (
@@ -1162,4 +1162,87 @@ test("Library and Inbox host files survive save, restore, move, and window cloni
       }),
     ).toBe(scene);
   }
+});
+
+describe("Page File surfaces", () => {
+  const surface: Extract<WorkbenchSurfaceDescriptor, { kind: "page_file" }> = {
+    id: "surface:file",
+    kind: "page_file",
+    titleSnapshot: "report.html",
+    stateKey: 0,
+    state: null,
+    config: {
+      routingContext: { kind: "library" },
+      pageId: "page:report",
+      fileId: "file:report",
+      logicalPath: "profile/report.html",
+      titleSnapshot: "report.html",
+    },
+  };
+  test.each(["session", "project", "library", "inbox"] as const)(
+    "round-trips Page Files in both panels of a %s Scene",
+    (kind) => {
+      const owner =
+        kind === "session"
+          ? { kind, sessionId: "session" }
+          : kind === "project"
+            ? { kind, projectId: "project" }
+            : { kind };
+      for (const panelId of ["right", "bottom"] as const) {
+        const scene = createWorkbenchSceneSurface(materializeInitialWorkbenchScene(owner), {
+          panelId,
+          surface,
+        });
+        const restored = WorkbenchSceneSnapshotSchema.parse(JSON.parse(JSON.stringify(scene)));
+        expect(restored.panelSurfacesById[surface.id]).toEqual(surface);
+        expect(flattenWorkbenchPanelTabIds(restored.panels[panelId].layout)).toContain(surface.id);
+        expect(normalizeWorkbenchScene(restored).panelSurfacesById[surface.id]).toEqual(surface);
+      }
+    },
+  );
+  test("uses Library resource identity across presentation routes and title/path changes", () => {
+    const key = getWorkbenchSurfaceReuseKey(surface);
+    expect(
+      getWorkbenchSurfaceReuseKey({
+        ...surface,
+        config: {
+          ...surface.config,
+          routingContext: { kind: "project", projectId: "another" },
+          logicalPath: "renamed.html",
+          titleSnapshot: "Renamed",
+        },
+      }),
+    ).toBe(key);
+    expect(
+      getWorkbenchSurfaceReuseKey({
+        ...surface,
+        config: { ...surface.config, pageId: "other-page" },
+      }),
+    ).not.toBe(key);
+    expect(
+      getWorkbenchSurfaceReuseKey({
+        ...surface,
+        config: { ...surface.config, fileId: "other-file" },
+      }),
+    ).not.toBe(key);
+  });
+  test("Library and Inbox discard a Project-routed File just as they discard a Project-routed Page", () => {
+    for (const owner of [LIBRARY_SCENE_OWNER, INBOX_SCENE_OWNER]) {
+      const scene = createWorkbenchSceneSurface(materializeInitialWorkbenchScene(owner), {
+        panelId: "right",
+        surface: {
+          ...surface,
+          config: { ...surface.config, routingContext: { kind: "project", projectId: "project" } },
+        },
+      });
+      expect(normalizeWorkbenchScene(scene).panelSurfacesById[surface.id]).toBeUndefined();
+    }
+  });
+});
+
+test("normalizes v9 Scenes without changing their resources or placement", () => {
+  const current = projectScene();
+  const restored = WorkbenchSceneSnapshotSchema.parse({ ...current, version: 9 });
+  expect(restored).toEqual(current);
+  expect(restored.version).toBe(WORKBENCH_SCENE_VERSION);
 });

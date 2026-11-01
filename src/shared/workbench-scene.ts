@@ -49,7 +49,7 @@ import {
   type WorkbenchPanelSplitSide,
 } from "./workbench-panel-layout";
 
-export const WORKBENCH_SCENE_VERSION = 9 as const;
+export const WORKBENCH_SCENE_VERSION = 10 as const;
 export const WORKBENCH_SCENE_MAX_PANEL_SURFACES = 2_048;
 
 export type WorkbenchSceneOwner =
@@ -148,6 +148,7 @@ export type WorkbenchSurfaceKind =
   | "inbox"
   | "db_view"
   | "page_stage"
+  | "page_file"
   | "canvas_stage"
   | "terminal"
   | "browser"
@@ -181,6 +182,16 @@ export interface WorkbenchDbViewSurfaceConfig {
 export interface WorkbenchPageStageSurfaceConfig {
   readonly routingContext: ContentRoutingContext;
   readonly pageId: string;
+  readonly titleSnapshot?: string;
+}
+
+export interface WorkbenchPageFileSurfaceConfig {
+  readonly routingContext: ContentRoutingContext;
+  readonly pageId: string;
+  /** The File currently shown; follows renames, and retargets when the Page entry at `logicalPath` is replaced. */
+  readonly fileId: string;
+  /** The Page path when the File has one; null for a File used only in the Page body. */
+  readonly logicalPath: string | null;
   readonly titleSnapshot?: string;
 }
 
@@ -231,6 +242,7 @@ export interface WorkbenchSurfaceConfigByKind {
   readonly inbox: WorkbenchInboxSurfaceConfig;
   readonly db_view: WorkbenchDbViewSurfaceConfig;
   readonly page_stage: WorkbenchPageStageSurfaceConfig;
+  readonly page_file: WorkbenchPageFileSurfaceConfig;
   readonly canvas_stage: WorkbenchCanvasStageSurfaceConfig;
   readonly terminal: WorkbenchTerminalSurfaceConfig;
   readonly browser: WorkbenchBrowserSurfaceConfig;
@@ -305,7 +317,7 @@ export type WorkbenchSurfaceDescriptorV3 =
   | Exclude<
       WorkbenchSurfaceDescriptor,
       {
-        readonly kind: "db_view" | "page_stage" | "canvas_stage" | "image_editor";
+        readonly kind: "db_view" | "page_stage" | "canvas_stage" | "page_file" | "image_editor";
       }
     >
   | WorkbenchLegacyResourceSurfaceDescriptor;
@@ -586,7 +598,11 @@ export function isLibrarySceneSurfaceAllowed(surface: WorkbenchSurfaceDescriptor
       surface.config.projectId === null &&
       Boolean(surface.config.path || surface.config.workspaceRoot)
     );
-  if (surface.kind === "page_stage" || surface.kind === "canvas_stage") {
+  if (
+    surface.kind === "page_stage" ||
+    surface.kind === "page_file" ||
+    surface.kind === "canvas_stage"
+  ) {
     return surface.config.routingContext.kind === "library";
   }
   return (
@@ -1412,6 +1428,9 @@ export function getWorkbenchSurfaceReuseKey(
     }
     case "page_stage":
       return `page:${contentRoutingContextKey(surface.config.routingContext)}:${surface.config.pageId}`;
+    case "page_file":
+      // One Profile owns one Library; Project routing is presentation, not resource identity.
+      return JSON.stringify(["page_file", surface.config.pageId, surface.config.fileId]);
     case "canvas_stage":
       return `canvas:${contentRoutingContextKey(surface.config.routingContext)}:${surface.config.canvasBlockId}`;
     case "review":

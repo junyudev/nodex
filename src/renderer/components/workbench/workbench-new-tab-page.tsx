@@ -27,6 +27,7 @@ import {
 import { readBrowserAddressWorkspaceQuery } from "@/features/browser-sidebar/browser-address-suggestions";
 import { formatCompactRelativeTime } from "@/lib/compact-relative-time";
 import { readWorkbenchAgentContext } from "@/lib/workbench-agent-context";
+import { resolveFileResourceIcon } from "@/components/shared/file-resource-icon";
 import { getPanelNewTabAction } from "@/lib/workbench-panel-actions";
 import { useWorkbenchWindowOwner } from "@/lib/use-workbench-window-state";
 import {
@@ -684,12 +685,14 @@ export function useWorkbenchNewTabAddressSuggestions(
     .filter((tab) => tab.tabId !== surfaceId)
     .map((tab): BrowserAddressWorkspaceOption => {
       const Icon =
-        tab.surface &&
-        tab.surface.kind !== "conversation" &&
-        tab.surface.kind !== "inbox" &&
-        tab.surface.kind !== "image_editor"
-          ? getPanelNewTabAction(tab.surface.kind).Icon
-          : SidePanelSideChatIcon;
+        tab.surface?.kind === "page_file"
+          ? resolveFileResourceIcon(tab.surface.config.logicalPath ?? tab.surface.titleSnapshot)
+          : tab.surface &&
+              tab.surface.kind !== "conversation" &&
+              tab.surface.kind !== "inbox" &&
+              tab.surface.kind !== "image_editor"
+            ? getPanelNewTabAction(tab.surface.kind).Icon
+            : SidePanelSideChatIcon;
       return {
         id: `tab:${tab.tabId}`,
         kind: "switch-tab",

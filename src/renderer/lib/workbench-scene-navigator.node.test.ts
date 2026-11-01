@@ -1,3 +1,4 @@
+import { updateWorkbenchPageFileConfig } from "./workbench-page-file-surface-state";
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 import { createDefaultWorkbenchLayoutSnapshot } from "../../shared/workbench-layout";
 import { WorkbenchSceneSnapshotSchema } from "../../shared/schemas/workbench-scene";
@@ -13,6 +14,8 @@ import { createWorkbenchSceneCommands } from "./workbench-scene-commands";
 import { createWorkbenchSceneSurfacePresenter } from "./workbench-scene-surface-presenter";
 import {
   listWorkbenchScenePreviewEntries,
+  orderWorkbenchScenePreview,
+  projectWorkbenchScenePreviews,
   makeWorkbenchScenePreviewSlotKey,
 } from "./workbench-scene-preview";
 import {
@@ -82,10 +85,22 @@ function createHarness(
         const state = windowOwner.read();
         const scene = state.windowState.scenesByOwnerKey[makeWorkbenchSceneKey(owner)];
         return scene
-          ? listWorkbenchScenePreviewEntries(scene, state.ephemeralPanels.previewSurfacesByPanel)
+          ? listWorkbenchScenePreviewEntries(
+              scene,
+              state.ephemeralPanels.previewSurfacesByPanel,
+              state.ephemeralPanels.tabOrderByPanelGroup,
+            )
           : [];
       },
-      set(owner, panelId, leafId, surface) {
+      set(owner, panelId, leafId, surface, targetIndex) {
+        const scene = windowOwner.read().windowState.scenesByOwnerKey[makeWorkbenchSceneKey(owner)];
+        if (surface && scene && targetIndex !== undefined)
+          windowOwner.dispatchEphemeral({
+            type: "update",
+            field: "tabOrderByPanelGroup",
+            update: (current) =>
+              orderWorkbenchScenePreview(scene, panelId, leafId, surface.id, targetIndex, current),
+          });
         const key = makeWorkbenchScenePreviewSlotKey(owner, panelId, leafId);
         windowOwner.dispatchEphemeral({
           type: "update",
@@ -113,12 +128,14 @@ function createHarness(
       const state = windowOwner.read();
       return Object.fromEntries(
         Object.values(state.windowState.scenesByOwnerKey).flatMap((scene) =>
-          listWorkbenchScenePreviewEntries(scene, state.ephemeralPanels.previewSurfacesByPanel).map(
-            (entry) => [
-              makeWorkbenchScenePreviewSlotKey(scene.owner, entry.panelId, entry.leafId),
-              entry,
-            ],
-          ),
+          listWorkbenchScenePreviewEntries(
+            scene,
+            state.ephemeralPanels.previewSurfacesByPanel,
+            state.ephemeralPanels.tabOrderByPanelGroup,
+          ).map((entry) => [
+            makeWorkbenchScenePreviewSlotKey(scene.owner, entry.panelId, entry.leafId),
+            entry,
+          ]),
         ),
       );
     },
@@ -826,4 +843,216 @@ test("a failed save or revoked file opening cannot replace the current Scene pre
   expect(Object.values(harness.previews)[0]!.surface).toMatchObject({
     config: { path: "/work/first.ts" },
   });
+});
+
+describe("Page File Scene navigation", () => {
+  test.each(["project", "library", "inbox"] as const)(
+    "keeps the Page beside its File preview, then pins and deduplicates it in a %s Scene",
+    async (kind) => {
+      const h = createHarness();
+      const owner = kind === "project" ? { kind, projectId: "alpha" } : { kind };
+      const page = await h.navigator.presentPanelSurface({
+        owner,
+        request: {
+          kind: "page_stage",
+          config: { routingContext: { kind: "library" }, pageId: "report" },
+          titleSnapshot: "Report",
+        },
+        target: { panelId: "bottom" },
+        mode: "durable",
+        navigation: "background",
+      });
+      if (page.status !== "presented") throw new Error("Page unavailable");
+      const sibling = await h.navigator.presentPanelSurface({
+        owner,
+        request: {
+          kind: "page_stage",
+          config: { routingContext: { kind: "library" }, pageId: "sibling" },
+        },
+        target: { panelId: "bottom" },
+        mode: "durable",
+        navigation: "background",
+        tab: "background",
+      });
+      if (sibling.status !== "presented") throw new Error("Sibling unavailable");
+      const input = {
+        owner,
+        request: {
+          kind: "page_file" as const,
+          config: {
+            routingContext: { kind: "library" as const },
+            pageId: "report",
+            fileId: "file",
+            logicalPath: "report.html",
+            titleSnapshot: "report.html",
+          },
+        },
+        target: {
+          panelId: "right" as const,
+          placement: { kind: "same-group" as const, sourceSurfaceId: page.surfaceId },
+        },
+        mode: "preview" as const,
+        navigation: "background" as const,
+      };
+      const opened = await h.navigator.presentPanelSurface(input);
+      if (opened.status !== "presented") throw new Error("File unavailable");
+      const state = h.windowOwner.read();
+      const scene = h.scenes[makeWorkbenchSceneKey(owner)]!;
+      const projection = projectWorkbenchScenePreviews(
+        scene,
+        state.ephemeralPanels.previewSurfacesByPanel,
+        state.ephemeralPanels.tabOrderByPanelGroup,
+      ).scene;
+      const leaf = findWorkbenchPanelLeafForTab(projection.panels.bottom.layout, opened.surfaceId)!;
+      expect(leaf.tabIds).toEqual([page.surfaceId, opened.surfaceId, sibling.surfaceId]);
+      expect(scene.panelSurfacesById[page.surfaceId]?.kind).toBe("page_stage");
+      expect(scene.panelSurfacesById[opened.surfaceId]).toBeUndefined();
+      expect(await h.navigator.presentPanelSurface(input)).toMatchObject({
+        surfaceId: opened.surfaceId,
+        reused: true,
+      });
+      expect(await h.navigator.presentPanelSurface({ ...input, mode: "durable" })).toMatchObject({
+        surfaceId: opened.surfaceId,
+        reused: true,
+      });
+      const pinned = h.scenes[makeWorkbenchSceneKey(owner)]!;
+      expect(
+        findWorkbenchPanelLeafForTab(pinned.panels.bottom.layout, opened.surfaceId)?.tabIds,
+      ).toEqual(leaf.tabIds);
+      expect(Object.values(h.previews)).toHaveLength(0);
+      expect(WorkbenchSceneSnapshotSchema.parse(JSON.parse(JSON.stringify(pinned)))).toEqual(
+        pinned,
+      );
+    },
+  );
+  test("replaces only the destination preview slot", async () => {
+    const h = createHarness();
+    const owner = { kind: "library" as const };
+    const input = {
+      owner,
+      request: {
+        kind: "page_file" as const,
+        config: {
+          routingContext: { kind: "library" as const },
+          pageId: "page",
+          fileId: "first",
+          logicalPath: null,
+        },
+      },
+      target: { panelId: "right" as const },
+      mode: "preview" as const,
+      navigation: "background" as const,
+    };
+    const first = await h.navigator.presentPanelSurface(input);
+    const next = await h.navigator.presentPanelSurface({
+      ...input,
+      request: { ...input.request, config: { ...input.request.config, fileId: "next" } },
+    });
+    expect(next).not.toEqual(first);
+    expect(Object.values(h.previews)).toHaveLength(1);
+    expect(Object.values(h.previews)[0]?.surface).toMatchObject({
+      kind: "page_file",
+      config: { fileId: "next" },
+    });
+  });
+});
+
+test("renames and retargets a Page File preview before and after pinning", async () => {
+  const h = createHarness();
+  const owner = { kind: "library" as const };
+  const opened = await h.navigator.presentPanelSurface({
+    owner,
+    request: {
+      kind: "page_file",
+      config: {
+        routingContext: { kind: "library" },
+        pageId: "page",
+        fileId: "old",
+        logicalPath: "old.html",
+      },
+    },
+    target: { panelId: "right" },
+    mode: "preview",
+    navigation: "background",
+  });
+  if (opened.status !== "presented") throw new Error("File unavailable");
+  updateWorkbenchPageFileConfig(h.windowOwner, owner, opened.surfaceId, {
+    fileId: "replacement",
+    logicalPath: "output/new.html",
+    titleSnapshot: "new.html",
+  });
+  const preview = Object.values(h.previews)[0]!;
+  expect(preview.surface).toMatchObject({
+    titleSnapshot: "new.html",
+    config: {
+      pageId: "page",
+      fileId: "replacement",
+      logicalPath: "output/new.html",
+      titleSnapshot: "new.html",
+    },
+  });
+  expect(
+    h.navigator.pinPreview({
+      owner,
+      panelId: preview.panelId,
+      leafId: preview.leafId,
+      surfaceId: opened.surfaceId,
+    }),
+  ).toBe(true);
+  updateWorkbenchPageFileConfig(h.windowOwner, owner, opened.surfaceId, {
+    logicalPath: "final.html",
+    titleSnapshot: "final.html",
+  });
+  const restored = WorkbenchSceneSnapshotSchema.parse(JSON.parse(JSON.stringify(h.scenes.library)));
+  expect(restored.panelSurfacesById[opened.surfaceId]).toMatchObject({
+    titleSnapshot: "final.html",
+    config: { fileId: "replacement", logicalPath: "final.html", titleSnapshot: "final.html" },
+  });
+});
+
+test("opening a File from a Page preview pins the source Page first", async () => {
+  const h = createHarness();
+  const owner = { kind: "library" as const };
+  const source = await h.navigator.presentPanelSurface({
+    owner,
+    request: {
+      kind: "page_stage",
+      titleSnapshot: "Page",
+      config: { routingContext: { kind: "library" }, pageId: "page" },
+    },
+    target: { panelId: "right" },
+    mode: "preview",
+    navigation: "background",
+  });
+  if (source.status !== "presented") throw new Error("Page unavailable");
+  const result = await h.navigator.presentPanelSurface({
+    owner,
+    request: {
+      kind: "page_file",
+      config: {
+        routingContext: { kind: "library" },
+        pageId: "page",
+        fileId: "file",
+        logicalPath: null,
+      },
+    },
+    target: {
+      panelId: "right",
+      placement: { kind: "same-group", sourceSurfaceId: source.surfaceId },
+    },
+    mode: "preview",
+    navigation: "background",
+  });
+  if (result.status !== "presented") throw new Error("File unavailable");
+  expect(h.scenes.library?.panelSurfacesById[source.surfaceId]?.kind).toBe("page_stage");
+  expect(Object.values(h.previews)).toHaveLength(1);
+  const state = h.windowOwner.read();
+  const projected = projectWorkbenchScenePreviews(
+    h.scenes.library!,
+    state.ephemeralPanels.previewSurfacesByPanel,
+    state.ephemeralPanels.tabOrderByPanelGroup,
+  ).scene;
+  expect(
+    findWorkbenchPanelLeafForTab(projected.panels.right.layout, result.surfaceId)?.tabIds,
+  ).toEqual([source.surfaceId, result.surfaceId]);
 });

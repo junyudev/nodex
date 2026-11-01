@@ -1,7 +1,11 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
+import type { LibraryPageFileItem } from "../../../../shared/library-files";
 import type { PageFilesReadModel } from "@/lib/use-page-files";
+import { queryKeys } from "@/lib/query-keys";
+import { renderWithAppMaitai } from "@/test/app-maitai";
+import { createTestQueryClient, TestQueryProvider } from "@/test/query";
 import type { PageStageController } from "./use-page-stage-controller";
 
 const modal = vi.hoisted(() => ({ openModal: vi.fn() }));
@@ -13,51 +17,54 @@ vi.mock("@/lib/maitai", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/maitai")>()),
   useScopeHandle: () => ({ scope: "test" }),
 }));
+vi.mock("@/lib/use-library-navigation", () => ({
+  useLibraryMetadata: () => ({ data: { storeEpoch: "epoch", libraryId: "library-1" } }),
+}));
 
 import { PageFilesRow } from "./page-files-row";
 
-const controller = {
-  page: { id: "page-1", title: "Files" },
-  contentRoutingContext: { kind: "project", projectId: "project-1" },
-} as PageStageController;
+const NOW = "2026-11-01T10:00:00.000Z";
+const CHAT = "session-cold-start";
 
-const file = {
-  file_id: "file-1",
-  library_id: "library-1",
-  default_name: "source.png",
-  head_version: 4,
-  revision: 6,
-  lifecycle: "live" as const,
-  mime_type: "image/png",
-  byte_length: 12,
-  blob_etag: "a".repeat(64),
-  created_by_actor_id: "actor-1",
-  created_by_turn_id: null,
-  created_at: "2026-09-04T00:00:00.000Z",
-  updated_at: "2026-09-04T00:00:00.000Z",
-};
+const item = (
+  fileId: string,
+  logicalPath: string | null,
+  attachedBy: NonNullable<LibraryPageFileItem["attachment"]>["attached_by"] | null,
+  bodyCount = 0,
+): LibraryPageFileItem => ({
+  file: {
+    file_id: fileId,
+    library_id: "library-1",
+    default_name: logicalPath?.split("/").at(-1) ?? `${fileId}.png`,
+    head_version: 1,
+    revision: 1,
+    lifecycle: "live",
+    mime_type: "text/html",
+    byte_length: 14_336,
+    blob_etag: "a".repeat(64),
+    created_by_actor_id: "project-1",
+    created_by_turn_id: null,
+    created_at: NOW,
+    updated_at: NOW,
+  },
+  logical_path: logicalPath,
+  body_count: bodyCount,
+  attachment: attachedBy ? { attached_by: attachedBy, attached_at: NOW } : null,
+});
 
-const model = (logicalPath: string | null, bodyCount: number): PageFilesReadModel => ({
+const agent = { kind: "agent" as const, session_id: CHAT, backend: "opencode" as const };
+
+const model = (files: readonly LibraryPageFileItem[]): PageFilesReadModel => ({
   inventory: {
     page_id: "page-1",
-    revision: 8,
-    body_usage_revision: 3,
-    files: [
-      {
-        file,
-        logical_path: logicalPath,
-        body_count: bodyCount,
-        attachment:
-          logicalPath === null
-            ? null
-            : { attached_by: { kind: "unknown" as const }, attached_at: null },
-      },
-    ],
+    revision: 3,
+    body_usage_revision: 1,
+    files: [...files],
     next_cursor: null,
     has_more: false,
-    total: 1,
-    unplaced_total: bodyCount === 0 ? 1 : 0,
-    placed_total: bodyCount > 0 ? 1 : 0,
+    total: files.length,
+    unplaced_total: files.filter((file) => file.body_count === 0).length,
+    placed_total: files.filter((file) => file.body_count > 0).length,
   },
   loading: false,
   loadingMore: false,
@@ -67,36 +74,151 @@ const model = (logicalPath: string | null, bodyCount: number): PageFilesReadMode
   refresh: vi.fn(),
 });
 
+const controller = (overrides: Partial<PageStageController> = {}) =>
+  ({
+    page: { id: "page-1", title: "Dashboard cold start" },
+    contentRoutingContext: { kind: "project", projectId: "project-1" },
+    openPageFile: vi.fn(),
+    onOpenRelatedChat: vi.fn(),
+    handleOpenRelatedChat: vi.fn(),
+    ...overrides,
+  }) as unknown as PageStageController;
+
+const renderRow = (files: readonly LibraryPageFileItem[], stage = controller()) => {
+  const client = createTestQueryClient();
+  client.setQueryData(queryKeys.projectSessions.detail(CHAT), {
+    id: CHAT,
+    displayTitle: "Dashboard cold start",
+  });
+  renderWithAppMaitai(<PageFilesRow baseFiles={model(files)} controller={stage} />, {
+    wrapper: ({ children }) => <TestQueryProvider client={client}>{children}</TestQueryProvider>,
+  });
+  return stage;
+};
+
+const report = item("report", "profile/report.html", agent);
+const flamegraph = item("flamegraph", "profile/flamegraph.png", agent);
+
 describe("PageFilesRow", () => {
   beforeEach(() => modal.openModal.mockReset());
 
-  test("shows an explicit Page path that is otherwise absent from the body", () => {
-    render(<PageFilesRow baseFiles={model("assets/hero.png", 0)} controller={controller} />);
+  test("opens a File beside its Page: a click previews it, a double click keeps it", async () => {
+    const stage = renderRow([report, flamegraph]);
 
-    const chip = screen.getByRole("button", { name: /assets\/hero\.png/i });
-    fireEvent.click(chip);
-
-    expect(modal.openModal).toHaveBeenCalledOnce();
-    expect(modal.openModal.mock.calls[0]?.[2]).toMatchObject({
-      routingContext: controller.contentRoutingContext,
-      pageId: "page-1",
-      initialFileId: "file-1",
+    const row = screen.getByRole("treeitem", { name: "profile/report.html" });
+    await act(async () => {
+      fireEvent.click(row);
+      fireEvent.doubleClick(screen.getByRole("treeitem", { name: "profile/flamegraph.png" }));
+      await Promise.resolve();
     });
+
+    expect(stage.openPageFile).toHaveBeenNthCalledWith(1, {
+      routingContext: { kind: "project", projectId: "project-1" },
+      pageId: "page-1",
+      fileId: "report",
+      logicalPath: "profile/report.html",
+      title: "report.html",
+      openMode: "preview",
+    });
+    expect(stage.openPageFile).toHaveBeenLastCalledWith(
+      expect.objectContaining({ fileId: "flamegraph", openMode: "durable" }),
+    );
+    expect(modal.openModal).not.toHaveBeenCalled();
   });
 
-  test("summarizes a body-only File without inventing a Page path or duplicate chip", () => {
-    render(<PageFilesRow baseFiles={model(null, 1)} controller={controller} />);
+  test("names one shared origin once, beneath the tree, and opens its chat", async () => {
+    const stage = renderRow([report, flamegraph]);
 
-    expect(screen.queryByRole("button", { name: /source\.png/i })).toBeNull();
-    const summary = screen.getByRole("button", { name: "Open 1 File shown in Page" });
-    expect(summary.textContent).toBe("1 in page");
-    fireEvent.click(summary);
+    const caption = await screen.findByText("From");
+    const chat = await screen.findByRole("button", { name: "Dashboard cold start" });
+    expect(caption.parentElement?.contains(chat)).toBe(true);
+    expect(screen.getAllByRole("button", { name: "Dashboard cold start" })).toHaveLength(1);
 
-    expect(screen.queryByText("assets/hero.png")).toBeNull();
-    expect(modal.openModal.mock.calls[0]?.[2]).toMatchObject({
-      routingContext: controller.contentRoutingContext,
-      pageId: "page-1",
+    await act(async () => {
+      fireEvent.click(chat);
+      await Promise.resolve();
     });
-    expect(modal.openModal.mock.calls[0]?.[2]).not.toHaveProperty("initialFileId");
+    expect(stage.handleOpenRelatedChat).toHaveBeenCalledWith(CHAT);
+    expect(stage.openPageFile).not.toHaveBeenCalled();
+  });
+
+  test("states mixed origins on the narrowest folder or File and lists body-only Files apart", async () => {
+    renderRow([
+      report,
+      item("brief", "brief.md", { kind: "person" }),
+      item("photo", null, null, 1),
+    ]);
+
+    expect(screen.queryByText("From")).toBeNull();
+    expect(screen.getByRole("treeitem", { name: "profile" }).textContent).toContain(
+      "Dashboard cold start",
+    );
+    expect(screen.getByRole("treeitem", { name: "brief.md" }).textContent).toContain("You");
+    expect(screen.getByText("In page")).toBeTruthy();
+    expect(screen.getByRole("treeitem", { name: "photo.png" }).textContent).not.toContain("You");
+  });
+
+  test("folds into a summary that keeps the origin, and back", async () => {
+    renderRow([report, flamegraph]);
+    const summary = screen.getByRole("button", { name: /^2 files/u });
+
+    await act(async () => {
+      fireEvent.click(summary);
+      await Promise.resolve();
+    });
+    expect(summary.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByRole("tree")).toBeNull();
+    expect(summary.parentElement?.textContent).toContain("from");
+
+    await act(async () => {
+      fireEvent.click(summary);
+      await Promise.resolve();
+    });
+    expect(screen.getByRole("tree", { name: "Page files" })).toBeTruthy();
+  });
+
+  test("moves through the tree with the keyboard", async () => {
+    const stage = renderRow([report, flamegraph]);
+    const folder = screen.getByRole("treeitem", { name: "profile" });
+
+    await act(async () => {
+      folder.focus();
+      fireEvent.keyDown(folder, { key: "ArrowLeft" });
+      await Promise.resolve();
+    });
+    expect(screen.queryByRole("treeitem", { name: "profile/report.html" })).toBeNull();
+
+    await act(async () => {
+      fireEvent.keyDown(screen.getByRole("treeitem", { name: "profile" }), { key: "ArrowRight" });
+      await Promise.resolve();
+    });
+    const tree = screen.getByRole("tree", { name: "Page files" });
+    await act(async () => {
+      fireEvent.keyDown(tree, { key: "ArrowDown" });
+      await Promise.resolve();
+    });
+    expect(document.activeElement).toBe(
+      screen.getByRole("treeitem", { name: "profile/flamegraph.png" }),
+    );
+    await act(async () => {
+      fireEvent.keyDown(tree, { key: "Enter" });
+      await Promise.resolve();
+    });
+    expect(stage.openPageFile).toHaveBeenCalledWith(
+      expect.objectContaining({ fileId: "flamegraph", openMode: "preview" }),
+    );
+  });
+
+  test("opens the manager on a File when the Page has no tab group", async () => {
+    renderRow([report], controller({ openPageFile: undefined }));
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("treeitem", { name: "profile/report.html" }));
+      await Promise.resolve();
+    });
+    expect(modal.openModal.mock.calls[0]?.[2]).toMatchObject({
+      pageId: "page-1",
+      initialFileId: "report",
+    });
   });
 });

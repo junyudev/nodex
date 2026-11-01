@@ -1,3 +1,4 @@
+import { resolveFileResourceIcon } from "@/components/shared/file-resource-icon";
 import type { ComponentType } from "react";
 import { MessageSquare } from "@/components/shared/icons/generic-icons";
 import { ImageEditorTabIcon, InboxIcon } from "@/components/shared/icons";
@@ -21,6 +22,12 @@ export function resolveWorkbenchSceneTabPresentation(
     return { title: surface.titleSnapshot, icon: ImageEditorTabIcon };
   }
 
+  if (surface.kind === "page_file")
+    return {
+      title:
+        surface.config.titleSnapshot ?? surface.config.logicalPath?.split("/").at(-1) ?? "File",
+      icon: resolveFileResourceIcon(surface.config.logicalPath ?? surface.config.titleSnapshot),
+    };
   const action = getPanelNewTabAction(surface.kind);
   return {
     title: surface.kind === "db_view" ? action.label : surface.titleSnapshot,

@@ -34,6 +34,7 @@ function resourceProjectId(
   if (
     surface.kind === "db_view" ||
     surface.kind === "page_stage" ||
+    surface.kind === "page_file" ||
     surface.kind === "canvas_stage"
   ) {
     return surface.config.routingContext.kind === "project"

@@ -31,6 +31,21 @@ export const make = Effect.gen(function* () {
     };
     const unavailable = { ...base, status: "unavailable" };
     const surface = tab.surface;
+    if (surface?.kind === "page_file") {
+      const description = yield* content.describePageFile({
+        authority,
+        callId: input.callId,
+        surface,
+      });
+      return description.status === "unavailable"
+        ? unavailable
+        : {
+            ...base,
+            ...description,
+            title: description.title.slice(0, 300),
+            pageTitle: description.pageTitle.slice(0, 300),
+          };
+    }
     if (
       input.requireExactTarget &&
       surface?.kind === "db_view" &&

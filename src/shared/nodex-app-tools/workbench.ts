@@ -86,6 +86,16 @@ export const WorkbenchSurfaceReferenceSchema = z.discriminatedUnion("kind", [
   }),
   z.strictObject({
     ...referenceBase,
+    kind: z.literal("page_file"),
+    config: z.strictObject({
+      routingContext: ContentRoutingContextSchema,
+      pageId: identity,
+      fileId: identity,
+      logicalPath: z.string().min(1).max(4_096).nullable(),
+    }),
+  }),
+  z.strictObject({
+    ...referenceBase,
     kind: z.literal("canvas_stage"),
     config: z.strictObject({
       routingContext: ContentRoutingContextSchema,
@@ -411,6 +421,17 @@ export function projectWorkbenchSurfaceReference(
       kind: surface.kind,
       config: { routingContext: surface.config.routingContext, pageId: surface.config.pageId },
     };
+  if (surface.kind === "page_file")
+    return {
+      ...base,
+      kind: surface.kind,
+      config: {
+        routingContext: surface.config.routingContext,
+        pageId: surface.config.pageId,
+        fileId: surface.config.fileId,
+        logicalPath: surface.config.logicalPath,
+      },
+    };
   if (surface.kind === "canvas_stage")
     return {
       ...base,
@@ -448,6 +469,7 @@ function observedTargetKey(surface: WorkbenchSurfaceReference): string {
     return JSON.stringify([kind, config.projectId, config.threadId, config.initialImageId]);
   const access = contentRoutingContextKey(config.routingContext);
   if (kind === "page_stage") return JSON.stringify([kind, access, config.pageId]);
+  if (kind === "page_file") return JSON.stringify([kind, access, config.pageId, config.fileId]);
   if (kind === "canvas_stage") return JSON.stringify([kind, access, config.canvasBlockId]);
   return JSON.stringify([
     kind,

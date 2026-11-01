@@ -48,7 +48,7 @@ export function useWorkbenchPanelLifecycle({
 }: WorkbenchPanelLifecycleInput) {
   const panelControllerRef = useRef(controller);
   panelControllerRef.current = controller;
-  const { previewTabsByPanel, imageEditorTabsBySession, planTabsBySession } = controller;
+  const { imageEditorTabsBySession, planTabsBySession } = controller;
   const readPresentation = useCallback(
     () =>
       activeSession
@@ -207,7 +207,10 @@ export function useWorkbenchPanelLifecycle({
   const pinPreviewTab = useCallback(
     async (panelId: PanelId, tabId: string, leafId?: string) => {
       if (!activeSession) return;
-      const targetLeafId = leafId ?? resolveSessionPanelActiveLeafId(activeSession, panelId);
+      const targetLeafId =
+        leafId ??
+        readPresentation()?.tabs.find((tab) => tab.tabId === tabId)?.groupId ??
+        resolveSessionPanelActiveLeafId(activeSession, panelId);
       const imagePreview = (imageEditorTabsBySession[activeSession.id] ?? []).find(
         (tab) =>
           tab.id === tabId &&
@@ -265,6 +268,7 @@ export function useWorkbenchPanelLifecycle({
         }
         return;
       }
+      const previewTabsByPanel = windowOwner.read().ephemeralPanels.previewTabsByPanel;
       const previewTab =
         previewTabsByPanel[
           makeWorkbenchSessionPanelSlotKey(activeSession.id, panelId, targetLeafId)
@@ -299,7 +303,8 @@ export function useWorkbenchPanelLifecycle({
       createSessionViewTab,
       imageEditorTabsBySession,
       pinningPreviewTabIdsRef,
-      previewTabsByPanel,
+      windowOwner,
+      readPresentation,
     ],
   );
 

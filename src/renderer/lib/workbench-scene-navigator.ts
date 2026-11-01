@@ -3,7 +3,10 @@ import {
   canonicalWorkbenchFilesConfig,
   workbenchFileResourceId,
 } from "../../shared/workbench-resource-identity";
-import { findWorkbenchPanelLeafForTab } from "../../shared/workbench-panel-layout";
+import {
+  findWorkbenchPanelLeaf,
+  findWorkbenchPanelLeafForTab,
+} from "../../shared/workbench-panel-layout";
 import {
   activateWorkbenchSceneSurface,
   createWorkbenchSceneSurface,
@@ -17,6 +20,7 @@ import {
   type WorkbenchDbViewSurfaceConfig,
   type WorkbenchFilesSurfaceConfig,
   type WorkbenchPageStageSurfaceConfig,
+  type WorkbenchPageFileSurfaceConfig,
   type WorkbenchReviewSurfaceConfig,
   type WorkbenchSceneOwner,
   type WorkbenchSceneSnapshot,
@@ -47,6 +51,11 @@ export type WorkbenchSurfaceOpenRequest =
   | {
       readonly kind: "page_stage";
       readonly config: WorkbenchPageStageSurfaceConfig;
+      readonly titleSnapshot?: string;
+    }
+  | {
+      readonly kind: "page_file";
+      readonly config: WorkbenchPageFileSurfaceConfig;
       readonly titleSnapshot?: string;
     }
   | {
@@ -90,6 +99,8 @@ export interface PresentWorkbenchPanelSurfaceInput {
     readonly panelId: WorkbenchPanelId;
     readonly leafId?: string;
     readonly placement?: WorkbenchSurfaceRelativePlacement;
+    /** Insert immediately after the relative source; ordinary same-group opens still append. */
+    readonly afterSource?: boolean;
   };
   readonly mode: "durable" | "preview";
   readonly navigation: "select-owner" | "background";
@@ -106,6 +117,7 @@ export function resolvePanelSurfaceTarget(
   readonly scene: WorkbenchSceneSnapshot;
   readonly panelId: WorkbenchPanelId;
   readonly leafId: string | undefined;
+  readonly targetIndex?: number;
 } {
   if (!target.placement) {
     return { scene, panelId: target.panelId, leafId: target.leafId };
@@ -129,7 +141,13 @@ export function resolvePanelSurfaceTarget(
     return { scene, panelId: target.panelId, leafId: target.leafId };
   }
   if (target.placement.kind === "same-group") {
-    return { scene, panelId: sourcePanelId, leafId: sourceLeafId };
+    if (!target.afterSource) return { scene, panelId: sourcePanelId, leafId: sourceLeafId };
+    const ids =
+      findWorkbenchPanelLeaf(scene.panels[sourcePanelId].layout, sourceLeafId)?.tabIds ?? [];
+    const sourceIndex = ids.indexOf(target.placement.sourceSurfaceId);
+    const targetIndex =
+      sourceIndex >= 0 ? sourceIndex + 1 : (previewSource?.targetIndex ?? ids.length) + 1;
+    return { scene, panelId: sourcePanelId, leafId: sourceLeafId, targetIndex };
   }
   if (sourcePanelId === "bottom") {
     return { scene, panelId: "bottom", leafId: sourceLeafId };
@@ -196,11 +214,13 @@ export interface WorkbenchSceneNavigatorPort {
       panelId: WorkbenchPanelId,
       leafId: string,
       surface: WorkbenchSurfaceDescriptor | null,
+      targetIndex?: number,
     ) => void;
   };
 }
 
 export interface WorkbenchScenePreviewEntry {
+  readonly targetIndex?: number;
   readonly panelId: WorkbenchPanelId;
   readonly leafId: string;
   readonly surface: WorkbenchSurfaceDescriptor;
@@ -293,6 +313,14 @@ function makeSurfaceDescriptor(
         ...common,
         kind: request.kind,
         titleSnapshot: request.titleSnapshot ?? "Page",
+        config: request.config,
+      };
+    case "page_file":
+      return {
+        ...common,
+        kind: request.kind,
+        titleSnapshot:
+          request.config.titleSnapshot ?? request.config.logicalPath?.split("/").at(-1) ?? "File",
         config: request.config,
       };
     case "canvas_stage":
@@ -508,6 +536,7 @@ async function presentPreviewSurface(
       panelId: target.panelId,
       leafId: target.leafId ?? target.scene.panels[target.panelId].layout.activeLeafId,
       surface: candidate,
+      targetIndex: target.targetIndex,
     };
     return patchWorkbenchScenePanel(
       activateWorkbenchSceneSurface(target.scene, previewEntry.panelId, previewEntry.leafId),
@@ -525,7 +554,13 @@ async function presentPreviewSurface(
     return result;
   }
   if (previewEntry) {
-    port.preview.set(input.owner, previewEntry.panelId, previewEntry.leafId, previewEntry.surface);
+    port.preview.set(
+      input.owner,
+      previewEntry.panelId,
+      previewEntry.leafId,
+      previewEntry.surface,
+      previewEntry.targetIndex,
+    );
   }
   return result;
 }
@@ -566,6 +601,7 @@ function validateSceneSurfaceRequest(
 
   const requestAllowed =
     input.request.kind === "page_stage" ||
+    input.request.kind === "page_file" ||
     input.request.kind === "canvas_stage" ||
     input.request.kind === "db_view";
   const libraryAuthorized =
@@ -592,6 +628,20 @@ export function createWorkbenchSceneNavigator(
     const unavailable = validateSceneSurfaceRequest(port, input);
     if (unavailable) return unavailable;
 
+    if (input.request.kind === "page_file" && input.target.placement?.kind === "same-group") {
+      input = { ...input, target: { ...input.target, afterSource: true } };
+      // A File opened from a preview Page keeps that Page beside it.
+      const source = port.preview
+        ?.list(input.owner)
+        .find((entry) => entry.surface.id === input.target.placement?.sourceSurfaceId);
+      if (source?.surface.kind === "page_stage")
+        pinPreview({
+          owner: input.owner,
+          panelId: source.panelId,
+          leafId: source.leafId,
+          surfaceId: source.surface.id,
+        });
+    }
     const candidate = makeSurfaceDescriptor(input.request, identities);
     if (input.mode === "preview") {
       return presentPreviewSurface(port, input, candidate);
@@ -642,6 +692,7 @@ export function createWorkbenchSceneNavigator(
           panelId: input.panelId,
           targetLeafId: input.leafId,
           surface: entry.surface,
+          targetIndex: entry.targetIndex,
         }),
         input.panelId,
         { collapsed: false },

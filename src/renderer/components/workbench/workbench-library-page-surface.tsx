@@ -62,6 +62,7 @@ export function WorkbenchLibraryPageSurface({
   onClose = ignoreLibraryPageClose,
   onOpenDatabase,
   onOpenPage,
+  onOpenPageFile,
   onOpenCanvas,
   pageChats,
   currentSessionId = null,
@@ -73,6 +74,7 @@ export function WorkbenchLibraryPageSurface({
   readonly isActivePanelTab?: boolean;
   readonly onClose?: () => void;
   readonly onOpenDatabase: (databaseId: DatabaseId) => void;
+  readonly onOpenPageFile?: import("@/lib/workbench-page-file-opener").OpenPageFileTabHandler;
   readonly onOpenPage?: (pageId: string, titleSnapshot?: string) => void;
   readonly onOpenCanvas?: (canvasBlockId: string, titleSnapshot?: string) => void;
   readonly pageChats?: PageChatCommands;
@@ -206,6 +208,16 @@ export function WorkbenchLibraryPageSurface({
           : null
       }
       onOpenDatabase={onOpenDatabase}
+      onOpenPageFile={
+        onOpenPageFile
+          ? async (input) => {
+              await onOpenPageFile({
+                ...input,
+                placement: { kind: "same-group", sourceSurfaceId: surfaceId },
+              });
+            }
+          : undefined
+      }
       onOpenPage={
         onOpenPage
           ? ({ pageId: nextPageId, titleSnapshot }) => {

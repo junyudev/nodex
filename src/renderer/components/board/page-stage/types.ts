@@ -109,6 +109,14 @@ export interface PageStageProps {
   onLoadMoreRelatedChats?: () => Promise<void> | void;
   /** Opens an attached Thread referenced inside the Page editor. */
   onOpenCodexThread?: (threadId: string) => Promise<void>;
+  onOpenPageFile?: (input: {
+    routingContext: ContentRoutingContext;
+    pageId: string;
+    fileId: string;
+    logicalPath: string | null;
+    title: string;
+    openMode: "preview" | "durable";
+  }) => void | Promise<void>;
   onOpenPage?: (input: ContentPageNavigationTarget) => void | Promise<void>;
   onOpenDatabase?: (databaseId: DatabaseId) => void | Promise<void>;
   onOpenCanvas?: (input: ContentCanvasNavigationTarget) => void | Promise<void>;

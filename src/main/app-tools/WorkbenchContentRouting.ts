@@ -36,9 +36,24 @@ export type WorkbenchContentDescription =
         | { readonly kind: "canvas"; readonly canvasId: string }
       ));
 
+export type WorkbenchPageFileDescription =
+  | { readonly status: "unavailable" }
+  | (AvailableMetadata & {
+      readonly kind: "page_file";
+      readonly pageId: string;
+      readonly pageTitle: string;
+      readonly fileId: string;
+      readonly logicalPath: string | null;
+    });
+
 export class WorkbenchContentRouting extends Context.Service<
   WorkbenchContentRouting,
   {
+    readonly describePageFile: (input: {
+      readonly authority: NodexAgentTurnContext;
+      readonly callId: string;
+      readonly surface: Extract<WorkbenchSurfaceReference, { readonly kind: "page_file" }>;
+    }) => Effect.Effect<WorkbenchPageFileDescription>;
     readonly describe: (input: {
       readonly authority: NodexAgentTurnContext;
       readonly callId: string;
@@ -91,8 +106,8 @@ const description = (value: CoreDescription): WorkbenchContentDescription => {
 export const make = Effect.gen(function* () {
   const identity = yield* CoreAuthority;
   const core = yield* CoreModules;
-  return WorkbenchContentRouting.of({
-    describe: Effect.fn("WorkbenchContentRouting.describe")((input) =>
+  const describe = Effect.fn("WorkbenchContentRouting.describe")(
+    (input: Parameters<WorkbenchContentRouting["Service"]["describe"]>[0]) =>
       core.library
         .read(
           {
@@ -118,6 +133,48 @@ export const make = Effect.gen(function* () {
             Effect.succeed<WorkbenchContentDescription>({ status: "unavailable" }),
           ),
         ),
-    ),
+  );
+  return WorkbenchContentRouting.of({
+    describe,
+    describePageFile: Effect.fn("WorkbenchContentRouting.describePageFile")(function* (input) {
+      const config = input.surface.config;
+      const page = yield* describe({
+        ...input,
+        surface: {
+          ...input.surface,
+          kind: "page_stage",
+          config: { routingContext: config.routingContext, pageId: config.pageId },
+        },
+      });
+      if (page.status !== "available" || page.kind !== "page") return { status: "unavailable" };
+      const resolved = yield* core.library
+        .read(
+          {
+            kind: "resolve_page_file",
+            page_id: config.pageId,
+            selector: { kind: "file_id", file_id: config.fileId },
+          },
+          { deadlineMs: 5_000 },
+          input.authority.actorProjectId,
+        )
+        .pipe(Effect.catch(() => Effect.succeed(null)));
+      if (
+        resolved?.value.kind !== "resolved_page_file" ||
+        resolved.value.value.file.lifecycle !== "live"
+      )
+        return { status: "unavailable" };
+      const item = resolved.value.value;
+      return {
+        status: "available",
+        kind: "page_file",
+        libraryId: item.file.library_id,
+        displayedRoutingContext: page.displayedRoutingContext,
+        pageId: page.pageId,
+        pageTitle: page.title,
+        fileId: item.file.file_id,
+        logicalPath: item.logical_path ?? null,
+        title: item.logical_path?.split("/").at(-1) ?? item.file.default_name,
+      };
+    }),
   });
 });

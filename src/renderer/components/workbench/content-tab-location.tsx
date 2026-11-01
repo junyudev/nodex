@@ -1,4 +1,7 @@
-import { usePageOwnershipPathReadModel } from "@/lib/block-reference-queries";
+import {
+  usePageTargetReadModel,
+  usePageOwnershipPathReadModel,
+} from "@/lib/block-reference-queries";
 import type { Project, WorkbenchTabProjection } from "@/lib/types";
 import {
   contentRoutingContextKey,
@@ -44,6 +47,7 @@ export function resolveContentTabLocation(
   }
   if (
     surface.kind !== "page_stage" &&
+    surface.kind !== "page_file" &&
     surface.kind !== "db_view" &&
     surface.kind !== "canvas_stage"
   )
@@ -64,7 +68,7 @@ export function resolveContentTabLocation(
   return {
     location: [root],
     ...(elsewhere ? { titleLabel: (title: string) => `${title}, ${accessibleRoot}` } : {}),
-    ...(surface.kind === "page_stage"
+    ...(surface.kind === "page_stage" || surface.kind === "page_file"
       ? {
           renderTooltip: (title: string) => (
             <PageTabTooltip
@@ -72,6 +76,8 @@ export function resolveContentTabLocation(
               root={root}
               routingContext={routingContext}
               pageId={surface.config.pageId}
+              filePath={surface.kind === "page_file" ? surface.config.logicalPath : undefined}
+              isPageFile={surface.kind === "page_file"}
             />
           ),
         }
@@ -85,16 +91,54 @@ function PageTabTooltip({
   root,
   routingContext,
   pageId,
+  filePath,
+  isPageFile = false,
 }: {
   readonly title: string;
   readonly root: string;
   readonly routingContext: ContentRoutingContext;
   readonly pageId: string;
+  readonly filePath?: string | null;
+  readonly isPageFile?: boolean;
 }) {
   const path = usePageOwnershipPathReadModel(routingContext, pageId);
   const parents =
     path.data?.status === "available"
       ? path.data.ancestors.map((ancestor) => ancestor.title.trim() || "Untitled")
       : [];
+  if (isPageFile)
+    return (
+      <PageFileTabTooltip
+        title={title}
+        routingContext={routingContext}
+        pageId={pageId}
+        location={[root, ...parents]}
+        filePath={filePath}
+      />
+    );
   return <AppShellTabLocationTooltip title={title} location={[root, ...parents]} />;
+}
+
+function PageFileTabTooltip({
+  title,
+  routingContext,
+  pageId,
+  location,
+  filePath,
+}: {
+  readonly title: string;
+  readonly routingContext: ContentRoutingContext;
+  readonly pageId: string;
+  readonly location: readonly string[];
+  readonly filePath?: string | null;
+}) {
+  const page = usePageTargetReadModel(routingContext, pageId);
+  const pageTitle =
+    page.data?.status === "available" ? page.data.page.title.trim() || "Untitled" : pageId;
+  return (
+    <AppShellTabLocationTooltip
+      title={title}
+      location={[...location, pageTitle, ...(filePath?.split("/").slice(0, -1) ?? [])]}
+    />
+  );
 }

@@ -84,9 +84,10 @@ describe("workbench panel preview", () => {
       restored.panelSurfacesById[preview.id],
     );
   });
-  test("limits generic preview replacement to browser and files", () => {
+  test("supports Page File previews beside browser and workspace files", () => {
     expect(isPreviewableWorkbenchTabKind("browser")).toBe(true);
     expect(isPreviewableWorkbenchTabKind("files")).toBe(true);
+    expect(isPreviewableWorkbenchTabKind("page_file")).toBe(true);
     expect(isPreviewableWorkbenchTabKind("terminal")).toBe(false);
     expect(isPreviewableWorkbenchTabKind("page_stage")).toBe(false);
   });
@@ -230,5 +231,30 @@ describe("workbench panel preview", () => {
       clientTabId: projectlessFile.id,
       config: { projectId: "project-1" },
     });
+  });
+});
+
+test("pinning a Page File retains its exact identity and requested group position", () => {
+  const session = makeTestWorkbenchSession({ projectId: null });
+  const preview = {
+    ...makePreviewWorkbenchTabProjection(session, "bottom", {
+      kind: "page_file",
+      title: "report.html",
+      config: {
+        routingContext: { kind: "library" },
+        pageId: "page",
+        fileId: "file",
+        logicalPath: null,
+        titleSnapshot: "report.html",
+      },
+    }),
+    previewTargetIndex: 1,
+  };
+  expect(makePinnedPreviewTabCreateInput(session, "bottom", "leaf", preview)).toMatchObject({
+    kind: "page_file",
+    clientTabId: preview.id,
+    targetLeafId: "leaf",
+    targetIndex: 1,
+    config: preview.config,
   });
 });

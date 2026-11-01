@@ -28,6 +28,7 @@ export function WorkbenchLibraryResourceSurface({
   active,
   presentedPageIds,
   onClose,
+  onOpenPageFile,
   onTitleChange,
   onOpenTarget,
   pageChats,
@@ -45,6 +46,7 @@ export function WorkbenchLibraryResourceSurface({
     target: LibraryRouteTarget,
     options?: { readonly titleSnapshot?: string; readonly mode?: "durable" | "preview" },
   ) => void;
+  readonly onOpenPageFile?: import("@/lib/workbench-page-file-opener").OpenPageFileTabHandler;
   readonly pageChats?: PageChatCommands;
   /** The chat a Session Scene shows its Pages beside. */
   readonly besideChat?: WorkbenchBesideChat | null;
@@ -59,6 +61,7 @@ export function WorkbenchLibraryResourceSurface({
         pageId={surface.config.pageId}
         isActivePanelTab={active}
         onClose={onClose}
+        onOpenPageFile={onOpenPageFile}
         onOpenDatabase={(databaseId) => onOpenTarget({ kind: "database", databaseId })}
         onOpenPage={(pageId, titleSnapshot) =>
           onOpenTarget({ kind: "page", pageId }, { titleSnapshot })

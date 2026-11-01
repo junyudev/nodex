@@ -1,3 +1,4 @@
+import type { WorkbenchPageFileSurfaceConfig } from "./workbench-scene";
 import { workbenchFileResourceId } from "./workbench-resource-identity";
 import {
   activateWorkbenchPanelLeaf,
@@ -58,6 +59,7 @@ export interface WorkbenchPanelState {
 export type WorkbenchSessionViewTabKind =
   | "db_view"
   | "page_stage"
+  | "page_file"
   | "canvas_stage"
   | "terminal"
   | "browser"
@@ -109,6 +111,7 @@ export interface WorkbenchFilesTabConfig {
 export interface WorkbenchSessionViewTabConfigByKind {
   db_view: WorkbenchDbViewTabConfig;
   page_stage: WorkbenchPageStageTabConfig;
+  page_file: WorkbenchPageFileSurfaceConfig;
   canvas_stage: WorkbenchCanvasStageTabConfig;
   terminal: WorkbenchTerminalTabConfig;
   browser: WorkbenchBrowserTabConfig;

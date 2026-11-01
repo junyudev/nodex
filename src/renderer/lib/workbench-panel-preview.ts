@@ -24,6 +24,7 @@ import { normalizeOptionalPath } from "@/lib/workbench-workspace-context";
 const PREVIEWABLE_PROJECT_SESSION_TAB_KINDS = [
   "browser",
   "files",
+  "page_file",
 ] as const satisfies readonly WorkbenchTabProjection["kind"][];
 
 export type PreviewableWorkbenchTabKind = (typeof PREVIEWABLE_PROJECT_SESSION_TAB_KINDS)[number];
@@ -32,9 +33,10 @@ const PREVIEWABLE_PROJECT_SESSION_TAB_KIND_SET = new Set<WorkbenchTabProjection[
   PREVIEWABLE_PROJECT_SESSION_TAB_KINDS,
 );
 
-export type ProjectSessionPreviewTab =
+export type ProjectSessionPreviewTab = (
   | (WorkbenchTabProjection & { preview: true; readonly previewInstanceId: string })
-  | ProjectSessionFilesPreviewTab;
+  | ProjectSessionFilesPreviewTab
+) & { readonly previewTargetIndex?: number };
 
 export type WorkbenchTabProjectionDraft = WorkbenchProjectionTabConfiguration & { title: string };
 
@@ -126,7 +128,8 @@ export function makePreviewWorkbenchTabProjection(
     draft.kind !== "browser" &&
     draft.kind !== "terminal" &&
     draft.kind !== "review" &&
-    draft.kind !== "image_editor"
+    draft.kind !== "image_editor" &&
+    draft.kind !== "page_file"
   ) {
     throw new Error("Projectless sessions cannot own this workbench tab");
   }
@@ -162,6 +165,7 @@ export function makePreviewWorkbenchTabProjection(
     }
     case "db_view":
     case "page_stage":
+    case "page_file":
     case "canvas_stage":
     case "terminal":
     case "review":
@@ -186,6 +190,7 @@ export function makePinnedPreviewTabCreateInput(
     sessionId: session.id,
     panelId,
     targetLeafId,
+    targetIndex: previewTab.previewTargetIndex,
     clientTabId: previewTab.id,
     title: previewTab.title,
   } as const;
@@ -215,6 +220,8 @@ export function makePinnedPreviewTabCreateInput(
         kind: previewTab.kind,
         config: previewTab.config,
       };
+    case "page_file":
+      return { ...base, kind: previewTab.kind, config: previewTab.config };
     case "canvas_stage":
       return {
         ...base,

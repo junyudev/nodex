@@ -7,7 +7,7 @@ import type { Project } from "@/lib/types";
 import { libraryContentRoute, projectContentRoute } from "../../../shared/content-routing-context";
 import { resolveContentTabLocation, type LocatedTabSurface } from "./content-tab-location";
 
-const mocks = vi.hoisted(() => ({ resolvePageOwnershipPath: vi.fn() }));
+const mocks = vi.hoisted(() => ({ resolvePageOwnershipPath: vi.fn(), resolvePageTarget: vi.fn() }));
 
 vi.mock("@/lib/api", () => ({
   readLibraryModule: vi.fn(async () => ({
@@ -15,6 +15,7 @@ vi.mock("@/lib/api", () => ({
     value: { libraryId: "library-1", storeEpoch: "epoch-1", commitSeq: 0, value: {} },
   })),
   resolvePageOwnershipPath: mocks.resolvePageOwnershipPath,
+  resolvePageTarget: mocks.resolvePageTarget,
   readDatabaseViewReference: vi.fn(),
 }));
 
@@ -95,4 +96,45 @@ describe("content tab location", () => {
     expect(view.getByText("Weekly")).toBeTruthy();
     await waitFor(() => expect(view.getByText("Library / Notes / Untitled")).toBeTruthy());
   });
+});
+
+test("a Page File tooltip includes the Page title and logical folders", async () => {
+  mocks.resolvePageOwnershipPath.mockResolvedValue({
+    libraryId: "library-1",
+    storeEpoch: "epoch-1",
+    commitSeq: 1,
+    status: "available",
+    targetPageId: "page",
+    ancestors: [{ pageId: "notes", title: "Notes", lifecycle: "active" }],
+  });
+  mocks.resolvePageTarget.mockResolvedValue({
+    libraryId: "library-1",
+    storeEpoch: "epoch-1",
+    commitSeq: 1,
+    status: "available",
+    targetPageId: "page",
+    page: { id: "page", title: "Report" },
+  });
+  const { renderTooltip } = resolveContentTabLocation(
+    {
+      kind: "page_file",
+      config: {
+        routingContext: libraryContentRoute,
+        pageId: "page",
+        fileId: "file",
+        logicalPath: "profile/report.html",
+      },
+    },
+    { projects, home: libraryContentRoute },
+  );
+  const view = render(
+    <TestQueryProvider
+      projectionRegistry={
+        new ProjectionInvalidationRegistry({ subscribeProjection: () => () => undefined })
+      }
+    >
+      {renderTooltip?.("report.html")}
+    </TestQueryProvider>,
+  );
+  await waitFor(() => expect(view.getByText("Library / Notes / Report / profile")).toBeTruthy());
 });

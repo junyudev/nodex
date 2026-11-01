@@ -1,6 +1,8 @@
 import type { ComponentProps, MutableRefObject, RefObject } from "react";
 import type { MotionValue } from "motion/react";
 import type { PageStageSessionSnapshot } from "@/components/board/page-stage/types";
+import { updateWorkbenchPageFileConfig } from "@/lib/workbench-page-file-surface-state";
+import { WorkbenchPageFileSurface } from "./workbench-page-file-surface";
 import {
   WorkspaceFilesPanel,
   type WorkspaceFilesReview,
@@ -60,6 +62,8 @@ export function WorkbenchTabProjectionPanel({
   setSearchQuery,
   onLeavePageStage,
   onOpenPageTab,
+  onOpenPageFile,
+  onPinPreviewTab,
   onOpenPageInNewChat,
   onOpenRelatedChat,
   onLinkPageToChat,
@@ -100,6 +104,8 @@ export function WorkbenchTabProjectionPanel({
   setSearchQuery: (projectId: string, value: string) => void;
   onLeavePageStage: (snapshot: PageStageSessionSnapshot) => void;
   onOpenPageTab: OpenPageTabHandler;
+  onPinPreviewTab?: (panelId: PanelId, tabId: string) => void;
+  onOpenPageFile?: import("@/lib/workbench-page-file-opener").OpenPageFileTabHandler;
   onOpenPageInNewChat?: (input: OpenPageInNewChatInput) => Promise<void> | void;
   onOpenRelatedChat?: (sessionId: string) => Promise<void> | void;
   onLinkPageToChat: (input: {
@@ -206,6 +212,7 @@ export function WorkbenchTabProjectionPanel({
     return (
       <WorkbenchLibraryResourceSurface
         surface={{ ...canonicalSurface, state: tab.state, stateKey: tab.stateKey }}
+        onOpenPageFile={onOpenPageFile}
         owner={workbenchOwner}
         sceneOwner={sceneOwner}
         windowSessionId={windowSessionId}
@@ -306,6 +313,45 @@ export function WorkbenchTabProjectionPanel({
     );
   }
 
+  if (tab.kind === "page_file")
+    return (
+      <WorkbenchPageFileSurface
+        surface={{
+          id: tab.id,
+          kind: tab.kind,
+          config: tab.config,
+          titleSnapshot: tab.title,
+          stateKey: tab.stateKey,
+          state: tab.state,
+        }}
+        isActive={isActivePanelTab}
+        onClose={() => void onCloseTab(tab.id)}
+        onPinPreview={() => onPinPreviewTab?.(tab.panelId, tab.id)}
+        onUpdateConfig={(patch) =>
+          updateWorkbenchPageFileConfig(workbenchOwner, sceneOwner, tab.id, patch)
+        }
+        onOpenPage={({ routingContext, pageId, title }) => {
+          if (routingContext.kind === "project") {
+            void onOpenPageTab(routingContext.projectId, pageId, title, {
+              openMode: "durable",
+              placement: { kind: "same-group", sourceSurfaceId: tab.id },
+            });
+            return;
+          }
+          void onOpenLibraryTarget(
+            { kind: "page", pageId },
+            {
+              owner: sceneOwner,
+              sourceSurfaceId: tab.id,
+              targetPanelId: tab.panelId,
+              titleSnapshot: title,
+              mode: "durable",
+            },
+          );
+        }}
+      />
+    );
+
   if (tab.kind === "canvas_stage") {
     const routingContext = tab.config.routingContext;
     if (routingContext.kind !== "project") return null;
@@ -370,6 +416,7 @@ export function WorkbenchTabProjectionPanel({
         onEnsureDefaultDraftSessionForProject={onEnsureDefaultDraftSessionForProject}
         onRefreshSessions={onRefreshSessions}
         onOpenPageTab={onOpenPageTab}
+        onOpenPageFile={onOpenPageFile}
         onOpenCanvasStage={onOpenCanvasStage}
         onOpenThread={onOpenThread}
         onOpenRelatedChat={onOpenRelatedChat}

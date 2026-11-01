@@ -1,6 +1,10 @@
 import { describe, expect, test } from "vite-plus/test";
 import { BoardIcon, CanvasIcon, PageIcon } from "@/components/shared/icons";
-import { getPanelNewTabAction, resolvePanelShortcutLabel } from "./workbench-panel-actions";
+import {
+  getDefaultPanelIdForTabKind,
+  getPanelNewTabAction,
+  resolvePanelShortcutLabel,
+} from "./workbench-panel-actions";
 
 describe("workbench panel action icons", () => {
   test("keeps resource actions paired with their semantic icons", () => {
@@ -22,4 +26,8 @@ describe("workbench panel shortcut labels", () => {
     expect(resolvePanelShortcutLabel(shortcut, true)).toBe(macLabel);
     expect(resolvePanelShortcutLabel(shortcut, false)).toBe(nonMacLabel);
   });
+});
+
+test("uses the right panel for addressed Page Files", () => {
+  expect(getDefaultPanelIdForTabKind("page_file")).toBe("right");
 });

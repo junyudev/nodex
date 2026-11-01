@@ -332,6 +332,21 @@ export interface WorkbenchSceneCommandOptions {
   readonly surfaceId?: string;
 }
 
+function pageFileInsertionIndex(
+  scene: WorkbenchSceneSnapshot,
+  panelId: PanelId,
+  groupId: string,
+  surface: WorkbenchSurfaceDescriptor,
+): number | undefined {
+  if (surface.kind !== "page_file") return undefined;
+  const ids = findWorkbenchPanelLeaf(scene.panels[panelId].layout, groupId)?.tabIds ?? [];
+  const index = ids.findIndex((id) => {
+    const source = resolveWorkbenchSceneSurface(scene, id);
+    return source?.kind === "page_stage" && source.config.pageId === surface.config.pageId;
+  });
+  return index >= 0 ? index + 1 : undefined;
+}
+
 /** One Scene reducer used by the UI executor and the Agent's generation-fenced adapter. */
 export function prepareWorkbenchSceneCommand(
   state: WorkbenchWindowPresentationState,
@@ -456,6 +471,12 @@ export function prepareWorkbenchSceneCommand(
       scene = createWorkbenchSceneSurface(scene, {
         panelId: matchingPreview.panelId!,
         targetLeafId: matchingPreview.groupId!,
+        targetIndex: observation.groups
+          .find((group) => group.groupId === matchingPreview.groupId)
+          ?.tabIds.filter(
+            (id) => resolveWorkbenchSceneSurface(scene, id) || id === matchingPreview.tabId,
+          )
+          .indexOf(matchingPreview.tabId),
         surface,
       });
       return {
@@ -466,16 +487,52 @@ export function prepareWorkbenchSceneCommand(
         groupId: matchingPreview.groupId,
       };
     }
+    const sourcePage =
+      surface.kind === "page_file"
+        ? observation.tabs.find(
+            (tab) =>
+              tab.panelId === command.panelId &&
+              tab.groupId === command.groupId &&
+              tab.surface?.kind === "page_stage" &&
+              surface.kind === "page_file" &&
+              tab.surface.config.pageId === surface.config.pageId,
+          )
+        : undefined;
+    if (sourcePage?.preview) {
+      const source = resolveTab(state, initialScene, sourcePage.tabId);
+      if (source.surface)
+        scene = createWorkbenchSceneSurface(scene, {
+          panelId: command.panelId,
+          targetLeafId: command.groupId,
+          surface: source.surface,
+        });
+      ephemeralPanels = clearPreview(ephemeralPanels, sceneOwner, source);
+    }
     if (options.open?.presentation !== "background")
-      closePreviewInGroup(command.panelId, command.groupId);
+      closePreviewInGroup(command.panelId, command.groupId, sourcePage?.tabId);
     scene = createWorkbenchSceneSurface(scene, {
       panelId: command.panelId,
       targetLeafId: command.groupId,
       presentation: options.open?.presentation,
-      targetIndex: options.open?.targetIndex,
+      targetIndex:
+        options.open?.targetIndex ??
+        pageFileInsertionIndex(scene, command.panelId, command.groupId, surface),
       surface,
     });
     tabId = surface.id;
+    const relativeSourceId =
+      surface.kind === "page_file" ? (options.open?.openerTabId ?? sourcePage?.tabId) : undefined;
+    if (relativeSourceId) {
+      const closedIds = new Set(closing.map((tab) => tab.observed.tabId));
+      const ids = (
+        observation.groups.find((group) => group.groupId === command.groupId)?.tabIds ?? []
+      ).filter((id) => !closedIds.has(id) && id !== surface.id);
+      const index = ids.indexOf(relativeSourceId);
+      if (index >= 0) {
+        ids.splice(index + 1, 0, surface.id);
+        reorderGroup(command.panelId, command.groupId, ids);
+      }
+    }
     if (options.open?.presentation === "background")
       return { scene, ephemeralPanels, closing, tabId, groupId };
     ephemeralPanels = selectTab(ephemeralPanels, sceneOwner, {

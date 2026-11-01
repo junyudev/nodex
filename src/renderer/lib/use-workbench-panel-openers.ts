@@ -1,3 +1,7 @@
+import type { prepareWorkbenchSceneSurfaceClose } from "./workbench-scene-command-lifecycle";
+import { openSessionPageFileTab, type OpenPageFileTabHandler } from "./workbench-page-file-opener";
+export type { OpenPageFileTabInput, OpenPageFileTabHandler } from "./workbench-page-file-opener";
+import { presentWorkbenchSessionDomainWithScene } from "./workbench-scene-presentation";
 import { composerDraftIntents } from "./composer-draft-intents";
 import { agentRuntimeActivityStore } from "./agent-runtime-session-activity";
 import { readLocalConversation } from "@/features/local-conversation/local-conversation-store";
@@ -206,6 +210,8 @@ type PanelLifecycle = Pick<
 interface WorkbenchPanelOpenersInput {
   readonly activeProjectId: string | null;
   readonly activeSession: ProjectSession | null;
+  readonly preparePageFilePreviewClose: typeof prepareWorkbenchSceneSurfaceClose;
+  readonly presentOwnedScenePageFile: OpenPageFileTabHandler;
   readonly presentOwnedSceneFile: FileReferenceRouterPort["openWorkspaceFileTab"];
   readonly controller: WorkbenchPanelController;
   readonly lifecycle: PanelLifecycle;
@@ -251,6 +257,8 @@ export function useWorkbenchPanelOpeners({
   activeProjectId,
   activeSession,
   presentOwnedSceneFile,
+  presentOwnedScenePageFile,
+  preparePageFilePreviewClose,
   controller,
   lifecycle,
   codexControl: workbenchCodexControl,
@@ -1382,6 +1390,37 @@ export function useWorkbenchPanelOpeners({
     ],
   );
 
+  const openPageFileTab = useCallback<OpenPageFileTabHandler>(
+    async (input) => {
+      if (!activeSession) return presentOwnedScenePageFile(input);
+      return openSessionPageFileTab(input, {
+        readSession: () => {
+          const scene =
+            workbenchOwner.read().windowState.scenesByOwnerKey[`session:${activeSession.id}`];
+          return scene
+            ? presentWorkbenchSessionDomainWithScene(activeSession, scene)
+            : activeSession;
+        },
+        readPreviews: () => workbenchOwner.read().ephemeralPanels.previewTabsByPanel,
+        controller: panelControllerRef.current,
+        lifecycle: { setActivePanelTab, pinPreviewTab },
+        rightPanelFullWidth,
+        createTab: createSessionViewTab,
+        prepareClose: preparePageFilePreviewClose,
+      });
+    },
+    [
+      activeSession,
+      presentOwnedScenePageFile,
+      preparePageFilePreviewClose,
+      workbenchOwner,
+      setActivePanelTab,
+      pinPreviewTab,
+      rightPanelFullWidth,
+      createSessionViewTab,
+    ],
+  );
+
   const openCanvasStage = useCallback<OpenCanvasStageHandler>(
     async (projectId, canvasBlockId, titleSnapshot, options) => {
       if (!activeSession || activeSession.projectId === null) return false;
@@ -1494,6 +1533,7 @@ export function useWorkbenchPanelOpeners({
     recreateSideChatPanelTab,
     openWorkspaceFileTab,
     openPageTab,
+    openPageFileTab,
     openCanvasStage,
   };
 }

@@ -366,6 +366,14 @@ export function updateSessionTab(
           ? {}
           : { config: parseWorkbenchProjectionTabConfig(tab.kind, input.config) }),
       };
+    case "page_file":
+      return {
+        ...tab,
+        ...common,
+        ...(input.config === undefined
+          ? {}
+          : { config: parseWorkbenchProjectionTabConfig(tab.kind, input.config) }),
+      };
     case "canvas_stage":
       return {
         ...tab,

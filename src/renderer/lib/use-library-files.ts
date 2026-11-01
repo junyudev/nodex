@@ -11,6 +11,7 @@ import type {
   LibraryFileVersionPage,
   LibraryPageFileInventory,
   LibraryPageFileItem,
+  LibraryPageFileSelector,
 } from "../../shared/library-files";
 import type { ProjectionScope } from "../../shared/projection-stream";
 import { readLibraryModule } from "./api";
@@ -398,34 +399,62 @@ export function usePageFile(
   pageId: string,
   fileId: string | null,
 ) {
+  return useResolvedPageFile(
+    routingContext,
+    pageId,
+    fileId ? { kind: "file_id", file_id: fileId } : null,
+  );
+}
+
+/** The File at a Page path, which an entry replacement points at a new File. */
+export function usePageFileAtPath(
+  routingContext: ContentRoutingContext,
+  pageId: string,
+  logicalPath: string | null,
+) {
+  return useResolvedPageFile(
+    routingContext,
+    pageId,
+    logicalPath ? { kind: "path", logical_path: logicalPath } : null,
+  );
+}
+
+function useResolvedPageFile(
+  routingContext: ContentRoutingContext,
+  pageId: string,
+  selector: LibraryPageFileSelector | null,
+) {
   const queryClient = useQueryClient();
-  const queryKey = ["libraryFiles", "pageFile", routingContext, pageId, fileId] as const;
+  const queryKey = ["libraryFiles", "pageFile", routingContext, pageId, selector] as const;
   const query = useQuery({
     queryKey,
     queryFn: () =>
       requireFileRead(
         routingContext,
-        {
-          mode: "resolve_page_file",
-          page_id: pageId,
-          selector: { kind: "file_id", file_id: fileId! },
-        },
+        { mode: "resolve_page_file", page_id: pageId, selector: selector! },
         "resolved_page_file",
       ),
-    enabled: Boolean(fileId),
+    enabled: selector !== null,
     retry: false,
   });
   const scope = projectionScope(routingContext, query.data?.libraryId ?? null);
+  const fileId =
+    query.data?.value.file.file_id ?? (selector?.kind === "file_id" ? selector.file_id : null);
   useProjectionRegistration(
-    scope && fileId
+    scope && selector
       ? {
           scope,
           consumerKey: hashKey(queryKey),
-          getDependencies: () => ({ pageIds: [pageId], fileIds: [fileId] }),
+          getDependencies: () => ({ pageIds: [pageId], fileIds: fileId ? [fileId] : [] }),
           getCursor: () => snapshotCursor(query.data),
           invalidate: () => invalidateExactQuery(queryClient, queryKey),
         }
       : null,
   );
-  return { item: query.data?.value ?? null, error: query.error, refresh: query.refetch };
+  return {
+    item: query.data?.value ?? null,
+    loading: query.status === "pending" && selector !== null,
+    error: query.error,
+    refresh: query.refetch,
+  };
 }
