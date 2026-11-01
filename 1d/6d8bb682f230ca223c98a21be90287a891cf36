@@ -1,0 +1,19 @@
+src/main/core-client/sidebar-chat-status-scenario.node.test.ts
+  s_fd402faa98738e::t_0efe8e0a3541be 29,93-94,96-98
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1d6d8bb682f230ca223c98a21be90287a891cf36",
+  "prompts": {},
+  "sessions": {
+    "s_fd402faa98738e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e9ed185e-5142-4fe3-b1e7-a7a8706fc9a9",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
