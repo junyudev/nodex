@@ -1,0 +1,56 @@
+src/main/platform/node/NodeChildProcessSpawner.node.test.ts
+  s_5d89fdb9e70018::t_0ae0101f76cfb5 23-30,32-56,58-59,61-69
+  s_5d89fdb9e70018::t_e6abe8861a2389 70
+  s_5d89fdb9e70018::t_77c13340449607 2,5,7-8,31,57,60
+  s_5d89fdb9e70018::t_58a6e42a053439 71
+src/main/git-worker/git-command-runner.test.ts
+  s_5d89fdb9e70018::t_77c13340449607 89,100-101
+docs/RELIABILITY.md
+  s_5d89fdb9e70018::t_e6abe8861a2389 343-348
+src/main/platform/node/NodeServices.ts
+  s_5d89fdb9e70018::t_e6abe8861a2389 19-28,40-47,53-54,58,63-104,107-108
+  s_5d89fdb9e70018::t_ab50dc00a3fe0b 1-10,31-39,48,50-52,55-57,59-62,105-106,109-117
+  s_5d89fdb9e70018::t_06a15f8abd64ee 11-18,29-30,49
+src/main/process-tree.ts
+  s_5d89fdb9e70018::t_ab50dc00a3fe0b 1-91,102
+  s_5d89fdb9e70018::t_d76f088a55fd16 92-95,101,103,117-120
+src/main/codex-application/WorkspaceTextSearch.node.test.ts
+  s_5d89fdb9e70018::t_77c13340449607 224-225
+  s_5d89fdb9e70018::t_dfd1c9fd8969ab 226-227,251-253
+src/main/process-tree.test.ts
+  s_5d89fdb9e70018::t_e6abe8861a2389 26,63
+src/main/app/AgentRuntimeApplicationLive.ts
+  s_5d89fdb9e70018::t_ac07e61d6cd4e2 13
+src/main/app/MainFoundationLive.ts
+  s_5d89fdb9e70018::t_1b179befa55160 1
+src/main/platform/node/BrowserProfileHelperNode.ts
+  s_5d89fdb9e70018::t_09b82b2384b707 8
+src/main/platform/node/CodexSessionTransport.ts
+  s_5d89fdb9e70018::t_194ba0050b65af 13
+src/main/platform/node/GitCommandPlatformNode.ts
+  s_5d89fdb9e70018::t_2461b59bf202d5 1
+src/main/platform/node/OpenCodeInstallPlatform.ts
+  s_5d89fdb9e70018::t_f9cc93c02a094a 10
+src/main/platform/node/OpenCodeSdk.ts
+  s_5d89fdb9e70018::t_3608036eeb9571 20
+src/main/platform/node/StandaloneSkillsNode.ts
+  s_5d89fdb9e70018::t_bd60f8786d2a81 1
+src/main/platform/node/WorkspaceTextSearchPlatform.ts
+  s_5d89fdb9e70018::t_b6a9b45f58bf6a 6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2d483f0510c257549d67893c7b6a019f64a65d3f",
+  "prompts": {},
+  "sessions": {
+    "s_5d89fdb9e70018": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19849-9b25-7452-b0d3-56a6849458b6",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
