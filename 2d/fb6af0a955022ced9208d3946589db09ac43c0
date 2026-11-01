@@ -1,0 +1,19 @@
+src/renderer/features/local-conversation/view/assistant-large-content.test.tsx
+  s_9ad21099c264dd::t_d5914a7101213b 382-383
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2dfb6af0a955022ced9208d3946589db09ac43c0",
+  "prompts": {},
+  "sessions": {
+    "s_9ad21099c264dd": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1964f-2f03-7680-8da9-7c6d6ce01903",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
