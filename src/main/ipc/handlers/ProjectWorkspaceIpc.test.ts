@@ -7,6 +7,7 @@ import { assert, it } from "@effect/vitest";
 import type { IpcMainInvokeEvent } from "electron";
 import { vi } from "vite-plus/test";
 import { createBoundedOperationId } from "../../../shared/operation-identity";
+import type { SessionSidebarPlacement } from "../../../shared/sidebar-sections";
 import type {
   Project,
   ProjectUpdateCommandInput,
@@ -121,6 +122,10 @@ it.effect("owns Project and Project Session ingress with the Main Scope", () =>
     const updateInputs: ProjectUpdateCommandInput[] = [];
     const openedInputs: ProjectSessionOpenedCommandInput[] = [];
     const pinnedOrderInputs: BuiltinSidebarReorderCommandInput[] = [];
+    const placementInputs: (readonly string[])[] = [];
+    const placements: readonly SessionSidebarPlacement[] = [
+      { sessionId: "session:one", projectId: project.id, sectionId: "section:one", unread: true },
+    ];
     const workspace = ProjectWorkspace.of({
       createPageFor: (input: CreatePageForCommand) =>
         Effect.sync(() => {
@@ -147,6 +152,11 @@ it.effect("owns Project and Project Session ingress with the Main Scope", () =>
           nextCursor: null,
           hasMore: false,
           projectionRevision: 17,
+        }),
+      readSessionSidebarPlacements: (sessionIds: readonly string[]) =>
+        Effect.sync(() => {
+          placementInputs.push(sessionIds);
+          return placements;
         }),
       reorderBuiltinSidebarItems: (command: BuiltinSidebarReorderCommandInput) =>
         Effect.sync(() => {
@@ -217,7 +227,7 @@ it.effect("owns Project and Project Session ingress with the Main Scope", () =>
       scope,
     );
 
-    assert.strictEqual(handlers.size, 48);
+    assert.strictEqual(handlers.size, 49);
     assert.isTrue(handlers.has("projects:create"));
     assert.isTrue(handlers.has("projects:update"));
     assert.isTrue(handlers.has("project-sessions:fork"));
@@ -226,6 +236,7 @@ it.effect("owns Project and Project Session ingress with the Main Scope", () =>
     assert.isTrue(handlers.has("page-chats:list"));
     assert.isTrue(handlers.has("page-chats:link"));
     assert.isTrue(handlers.has("page-chats:unlink"));
+    assert.isTrue(handlers.has("sidebar-sections:sessions:placements"));
 
     const pageInput: CreatePageForCommand = {
       for: { kind: "session", sessionId: "session:one" },
@@ -280,6 +291,14 @@ it.effect("owns Project and Project Session ingress with the Main Scope", () =>
       hasMore: false,
       projectionRevision: 17,
     });
+    // Collapsed Projects and Sections read live chats' placement in one bounded query.
+    assert.deepEqual(
+      yield* handlers.get("sidebar-sections:sessions:placements")!(rendererEvent(17), [
+        "session:one",
+      ]),
+      placements,
+    );
+    assert.deepEqual(placementInputs, [["session:one"]]);
     const pinnedCommand: BuiltinSidebarReorderCommandInput = {
       operationId: createBoundedOperationId("workspace.session.reorder-pinned", 1_800_000_000_000),
       payload: {
