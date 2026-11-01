@@ -1,0 +1,19 @@
+docs/development.md
+  s_fd402faa98738e::t_57e1ad85db6e5a 386-388
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5fcf44e0ed2191ce44ee63f81d528112416d3f47",
+  "prompts": {},
+  "sessions": {
+    "s_fd402faa98738e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e9ed185e-5142-4fe3-b1e7-a7a8706fc9a9",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
