@@ -1,0 +1,43 @@
+src/main/app/AgentRuntimeApplicationLive.ts
+  s_ef93f85750414a::t_e81b64443d44e8 826
+src/main/app/MainConfig.ts
+  s_ef93f85750414a::t_2a4c5f0462c935 18,70
+src/main/bootstrap.ts
+  s_ef93f85750414a::t_1daa3b7e7eba46 221
+src/main/host-runtime/AppProtocolRuntime.test.ts
+  s_ef93f85750414a::t_ee1c54622aeabb 62
+src/main/ipc/handlers/AppUpdateIpc.node.test.ts
+  s_ef93f85750414a::t_03242f1f1a849f 60
+src/main/ipc/handlers/BrowserProfileIpc.node.test.ts
+  s_ef93f85750414a::t_6889a00fcde3d4 136
+src/main/ipc/handlers/BrowserSidebarIpc.node.test.ts
+  s_ef93f85750414a::t_d89f1e957afefe 144
+src/main/ipc/handlers/ChromeControlSettingsIpc.node.test.ts
+  s_ef93f85750414a::t_b7de79a436cfe2 78
+src/main/ipc/handlers/CodexApplicationIpc.node.test.ts
+  s_ef93f85750414a::t_c7ca73f7dbe1cc 228
+src/main/ipc/handlers/ComputerUseSettingsIpc.node.test.ts
+  s_ef93f85750414a::t_212f3492c16414 58
+src/main/ipc/handlers/GitWorkerIpc.node.test.ts
+  s_ef93f85750414a::t_966d5dcd284e00 55
+src/main/ipc/handlers/RemoteHostedPipIpc.node.test.ts
+  s_ef93f85750414a::t_6e4e671e1c053e 74
+tests/e2e/electron-startup.spec.ts
+  s_ef93f85750414a::t_5694733de87694 3-14,115-147
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4620a3603cc5c5d280ccc70d70576a8a493ae7c1",
+  "prompts": {},
+  "sessions": {
+    "s_ef93f85750414a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1975c-d042-74f3-8106-b6eb6f221778",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
