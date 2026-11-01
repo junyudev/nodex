@@ -73,30 +73,12 @@ export class ExecutionHostError extends Schema.TaggedError<ExecutionHostError>()
   },
 ) {}
 
-/** Private account material, obtained anew from the configured account owner. */
-export const ProviderAuthentication = Schema.Union([
-  Schema.Struct({ kind: Schema.Literal("api-key"), key: Schema.String }),
-  Schema.Struct({
-    kind: Schema.Literal("chatgpt"),
-    accessToken: Schema.String,
-    accountId: Schema.String,
-    planType: Schema.NullOr(Schema.String),
-  }),
-  Schema.Struct({ kind: Schema.Literal("external") }),
-]);
-export type ProviderAuthentication = typeof ProviderAuthentication.Type;
-
 /** A host may admit a Turn and supply trusted CLI/skill context before native execution. */
 export class ExecutionHost extends Context.Reference<{
   /** Physical host generation fences persisted observations across process restarts. */
   readonly runtimeGeneration?: string;
   /** A product host adopts ordinary Sessions before their first Run is admitted. */
   readonly threadCreationOwner?: "host" | "execution";
-  readonly readProviderAuth?: (input: {
-    readonly providerInstanceId: ProviderInstanceId;
-    readonly refresh: boolean;
-    readonly previousAccountId: string | null;
-  }) => Effect.Effect<ProviderAuthentication, ExecutionHostError>;
   readonly registerNativeSession?: (identity: {
     readonly credentialId: string;
     readonly providerSessionId: ProviderSessionId;

@@ -1,7 +1,6 @@
 mod backup;
 mod operation_journal;
 mod profile_clone;
-mod profile_snapshot;
 mod restore;
 mod store_check;
 
@@ -49,14 +48,10 @@ use crate::infrastructure::store_replacement::{
 };
 use crate::infrastructure::writer::{StoreMaintenance, StoreReaders, StoreWriter};
 
-pub use nodex_core_contracts::administration::{
-    NativeHistorySnapshotSource, ProfileSnapshotSource,
-};
 pub use profile_clone::{
-    PreparedProfileClone, ProfileCloneBackupSelection, ProfileCloneExecution, ProfileCloneRequest,
-    ProfileCloneThread, ProfileStoreCloneReceipt, prepare_profile_clone,
+    PreparedProfileClone, ProfileCloneBackupSelection, ProfileCloneRequest,
+    ProfileStoreCloneReceipt, prepare_profile_clone,
 };
-pub use profile_snapshot::{ProfileSnapshotCapture, ProfileSnapshotParticipant};
 pub use store_check::{ProfileStoreCheck, ProfileStoreStatus, check_profile_store};
 
 const MODULE_NAME: &str = "store_administration";
@@ -266,7 +261,6 @@ pub struct StoreAdministrationModule {
     writer: Option<StoreWriter>,
     maintenance: Option<StoreMaintenance>,
     store_replacement_hook: StoreReplacementHook,
-    profile_snapshot_participant: Arc<dyn ProfileSnapshotParticipant>,
     operation_lock: Arc<Mutex<()>>,
     runtime: Arc<Mutex<RuntimeState>>,
 }
@@ -285,7 +279,6 @@ impl StoreAdministrationModule {
             writer: Some(kernel.writer()),
             maintenance: Some(kernel.maintenance()),
             store_replacement_hook: Arc::new(|_| Ok(())),
-            profile_snapshot_participant: Arc::new(profile_snapshot::NoProfileSnapshotParticipant),
             operation_lock: Arc::new(Mutex::new(())),
             runtime: Arc::new(Mutex::new(RuntimeState {
                 active: None,
@@ -299,14 +292,6 @@ impl StoreAdministrationModule {
         hook: impl Fn(&str) -> Result<(), StoreError> + Send + Sync + 'static,
     ) -> Self {
         self.store_replacement_hook = Arc::new(hook);
-        self
-    }
-
-    pub fn with_profile_snapshot_participant(
-        mut self,
-        participant: impl ProfileSnapshotParticipant + 'static,
-    ) -> Self {
-        self.profile_snapshot_participant = Arc::new(participant);
         self
     }
 
@@ -781,7 +766,6 @@ impl StoreAdministrationModule {
         let StoreAdministrationIntent::CreateBackup {
             include_assets,
             trigger,
-            profile_snapshot,
             ..
         } = request.intent
         else {
@@ -1003,8 +987,6 @@ impl StoreAdministrationModule {
             trigger,
             &progress,
             &cancellation_requested,
-            self.profile_snapshot_participant.as_ref(),
-            profile_snapshot.as_ref(),
         )
         .map_err(|error| {
             fail_backup_job(
@@ -1616,7 +1598,6 @@ impl StoreAdministrationModule {
         let StoreAdministrationIntent::RestoreBackup {
             backup_id,
             create_safety_backup,
-            profile_snapshot,
         } = request.intent
         else {
             unreachable!("apply validates the Store Administration intent")
@@ -1694,7 +1675,6 @@ impl StoreAdministrationModule {
             let requested_store_epoch = request.store_epoch.0;
             let backup_id = backup_id.clone();
             let replacement_hook = Arc::clone(&self.store_replacement_hook);
-            let profile_snapshot_participant = Arc::clone(&self.profile_snapshot_participant);
             maintenance
                 .run(move |_| {
                     operation_journal::install_restore(restore::InstallRestoreRequest {
@@ -1708,8 +1688,6 @@ impl StoreAdministrationModule {
                         create_safety_backup,
                         existing_journal,
                         replacement_hook: replacement_hook.as_ref(),
-                        profile_snapshot_participant: profile_snapshot_participant.as_ref(),
-                        profile_snapshot: profile_snapshot.as_ref(),
                     })
                 })
                 .map_err(core_error)?
@@ -1804,7 +1782,6 @@ impl Default for StoreAdministrationModule {
             writer: None,
             maintenance: None,
             store_replacement_hook: Arc::new(|_| Ok(())),
-            profile_snapshot_participant: Arc::new(profile_snapshot::NoProfileSnapshotParticipant),
             operation_lock: Arc::new(Mutex::new(())),
             runtime: Arc::new(Mutex::new(RuntimeState {
                 active: None,

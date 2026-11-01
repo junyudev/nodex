@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { nativeHistorySources } from "./AgentRuntimeSnapshotSources";
+import { nativeImportSources } from "./AgentRuntimeNativeImportSources";
 
-describe("native snapshot history sources", () => {
+describe("native conversation import sources", () => {
   it("uses the physical account home and instance-specific Claude directory without credentials", () => {
-    const sources = nativeHistorySources({
+    const sources = nativeImportSources({
       configuration: {
         home: "/profile/agent-runtime",
         cwd: "/repo",
@@ -38,52 +38,9 @@ describe("native snapshot history sources", () => {
     ]);
   });
 
-  it("captures newly appended restored history without borrowing credential directories", () => {
-    expect(
-      nativeHistorySources({
-        configuration: {
-          home: "/profile/agent-runtime",
-          cwd: "/repo",
-          providers: {
-            codex: {
-              driver: "codex",
-              enabled: true,
-              config: {
-                homePath: "/profile/agent-runtime/native-history/codex",
-                hostAuthentication: true,
-              },
-            },
-            claude: {
-              driver: "claudeAgent",
-              enabled: true,
-              config: {
-                homePath: "/private/claude-account",
-                restoredHistoryPath: "/profile/agent-runtime/native-history/claude",
-              },
-            },
-          },
-        },
-        environment: {},
-        homeDirectory: "/user",
-        codexHome: "/private/codex-account",
-      }),
-    ).toEqual([
-      {
-        providerInstanceId: "codex",
-        driver: "codex",
-        homePath: "/profile/agent-runtime/native-history/codex",
-      },
-      {
-        providerInstanceId: "claude",
-        driver: "claudeAgent",
-        homePath: "/profile/agent-runtime/native-history/claude",
-      },
-    ]);
-  });
-
   it("honors Claude's instance environment before inherited and default homes", () => {
     const read = (instanceDirectory?: string, inheritedDirectory?: string) =>
-      nativeHistorySources({
+      nativeImportSources({
         configuration: {
           home: "/profile/agent-runtime",
           cwd: "/repo",
@@ -112,9 +69,9 @@ describe("native snapshot history sources", () => {
   });
 });
 
-it("never substitutes the user Codex or Claude home for a managed account in a Profile snapshot", () => {
+it("never substitutes the user Codex or Claude home for a managed account during native import", () => {
   expect(
-    nativeHistorySources({
+    nativeImportSources({
       configuration: {
         home: "/profile/runtime",
         cwd: "/repo",

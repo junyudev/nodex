@@ -584,7 +584,6 @@ describe("SettingsRouteShell backups", () => {
       label: "Before migration",
       includesAssets: true,
       dbBytes: 1024,
-      executionBytes: 0,
       assetsBytes: 512,
       totalBytes: 1536,
     };
@@ -736,7 +735,6 @@ describe("SettingsRouteShell backups", () => {
         label: "Before risky change",
         includesAssets: true,
         dbBytes: 1024,
-        executionBytes: 0,
         assetsBytes: 512,
         totalBytes: 1536,
       },
@@ -809,5 +807,82 @@ describe("SettingsRouteShell backups", () => {
     expect(deletedBackupIds[0]).toBe("backup-1");
     expect(view.queryByText("Before risky change")).toBe(null);
     view.getByText("Snapshot deleted.");
+  });
+
+  test("restores a snapshot through inline row confirmation that explains the scope", async () => {
+    const restoreRequests: unknown[] = [];
+    mockInvokeImpl = async (channel: string, ...args: unknown[]) => {
+      switch (channel) {
+        case "settings:backup:get":
+          return {
+            autoEnabled: false,
+            intervalHours: 24,
+            retentionCount: 10,
+            retentionGiB: 32,
+            envOverrides: {
+              autoEnabled: false,
+              intervalHours: false,
+              retentionCount: false,
+              retentionGiB: false,
+            },
+          };
+        case "settings:history:get":
+          return { retentionCount: 1000, envOverrides: { retentionCount: false } };
+        case "backup:list":
+          return [
+            {
+              version: 4,
+              id: "backup-1",
+              createdAt: "2026-04-15T10:00:00.000Z",
+              trigger: "manual",
+              label: "Before risky change",
+              includesAssets: true,
+              dbBytes: 1024,
+              assetsBytes: 512,
+              totalBytes: 1536,
+            },
+          ] satisfies BackupRecord[];
+        case "backup:restore":
+          restoreRequests.push(args[0]);
+          return { success: true };
+        default:
+          return null;
+      }
+    };
+
+    const view = await renderOverlay();
+    await settleLazyRender();
+    const scope =
+      "Pages, Databases, Files and Projects return to this snapshot. Chats keep their latest messages; running replies stop and Nodex restarts.";
+
+    await act(async () => {
+      fireEvent.click(await view.findByRole("button", { name: "Restore" }));
+      await Promise.resolve();
+    });
+    await settleAsyncRender();
+    view.getByText(scope);
+
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Cancel" }));
+      await Promise.resolve();
+    });
+    await settleAsyncRender();
+    expect(view.queryByText(scope)).toBe(null);
+    expect(restoreRequests).toEqual([]);
+
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Restore" }));
+      await Promise.resolve();
+    });
+    await settleAsyncRender();
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Confirm restore" }));
+      await Promise.resolve();
+    });
+    await settleAsyncRender();
+
+    expect(restoreRequests).toEqual([
+      { backupId: "backup-1", confirm: true, createSafetyBackup: true },
+    ]);
   });
 });

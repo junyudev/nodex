@@ -1819,7 +1819,6 @@ describe("CodexAdapterV2 session initialize", () => {
   const openReplaySession = (
     transcript: CodexReplay.CodexAppServerReplayTranscript,
     beforeEmitInbound?: CodexReplay.CodexAppServerReplayDriver["beforeEmitInbound"],
-    hostAuthentication = false,
   ) =>
     Effect.gen(function* () {
       const driver = yield* CodexReplay.makeReplayDriver(
@@ -1829,10 +1828,7 @@ describe("CodexAdapterV2 session initialize", () => {
       let initializeRequests = 0;
       const adapter = yield* CodexAdapterV2.makeCodexAdapterV2({
         instanceId: CodexAdapterV2.CODEX_DEFAULT_INSTANCE_ID,
-        settings: {
-          ...DEFAULT_CODEX_SETTINGS,
-          ...(hostAuthentication ? { hostAuthentication } : {}),
-        },
+        settings: DEFAULT_CODEX_SETTINGS,
         environment: {},
         clientFactory: {
           open: (openInput) =>
@@ -1885,97 +1881,6 @@ describe("CodexAdapterV2 session initialize", () => {
 
   const replayPreamble = (nativeThreadId: string) =>
     codexReplayPreamble({ nativeThreadId, nativeTurnId: "unused", prompt: "unused" });
-
-  it.effect(
-    "authenticates restored history before starting and refreshes from the same account owner",
-    () =>
-      Effect.gen(function* () {
-        const preamble = replayPreamble("restored-auth");
-        const entries: Array<CodexReplay.CodexAppServerReplayEntry> = [
-          ...preamble.slice(0, 3),
-          {
-            type: "expect_outbound",
-            frame: {
-              id: 2,
-              method: "account/login/start",
-              params: {
-                type: "chatgptAuthTokens",
-                accessToken: "initial",
-                chatgptAccountId: "account",
-                chatgptPlanType: null,
-              },
-            },
-          },
-          { type: "emit_inbound", frame: { id: 2, result: { type: "chatgptAuthTokens" } } },
-          ...preamble.slice(3, 5).map((entry) => withReplayRequestId(entry, 3)),
-          {
-            type: "emit_inbound",
-            frame: {
-              id: "refresh",
-              method: "account/chatgptAuthTokens/refresh",
-              params: { reason: "unauthorized", previousAccountId: "account" },
-            },
-          },
-          {
-            type: "expect_outbound",
-            frame: {
-              id: "refresh",
-              result: {
-                accessToken: "refreshed",
-                chatgptAccountId: "account",
-                chatgptPlanType: null,
-              },
-            },
-          },
-        ];
-        const calls: unknown[] = [];
-        const session = yield* openReplaySession(
-          makeCodexReplayTranscript({ scenario: "restored-auth", entries }),
-          undefined,
-          true,
-        ).pipe(
-          Effect.provideService(ExecutionHost.ExecutionHost, {
-            prepareTurn: () => Effect.succeed({}),
-            readProviderAuth: (input) =>
-              Effect.sync(() => {
-                calls.push(input);
-                return {
-                  kind: "chatgpt" as const,
-                  accessToken: input.refresh ? "refreshed" : "initial",
-                  accountId: "account",
-                  planType: null,
-                };
-              }),
-          }),
-        );
-        assert.equal(
-          (yield* session.ensureThread("thread-restored-auth")).nativeThreadRef?.nativeId,
-          "restored-auth",
-        );
-        for (let attempt = 0; attempt < 100; attempt += 1) {
-          if ((yield* session.replayState).cursor === entries.length) break;
-          yield* Effect.yieldNow;
-        }
-        assert.deepEqual(calls, [
-          {
-            providerInstanceId: CodexAdapterV2.CODEX_DEFAULT_INSTANCE_ID,
-            refresh: false,
-            previousAccountId: null,
-          },
-          {
-            providerInstanceId: CodexAdapterV2.CODEX_DEFAULT_INSTANCE_ID,
-            refresh: true,
-            previousAccountId: "account",
-          },
-        ]);
-        assert.deepEqual(yield* session.replayState, { cursor: entries.length, failure: null });
-      }).pipe(
-        Effect.scoped,
-        Effect.provide(
-          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
-        ),
-      ),
-  );
 
   it.effect("sends one initialize when two threads start on a fresh session at once", () =>
     Effect.gen(function* () {

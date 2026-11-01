@@ -78,17 +78,11 @@ describe("development environment home", () => {
     const repositoryRoot = await createRepository();
     const home = await openDevelopmentEnvironmentHome({ repositoryRoot });
     const profileSnapshot = {
-      conversations: {
-        version: 1,
-        captureStartedAt: "2026-08-21T00:01:00.000Z",
-        captureCompletedAt: "2026-08-21T00:01:00.000Z",
-        requiredThreadCount: 2,
-        capturedThreadCount: 2,
-        externalThreadCount: 0,
-        missingThreadIds: [],
-        rolloutCount: 2,
-        nativeStateSchema: "state_5",
-        contentSha256: "b".repeat(64),
+      execution: {
+        capturedAt: "2026-08-21T00:01:00.000Z",
+        databaseBytes: 4096,
+        attachmentFiles: 2,
+        attachmentBytes: 100,
       },
       sourceProfileHome: "/tmp/source-profile",
       sourceProfileFingerprint: "a".repeat(64),
@@ -125,9 +119,16 @@ describe("development environment home", () => {
     expect(() =>
       parseDevelopmentHomeManifest({
         ...home.manifest,
-        profileSnapshot: { ...profileSnapshot, conversations: undefined },
+        profileSnapshot: { ...profileSnapshot, execution: undefined },
       }),
-    ).toThrow("Create a new --home");
+    ).toThrow("execution capture receipt is invalid");
+    const { execution: _execution, ...earlierFormat } = profileSnapshot;
+    expect(() =>
+      parseDevelopmentHomeManifest({
+        ...home.manifest,
+        profileSnapshot: { ...earlierFormat, conversations: { missingThreadIds: [] } },
+      }),
+    ).toThrow("earlier Profile clone format");
   });
 
   test("can defer Profile creation for atomic snapshot materialization", async () => {

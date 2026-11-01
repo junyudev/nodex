@@ -1447,8 +1447,6 @@ export interface components {
                 readonly created_at: string;
                 /** Format: int64 */
                 readonly db_bytes: number;
-                /** Format: int64 */
-                readonly execution_bytes: number;
                 readonly includes_assets: boolean;
                 readonly label?: string | null;
                 /** Format: int64 */
@@ -7688,7 +7686,6 @@ export interface components {
                 /** @enum {string} */
                 readonly kind: "create_backup";
                 readonly label?: string | null;
-                readonly profile_snapshot?: components["schemas"]["ProfileSnapshotSource"] | null;
                 readonly trigger: components["schemas"]["BackupTrigger"];
             } | {
                 readonly active_job_id: string;
@@ -7706,7 +7703,6 @@ export interface components {
                 readonly create_safety_backup: boolean;
                 /** @enum {string} */
                 readonly kind: "restore_backup";
-                readonly profile_snapshot?: components["schemas"]["ProfileSnapshotSource"] | null;
             } | {
                 readonly backup_id: string;
                 /** @enum {string} */
@@ -8830,11 +8826,6 @@ export interface components {
                 readonly tasks: readonly components["schemas"]["MaintenanceTask"][];
             };
         };
-        readonly NativeHistorySnapshotSource: {
-            readonly driver: string;
-            readonly home_path?: string | null;
-            readonly provider_instance_id: string;
-        };
         readonly OperationalJournalStatus: {
             /** Format: int64 */
             readonly commit_head_seq: number;
@@ -9040,20 +9031,6 @@ export interface components {
             readonly idempotency_slot?: string | null;
             readonly operation_id: string;
             readonly store_epoch: string;
-        };
-        /**
-         * @description Ephemeral, path-only evidence supplied by the physical execution snapshot owner.
-         *     These paths never enter the durable operation fingerprint or Backup manifest.
-         */
-        readonly ProfileSnapshotSource: {
-            readonly attachments_path: string;
-            readonly database_path: string;
-            readonly environment_id_path: string;
-            readonly native_histories: readonly components["schemas"]["NativeHistorySnapshotSource"][];
-            readonly runtime_generation: string;
-            readonly runtime_id: string;
-            /** Format: int64 */
-            readonly sequence: number;
         };
         readonly ProjectAppearance: {
             readonly color: components["schemas"]["ProjectMarkerColor"];

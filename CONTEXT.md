@@ -940,11 +940,13 @@ identity and number.
 
 ### Restore and backup
 
-A backup is copied only after one whole-store maintenance fence drains managed
-assets, flushes the writer, and closes SQLite connections. Restore journals
-SQLite/WAL/assets as one recoverable authority, verifies integrity, ownership,
-projections, and managed assets, rotates store epoch, then invalidates live
-subscriptions. Old transports, outboxes, Awareness, and checkpoints fail closed
+A backup is the Store and its managed assets, the content Nodex alone writes. It is
+copied online from one pinned SQLite read snapshot while writes and Agents continue;
+the execution store and each Agent's native history are outside it. Restore rewinds
+content, not conversations: it journals SQLite/WAL/assets as one recoverable authority,
+verifies integrity, ownership, projections, and managed assets, rotates store epoch,
+then invalidates live subscriptions, and the Session set then follows the execution
+store's conversations. Old transports, outboxes, Awareness, and checkpoints fail closed
 and remount through current descriptors.
 
 ## Non-domain state

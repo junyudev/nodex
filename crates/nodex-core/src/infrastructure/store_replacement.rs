@@ -14,12 +14,11 @@ use super::store_validation::{
 };
 
 const JOURNAL_FILE_NAME: &str = ".core-store-restore-journal.json";
-const JOURNAL_VERSION: u32 = 1;
+const JOURNAL_VERSION: u32 = 2;
 const MAX_JOURNAL_BYTES: u64 = 64 * 1024;
 const PRIVATE_FILE_MODE: u32 = 0o600;
 const MAX_STAGED_ASSET_ENTRIES: usize = 100_000;
 const ASSETS_DIRECTORY_NAME: &str = "assets";
-const EXECUTION_DIRECTORY_NAME: &str = "agent-runtime";
 const WAL_SUFFIX: &str = "-wal";
 const SHM_SUFFIX: &str = "-shm";
 
@@ -45,10 +44,6 @@ pub struct StoreReplacementJournal {
     pub rollback_directory_name: String,
     pub phase: StoreReplacementPhase,
     pub had_assets: bool,
-    #[serde(default)]
-    pub had_execution: bool,
-    #[serde(default)]
-    pub has_execution: bool,
     pub had_wal: bool,
     pub had_shm: bool,
     pub source_store_epoch: String,
@@ -94,6 +89,16 @@ pub fn read_store_replacement_journal(
         ));
     }
     let bytes = fs::read(path).map_err(io_error)?;
+    let value: serde_json::Value = serde_json::from_slice(&bytes)
+        .map_err(|_| corrupt("Store replacement journal JSON is invalid"))?;
+    if value.get("version").and_then(serde_json::Value::as_u64) != Some(u64::from(JOURNAL_VERSION))
+        || value.get("hadExecution").is_some()
+        || value.get("hasExecution").is_some()
+    {
+        return Err(corrupt(
+            "Interrupted Store replacement uses an unsupported journal format; recover it with the Nodex build that started the restore",
+        ));
+    }
     let journal = serde_json::from_slice::<StoreReplacementJournal>(&bytes)
         .map_err(|_| corrupt("Store replacement journal JSON is invalid"))?;
     validate_journal(profile_home, &journal)?;
@@ -126,12 +131,6 @@ pub fn create_store_replacement_journal(
         rollback_directory_name: input.rollback_directory_name.to_owned(),
         phase: StoreReplacementPhase::Prepared,
         had_assets: directory_exists(&profile_home.join(ASSETS_DIRECTORY_NAME))?,
-        had_execution: directory_exists(&profile_home.join(EXECUTION_DIRECTORY_NAME))?,
-        has_execution: directory_exists(
-            &backups_root(profile_home)
-                .join(input.staging_directory_name)
-                .join(EXECUTION_DIRECTORY_NAME),
-        )?,
         had_wal: regular_file_exists(&append_suffix(&database_path, WAL_SUFFIX))?,
         had_shm: regular_file_exists(&append_suffix(&database_path, SHM_SUFFIX))?,
         source_store_epoch: input.source_store_epoch.to_owned(),
@@ -175,13 +174,6 @@ pub fn install_staged_store_files(
             "Store files may be installed only in the install_started phase",
         ));
     }
-    if fs::symlink_metadata(profile_home.join("agent-runtime/.writer.lock")).is_ok() {
-        return Err(StoreError::new(
-            StoreErrorCode::MaintenanceInProgress,
-            "Execution must be closed before installing a Profile restore",
-            true,
-        ));
-    }
     let backup_root = backups_root(profile_home);
     let staging = validate_staged_candidate(profile_home, &journal.staging_directory_name)?;
     let rollback =
@@ -200,21 +192,11 @@ pub fn install_staged_store_files(
         &profile_home.join(ASSETS_DIRECTORY_NAME),
         &rollback.join(ASSETS_DIRECTORY_NAME),
     )?;
-    move_if_present(
-        &profile_home.join(EXECUTION_DIRECTORY_NAME),
-        &rollback.join(EXECUTION_DIRECTORY_NAME),
-    )?;
     move_required(&staging.join(STORE_FILE_NAME), &database)?;
     move_required(
         &staging.join(ASSETS_DIRECTORY_NAME),
         &profile_home.join(ASSETS_DIRECTORY_NAME),
     )?;
-    if journal.has_execution {
-        move_required(
-            &staging.join(EXECUTION_DIRECTORY_NAME),
-            &profile_home.join(EXECUTION_DIRECTORY_NAME),
-        )?;
-    }
     sync_directory(profile_home)
 }
 
@@ -303,13 +285,6 @@ pub fn rollback_store_replacement(
             &rollback,
             ASSETS_DIRECTORY_NAME,
             journal.had_assets,
-        )?;
-        restore_directory(
-            profile_home,
-            &staging,
-            &rollback,
-            EXECUTION_DIRECTORY_NAME,
-            journal.had_execution,
         )?;
         sync_directory(profile_home)?;
     }
@@ -481,10 +456,6 @@ fn validate_staged_candidate(
     )?;
     validate_store_path(&staging_database_path(profile_home, staging_directory_name))?;
     validate_regular_tree(&staging.join(ASSETS_DIRECTORY_NAME))?;
-    let execution = staging.join(EXECUTION_DIRECTORY_NAME);
-    if directory_exists(&execution)? {
-        validate_regular_tree(&execution)?;
-    }
     Ok(staging)
 }
 
@@ -1007,6 +978,25 @@ mod tests {
     }
 
     #[test]
+    fn previous_replacement_journal_fails_closed_without_changing_any_authority() {
+        let fixture = ReplacementFixture::new();
+        let journal = fixture.create_journal();
+        let mut previous = serde_json::to_value(&journal).unwrap();
+        previous["version"] = serde_json::json!(1);
+        previous["hadExecution"] = serde_json::json!(true);
+        previous["hasExecution"] = serde_json::json!(true);
+        fs::write(
+            journal_path(fixture.home()),
+            serde_json::to_vec(&previous).unwrap(),
+        )
+        .unwrap();
+        let error = recover_interrupted_store_replacement(fixture.home()).unwrap_err();
+        assert!(error.message.contains("unsupported journal format"));
+        assert_eq!(fixture.live_epoch(), SOURCE_EPOCH);
+        assert_eq!(fixture.staged_epoch(), CANDIDATE_EPOCH);
+    }
+
+    #[test]
     fn prepared_replacement_remains_adoptable_on_startup() {
         let fixture = ReplacementFixture::new();
         fixture.create_journal();
@@ -1025,18 +1015,18 @@ mod tests {
     }
 
     #[test]
-    fn startup_restores_execution_and_assets_after_every_partial_install_rename() {
-        for completed_moves in 0..=6 {
+    fn startup_restores_store_and_assets_after_every_partial_install_rename() {
+        for completed_moves in 0..=4 {
             let fixture = ReplacementFixture::new();
             let profile = fixture.home();
             let staging = profile.join("backups").join(STAGING_NAME);
-            fs::create_dir(profile.join(EXECUTION_DIRECTORY_NAME)).unwrap();
+            fs::create_dir(profile.join("agent-runtime")).unwrap();
             fs::write(
                 profile.join("agent-runtime/history.jsonl"),
                 b"source complete history",
             )
             .unwrap();
-            fs::create_dir(staging.join(EXECUTION_DIRECTORY_NAME)).unwrap();
+            fs::create_dir(staging.join("agent-runtime")).unwrap();
             fs::write(
                 staging.join("agent-runtime/history.jsonl"),
                 b"candidate complete history",
@@ -1072,18 +1062,10 @@ mod tests {
                     profile.join(ASSETS_DIRECTORY_NAME),
                     rollback.join(ASSETS_DIRECTORY_NAME),
                 ),
-                (
-                    profile.join(EXECUTION_DIRECTORY_NAME),
-                    rollback.join(EXECUTION_DIRECTORY_NAME),
-                ),
                 (staging.join(STORE_FILE_NAME), profile.join(STORE_FILE_NAME)),
                 (
                     staging.join(ASSETS_DIRECTORY_NAME),
                     profile.join(ASSETS_DIRECTORY_NAME),
-                ),
-                (
-                    staging.join(EXECUTION_DIRECTORY_NAME),
-                    profile.join(EXECUTION_DIRECTORY_NAME),
                 ),
             ];
             for (source, target) in moves.into_iter().take(completed_moves) {

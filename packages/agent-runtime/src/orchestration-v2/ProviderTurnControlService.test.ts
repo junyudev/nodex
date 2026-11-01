@@ -301,7 +301,6 @@ it.effect(
         ProviderSessionManager.ProviderSessionManagerV2.of({
           busyInstances: Effect.succeed(new Set()),
           busyThreads: Effect.succeed(new Map()),
-          isSnapshotIdle: Effect.succeed(true),
           shutdown: Effect.void,
           discardSideChatNative: () => Effect.void,
           open: () => Effect.die("unused open"),

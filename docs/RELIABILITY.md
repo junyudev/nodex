@@ -209,11 +209,10 @@ authority together. Detailed identity and allocation decisions are recorded in
 
 ## Backup, restore, and maintenance
 
-A whole-Profile backup covers the Store, managed assets, complete execution
-history, execution identity and attachments, and recoverable Codex/Claude native
-history behind one Core publication boundary. Main drains Session mutations and
-borrows an idle execution snapshot; the physical writer lease spans the capture.
-Provider credentials remain outside the snapshot. The initiating renderer allocates a bounded operation
+A Profile backup covers the Store and its managed assets: the content Nodex alone writes.
+It is captured online while Agents keep working and never waits for, pauses or coordinates
+with any Agent. The execution store and every provider's native history are outside the
+closure, and backup never reads a provider home. The initiating renderer allocates a bounded operation
 identity before submission and retains the exact normalized command while its
 transport outcome is unknown. Main reports `submitted` once it owns the
 background operation; durable Core admission may follow asynchronously and is
@@ -225,18 +224,20 @@ creating another snapshot. The renderer Backup runtime owns the visible
 `submitting -> submitted/progress -> completed | failed | cancelled` lifecycle;
 submission is never presented as terminal backup success.
 
-Online database capture, complete validation, hashing, and asset copying run
+Online database capture copies one pinned WAL read snapshot, so concurrent commits neither
+wait for nor restart it. Capture, complete validation, hashing, and asset copying run
 outside the serialized Store writer, while short authority checks and final
 receipt publication remain transactional. Managed asset files are immutable and become visible only
 through same-filesystem atomic publication from a sibling staging directory
 outside the backup closure; Core snapshots the database before
 enumerating that asset closure, so concurrent materialization can add only an
 unreferenced extra file, never omit a file referenced by the captured database.
-Restore validates the complete candidate, closes the old execution generation,
-journals database/WAL/assets/execution-history
+Restore rewinds content, not conversations. It validates the complete candidate, stops
+running replies and retires the execution generation, journals database/WAL/asset
 replacement, publishes all-or-nothing, rotates the Store epoch, and relaunches
 Electron. Old outboxes, checkpoints, Awareness, and cursors cannot replay across
-that epoch.
+that epoch. The Session set then follows the execution store's conversations through
+Main's coordinate-gated reconciliation.
 
 ### Managed File blobs
 

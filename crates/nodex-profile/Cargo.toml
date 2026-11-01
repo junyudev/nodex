@@ -8,16 +8,12 @@ license.workspace = true
 [dependencies]
 nodex-core.workspace = true
 chrono.workspace = true
-hex.workspace = true
 rusqlite.workspace = true
-rustix.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-sha2.workspace = true
 thiserror.workspace = true
-toml.workspace = true
 utoipa.workspace = true
-zstd = "0.14.3"
 
 [dev-dependencies]
+nodex-core-contracts.workspace = true
 tempfile = "3.27.0"

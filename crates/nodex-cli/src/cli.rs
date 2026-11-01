@@ -162,7 +162,7 @@ pub struct ProfileArgs {
 
 #[derive(Clone, Debug, PartialEq, Subcommand)]
 pub enum ProfileCommand {
-    /// Clone a published Store backup and current local conversations into a new Profile.
+    /// Clone a published content backup and current execution history into a new Profile.
     Clone(ProfileCloneArgs),
     /// Report whether this build can open a Profile's Store, without opening it.
     Check(ProfileCheckArgs),
@@ -177,7 +177,7 @@ pub struct ProfileCheckArgs {
 
 #[derive(Clone, Debug, Args, PartialEq)]
 pub struct ProfileCloneArgs {
-    /// Source Profile home containing published backups and native conversation data.
+    /// Source Profile home containing published backups and optional execution history.
     #[arg(long = "from", value_name = "PROFILE_HOME")]
     pub source: PathBuf,
     /// New Profile home to create; it must not already exist.
@@ -186,9 +186,6 @@ pub struct ProfileCloneArgs {
     /// Published backup ID to copy, or latest.
     #[arg(long, default_value = "latest", value_name = "BACKUP_ID_OR_LATEST")]
     pub backup: String,
-    /// Preserve missing native history for an explicitly incomplete diagnostic clone.
-    #[arg(long)]
-    pub allow_missing_conversations: bool,
 }
 
 #[derive(Clone, Debug, Args, PartialEq)]
@@ -902,7 +899,7 @@ pub struct BackupArgs {
 
 #[derive(Clone, Debug, PartialEq, Subcommand)]
 pub enum BackupCommand {
-    /// Publish an assets-inclusive backup of this Profile.
+    /// Publish an online backup of this Profile’s content and managed assets.
     Create {
         #[arg(long)]
         /// Optional human-readable label for the backup.

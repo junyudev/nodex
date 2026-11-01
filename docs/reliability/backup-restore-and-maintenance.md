@@ -2,53 +2,26 @@
 
 ## Backup boundary
 
-Formal Profile snapshots include `nodex.db`, managed assets, the execution
-database and environment identity, execution attachments, and managed native
-history for Codex and Claude. Core Administration remains the sole owner of
-staging, complete validation, receipt commit, publication, retention, and restore
-recovery. Its injected Profile participant reads required Session roots from the
-staged Store and rejects mismatched runtime identities, missing roots, child
-Threads presented as independent Sessions, and incomplete native transcripts.
+A Profile backup contains `nodex.db` and its managed assets: the content that Nodex Core
+alone writes. The Agent Runtime's execution store, its attachments and every provider's
+native history are outside the closure. Backup creation therefore has no execution lease,
+Session-mutation freeze, provider shutdown, native writer check or Desktop coordination,
+and it never reads a provider home. Core Administration remains the sole owner of staging,
+complete validation, receipt commit, publication, retention, and restore recovery.
 
-Main borrows the physical execution lease after draining admitted Session
-mutations. Active, queued, provider-native background, or unknown work refuses
-capture. Native providers are closed while their history is copied. Full history
-and attachment bytes are included independently of bounded UI projections.
-Native history files and their source inventory must remain stable throughout
-capture; account configuration and authentication files are excluded.
+Database capture uses SQLite's online-backup API on a dedicated read connection that holds
+one WAL read transaction for the whole copy. Store writes keep committing through the
+serialized writer during capture; the copy steps through that pinned snapshot in bounded
+page batches and is never restarted by a concurrent commit. Only short serialized writer
+calls check identity, epoch and idempotency before capture and commit the receipt after it.
 
-When Desktop is stopped, backup holds the execution writer lease and reads the
-last recorded provider catalog's exact continuation homes. Driver and catalog
-versions must be supported, every required native session must exist, and the
-catalog must remain unchanged through capture. Missing provider configuration
-fails the backup rather than guessing an account directory. Profiles predating
-that catalog retain their verified active Codex home behavior.
-
-Claude capture includes the Profile's required native Session transcripts,
-delegated transcript trees, and file-history checkpoints. Other Sessions in a
-shared account home are outside this closure and may continue writing. Forked
-transcripts carry their inherited messages without requiring the parent
-transcript. Claude fork aliases may select the same named delegated transcript
-within the authorized native history tree. Capture verifies the resolved regular file and
-its stable inventory, then materializes independent regular files in the backup.
-Aliases to another account, credentials, directories or other file types are
-rejected; other Profile files retain their ordinary no-symlink policy.
-
-Codex and Claude keep their native continuation IDs. Restored history lives in
-the Profile's managed history closure, while authentication comes from the
-configured account. ACP/OpenCode canonical transcripts are preserved, but their
-external native persistence is not a restorable Profile-owned closure.
-
-A whole-Store backup contains the SQLite database and managed assets from one
-Core Administration boundary. Core drains admitted Store writes, blocks new
-Store work, flushes/validates authority, and creates the SQLite snapshot before
-enumerating assets. Host materialization publishes a new immutable file by
-fsyncing a temporary file in a sibling same-filesystem staging directory, then
-atomically renaming or linking it into the managed asset root. Staging files are
-outside the backup closure.
-Therefore a concurrent publication can only be absent from both the captured
-database and its required closure, or appear as an unreferenced extra asset; a
-partially written file is never observable.
+Core snapshots the database before enumerating assets, under a managed-asset snapshot lease
+that excludes asset collection. Host materialization publishes a new immutable file by
+fsyncing a temporary file in a sibling same-filesystem staging directory, then atomically
+renaming or linking it into the managed asset root. Staging files are outside the backup
+closure. Therefore a concurrent publication can only be absent from both the captured
+database and its required closure, or appear as an unreferenced extra asset; a partially
+written file is never observable.
 
 The staged database, asset files, manifest, and their directories are fsynced
 before the backup is published. After the complete SQLite integrity,
@@ -57,7 +30,9 @@ records that evidence version together with the database SHA-256 and a
 deterministic digest over every asset path, length, and byte. Backup identity
 and result are receipt-backed; retention starts only while the same Core
 authority remains active. Restore still performs its own strict
-installed-candidate validation.
+installed-candidate validation. Backups published before execution history left the
+closure remain content backups; their retained execution subtree is neither validated nor
+installed and is deleted with the backup.
 
 Creating a backup returns `submitted` as soon as Main owns the background
 operation and identity; this is not a claim that Core has already written its
@@ -72,16 +47,11 @@ The coordinator records each execution phase under the Profile control
 directory, resumes or adopts interrupted jobs on startup, and exposes
 database-page, asset-byte, validation, digest, publish, and writer-held
 progress. Cancellation is accepted before publication begins; once publication
-is the only remaining safe transition, the job finishes atomically.
-
-Database capture uses SQLite's online-backup API on a dedicated connection in
-bounded steps with transient-busy retry. A managed-asset snapshot lease holds
-the immutable closure derived from the captured database while files are
-copied. The staged artifact is fully validated once and represented by an
-in-process verified capability; the normal publish path consumes that
-capability instead of rereading and rehashing the artifact. Recovery and restore
-never trust the process-local capability and therefore fully revalidate anything
-adopted from disk.
+is the only remaining safe transition, the job finishes atomically. The staged artifact
+is fully validated once and represented by an in-process verified capability; the normal
+publish path consumes that capability instead of rereading and rehashing the artifact.
+Recovery and restore never trust the process-local capability and therefore fully
+revalidate anything adopted from disk.
 
 Manual and scheduled backups use the same operation. Automatic interval and
 retention are Profile settings described in [Configuration](../CONFIGURATION.md).
@@ -106,14 +76,15 @@ Core rejects a candidate unless it passes:
 
 ## Journaled replacement
 
-The execution generation is disposed before installation; a surviving execution
-writer lock rejects replacement before its first rename. Database, WAL, assets,
-and the execution/native-history directory are one recoverable replacement. Core records and
-fsyncs a replacement journal before moving live/staged pieces. Every rename and
-parent directory is fsynced. Startup recovery either restores the complete
-previous authority or finishes the complete new authority; it never mixes
-Store, asset, and execution generations. Partial directory renames preserve both
-the complete original and staged candidate so startup can recover either safely.
+Restore replaces the Store database, its WAL and the managed assets as one recoverable
+replacement; the execution store and provider homes are not part of it. Before Core shuts
+down the Store generation, Main stops every running reply through the ordinary stop control
+and retires the Agent Runtime generation, so no Host call crosses the replacement. Core
+records and fsyncs a replacement journal before moving live/staged pieces. Every rename and
+parent directory is fsynced. Startup recovery either restores the complete previous Store
+and assets or finishes the complete new ones; it never mixes them. Partial directory
+renames preserve both the complete original and staged candidate so startup can recover
+either safely.
 
 After installation, Core rotates the Store epoch transactionally, invalidates
 subscriptions and process-local leases, and returns a committed receipt. A
@@ -127,94 +98,68 @@ Document sessions fail closed on the new epoch. Surfaces remount from current
 descriptors and canonical content; no old local edit can replay into the
 restored Store.
 
+### Sessions after a restore
+
+The execution store keeps its current conversations, so the restored Store and the Runtime
+can disagree about which Sessions exist. Main resolves that through one standing rule
+rather than a restore step: the Session set follows the Runtime's conversations. The
+Runtime records the Store coordinate (Profile and Store epoch) it was last reconciled with.
+When Main connects to a Runtime whose recorded coordinate differs from Core's current one,
+it pages through every root conversation once:
+
+- a live root with no Core Session is adopted as a Session in its Project when that Project
+  is active in the Store, otherwise without a Project, with no Page links;
+- a deleted root whose Session is still bound is retired through ordinary Session deletion;
+- every bound live root realigns its execution placement and archive gates to Core.
+
+Only a complete pass records the new coordinate, so an interrupted pass repeats on the
+next connection. The pass costs one bounded read per root and runs only after the Store or
+the execution store was replaced.
+
 ## Development Profile clones
 
-Development provisioning may materialize an evidence-backed, assets-inclusive
-published backup with a current or exact supported predecessor Store into a new
-Profile home. Predecessors retain their source revision until the target Core
-upgrades them on first open; clone requirements use only authorities present at
-that revision. The source Core is never launched:
-Core reads only the backup package, copies `nodex.db` and its managed-asset
-closure into a private sibling staging directory, and rejects symlinks,
-existing targets, or source/target ancestry overlap. Regular-file copying uses
-the platform's clone-or-copy primitive, which prefers APFS CoW on same-volume
-macOS and falls back safely elsewhere. The copy preserves Profile, Library,
-content, history, Project identities, and the imported Store epoch for
-production-shape fidelity while reminting the Agent token key and automation
-jitter salt. It is an isolated local fork: post-clone history may diverge under
-the imported coordinates and is never merged, synchronized, or replayed into
-its source.
+Development provisioning materializes an evidence-backed, assets-inclusive published
+backup with a current or exact supported predecessor Store into a new Profile home.
+Predecessors retain their source revision until the target Core upgrades them on first
+open; clone requirements use only authorities present at that revision. The source Core is
+never launched: Core reads only the backup package, copies `nodex.db` and its managed-asset
+closure into a private sibling staging directory, and rejects symlinks, existing targets,
+or source/target ancestry overlap. Regular-file copying uses the platform's clone-or-copy
+primitive, which prefers APFS CoW on same-volume macOS and falls back safely elsewhere. The
+copy preserves Profile, Library, content, history, Project identities, and the imported
+Store epoch for production-shape fidelity while reminting the Agent token key and
+automation jitter salt. It is an isolated local fork: post-clone history may diverge under
+the imported coordinates and is never merged, synchronized, or replayed into its source.
 
-Core verifies the copied database and asset-tree digests before reminting, then
-validates schema/epoch identity, document authorities, every present managed
-asset, and missing-asset evidence without repeating the publication-time SQLite
-integrity scan. Core returns an unpublished, owned staging capability with the
-local Thread requirements. The outer Profile materializer completes the native
-conversation closure before writing and syncing `profile-snapshot.json` and
-atomically publishing the directory. Dropping the capability on any capture or
-validation failure removes its staging tree. Because development clones are
-disposable, provisioning omits
-per-file fsync for the copied database/assets while retaining receipt and
-directory publication syncs. A power-loss-damaged fork must be deleted and
-recreated from the source inputs. Failed provisioning removes only the owned
-staging directory and never modifies the source backup. This is a local
-development input path, not a restore into a running Profile.
+Core verifies the copied database and asset-tree digests before reminting, then validates
+schema/epoch identity, document authorities, every present managed asset, and
+missing-asset evidence without repeating the publication-time SQLite integrity scan. Core
+returns an unpublished, owned staging capability. Dropping it on any capture or validation
+failure removes its staging tree. Because development clones are disposable, provisioning
+omits per-file fsync for the copied database/assets while retaining receipt and directory
+publication syncs. A power-loss-damaged fork must be deleted and recreated from the source
+inputs. Failed provisioning removes only the owned staging directory and never modifies the
+source backup. This is a local development input path, not a restore into a running
+Profile.
 
-When the source Desktop is open, its Endpoint supervisor lends a connection-bound
-snapshot window over a private local control socket. Gateway admission excludes
-new work and drains logical and retained physical requests. Active conversations
-and Agent background terminals must finish; their stop controls remain available
-during this drain. The supervisor closes the owned stdio input and waits for normal
-native process exit before acknowledging capture readiness. Closing a process Scope
-or sending a termination signal is not snapshot readiness. No second reconnect owner
-or external process killer participates. The Desktop windows and Core keep running.
+When the source has an execution store, the clone also copies its current state online:
+one pinned read snapshot of the execution database, then its immutable attachment files
+and its execution identity. The source may be running and busy; nothing in it is locked,
+paused or notified, and no provider home is read. The copy carries an import marker. On
+first open the cloned Runtime applies the import inside its own store: Profile-managed
+paths move from the source home to the clone's home, every native conversation is
+detached so the next message continues through the portable Context Handoff on a fresh
+native conversation, and its recorded Store coordinate is cleared so Main reconciles the
+Session set as described above. The same transition settles everything that was in flight
+when the source was copied: unfinished replies and queued messages are cancelled with a
+readable reason, pending requests, delegated work, recovery schedules and effects are
+retired, and copied scheduled automations are disabled. Nothing copied runs on its own. The clone therefore never continues the source's native
+conversations, even when both use the same Agent account.
 
-The CLI releases native locks before releasing its Desktop lease. Source database
-and file stability checks complete under both leases; relocation and semantic
-validation then continue solely against the detached copy while the source Agent
-reconnects. The release acknowledgement requires a ready replacement Endpoint.
-Client disconnect, capture failure, and cancellation also release the pause. Active
-work that does not drain fails the request without being interrupted. Absent or
-stale Desktop coordination leaves the offline writer checks in force. A running
-Desktop that cannot own the source Agent refuses the lease; the CLI does not
-fall back after a refusal.
-
-The Codex persistence Adapter holds the native home coordination lock while
-checking that all per-Thread writers are idle and capturing active/archived
-rollouts, inherited ancestors, attachments, session metadata, pagination indexes,
-and goals. Writers remaining after Desktop coordination, or in an offline capture,
-cause failure. The Adapter uses SQLite
-online backup and checks source data versions, file identity/inventory, and
-database-set stability before
-publication. It preserves selected histories after revert and rewrites their
-absolute database paths to the final destination. Current managed goal references
-and managed attachment ownership also move into the destination. Transcript bytes stay intact,
-including lineage byte cutoffs. The pagination database travels with its matching
-rollout bytes: native reads require ancestor projection rows and cannot be assumed
-to rebuild them when resuming a child. Capture checks projection byte/ordinal coverage for required
-paginated histories. Credentials, configuration, operational queues, and process
-locks are excluded. Capture uses native writer and SQLite read coordination;
-source history and published Store backups are never rewritten.
-
-Native index paths through an account directory's session aliases must resolve to
-regular files in the exact captured physical history tree. Capture verifies their
-file identities under the source leases and normalizes only the copied index;
-outside paths, symlinked artifacts, and uncaptured files remain invalid.
-
-Required local Codex Threads must resolve through their entire inherited rollout
-chain, with valid byte/ordinal cutoffs. Missing chains prevent publication unless
-`--allow-missing-conversations` explicitly requests incomplete diagnostic state.
-The receipt records missing IDs separately from Threads on remote hosts or other
-backends. Unsupported native storage layouts, symlinked artifacts, paths outside
-the physical source Agent home, and source mutation fail capture. This Adapter's
-storage contract must be reviewed alongside Codex runtime upgrades.
-
-The Store backup and native capture are independently timestamped inputs. A
-selected older backup does not imply a matching historical native capture, and
-Core backups alone remain Store/managed-asset backups. Profile cloning does not
-supply a full-Profile point-in-time restore. Workspace and historical file paths
-are not relocated. Reusing an old development manifest without conversation
-capture evidence is rejected with instructions to create a fresh home.
+The Store backup and the execution copy are independently timestamped inputs: `--backup`
+selects the Store version and does not rewind conversations to that backup. Workspace and
+historical external file paths are not relocated. The receipt records Store provenance and
+execution capture evidence.
 
 ## Maintenance
 

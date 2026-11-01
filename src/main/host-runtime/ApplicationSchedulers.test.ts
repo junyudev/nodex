@@ -200,7 +200,6 @@ const defaultAdministration = (): StoreAdministration["Service"] =>
         label: null,
         includesAssets: true,
         dbBytes: 100,
-        executionBytes: 0,
         assetsBytes: 20,
         totalBytes: 120,
       }),

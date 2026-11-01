@@ -364,7 +364,6 @@ export const make = Effect.fn("AgentRuntimeSupervisor.make")(function* <Requirem
     operation: Effect.Effect<A, E, R>,
     options: {
       readonly retireOnSuccess?: boolean;
-      readonly expectedConnection?: AgentRuntimeProcessConnection;
     } = {},
   ) =>
     gate
@@ -373,16 +372,11 @@ export const make = Effect.fn("AgentRuntimeSupervisor.make")(function* <Requirem
           const current = yield* Ref.get(state);
           if (current.closed)
             return yield* new AgentRuntimeSupervisorError({ operation: "closed" });
-          if (
-            options.expectedConnection &&
-            current.current?.connection !== options.expectedConnection
-          )
-            return yield* new AgentRuntimeSupervisorError({ operation: "generation-changed" });
           // Recovery observes the cleared identity after the gate opens and never restarts it.
           yield* Ref.set(state, { ...current, current: null });
           if (current.current) yield* Scope.close(current.current.scope, Exit.void);
           yield* publish({ status: "idle" });
-          // The operation may replace the store; its contents are unknown until the next start.
+          // Content or provider configuration may change while stopped; recheck execution on restart.
           yield* clearQuiescence;
           const result = yield* operation;
           if (options.retireOnSuccess)

@@ -461,7 +461,7 @@ Claude chat's Agent, and an image used only in its body. No Agent is started:
 
 Some defects and performance cliffs only appear with real document shapes,
 long histories, managed assets, or a production-sized Store. For that evidence,
-clone a published backup and local conversation history into a dedicated
+clone a published backup and the current conversations into a dedicated
 environment in the primary checkout's shared run directory:
 
 ```bash
@@ -489,44 +489,23 @@ An exact supported predecessor retains its Store revision through provisioning
 and upgrades on first open. Create a fresh backup when existing backups lack
 recorded integrity evidence or Store identity.
 
-The Profile materializer also captures the source's idle local Codex history:
-active and archived rollouts, inherited fork history, selected history after
-revert, native metadata, pagination indexes, goals, and managed Agent attachments.
-Capture reads the source Profile's verified active Codex home, including a shared native home.
-Earlier Profiles without an active-home receipt use their `${NODEX_HOME}/agent` directory.
-The destination always uses its own disposable Agent directory and never shares writable native
-history with the source.
+When the source has an execution store, provisioning also copies its current
+conversations from one consistent online read snapshot, plus their attachments and
+execution identity. The source Nodex may be open and its Agents busy; nothing is paused,
+locked or notified, and no Agent home is read. On first open the clone's Agent Runtime
+moves Profile-managed paths to the new home, detaches every native Agent conversation, and
+lets Main reconcile Sessions with the copied conversations. Transcripts read normally; the
+next message in a copied chat starts a fresh native conversation in the clone's own Agent
+directory and receives the earlier history through a context handoff. The clone never
+continues or writes the source's native conversations, and nothing copied runs on its own:
+replies running or queued in the source are cancelled and copied scheduled automations are
+disabled until re-enabled. Once a development home is
+initialized, reopening it does not recapture the source.
 
-Native SQLite uses online backup rather than raw database/WAL copying. Selected
-rollout paths, current managed goal references, and managed attachment ownership
-are relocated into the destination. Core Session/Thread IDs remain unchanged.
-Execution queues, locks, credentials, and Agent configuration are excluded.
-An open source Nodex coordinates capture automatically: new Agent requests wait,
-existing requests and active conversations drain, and its owned local Agent closes
-normally before copying. Stop controls remain available while waiting for active
-work, including Agent background terminals. Source windows and Core remain open.
-After copying and checking the source files, the Agent reconnects before the CLI
-continues with validation of the detached copy. Cancellation or a disconnected
-clone client releases the pause too. Busy work times out without being interrupted.
-
-Both the clone command and the source Desktop must support this coordination.
-An older source Desktop, an external daemon, or another process retaining native
-writer locks still requires stopping that Agent before cloning; no live writer
-check is bypassed. Once a development home is initialized, reopening it does not
-pause or recapture the source.
-
-Every local Codex Thread referenced by the selected Store must have recoverable
-native history. Missing rollouts or inherited history reject the clone before
-publication. For an intentional broken-data reproduction, add
-`--allow-missing-conversations`; the receipt records exactly which Thread IDs are
-missing and the launcher reports their count. Remote-host and other-backend
-Threads retain their metadata and are counted separately; their histories are
-not imported from this local Codex home.
-
-The receipt dates the selected Store backup and current native capture separately.
+The receipt dates the selected Store backup and the conversation copy separately.
 `--backup` selects the Store version; it does not rewind conversations to that
-backup's timestamp. Native transcript bytes and historical workspace/file paths
-are preserved, so external repositories and files remain external dependencies.
+backup's timestamp. Historical workspace/file paths are preserved, so external
+repositories and files remain external dependencies.
 This command is development provisioning, not a historical full-Profile restore.
 
 The environment uses its own `${NODEX_HOME}/agent` directory. Add `--auth-json`,
@@ -541,25 +520,18 @@ backup; new local history may diverge at the same coordinates and must never be
 replayed, synchronized, or exported into the source Profile.
 
 `dev-home.json` and `.nodex/profile-snapshot.json` record immutable backup and
-Store provenance plus conversation coverage and capture evidence. Reopen the
-environment with the same command or omit
-`--from-profile`; later edits are preserved. Use another `--home`, or delete the
-old environment after a clean stop, to test a newer backup. Older Store-only
-snapshot environments must be recreated; launching them fails with a recovery
-instruction rather than silently reusing incomplete conversation state.
+Store provenance plus execution capture evidence. Reopen the environment with the same
+command or omit `--from-profile`; later edits are preserved. Use another `--home`, or
+delete the old environment after a clean stop, to test a newer backup. Environments
+created by an earlier provisioning format must be recreated; launching them fails with a
+recovery instruction.
 
-The composed clone regression uses a fresh authoritative Core scenario:
+The composed clone regression uses a fresh authoritative Core scenario and keeps writing
+the source execution store while it clones:
 
 ```bash
 vp run test:core-client src/main/core-client/profile-clone.node.test.ts
-NODEX_TEST_PROFILE_CODEX_BINARY=/path/to/locked/codex vp run test:core-client src/main/core-client/profile-clone.node.test.ts
 ```
-
-The second command also uses the locked Codex CLI binary to fork a synthetic
-conversation, archive its ancestor, revert its last turn, clone the Profile, hide
-the entire source, and verify read, paginated turns, and resume through the native
-consumer. It
-requires no credentials and starts no model turn.
 
 Profile snapshots are local exploratory and production-shape evidence. They
 must not run in CI, be committed, or produce uploaded screenshots, traces,

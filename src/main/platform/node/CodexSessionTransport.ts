@@ -8,7 +8,6 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Scope from "effect/Scope";
-import * as Stream from "effect/Stream";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { CodexAppServerClient, layerChildProcess } from "@nodex/effect-codex-app-server/client";
@@ -40,8 +39,6 @@ export interface CodexSessionTransportHandle {
   readonly onInitializationFailed?: () => void;
   readonly client: CodexAppServerClient["Service"];
   readonly termination: Effect.Effect<never, CodexRuntimeError>;
-  /** Owned stdio only: EOF drains native persistence; completion proves the child exited normally. */
-  readonly closeForSnapshot?: Effect.Effect<void, CodexRuntimeError>;
 }
 
 export class CodexSessionTransport extends Context.Service<
@@ -145,35 +142,7 @@ export const live: Layer.Layer<
           ),
         );
         const termination = Effect.raceFirst(childTermination, protocolTermination);
-        const closeForSnapshot = Stream.empty.pipe(
-          Stream.run(handle.stdin),
-          Effect.andThen(handle.exitCode),
-          Effect.flatMap((code) =>
-            code === 0
-              ? Effect.void
-              : Effect.fail(
-                  codexRuntimeError({
-                    operation: "session.snapshot-exit",
-                    reason: "session-lost",
-                    retryable: false,
-                    hostId: config.hostId,
-                    cause: new Error(`Agent snapshot shutdown exited with code ${code}`),
-                  }),
-                ),
-          ),
-          Effect.mapError((cause) =>
-            codexRuntimeError({
-              operation: "session.snapshot-shutdown",
-              reason: "session-lost",
-              retryable: false,
-              hostId: config.hostId,
-              generation: config.generation,
-              pid,
-              cause,
-            }),
-          ),
-        );
-        return { pid, transportKind: "stdio", client, termination, closeForSnapshot };
+        return { pid, transportKind: "stdio", client, termination };
       }),
       canonicalPath: Effect.fn("CodexSessionTransport.canonicalPath")((path) =>
         fileSystem.realPath(path).pipe(

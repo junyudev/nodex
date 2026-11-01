@@ -214,11 +214,6 @@ export class CodexRequestScheduler extends Context.Service<
     ) => Effect.Effect<A, CodexRuntimeError>;
     readonly retireGeneration: (hostId: string, generation: number) => Effect.Effect<void>;
     readonly promoteQueuedCatalogPage: (hostId: string) => Effect.Effect<boolean>;
-    /** Includes physical requests whose logical callers timed out or detached. */
-    readonly awaitIdle: (
-      hostId: string,
-      generation: number,
-    ) => Effect.Effect<void, CodexRuntimeError>;
     readonly snapshot: Effect.Effect<CodexRequestSchedulerSnapshot>;
   }
 >()("nodex/main/codex-runtime/CodexRequestScheduler") {}
@@ -1220,26 +1215,6 @@ export const live: Layer.Layer<CodexRequestScheduler> = Layer.effect(
       })),
     );
 
-    const awaitIdle = Effect.fn("CodexRequestScheduler.awaitIdle")(function* (
-      hostId: string,
-      generation: number,
-    ) {
-      while (true) {
-        const state = generations.get(generationKey(hostId, generation));
-        if (!state || state.retired)
-          return yield* codexRuntimeError({
-            operation: "scheduler.snapshot-drain",
-            reason: "session-lost",
-            retryable: true,
-            hostId,
-            generation,
-          });
-        if (state.queued.length === 0 && state.inFlight.size === 0 && state.retained.size === 0)
-          return;
-        yield* Effect.sleep("10 millis");
-      }
-    });
-
     const promoteQueuedCatalogPage = Effect.fn("CodexRequestScheduler.promoteQueuedCatalogPage")(
       (hostId: string) =>
         mutationLock.withPermit(
@@ -1275,7 +1250,6 @@ export const live: Layer.Layer<CodexRequestScheduler> = Layer.effect(
       retireGeneration,
       promoteQueuedCatalogPage,
       snapshot,
-      awaitIdle,
     });
   }),
 );

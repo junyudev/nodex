@@ -2,11 +2,13 @@
 
 ## Purpose and ownership
 
-Backups is the user-facing recovery surface for whole-Profile snapshots. Rust
-Core Administration owns snapshot consistency, validation, publication,
-retention, restore eligibility, and background job recovery. Electron Main
-adapts those typed operations and keeps automatic schedules alive. Settings
-presents status and intent; closing the page never cancels an accepted job.
+Backups is the user-facing recovery surface for Profile content. A snapshot holds what
+Nodex alone writes: the Store, which contains Pages, Databases, Library Files, Projects and
+how Sessions are organized, together with its managed assets. Rust Core Administration owns
+snapshot consistency, validation, publication, retention, restore eligibility, and
+background job recovery. Electron Main adapts those typed operations and keeps automatic
+schedules alive. Settings presents status and intent; closing the page never cancels an
+accepted job.
 
 Only a completed, fully validated snapshot appears in the restorable list. A
 queued, running, cancelled, or failed job is operational state, not
@@ -14,27 +16,24 @@ a restorable snapshot.
 
 ## Creating a snapshot
 
-A snapshot includes the Store, managed assets, the complete execution database,
-execution identity and image attachments, and recoverable Codex/Claude native
-history. Runtime activity and queued work must finish before capture; a snapshot
-never interrupts an active conversation. History is captured in full regardless
-of the transcript window currently visible in the UI.
+A snapshot is taken while Nodex keeps working. Agents keep replying, queued messages keep
+starting, and edits keep saving; a snapshot never waits for, pauses, or interrupts any of
+them. Its content is the Store exactly as of one moment during capture.
 
-Provider credentials remain in the configured account. Restored Codex and Claude
-Sessions retain their native IDs and resume using that account. ACP and OpenCode
-transcripts remain readable, while native continuation requires their original
-external history service or files.
+Conversations are not part of a snapshot. Chat transcripts belong to the Agent Runtime, and
+each Agent keeps its own native history in its own home. Nodex never reads, copies, or locks
+an Agent's home for a backup, so other apps using the same Agent account are unaffected.
 
 `Create snapshot` starts one manual background job. Settings acknowledges the
 start immediately, clears the optional label, and shows the current phase and
 progress while the app remains usable. Reopening Backups, opening it in another
 window, or restarting Nodex reconnects to the same durable job rather than
-starting a duplicate.
+starting a duplicate. `nodex backup create` starts the same job from the command line.
 
 The progress surface identifies database capture, managed-asset capture,
 validation, digesting, and publication as distinct phases. Database capture may
-report copied and total pages plus transient retries. Progress is evidence from
-Core, not a renderer timer estimate.
+report copied and total pages. Progress is evidence from Core, not a renderer
+timer estimate.
 
 The user may cancel while work is queued or running before publication. A
 successful cancellation publishes no snapshot. Once commit or publication has
@@ -68,13 +67,23 @@ restart. While it is active, Settings reports remaining unmeasured records or
 that old delivery history is being trimmed. When it completes, the retained
 operational-history size remains visible.
 
-## Restore boundary
+## Restoring a snapshot
 
-Restore accepts only completed inventory entries and independently validates
-the selected database, manifest, managed-asset and execution-history closure. The optional safety
-snapshot uses the same complete backup boundary before replacement begins.
-The old execution process is closed before installation and cannot write through
-its replaced database connection. A failed or interrupted install recovers every
-Profile component together.
-Restore behavior and crash recovery are specified in
-[Backup, Restore, and Maintenance](../reliability/backup-restore-and-maintenance.md).
+Restoring rewinds content, not conversations. Pages, Databases, Library Files, Projects,
+and each Session's Project, archive state and linked Pages return to the snapshot. Chats
+keep their current transcripts and continue with their Agents as before:
+
+- A chat started after the snapshot stays. It returns to its Project, or appears without a
+  Project when the snapshot predates that Project. Chat names are content, so such a chat is
+  named from its opening message.
+- A chat deleted after the snapshot stays deleted.
+- Links from a chat to Pages follow the snapshot, because Page links are content.
+
+Restore stops any reply that is still running, then restarts Nodex. Agent processes outside
+Nodex and every Agent's own history are untouched.
+
+Restore accepts only completed inventory entries and independently validates the selected
+database, manifest and managed-asset closure. The optional safety snapshot is taken
+immediately before replacement, with no write window between them. A failed or interrupted
+install recovers the Store and its assets together. Restore behavior and crash recovery are
+specified in [Backup, Restore, and Maintenance](../reliability/backup-restore-and-maintenance.md).

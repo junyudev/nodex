@@ -167,8 +167,6 @@ export interface ProviderSessionManagerV2Shape {
   readonly busyInstances: Effect.Effect<ReadonlySet<ProviderInstanceId>>;
   /** Threads attached to each busy runtime, including native work between foreground Turns. */
   readonly busyThreads: Effect.Effect<ReadonlyMap<ProviderInstanceId, ReadonlySet<ThreadId>>>;
-  /** Snapshot admission requires an explicit idle result from every resident native runtime. */
-  readonly isSnapshotIdle: Effect.Effect<boolean>;
   readonly shutdown: Effect.Effect<void>;
   readonly open: (input: {
     readonly ephemeral?: boolean;
@@ -2482,18 +2480,6 @@ export const layerWithOptions = (
           }).pipe(
             Effect.mapError((cause) => new ProviderSideChatDiscardError({ threadId, cause })),
           ),
-        isSnapshotIdle: Effect.gen(function* () {
-          for (const entry of (yield* Ref.get(sessions)).values()) {
-            if (entry.busyTurns.size > 0 || entry.runtime.hasPendingBackgroundWork === undefined)
-              return false;
-            const pending = yield* entry.runtime.hasPendingBackgroundWork.pipe(
-              Effect.timeout("2 seconds"),
-              Effect.catchCause(() => Effect.succeed(true)),
-            );
-            if (pending) return false;
-          }
-          return true;
-        }),
         busyThreads,
         busyInstances: busyThreads.pipe(Effect.map((busy) => new Set(busy.keys()))),
         shutdown,

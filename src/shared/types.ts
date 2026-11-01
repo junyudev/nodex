@@ -1516,7 +1516,6 @@ export interface BackupRecord {
   includesAssets: boolean;
   dbBytes: number;
   assetsBytes: number;
-  executionBytes: number;
   totalBytes: number;
 }
 

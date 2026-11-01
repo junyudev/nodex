@@ -106,14 +106,6 @@ const hostToolIdentitySchema = z.union([
     .passthrough(),
 ]);
 const hostRequestSchema = z.discriminatedUnion("operation", [
-  z.object({
-    type: z.literal("host.request"),
-    id: z.string().min(1),
-    operation: z.literal("provider.auth"),
-    identity: hostIdentitySchema.extend({ providerInstanceId: z.string().min(1) }),
-    refresh: z.boolean(),
-    previousAccountId: z.string().nullable(),
-  }),
   z
     .object({
       type: z.literal("host.request"),
@@ -245,6 +237,8 @@ export interface AgentRuntimeProcessOptions {
   readonly configuration: AgentRuntimeConfiguration;
   readonly environment?: Readonly<Record<string, string | undefined>>;
   readonly requestTimeoutMs?: number;
+  /** Startup work that must finish before admission, such as an execution store import. */
+  readonly readinessTimeoutMs?: number;
   readonly host: (request: AgentHostRequest) => Effect.Effect<unknown, Error>;
 }
 
@@ -572,9 +566,7 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
     const refused = yield* Ref.modify(state, (current) => {
       if (current.closed) return [current.closed, current] as const;
       const capacity =
-        method === "storage.snapshot.release" || method === "shutdown"
-          ? MAXIMUM_PENDING_REQUESTS + 2
-          : MAXIMUM_PENDING_REQUESTS;
+        method === "shutdown" ? MAXIMUM_PENDING_REQUESTS + 1 : MAXIMUM_PENDING_REQUESTS;
       if (current.pending.size >= capacity)
         return [
           new AgentRuntimeProcessError({
@@ -630,7 +622,7 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
     ),
   );
   const identity = yield* Deferred.await(ready).pipe(
-    Effect.timeout(Duration.seconds(30)),
+    Effect.timeout(Duration.millis(options.readinessTimeoutMs ?? 30_000)),
     Effect.mapError((cause) =>
       cause instanceof AgentRuntimeProcessError
         ? cause

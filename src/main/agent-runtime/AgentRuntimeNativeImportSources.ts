@@ -1,48 +1,32 @@
 import { join, resolve } from "node:path";
 import type { AgentRuntimeConfiguration } from "@nodex/agent-runtime/contracts";
-import type { AgentRuntimeNativeHistorySource } from "./AgentRuntimeProfileSnapshot";
 import { z } from "zod";
 
 const claudeHome = z.object({ homePath: z.string().optional() });
-const restoredHome = z.object({
-  restoredHistoryPath: z.string().optional(),
-  homePath: z.string().optional(),
-  hostAuthentication: z.boolean().optional(),
-});
+interface NativeImportSource {
+  readonly providerInstanceId: string;
+  readonly driver: string;
+  readonly homePath: string | null;
+}
 
-/** Captures only native history locations from the exact physical provider configuration. */
-export function nativeHistorySources(input: {
+/** Resolves native import locations from the exact physical provider configuration. */
+export function nativeImportSources(input: {
   readonly configuration: AgentRuntimeConfiguration;
   readonly environment: Readonly<Record<string, string | undefined>>;
   readonly homeDirectory: string;
   readonly codexHome: string;
-}): readonly AgentRuntimeNativeHistorySource[] {
+}): readonly NativeImportSource[] {
   const home = input.environment.HOME ?? input.homeDirectory;
   const directory = (value: string) =>
     resolve(value === "~" ? home : value.startsWith("~/") ? join(home, value.slice(2)) : value);
   return Object.entries(input.configuration.providers).map(([providerInstanceId, provider]) => {
-    // Managed providers recover from portable execution history; native user-account snapshots
-    // must never be substituted for an account-isolated managed home.
+    // Managed providers do not expose user-account conversations for import.
     if (provider.source === "nodex")
       return { providerInstanceId, driver: provider.driver, homePath: null };
-    const restored = restoredHome.safeParse(provider.config);
-    const retained = restored.success ? restored.data : undefined;
-    if (provider.driver === "codex" && retained?.hostAuthentication && retained.homePath)
-      return {
-        providerInstanceId,
-        driver: provider.driver,
-        homePath: directory(retained.homePath),
-      };
     if (provider.driver === "codex")
       return { providerInstanceId, driver: provider.driver, homePath: input.codexHome };
     if (provider.driver !== "claudeAgent")
       return { providerInstanceId, driver: provider.driver, homePath: null };
-    if (retained?.restoredHistoryPath)
-      return {
-        providerInstanceId,
-        driver: provider.driver,
-        homePath: directory(retained.restoredHistoryPath),
-      };
     const variables = Object.fromEntries(
       provider.environment?.map(({ name, value }) => [name, value]) ?? [],
     );

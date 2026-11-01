@@ -7,7 +7,7 @@ import * as readline from "node:readline";
 import { fileURLToPath } from "node:url";
 import { expect, it } from "vitest";
 import type { AgentRuntimeBootstrap } from "./Bootstrap.ts";
-import type { AgentRuntimeResponse, AgentStorageSnapshot } from "./Interface.ts";
+import type { AgentRuntimeResponse } from "./Interface.ts";
 
 async function startProcess(
   home: string,
@@ -211,66 +211,6 @@ it("preserves actionable search cursor failures through real stdio", async () =>
     });
     expect(runtime.invalidLines).toEqual([]);
     expect(await runtime.close()).toBe(0);
-  } finally {
-    runtime.child.kill("SIGKILL");
-    await runtime.exit;
-    await fs.rm(home, { recursive: true, force: true });
-  }
-});
-
-it("releases a snapshot ahead of 32 blocked reads and closes an unreleased lease on EOF", async () => {
-  const home = await fs.mkdtemp(path.join(os.tmpdir(), "nodex-snapshot-process-"));
-  const runtime = await startProcess(home);
-  try {
-    const acquired = await runtime.request("storage.snapshot.acquire");
-    expect(acquired.success).toBe(true);
-    if (!acquired.success) return;
-    const snapshot = acquired.output as AgentStorageSnapshot;
-    const reads = Array.from({ length: 32 }, () =>
-      runtime.request("thread.read", { threadId: "thread:absent" }),
-    );
-    const released = await runtime.request("storage.snapshot.release", {
-      leaseId: snapshot.leaseId,
-    });
-    expect(released).toMatchObject({ success: true, output: { released: true } });
-    expect(
-      (await Promise.all(reads)).every((response) => response.success && response.output === null),
-    ).toBe(true);
-    const second = await runtime.request("storage.snapshot.acquire");
-    expect(second.success).toBe(true);
-    const code = await runtime.close();
-    expect(code).toBe(0);
-    if (second.success) {
-      expect(
-        await fs.stat((second.output as AgentStorageSnapshot).databasePath).then(
-          () => true,
-          () => false,
-        ),
-      ).toBe(false);
-    }
-    expect(runtime.invalidLines).toEqual([]);
-  } finally {
-    runtime.child.kill("SIGKILL");
-    await runtime.exit;
-    await fs.rm(home, { recursive: true, force: true });
-  }
-});
-
-it("shuts down ahead of a full lane of reads waiting behind an unreleased snapshot", async () => {
-  const home = await fs.mkdtemp(path.join(os.tmpdir(), "nodex-snapshot-shutdown-"));
-  const runtime = await startProcess(home);
-  try {
-    expect((await runtime.request("storage.snapshot.acquire")).success).toBe(true);
-    const reads = Array.from({ length: 32 }, () =>
-      runtime.request("thread.read", { threadId: "thread:absent" }).catch(() => undefined),
-    );
-    expect(await runtime.request("shutdown")).toMatchObject({
-      success: true,
-      output: { stopped: true },
-    });
-    expect(await runtime.exit).toBe(0);
-    await Promise.all(reads);
-    expect(runtime.invalidLines).toEqual([]);
   } finally {
     runtime.child.kill("SIGKILL");
     await runtime.exit;

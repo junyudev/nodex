@@ -404,14 +404,11 @@ fn clone_profile(arguments: &ProfileCloneArgs) -> Result<Value, CliError> {
     } else {
         nodex_profile::ProfileCloneBackupSelection::Id(arguments.backup.clone())
     };
-    let receipt = nodex_profile::materialize_profile_clone(
-        nodex_profile::ProfileCloneRequest {
-            source_profile_home: arguments.source.clone(),
-            target_profile_home: arguments.target.clone(),
-            backup,
-        },
-        arguments.allow_missing_conversations,
-    )
+    let receipt = nodex_profile::materialize_profile_clone(nodex_profile::ProfileCloneRequest {
+        source_profile_home: arguments.source.clone(),
+        target_profile_home: arguments.target.clone(),
+        backup,
+    })
     .map_err(|error| {
         let code = if error.is_invalid_input() {
             CliErrorCode::InvalidInput
@@ -1590,7 +1587,6 @@ fn backup_create(
         operation_id,
         store_epoch: StoreEpoch(client.handshake.store_epoch.clone()),
         intent: StoreAdministrationIntent::CreateBackup {
-            profile_snapshot: None,
             label,
             include_assets: true,
             trigger: BackupTrigger::Manual,

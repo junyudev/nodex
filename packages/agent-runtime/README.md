@@ -94,17 +94,9 @@ Deleting a Thread removes an attachment file only when no live Thread still show
 forks whose captured Run prefix contains the referencing message; an indexed reference table
 proves this without reading message bodies.
 
-`storage.snapshot.acquire` drains admitted public writes, rejects new writes, verifies that no
-active, queued, native background or unknown work remains, and suspends idle providers. It holds
-the database writer transaction while returning an online SQLite copy, attachments directory and
-environment identity file. A Profile capture copies that closure and native provider storage
-before `storage.snapshot.release`. Snapshot release bypasses the request queue; disconnecting
-also releases the fence and removes the temporary database copy.
-
 Before opening SQLite, every runtime holds `<home>/.writer.lock` with a private `owner.json`
-containing `{pid,token}`. Offline Profile capture holds the same exclusive directory. Live or
-malformed ownership refuses admission; stale recovery requires a proven absent PID and the same
-owner token under an exclusive nested `.recovering` claim. Scope release verifies the exact
+containing `{pid,token}`. Live or malformed ownership refuses admission; stale recovery requires a
+proven absent PID and the same owner token under an exclusive nested `.recovering` claim. Scope release verifies the exact
 token, and a PID reused by another process conservatively retains ownership.
 
 All Agents can read and write the current Profile across Projects and Sessions. Native execution
@@ -131,14 +123,6 @@ and serialize admission through rollback. Context compaction creates one durable
 per request and uses the normal native lifecycle and Host preparation boundary.
 Claude custom model traits are compiled at the native boundary, including thinking-off effort
 limits and permitted context-window suffixes.
-Restored Claude history uses the SDK's `SessionStore`: the configured account supplies authentication,
-while the SDK privately materializes captured root and subagent transcripts for resume. Continued
-entries are durably mirrored into the Profile, including native forks. Missing managed history and
-mirror failures reject execution rather than falling back to another history owner. Each native
-transcript is admitted whole within 128 MiB and 250,000 entries; larger transcripts fail explicitly.
-Restored Codex history uses its captured native home and the current configured provider policy.
-The Host obtains current credentials privately for ephemeral login and refresh; execution receipts,
-configuration and formal native history captures never persist those credentials.
 
 Codex uses the repository release lock for managed installation and the shared
 `@nodex/effect-codex-app-server` schema and RPC exports. The repository

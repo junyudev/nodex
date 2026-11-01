@@ -1096,7 +1096,7 @@ const COMMANDS: &[CommandMetadata] = &[
             "global_only",
             "published_backup",
             "new_target_profile",
-            "local_conversation_closure",
+            "online_execution_snapshot",
         ],
         result: "profile_clone_receipt",
         errors: &["INVALID_INPUT", "CLI_INTERNAL"],

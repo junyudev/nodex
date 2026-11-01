@@ -20,7 +20,7 @@ export class AgentRuntimeThreadExecutionError extends Schema.TaggedError<AgentRu
   { operation: Schema.String, threadId: Schema.String, cause: Schema.Defect() },
 ) {}
 
-/** Coordinates physical handoff with the Runtime's durable execution hold and writer. */
+/** Coordinates physical handoff with the Runtime's durable execution hold and Session lane. */
 export const make = Effect.gen(function* () {
   const application = yield* AgentRuntimeApplication;
   const supervisor = yield* AgentRuntimeSupervisor;
@@ -150,7 +150,7 @@ export const make = Effect.gen(function* () {
     withHandoff: <A, E, R>(threadId: string, use: Effect.Effect<A, E, R>, operationId?: string) =>
       load(threadId).pipe(
         Effect.flatMap((initial) =>
-          application.withExecutionLocationWriter(
+          application.withExecutionLocation(
             initial.sessionId,
             Effect.acquireUseRelease(
               Effect.gen(function* () {

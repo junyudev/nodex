@@ -45,8 +45,6 @@ import { layer as storeAdministrationLayer } from "../core-runtime/StoreAdminist
 import { live as inboxApplicationLive } from "../inbox-application/InboxApplication";
 import { live as inboxDispatcherLive } from "../inbox-application/InboxDispatcher";
 import { live as inboxDispatchRuntimeLive } from "../inbox-application/InboxDispatchRuntime";
-import type { StoreAdministrationIntent } from "../core-client/types";
-import type { AgentRuntimeProfileSnapshotSource } from "../agent-runtime/AgentRuntimeProfileSnapshot";
 import { DeepLinkRuntime } from "../host-runtime/DeepLinkRuntime";
 import { ApplicationInitializationRuntime } from "../host-runtime/ApplicationInitializationRuntime";
 import * as AppProtocolRuntime from "../host-runtime/AppProtocolRuntime";
@@ -78,14 +76,13 @@ import * as ApplicationStateLive from "./ApplicationStateLive";
 import * as ApplicationOperationsLive from "./ApplicationOperationsLive";
 import * as NodexAccountLive from "./NodexAccountLive";
 import * as AgentRuntimeApplicationLive from "./AgentRuntimeApplicationLive";
-import { AgentRuntimeProfileSnapshot } from "../agent-runtime/AgentRuntimeProfileSnapshot";
+import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
+import { AgentRuntimeSupervisor } from "../agent-runtime/AgentRuntimeSupervisor";
 import * as RendererIngressLive from "./RendererIngressLive";
 import * as WindowApplicationLive from "./WindowApplicationLive";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
 import { TemporaryAssets } from "../local-store/TemporaryAssets";
 import * as CodexConversationPeerRuntime from "../platform/node/CodexConversationPeerRuntime";
-import { serveProfileSnapshotControl } from "../platform/node/ProfileSnapshotControl";
-import { CodexEndpointMap } from "../codex-runtime/CodexEndpointMap";
 import { live as shellEnvironmentLive } from "../host-runtime/WorktreeShellEnvironmentRuntime";
 import { live as profilePersistedAtomsLive } from "../local-store/ProfilePersistedAtoms";
 import { live as codexVisualizationStateLive } from "../codex-application/CodexVisualizationState";
@@ -129,39 +126,20 @@ const protocolGraph = ConversationApplicationLive.protocol.pipe(
   Layer.provideMerge(interactionsGraph),
 );
 const operationsGraph = ApplicationOperationsLive.live.pipe(Layer.provideMerge(protocolGraph));
-const snapshotSource = (
-  source: AgentRuntimeProfileSnapshotSource,
-): NonNullable<
-  Extract<StoreAdministrationIntent, { readonly kind: "create_backup" }>["profile_snapshot"]
-> => ({
-  runtime_id: source.runtimeId,
-  runtime_generation: source.runtimeGeneration,
-  sequence: source.sequence,
-  database_path: source.databasePath,
-  environment_id_path: source.environmentIdPath,
-  attachments_path: source.attachmentsPath,
-  native_histories: source.nativeHistories.map((history) => ({
-    provider_instance_id: history.providerInstanceId,
-    driver: history.driver,
-    home_path: history.homePath,
-  })),
-});
 const administration = Layer.unwrap(
   Effect.gen(function* () {
-    const snapshots = yield* AgentRuntimeProfileSnapshot;
+    const application = yield* AgentRuntimeApplication;
+    const runtime = yield* AgentRuntimeSupervisor;
     return storeAdministrationLayer({
-      snapshots: {
-        capture: (use) =>
-          snapshots.withOptionalSnapshot((source) =>
-            use(source ? snapshotSource(source) : undefined),
-          ),
-        restore: (use) => snapshots.withRestore((source) => use(snapshotSource(source))),
+      restore: {
+        prepare: application.stopRunningReplies(),
+        withStopped: (use) => runtime.withStopped(use, { retireOnSuccess: true }),
       },
     });
   }),
 );
 const administrationGraph = administration.pipe(Layer.provideMerge(operationsGraph));
-// Inbox erasure shares the snapshot-aware administration owner, after execution is composed.
+// Inbox erasure shares the administration owner, after execution is composed.
 const inboxGraph = inboxApplicationLive.pipe(Layer.provideMerge(administrationGraph));
 const automationGraph = automationExecutionLive.pipe(Layer.provideMerge(inboxGraph));
 const scheduledGraph = scheduledAutomationLive().pipe(Layer.provideMerge(automationGraph));
@@ -245,16 +223,6 @@ export const live: Layer.Layer<
         yield* threadHandoffRuntime.prepareRecovery.pipe(
           Effect.mapError((cause) => runtimeError("handoff-recovery-protection", cause)),
         );
-        if (config.platform !== "win32") {
-          const endpoints = yield* CodexEndpointMap;
-          const local = yield* endpoints.endpoint(endpoints.localHostId);
-          const execution = yield* AgentRuntimeProfileSnapshot;
-          yield* serveProfileSnapshotControl(
-            config.nodexHome,
-            local.withProfileSnapshot,
-            execution.withOptionalSnapshot,
-          ).pipe(Effect.mapError((cause) => runtimeError("profile-snapshot-control", cause)));
-        }
         const terminalEvents = yield* terminals.subscribe;
         yield* terminalEvents.pipe(
           Stream.runForEach((event) => {

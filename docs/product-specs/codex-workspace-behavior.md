@@ -159,8 +159,8 @@ page becomes a successful snapshot. Cached metadata is invalidated by Core Sessi
 
 Runtime Sessions use Core Session overview for identity, title and placement, and a
 separate engine metadata owner for execution status. Explicit native history search or
-import may access its provider on demand. Registering account/catalog state or an idle
-Profile snapshot controller does not acquire a provider process.
+import may access its provider on demand. Registering account/catalog state does not
+acquire a provider process.
 
 ## Browser, Computer Use, Files, and Terminal
 

@@ -142,16 +142,6 @@ export interface AgentRuntimeIdentity {
   readonly lastSequence: number;
 }
 
-export interface AgentStorageSnapshot {
-  readonly leaseId: string;
-  readonly runtimeId: string;
-  readonly runtimeGeneration: string;
-  readonly sequence: number;
-  readonly databasePath: string;
-  readonly attachmentsPath: string;
-  readonly environmentIdPath: string;
-}
-
 /** Captured execution identity and lifecycle metadata, without transcript bodies. */
 export type AgentThreadAuthority = AgentHostTurnIdentity & {
   /** When the Run was requested; Host operation identities derived from it survive restarts. */
@@ -422,13 +412,26 @@ export interface AgentRuntimeOperations extends AgentAcpManagementOperations {
     };
     readonly output: AgentSubagentOverview;
   };
-  readonly "storage.snapshot.acquire": {
-    readonly input: Record<string, never>;
-    readonly output: AgentStorageSnapshot;
+  readonly "execution.roots": {
+    readonly input: { readonly cursor?: string; readonly limit?: number };
+    readonly output: {
+      readonly items: ReadonlyArray<{
+        readonly rootThreadId: string;
+        readonly projectId: string | null;
+        readonly title: string;
+        readonly createdAt: string;
+        readonly deleted: boolean;
+      }>;
+      readonly nextCursor: string | null;
+    };
   };
-  readonly "storage.snapshot.release": {
-    readonly input: { readonly leaseId: string };
-    readonly output: { readonly released: boolean };
+  readonly "store.coordinate.read": {
+    readonly input: Record<string, never>;
+    readonly output: { readonly coordinate: string | null };
+  };
+  readonly "store.coordinate.record": {
+    readonly input: { readonly coordinate: string };
+    readonly output: { readonly recorded: true };
   };
   readonly "attachments.import": {
     readonly input: AgentWire<
@@ -884,22 +887,7 @@ export type AgentHostToolIdentity = AgentHostExecutionIdentity & {
   readonly mcpRequestId?: string | number;
   readonly requestMetadata?: Readonly<Record<string, unknown>>;
 };
-export type AgentProviderAuthentication = AgentWire<
-  import("@t3tools/provider-core/server/ExecutionHost").ProviderAuthentication
->;
 export type AgentHostRequest =
-  | {
-      readonly type: "host.request";
-      readonly id: string;
-      readonly operation: "provider.auth";
-      readonly identity: {
-        readonly runtimeId: string;
-        readonly runtimeGeneration: string;
-        readonly providerInstanceId: string;
-      };
-      readonly refresh: boolean;
-      readonly previousAccountId: string | null;
-    }
   | {
       readonly type: "host.request";
       readonly id: string;

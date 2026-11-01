@@ -254,7 +254,7 @@ export function BackupSettingsControl({ open }: { open: boolean }) {
       if (confirmRestoreId !== backupId) {
         setConfirmDeleteId(null);
         setConfirmRestoreId(backupId);
-        setStatus("Click Restore again to confirm.");
+        setStatus(null);
         return;
       }
 
@@ -325,7 +325,7 @@ export function BackupSettingsControl({ open }: { open: boolean }) {
       <SectionBlock title="Automatic snapshots">
         <SettingRow
           label="Auto backups"
-          description="Schedule background snapshots for the local store."
+          description="Snapshot Pages, Databases and Files in the background while you work."
         >
           <NodexSwitch
             ariaLabel="Auto backups"
@@ -567,6 +567,12 @@ export function BackupSettingsControl({ open }: { open: boolean }) {
                       {BACKUP_TRIGGER_LABELS[backup.trigger]}
                     </span>
                   </div>
+                  {confirmRestoreId === backup.id ? (
+                    <p className="mt-1 text-xs text-token-text-secondary">
+                      Pages, Databases, Files and Projects return to this snapshot. Chats keep their
+                      latest messages; running replies stop and Nodex restarts.
+                    </p>
+                  ) : null}
                 </div>
                 <div className="flex items-center gap-1.5">
                   {confirmDeleteId === backup.id ? (
@@ -588,15 +594,34 @@ export function BackupSettingsControl({ open }: { open: boolean }) {
                         Cancel
                       </NodexButton>
                     </>
-                  ) : (
+                  ) : confirmRestoreId === backup.id ? (
                     <>
                       <NodexButton
-                        variant={confirmRestoreId === backup.id ? "destructive" : "secondary"}
+                        variant="destructive"
                         size="sm"
                         onClick={() => void handleRestoreBackup(backup.id)}
                         disabled={isBackupBusy}
                       >
-                        {confirmRestoreId === backup.id ? "Confirm restore" : "Restore"}
+                        Confirm restore
+                      </NodexButton>
+                      <NodexButton
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setConfirmRestoreId(null)}
+                        disabled={isBackupBusy}
+                      >
+                        Cancel
+                      </NodexButton>
+                    </>
+                  ) : (
+                    <>
+                      <NodexButton
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => void handleRestoreBackup(backup.id)}
+                        disabled={isBackupBusy}
+                      >
+                        Restore
                       </NodexButton>
                       <NodexTooltip tooltipContent="Delete snapshot">
                         <NodexButton

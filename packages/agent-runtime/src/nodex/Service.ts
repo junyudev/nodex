@@ -108,7 +108,8 @@ import { ProviderInstanceRegistry } from "../provider/ProviderInstanceRegistry.t
 import * as Configuration from "../config.ts";
 import { persistChatAttachments } from "../assets/PersistChatAttachments.ts";
 import * as ProviderConfiguration from "./ProviderConfiguration.ts";
-import * as StorageSnapshot from "./StorageSnapshot.ts";
+import * as ExecutionRoots from "./ExecutionRoots.ts";
+import * as StoreCoordinate from "./StoreCoordinate.ts";
 import * as AcpManagement from "./AcpManagement.ts";
 import * as Environment from "../environment/ServerEnvironment.ts";
 import { buildBoundedThreadStreamSnapshot } from "../orchestration-v2/ThreadStream.ts";
@@ -151,6 +152,9 @@ const NativeSource = Schema.Struct({
 const VoiceClaim = { claimId: Schema.String, source: NativeSource };
 const AgentRequest = Schema.Union([
   ...AcpManagement.Request.members,
+  request("execution.roots", ExecutionRoots.Input),
+  request("store.coordinate.read", Schema.Struct({})),
+  request("store.coordinate.record", Schema.Struct({ coordinate: Schema.String })),
   request("thread.import-native", NativeImport.NativeImportInput),
   request("native-imports.find", NativeImport.NativeImportsFindInput),
   request("thread.queue-control", SessionQueue.SessionQueueInput),
@@ -290,8 +294,6 @@ const AgentRequest = Schema.Union([
       terminalCursor: Schema.optional(Schema.String),
     }),
   ),
-  request("storage.snapshot.acquire", Schema.Struct({})),
-  request("storage.snapshot.release", Schema.Struct({ leaseId: Schema.String })),
   request("providers.configure", Schema.Struct({ providers: ProviderInstanceConfigMap })),
   request("attachments.persist", PersistChatAttachmentsInput),
   request("attachments.import", ImportChatAttachmentsInput),
@@ -741,13 +743,9 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
   const providerConfiguration = yield* ProviderConfiguration.make(
     yield* Schema.decodeUnknownEffect(ProviderInstanceConfigMap)(initialProviders),
   );
-  // SQL waiters cannot delay interruption of the lease fiber that releases their connection.
   const processScope = yield* Scope.make("parallel");
   yield* Effect.addFinalizer((exit) => Scope.close(processScope, exit));
-  const storageSnapshot = yield* StorageSnapshot.make(identity, providerConfiguration).pipe(
-    Effect.provideService(Scope.Scope, processScope),
-  );
-  const acp = yield* AcpManagement.make(storageSnapshot.withWriter, identity.runtimeGeneration);
+  const acp = yield* AcpManagement.make(identity.runtimeGeneration);
   const providerPolicy = yield* ProviderConfiguration.ProviderPolicy;
   const sessionMetadataOptions = {
     shell: (threadId: string) => projections.getThreadShell(ThreadId.make(threadId)),
@@ -949,10 +947,16 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
               : { terminalCursor: input.input.terminalCursor }),
           })
           .pipe(Effect.flatMap(encodeOverview));
-      case "storage.snapshot.acquire":
-        return yield* storageSnapshot.acquire;
-      case "storage.snapshot.release":
-        return yield* storageSnapshot.release(input.input.leaseId);
+      case "execution.roots":
+        return yield* ExecutionRoots.read(input.input).pipe(
+          Effect.provideService(SqlClient.SqlClient, sql),
+        );
+      case "store.coordinate.read":
+        return yield* StoreCoordinate.read.pipe(Effect.provideService(SqlClient.SqlClient, sql));
+      case "store.coordinate.record":
+        return yield* StoreCoordinate.record(input.input.coordinate).pipe(
+          Effect.provideService(SqlClient.SqlClient, sql),
+        );
       case "providers.configure": {
         const before = yield* providerPolicy.current;
         const wanted = input.input.providers;
@@ -1587,71 +1591,7 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
 
   const handle = Effect.fn("AgentRuntime.handleRequest")(function* (value: unknown) {
     const input = yield* decodeRequest(value);
-    // New operations participate in the writer fence unless explicitly proven read-only.
-    switch (input.method) {
-      case "acp.activity":
-      case "acp.registry.search":
-      case "acp.install.preview":
-      case "acp.inspect":
-      case "acp.operation.read":
-      case "acp.operation.cancel":
-      case "acp.auth.read":
-      case "acp.auth.respond":
-      case "acp.auth.cancel":
-      case "acp.urlAuth.accept":
-      case "storage.snapshot.acquire":
-      case "storage.snapshot.release":
-      case "thread.read":
-      case "background.output":
-      case "tasks.overview":
-      case "native-session.authority":
-      case "thread.authority":
-      case "project.read":
-      case "project.activity":
-      case "project.roots":
-      case "thread.queue":
-      case "thread.run-message":
-      case "thread.opening-request":
-      case "thread.message-replay":
-      case "thread.message-launch":
-      case "native-message.receipt":
-      case "thread.queued-preview":
-      case "shell.read":
-      case "thread.snapshot":
-      case "thread.questions.list":
-      case "thread.control":
-      case "thread.fork-source":
-      case "thread.side-chat-save-source":
-      case "run.outcome":
-      case "thread.message-turn":
-      case "thread.history":
-      case "thread.timeline":
-      case "thread.progress":
-      case "thread.execution":
-      case "thread.execution.wait":
-      case "thread.read-details":
-      case "thread.prompt-index":
-      case "thread.item":
-      case "thread.item.full":
-      case "thread.item.content":
-      case "thread.attachment":
-      case "events.observe":
-      case "execution.observe":
-      case "execution.activity":
-      case "sessions.catalog":
-      case "sessions.metadata":
-      case "sessions.search":
-      case "sessions.search-resolve":
-      case "events.unobserve":
-      case "runtime.identity":
-      case "shutdown":
-        return yield* execute(input);
-      case "providers.read":
-        if (input.input.refresh !== true) return yield* execute(input);
-        return yield* storageSnapshot.withWriter(execute(input));
-      default:
-        return yield* storageSnapshot.withWriter(execute(input));
-    }
+    return yield* execute(input);
   });
   return {
     identity,

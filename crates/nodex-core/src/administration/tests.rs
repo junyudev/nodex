@@ -25,140 +25,107 @@ const PROFILE_ID: &str = "profile:administration-test";
 const LIBRARY_ID: &str = "library:administration-test";
 const STORE_EPOCH: &str = "epoch:administration-test";
 
-struct ExecutionParticipant;
-impl super::ProfileSnapshotParticipant for ExecutionParticipant {
-    fn capture(&self, request: super::ProfileSnapshotCapture<'_>) -> Result<bool, StoreError> {
-        let source = request.source_profile.join("agent-runtime");
-        let destination = request.staging_profile.join("agent-runtime");
-        fs::create_dir_all(destination.join("native-history")).unwrap();
-        for name in ["agent-runtime.sqlite", "native-history/transcript.jsonl"] {
-            fs::copy(source.join(name), destination.join(name)).unwrap();
-        }
-        Ok(true)
-    }
-}
-
 fn write_execution(home: &Path, contents: &[u8]) {
-    fs::create_dir_all(home.join("agent-runtime/native-history")).unwrap();
+    fs::create_dir_all(home.join("agent-runtime/.writer.lock")).unwrap();
     fs::write(home.join("agent-runtime/agent-runtime.sqlite"), contents).unwrap();
-    fs::write(
-        home.join("agent-runtime/native-history/transcript.jsonl"),
-        contents,
-    )
-    .unwrap();
 }
 
 #[test]
-fn execution_history_is_covered_by_backup_digest_restore_and_safety_backup() {
-    let mut fixture = Fixture::new();
-    fixture.module = fixture
-        .module
-        .with_profile_snapshot_participant(ExecutionParticipant);
-    write_execution(fixture.home(), b"complete captured execution");
-    let created = fixture.create_backup("backup:execution-closure", None, true);
-    let backup_id = created.committed.value.backup_id.expect("Backup identity");
-    let record = super::backup::list_backup_inventory(fixture.home())
-        .unwrap()
-        .into_iter()
-        .find(|item| item.record.backup_id == backup_id)
-        .unwrap()
-        .record;
-    assert_eq!(
-        record.execution_bytes,
-        2 * b"complete captured execution".len() as u64
-    );
-    assert_eq!(
-        record.total_bytes,
-        record.db_bytes + record.assets_bytes + record.execution_bytes
-    );
-    write_execution(fixture.home(), b"current execution");
-    let replay = fixture.create_backup("backup:execution-closure", None, true);
-    assert_eq!(
-        replay.committed.value.backup_id,
-        Some(record.backup_id.clone())
-    );
-    let restored = fixture.restore_backup("restore:execution-closure", &record.backup_id, true);
-    assert_eq!(
-        fs::read(
-            fixture
-                .home()
-                .join("agent-runtime/native-history/transcript.jsonl")
+fn content_backups_restore_assets_without_reading_or_replacing_execution() {
+    for legacy in [false, true] {
+        let fixture = Fixture::new();
+        fs::create_dir_all(fixture.home().join("assets")).unwrap();
+        fs::write(
+            fixture.home().join("assets/content.bin"),
+            b"captured content",
         )
-        .unwrap(),
-        b"complete captured execution"
-    );
-    let safety = restored.committed.value.safety_backup_id.unwrap();
-    assert_eq!(
-        fs::read(
-            fixture
-                .home()
-                .join("backups")
-                .join(safety)
-                .join("agent-runtime/agent-runtime.sqlite")
-        )
-        .unwrap(),
-        b"current execution"
-    );
-}
-
-#[test]
-fn altered_execution_history_and_failed_install_leave_the_current_profile_intact() {
-    for corrupt_snapshot in [true, false] {
-        let mut fixture = Fixture::new_with_hook(|epoch| {
-            if epoch == STORE_EPOCH {
-                return Ok(());
-            }
-            Err(StoreError::new(
-                StoreErrorCode::Internal,
-                "injected replacement failure",
-                false,
-            ))
-        });
-        fixture.module = fixture
-            .module
-            .with_profile_snapshot_participant(ExecutionParticipant);
-        write_execution(fixture.home(), b"original execution");
-        let created = fixture.create_backup("backup:execution-failure", None, true);
+        .unwrap();
+        write_execution(fixture.home(), b"busy execution at capture");
+        let created = fixture.create_backup("backup:content-only", None, true);
         let backup_id = created.committed.value.backup_id.unwrap();
-        write_execution(fixture.home(), b"current execution");
-        if corrupt_snapshot {
+        let published = fixture.home().join("backups").join(&backup_id);
+        assert!(!published.join("agent-runtime").exists());
+        let manifest_path = published.join("manifest.json");
+        let mut manifest: serde_json::Value =
+            serde_json::from_slice(&fs::read(&manifest_path).unwrap()).unwrap();
+        assert!(manifest.get("executionBytes").is_none());
+        assert!(
+            manifest["integrityEvidence"]
+                .get("executionTreeSha256")
+                .is_none()
+        );
+        if legacy {
+            manifest["version"] = serde_json::json!(4);
+            manifest["executionBytes"] = serde_json::json!(999);
+            manifest["totalBytes"] =
+                serde_json::json!(manifest["totalBytes"].as_u64().unwrap() + 999);
+            // Deliberately invalid old execution evidence is not content evidence.
+            manifest["integrityEvidence"]["executionTreeSha256"] =
+                serde_json::json!("obsolete digest");
+            fs::write(&manifest_path, serde_json::to_vec(&manifest).unwrap()).unwrap();
+            fs::create_dir(published.join("agent-runtime")).unwrap();
+            symlink(
+                fixture.home().join("agent-runtime"),
+                published.join("agent-runtime/current-runtime-alias"),
+            )
+            .unwrap();
             fs::write(
-                fixture
-                    .home()
-                    .join("backups")
-                    .join(&backup_id)
-                    .join("agent-runtime/native-history/transcript.jsonl"),
-                b"corrupt execution",
+                published.join("agent-runtime/agent-runtime.sqlite"),
+                b"invalid legacy execution database",
             )
             .unwrap();
         }
-        let outcome = fixture.module.apply(
-            &fixture.context(),
-            ModuleApplyRequest {
-                contract_version: STORE_ADMINISTRATION_CONTRACT_VERSION,
-                operation_id: "restore:execution-failure".into(),
-                store_epoch: StoreEpoch(STORE_EPOCH.into()),
-                intent: StoreAdministrationIntent::RestoreBackup {
-                    backup_id,
-                    create_safety_backup: false,
-                    profile_snapshot: None,
-                },
-            },
+        let record = super::backup::list_backup_inventory(fixture.home())
+            .unwrap()
+            .remove(0)
+            .record;
+        assert_eq!(record.backup_id, backup_id);
+        // Cloning consumes the same published content, never its execution subtree.
+        let parent = tempfile::tempdir().unwrap();
+        let target = parent.path().join("cloned");
+        let prepared = super::prepare_profile_clone(super::ProfileCloneRequest {
+            source_profile_home: fixture.home().to_path_buf(),
+            target_profile_home: target.clone(),
+            backup: super::ProfileCloneBackupSelection::Id(backup_id.clone()),
+        })
+        .unwrap();
+        let receipt = prepared.store_receipt().clone();
+        prepared.publish(&receipt).unwrap();
+        assert_eq!(
+            fs::read(target.join("assets/content.bin")).unwrap(),
+            b"captured content"
         );
-        assert!(outcome.is_err());
+        assert!(!target.join("agent-runtime").exists());
+        fs::write(
+            fixture.home().join("assets/content.bin"),
+            b"current content",
+        )
+        .unwrap();
+        write_execution(fixture.home(), b"current busy execution");
+        let restored = fixture.restore_backup("restore:content-only", &backup_id, true);
+        assert_eq!(
+            fs::read(fixture.home().join("assets/content.bin")).unwrap(),
+            b"captured content"
+        );
         assert_eq!(
             fs::read(fixture.home().join("agent-runtime/agent-runtime.sqlite")).unwrap(),
-            b"current execution"
+            b"current busy execution"
         );
+        assert!(fixture.home().join("agent-runtime/.writer.lock").exists());
+        let safety = fixture
+            .home()
+            .join("backups")
+            .join(restored.committed.value.safety_backup_id.unwrap());
         assert_eq!(
-            fs::read(
-                fixture
-                    .home()
-                    .join("agent-runtime/native-history/transcript.jsonl")
-            )
-            .unwrap(),
-            b"current execution"
+            fs::read(safety.join("assets/content.bin")).unwrap(),
+            b"current content"
         );
+        assert!(!safety.join("agent-runtime").exists());
+        // Deletion removes the obsolete payload along with its published package.
+        super::backup::validate_backup_for_deletion(fixture.home(), &backup_id).unwrap();
+        super::backup::publish_backup_deletions(fixture.home(), "delete:old-backup", &[backup_id])
+            .unwrap();
+        assert!(!published.exists());
     }
 }
 
@@ -327,7 +294,6 @@ impl Fixture {
                     operation_id: operation_id.to_owned(),
                     store_epoch: StoreEpoch(STORE_EPOCH.to_owned()),
                     intent: StoreAdministrationIntent::CreateBackup {
-                        profile_snapshot: None,
                         label: label.map(str::to_owned),
                         include_assets,
                         trigger,
@@ -376,7 +342,6 @@ impl Fixture {
                     operation_id: operation_id.to_owned(),
                     store_epoch: StoreEpoch(STORE_EPOCH.to_owned()),
                     intent: StoreAdministrationIntent::RestoreBackup {
-                        profile_snapshot: None,
                         backup_id: backup_id.to_owned(),
                         create_safety_backup,
                     },
@@ -736,7 +701,7 @@ fn reports_rust_readiness_and_publishes_a_valid_exact_retry_backup() {
         .expect("backup manifest"),
     )
     .expect("valid backup manifest");
-    assert_eq!(manifest["version"], 4);
+    assert_eq!(manifest["version"], 5);
     assert_eq!(manifest["integrityEvidence"]["version"], 1);
     assert_eq!(
         manifest["integrityEvidence"]["databaseSha256"]
@@ -767,7 +732,7 @@ fn reports_rust_readiness_and_publishes_a_valid_exact_retry_backup() {
     };
     assert_eq!(backups.items.len(), 1);
     assert_eq!(backups.items[0].backup_id, backup_id);
-    assert_eq!(backups.items[0].version, 4);
+    assert_eq!(backups.items[0].version, 5);
     assert_eq!(backups.items[0].trigger, BackupTrigger::Manual);
     assert_eq!(backups.items[0].label.as_deref(), Some("before refactor"));
     assert!(backups.items[0].includes_assets);
@@ -835,7 +800,6 @@ fn rejects_request_collisions_and_symlinked_assets_without_a_receipt() {
                 operation_id: "administration:create-backup:collision".to_owned(),
                 store_epoch: StoreEpoch(STORE_EPOCH.to_owned()),
                 intent: StoreAdministrationIntent::CreateBackup {
-                    profile_snapshot: None,
                     label: Some("different".to_owned()),
                     include_assets: false,
                     trigger: BackupTrigger::Manual,
@@ -859,7 +823,6 @@ fn rejects_request_collisions_and_symlinked_assets_without_a_receipt() {
                 operation_id: "administration:create-backup:symlink".to_owned(),
                 store_epoch: StoreEpoch(STORE_EPOCH.to_owned()),
                 intent: StoreAdministrationIntent::CreateBackup {
-                    profile_snapshot: None,
                     label: None,
                     include_assets: true,
                     trigger: BackupTrigger::Manual,
@@ -1002,8 +965,6 @@ fn exact_create_retry_publishes_after_the_store_receipt_commit() {
                 BackupTrigger::Manual,
                 &|_| Ok(()),
                 &|| Ok(false),
-                &super::profile_snapshot::NoProfileSnapshotParticipant,
-                None,
             )?;
             let record = staged.record().clone();
             super::finish_backup_creation(
@@ -1471,7 +1432,6 @@ fn restores_database_assets_epoch_and_exact_retry_with_a_safety_backup() {
                 operation_id: "administration:create-backup:stale-after-restore".to_owned(),
                 store_epoch: StoreEpoch(STORE_EPOCH.to_owned()),
                 intent: StoreAdministrationIntent::CreateBackup {
-                    profile_snapshot: None,
                     label: None,
                     include_assets: false,
                     trigger: BackupTrigger::Manual,
@@ -1539,7 +1499,6 @@ fn replacement_hook_failure_rolls_back_the_complete_source_store() {
                 operation_id: "administration:restore-backup:hook-failure".to_owned(),
                 store_epoch: StoreEpoch(STORE_EPOCH.to_owned()),
                 intent: StoreAdministrationIntent::RestoreBackup {
-                    profile_snapshot: None,
                     backup_id,
                     create_safety_backup: false,
                 },
@@ -1638,9 +1597,6 @@ fn adopts_a_committed_restore_after_the_pre_receipt_crash_boundary() {
                 create_safety_backup,
                 existing_journal: None,
                 replacement_hook: &|_| Ok(()),
-                profile_snapshot_participant:
-                    &super::profile_snapshot::NoProfileSnapshotParticipant,
-                profile_snapshot: None,
             })
         })
         .expect("committed file replacement");
@@ -1754,7 +1710,6 @@ fn rejects_a_corrupt_restore_candidate_without_touching_the_live_store() {
                 operation_id: "administration:restore-backup:corrupt".to_owned(),
                 store_epoch: StoreEpoch(STORE_EPOCH.to_owned()),
                 intent: StoreAdministrationIntent::RestoreBackup {
-                    profile_snapshot: None,
                     backup_id,
                     create_safety_backup: false,
                 },
@@ -1833,7 +1788,6 @@ fn deletes_one_backup_with_exact_replay_and_rejects_later_restore() {
                 operation_id: "administration:restore-deleted-backup".to_owned(),
                 store_epoch: StoreEpoch(STORE_EPOCH.to_owned()),
                 intent: StoreAdministrationIntent::RestoreBackup {
-                    profile_snapshot: None,
                     backup_id,
                     create_safety_backup: false,
                 },
@@ -1969,12 +1923,34 @@ fn prunes_only_automatic_backups_beyond_the_retention_count() {
 fn prunes_automatic_backups_by_count_and_byte_budget_without_touching_manual_snapshots() {
     let fixture = Fixture::new();
     for index in 0..3 {
-        fixture.create_backup_with_trigger(
+        let created = fixture.create_backup_with_trigger(
             &format!("administration:create-backup:byte-budget-{index}"),
             None,
             false,
             BackupTrigger::Auto,
         );
+        if index == 0 {
+            let published = fixture
+                .home()
+                .join("backups")
+                .join(created.committed.value.backup_id.unwrap());
+            let path = published.join("manifest.json");
+            let mut manifest: serde_json::Value =
+                serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+            manifest["version"] = serde_json::json!(4);
+            manifest["executionBytes"] = serde_json::json!(123);
+            manifest["totalBytes"] =
+                serde_json::json!(manifest["totalBytes"].as_u64().unwrap() + 123);
+            manifest["integrityEvidence"]["executionTreeSha256"] =
+                serde_json::json!("obsolete evidence");
+            fs::write(path, serde_json::to_vec(&manifest).unwrap()).unwrap();
+            fs::create_dir(published.join("agent-runtime")).unwrap();
+            fs::write(
+                published.join("agent-runtime/old-history"),
+                b"obsolete bytes",
+            )
+            .unwrap();
+        }
     }
     let manual = fixture.create_backup(
         "administration:create-backup:manual-byte-budget",

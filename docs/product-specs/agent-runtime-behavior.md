@@ -593,6 +593,17 @@ it carried — the conversation so far, only the turns that Agent missed, or a m
 work — and a failed handoff says the Agent may lack the earlier conversation. An unavailable chosen
 Agent fails the message explicitly; the chat never falls back to another Agent.
 
+### Missing native conversations
+
+A chat's transcript belongs to Nodex; each Agent's native conversation is its own working
+memory. When the chat's Agent no longer has that native conversation, for example because
+its history was removed from the Agent's home, the next message starts a fresh native
+conversation on the same Agent and hands it the chat's earlier Runs with the same portable
+context handoff as changing Agent. Codex and Claude Code behave alike. Only a confirmed
+absence starts over: a native history Nodex cannot read is resumed as usual. A Profile
+clone detaches every copied chat from its source's native conversations, so each copied
+chat continues this way on its first message.
+
 ### Clearing context
 
 A started chat can clear its context with Clear context in the header's Chat actions menu or
@@ -727,7 +738,7 @@ conversation while continuing to project as question/answer content.
 A local Runtime Session keeps its Core product identity and immutable execution root when
 moving between a checkout and managed worktree. Runtime Thread metadata owns the complete
 execution location; Core owns Session placement and binding. Main coordinates Git effects and
-the durable handoff journal, and holds the Profile snapshot writer lease throughout the move.
+the durable handoff journal.
 Provider runtime observations cannot overwrite the canonical location.
 Session archive, deletion and Project moves share the handoff's per-Session admission
 lane. They wait for an in-progress move and reject a durable recovery hold before any
@@ -784,7 +795,7 @@ connection. Actual inference uses the latest Run's exact native boundary and a h
 ephemeral helper on that source. Bounded output failure settles the request without
 waiting for a delayed Turn acknowledgement, while an independent source-owned wait
 still interrupts any late accepted Turn and releases its helper. These lifetimes
-participate in ordinary Session residency and snapshot admission.
+participate in ordinary Session residency.
 
 See [Realtime voice](realtime-voice-behavior.md) and
 [Composer prediction](composer-prediction-behavior.md) for their product contracts.
@@ -944,9 +955,8 @@ an empty Project does not start an execution process just to close it.
 
 Sidebar refreshes read stored Core metadata. They never scan native history, create or
 link Sessions, or reconcile missing native Threads implicitly. Provider history and
-imports remain explicit operations. Registering the local account/catalog endpoint or
-Profile snapshot control leaves its process cold; its first real request acquires one
-supervised connection. An unused endpoint snapshot does not start a provider.
+imports remain explicit operations. Registering the local account/catalog endpoint
+leaves its process cold; its first real request acquires one supervised connection.
 A launch resumes an existing execution database under the supervised Host after application
 tools are ready unless the process last stopped with no live or pending work (see
 [Execution process supervision](#execution-process-supervision)); recovering interrupted
@@ -1021,7 +1031,7 @@ Failed requests are never resubmitted automatically.
 The process runs only while needed. It stops after three quiet minutes once it reports no
 active Run, pending question, live delegated or background task, delegated result waiting to
 wake a root, or execution handoff hold, and while no request, Host call, Session or voice
-observer, product write or Profile snapshot is using it. An idle stop is not a crash and the
+observer or product write is using it. An idle stop is not a crash and the
 next Agent action starts the process again. After such a stop, and after quitting while the
 process reports no work and no product write is in flight (reads and observers do not count),
 Main keeps durable evidence bound to the exact execution store files; a launch starts the

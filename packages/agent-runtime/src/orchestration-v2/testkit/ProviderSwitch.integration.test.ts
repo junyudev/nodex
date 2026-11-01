@@ -25,6 +25,10 @@ import {
   ProviderDriverKind,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
+import * as FileSystem from "effect/FileSystem";
+import { consume as consumeImportedExecution } from "../../nodex/ImportedExecution.ts";
+import * as StoreCoordinate from "../../nodex/StoreCoordinate.ts";
+import { ClaudeNativeSessionUnavailableError } from "../Adapters/ClaudeAdapterV2.ts";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -121,6 +125,7 @@ function makeTestAdapter(input: {
   readonly nativeThreadGeneration?: Ref.Ref<number>;
   readonly failNativeOpen?: boolean;
   readonly failResume?: boolean;
+  readonly resumeError?: ProviderAdapter.ProviderAdapterResumeThreadError;
   readonly failResumeOnce?: Ref.Ref<boolean>;
   readonly nativeResumeFailurePolicy?: ProviderAdapter.ProviderAdapterV2SessionRuntime["nativeResumeFailurePolicy"];
   readonly initialContextUsage?: OrchestrationV2ProviderThread["contextUsage"];
@@ -237,6 +242,7 @@ function makeTestAdapter(input: {
             }),
           resumeThread: ({ providerThread }) =>
             Effect.gen(function* () {
+              if (input.resumeError) return yield* input.resumeError;
               if (
                 input.failResume ||
                 (input.failResumeOnce !== undefined &&
@@ -5133,7 +5139,6 @@ describe("context recovery in the same native conversation", () => {
         }).pipe(Effect.provide(runtime()));
         if (outcome !== "restart") return;
         yield* Effect.gen(function* () {
-          const orchestrator = yield* Orchestrator.OrchestratorV2;
           const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
           yield* worker.drain();
           const projection = yield* waitForIdle(threadId);
@@ -5302,4 +5307,189 @@ it.live.each(["idle-unload", "process-restart"] as const)(
       }).pipe(Effect.provide(runtime()));
       if (mode === "process-restart") yield* continueAndAssert.pipe(Effect.provide(runtime()));
     }),
+);
+
+it.live.each(["codex", "claudeAgent"] as const)(
+  "continues imported %s execution on a fresh native conversation with portable history",
+  (kind) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const cwd = yield* checkpointWorkspace(`imported-${kind}`);
+        const threadId = ThreadId.make(`thread:imported:${kind}`);
+        const projectId = ProjectId.make(`project:imported:${kind}`);
+        const fs = yield* FileSystem.FileSystem;
+        const runtimeHome = `${cwd}/agent-runtime`;
+        yield* fs.makeDirectory(runtimeHome);
+        const database = SqlitePersistence.layerFromPath(
+          `${runtimeHome}/agent-runtime.sqlite`,
+        ).pipe(Layer.provide(NodeServices.layer));
+        const turns = yield* Ref.make<ReadonlyArray<CapturedTurn>>([]);
+        const generation = yield* Ref.make(0);
+        const selection = kind === "codex" ? CODEX_MODEL_SELECTION : CLAUDE_MODEL_SELECTION;
+        const adapter = makeTestAdapter({
+          instanceId: selection.instanceId,
+          driver: ProviderDriverKind.make(kind),
+          capabilities:
+            kind === "codex" ? CodexProviderCapabilitiesV2 : ClaudeProviderCapabilitiesV2,
+          modelSelection: selection,
+          responseByRunOrdinal: { 1: "The retained answer is violet", 2: "Continued" },
+          capturedTurns: turns,
+          nativeThreadGeneration: generation,
+        });
+        const runtime = (runEffectWorker = true) =>
+          ProviderReplayHarness.layerWithRegistry(
+            { name: `imported-${kind}`, runtimePolicyOverride: { cwd } },
+            ProviderAdapterRegistry.layerFromAdapters([adapter]),
+            { databaseLayer: database, runEffectWorker },
+          ).pipe(Layer.provideMerge(database), Layer.provideMerge(NodeServices.layer));
+        const send = (ordinal: number) =>
+          Orchestrator.OrchestratorV2.use((owner) =>
+            owner.dispatch({
+              type: "message.dispatch",
+              commandId: CommandId.make(`imported:send:${ordinal}`),
+              threadId,
+              messageId: MessageId.make(`imported:message:${ordinal}`),
+              text: ordinal === 1 ? "Remember violet" : "Continue",
+              attachments: [],
+              modelSelection: selection,
+              dispatchMode: { type: "start_immediately" },
+              createdBy: "user",
+              creationSource: "web",
+            }),
+          );
+        yield* Effect.scoped(
+          Effect.gen(function* () {
+            const owner = yield* Orchestrator.OrchestratorV2;
+            yield* owner.dispatch({
+              type: "thread.create",
+              commandId: CommandId.make("imported:create"),
+              threadId,
+              projectId,
+              title: "Imported",
+              modelSelection: selection,
+              runtimeMode: "full-access",
+              interactionMode: "default",
+              branch: null,
+              worktreePath: null,
+              createdBy: "user",
+              creationSource: "web",
+            });
+            yield* send(1);
+            yield* waitForIdle(threadId);
+            yield* (yield* EffectWorker.OrchestrationEffectWorkerV2).drain();
+            yield* StoreCoordinate.record("source:epoch");
+          }).pipe(Effect.provide(runtime())),
+        );
+        yield* fs.writeFileString(
+          `${runtimeHome}/imported-execution.json`,
+          JSON.stringify({
+            version: 1,
+            sourceProfileHome: "/original/profile",
+            importedAt: "2026-11-01T00:00:00Z",
+          }),
+        );
+        const projection = yield* Effect.scoped(
+          Effect.gen(function* () {
+            yield* consumeImportedExecution(runtimeHome);
+            assert.deepEqual(yield* StoreCoordinate.read, { coordinate: null });
+            // Match production: imported native identities retire before any outbox worker starts.
+            yield* EffectWorker.runDaemon.pipe(Effect.forkScoped);
+            yield* send(2);
+            return yield* waitForIdle(threadId);
+          }).pipe(Effect.provide(runtime(false))),
+        );
+        const captured = yield* Ref.get(turns);
+        assert.equal(captured.length, 2);
+        assert.notEqual(captured[0]?.nativeThreadId, captured[1]?.nativeThreadId);
+        assert.isFalse(captured[1]?.nativeThreadHasTurns ?? true);
+        assert.include(captured[1]?.text ?? "", "Context handoff (full_thread_summary):");
+        assert.include(captured[1]?.text ?? "", "Remember violet");
+        assert.include(captured[1]?.text ?? "", "The retained answer is violet");
+        assert.deepEqual(
+          projection.runs.map((run) => run.status),
+          ["completed", "completed"],
+        );
+        assert.isUndefined(projection.providerThreads[0]?.contextHandoffRequired);
+      }),
+    ).pipe(Effect.provide(NodeServices.layer)),
+);
+
+it.live("continues Claude after its native history is confirmed unavailable", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const cwd = yield* checkpointWorkspace("claude-missing-native");
+      const capturedTurns = yield* Ref.make<ReadonlyArray<CapturedTurn>>([]);
+      const generation = yield* Ref.make(0);
+      const registry = ProviderAdapterRegistry.layerFromAdapters([
+        makeTestAdapter({
+          instanceId: CLAUDE_MODEL_SELECTION.instanceId,
+          driver: CLAUDE_DRIVER,
+          capabilities: ClaudeProviderCapabilitiesV2,
+          modelSelection: CLAUDE_MODEL_SELECTION,
+          responseByRunOrdinal: { 1: "Remembered violet", 2: "Recovered" },
+          capturedTurns,
+          nativeThreadGeneration: generation,
+          resumeError: new ProviderAdapter.ProviderAdapterResumeThreadError({
+            driver: CLAUDE_DRIVER,
+            providerSessionId: ProviderSessionId.make("session:missing"),
+            providerThreadId: ProviderThreadId.make("provider:missing"),
+            retryable: false,
+            cause: new ClaudeNativeSessionUnavailableError({ sessionId: "missing" }),
+          }),
+        }),
+      ]);
+      yield* Effect.gen(function* () {
+        const owner = yield* Orchestrator.OrchestratorV2;
+        yield* owner.dispatch({
+          type: "thread.create",
+          commandId: CommandId.make("claude:missing:create"),
+          threadId,
+          projectId,
+          title: "Claude",
+          modelSelection: CLAUDE_MODEL_SELECTION,
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          branch: null,
+          worktreePath: null,
+          createdBy: "user",
+          creationSource: "web",
+        });
+        for (const ordinal of [1, 2]) {
+          yield* owner.dispatch({
+            type: "message.dispatch",
+            commandId: CommandId.make(`claude:missing:${ordinal}`),
+            threadId,
+            messageId: MessageId.make(`claude:missing:${ordinal}`),
+            text: ordinal === 1 ? "Remember violet" : "Continue",
+            attachments: [],
+            modelSelection: CLAUDE_MODEL_SELECTION,
+            dispatchMode: { type: "start_immediately" },
+            createdBy: "user",
+            creationSource: "web",
+          });
+          const settled = yield* waitForIdle(threadId);
+          if (ordinal === 1) {
+            yield* owner.dispatch({
+              type: "provider-session.detach",
+              commandId: CommandId.make("claude:missing:unload"),
+              threadId,
+              providerSessionId: settled.providerSessions[0]!.id,
+            });
+            yield* (yield* EffectWorker.OrchestrationEffectWorkerV2).drain();
+          }
+        }
+      }).pipe(
+        Effect.provide(
+          ProviderReplayHarness.layerWithRegistry(
+            { name: "claude-missing-native", runtimePolicyOverride: { cwd } },
+            registry,
+          ),
+        ),
+      );
+      const turns = yield* Ref.get(capturedTurns);
+      assert.notEqual(turns[0]?.nativeThreadId, turns[1]?.nativeThreadId);
+      assert.include(turns[1]?.text ?? "", "Remembered violet");
+      assert.include(turns[1]?.text ?? "", "Context handoff (full_thread_summary):");
+    }),
+  ).pipe(Effect.provide(NodeServices.layer)),
 );
