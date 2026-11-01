@@ -1,0 +1,48 @@
+crates/nodex-core/src/document/integrity.rs
+  s_23804a86f2e450::t_9a5175ab5de896 67
+crates/nodex-core/src/infrastructure/migration.rs
+  s_23804a86f2e450::t_ee4d9d4518dbd0 403-407,2604-2612
+  s_23804a86f2e450::t_c9cb37be7d46fc 2614-2618
+  s_23804a86f2e450::t_ab9c50972b2e79 8571-8574
+crates/nodex-store-format/src/lib.rs
+  s_23804a86f2e450::t_9a5175ab5de896 261-262
+  s_23804a86f2e450::t_42696dd072b3ac 264
+crates/nodex-core/schema/current.sql
+  s_23804a86f2e450::t_9a5175ab5de896 4543
+packages/core-protocol/src/compatibility.generated.ts
+  s_23804a86f2e450::t_c05bb5ba16a906 42
+crates/nodex-core-contracts/src/inbox.rs
+  s_23804a86f2e450::t_d4949aa87ca050 106,108
+src/renderer/features/inbox/inbox-triage.test.tsx
+  s_23804a86f2e450::t_d4949aa87ca050 521-523,525,538-539,542,544,548-549,557-559
+crates/nodex-core/src/workspace/inbox_tests.rs
+  s_23804a86f2e450::t_d4949aa87ca050 461
+src/main/inbox-application/inbox-suggestions.node.test.ts
+  s_23804a86f2e450::t_cac69293e05e59 522-523
+scripts/evals/inbox-routing.ts
+  s_23804a86f2e450::t_d4949aa87ca050 369
+src/renderer/features/inbox/inbox-triage.tsx
+  s_23804a86f2e450::t_d4949aa87ca050 354
+src/shared/schemas/inbox.ts
+  s_23804a86f2e450::t_d4949aa87ca050 84
+crates/nodex-core/src/workspace/inbox_reliable.rs
+  s_23804a86f2e450::t_d4949aa87ca050 621,623
+scripts/scenarios/scenarios/inbox-triage.ts
+  s_23804a86f2e450::t_d4949aa87ca050 342
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a8fbaab278fa21d2e984a81e1c6f142bcefd7a9d",
+  "prompts": {},
+  "sessions": {
+    "s_23804a86f2e450": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "de32fbc3-bf75-4676-9677-8df79da4e08c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
