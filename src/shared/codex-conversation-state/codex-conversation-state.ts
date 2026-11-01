@@ -432,6 +432,8 @@ export type CodexRuntimeNotice =
       readonly outcome: "completed" | "failed" | "cancelled" | "updated" | "unknown";
       /** The one delegated conversation the report concerns, when it names exactly one. */
       readonly childThreadId: string | null;
+      /** Every delegated task the report concerns, in report order; empty for other sources. */
+      readonly taskIds: readonly string[];
     }
   /** A Run stopped before finishing; it ends that Run's visible history. */
   | { readonly kind: "stopped" }
@@ -488,6 +490,8 @@ export interface CodexCanonicalDelegatedTaskItem {
   /** Native task identity retained as detail, separate from its readable title. */
   readonly agentPath?: string;
   readonly providerInstanceId: string;
+  /** The harness that runs the task, known even after its Agent is no longer configured. */
+  readonly agentKind: import("../conversation-identity").AgentBackendKind | null;
   readonly status: CodexDelegatedTaskStatus;
   /** Bounded instruction preview from the transcript window. */
   readonly prompt: string;

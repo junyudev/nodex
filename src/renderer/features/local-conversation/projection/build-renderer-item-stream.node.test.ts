@@ -1430,6 +1430,7 @@ function delegatedTaskEntry(
       childThreadId: `child-${id}`,
       ownerRunId: "turn_1",
       providerInstanceId: "codex",
+      agentKind: "codex",
       title: `Task ${id}`,
       prompt: `Investigate ${id}`,
       status,

@@ -72,23 +72,6 @@ export function delegatedTaskGroupStatusLabel(statuses: readonly DelegatedTaskRo
   }).join(" · ")}`;
 }
 
-/**
- * Provider and model identify who runs the task. A model name that already starts with
- * its provider's label stands alone; unknown parts are omitted.
- */
-export function delegatedTaskAgentLabel(
-  providerLabel: string | null,
-  modelLabel: string | null,
-): string | null {
-  const provider = providerLabel?.trim() || null;
-  const model = modelLabel?.trim() || null;
-  if (provider && model)
-    return model.toLowerCase().startsWith(provider.toLowerCase())
-      ? model
-      : `${provider} · ${model}`;
-  return provider ?? model;
-}
-
 /** Only an open task can be stopped, and only through its exact owning Run. */
 export const canStopDelegatedTask = (task: CodexDelegatedTaskView): boolean =>
   isDelegatedTaskLive(task.status) && task.ownerRunId !== null;

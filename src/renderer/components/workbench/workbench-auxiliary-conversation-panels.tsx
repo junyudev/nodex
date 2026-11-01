@@ -44,6 +44,7 @@ import {
   AgentRuntimeSubagentsOverviewPanel,
   AgentRuntimeSideChatPanel,
 } from "./workbench-agent-runtime-panels";
+import type { ConversationAgent } from "../../../shared/conversation-identity";
 
 export function BackgroundAgentSessionTab(
   props: Parameters<typeof NativeBackgroundAgentSessionTab>[0],
@@ -293,6 +294,16 @@ function NativeSubagentsPanelSessionTab({
         serviceTier: selectedConversation.canonicalState.latestThreadSettings?.serviceTier ?? null,
       }
     : selectedConversation?.latestThreadSettings;
+  // A native child runs on its parent's Codex harness.
+  const selectedAgent: ConversationAgent | null = selectedThreadSettings?.model
+    ? {
+        kind: "codex",
+        providerInstanceId: null,
+        model: selectedThreadSettings.model,
+        effort: selectedThreadSettings.reasoningEffort ?? null,
+      }
+    : null;
+  const selectedFast = selectedThreadSettings?.serviceTier === "fast";
   const codexControl = useCodexAppServerControl(
     tab.selectedThreadId ?? tab.rootThreadId,
     sourceSession.thread?.executionHostId ?? null,
@@ -421,7 +432,8 @@ function NativeSubagentsPanelSessionTab({
       >
         <SubagentsPanelDetailHeader
           threadId={tab.selectedThreadId}
-          threadSettings={selectedThreadSettings}
+          agent={selectedAgent}
+          fast={selectedFast}
           displayName={displayName}
           onBack={() => void onRouteSubagent(null)}
         />
@@ -462,7 +474,8 @@ function NativeSubagentsPanelSessionTab({
     >
       <SubagentsPanelDetailHeader
         threadId={tab.selectedThreadId}
-        threadSettings={selectedThreadSettings}
+        agent={selectedAgent}
+        fast={selectedFast}
         displayName={displayName}
         onBack={() => void onRouteSubagent(null)}
       />

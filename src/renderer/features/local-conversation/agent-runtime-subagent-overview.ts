@@ -6,7 +6,10 @@ import type {
   AgentSubagentOverviewItem,
 } from "@nodex/agent-runtime/contracts";
 import type { CodexSubagentOverviewRow, CodexSubagentOverviewWindow } from "../../../shared/types";
-import { projectAgentRuntimeSubagentDisplay } from "../../../shared/agent-runtime-subagent-display";
+import {
+  agentRuntimeSubagentAgent,
+  projectAgentRuntimeSubagentDisplay,
+} from "../../../shared/agent-runtime-subagent-display";
 import { agentRuntimeTime } from "./agent-runtime-transcript-projection";
 
 /** A task record as its metadata event reports it. */
@@ -30,7 +33,6 @@ const newerFirst = (left: AgentSubagentOverviewItem, right: AgentSubagentOvervie
 /** Execution metadata is enough for the overview; task bodies stay behind explicit detail reads. */
 export const projectAgentRuntimeSubagent = (
   task: AgentSubagentOverviewItem,
-  agentLabel: string | null = null,
   waitingOnApproval = false,
 ): CodexSubagentOverviewRow => {
   const { displayName } = projectAgentRuntimeSubagentDisplay(task);
@@ -42,7 +44,7 @@ export const projectAgentRuntimeSubagent = (
     displayName: displayName ?? "Subagent",
     actorName: displayName,
     agentRole: null,
-    agentLabel,
+    agent: agentRuntimeSubagentAgent(task),
     spawnModel: task.modelSelection?.model ?? task.model,
     objective: null,
     status:
@@ -76,15 +78,10 @@ export const projectAgentRuntimeSubagent = (
 export function projectAgentRuntimeSubagentOverview(
   rootThreadId: string,
   source: AgentSubagentOverview,
-  agentLabel: (task: AgentSubagentOverviewItem) => string | null = () => null,
   approvalThreads: ReadonlySet<string> = new Set(),
 ): CodexSubagentOverviewWindow {
   const project = (task: AgentSubagentOverviewItem) =>
-    projectAgentRuntimeSubagent(
-      task,
-      agentLabel(task),
-      approvalThreads.has(task.childThreadId ?? task.id),
-    );
+    projectAgentRuntimeSubagent(task, approvalThreads.has(task.childThreadId ?? task.id));
   const rows = [...source.active.items, ...source.terminal.items].map(project);
   const section = (page: AgentSubagentOverview["active"]) => ({
     rows: page.items.map(project),

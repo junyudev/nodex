@@ -196,7 +196,9 @@ export function ThreadBlockRenderer({
         block={block}
         isLatestTurn={isLatestTurn}
         isStreamingTurn={isStreamingTurn}
+        childMemberships={childMemberships}
         onOpenThread={onOpenThread}
+        onOpenSubagentsPanel={onOpenSubagentsPanel}
       />
     );
   }
@@ -431,6 +433,7 @@ export function ThreadBlockRenderer({
         block={block}
         isLatestTurn={isLatestTurn}
         isStreamingTurn={isStreamingTurn}
+        onOpenThread={onOpenThread}
       />
     );
   }

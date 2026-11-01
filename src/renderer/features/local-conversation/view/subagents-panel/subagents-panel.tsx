@@ -1,8 +1,3 @@
-import {
-  formatCodexModelLabel,
-  formatCodexReasoningEffortLabel,
-} from "@/lib/codex-thread-settings";
-import type { CodexConversationThreadSettings } from "@/lib/types";
 import { BackIcon } from "@/components/shared/icons";
 import { IntelligenceModeIndicatorIcon } from "@/components/shared/agent-runtime/intelligence-controls";
 import { subscribeCodexEvents } from "@/lib/api";
@@ -18,6 +13,8 @@ import type {
   CodexSubagentOverviewWindow,
 } from "../../../../../shared/types";
 import { useCodexAppServerControl } from "../../local-conversation-store";
+import type { ConversationAgent } from "../../../../../shared/conversation-identity";
+import { AgentIdentity } from "../shared/agent-identity";
 import { SubagentAvatar, SubagentGlyphIcon } from "../shared/subagent-avatar";
 
 const ACTIVE_CLOCK_INTERVAL_MS = 1_000;
@@ -137,12 +134,13 @@ function SubagentOverviewRowView({
         <SubagentAvatar seed={row.identityThreadId} className="size-6 shrink-0" />
       )}
       <span className="min-w-0 flex-1">
-        <span className="flex min-w-0 items-baseline gap-2 text-sm">
-          <span className="min-w-0 flex-1 truncate text-token-foreground">
-            {row.displayName}
-            {row.agentLabel ? (
-              <span className="text-token-text-tertiary">{` · ${row.agentLabel}`}</span>
-            ) : null}
+        <span className="flex min-w-0 items-center gap-2 text-sm">
+          <span className="flex min-w-0 flex-1 items-center gap-2">
+            <span className="min-w-0 truncate text-token-foreground">{row.displayName}</span>
+            <AgentIdentity
+              agent={row.agent}
+              className="min-w-0 shrink-[3] text-token-text-tertiary"
+            />
           </span>
           <SubagentOverviewTrailing row={row} nowMs={nowMs} doneClockMs={doneClockMs} />
         </span>
@@ -507,17 +505,20 @@ export function SubagentsPanelOverviewContent({
   );
 }
 
+/**
+ * The selected subagent's own header: back, its identity, then the Agent that runs it with the
+ * model, effort and speed it was given.
+ */
 export function SubagentsPanelDetailHeader({
+  agent,
   displayName,
+  fast = false,
   onBack,
   threadId,
-  threadSettings,
 }: {
-  threadSettings?: Pick<
-    CodexConversationThreadSettings,
-    "model" | "reasoningEffort" | "serviceTier"
-  > | null;
+  agent?: ConversationAgent | null;
   displayName: string;
+  fast?: boolean;
   onBack: () => void;
   threadId: string;
 }) {
@@ -535,19 +536,14 @@ export function SubagentsPanelDetailHeader({
       <div className="min-w-0 flex-1 truncate text-sm font-medium text-token-foreground">
         {displayName}
       </div>
-      {threadSettings?.model ? (
+      {agent?.model ? (
         <span className="flex max-w-1/2 min-w-0 items-center gap-1.5 text-xs text-token-text-tertiary select-none">
-          {threadSettings.serviceTier === "fast" ? (
+          {fast ? (
             <span role="img" aria-label="Fast mode" className="inline-flex shrink-0">
               <IntelligenceModeIndicatorIcon mode="fast" />
             </span>
           ) : null}
-          <span className="truncate">
-            {formatCodexModelLabel(threadSettings.model, [])}
-            {threadSettings.reasoningEffort
-              ? ` · ${formatCodexReasoningEffortLabel(threadSettings.reasoningEffort)}`
-              : null}
-          </span>
+          <AgentIdentity agent={agent} detail="settings" />
         </span>
       ) : null}
     </div>

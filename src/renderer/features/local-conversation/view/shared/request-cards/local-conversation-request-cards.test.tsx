@@ -1,8 +1,9 @@
-import { describe, expect, test } from "vite-plus/test";
+import { describe, expect, test, vi } from "vite-plus/test";
 import { act, fireEvent, waitFor } from "@testing-library/react";
 import { NodexTooltip, NodexTooltipProvider } from "@/components/ui/tooltip";
 import type { CodexUserInputRequest } from "@/lib/types";
 import { render, settleAsyncRender, textContent } from "@/test/dom";
+import { TestQueryProvider } from "@/test/query";
 import { installMotionPreferenceForTest } from "@/test/browser-globals";
 
 const optionRequest: CodexUserInputRequest = {
@@ -464,25 +465,40 @@ describe("local-conversation request cards", () => {
 
   test("names another Agent that answered and opens its conversation without expanding", async () => {
     const { UserInputTranscriptView } = await import("./local-conversation-request-cards");
+    const { agentRuntimeRuntime } = await import("@/lib/agent-runtime-runtime");
+    const identify = vi.spyOn(agentRuntimeRuntime, "identify").mockResolvedValue({
+      threadId: "nodex:thread:coordinator",
+      sessionId: "session-coordinator",
+      title: "Release coordinator",
+      role: "chat",
+      agent: { kind: "codex", providerInstanceId: null, model: "gpt-6.1-sol", effort: null },
+      archived: false,
+      host: null,
+    });
     const opened: string[] = [];
-    const { getByRole } = render(
-      <UserInputTranscriptView
-        item={{
-          userInputQuestions: optionRequest.questions,
-          userInputAnswers: { q_1: ["2 (Recommended)"] },
-          status: "completed",
-          respondedBy: { kind: "agent", senderThreadId: "coordinator-thread" },
-        }}
-        onOpenThread={(threadId) => {
-          opened.push(threadId);
-        }}
-      />,
+    const { findByRole, getByRole } = render(
+      <TestQueryProvider>
+        <UserInputTranscriptView
+          item={{
+            userInputQuestions: optionRequest.questions,
+            userInputAnswers: { q_1: ["2 (Recommended)"] },
+            status: "completed",
+            respondedBy: { kind: "agent", senderThreadId: "nodex:thread:coordinator" },
+          }}
+          onOpenThread={(threadId) => {
+            opened.push(threadId);
+          }}
+        />
+      </TestQueryProvider>,
     );
+    const open = await findByRole("button", { name: "Open Release coordinator" });
+    expect(open.parentElement?.textContent).toBe("Answered byRelease coordinator");
     await act(async () => {
-      fireEvent.click(getByRole("button", { name: "Open answering conversation" }));
+      fireEvent.click(open);
       await settleAsyncRender();
     });
-    expect(opened).toEqual(["coordinator-thread"]);
+    expect(opened).toEqual(["nodex:thread:coordinator"]);
+    identify.mockRestore();
     expect(getByRole("button", { name: /Asked\s*1 question/i }).getAttribute("aria-expanded")).toBe(
       "false",
     );

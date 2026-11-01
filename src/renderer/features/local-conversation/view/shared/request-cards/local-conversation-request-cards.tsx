@@ -161,8 +161,7 @@ export function UserInputTranscriptView({
               data-user-input-responded-by="agent"
             >
               <ConversationAttribution
-                label="Answered by another agent"
-                openLabel="Open answering conversation"
+                label="Answered by"
                 threadId={item.respondedBy.senderThreadId}
                 onOpenThread={onOpenThread}
               />

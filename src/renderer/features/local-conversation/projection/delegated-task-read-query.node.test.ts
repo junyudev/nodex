@@ -14,6 +14,7 @@ const task = (
   ownerRunId: "one",
   childThreadId: `child-${id}`,
   providerInstanceId: "codex",
+  agentKind: "codex",
   prompt: "Review the implementation",
   summary: null,
   status,

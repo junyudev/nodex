@@ -102,6 +102,16 @@ export function applyAgentRuntimeOptionIntent(
   return [...next].map(([id, value]) => ({ id, value }));
 }
 
+/** The effort a selection chose: Codex `reasoningEffort`, Claude `effort` or OpenCode `variant`. */
+export function readAgentRuntimeEffort(
+  options: AgentWire<ModelSelection>["options"],
+): string | null {
+  const value = options?.find(
+    (option) => /effort|reasoning/iu.test(option.id) || option.id === "variant",
+  )?.value;
+  return typeof value === "string" ? value : null;
+}
+
 /** The selected speed tier, or `null` for standard; undefined when the selection has none. */
 export function readAgentRuntimeServiceTier(
   options: AgentWire<ModelSelection>["options"],

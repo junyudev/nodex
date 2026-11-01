@@ -12,6 +12,7 @@ const id = z
 export const AgentRuntimeTargetSchema = z
   .object({ sessionId: id, threadId: id.optional() })
   .strict();
+export const AgentRuntimeThreadIdentitySchema = z.object({ threadId: id }).strict();
 export const AgentRuntimePromptTurnsSchema = z
   .object({
     sessionId: id,

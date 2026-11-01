@@ -545,7 +545,7 @@ within an Agent that keeps one model per chat is refused the same way. The disab
 choice explains why. The Session interface applies the same rule to every message that
 changes Agent, including an Agent's `send_message_to_session`, and refuses it with the same
 reason. The transcript marks each handoff above the Turn that continued it
-with the configured Agent and model names it moved from and to. Its description says what
+with the Agents it moved from and to, each as its mark and model. Its description says what
 it carried — the conversation so far, only the turns that Agent missed, or a merged fork's
 work — and a failed handoff says the Agent may lack the earlier conversation. An unavailable chosen
 Agent fails the message explicitly; the chat never falls back to another Agent.
@@ -568,6 +568,23 @@ stood at their source Run, so a fork from before the clear keeps the earlier con
 
 ## Delegated work in the conversation
 
+Wherever a conversation shows another Agent's work, Nodex identifies that Agent the same way.
+Its mark stands for the harness that runs it — Claude Code, Codex, OpenCode or an ACP Agent —
+not for the model's maker, so an OpenCode Agent running a GPT model carries the OpenCode mark.
+Rows, references and dividers show the mark beside the model, such as GPT-6.1 Sol; cards
+and tooltips spell the configured Agent's name too, and assistive text always does. A
+conversation's own header adds the effort it was given. A model already named after its Agent
+stands alone. Names load with the Agents' catalogs and update in
+place; before then a harness reads as itself.
+
+Another conversation is named by its Agent's mark and its current title, as the sidebar
+titles it, or by a subagent's own name. Names resolve live, so a renamed chat or one handed to
+another Agent reads as it is now. A reference opens the conversation where it lives: a chat in
+its own Session, a subagent in the Subagents tab beside its parent. Hovering or focusing it
+shows the full Agent identity, and says when the conversation is archived, is a subagent, or
+runs on an SSH execution host. An archived conversation stays named but no longer opens; one
+Nodex cannot find, because it was deleted or never existed here, reads as another agent.
+
 Product surfaces call delegated children subagents. Consecutive subagent items in the same
 parent Run form a compact activity row: stable avatars, readable names and current status.
 Messages and other raw items break groups, including hidden items; a group retains its first
@@ -584,7 +601,7 @@ done, with a compact count summary when states differ. Failure and stopping rema
 without hover and are not presented as successful completion.
 
 Hovering or focusing a task reveals its full name, current status, available task description
-or progress, configured Agent/model and original agent path. The floating surface can be
+or progress, the Agent that runs it with its model, and original agent path. The floating surface can be
 entered and dismissed without moving the transcript. Clicking an openable name goes directly
 to its child conversation. Tasks without a child conversation remain inspectable without
 offering a false navigation action. Openable tasks keep complete descriptions in their child
@@ -596,11 +613,16 @@ its owner permits it, shows Stopping immediately, and keeps that state until the
 reports how it ended. A provider-native subagent is stopped through its owning parent Run.
 An application-owned subagent's own conversation ends with a Stopped marker.
 
-Input the user did not type names its sender: Sent by another agent links to the sending
-conversation, and messages Nodex sends itself say so. Queued input carries a Queued
-marker. Steering appears as an ordinary user message, without an additional delivery label.
-Reported work — a subagent's result, finished background work or a restart continuation —
-appears as a compact row that opens the one subagent it names. When
+Input the user did not type names its sender: Sent by, then the sending conversation's mark
+and title, so a delegated task names the chat that sent it. Answers another Agent gave to a
+question read Answered by the same way, and a fork names the chat it was forked from.
+Messages Nodex sends itself say so. Queued input carries a Queued marker. Steering appears as
+an ordinary user message, without an additional delivery label.
+Subagents reporting back read like the row that started them: the same avatars and names
+with the same details on hover, then how they ended — finished, failed or stopped — and each
+name opens its own subagent. A report whose subagents the parent no longer lists keeps the
+Runtime's message and opens the one subagent it names. Other reported work — finished
+background work or a restart continuation — appears as a compact row. When
 a report starts an automatic Run, that row opens the Run's response, so the reason the
 Agent continued is visible before its answer.
 
@@ -845,14 +867,15 @@ Visual identity follows the shared [subagent identity contract](codex-subagent-b
 The durable child Thread ID supplies the avatar seed across activity, summary,
 overview, child navigation and mentions. A task with no child Thread shows the
 generic subagent glyph; its task ID remains a row/control key, never an avatar seed.
-The Subagents panel shows each subagent's Agent label and model and can stop any live
+The Subagents panel marks each subagent's Agent beside its model and can stop any live
 subagent the same way its transcript row does. Task metadata events update the pages already
 loaded in place, so later status changes never discard pages the user loaded; a newer report
 always wins over an older one. When settling or reopening subagents leave a section with
 fewer rows than it showed and more remain unread, the panel reads its next page. A selected
 provider-spawned subagent opens read-only beside the overview, without a Composer; stopping
-its parent stops it. Its detail header and any interactive child Composer show the child's
-own model, effort and Fast state from its persisted execution selection. Parent choices,
+its parent stops it. Its detail header marks the child's Agent, and it and any interactive
+child Composer show the child's own model, effort and Fast state from its persisted execution
+selection. Parent choices,
 new-chat defaults and model catalog defaults never replace an observed child choice.
 Codex native children hydrate their complete selection through a metadata-only rejoin in
 the owning provider session, without configuration overrides or starting a Turn. A newer

@@ -13,7 +13,7 @@ import { invokeIpc } from "./support/editor-scenario";
 import { waitForDraftScene } from "./support/new-chat-draft";
 import { openSubagentsPanel } from "./support/subagents-panel";
 
-test("a Claude chat delegates to Codex and OpenCode and attributes cross-chat messages", async ({}, testInfo) => {
+test("a Claude chat delegates to Codex and OpenCode and names each Agent wherever it shows their work", async ({}, testInfo) => {
   test.setTimeout(180_000);
   const harness = await ElectronScenarioHarness.create({
     label: "agent-cross-provider-delegation",
@@ -84,6 +84,15 @@ test("a Claude chat delegates to Codex and OpenCode and attributes cross-chat me
             .filter((entry) => entry.event === "child.ready").length,
       )
       .toBe(4);
+    // The subagent's card marks the harness that runs it and names it with the model. The
+    // parent's finished turn folds its work away; unfold it while the children still run.
+    const worked = scene.locator('[data-agent-body-toggle="true"]').first();
+    await expect(worked).toBeVisible();
+    if ((await worked.getAttribute("aria-expanded")) === "false") await worked.click();
+    await group.getByRole("button", { name: "WebAuthn routes", exact: true }).hover();
+    const card = page.getByRole("dialog", { name: "WebAuthn routes details" });
+    await expect(card.locator('[data-agent-identity="codex"]')).toHaveText("Codex · GPT-6.1 Sol");
+    await page.mouse.move(0, 0);
     fs.writeFileSync(path.join(root, "gates/webauthn"), "release");
     await expect
       .poll(
@@ -91,13 +100,29 @@ test("a Claude chat delegates to Codex and OpenCode and attributes cross-chat me
           (await overview()).terminal.items.find((task) => task.id === webauthn.id)?.status,
       )
       .toBe("completed");
-    await expect(scene.locator('[data-runtime-notice="report"]').first()).toBeVisible({
-      timeout: 30_000,
-    });
+    // Its report reads like the row that started it.
+    await expect(scene.locator('[data-runtime-notice="report"]').first()).toHaveText(
+      "WebAuthn routes finished",
+      { timeout: 30_000 },
+    );
     await openSubagentsPanel(page);
-    await page.getByRole("button", { name: "Open subagent WebAuthn routes", exact: true }).click();
+    const row = (name: string) =>
+      page.getByRole("button", { name: `Open subagent ${name}`, exact: true });
+    await expect(row("WebAuthn routes").locator('[data-agent-identity="codex"]')).toContainText(
+      "GPT-6.1 Sol",
+    );
+    await expect(row("Passkey docs").locator('[data-agent-identity="opencode"]')).toContainText(
+      "GLM-5.3-Flash Free",
+    );
+    await row("WebAuthn routes").click();
     const detail = page.locator("[data-subagents-side-panel-tab]").last();
-    await expect(detail.locator('[data-user-message-origin="agent"]').first()).toBeVisible();
+    await expect(detail.locator('[data-agent-identity="codex"]').first()).toContainText(
+      "GPT-6.1 Sol · Extra High",
+    );
+    // The task names the chat that sent it, marked with that chat's own harness.
+    const sentBy = detail.locator('[data-user-message-origin="agent"]').first();
+    await expect(sentBy).toHaveText("Sent byPasskey sign-in");
+    await expect(sentBy.locator('[data-conversation-reference="chat"] svg')).toHaveCount(1);
     // The canonical child retains the selected provider, model and effort.
     const child = await invokeIpc(page, "agent-runtime:session:inspect", {
       sessionId: parentSession,
@@ -125,7 +150,11 @@ test("a Claude chat delegates to Codex and OpenCode and attributes cross-chat me
       .locator(`[data-app-action-sidebar-thread-id="${release.executionRef.threadId}"]`)
       .click();
     const releaseScene = await waitForDraftScene(page, releaseNotesSession);
-    await expect(releaseScene.locator('[data-user-message-origin="agent"]').first()).toBeVisible();
+    await expect(releaseScene.locator('[data-user-message-origin="agent"]').first()).toHaveText(
+      "Sent byPasskey sign-in",
+    );
+    await releaseScene.getByRole("button", { name: "Open Passkey sign-in" }).first().click();
+    await waitForDraftScene(page, parentSession);
     await testInfo.attach("scenario-manifest", {
       path: path.join(root, "scenario-manifest.json"),
       contentType: "application/json",

@@ -1008,6 +1008,7 @@ describe("LocalConversationTurnEntry", () => {
             childThreadId: "child_inspect",
             title: "Inspect workspace",
             providerInstanceId: "claude",
+            agentKind: "codex",
             status: "completed",
             prompt: "Inspect the workspace",
             summary: null,

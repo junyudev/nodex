@@ -85,8 +85,13 @@ export type {
 } from "../../shared/agent-runtime-api";
 import { agentExecutionThreadId } from "../../shared/agent-runtime-api";
 import {
+  agentBackendKindOfDriver,
+  type ConversationIdentity,
+} from "../../shared/conversation-identity";
+import {
   agentRuntimeProviderId,
   applyAgentRuntimeOptionIntent,
+  readAgentRuntimeEffort,
 } from "../../shared/agent-runtime-provider";
 import { agentRuntimeAgentSwitchRefusal } from "../../shared/agent-runtime-agent-switch";
 import { agentRuntimeContextClearRefusal } from "../../shared/agent-runtime-context-clear";
@@ -3140,7 +3145,12 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     );
     if (binding.value.kind !== "agent_runtime_session_binding" || !binding.value.binding)
       return null;
-    return { connection, thread, sessionId: binding.value.binding.session_id };
+    return {
+      connection,
+      thread,
+      sessionId: binding.value.binding.session_id,
+      projectId: binding.value.binding.project_id ?? null,
+    };
   });
   /** A Thread of a bound Session; an archived one is still readable but never executes. */
   const boundThread = Effect.fn("AgentRuntimeApplication.boundThread")(function* (
@@ -3763,6 +3773,46 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           const connection = yield* options.connect;
           const page = yield* connection.request("sessions.catalog", input);
           return { runtimeId: connection.identity.runtimeId, ...page };
+        }),
+      ),
+    /**
+     * How another conversation is named where work is attributed to it: a chat by its Session
+     * title, a subagent by its own name, each with the Agent that runs it now.
+     */
+    identify: (threadId: string) =>
+      owned(
+        "identify",
+        Effect.gen(function* () {
+          if (!validId(threadId)) return null;
+          yield* validateCaller();
+          const bound = yield* readBoundThread(threadId);
+          if (!bound) return null;
+          const { thread } = bound;
+          const read = yield* host(
+            core.workspace.read(
+              { kind: "session", session_id: bound.sessionId },
+              undefined,
+              bound.projectId,
+            ),
+          );
+          if (read.value.kind !== "session") return null;
+          const session = read.value.session;
+          const chat = thread.id === thread.lineage.rootThreadId;
+          const identity: ConversationIdentity = {
+            threadId: thread.id,
+            sessionId: bound.sessionId,
+            title: (chat ? session.display_title : thread.title).trim() || session.display_title,
+            role: chat ? "chat" : "subagent",
+            agent: {
+              kind: agentBackendKindOfDriver(thread.providerDriver),
+              providerInstanceId: thread.modelSelection.instanceId,
+              model: thread.modelSelection.model,
+              effort: readAgentRuntimeEffort(thread.modelSelection.options),
+            },
+            archived: session.archived || thread.archivedAt !== null,
+            host: null,
+          };
+          return identity;
         }),
       ),
     inspect: (target: AgentRuntimeSessionTarget) =>

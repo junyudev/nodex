@@ -1,11 +1,7 @@
 import { describe, expect, test } from "vite-plus/test";
 import { act, render, screen } from "@testing-library/react";
 import { NodexTooltipProvider } from "../../../../components/ui/tooltip";
-import {
-  createAgentRuntimeAgentLabelPort,
-  createAgentRuntimeDelegatedTaskStore,
-} from "../../agent-runtime-delegated-tasks";
-import { ConversationRuntimeContext, type ConversationRuntime } from "../../conversation-runtime";
+import { agentRuntimeDelegatedTasks } from "../../agent-runtime-delegated-tasks";
 import { AgentHandoffDivider } from "./transcript-divider";
 
 const notice = {
@@ -13,46 +9,52 @@ const notice = {
   carried: "conversation" as const,
   failed: false,
   from: [
-    { providerInstanceId: "codex", model: "gpt" },
-    { providerInstanceId: "claude", model: "sonnet" },
+    { providerInstanceId: "handoff-codex", model: "gpt" },
+    { providerInstanceId: "handoff-claude", model: "sonnet" },
   ],
-  to: { providerInstanceId: "claude", model: "sonnet" },
+  to: { providerInstanceId: "handoff-claude", model: "sonnet" },
 };
 
 function setup(value: Parameters<typeof AgentHandoffDivider>[0]["notice"]) {
-  const store = createAgentRuntimeDelegatedTaskStore();
-  const runtime = {
-    agentLabels: createAgentRuntimeAgentLabelPort(store),
-  } as unknown as ConversationRuntime;
   const view = render(
     <NodexTooltipProvider>
-      <ConversationRuntimeContext value={runtime}>
-        <AgentHandoffDivider notice={value} />
-      </ConversationRuntimeContext>
+      <AgentHandoffDivider notice={value} />
     </NodexTooltipProvider>,
   );
   return {
-    store,
     divider: () => view.container.querySelector('[data-runtime-notice="agentHandoff"]')!,
   };
 }
 
 describe("Agent handoff divider", () => {
-  test("names both Agents once their catalog loads and drops a source that is the target", async () => {
-    const { store, divider } = setup(notice);
+  test("marks both Agents and names their models once the catalog loads", async () => {
+    const { divider } = setup(notice);
     expect(divider().textContent).toContain("Context handoff");
     await act(async () => {
-      store.publishLabels(
+      agentRuntimeDelegatedTasks.publishLabels(
         new Map([
-          ["codex", { label: "Codex", kind: "codex", models: new Map([["gpt", "GPT-5.5"]]) }],
-          ["claude", { label: "Claude", kind: "claude", models: new Map([["sonnet", "Sonnet"]]) }],
+          [
+            "handoff-codex",
+            { label: "Codex", kind: "codex", models: new Map([["gpt", "GPT-6.1-Sol"]]) },
+          ],
+          [
+            "handoff-claude",
+            { label: "Claude Code", kind: "claude", models: new Map([["sonnet", "Sonnet 5.5"]]) },
+          ],
         ]),
       );
       await Promise.resolve();
     });
-    expect(screen.getByText("Codex · GPT-5.5")).toBeTruthy();
-    expect(screen.getAllByText("Claude · Sonnet")).toHaveLength(1);
-    expect(divider().textContent).toContain("Context handoff·Codex · GPT-5.5→toClaude · Sonnet");
+    expect(screen.getByText("GPT-6.1 Sol")).toBeTruthy();
+    expect(screen.getAllByText("Sonnet 5.5")).toHaveLength(1);
+    expect(
+      [...divider().querySelectorAll("[data-agent-identity]")].map((agent) =>
+        agent.getAttribute("data-agent-identity"),
+      ),
+    ).toEqual(["codex", "claude"]);
+    // Assistive text names each Agent in full.
+    expect(divider().textContent).toContain("Codex · GPT-6.1 Sol");
+    expect(divider().textContent).toContain("Claude Code · Sonnet 5.5");
     expect(divider().textContent).toContain("Carried the conversation so far.");
   });
 

@@ -37,6 +37,7 @@ import {
   buildAgentRuntimeToolResultImageSource,
 } from "../../../shared/agent-runtime-attachments";
 import { projectAgentRuntimeSubagentDisplay } from "../../../shared/agent-runtime-subagent-display";
+import { agentBackendKindOfDriver } from "../../../shared/conversation-identity";
 import { agentMessageDisplayText } from "../../../shared/agent-prompt";
 import { getDisplayCommand } from "../../../shared/codex-command-execution";
 import type { CodexTranscriptTurnDetails } from "../../../shared/codex-transcript-projection";
@@ -443,13 +444,14 @@ function notificationNotice(
         source: "subagent",
         outcome,
         childThreadId: source.childThreadId ?? null,
+        taskIds: source.kind === "delegated_task" ? source.taskIds : [],
       };
     case "command":
     case "monitor":
     case "system":
-      return { kind: "report", source: source.kind, outcome, childThreadId: null };
+      return { kind: "report", source: source.kind, outcome, childThreadId: null, taskIds: [] };
     default:
-      return { kind: "report", source: "background", outcome, childThreadId: null };
+      return { kind: "report", source: "background", outcome, childThreadId: null, taskIds: [] };
   }
 }
 
@@ -728,6 +730,7 @@ export function projectAgentRuntimeItem(
         title: display.displayName || firstLine(item.prompt) || "Subagent",
         ...(display.agentPath ? { agentPath: display.agentPath } : {}),
         providerInstanceId: item.providerInstanceId,
+        agentKind: agentBackendKindOfDriver(item.driver),
         status: agentRuntimeDelegatedTaskStatus(item.status),
         prompt: item.prompt,
         summary:

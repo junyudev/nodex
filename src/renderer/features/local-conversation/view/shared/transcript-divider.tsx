@@ -1,12 +1,12 @@
-import { Fragment, useSyncExternalStore, type ReactNode } from "react";
-import { AgentProviderIcon } from "@/components/shared/icons/provider-icons";
+import { Fragment, type ReactNode } from "react";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type {
   CodexRuntimeNotice,
   CodexRuntimeNoticeAgent,
 } from "../../../../../shared/codex-conversation-state/codex-conversation-state";
-import { useConversationRuntimeOverride } from "../../conversation-runtime";
+import { agentIdentityText } from "../../agent-identity-presentation";
+import { AgentIdentity, useAgentIdentity } from "./agent-identity";
 
 /** A conversation-level event between Turns, centered on a rule across the transcript. */
 export function TranscriptDivider({
@@ -25,25 +25,14 @@ export function TranscriptDivider({
   );
 }
 
-const noSubscription = () => () => {};
-
-/** Names a configured Agent and model; a catalog that loads later renames it in place. */
+/** The Agent's mark and model; a catalog that loads later renames it in place. */
 function HandoffAgent({ agent }: { readonly agent: CodexRuntimeNoticeAgent }) {
-  const labels = useConversationRuntimeOverride()?.agentLabels;
-  const subscribe = labels?.subscribe ?? noSubscription;
-  const label = useSyncExternalStore(
-    subscribe,
-    () => labels?.label(agent.providerInstanceId, agent.model) ?? null,
-  );
-  const kind = useSyncExternalStore(
-    subscribe,
-    () => labels?.kind(agent.providerInstanceId) ?? null,
-  );
-  return (
-    <span className="inline-flex min-w-0 items-center gap-1 text-token-text-primary">
-      {kind ? <AgentProviderIcon kind={kind} className="size-3 shrink-0" /> : null}
-      <span className="truncate">{label ?? "Agent"}</span>
-    </span>
+  const identity = { kind: null, ...agent, effort: null };
+  const known = useAgentIdentity(identity);
+  return known && agentIdentityText(known, "model") ? (
+    <AgentIdentity agent={identity} className="gap-1 text-token-text-primary" />
+  ) : (
+    <span className="text-token-text-primary">Agent</span>
   );
 }
 

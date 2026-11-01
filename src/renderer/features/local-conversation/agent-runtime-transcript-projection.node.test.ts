@@ -633,7 +633,7 @@ describe("Runtime delegated task rows", () => {
     expect(statuses).toEqual(["running", "waiting", "completed", "failed", "stopped", "cancelled"]);
   });
 
-  test("rows carry the task identity, owner Run and a readable title", () => {
+  test("rows carry the task identity, owner Run, harness and a readable title", () => {
     expect(projectAgentRuntimeItem(task("running", { progress: "Reading files" }))).toEqual({
       type: "delegatedTask",
       id: "item",
@@ -642,6 +642,7 @@ describe("Runtime delegated task rows", () => {
       childThreadId: "child",
       title: "Review the auth module",
       providerInstanceId: "claude",
+      agentKind: "claude",
       status: "running",
       prompt: "Review the auth module\nand report findings",
       summary: "Reading files",
@@ -721,7 +722,7 @@ describe("Runtime message attribution and notices", () => {
     });
   });
 
-  test("reported work names the one task it can open", () => {
+  test("reported work names the tasks it reports and the one it can open", () => {
     expect(
       projectAgentRuntimeItem({
         ...base,
@@ -734,7 +735,24 @@ describe("Runtime message attribution and notices", () => {
       type: "runtimeNotice",
       id: "item",
       message: 'Subagent "Audit" finished',
-      notice: { kind: "report", source: "subagent", outcome: "completed", childThreadId: "child" },
+      notice: {
+        kind: "report",
+        source: "subagent",
+        outcome: "completed",
+        childThreadId: "child",
+        taskIds: [],
+      },
+    });
+    expect(
+      projectAgentRuntimeItem({
+        ...base,
+        type: "notification",
+        source: { kind: "delegated_task", taskIds: ["routes", "docs"] },
+        outcome: "completed",
+        summary: "2 delegated tasks finished: WebAuthn routes, Passkey docs",
+      }),
+    ).toMatchObject({
+      notice: { kind: "report", childThreadId: null, taskIds: ["routes", "docs"] },
     });
     expect(
       projectAgentRuntimeItem({

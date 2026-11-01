@@ -5,7 +5,7 @@ import { toast } from "@/components/ui/toast";
 import { NodexTooltipProvider } from "../../../../components/ui/tooltip";
 import type { CodexDelegatedTaskView } from "../../../../../shared/types";
 import {
-  createAgentRuntimeAgentLabelPort,
+  agentRuntimeDelegatedTasks,
   createAgentRuntimeDelegatedTaskPort,
   createAgentRuntimeDelegatedTaskStore,
   type AgentRuntimeTaskStopTransport,
@@ -19,6 +19,7 @@ const task: CodexDelegatedTaskView = {
   childThreadId: "child",
   title: "Audit auth",
   providerInstanceId: "claude",
+  agentKind: "claude",
   status: "running",
   prompt: "Audit the auth module",
   summary: null,
@@ -26,13 +27,16 @@ const task: CodexDelegatedTaskView = {
 
 function setup() {
   const store = createAgentRuntimeDelegatedTaskStore();
-  store.publishLabels(
+  agentRuntimeDelegatedTasks.publishLabels(
     new Map([
       [
         "claude",
         { label: "Claude", kind: "claude", models: new Map([["opus", "Claude Opus 5.5"]]) },
       ],
-      ["codex", { label: "Codex", kind: "codex", models: new Map([["gpt", "GPT-5.5"]]) }],
+      [
+        "codex",
+        { label: "Codex", kind: "codex", models: new Map([["gpt-6.1-sol", "GPT-6.1-Sol"]]) },
+      ],
     ]),
   );
   let finishStop: () => void = () => {};
@@ -46,7 +50,6 @@ function setup() {
     stopTask: vi.fn(async () => ({ sequence: 1 })),
   };
   const runtime = {
-    agentLabels: createAgentRuntimeAgentLabelPort(store),
     delegatedTasks: createAgentRuntimeDelegatedTaskPort("session", transport, store),
   } as unknown as ConversationRuntime;
   const wrap = (ui: ReactNode) => (
@@ -131,6 +134,34 @@ describe("Delegated task row", () => {
       expect.objectContaining({
         subagent: expect.objectContaining({ conversationId: "child", status: "done" }),
       }),
+    );
+  });
+
+  test("names the harness and model of a subagent another Agent runs", async () => {
+    const { wrap } = setup();
+    const membership = {
+      threadId: "child",
+      taskId: "task",
+      agent: { kind: "codex", providerInstanceId: "codex", model: "gpt-6.1-sol", effort: "xhigh" },
+    } as never;
+    render(
+      wrap(
+        <DelegatedTaskGroup
+          tasks={[{ ...task, providerInstanceId: "codex", agentKind: "codex" }]}
+          parentThreadId="root"
+          childMemberships={[membership]}
+          onOpenThread={vi.fn()}
+        />,
+      ),
+    );
+    await act(async () => {
+      screen.getByRole("button", { name: "Audit auth" }).focus();
+      await Promise.resolve();
+    });
+    const details = await screen.findByRole("dialog", { name: "Audit auth details" });
+    const agent = within(details).getByText("Codex · GPT-6.1 Sol");
+    expect(agent.closest("[data-agent-identity]")?.getAttribute("data-agent-identity")).toBe(
+      "codex",
     );
   });
 
@@ -235,23 +266,79 @@ describe("Delegated task row", () => {
     expect(onOpenThread).toHaveBeenCalledWith("second-child", expect.anything());
   });
 
-  test("a report opens the one subagent it names", async () => {
+  test("a report names its subagents like the row that started them and opens each one", async () => {
+    const { wrap } = setup();
+    const onOpenThread = vi.fn();
+    const children = [
+      {
+        threadId: "child",
+        taskId: "task",
+        displayName: "WebAuthn routes",
+        agent: {
+          kind: "codex",
+          providerInstanceId: "codex",
+          model: "gpt-6.1-sol",
+          effort: "xhigh",
+        },
+      },
+      { threadId: "second-child", taskId: "second", displayName: "Credentials migration" },
+    ] as never;
+    const view = render(
+      wrap(
+        <RuntimeNoticeRow
+          message="2 delegated tasks finished: WebAuthn routes, Credentials migration"
+          notice={{
+            kind: "report",
+            source: "subagent",
+            outcome: "completed",
+            childThreadId: null,
+            taskIds: ["task", "second"],
+          }}
+          childMemberships={children}
+          onOpenThread={onOpenThread}
+        />,
+      ),
+    );
+    expect(screen.getByRole("status", { name: "Subagents finished" }).textContent).toBe(
+      "WebAuthn routes and Credentials migration finished",
+    );
+    expect(view.container.querySelector('[data-subagent-avatar-seed="child"]')).not.toBeNull();
+    await act(async () => {
+      screen.getByRole("button", { name: "WebAuthn routes" }).focus();
+      await Promise.resolve();
+    });
+    const details = await screen.findByRole("dialog", { name: "WebAuthn routes details" });
+    expect(within(details).getByText("Codex · GPT-6.1 Sol")).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Credentials migration" }));
+      await Promise.resolve();
+    });
+    expect(onOpenThread).toHaveBeenCalledWith(
+      "second-child",
+      expect.objectContaining({
+        subagent: expect.objectContaining({ displayName: "Credentials migration" }),
+      }),
+    );
+  });
+
+  test("a report whose subagents the parent no longer lists keeps its message and opens its child", async () => {
     const onOpenThread = vi.fn();
     const view = render(
       <RuntimeNoticeRow
-        message='Subagent "Audit" finished'
+        message='Delegated task "Audit" failed'
         notice={{
           kind: "report",
           source: "subagent",
-          outcome: "completed",
+          outcome: "failed",
           childThreadId: "child",
+          taskIds: ["task"],
         }}
         onOpenThread={onOpenThread}
       />,
     );
     expect(view.container.querySelector('[data-subagent-avatar-seed="child"]')).not.toBeNull();
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: 'Open Subagent "Audit" finished' }));
+      fireEvent.click(screen.getByRole("button", { name: 'Open Delegated task "Audit" failed' }));
       await Promise.resolve();
     });
     expect(onOpenThread).toHaveBeenCalledWith("child");

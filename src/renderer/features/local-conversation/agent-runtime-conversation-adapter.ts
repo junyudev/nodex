@@ -97,7 +97,6 @@ import { sessionFirstSubmissionOwner } from "../conversation-launch/session-firs
 import { setLocalConversationThreadPresented } from "./local-conversation-store";
 import { copyAgentRuntimeConversationMarkdown } from "./agent-runtime-markdown-export";
 import {
-  agentRuntimeAgentLabels,
   agentRuntimeDelegatedTasks,
   createAgentRuntimeDelegatedTaskPort,
 } from "./agent-runtime-delegated-tasks";
@@ -240,7 +239,6 @@ export function createAgentRuntimeConversationRuntime(
     },
     connection: () => projectAgentRuntimeConnection(agentRuntimeActivityStore.readConnection()),
     role: (id) => (matches(id) ? "follower" : null),
-    agentLabels: agentRuntimeAgentLabels,
     ...(target
       ? {
           delegatedTasks: createAgentRuntimeDelegatedTaskPort(

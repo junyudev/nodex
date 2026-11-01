@@ -1,5 +1,5 @@
 import { act } from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import type {
   CodexSubagentOverviewReadInput,
@@ -87,19 +87,23 @@ beforeEach(() => {
   overviewMocks.subscribe.mockClear();
 });
 
-test("shows the selected subagent's observed Fast mode and clears it for Standard or unknown settings", () => {
-  const header = (serviceTier: string | null) => (
+test("marks the selected subagent's harness beside its model, effort and observed Fast mode", () => {
+  const header = (fast: boolean) => (
     <SubagentsPanelDetailHeader
       threadId="child"
       displayName="Explorer"
-      threadSettings={{ model: "gpt-6-sol", reasoningEffort: "high", serviceTier }}
+      agent={{ kind: "codex", providerInstanceId: null, model: "gpt-6.1-sol", effort: "xhigh" }}
+      fast={fast}
       onBack={() => undefined}
     />
   );
-  const view = render(header("fast"));
+  const view = render(header(true));
   expect(screen.getByRole("img", { name: "Fast mode" })).toBeTruthy();
+  const identity = view.container.querySelector('[data-agent-identity="codex"]');
+  expect(identity?.querySelector("svg")).not.toBeNull();
+  expect(screen.getByText("GPT-6.1 Sol · Extra High")).toBeTruthy();
 
-  view.rerender(header(null));
+  view.rerender(header(false));
   expect(screen.queryByRole("img", { name: "Fast mode" })).toBeNull();
 
   view.rerender(
@@ -110,6 +114,32 @@ test("shows the selected subagent's observed Fast mode and clears it for Standar
     />,
   );
   expect(screen.queryByRole("img", { name: "Fast mode" })).toBeNull();
+});
+
+test("marks each subagent's harness beside its model, and leaves unknown Agents unmarked", () => {
+  const codex: CodexSubagentOverviewRow = {
+    ...buildRow(1, "active"),
+    displayName: "WebAuthn routes",
+    agent: { kind: "codex", providerInstanceId: null, model: "gpt-6.1-sol", effort: "xhigh" },
+  };
+  const claude: CodexSubagentOverviewRow = {
+    ...buildRow(2, "active"),
+    displayName: "Copy review",
+    agent: { kind: "claude", providerInstanceId: null, model: "claude-sonnet-5-5", effort: null },
+  };
+  const view = render(
+    <SubagentsPanelOverviewContent
+      rootThreadId="root"
+      overview={buildOverview({ active: [codex, claude, buildRow(3, "active")], done: [] })}
+      onSelect={() => undefined}
+    />,
+  );
+  const row = (name: string) => screen.getByRole("button", { name: `Open subagent ${name}` });
+  expect(within(row("WebAuthn routes")).getByText("GPT-6.1 Sol")).toBeTruthy();
+  expect(row("WebAuthn routes").querySelector('[data-agent-identity="codex"] svg')).not.toBeNull();
+  expect(row("Copy review").querySelector('[data-agent-identity="claude"]')).not.toBeNull();
+  expect(row("active 3").querySelector("[data-agent-identity]")).toBeNull();
+  view.unmount();
 });
 
 describe("SubagentsPanelOverview", () => {

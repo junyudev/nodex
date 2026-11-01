@@ -5,7 +5,6 @@ import type {
   CodexConversationLiveRequest,
   CodexConversationSnapshot,
 } from "../../../shared/types";
-import type { AgentBackendBinding } from "../../../shared/agent-backend";
 import type { LocalConversationAttachmentState } from "./conversation-attachment-state";
 import type { CodexTranscriptReadOwner } from "./normalized-transcript-read-owner";
 import type { AsyncQuestionDelivery, AsyncQuestionRuntime } from "./async-question-runtime";
@@ -66,16 +65,6 @@ export interface ConversationAsyncQuestionPort {
   readonly deliver: AsyncQuestionDelivery;
 }
 
-/** Configured Agent names and marks for the Agents a conversation's work ran on. */
-export interface ConversationAgentLabelPort {
-  /** Notifies when the configured Agents or their model names change. */
-  readonly subscribe: (listener: () => void) => () => void;
-  /** The configured Agent label and model display name, as one label. */
-  readonly label: (providerInstanceId: string, model: string | null) => string | null;
-  /** The Agent Backend whose mark identifies the Agent, when it is configured. */
-  readonly kind: (providerInstanceId: string) => AgentBackendBinding["kind"] | null;
-}
-
 /** Delegated task rows request Stop through their conversation's owner. */
 export interface ConversationDelegatedTaskPort {
   /** Notifies when unsettled Stop requests change. */
@@ -99,8 +88,6 @@ export interface ConversationRuntime {
   readonly approvals?: import("./agent-approval-runtime").AgentApprovalRuntime;
   /** Captures the selected history reader's lifetime without changing execution retention. */
   readonly history?: (threadId: string) => ConversationHistoryPort | null;
-  /** Present where work can run on several configured Agents. */
-  readonly agentLabels?: ConversationAgentLabelPort;
   /** Present only where delegated tasks have an execution owner that can stop them. */
   readonly delegatedTasks?: ConversationDelegatedTaskPort;
   /** Present where the execution owner holds asynchronous questions; native chats use their manager. */

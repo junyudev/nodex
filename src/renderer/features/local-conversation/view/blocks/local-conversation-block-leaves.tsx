@@ -683,7 +683,12 @@ export function ThreadDelegatedTaskBlock({
   );
 }
 
-export function ThreadRuntimeNoticeBlock({ block, onOpenThread }: ThreadLeafBlockProps) {
+export function ThreadRuntimeNoticeBlock({
+  block,
+  childMemberships,
+  onOpenThread,
+  onOpenSubagentsPanel,
+}: ThreadLeafBlockProps) {
   if (block.type !== "runtimeNotice") return null;
   const notice = block.entry.runtimeNotice;
   if (notice?.kind === "agentHandoff") return <AgentHandoffDivider notice={notice} />;
@@ -693,7 +698,9 @@ export function ThreadRuntimeNoticeBlock({ block, onOpenThread }: ThreadLeafBloc
     <RuntimeNoticeRow
       message={block.entry.markdownText}
       notice={block.entry.runtimeNotice}
+      childMemberships={childMemberships}
       onOpenThread={onOpenThread}
+      onOpenSubagentsPanel={onOpenSubagentsPanel}
     />
   );
 }
@@ -783,7 +790,13 @@ export function SubagentActivityInlineRows({
             <p className="line-clamp-4 break-words">{row.statusSummary}</p>
           ) : undefined
         }
-        metadata={[row.agentRole, row.spawnModel].filter(Boolean).join(" · ") || null}
+        // A native child runs on its parent's Codex harness.
+        agent={
+          row.spawnModel
+            ? { kind: "codex", providerInstanceId: null, model: row.spawnModel, effort: null }
+            : null
+        }
+        role={row.agentRole}
       />
     ),
     onOpen:
@@ -932,33 +945,31 @@ function UserMessageDeliveryMarkers({
   const origin = entry.userMessageOrigin;
   const answeredBy = entry.questionReplies ? entry.respondedBy : undefined;
   const queued = entry.userInputIntent === "queued";
-  const attribution = answeredBy
-    ? {
-        label: "Answered by another agent",
-        openLabel: "Open answering conversation",
-        threadId: answeredBy.senderThreadId,
-      }
-    : origin?.kind === "agent"
-      ? {
-          label: "Sent by another agent",
-          openLabel: "Open sending conversation",
-          threadId: origin.senderThreadId ?? null,
-        }
-      : origin?.kind === "automation"
-        ? { label: "Sent by automation", openLabel: "", threadId: null }
-        : origin?.kind === "nodex"
-          ? { label: "Sent by Nodex", openLabel: "", threadId: null }
-          : null;
+  const attribution = answeredBy ? (
+    <ConversationAttribution
+      label="Answered by"
+      threadId={answeredBy.senderThreadId}
+      onOpenThread={onOpenThread}
+    />
+  ) : origin?.kind === "agent" ? (
+    <ConversationAttribution
+      label="Sent by"
+      threadId={origin.senderThreadId}
+      onOpenThread={onOpenThread}
+    />
+  ) : origin?.kind === "automation" ? (
+    <span>Sent by automation</span>
+  ) : origin?.kind === "nodex" ? (
+    <span>Sent by Nodex</span>
+  ) : null;
   if (!attribution && !queued) return null;
   return (
     <div
-      className="me-1 flex items-center justify-end gap-2 text-xs text-token-text-tertiary"
+      className="me-1 flex min-w-0 items-center justify-end gap-2 text-xs text-token-text-tertiary"
       data-user-message-origin={answeredBy ? "answering-agent" : origin?.kind}
       data-user-message-intent={entry.userInputIntent}
     >
-      {attribution ? (
-        <ConversationAttribution {...attribution} onOpenThread={onOpenThread} />
-      ) : null}
+      {attribution}
       {queued ? (
         <NodexTooltip tooltipContent="Queued behind the active turn">
           <span>Queued</span>
@@ -1660,16 +1671,23 @@ export function ThreadRecoveryBlock({
   );
 }
 
-export function ThreadForkedFromConversationBlock({ block }: ThreadLeafBlockProps) {
+export function ThreadForkedFromConversationBlock({ block, onOpenThread }: ThreadLeafBlockProps) {
   if (block.type !== "forkedFromConversation") return null;
 
-  const sourceTitle = asRecord(block.entry.rawItem)?.sourceConversationTitle;
+  const raw = asRecord(block.entry.rawItem);
+  const sourceId = raw?.sourceConversationId;
+  const sourceTitle = raw?.sourceConversationTitle;
   const sourceLabel = typeof sourceTitle === "string" ? sourceTitle.trim() : "";
 
   return (
     <TranscriptDivider>
       <ForkIcon className="icon-2xs shrink-0" />
-      <span className="truncate">Forked from {sourceLabel || "another chat"}</span>
+      <ConversationAttribution
+        label="Forked from"
+        fallback={sourceLabel || "another chat"}
+        threadId={typeof sourceId === "string" && sourceId ? sourceId : null}
+        onOpenThread={onOpenThread}
+      />
     </TranscriptDivider>
   );
 }

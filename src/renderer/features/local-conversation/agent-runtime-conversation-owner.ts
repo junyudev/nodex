@@ -40,7 +40,10 @@ import type {
   CodexPromptInput,
 } from "../../../shared/types";
 import { buildAgentRuntimeAttachmentSource } from "../../../shared/agent-runtime-attachments";
-import { projectAgentRuntimeSubagentDisplay } from "../../../shared/agent-runtime-subagent-display";
+import {
+  agentRuntimeSubagentAgent,
+  projectAgentRuntimeSubagentDisplay,
+} from "../../../shared/agent-runtime-subagent-display";
 import {
   CODEX_INTERRUPTED_STEER_REASON,
   EMPTY_CODEX_QUEUED_FOLLOW_UP_PROJECTION,
@@ -2003,6 +2006,8 @@ export class AgentRuntimeConversationOwner {
         threadId: task.childThreadId ?? task.id,
         parentThreadId: this.#target.threadId,
         role: "backgroundChild",
+        taskId: task.id,
+        agent: agentRuntimeSubagentAgent(task),
         displayName,
         actorName: displayName ?? "Agent",
         thread: { displayName, model: task.model },

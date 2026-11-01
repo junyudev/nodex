@@ -145,13 +145,26 @@ describe("Runtime subagent overview", () => {
     });
   });
 
-  it("names the Agent and model that run each subagent", () => {
-    const view = projectAgentRuntimeSubagentOverview(
-      "root",
-      { active: page([task]), terminal: page([]) },
-      (item) => `${item.providerInstanceId} · ${item.model}`,
-    );
-    expect(view.active.rows[0]?.agentLabel).toBe("codex · model");
+  it("names the harness, Agent, model and effort that run each subagent", () => {
+    const view = projectAgentRuntimeSubagentOverview("root", {
+      active: page([
+        {
+          ...task,
+          modelSelection: {
+            instanceId: "codex",
+            model: "gpt-6.1-sol",
+            options: [{ id: "reasoningEffort", value: "xhigh" }],
+          },
+        },
+      ]),
+      terminal: page([]),
+    });
+    expect(view.active.rows[0]?.agent).toEqual({
+      kind: "codex",
+      providerInstanceId: "codex",
+      model: "gpt-6.1-sol",
+      effort: "xhigh",
+    });
   });
 });
 
@@ -255,7 +268,7 @@ describe("Runtime subagent overview events", () => {
 
 it("labels a waiting child approval without turning an information question into approval", () => {
   const waiting = { ...task, status: "waiting" as const };
-  expect(projectAgentRuntimeSubagent(waiting, null, true)).toMatchObject({
+  expect(projectAgentRuntimeSubagent(waiting, true)).toMatchObject({
     status: "waiting",
     statusSummary: "Needs approval",
   });

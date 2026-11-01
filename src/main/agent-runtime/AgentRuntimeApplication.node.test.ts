@@ -5027,6 +5027,62 @@ it.effect("records the conversation whose message starts a chat as that message'
   }),
 );
 
+it.effect("names a chat by its Session and a subagent by its own title, each with its Agent", () =>
+  Effect.gen(function* () {
+    const fixture = setup();
+    const owner = yield* fixture.owner;
+    const launched = yield* owner.launch(launch);
+    fixture.titles.set(launched.sessionId, "Passkey sign-in");
+    const root = fixture.snapshots.get(launched.threadId)!;
+    fixture.snapshots.set("child", {
+      ...root,
+      projection: {
+        ...root.projection,
+        thread: {
+          ...root.projection.thread,
+          id: "child",
+          title: "WebAuthn routes",
+          providerDriver: "codex",
+          modelSelection: {
+            instanceId: "codex",
+            model: "gpt-6.1-sol",
+            options: [{ id: "reasoningEffort", value: "xhigh" }],
+          },
+          lineage: {
+            ...root.projection.thread.lineage,
+            rootThreadId: launched.threadId,
+            parentThreadId: launched.threadId,
+            relationshipToParent: "subagent",
+          },
+        } as never,
+      },
+    });
+
+    const chat = yield* owner.identify(launched.threadId);
+    assert.deepInclude(chat, {
+      threadId: launched.threadId,
+      sessionId: launched.sessionId,
+      title: "Passkey sign-in",
+      role: "chat",
+      archived: false,
+      host: null,
+    });
+    assert.deepEqual(yield* owner.identify("child"), {
+      threadId: "child",
+      sessionId: launched.sessionId,
+      title: "WebAuthn routes",
+      role: "subagent",
+      agent: { kind: "codex", providerInstanceId: "codex", model: "gpt-6.1-sol", effort: "xhigh" },
+      archived: false,
+      host: null,
+    });
+    assert.isNull(yield* owner.identify("nodex:thread:missing"));
+
+    fixture.state.archived = true;
+    assert.isTrue((yield* owner.identify(launched.threadId))?.archived);
+  }),
+);
+
 it.effect(
   "routes resource-only sends to a verified child and returns the canonical delivery result",
   () =>

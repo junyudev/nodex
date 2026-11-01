@@ -11,6 +11,8 @@ import {
   installWindowApi,
 } from "../../../../test/browser-globals";
 import { renderWithMaitai } from "../../../../test/thread-maitai";
+import { agentRuntimeRuntime } from "../../../../lib/agent-runtime-runtime";
+import type { ConversationIdentity } from "../../../../../shared/conversation-identity";
 import { settleAsyncRender, textContent } from "../../../../test/dom";
 import { TestQueryProvider } from "../../../../test/query";
 import { THREAD_SETTINGS_STORAGE_KEY } from "../../../../lib/codex-thread-settings";
@@ -457,51 +459,98 @@ describe("UserMessageBubble collapse", () => {
     );
   });
 
-  test("attributes input another Agent sent and links to the sending conversation", async () => {
-    const block = buildUserMessageBlock("Review the auth module");
-    block.entry.userMessageOrigin = { kind: "agent", senderThreadId: "parent-thread" };
-    block.entry.userInputIntent = "steer";
-    const onOpenThread = vi.fn();
-    const { getByRole } = render(
-      <TooltipProvider>
-        <UserMessageBubble
-          block={block}
-          isLatestTurn
-          isStreamingTurn={false}
-          onOpenThread={onOpenThread}
-        />
-      </TooltipProvider>,
-    );
-    await act(async () => {
-      fireEvent.click(getByRole("button", { name: "Open sending conversation" }));
-      await Promise.resolve();
+  describe("names the conversation that sent or answered", () => {
+    const sender = (overrides: Partial<ConversationIdentity> = {}): ConversationIdentity => ({
+      threadId: "nodex:thread:passkeys",
+      sessionId: "session-passkeys",
+      title: "Passkey sign-in",
+      role: "chat",
+      agent: {
+        kind: "claude",
+        providerInstanceId: null,
+        model: "claude-opus-5-5",
+        effort: "high",
+      },
+      archived: false,
+      host: null,
+      ...overrides,
     });
-    expect(onOpenThread).toHaveBeenCalledWith("parent-thread");
-  });
+    const renderMessage = (
+      edit: (block: ReturnType<typeof buildUserMessageBlock>) => void,
+      onOpenThread = vi.fn(),
+    ) => {
+      const block = buildUserMessageBlock("Review the auth module");
+      edit(block);
+      return render(
+        <TooltipProvider>
+          <UserMessageBubble
+            block={block}
+            isLatestTurn
+            isStreamingTurn={false}
+            onOpenThread={onOpenThread}
+          />
+        </TooltipProvider>,
+      );
+    };
+    afterEach(() => vi.restoreAllMocks());
 
-  test("names the Agent that answered a question reply instead of claiming it sent a message", async () => {
-    const block = buildUserMessageBlock("Local");
-    block.entry.questionReplies = [
-      { questionItemId: "ask:0", question: "Which scope?", answer: "Local" },
-    ];
-    block.entry.respondedBy = { kind: "agent", senderThreadId: "coordinator-thread" };
-    const onOpenThread = vi.fn();
-    const { getByRole, queryByText } = render(
-      <TooltipProvider>
-        <UserMessageBubble
-          block={block}
-          isLatestTurn
-          isStreamingTurn={false}
-          onOpenThread={onOpenThread}
-        />
-      </TooltipProvider>,
-    );
-    expect(queryByText("Sent by another agent")).toBeNull();
-    await act(async () => {
-      fireEvent.click(getByRole("button", { name: "Open answering conversation" }));
-      await Promise.resolve();
+    test("by its Agent's mark and title, and opens it in its own Session", async () => {
+      vi.spyOn(agentRuntimeRuntime, "identify").mockResolvedValue(sender());
+      const onOpenThread = vi.fn();
+      const view = renderMessage((block) => {
+        block.entry.userMessageOrigin = { kind: "agent", senderThreadId: "nodex:thread:passkeys" };
+        block.entry.userInputIntent = "steer";
+      }, onOpenThread);
+      const open = await view.findByRole("button", { name: "Open Passkey sign-in" });
+      const marker = view.container.querySelector('[data-user-message-origin="agent"]')!;
+      expect(marker.textContent).toBe("Sent byPasskey sign-in");
+      expect(open.querySelector("svg")).not.toBeNull();
+      await act(async () => {
+        fireEvent.click(open);
+        await Promise.resolve();
+      });
+      expect(onOpenThread).toHaveBeenCalledWith("nodex:thread:passkeys", {
+        runtimeSessionId: "session-passkeys",
+      });
     });
-    expect(onOpenThread).toHaveBeenCalledWith("coordinator-thread");
+
+    test("names the Agent that answered a question reply instead of claiming it sent a message", async () => {
+      vi.spyOn(agentRuntimeRuntime, "identify").mockResolvedValue(sender());
+      const view = renderMessage((block) => {
+        block.entry.questionReplies = [
+          { questionItemId: "ask:0", question: "Which scope?", answer: "Local" },
+        ];
+        block.entry.respondedBy = { kind: "agent", senderThreadId: "nodex:thread:passkeys" };
+      });
+      await view.findByRole("button", { name: "Open Passkey sign-in" });
+      const marker = view.container.querySelector('[data-user-message-origin="answering-agent"]')!;
+      expect(marker.textContent).toBe("Answered byPasskey sign-in");
+    });
+
+    test("keeps an archived sender named without opening it, and an unknown one anonymous", async () => {
+      const identify = vi
+        .spyOn(agentRuntimeRuntime, "identify")
+        .mockResolvedValue(sender({ archived: true }));
+      const archived = renderMessage((block) => {
+        block.entry.userMessageOrigin = { kind: "agent", senderThreadId: "nodex:thread:passkeys" };
+      });
+      await waitFor(() =>
+        expect(
+          archived.container.querySelector('[data-conversation-reference="archived"]')?.textContent,
+        ).toBe("Passkey sign-in"),
+      );
+      expect(archived.queryByRole("button", { name: "Open Passkey sign-in" })).toBeNull();
+      archived.unmount();
+
+      identify.mockResolvedValue(null);
+      const unknown = renderMessage((block) => {
+        block.entry.userMessageOrigin = { kind: "agent", senderThreadId: "nodex:thread:gone" };
+      });
+      await waitFor(() => expect(identify).toHaveBeenCalledWith("nodex:thread:gone"));
+      const marker = unknown.container.querySelector('[data-user-message-origin="agent"]')!;
+      expect(marker.textContent).toBe("Sent byanother agent");
+      expect(marker.querySelector("button")).toBeNull();
+    });
   });
 
   test.each(["pending", "unknown"] as const)(
@@ -1607,14 +1656,10 @@ describe("ThreadWorktreeInitBlock", () => {
 });
 
 describe("fork origin presentation", () => {
-  test.each([
-    { sourceConversationTitle: null, expectedLabel: "Forked from another chat" },
-    { sourceConversationTitle: "  ", expectedLabel: "Forked from another chat" },
-    { sourceConversationTitle: "Source chat", expectedLabel: "Forked from Source chat" },
-  ])(
-    "renders a compact origin for $sourceConversationTitle",
-    ({ sourceConversationTitle, expectedLabel }) => {
-      const { container, getByText, queryByRole } = render(
+  afterEach(() => vi.restoreAllMocks());
+  const renderFork = (sourceConversationTitle: string | null) =>
+    render(
+      <TooltipProvider>
         <ThreadBlockRenderer
           block={{
             id: "fork-1",
@@ -1635,7 +1680,7 @@ describe("fork origin presentation", () => {
               rawItem: {
                 type: "forkedFromConversation",
                 id: "fork-1",
-                sourceConversationId: "parent-thread",
+                sourceConversationId: "nodex:thread:source",
                 sourceConversationTitle,
                 sourceExecutionId: "source-execution",
                 historyVisible: true,
@@ -1646,14 +1691,43 @@ describe("fork origin presentation", () => {
           }}
           isLatestTurn={false}
           isStreamingTurn={false}
-        />,
-      );
+          onOpenThread={vi.fn()}
+        />
+      </TooltipProvider>,
+    );
 
-      getByText(expectedLabel);
+  test.each([
+    { sourceConversationTitle: null, expectedLabel: "Forked fromanother chat" },
+    { sourceConversationTitle: "  ", expectedLabel: "Forked fromanother chat" },
+    { sourceConversationTitle: "Source chat", expectedLabel: "Forked fromSource chat" },
+  ])(
+    "keeps a compact origin for $sourceConversationTitle when the source is unknown",
+    async ({ sourceConversationTitle, expectedLabel }) => {
+      const identify = vi.spyOn(agentRuntimeRuntime, "identify").mockResolvedValue(null);
+      const { container, queryByRole } = renderFork(sourceConversationTitle);
+      await waitFor(() => expect(identify).toHaveBeenCalled());
+      expect(container.querySelector("[data-conversation-attribution]")?.textContent).toBe(
+        expectedLabel,
+      );
       expect(container.querySelector("pre")).toBeNull();
       expect(queryByRole("button", { name: /copy/i })).toBeNull();
     },
   );
+
+  test("names a known source chat by its Agent's mark and current title", async () => {
+    vi.spyOn(agentRuntimeRuntime, "identify").mockResolvedValue({
+      threadId: "nodex:thread:source",
+      sessionId: "session-source",
+      title: "Passkey sign-in",
+      role: "chat",
+      agent: { kind: "claude", providerInstanceId: null, model: "claude-opus-5-5", effort: null },
+      archived: false,
+      host: null,
+    });
+    const view = renderFork("Old title");
+    const open = await view.findByRole("button", { name: "Open Passkey sign-in" });
+    expect(open.querySelector("svg")).not.toBeNull();
+  });
 });
 
 function buildContextCompactionBlock(

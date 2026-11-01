@@ -28,7 +28,6 @@ import {
   withAgentRuntimeOverviewTotals,
 } from "@/features/local-conversation/agent-runtime-subagent-overview";
 import {
-  agentRuntimeAgentLabel,
   agentRuntimeDelegatedTasks,
   requestAgentRuntimeTaskStop,
 } from "@/features/local-conversation/agent-runtime-delegated-tasks";
@@ -40,7 +39,10 @@ import {
 } from "@/features/local-conversation/view/subagents-panel/subagents-panel";
 import { projectSubagentOverviewRowToOpenPayload } from "./workbench-subagent-status";
 import type { ThreadOpenSubagentPayload } from "@/features/local-conversation/thread-stage-types";
-import { readAgentRuntimeServiceTier } from "../../../shared/agent-runtime-provider";
+import {
+  readAgentRuntimeEffort,
+  readAgentRuntimeServiceTier,
+} from "../../../shared/agent-runtime-provider";
 
 /** A child keeps its product Session and reads only its own bounded engine history. */
 export function AgentRuntimeChildPanel(input: {
@@ -88,9 +90,6 @@ export function AgentRuntimeChildPanel(input: {
     { ...input.hostActions, ...agent.actions },
   );
   const observedSelection = agent.state.conversation?.snapshot.projection.thread.modelSelection;
-  const observedEffort = observedSelection?.options?.find((option) =>
-    /effort|reasoning/iu.test(option.id),
-  )?.value;
   return (
     <ConversationRuntimeContext value={agent.runtime}>
       <div className="flex h-full min-h-0 flex-col">
@@ -98,15 +97,17 @@ export function AgentRuntimeChildPanel(input: {
           <SubagentsPanelDetailHeader
             threadId={input.threadId}
             displayName={input.title}
-            threadSettings={
+            agent={
               observedSelection
                 ? {
+                    kind: agent.runtime.kind,
+                    providerInstanceId: observedSelection.instanceId,
                     model: observedSelection.model,
-                    reasoningEffort: typeof observedEffort === "string" ? observedEffort : null,
-                    serviceTier: readAgentRuntimeServiceTier(observedSelection.options) ?? null,
+                    effort: readAgentRuntimeEffort(observedSelection.options),
                   }
                 : null
             }
+            fast={readAgentRuntimeServiceTier(observedSelection?.options) === "fast"}
             onBack={input.onBackToSubagents}
           />
         ) : null}
@@ -311,10 +312,6 @@ export function AgentRuntimeSubagentsOverviewPanel(input: {
   const loadingMore = useRef(new Set<"active" | "terminal">());
   const connection = useAgentRuntimeConnectionState();
   const readyGeneration = connection.status === "ready" ? connection.generation : null;
-  const labels = useSyncExternalStore(
-    agentRuntimeDelegatedTasks.subscribe,
-    agentRuntimeDelegatedTasks.readLabels,
-  );
   // Subscribing re-renders rows when a Stop request is made or settles.
   useSyncExternalStore(
     agentRuntimeDelegatedTasks.subscribe,
@@ -500,17 +497,7 @@ export function AgentRuntimeSubagentsOverviewPanel(input: {
       <div className="min-h-0 flex-1">
         <SubagentsPanelOverviewContent
           rootThreadId={input.threadId}
-          overview={projectAgentRuntimeSubagentOverview(
-            input.threadId,
-            source,
-            (task) =>
-              agentRuntimeAgentLabel(
-                labels,
-                task.providerInstanceId,
-                task.modelSelection?.model ?? task.model,
-              ),
-            approvalThreads,
-          )}
+          overview={projectAgentRuntimeSubagentOverview(input.threadId, source, approvalThreads)}
           onSelect={(row) => input.onSelect(projectSubagentOverviewRowToOpenPayload(row))}
           isStopping={(row) => {
             const task = taskForRow(row);

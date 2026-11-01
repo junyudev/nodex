@@ -12,6 +12,7 @@ import type {
   CodexDelegatedTaskView,
   CodexRuntimeNotice,
 } from "../../../../../shared/types";
+import type { ConversationAgent } from "../../../../../shared/conversation-identity";
 import { useConversationRuntimeOverride } from "../../conversation-runtime";
 import {
   canStopDelegatedTask,
@@ -30,6 +31,45 @@ const noSubscription = () => () => {};
 const actionClassName =
   "shrink-0 cursor-interaction rounded-sm px-1 text-xs text-token-text-tertiary hover:text-token-foreground focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-default disabled:opacity-60";
 
+/** The Agent a child's owner reports, or else the harness its task names. */
+function delegatedTaskAgent(
+  task: CodexDelegatedTaskView,
+  membership: CodexConversationChildMembership | undefined,
+): ConversationAgent {
+  return (
+    membership?.agent ?? {
+      kind: task.agentKind,
+      providerInstanceId: task.providerInstanceId,
+      model: membership?.thread?.model ?? null,
+      effort: null,
+    }
+  );
+}
+
+/** Opens one subagent's own conversation in the Subagents tab beside its parent. */
+function openSubagent(
+  onOpenThread: ThreadStageActions["onOpenThread"],
+  child: {
+    readonly threadId: string;
+    readonly name: string;
+    readonly model: string | null;
+    readonly status: "active" | "waiting" | "done";
+    readonly summary: string | null;
+  },
+) {
+  return onOpenThread(child.threadId, {
+    subagent: {
+      agentRole: null,
+      conversationId: child.threadId,
+      diffStats: null,
+      displayName: child.name,
+      spawnModel: child.model,
+      status: child.status,
+      statusSummary: child.summary,
+    },
+  });
+}
+
 function DelegatedTaskDetails({
   task,
   status,
@@ -41,12 +81,6 @@ function DelegatedTaskDetails({
   membership: CodexConversationChildMembership | undefined;
   onStop: (() => void) | undefined;
 }) {
-  const labels = useConversationRuntimeOverride()?.agentLabels;
-  const model = membership?.thread?.model ?? null;
-  const agent = useSyncExternalStore(
-    labels?.subscribe ?? noSubscription,
-    () => labels?.label(task.providerInstanceId, model) ?? null,
-  );
   const details = task.childThreadId
     ? [task.summary?.trim() || task.prompt.trim()].filter(Boolean)
     : [...new Set([task.prompt.trim(), task.summary?.trim()].filter(Boolean))];
@@ -72,7 +106,7 @@ function DelegatedTaskDetails({
           </div>
         ) : undefined
       }
-      metadata={agent}
+      agent={delegatedTaskAgent(task, membership)}
       path={task.agentPath ?? membership?.agentPath}
       startedAtMs={membership?.createdAtMs}
       action={
@@ -123,28 +157,23 @@ export function DelegatedTaskGroup({
     childMemberships?.map((membership) => [membership.threadId, membership]),
   );
   const items = tasks.map((task, index) => {
-    const membership = task.childThreadId ? memberships.get(task.childThreadId) : undefined;
-    const model = membership?.thread?.model ?? null;
+    const membership = memberships.get(task.childThreadId ?? task.taskId);
     const status = statuses[index] ?? task.status;
     const childThreadId = task.childThreadId;
     const onOpen =
       childThreadId && onOpenThread
         ? () => {
-            void onOpenThread(childThreadId, {
-              subagent: {
-                agentRole: null,
-                conversationId: childThreadId,
-                diffStats: null,
-                displayName: task.title,
-                spawnModel: model,
-                status:
-                  task.status === "waiting"
-                    ? "waiting"
-                    : isDelegatedTaskLive(task.status)
-                      ? "active"
-                      : "done",
-                statusSummary: task.summary,
-              },
+            void openSubagent(onOpenThread, {
+              threadId: childThreadId,
+              name: task.title,
+              model: membership?.agent?.model ?? membership?.thread?.model ?? null,
+              status:
+                task.status === "waiting"
+                  ? "waiting"
+                  : isDelegatedTaskLive(task.status)
+                    ? "active"
+                    : "done",
+              summary: task.summary,
             });
           }
         : undefined;
@@ -193,6 +222,92 @@ function RuntimeNoticeIcon({ notice }: { notice: CodexRuntimeNotice | undefined 
   return <InfoIcon className={className} />;
 }
 
+type SubagentReport = Extract<CodexRuntimeNotice, { kind: "report" }>;
+
+const REPORT_STATUS: Record<SubagentReport["outcome"], { sentence: string; status: string }> = {
+  completed: { sentence: "finished", status: "Done" },
+  updated: { sentence: "reported back", status: "Running" },
+  unknown: { sentence: "finished", status: "Done" },
+  failed: { sentence: "failed", status: "Failed" },
+  cancelled: { sentence: "stopped", status: "Stopped" },
+};
+
+/** The reported subagents, in report order, when the parent still knows each of them. */
+function reportedSubagents(
+  notice: SubagentReport,
+  memberships: readonly CodexConversationChildMembership[],
+): readonly CodexConversationChildMembership[] | null {
+  const reported =
+    notice.taskIds.length > 0
+      ? notice.taskIds.map((taskId) => memberships.find((child) => child.taskId === taskId))
+      : notice.childThreadId
+        ? [memberships.find((child) => child.threadId === notice.childThreadId)]
+        : [];
+  const known = reported.filter(
+    (child): child is CodexConversationChildMembership => child !== undefined,
+  );
+  return known.length > 0 && known.length === reported.length ? known : null;
+}
+
+/**
+ * Subagents reporting back read like the row that started them: the same avatars and names, the
+ * same details on hover, and each name opens its own conversation.
+ */
+function SubagentReportRow({
+  notice,
+  reported,
+  onOpenThread,
+  onOpenSubagentsPanel,
+}: {
+  notice: SubagentReport;
+  reported: readonly CodexConversationChildMembership[];
+  onOpenThread?: ThreadStageActions["onOpenThread"];
+  onOpenSubagentsPanel?: ThreadStageActions["onOpenSubagentsPanel"];
+}) {
+  const { sentence, status } = REPORT_STATUS[notice.outcome];
+  const tone = notice.outcome === "failed" ? "danger" : "neutral";
+  const items = reported.map((child) => {
+    const name = child.displayName?.trim() || "Subagent";
+    // A provider's task observation has no conversation of its own to open.
+    const conversation = child.task ? null : child.threadId;
+    return {
+      id: child.taskId ?? child.threadId,
+      name,
+      seed: conversation,
+      onOpen:
+        conversation && onOpenThread
+          ? () =>
+              void openSubagent(onOpenThread, {
+                threadId: conversation,
+                name,
+                model: child.agent?.model ?? child.thread?.model ?? null,
+                status: "done",
+                summary: null,
+              })
+          : undefined,
+      details: (
+        <SubagentActivityDetails
+          name={name}
+          status={status}
+          statusTone={tone}
+          agent={child.agent}
+          path={child.agentPath}
+          startedAtMs={child.createdAtMs}
+        />
+      ),
+    };
+  });
+  return (
+    <SubagentActivityInline
+      items={items}
+      statusLabel={sentence}
+      statusTone={tone}
+      onOpenAll={onOpenSubagentsPanel}
+      testId="subagent-report"
+    />
+  );
+}
+
 /**
  * Execution events with no provider item: reported background work (which also opens an
  * automatic Run), a Run's stop marker, and Runtime information.
@@ -200,12 +315,32 @@ function RuntimeNoticeIcon({ notice }: { notice: CodexRuntimeNotice | undefined 
 export function RuntimeNoticeRow({
   message,
   notice,
+  childMemberships = [],
   onOpenThread,
+  onOpenSubagentsPanel,
 }: {
   message: string;
   notice: CodexRuntimeNotice | undefined;
+  childMemberships?: readonly CodexConversationChildMembership[];
   onOpenThread?: ThreadStageActions["onOpenThread"];
+  onOpenSubagentsPanel?: ThreadStageActions["onOpenSubagentsPanel"];
 }) {
+  const reported =
+    notice?.kind === "report" && notice.source === "subagent"
+      ? reportedSubagents(notice, childMemberships)
+      : null;
+  if (notice?.kind === "report" && reported) {
+    return (
+      <div data-runtime-notice="report">
+        <SubagentReportRow
+          notice={notice}
+          reported={reported}
+          onOpenThread={onOpenThread}
+          onOpenSubagentsPanel={onOpenSubagentsPanel}
+        />
+      </div>
+    );
+  }
   const childThreadId = notice?.kind === "report" ? notice.childThreadId : null;
   return (
     <div

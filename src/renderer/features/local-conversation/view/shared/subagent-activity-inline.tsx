@@ -3,6 +3,8 @@ import { NodexHoverCard, NodexHoverCardProvider } from "@/components/ui/hover-ca
 import { useResolvedReducedMotion } from "@/lib/use-reduced-motion";
 import { cn } from "@/lib/utils";
 import { getSubagentActivityDisplayBudget } from "./subagent-activity-presentation";
+import type { ConversationAgent } from "../../../../../shared/conversation-identity";
+import { AgentIdentity } from "./agent-identity";
 import { SubagentAvatar, SubagentGlyphIcon } from "./subagent-avatar";
 
 export interface SubagentActivityInlineItem {
@@ -14,13 +16,17 @@ export interface SubagentActivityInlineItem {
   readonly onOpen?: () => void;
 }
 
-/** Metadata already available to the transcript; opening this surface never loads task history. */
+/**
+ * Metadata already available to the transcript; opening this surface never loads task history.
+ * The Agent line spells out who runs the subagent, so a Codex child of a Claude chat reads as one.
+ */
 export function SubagentActivityDetails({
   name,
   status,
   statusTone = "neutral",
   description,
-  metadata,
+  agent,
+  role,
   path,
   startedAtMs,
   action,
@@ -29,7 +35,9 @@ export function SubagentActivityDetails({
   readonly status: string;
   readonly statusTone?: "neutral" | "danger";
   readonly description?: ReactNode;
-  readonly metadata?: string | null;
+  readonly agent?: ConversationAgent | null;
+  /** A provider's own role for the subagent, such as a Codex agent role. */
+  readonly role?: string | null;
   readonly path?: string | null;
   readonly startedAtMs?: number | null;
   readonly action?: ReactNode;
@@ -44,8 +52,11 @@ export function SubagentActivityDetails({
         </span>
       </div>
       {description}
-      {metadata ? (
-        <span className="break-words text-xs text-token-text-tertiary">{metadata}</span>
+      {agent || role ? (
+        <span className="flex min-w-0 items-center gap-1.5 text-xs text-token-text-tertiary">
+          <AgentIdentity agent={agent} detail="agent" />
+          {role ? <span className="shrink-0">{agent ? `· ${role}` : role}</span> : null}
+        </span>
       ) : null}
       {path ? (
         <span className="break-all font-mono text-xs text-token-text-tertiary">{path}</span>

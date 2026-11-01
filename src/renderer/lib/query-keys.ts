@@ -168,6 +168,10 @@ export const queryKeys = {
     window: (scope: string, filter: string) => ["inbox", "window", scope, filter] as const,
     settings: () => ["inbox", "settings"] as const,
   },
+  conversationIdentity: {
+    all: () => ["conversationIdentity"] as const,
+    thread: (threadId: string) => ["conversationIdentity", threadId] as const,
+  },
   threadExecution: {
     all: () => ["threadExecution"] as const,
     location: (threadId: string) => ["threadExecution", "location", threadId] as const,

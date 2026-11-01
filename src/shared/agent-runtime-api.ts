@@ -375,6 +375,10 @@ export interface AgentRuntimeIpcApi {
     args: [target: AgentRuntimeSessionTarget];
     result: AgentRuntimeInspection;
   };
+  "agent-runtime:thread:identity": {
+    args: [input: { readonly threadId: string }];
+    result: import("./conversation-identity").ConversationIdentity | null;
+  };
   "agent-runtime:session:overview": {
     args: [input: AgentRuntimeOverviewInput];
     result: AgentRuntimeOperations["tasks.overview"]["output"];

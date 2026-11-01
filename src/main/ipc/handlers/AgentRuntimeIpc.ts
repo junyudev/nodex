@@ -130,6 +130,11 @@ export const live = Layer.effectDiscard(
     yield* ipc.handleQuery("agent-runtime:session:inspect", (event, value) =>
       handle(event, Inputs.AgentRuntimeTargetSchema, value, application.inspect),
     );
+    yield* ipc.handleQuery("agent-runtime:thread:identity", (event, value) =>
+      handle(event, Inputs.AgentRuntimeThreadIdentitySchema, value, (input) =>
+        application.identify(input.threadId),
+      ),
+    );
     yield* ipc.handleQuery("agent-runtime:session:overview", (event, value) =>
       handle(event, Inputs.AgentRuntimeOverviewSchema, value, application.overview),
     );

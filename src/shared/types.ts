@@ -4494,6 +4494,10 @@ export interface CodexConversationChildThreadMetadata {
 export interface CodexConversationChildMembership {
   /** Native task observation; this ID does not acquire Core Thread authority. */
   task?: import("./agent-conversation").AgentConversationTask;
+  /** The delegated task this child runs, where its execution owner tracks tasks. */
+  taskId?: string;
+  /** The Agent that runs this child, where its execution owner reports it. */
+  agent?: import("./conversation-identity").ConversationAgent | null;
   /** Undefined means unavailable; null authoritatively clears the selected pending request. */
   pendingRequest?: {
     request: CodexConversationLiveRequest;
@@ -4623,8 +4627,8 @@ export interface CodexSubagentOverviewRow {
   displayName: string;
   actorName: string | null;
   agentRole: string | null;
-  /** The Agent and model running this subagent, when the execution owner reports them. */
-  agentLabel?: string | null;
+  /** The Agent running this subagent, when the execution owner reports it. */
+  agent?: import("./conversation-identity").ConversationAgent | null;
   spawnModel: string | null;
   objective: string | null;
   status: CodexSubagentOverviewStatus;

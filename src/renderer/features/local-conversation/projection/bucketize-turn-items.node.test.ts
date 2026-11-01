@@ -2036,6 +2036,7 @@ describe("bucketizeTurnItems", () => {
             source: "subagent",
             outcome: "completed",
             childThreadId: "child",
+            taskIds: [],
           },
         },
       });

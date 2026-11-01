@@ -105,6 +105,8 @@ export function projectSubagentRowToOverview(row: CodexSubagentRow): CodexSubage
     actorName: row.actorName,
     agentRole: row.agentRole,
     spawnModel: row.spawnModel,
+    // A native child runs on its parent's Codex harness.
+    agent: { kind: "codex", providerInstanceId: null, model: row.spawnModel, effort: null },
     status: row.status,
     statusSummary: row.statusSummary,
     showInlineActivity: row.showInlineActivity,

@@ -1,5 +1,6 @@
 import type { QueryClient } from "@tanstack/react-query";
 import type { ProjectSessionsChangeEvent } from "../../shared/ipc-api";
+import type { ConversationIdentity } from "../../shared/conversation-identity";
 import type { ProjectSession, ProjectSessionSummary, ProjectSessionSummaryWindow } from "./types";
 import { projectSessionDetailQueryOptions } from "./query-options";
 import { queryKeys } from "./query-keys";
@@ -225,6 +226,19 @@ export async function invalidateProjectSessionScope(
       }),
     );
   }
+
+  // A renamed, archived or deleted chat updates every reference that names it.
+  const named =
+    event.detailInvalidation.kind === "all" ? null : event.detailInvalidation.sessionIds;
+  invalidations.push(
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.conversationIdentity.all(),
+      predicate: (query) => {
+        const identity = query.state.data as ConversationIdentity | null | undefined;
+        return !named || !identity?.sessionId || named.includes(identity.sessionId);
+      },
+    }),
+  );
 
   if (event.detailInvalidation.kind === "all") {
     invalidations.push(
