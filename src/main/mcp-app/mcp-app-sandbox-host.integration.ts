@@ -3,9 +3,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test } from "vite-plus/test";
 import { build } from "esbuild";
-import { _electron as electron, type ElectronApplication } from "playwright";
+import type { ElectronApplication } from "playwright";
 import { MCP_APP_REQUIRED_GUEST_PORT_NAMES } from "../../shared/mcp-app/mcp-app-sandbox-contract";
-import { isolatedElectronArguments } from "../../../scripts/isolated-run/electron-arguments";
+import { launchTestElectron } from "../../../scripts/testing/launch-electron";
 
 const temporaryDirectories: string[] = [];
 
@@ -66,13 +66,8 @@ describe("MCP App sandbox host Electron boundary", () => {
     childEnvironment.CODEX_HOME = path.join(home, "agent");
     let application: ElectronApplication | null = null;
     try {
-      application = await electron.launch({
-        args: [
-          path.join(outputDirectory, "main.js"),
-          "--home",
-          home,
-          ...isolatedElectronArguments(),
-        ],
+      application = await launchTestElectron({
+        args: [path.join(outputDirectory, "main.js"), "--home", home],
         env: childEnvironment,
       });
       const page = await application.firstWindow();

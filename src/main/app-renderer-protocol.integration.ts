@@ -2,12 +2,12 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { build } from "esbuild";
-import { _electron as electron, type ElectronApplication, type Page } from "playwright";
+import type { ElectronApplication, Page } from "playwright";
 import { createServer, type ViteDevServer } from "vite";
 import { afterEach, describe, expect, test } from "vite-plus/test";
 import { APP_RENDERER_URL, buildTopLevelRendererCsp } from "../shared/app-renderer-policy";
 import { buildAppFilesystemPath, buildAppFilesystemUrl } from "../shared/app-protocol";
-import { isolatedElectronArguments } from "../../scripts/isolated-run/electron-arguments";
+import { launchTestElectron } from "../../scripts/testing/launch-electron";
 import type { ProtocolImageFixtureControl } from "../../tests/fixtures/app-renderer-protocol/electron-main";
 
 const temporaryDirectories: string[] = [];
@@ -118,8 +118,8 @@ describe("production app renderer origin", () => {
     delete childEnvironment.ELECTRON_RUN_AS_NODE;
     let application: ElectronApplication | null = null;
     try {
-      application = await electron.launch({
-        args: [path.join(outputDirectory, "main.js"), ...isolatedElectronArguments()],
+      application = await launchTestElectron({
+        args: [path.join(outputDirectory, "main.js")],
         env: childEnvironment,
       });
       const page = await application.firstWindow();
@@ -216,8 +216,8 @@ describe("production app renderer origin", () => {
       delete childEnvironment.ELECTRON_RUN_AS_NODE;
       let application: ElectronApplication | null = null;
       try {
-        application = await electron.launch({
-          args: [path.join(outputDirectory, "main.js"), ...isolatedElectronArguments()],
+        application = await launchTestElectron({
+          args: [path.join(outputDirectory, "main.js")],
           env: childEnvironment,
         });
         const page = await application.firstWindow();
@@ -287,8 +287,8 @@ describe("development HTTP renderer origin", () => {
       delete childEnvironment.ELECTRON_RUN_AS_NODE;
       childEnvironment.NODEX_TEST_RENDERER_URL = developmentRendererUrl;
       childEnvironment.NODEX_TEST_HOLD_PROTOCOL_IMAGES = "1";
-      application = await electron.launch({
-        args: [path.join(outputDirectory, "main.js"), ...isolatedElectronArguments()],
+      application = await launchTestElectron({
+        args: [path.join(outputDirectory, "main.js")],
         env: childEnvironment,
       });
       const page = await application.firstWindow();

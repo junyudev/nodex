@@ -230,6 +230,30 @@ export default defineConfig({
     },
     overrides: [
       {
+        files: ["src/**/*.integration.ts", "tests/e2e/**/*.spec.ts", "scripts/scenarios/**/*.ts"],
+        rules: {
+          "no-restricted-imports": [
+            "error",
+            {
+              paths: [
+                {
+                  name: "playwright",
+                  importNames: ["_electron"],
+                  message:
+                    "Use launchTestElectron so disposable windows do not interrupt the desktop.",
+                },
+                {
+                  name: "@playwright/test",
+                  importNames: ["_electron"],
+                  message:
+                    "Use launchTestElectron so disposable windows do not interrupt the desktop.",
+                },
+              ],
+            },
+          ],
+        },
+      },
+      {
         files: ["packages/agent-runtime/src/**/*.test.ts"],
         rules: {
           // Native replay fixtures intentionally replace own Clock methods.

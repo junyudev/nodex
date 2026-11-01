@@ -1,5 +1,4 @@
 import { expect, test } from "@playwright/test";
-import { _electron } from "playwright";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
@@ -8,15 +7,12 @@ import path from "node:path";
 import packageJson from "../../package.json";
 
 import type { NativeClipboardBridge } from "../../src/main/platform/electron/native-clipboard";
-import { isolatedElectronArguments } from "../../scripts/isolated-run/electron-arguments";
+import { launchTestElectron } from "../../scripts/testing/launch-electron";
 
 test("enhances a browser copy without losing private formats or overwriting newer copies", async () => {
-  const application = await _electron.launch({
+  const application = await launchTestElectron({
     executablePath: process.env.NODEX_ELECTRON_CLIPBOARD_CANDIDATE,
-    args: [
-      path.join(process.cwd(), "tests/e2e/clipboard-fixture/main.cjs"),
-      ...isolatedElectronArguments(),
-    ],
+    args: [path.join(process.cwd(), "tests/e2e/clipboard-fixture/main.cjs")],
     env: {
       ...process.env,
       ELECTRON_RUN_AS_NODE: "",

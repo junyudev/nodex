@@ -2,10 +2,10 @@ import { copyFileSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync }
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { build } from "esbuild";
-import { _electron as electron, type ElectronApplication } from "playwright";
+import type { ElectronApplication } from "playwright";
 import { createServer, type ViteDevServer } from "vite";
 import { expect, test } from "vite-plus/test";
-import { isolatedElectronArguments } from "../../scripts/isolated-run/electron-arguments";
+import { launchTestElectron } from "../../scripts/testing/launch-electron";
 import { APP_RENDERER_URL, buildTopLevelRendererCsp } from "../shared/app-renderer-policy";
 import { buildAppFilesystemUrl } from "../shared/app-protocol";
 
@@ -72,12 +72,8 @@ test("decodes, plays and seeks local audio/video from packaged and Vite origins"
         if (!address || typeof address === "string") throw new Error("Vite did not bind a port");
         rendererUrl = `http://localhost:${address.port}/`;
       }
-      application = await electron.launch({
-        args: [
-          path.join(root, "main.js"),
-          `--user-data-dir=${path.join(root, mode)}`,
-          ...isolatedElectronArguments(),
-        ],
+      application = await launchTestElectron({
+        args: [path.join(root, "main.js"), `--user-data-dir=${path.join(root, mode)}`],
         env: {
           ...environment,
           NODEX_TEST_SLOW_MEDIA: "1",

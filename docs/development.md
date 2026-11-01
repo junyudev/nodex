@@ -850,11 +850,15 @@ The test commands follow production boundaries:
   against a stale `target/debug/nodex-core` binary.
   Electron E2E is retained for deliberate local/agent diagnostics and is not
   invoked by PR, Main, Nightly, Performance, or release-certification workflows.
-  Its windows run in the background: transparent, click-through, never focused,
-  and without a Dock icon, so a run does not interrupt other work. Playwright
-  still paints, captures and drives every page. A spec that asserts real window
-  focus or native window chrome passes `windows: "foreground"` to the harness;
-  set `NODEX_E2E_WINDOWS=foreground` to watch a whole run.
+  All Electron test launches, including standalone integration and clipboard
+  fixtures, use `launchTestElectron` from `scripts/testing/launch-electron.ts`.
+  Its windows run in the background: transparent, click-through, non-focusable,
+  and without a Dock icon, including windows that request immediate display in
+  their constructor. Playwright still paints, captures and drives every page.
+  A spec that asserts real window focus or native window chrome passes
+  `windows: "foreground"` to the launcher or scenario harness;
+  set `NODEX_E2E_WINDOWS=foreground` to watch a whole run. Restricted imports
+  prevent specs from bypassing this launcher with Playwright's `_electron`.
 - Real subscription-backed Agent canaries use the dedicated, single-case
   [`agent:smoke:paid` runner](paid-agent-smoke.md). The explicit command is the
   quota authorization; it fixes one worker, disables retries, copies only auth

@@ -6,8 +6,8 @@ import { createSocket } from "node:dgram";
 import { WebSocketServer } from "ws";
 import { afterAll, beforeAll, expect, test } from "vite-plus/test";
 import { build } from "esbuild";
-import { _electron as electron, type ElectronApplication, type Page } from "playwright";
-import { isolatedElectronArguments } from "../../../scripts/isolated-run/electron-arguments";
+import type { ElectronApplication, Page } from "playwright";
+import { launchTestElectron } from "../../../scripts/testing/launch-electron";
 import type { PageFileHtmlAdmission } from "../../shared/page-file-html";
 import type { PageFileHtmlFixture } from "../../../tests/fixtures/page-file-html/electron-main";
 import { PAGE_FILE_HTML_CSP } from "./page-file-html-policy";
@@ -73,8 +73,8 @@ async function withGuest(
         entry[1] !== undefined && entry[0] !== "ELECTRON_RUN_AS_NODE",
     ),
   );
-  const application = await electron.launch({
-    args: [path.join(outputDirectory, "main.js"), "--home", home, ...isolatedElectronArguments()],
+  const application = await launchTestElectron({
+    args: [path.join(outputDirectory, "main.js"), "--home", home],
     env,
   });
   try {

@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 
-import { _electron as electron, type ElectronApplication, type Page } from "playwright";
+import type { ElectronApplication, Page } from "playwright";
 
 import {
   acquireIsolatedRunLease,
@@ -26,7 +26,10 @@ import { getScenario } from "../registry";
 import { prepareScenarioAgentRuntime } from "../runtime/agent-runtime-fixture";
 import { inspectScenario, materializeScenario } from "../seed/scenario-seed";
 import { materializeDevelopmentSeed } from "./development-seed";
-import { isolatedElectronArguments } from "../../isolated-run/electron-arguments";
+import {
+  launchTestElectron,
+  type ElectronTestWindowPresentation,
+} from "../../testing/launch-electron";
 import { prepareElectronRuntime } from "../../prepare-electron-runtime";
 
 const repositoryRoot = process.cwd();
@@ -180,11 +183,7 @@ export interface NodexElectronLaunchInput {
  * that asserts real window focus or native window chrome asks for foreground windows.
  * `NODEX_E2E_WINDOWS=foreground` shows every window, for watching a run.
  */
-export type E2eWindowPresentation = "background" | "foreground";
-const e2eWindowPresentation = (
-  requested: E2eWindowPresentation | undefined,
-): E2eWindowPresentation =>
-  process.env.NODEX_E2E_WINDOWS === "foreground" ? "foreground" : (requested ?? "background");
+export type E2eWindowPresentation = ElectronTestWindowPresentation;
 
 export async function launchNodexElectronApplication(
   input: NodexElectronLaunchInput,
@@ -198,20 +197,14 @@ export async function launchNodexElectronApplication(
       ([key]) => key !== "CODEX_INTERNAL_ORIGINATOR_OVERRIDE" && key !== "ELECTRON_RENDERER_URL",
     ),
   );
-  return await electron.launch({
+  return await launchTestElectron({
+    windows: input.windows,
     executablePath,
     args: [
       ...(input.isolatedHostHome
         ? ["-r", path.join(repositoryRoot, "scripts/scenarios/harness/electron-isolated-paths.cjs")]
         : []),
-      ...(e2eWindowPresentation(input.windows) === "background"
-        ? [
-            "-r",
-            path.join(repositoryRoot, "scripts/scenarios/harness/electron-background-windows.cjs"),
-          ]
-        : []),
       ...(input.executablePath ? [] : [repositoryRoot]),
-      ...isolatedElectronArguments(),
     ],
     cwd: input.cwd ?? repositoryRoot,
     env: {
