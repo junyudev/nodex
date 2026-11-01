@@ -1457,7 +1457,7 @@ fn python_drafts_preserve_identity_merge_and_retry_but_reject_recreated_targets(
         serde_json::from_slice(&fs::read(draft.join("base/identity.json")).unwrap()).unwrap();
     let date_id = before["blocks"][1]["block_id"].clone();
     let python = Command::new("python3").args(["-c",
-        "from pathlib import Path; import sys; p=Path(sys.argv[1]); s=p.read_text(); assert s.count('Release date: Friday.')==2; p.write_text(s.replace('Release date: Friday.', 'Release date: Monday.', 1))",
+        "from pathlib import Path; import sys; p=Path(sys.argv[1]); s=p.read_text(); assert s.count('Release date: Friday.')==2; p.write_bytes(s.replace('Release date: Friday.', 'Release date: Monday.', 1).encode('utf-8'))",
         draft.join("work/body.md").to_str().unwrap(),
     ]).output().unwrap();
     assert!(

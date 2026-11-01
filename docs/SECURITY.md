@@ -641,11 +641,12 @@ has.
   creates only `~/.local/bin/nodex`, refuses non-symlinks and unrelated
   symlinks, and updates an earlier Nodex app symlink through a staged link plus
   rollback. It never edits a shell profile or requests elevated privileges.
-- Native Agent Skill setup is a separate global-only, symlink-only trust
-  boundary. It accepts only the fixed Codex and Claude Code leaf paths, verifies
+- Native Agent Skill setup is a separate global-only managed-link trust
+  boundary. Unix uses symlinks; Windows atomically publishes complete directory
+  junctions. It accepts only the fixed Codex and Claude Code leaf paths, verifies
   the exact signed-App bundle allowlist and tree digest before classifying any
   target, preflights every selected target, creates links without clobbering,
-  and removes only a raw absolute link to the current verified source. Ordinary
+  and removes only an absolute link to the current verified source. Ordinary
   directories, copies, hardlinks, relative/foreign/broken links, legacy
   `~/.codex` content, unknown parents, and moved-App links are external or
   conflicts and are never adopted, overwritten, followed, or recursively

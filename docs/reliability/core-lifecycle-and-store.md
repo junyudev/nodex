@@ -82,7 +82,8 @@ the rendezvous DACL using the operating system ACL tools.
 
 Windows CLI defaults to `%USERPROFILE%\.nodex`, independently of `HOME`.
 Managed Skill directories use junctions, which need no Developer Mode or symlink
-privilege. Browser-profile import reports `unsupported_platform` outside macOS.
+privilege. Only completed junctions are published, atomically and without replacing
+an existing target. Browser-profile import reports `unsupported_platform` outside macOS.
 
 ## Generation recovery
 

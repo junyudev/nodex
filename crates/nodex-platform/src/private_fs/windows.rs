@@ -418,9 +418,13 @@ pub fn directory_link(source: &Path, target: &Path) -> io::Result<()> {
     for code in substitute.into_iter().chain(print) {
         data.extend_from_slice(&code.to_le_bytes());
     }
-    create_dir(target)?;
+    let mut random = [0u8; 16];
+    getrandom::fill(&mut random)
+        .map_err(|error| io::Error::other(format!("junction randomness unavailable: {error:?}")))?;
+    let temporary = target.with_file_name(format!(".nodex-link-{}.tmp", hex::encode(random)));
+    create_dir(&temporary)?;
     let result = (|| {
-        let path = wide(target)?;
+        let path = wide(&temporary)?;
         let directory = handle(unsafe {
             CreateFileW(
                 path.as_ptr(),
@@ -450,8 +454,30 @@ pub fn directory_link(source: &Path, target: &Path) -> io::Result<()> {
         }
         Ok(())
     })();
+    // Publish only the completed reparse point; competing installers never see
+    // an ordinary staging directory at the managed target.
+    let result = result.and_then(|()| {
+        if unsafe {
+            MoveFileExW(
+                wide(&temporary)?.as_ptr(),
+                wide(target)?.as_ptr(),
+                MOVEFILE_WRITE_THROUGH,
+            )
+        } != 0
+        {
+            return Ok(());
+        }
+        let error = io::Error::last_os_error();
+        if fs::symlink_metadata(target).is_ok() {
+            return Err(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                "directory link target already exists",
+            ));
+        }
+        Err(error)
+    });
     if result.is_err() {
-        let _ = fs::remove_dir(target);
+        let _ = fs::remove_dir(&temporary);
     }
     result
 }

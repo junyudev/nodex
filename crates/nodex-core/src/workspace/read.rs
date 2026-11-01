@@ -947,7 +947,7 @@ mod tests {
                         [NOW],
                     )?;
                     transaction.execute_batch(
-                        "INSERT INTO projects( \
+                        &"INSERT INTO projects( \
                            id, library_id, database_block_id, lifecycle, binding_revision, \
                            name, description, appearance_color, appearance_marker_kind, \
                            appearance_marker_value, created, updated \
@@ -1055,7 +1055,7 @@ mod tests {
                            VALUES ('session-project', 'thread-1', \
                             '2026-07-19T03:33:00.000Z'), \
                            ('session-foreign', 'thread-foreign', \
-                            '2026-07-19T03:33:00.000Z');",
+                            '2026-07-19T03:33:00.000Z');".replace("/workspace", nodex_platform::fixture_path!("/workspace")).replace("/worktrees", nodex_platform::fixture_path!("/worktrees")),
                     )?;
                     crate::database::create_page_key_namespace(
                         transaction,

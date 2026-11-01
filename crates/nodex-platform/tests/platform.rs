@@ -144,3 +144,40 @@ fn releasing_a_sealed_snapshot_entry_preserves_its_cached_source() {
     private_fs::checked_metadata(&source, private_fs::EntryKind::File, Some(0o400)).unwrap();
     private_fs::remove_immutable_file(&source).unwrap();
 }
+
+#[test]
+fn concurrent_directory_links_publish_complete_targets_without_clobbering() {
+    let directory = tempfile::tempdir().unwrap();
+    let source = directory.path().join("source");
+    let target = directory.path().join("link");
+    private_fs::create_dir(&source).unwrap();
+    private_fs::write(source.join("owned"), b"unchanged").unwrap();
+    let barrier = std::sync::Arc::new(std::sync::Barrier::new(8));
+    let workers: Vec<_> = (0..8)
+        .map(|_| {
+            let source = source.clone();
+            let target = target.clone();
+            let barrier = barrier.clone();
+            std::thread::spawn(move || {
+                barrier.wait();
+                let result = private_fs::directory_link(&source, &target);
+                if let Err(error) = &result {
+                    assert_eq!(error.kind(), std::io::ErrorKind::AlreadyExists);
+                }
+                let metadata = std::fs::symlink_metadata(&target).unwrap();
+                assert!(private_fs::is_reparse_point(&metadata));
+                assert_eq!(
+                    std::fs::canonicalize(&target).unwrap(),
+                    std::fs::canonicalize(&source).unwrap()
+                );
+                result.is_ok()
+            })
+        })
+        .collect();
+    let winners = workers
+        .into_iter()
+        .map(|worker| worker.join().unwrap()).filter(|winner| *winner)
+        .count();
+    assert_eq!(winners, 1);
+    assert_eq!(std::fs::read(target.join("owned")).unwrap(), b"unchanged");
+}

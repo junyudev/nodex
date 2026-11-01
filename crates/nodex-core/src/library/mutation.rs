@@ -6736,15 +6736,24 @@ mod tests {
             .join("search-snapshots/cache/v1/body")
             .join(&page.body.sha256);
         assert!(body_cache.is_file());
-        assert_eq!(
+        let leased_inode =
             nodex_platform::private_fs::file_identity(root.join(&page.body.physical_relative_path))
-                .expect("file identity")
-                .inode,
-            nodex_platform::private_fs::file_identity(&body_cache)
-                .expect("file identity")
-                .inode,
-            "unchanged projections must use immutable hard links",
-        );
+                .expect("leased file identity")
+                .inode;
+        let cached_inode = nodex_platform::private_fs::file_identity(&body_cache)
+            .expect("cached file identity")
+            .inode;
+        if cfg!(unix) {
+            assert_eq!(
+                leased_inode, cached_inode,
+                "Unix snapshots share immutable hard links"
+            );
+        } else {
+            assert_ne!(
+                leased_inode, cached_inode,
+                "Windows snapshots have independently sealed copies"
+            );
+        }
 
         kernel
             .writer()
