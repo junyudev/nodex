@@ -1,0 +1,21 @@
+docs/reliability/core-lifecycle-and-store.md
+  s_ef93f85750414a::t_3a3ff762b05dfe 72-74
+src/main/core-client/core-launcher.ts
+  s_ef93f85750414a::t_994bfdf190b0f8 443,461,465,488-489,503
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "806728a7832104b67f2ede3beffa4dd73ecd6b29",
+  "prompts": {},
+  "sessions": {
+    "s_ef93f85750414a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1975c-d042-74f3-8106-b6eb6f221778",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
