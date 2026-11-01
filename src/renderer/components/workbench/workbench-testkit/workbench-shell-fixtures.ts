@@ -614,6 +614,7 @@ export function makeSidebarSnapshotItemForSession(session: ProjectSession): Code
     pinned: session.pinned,
     pinnedOrder: session.pinnedOrder,
     unread: session.unread,
+    remindAt: session.remindAt,
     archived: session.archived || session.thread.archived,
     statusType: "notLoaded",
     statusActiveFlags: [],

@@ -1,4 +1,5 @@
 import { useCallback, useLayoutEffect, useMemo } from "react";
+import { atom, useAtomValue, type Atom } from "jotai";
 import type {
   CodexComposerAppshotContext,
   CodexLiveFileAttachment,
@@ -450,15 +451,69 @@ export function consumeComposerDraftTransfer(
   return transfer;
 }
 
+/** The alias a root Session's Composer also saves its prompt under, so the chat's row can see it. */
+export function sessionComposerPromptAlias(sessionId: string): string {
+  return `session:${sessionId}`;
+}
+
+/**
+ * A prompt is saved under its Composer's own identity, its thread's local alias, and, for a root
+ * Session's Composer, the Session alias, which survives the first Turn attaching a thread.
+ */
 export function buildComposerPromptAliases(
   primaryIdentity: string,
   threadId: string | null | undefined,
+  rootSessionId?: string | null,
 ): readonly string[] {
   const primary = primaryIdentity.trim();
   if (!primary) throw new Error("Composer prompt requires a primary identity");
+  const aliases = [primary];
   const localAlias = threadId?.trim() ? `local:${threadId.trim()}` : null;
-  return localAlias && localAlias !== primary ? [primary, localAlias] : [primary];
+  if (localAlias && localAlias !== primary) aliases.push(localAlias);
+  const sessionAlias = rootSessionId?.trim()
+    ? sessionComposerPromptAlias(rootSessionId.trim())
+    : null;
+  if (sessionAlias && !aliases.includes(sessionAlias)) aliases.push(sessionAlias);
+  return aliases;
 }
+
+/** The first line of a Session's unsent prompt, or null when its Composer holds no text. */
+export function readSessionComposerDraftExcerpt(
+  drafts: ComposerPromptDraftMap,
+  sessionId: string,
+): string | null {
+  const serialized = drafts[sessionComposerPromptAlias(sessionId)];
+  if (serialized === undefined) return null;
+  const firstLine = deserializeComposerPromptDraft(serialized)
+    .text.split("\n")
+    .map((line) => line.trim())
+    .find((line) => line.length > 0);
+  return firstLine ?? null;
+}
+
+const sessionDraftExcerptAtoms = new WeakMap<MaitaiStore, Map<string, Atom<string | null>>>();
+
+/**
+ * A Session's unsent prompt excerpt, re-rendering only when that Session's draft changes, so typing
+ * in one chat never re-renders every sidebar row.
+ */
+export function useSessionComposerDraftExcerpt(sessionId: string | null): string | null {
+  const store = useMaitaiStore();
+  const excerptAtom = useMemo((): Atom<string | null> => {
+    if (!sessionId) return NO_SESSION_DRAFT_ATOM;
+    const bySession = sessionDraftExcerptAtoms.get(store) ?? new Map<string, Atom<string | null>>();
+    sessionDraftExcerptAtoms.set(store, bySession);
+    const existing = bySession.get(sessionId);
+    if (existing) return existing;
+    const drafts = getConcretePersistedAtom(store, composerPromptDraftsAtom);
+    const created = atom((get) => readSessionComposerDraftExcerpt(get(drafts).value, sessionId));
+    bySession.set(sessionId, created);
+    return created;
+  }, [sessionId, store]);
+  return useAtomValue(excerptAtom);
+}
+
+const NO_SESSION_DRAFT_ATOM: Atom<string | null> = atom(null);
 
 export function readComposerPromptDraft(
   drafts: ComposerPromptDraftMap,
@@ -565,14 +620,15 @@ export interface ComposerPromptDraftController {
 
 export function useComposerPromptDraft(
   threadId: string | null | undefined,
+  rootSessionId?: string | null,
 ): ComposerPromptDraftController {
   const composerHandle = useScopeHandle(ComposerScope);
   const store = useMaitaiStore();
   const loadable = usePersistedAtomValue(composerPromptDraftsAtom);
   const setDrafts = useSetPersistedAtom(composerPromptDraftsAtom);
   const aliases = useMemo(
-    () => buildComposerPromptAliases(composerHandle.path, threadId),
-    [composerHandle.path, threadId],
+    () => buildComposerPromptAliases(composerHandle.path, threadId, rootSessionId),
+    [composerHandle.path, threadId, rootSessionId],
   );
   const prompt = readComposerPromptDraft(loadable.value, aliases);
   useLayoutEffect(() => {
@@ -623,13 +679,14 @@ export interface ComposerImageDraftController {
 /** The thread Composer's saved images, kept under the same draft identities as its text. */
 export function useComposerImageDraft(
   threadId: string | null | undefined,
+  rootSessionId?: string | null,
 ): ComposerImageDraftController {
   const composerHandle = useScopeHandle(ComposerScope);
   const loadable = usePersistedAtomValue(composerImageDraftsAtom);
   const setDrafts = useSetPersistedAtom(composerImageDraftsAtom);
   const aliases = useMemo(
-    () => buildComposerPromptAliases(composerHandle.path, threadId),
-    [composerHandle.path, threadId],
+    () => buildComposerPromptAliases(composerHandle.path, threadId, rootSessionId),
+    [composerHandle.path, threadId, rootSessionId],
   );
   const images = useMemo(
     () => aliases.map((alias) => loadable.value[alias]).find((saved) => saved !== undefined) ?? [],

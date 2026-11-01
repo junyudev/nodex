@@ -123,6 +123,7 @@ export function mergePendingWorktreesIntoSidebarSnapshot(
         pinned: entry.isPinned,
         pinnedOrder: null,
         unread: entry.needsAttention,
+        remindAt: null,
         needsAttention: entry.needsAttention,
         archived: false,
         statusType: pendingWorktreeStatusType(entry),

@@ -1,10 +1,10 @@
 import { ChatWaitingIcon } from "@/components/shared/chat-waiting-icon";
 import { ActivitySpinnerIcon, ConversationIcon } from "@/components/shared/icons";
 import { SESSION_LIVE_INDICATOR_LABELS } from "@/lib/session-execution";
-import type { SidebarRowStatus } from "@/lib/sidebar-status";
+import type { SidebarRowLiveStatus } from "@/lib/sidebar-status";
 import { cn } from "@/lib/utils";
 
-export const SESSION_CHAT_TAB_STATUS_LABELS: Readonly<Record<SidebarRowStatus, string>> = {
+export const SESSION_CHAT_TAB_STATUS_LABELS: Readonly<Record<SidebarRowLiveStatus, string>> = {
   running: SESSION_LIVE_INDICATOR_LABELS.running,
   background: SESSION_LIVE_INDICATOR_LABELS.background,
   attention: SESSION_LIVE_INDICATOR_LABELS.waiting,
@@ -16,7 +16,7 @@ export const SESSION_CHAT_TAB_STATUS_LABELS: Readonly<Record<SidebarRowStatus, s
  * as its sidebar row does: a spinner while it works, a question bubble while it waits on its
  * person, and a dot for an unread answer.
  */
-export function SessionChatTabIcon({ status }: { readonly status: SidebarRowStatus | null }) {
+export function SessionChatTabIcon({ status }: { readonly status: SidebarRowLiveStatus | null }) {
   if (status === "running" || status === "background") {
     return (
       <span data-chat-tab-status={status} className="flex">

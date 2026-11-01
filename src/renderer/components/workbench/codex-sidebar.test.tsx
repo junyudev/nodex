@@ -3,7 +3,16 @@ import { act } from "react";
 import { fireEvent, waitFor } from "@testing-library/react";
 import { NodexHoverCardProvider } from "@/components/ui/hover-card";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
-import { render, textContent } from "@/test/dom";
+import { textContent } from "@/test/dom";
+// Rows read their chat's unsent draft from the application's Maitai store.
+import { renderWithAppMaitai as render, TestMaitaiRoot } from "@/test/app-maitai";
+import { render as renderWithoutRoot } from "@testing-library/react";
+import { createMaitaiStore, getConcretePersistedAtom } from "@/lib/maitai";
+import {
+  buildComposerPromptAliases,
+  composerPromptDraftsAtom,
+  updateComposerPromptDrafts,
+} from "@/features/local-conversation/view/composer/composer-draft-state";
 import type { CodexSidebarThreadItem } from "@/lib/types";
 import { CodexSidebarSection, CodexSidebarThreadRow } from "./codex-sidebar";
 import { createAgentRuntimeActivityStore } from "@/lib/agent-runtime-session-activity";
@@ -37,6 +46,7 @@ function makeThreadItem(overrides: Partial<CodexSidebarThreadItem> = {}): CodexS
     pinned: false,
     pinnedOrder: null,
     unread: false,
+    remindAt: null,
     archived: false,
     statusType: "notLoaded",
     statusActiveFlags: [],
@@ -104,6 +114,80 @@ describe("codex sidebar thread hover card", () => {
     expect(hoverCardText.includes("2d")).toBe(true);
     expect(hoverCardText.includes("nodex")).toBe(true);
     expect(hoverCardText.includes("feat/thread-tools")).toBe(true);
+  });
+
+  test("rests a quiet chat on its unsent draft, then on its reminder, and lists both", async () => {
+    const store = createMaitaiStore();
+    const remindAt = new Date(Date.now() + 60 * 60 * 1_000).toISOString();
+    const renderRow = (item: CodexSidebarThreadItem) => (
+      <TestMaitaiRoot store={store}>
+        <NodexHoverCardProvider>
+          <NodexTooltipProvider>
+            <CodexSidebarThreadRow item={item} active={false} hoverCardOpen onSelect={() => {}} />
+          </NodexTooltipProvider>
+        </NodexHoverCardProvider>
+      </TestMaitaiRoot>
+    );
+    let view!: ReturnType<typeof renderWithoutRoot>;
+    await act(async () => {
+      view = renderWithoutRoot(renderRow(makeThreadItem({ remindAt })));
+    });
+    const slotStatus = () =>
+      view.container
+        .querySelector("[data-app-action-sidebar-thread-status]")
+        ?.getAttribute("data-app-action-sidebar-thread-status");
+    const hoverCard = () => document.body.querySelector<HTMLElement>('[role="dialog"]')!;
+
+    expect(slotStatus()).toBe("reminder");
+    expect(
+      view.getByRole("button", {
+        name: "X Plan Codex terminal reverse engineer",
+        description: /^Reminder for /,
+      }),
+    ).not.toBeNull();
+    expect(
+      textContent(
+        hoverCard().querySelector("[data-app-action-sidebar-thread-hover-card-reminder]")!,
+      ),
+    ).toMatch(/^Reminds you (today|tomorrow) at /);
+
+    // The person starts a reply in this chat's Composer and leaves it unsent.
+    const writeDraft = (prompt: string) =>
+      act(async () => {
+        await store.jotaiStore.set(
+          getConcretePersistedAtom(store, composerPromptDraftsAtom),
+          (drafts) =>
+            updateComposerPromptDrafts(
+              drafts,
+              buildComposerPromptAliases("composer", null, "session-test"),
+              prompt,
+            ),
+        );
+      });
+    await writeDraft("Half a reply\nmore");
+    try {
+      expect(slotStatus()).toBe("draft");
+      expect(
+        textContent(
+          hoverCard().querySelector("[data-app-action-sidebar-thread-hover-card-draft]")!,
+        ),
+      ).toBe("Draft: Half a reply");
+      expect(
+        view.getByRole("button", {
+          name: "X Plan Codex terminal reverse engineer",
+          description: /^Unsent draft, Reminder for /,
+        }),
+      ).not.toBeNull();
+
+      // News outranks anything the person left behind.
+      await act(async () => {
+        view.rerender(renderRow(makeThreadItem({ remindAt, unread: true })));
+      });
+      expect(slotStatus()).toBe("unread");
+    } finally {
+      // Saved drafts outlive the store; leave none behind for other tests.
+      await writeDraft("");
+    }
   });
 
   test("marks an unread chat beside its age", async () => {

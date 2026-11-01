@@ -2,6 +2,7 @@ import { describe, expect, test } from "vite-plus/test";
 import {
   nativeThreadWaitsOnPerson,
   resolveSidebarGroupStatus,
+  resolveSidebarRowRestingStatus,
   resolveSidebarRowStatus,
 } from "./sidebar-status";
 
@@ -18,6 +19,17 @@ describe("resolveSidebarRowStatus", () => {
     [{ ...idle, unread: true, needsAttention: true }, "attention"],
   ] as const)("%j shows %s", (input, expected) => {
     expect(resolveSidebarRowStatus(input)).toBe(expected);
+  });
+});
+
+describe("resolveSidebarRowRestingStatus", () => {
+  test.each([
+    [{ hasDraft: false, remindAt: null }, null],
+    [{ hasDraft: false, remindAt: "2026-11-05T09:00:00.000Z" }, "reminder"],
+    [{ hasDraft: true, remindAt: null }, "draft"],
+    [{ hasDraft: true, remindAt: "2026-11-05T09:00:00.000Z" }, "draft"],
+  ] as const)("%j rests on %s", (input, expected) => {
+    expect(resolveSidebarRowRestingStatus(input)).toBe(expected);
   });
 });
 

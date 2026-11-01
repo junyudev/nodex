@@ -31,6 +31,8 @@ import type {
   CommandPaletteShellCommandContext,
   CommandPaletteShellCommandHandlers,
 } from "@/lib/command-palette-commands";
+import { remindThreadCommandHandlers } from "@/lib/command-palette-commands";
+import { chatReminderPresetTime } from "@/lib/chat-reminder";
 import type { useWorkbenchSidebarController } from "./use-workbench-sidebar-controller";
 import { CommandPalette } from "./command-palette";
 import {
@@ -57,7 +59,11 @@ type PanelOpeners = Pick<
 >;
 type SidebarCommands = Pick<
   ReturnType<typeof useWorkbenchSidebarController>,
-  "archiveSession" | "openRenameSessionDialog" | "toggleSessionPin"
+  | "archiveSession"
+  | "openRenameSessionDialog"
+  | "setSessionReminder"
+  | "toggleSessionPin"
+  | "toggleSessionUnread"
 >;
 
 interface WorkbenchCommandPaletteHostProps {
@@ -181,6 +187,8 @@ export function WorkbenchCommandPaletteHost({
     canCreatePage: newPage !== null,
     hasActiveSession: Boolean(activeSession),
     activeSessionPinned: activeSession?.pinned ?? false,
+    activeSessionUnread: activeSession?.unread ?? false,
+    activeSessionReminded: Boolean(activeSession?.remindAt),
     hasAttachedThread: hasSessionConversation(activeSession),
     canExportConversationMarkdown: activeSession
       ? resolveSessionMarkdownExport(resolveSessionExecution(activeSession)) !== null
@@ -233,6 +241,21 @@ export function WorkbenchCommandPaletteHost({
     toggleThreadPin: () => {
       if (!activeSession) return;
       void sidebarCommands.toggleSessionPin(activeSession);
+    },
+    toggleThreadUnread: () => {
+      if (!activeSession) return;
+      void sidebarCommands.toggleSessionUnread(activeSession);
+    },
+    ...remindThreadCommandHandlers((presetId) => {
+      if (!activeSession) return;
+      void sidebarCommands.setSessionReminder(
+        activeSession,
+        chatReminderPresetTime(presetId, new Date()),
+      );
+    }),
+    clearThreadReminder: () => {
+      if (!activeSession) return;
+      void sidebarCommands.setSessionReminder(activeSession, null);
     },
     openThreadInNewWindow: () => {
       if (!activeSession) return;

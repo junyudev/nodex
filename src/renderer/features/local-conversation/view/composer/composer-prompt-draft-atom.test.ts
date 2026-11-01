@@ -17,6 +17,7 @@ import {
   COMPOSER_PROMPT_DRAFTS_STORAGE_KEY,
   backfillComposerPromptAliases,
   buildComposerPromptAliases,
+  readSessionComposerDraftExcerpt,
   composerPromptDraftsAtom,
   deserializeComposerPromptDraft,
   readComposerPromptDraft,
@@ -88,6 +89,35 @@ describe("composer prompt draft atom", () => {
 
     expect(readComposerPromptDraft(attached, aliases)).toBe("survives pending attachment");
     expect(attached[aliases[0] ?? ""]).toBe(attached[aliases[1] ?? ""]);
+  });
+
+  test("lets a root Session's row read its unsent prompt across thread attachment", () => {
+    const draftAliases = buildComposerPromptAliases("app/draft:s1/route/composer", null, "s1");
+    expect(draftAliases).toEqual(["app/draft:s1/route/composer", "session:s1"]);
+    const typed = updateComposerPromptDrafts({}, draftAliases, "\n  Half a reply\nsecond line");
+    expect(readSessionComposerDraftExcerpt(typed, "s1")).toBe("Half a reply");
+    expect(readSessionComposerDraftExcerpt(typed, "s2")).toBeNull();
+
+    // The first Turn attaches a thread; the Session alias keeps naming the same draft.
+    const attachedAliases = buildComposerPromptAliases(
+      "app/session:s1/route/composer",
+      "thread_1",
+      "s1",
+    );
+    const attached = backfillComposerPromptAliases(typed, attachedAliases);
+    expect(readComposerPromptDraft(attached, attachedAliases)).toBe(
+      "\n  Half a reply\nsecond line",
+    );
+
+    // Sending or erasing the prompt clears it for the row too.
+    const cleared = updateComposerPromptDrafts(attached, attachedAliases, "");
+    expect(readSessionComposerDraftExcerpt(cleared, "s1")).toBeNull();
+    expect(
+      readSessionComposerDraftExcerpt(
+        updateComposerPromptDrafts(attached, attachedAliases, "   "),
+        "s1",
+      ),
+    ).toBeNull();
   });
 
   test("round-trips link marks and semantic mention identities", () => {

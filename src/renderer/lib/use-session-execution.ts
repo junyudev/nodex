@@ -12,7 +12,7 @@ import { runtimeSessionTarget } from "./session-execution";
 import {
   nativeThreadWaitsOnPerson,
   resolveSidebarRowStatus,
-  type SidebarRowStatus,
+  type SidebarRowLiveStatus,
 } from "./sidebar-status";
 import type { ProjectSession } from "./types";
 import { queryKeys } from "./query-keys";
@@ -89,7 +89,7 @@ function useInvalidateLocationAfterActivity(rootThreadId: string | null, live: b
 export function useSessionRowStatus(
   session: Pick<ProjectSession, "id" | "executionRef" | "thread" | "unread"> | null,
   store?: AgentRuntimeActivityStore,
-): SidebarRowStatus | null {
+): SidebarRowLiveStatus | null {
   const runtime = runtimeSessionTarget(session);
   const indicator = useAgentRuntimeSessionStatus(runtime?.sessionId, store);
   if (!session) return null;

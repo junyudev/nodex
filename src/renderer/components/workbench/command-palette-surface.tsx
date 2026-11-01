@@ -39,6 +39,7 @@ import {
   FilterIcon,
   ActivitySpinnerIcon,
   BackIcon,
+  ClockIcon,
   InboxIcon,
   NewPageIcon,
   PageIcon,
@@ -90,6 +91,7 @@ import {
 import { resolveQueryFreshAccept } from "../../lib/query-fresh-picker";
 import { cn } from "../../lib/utils";
 import { ProjectMarker } from "./project-marker";
+import { NativeMenuIcon } from "@/components/shared/icons/native-menu-icon";
 import { CommandMenuReferenceIcon } from "./command-menu-reference-icons";
 import {
   CommandPalettePageFilterPopover,
@@ -105,7 +107,10 @@ import {
   RENAME_THREAD_COMMAND_ID,
   TOGGLE_SIDEBAR_COMMAND_ID,
 } from "../../../shared/window-navigation";
-import { OPEN_DB_VIEW_TAB_COMMAND_ID } from "@/lib/command-palette-commands";
+import {
+  isRemindThreadCommandId,
+  OPEN_DB_VIEW_TAB_COMMAND_ID,
+} from "@/lib/command-palette-commands";
 import type { Project } from "@/lib/types";
 import {
   buildCommandPaletteSectionsModel,
@@ -220,6 +225,9 @@ function getCommandGlyph(id: string) {
     );
   if (id === "toggleThreadPin")
     return (props: { className?: string }) => <CommandMenuReferenceIcon name="pin" {...props} />;
+  if (id === "toggleThreadUnread")
+    return (props: { className?: string }) => <NativeMenuIcon iconKey="unread" {...props} />;
+  if (id === "clearThreadReminder" || isRemindThreadCommandId(id)) return ClockIcon;
   if (id === "openThreadInNewWindow")
     return (props: { className?: string }) => <CommandMenuReferenceIcon name="search" {...props} />;
   if (id === "toggleFileTreePanel" || id === "openFolder" || id === "searchFiles")

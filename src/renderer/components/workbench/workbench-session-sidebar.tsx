@@ -965,6 +965,7 @@ function SidebarThreadOrganizerSections({
           pinned: session.pinned,
           pinnedOrder: session.pinnedOrder,
           unread: session.unread,
+          remindAt: session.remindAt,
           archived: session.archived || session.thread?.archived === true,
           statusType: (session.thread?.statusType ??
             "notLoaded") as CodexSidebarThreadItem["statusType"],

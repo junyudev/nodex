@@ -15,10 +15,44 @@ import {
   TOGGLE_FULL_VIEW_COMMAND_ID,
 } from "../../shared/workbench-commands";
 import type { CommandPaletteCommand, CommandPaletteCommandGroup } from "./command-palette";
+import type { ChatReminderPresetId } from "./chat-reminder";
 import type { WorkbenchPanelActionKind } from "./workbench-panel-capabilities";
 import { formatToggleFullViewShortcutLabel } from "./workbench-command-shortcuts";
 
 export const OPEN_DB_VIEW_TAB_COMMAND_ID = "openDbViewTab";
+
+/** A reminder preset is resolved to its instant when the command runs, never when it is listed. */
+export const REMIND_THREAD_COMMAND_IDS = {
+  "in-1-hour": "remindThreadInOneHour",
+  "in-3-hours": "remindThreadInThreeHours",
+  "next-morning": "remindThreadInTheMorning",
+  "next-week": "remindThreadNextWeek",
+} as const satisfies Record<ChatReminderPresetId, string>;
+
+type RemindThreadCommandId = (typeof REMIND_THREAD_COMMAND_IDS)[ChatReminderPresetId];
+
+export function isRemindThreadCommandId(id: string): id is RemindThreadCommandId {
+  return Object.values(REMIND_THREAD_COMMAND_IDS).some((commandId) => commandId === id);
+}
+
+/** One handler per reminder preset command, each choosing its preset when it runs. */
+export function remindThreadCommandHandlers(
+  run: (presetId: ChatReminderPresetId) => void,
+): Record<RemindThreadCommandId, () => void> {
+  return {
+    remindThreadInOneHour: () => run("in-1-hour"),
+    remindThreadInThreeHours: () => run("in-3-hours"),
+    remindThreadInTheMorning: () => run("next-morning"),
+    remindThreadNextWeek: () => run("next-week"),
+  };
+}
+
+const REMIND_THREAD_COMMAND_TITLES: Readonly<Record<ChatReminderPresetId, string>> = {
+  "in-1-hour": "Remind me in 1 hour",
+  "in-3-hours": "Remind me in 3 hours",
+  "next-morning": "Remind me in the morning",
+  "next-week": "Remind me next week",
+};
 
 export type CommandPaletteShellCommandId =
   | typeof NAVIGATE_BACK_COMMAND_ID
@@ -32,6 +66,9 @@ export type CommandPaletteShellCommandId =
   | "archiveThread"
   | "copyConversationMarkdown"
   | "toggleThreadPin"
+  | "toggleThreadUnread"
+  | RemindThreadCommandId
+  | "clearThreadReminder"
   | "openThreadInNewWindow"
   | typeof TOGGLE_SIDEBAR_COMMAND_ID
   | "toggleSidePanel"
@@ -67,6 +104,9 @@ export interface CommandPaletteShellCommandContext {
   canCreatePage: boolean;
   hasActiveSession: boolean;
   activeSessionPinned: boolean;
+  activeSessionUnread: boolean;
+  /** Whether the active chat has a pending reminder. */
+  activeSessionReminded: boolean;
   hasAttachedThread: boolean;
   canExportConversationMarkdown: boolean;
   panelActionAvailability: Record<WorkbenchPanelActionKind, boolean>;
@@ -94,6 +134,9 @@ export function isCommandPaletteShellCommandId(id: string): id is CommandPalette
     id === "archiveThread" ||
     id === "copyConversationMarkdown" ||
     id === "toggleThreadPin" ||
+    id === "toggleThreadUnread" ||
+    isRemindThreadCommandId(id) ||
+    id === "clearThreadReminder" ||
     id === "openThreadInNewWindow" ||
     id === TOGGLE_SIDEBAR_COMMAND_ID ||
     id === "toggleSidePanel" ||
@@ -307,6 +350,45 @@ export function buildCommandPaletteCommands(
         disabled: sessionCommandDisabled,
       },
     ),
+    command(
+      "toggleThreadUnread",
+      "Chat",
+      context.activeSessionUnread ? "Mark chat as read" : "Mark chat as unread",
+      context.activeSessionUnread
+        ? "Clear the active chat's unread dot"
+        : "Keep the active chat's unread dot to come back to it",
+      ["unread", "read", "later", "chat", "thread", "session"],
+      1068,
+      {
+        shortcut: shortcutLabel("toggleThreadUnread", "CmdOrCtrl+Shift+U"),
+        disabled: sessionCommandDisabled,
+      },
+    ),
+    ...(
+      Object.entries(REMIND_THREAD_COMMAND_IDS) as [ChatReminderPresetId, RemindThreadCommandId][]
+    ).map(([presetId, commandId], index) =>
+      command(
+        commandId,
+        "Chat",
+        REMIND_THREAD_COMMAND_TITLES[presetId],
+        "Make the active chat unread again then",
+        ["remind", "reminder", "later", "snooze", "unread", "chat"],
+        1066 - index,
+        { disabled: sessionCommandDisabled },
+      ),
+    ),
+    ...(context.activeSessionReminded
+      ? [
+          command(
+            "clearThreadReminder",
+            "Chat",
+            "Cancel reminder",
+            "Stop the active chat's reminder",
+            ["remind", "reminder", "cancel", "chat"],
+            1061,
+          ),
+        ]
+      : []),
     command(
       "openSideChat",
       "Chat",

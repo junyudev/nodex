@@ -1132,8 +1132,11 @@ function ControlledThreadComposer(
   const browserAnnotationConversationId =
     composerThreadId ?? model.newThreadTarget?.sessionId ?? null;
   const selectionDraft = useThreadTextSelectionDraft(model.hostId, browserAnnotationConversationId);
-  const promptDraft = useComposerPromptDraft(composerThreadId);
-  const imageDraft = useComposerImageDraft(composerThreadId);
+  // A root Session's prompt is also saved under the Session, so its sidebar row shows the draft.
+  const rootSessionId =
+    model.composerChatKey?.kind === "session" ? model.composerChatKey.sessionId : null;
+  const promptDraft = useComposerPromptDraft(composerThreadId, rootSessionId);
+  const imageDraft = useComposerImageDraft(composerThreadId, rootSessionId);
   const [initialized, setInitialized] = useScopedAtom(composerDraftInitializedAtom);
   const [consumedIntentNonce, setConsumedIntentNonce] = useScopedAtom(
     composerConsumedIntentNonceAtom,

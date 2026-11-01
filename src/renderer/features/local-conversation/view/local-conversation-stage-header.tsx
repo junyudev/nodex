@@ -3,6 +3,7 @@ import {
   ArchiveIcon,
   ChatActionsIcon,
   ClearContextIcon,
+  ClockIcon,
   EditIcon,
   SessionPinFilledIcon,
   SessionPinIcon,
@@ -36,6 +37,7 @@ import type {
 } from "../thread-stage-types";
 import { useOpenNativeRuntimeDiagnostics } from "@/components/shared/agent-runtime/native-runtime-diagnostics";
 import { sessionForkDestinations } from "@/lib/session-fork";
+import { chatReminderPresets, describeChatReminder } from "@/lib/chat-reminder";
 import { SubagentAvatar } from "./shared/subagent-avatar";
 import { useThreadStageHeaderSlot } from "./thread-stage-header-slot";
 
@@ -59,6 +61,12 @@ function ThreadStageHeaderComponent({
 }: ThreadStageHeaderProps) {
   const { variant, paneMove } = useThreadStageHeaderSlot();
   const [menuOpen, setMenuOpen] = useState(false);
+  // Reminder presets are relative to when the menu opens.
+  const [menuOpenedAt, setMenuOpenedAt] = useState(() => new Date());
+  const handleMenuOpenChange = useCallback((open: boolean) => {
+    if (open) setMenuOpenedAt(new Date());
+    setMenuOpen(open);
+  }, []);
   const [generatingTitle, setGeneratingTitle] = useState(false);
   const [forking, setForking] = useState(false);
   const forkInFlight = useRef(false);
@@ -66,6 +74,7 @@ function ThreadStageHeaderComponent({
   const canRenameThread = Boolean(model.threadId && actions.onRequestRenameThread);
   const canArchiveThread = Boolean(model.threadId && actions.onArchiveThread);
   const canTogglePin = Boolean(model.threadId && actions.onToggleThreadPin);
+  const canSetReminder = Boolean(model.threadId && actions.onSetThreadReminder);
   const canGenerateTitle = Boolean(model.threadId && provider?.generateTitle);
   const canForkThread = Boolean(model.threadId && actions.onForkThread);
   const canClearContext = Boolean(model.threadId && actions.onClearContext);
@@ -77,7 +86,7 @@ function ThreadStageHeaderComponent({
     actions.onOpenSubagentsPanel,
   );
   // Groups follow the shared chat-actions order: identity, new work, copy, window, runtime, Archive.
-  const hasIdentityActions = canRenameThread || canGenerateTitle || canTogglePin;
+  const hasIdentityActions = canRenameThread || canGenerateTitle || canTogglePin || canSetReminder;
   const hasRuntimeActions = canOpenNativeTasks || Boolean(provider?.diagnostics);
   const showThreadActions = Boolean(
     model.threadId || model.cwd || model.showSideChatAction || actions.onCopyConversationMarkdown,
@@ -119,7 +128,7 @@ function ThreadStageHeaderComponent({
   const actionsMenu = showThreadActions ? (
     <NodexDropdownMenu
       open={menuOpen}
-      onOpenChange={setMenuOpen}
+      onOpenChange={handleMenuOpenChange}
       finalFocus={() => {
         if (!pendingModal.current) return true;
         const showDiagnostics = pendingModal.current;
@@ -179,6 +188,50 @@ function ThreadStageHeaderComponent({
         >
           {model.pinned ? "Unpin" : "Pin"}
         </NodexDropdownItem>
+      ) : null}
+      {canSetReminder ? (
+        <NodexDropdownFlyoutSubmenuItem
+          label="Remind me"
+          leftSlot={<ClockIcon className={menuIconClassName} />}
+          contentMotion="none"
+        >
+          {model.remindAt ? (
+            <>
+              <NodexDropdownItem disabled>
+                {describeChatReminder(model.remindAt, menuOpenedAt)}
+              </NodexDropdownItem>
+              <NodexDropdownSeparator />
+            </>
+          ) : null}
+          {chatReminderPresets(menuOpenedAt).map((preset) => (
+            <NodexDropdownItem
+              key={preset.id}
+              onSelect={() =>
+                void handleAction(
+                  () => actions.onSetThreadReminder?.(preset.remindAt),
+                  "Failed to set reminder",
+                )
+              }
+            >
+              {preset.label}
+            </NodexDropdownItem>
+          ))}
+          {model.remindAt ? (
+            <>
+              <NodexDropdownSeparator />
+              <NodexDropdownItem
+                onSelect={() =>
+                  void handleAction(
+                    () => actions.onSetThreadReminder?.(null),
+                    "Failed to cancel reminder",
+                  )
+                }
+              >
+                Cancel reminder
+              </NodexDropdownItem>
+            </>
+          ) : null}
+        </NodexDropdownFlyoutSubmenuItem>
       ) : null}
       {hasIdentityActions && hasNewWorkActions ? <NodexDropdownSeparator /> : null}
       {model.showSideChatAction ? (

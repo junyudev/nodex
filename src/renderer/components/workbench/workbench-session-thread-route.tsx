@@ -105,6 +105,7 @@ function SharedConnectedSessionThread({
   onRequestRenameThread,
   onArchiveThread,
   onToggleThreadPin,
+  onSetThreadReminder,
   commandKeymapState,
   isMac,
   presentation = "primary",
@@ -200,6 +201,7 @@ function SharedConnectedSessionThread({
   onRequestRenameThread: ThreadStageActions["onRequestRenameThread"];
   onArchiveThread: NonNullable<ThreadStageActions["onArchiveThread"]>;
   onToggleThreadPin: NonNullable<ThreadStageActions["onToggleThreadPin"]>;
+  onSetThreadReminder?: ThreadStageActions["onSetThreadReminder"];
   commandKeymapState?: CommandKeymapState | null;
   isMac: boolean;
   presentation?: "primary" | "panel";
@@ -425,6 +427,7 @@ function SharedConnectedSessionThread({
       onRequestRenameThread,
       onArchiveThread,
       onToggleThreadPin,
+      onSetThreadReminder,
       onOpenThread,
       onOpenTurnDiffReview,
       onOpenTurnDiffFileInSidePanel,
@@ -462,6 +465,7 @@ function SharedConnectedSessionThread({
         ? { kind: "project-draft" as const, projectId: session.projectId, draftId: projectDraftId }
         : undefined,
     threadPinned: session.pinned ?? false,
+    threadRemindAt: session.remindAt ?? null,
     threadActionShortcuts,
     modelPickerShortcut,
     projectWorkspacePath: summary

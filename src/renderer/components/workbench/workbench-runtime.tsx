@@ -2393,7 +2393,9 @@ export function WorkbenchRuntime({
     selectProject,
     selectSession,
     selectSidebarThread,
+    setSessionReminder,
     toggleSessionPin,
+    toggleSessionUnread,
     toggleSidebarThreadPinned,
   } = sidebarController;
 
@@ -2801,6 +2803,7 @@ export function WorkbenchRuntime({
     selectSession,
     archiveSession,
     toggleSessionPin,
+    toggleSessionUnread,
     refreshProjectSessions,
     resolveForkLocalEnvironmentConfigPath,
     closePendingWorktreeRoute,
@@ -5498,6 +5501,9 @@ export function WorkbenchRuntime({
           },
           onToggleThreadPin: async () => {
             await toggleSessionPin(activeRenderSession);
+          },
+          onSetThreadReminder: async (remindAt) => {
+            await setSessionReminder(activeRenderSession, remindAt);
           },
           commandKeymapState,
           isMac: isMacPlatform,

@@ -63,6 +63,7 @@ function chat(
     pinned: false,
     pinnedOrder: null,
     unread: false,
+    remindAt: null,
     archived: true,
     statusType: "idle",
     statusActiveFlags: [],

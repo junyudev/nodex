@@ -63,6 +63,7 @@ function makeThread(input: {
     pinned: input.pinned === true,
     pinnedOrder: input.pinned === true ? 0 : null,
     unread: false,
+    remindAt: null,
     archived: false,
     statusType: "notLoaded",
     statusActiveFlags: [],

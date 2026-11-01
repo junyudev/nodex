@@ -575,6 +575,14 @@ export const CODEX_COMMAND_REGISTRY = [
   command("toggleThreadPin", "Toggle pin", "Pin or unpin the current chat", 60, "app", [
     "CmdOrCtrl+Alt+P",
   ]),
+  command(
+    "toggleThreadUnread",
+    "Toggle unread",
+    "Mark the current chat unread to come back to it, or read",
+    65,
+    "app",
+    ["CmdOrCtrl+Shift+U"],
+  ),
   command("findInThread", "Find", "Find in the current chat, review, or project view", 70, "app", [
     "CmdOrCtrl+F",
   ]),

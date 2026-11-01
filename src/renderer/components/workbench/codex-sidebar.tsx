@@ -24,7 +24,9 @@ import {
   BranchStatusIcon,
   CheckmarkIcon,
   ArchiveIcon,
+  ClockIcon,
   CloseIcon,
+  EditIcon,
   PageIcon,
   PinOffIcon,
   ProjectFolderIcon,
@@ -88,7 +90,13 @@ import {
 import { StatusIcon } from "@/lib/status-presentation";
 import { SidebarStatusIndicator } from "./sidebar-status-indicator";
 import { ChatWaitingIcon } from "@/components/shared/chat-waiting-icon";
-import { resolveSidebarGroupStatus, SIDEBAR_GROUP_STATUS_LABELS } from "@/lib/sidebar-status";
+import {
+  resolveSidebarGroupStatus,
+  resolveSidebarRowRestingStatus,
+  SIDEBAR_GROUP_STATUS_LABELS,
+} from "@/lib/sidebar-status";
+import { describeChatReminder, describeChatReminderAbsolute } from "@/lib/chat-reminder";
+import { useSessionComposerDraftExcerpt } from "@/features/local-conversation/view/composer/composer-draft-state";
 import { cn } from "@/lib/utils";
 import {
   workspaceProjectCommands,
@@ -1496,6 +1504,19 @@ function CodexSidebarThreadHoverCardMetadataRow({
   );
 }
 
+/** Reads the clock when the card opens, so "today" and "tomorrow" are relative to that moment. */
+function CodexSidebarThreadHoverCardReminder({ remindAt }: { remindAt: string }) {
+  const [openedAt] = useState(Date.now);
+  return (
+    <div data-app-action-sidebar-thread-hover-card-reminder="">
+      <CodexSidebarThreadHoverCardMetadataRow
+        icon={<ClockIcon className="icon-2xs" />}
+        label={describeChatReminder(remindAt, new Date(openedAt))}
+      />
+    </div>
+  );
+}
+
 function CodexSidebarThreadHoverCardLinkedPage({
   page,
   onOpen,
@@ -1559,6 +1580,7 @@ function CodexSidebarThreadHoverCardLinkedPage({
 function CodexSidebarThreadHoverCard({
   item,
   waiting,
+  draftExcerpt,
   linkedPage,
   projectLabel,
   branchName,
@@ -1568,6 +1590,8 @@ function CodexSidebarThreadHoverCard({
   item: CodexSidebarThreadItem;
   /** The chat waits on its person; hovering hides the row's own status glyph. */
   waiting: boolean;
+  /** The first line of the chat's unsent prompt. */
+  draftExcerpt: string | null;
   linkedPage: SessionLinkedPage | null;
   projectLabel?: string | null;
   branchName?: string | null;
@@ -1632,6 +1656,15 @@ function CodexSidebarThreadHoverCard({
           </div>
         ) : null}
       </div>
+      {draftExcerpt ? (
+        <div data-app-action-sidebar-thread-hover-card-draft="">
+          <CodexSidebarThreadHoverCardMetadataRow
+            icon={<EditIcon className="icon-xs" />}
+            label={`Draft: ${draftExcerpt}`}
+          />
+        </div>
+      ) : null}
+      {item.remindAt ? <CodexSidebarThreadHoverCardReminder remindAt={item.remindAt} /> : null}
       <CodexSidebarThreadHoverCardMetadataRow
         icon={<ProjectFolderIcon className="icon-xs" />}
         label={resolvedProjectLabel}
@@ -1822,19 +1855,29 @@ function CodexSidebarThreadRowView({
   const pinButtonLabel = item.pinned ? "Unpin chat" : "Pin chat";
   const title = item.title;
   const archiveDisabled = item.disabled || archivePending;
-  const { running, needsAttention, status } = live;
-  // A settled chat rests on its linked Page's status; anything live about the chat outranks it.
+  const { running, needsAttention } = live;
+  const draftExcerpt = useSessionComposerDraftExcerpt(item.sessionId);
+  // With nothing live, a chat rests on what its person left behind: a draft, then a reminder.
+  const status =
+    live.status ??
+    resolveSidebarRowRestingStatus({ hasDraft: draftExcerpt !== null, remindAt: item.remindAt });
+  // Otherwise a settled chat rests on its linked Page's status.
   const pageStatus = status ? null : (linkedPage?.status ?? null);
-  // The trailing slot shows one status; the description keeps unread news even under a spinner.
-  const statusDescription = needsAttention
-    ? live.needsApproval
-      ? SESSION_LIVE_INDICATOR_LABELS.approval
-      : SESSION_LIVE_INDICATOR_LABELS.waiting
-    : item.unread
-      ? "Unread"
-      : pageStatus
-        ? `Page status: ${pageStatus.label}`
-        : null;
+  // The trailing slot shows one status; the description keeps every fact it can hide.
+  const statusDescription =
+    [
+      needsAttention
+        ? live.needsApproval
+          ? SESSION_LIVE_INDICATOR_LABELS.approval
+          : SESSION_LIVE_INDICATOR_LABELS.waiting
+        : null,
+      !needsAttention && item.unread ? "Unread" : null,
+      draftExcerpt !== null ? "Unsent draft" : null,
+      item.remindAt ? describeChatReminderAbsolute(item.remindAt) : null,
+      pageStatus ? `Page status: ${pageStatus.label}` : null,
+    ]
+      .filter((part): part is string => part !== null)
+      .join(", ") || null;
   const statusDescriptionId = useId();
   const titleId = useId();
   const showRestingPinnedButton = showPinSlot && item.pinned;
@@ -2089,6 +2132,7 @@ function CodexSidebarThreadRowView({
           <CodexSidebarThreadHoverCard
             item={item}
             waiting={needsAttention}
+            draftExcerpt={draftExcerpt}
             linkedPage={linkedPage}
             projectLabel={hoverCardProjectLabel}
             branchName={resolvedHoverCardBranchName}
@@ -2170,6 +2214,7 @@ export function CodexThreadRow({
     pinned: session.pinned,
     pinnedOrder: session.pinnedOrder,
     unread: session.unread,
+    remindAt: session.remindAt,
     archived: session.archived || session.thread?.archived === true,
     statusType: (session.thread?.statusType ?? "notLoaded") as CodexSidebarThreadItem["statusType"],
     statusActiveFlags: (session.thread?.statusActiveFlags ??

@@ -4,7 +4,7 @@ import type { SessionLiveIndicator } from "./session-execution";
 import {
   nativeThreadWaitsOnPerson,
   resolveSidebarRowStatus,
-  type SidebarRowStatus,
+  type SidebarRowLiveStatus,
 } from "./sidebar-status";
 
 export interface SidebarThreadRowRuntimeFacts {
@@ -20,8 +20,8 @@ export interface SidebarThreadRowLiveView {
   readonly background: boolean;
   readonly needsAttention: boolean;
   readonly needsApproval?: boolean;
-  /** The single trailing status the row shows. */
-  readonly status: SidebarRowStatus | null;
+  /** The live status the row shows; with none, the row may rest on a resting status. */
+  readonly status: SidebarRowLiveStatus | null;
 }
 
 function withStatus(view: Omit<SidebarThreadRowLiveView, "status">): SidebarThreadRowLiveView {

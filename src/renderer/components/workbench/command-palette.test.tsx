@@ -98,6 +98,8 @@ function makeCommandContext(
     canCreatePage: true,
     hasActiveSession: true,
     activeSessionPinned: false,
+    activeSessionUnread: false,
+    activeSessionReminded: false,
     hasAttachedThread: true,
     canExportConversationMarkdown: true,
     panelActionAvailability: {

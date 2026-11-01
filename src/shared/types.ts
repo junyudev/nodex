@@ -1417,7 +1417,7 @@ export interface CodexSidebarThreadItem {
   pinned: boolean;
   pinnedOrder: number | null;
   unread: boolean;
-  remindAt?: string | null;
+  remindAt: string | null;
   needsAttention?: boolean;
   archived: boolean;
   statusType: CodexThreadStatusType;

@@ -232,6 +232,47 @@ describe("ThreadStageHeader", () => {
     );
   });
 
+  test("sets, states and cancels the chat's reminder from Remind me", async () => {
+    const { ThreadStageHeader } = await import("./local-conversation-stage-header");
+    const onSetThreadReminder = vi.fn(async (_remindAt: string | null) => {});
+    const remindAt = new Date(Date.now() + 2 * 60 * 60 * 1_000).toISOString();
+    const view = render(
+      <ThreadStageHeader
+        model={buildModel({ remindAt })}
+        actions={{ ...buildActions(), onSetThreadReminder }}
+        onErrorMessage={() => {}}
+      />,
+    );
+    const openRemindMe = async () => {
+      await openNodexMenu(view.getByRole("button", { name: "Chat actions" }));
+      await act(async () => {
+        fireEvent.keyDown(view.getByRole("menuitem", { name: "Remind me" }), {
+          key: "ArrowRight",
+        });
+        await Promise.resolve();
+      });
+      await settleAsyncRender();
+    };
+
+    await openRemindMe();
+    expect(view.getByRole("menuitem", { name: /^Reminds you (today|tomorrow) at / })).toBeTruthy();
+    const openedAt = Date.now();
+    await act(async () => {
+      fireEvent.click(view.getByRole("menuitem", { name: "In 1 hour" }));
+      await Promise.resolve();
+    });
+    const chosen = Date.parse(onSetThreadReminder.mock.calls[0]?.[0] ?? "");
+    expect(chosen - openedAt).toBeGreaterThanOrEqual(59 * 60 * 1_000);
+    expect(chosen - openedAt).toBeLessThanOrEqual(61 * 60 * 1_000);
+
+    await openRemindMe();
+    await act(async () => {
+      fireEvent.click(view.getByRole("menuitem", { name: "Cancel reminder" }));
+      await Promise.resolve();
+    });
+    expect(onSetThreadReminder).toHaveBeenLastCalledWith(null);
+  });
+
   test("opens Copy as a separate submenu with Codex item ordering", async () => {
     const { ThreadStageHeader } = await import("./local-conversation-stage-header");
     const screen = render(

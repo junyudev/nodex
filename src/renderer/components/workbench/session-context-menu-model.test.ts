@@ -1,14 +1,20 @@
 import { describe, expect, test } from "vite-plus/test";
 import type { Project, ProjectSession } from "@/lib/types";
 import { DEFAULT_PROJECT_APPEARANCE } from "../../../shared/project-appearance";
+import { chatReminderPresets } from "@/lib/chat-reminder";
 import {
   SESSION_CONTEXT_MENU_ACTION_IDS,
   buildSessionContextMenuItems,
   readSessionMoveToProjectActionId,
   readSessionOpenInActionId,
+  readSessionRemindAtActionId,
   resolveSessionProjectMoveContainers,
   sessionMoveToProjectActionId,
+  sessionRemindAtActionId,
 } from "./session-context-menu-model";
+
+/** Wednesday afternoon, local time. */
+const MENU_OPENED_AT = new Date(2026, 10, 4, 14, 0);
 
 function makeSession(overrides: Partial<ProjectSession> = {}): ProjectSession {
   const now = "2026-06-08T00:00:00.000Z";
@@ -120,12 +126,17 @@ describe("session context menu model", () => {
         { id: "vscode", label: "VS Code", iconUrl: "file:///apps/vscode.png" },
         { id: "fileManager", label: "Finder" },
       ],
+      now: MENU_OPENED_AT,
     });
 
     expect(flattenActionIds(items)).toEqual([
       SESSION_CONTEXT_MENU_ACTION_IDS.togglePin,
       SESSION_CONTEXT_MENU_ACTION_IDS.rename,
       SESSION_CONTEXT_MENU_ACTION_IDS.markUnread,
+      "session.remind",
+      ...chatReminderPresets(MENU_OPENED_AT).map((preset) =>
+        sessionRemindAtActionId(preset.remindAt),
+      ),
       SESSION_CONTEXT_MENU_ACTION_IDS.archive,
       "separator",
       "session.moveToProject",
@@ -157,12 +168,13 @@ describe("session context menu model", () => {
   test("shows the exact command accelerators without registering global shortcuts", () => {
     const items = buildSessionContextMenuItems({ session: makeSession() });
     const accelerators = items
-      .slice(0, 4)
+      .slice(0, 5)
       .map((item) => (item.type === "separator" ? null : item.accelerator));
     expect(accelerators).toEqual([
       "Alt+CommandOrControl+P",
       "Alt+CommandOrControl+R",
       "Shift+CommandOrControl+U",
+      undefined,
       "Shift+CommandOrControl+A",
     ]);
     const copy = items.find((item) => item.type === "submenu" && item.id === "session.copy");
@@ -320,5 +332,47 @@ describe("session context menu model", () => {
     });
     expect(items[0]?.type === "separator" ? null : items[0]?.label).toBe("Unpin");
     expect(items[2]?.type === "separator" ? null : items[2]?.label).toBe("Mark as read");
+  });
+
+  test("offers reminder presets, and for a pending reminder says when and offers to cancel", () => {
+    const remindMenu = (remindAt: string | null) => {
+      const item = buildSessionContextMenuItems({
+        session: makeSession({ remindAt }),
+        now: MENU_OPENED_AT,
+      }).find((candidate) => candidate.type === "submenu" && candidate.id === "session.remind");
+      if (item?.type !== "submenu") throw new Error("Remind me submenu missing");
+      return item;
+    };
+
+    const fresh = remindMenu(null);
+    expect(fresh).toMatchObject({ label: "Remind me", iconKey: "reminder" });
+    expect(fresh.submenu.map((item) => (item.type === "separator" ? "—" : item.label))).toEqual([
+      "In 1 hour",
+      "In 3 hours",
+      "Tomorrow, 9:00 AM",
+      "Next week, Mon 9:00 AM",
+    ]);
+    const tomorrow = fresh.submenu[2];
+    expect(tomorrow?.type === "separator" ? null : readSessionRemindAtActionId(tomorrow!.id)).toBe(
+      new Date(2026, 10, 5, 9).toISOString(),
+    );
+
+    const pending = remindMenu(new Date(2026, 10, 5, 9).toISOString());
+    expect(pending.submenu.map((item) => (item.type === "separator" ? "—" : item.label))).toEqual([
+      "Reminds you tomorrow at 9:00 AM",
+      "—",
+      "In 1 hour",
+      "In 3 hours",
+      "Tomorrow, 9:00 AM",
+      "Next week, Mon 9:00 AM",
+      "—",
+      "Cancel reminder",
+    ]);
+    expect(pending.submenu[0]).toMatchObject({ enabled: false });
+    expect(pending.submenu.at(-1)).toMatchObject({
+      id: SESSION_CONTEXT_MENU_ACTION_IDS.clearReminder,
+    });
+    expect(readSessionRemindAtActionId("session.remindAt:not-a-time")).toBeNull();
+    expect(readSessionRemindAtActionId(SESSION_CONTEXT_MENU_ACTION_IDS.markUnread)).toBeNull();
   });
 });

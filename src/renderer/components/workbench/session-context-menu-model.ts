@@ -15,10 +15,12 @@ import {
   type SessionExecutionLocation,
 } from "@/lib/session-execution";
 import { sessionForkDestinations, type SessionForkDestination } from "@/lib/session-fork";
+import { chatReminderPresets, describeChatReminder } from "@/lib/chat-reminder";
 
 export const SESSION_CONTEXT_MENU_MOVE_TO_PROJECT_PREFIX = "session.moveToProject:";
 export const SESSION_CONTEXT_MENU_MOVE_TO_SECTION_PREFIX = "session.moveToSection:";
 export const SESSION_CONTEXT_MENU_OPEN_IN_PREFIX = "session.openIn:";
+export const SESSION_CONTEXT_MENU_REMIND_AT_PREFIX = "session.remindAt:";
 
 export const SESSION_CONTEXT_MENU_ACTION_IDS = {
   togglePin: "session.togglePin",
@@ -28,6 +30,7 @@ export const SESSION_CONTEXT_MENU_ACTION_IDS = {
   fork: "session.fork",
   forkInNewWorktree: "session.forkInNewWorktree",
   markUnread: "session.markUnread",
+  clearReminder: "session.clearReminder",
   copyWorkingDirectory: "session.copyWorkingDirectory",
   copyDeeplink: "session.copyDeeplink",
   copyConversationMarkdown: "session.copyConversationMarkdown",
@@ -40,7 +43,8 @@ export type SessionContextMenuActionId =
   | (typeof SESSION_CONTEXT_MENU_ACTION_IDS)[keyof typeof SESSION_CONTEXT_MENU_ACTION_IDS]
   | `${typeof SESSION_CONTEXT_MENU_MOVE_TO_PROJECT_PREFIX}${string}`
   | `${typeof SESSION_CONTEXT_MENU_MOVE_TO_SECTION_PREFIX}${string}`
-  | `${typeof SESSION_CONTEXT_MENU_OPEN_IN_PREFIX}${FileLinkOpenerId}`;
+  | `${typeof SESSION_CONTEXT_MENU_OPEN_IN_PREFIX}${FileLinkOpenerId}`
+  | `${typeof SESSION_CONTEXT_MENU_REMIND_AT_PREFIX}${string}`;
 
 export interface SessionContextMenuOpenInTarget {
   readonly id: FileLinkOpenerId;
@@ -57,6 +61,8 @@ export interface SessionContextMenuInput {
   /** Runtime location comes from its execution owner; native location defaults to Core metadata. */
   location?: SessionExecutionLocation | null;
   forkDestinations?: readonly SessionForkDestination[];
+  /** Reminder presets and descriptions are relative to when the menu opens. */
+  now?: Date;
 }
 
 export function sessionMoveToProjectActionId(projectId: string): SessionContextMenuActionId {
@@ -79,6 +85,49 @@ export function readSessionMoveToSectionActionId(actionId: string): string | nul
 
 export function sessionOpenInActionId(openerId: FileLinkOpenerId): SessionContextMenuActionId {
   return `${SESSION_CONTEXT_MENU_OPEN_IN_PREFIX}${openerId}`;
+}
+
+/** A reminder preset carries its instant, so the chosen time is the one the menu showed. */
+export function sessionRemindAtActionId(remindAt: string): SessionContextMenuActionId {
+  return `${SESSION_CONTEXT_MENU_REMIND_AT_PREFIX}${remindAt}`;
+}
+
+export function readSessionRemindAtActionId(actionId: string): string | null {
+  if (!actionId.startsWith(SESSION_CONTEXT_MENU_REMIND_AT_PREFIX)) return null;
+  const remindAt = actionId.slice(SESSION_CONTEXT_MENU_REMIND_AT_PREFIX.length).trim();
+  return remindAt && Number.isFinite(Date.parse(remindAt)) ? remindAt : null;
+}
+
+/** "Remind me" offers the presets; a pending reminder first says when, and can be cancelled. */
+function buildSessionReminderSubmenu(remindAt: string | null, now: Date): NativeContextMenuItem {
+  const presets: NativeContextMenuItem[] = chatReminderPresets(now).map((preset) => ({
+    id: sessionRemindAtActionId(preset.remindAt),
+    label: preset.label,
+    enabled: true,
+  }));
+  return {
+    id: "session.remind",
+    type: "submenu",
+    label: "Remind me",
+    iconKey: "reminder",
+    submenu: remindAt
+      ? [
+          {
+            id: "session.reminderStatus",
+            label: describeChatReminder(remindAt, now),
+            enabled: false,
+          },
+          { type: "separator" },
+          ...presets,
+          { type: "separator" },
+          {
+            id: SESSION_CONTEXT_MENU_ACTION_IDS.clearReminder,
+            label: "Cancel reminder",
+            enabled: true,
+          },
+        ]
+      : presets,
+  };
 }
 
 export function readSessionOpenInActionId(actionId: string): FileLinkOpenerId | null {
@@ -281,6 +330,7 @@ export function buildSessionContextMenuItems(
       iconKey: "unread",
       accelerator: "Shift+CommandOrControl+U",
     },
+    buildSessionReminderSubmenu(session.remindAt, input.now ?? new Date()),
     {
       id: SESSION_CONTEXT_MENU_ACTION_IDS.archive,
       label: "Archive",

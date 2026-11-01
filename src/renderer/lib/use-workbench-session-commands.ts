@@ -175,6 +175,7 @@ interface WorkbenchSessionCommandsInput {
     options?: { readonly showToast?: boolean },
   ) => Promise<boolean>;
   readonly toggleSessionPin: (session: ProjectSession) => Promise<void>;
+  readonly toggleSessionUnread: (session: ProjectSession) => Promise<void>;
   readonly refreshProjectSessions: (projectId: string | null) => Promise<unknown>;
   readonly resolveForkLocalEnvironmentConfigPath: (
     workspaceRoot: string | null | undefined,
@@ -233,6 +234,7 @@ export function useWorkbenchSessionCommands({
   selectSession,
   archiveSession,
   toggleSessionPin,
+  toggleSessionUnread,
   refreshProjectSessions,
   resolveForkLocalEnvironmentConfigPath,
   closePendingWorktreeRoute,
@@ -715,6 +717,13 @@ export function useWorkbenchSessionCommands({
         return;
       }
 
+      if (matchesKeyboardEventToCommand(event, shortcutState, "toggleThreadUnread")) {
+        if (!activeSession) return;
+        event.preventDefault();
+        void toggleSessionUnread(activeSession);
+        return;
+      }
+
       if (matchesKeyboardEventToCommand(event, shortcutState, "focusBrowserAddressBar")) {
         const input = document.querySelector<HTMLInputElement>(
           "[data-browser-sidebar-address-input='true']",
@@ -737,6 +746,7 @@ export function useWorkbenchSessionCommands({
     startNewChatInProject,
     setProcessManagerOpen,
     toggleSessionPin,
+    toggleSessionUnread,
   ]);
 
   const createManualTab = useCallback(

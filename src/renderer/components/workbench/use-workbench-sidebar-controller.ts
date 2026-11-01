@@ -30,11 +30,13 @@ import {
   readSessionMoveToProjectActionId,
   readSessionMoveToSectionActionId,
   readSessionOpenInActionId,
+  readSessionRemindAtActionId,
   resolveSessionProjectMoveContainers,
   SESSION_CONTEXT_MENU_ACTION_IDS,
 } from "./session-context-menu-model";
 import { showNativeContextMenu } from "@/lib/native-context-menu";
 import { toast } from "@/components/ui/toast";
+import { formatChatReminderConfirmation } from "@/lib/chat-reminder";
 import { writeTextToClipboard } from "@/lib/clipboard";
 import { presentWorkbenchSessionDomainWithScene } from "@/lib/workbench-scene-presentation";
 import {
@@ -791,6 +793,19 @@ export function useWorkbenchSidebarController({
     [catalog, codexControl, mergeSessionInState],
   );
 
+  const setSessionReminder = useCallback(
+    async (session: ProjectSessionDomain, remindAt: string | null) => {
+      try {
+        const updated = await catalog.setReminder(session, remindAt);
+        if (updated) mergeSessionInState(updated);
+        if (remindAt) toast.success(formatChatReminderConfirmation(remindAt, new Date()));
+      } catch {
+        toast.danger(remindAt ? "Failed to set reminder" : "Failed to cancel reminder");
+      }
+    },
+    [catalog, mergeSessionInState],
+  );
+
   const copySessionText = useCallback(
     async (text: string, successMessage: string, errorMessage: string) => {
       const copied = await writeTextToClipboard(text);
@@ -971,6 +986,15 @@ export function useWorkbenchSidebarController({
         await toggleSessionUnread(session);
         return;
       }
+      if (actionId === SESSION_CONTEXT_MENU_ACTION_IDS.clearReminder) {
+        await setSessionReminder(session, null);
+        return;
+      }
+      const remindAt = readSessionRemindAtActionId(actionId);
+      if (remindAt) {
+        await setSessionReminder(session, remindAt);
+        return;
+      }
       if (actionId === SESSION_CONTEXT_MENU_ACTION_IDS.copyWorkingDirectory) {
         await copySessionText(
           (await readSessionLocation(session))?.cwd ?? "",
@@ -1023,6 +1047,7 @@ export function useWorkbenchSidebarController({
       openRenameSessionDialog,
       queryClient,
       readSessionLocation,
+      setSessionReminder,
       toggleSessionPin,
       toggleSessionUnread,
     ],
@@ -1113,7 +1138,9 @@ export function useWorkbenchSidebarController({
     selectProject,
     selectSession,
     selectSidebarThread,
+    setSessionReminder,
     toggleSessionPin,
+    toggleSessionUnread,
     toggleSidebarThreadPinned,
   };
 }

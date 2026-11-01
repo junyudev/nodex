@@ -20,6 +20,7 @@ const item: CodexSidebarThreadItem = {
   pinned: false,
   pinnedOrder: null,
   unread: false,
+  remindAt: null,
   archived: false,
   statusType: "notLoaded",
   statusActiveFlags: [],

@@ -363,6 +363,8 @@ export interface ThreadStageRouteInput {
   projectId: string | null;
   sessionId?: string | null;
   threadPinned?: boolean;
+  /** When the chat becomes unread again, if its person asked to be reminded. */
+  threadRemindAt?: string | null;
   threadActionShortcuts?: ThreadStageHeaderModel["shortcuts"];
   modelPickerShortcut?: CommandShortcutPresentation | null;
   projectWorkspacePath?: string | null;
@@ -514,6 +516,8 @@ export interface ThreadStageActions {
   onRequestRenameThread?: () => void;
   onArchiveThread?: () => void | Promise<void>;
   onToggleThreadPin?: () => void | Promise<void>;
+  /** Sets or, with null, cancels the chat's reminder. */
+  onSetThreadReminder?: (remindAt: string | null) => void | Promise<void>;
   onCopyConversationMarkdown?: () => Promise<void>;
   onSteerPrompt: (input: Omit<CodexSteerTurnInput, "threadId">) => Promise<void>;
   onInterruptTurn: (turnId?: string) => Promise<void>;
@@ -628,6 +632,7 @@ export type ThreadStageHostActions = Pick<
   | "onRequestRenameThread"
   | "onArchiveThread"
   | "onToggleThreadPin"
+  | "onSetThreadReminder"
   | "onOpenThread"
   | "onOpenTurnDiffReview"
   | "onOpenTurnDiffFileInSidePanel"
@@ -1241,6 +1246,7 @@ export interface ThreadStageHeaderModel {
   title: string;
   cwd: string | null;
   pinned?: boolean;
+  remindAt?: string | null;
   subagentName?: string | null;
   shortcuts?: {
     togglePin?: string;
