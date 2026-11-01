@@ -316,20 +316,40 @@ pub fn sync_directory(_path: &Path) -> io::Result<()> {
 }
 /// Defender and indexers may transiently withhold delete sharing. Retry for at most 1 second.
 pub fn atomic_replace(source: impl AsRef<Path>, target: impl AsRef<Path>) -> io::Result<()> {
-    let source = wide(source.as_ref())?;
-    let target = wide(target.as_ref())?;
+    let source = source.as_ref();
+    let target = target.as_ref();
+    let sealed_target = match fs::symlink_metadata(target) {
+        Ok(metadata) if is_reparse_point(&metadata) => {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "replacement target is a reparse point",
+            ));
+        }
+        Ok(metadata) => metadata.is_file() && metadata.permissions().readonly(),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => false,
+        Err(error) => return Err(error),
+    };
+    let source_name = wide(source)?;
+    let target_name = wide(target)?;
     for attempt in 0..11 {
-        if unsafe {
+        let result = if sealed_target {
+            replace_sealed_file(&source_name, &target_name)
+        } else if unsafe {
             MoveFileExW(
-                source.as_ptr(),
-                target.as_ptr(),
+                source_name.as_ptr(),
+                target_name.as_ptr(),
                 MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
             )
         } != 0
         {
-            return Ok(());
-        }
-        let error = io::Error::last_os_error();
+            Ok(())
+        } else {
+            Err(io::Error::last_os_error())
+        };
+        let error = match result {
+            Ok(()) => return Ok(()),
+            Err(error) => error,
+        };
         if attempt == 10
             || !matches!(
                 error.raw_os_error().map(|code| code as u32),
@@ -342,6 +362,58 @@ pub fn atomic_replace(source: impl AsRef<Path>, target: impl AsRef<Path>) -> io:
     }
     unreachable!()
 }
+
+// FileRenameInfoEx can replace a read-only target without briefly weakening its
+// attributes or protected DACL. The flags are part of the Windows 11 rename contract.
+fn replace_sealed_file(source: &[u16], target: &[u16]) -> io::Result<()> {
+    const REPLACE_IF_EXISTS: u32 = 0x1;
+    const IGNORE_READONLY_ATTRIBUTE: u32 = 0x40;
+    let file = handle(unsafe {
+        CreateFileW(
+            source.as_ptr(),
+            DELETE | READ_CONTROL | FILE_READ_ATTRIBUTES,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+            null(),
+            OPEN_EXISTING,
+            FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_WRITE_THROUGH,
+            null_mut(),
+        )
+    })?;
+    let file: File = file.into();
+    security(&file, true, None)?;
+    if !file.metadata()?.is_file() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "replacement source must be a private regular file",
+        ));
+    }
+    let filename = &target[..target.len() - 1];
+    let bytes =
+        std::mem::offset_of!(FILE_RENAME_INFO, FileName) + (filename.len() + 1) * size_of::<u16>();
+    let mut storage = vec![0usize; bytes.div_ceil(size_of::<usize>())];
+    let information = storage.as_mut_ptr().cast::<FILE_RENAME_INFO>();
+    // SAFETY: aligned zeroed storage holds the header plus the complete UTF-16 name.
+    unsafe {
+        (*information).Anonymous.Flags = REPLACE_IF_EXISTS | IGNORE_READONLY_ATTRIBUTE;
+        (*information).FileNameLength = std::mem::size_of_val(filename) as u32;
+        std::ptr::copy_nonoverlapping(
+            filename.as_ptr(),
+            (*information).FileName.as_mut_ptr(),
+            filename.len(),
+        );
+        if SetFileInformationByHandle(
+            file.as_raw_handle(),
+            FileRenameInfoEx,
+            information.cast(),
+            bytes as u32,
+        ) != 0
+        {
+            return Ok(());
+        }
+    }
+    Err(io::Error::last_os_error())
+}
+
 pub fn validate_private_handle(file: &File, mode: u32) -> io::Result<Metadata> {
     security(file, true, Some(mode & 0o200 == 0))?;
     let metadata = file.metadata()?;

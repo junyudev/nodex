@@ -58,8 +58,10 @@ handles elevated Windows accounts without accepting another user’s owner SID.
 Immutable search snapshots use read-only
 access, restored only by the cleanup owner. Unix shares sealed files by hard link;
 Windows creates independently sealed copies. Files are flushed before publication.
-Directory synchronization is a no-op on Windows; replacement requests write-through
-and retries sharing/access/lock violations for at most one second to tolerate
+Directory synchronization is a no-op on Windows. Ordinary replacement requests
+write-through; sealed-file replacement uses native rename flags that preserve the
+old file’s read-only access. Both retry sharing/access/lock violations for at most
+one second to tolerate
 transient antivirus and indexer handles.
 
 On Windows, Core re-executes once through its native bootstrap, retaining the

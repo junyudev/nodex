@@ -182,3 +182,24 @@ fn concurrent_directory_links_publish_complete_targets_without_clobbering() {
     assert_eq!(winners, 1);
     assert_eq!(std::fs::read(target.join("owned")).unwrap(), b"unchanged");
 }
+
+#[test]
+fn atomic_replacement_preserves_sealing_and_existing_readers() {
+    let directory = tempfile::tempdir().unwrap();
+    let target = directory.path().join("receipt");
+    let source = directory.path().join("pending");
+    private_fs::write(&target, b"old").unwrap();
+    private_fs::set_mode(&target, 0o400).unwrap();
+    private_fs::write(&source, b"new").unwrap();
+    private_fs::set_mode(&source, 0o400).unwrap();
+    let mut reader = private_fs::open_read(&target).unwrap();
+    private_fs::atomic_replace(&source, &target).unwrap();
+    let mut old = Vec::new();
+    reader.read_to_end(&mut old).unwrap();
+    assert_eq!(old, b"old");
+    assert_eq!(std::fs::read(&target).unwrap(), b"new");
+    private_fs::validate_private_handle(&reader, 0o400).unwrap();
+    private_fs::checked_metadata(&target, private_fs::EntryKind::File, Some(0o400)).unwrap();
+    drop(reader);
+    private_fs::remove_immutable_file(&target).unwrap();
+}
