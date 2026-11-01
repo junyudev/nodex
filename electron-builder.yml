@@ -180,6 +180,8 @@ nsis:
   oneClick: true
   perMachine: false
   allowElevation: false
+  packElevateHelper: false
+  buildUniversalInstaller: false
   runAfterFinish: false
   deleteAppDataOnUninstall: false
   shortcutName: Nodex

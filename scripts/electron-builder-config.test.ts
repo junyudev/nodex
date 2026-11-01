@@ -88,6 +88,30 @@ describe("electron-builder runtime resources", () => {
     expect(config.publish).toBeUndefined();
   });
 
+  test("installs Windows per user without adding an elevation runtime", () => {
+    const config = load(
+      fs.readFileSync(path.resolve("electron-builder.yml"), "utf8"),
+    ) as ElectronBuilderConfig;
+    expect(config.appId).toBe("app.jyu.nodex");
+    expect(config.win).toMatchObject({
+      icon: "icon.ico",
+      requestedExecutionLevel: "asInvoker",
+      signExecutable: false,
+      target: [{ target: "nsis", arch: ["x64", "arm64"] }],
+    });
+    expect(config.nsis).toMatchObject({
+      oneClick: true,
+      perMachine: false,
+      allowElevation: false,
+      packElevateHelper: false,
+      buildUniversalInstaller: false,
+      runAfterFinish: false,
+      deleteAppDataOnUninstall: false,
+      artifactName: "${productName}-${version}-win-${arch}-setup.${ext}",
+    });
+    expect(config.protocols).toContainEqual({ name: "Nodex Deep Link", schemes: ["nodex"] });
+  });
+
   test("grants microphone capture only to the hardened top-level app", () => {
     const configPath = path.resolve("electron-builder.yml");
     const config = load(fs.readFileSync(configPath, "utf8")) as ElectronBuilderConfig;

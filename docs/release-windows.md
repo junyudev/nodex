@@ -28,7 +28,7 @@ A target CPU different from the build host is rejected. The artifacts are:
 | x64          | `dist/Nodex-<version>-win-x64-setup.exe`   |
 | arm64        | `dist/Nodex-<version>-win-arm64-setup.exe` |
 
-The one-click installer is per-user and requests no administrator access.
+The one-click installer is per-user, includes no elevation helper, and requests no administrator access.
 Its application identity is `app.jyu.nodex`; it registers `nodex://` and installs
 under the user's Programs directory. The installed Profile defaults to
 `%USERPROFILE%\.nodex`. Uninstall removes the application and its registrations;
