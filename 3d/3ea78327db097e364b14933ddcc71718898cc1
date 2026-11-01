@@ -1,0 +1,20 @@
+src/main/platform/node/ProfileSnapshotControl.node.test.ts
+  s_61ededb051faa8::t_57368800f835ac 3,39-43
+  s_61ededb051faa8::t_22de9b41e2a612 44-46,51
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3d3ea78327db097e364b14933ddcc71718898cc1",
+  "prompts": {},
+  "sessions": {
+    "s_61ededb051faa8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19725-1673-78a3-85e3-bdba96788967",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
