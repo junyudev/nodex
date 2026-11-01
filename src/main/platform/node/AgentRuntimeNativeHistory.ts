@@ -41,7 +41,7 @@ export async function readAgentRuntimeNativeHistory(
 ): Promise<ReadonlyMap<string, AgentRuntimeNativeHistory>> {
   const home = resolve(profileHome, "agent-runtime");
   const manifestPath = join(home, "native-history", "manifest.json");
-  const entry = await lstat(manifestPath).catch((cause: unknown) => {
+  const entry = await lstat(manifestPath, { bigint: true }).catch((cause: unknown) => {
     if (missing(cause)) return null;
     throw cause;
   });
@@ -49,8 +49,8 @@ export async function readAgentRuntimeNativeHistory(
   if (
     !entry.isFile() ||
     entry.isSymbolicLink() ||
-    entry.nlink !== 1 ||
-    entry.size > MAX_MANIFEST_BYTES
+    entry.nlink !== 1n ||
+    entry.size > BigInt(MAX_MANIFEST_BYTES)
   )
     throw new Error("Native history manifest must be a bounded private regular file");
   const root = await realpath(home);
@@ -60,12 +60,12 @@ export async function readAgentRuntimeNativeHistory(
   const file = await open(manifestPath, constants.O_RDONLY | constants.O_NOFOLLOW);
   let parsed: z.infer<typeof manifestSchema>;
   try {
-    const stat = await file.stat();
+    const stat = await file.stat({ bigint: true });
     if (
       stat.ino !== entry.ino ||
       stat.dev !== entry.dev ||
-      stat.nlink !== 1 ||
-      stat.size > MAX_MANIFEST_BYTES
+      stat.nlink !== 1n ||
+      stat.size > BigInt(MAX_MANIFEST_BYTES)
     )
       throw new Error("Native history manifest changed during admission");
     const data = Buffer.alloc(MAX_MANIFEST_BYTES + 1);
