@@ -235,7 +235,7 @@ export class LocalHttpTransport {
   #eventContract: CoreEventContract | null = null;
 
   constructor(
-    readonly socketPath: string,
+    readonly endpoint: string,
     readonly authCapability: string,
     options: LocalHttpTransportOptions = {},
   ) {
@@ -302,7 +302,7 @@ export class LocalHttpTransport {
       };
       const request = httpRequest(
         {
-          socketPath: this.socketPath,
+          socketPath: this.endpoint,
           path: requestPath,
           method,
           agent: false,
@@ -389,7 +389,7 @@ export class LocalHttpTransport {
       };
       const request = httpRequest(
         {
-          socketPath: this.socketPath,
+          socketPath: this.endpoint,
           path: requestPath,
           method: "POST",
           agent: false,
@@ -479,7 +479,7 @@ export class LocalHttpTransport {
       };
       const request = httpRequest(
         {
-          socketPath: this.socketPath,
+          socketPath: this.endpoint,
           path: requestPath,
           method,
           agent: false,
@@ -591,7 +591,7 @@ export class LocalHttpTransport {
       });
       const request = httpRequest(
         {
-          socketPath: this.socketPath,
+          socketPath: this.endpoint,
           path: documentLive?.path ?? projectionLive?.path ?? `/core/v1/events?after=${after}`,
           method: "GET",
           agent: false,
