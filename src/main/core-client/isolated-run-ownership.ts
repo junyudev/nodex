@@ -134,6 +134,8 @@ const assertOwned = (stats: Stats, label: string): void => {
 };
 
 const assertMode = (stats: Stats, expected: number, label: string): void => {
+  // Node's Windows mode bits do not describe the directory's inherited user ACL.
+  if (process.platform === "win32") return;
   const actual = stats.mode & 0o777;
   if (actual === expected) return;
   throw new Error(`${label} has mode ${actual.toString(8)}; expected ${expected.toString(8)}`);
@@ -218,6 +220,9 @@ const readClaimAtPath = (claimPath: string): IsolatedRunClaim =>
   parseClaim(readMetadata(claimPath, "Isolated run claim"));
 
 const fsyncDirectory = (directory: string): void => {
+  // Windows cannot open directories through this Node API. Metadata files are still flushed
+  // before atomic publication, and layout/generation validation remains mandatory on every OS.
+  if (process.platform === "win32") return;
   const descriptor = openSync(directory, "r");
   try {
     fsyncSync(descriptor);

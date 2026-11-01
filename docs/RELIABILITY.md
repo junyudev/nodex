@@ -393,6 +393,10 @@ released by their semantic owner. Supervised isolated runs, including developmen
 verification, release their environment lease only after exact child/Core cleanup is proven. Uncertain
 external cleanup fails closed and preserves recoverable state rather than claiming success.
 
+Isolated-run metadata retains exact file types, directory layout, generation and live-process
+fences on every host. Windows uses inherited directory ACLs instead of POSIX mode bits;
+metadata files are flushed before atomic publication without an unsupported directory fsync.
+
 ## Runtime-specific recovery
 
 ### Local Agent Runtime conversations
