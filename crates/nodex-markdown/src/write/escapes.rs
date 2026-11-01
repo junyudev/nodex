@@ -119,7 +119,25 @@ impl Text {
         context: impl Fn(&str) -> String,
         expected: Vec<crate::Block>,
     ) -> String {
-        self.minimize(context, true, Some(expected))
+        self.finish(context, expected, false)
+    }
+
+    /// Portable wrappers may lose style boundaries. Once the intended value is unreachable,
+    /// preserve what the complete spelling actually says while removing its remaining escapes.
+    pub fn finish(
+        self,
+        context: impl Fn(&str) -> String,
+        expected: Vec<crate::Block>,
+        portable: bool,
+    ) -> String {
+        if !portable {
+            return self.minimize(context, true, Some(expected));
+        }
+        let written = self.minimize(&context, true, Some(expected.clone()));
+        if read(&context(&written), ReadOptions::EXACT) == Ok(expected) {
+            return written;
+        }
+        minimize_reading(written, &context)
     }
 
     fn minimize(
@@ -155,8 +173,6 @@ impl Text {
         if fast
             && expected.is_some()
             && self.autolinks.is_empty()
-            && !self.source.contains("\\(")
-            && !self.source.contains("\\[")
             && self
                 .escapes
                 .iter()
@@ -167,17 +183,15 @@ impl Text {
             // cannot open syntax, so neither a reference parse nor a trial is needed.
             return remove_inert(&self.source, &self.escapes, &facts).0;
         }
-        // Character references provide a literal reference even for `\\[` and `\\]`,
-        // which also form a supported math spelling when they occur together.
-        let mut literal = String::new();
-        let mut cursor = 0;
-        for escape in &self.escapes {
-            literal.push_str(&self.source[cursor..escape.index]);
-            literal.push_str(&format!("&#{};", u32::from(escape.plain)));
-            cursor = escape.index + escape.length;
-        }
-        literal.push_str(&self.source[cursor..]);
-        let reference = expected.map_or_else(|| read(&context(&literal), ReadOptions::EXACT), Ok);
+        let reference = expected.map_or_else(
+            || {
+                read(
+                    &context(&self.reference_seed(|_| true).source),
+                    ReadOptions::EXACT,
+                )
+            },
+            Ok,
+        );
         if fast && let Some(source) = literal::minimize(&self, &context, &reference) {
             return source;
         }
@@ -196,34 +210,20 @@ impl Text {
         if read(&context(&source), ReadOptions::EXACT) == reference {
             return source;
         }
-        // A pair of ordinary escaped brackets can itself spell LaTeX math. Start from
-        // literal references when several such pairs make the fully escaped seed ambiguous.
-        let mut seed = String::new();
-        let mut references = Vec::new();
-        let mut cursor = 0;
-        for escape in &self.escapes {
-            seed.push_str(&self.source[cursor..escape.index]);
-            let encoded = format!("&#{};", u32::from(escape.plain));
-            references.push(Escape {
-                index: seed.len(),
-                length: encoded.len(),
-                plain: escape.plain,
-            });
-            seed.push_str(&encoded);
-            cursor = escape.index + escape.length;
+        if !self.autolinks.is_empty() {
+            return self
+                .minimize_delimited_links(context, fast, &reference)
+                .unwrap_or(source);
         }
-        seed.push_str(&self.source[cursor..]);
-        let (mut source, retained) = trials(
-            seed,
-            &references,
-            &context,
-            &reference,
-            fast && self.autolinks.is_empty(),
-        );
-        for escape in retained.into_iter().rev() {
-            if !escape.plain.is_ascii_punctuation() {
-                continue;
-            }
+        // An own-line escaped '[' still opens display math. Only an invalid
+        // seed needs references; inline parentheses and brackets are GFM escapes.
+        let seed = self.reference_seed(|escape| escape.plain == '[');
+        let (mut source, retained) = trials(seed.source, &seed.escapes, &context, &reference, fast);
+        for escape in retained
+            .into_iter()
+            .rev()
+            .filter(|escape| escape.plain == '[')
+        {
             let mut candidate = source.clone();
             candidate.replace_range(
                 escape.index..escape.index + escape.length,
@@ -233,15 +233,33 @@ impl Text {
                 source = candidate;
             }
         }
-        if self.autolinks.is_empty() || read(&context(&source), ReadOptions::EXACT) == reference {
-            return source;
-        }
-        self.minimize_delimited_links(context, fast, &reference)
-            .unwrap_or(source)
+        source
     }
 
-    /// Backslashes and numeric references after a bare URL can both become URL
-    /// bytes, so neither fully escaped seed need say the intended link. Reduce
+    fn reference_seed(&self, protect: impl Fn(&Escape) -> bool) -> Self {
+        let mut out = Self::default();
+        let mut cursor = 0;
+        for escape in &self.escapes {
+            out.push_syntax(&self.source[cursor..escape.index]);
+            let encoded = if protect(escape) {
+                format!("&#{};", u32::from(escape.plain))
+            } else {
+                self.source[escape.index..escape.index + escape.length].to_owned()
+            };
+            out.escapes.push(Escape {
+                index: out.source.len(),
+                length: encoded.len(),
+                plain: escape.plain,
+            });
+            out.push_syntax(&encoded);
+            cursor = escape.index + escape.length;
+        }
+        out.push_syntax(&self.source[cursor..]);
+        out
+    }
+
+    /// Backslashes after a bare URL can become URL bytes, so the fully escaped
+    /// seed need not say the intended link. Reduce
     /// against delimited links in that case, then offer each bare spelling again
     /// in its complete, minimized context. Correct bare-link reductions above
     /// keep their original right-to-left decisions.
@@ -296,8 +314,6 @@ impl Text {
         Some(source)
     }
 
-    /// References keep the surrounding text literal, including paired brackets
-    /// that would be LaTeX in the backslash seed.
     fn slice(&self, range: std::ops::Range<usize>) -> Self {
         let start = self
             .escapes
@@ -305,26 +321,24 @@ impl Text {
         let end = self
             .escapes
             .partition_point(|escape| escape.index < range.end);
-        let mut out = Self::default();
-        let mut cursor = range.start;
-        for escape in &self.escapes[start..end] {
-            out.push_syntax(&self.source[cursor..escape.index]);
-            let encoded = format!("&#{};", u32::from(escape.plain));
-            out.escapes.push(Escape {
-                index: out.source.len(),
-                length: encoded.len(),
-                plain: escape.plain,
-            });
-            out.push_syntax(&encoded);
-            cursor = escape.index + escape.length;
+        Self {
+            source: self.source[range.clone()].to_owned(),
+            escapes: self.escapes[start..end]
+                .iter()
+                .map(|escape| Escape {
+                    index: escape.index - range.start,
+                    ..escape.clone()
+                })
+                .collect(),
+            autolinks: Vec::new(),
         }
-        out.push_syntax(&self.source[cursor..range.end]);
-        out
     }
 }
 
 #[cfg(test)]
 pub(super) mod performance;
+#[cfg(test)]
+mod properties;
 
 /// One uninterrupted punctuation run has no independent opener inside it. Its suffix can
 /// therefore be removed together; only the first mark can acquire a Block meaning.
@@ -373,7 +387,161 @@ fn homogeneous_run(
     None
 }
 
+/// A removal can expose context that makes a previously retained escape unnecessary.
+/// Revisit the retained escapes until the reading reaches a fixed point.
 fn trials(
+    source: String,
+    escapes: &[Escape],
+    context: &impl Fn(&str) -> String,
+    reference: &Result<Vec<crate::Block>, crate::ReadError>,
+    fast: bool,
+) -> (String, Vec<Escape>) {
+    let mut source = source;
+    let mut pending = escapes.to_vec();
+    let mut first = true;
+    loop {
+        let count = pending.len();
+        (source, pending) = trial_pass(source, &pending, context, reference, first && fast);
+        first = false;
+        (source, pending) = pair_pass(source, &pending, context, reference);
+        if pending.len() == count {
+            return (source, pending);
+        }
+    }
+}
+
+/// An escaped bracket pair can balance a label even when neither bracket is removable alone.
+/// Include unescaped brackets in the stack so nesting follows the complete written line.
+fn bracket_pairs(source: &str, escapes: &[Escape]) -> Vec<(usize, usize)> {
+    if !escapes.iter().any(|escape| escape.plain == '[')
+        || !escapes.iter().any(|escape| escape.plain == ']')
+    {
+        return Vec::new();
+    }
+    let mut pairs = Vec::new();
+    let mut stack = Vec::new();
+    let mut escape = 0;
+    let mut cursor = 0;
+    while cursor < source.len() {
+        let owned = escapes.get(escape).filter(|item| item.index == cursor);
+        let (plain, length) = owned.map_or_else(
+            || {
+                let rest = &source[cursor..];
+                let plain = rest.chars().next().expect("character");
+                if plain == '\\'
+                    && let Some(next) = rest.chars().nth(1)
+                {
+                    return ('\0', 1 + next.len_utf8());
+                }
+                (plain, plain.len_utf8())
+            },
+            |item| (item.plain, item.length),
+        );
+        match plain {
+            '\n' => stack.clear(),
+            '[' => stack.push(owned.map(|_| escape)),
+            ']' => {
+                if let Some(Some(open)) = stack.pop()
+                    && owned.is_some()
+                {
+                    pairs.push((open, escape));
+                }
+            }
+            _ => {}
+        }
+        cursor += length;
+        escape += usize::from(owned.is_some());
+    }
+    pairs
+}
+
+fn pair_pass(
+    source: String,
+    escapes: &[Escape],
+    context: &impl Fn(&str) -> String,
+    reference: &Result<Vec<crate::Block>, crate::ReadError>,
+) -> (String, Vec<Escape>) {
+    for (open, close) in bracket_pairs(&source, escapes).into_iter().rev() {
+        let mut candidate = source.clone();
+        for index in [close, open] {
+            let escape = &escapes[index];
+            candidate.replace_range(
+                escape.index..escape.index + escape.length,
+                &escape.plain.to_string(),
+            );
+        }
+        if reference.is_err() || read(&context(&candidate), ReadOptions::EXACT) != *reference {
+            continue;
+        }
+        let mut removed = 0;
+        let retained = escapes
+            .iter()
+            .enumerate()
+            .filter_map(|(index, escape)| {
+                if index == open || index == close {
+                    removed += escape.length - escape.plain.len_utf8();
+                    return None;
+                }
+                Some(Escape {
+                    index: escape.index - removed,
+                    ..escape.clone()
+                })
+            })
+            .collect();
+        return (candidate, retained);
+    }
+    (source, escapes.to_vec())
+}
+
+fn minimize_reading(source: String, context: &impl Fn(&str) -> String) -> String {
+    let reference = read(&context(&source), ReadOptions::EXACT);
+    if reference.is_err() {
+        return source;
+    }
+    let escapes = written_escapes(&source);
+    trials(source, &escapes, context, &reference, false).0
+}
+
+/// Recover escapes after an unreachable portable projection has been written. This slow path
+/// uses the complete reader oracle: a backslash may be part of a URL, code, math or owned syntax.
+fn written_escapes(source: &str) -> Vec<Escape> {
+    let mut escapes = Vec::new();
+    let mut cursor = 0;
+    while cursor < source.len() {
+        let rest = &source[cursor..];
+        let backslash = rest
+            .strip_prefix('\\')
+            .and_then(|rest| rest.chars().next())
+            .filter(char::is_ascii_punctuation)
+            .map(|plain| (2, plain));
+        let reference = rest
+            .strip_prefix("&#")
+            .and_then(|rest| rest.split_once(';'))
+            .and_then(|(number, _)| {
+                let plain = number
+                    .strip_prefix(['x', 'X'])
+                    .map_or_else(
+                        || number.parse::<u32>().ok(),
+                        |hex| u32::from_str_radix(hex, 16).ok(),
+                    )
+                    .and_then(char::from_u32)?;
+                Some((number.len() + 3, plain))
+            });
+        if let Some((length, plain)) = backslash.or(reference) {
+            escapes.push(Escape {
+                index: cursor,
+                length,
+                plain,
+            });
+            cursor += length;
+        } else {
+            cursor += rest.chars().next().expect("character").len_utf8();
+        }
+    }
+    escapes
+}
+
+fn trial_pass(
     source: String,
     escapes: &[Escape],
     context: &impl Fn(&str) -> String,
@@ -384,11 +552,6 @@ fn trials(
     // separately would still move a long paragraph's suffix once per punctuation mark.
     let baseline = fast.then(|| read(&context(&source), ReadOptions::EXACT));
     let can_batch = reference.is_ok() && baseline.as_ref() == Some(reference);
-    let mut excess_math = baseline
-        .as_ref()
-        .and_then(|actual| actual.as_ref().ok())
-        .zip(reference.as_ref().ok())
-        .is_some_and(|(actual, expected)| math_count(actual) > math_count(expected));
     let (mut source, escapes) = if can_batch {
         remove_inert(&source, escapes, &Facts::new(&source, escapes))
     } else {
@@ -400,14 +563,6 @@ fn trials(
         .then(|| inline_reference(&source, &escapes, context, reference))
         .flatten();
     for (index, escape) in escapes.iter().enumerate().rev() {
-        // A fully escaped \(...\) can create unwanted math before reduction.
-        // These inert marks neither delimit math nor introduce an enclosing
-        // code/link/image/directive/HTML construct. Inside math they only alter
-        // its source; outside it they leave every math atom intact. If the seed
-        // has more math atoms than the reference, no such trial can be equal.
-        if excess_math && inert(&source, escape, &facts.0[index]) {
-            continue;
-        }
         let mut candidate = source.clone();
         candidate.replace_range(
             escape.index..escape.index + escape.length,
@@ -426,7 +581,6 @@ fn trials(
         if equal {
             source = candidate;
             kept[index] = false;
-            excess_math = false;
         }
     }
     let mut removed = 0;
@@ -442,25 +596,6 @@ fn trials(
         }
     }
     (source, retained)
-}
-
-fn math_count(blocks: &[crate::Block]) -> usize {
-    blocks
-        .iter()
-        .map(|block| {
-            let inline = block.text().map_or(0, |text| {
-                text.iter()
-                    .filter(|item| matches!(item, crate::Inline::Math { .. }))
-                    .count()
-            });
-            inline
-                + block
-                    .children
-                    .iter()
-                    .map(|child| math_count(std::slice::from_ref(child)))
-                    .sum::<usize>()
-        })
-        .sum()
 }
 
 /// A single-line text field has the same inline grammar in a paragraph, heading,
@@ -699,10 +834,8 @@ fn inert(source: &str, escape: &Escape, facts: &Fact) -> bool {
         // Destinations are writer-owned syntax, not escaped text. An opening
         // parenthesis can therefore introduce a link only immediately after a
         // closing label; a closing one can otherwise form only an ordered marker.
-        // The caller first proves the seed exact, so removing a LaTeX escape
-        // cannot silently repair one of several already-wrong math regions.
-        '(' => escape.length > 2 && previous != Some(']'),
-        ')' => escape.length > 2 && !facts.ordered_marker,
+        '(' => previous != Some(']'),
+        ')' => !facts.ordered_marker,
         '!' => {
             !after.starts_with(['[']) && !after.starts_with("\\[") && !after.starts_with("&#91;")
         }
@@ -724,8 +857,12 @@ fn inert(source: &str, escape: &Escape, facts: &Fact) -> bool {
 /// Keep neighboring syntax whole: an atom's token supplies its emphasis flank,
 /// which can differ from the punctuation that starts its written form.
 pub(super) fn needs_span(delimiter: &str, inner: &str, before: &str, after: &str) -> bool {
-    let candidate = format!("{before}{delimiter}{inner}{delimiter}{after}");
-    let protected = format!("{before}:span[{delimiter}{inner}{delimiter}]{after}");
+    needs_group_span(&format!("{delimiter}{inner}{delimiter}"), before, after)
+}
+
+pub(super) fn needs_group_span(inner: &str, before: &str, after: &str) -> bool {
+    let candidate = format!("{before}{inner}{after}");
+    let protected = format!("{before}:span[{inner}]{after}");
     let expected = read(&protected, ReadOptions::EXACT);
     expected.is_err() || read(&candidate, ReadOptions::EXACT) != expected
 }
@@ -735,7 +872,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn whole_batch_equivalence_does_not_prove_each_greedy_removal() {
+    fn later_removals_revisit_earlier_email_escapes() {
         let value = "[a@b.com";
         let expected = vec![crate::Block::new(crate::BlockKind::Paragraph {
             text: vec![crate::Inline::Text {
@@ -746,7 +883,7 @@ mod tests {
         })];
         assert_eq!(read(value, ReadOptions::EXACT), Ok(expected.clone()));
         let canonical = Text::escaped(value).minimize(str::to_owned, false, Some(expected));
-        assert_ne!(canonical, value);
+        assert_eq!(canonical, value);
     }
 
     #[test]

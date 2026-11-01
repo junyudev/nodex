@@ -1,7 +1,9 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, test, vi } from "vite-plus/test";
+import portableCases from "../../../crates/nodex-markdown/tests/fixtures/portable-cases.json";
 import {
+  linkLiteralAddresses,
   readInlineMarkdown,
   readMarkdown,
   writeInlineMarkdown,
@@ -12,6 +14,19 @@ import {
 import { parseInlineMarkdownTitle, serializeInlineMarkdownTitle } from "./agent-title";
 
 describe("Nodex Markdown facade", () => {
+  test.each(portableCases)("minimizes portable $name against its written meaning", (fixture) => {
+    expect(writePortableMarkdown(fixture.blocks)).toEqual(fixture.portable);
+  });
+
+  test("links addresses inside literal image syntax without interpreting that syntax", () => {
+    const url = "http://127.0.0.1:51283/api/projects/assets/a.png";
+    expect(linkLiteralAddresses(`![image](${url})`)).toEqual([
+      { type: "text", text: "![image](" },
+      { type: "link", href: url, content: [{ type: "text", text: url }] },
+      { type: "text", text: ")" },
+    ]);
+  });
+
   test("requires explicit initialization before synchronous use", async () => {
     vi.resetModules();
     const fresh = await import("./index");

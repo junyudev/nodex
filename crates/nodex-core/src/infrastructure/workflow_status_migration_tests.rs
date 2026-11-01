@@ -57,6 +57,11 @@ fn predecessor() -> (TempDir, Connection) {
                 },
             )?;
         }
+        // Current persistence authored this synthetic source; restore its source derivation.
+        connection.execute(
+            "UPDATE document_materializations SET materialization_derivation_version=?1",
+            [materialization_derivation_for_store_revision(196)?],
+        )?;
         Ok(())
     })
     .unwrap();
@@ -347,6 +352,8 @@ fn v196_deleted_pages_keep_readable_restore_evidence_and_verified_receipts() {
              DROP INDEX idx_project_sessions_reminder;
              ALTER TABLE project_sessions DROP COLUMN remind_at;",
         )?;
+        // Recreate the predecessor derivation as well as its workflow vocabulary.
+        connection.execute("UPDATE document_materializations SET materialization_derivation_version=?1", [materialization_derivation_for_store_revision(196)?])?;
         connection.pragma_update(None,"user_version",196)?;
         Ok(())
     }).unwrap();

@@ -209,7 +209,7 @@ fn render(block: &Block, number: u64, mode: Mode) -> Rendered {
         BlockKind::Prompt { text, sent } => {
             let attrs = sent.as_ref().map_or_else(Vec::new, |sent| {
                 let mut attrs = vec![
-                    Attribute::value("sent", &crate::links::session_link(&sent.session)),
+                    Attribute::value("sent", crate::links::session_link(&sent.session)),
                     Attribute::value("sent-at", &sent.at),
                 ];
                 if !sent.message.is_empty() {
@@ -328,7 +328,11 @@ fn own_text(
         expected
     };
     let written = inline::text_with_mode(text, position, mode.portable, mode.document_breaks)
-        .finish_expected(|s| in_place(context(&attach(s))), vec![expected]);
+        .finish(
+            |s| in_place(context(&attach(s))),
+            vec![expected],
+            mode.portable,
+        );
     attach(&written)
 }
 
@@ -610,7 +614,7 @@ fn table_text(table: &Table, mode: Mode) -> String {
                     mode.portable,
                     mode.document_breaks,
                 )
-                .finish_expected(
+                .finish(
                     |s| format!("| {} |\n| --- |", attach(s)),
                     vec![Block::new(BlockKind::Table(Table {
                         rows: vec![vec![crate::Cell {
@@ -620,6 +624,7 @@ fn table_text(table: &Table, mode: Mode) -> String {
                         header_row: true,
                         ..Table::default()
                     }))],
+                    mode.portable,
                 );
                 attach(&text)
             })

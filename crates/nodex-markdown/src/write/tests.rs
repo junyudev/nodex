@@ -38,6 +38,28 @@ fn paragraph(value: &str) -> Block {
 }
 
 #[test]
+fn portable_spelling_keeps_its_visible_meaning_with_minimal_escapes() {
+    let cases: Value =
+        serde_json::from_str(include_str!("../../tests/fixtures/portable-cases.json")).unwrap();
+    for case in cases.as_array().unwrap() {
+        let blocks = blocks_from_json(&case["blocks"]).unwrap();
+        let output = write_portable(&blocks, &PortableOptions::default());
+        assert_eq!(
+            output.markdown,
+            case["portable"]["markdown"].as_str().unwrap(),
+            "{}",
+            case["name"]
+        );
+        assert_eq!(
+            output.exact,
+            case["portable"]["exact"].as_bool().unwrap(),
+            "{}",
+            case["name"]
+        );
+    }
+}
+
+#[test]
 fn fixture_writes_round_trip_and_own_their_lines() {
     for (name, expected, blocks) in fixture() {
         let (markdown, locations) = write_located(&blocks);
@@ -778,4 +800,55 @@ fn linear_writer_hotspot_timings() {
     );
     assert!(start.elapsed() < std::time::Duration::from_secs(1));
     assert_eq!(read(&markdown, ReadOptions::EXACT).unwrap(), blocks);
+}
+
+#[test]
+fn portable_literal_addresses_are_readable_without_markdown_escapes() {
+    for (value, exact, portable) in [
+        (
+            "https://example.com",
+            "https\\://example.com",
+            "https://example.com",
+        ),
+        (
+            "http://example.com/a_(b)?x=1&y=2.",
+            "http\\://example.com/a_(b)?x=1&y=2.",
+            "http://example.com/a_(b)?x=1&y=2.",
+        ),
+        ("www.example.com", "www\\.example.com", "www.example.com"),
+        (
+            "a.b+tag@example.com",
+            "a.b+tag\\@example.com",
+            "a.b+tag@example.com",
+        ),
+        (
+            "中文 HTTPS://example.com, www.example.com or me@example.com!",
+            "中文 HTTPS\\://example.com, www\\.example.com or me\\@example.com!",
+            "中文 HTTPS://example.com, www.example.com or me@example.com!",
+        ),
+    ] {
+        let blocks = vec![Block::new(BlockKind::Paragraph {
+            text: text(value),
+            colors: Colors::default(),
+        })];
+        assert_eq!(write(&blocks), exact, "{value}");
+        let result = crate::write_portable(&blocks, &PortableOptions::default());
+        assert_eq!(result.markdown, portable, "{value}");
+        assert!(!result.exact, "literal addresses gain links");
+        assert_eq!(
+            crate::text::block_lines(&read(&result.markdown, ReadOptions::BOUNDARY).unwrap()),
+            value
+        );
+    }
+    let linked = read(
+        "https://example.com, www.example.com or me@example.com!",
+        ReadOptions::EXACT,
+    )
+    .unwrap();
+    let portable = crate::write_portable(&linked, &PortableOptions::default());
+    assert!(portable.exact);
+    assert_eq!(
+        portable.markdown,
+        "https://example.com, www.example.com or me@example.com!"
+    );
 }

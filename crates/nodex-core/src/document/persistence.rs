@@ -1492,6 +1492,27 @@ fn record_internal_receipt(
     )
 }
 
+/// A serializer migration has no content or placement effect. Preserve every
+/// other projection and timestamp rather than refreshing owner-scoped indexes.
+pub(super) fn persist_markdown_serialization(
+    connection: &Connection,
+    head: &DocumentHeadRow,
+    materialization: &DocumentMaterialization,
+) -> Result<(), StoreError> {
+    let changed = connection.execute(
+        "UPDATE document_materializations SET markdown = ?1, materialization_derivation_version = ?2 \
+         WHERE document_id = ?3 AND generation = ?4 AND projected_seq = ?5",
+        params![materialization.markdown, CURRENT_DOCUMENT_MATERIALIZATION_DERIVATION_VERSION,
+            head.id, head.generation, head.head_seq],
+    )?;
+    if changed != 1 {
+        return Err(corrupt(
+            "Serializer migration requires an exact Document head",
+        ));
+    }
+    Ok(())
+}
+
 fn persist_materialization_row(
     connection: &Connection,
     document_id: &str,

@@ -1,6 +1,21 @@
 {
-  "about": "Round-trip contract of Nodex Markdown, docs/references/nodex-markdown.md. Each case's `markdown` is the one exact text of its `blocks`: writing the Blocks gives the text, and reading the text in exact mode gives the Blocks. Blocks are spelled as Nodex stores them, without identities except an owning shell's, props at their defaults, or empty content and children. `gfm` marks text that uses no Nodex extension and that GitHub Flavored Markdown, read as Nodex's Markdown reader reads it today, reads as the same Blocks; `reads` are other GitHub Flavored Markdown spellings that read as them too, checked against today's reader; `nodexReads` are spellings only Nodex Markdown reads as them, such as unindented container bodies, ```math fences, \\(…\\) math and HTML style tags. `rejects` are texts an exact write refuses rather than reading as something else; `boundaryReads` say how such text reads everywhere else, where a container without its closing line still reads as a container so a reply reads while it streams.",
+  "about": "Round-trip contract of Nodex Markdown, docs/references/nodex-markdown.md. Each case's `markdown` is the one exact text of its `blocks`: writing the Blocks gives the text, and reading the text in exact mode gives the Blocks. Blocks are spelled as Nodex stores them, without identities except an owning shell's, props at their defaults, or empty content and children. `gfm` marks text that uses no Nodex extension and that GitHub Flavored Markdown, read as Nodex's Markdown reader reads it today, reads as the same Blocks; `reads` are other GitHub Flavored Markdown spellings that read as them too, checked against today's reader; `nodexReads` are spellings only Nodex Markdown reads as them, such as unindented container bodies, ```math fences, own-line \\[…\\] math and HTML style tags. `rejects` are texts an exact write refuses rather than reading as something else; `boundaryReads` say how such text reads everywhere else, where a container without its closing line still reads as a container so a reply reads while it streams.",
   "cases": [
+    {"name":"a styled span preserves following whitespace-only emphasis","markdown":":span[*# title*]{underline background=\"blue\"}:span[**&#x20; &#x9;** after]","blocks":[{"type":"paragraph","content":[{"type":"text","text":"# title","styles":{"italic":true,"underline":true,"backgroundColor":"blue"}},{"type":"text","text":"  \t","styles":{"bold":true}},{"type":"text","text":" after"}]}]},
+    {"name": "balanced citation brackets need no escapes", "markdown": "[[207]](https://github.com/openai/codex/issues/11966)", "gfm": true, "blocks": [{"content": [{"content": [{"text": "[207]", "type": "text"}], "href": "https://github.com/openai/codex/issues/11966", "type": "link"}], "type": "paragraph"}]},
+    {"name": "balanced brackets in a toggle label need no escapes", "markdown": ":::toggle[[x] y]\n:::", "blocks": [{"type": "toggleListItem", "content": [{"type": "text", "text": "[x] y"}]}]},
+    {"name": "a literal email behind an unmatched bracket needs no escape", "markdown": "[a@b.com", "gfm": true, "blocks": [{"type": "paragraph", "content": [{"type": "text", "text": "[a@b.com"}]}]},
+    {"name": "own-line plain brackets remain prose", "markdown": "[\na\n]\n[\nb\n]", "gfm": true, "blocks": [{"type": "paragraph", "content": [{"type": "text", "text": "[\na\n]\n[\nb\n]"}]}]},
+    {"name": "literal prose a (b) c.", "markdown": "a (b) c.", "gfm": true, "blocks": [{"type": "paragraph", "content": [{"type": "text", "text": "a (b) c."}]}]},
+    {"name": "literal prose a (b) & c", "markdown": "a (b) & c", "gfm": true, "blocks": [{"type": "paragraph", "content": [{"type": "text", "text": "a (b) & c"}]}]},
+    {"name": "literal prose disclosure(like 知乎)?", "markdown": "disclosure(like 知乎)?", "gfm": true, "blocks": [{"type": "paragraph", "content": [{"type": "text", "text": "disclosure(like 知乎)?"}]}]},
+    {"name": "literal prose a [b] c.", "markdown": "a [b] c.", "gfm": true, "blocks": [{"type": "paragraph", "content": [{"type": "text", "text": "a [b] c."}]}]},
+    {"name": "literal prose a (b) - c _d_ e", "markdown": "a (b) - c \\_d_ e", "gfm": true, "blocks": [{"type": "paragraph", "content": [{"type": "text", "text": "a (b) - c _d_ e"}]}]},
+    {"name": "literal prose x (y, z) w.", "markdown": "x (y, z) w.", "gfm": true, "blocks": [{"type": "paragraph", "content": [{"type": "text", "text": "x (y, z) w."}]}]},
+    {"name": "literal prose …to propose to link it). and when user search a official global item and add it, they does not *really* add it, they add a copy…", "markdown": "…to propose to link it). and when user search a official global item and add it, they does not \\*really* add it, they add a copy…", "gfm": true, "blocks": [{"type": "paragraph", "content": [{"type": "text", "text": "…to propose to link it). and when user search a official global item and add it, they does not *really* add it, they add a copy…"}]}]},
+    {"name": "literal prose (a) b (c) d.", "markdown": "(a) b (c) d.", "gfm": true, "blocks": [{"type": "paragraph", "content": [{"type": "text", "text": "(a) b (c) d."}]}]},
+    {"name": "escaped parentheses are literal text", "markdown": "(x)", "reads": ["\\(x\\)"], "gfm": true, "blocks": [{"type": "paragraph", "content": [{"type": "text", "text": "(x)"}]}]},
+    {"name": "escaped inline brackets are literal text", "markdown": "a [b] c", "reads": ["a \\[b\\] c"], "gfm": true, "blocks": [{"type": "paragraph", "content": [{"type": "text", "text": "a [b] c"}]}]},
     {
       "name": "a prompt anchors its last accepted message",
       "markdown": ":::prompt[Draft]{sent=\"nodex://sessions/deleted-session\" sent-at=\"2026-10-31T08:30:00.000Z\" sent-message=\"message:one\"}\n:::",
@@ -1529,7 +1544,6 @@
     {
       "name": "inline math",
       "markdown": "Energy $$E = mc^2$$ and $$$a $$ b$$$",
-      "nodexReads": ["Energy \\(E = mc^2\\) and $$$a $$ b$$$", "Energy \\[E = mc^2\\] and $$$a $$ b$$$"],
       "gfm": true,
       "blocks": [
         {

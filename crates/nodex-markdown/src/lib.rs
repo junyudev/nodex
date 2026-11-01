@@ -90,6 +90,11 @@ pub fn read_inline(text: &str, options: ReadOptions) -> Result<Vec<Inline>, Read
     read::read_inline(text, options)
 }
 
+/// Keeps literal text exactly as written, linking its GFM bare web and mail addresses.
+pub fn link_literal_addresses(text: &str) -> Vec<Inline> {
+    read::link_literal_addresses(text)
+}
+
 /// The one exact text of Blocks.
 pub fn write(blocks: &[Block]) -> String {
     write::write_exact(blocks)

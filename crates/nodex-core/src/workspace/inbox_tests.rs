@@ -3962,7 +3962,7 @@ fn a_message_is_written_as_markdown_and_everyday_text_stays_literal() {
     // blank line, and text that forms no markup stays as written.
     assert_eq!(
         written.body,
-        "**Ship** the changelog\n\n- check the links\n  - in the footer\n- tag the release\n\nAs typed: https://example.com/notes.\nKeep a \\< b and \\[draft\n\nThen tell people"
+        "**Ship** the changelog\n\n- check the links\n  - in the footer\n- tag the release\n\nAs typed: https://example.com/notes.\nKeep a < b and [draft\n\nThen tell people"
     );
     assert!(written.body_editable);
     assert_eq!(written.title, "Ship the changelog");

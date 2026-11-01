@@ -31,6 +31,7 @@ pub(crate) fn validate_current_store(connection: &Connection) -> Result<(), Stor
     validate_core_metadata(connection)?;
     validate_store_semantics(connection)?;
     validate_current_document_projections(connection)?;
+    crate::workspace::validate_inbox_markdown_serialization(connection, false)?;
     tracing::info!(
         durationMs = duration_millis(started_at.elapsed()),
         "Deep current Store validation completed"
@@ -1250,8 +1251,8 @@ mod tests {
                     "INSERT INTO document_materializations( \
                        document_id, generation, projected_seq, schema_version, markdown, plain_text, \
                        preview, block_tree_json, updated_at, materialization_derivation_version \
-                     ) VALUES ('document:p', 1, 0, 4, '', '', '', '[]', ?1, 4)",
-                    [NOW],
+                     ) VALUES ('document:p', 1, 0, 4, '', '', '', '[]', ?1, ?2)",
+                    rusqlite::params![NOW, CURRENT_DOCUMENT_MATERIALIZATION_DERIVATION_VERSION],
                 )?;
                 connection.execute(
                     "INSERT INTO page_read_model( \

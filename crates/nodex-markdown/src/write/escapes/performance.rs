@@ -62,7 +62,7 @@ fn markdown_files(directory: &Path, files: &mut Vec<PathBuf>) {
     }
 }
 
-fn corpus() -> Vec<PathBuf> {
+pub(super) fn corpus() -> Vec<PathBuf> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let mut files = Vec::new();
     for directory in ["docs", "agent-skills"] {

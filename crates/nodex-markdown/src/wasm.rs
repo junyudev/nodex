@@ -49,6 +49,12 @@ pub fn read_inline(text: &str, mode: &str) -> Result<String, JsValue> {
     Ok(crate::inline_content_to_json(&items).to_string())
 }
 
+/// Literal text with its GFM web and mail addresses linked, as inline BlockNote JSON text.
+#[wasm_bindgen(js_name = linkLiteralAddresses)]
+pub fn link_literal_addresses(text: &str) -> String {
+    crate::inline_content_to_json(&crate::link_literal_addresses(text)).to_string()
+}
+
 /// The one-line text of inline content given as BlockNote JSON text.
 #[wasm_bindgen(js_name = writeInline)]
 pub fn write_inline(inline_json: &str) -> Result<String, JsValue> {

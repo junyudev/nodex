@@ -98,6 +98,9 @@ export const readInlineMarkdown = (
   text: string,
   mode: MarkdownReadMode = "boundary",
 ): MarkdownInline[] => readValue(() => wasm.readInline(text, mode));
+/** Keep literal text exactly as written, linking GFM bare web and mail addresses. */
+export const linkLiteralAddresses = (text: string): MarkdownInline[] =>
+  readValue(() => wasm.linkLiteralAddresses(text));
 export function writeMarkdown(blocks: readonly MarkdownBlock[]): string {
   ready();
   return wasm.write(JSON.stringify(blocks));

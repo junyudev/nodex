@@ -2,6 +2,7 @@
 /* eslint-disable */
 export const memory: WebAssembly.Memory;
 export const blockLines: (a: number, b: number) => [number, number, number, number];
+export const linkLiteralAddresses: (a: number, b: number) => [number, number];
 export const plainText: (a: number, b: number) => [number, number, number, number];
 export const preview: (a: number, b: number) => [number, number];
 export const read: (a: number, b: number, c: number, d: number) => [number, number, number, number];

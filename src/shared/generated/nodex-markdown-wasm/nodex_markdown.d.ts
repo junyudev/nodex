@@ -7,6 +7,11 @@
 export function blockLines(blocks_json: string): string;
 
 /**
+ * Literal text with its GFM web and mail addresses linked, as inline BlockNote JSON text.
+ */
+export function linkLiteralAddresses(text: string): string;
+
+/**
  * All of the Blocks' words on one line.
  */
 export function plainText(blocks_json: string): string;
@@ -49,6 +54,7 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly blockLines: (a: number, b: number) => [number, number, number, number];
+    readonly linkLiteralAddresses: (a: number, b: number) => [number, number];
     readonly plainText: (a: number, b: number) => [number, number, number, number];
     readonly preview: (a: number, b: number) => [number, number];
     readonly read: (a: number, b: number, c: number, d: number) => [number, number, number, number];

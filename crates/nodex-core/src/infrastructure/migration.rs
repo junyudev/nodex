@@ -48,6 +48,7 @@ const CURRENT_DOCUMENT_SCHEMA_REVISION: i64 = 135;
 const DATABASE_VIEW_V5_STORE_REVISION: i64 = 144;
 const DATABASE_VIEW_V6_STORE_REVISION: i64 = 146;
 const LIBRARY_FILES_STORE_REVISION: i64 = 152;
+const INBOX_FROZEN_CONTENT_STORE_REVISION: i64 = 194;
 const CORE_SCHEMA_OWNER: &str = "rust_core";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -410,6 +411,11 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 199,
         apply: migrate_v198_to_v199,
     },
+    MigrationStep {
+        from_revision: 199,
+        to_revision: 200,
+        apply: migrate_v199_to_v200,
+    },
 ];
 
 fn resolve_migration_path(
@@ -673,6 +679,9 @@ fn validate_migration_source(
         source_revision >= LIBRARY_FILES_STORE_REVISION,
         materialization_derivation_for_store_revision(source_revision)?,
     )?;
+    if source_revision >= INBOX_FROZEN_CONTENT_STORE_REVISION {
+        crate::workspace::validate_inbox_markdown_serialization(connection, true)?;
+    }
     if source_revision >= CURRENT_DOCUMENT_SCHEMA_REVISION {
         validate_nodex_markdown_migration_source(connection)?;
         validate_documents_for_store_revision(connection, source_revision)?;
@@ -2590,6 +2599,26 @@ fn migrate_v195_to_v196(
     connection.pragma_update(None, "user_version", context.target_revision)?;
     Ok(())
 }
+fn migrate_v199_to_v200(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    // Capture fingerprints before changing Document text. Frozen suggestion
+    // snapshots remain their own authority even when their Page has been edited.
+    let inbox = crate::workspace::rebuild_inbox_markdown_serialization(connection)?;
+    let documents =
+        crate::document::integrity::rebuild_document_markdown_serialization(connection)?;
+    validate_restore_documents(connection)?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            json!({"document_materialization_derivation": 5, "rebuilt_documents": documents,
+                "rebuilt_inbox_inputs": inbox}).to_string()],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
 
 fn migrate_v196_to_v197(
     connection: &Connection,
@@ -3519,6 +3548,9 @@ fn test_current_store_template() -> Result<&'static Mutex<Connection>, StoreErro
 #[cfg(test)]
 #[path = "migration_derivation_tests.rs"]
 mod derivation_tests;
+#[cfg(test)]
+#[path = "migration_serializer_tests.rs"]
+mod serializer_tests;
 
 #[cfg(test)]
 #[path = "workflow_status_migration_tests.rs"]
@@ -4746,6 +4778,15 @@ mod tests {
                     },
                 )?;
                 validate_schema_identity(transaction, step.to_revision)?;
+            }
+            if target_revision >= 192 {
+                // Normalization uses current persistence; the synthetic source keeps its derivation.
+                transaction.execute(
+                    "UPDATE document_materializations SET materialization_derivation_version=?1",
+                    [materialization_derivation_for_store_revision(
+                        target_revision,
+                    )?],
+                )?;
             }
             Ok(())
         })
@@ -8564,6 +8605,9 @@ mod tests {
         kernel.writer().call(move |connection| {
             restore_historical_inbox_bases(connection)?;
             connection.execute_batch("ALTER TABLE inbox_suggestion_requests DROP COLUMN inputs_json;")?;
+            // This storage fixture was authored by the current persistence path;
+            // restore the source revision's derivation coordinate with its schema.
+            connection.execute("UPDATE document_materializations SET materialization_derivation_version=?1", [materialization_derivation_for_store_revision(193)?])?;
             connection.execute("UPDATE inbox_entries SET suggestion_state='settled' WHERE page_id='page:advice'",[])?;
             connection.execute("UPDATE inbox_proposals SET basis_json=?1 WHERE proposal_id='proposal:advice'",[written_coordinates])?;
             Ok(())
@@ -8596,7 +8640,8 @@ mod tests {
                 (195, 196),
                 (196, 197),
                 (197, 198),
-                (198, 199)
+                (198, 199),
+                (199, 200)
             ]
         );
         let states = connection
@@ -8838,6 +8883,13 @@ mod tests {
             Ok(())
         })
         .unwrap();
+        // Current persistence authors the synthetic source; restore its source derivation.
+        connection
+            .execute(
+                "UPDATE document_materializations SET materialization_derivation_version=?1",
+                [materialization_derivation_for_store_revision(195).unwrap()],
+            )
+            .unwrap();
         validate_schema_identity(&connection, 195).unwrap();
         let (page, library): (String, String) = connection
             .query_row("SELECT block_id,library_id FROM pages LIMIT 1", [], |row| {
@@ -9170,7 +9222,7 @@ mod tests {
                     |row| row.get::<_, i64>(0)
                 )
                 .unwrap(),
-            4
+            crate::document::CURRENT_DOCUMENT_MATERIALIZATION_DERIVATION_VERSION
         );
         validate_schema_identity(&connection, CURRENT_STORE_REVISION).unwrap();
         let fresh = tempdir().unwrap();

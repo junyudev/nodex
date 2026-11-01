@@ -83,6 +83,12 @@ possible. Images keep their source and plain caption. Managed File destinations
 may be rewritten to explicitly materialized native paths by the clipboard File
 export boundary.
 
+Escapes follow the language's rule, judged by what the portable text itself
+reads as. Web and mail addresses in text are written bare, without the escape
+exact text uses to keep them from becoming links, so a copied address still
+works where Markdown is not read; Markdown readers link it, and the output is
+inexact.
+
 Comment output keeps newlines as line breaks. Document output writes hard line
 breaks explicitly. The Rust fixture and writer tests own canonical spelling and
 exactness decisions.

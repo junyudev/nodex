@@ -28,6 +28,26 @@ export function blockLines(blocks_json) {
 }
 
 /**
+ * Literal text with its GFM web and mail addresses linked, as inline BlockNote JSON text.
+ * @param {string} text
+ * @returns {string}
+ */
+export function linkLiteralAddresses(text) {
+    let deferred2_0;
+    let deferred2_1;
+    try {
+        const ptr0 = passStringToWasm0(text, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.linkLiteralAddresses(ptr0, len0);
+        deferred2_0 = ret[0];
+        deferred2_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+    }
+}
+
+/**
  * All of the Blocks' words on one line.
  * @param {string} blocks_json
  * @returns {string}

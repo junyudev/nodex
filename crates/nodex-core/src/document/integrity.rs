@@ -21,8 +21,9 @@ pub(crate) fn validate_restore_documents(connection: &Connection) -> Result<usiz
     )
 }
 
-/// A derived projection is checked with the rules that wrote it, never with a
-/// newer serializer. Revisions 187/188 wrote both known encodings under v2.
+/// Checks the source revision's projections against reconstructed authority.
+/// Serializer predecessors may use equivalent exact escape spellings; current
+/// text matches byte for byte. Revisions 187/188 wrote both known encodings under v2.
 pub(crate) fn validate_documents_for_store_revision(
     connection: &Connection,
     store_revision: i64,
@@ -58,6 +59,21 @@ pub(crate) fn upgrade_document_markdown_derivation(
         .len())
 }
 
+/// Rebuilds only the serializer projection of every ready Yrs head, including
+/// retained unowned recovery Documents. Identity indexes may belong to another
+/// current Document, so the ordinary full persistence path must not run here.
+pub(crate) fn rebuild_document_markdown_serialization(
+    connection: &Connection,
+) -> Result<usize, StoreError> {
+    let repository = DocumentReadRepository::new(connection);
+    let heads = repository.live_yjs_heads()?;
+    for head in &heads {
+        let materialization = reconstruct_live_yjs_document(&repository, head)?;
+        super::persistence::persist_markdown_serialization(connection, head, &materialization)?;
+    }
+    Ok(heads.len())
+}
+
 pub(crate) fn materialization_derivation_for_store_revision(
     store_revision: i64,
 ) -> Result<i64, StoreError> {
@@ -65,6 +81,7 @@ pub(crate) fn materialization_derivation_for_store_revision(
         130..=188 => Ok(2),
         189..=191 => Ok(3),
         192..=199 => Ok(4),
+        200 => Ok(5),
         _ => Err(StoreError::new(
             StoreErrorCode::UnsupportedSchema,
             format!("Store v{store_revision} has no registered Document derivation"),
@@ -197,12 +214,21 @@ fn assert_persisted_materialization(
         [&head.id],
         |row| row.get::<_, i64>(0),
     )?;
-    // Predecessor text projections are disposable. The migration authenticates
-    // their canonical Block tree against hash-checked Yrs authority before rebuilding
-    // them; retaining a second text-language implementation would weaken that boundary.
-    let current = store_revision >= 192;
-    let markdown_matches = !current || persisted.markdown == actual.markdown;
-    let persisted_block_tree = if current {
+    // Earlier language migrations authenticate the adapted canonical tree;
+    // derivation v4 and later also validate every unaffected projection exactly.
+    let current_shape = store_revision >= 192;
+    let markdown_matches = match store_revision {
+        // The predecessor exact writer round-tripped its output. Its escaped
+        // parentheses/brackets could never denote literal pairs, so removing
+        // those math aliases does not change how any predecessor output reads.
+        // Check the complete content against Yrs, allowing only spelling changes;
+        // every other v4 projection field remains an exact comparison below.
+        192..=199 => nodex_markdown::read(&persisted.markdown, nodex_markdown::ReadOptions::EXACT)
+            .is_ok_and(|blocks| nodex_markdown::write(&blocks) == actual.markdown),
+        200.. => persisted.markdown == actual.markdown,
+        _ => true,
+    };
+    let persisted_block_tree = if current_shape {
         persisted.block_tree.clone()
     } else {
         crate::domain::block_materialization::read_predecessor_block_tree(
@@ -220,13 +246,22 @@ fn assert_persisted_materialization(
         (persisted.rich_title != rich_title, "rich_title"),
         (!markdown_matches, "markdown"),
         (
-            current && persisted.plain_text != actual.plain_text,
+            current_shape && persisted.plain_text != actual.plain_text,
             "plain_text",
         ),
-        (current && persisted.preview != actual.preview, "preview"),
+        (
+            current_shape && persisted.preview != actual.preview,
+            "preview",
+        ),
         (persisted_block_tree != block_tree, "block_tree"),
-        (current && persisted.references != references, "references"),
-        (current && persisted.asset_refs != asset_refs, "asset_refs"),
+        (
+            current_shape && persisted.references != references,
+            "references",
+        ),
+        (
+            current_shape && persisted.asset_refs != asset_refs,
+            "asset_refs",
+        ),
         (
             derivation_version != materialization_derivation_for_store_revision(store_revision)?,
             "materialization_derivation_version",

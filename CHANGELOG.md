@@ -44,6 +44,7 @@ All notable changes to this project will be documented in this file.
 - Inbox suggestions read each message whole: its formatting, links and lists as you wrote them, and its images as images. A screenshot with a single line of text is understood for what it shows, and a chat started from the Inbox receives the message the same way.
 - Images in a message you send to the Inbox now come first on its Page, matching how the stream shows them above the text.
 - You choose when Inbox suggestions run: automatically for each message you send, only when you ask, or never, from the Inbox's settings gear or Settings → Inbox. Automatic suggestions pause when the suggestion Agent's usage is about to run out and say so above the composer; Suggest still works on any message.
+- An inline equation in Pages, messages and the Inbox is now written only as `$$…$$`. `\(…\)`, and `\[…\]` within a line, mean the parentheses and brackets themselves, as GitHub reads them. `\[` and `\]` on lines of their own still make an equation Block, and Agent replies in chat still show both spellings as equations.
 
 ### Removed
 
@@ -69,6 +70,7 @@ All notable changes to this project will be documented in this file.
 - An image written as `![caption](path)` in a chat message is no longer mistaken for a file mention.
 - A `file://` link that names a network share opens that share instead of a local path with the same name.
 - A queued message in a chat on another machine no longer reads its image paths from this computer.
+- Copying from a Page no longer puts a backslash before periods, commas, question marks and `&`. A parenthesis or bracket in a paragraph used to leave most punctuation after it escaped, both in what you pasted into a chat or another app and in the text Agents read and edit. Now a backslash appears only where the character would otherwise become formatting, existing Pages are rewritten when Nodex updates, and web addresses copy without one, so they still open wherever you paste them.
 
 ## [0.5.0] - 2026-10-29
 

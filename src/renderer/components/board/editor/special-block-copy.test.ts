@@ -738,7 +738,7 @@ describe("special block copy", () => {
       "fallback",
     );
 
-    expect(value).toBe("alpha\nbeta * ` > [ ] \\\\");
+    expect(value).toBe("alpha\nbeta * ` > [ ] \\");
   });
 
   test("resolveStructuredPlainTextForSelection preserves all inline markers", () => {

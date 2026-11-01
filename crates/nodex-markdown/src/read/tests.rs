@@ -108,7 +108,7 @@ fn flat_and_unclosed_containers_respect_their_parent() {
 #[test]
 fn math_is_literal_and_has_independent_fences() {
     expect(
-        "\\(a_b\\) and $$$a $$ b$$$",
+        "$$a_b$$ and $$$a $$ b$$$",
         ReadOptions::EXACT,
         json!([{"type":"paragraph","content":[{"type":"math","content":"a_b"},{"type":"text","text":" and "},{"type":"math","content":"a $$ b"}]}]),
     );
@@ -124,6 +124,28 @@ fn math_is_literal_and_has_independent_fences() {
         ReadOptions::EXACT,
         json!([{"type":"mathBlock","content":[{"type":"text","text":"a\n\n- :date{}\n$$\n:::toggle[Text]"}]}]),
     );
+}
+
+#[test]
+fn backslashes_escape_inline_parentheses_and_brackets_in_every_mode() {
+    for options in [
+        ReadOptions::EXACT,
+        ReadOptions::BOUNDARY,
+        ReadOptions::DOCUMENT,
+    ] {
+        for (source, text) in [(r"\(x\)", "(x)"), (r"a \[b\] c", "a [b] c")] {
+            expect(
+                source,
+                options,
+                json!([{"type":"paragraph","content":[{"type":"text","text":text}]}]),
+            );
+        }
+        expect(
+            "\\[\na_b\n\\]",
+            options,
+            json!([{"type":"mathBlock","content":[{"type":"text","text":"a_b"}]}]),
+        );
+    }
 }
 
 #[test]

@@ -1,0 +1,131 @@
+[
+  {
+    "name": "advice",
+    "blocks": [
+      {
+        "type": "paragraph",
+        "content": [
+          {
+            "type": "text",
+            "text": "My second piece of advice is to be "
+          },
+          {
+            "type": "text",
+            "text": "vocal",
+            "styles": {
+              "bold": true
+            }
+          },
+          {
+            "type": "text",
+            "text": " about your work. Post about it everywhere you can, and you'll find a community that follows. I'd been posting my progress on X, where I have about 8,000 followers,"
+          },
+          {
+            "type": "text",
+            "text": " ",
+            "styles": {
+              "bold": true
+            }
+          },
+          {
+            "type": "text",
+            "text": "which attracted the interest of some venture capitalists."
+          }
+        ]
+      }
+    ],
+    "portable": {
+      "exact": false,
+      "markdown": "My second piece of advice is to be **vocal** about your work. Post about it everywhere you can, and you'll find a community that follows. I'd been posting my progress on X, where I have about 8,000 followers,** **which attracted the interest of some venture capitalists."
+    }
+  },
+  {
+    "name": "cjk-emphasis",
+    "blocks": [
+      {
+        "type": "paragraph",
+        "content": [
+          {
+            "type": "text",
+            "text": "要不给这个[&"
+          },
+          {
+            "type": "text",
+            "text": "svg]:size-4删了怎么样, 你觉得这个[&",
+            "styles": {
+              "italic": true
+            }
+          },
+          {
+            "type": "text",
+            "text": "svg]:size-4优雅吗"
+          }
+        ]
+      }
+    ],
+    "portable": {
+      "exact": false,
+      "markdown": "要不给这个[&*svg]:size-4删了怎么样, 你觉得这个[&*svg]:size-4优雅吗"
+    }
+  },
+  {
+    "name": "citation",
+    "blocks": [
+      {
+        "content": [
+          {
+            "content": [
+              {
+                "text": "[207]",
+                "type": "text"
+              }
+            ],
+            "href": "https://github.com/openai/codex/issues/11966",
+            "type": "link"
+          }
+        ],
+        "type": "paragraph"
+      }
+    ],
+    "portable": {
+      "exact": true,
+      "markdown": "[[207]](https://github.com/openai/codex/issues/11966)"
+    }
+  },
+  {
+    "name": "toggle-label",
+    "blocks": [
+      {
+        "type": "toggleListItem",
+        "content": [
+          {
+            "type": "text",
+            "text": "[x] y"
+          }
+        ]
+      }
+    ],
+    "portable": {
+      "exact": false,
+      "markdown": "[x] y"
+    }
+  },
+  {
+    "name": "literal-image",
+    "blocks": [
+      {
+        "type": "paragraph",
+        "content": [
+          {
+            "type": "text",
+            "text": "instead of currently \"![image](http://127.0.0.1:51283/api/projects/assets/a.png)\"."
+          }
+        ]
+      }
+    ],
+    "portable": {
+      "exact": false,
+      "markdown": "instead of currently \"!\\[image](http://127.0.0.1:51283/api/projects/assets/a.png)\"."
+    }
+  }
+]

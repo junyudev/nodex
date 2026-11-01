@@ -113,6 +113,53 @@ pub(super) fn agent_markdown(
     numbers: &HashMap<String, usize>,
     image_limit: usize,
 ) -> Result<String, StoreError> {
+    let (mut markdown, replacements) = agent_markdown_parts(content, numbers, image_limit)?;
+    for (token, label) in replacements {
+        markdown = markdown.replace(&token, &label);
+    }
+    Ok(markdown)
+}
+
+/// Image captions are inserted as literal Agent labels after serialization and
+/// need not themselves be exact Markdown (for example, a caption can be HTML).
+/// Mask those generated labels before comparing predecessor escape spellings.
+pub(super) fn predecessor_agent_markdown_matches(
+    content: &MessageContent,
+    numbers: &HashMap<String, usize>,
+    stored: &str,
+) -> Result<bool, StoreError> {
+    let (mut expected, replacements) = agent_markdown_parts(content, numbers, usize::MAX)?;
+    let mut stored = stored.to_owned();
+    let mut labels = Vec::new();
+    for (token, label) in replacements {
+        expected = expected.replace(&token, &label);
+        labels.push(label);
+    }
+    // Longer labels can contain shorter ones. Mask both bodies identically,
+    // including authored occurrences, with tokens absent from either source.
+    labels.sort_by_key(|label| std::cmp::Reverse(label.len()));
+    let mut prefix = "\u{e000}inbox-compare".to_owned();
+    while expected.contains(&prefix) || stored.contains(&prefix) {
+        prefix.push('_');
+    }
+    for (index, label) in labels.iter().enumerate() {
+        let token = format!("{prefix}{index}\u{e001}");
+        expected = expected.replace(label, &token);
+        stored = stored.replace(label, &token);
+    }
+    let canonical = |text: &str| {
+        crate::domain::markdown::parse_markdown(text)
+            .map(|blocks| crate::domain::markdown::serialize_markdown(&blocks))
+            .map_err(|_| super::inbox::corrupt("Stored Inbox Agent body is unreadable"))
+    };
+    Ok(canonical(&expected)? == canonical(&stored)?)
+}
+
+fn agent_markdown_parts(
+    content: &MessageContent,
+    numbers: &HashMap<String, usize>,
+    image_limit: usize,
+) -> Result<(String, Vec<(String, String)>), StoreError> {
     let mut blocks = crate::domain::markdown::parse_markdown(&content.markdown)
         .map_err(|_| super::inbox::corrupt("Inbox Page Markdown is unreadable"))?;
     // Tokens survive the exact writer without its literal-bracket escaping. Choose a prefix
@@ -139,11 +186,10 @@ pub(super) fn agent_markdown(
         Some(token)
     };
     replace_images(&mut blocks, &mut marker);
-    let mut markdown = crate::domain::markdown::serialize_markdown(&blocks);
-    for (token, label) in replacements {
-        markdown = markdown.replace(&token, &label);
-    }
-    Ok(markdown)
+    Ok((
+        crate::domain::markdown::serialize_markdown(&blocks),
+        replacements,
+    ))
 }
 
 fn replace_inline_images(

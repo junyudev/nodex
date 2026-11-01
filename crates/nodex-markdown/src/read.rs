@@ -1,5 +1,6 @@
 //! Reads GFM structure, then gives Nodex syntax its Block meaning.
 
+mod addresses;
 mod blocks;
 mod columns;
 mod inline;
@@ -65,7 +66,6 @@ fn parser_options() -> Options<'static> {
     options.extension.tasklist = true;
     options.extension.cjk_friendly_emphasis = true;
     options.extension.math_dollars = false;
-    options.extension.math_latex = true;
     options.extension.math_code = true;
     options.extension.alerts = true;
     options.extension.block_directive = true;
@@ -80,3 +80,5 @@ fn error(line: usize, message: impl Into<String>) -> ReadError {
         message: message.into(),
     }
 }
+
+pub(crate) use addresses::link_literal_addresses;

@@ -204,7 +204,26 @@ impl State<'_, '_> {
     }
 
     fn text(&mut self, items: &[Inline]) -> Vec<Inline> {
-        items
+        let linked: Vec<_> = items
+            .iter()
+            .flat_map(|item| match item {
+                Inline::Text { text, style } if !style.code => crate::link_literal_addresses(text)
+                    .into_iter()
+                    .map(|mut item| {
+                        match &mut item {
+                            Inline::Text { style: target, .. } => *target = style.clone(),
+                            Inline::Link { content, .. } => {
+                                content.iter_mut().for_each(|run| run.style = style.clone())
+                            }
+                            _ => {}
+                        }
+                        item
+                    })
+                    .collect(),
+                _ => vec![item.clone()],
+            })
+            .collect();
+        linked
             .iter()
             .filter_map(|item| {
                 Some(match item {

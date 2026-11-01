@@ -243,7 +243,12 @@ changes the interpretation of derived materialization records, Core validates
 the Yrs update chain, state vector, and exact persisted projections against their
 published source derivation before the transaction. It rebuilds affected fields
 through the owning Document or Database persistence boundary, then performs the
-exact current projection checks afterward. A serializer-only change preserves
+exact current projection checks afterward. For a serializer-only predecessor,
+exact-mode decoding may prove the complete stored text against reconstructed
+canonical content while accepting equivalent escape spellings; every unaffected
+field still matches exactly, and current text must match the current writer byte
+for byte. This requires proving that the current reader preserves the meaning of
+every predecessor exact output. A serializer-only change preserves
 unaffected indexes, references, search, assets, and modification times. The Block
 identity index stays unchanged when the canonical tree is unchanged; retained
 recovery Documents can contain Block IDs currently indexed under another Document.

@@ -1,6 +1,6 @@
 //! A linear reduction for literal paragraphs with isolated ASCII delimiters.
 
-use super::{Escape, Text};
+use super::{Escape, Facts, Text, inert, remove_inert};
 use crate::{Block, BlockKind, Colors, Inline, ReadError, ReadOptions, Style, read};
 
 pub(super) fn minimize(
@@ -21,6 +21,9 @@ pub(super) fn minimize(
     })];
     if reference.as_ref().ok() != Some(&expected) {
         return None;
+    }
+    if let Some(result) = inert_with_padding(text) {
+        return Some(result);
     }
     if let Some(result) = flat_pairs(&plain) {
         return (read(&result, ReadOptions::EXACT).as_ref().ok() == Some(&expected))
@@ -100,21 +103,53 @@ pub(super) fn minimize(
     (read(&result, ReadOptions::EXACT).as_ref().ok() == Some(&expected)).then_some(result)
 }
 
+/// Inert prose needs no parser oracle. At a plain paragraph's trailing edge, the last space
+/// or tab must remain a reference; that reference protects every preceding space/tab.
+fn inert_with_padding(text: &Text) -> Option<String> {
+    let tail = text.escapes.len()
+        - text
+            .escapes
+            .iter()
+            .rev()
+            .take_while(|escape| matches!(escape.plain, ' ' | '\t'))
+            .count();
+    let padding = text.escapes.get(tail..)?;
+    let first = padding.first()?;
+    if first.index == 0
+        || padding.last()?.index + padding.last()?.length != text.source.len()
+        || padding
+            .windows(2)
+            .any(|pair| pair[0].index + pair[0].length != pair[1].index)
+    {
+        return None;
+    }
+    let facts = Facts::new(&text.source, &text.escapes);
+    if !text.escapes[..tail]
+        .iter()
+        .zip(&facts.0)
+        .all(|(escape, fact)| inert(&text.source, escape, fact))
+    {
+        return None;
+    }
+    let (mut result, pending) = remove_inert(&text.source, &text.escapes, &facts);
+    let last = pending.last()?;
+    let reference = result[last.index..].to_owned();
+    result.truncate(pending.first()?.index);
+    for escape in &pending[..pending.len() - 1] {
+        result.push(escape.plain);
+    }
+    result.push_str(&reference);
+    Some(result)
+}
+
 fn prepend(output: &mut [u8], start: &mut usize, bytes: &[u8]) {
     *start -= bytes.len();
     output[*start..*start + bytes.len()].copy_from_slice(bytes);
 }
 
-/// Flat, nonempty alphanumeric []/() pairs are a second closed subgrammar.
-/// In the backslash seed they are disjoint LaTeX atoms. With at least two,
-/// removing any one escape leaves another atom, or merges several into one;
-/// no first-pass trial can equal plain text. In the reference seed, every ')',
-/// '(' and ']' is removable: earlier openers are still references. A '[' is
-/// retained exactly when its own close is immediately followed by '(word)',
-/// which would make a link. All other retained '[' to its right are protected,
-/// so no matching can cross pairs. Finally each retained reference becomes
-/// '\[': there are no escaped ']' left to open LaTeX. The final edge-space
-/// reference survives; this grammar has no other syntax or whitespace edges.
+/// Flat alphanumeric bracket/parenthesis pairs cannot form emphasis, code or references.
+/// Only a '[' immediately before a label followed by '(word)' must stay escaped, to prevent
+/// a link. All other escapes can be removed independently; a final space keeps its reference.
 fn flat_pairs(plain: &str) -> Option<String> {
     let bytes = plain.as_bytes();
     if bytes
@@ -147,7 +182,7 @@ fn flat_pairs(plain: &str) -> Option<String> {
             pairs += 1;
         } else if byte.is_ascii_alphanumeric() || byte == b' ' {
             if byte == b' ' && index + 1 == bytes.len() {
-                result.push_str("&#32;");
+                result.push_str("&#x20;");
             } else {
                 result.push(char::from(byte));
             }
@@ -198,7 +233,7 @@ fn literal(text: &Text) -> Option<String> {
 /// Certificate for a closed literal subgrammar. Empty [] cannot form a link or
 /// reference; <> cannot be HTML/an autolink; {} has no content that can hide a
 /// delimiter and is kept away from emphasis flanks because its lexer token is
-/// not punctuation. There are no entities, emails, URL openers, or LaTeX pairs.
+/// not punctuation. There are no entities, emails, or URL openers.
 /// All code/emphasis runs have length one, so no run merging or rule-of-three
 /// state is needed. Tildes are excluded: Comrak skips them when determining
 /// neighboring flanks, so removing one could change an already-decided flank.
@@ -357,6 +392,8 @@ mod tests {
             "x {}".into(),
             "{}".into(),
             "x {} ".into(),
+            "ordinary words, more!  \t".into(),
+            "a\nb ".into(),
             "*a*\n".repeat(8).trim_end_matches('\n').to_owned(),
             "text\\\nwords *a*".into(),
         ] {

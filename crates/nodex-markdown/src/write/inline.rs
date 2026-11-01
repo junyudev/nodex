@@ -1,6 +1,6 @@
 //! Shared inline wrappers, atoms and literal fences.
 
-use super::escapes::{Text, needs_span};
+use super::escapes::{Text, needs_group_span, needs_span};
 use crate::attributes::{Attribute, write_attribute_list};
 use crate::{AttachmentKind, Colors, Inline, Style};
 
@@ -237,7 +237,20 @@ fn nest(segments: &[Segment], depth: usize, portable: bool, cell: bool) -> Text 
         let adjacent_delimiters = groups.last().is_some_and(|previous| {
             previous.source.ends_with(['*', '~']) && wrapped.source.starts_with(['*', '~'])
         });
-        let wrapped = if !portable && adjacent_delimiters {
+        // A wrapper assembled at an inner level has not seen this outer neighbor. Its token
+        // can change emphasis flanks, particularly for whitespace-only styled runs after spans.
+        let changed_boundary = !portable
+            && wrapped.source.starts_with(['*', '~'])
+            && groups.last().is_some_and(|previous| {
+                needs_group_span(
+                    &wrapped.source,
+                    &previous.source,
+                    segments
+                        .get(end)
+                        .map_or("", |segment| segment.text.source.as_str()),
+                )
+            });
+        let wrapped = if !portable && (adjacent_delimiters || changed_boundary) {
             surround(":span[", wrapped, "]")
         } else {
             wrapped
@@ -341,7 +354,13 @@ pub(super) fn destination(url: &str) -> String {
             '&' if url_reference(&url[index..]) => encoded.push_str("&amp;"),
             '<' => encoded.push_str("&lt;"),
             '>' => encoded.push_str("&gt;"),
-            '\\' => encoded.push_str("\\\\"),
+            '\\' if url[index + 1..]
+                .chars()
+                .next()
+                .is_none_or(|next| next.is_ascii_punctuation() || matches!(next, '\n' | '\r')) =>
+            {
+                encoded.push_str("\\\\")
+            }
             '\n' => encoded.push_str("&#10;"),
             '\r' => encoded.push_str("&#13;"),
             other => encoded.push(other),

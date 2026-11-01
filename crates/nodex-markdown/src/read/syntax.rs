@@ -106,11 +106,7 @@ impl Syntax {
     }
 
     pub fn prepare(&mut self, source: &str) -> Result<String, ReadError> {
-        if !source.contains([':', '{'])
-            && !source.contains("$$")
-            && !source.contains("\\(")
-            && !source.contains("\\[")
-        {
+        if !source.contains([':', '{']) && !source.contains("$$") && !source.contains("\\[") {
             self.line_numbers
                 .extend(1..=source.bytes().filter(|b| *b == b'\n').count() + 1);
             return Ok(source.to_owned());
@@ -416,7 +412,6 @@ impl Syntax {
         } else {
             Vec::new()
         };
-        let mut missing_latex = [false; 2];
         let paragraphs = paragraph_ends(source);
         let mut paragraph = 0;
         let mut missing_angle = false;
@@ -426,7 +421,6 @@ impl Syntax {
         while i < source.len() {
             while paragraphs.get(paragraph).is_some_and(|end| *end <= i) {
                 paragraph += 1;
-                missing_latex = [false; 2];
             }
             while protected
                 .get(protected_index)
@@ -445,31 +439,6 @@ impl Syntax {
                 continue;
             }
             let rest = &source[i..];
-            if rest.starts_with("\\(") || rest.starts_with("\\[") {
-                let kind = usize::from(rest.starts_with("\\["));
-                let close = if rest.starts_with("\\(") {
-                    "\\)"
-                } else {
-                    "\\]"
-                };
-                let end = paragraphs.get(paragraph).copied().unwrap_or(source.len());
-                if let Some(end) = (!missing_latex[kind])
-                    .then(|| source[i + 2..end].find(close))
-                    .flatten()
-                {
-                    let length = end + 4;
-                    out.push_str(&rest[..length]);
-                    line += rest[..length].bytes().filter(|b| *b == b'\n').count();
-                    i += length;
-                    continue;
-                }
-                missing_latex[kind] = true;
-                // Comrak also searches the suffix for LaTeX. An unmatched opener is
-                // just an escaped bracket, so give it that literal meaning directly.
-                out.push_str(&self.insert(Token::Literal(rest[1..2].to_owned())));
-                i += 2;
-                continue;
-            }
             if rest.starts_with('\\') {
                 let length = rest.chars().nth(1).map_or(1, |c| 1 + c.len_utf8());
                 out.push_str(&rest[..length]);
@@ -856,9 +825,8 @@ impl Fence {
 fn protected_ranges(source: &str) -> Vec<std::ops::Range<usize>> {
     use comrak::{Arena, nodes::NodeValue, parse_document};
     let arena = Arena::new();
-    let safe = unmatched_latex(source);
-    let root = parse_document(&arena, &safe, &super::parser_options());
-    let columns = super::columns::Columns::new(safe.split('\n'));
+    let root = parse_document(&arena, source, &super::parser_options());
+    let columns = super::columns::Columns::new(source.split('\n'));
     let mut offsets = vec![0];
     offsets.extend(source.match_indices('\n').map(|(index, _)| index + 1));
     let mut ranges = Vec::new();
@@ -929,8 +897,7 @@ fn literal_lines(source: &str) -> std::collections::HashSet<usize> {
     let mut options = super::parser_options();
     options.extension.block_directive = false;
     let arena = Arena::new();
-    let safe = unmatched_latex(source);
-    let root = parse_document(&arena, &safe, &options);
+    let root = parse_document(&arena, source, &options);
     let mut lines = std::collections::HashSet::new();
     for node in root.descendants() {
         let data = node.data.borrow();
@@ -943,41 +910,6 @@ fn literal_lines(source: &str) -> std::collections::HashSet<usize> {
         lines.extend(start..=pos.end.line);
     }
     lines
-}
-
-/// Comrak's LaTeX extension searches every remaining backslash for each unmatched
-/// opener. The final closer of each kind proves which openers cannot match.
-/// Use an equally wide escaped punctuation mark for these preliminary parses;
-/// their only outputs are literal ranges and line numbers, never text values.
-fn unmatched_latex(source: &str) -> std::borrow::Cow<'_, str> {
-    let bytes = source.as_bytes();
-    let mut safe = std::borrow::Cow::Borrowed(source.as_bytes());
-    let mut start = 0;
-    for end in paragraph_ends(source) {
-        let part = &source[start..end];
-        let last = [part.rfind("\\)"), part.rfind("\\]")];
-        let mut i = start;
-        while i + 1 < end {
-            if bytes[i] != b'\\' {
-                i += 1;
-                continue;
-            }
-            if matches!(bytes[i + 1], b'(' | b'[') {
-                let kind = usize::from(bytes[i + 1] == b'[');
-                if last[kind].is_none_or(|close| close + start < i + 2) {
-                    safe.to_mut()[i + 1] = b'!';
-                }
-            }
-            i += 2;
-        }
-        start = end;
-    }
-    match safe {
-        std::borrow::Cow::Borrowed(_) => std::borrow::Cow::Borrowed(source),
-        std::borrow::Cow::Owned(bytes) => std::borrow::Cow::Owned(
-            String::from_utf8(bytes).expect("ASCII substitution preserves UTF-8"),
-        ),
-    }
 }
 
 fn paragraph_ends(source: &str) -> Vec<usize> {

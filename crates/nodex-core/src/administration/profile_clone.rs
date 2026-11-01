@@ -585,10 +585,11 @@ mod tests {
                         "INSERT INTO document_materializations(document_id, generation, projected_seq,
                            schema_version, title, title_rich_json, title_rich_hash, markdown, plain_text, preview,
                            block_tree_json, updated_at, materialization_derivation_version)
-                         VALUES ('unowned-source', 1, 0, 4, ?1, ?2, ?3, ?4, ?5, ?6, ?7, '2026-08-21T00:00:00.000Z', 4)",
+                         VALUES ('unowned-source', 1, 0, 4, ?1, ?2, ?3, ?4, ?5, ?6, ?7, '2026-08-21T00:00:00.000Z', ?8)",
                         rusqlite::params![materialization.title, title, crate::document::sha256(title.as_bytes()),
                             materialization.markdown, materialization.plain_text, materialization.preview,
-                            serde_json::to_string(&materialization.block_tree).unwrap()],
+                            serde_json::to_string(&materialization.block_tree).unwrap(),
+                            crate::document::CURRENT_DOCUMENT_MATERIALIZATION_DERIVATION_VERSION],
                     )?;
                     Ok(())
                 })

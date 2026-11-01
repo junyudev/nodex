@@ -93,9 +93,11 @@ Two things vary with where text comes from:
   style: exact writes reject them, and other reading keeps their text. All other
   HTML is text, and exact writes reject it, since GitHub would have shown it
   differently.
-- Math is also read as models write it: `\(…\)` is inline math, and `\[…\]` is
-  a math Block on lines of its own and inline math within a line. GitHub reads
-  these as escaped brackets.
+- A math Block can also be written as models write display math: `\[` and `\]`
+  on lines of their own around its source. GitHub reads these as escaped
+  brackets. Within a line, `\(`, `\)`, `\[` and `\]` are escaped punctuation as
+  GitHub reads them, so a backslash before punctuation always says only that the
+  punctuation is itself. Inline math is `$$…$$`.
 - Footnotes and single-dollar math are text. A link's title is not kept.
 - An image description that ends in a pipe and a number gives the image's
   width, as `![Diagram|480](url)`. GitHub keeps it in the image's alternative
@@ -156,17 +158,19 @@ send history and is non-exact. Plain text includes the first line and children.
 
 ### Escapes
 
-Exact text has the fewest escapes that keep it exact. To write a Block's text,
-the writer first escapes every ASCII punctuation character with a backslash,
-and writes every space or tab at a line's start or end as a character reference
-(`&#x20;` or `&#x9;`). Then, from the last escape to the first, it removes each
-escape whose removal leaves the Block reading the same in its place, in exact
-mode. Code spans, code Blocks and math are literal and have no escapes. An
-implementation may use equivalent context rules, but its output must match this
-definition.
+Exact text keeps only the escapes it needs: removing any one of them, or a
+matched pair of escaped brackets, would change what the text says. To write a
+Block's text, the writer first escapes every ASCII punctuation character with a
+backslash, and writes every space or tab at a line's start or end as a character
+reference (`&#x20;` or `&#x9;`). Then, from the last escape to the first, it
+removes each escape whose removal leaves the Block reading the same in its
+place, in exact mode, and each escaped `[` together with its matching `]` when
+removing both does. It repeats this until nothing more can be removed. Code
+spans, code Blocks and math are literal and have no escapes. An implementation
+may use equivalent context rules, but its output must match this definition.
 
-So `snake_case`, `[draft`, `a | b`, `#5`, `50% & more` and `:::note` read as
-typed, while these keep their escapes:
+So `snake_case`, `[draft`, `a (b) & c`, `a | b`, `#5`, `50% & more` and
+`:::note` read as typed, while these keep their escapes:
 
 | Text                      | Exact text                 | What the escape prevents |
 | ------------------------- | -------------------------- | ------------------------ |
@@ -181,6 +185,10 @@ typed, while these keep their escapes:
 | `Ends with {color="red"}` | `Ends with \{color="red"}` | an attribute list        |
 | `    four spaces in`      | `&#x20;   four spaces in`  | indented code            |
 | `trailing ` (a space)     | `trailing&#x20;`           | the space being dropped  |
+
+Portable text follows the same rule against what it reads as, even where it
+cannot say its Blocks exactly, and writes web and mail addresses bare, as
+[Markdown Interchange](./markdown-interchange.md#writing-markdown) describes.
 
 ### Line breaks
 
