@@ -1,5 +1,4 @@
 import { PRIORITY_VALUES, type Priority } from "../../shared/priority";
-import { TOGGLE_LIST_STATUS_LABELS, TOGGLE_LIST_STATUS_ORDER } from "./toggle-list/types";
 import {
   getPriorityClassName,
   getPriorityLabel,
@@ -9,18 +8,6 @@ import {
 export const ARCHIVED_CARD_OPTION_ID = "archived";
 export const ARCHIVED_CARD_OPTION_NAME = "Archived";
 export const EMPTY_PRIORITY_OPTION_VALUE = "none";
-
-export const BOARD_STATUS_OPTIONS = [
-  ...TOGGLE_LIST_STATUS_ORDER.map((id) => ({
-    id,
-    name: TOGGLE_LIST_STATUS_LABELS[id],
-  })),
-] as const;
-
-export const BOARD_STATUS_LABELS: Record<string, string> = {
-  ...TOGGLE_LIST_STATUS_LABELS,
-  [ARCHIVED_CARD_OPTION_ID]: ARCHIVED_CARD_OPTION_NAME,
-};
 
 export type BoardPriorityOption = {
   value: Priority;

@@ -206,7 +206,7 @@ export function NodexDestinationPickerPageRowContent({
     <>
       <NodexTooltip tooltipContent={statusLabel}>
         <span className="flex h-[18px] w-[22px] shrink-0 items-center justify-center">
-          <StatusIcon statusId={statusId} label={statusLabel} className="size-4" />
+          <StatusIcon statusId={statusId} className="size-4" />
         </span>
       </NodexTooltip>
       <span className="min-w-0 flex-1 truncate">{title}</span>

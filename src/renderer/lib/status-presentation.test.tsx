@@ -1,11 +1,5 @@
 import { describe, expect, test } from "vite-plus/test";
-import {
-  StatusLabel,
-  StatusIcon,
-  createStatusIconElement,
-  getStatusAccentColorByLabel,
-  getStatusIdByLabel,
-} from "./status-presentation";
+import { StatusLabel, StatusIcon, createStatusIconElement } from "./status-presentation";
 import { render } from "../test/dom";
 
 type MockSvgNode = {
@@ -105,8 +99,9 @@ describe("status presentation", () => {
     expect(sector?.getAttribute("transform")).toBe("translate(3.5,3.5)");
   });
 
-  test("maps status labels back to shared status metadata", () => {
-    expect(getStatusIdByLabel("Plan")).toBe("plan");
-    expect(getStatusAccentColorByLabel("Done")).toBe("var(--status-done-dot)");
+  test("keeps renamed labels independent from the stage visual", () => {
+    const { container, getByText } = render(<StatusLabel statusId="doing" label="Done" />);
+    expect(getByText("Done")).toBeTruthy();
+    expect(container.querySelector("svg")?.style.color).toBe("var(--status-doing-dot)");
   });
 });

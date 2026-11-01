@@ -618,7 +618,7 @@ describe("NfmSlashMenu", () => {
           pageId: "page-title",
           title: "Projection notes",
           pageKey: "NDX-42",
-          status: "doing",
+          status: { optionId: "doing", label: "In progress" },
           locationLabel: "Product / Editor",
           lifecycle: "active",
           matchExcerpt: "Projection notes",

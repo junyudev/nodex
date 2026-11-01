@@ -1,14 +1,15 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
   COMPLETED_WORKFLOW_STATUS,
-  WORKFLOW_STATUS_COLUMNS,
+  DEFAULT_WORKFLOW_STATUS_COLUMNS,
   compareWorkflowStatuses,
   isWorkflowStatus,
+  resolveWorkflowStatusName,
 } from "./workflow-status";
 
 describe("Page workflow status", () => {
   it("uses the fixed domain-neutral workflow and completes at Done", () => {
-    expect(WORKFLOW_STATUS_COLUMNS).toEqual([
+    expect(DEFAULT_WORKFLOW_STATUS_COLUMNS).toEqual([
       { id: "triage", name: "Triage" },
       { id: "plan", name: "Plan" },
       { id: "doing", name: "Doing" },
@@ -26,5 +27,17 @@ describe("Page workflow status", () => {
     }
     expect(isWorkflowStatus("doing")).toBe(true);
     expect(isWorkflowStatus("done")).toBe(true);
+  });
+});
+
+describe("Source-owned stage names", () => {
+  it("uses a renamed option without changing the stage identity", () => {
+    expect(resolveWorkflowStatusName("doing", [{ id: "doing", name: "In progress" }])).toBe(
+      "In progress",
+    );
+  });
+  it("falls back for a missing stage and retains unknown identities", () => {
+    expect(resolveWorkflowStatusName("doing", [])).toBe("Doing");
+    expect(resolveWorkflowStatusName("unknown", [])).toBe("unknown");
   });
 });

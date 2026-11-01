@@ -2441,6 +2441,13 @@ pub enum LibraryPageWorkflowStatus {
     Done,
 }
 
+/// A Page's stage identity and current Source-owned display name.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct LibraryPageWorkflowStatusValue {
+    pub option_id: LibraryPageWorkflowStatus,
+    pub label: String,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct LibraryProjectPageSearchHit {
     /// Optional Project association for presentation, independent of caller routing.
@@ -2448,7 +2455,7 @@ pub struct LibraryProjectPageSearchHit {
     pub page_id: String,
     pub page_key: Option<String>,
     pub title: String,
-    pub status: Option<LibraryPageWorkflowStatus>,
+    pub status: Option<LibraryPageWorkflowStatusValue>,
     pub priority: Option<String>,
     pub tags: Vec<LibraryPageSearchOption>,
     pub assignee: Option<String>,
@@ -2480,7 +2487,7 @@ pub struct LibraryPageSearchMetadataDocument {
     pub title: String,
     pub preview: String,
     #[schema(required = true)]
-    pub status: Option<LibraryPageWorkflowStatus>,
+    pub status: Option<LibraryPageWorkflowStatusValue>,
     #[schema(required = true, value_type = Option<LibraryPageSearchPriority>)]
     pub priority: Option<String>,
     pub tags: Vec<LibraryPageSearchOption>,
@@ -2589,7 +2596,7 @@ pub struct LibraryPageReferenceCandidate {
     pub page_id: String,
     pub title: String,
     pub page_key: Option<String>,
-    pub status: Option<LibraryPageWorkflowStatus>,
+    pub status: Option<LibraryPageWorkflowStatusValue>,
     pub location_label: String,
     pub match_excerpt: Option<String>,
     pub match_source: LibraryPageReferenceMatchSource,

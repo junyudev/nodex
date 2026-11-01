@@ -5,7 +5,7 @@ import { BOARD_PRIORITY_OPTIONS } from "@/lib/board-options";
 import { estimateStyles } from "@/lib/types";
 import {
   isWorkflowStatus,
-  WORKFLOW_STATUS_LABELS,
+  resolveWorkflowStatusName,
   WORKFLOW_STATUS_ORDER,
 } from "../../../shared/workflow-status";
 import { isPriority } from "../../../shared/priority";
@@ -47,7 +47,7 @@ const defaultSemanticPropertyOptions = (
   kind: SemanticSelectPropertyKind,
 ): readonly DatabasePropertyOption[] => {
   if (kind === "status") {
-    return WORKFLOW_STATUS_ORDER.map((id) => ({ id, name: WORKFLOW_STATUS_LABELS[id] }));
+    return WORKFLOW_STATUS_ORDER.map((id) => ({ id, name: resolveWorkflowStatusName(id, []) }));
   }
   if (kind === "priority") {
     return BOARD_PRIORITY_OPTIONS.map((option) => ({
@@ -95,7 +95,7 @@ export function SemanticPropertyOptionIcon({
   readonly className?: string;
 }) {
   if (kind === "status" && isWorkflowStatus(option.id)) {
-    return <StatusIcon statusId={option.id} label={option.name} className={className} />;
+    return <StatusIcon statusId={option.id} className={className} />;
   }
   if (kind === "priority" && isPriority(option.id)) {
     return <PriorityValueIcon priority={option.id} className={className} />;

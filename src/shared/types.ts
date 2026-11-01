@@ -1,3 +1,4 @@
+import type { WorkflowStatusValue } from "./workflow-status";
 import type { components as CoreProtocolComponents } from "@nodex/core-protocol";
 import type { CodexTurnPresentationTicket } from "./nodex-app-tools/turn-presentation";
 import type {
@@ -168,8 +169,8 @@ export type PageRunInTarget = "localProject" | "newWorktree" | "cloud";
 export type WorktreeStartMode = "autoBranch" | "detachedHead";
 
 export {
-  WORKFLOW_STATUS_COLUMNS,
-  WORKFLOW_STATUS_LABELS,
+  DEFAULT_WORKFLOW_STATUS_COLUMNS,
+  DEFAULT_WORKFLOW_STATUS_LABELS,
   WORKFLOW_STATUS_ORDER,
   DEFAULT_WORKFLOW_STATUS,
   type WorkflowStatus,
@@ -461,7 +462,7 @@ export interface PageSearchResult {
   pageId: string;
   pageKey: string | null;
   title: string;
-  status: WorkflowStatus | null;
+  status: WorkflowStatusValue | null;
   priority: Priority | null;
   tags: PageSearchOption[];
   assignee: string | null;
@@ -496,7 +497,7 @@ export interface PageSearchMetadataDocument {
   pageKey: string | null;
   title: string;
   preview: string;
-  status: WorkflowStatus | null;
+  status: WorkflowStatusValue | null;
   priority: Priority | null;
   tags: PageSearchOption[];
   assignee: string | null;

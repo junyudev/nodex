@@ -1686,6 +1686,63 @@ mod tests {
                 expected_property_revision: 2,
             },
         );
+        // Search, its synchronous metadata preview, and reference candidates share Source names.
+        use nodex_core_contracts::library::{
+            LibraryPageWorkflowStatus, LibraryRead, LibraryReadValue,
+        };
+        let library =
+            crate::library::LibraryModule::new("profile-1", "library-1", &workspace.kernel);
+        for request in [
+            LibraryRead::ProjectPageSearch {
+                project_ids: vec!["project:lab".to_owned()],
+                query: "In progress".to_owned(),
+                filters: None,
+                preferred_project_id: None,
+                recent_page_ids: Vec::new(),
+                limit: Some(10),
+            },
+            LibraryRead::ProjectPageSearchMetadata {
+                project_ids: vec!["project:lab".to_owned()],
+                page_ids: Some(vec!["page:work".to_owned()]),
+            },
+            LibraryRead::PageReferenceCandidates {
+                query: "In progress".to_owned(),
+                source_page_id: None,
+                limit: Some(10),
+            },
+        ] {
+            let result = library
+                .read(
+                    &context(),
+                    ModuleReadRequest {
+                        contract_version: nodex_core_contracts::LIBRARY_CONTRACT_VERSION,
+                        read: request,
+                    },
+                )
+                .expect("renamed Status search");
+            let statuses = match result.value {
+                LibraryReadValue::ProjectPageSearch { items } => items
+                    .into_iter()
+                    .filter(|item| item.page_id == "page:work")
+                    .map(|item| item.status)
+                    .collect::<Vec<_>>(),
+                LibraryReadValue::ProjectPageSearchMetadata { items } => items
+                    .into_iter()
+                    .filter(|item| item.page_id == "page:work")
+                    .map(|item| item.status)
+                    .collect(),
+                LibraryReadValue::PageReferenceCandidates { items } => items
+                    .into_iter()
+                    .filter(|item| item.page_id == "page:work")
+                    .map(|item| item.status)
+                    .collect(),
+                _ => panic!("Status search read"),
+            };
+            assert_eq!(statuses.len(), 1);
+            let status = statuses[0].as_ref().expect("Page Status");
+            assert_eq!(status.option_id, LibraryPageWorkflowStatus::Doing);
+            assert_eq!(status.label, "In progress");
+        }
         let summary = linked_pages(&workspace, &["session:work"]);
         assert_eq!(summary[0].page.page_id, "page:work");
         assert_eq!(

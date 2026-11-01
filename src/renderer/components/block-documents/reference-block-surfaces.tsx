@@ -1,3 +1,4 @@
+import { resolveWorkflowStatusName } from "../../../shared/workflow-status";
 import { ArchiveIcon, ChevronRightIcon, OpenInIcon } from "@/components/shared/icons";
 import { useId, type ReactNode } from "react";
 import { Rows3, TriangleAlert } from "@/components/shared/icons/generic-icons";
@@ -47,6 +48,7 @@ export interface ReferencedCardRowProps extends ReferenceSurfaceStateDependencie
   readonly routingContext: ContentRoutingContext;
   readonly card: DatabasePageSummary;
   readonly canEdit: boolean;
+  readonly statusOptions?: readonly { readonly id: string; readonly name: string }[];
   readonly archived?: boolean;
   readonly legacy?: boolean;
   readonly inlineEditingDisabledReason?: string;
@@ -62,9 +64,11 @@ const META_CHIP =
 function CardRowMetadata({
   card,
   archived,
+  statusOptions,
 }: {
   readonly card: DatabasePageSummary;
   readonly archived: boolean;
+  readonly statusOptions: readonly { readonly id: string; readonly name: string }[];
 }) {
   const priority = resolveBoardPriorityOption(card.priority);
   return (
@@ -75,7 +79,12 @@ function CardRowMetadata({
         </span>
       ) : null}
       {card.estimate ? <span className={META_CHIP}>{card.estimate.toUpperCase()}</span> : null}
-      <NodexTooltip tooltipContent={archived ? "Archived" : card.status} side="top">
+      <NodexTooltip
+        tooltipContent={
+          archived ? "Archived" : resolveWorkflowStatusName(card.status, statusOptions)
+        }
+        side="top"
+      >
         <span className="inline-flex min-w-0 items-center gap-1 text-xs text-token-description-foreground">
           {archived ? (
             <ArchiveIcon aria-hidden="true" className="size-3.5 shrink-0" />
@@ -93,6 +102,7 @@ export function ReferencedCardRow({
   routingContext,
   card,
   canEdit,
+  statusOptions = [],
   archived = false,
   legacy = false,
   inlineEditingDisabledReason,
@@ -169,7 +179,9 @@ export function ReferencedCardRow({
             {inlineEditingDisabledReason}
           </span>
         ) : null}
-        {metadata ?? <CardRowMetadata card={card} archived={archived} />}
+        {metadata ?? (
+          <CardRowMetadata card={card} archived={archived} statusOptions={statusOptions} />
+        )}
         {onOpenPage ? (
           <NodexTooltip tooltipContent="Open Page" side="top">
             <button
@@ -307,6 +319,7 @@ export function DatabaseViewReferenceSurface({
               disclosureKey={`${referenceKey}:${row.page.id}`}
               routingContext={rowRoutingContext}
               card={row.page}
+              statusOptions={model.statusOptions}
               canEdit={!row.page.archived && !referencesAncestor}
               archived={row.page.archived}
               inlineEditingDisabledReason={

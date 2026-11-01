@@ -6,7 +6,6 @@ import {
   useInteractivePageSearch,
   type InteractivePageSearchResult,
 } from "./interactive-page-search";
-import { WORKFLOW_STATUS_LABELS } from "../../shared/workflow-status";
 
 const DESTINATION_SEARCH_LIMIT = 60;
 
@@ -96,8 +95,8 @@ export function buildRemoteDestinationSearchResult({
           projectId: result.projectId,
           projectName: project.name || "Untitled",
           projectAppearance: project.appearance,
-          columnId: result.status,
-          columnName: WORKFLOW_STATUS_LABELS[result.status],
+          columnId: result.status.optionId,
+          columnName: result.status.label,
           pageId: result.pageId,
           pageKey: result.pageKey ?? null,
           matchedPageKey: pageKeyMatch?.pageKey ?? null,

@@ -1,3 +1,4 @@
+import { useProjectDestinationStages } from "@/lib/use-project-destination-stages";
 import {
   useCallback,
   useEffect,
@@ -60,6 +61,7 @@ export interface NfmMoveToMenuSurfaceProps extends NfmMoveToMenuProps {
   initialQuery?: string;
   loadPageWindow?: boolean;
   enableRemotePageSearch?: boolean;
+  loadDestinationStages?: boolean;
 }
 
 const MOVE_TO_MENU_LOAD_DELAY_MS = 400;
@@ -93,7 +95,7 @@ type NfmMoveToNonPageRow = Exclude<NfmMoveToRow, { kind: "page" }>;
 
 function MoveToRowIcon({ row }: { row: NfmMoveToNonPageRow }) {
   if (row.kind === "db-column") {
-    return <StatusIcon statusId={row.columnId} label={row.columnName} className="size-4" />;
+    return <StatusIcon statusId={row.columnId} className="size-4" />;
   }
   return <MoveToProjectIcon projectAppearance={row.projectAppearance} />;
 }
@@ -289,6 +291,7 @@ export function NfmMoveToMenu({
     <NfmMoveToMenuSurface
       projects={scopedProjects}
       pageBoardMap={new Map()}
+      loadDestinationStages
       loading={loading}
       loadError={scopeError}
       loadPageWindow
@@ -315,6 +318,7 @@ export function NfmMoveToMenuSurface({
   initialQuery = "",
   loadPageWindow = false,
   enableRemotePageSearch = false,
+  loadDestinationStages = false,
   resultScope = "all",
   ariaLabel = "Move blocks to",
   placeholder = "Move blocks to…",
@@ -337,13 +341,24 @@ export function NfmMoveToMenuSurface({
         : [],
     [defaultPageProjectId, loadPageWindow, projects, resultScope],
   );
+  // Stage-name search needs the eligible schemas before it can decide which names match.
+  const stageProjects = projects.filter(
+    (project) =>
+      loadDestinationStages &&
+      resultScope !== "page-only" &&
+      (normalizeSearchText(query).length > 0 || expandedProjectIds.has(project.id)),
+  );
+  const destinationStages = useProjectDestinationStages(stageProjects);
+  const statusOptionsByProjectId = loadDestinationStages
+    ? destinationStages.optionsByProjectId
+    : undefined;
   const pageBoards = useBoardsForProjects(pageProjects);
   const pageBoardMap = useMemo(() => {
     if (!loadPageWindow) return providedPageBoardMap;
     return new Map([...providedPageBoardMap, ...pageBoards.boards]);
   }, [loadPageWindow, pageBoards.boards, providedPageBoardMap]);
-  const resolvedLoading = loading || pageBoards.loading;
-  const resolvedLoadError = loadError ?? pageBoards.error;
+  const resolvedLoading = loading || pageBoards.loading || destinationStages.loading;
+  const resolvedLoadError = loadError ?? pageBoards.error ?? destinationStages.error;
   const [acceptingRowId, setAcceptingRowId] = useState<string | null>(null);
   const [acceptError, setAcceptError] = useState<string | null>(null);
   const [showDelayedLoading, setShowDelayedLoading] = useState(false);
@@ -377,10 +392,11 @@ export function NfmMoveToMenuSurface({
       createNfmMoveToSearchIndex({
         projects,
         boardMap: pageBoardMap,
+        statusOptionsByProjectId,
         sourceProjectId,
         sourcePageId,
       }),
-    [pageBoardMap, projects, sourcePageId, sourceProjectId],
+    [pageBoardMap, projects, sourcePageId, sourceProjectId, statusOptionsByProjectId],
   );
   const searchResult = useMemo(() => searchIndex.search(query), [query, searchIndex]);
   const pageSearchEnabled = enableRemotePageSearch && resultScope !== "db-only";
@@ -400,6 +416,7 @@ export function NfmMoveToMenuSurface({
       buildNfmMoveToSections({
         projects,
         pageBoardMap,
+        statusOptionsByProjectId,
         sourceProjectId,
         sourcePageId,
         expandedProjectIds,
@@ -409,6 +426,7 @@ export function NfmMoveToMenuSurface({
       }),
     [
       pageBoardMap,
+      statusOptionsByProjectId,
       expandedProjectIds,
       projects,
       query,
@@ -428,6 +446,7 @@ export function NfmMoveToMenuSurface({
       const nextSections = buildNfmMoveToSections({
         projects,
         pageBoardMap,
+        statusOptionsByProjectId,
         sourceProjectId,
         sourcePageId,
         expandedProjectIds,
@@ -439,6 +458,7 @@ export function NfmMoveToMenuSurface({
     },
     [
       pageBoardMap,
+      statusOptionsByProjectId,
       expandedProjectIds,
       projects,
       resultScope,

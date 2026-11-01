@@ -345,3 +345,26 @@ describe("Database View render model", () => {
     );
   });
 });
+
+test("status Board columns use their Source's option names", () => {
+  const snapshot = makeSnapshot();
+  if (snapshot.value.kind !== "query") throw new Error("View query expected");
+  const query = snapshot.value.value;
+  const renamed = {
+    ...snapshot,
+    value: {
+      ...snapshot.value,
+      value: {
+        ...query,
+        properties: query.properties.map((property) =>
+          property.propertyId === "status"
+            ? { ...property, config: { options: [{ id: "doing", name: "In progress" }] } }
+            : property,
+        ),
+      },
+    },
+  };
+  const model = buildDatabaseViewRenderModel(renamed);
+  expect(model.columns.find((column) => column.id === "doing")?.name).toBe("In progress");
+  expect(model.columns.find((column) => column.id === "triage")?.name).toBe("Triage");
+});

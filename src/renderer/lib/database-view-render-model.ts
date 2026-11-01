@@ -3,7 +3,8 @@ import {
   type DatabasePromotionReadEvidence,
 } from "./database-promotion-read-evidence";
 import {
-  WORKFLOW_STATUS_COLUMNS,
+  WORKFLOW_STATUS_ORDER,
+  resolveWorkflowStatusName,
   DEFAULT_WORKFLOW_STATUS,
   isWorkflowStatus,
 } from "../../shared/workflow-status";
@@ -351,9 +352,15 @@ export const buildDatabaseViewColumns = (
     }));
   }
 
+  const statusProperty = propertyById(query.properties, "status");
+  const options = statusProperty ? readDatabasePropertyOptions(statusProperty) : [];
+  const allWorkflowColumns = WORKFLOW_STATUS_ORDER.map((id) => ({
+    id,
+    name: resolveWorkflowStatusName(id, options),
+  }));
   const workflowColumns = showEmptyGroups
-    ? WORKFLOW_STATUS_COLUMNS
-    : WORKFLOW_STATUS_COLUMNS.filter((column) =>
+    ? allWorkflowColumns
+    : allWorkflowColumns.filter((column) =>
         rows.some(({ row }) => row.effectiveGroupKey === column.id),
       );
   return workflowColumns.map((column) => ({

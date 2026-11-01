@@ -442,7 +442,7 @@ describe("Library Module transport", () => {
               pageId: "page:target",
               title: "Projection notes",
               pageKey: "NDX-42",
-              status: "doing",
+              status: { optionId: "doing", label: "Drafting" },
               locationLabel: "Product / Editor",
               matchExcerpt: "The projection stays bounded.",
               matchSource: "content",
@@ -477,6 +477,7 @@ describe("Library Module transport", () => {
           items: [
             {
               pageId: "page:target",
+              status: { optionId: "doing", label: "Drafting" },
               matchSource: "content",
             },
           ],

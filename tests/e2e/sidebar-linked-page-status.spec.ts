@@ -5,7 +5,7 @@ import {
   requireSidebarLinkedPageStatusScenarioFacts,
   SIDEBAR_LINKED_PAGE_STATUS_SCENARIO_ID,
 } from "../../scripts/scenarios/scenarios/sidebar-linked-page-status";
-import { WORKFLOW_STATUS_LABELS } from "../../src/shared/workflow-status";
+import { DEFAULT_WORKFLOW_STATUS_LABELS } from "../../src/shared/workflow-status";
 import { invokeIpc } from "./support/editor-scenario";
 
 const threadRow = (page: Page, title: string) =>
@@ -101,7 +101,7 @@ test("shows the earliest linked Page's Status, opens the Page, and follows live 
         );
         await expect(
           status.getByRole("img", {
-            name: `Page status: ${WORKFLOW_STATUS_LABELS[chat.expectedStatusOptionId]}`,
+            name: `Page status: ${DEFAULT_WORKFLOW_STATUS_LABELS[chat.expectedStatusOptionId]}`,
             exact: true,
           }),
         ).toBeVisible();

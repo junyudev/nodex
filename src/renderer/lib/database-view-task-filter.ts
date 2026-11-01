@@ -5,7 +5,7 @@ import type {
 } from "../../shared/database-kernel";
 import type { DataSourcePropertyRecordV2 } from "../../shared/database-module-v2";
 import { matchBuiltInDataSourceProperty } from "../../shared/data-source-built-ins";
-import { WORKFLOW_STATUS_COLUMNS } from "../../shared/workflow-status";
+import { WORKFLOW_STATUS_ORDER, resolveWorkflowStatusName } from "../../shared/workflow-status";
 import { PRIORITY_VALUES } from "../../shared/priority";
 import { readDatabasePropertyOptions } from "./database-view-authoring";
 import { getPriorityLabel } from "./priority-presentation";
@@ -55,7 +55,10 @@ const taskFilterProperty = (
   const authoredOptions = readDatabasePropertyOptions(property);
   const fallbackOptions =
     role === "status"
-      ? WORKFLOW_STATUS_COLUMNS
+      ? WORKFLOW_STATUS_ORDER.map((id) => ({
+          id,
+          name: resolveWorkflowStatusName(id, authoredOptions),
+        }))
       : role === "priority"
         ? PRIORITY_VALUES.map((id) => ({ id, name: getPriorityLabel(id) }))
         : observedOptions;
@@ -63,7 +66,12 @@ const taskFilterProperty = (
     role,
     propertyId: property.propertyId,
     name: property.name,
-    options: authoredOptions.length > 0 ? authoredOptions : fallbackOptions,
+    options:
+      role === "status"
+        ? fallbackOptions
+        : authoredOptions.length > 0
+          ? authoredOptions
+          : fallbackOptions,
   };
 };
 

@@ -2,15 +2,11 @@ import type { DatabasePage, WorkflowStatus, Priority } from "../types";
 import { PRIORITY_VALUES } from "../../../shared/priority";
 import { getPriorityShortLabel } from "../priority-presentation";
 import type { SortEmptyPlacement } from "../sort-empty-placement";
-import { WORKFLOW_STATUS_LABELS, WORKFLOW_STATUS_ORDER } from "../../../shared/workflow-status";
+import { WORKFLOW_STATUS_ORDER } from "../../../shared/workflow-status";
 
 export const TOGGLE_LIST_STATUS_ORDER = [...WORKFLOW_STATUS_ORDER] as const;
 
 export type ToggleListStatusId = WorkflowStatus;
-
-export const TOGGLE_LIST_STATUS_LABELS: Record<ToggleListStatusId, string> = {
-  ...WORKFLOW_STATUS_LABELS,
-};
 
 export const TOGGLE_LIST_PRIORITY_ORDER: readonly Priority[] = PRIORITY_VALUES;
 

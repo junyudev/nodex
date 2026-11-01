@@ -16,6 +16,7 @@ import type {
 import {
   DatabasePageProjectionError,
   projectCoreDatabaseRowSummary,
+  projectCoreDatabaseViewBoard,
   projectDatabasePage,
   projectDatabaseViewReference,
 } from "../../shared/database-page-projection";
@@ -238,6 +239,11 @@ describe("native Database Page projections", () => {
       created_at: "2026-07-25T00:00:00.000Z",
       updated_at: "2026-07-25T00:00:00.000Z",
     };
+
+    const board = projectCoreDatabaseViewBoard([row], [{ id: "triage", name: "Incoming" }]);
+    expect(board.columns[0]).toMatchObject({ id: "triage", name: "Incoming" });
+    expect(board.columns[0]?.cards.map((card) => card.id)).toEqual(["page:defaults"]);
+    expect(board.columns.find((column) => column.id === "doing")?.name).toBe("Doing");
 
     expect(projectCoreDatabaseRowSummary(row)).toMatchObject({
       id: "page:defaults",

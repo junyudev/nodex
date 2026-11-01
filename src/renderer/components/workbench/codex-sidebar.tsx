@@ -1507,7 +1507,7 @@ function CodexSidebarThreadHoverCardLinkedPage({
     <>
       <span className="flex h-5 w-4 shrink-0 items-center justify-center text-token-description-foreground">
         {page.status ? (
-          <StatusIcon statusId={page.status.optionId} label={page.status.label} />
+          <StatusIcon statusId={page.status.optionId} />
         ) : (
           <PageIcon className="icon-xs" />
         )}
@@ -2016,11 +2016,7 @@ function CodexSidebarThreadRowView({
                     aria-label={`Page status: ${pageStatus.label}`}
                     className="flex size-5 shrink-0 items-center justify-center"
                   >
-                    <StatusIcon
-                      statusId={pageStatus.optionId}
-                      label={pageStatus.label}
-                      className="size-3"
-                    />
+                    <StatusIcon statusId={pageStatus.optionId} className="size-3" />
                   </span>
                 </span>
               ) : null}

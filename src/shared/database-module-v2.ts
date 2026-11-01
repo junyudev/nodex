@@ -116,7 +116,7 @@ export interface DataSourcePropertyRecordV2 {
   readonly managementPolicy: DatabasePropertyManagementPolicyV2;
   /** Derived presentation discriminator; schema is the authority. */
   readonly valueType: DatabasePropertyValueType;
-  /** Option registries are fetched through OptionWindow when an editor opens. */
+  /** Fixed Status options accompany Source descriptors; other registries use OptionWindow. */
   readonly config: Readonly<Record<string, DatabaseJsonValue>>;
   readonly optionCount: number;
   readonly rankKey: string;

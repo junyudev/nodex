@@ -1140,11 +1140,6 @@ export const mapCorePropertyDescriptor = (input: unknown): DataSourcePropertyRec
   });
 };
 
-const hydrateCoreProperty = async (
-  _client: CoreClientPort,
-  input: unknown,
-): Promise<DataSourcePropertyRecordV2> => mapCorePropertyDescriptor(input);
-
 const hydrateCoreDataSource = async (
   client: CoreClientPort,
   descriptor: CoreDataSourceDescriptor,
@@ -1168,13 +1163,36 @@ const hydrateCoreDataSource = async (
     },
     options,
   );
-  const properties: DataSourcePropertyRecordV2[] = [];
-  for (const property of compactProperties) {
-    properties.push(await hydrateCoreProperty(client, property));
+  const properties = compactProperties.map(mapCorePropertyDescriptor);
+  const dataSourceRecord = mapCoreDataSourceRecord(dataSource);
+  const status = properties.find(
+    (property) => property.propertyId === "status" && property.lifecycle === "active",
+  );
+  if (!status) return { dataSource: dataSourceRecord, properties };
+
+  // Status has exactly five fixed identities; its names belong to every Source-scoped read.
+  const snapshot = await client.databaseRead(
+    {
+      kind: "option_window",
+      data_source_id: dataSourceId,
+      property_id: "status",
+      window: { first: 5 },
+    },
+    options,
+  );
+  if (snapshot.value.kind !== "option_window" || snapshot.value.options.next_cursor) {
+    throw new Error("Core Status registry exceeded its fixed stage boundary");
   }
+  const statusOptions = snapshot.value.options.items.map((option) => ({
+    id: option.id,
+    name: option.name,
+    ...(option.color == null ? {} : { color: option.color }),
+  }));
   return {
-    dataSource: mapCoreDataSourceRecord(dataSource),
-    properties,
+    dataSource: dataSourceRecord,
+    properties: properties.map((property) =>
+      property === status ? { ...property, config: { options: statusOptions } } : property,
+    ),
   };
 };
 

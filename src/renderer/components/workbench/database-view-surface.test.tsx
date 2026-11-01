@@ -489,7 +489,7 @@ const groupedListModel = (): DatabaseViewRenderModel => {
     name: "Status",
     ...testPropertySemantics("select", 1),
     valueType: "select" as const,
-    config: { options: [{ id: "doing", name: "doing" }] },
+    config: { options: [{ id: "doing", name: "Drafting" }] },
     rankKey: "0",
     lifecycle: "active" as const,
     revision: 1,
@@ -2822,7 +2822,7 @@ describe("DatabaseViewTabSurface", () => {
     expect(screen.queryByRole("article")).toBeNull();
   });
 
-  test("uses canonical status group labels and routes header creation to that status", () => {
+  test("names status groups by their Data Source and routes header creation to that status", () => {
     const onRequestCreatePage = vi.fn();
     const screen = render(
       <DatabaseViewTabSurface
@@ -2841,8 +2841,8 @@ describe("DatabaseViewTabSurface", () => {
       />,
     );
 
-    expect(screen.getByText("Doing")).toBeTruthy();
-    expect(screen.queryByText("doing")).toBeNull();
+    expect(screen.getByText("Drafting")).toBeTruthy();
+    expect(screen.queryByText("Doing")).toBeNull();
     expect(
       screen.container.querySelector('[data-page-create-surface-id="surface-list"]'),
     ).toBeTruthy();

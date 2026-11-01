@@ -12,7 +12,7 @@ import type { DocumentCommitRef } from "./block-documents/contracts";
 import type { BlockPropertyFieldMutationV2 } from "./block-property-mutations-v2";
 import type { DatabaseApplyOperationV2 } from "./database-module-v2";
 import type { LocalCommitCommandSuccess } from "./local-commit-delivery";
-import type { WorkflowStatus } from "./workflow-status";
+import type { WorkflowStatusValue } from "./workflow-status";
 import type { PageSearchMatch, PageSearchTextPart } from "./types";
 import type { PortableRichText } from "./block-documents/portable-rich-text";
 import type { BlockTransferUndoToken } from "./block-transfer-undo-token";
@@ -114,7 +114,7 @@ export interface LibraryPageReferenceCandidate {
   readonly pageId: string;
   readonly title: string;
   readonly pageKey: string | null;
-  readonly status: WorkflowStatus | null;
+  readonly status: WorkflowStatusValue | null;
   readonly locationLabel: string;
   readonly matchExcerpt: string | null;
   readonly matchSource: LibraryPageReferenceMatchSource;

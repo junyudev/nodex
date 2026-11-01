@@ -480,7 +480,7 @@ function makePageSearchResult(
     pageId: page.id,
     pageKey: page.pageKey,
     title: page.title,
-    status: page.status,
+    status: { optionId: page.status, label: page.status },
     priority: page.priority ?? null,
     tags: page.tags.map((label) => ({
       dataSourceId: `source:${item.projectId}`,
@@ -1109,7 +1109,7 @@ describe("CommandPaletteSurface", () => {
               pageId: "body-only-page",
               pageKey: null,
               title: "Body-only page",
-              status: "doing",
+              status: { optionId: "doing", label: "Doing" },
               priority: null,
               tags: [],
               assignee: null,

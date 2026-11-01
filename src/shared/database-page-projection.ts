@@ -1,3 +1,4 @@
+import { readDatabasePropertyOptions } from "./database-property-options";
 import type {
   DatabaseContainerDescriptorV2,
   DatabaseViewRecordV2,
@@ -26,7 +27,11 @@ import {
 } from "./database-views";
 import { stableStringifyDatabaseJson } from "./database-kernel";
 import { toDatabasePageSummary } from "./page-summary";
-import { WORKFLOW_STATUS_COLUMNS, isWorkflowStatus } from "./workflow-status";
+import {
+  WORKFLOW_STATUS_ORDER,
+  resolveWorkflowStatusName,
+  isWorkflowStatus,
+} from "./workflow-status";
 import { isPriority } from "./priority";
 import { assertValidPageInput } from "./page-input-validation";
 import { projectCoreDatabaseQueryRow } from "./core-database-row-projection";
@@ -487,12 +492,14 @@ export const projectCoreDataSourceQuery = (
 
 export const projectCoreDatabaseViewBoard = (
   rows: readonly CoreDatabaseRowSummary[],
+  statusOptions: readonly { readonly id: string; readonly name: string }[],
 ): BoardSummary => {
   const cards = projectCoreDatabaseRowSummaries(rows);
   return {
-    columns: WORKFLOW_STATUS_COLUMNS.map((column) => ({
-      ...column,
-      cards: cards.filter((card) => card.status === column.id),
+    columns: WORKFLOW_STATUS_ORDER.map((id) => ({
+      id,
+      name: resolveWorkflowStatusName(id, statusOptions),
+      cards: cards.filter((card) => card.status === id),
     })),
   };
 };
@@ -643,6 +650,9 @@ export const projectDatabaseViewReference = (
   const summaries = projectDatabasePageSummaries(query);
   const model: DatabaseViewReadModel = {
     ...authority,
+    statusOptions: query.properties.flatMap((property) =>
+      property.propertyId === "status" ? readDatabasePropertyOptions(property) : [],
+    ),
     dataSourceId: query.dataSource.dataSourceId,
     view: {
       id: query.view.viewId,

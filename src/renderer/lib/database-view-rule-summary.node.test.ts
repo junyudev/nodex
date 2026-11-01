@@ -56,8 +56,8 @@ describe("database View rule summaries", () => {
       ...status,
       config: {
         options: [
-          { id: "triage", name: "Triage" },
-          { id: "plan", name: "Plan" },
+          { id: "triage", name: "Incoming" },
+          { id: "plan", name: "Queued" },
           { id: "doing", name: "Doing" },
           { id: "review", name: "Review" },
           { id: "done", name: "Done" },
@@ -86,7 +86,7 @@ describe("database View rule summaries", () => {
       {
         key: "status",
         label: "Status",
-        value: "Triage, Plan",
+        value: "Incoming, Queued",
       },
     ]);
   });

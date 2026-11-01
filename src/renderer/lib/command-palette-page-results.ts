@@ -212,7 +212,7 @@ export function buildCommandPalettePagesFromSearchResults({
           id: result.pageId,
           title: result.title,
           pageKey: result.pageKey,
-          status: result.status,
+          status: result.status?.optionId ?? null,
           priority,
           tags: result.tags.map(pageSearchOptionIdentityKey),
           assignee: result.assignee,

@@ -1,3 +1,4 @@
+import { readDatabasePropertyOptions } from "../../shared/database-property-options";
 import { projectCoreDatabaseQueryRow } from "../../shared/core-database-row-projection";
 import {
   projectDatabaseViewReference,
@@ -170,7 +171,12 @@ export const projectDatabaseViewWindow = <ProjectScope extends string | null>(in
     projection: projectionCoordinate(value.projection),
     nextCursor: value.rows.next_cursor ?? null,
     rows,
-    board: projectCoreDatabaseViewBoard(value.rows.items),
+    board: projectCoreDatabaseViewBoard(
+      value.rows.items,
+      dataSource.properties.flatMap((property) =>
+        property.propertyId === "status" ? readDatabasePropertyOptions(property) : [],
+      ),
+    ),
     query: projectCoreDatabaseViewQuery(value, input.libraryId, database, dataSource, view),
     view: {
       id: view.viewId,

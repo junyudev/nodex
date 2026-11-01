@@ -53,6 +53,10 @@ export const queryKeys = {
     destinations: (projectIds: readonly string[], normalizedQuery: string) =>
       ["pageSearch", "destinations", [...projectIds].sort(), normalizedQuery] as const,
   },
+  destinationStages: {
+    byProject: (projectId: string, libraryId: string, databaseId: string, viewId: string | null) =>
+      ["destinationStages", projectId, libraryId, databaseId, viewId] as const,
+  },
   boards: {
     all: () => ["boards"] as const,
     byProject: (projectId: string) => ["boards", "byProject", projectId] as const,

@@ -1,3 +1,4 @@
+import { resolveWorkflowStatusName } from "../../../shared/workflow-status";
 import { useEffect, useState } from "react";
 import {
   CloseIcon,
@@ -35,7 +36,6 @@ import {
   TOGGLE_LIST_PRIORITY_ORDER,
   TOGGLE_LIST_RANK_FIELDS,
   TOGGLE_LIST_RANK_FIELD_LABELS,
-  TOGGLE_LIST_STATUS_LABELS,
   TOGGLE_LIST_STATUS_ORDER,
   TOGGLE_LIST_TAG_FILTER_MODES,
   TOGGLE_LIST_TAG_FILTER_MODE_LABELS,
@@ -153,6 +153,7 @@ export function ToggleListSummaryBadges({
 interface ToggleListRulesBodyProps {
   settings: ToggleListSettings;
   availableTags: string[];
+  statusOptions: readonly { readonly id: string; readonly name: string }[];
   updateSettings: (fn: (prev: ToggleListSettings) => ToggleListSettings) => void;
   showHostCardToggle?: boolean;
   /** Tighter spacing and smaller labels for inline embed context. */
@@ -162,6 +163,7 @@ interface ToggleListRulesBodyProps {
 export function ToggleListRulesBody({
   settings,
   availableTags,
+  statusOptions,
   updateSettings,
   showHostCardToggle = false,
   compact = false,
@@ -235,6 +237,7 @@ export function ToggleListRulesBody({
             sectionGap={sectionGap}
             settings={settings}
             availableTags={availableTags}
+            statusOptions={statusOptions}
             updateRulesV2={updateRulesV2}
           />
           <SortSection
@@ -308,6 +311,7 @@ function FilterSection({
   sectionGap,
   settings,
   availableTags,
+  statusOptions,
   updateRulesV2,
 }: {
   compact: boolean;
@@ -315,6 +319,7 @@ function FilterSection({
   sectionGap: string;
   settings: ToggleListSettings;
   availableTags: string[];
+  statusOptions: readonly { readonly id: string; readonly name: string }[];
   updateRulesV2: (fn: (rules: ToggleListRulesV2) => ToggleListRulesV2) => void;
 }) {
   const addGroup = () => {
@@ -368,6 +373,7 @@ function FilterSection({
             groupIndex={groupIndex}
             group={group}
             availableTags={availableTags}
+            statusOptions={statusOptions}
             onChange={(next) => updateGroup(groupIndex, next)}
             onRemove={() => removeGroup(groupIndex)}
             removable={settings.rulesV2.filter.any.length > 1}
@@ -702,6 +708,7 @@ function GroupEditor({
   group,
   groupIndex,
   availableTags,
+  statusOptions,
   onChange,
   onRemove,
   removable,
@@ -710,6 +717,7 @@ function GroupEditor({
   group: ToggleListFilterGroup;
   groupIndex: number;
   availableTags: string[];
+  statusOptions: readonly { readonly id: string; readonly name: string }[];
   onChange: (group: ToggleListFilterGroup) => void;
   onRemove: () => void;
   removable: boolean;
@@ -809,7 +817,7 @@ function GroupEditor({
               onClick={() => toggleStatus(status)}
               className={cn(CHIP_BASE, statusValues.includes(status) && CHIP_ACTIVE)}
             >
-              {TOGGLE_LIST_STATUS_LABELS[status]}
+              {resolveWorkflowStatusName(status, statusOptions)}
             </button>
           ))}
         </div>

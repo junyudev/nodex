@@ -19,7 +19,6 @@ export function DatabaseBoardGroupMarker({
     return (
       <StatusIcon
         statusId={group.marker.statusId}
-        label={group.label}
         className={cn("size-4 shrink-0", className)}
         style={{ color: group.accentColor }}
       />

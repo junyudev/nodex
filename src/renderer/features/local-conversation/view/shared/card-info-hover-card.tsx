@@ -1,8 +1,9 @@
+import { resolveWorkflowStatusName } from "../../../../../shared/workflow-status";
 import type { ReactElement } from "react";
 import { EstimateIcon, PriorityValueIcon } from "@/components/shared/icons";
 import { NodexHoverCard } from "@/components/ui/hover-card";
 import { StatusLabel } from "@/lib/status-presentation";
-import { BOARD_STATUS_LABELS, resolveBoardPriorityOption } from "../../../../lib/board-options";
+import { resolveBoardPriorityOption } from "../../../../lib/board-options";
 import { cn } from "../../../../lib/utils";
 import type { DatabasePage } from "../../../../lib/types";
 
@@ -14,20 +15,15 @@ const ESTIMATE_LABEL: Record<string, string> = {
   xl: "XL",
 };
 
-function formatColumnName(columnId: string): string {
-  return (
-    BOARD_STATUS_LABELS[columnId] ??
-    columnId.replace(/_/g, " ").replace(/^\w/, (char) => char.toUpperCase())
-  );
-}
-
 export function CardInfoHoverCard({
   card,
   columnId,
+  statusOptions,
   children,
 }: {
   card: DatabasePage | null;
   columnId: string | null;
+  statusOptions: readonly { readonly id: string; readonly name: string }[];
   children: ReactElement;
 }) {
   if (!card) return <>{children}</>;
@@ -69,7 +65,7 @@ export function CardInfoHoverCard({
             {columnId && (
               <StatusLabel
                 statusId={columnId}
-                label={formatColumnName(columnId)}
+                label={resolveWorkflowStatusName(columnId, statusOptions)}
                 className="gap-1 text-xs/5 text-(--foreground-secondary)"
                 labelClassName="text-xs"
                 iconClassName="size-3.5"

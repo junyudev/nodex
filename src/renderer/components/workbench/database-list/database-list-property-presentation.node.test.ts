@@ -26,8 +26,8 @@ const property = (
 
 describe("Database List property presence", () => {
   test("presents canonical workflow status labels without rewriting custom options", () => {
-    expect(databaseListGroupLabel("status", "triage", "triage")).toBe("Triage");
-    expect(databaseListGroupLabel("status", "doing", "doing")).toBe("Doing");
+    expect(databaseListGroupLabel("status", "triage", "Incoming")).toBe("Incoming");
+    expect(databaseListGroupLabel("status", "doing", "In progress")).toBe("In progress");
     expect(databaseListGroupLabel("custom:phase", "doing", "Engineering")).toBe("Engineering");
   });
 

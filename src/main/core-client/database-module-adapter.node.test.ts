@@ -538,7 +538,7 @@ describe("Core Database Module Adapter", () => {
     });
   });
 
-  test("maps typed Property descriptors without option-window N+1 reads", async () => {
+  test("includes the fixed Status registry without hydrating other Property options", async () => {
     const client = new FakeCoreClient();
     const base = {
       contract_version: 4 as const,
@@ -658,6 +658,17 @@ describe("Core Database Module Adapter", () => {
         },
       },
     });
+    client.enqueueDatabaseRead({
+      ...base,
+      value: {
+        kind: "option_window",
+        options: {
+          items: [{ id: "doing", name: "In progress", color: null, selected_page_count: 1 }],
+          next_cursor: null,
+          authority: { projection_revision: 19 },
+        },
+      },
+    });
     const adapter = createCoreDatabaseModuleAdapter({ client, ...identity });
 
     const result = await adapter.read({
@@ -681,7 +692,7 @@ describe("Core Database Module Adapter", () => {
               {
                 propertyId: "status",
                 schema: { kind: "select" },
-                config: {},
+                config: { options: [{ id: "doing", name: "In progress" }] },
               },
               { propertyId: "p_abcdefgh", config: {} },
             ],
@@ -693,6 +704,7 @@ describe("Core Database Module Adapter", () => {
       "data_source",
       "property_window",
       "property_window",
+      "option_window",
     ]);
   });
 

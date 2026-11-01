@@ -1,7 +1,10 @@
 import { matchesSearchTokens, normalizeSearchText, tokenizeSearchQuery } from "@/lib/search-text";
 import type { BoardSummary, Project } from "@/lib/types";
 import type { ProjectAppearance } from "../../../../shared/project-appearance";
-import { WORKFLOW_STATUS_COLUMNS } from "../../../../shared/workflow-status";
+import {
+  WORKFLOW_STATUS_ORDER,
+  resolveWorkflowStatusName,
+} from "../../../../shared/workflow-status";
 
 interface NfmMoveToSearchDocument {
   id: string;
@@ -43,6 +46,10 @@ export interface NfmMoveToSearchIndex {
 
 export interface CreateNfmMoveToSearchIndexInput {
   projects: readonly Project[];
+  statusOptionsByProjectId?: ReadonlyMap<
+    string,
+    readonly { readonly id: string; readonly name: string }[]
+  >;
   boardMap: ReadonlyMap<string, BoardSummary>;
   sourceProjectId: string | null;
   sourcePageId: string | null;
@@ -73,6 +80,8 @@ function addColumnMatch(
 
 export function createNfmMoveToSearchIndex({
   projects,
+  boardMap,
+  statusOptionsByProjectId,
 }: CreateNfmMoveToSearchIndexInput): NfmMoveToSearchIndex {
   const documents: NfmMoveToSearchDocument[] = [];
 
@@ -90,7 +99,18 @@ export function createNfmMoveToSearchIndex({
       boardOrder: projectIndex * 1_000_000,
     });
 
-    WORKFLOW_STATUS_COLUMNS.forEach((column, columnIndex) => {
+    const stageIds =
+      statusOptionsByProjectId && !statusOptionsByProjectId.has(project.id)
+        ? []
+        : WORKFLOW_STATUS_ORDER;
+    stageIds.forEach((id, columnIndex) => {
+      const column = {
+        id,
+        name: resolveWorkflowStatusName(
+          id,
+          statusOptionsByProjectId?.get(project.id) ?? boardMap.get(project.id)?.columns ?? [],
+        ),
+      };
       const columnOrder = projectIndex * 1_000_000 + columnIndex * 10_000;
       documents.push({
         id: `db-column:${project.id}:${column.id}`,

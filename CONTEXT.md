@@ -409,7 +409,8 @@ Status has five assigned stage identities in workflow order: `triage`, not yet
 decided; `plan`, decided but not started; `doing`, in progress, including every
 round of checking and redirecting an Agent's work; `review`, waiting on someone
 else's verdict; and `done`, accepted. Their default names are Triage, Plan,
-Doing, Review, and Done. A Data Source may rename them.
+Doing, Review, and Done. A Data Source may rename them, and every surface shows
+its Source's names.
 Status moves only on intent: a person's edit, an Inbox decision, or handing the
 Page to a chat, which moves it from `triage` or `plan` to `doing`. Agent
 execution never moves it; whose turn it is belongs to Page Chat activity.

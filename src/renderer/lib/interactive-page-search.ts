@@ -1,3 +1,4 @@
+import type { WorkflowStatus } from "../../shared/workflow-status";
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import type {
   PageSearchFilters,
@@ -104,7 +105,31 @@ function projectionIsValid(snapshot: PageSearchMetadataSnapshot): boolean {
 async function loadWasm(): Promise<WasmIndex> {
   const wasm = await import("../generated/page-search-wasm/nodex_page_search_kernel.js");
   await wasm.default();
-  return new wasm.PageSearchPreviewIndex([]) as WasmIndex;
+  const kernel = new wasm.PageSearchPreviewIndex([]);
+  return {
+    free: () => kernel.free(),
+    replace: (rows) =>
+      kernel.replace((rows as PageSearchMetadataDocument[]).map(kernelMetadataDocument)),
+    applyDelta: (rows, removals) =>
+      kernel.applyDelta(
+        (rows as PageSearchMetadataDocument[]).map(kernelMetadataDocument),
+        removals,
+      ),
+    search: (request) =>
+      (
+        kernel.search(request) as Array<
+          Omit<PageSearchResult, "status"> & { status: WorkflowStatus | null }
+        >
+      ).map((row) => ({
+        ...row,
+        status: documents.get(row.pageId)?.status ?? null,
+      })),
+  };
+}
+
+// The ranking kernel filters by stage identity; labels remain Core-authored metadata.
+function kernelMetadataDocument(document: PageSearchMetadataDocument) {
+  return { ...document, status: document.status?.optionId ?? null };
 }
 
 async function refresh(pageIds?: readonly string[]): Promise<void> {

@@ -4,7 +4,10 @@ import { matchesSearchTokens, tokenizeSearchQuery } from "./page-search";
 import { buildCommandPaletteCharacterHighlightSegments } from "./command-palette-highlight";
 import { normalizeSearchText } from "./search-text";
 import type { ChatSearchMatch } from "../../shared/chat-search";
-import { WORKFLOW_STATUS_LABELS, WORKFLOW_STATUS_ORDER } from "../../shared/workflow-status";
+import {
+  DEFAULT_WORKFLOW_STATUS_LABELS,
+  WORKFLOW_STATUS_ORDER,
+} from "../../shared/workflow-status";
 import type { WorkflowStatus } from "../../shared/workflow-status";
 import {
   TOGGLE_LIST_EMPTY_PRIORITY_LABEL,
@@ -396,7 +399,7 @@ export function summarizeCommandPalettePageFilters(
     summaries.push({
       key: "status",
       label: "Status",
-      value: filters.statuses.map((status) => WORKFLOW_STATUS_LABELS[status]).join(", "),
+      value: filters.statuses.map((status) => DEFAULT_WORKFLOW_STATUS_LABELS[status]).join(", "),
     });
   }
 

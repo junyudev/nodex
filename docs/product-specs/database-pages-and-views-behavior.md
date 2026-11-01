@@ -730,8 +730,12 @@ from the canonical, commit-fenced read.
 Workflow status has five fixed stages: Triage, Plan, Doing, Review, and Done
 ([CONTEXT.md](../../CONTEXT.md#data-source) defines what each means and what may
 move a Page between them). A Data Source may rename its stages but not add,
-remove, or reorder them. An empty stage stays out of a Board or List unless the
-View shows empty groups, so a Database that never uses Review never shows it.
+remove, or reorder them. Every surface that names a stage uses the names of the
+Data Source the stage belongs to: Board columns, List groups, Property values,
+filters, search results, and Move to destinations. Only a stage filter spanning
+several Data Sources uses the default names. An empty stage stays out of a Board
+or List unless the View shows empty groups, so a Database that never uses Review
+never shows it.
 
 Each writable List status group ends with a compact
 create action that opens the standard Page composer already seeded to that

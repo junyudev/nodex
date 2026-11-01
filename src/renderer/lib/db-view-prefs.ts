@@ -1,6 +1,6 @@
 import type { DatabasePageSummary, Estimate, Priority } from "@/lib/types";
 import {
-  WORKFLOW_STATUS_LABELS,
+  resolveWorkflowStatusName,
   WORKFLOW_STATUS_ORDER,
   compareWorkflowStatuses,
   type WorkflowStatus,
@@ -623,6 +623,7 @@ export function getAvailableSortFields(view: SupportedDbView): DbViewSortField[]
 
 export function summarizeFilterClauses(
   rules: DbViewRules,
+  statusOptions: readonly { readonly id: string; readonly name: string }[],
 ): Array<{ key: string; label: string; value: string }> {
   const statusValues = collectUnion<WorkflowStatus>(
     rules.filter,
@@ -645,7 +646,9 @@ export function summarizeFilterClauses(
     summaries.push({
       key: "status",
       label: "Status",
-      value: statusValues.values.map((status) => WORKFLOW_STATUS_LABELS[status]).join(", "),
+      value: statusValues.values
+        .map((status) => resolveWorkflowStatusName(status, statusOptions))
+        .join(", "),
     });
   }
 
@@ -682,6 +685,7 @@ export function summarizeFilterClauses(
 
 export function summarizeSorts(
   rules: DbViewRules,
+  statusOptions: readonly { readonly id: string; readonly name: string }[],
 ): Array<{ key: string; label: string; value: string }> {
   return rules.sort.map((entry, index) => ({
     key: `${entry.field}:${index}`,

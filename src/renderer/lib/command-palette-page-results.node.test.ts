@@ -22,7 +22,7 @@ const result = (overrides: Partial<PageSearchResult> = {}): PageSearchResult => 
   pageId: "page:one",
   pageKey: "NDX-42",
   title: "Search authority",
-  status: "doing",
+  status: { optionId: "doing", label: "Doing" },
   priority: "p1-high",
   tags: [
     {

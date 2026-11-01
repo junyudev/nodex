@@ -339,3 +339,51 @@ describe("markdown move-to menu model", () => {
     expect(moveNfmMoveToFocusedRowId(rows[rows.length - 1]?.id ?? null, 1, rows)).toBe("db:alpha");
   });
 });
+
+test("destination stages show and match only the destination Source's name", () => {
+  const statusOptionsByProjectId = new Map([
+    ["alpha", [{ id: "doing", name: "In progress" }]],
+    ["beta", []],
+  ]);
+  const input = {
+    projects: PROJECTS,
+    pageBoardMap: BOARD_MAP,
+    statusOptionsByProjectId,
+    sourceProjectId: "alpha",
+    sourcePageId: null,
+    expandedProjectIds: new Set(["alpha", "beta"]),
+  };
+  const rows = flattenNfmMoveToRows(buildNfmMoveToSections({ ...input, query: "" }));
+  expect(rows.find((row) => row.id === "db-column:alpha:doing")).toMatchObject({
+    columnId: "doing",
+    columnName: "In progress",
+  });
+  expect(rows.find((row) => row.id === "db-column:beta:doing")).toMatchObject({
+    columnId: "doing",
+    columnName: "Doing",
+  });
+  expect(
+    flattenNfmMoveToRows(buildNfmMoveToSections({ ...input, query: "In progress" })).map(
+      (row) => row.id,
+    ),
+  ).toEqual(["db:alpha", "db-column:alpha:doing"]);
+  expect(
+    flattenNfmMoveToRows(buildNfmMoveToSections({ ...input, query: "Doing" })).map((row) => row.id),
+  ).toEqual(["db:beta", "db-column:beta:doing"]);
+});
+
+test("waits for a requested destination registry before offering its stage rows", () => {
+  const rows = flattenNfmMoveToRows(
+    buildNfmMoveToSections({
+      projects: PROJECTS,
+      pageBoardMap: BOARD_MAP,
+      statusOptionsByProjectId: new Map(),
+      sourceProjectId: "alpha",
+      sourcePageId: null,
+      expandedProjectIds: new Set(["alpha"]),
+      query: "",
+      resultScope: "db-only",
+    }),
+  );
+  expect(rows.map((row) => row.kind)).toEqual(["db", "db"]);
+});

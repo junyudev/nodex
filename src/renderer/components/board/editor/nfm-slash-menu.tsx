@@ -91,7 +91,6 @@ import {
 import type { Project } from "@/lib/types";
 import type { CommandPaletteHighlightSegment } from "@/lib/command-palette-highlight";
 import { StatusIcon } from "@/lib/status-presentation";
-import { WORKFLOW_STATUS_LABELS } from "../../../../shared/workflow-status";
 import { contentRoutingContextKey } from "../../../../shared/content-routing-context";
 import { NFM_TURN_INTO_DEFINITIONS } from "@/lib/nfm-turn-into-targets";
 import { codeLanguagePreference } from "@/lib/editor-model/code-language-preference";
@@ -1189,7 +1188,7 @@ export function buildPageReferenceCandidateSuggestionItems(
           : candidate.disabledReason === "ancestor_cycle"
             ? "An ancestor Page cannot be embedded"
             : null;
-      const statusLabel = candidate.status ? WORKFLOW_STATUS_LABELS[candidate.status] : null;
+      const statusLabel = candidate.status?.label ?? null;
       const metadata = [candidate.pageKey, statusLabel, candidate.locationLabel]
         .filter(Boolean)
         .join(" · ");
@@ -1220,7 +1219,7 @@ export function buildPageReferenceCandidateSuggestionItems(
               }
             : undefined,
         icon: candidate.status ? (
-          <StatusIcon statusId={candidate.status} className="size-4" />
+          <StatusIcon statusId={candidate.status?.optionId} className="size-4" />
         ) : (
           <PageIcon className="icon-xs shrink-0" aria-hidden="true" />
         ),

@@ -1,6 +1,6 @@
 import type { SVGProps } from "react";
 import type { WorkflowStatus } from "../../shared/workflow-status";
-import { WORKFLOW_STATUS_LABELS } from "../../shared/workflow-status";
+import { isWorkflowStatus, resolveWorkflowStatusName } from "../../shared/workflow-status";
 import { cn } from "./utils";
 
 type StatusVisualId = WorkflowStatus | "archived";
@@ -44,15 +44,6 @@ type StatusIconDefinition = {
 const STATUS_ICON_CLASS_NAME = "size-3.5 shrink-0";
 const STATUS_LABEL_CLASS_NAME =
   "inline-flex min-w-0 max-w-full items-center gap-1.5 text-sm/5 font-normal text-token-text-primary";
-
-const STATUS_ID_BY_LABEL: Record<string, StatusVisualId> = {
-  Triage: "triage",
-  Plan: "plan",
-  Doing: "doing",
-  Review: "review",
-  Done: "done",
-  Archived: "archived",
-};
 
 const WORKFLOW_ICON_VIEW_BOX = "0 0 14 14";
 const PROGRESS_ICON_RADIUS = 3.5;
@@ -186,15 +177,9 @@ const FALLBACK_STATUS_STYLE: StatusTone = {
   accentColor: "#8E8B86",
 };
 
-function resolveStatusVisualId(
-  statusId?: string | null,
-  label?: string | null,
-): StatusVisualId | null {
-  if (statusId && statusId in columnStyles) {
-    return statusId as StatusVisualId;
-  }
-  if (label) {
-    return STATUS_ID_BY_LABEL[label] ?? null;
+function resolveStatusVisualId(statusId?: string | null): StatusVisualId | null {
+  if (isWorkflowStatus(statusId) || statusId === "archived") {
+    return statusId;
   }
   return null;
 }
@@ -202,7 +187,7 @@ function resolveStatusVisualId(
 function resolveStatusLabel(statusId: StatusVisualId, label?: string | null): string {
   if (label?.trim()) return label;
   if (statusId === "archived") return "Archived";
-  return WORKFLOW_STATUS_LABELS[statusId];
+  return resolveWorkflowStatusName(statusId, []);
 }
 
 function setOptionalSvgAttribute(
@@ -244,35 +229,20 @@ function appendIconShapes(
   }
 }
 
-export function getStatusStyle(statusId?: string | null, label?: string | null): StatusTone {
-  const resolved = resolveStatusVisualId(statusId, label);
+export function getStatusStyle(statusId?: string | null): StatusTone {
+  const resolved = resolveStatusVisualId(statusId);
   return resolved ? columnStyles[resolved] : FALLBACK_STATUS_STYLE;
-}
-
-export function getStatusIdByLabel(label: string): WorkflowStatus | undefined {
-  const resolved = STATUS_ID_BY_LABEL[label];
-  return resolved && resolved !== "archived" ? resolved : undefined;
-}
-
-export function getStatusAccentColorByLabel(label: string): string | undefined {
-  const resolved = resolveStatusVisualId(undefined, label);
-  return resolved ? columnStyles[resolved].accentColor : undefined;
-}
-
-export function getStatusDotColor(label: string): string | undefined {
-  return getStatusAccentColorByLabel(label);
 }
 
 export function createStatusIconElement(
   statusId?: string | null,
   options?: {
     className?: string;
-    label?: string | null;
     documentRef?: Document;
   },
 ): SVGSVGElement {
   const documentRef = options?.documentRef ?? document;
-  const resolved = resolveStatusVisualId(statusId, options?.label) ?? "triage";
+  const resolved = resolveStatusVisualId(statusId) ?? "triage";
   const definition = STATUS_ICON_DEFINITIONS[resolved];
   const style = getStatusStyle(resolved);
   const svg = documentRef.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -290,15 +260,13 @@ export function createStatusIconElement(
 
 export function StatusIcon({
   statusId,
-  label,
   className,
   style: inlineStyle,
   ...props
 }: Omit<SVGProps<SVGSVGElement>, "children" | "viewBox"> & {
   statusId?: string | null;
-  label?: string | null;
 }) {
-  const resolved = resolveStatusVisualId(statusId, label) ?? "triage";
+  const resolved = resolveStatusVisualId(statusId) ?? "triage";
   const definition = STATUS_ICON_DEFINITIONS[resolved];
   const tone = getStatusStyle(resolved);
 
@@ -357,7 +325,7 @@ export function StatusLabel({
   labelClassName?: string;
   iconClassName?: string;
 }) {
-  const resolved = resolveStatusVisualId(statusId, label) ?? "triage";
+  const resolved = resolveStatusVisualId(statusId) ?? "triage";
   const statusLabel = resolveStatusLabel(resolved, label);
 
   return (

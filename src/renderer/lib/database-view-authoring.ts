@@ -1,7 +1,6 @@
 import {
   stableStringifyDatabaseJson,
   type DatabaseJsonValue,
-  type DatabasePropertyOption,
   type DatabaseViewFilterClause,
   type DatabaseViewFilterNode,
   type DatabaseViewFilterOperator,
@@ -49,26 +48,7 @@ export const emptyDatabaseViewConfig = (): DatabaseViewConfigV6 => ({
   },
 });
 
-export const readDatabasePropertyOptions = (
-  property: DatabaseAuthoringProperty,
-): readonly DatabasePropertyOption[] => {
-  if (property.valueType !== "select" && property.valueType !== "multi_select") {
-    return [];
-  }
-  const options = property.config.options;
-  if (!Array.isArray(options)) return [];
-  return options.flatMap((option) => {
-    if (typeof option !== "object" || option === null || Array.isArray(option)) {
-      return [];
-    }
-    const id = option.id;
-    const name = option.name;
-    const color = option.color;
-    if (typeof id !== "string" || typeof name !== "string") return [];
-    if (color !== undefined && typeof color !== "string") return [];
-    return [{ id, name, ...(color === undefined ? {} : { color }) }];
-  });
-};
+export { readDatabasePropertyOptions } from "../../shared/database-property-options";
 
 export const databaseViewConfigsEqual = (
   left: DatabaseViewConfigV6,

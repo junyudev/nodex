@@ -2376,8 +2376,13 @@ const parseReadValue = (value: unknown): LibraryReadValue => {
         "matchExcerptParts",
         "matches",
       ]);
-      if (candidate.status !== null && !isWorkflowStatus(candidate.status)) {
-        throw new TypeError(`library Page reference candidates[${index}].status is unsupported`);
+      const status =
+        candidate.status === null ? null : record(candidate.status, "Page reference status");
+      if (status !== null) {
+        exactKeys(status, "Page reference status", ["optionId", "label"]);
+        if (!isWorkflowStatus(status.optionId) || typeof status.label !== "string") {
+          throw new TypeError(`library Page reference candidates[${index}].status is unsupported`);
+        }
       }
       if (
         candidate.matchSource !== "recent" &&
@@ -2401,7 +2406,13 @@ const parseReadValue = (value: unknown): LibraryReadValue => {
           candidate.pageKey === null
             ? null
             : string(candidate.pageKey, `library Page reference candidates[${index}].pageKey`),
-        status: candidate.status,
+        status:
+          status && isWorkflowStatus(status.optionId)
+            ? {
+                optionId: status.optionId,
+                label: string(status.label, "Page reference status.label"),
+              }
+            : null,
         locationLabel: string(
           candidate.locationLabel,
           `library Page reference candidates[${index}].locationLabel`,

@@ -33,7 +33,7 @@ const result: PageSearchResult = {
   pageId: "page-1",
   pageKey: "LAB-13",
   title: "Launch",
-  status: "doing",
+  status: { optionId: "doing", label: "Doing" },
   priority: null,
   tags: [],
   assignee: null,

@@ -339,7 +339,7 @@ export function DatabaseListRow({
             onSelectedIdsChange={(selectedIds) => onSetStatus(selectedIds[0] ?? null)}
             renderOption={(option) => (
               <span className="flex min-w-0 items-center gap-2">
-                <StatusIcon statusId={option.id} label={option.name} className="size-4" />
+                <StatusIcon statusId={option.id} className="size-4" />
                 <span className="truncate">{option.name}</span>
               </span>
             )}

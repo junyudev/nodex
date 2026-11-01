@@ -1192,3 +1192,46 @@ describe("Database Module v2 transport boundary", () => {
     if (apply.ok) expect("projectId" in apply.value).toBe(false);
   });
 });
+
+test("Status read descriptors carry only a bounded, typed stage registry", () => {
+  const status = {
+    ...propertyRecord(),
+    propertyId: "status",
+    systemRole: "status",
+    schema: { kind: "select" },
+    valueType: "select",
+    capabilities: {
+      ...propertyRecord().capabilities,
+      filterOperators: ["select_is", "select_is_not", "is_empty", "is_not_empty"],
+    },
+  };
+  expect(
+    parseDataSourcePropertyRecordV2({
+      ...status,
+      config: { options: [{ id: "doing", name: "In progress" }] },
+    }).config,
+  ).toEqual({ options: [{ id: "doing", name: "In progress" }] });
+  expect(() =>
+    parseDataSourcePropertyRecordV2({
+      ...status,
+      config: { options: [{ id: "unknown", name: "Invalid" }] },
+    }),
+  ).toThrow("is invalid");
+  expect(() =>
+    parseDataSourcePropertyRecordV2({
+      ...status,
+      config: {
+        options: [
+          { id: "doing", name: "One" },
+          { id: "doing", name: "Two" },
+        ],
+      },
+    }),
+  ).toThrow("unique stage identities");
+  expect(() =>
+    parseDataSourcePropertyRecordV2({
+      ...propertyRecord(),
+      config: { options: [{ id: CUSTOM_OPTION_ID, name: "Platform" }] },
+    }),
+  ).toThrow("options is not supported");
+});

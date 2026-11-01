@@ -1,7 +1,10 @@
 import type { BoardSummary, Project } from "@/lib/types";
 import type { NfmBlockMoveDestination } from "@/lib/nfm-block-move-runtime";
 import type { ProjectAppearance } from "../../../../shared/project-appearance";
-import { WORKFLOW_STATUS_COLUMNS } from "../../../../shared/workflow-status";
+import {
+  WORKFLOW_STATUS_ORDER,
+  resolveWorkflowStatusName,
+} from "../../../../shared/workflow-status";
 import { normalizeSearchText } from "@/lib/search-text";
 import {
   createNfmMoveToSearchIndex,
@@ -53,6 +56,10 @@ export interface NfmMoveToSection {
 
 export interface NfmMoveToSectionsInput {
   projects: readonly Project[];
+  statusOptionsByProjectId?: ReadonlyMap<
+    string,
+    readonly { readonly id: string; readonly name: string }[]
+  >;
   pageBoardMap: ReadonlyMap<string, BoardSummary>;
   sourceProjectId: string | null;
   sourcePageId: string | null;
@@ -97,13 +104,20 @@ function createPageRowFromSearchHit(hit: NfmMoveToPageSearchHit): NfmMoveToPageR
 function resolveSearchResult({
   projects,
   pageBoardMap,
+  statusOptionsByProjectId,
   sourceProjectId,
   sourcePageId,
   query,
   searchResult,
 }: Pick<
   NfmMoveToSectionsInput,
-  "projects" | "pageBoardMap" | "sourceProjectId" | "sourcePageId" | "query" | "searchResult"
+  | "projects"
+  | "pageBoardMap"
+  | "statusOptionsByProjectId"
+  | "sourceProjectId"
+  | "sourcePageId"
+  | "query"
+  | "searchResult"
 >): NfmMoveToSearchResult | null {
   const normalizedQuery = normalizeSearchText(query);
   if (!normalizedQuery) return null;
@@ -111,6 +125,7 @@ function resolveSearchResult({
   return createNfmMoveToSearchIndex({
     projects,
     boardMap: pageBoardMap,
+    statusOptionsByProjectId,
     sourceProjectId,
     sourcePageId,
   }).search(query);
@@ -147,6 +162,7 @@ export function getDefaultNfmMoveToExpandedProjectIds(
 export function buildNfmMoveToSections({
   projects,
   pageBoardMap,
+  statusOptionsByProjectId,
   sourceProjectId,
   sourcePageId,
   expandedProjectIds,
@@ -159,6 +175,7 @@ export function buildNfmMoveToSections({
   const resolvedSearchResult = resolveSearchResult({
     projects,
     pageBoardMap,
+    statusOptionsByProjectId,
     sourceProjectId,
     sourcePageId,
     query,
@@ -173,7 +190,18 @@ export function buildNfmMoveToSections({
     const visibleColumnRows: NfmMoveToDbColumnRow[] = [];
     const queryForcesExpanded = Boolean(normalizedQuery);
 
-    for (const column of WORKFLOW_STATUS_COLUMNS) {
+    const stageIds =
+      statusOptionsByProjectId && !statusOptionsByProjectId.has(project.id)
+        ? []
+        : WORKFLOW_STATUS_ORDER;
+    for (const columnId of stageIds) {
+      const column = {
+        id: columnId,
+        name: resolveWorkflowStatusName(
+          columnId,
+          statusOptionsByProjectId?.get(project.id) ?? pageBoardMap.get(project.id)?.columns ?? [],
+        ),
+      };
       const columnMatchesQuery = matchedColumnIds?.has(column.id) ?? false;
       const shouldShowColumn = !normalizedQuery || projectMatchesQuery || columnMatchesQuery;
       if (shouldShowColumn) {

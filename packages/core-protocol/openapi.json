@@ -24422,7 +24422,7 @@
           "status": {
             "oneOf": [
               {
-                "$ref": "#/components/schemas/LibraryPageWorkflowStatus"
+                "$ref": "#/components/schemas/LibraryPageWorkflowStatusValue"
               },
               {
                 "type": "null"
@@ -24861,7 +24861,7 @@
           "status": {
             "oneOf": [
               {
-                "$ref": "#/components/schemas/LibraryPageWorkflowStatus"
+                "$ref": "#/components/schemas/LibraryPageWorkflowStatusValue"
               },
               {
                 "type": "null"
@@ -25096,6 +25096,22 @@
           "review",
           "done"
         ]
+      },
+      "LibraryPageWorkflowStatusValue": {
+        "type": "object",
+        "description": "A Page's stage identity and current Source-owned display name.",
+        "required": [
+          "option_id",
+          "label"
+        ],
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "option_id": {
+            "$ref": "#/components/schemas/LibraryPageWorkflowStatus"
+          }
+        }
       },
       "LibraryPageWriteDestination": {
         "oneOf": [
@@ -25405,7 +25421,7 @@
           "status": {
             "oneOf": [
               {
-                "$ref": "#/components/schemas/LibraryPageWorkflowStatus"
+                "$ref": "#/components/schemas/LibraryPageWorkflowStatusValue"
               },
               {
                 "type": "null"

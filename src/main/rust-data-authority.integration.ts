@@ -2310,7 +2310,7 @@ describe("Electron native data authority", () => {
           expect.objectContaining({
             projectId,
             pageId: "page:electron-library-adapter",
-            status: "triage",
+            status: { optionId: "triage", label: "Triage" },
           }),
         ],
       });

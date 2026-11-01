@@ -1,4 +1,8 @@
-import type { DatabaseViewPreferencesOverride, DatabaseViewLayout } from "./database-kernel";
+import type {
+  DatabaseViewPreferencesOverride,
+  DatabaseViewLayout,
+  DatabasePropertyOption,
+} from "./database-kernel";
 import type { DatabaseViewQueryResultV2, DataSourcePageRowV2 } from "./database-module-v2";
 import type { BoardSummary, DatabasePageSummary } from "./types";
 import type { ContentRoutingContext } from "./content-routing-context";
@@ -44,6 +48,7 @@ export interface DatabaseViewPageRow {
 }
 
 export interface DatabaseViewReadModel {
+  readonly statusOptions: readonly DatabasePropertyOption[];
   readonly libraryId: string;
   readonly storeEpoch: string;
   readonly commitSeq: number;

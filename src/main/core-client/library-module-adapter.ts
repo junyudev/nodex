@@ -1126,7 +1126,9 @@ const mapReadValue = (snapshot: LibraryReadSnapshot): LibraryReadValue => {
           pageId: item.page_id,
           title: item.title,
           pageKey: item.page_key ?? null,
-          status: item.status ?? null,
+          status: item.status
+            ? { optionId: item.status.option_id, label: item.status.label }
+            : null,
           locationLabel: item.location_label,
           matchExcerpt: item.match_excerpt ?? null,
           matchSource: item.match_source,
@@ -1358,7 +1360,10 @@ function validatePageSearchMetadataItem(item: CorePageSearchMetadataItem): void 
   if (item.page_key !== null && typeof item.page_key !== "string") {
     throw new Error("Core Page search metadata returned an invalid page_key");
   }
-  if (item.status !== null && !isWorkflowStatus(item.status)) {
+  if (
+    item.status !== null &&
+    (!isWorkflowStatus(item.status.option_id) || typeof item.status.label !== "string")
+  ) {
     throw new Error("Core Page search metadata returned an invalid status");
   }
   if (item.priority !== null && !isPriority(item.priority)) {
@@ -2254,7 +2259,8 @@ export const createCoreLibraryModuleAdapter = (
           !item.page_id ||
           typeof item.title !== "string" ||
           (item.page_key !== null && typeof item.page_key !== "string") ||
-          (item.status != null && !isWorkflowStatus(item.status)) ||
+          (item.status != null &&
+            (!isWorkflowStatus(item.status.option_id) || typeof item.status.label !== "string")) ||
           (item.priority != null && !isPriority(item.priority)) ||
           typeof item.location_label !== "string" ||
           typeof item.updated_at !== "string"
@@ -2266,7 +2272,9 @@ export const createCoreLibraryModuleAdapter = (
           pageId: item.page_id,
           pageKey: item.page_key ?? null,
           title: item.title,
-          status: item.status ?? null,
+          status: item.status
+            ? { optionId: item.status.option_id, label: item.status.label }
+            : null,
           priority: item.priority ?? null,
           tags: item.tags.map(mapPageSearchOption),
           assignee: item.assignee ?? null,
@@ -2309,7 +2317,9 @@ export const createCoreLibraryModuleAdapter = (
             pageKey: item.page_key ?? null,
             title: item.title,
             preview: item.preview,
-            status: item.status ?? null,
+            status: item.status
+              ? { optionId: item.status.option_id, label: item.status.label }
+              : null,
             priority: item.priority !== null && isPriority(item.priority) ? item.priority : null,
             tags: item.tags.map(mapPageSearchOption),
             assignee: item.assignee ?? null,

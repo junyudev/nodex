@@ -5906,7 +5906,7 @@ export interface components {
             readonly matches: readonly components["schemas"]["LibraryPageSearchMatch"][];
             readonly page_id: string;
             readonly page_key?: string | null;
-            readonly status?: components["schemas"]["LibraryPageWorkflowStatus"] | null;
+            readonly status?: components["schemas"]["LibraryPageWorkflowStatusValue"] | null;
             readonly title: string;
             readonly title_parts: readonly components["schemas"]["LibraryPageSearchTextPart"][];
         };
@@ -6002,7 +6002,7 @@ export interface components {
             readonly priority: components["schemas"]["LibraryPageSearchPriority"] | null;
             readonly project_ids: readonly string[];
             readonly properties: readonly components["schemas"]["LibraryPageSearchMetadataProperty"][];
-            readonly status: components["schemas"]["LibraryPageWorkflowStatus"] | null;
+            readonly status: components["schemas"]["LibraryPageWorkflowStatusValue"] | null;
             readonly tags: readonly components["schemas"]["LibraryPageSearchOption"][];
             readonly title: string;
             readonly updated_at: string;
@@ -6060,6 +6060,11 @@ export interface components {
         };
         /** @enum {string} */
         readonly LibraryPageWorkflowStatus: "triage" | "plan" | "doing" | "review" | "done";
+        /** @description A Page's stage identity and current Source-owned display name. */
+        readonly LibraryPageWorkflowStatusValue: {
+            readonly label: string;
+            readonly option_id: components["schemas"]["LibraryPageWorkflowStatus"];
+        };
         readonly LibraryPageWriteDestination: {
             readonly at?: components["schemas"]["LibraryAgentSiblingAnchor"] | null;
             /** @enum {string} */
@@ -6122,7 +6127,7 @@ export interface components {
             readonly priority?: string | null;
             /** @description Optional Project association for presentation, independent of caller routing. */
             readonly project_id?: string | null;
-            readonly status?: components["schemas"]["LibraryPageWorkflowStatus"] | null;
+            readonly status?: components["schemas"]["LibraryPageWorkflowStatusValue"] | null;
             readonly tags: readonly components["schemas"]["LibraryPageSearchOption"][];
             readonly title: string;
             readonly title_parts: readonly components["schemas"]["LibraryPageSearchTextPart"][];

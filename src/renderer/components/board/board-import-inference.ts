@@ -1,3 +1,4 @@
+import { resolveWorkflowStatusName } from "../../../shared/workflow-status";
 import type { BoardSummary, PageInput, WorkflowStatus, Estimate, Priority } from "@/lib/types";
 import type {
   DbViewCardRecord,
@@ -45,14 +46,6 @@ interface SortAnchor {
 }
 
 const SUPPORTED_SORT_FIELDS = new Set<DbViewSortField>(["board-order", "priority", "estimate"]);
-
-const WORKFLOW_STATUS_NAMES: Record<WorkflowStatus, string> = {
-  triage: "Triage",
-  plan: "Plan",
-  doing: "Doing",
-  review: "Review",
-  done: "Done",
-};
 
 function hasOwn<T extends object, K extends keyof T>(value: T, key: K): boolean {
   return Object.prototype.hasOwnProperty.call(value, key);
@@ -105,13 +98,14 @@ function dedupeTags(tags: readonly string[]): string[] {
 function buildVisibleCardRecord(
   card: CardInputWithDefaults,
   targetColumnId: WorkflowStatus,
+  statusOptions: readonly { readonly id: string; readonly name: string }[],
 ): DbViewCardRecord {
   return {
     id: `import:${crypto.randomUUID()}`,
     pageKey: null,
     status: targetColumnId,
     columnId: targetColumnId,
-    columnName: WORKFLOW_STATUS_NAMES[targetColumnId],
+    columnName: resolveWorkflowStatusName(targetColumnId, statusOptions),
     archived: false,
     title: card.title,
     richTitle: plainTextToPortableRichText(card.title),
@@ -165,6 +159,7 @@ function applyFilterGroupPatch(
   card: CardInputWithDefaults,
   targetColumnId: WorkflowStatus,
   group: DbViewFilterGroup,
+  statusOptions: readonly { readonly id: string; readonly name: string }[],
 ): CardInputWithDefaults | null {
   const next = normalizeCardInput(card);
   const nextTags = new Set(next.tags);
@@ -213,7 +208,7 @@ function applyFilterGroupPatch(
 
   next.tags = dedupeTags([...nextTags]);
 
-  const visible = filterDbViewCards([buildVisibleCardRecord(next, targetColumnId)], {
+  const visible = filterDbViewCards([buildVisibleCardRecord(next, targetColumnId, statusOptions)], {
     filter: { any: [group] },
     sort: [],
   });
@@ -224,6 +219,7 @@ function pickSafestFilterPatch(
   cards: PageInput[],
   targetColumnId: WorkflowStatus,
   rules: DbViewRules,
+  statusOptions: readonly { readonly id: string; readonly name: string }[],
 ): PageInput[] | null {
   if (rules.filter.any.length === 0) {
     return cards.map((card) => normalizeCardInput(card));
@@ -236,7 +232,7 @@ function pickSafestFilterPatch(
     let bestCost = Number.POSITIVE_INFINITY;
 
     for (const group of rules.filter.any) {
-      const candidate = applyFilterGroupPatch(normalized, targetColumnId, group);
+      const candidate = applyFilterGroupPatch(normalized, targetColumnId, group, statusOptions);
       if (!candidate) continue;
 
       const cost =
@@ -424,7 +420,12 @@ export function resolveBoardImportInference(
     return { mode: "blocked" };
   }
 
-  const filterPatched = pickSafestFilterPatch(input.cards, input.targetColumnId, input.rules);
+  const filterPatched = pickSafestFilterPatch(
+    input.cards,
+    input.targetColumnId,
+    input.rules,
+    input.board.columns,
+  );
   if (!filterPatched) {
     return { mode: "blocked" };
   }

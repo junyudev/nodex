@@ -165,7 +165,7 @@ function InboxPageStatusMark({ status }: { readonly status: InboxPageStatus }) {
         aria-label={`Status: ${status.label}`}
         className="flex h-5 items-center pr-1"
       >
-        <StatusIcon statusId={status.id} label={status.label} className="size-3.5" />
+        <StatusIcon statusId={status.id} className="size-3.5" />
       </span>
     </NodexTooltip>
   );

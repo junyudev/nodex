@@ -2332,7 +2332,10 @@ mod tests {
         assert_eq!(items[0].project_id.as_deref(), Some("project-1"));
         assert_eq!(items[0].page_id, ROW_PAGE);
         assert_eq!(items[0].title, "Say hi");
-        assert_eq!(items[0].status, Some(LibraryPageWorkflowStatus::Triage));
+        assert_eq!(
+            items[0].status.as_ref().map(|status| status.option_id),
+            Some(LibraryPageWorkflowStatus::Triage)
+        );
         assert!(items[0].title_parts.iter().any(|part| part.highlighted));
         assert!(
             items[0]
@@ -2448,7 +2451,10 @@ mod tests {
         };
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].page_id, ROW_PAGE);
-        assert_eq!(items[0].status, Some(LibraryPageWorkflowStatus::Triage));
+        assert_eq!(
+            items[0].status.as_ref().map(|status| status.option_id),
+            Some(LibraryPageWorkflowStatus::Triage)
+        );
         assert_eq!(
             items[0].match_source,
             LibraryPageReferenceMatchSource::Title,

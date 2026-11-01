@@ -9,8 +9,8 @@ use nodex_core_contracts::library::{
     LibraryPageReferenceMatchSource, LibraryPageSearchMatch, LibraryPageSearchMatchQuality,
     LibraryPageSearchMetadataDocument, LibraryPageSearchMetadataProperty, LibraryPageSearchOption,
     LibraryPageSearchOptionIdentity, LibraryPageSearchTagMode, LibraryPageSearchTextPart,
-    LibraryPageWorkflowStatus, LibraryProjectPageSearchFacets, LibraryProjectPageSearchFilters,
-    LibraryProjectPageSearchHit,
+    LibraryPageWorkflowStatus, LibraryPageWorkflowStatusValue, LibraryProjectPageSearchFacets,
+    LibraryProjectPageSearchFilters, LibraryProjectPageSearchHit,
 };
 use nodex_page_search_kernel::{
     MatchQuality as KernelMatchQuality, MetadataDocument as KernelDocument,
@@ -82,7 +82,7 @@ struct IndexedPage {
     parent_id: String,
     updated_at: String,
     properties: Vec<IndexedProperty>,
-    status: Option<LibraryPageWorkflowStatus>,
+    status: Option<LibraryPageWorkflowStatusValue>,
     priority: Option<String>,
     tags: Vec<LibraryPageSearchOption>,
     assignee: Option<String>,
@@ -220,7 +220,11 @@ fn build_index(connection: &Connection, library_id: &str) -> Result<PageSearchIn
         }
         let owns_membership = page.parent_kind == "data_source" && page.parent_id == data_source_id;
         if owns_membership && property_id == "status" {
-            page.status = workflow_status(value.as_str());
+            page.status =
+                workflow_status(value.as_str()).map(|option_id| LibraryPageWorkflowStatusValue {
+                    option_id,
+                    label: text.clone(),
+                });
         } else if owns_membership && property_id == "priority" {
             page.priority = value.as_str().map(ToOwned::to_owned);
         } else if owns_membership && property_id == "tags" {
@@ -276,7 +280,10 @@ fn build_index(connection: &Connection, library_id: &str) -> Result<PageSearchIn
             page_key: page.page_key.clone(),
             title: page.title.clone(),
             preview: page.preview.clone(),
-            status: page.status.map(kernel_workflow_status),
+            status: page
+                .status
+                .as_ref()
+                .map(|status| kernel_workflow_status(status.option_id)),
             priority: page.priority.clone(),
             tags: page.tags.iter().map(kernel_option).collect(),
             assignee: page.assignee.clone(),
@@ -740,7 +747,7 @@ pub(super) fn project_metadata(
                 page_key: page.page_key.clone(),
                 title: page.title.clone(),
                 preview: page.preview.clone(),
-                status: page.status,
+                status: page.status.clone(),
                 priority: page.priority.clone(),
                 tags: page.tags.clone(),
                 assignee: page.assignee.clone(),
@@ -1203,7 +1210,10 @@ fn matches_filters(page: &IndexedPage, filters: Option<&LibraryProjectPageSearch
         return true;
     };
     if let Some(statuses) = filters.statuses.as_ref()
-        && !page.status.is_some_and(|status| statuses.contains(&status))
+        && !page
+            .status
+            .as_ref()
+            .is_some_and(|status| statuses.contains(&status.option_id))
     {
         return false;
     }
@@ -1382,7 +1392,7 @@ fn project_hit(
         page_id: page.id.clone(),
         page_key: page.page_key.clone(),
         title: page.title.clone(),
-        status: page.status,
+        status: page.status.clone(),
         priority: page.priority.clone(),
         tags: page.tags.clone(),
         assignee: page.assignee.clone(),
@@ -1411,7 +1421,7 @@ fn reference_hit(
         page_id: page.id.clone(),
         title: page.title.clone(),
         page_key: page.page_key.clone(),
-        status: page.status,
+        status: page.status.clone(),
         location_label: page.location_label.clone(),
         match_excerpt,
         match_source,
@@ -1990,7 +2000,7 @@ mod tests {
 
     use nodex_core_contracts::library::{
         LibraryPageSearchMatch, LibraryPageSearchTagMode, LibraryPageWorkflowStatus,
-        LibraryProjectPageSearchFilters,
+        LibraryPageWorkflowStatusValue, LibraryProjectPageSearchFilters,
     };
     use nodex_page_search_kernel::MetadataSearchIndex;
     use rusqlite::{Connection, params};
@@ -2397,14 +2407,17 @@ mod tests {
                     parent_id: "library:test".to_owned(),
                     updated_at: format!("2026-08-17T00:{:02}:00.000Z", index % 60),
                     properties: Vec::new(),
-                    status: Some(if index >= 3_000 {
-                        if eligible {
-                            LibraryPageWorkflowStatus::Done
+                    status: Some(LibraryPageWorkflowStatusValue {
+                        option_id: if index >= 3_000 {
+                            if eligible {
+                                LibraryPageWorkflowStatus::Done
+                            } else {
+                                LibraryPageWorkflowStatus::Plan
+                            }
                         } else {
-                            LibraryPageWorkflowStatus::Plan
-                        }
-                    } else {
-                        LibraryPageWorkflowStatus::Done
+                            LibraryPageWorkflowStatus::Done
+                        },
+                        label: "Done".to_owned(),
                     }),
                     priority: None,
                     tags: Vec::new(),

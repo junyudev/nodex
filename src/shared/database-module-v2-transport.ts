@@ -1,3 +1,4 @@
+import { WORKFLOW_STATUS_ORDER } from "./workflow-status";
 import { stableStringifyBlockPropertyJson } from "./block-property-mutations";
 import {
   parseDatabaseId,
@@ -274,14 +275,40 @@ const validateBuiltInPropertyValueType = (
 };
 
 const parseStoredPropertyConfig = (
-  _propertyId: DataSourcePropertyId,
+  propertyId: DataSourcePropertyId,
   _valueType: DatabasePropertyValueType,
   value: unknown,
   label: string,
 ): Readonly<Record<string, DatabaseJsonValue>> => {
   const parsed = readJsonRecord(value, label);
-  assertExactKeys(parsed, label, []);
-  return {};
+  if (propertyId !== "status" || parsed.options === undefined) {
+    assertExactKeys(parsed, label, []);
+    return {};
+  }
+  // Only the fixed five-stage registry can accompany a Property read descriptor.
+  assertExactKeys(parsed, label, ["options"]);
+  if (!Array.isArray(parsed.options) || parsed.options.length > WORKFLOW_STATUS_ORDER.length) {
+    throw new TypeError(`${label}.options must be a bounded Status registry`);
+  }
+  const options = parsed.options.map((value, index) => {
+    const optionLabel = `${label}.options[${index}]`;
+    const option = readRecord(value, optionLabel);
+    assertExactKeys(option, optionLabel, ["id", "name"], ["color"]);
+    const color = readOptionalString(
+      option.color,
+      `${optionLabel}.color`,
+      MAX_DATA_SOURCE_OPTION_COLOR_LENGTH,
+    );
+    return {
+      id: readOptionId(propertyId, option.id, `${optionLabel}.id`),
+      name: readString(option.name, `${optionLabel}.name`, MAX_DATA_SOURCE_OPTION_NAME_LENGTH),
+      ...(color === undefined ? {} : { color }),
+    };
+  });
+  if (new Set(options.map((option) => option.id)).size !== options.length) {
+    throw new TypeError(`${label}.options must contain unique stage identities`);
+  }
+  return { options };
 };
 
 const readOptionIdArray = (

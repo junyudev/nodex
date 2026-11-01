@@ -5,7 +5,7 @@ import {
   getPriorityShortLabel,
   priorityFromShortLabel,
 } from "../priority-presentation";
-import { getStatusAccentColorByLabel, getStatusIdByLabel } from "../status-presentation";
+import { isWorkflowStatus } from "../../../shared/workflow-status";
 import type { ToggleListStatusId } from "./types";
 
 export type MetaChipPropertyType = "priority" | "estimate" | "status" | "tag";
@@ -52,21 +52,16 @@ export function getMetaChipClassName(token: string): string {
   const estimateClass = ESTIMATE_CHIP_CLASS_BY_TOKEN[token.toUpperCase()];
   if (estimateClass) return estimateClass;
 
-  const statusId = getStatusIdByLabel(token);
+  const statusId = isWorkflowStatus(token);
   if (statusId) return STATUS_LABEL_BASE;
 
   return `${CHIP_BASE} bg-[var(--gray-bg)] text-[var(--foreground-secondary)]`;
 }
 
-/** Returns a CSS color value for the status icon, or undefined if not a status token. */
-export function getStatusDotColor(token: string): string | undefined {
-  return getStatusAccentColorByLabel(token);
-}
-
 export function classifyMetaToken(token: string): MetaChipPropertyType {
   if (PRIORITY_CHIP_CLASS_BY_TOKEN[token]) return "priority";
   if (ESTIMATE_CHIP_CLASS_BY_TOKEN[token.toUpperCase()]) return "estimate";
-  if (getStatusIdByLabel(token)) return "status";
+  if (isWorkflowStatus(token)) return "status";
   return "tag";
 }
 
@@ -87,5 +82,5 @@ export function tokenToEstimateValue(token: string): Estimate | undefined {
 }
 
 export function tokenToStatusId(token: string): ToggleListStatusId | undefined {
-  return getStatusIdByLabel(token);
+  return isWorkflowStatus(token) ? token : undefined;
 }

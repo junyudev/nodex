@@ -1,6 +1,6 @@
 import type { ComponentPropsWithoutRef } from "react";
 import {
-  WORKFLOW_STATUS_LABELS,
+  DEFAULT_WORKFLOW_STATUS_LABELS,
   WORKFLOW_STATUS_ORDER,
   type WorkflowStatus,
 } from "../../../shared/workflow-status";
@@ -156,7 +156,7 @@ export function CommandPalettePageFilterPopover({
             <FilterChip
               key={`status:${status}`}
               active={filters.statuses.includes(status)}
-              label={WORKFLOW_STATUS_LABELS[status]}
+              label={DEFAULT_WORKFLOW_STATUS_LABELS[status]}
               onClick={() =>
                 onChange((prev) => ({
                   ...cloneCommandPalettePageFilters(prev),

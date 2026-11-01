@@ -19,6 +19,7 @@ const makePage = (id: string): DatabasePageSummary => ({
 });
 
 const makeReadModel = (includeHostPage: boolean): DatabaseViewReadModel => ({
+  statusOptions: [],
   libraryId: "library:test",
   storeEpoch: "epoch:test",
   commitSeq: 1,

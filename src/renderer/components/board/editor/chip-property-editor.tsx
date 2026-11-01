@@ -1,10 +1,11 @@
+import { resolveWorkflowStatusName } from "../../../../shared/workflow-status";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { CheckmarkIcon, EstimateIcon, PriorityValueIcon } from "@/components/shared/icons";
 import { EMPTY_PRIORITY_OPTION_VALUE, BOARD_PRIORITY_SELECT_OPTIONS } from "@/lib/board-options";
 import { NodexDropdownActionRow, NodexDropdownSurface } from "@/components/ui/dropdown";
 import { estimateOptions, estimateStyles } from "@/lib/types";
-import { TOGGLE_LIST_STATUS_ORDER, TOGGLE_LIST_STATUS_LABELS } from "@/lib/toggle-list/types";
+import { TOGGLE_LIST_STATUS_ORDER } from "@/lib/toggle-list/types";
 import { cn } from "@/lib/utils";
 import { StatusLabel } from "@/lib/status-presentation";
 import type { MetaChipPropertyType } from "@/lib/toggle-list/meta-chips";
@@ -200,7 +201,7 @@ function getItemsForType(
     case "status":
       return TOGGLE_LIST_STATUS_ORDER.map((statusId) => ({
         value: statusId,
-        label: TOGGLE_LIST_STATUS_LABELS[statusId],
+        label: resolveWorkflowStatusName(statusId, options),
       }));
     case "tag":
       return options.map((option) => ({
