@@ -1,0 +1,27 @@
+crates/nodex-cli/src/open.rs
+  s_3dc0b7647fcf0b::t_90f111051e3ff0 162,168-175
+crates/nodex-platform/Cargo.toml
+  s_3dc0b7647fcf0b::t_04ee238973487b 23
+crates/nodex-platform/src/process/unix.rs
+  s_3dc0b7647fcf0b::t_9037134af6ff6a 91-130
+crates/nodex-platform/src/process/windows.rs
+  s_3dc0b7647fcf0b::t_7e7993465de9aa 205-252
+docs/reliability/core-lifecycle-and-store.md
+  s_3dc0b7647fcf0b::t_76a7c0a8738553 84-85
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "401e6ccf88f226261b8947831334066a86b9d42f",
+  "prompts": {},
+  "sessions": {
+    "s_3dc0b7647fcf0b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1964e-690a-72d0-a5e2-1468f0931284",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
