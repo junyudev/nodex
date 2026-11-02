@@ -10,6 +10,7 @@ import {
 } from "./desktop-tool-environment";
 
 const temporaryRoots: string[] = [];
+const ambientPath = path.dirname(process.execPath);
 
 afterEach(() => {
   for (const root of temporaryRoots.splice(0)) fs.rmSync(root, { force: true, recursive: true });
@@ -30,7 +31,7 @@ interface ObservedSandboxLaunch {
   readonly env: Readonly<Record<string, string>>;
 }
 
-/** Runs the launcher exactly as Codex starts the `node_repl` server, with a recording `codex`. */
+/** Runs the closed launcher with Node executing an owned recording sandbox entrypoint. */
 function launchNodeRepl(input: {
   readonly declared: Readonly<Record<string, string>>;
   readonly persisted: Readonly<Record<string, string>>;
@@ -59,15 +60,17 @@ function launchNodeRepl(input: {
   const result = spawnSync(definition.command, definition.args, {
     cwd: root,
     encoding: "utf8",
+    timeout: 10_000,
     // The Main suite runs on Electron, which acts as the vendor Node only in Node mode.
     env: {
       ELECTRON_RUN_AS_NODE: "1",
       HOME: os.homedir(),
-      PATH: "/usr/bin:/bin",
+      PATH: ambientPath,
       ...input.persisted,
       ...definition.env,
     },
   });
+  if (result.error) throw result.error;
   if (result.status !== 0) throw new Error(result.stderr || `launcher exited ${result.status}`);
   return JSON.parse(result.stdout) as ObservedSandboxLaunch;
 }
@@ -129,7 +132,7 @@ describe("node_repl launcher", () => {
       ...declared,
       HOME: os.homedir(),
       NODE_EXTRA_CA_CERTS: "/etc/ca.pem",
-      PATH: "/usr/bin:/bin",
+      PATH: ambientPath,
     });
     for (const name of [...Object.keys(foreignHostEnvironment), "SKY_CUA_SERVICE_PATH"]) {
       expect(env).not.toHaveProperty(name);
