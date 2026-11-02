@@ -115,6 +115,7 @@ export function buildWorkbenchViewMenu(
   onExecuteCommand: (invocation: WorkbenchCommandInvocation) => void,
   onZoom: (command: WindowZoomCommand) => void,
 ): MenuItemConstructorOptions {
+  const isWindows = commandKeymapState.platform === "windows";
   return {
     label: "View",
     submenu: [
@@ -145,9 +146,9 @@ export function buildWorkbenchViewMenu(
         },
       },
       { type: "separator" },
-      { role: "reload" },
-      { role: "forceReload" },
-      { role: "toggleDevTools" },
+      { role: "reload", ...(isWindows ? { accelerator: "Ctrl+R" } : {}) },
+      { role: "forceReload", ...(isWindows ? { accelerator: "Ctrl+Shift+R" } : {}) },
+      { role: "toggleDevTools", ...(isWindows ? { accelerator: "Ctrl+Shift+I" } : {}) },
       { type: "separator" },
       {
         id: "view.resetZoom",
@@ -168,7 +169,7 @@ export function buildWorkbenchViewMenu(
         click: () => onZoom("out"),
       },
       { type: "separator" },
-      { role: "togglefullscreen" },
+      { role: "togglefullscreen", ...(isWindows ? { accelerator: "F11" } : {}) },
     ],
   };
 }

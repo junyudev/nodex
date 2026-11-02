@@ -49,6 +49,13 @@ group, label, search catalog, and app-owned icon. Page component registration is
 keyed by page key rather than by route slug. Every catalog entry has a working page;
 unimplemented destinations are absent from navigation and search.
 
+Host capability policy also filters the catalog. A section that cannot work on the
+host is absent from navigation, search and command-palette targets; a direct link
+falls back to General. Supported pages keep their usable controls and omit
+unsupported integrations. Browser keeps built-in browsing on Windows while hiding
+Profile import and control of external browsers. General always shows the running
+version, with update status and actions only on hosts that support app updates.
+
 The desktop groups are:
 
 - Personal: Account, General, Appearance, Voice, Keyboard shortcuts.

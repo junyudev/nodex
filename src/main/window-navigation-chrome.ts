@@ -5,6 +5,12 @@ import {
 } from "../shared/workbench-window-chrome";
 import type { BrowserWindow } from "electron";
 
+const shellZoomByWindow = new WeakMap<BrowserWindow, number>();
+
+export function setWindowShellZoom(window: BrowserWindow, zoom: number): void {
+  shellZoomByWindow.set(window, zoom);
+}
+
 export type WindowZoomCommand = "reset" | "in" | "out";
 
 export function syncWindowNavigationChrome(
@@ -14,7 +20,7 @@ export function syncWindowNavigationChrome(
 ): void {
   if (platform !== "darwin" && platform !== "win32") return;
   if (window.isDestroyed() || window.webContents.isDestroyed()) return;
-  const zoom = window.webContents.getZoomFactor();
+  const zoom = window.webContents.getZoomFactor() * (shellZoomByWindow.get(window) ?? 1);
   if (platform === "darwin") {
     window.setWindowButtonPosition(resolveCodexTrafficLightPosition(zoom));
     return;

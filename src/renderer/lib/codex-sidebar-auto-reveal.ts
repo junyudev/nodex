@@ -26,7 +26,7 @@ export const CODEX_SIDEBAR_FLOATING_OUTER_BASE_CLASS = `pointer-events-auto fixe
 
 export const CODEX_SIDEBAR_FLOATING_OUTER_CLASS = `${CODEX_SIDEBAR_FLOATING_OUTER_BASE_CLASS} top-[calc(var(--height-toolbar)+var(--spacing))]`;
 
-export const CODEX_SIDEBAR_FLOATING_OUTER_APPLICATION_MENU_CLASS = `${CODEX_SIDEBAR_FLOATING_OUTER_BASE_CLASS} top-[calc(var(--height-toolbar-sm)+var(--height-toolbar)+var(--spacing))]`;
+export const CODEX_SIDEBAR_FLOATING_OUTER_APPLICATION_MENU_CLASS = `${CODEX_SIDEBAR_FLOATING_OUTER_BASE_CLASS} top-[calc(var(--app-shell-application-menu-height))]`;
 
 export const CODEX_SIDEBAR_FLOATING_ASIDE_CLASS =
   "flex h-full min-h-0 flex-col overflow-hidden rounded-(--app-shell-sidebar-popover-radius) bg-(--app-shell-sidebar-popover-background) shadow-[inset_0_0_0_1px_var(--app-shell-sidebar-popover-border),var(--shadow-card)]";

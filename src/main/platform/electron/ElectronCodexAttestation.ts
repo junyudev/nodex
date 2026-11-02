@@ -1,4 +1,4 @@
-import { hostCapabilities } from "../host-capabilities";
+import { hostCapabilities } from "../../../shared/host-capabilities";
 import { randomUUID } from "node:crypto";
 import { app, screen } from "electron";
 import * as Layer from "effect/Layer";

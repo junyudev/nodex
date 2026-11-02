@@ -93,7 +93,7 @@ describe("command keybindings", () => {
     expect(formatAcceleratorAriaKeyShortcut("Ctrl+Shift+M", "macOS")).toBe("Control+Shift+M");
     expect(formatAcceleratorLabel("LeftControl", "macOS")).toBe("Left ⌃");
     expect(formatAcceleratorLabel("DoubleOption", "macOS")).toBe("⌥ + ⌥");
-    expect(formatAcceleratorLabel("RightCommand", "windows")).toBe("Right Command");
+    expect(formatAcceleratorLabel("RightCommand", "windows")).toBe("Right Win");
   });
 
   test.each([
@@ -117,10 +117,10 @@ describe("command keybindings", () => {
     ["CmdOrCtrl+Shift+F", "Ctrl+Shift+F"],
     ["Shift+Ctrl+F", "Ctrl+Shift+F"],
     ["CmdOrCtrl+Alt+R", "Ctrl+Alt+R"],
-    ["Command+Shift+Alt+Ctrl+F", "Meta+Ctrl+Alt+Shift+F"],
+    ["Command+Shift+Alt+Ctrl+F", "Win+Ctrl+Alt+Shift+F"],
   ])("preserves non-mac modifier labels for %s", (accelerator, label) => {
     expect(formatAcceleratorLabel(accelerator, "windows")).toBe(label);
-    expect(formatAcceleratorLabel(accelerator, "linux")).toBe(label);
+    expect(formatAcceleratorLabel(accelerator, "linux")).toBe(label.replace("Win", "Meta"));
   });
 
   test("projects command shortcuts for visible and assistive labels", () => {

@@ -1,10 +1,12 @@
 import { describe, expect, test } from "vite-plus/test";
 import {
+  resolveWindowContentCaptionClearance,
   measureWorkbenchWindowControlsOverlay,
   resolveWorkbenchHeaderSafeInsets,
   resolveWorkbenchMacWindowControlPosition,
   resolveWorkbenchWindowControlsOverlayHeight,
   WORKBENCH_TITLEBAR_HEIGHT_PX,
+  WORKBENCH_APPLICATION_MENU_HEIGHT_PX,
 } from "./workbench-window-chrome";
 
 const legacyMacUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)";
@@ -78,7 +80,7 @@ describe("Workbench native window geometry", () => {
     "sizes Windows caption buttons to the scaled titlebar at %sx zoom",
     (windowZoom) => {
       expect(resolveWorkbenchWindowControlsOverlayHeight(windowZoom)).toBe(
-        Math.round(WORKBENCH_TITLEBAR_HEIGHT_PX * windowZoom),
+        Math.round(WORKBENCH_APPLICATION_MENU_HEIGHT_PX * windowZoom),
       );
     },
   );
@@ -128,4 +130,50 @@ describe("Workbench native window geometry", () => {
       expect(insets.right * windowZoom - 138).toBeCloseTo(6 * windowZoom);
     },
   );
+});
+
+test("Windows application row alone consumes measured exclusions across both zoom coordinates", () => {
+  const overlay = measureWorkbenchWindowControlsOverlay(
+    { visible: true, getTitlebarAreaRect: () => ({ x: 0, width: 689.6 }) },
+    800,
+    1.25,
+  );
+  const insets = resolveWorkbenchHeaderSafeInsets({
+    isMacPlatform: false,
+    userAgent: "Windows",
+    applicationMenu: true,
+    windowZoom: 1.25 * 0.8,
+    windowControlsOverlay: overlay,
+  });
+  expect(insets.left).toBe(6);
+  expect(insets.right).toBeCloseTo(138);
+  expect(
+    resolveWorkbenchHeaderSafeInsets({
+      isMacPlatform: false,
+      userAgent: "Windows",
+      applicationMenu: true,
+    }),
+  ).toEqual({ left: 6, right: 0 });
+  expect(
+    resolveWorkbenchHeaderSafeInsets({
+      isMacPlatform: false,
+      userAgent: "Windows",
+      applicationMenu: true,
+      fullscreen: true,
+      windowControlsOverlay: { left: 0, right: 143 },
+    }),
+  ).toEqual({ left: 0, right: 0 });
+});
+
+test("full-window preview actions clear native controls without padding ordinary surfaces", () => {
+  expect(resolveWindowContentCaptionClearance(143, 45)).toEqual({
+    actionsTop: 57,
+    contentTop: 109,
+  });
+  expect(resolveWindowContentCaptionClearance(0, 45)).toEqual({ actionsTop: 12, contentTop: 48 });
+  expect(resolveWindowContentCaptionClearance(143, 45, true)).toEqual({
+    actionsTop: 12,
+    contentTop: 48,
+  });
+  expect(resolveWindowContentCaptionClearance(143, 0)).toEqual({ actionsTop: 12, contentTop: 48 });
 });

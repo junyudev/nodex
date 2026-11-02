@@ -1,4 +1,4 @@
-import { hostCapabilities, type HostCapabilities } from "../platform/host-capabilities";
+import { hostCapabilities, type HostCapabilities } from "../../shared/host-capabilities";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";

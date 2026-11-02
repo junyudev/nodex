@@ -32,7 +32,10 @@ function WorkbenchRouteMain({
       data-workbench-main-surface
       data-app-shell-main-surface="default"
       data-contextual-sidebar-open={sidebarMounted}
-      className={cn("flex-col", workbenchMainSurfaceClassName(sidebarMounted))}
+      className={cn(
+        "mt-[var(--app-shell-content-top-inset,0px)] flex-col",
+        workbenchMainSurfaceClassName(sidebarMounted),
+      )}
       style={{ clipPath: resolveWorkbenchMainSurfaceClip(sidebarMounted) }}
     >
       {children}

@@ -1,3 +1,4 @@
+import { readSettingsHostPresentation } from "@/lib/settings-host-presentation";
 import { DeleteIcon, DownloadIcon, RefreshIcon, SearchIcon } from "@/components/shared/icons";
 import { LinkDestinationSettingRows } from "@/components/workbench/link-opening-settings-controls";
 import {
@@ -152,6 +153,7 @@ function BrowserSettingsOverview({
   ) => void;
   open: boolean;
 }) {
+  const host = readSettingsHostPresentation();
   const [capabilities, setCapabilities] = useState<BrowserProfileCapabilities>(EMPTY_CAPABILITIES);
   const [chromeControl, setChromeControl] = useState<ChromeControlRuntimeSnapshot | null>(null);
   const [importOpen, setImportOpen] = useState(false);
@@ -167,19 +169,19 @@ function BrowserSettingsOverview({
     void Promise.all([
       readBrowserProfileCapabilities(),
       usePolicyOwner.readCanonical(),
-      readChromeControlSettings().catch(() => null),
+      host.browserControl ? readChromeControlSettings().catch(() => null) : null,
     ]).then(([nextCapabilities, _policy, nextChromeControl]) => {
       setCapabilities(nextCapabilities);
       setChromeControl(nextChromeControl);
     });
-  }, [open, usePolicyOwner]);
+  }, [host.browserControl, open, usePolicyOwner]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || !host.browserControl) return;
     return window.api?.on("chrome-control-settings-changed", (snapshot) => {
       if (isChromeControlRuntimeSnapshot(snapshot)) setChromeControl(snapshot);
     });
-  }, [open]);
+  }, [host.browserControl, open]);
 
   useLayoutEffect(() => {
     if (usePolicySnapshot.renderToken === null) return;
@@ -203,21 +205,25 @@ function BrowserSettingsOverview({
     >
       <BrowserOverviewSection anchor="general" title="General">
         <LinkDestinationSettingRows />
-        <CapabilityRow label="Profile import" capability={capabilities.profileImport} />
-        <NodexSettingsRow
-          label="Import browser data"
-          description="Import cookies and saved passwords from a local Chrome or ChatGPT Atlas Profile."
-        >
-          <NodexButton
-            size="sm"
-            variant="secondary"
-            disabled={!capabilities.profileImport.available}
-            onClick={() => setImportOpen(true)}
-          >
-            <DownloadIcon />
-            Import
-          </NodexButton>
-        </NodexSettingsRow>
+        {host.browserProfileImport ? (
+          <>
+            <CapabilityRow label="Profile import" capability={capabilities.profileImport} />
+            <NodexSettingsRow
+              label="Import browser data"
+              description="Import cookies and saved passwords from a local Chrome or ChatGPT Atlas Profile."
+            >
+              <NodexButton
+                size="sm"
+                variant="secondary"
+                disabled={!capabilities.profileImport.available}
+                onClick={() => setImportOpen(true)}
+              >
+                <DownloadIcon />
+                Import
+              </NodexButton>
+            </NodexSettingsRow>
+          </>
+        ) : null}
         <NodexSettingsRow
           label="Cookies"
           description="Signs out sites across every built-in Browser window."
@@ -295,7 +301,7 @@ function BrowserSettingsOverview({
       </BrowserOverviewSection>
       <BrowserOverviewSection anchor="extensions" title="Extensions">
         <CapabilityRow label="Extension manager" capability={capabilities.extensions} />
-        <ChromeControlReadiness snapshot={chromeControl} />
+        {host.browserControl ? <ChromeControlReadiness snapshot={chromeControl} /> : null}
         <NodexSettingsRow
           label="Manage extensions"
           description="Load and remove unpacked extensions from the shared Browser Profile."
@@ -337,7 +343,9 @@ function BrowserSettingsOverview({
         onStatus={setStatus}
       />
       {status ? <SettingsStatus>{status}</SettingsStatus> : null}
-      <BrowserProfileImportDialog open={importOpen} onOpenChange={setImportOpen} />
+      {host.browserProfileImport ? (
+        <BrowserProfileImportDialog open={importOpen} onOpenChange={setImportOpen} />
+      ) : null}
     </NodexSettingsPageSurface>
   );
 }

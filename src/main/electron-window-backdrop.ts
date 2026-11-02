@@ -12,6 +12,7 @@ export interface ElectronWindowBackdropBounds {
 export interface ShouldUseOpaqueElectronWindowSurfaceInput {
   bounds: ElectronWindowBackdropBounds;
   forceOpaque?: boolean;
+  backdropSupported?: boolean;
   isFocused: boolean;
   platform: NodeJS.Platform;
   prefersReducedTransparency: boolean;
@@ -39,7 +40,8 @@ export function shouldUseOpaqueElectronWindowSurface(
   if (!supportsOpaqueSurface(input.platform)) return false;
   if (input.forceOpaque === true) return true;
   if (input.platform === "darwin" && input.prefersReducedTransparency) return true;
-  if (!input.isFocused) return true;
+  if (input.platform === "win32" && input.backdropSupported === false) return true;
+  if (input.platform === "darwin" && !input.isFocused) return true;
   if (input.platform !== "darwin") return false;
 
   const physicalWidth = input.bounds.width * input.scaleFactor;
@@ -83,4 +85,10 @@ export function resolveElectronWindowBackdrop(
     opaqueWindowSurfaceEnabled,
     vibrancy: input.platform === "darwin" ? "menu" : null,
   };
+}
+
+/** Electron supports Mica on Windows 11 22H2+, with GPU compositing enabled. */
+export function supportsWindowsMica(release: string, gpuCompositing: string): boolean {
+  const [major = 0, , build = 0] = release.split(".").map(Number);
+  return (major > 10 || (major === 10 && build >= 22621)) && gpuCompositing === "enabled";
 }

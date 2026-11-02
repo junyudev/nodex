@@ -5,7 +5,7 @@ import {
 import { constants } from "node:fs";
 import { access, lstat, stat, mkdtemp, rm } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
-import { hostCapabilities } from "../host-capabilities";
+import { hostCapabilities } from "../../../shared/host-capabilities";
 import { claudeExecutableCandidates, claudeHostEnvironmentValue } from "./ClaudeExecutable";
 import * as NodeServices from "./NodeServices";
 import * as Context from "effect/Context";

@@ -1,3 +1,5 @@
+import { isWindowBackdropSupported } from "../platform/electron/WindowBackdrop";
+import { safeSendToWindow } from "../ipc-safe-send";
 import * as Context from "effect/Context";
 import { nativeImageContextMenuItems } from "../native-image-context-menu";
 import * as Data from "effect/Data";
@@ -310,6 +312,7 @@ export const live = (
               ? displays.getDisplayMatching(initialBounds)
               : displays.getPrimaryDisplay();
             const backdrop = resolveElectronWindowBackdrop({
+              backdropSupported: isWindowBackdropSupported(options.platform),
               bounds: initialBounds,
               isFocused: true,
               platform: options.platform,
@@ -330,7 +333,9 @@ export const live = (
               minWidth: 800,
               minHeight: 600,
               show: false,
-              ...(options.platform === "darwin" ? { title: "Nodex" } : { icon: icon! }),
+              title: "Nodex",
+              autoHideMenuBar: options.platform === "win32",
+              ...(options.platform === "darwin" ? {} : { icon: icon! }),
               ...titleBarOptions,
               ...resolveApplicationWindowShellAppearance(options.platform, backdrop),
               webPreferences: {
@@ -342,6 +347,15 @@ export const live = (
                 backgroundThrottling: false,
               },
             });
+            if (options.platform === "win32") {
+              window.on("page-title-updated", (event) => event.preventDefault());
+              const publishFullscreen = () =>
+                safeSendToWindow(window, "electron-window:fullscreen-changed", [
+                  { fullscreen: window.isFullScreen() },
+                ]);
+              window.on("enter-full-screen", publishFullscreen);
+              window.on("leave-full-screen", publishFullscreen);
+            }
             const disposeContextMenu = options.installContextMenu(window);
             window.once("closed", disposeContextMenu);
             const webContentsId = window.webContents.id;

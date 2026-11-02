@@ -2,7 +2,7 @@ import { it } from "@effect/vitest";
 import { expect, test } from "vite-plus/test";
 import * as Effect from "effect/Effect";
 import { MainConfig, testLayer } from "../app/MainConfig";
-import { hostCapabilities } from "./host-capabilities";
+import { hostCapabilities } from "../../shared/host-capabilities";
 
 test.each(["x64", "arm64"])("Windows %s exposes only supported native integrations", (arch) => {
   const capabilities = hostCapabilities("win32", arch);
@@ -10,6 +10,7 @@ test.each(["x64", "arm64"])("Windows %s exposes only supported native integratio
     backgroundService: false,
     autoUpdate: false,
     browserControl: false,
+    browserProfileImport: false,
     computerControl: false,
     appshot: false,
     deviceCheck: false,

@@ -231,6 +231,12 @@ than inferring it from its DOM environment.
 
 ## Commands, overlays, and gestures
 
+The Windows shell owns `--app-shell-application-menu-height`; workspace sizing and
+fixed headers include that offset. Workspace chrome never independently reserves
+caption-button widths. Viewport portals outside shell CSS zoom convert the same
+logical offset using `--codex-window-zoom`; full-window preview actions use the
+measured vertical caption clearance. See [Windows host behavior](product-specs/windows-host-behavior.md#window-chrome).
+
 - Register application keyboard actions once at the active window in bubble
   phase. Editors, inputs, dialogs, menus, terminals, and other local scopes get
   first ownership of the event. Shared menu popups yield typeahead and

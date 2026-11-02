@@ -1,3 +1,4 @@
+import { hostCapabilities } from "../../shared/host-capabilities";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
@@ -114,7 +115,7 @@ export const makeBrowserProfileImportRuntime = (
     const roots = options.sourceRoots ?? {};
     const imports = yield* Semaphore.make(1);
     const capability = (): BrowserCapabilityStatus => {
-      if (options.platform !== "darwin") {
+      if (!hostCapabilities(options.platform).browserProfileImport) {
         return {
           available: false,
           provider: "unavailable",

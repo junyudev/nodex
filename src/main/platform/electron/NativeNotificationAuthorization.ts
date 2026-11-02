@@ -1,4 +1,4 @@
-import { hostCapabilities } from "../host-capabilities";
+import { hostCapabilities } from "../../../shared/host-capabilities";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import * as Context from "effect/Context";

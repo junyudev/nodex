@@ -1,6 +1,10 @@
-import { describe, expect, vi, test } from "vite-plus/test";
-import { act, fireEvent } from "@testing-library/react";
+import { beforeEach, describe, expect, vi, test } from "vite-plus/test";
+import { act, fireEvent, waitFor } from "@testing-library/react";
 import { render, settleAsyncRender, textContent } from "../../test/dom";
+
+beforeEach(() => {
+  vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+});
 
 const mockState = vi.hoisted(() => ({
   invokeCalls: [] as unknown[][],
@@ -100,7 +104,10 @@ describe("AppUpdateSettingRows", () => {
     );
     expect(mockState.invokeCalls.some((entry) => entry[0] === "app:update:status")).toBe(true);
 
-    fireEvent.click(view.getByRole("switch"));
+    await act(async () => {
+      fireEvent.click(view.getByRole("switch"));
+      await Promise.resolve();
+    });
     await settleAsyncRender();
     expect(
       mockState.invokeCalls.some(
@@ -110,7 +117,10 @@ describe("AppUpdateSettingRows", () => {
       ),
     ).toBe(true);
 
-    fireEvent.click(view.getByText("Check now"));
+    await act(async () => {
+      fireEvent.click(view.getByText("Check now"));
+      await Promise.resolve();
+    });
     await settleAsyncRender();
     expect(mockState.invokeCalls.some((entry) => entry[0] === "app:update:check")).toBe(true);
     expect(textContent(view.container).includes("Checking for updates…")).toBe(true);
@@ -140,8 +150,29 @@ describe("AppUpdateSettingRows", () => {
       true,
     );
 
-    fireEvent.click(view.getByText("Restart to update"));
+    await act(async () => {
+      fireEvent.click(view.getByText("Restart to update"));
+      await Promise.resolve();
+    });
     await settleAsyncRender();
     expect(mockState.invokeCalls.some((entry) => entry[0] === "app:update:install")).toBe(true);
   });
+});
+
+test("Windows keeps the version without exposing unsupported update diagnostics or controls", async () => {
+  const root = document.documentElement;
+  const previousOs = root.dataset.codexOs;
+  root.dataset.codexOs = "win32";
+  try {
+    const { AppUpdateSettingRows } = await import("./app-update-settings-control");
+    const view = render(<AppUpdateSettingRows open />);
+    await waitFor(() => expect(view.getByText("Nodex 0.1.5")).toBeTruthy());
+    expect(view.queryByRole("button", { name: "Check now" })).toBeNull();
+    expect(view.queryByRole("switch")).toBeNull();
+    expect(view.queryByText("Automatic background checks are ready.")).toBeNull();
+    view.unmount();
+  } finally {
+    if (previousOs === undefined) delete root.dataset.codexOs;
+    else root.dataset.codexOs = previousOs;
+  }
 });

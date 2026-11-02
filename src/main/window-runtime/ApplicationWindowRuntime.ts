@@ -76,8 +76,8 @@ export class ApplicationWindowRuntime extends Context.Service<
   }
 >()("nodex/main/window-runtime/ApplicationWindowRuntime") {}
 
-const syncMacWindowTitle = (platform: NodeJS.Platform, window: BrowserWindow): void => {
-  if (platform !== "darwin" || window.isDestroyed()) return;
+const syncApplicationWindowTitle = (platform: NodeJS.Platform, window: BrowserWindow): void => {
+  if ((platform !== "darwin" && platform !== "win32") || window.isDestroyed()) return;
   window.setTitle("Nodex");
 };
 
@@ -292,7 +292,7 @@ export const live = (
             window.isFocused(),
           ),
         );
-        syncMacWindowTitle(options.platform, window);
+        syncApplicationWindowTitle(options.platform, window);
         window.on("focus", () =>
           callbacks.fork(
             options.rendererConversations.setClientForegrounded(
@@ -388,7 +388,7 @@ export const live = (
           );
           captureMainException(cause, { tags: { phase } });
         },
-        syncTitle: (window) => syncMacWindowTitle(options.platform, window),
+        syncTitle: (window) => syncApplicationWindowTitle(options.platform, window),
         windows: options.windows,
       });
       yield* options.rendererLoaded.pipe(
@@ -429,7 +429,7 @@ export const live = (
         prepareQuit,
         create,
         rendererLoaded: options.rendererLoaded,
-        syncTitle: (window) => syncMacWindowTitle(options.platform, window),
+        syncTitle: (window) => syncApplicationWindowTitle(options.platform, window),
       });
     }),
   );
