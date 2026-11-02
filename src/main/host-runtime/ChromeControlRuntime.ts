@@ -1,4 +1,4 @@
-import { hostCapabilities } from "../platform/host-capabilities";
+import { hostCapabilities } from "../../shared/host-capabilities";
 import { createHash } from "node:crypto";
 import { constants as fsConstants, promises as fs } from "node:fs";
 import path from "node:path";

@@ -1,10 +1,14 @@
 import { act, fireEvent, screen } from "@testing-library/react";
-import { describe, expect, test, vi } from "vite-plus/test";
+import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { DEFAULT_BROWSER_USE_POLICY } from "../../../shared/browser-use-policy";
 import { DEFAULT_LINK_OPENING_SETTINGS } from "../../../shared/link-opening-settings";
 import { render, settleAsyncRender } from "../../test/dom";
 import { TestQueryProvider } from "../../test/query";
 import { BrowserSettingsPage } from "./browser-settings-pages";
+
+beforeEach(() => {
+  vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+});
 
 const invokeMock = vi.hoisted(() => vi.fn());
 
@@ -155,4 +159,29 @@ describe("Browser settings information architecture", () => {
       approvalMode: "neverAsk",
     });
   });
+});
+
+test("Windows keeps built-in Browser settings while hiding unsupported host integrations", async () => {
+  const root = document.documentElement;
+  const previousOs = root.dataset.codexOs;
+  root.dataset.codexOs = "win32";
+  invokeMock.mockClear();
+  try {
+    const view = renderBrowser();
+    await settleAsyncRender();
+    expect(view.getByRole("heading", { name: "Browser", level: 1 })).toBeTruthy();
+    expect(view.getByRole("button", { name: "Manage Browsing history" })).toBeTruthy();
+    expect(view.getByRole("button", { name: "Manage extensions" })).toBeTruthy();
+    expect(view.getByRole("button", { name: "Manage Download history" })).toBeTruthy();
+    expect(view.queryByRole("button", { name: "Import" })).toBeNull();
+    expect(view.queryByText("Profile import")).toBeNull();
+    expect(view.queryByText("Control existing browsers")).toBeNull();
+    expect(
+      invokeMock.mock.calls.some(([channel]) => channel === "chrome-control-settings-get"),
+    ).toBe(false);
+    view.unmount();
+  } finally {
+    if (previousOs === undefined) delete root.dataset.codexOs;
+    else root.dataset.codexOs = previousOs;
+  }
 });
