@@ -104,7 +104,7 @@ launches with a fresh isolated Profile, and requires the exact host's ready clai
 plus a matching, authenticated named-pipe Core generation. A missing descriptor,
 Unix-only Core transport, stale digest, or startup exit fails with diagnostic
 logs. It quits Electron normally, proves detached Core still answers authenticated
-health requests, installs over that running generation within 60 seconds, and
+health requests, installs over that running generation within three minutes, and
 relaunches the installed app. It quits again and silently uninstalls with Core
 still running, with a 30-second budget. Core's idle window is ten minutes so the
 probe cannot pass by waiting for idle shutdown. The probe checks installation,

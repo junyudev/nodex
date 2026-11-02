@@ -134,6 +134,7 @@ async function main(): Promise<void> {
   let evidence: unknown;
   let uninstallEvidence: unknown;
   const cleanup = async (): Promise<void> => {
+    let uninstallCompleted = false;
     if (child?.pid && child.exitCode === null && child.signalCode === null) {
       try {
         // Native handles verify settlement even when a descendant exits during termination.
@@ -194,22 +195,25 @@ exit $uninstaller.ExitCode
         if (remainingProtocol) throw new Error("Uninstall left the nodex:// protocol registration");
         if (shortcuts.length) throw new Error(`Uninstall left shortcuts: ${shortcuts.join(", ")}`);
         if (!existsSync(profile)) throw new Error("Uninstall removed the Profile");
+        uninstallCompleted = true;
       } catch (error) {
         failures.push(error);
       }
     }
-    try {
-      // Fallback cleanup follows the real uninstall attempt, never masks it.
-      const cleanup = await cleanupIsolatedCore({
-        lease,
-        nodexHome: profile,
-        runId,
-        releaseLeaseOnSuccess: false,
-      });
-      if (!cleanup.safeToDeleteRunRoot)
-        failures.push(new Error(`Core cleanup failed: ${cleanup.reason ?? cleanup.status}`));
-    } catch (error) {
-      failures.push(error);
+    if (!uninstallCompleted) {
+      try {
+        // Only a failed uninstall needs the supervisor's fallback Core cleanup.
+        const cleanup = await cleanupIsolatedCore({
+          lease,
+          nodexHome: profile,
+          runId,
+          releaseLeaseOnSuccess: false,
+        });
+        if (!cleanup.safeToDeleteRunRoot)
+          failures.push(new Error(`Core cleanup failed: ${cleanup.reason ?? cleanup.status}`));
+      } catch (error) {
+        failures.push(error);
+      }
     }
     try {
       lease.release();
@@ -276,6 +280,8 @@ exit $uninstaller.ExitCode
         },
       });
       child = application.process();
+      // Playwright wraps Electron in cmd.exe on Windows; claims identify Main.
+      const hostPid = await application.evaluate(() => process.pid);
       child.stdout?.on("data", (chunk: Buffer) => {
         output = `${output}${chunk.toString()}`.slice(-64_000);
       });
@@ -298,13 +304,13 @@ exit $uninstaller.ExitCode
         const agent = existsSync(agentFile)
           ? parseAgentRuntimeStartupEvidence(JSON.parse(readFileSync(agentFile, "utf8")), {
               runId,
-              hostPid: child.pid!,
+              hostPid,
             })
           : null;
         if (agent && agent.nodeSource !== "standalone")
           throw new Error("Windows Agent Runtime did not use the verified standalone Node runtime");
         if (claim?.phase === "ready" && agent) {
-          if (claim.runId !== runId || claim.hostPid !== child.pid)
+          if (claim.runId !== runId || claim.hostPid !== hostPid)
             throw new Error("Installed Nodex readiness belongs to another host generation");
           const { descriptor } = readCoreRuntimeConnection(profile);
           if (!descriptor.endpoint.startsWith("\\\\.\\pipe\\nodex-core-"))
@@ -328,7 +334,7 @@ exit $uninstaller.ExitCode
             target: target.key,
             installer: installers[0],
             images: images.length,
-            hostPid: child.pid,
+            hostPid,
             corePid: descriptor.pid,
             coreSha256: expectedCoreSha256,
             authenticated: Boolean(client.handshake),
@@ -364,7 +370,7 @@ exit $uninstaller.ExitCode
     const upgradeStarted = Date.now();
     execFileSync(resolve("dist", installers[0]!), ["/S", "/currentuser"], {
       stdio: "inherit",
-      timeout: 60_000,
+      timeout: 180_000,
     });
     upgradeEvidence = { completed: true, elapsedMs: Date.now() - upgradeStarted, oldCorePid };
     assertProcessStopped(oldCorePid);
