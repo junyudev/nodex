@@ -48,6 +48,7 @@ export class InitialProjectPresentationError extends Schema.TaggedError<InitialP
 ) {}
 
 export interface InitialProjectBootstrapRuntimeOptions {
+  readonly platform: string;
   readonly projectsDirectory: string;
   readonly journalPath: string;
   readonly createId?: () => string;
@@ -101,7 +102,7 @@ const make = (options: InitialProjectBootstrapRuntimeOptions) =>
     ): Effect.Effect<InitialProjectJournal, InitialProjectBootstrapError> =>
       Effect.try({
         try: () => {
-          const page = renderInitialProjectWelcomePage({ sourceRoot });
+          const page = renderInitialProjectWelcomePage({ sourceRoot, platform: options.platform });
           return {
             schemaVersion: 2,
             attemptId: createId(),
@@ -131,7 +132,7 @@ const make = (options: InitialProjectBootstrapRuntimeOptions) =>
       attempt: InitialProjectJournal,
       sourceRoot: string,
     ): InitialProjectJournal => {
-      const page = renderInitialProjectWelcomePage({ sourceRoot });
+      const page = renderInitialProjectWelcomePage({ sourceRoot, platform: options.platform });
       return {
         ...attempt,
         payload: {
