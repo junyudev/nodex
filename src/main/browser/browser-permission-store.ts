@@ -6,6 +6,7 @@ import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 import { z } from "zod";
+import { syncEffectDirectory } from "../platform/node/filesystem-durability";
 import {
   BROWSER_SITE_PERMISSION_NAMES,
   type BrowserSitePermissionName,
@@ -119,12 +120,7 @@ export const makeBrowserPermissionStore = (
                 }),
               );
               yield* fs.rename(temporaryPath, filePath);
-              yield* Effect.scoped(
-                Effect.gen(function* () {
-                  const handle = yield* fs.open(directory, { flag: "r" });
-                  yield* handle.sync;
-                }),
-              );
+              yield* syncEffectDirectory(fs, directory);
               yield* Ref.set(state, next);
             }).pipe(Effect.ensuring(fs.remove(temporaryPath, { force: true }).pipe(Effect.ignore)));
           }),
