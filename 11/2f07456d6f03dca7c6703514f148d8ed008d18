@@ -1,0 +1,19 @@
+src/main/browser/browser-permission-store.ts
+  s_58e03f312c8a71::t_33b6d932ed83e9 9,123
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "112f07456d6f03dca7c6703514f148d8ed008d18",
+  "prompts": {},
+  "sessions": {
+    "s_58e03f312c8a71": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19a08-50d5-7072-b205-494488654333",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
