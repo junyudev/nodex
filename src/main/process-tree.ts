@@ -13,7 +13,12 @@ $owned = New-Object 'System.Collections.Generic.List[System.Diagnostics.Process]
 try {
   $root = Get-Process -Id ${pid} -ErrorAction SilentlyContinue
   if ($null -eq $root) { exit 0 }
-  $null = $root.Handle
+  try { $null = $root.Handle } catch {
+    if ($root.HasExited) { $root.Dispose(); exit 0 }
+    $root.Dispose()
+    throw
+  }
+  $startedAt = $root.StartTime
   $owned.Add($root)
   $ids = New-Object 'System.Collections.Generic.HashSet[int]'
   $null = $ids.Add(${pid})
@@ -22,7 +27,7 @@ try {
     $added = $false
     foreach ($entry in $snapshot) {
       if (!$ids.Contains([int]$entry.ParentProcessId) -or $ids.Contains([int]$entry.ProcessId)) { continue }
-      if ($entry.CreationDate -lt $root.StartTime) { continue }
+      if ($entry.CreationDate -lt $startedAt) { continue }
       $null = $ids.Add([int]$entry.ProcessId)
       $added = $true
       $member = Get-Process -Id $entry.ProcessId -ErrorAction SilentlyContinue
@@ -31,8 +36,9 @@ try {
         $null = $member.Handle
         $owned.Add($member)
       } catch {
+        $exited = $member.HasExited
         $member.Dispose()
-        throw
+        if (!$exited) { throw }
       }
     }
   } while ($added)
@@ -50,7 +56,11 @@ try {
   }
   # A leader can exit first; retain and force each captured descendant independently.
   foreach ($member in $owned) {
-    if (!$member.HasExited) { $member.Kill() }
+    if ($member.HasExited) { continue }
+    try { $member.Kill() } catch {
+      # A sibling or taskkill can finish the same process between observation and Kill.
+      if (!$member.WaitForExit(${WINDOWS_FORCE_WAIT_MS})) { throw }
+    }
   }
   $clock.Restart()
   foreach ($member in $owned) {
@@ -101,7 +111,7 @@ export function killProcessTree(pid: number, signal: NodeJS.Signals, platform: s
     const command = windowsTerminationCommand(pid, signal, 250);
     execFileSync(command.executable, command.args, {
       ...command.options,
-      stdio: "ignore",
+      stdio: "pipe",
     });
     return;
   }
