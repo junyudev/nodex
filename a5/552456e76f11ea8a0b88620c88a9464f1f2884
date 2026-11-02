@@ -1,0 +1,19 @@
+src/main/codex/desktop-tool-environment.test.ts
+  s_3022e59a160914::t_737236cfdae04c 40-42,47-48,52,60
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a5552456e76f11ea8a0b88620c88a9464f1f2884",
+  "prompts": {},
+  "sessions": {
+    "s_3022e59a160914": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1def126e-fd62-476f-9393-67b0835f01b6",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
