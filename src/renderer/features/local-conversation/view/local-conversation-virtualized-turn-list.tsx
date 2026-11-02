@@ -1082,39 +1082,62 @@ function LocalConversationVirtualizedTurnListCore({
     },
     [canPreserveContentAnchor, getIntendedContentAnchorTopPx, getScrollElement, readContentAnchor],
   );
-  const captureContentAnchors = useCallback(() => {
-    if (hasPendingLatestTurnSubmitPlacement()) {
-      contentAnchorsRef.current = [];
-      restoringInitialContentAnchorRef.current = false;
-      return;
-    }
-    if (applyingContentAnchorRef.current || restoringInitialContentAnchorRef.current) return;
-    const scrollElement = getScrollElement();
-    // Store all anchors in the committed coordinate frame, even before a scroll event arrives.
-    const pendingMovementPx =
-      getRetainedScrollDistanceFromBottomPx() - getLastScrollDistanceFromBottomPx();
-    contentAnchorsRef.current =
-      scrollElement &&
-      preserveMeasuredTurnViewport &&
-      getScrollMode() !== "stickToBottom" &&
-      activePendingTargetRef.current === null
-        ? readConversationContentAnchors({
-            scrollElement,
-            rows: turnElementsByKeyRef.current,
-            windowZoom: readCodexWindowZoom(scrollElement),
-          }).map((anchor) => ({
-            ...anchor,
-            topWithinViewportPx: anchor.topWithinViewportPx - pendingMovementPx,
-          }))
-        : [];
-  }, [
-    getLastScrollDistanceFromBottomPx,
-    getRetainedScrollDistanceFromBottomPx,
-    getScrollElement,
-    getScrollMode,
-    hasPendingLatestTurnSubmitPlacement,
-    preserveMeasuredTurnViewport,
-  ]);
+  const captureContentAnchors = useCallback(
+    (intendedPrimaryTopPx?: number) => {
+      if (hasPendingLatestTurnSubmitPlacement()) {
+        contentAnchorsRef.current = [];
+        restoringInitialContentAnchorRef.current = false;
+        return;
+      }
+      if (applyingContentAnchorRef.current || restoringInitialContentAnchorRef.current) return;
+      const scrollElement = getScrollElement();
+      if (
+        !scrollElement ||
+        !preserveMeasuredTurnViewport ||
+        getScrollMode() === "stickToBottom" ||
+        activePendingTargetRef.current !== null
+      ) {
+        contentAnchorsRef.current = [];
+        return;
+      }
+      // Store sampled anchors in the committed frame before a pending native scroll event.
+      const pendingMovementPx =
+        getRetainedScrollDistanceFromBottomPx() - getLastScrollDistanceFromBottomPx();
+      const primary = intendedPrimaryTopPx === undefined ? null : readContentAnchor();
+      const anchors = readConversationContentAnchors({
+        scrollElement,
+        rows: turnElementsByKeyRef.current,
+        windowZoom: readCodexWindowZoom(scrollElement),
+      }).map((anchor) => ({
+        ...anchor,
+        topWithinViewportPx: anchor.topWithinViewportPx - pendingMovementPx,
+      }));
+      // Keep the primary identity while refreshing the measured fallback coordinates.
+      // Rebase the command's target only by movement still awaiting acknowledgement.
+      contentAnchorsRef.current = primary
+        ? [
+            {
+              ...primary.anchor,
+              element: primary.element,
+              topWithinViewportPx: intendedPrimaryTopPx! - pendingMovementPx,
+            },
+            ...anchors.filter(
+              (anchor) =>
+                anchor.attribute !== primary.anchor.attribute || anchor.key !== primary.anchor.key,
+            ),
+          ]
+        : anchors;
+    },
+    [
+      getLastScrollDistanceFromBottomPx,
+      getRetainedScrollDistanceFromBottomPx,
+      getScrollElement,
+      getScrollMode,
+      hasPendingLatestTurnSubmitPlacement,
+      preserveMeasuredTurnViewport,
+      readContentAnchor,
+    ],
+  );
   const restoreContentAnchor = useCallback(() => {
     if (!canPreserveContentAnchor()) return false;
     const resolved = readContentAnchor();
@@ -1123,9 +1146,10 @@ function LocalConversationVirtualizedTurnListCore({
     const currentTopWithinViewportPx =
       (resolved.element.getBoundingClientRect().top - scrollElement.getBoundingClientRect().top) /
       readCodexWindowZoom(scrollElement);
+    const intendedPrimaryTopPx = getIntendedContentAnchorTopPx(resolved.anchor);
     const distance =
       getUnroundedScrollDistanceFromBottomPx(getScrollDistanceFromBottomPx()) +
-      getIntendedContentAnchorTopPx(resolved.anchor) -
+      intendedPrimaryTopPx -
       currentTopWithinViewportPx;
     applyingContentAnchorRef.current = true;
     try {
@@ -1134,7 +1158,13 @@ function LocalConversationVirtualizedTurnListCore({
       applyingContentAnchorRef.current = false;
     }
     restoringInitialContentAnchorRef.current = false;
-    captureContentAnchors();
+    // A native boundary establishes the reachable coordinate for later layout changes.
+    captureContentAnchors(
+      distance >= 0 &&
+        distance <= Math.max(0, scrollElement.scrollHeight - scrollElement.clientHeight)
+        ? intendedPrimaryTopPx
+        : undefined,
+    );
     return true;
   }, [
     canPreserveContentAnchor,
@@ -1652,13 +1682,17 @@ function LocalConversationVirtualizedTurnListCore({
     syncViewportState();
     const handleWindowResize = () => syncViewportState();
     window.addEventListener("resize", handleWindowResize);
-    const removeScrollListener = addScrollListener((distanceFromBottomPx) => {
+    const removeScrollListener = addScrollListener((distanceFromBottomPx, nativeMovementPx) => {
       syncViewportState(distanceFromBottomPx);
       if (
-        pendingLayoutEffectRef.current === null &&
-        previousLayoutRef.current === layoutRef.current
+        pendingLayoutEffectRef.current !== null ||
+        previousLayoutRef.current !== layoutRef.current
       )
-        captureContentAnchors();
+        return;
+      // Overflow can publish distance before its measured row commits. Only native movement
+      // chooses a new reading position; refresh fallback geometry after restoration instead.
+      if (nativeMovementPx === 0 && canPreserveContentAnchor() && readContentAnchor()) return;
+      captureContentAnchors();
     });
     const removeUserScrollListener = addUserScrollListener(
       (distanceFromBottomPx, previousDistanceFromBottomPx) => {
@@ -1685,9 +1719,11 @@ function LocalConversationVirtualizedTurnListCore({
     addScrollListener,
     addUserScrollListener,
     captureContentAnchors,
+    canPreserveContentAnchor,
     getLastScrollDistanceFromBottomPx,
     getResponseSpacerHeightPx,
     scrollController.scrollElement,
+    readContentAnchor,
     restoreScrollDistanceFromBottomPx,
     updateViewportState,
   ]);
