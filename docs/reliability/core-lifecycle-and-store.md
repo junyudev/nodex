@@ -22,13 +22,11 @@ Automation is demand. Core may idle-drain only after every demand source is
 gone. A lifecycle breadcrumb under the Profile run directory is bounded,
 contains no content or secret, and remains diagnostic rather than authority.
 
-The Electron Profile Scope owns the exact generation it selected. On normal
-Scope release it first closes application admission and live leases, then sends
-that generation the authenticated graceful-shutdown command and waits a bounded
-five seconds for its OS process to exit. The generation identity captured at
-acquisition fences this finalizer from targeting a later or foreign process;
-failure remains in the Scope-closing Cause instead of being hidden by a global
-shutdown checklist.
+The Electron Profile Scope owns its logical connection and live leases, not the
+shared Core process. Normal Scope release closes application admission and
+streams, leaving Core available to other clients and its own idle-drain policy.
+Explicit administration and Windows installation maintenance use authenticated,
+generation-fenced shutdown; they do not share Desktop's normal quit path.
 
 ## Local endpoints and private storage
 

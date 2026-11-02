@@ -15,7 +15,21 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { createInterface } from "node:readline";
 import { describe, expect, test } from "vite-plus/test";
+import { it } from "@effect/vitest";
 import { CORE_CLIENT_REQUIREMENTS, type components } from "@nodex/core-protocol";
+import * as Context from "effect/Context";
+import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
+import * as Layer from "effect/Layer";
+import * as Scope from "effect/Scope";
+import * as SubscriptionRef from "effect/SubscriptionRef";
+import { layer as shutdownLayer } from "../app/MainShutdown";
+import {
+  CoreAuthority,
+  CoreSessionAccess,
+  live as authorityLive,
+} from "../core-runtime/CoreAuthority";
+import { live as transportLive } from "../core-runtime/CoreTransport";
 
 import { CoreClient, CoreModuleResponseError } from "./core-client";
 import { readCoreRuntimeConnection } from "./runtime-descriptor";
@@ -179,6 +193,55 @@ describe("CoreClient over a private local endpoint", () => {
       rmSync(home, { recursive: true, force: true });
     }
   });
+  it.live("closing Desktop admission preserves the shared Core generation", () =>
+    Effect.gen(function* () {
+      const nodexHome = mkdtempSync(path.join(tmpdir(), "nodex-desktop-core-lifetime-"));
+      const child = spawnCore(nodexHome);
+      const scope = yield* Scope.make();
+      try {
+        const descriptor = yield* Effect.promise(() => readDescriptor(child));
+        const context = yield* Layer.buildWithScope(
+          authorityLive().pipe(
+            Layer.provide(
+              Layer.merge(
+                shutdownLayer,
+                transportLive({
+                  nodexHome,
+                  buildId: "desktop-lifetime-test",
+                  isPackaged: false,
+                  environment: { NODEX_CORE_EXECUTABLE: CORE_BINARY },
+                }),
+              ),
+            ),
+          ),
+          scope,
+        );
+        const authority = Context.get(context, CoreAuthority);
+        const sessions = Context.get(context, CoreSessionAccess);
+        yield* Scope.close(scope, Exit.void);
+        expect(yield* SubscriptionRef.get(authority.state)).toEqual({ kind: "stopped" });
+        expect(yield* Effect.flip(sessions.handshake)).toMatchObject({ reason: "closed" });
+
+        const cli = yield* Effect.promise(() =>
+          CoreClient.connect({
+            nodexHome,
+            clientKind: "native_cli",
+            buildId: "cli-after-desktop-quit-test",
+          }),
+        );
+        expect(cli.handshake.generation.start_nonce).toBe(descriptor.start_nonce);
+        expect(yield* Effect.promise(() => cli.health())).toMatchObject({ status: "ready" });
+        yield* Effect.promise(() => cli.shutdown());
+        yield* Effect.promise(() => waitForExit(child));
+      } finally {
+        yield* Scope.close(scope, Exit.void);
+        terminateSelectedCore(child);
+        yield* Effect.promise(() => waitForExit(child));
+        rmSync(nodexHome, { recursive: true, force: true });
+      }
+    }),
+  );
+
   test("keeps shared File identity across desktop relations and streams exact authorized versions", async () => {
     const nodexHome = mkdtempSync(path.join(tmpdir(), "nodex-library-file-client-"));
     const child = spawnCore(nodexHome);
