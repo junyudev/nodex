@@ -1,0 +1,23 @@
+packages/agent-runtime/src/nodex/ImportedExecution.ts
+  s_58e03f312c8a71::t_9ccd8f5b9dbfab 20
+src/main/browser-application/BrowserState.ts
+  s_58e03f312c8a71::t_ab5b9878627f7c 404
+src/main/platform/electron/BrowserElectronPlatform.ts
+  s_58e03f312c8a71::t_4fc65ea05e50b3 87-88
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bd491487208fcdb874c951d9d295de94be4e5371",
+  "prompts": {},
+  "sessions": {
+    "s_58e03f312c8a71": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19a08-50d5-7072-b205-494488654333",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
