@@ -1,0 +1,117 @@
+docs/FRONTEND.md
+  s_3022e59a160914::t_1c51a952fa4d45 234-239
+src/main/application-menu-snapshot.test.ts
+  s_3022e59a160914::t_510adbb701145c 1-103
+src/main/application-menu-snapshot.ts
+  s_3022e59a160914::t_a21b28b5615fd1 1-98
+src/main/application-menu.ts
+  s_3022e59a160914::t_33d49b8e0bb001 118,149-151,172
+src/main/electron-window-backdrop.test.ts
+  s_3022e59a160914::t_be5e005d92d16f 6,36,54,134-160
+src/main/electron-window-backdrop.ts
+  s_3022e59a160914::t_fdffb40de010d7 15,43-44,89-94
+src/main/host-runtime/ApplicationMenuRuntime.test.ts
+  s_3022e59a160914::t_75a201b84da907 248-402
+src/main/host-runtime/ApplicationMenuRuntime.ts
+  s_3022e59a160914::t_8f60f134bff4da 1-7,74-77,79-84,109-110,123-129,186-198,201,217,320-391,448,506-535,538,549-554,564-570,578-580
+src/main/ipc/handlers/ApplicationSettingsIpc.test.ts
+  s_3022e59a160914::t_f8ff5e39ebd232 57-58
+src/main/ipc/handlers/ApplicationWindowIpc.test.ts
+  s_3022e59a160914::t_b88971f8689714 34-35,39-42,64-65,78-79,81,84,99-118,139-143
+src/main/ipc/handlers/ApplicationWindowIpc.ts
+  s_3022e59a160914::t_2013a12d4d6c5d 1-2,6,79-121
+src/main/platform/electron/WindowBackdrop.ts
+  s_3022e59a160914::t_b6a268d1901406 1-8
+src/main/window-navigation-chrome.test.ts
+  s_3022e59a160914::t_421276039083a9 1,4-5,33,35,48-68
+src/main/window-navigation-chrome.ts
+  s_3022e59a160914::t_9fdad1500c66d5 8-13,23
+src/main/window-runtime/ApplicationWindowRuntime.ts
+  s_3022e59a160914::t_8522851b1344dc 79-80,295,391,432
+src/main/window-runtime/ApplicationWindowShellRuntime.ts
+  s_3022e59a160914::t_f6b7d0204e9c17 1-2,315,336-338,350-358
+src/main/window-runtime/WindowRuntime.test.ts
+  s_3022e59a160914::t_80a85b82df1731 411-456
+src/main/window-runtime/WindowRuntime.ts
+  s_3022e59a160914::t_ded018467685a0 1-2,113,161-164
+src/renderer/components/ui/application-menubar.browser.test.tsx
+  s_3022e59a160914::t_34f60fa6f4a2c9 1-141
+src/renderer/components/ui/application-menubar.test.tsx
+  s_3022e59a160914::t_4b818c52f123b1 1-119
+src/renderer/components/ui/application-menubar.tsx
+  s_3022e59a160914::t_9b941f70c35ace 1-303
+src/renderer/components/ui/dropdown.tsx
+  s_3022e59a160914::t_b000b732cf6a7a 141,157-169,180-197,199-228,230-234
+src/renderer/components/workbench/use-workbench-chrome-layout.test.tsx
+  s_3022e59a160914::t_10697c056d8a75 7,11-30,34-35,75-83
+src/renderer/components/workbench/use-workbench-chrome-layout.ts
+  s_3022e59a160914::t_cc5fa662c6e994 1-6,9,17,21,60,127,148-150,160,162,167-171,173-185,204-222,225,229-238,244-258,264-270,274,278,406-407,409,411-417,429-434,438-451,463-466
+src/renderer/components/workbench/workbench-route-host.tsx
+  s_3022e59a160914::t_eb9ad17bcf49cd 35-38
+src/renderer/components/workbench/workbench-runtime.tsx
+  s_3022e59a160914::t_60018b79faf98a 1-4,47,144-147,1773-1776,1799,1810,3734-3737,3749,3776,3860,3877,3889,4089,4129,4286-4291,5768,5774-5777,5781,5807-5826,5828,5830,5834,5836-5837,5897,5899-5903,5932-5948,5950-5959,5962-6038
+src/renderer/components/workbench/workbench-settings-route-shell.tsx
+  s_3022e59a160914::t_f088643517c815 228
+src/renderer/components/workbench/workbench-shell.windows-chrome.test.tsx
+  s_3022e59a160914::t_d29c53ff032c23 1-46
+src/renderer/components/workbench/workbench-testkit/workbench-shell-harness.tsx
+  s_3022e59a160914::t_2370114e147e2a 2707-2708
+src/renderer/components/workbench/workbench-workspace-frame.browser.test.tsx
+  s_3022e59a160914::t_ea10735b1c99fd 1-129
+src/renderer/components/workbench/workbench-workspace-frame.tsx
+  s_3022e59a160914::t_38fd19d4e9590d 1-40
+src/renderer/features/content-search/content-search-surface.tsx
+  s_3022e59a160914::t_79c4819b9410d9 123
+src/renderer/features/user-attachment-image-editor/view/image-preview-dialog.tsx
+  s_3022e59a160914::t_ad81f885ba2ff7 311,326,331
+src/renderer/lib/app-shell-layers.ts
+  s_3022e59a160914::t_0c13072758a900 2
+src/renderer/lib/application-menu.ts
+  s_3022e59a160914::t_736aab051a7175 1-39
+src/renderer/lib/application-menubar-keyboard.node.test.ts
+  s_3022e59a160914::t_a573cab9eb53e4 1-68
+src/renderer/lib/application-menubar-keyboard.ts
+  s_3022e59a160914::t_23be446d0ff392 1-60
+src/renderer/lib/codex-sidebar-auto-reveal.ts
+  s_3022e59a160914::t_a48dbefd435c2b 29
+src/renderer/lib/use-theme.tsx
+  s_3022e59a160914::t_92fad5c7bfe595 1,114-122
+src/renderer/lib/workbench-shell-geometry.test.ts
+  s_3022e59a160914::t_d1107abbb56ad3 1-29
+src/renderer/lib/workbench-shell-geometry.ts
+  s_3022e59a160914::t_6fe3523e500275 1,7-18
+src/shared/application-menu.ts
+  s_3022e59a160914::t_ce8f97e43966d2 1-28
+src/shared/command-keybindings.test.ts
+  s_3022e59a160914::t_1947c73fbd9848 96,120,123
+src/shared/command-keybindings.ts
+  s_3022e59a160914::t_069f815c80c175 1943-1945,1957,1959,1969-1972,1974-1977
+src/shared/ipc-api.ts
+  s_3022e59a160914::t_803dc6bdd7fb48 1515-1524,3157
+src/shared/ipc-endpoint-policy.ts
+  s_3022e59a160914::t_f860fcd028e973 234-235,777-778
+src/shared/workbench-commands.ts
+  s_3022e59a160914::t_8f373d478c47a7 10
+src/shared/workbench-window-chrome.test.ts
+  s_3022e59a160914::t_ec00ddece3a9d6 3,9,83,134-179
+src/shared/workbench-window-chrome.ts
+  s_3022e59a160914::t_0ceb8daa091a52 3,29,49-51,80-81,83-84,91-98,119-129
+vitest.browser.config.ts
+  s_3022e59a160914::t_7327e4e0284974 40
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "71cfb7cce029475cf0e2fd695338427ef933648f",
+  "prompts": {},
+  "sessions": {
+    "s_3022e59a160914": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1def126e-fd62-476f-9393-67b0835f01b6",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
