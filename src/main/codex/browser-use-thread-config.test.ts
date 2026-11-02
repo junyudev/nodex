@@ -8,13 +8,11 @@ import {
   makeTestedBrowserAppServerPair,
   writeBrowserRuntimeFixture,
 } from "./browser-runtime-test-fixture";
-import {
-  BrowserUseThreadConfigBuilder,
-  SIGNED_NODE_REPL_LAUNCHER_SOURCE,
-} from "./browser-use-thread-config";
+import { BrowserUseThreadConfigBuilder } from "./browser-use-thread-config";
 
 import { nodexDesktopToolMarketplaceName } from "./bundled-desktop-tool-marketplace";
 import { computerUseNativePipePath } from "./computer-use-runtime-config";
+import { NODE_REPL_LAUNCHER_SOURCE } from "./desktop-tool-environment";
 
 const temporaryRoots: string[] = [];
 
@@ -79,7 +77,8 @@ describe("BrowserUseThreadConfigBuilder", () => {
     expect(config?.["mcp_servers.node_repl"]).toMatchObject({
       args: [
         "-e",
-        SIGNED_NODE_REPL_LAUNCHER_SOURCE,
+        NODE_REPL_LAUNCHER_SOURCE,
+        expect.any(String),
         path.join(bundleRoot, "bin", "codex"),
         "sandbox",
         "-P",
@@ -88,6 +87,8 @@ describe("BrowserUseThreadConfigBuilder", () => {
         path.join(bundleRoot, "bin", "node_repl"),
       ],
       command: path.join(bundleRoot, "bin", "node"),
+      enabled: true,
+      env_vars: [],
       startup_timeout_sec: 120,
       env: {
         BROWSER_USE_AVAILABLE_BACKENDS: "iab",
@@ -116,6 +117,12 @@ describe("BrowserUseThreadConfigBuilder", () => {
         }),
       },
     });
+    const nodeRepl = config?.["mcp_servers.node_repl"] as {
+      args: string[];
+      env: Record<string, string>;
+    };
+    // The launcher keeps exactly the Desktop Tool variables Nodex declares.
+    expect(JSON.parse(nodeRepl.args[2] ?? "null")).toEqual(Object.keys(nodeRepl.env).sort());
     expect(
       config?.["shell_environment_policy.set.BROWSER_USE_DISABLE_AMBIENT_NETWORK"],
     ).toBeUndefined();
@@ -191,7 +198,8 @@ describe("BrowserUseThreadConfigBuilder", () => {
     expect(nodeRepl).toMatchObject({
       args: [
         "-e",
-        SIGNED_NODE_REPL_LAUNCHER_SOURCE,
+        NODE_REPL_LAUNCHER_SOURCE,
+        expect.any(String),
         browserRuntime.bundle.paths.codexCli,
         "sandbox",
         "-P",

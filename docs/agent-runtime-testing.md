@@ -50,6 +50,10 @@ the recorded relation; they do not replace the runtime probes that establish it.
 For Browser-only artifact pairing, run `tsx scripts/probe-browser-runtime.ts --conformance --browser-only`.
 It exercises the real Node REPL and Browser adapter against a disposable Profile and synthetic
 native pipe, and records Computer Use as `not-requested`. It never inspects the user's desktop.
+It runs under foreign launch bindings and a shared Codex home that persists another host's
+`node_repl` server, and requires the Browser to stay on Nodex's own host without contacting that
+host's live access endpoint; the scripted Browser smoke covers the same contamination, plus a
+foreign shell policy, through an Agent Turn.
 This establishes Browser pairing without claiming Computer Use conformance; the full Computer Use
 probe remains a separate explicitly selected check.
 

@@ -1,10 +1,11 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type TestInfo } from "@playwright/test";
 import {
   AGENT_RUNTIME_CODEX_THREAD_SOURCE,
   type AgentSubagentOverview,
 } from "@nodex/agent-runtime/contracts";
-import { randomUUID } from "node:crypto";
+import { generateKeyPairSync, randomUUID } from "node:crypto";
 import fs from "node:fs";
+import net from "node:net";
 import path from "node:path";
 import zlib from "node:zlib";
 
@@ -890,8 +891,14 @@ test("keeps a pasted image visible when steering a running Turn and after restar
   );
 });
 
-test("opens a loopback page through the real in-app Browser runtime", async ({}, testInfo) => {
-  test.setTimeout(120_000);
+const runScriptedBrowserTurn = async (
+  testInfo: TestInfo,
+  options: {
+    readonly environment?: NodeJS.ProcessEnv;
+    readonly codexConfigSuffix?: string;
+    readonly verifyRuntimeLogs?: (logs: string) => void;
+  } = {},
+): Promise<void> => {
   const token = randomUUID();
   const promptMarker = `SCRIPTED_BROWSER_PROMPT_${token}`;
   const pageMarker = `SCRIPTED_BROWSER_PAGE_${token}`;
@@ -1018,11 +1025,12 @@ nodeRepl.write(JSON.stringify({ title: await tab.title(), url: await tab.url() }
             NODEX_LOG_CONSOLE: "0",
             NODEX_LOG_FILE: "1",
             OPENAI_API_KEY: "nodex-scripted-model-test-key",
+            ...options.environment,
           },
         });
         fs.writeFileSync(
           path.join(harness.profile.codexHome, "config.toml"),
-          scriptedCodexConfig(modelServer.baseUrl),
+          `${scriptedCodexConfig(modelServer.baseUrl)}${options.codexConfigSuffix ?? ""}`,
           { encoding: "utf8", mode: 0o600 },
         );
         try {
@@ -1122,6 +1130,11 @@ nodeRepl.write(JSON.stringify({ title: await tab.title(), url: await tab.url() }
             body: await page.screenshot(),
             contentType: "image/png",
           });
+          if (options.verifyRuntimeLogs) {
+            options.verifyRuntimeLogs(
+              await readBoundedElectronRuntimeLogs(harness.profile, 256_000),
+            );
+          }
         } catch (error) {
           const logs = await readBoundedElectronRuntimeLogs(harness.profile);
           throw new Error(
@@ -1137,6 +1150,85 @@ nodeRepl.write(JSON.stringify({ title: await tab.title(), url: await tab.url() }
     releaseBrowserStart();
     releaseFinalResponse();
     await fixture.close();
+  }
+};
+
+test("opens a loopback page through the real in-app Browser runtime", async ({}, testInfo) => {
+  test.setTimeout(120_000);
+  await runScriptedBrowserTurn(testInfo);
+});
+
+test("opens the real in-app Browser without contacting another desktop host's access endpoint", async ({}, testInfo) => {
+  test.setTimeout(120_000);
+  // macOS Unix-domain socket paths must stay below roughly 104 bytes.
+  const socketDirectory = fs.mkdtempSync("/tmp/nodex-access-");
+  const socketPath = path.join(socketDirectory, "access.sock");
+  const { publicKey } = generateKeyPairSync("ed25519");
+  const verifyingIdentity = publicKey.export({ type: "spki", format: "der" }).toString("base64");
+  const accessEnvironment = {
+    BROWSER_USE_ACCESS_EXECUTOR_ID: JSON.stringify([randomUUID(), "native-browser-plugin"]),
+    BROWSER_USE_ACCESS_PIPE_PATH: socketPath,
+    BROWSER_USE_ACCESS_VERIFYING_IDENTITY: verifyingIdentity,
+  };
+  const accessConfig = Object.entries(accessEnvironment)
+    .map(([name, value]) => `${name} = ${JSON.stringify(value)}`)
+    .join("\n");
+  let acceptedConnections = 0;
+  const server = net.createServer((socket) => {
+    acceptedConnections += 1;
+    socket.destroy();
+  });
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(socketPath, resolve);
+    });
+    await runScriptedBrowserTurn(testInfo, {
+      environment: {
+        ...accessEnvironment,
+        CODEX_APP_TOOLS_PIPE_PATH: path.join(socketDirectory, "missing-app-tools.sock"),
+        CODEX_TASK_WORKSPACE_VERIFYING_IDENTITY: verifyingIdentity,
+      },
+      // These tables follow the scripted provider's [features] table without reopening it.
+      codexConfigSuffix: `
+[mcp_servers.node_repl]
+command = ${JSON.stringify(path.join(socketDirectory, "missing-foreign-node-repl"))}
+args = []
+env_vars = ${JSON.stringify(Object.keys(accessEnvironment))}
+
+[mcp_servers.node_repl.env]
+${accessConfig}
+SKY_CUA_SERVICE_PATH = ${JSON.stringify(path.join(socketDirectory, "foreign-cua"))}
+
+[shell_environment_policy.set]
+${accessConfig}
+NODE_REPL_TRUSTED_SERVICES = ${JSON.stringify(JSON.stringify({ browser: path.join(socketDirectory, "foreign-service.mjs") }))}
+`,
+      verifyRuntimeLogs: (logs) => {
+        expect(logs).toContain(
+          "Ignored Desktop Tool bindings inherited from the launching environment",
+        );
+        expect(logs).not.toContain(verifyingIdentity);
+        expect(logs).not.toContain(socketPath);
+      },
+    });
+    expect(acceptedConnections, "Foreign Browser access host connections").toBe(0);
+  } catch (error) {
+    throw new Error(
+      `${error instanceof Error ? error.message : String(error)}\nForeign Browser access host accepted ${acceptedConnections} connections`,
+      { cause: error },
+    );
+  } finally {
+    try {
+      if (server.listening) {
+        await new Promise<void>((resolve, reject) =>
+          server.close((error) => (error ? reject(error) : resolve())),
+        );
+      }
+    } finally {
+      fs.rmSync(socketDirectory, { recursive: true, force: true });
+    }
   }
 });
 

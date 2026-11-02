@@ -557,6 +557,20 @@ has.
   Action confirmation remains an app-server elicitation decision; denial and
   native failures are delivered as typed tool errors rather than weakening the
   host boundary.
+- Nodex alone configures the Desktop Tool runtime of its process tree. Another
+  desktop host's bindings — the private endpoints, executor identities,
+  verifying keys, and trust roots it publishes to its own processes — are
+  dropped by ownership from every ambient environment Nodex admits (the launch
+  environment at Main bootstrap and the login-shell snapshot), whether or not
+  their endpoint is still live; the bootstrap log records only their names.
+  `node_repl` runs in a closed environment: its server definition pins command,
+  arguments, enablement, and an empty forwarding list, and the launcher keeps
+  only the Desktop Tool variables Nodex declares and pins the sandbox shell
+  policy, so server-environment and shell-policy entries another host
+  persisted in the shared Codex home cannot add or replace them. Exact binding
+  names, not namespaces, guard user-facing shells, which keep unrelated
+  third-party variables. The Browser conformance probe runs under a hostile
+  shared Codex home and foreign launch bindings.
 - Computer Use settings are a typed Main-only capability. Renderer code cannot
   read arbitrary App Group files or invoke `defaults`/the nested installer.
   Main validates bounded approval identifiers and declared sound modes, writes

@@ -8,6 +8,9 @@ describe("Browser runtime probe cleanup", () => {
 
     await expect(
       cleanupBrowserRuntime({
+        closeForeignAccessHost: async () => {
+          events.push("close-foreign-host");
+        },
         closeNativePipeServer: async () => {
           events.push("close-pipe");
           throw new Error("pipe close failed");
@@ -25,7 +28,13 @@ describe("Browser runtime probe cleanup", () => {
       }),
     ).rejects.toThrow("client stop failed");
 
-    expect(events).toEqual(["stop-client", "stop-computer-use", "close-pipe", "remove-profile"]);
+    expect(events).toEqual([
+      "stop-client",
+      "stop-computer-use",
+      "close-pipe",
+      "close-foreign-host",
+      "remove-profile",
+    ]);
   });
 });
 

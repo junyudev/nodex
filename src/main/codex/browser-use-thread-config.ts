@@ -10,41 +10,11 @@ import { resolveAvailableBrowserUseBackends } from "./browser-use-backends";
 import type { ComputerUseRuntimeResult } from "../host-runtime/ComputerUseRuntime";
 import { nodexDesktopToolMarketplaceName } from "./bundled-desktop-tool-marketplace";
 import { computerUseNativePipePath } from "./computer-use-runtime-config";
+import { nodeReplServerDefinition } from "./desktop-tool-environment";
 
 const BROWSER_USE_IN_APP_INSTRUCTIONS =
   "Control the in-app browser in conjunction with the Browser Plugin.";
 const COMPUTER_USE_INSTRUCTIONS = "Control desktop apps on macOS through Computer Use.";
-
-// The native Browser and Computer Use peers validate the code-signing identity
-// of node_repl and its two nearest ancestors. Keep this launcher alive so the
-// process tree is node_repl -> codex -> vendor-signed node. Browser peer
-// identity remains independent from the primary app-server's locked release identity.
-export const SIGNED_NODE_REPL_LAUNCHER_SOURCE = `
-const { spawn } = require("node:child_process");
-const child = spawn(process.argv[1], process.argv.slice(2), { stdio: "inherit" });
-const forwardedSignals = new Map();
-for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
-  const handler = () => {
-    if (!child.killed) child.kill(signal);
-  };
-  forwardedSignals.set(signal, handler);
-  process.on(signal, handler);
-}
-child.once("error", (error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
-child.once("exit", (code, signal) => {
-  for (const [forwardedSignal, handler] of forwardedSignals) {
-    process.off(forwardedSignal, handler);
-  }
-  if (signal) {
-    process.kill(process.pid, signal);
-    return;
-  }
-  process.exit(code ?? 1);
-});
-`.trim();
 
 type BrowserUseThreadConfig = NonNullable<ThreadStartParams["config"]>;
 
@@ -145,21 +115,12 @@ function buildAvailableConfig(
       ]),
     ),
     "features.js_repl": false,
-    "mcp_servers.node_repl": {
-      args: [
-        "-e",
-        SIGNED_NODE_REPL_LAUNCHER_SOURCE,
-        bundle.paths.codexCli,
-        "sandbox",
-        "-P",
-        ":danger-full-access",
-        "--",
-        bundle.paths.nodeRepl,
-      ],
-      command: bundle.paths.node,
+    "mcp_servers.node_repl": nodeReplServerDefinition({
+      codexCliPath: bundle.paths.codexCli,
       env,
-      startup_timeout_sec: 120,
-    },
+      nodePath: bundle.paths.node,
+      nodeReplPath: bundle.paths.nodeRepl,
+    }),
   };
   if (bundle.manifest.targetPlatform !== "darwin") return config;
   return {

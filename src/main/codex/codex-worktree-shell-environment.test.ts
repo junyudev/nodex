@@ -65,6 +65,20 @@ describe("Codex worktree shell environment", () => {
     );
   });
 
+  test("drops another host's Desktop Tool bindings that a login shell exports", async () => {
+    const environment = await loadCodexLocalShellEnvironment({
+      platform: "darwin",
+      baseEnvironment: { PATH: "/usr/bin" },
+      loadInteractiveEnvironment: async () => ({
+        BROWSER_USE_ACCESS_PIPE_PATH: "/tmp/codex-app-tools/foreign.sock",
+        BROWSER_USE_API_KEY: "third-party-library",
+        PATH: "/usr/bin",
+      }),
+    });
+
+    expect(environment).toEqual({ BROWSER_USE_API_KEY: "third-party-library", PATH: "/usr/bin" });
+  });
+
   test("falls back to the Electron environment when login-shell loading fails", async () => {
     let observedError = "";
     const environment = await loadCodexLocalShellEnvironment({

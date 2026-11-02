@@ -10,6 +10,7 @@ import {
   ENVIRONMENT_NAME_PATTERN,
 } from "../../shared/agent-environment";
 import { killChildProcessTree } from "../process-tree";
+import { withoutDesktopToolHostBindings } from "./desktop-tool-environment";
 
 export interface CodexStoredShellEnvironment {
   readonly version: 1;
@@ -110,10 +111,11 @@ export function applyCodexWorktreeShellEnvironment(
   return Object.fromEntries([...entries.values()].map(({ key, value }) => [key, value]));
 }
 
-function withoutCodexShellEnvironment(environment: NodeJS.ProcessEnv): Record<string, string> {
-  const compact = compactProcessEnvironment(environment);
-  delete compact.CODEX_SHELL;
-  return compact;
+/** The environment Nodex admits from a login shell, which can export another host's bindings. */
+function admittedShellEnvironment(environment: NodeJS.ProcessEnv): Record<string, string> {
+  const admitted = withoutDesktopToolHostBindings(environment);
+  delete admitted.CODEX_SHELL;
+  return admitted;
 }
 
 function resolveCodexLoginShell(platform: NodeJS.Platform, environment: NodeJS.ProcessEnv): string {
@@ -242,21 +244,21 @@ export async function loadCodexLocalShellEnvironment(
   const baseEnvironment = input.baseEnvironment ?? process.env;
   const platform = input.platform ?? process.platform;
   input.signal?.throwIfAborted();
-  if (platform === "win32") return compactProcessEnvironment(baseEnvironment);
+  if (platform === "win32") return withoutDesktopToolHostBindings(baseEnvironment);
 
   const load = async (): Promise<NodeJS.ProcessEnv> => {
     try {
       const interactiveEnvironment = await (input.loadInteractiveEnvironment?.(input.signal) ??
         readCodexInteractiveShellEnvironment(baseEnvironment, platform, input.signal));
       input.signal?.throwIfAborted();
-      return withoutCodexShellEnvironment({
+      return admittedShellEnvironment({
         ...baseEnvironment,
         ...interactiveEnvironment,
       });
     } catch (error) {
       input.signal?.throwIfAborted();
       input.onError?.(error);
-      return withoutCodexShellEnvironment(baseEnvironment);
+      return admittedShellEnvironment(baseEnvironment);
     }
   };
 

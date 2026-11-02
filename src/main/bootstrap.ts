@@ -32,12 +32,16 @@ import {
   resolveIsolatedRunBootstrapAccess,
   type IsolatedRunBootstrapAccess,
 } from "./core-client/isolated-run-ownership";
+import { desktopToolHostBindingNames } from "./codex/desktop-tool-environment";
 
 initMarkdownSync(readFileSync(markdownWasmPath));
 
 process.env.NODEX_INTERNAL_APP_PACKAGED = app.isPackaged ? "true" : "false";
 const inheritedIsolatedRunId = process.env[ISOLATED_RUN_ID_ENV];
 delete process.env[ISOLATED_RUN_ID_ENV];
+// Nodex owns the Desktop Tool configuration of every process it starts.
+const ignoredDesktopToolHostBindings = desktopToolHostBindingNames(process.env);
+for (const name of ignoredDesktopToolHostBindings) delete process.env[name];
 
 const bootstrapConfig = resolveBootstrapConfig({ isPackaged: app.isPackaged });
 const { nodexHome } = bootstrapConfig;
@@ -338,6 +342,11 @@ function bootstrapApplication(): boolean {
     return false;
   }
   configureBackendLogger(backendLoggerConfiguration);
+  if (ignoredDesktopToolHostBindings.length > 0) {
+    logBootstrap("info", "Ignored Desktop Tool bindings inherited from the launching environment", {
+      names: ignoredDesktopToolHostBindings,
+    });
+  }
 
   if (isolatedRunAccess.kind === "supervised") {
     try {

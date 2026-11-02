@@ -598,8 +598,10 @@ renderer owners and Main owners retain the same generation and role boundaries.
 
 On POSIX hosts, interactive login-shell discovery is owned once per Main or worktree-worker lifetime.
 Windows resolves its captured environment directly. The Main
-bootstrap snapshots its inherited environment, process platform, and home directory into immutable
-configuration. `MainConfig` derives immutable native integration capabilities from that snapshot;
+bootstrap admits its inherited environment, dropping another desktop host's Desktop Tool bindings
+(see [Security](SECURITY.md)), and snapshots it, the process platform, and the home directory into
+immutable configuration; every captured shell environment applies the same admission. `MainConfig`
+derives immutable native integration capabilities from that snapshot;
 platform adapters gate native acquisition through that policy and publish existing typed feature
 availability observations. See [Windows host behavior](product-specs/windows-host-behavior.md).
 Host Modules do not reread ambient `process.env` or `process.platform`. The

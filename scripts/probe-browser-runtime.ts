@@ -3,7 +3,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { generateKeyPairSync, randomUUID } from "node:crypto";
+import { once } from "node:events";
+import { createServer } from "node:net";
+import { stringify as stringifyToml } from "smol-toml";
 import type * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -30,6 +33,7 @@ import {
 } from "../src/shared/browser-app-server-compatibility";
 import { parseBundledAgentRuntimeMetadata } from "../src/shared/codex-runtime-metadata";
 import { resolveCodexRuntime } from "../src/main/codex/codex-runtime";
+import { withoutDesktopToolHostBindings } from "../src/main/codex/desktop-tool-environment";
 import { makeBrowserUseNativePipeServer } from "../src/main/browser-use/browser-use-native-pipe-server";
 import { createBrowserUsePeerAuthorizer } from "../src/main/browser-use/browser-use-peer-authorizer";
 import {
@@ -53,6 +57,7 @@ export type BrowserRuntimeConformanceReport = {
   computerUse:
     | { appCount: number; status: "available" }
     | { reason: string; status: "unavailable" };
+  foreignAccessHostConnections: number;
   nativePipeMethods: string[];
   nodeReplResult: string;
   targetArch: string;
@@ -203,6 +208,7 @@ export async function inspectBrowserRuntime(
 }
 
 interface BrowserRuntimeCleanupDependencies {
+  readonly closeForeignAccessHost: () => Promise<void>;
   readonly closeNativePipeServer: () => Promise<void>;
   readonly removeStateHome: () => void;
   readonly stopComputerUseRuntime: () => Promise<void>;
@@ -218,6 +224,7 @@ export async function cleanupBrowserRuntime(
     dependencies.stopClient,
     dependencies.stopComputerUseRuntime,
     dependencies.closeNativePipeServer,
+    dependencies.closeForeignAccessHost,
     dependencies.removeStateHome,
   ];
 
@@ -232,6 +239,61 @@ export async function cleanupBrowserRuntime(
   }
 
   if (hasError) throw firstError;
+}
+
+/**
+ * Exercises a foreign host's launch bindings and its persisted `node_repl` server against a live
+ * access endpoint. The probe calls the tool outside a Turn, where `node_repl` starts its workers
+ * under the shared shell policy; Agent Turns, which the scripted Browser E2E covers, do not.
+ */
+async function prepareHostileBrowserProbeHome(stateHome: string) {
+  // Keep the Unix socket below macOS's path limit, even in a deeply nested worktree.
+  const socketPath = `/tmp/nodex-browser-access-${randomUUID()}.sock`;
+  const { publicKey } = generateKeyPairSync("ed25519");
+  const env = {
+    BROWSER_USE_ACCESS_PIPE_PATH: socketPath,
+    BROWSER_USE_ACCESS_EXECUTOR_ID: JSON.stringify([randomUUID(), "native-browser-plugin"]),
+    BROWSER_USE_ACCESS_VERIFYING_IDENTITY: publicKey
+      .export({ format: "der", type: "spki" })
+      .toString("base64"),
+  };
+  let connections = 0;
+  const server = createServer((socket) => {
+    connections += 1;
+    socket.destroy();
+  });
+  const close = async () => {
+    try {
+      if (!server.listening) return;
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+      });
+    } finally {
+      fs.rmSync(socketPath, { force: true });
+    }
+  };
+
+  try {
+    server.listen(socketPath);
+    await once(server, "listening");
+    fs.writeFileSync(
+      path.join(stateHome, "config.toml"),
+      stringifyToml({
+        mcp_servers: {
+          node_repl: {
+            command: path.join(stateHome, "foreign-node-repl"),
+            args: [],
+            env_vars: Object.keys(env),
+            env: { ...env, SKY_CUA_SERVICE_PATH: path.join(stateHome, "foreign-sky") },
+          },
+        },
+      }),
+    );
+    return { close, connections: () => connections, env };
+  } catch (error) {
+    await close();
+    throw error;
+  }
 }
 
 function makeComputerUseProbeCode(): string {
@@ -437,8 +499,11 @@ async function probeBrowserRuntimePromise(
         );
   const computerUseRuntime =
     computerUseContext === null ? null : Context.get(computerUseContext, ComputerUseRuntime);
+  let foreignAccessHost: Awaited<ReturnType<typeof prepareHostileBrowserProbeHome>> | null = null;
 
   try {
+    const accessHost = await prepareHostileBrowserProbeHome(stateHome);
+    foreignAccessHost = accessHost;
     const computerUseRuntimeResult: ComputerUseRuntimeResult =
       computerUseRuntime === null
         ? {
@@ -459,7 +524,8 @@ async function probeBrowserRuntimePromise(
             version: "1.0.0",
           },
           env: {
-            ...process.env,
+            ...withoutDesktopToolHostBindings(process.env),
+            ...accessHost.env,
             CODEX_HOME: stateHome,
           },
           expectedCodexHome: stateHome,
@@ -532,11 +598,17 @@ async function probeBrowserRuntimePromise(
           ) {
             throw new Error(
               `Browser client conformance failed: ${nodeReplResult || "empty result"}` +
+                ` (foreign access host connections: ${accessHost.connections()})` +
                 (nativePipeDiagnostics.length > 0 ? ` (${nativePipeDiagnostics.join("; ")})` : ""),
             );
           }
           if (!nativePipeMethods.includes("getInfo")) {
             throw new Error("Browser client did not reach the native-pipe Browser backend");
+          }
+          if (accessHost.connections() !== 0) {
+            throw new Error(
+              `Browser client contacted the foreign access host: ${accessHost.connections()} connections`,
+            );
           }
 
           let computerUse: BrowserRuntimeConformanceReport["computerUse"];
@@ -600,6 +672,7 @@ async function probeBrowserRuntimePromise(
             browserPluginVersion: bundle.manifest.browserPlugin.version,
             browserRuntimeVersions: bundle.manifest.runtimeVersions,
             computerUse,
+            foreignAccessHostConnections: accessHost.connections(),
             mode: "conformance",
             nativePipeMethods: [...new Set(nativePipeMethods)],
             nodeReplResult,
@@ -614,6 +687,9 @@ async function probeBrowserRuntimePromise(
     // Limit diagnostics to this disposable Profile, never an installed application's logs.
     process.stderr.write(
       `Browser runtime managed service: ${JSON.stringify(computerUseRuntime?.managedServiceSnapshot() ?? null)}\n`,
+    );
+    process.stderr.write(
+      `Browser runtime foreign access host connections: ${foreignAccessHost?.connections() ?? 0}\n`,
     );
     try {
       const diagnostics = execFileSync(
@@ -640,6 +716,7 @@ async function probeBrowserRuntimePromise(
     throw error;
   } finally {
     await cleanupBrowserRuntime({
+      closeForeignAccessHost: () => foreignAccessHost?.close() ?? Promise.resolve(),
       closeNativePipeServer: () => callbacks.runPromise(Scope.close(nativePipeScope, Exit.void)),
       removeStateHome: () =>
         fs.rmSync(stateHome, {
