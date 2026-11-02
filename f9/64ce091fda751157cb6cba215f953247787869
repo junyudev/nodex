@@ -1,0 +1,30 @@
+config/electron-development-network.test.ts
+  s_3609d9db04b3f2::t_f8451e86f62c4a 1-45
+  s_3609d9db04b3f2::t_e0e5d735370eb7 46-53
+electron.vite.config.ts
+  s_3609d9db04b3f2::t_f8451e86f62c4a 163
+docs/development.md
+  s_3609d9db04b3f2::t_35a1f412b8e420 138-146
+patches/@voidzero-dev__vite-plus-core@1.4.0.patch
+  s_3609d9db04b3f2::t_56120253336695 1-15
+pnpm-lock.yaml
+  s_3609d9db04b3f2::t_0d03cd2efa2152 233,433,520,523,580,676,712,718,1425,1441,1456,9931,9936,9941,10332,11835,11842,12297,12302,12893,12896,12898,12901,12903-12904,12907,12914,12918-12919,12926,12929,12936,12944,12951,12974,12982,13373-13374,14145,14153,16782,16786,16788,16790,16794,17648-17650,17658-17659,17661,17706,17708,17710,17713,17724,17729-17730
+pnpm-workspace.yaml
+  s_3609d9db04b3f2::t_a72b736f78eee6 16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f964ce091fda751157cb6cba215f953247787869",
+  "prompts": {},
+  "sessions": {
+    "s_3609d9db04b3f2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19bd4-bc82-7710-93aa-a3b0b80b63c0",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
