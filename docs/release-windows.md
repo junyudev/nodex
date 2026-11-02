@@ -120,8 +120,9 @@ networking-module auto-loading. Its provider operation is bounded to 15 seconds
 and the whole query to 30 seconds; neither extends the uninstall budget.
 Playwright's wrapper/stream cleanup settles after maintenance stops Core; it is
 not the Desktop-exit signal and must not stop Core before the uninstall check.
-Diagnostic reprobes run the focused process/listener fixture before the installed
-application, so the same native audit boundary is checked without rebuilding.
+Diagnostic reprobes run the focused real-Core shutdown and process/listener
+fixtures before the installed application. They prepare the native test Core
+with the pinned Rust toolchain while reusing the existing installer payloads.
 The probe retains its disposable Profile locally for diagnosis; CI uploads only
 the fresh probe's logs and result. It never uses credentials or a real Profile.
 

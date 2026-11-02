@@ -171,6 +171,7 @@ describe("CoreClient over a private local endpoint", () => {
       const installation = path.join(fixture, "Nodex 用户's app");
       const nodexHome = path.join(fixture, "Profile 用户's");
       mkdirSync(installation);
+      mkdirSync(nodexHome);
       const installedCore = path.join(installation, "nodex-core.exe");
       copyFileSync(CORE_BINARY, installedCore);
       const child = spawnCore(nodexHome, installedCore);
