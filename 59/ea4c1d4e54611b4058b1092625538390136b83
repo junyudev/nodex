@@ -1,0 +1,139 @@
+CHANGELOG.md
+  s_91195c277e2f02::t_725a3d69c9f95e 9
+docs/FRONTEND.md
+  s_f8f93aacc1805d::t_adc7d6900f7f8a 234-239
+docs/product-specs/windows-host-behavior.md
+  s_f8f93aacc1805d::t_6bc9ea95ecf94c 50-83
+src/main/application-menu-snapshot.test.ts
+  s_6c9891f66c664a::t_3ef6e4d9c3fbea 1-67
+src/main/application-menu-snapshot.ts
+  s_f8f93aacc1805d::t_f4221e3ee2ce49 1-79
+src/main/application-menu.ts
+  s_6c9891f66c664a::t_0ca8af6032f46f 118,149-151,172
+src/main/electron-window-backdrop.test.ts
+  s_f8f93aacc1805d::t_8c7bcda09d7386 6,36,54,134-160
+src/main/electron-window-backdrop.ts
+  s_6c9891f66c664a::t_ddee47c6861183 15,43-44,89-94
+src/main/host-runtime/ApplicationMenuRuntime.test.ts
+  s_f8f93aacc1805d::t_82dbbc558a466f 248-402
+src/main/host-runtime/ApplicationMenuRuntime.ts
+  s_f8f93aacc1805d::t_ed6fcfdc2af27c 1-3,28,71-74,76-81,106-107,120-126,183-195,198,214,317-389,446,504-533,536,547-552,562-568,576-578
+src/main/ipc/handlers/ApplicationSettingsIpc.test.ts
+  s_f8f93aacc1805d::t_3f7dc2361b1ea3 57-58
+src/main/ipc/handlers/ApplicationWindowIpc.test.ts
+  s_f8f93aacc1805d::t_b83d0efb95a8b3 34-35,39-42,64-65,78-79,81,84,99-118,139-143
+src/main/ipc/handlers/ApplicationWindowIpc.ts
+  s_f8f93aacc1805d::t_6e218e154432cc 1-2,6,79-121
+src/main/platform/electron/WindowBackdrop.ts
+  s_f8f93aacc1805d::t_4e2c0ad387f232 1-8
+src/main/window-navigation-chrome.test.ts
+  s_f8f93aacc1805d::t_a680565453b8c4 1,4-5,33,35,48-68
+src/main/window-navigation-chrome.ts
+  s_6c9891f66c664a::t_38076ca7402e0f 8-13,23
+src/main/window-runtime/ApplicationWindowRuntime.ts
+  s_6c9891f66c664a::t_f1f4f1c2425d07 79-80,295,391,432
+src/main/window-runtime/ApplicationWindowShellRuntime.ts
+  s_f8f93aacc1805d::t_7fad1462bb81be 1-2,315,336-338,350-358
+src/main/window-runtime/WindowRuntime.test.ts
+  s_f8f93aacc1805d::t_ae6a18e641444f 411-456
+src/main/window-runtime/WindowRuntime.ts
+  s_f8f93aacc1805d::t_e7f12278e789f6 1-2,113,161-164
+src/renderer/components/ui/application-menubar.browser.test.tsx
+  s_f8f93aacc1805d::t_456ae3b7c2aed6 1-58
+src/renderer/components/ui/application-menubar.test.tsx
+  s_0fab09190592d4::t_01387d6302dc73 1-107
+src/renderer/components/ui/application-menubar.tsx
+  s_1359f4d2f00b7f::t_d46e8b589ee20d 1-262
+src/renderer/components/ui/dropdown.tsx
+  s_f8f93aacc1805d::t_4b82c4d0aebebd 141,157-169,180-197,199-228,230-234
+src/renderer/components/workbench/use-workbench-chrome-layout.ts
+  s_f8f93aacc1805d::t_6489d7d8f011ac 1-6,9,17,21,60,127,149,159,167-179,198-216,219,223-232,238-252,258-264,268,272,400-401,403,405-406,409,432,445-447
+src/renderer/components/workbench/workbench-runtime.tsx
+  s_f8f93aacc1805d::t_8deb48557c3cc7 1-3,142-145,1771-1774,1807,3731-3734,3746,3773,3857,3874,3886,4086,4126,5759,5765,5769,5795-5814,5822
+src/renderer/components/workbench/workbench-shell.windows-chrome.test.tsx
+  s_91195c277e2f02::t_357e2b74ca277c 1-32
+src/renderer/components/workbench/workbench-testkit/workbench-shell-harness.tsx
+  s_91195c277e2f02::t_bf29837f8267f7 2707-2708
+src/renderer/features/content-search/content-search-surface.tsx
+  s_f8f93aacc1805d::t_62f3f4fb5ed259 123
+src/renderer/features/user-attachment-image-editor/view/image-preview-dialog.tsx
+  s_f8f93aacc1805d::t_7976deea9c1149 311,326,331
+src/renderer/lib/app-shell-layers.ts
+  s_f8f93aacc1805d::t_13125ab3607f18 2
+src/renderer/lib/application-menu.ts
+  s_f8f93aacc1805d::t_94d5c7aed8a237 1-39
+src/renderer/lib/application-menubar-keyboard.node.test.ts
+  s_f8f93aacc1805d::t_6c1f719ac50cc7 1-68
+src/renderer/lib/application-menubar-keyboard.ts
+  s_f8f93aacc1805d::t_14cb65cb51bc93 1-60
+src/renderer/lib/codex-sidebar-auto-reveal.ts
+  s_f8f93aacc1805d::t_bd367a7bff4ffd 29
+src/renderer/lib/use-theme.tsx
+  s_f8f93aacc1805d::t_f9d0d85e6ecc5a 1,114-122
+src/shared/application-menu.ts
+  s_f8f93aacc1805d::t_def3001574b822 1-28
+src/shared/command-keybindings.test.ts
+  s_f8f93aacc1805d::t_c1372b4690ef57 96,120,123
+src/shared/command-keybindings.ts
+  s_6c9891f66c664a::t_85e36d0ede61f1 1943-1945,1957,1959,1969-1972,1974-1977
+src/shared/ipc-api.ts
+  s_6c9891f66c664a::t_f10647ada240fd 1511-1520,3153
+src/shared/ipc-endpoint-policy.ts
+  s_f8f93aacc1805d::t_666598931300b7 233-234,776-777
+src/shared/workbench-commands.ts
+  s_6c9891f66c664a::t_4fe339fbedef9e 10
+src/shared/workbench-window-chrome.test.ts
+  s_f8f93aacc1805d::t_2b02aa9e4ef9bd 3,9,83,134-179
+src/shared/workbench-window-chrome.ts
+  s_f8f93aacc1805d::t_dc00030fbf7254 3,29,49-51,80-81,83-84,91-98,119-129
+vitest.browser.config.ts
+  s_f8f93aacc1805d::t_90cb15c78a4091 40
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "59ea4c1d4e54611b4058b1092625538390136b83",
+  "prompts": {},
+  "sessions": {
+    "s_0fab09190592d4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19b2c-6d48-7d11-b1a3-9c7313084d27",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_1359f4d2f00b7f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1766445f-8914-4343-a1f2-be3771736872",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_91195c277e2f02": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19b4e-62d5-7072-8755-d7f8003f2266",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_f8f93aacc1805d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19b4b-b89b-74b2-a4da-0926951bf228",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
