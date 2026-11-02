@@ -23,6 +23,8 @@ files:
   - "!node_modules/node-pty/src/**"
   - "!node_modules/node-pty/third_party/**"
   - "!node_modules/node-pty/typings/**"
+  # Ship only the target's node-pty prebuilds; packaging always runs on the target platform.
+  - "!node_modules/node-pty/prebuilds/!(${platform}-${arch})/**"
 asarUnpack:
   - "**/*.node"
   - "node_modules/node-pty/**"
@@ -62,9 +64,6 @@ protocols:
 
 # --- macOS ---
 mac:
-  files:
-    - "!node_modules/node-pty/prebuilds/win32-*/**"
-    - "!node_modules/node-pty/prebuilds/linux-*/**"
   extraResources:
     - from: .generated/workspace-runtime/${arch}
       to: workspace-runtime
@@ -162,8 +161,6 @@ win:
     - target: nsis
       arch: [x64, arm64]
   artifactName: "${productName}-${version}-win-${arch}-setup.${ext}"
-  files:
-    - "!node_modules/node-pty/prebuilds/!(win32-${arch})/**"
   extraResources:
     - from: .generated/codex-runtime/bin
       to: bin

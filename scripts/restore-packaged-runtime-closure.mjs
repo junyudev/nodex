@@ -6,6 +6,7 @@ import path from "node:path";
 import { verifyWindowsArchitectureClosure } from "./windows-pe.mjs";
 
 import { assertPackagedAgentRuntimeNative } from "./agent-runtime-native-inventory.mjs";
+import { assertPackagedAppArchive } from "./packaged-app-archive.mjs";
 import { BROWSER_RUNTIME_SCHEMA_VERSION } from "../src/shared/browser-runtime-schema.mjs";
 
 const manifestFilename = "browser-runtime-manifest.json";
@@ -127,6 +128,7 @@ export default async function restorePackagedRuntimeClosure(context) {
     context.electronPlatformName === "darwin"
       ? path.join(appPath, "Contents/Resources")
       : path.join(appPath, "resources");
+  assertPackagedAppArchive(path.join(resourcesPath, "app.asar"));
   assertPackagedAgentRuntimeNative({
     sourceRoot: path.join(projectRoot, "out/agent-runtime/node_modules/node-pty"),
     packagedRoot: path.join(
