@@ -1,0 +1,480 @@
+src/main/git-repository-identity-service.ts
+  s_3022e59a160914::t_d170974d91b550 1,106
+src/main/browser/browser-download-service.ts
+  s_3022e59a160914::t_d170974d91b550 1,245
+src/main/browser-use/browser-use-policy-store.ts
+  s_3022e59a160914::t_d170974d91b550 1,212
+src/main/workspace-files-service.ts
+  s_3022e59a160914::t_d170974d91b550 408,414
+src/main/ipc/handlers/file-local-import.ts
+  s_3022e59a160914::t_d170974d91b550 3,19-20,23
+src/shared/app-protocol.test.ts
+  s_3022e59a160914::t_d170974d91b550 57-64
+src/main/app/MainApplicationLive.ts
+  s_3022e59a160914::t_d170974d91b550 1
+src/main/settings/agent-environment-storage.ts
+  s_3022e59a160914::t_d170974d91b550 1,90
+src/main/settings/acp-agent-environment.node.test.ts
+  s_3022e59a160914::t_d170974d91b550 77
+src/main/platform/node/ClaudeExecutable.ts
+  s_3022e59a160914::t_d170974d91b550 26-29,41-43,46-50,54-58,61,125-131
+src/main/terminal-runtime/TerminalRuntimeLive.ts
+  s_3022e59a160914::t_d170974d91b550 1,16-18
+src/main/platform/node/NodexCliShell.ts
+  s_3022e59a160914::t_d170974d91b550 31-34,39-71,102,130-134,136-137,236,245-257,272-276,279-282
+src/shared/file-link-openers.ts
+  s_3022e59a160914::t_d170974d91b550 1-2,119,199-202,207,209
+src/main/codex/codex-managed-worktree-effects.test.ts
+  s_3022e59a160914::t_d170974d91b550 79-106
+src/main/platform/node/open-regular-file.ts
+  s_3022e59a160914::t_d170974d91b550 1-30
+src/main/dictation/dictation-recording-store.test.ts
+  s_3022e59a160914::t_d170974d91b550 105-110,199-204
+src/main/app/MainFoundationLive.ts
+  s_3022e59a160914::t_d170974d91b550 1
+src/shared/codex-app-server-release-lock.mjs
+  s_3022e59a160914::t_d170974d91b550 53-68,178-179,187,220-221
+  s_3022e59a160914::t_17c037b8d70eeb 222
+src/main/platform/electron/ComputerUseHostPlatform.test.ts
+  s_3022e59a160914::t_d170974d91b550 174-182,193-223
+src/main/settings/ApplicationSettings.test.ts
+  s_3022e59a160914::t_d170974d91b550 233,236,242,246,256-257,261,269,273,277-280,299-303,315-318,332-335,339-342,357,361,562,575,586
+src/main/codex/artifact-template-picker.test.ts
+  s_3022e59a160914::t_d170974d91b550 95
+src/main/platform/node/CodexSshProxy.node.test.ts
+  s_3022e59a160914::t_d170974d91b550 12-24
+docs/CONFIGURATION.md
+  s_3022e59a160914::t_d170974d91b550 175-178,248
+src/main/app/HostApplicationLive.ts
+  s_3022e59a160914::t_d170974d91b550 235
+src/main/durable-json-file.ts
+  s_3022e59a160914::t_d170974d91b550 1-2
+src/main/host-runtime/ChromeControlRuntime.node.test.ts
+  s_3022e59a160914::t_d170974d91b550 1,21
+src/main/browser/browser-credential-vault.test.ts
+  s_3022e59a160914::t_d170974d91b550 44-48
+docs/product-specs/index.md
+  s_3022e59a160914::t_d170974d91b550 74-75
+src/main/git-worker/git-review-operations.integration.ts
+  s_3022e59a160914::t_d170974d91b550 1,5,78,82,419
+src/main/settings/claude-agent-environment.node.test.ts
+  s_3022e59a160914::t_d170974d91b550 72,108
+packages/agent-runtime/src/nodex/NodePtyAdapter.ts
+  s_3022e59a160914::t_d170974d91b550 2,55,193-199
+src/main/codex-application/CodexAttachments.ts
+  s_3022e59a160914::t_d170974d91b550 242,248,334-336,494
+src/shared/codex-app-server-release-lock.d.mts
+  s_3022e59a160914::t_d170974d91b550 29-32,45-46
+src/main/cli-command-installer.ts
+  s_3022e59a160914::t_d170974d91b550 51-53
+src/main/platform/node/StandaloneSkillsNode.ts
+  s_3022e59a160914::t_d170974d91b550 1
+src/main/platform/node/MainFatalIncidentStore.node.test.ts
+  s_3022e59a160914::t_d170974d91b550 1-2,45-91,98-104,107,122
+src/main/platform/node/NodeExecutionRuntime.ts
+  s_3022e59a160914::t_d170974d91b550 1-75
+src/main/settings/application-settings-persistence.ts
+  s_3022e59a160914::t_d170974d91b550 1,271
+src/main/browser/browser-permission-store.ts
+  s_3022e59a160914::t_d170974d91b550 9,123
+packages/agent-runtime/src/nodex/WindowsPty.ts
+  s_3022e59a160914::t_d170974d91b550 1-91
+src/main/app-renderer-protocol.integration.ts
+  s_3022e59a160914::t_d170974d91b550 9-13,18-21,74-78,108-110,112,116,211-213,260-270,275,307-311,349,363-376
+src/main/platform/host-capabilities.ts
+  s_3022e59a160914::t_d170974d91b550 1-17
+src/renderer/features/local-conversation/view/assistant-large-content.test.tsx
+  s_3022e59a160914::t_d170974d91b550 382-383
+src/main/platform/node/OpenCodeSdk.ts
+  s_3022e59a160914::t_d170974d91b550 20
+src/main/workspace-files-service.test.ts
+  s_3022e59a160914::t_d170974d91b550 61
+src/main/file-link-opener.test.ts
+  s_3022e59a160914::t_d170974d91b550 1,58
+src/main/app/CodexApplicationLive.ts
+  s_3022e59a160914::t_d170974d91b550 135-136,206-208,212
+src/main/nodex-home.ts
+  s_3022e59a160914::t_d170974d91b550 5,11-14,17-23,29-30,33,38-42,45
+src/main/platform/electron/NativeNotificationAuthorization.ts
+  s_3022e59a160914::t_d170974d91b550 1,38
+src/main/codex/codex-local-thread-handoff-git.test.ts
+  s_3022e59a160914::t_d170974d91b550 1,4,52,54
+src/main/platform/electron/RemoteHostedPipNativePlatform.ts
+  s_3022e59a160914::t_d170974d91b550 1,556-557
+src/main/bootstrap-config.ts
+  s_3022e59a160914::t_d170974d91b550 104
+src/main/browser/browser-page-store.ts
+  s_3022e59a160914::t_d170974d91b550 1,160
+src/main/app-tools/CodexAppToolSession.ts
+  s_3022e59a160914::t_d170974d91b550 1,18,28-31,33-43
+src/main/codex/codex-worktree-shell-environment.test.ts
+  s_3022e59a160914::t_d170974d91b550 272,275-279
+src/main/platform/node/TerminalEnvironment.ts
+  s_3022e59a160914::t_d170974d91b550 5-6,35,39,42-79,92-95,97,101,108,110-134
+src/main/codex/codex-git-command.ts
+  s_3022e59a160914::t_d170974d91b550 1-2,73,86-94,96-103,107,142,152-153,175-177
+src/main/window-session-state.ts
+  s_3022e59a160914::t_d170974d91b550 1,1011
+src/main/agent-backend/NativeSessionWorkspace.node.test.ts
+  s_3022e59a160914::t_d170974d91b550 27,87,98-99,103-104,184-189,200,239,244,279,281,283
+src/main/platform/node/AgentRuntimeEntrypoint.ts
+  s_3022e59a160914::t_d170974d91b550 1,32,45
+src/main/platform/node/ClaudeDiscovery.node.test.ts
+  s_3022e59a160914::t_d170974d91b550 180,184
+src/main/platform/node/ClaudeSdkBoundary.node.test.ts
+  s_3022e59a160914::t_d170974d91b550 5,21,44,46,48-49,54-55,72,79,90,162,170,173
+src/main/app/MainApp.test.ts
+  s_3022e59a160914::t_d170974d91b550 136-171
+src/main/platform/electron/native-clipboard.ts
+  s_3022e59a160914::t_d170974d91b550 10
+src/main/host-runtime/ComputerUseRuntime.ts
+  s_3022e59a160914::t_d170974d91b550 1,328
+tests/fixtures/app-renderer-protocol/electron-main.ts
+  s_3022e59a160914::t_d170974d91b550 7,18-23,58-66,69,79-85
+packages/agent-runtime/src/nodex/NodePtyAdapter.test.ts
+  s_3022e59a160914::t_d170974d91b550 220-242
+src/main/browser-use/chrome/ChromeNativeHostInstaller.node.test.ts
+  s_3022e59a160914::t_d170974d91b550 60-61,292,294-302,304-305
+src/main/platform/electron/BrowserElectronPlatform.ts
+  s_3022e59a160914::t_d170974d91b550 87-88
+src/shared/app-protocol.ts
+  s_3022e59a160914::t_d170974d91b550 35,40-46
+src/renderer/features/local-conversation/view/connected-thread-stage.test.tsx
+  s_3022e59a160914::t_d170974d91b550 1141-1143,2492,2495,2517-2524
+src/main/platform/electron/ElectronClipboardFallback.test.ts
+  s_3022e59a160914::t_d170974d91b550 1-56
+src/main/platform/node/OpenCodeSdk.node.test.ts
+  s_3022e59a160914::t_d170974d91b550 1,97-101
+src/main/platform/node/private-filesystem.ts
+  s_3022e59a160914::t_d170974d91b550 1-46
+src/shared/agent-runtime-startup-evidence.test.ts
+  s_3022e59a160914::t_d170974d91b550 1-33
+packages/nodex-app-tools-mcp/src/pipe.test.ts
+  s_3022e59a160914::t_d170974d91b550 9-14,30
+src/main/platform/node/TerminalPty.windows.test.ts
+  s_3022e59a160914::t_d170974d91b550 1-46
+src/main/app/ApplicationOperationsLive.ts
+  s_3022e59a160914::t_d170974d91b550 44,52,54-55
+src/main/codex/bundled-desktop-tool-marketplace.ts
+  s_3022e59a160914::t_d170974d91b550 142
+src/main/agent-runtime/AcpProviderConfiguration.node.test.ts
+  s_3022e59a160914::t_d170974d91b550 1,47-48
+src/main/host-runtime/AppProtocolRuntime.test.ts
+  s_3022e59a160914::t_d170974d91b550 1,51,62
+src/main/host-runtime/ComputerUseSettingsRuntime.ts
+  s_3022e59a160914::t_d170974d91b550 1,232-247,249,353
+src/shared/file-link-openers.test.ts
+  s_3022e59a160914::t_d170974d91b550 114-129
+src/main/app/MainObservability.node.test.ts
+  s_3022e59a160914::t_d170974d91b550 1,103,107-113
+src/main/codex/codex-ssh-execution-host.test.ts
+  s_3022e59a160914::t_d170974d91b550 77-111,113-121
+src/main/platform/node/NodexCliBootstrap.ts
+  s_3022e59a160914::t_d170974d91b550 76,81-85,109,119,125
+resources/agent-runtime/node-runtime.lock.json
+  s_3022e59a160914::t_a3dc360e4b9138 1-15
+src/main/app/MainApp.ts
+  s_3022e59a160914::t_d170974d91b550 28,33,44,61,73,108-116,123
+src/main/codex-application/StandaloneSkills.node.test.ts
+  s_3022e59a160914::t_d170974d91b550 1,129,141-144
+src/main/composer-appshot-platform.ts
+  s_3022e59a160914::t_d170974d91b550 1,202-203
+src/main/ipc/handlers/BrowserProfileIpc.node.test.ts
+  s_3022e59a160914::t_d170974d91b550 1,125,136
+src/main/durable-json-file.test.ts
+  s_3022e59a160914::t_d170974d91b550 1-25
+src/main/platform/node/CodexAccountHome.ts
+  s_3022e59a160914::t_d170974d91b550 6,14,54-55,59,61,94,98,103,106,142-147,151-165,210-211,214,233-238,241,244-248,252-260,262-263,280-281,296
+src/main/process-tree.test.ts
+  s_3022e59a160914::t_d170974d91b550 1-76
+src/main/host-runtime/ApplicationHostRuntime.ts
+  s_3022e59a160914::t_d170974d91b550 66,68
+src/main/platform/node/WorkspaceTextSearchPlatform.ts
+  s_3022e59a160914::t_d170974d91b550 6
+src/main/app/AgentRuntimeApplicationLive.ts
+  s_3022e59a160914::t_d170974d91b550 13,102-106,415,771-796,803-812
+packages/agent-runtime/src/nodex/ImportedExecution.ts
+  s_3022e59a160914::t_d170974d91b550 19-20,119,124-126,141,165,169-173,180-181,198,296
+src/main/dictation/mac-dictation-native-helper-client.test.ts
+  s_3022e59a160914::t_d170974d91b550 108-109
+src/renderer/features/local-conversation/view/shared/tools/file-change-tool-call.test.tsx
+  s_3022e59a160914::t_d170974d91b550 142-143,360-363,369,387-393,396-399
+src/main/initial-project/initial-project-journal-store.node.test.ts
+  s_3022e59a160914::t_d170974d91b550 105
+src/main/platform/node/CodexLocalDaemon.node.test.ts
+  s_3022e59a160914::t_d170974d91b550 31-32,170-177
+docs/RELIABILITY.md
+  s_3022e59a160914::t_d170974d91b550 344-349,403-407
+  s_3022e59a160914::t_66cd9f07d1fdfe 408
+src/main/platform/node/CodexNodeReplCleanup.node.test.ts
+  s_3022e59a160914::t_d170974d91b550 140-148,160-167
+src/main/app-protocol.ts
+  s_3022e59a160914::t_d170974d91b550 2,324-335,408-411,413
+src/main/git-worker/git-review-operations.ts
+  s_3022e59a160914::t_d170974d91b550 151-155
+src/main/platform/node/OpenCodeInstallPlatform.node.test.ts
+  s_3022e59a160914::t_d170974d91b550 269
+src/main/ipc/handlers/ApplicationSettingsIpc.test.ts
+  s_3022e59a160914::t_d170974d91b550 345-356
+src/main/platform/node/NodexCliShell.windows.test.ts
+  s_3022e59a160914::t_d170974d91b550 1-93
+packages/agent-runtime/src/platform/node/filesystem-durability.ts
+  s_3022e59a160914::t_d170974d91b550 1-13
+src/main/nodex-account/managed-providers.node.test.ts
+  s_3022e59a160914::t_d170974d91b550 1,47-55
+src/main/platform/node/MainFatalIncidentStore.ts
+  s_3022e59a160914::t_d170974d91b550 2-4,44,51-55,82-97,112,120-123,129,136-146
+src/main/thread-goal-attachments.ts
+  s_3022e59a160914::t_d170974d91b550 3,77,85,93-94,222,224,318,328,338,347-348,357,370,497,519,522,535,541-548,757-764,766-768
+packages/agent-runtime/package.json
+  s_3022e59a160914::t_d170974d91b550 12-13
+src/main/platform/node/CodexPeerEndpoint.node.test.ts
+  s_3022e59a160914::t_d170974d91b550 30-35,50-53,56-57,59-65,68-96
+src/main/platform/electron/WindowsDictationNative.ts
+  s_3022e59a160914::t_d170974d91b550 1,157,163-166
+src/main/logging/stdio-failure.test.ts
+  s_3022e59a160914::t_d170974d91b550 11,32,89-94,96-118
+src/main/platform/node/filesystem-durability.ts
+  s_3022e59a160914::t_d170974d91b550 1-40
+src/main/platform/node/NodeChildProcessSpawner.node.test.ts
+  s_3022e59a160914::t_d170974d91b550 2,5,7-8,23-71,94
+src/main/host-runtime/ComposerAppshotRuntime.ts
+  s_3022e59a160914::t_d170974d91b550 1,128-129
+src/main/logging/logger.ts
+  s_3022e59a160914::t_d170974d91b550 557,566,570-571,573,575
+src/main/process-tree.ts
+  s_3022e59a160914::t_d170974d91b550 1-2,4-131,133,136
+src/main/automation-application/AutomationExecution.node.test.ts
+  s_3022e59a160914::t_d170974d91b550 1,960-961
+src/main/platform/node/NodexCliBootstrap.node.test.ts
+  s_3022e59a160914::t_d170974d91b550 3-4,6,29-60,68-70,80-85,107-108,110,128-131,138,151,154,174-179,214,216-218,268-273,289,292,312-360,362-364,425,429,439,447,452-453,475,480
+src/renderer/lib/app-resource-source.node.test.ts
+  s_3022e59a160914::t_d170974d91b550 10
+src/main/platform/node/OpenCodeExecutable.node.test.ts
+  s_3022e59a160914::t_d170974d91b550 91-98
+src/main/browser-platform.integration.ts
+  s_3022e59a160914::t_d170974d91b550 260
+src/shared/node-runtime-metadata.ts
+  s_3022e59a160914::t_d170974d91b550 1-35
+src/main/clipboard-paste-inspector.test.ts
+  s_3022e59a160914::t_d170974d91b550 1,50,140-155
+  s_3022e59a160914::t_75c6dd7c19fd53 156
+src/main/codex/codex-home.test.ts
+  s_3022e59a160914::t_d170974d91b550 1,10-11,15,27,31,42,46,58,62,65,71,80
+src/main/platform/electron/WindowsDictationNative.test.ts
+  s_3022e59a160914::t_d170974d91b550 34-39,148-150
+packages/agent-runtime/src/nodex/ImportedExecution.test.ts
+  s_3022e59a160914::t_d170974d91b550 1-2,31-32,287-376
+src/main/local-store/persisted-atoms.ts
+  s_3022e59a160914::t_d170974d91b550 1,53
+src/main/platform/node/TerminalPty.ts
+  s_3022e59a160914::t_d170974d91b550 1-2,57,59-69,74,76-102,104-153,155-157
+src/main/platform/node/NodexAccountPlatform.ts
+  s_3022e59a160914::t_d170974d91b550 30,299,310
+src/main/platform/node/ClaudeHistoryRecords.ts
+  s_3022e59a160914::t_d170974d91b550 113-116,119-120,170-171
+src/main/host-runtime/AppUpdateRuntime.ts
+  s_3022e59a160914::t_d170974d91b550 1,58,61
+src/main/ipc/handlers/BrowserSidebarIpc.node.test.ts
+  s_3022e59a160914::t_d170974d91b550 1,133,144
+src/main/platform/node/ClaudeSdk.node.test.ts
+  s_3022e59a160914::t_d170974d91b550 1,50
+src/main/clipboard-paste-inspector.ts
+  s_3022e59a160914::t_d170974d91b550 5-9,101-105,111-112
+packages/agent-runtime/src/nodex/ImportedExecutionPaths.ts
+  s_3022e59a160914::t_d170974d91b550 1-23
+src/main/host-runtime/DictationRuntime.ts
+  s_3022e59a160914::t_d170974d91b550 218,221,234
+src/main/platform/node/NodexAppToolPipe.node.test.ts
+  s_3022e59a160914::t_d170974d91b550 20-34,48-53
+src/main/platform/node/TerminalEnvironment.test.ts
+  s_3022e59a160914::t_d170974d91b550 2,21-33
+  s_3022e59a160914::t_2d1bc369f0baec 34
+docs/product-specs/agent-interface-behavior.md
+  s_3022e59a160914::t_d170974d91b550 8-9
+tests/e2e/electron-startup.spec.ts
+  s_3022e59a160914::t_d170974d91b550 3-14,115-146
+  s_3022e59a160914::t_76707525b34fcd 147
+src/main/host-runtime/DesktopToolRuntime.ts
+  s_3022e59a160914::t_d170974d91b550 17,63,214-215
+src/renderer/features/workspace-files/workspace-files-panel.test.tsx
+  s_3022e59a160914::t_d170974d91b550 460-463
+src/main/platform/electron/ElectronClipboardFallback.ts
+  s_3022e59a160914::t_d170974d91b550 1-85
+src/main/codex/artifact-template-picker.ts
+  s_3022e59a160914::t_d170974d91b550 97,102,108
+src/main/agent-runtime/AgentRuntimeNativeImportSources.node.test.ts
+  s_3022e59a160914::t_d170974d91b550 1,36,67-71
+src/main/browser/browser-credential-vault.ts
+  s_3022e59a160914::t_d170974d91b550 1,324,369
+src/main/browser/browser-local-server-preferences.ts
+  s_3022e59a160914::t_d170974d91b550 1,144
+src/main/cli-command-installer.test.ts
+  s_3022e59a160914::t_d170974d91b550 12,46
+src/main/codex/browser-use-thread-config.test.ts
+  s_3022e59a160914::t_d170974d91b550 49,70,96,106,130,149,170,211
+src/main/agent-backend/NativeSessionCatalog.node.test.ts
+  s_3022e59a160914::t_d170974d91b550 35
+src/main/codex-application/ManagedWorktreeCatalog.node.test.ts
+  s_3022e59a160914::t_d170974d91b550 1,86,131,716
+src/main/browser/browser-history-store.ts
+  s_3022e59a160914::t_d170974d91b550 1,113
+src/main/nodex-home.test.ts
+  s_3022e59a160914::t_d170974d91b550 7,29,54,67-79
+  s_3022e59a160914::t_42640e982929b2 80
+src/main/app-protocol.test.ts
+  s_3022e59a160914::t_d170974d91b550 78-81,269-272,359,405-417,457-477
+  s_3022e59a160914::t_5eeba34c3c39e3 478
+src/main/browser-use/browser-use-native-pipe-server.test.ts
+  s_3022e59a160914::t_d170974d91b550 36,131-144,151-155,163,173-175
+src/main/bootstrap-config.test.ts
+  s_3022e59a160914::t_d170974d91b550 6-8,10-11,17,24,40,42,52,63,69-70,82,84,89-90,96,98,102-103,115,117
+src/main/platform/node/ClaudeExecutable.node.test.ts
+  s_3022e59a160914::t_d170974d91b550 28,31,57-58,96,119,139,165-198,200-218
+src/main/app/MainConfig.ts
+  s_3022e59a160914::t_d170974d91b550 1,18,32-35,46-52,59,70
+src/main/codex/codex-runtime.test.ts
+  s_3022e59a160914::t_d170974d91b550 292,341-371
+  s_3022e59a160914::t_97b5ee240a316e 372
+src/main/ipc/handlers/CodexApplicationIpc.node.test.ts
+  s_3022e59a160914::t_d170974d91b550 1,219,230
+src/main/codex/codex-worktree-worker-operation.ts
+  s_3022e59a160914::t_d170974d91b550 1,175
+src/main/host-runtime/ComputerUseRuntime.node.test.ts
+  s_3022e59a160914::t_d170974d91b550 95,97,158-160,215-217,222-224,255-257
+src/main/platform/node/OpenCodeInstallPlatform.windows.test.ts
+  s_3022e59a160914::t_d170974d91b550 1-35
+src/main/remote-hosted-pip-preference-store.ts
+  s_3022e59a160914::t_d170974d91b550 1,170
+src/main/terminal-runtime/TerminalRuntime.integration.ts
+  s_3022e59a160914::t_d170974d91b550 1,62-68
+src/main/codex/codex-dynamic-first-turn-context.test.ts
+  s_3022e59a160914::t_d170974d91b550 9-12,14-17,31
+src/renderer/features/local-conversation/view/summary-panel/thread-floating-summary-panel.test.tsx
+  s_3022e59a160914::t_d170974d91b550 1-5
+src/main/codex/browser-runtime-bundle.ts
+  s_3022e59a160914::t_d170974d91b550 148
+src/main/ipc/handlers/AppUpdateIpc.node.test.ts
+  s_3022e59a160914::t_d170974d91b550 1,49,60
+src/main/agent-skill-setup.test.ts
+  s_3022e59a160914::t_d170974d91b550 1,15
+src/main/platform/electron/ElectronClipboard.ts
+  s_3022e59a160914::t_d170974d91b550 1-3,13,63-72,79-80,84,94-101,104,145-170,172-174
+src/main/browser-use/chrome/ChromeBrowserFamilyRegistry.node.test.ts
+  s_3022e59a160914::t_d170974d91b550 90-94
+src/shared/agent-runtime-startup-evidence.ts
+  s_3022e59a160914::t_d170974d91b550 1-28
+src/main/git-worker/git-command-runner.test.ts
+  s_3022e59a160914::t_d170974d91b550 89,100-101
+src/main/platform/node/WorkspaceDependencyBundle.ts
+  s_3022e59a160914::t_d170974d91b550 67
+src/main/codex/codex-runtime.ts
+  s_3022e59a160914::t_d170974d91b550 22-25,33,64-69,101-102,111-112,117,128-132,149-158,164,204-205,210,212,222-223,228
+src/main/host-runtime/AppUpdatePolicy.ts
+  s_3022e59a160914::t_d170974d91b550 1,24-28,31,48
+src/main/host-runtime/OpenCodeSetup.node.test.ts
+  s_3022e59a160914::t_d170974d91b550 147
+src/main/ipc/handlers/ComputerUseSettingsIpc.node.test.ts
+  s_3022e59a160914::t_d170974d91b550 1,47,58
+src/main/bootstrap.ts
+  s_3022e59a160914::t_d170974d91b550 221
+src/main/github-pr-service.test.ts
+  s_3022e59a160914::t_d170974d91b550 1-2,12-39,76-77,83
+src/main/browser/browser-local-server-preferences.test.ts
+  s_3022e59a160914::t_d170974d91b550 44-45
+src/main/platform/host-capabilities.test.ts
+  s_3022e59a160914::t_d170974d91b550 1-30
+src/main/platform/node/OpenCodeInstallPlatform.ts
+  s_3022e59a160914::t_d170974d91b550 1-4,6-10,21-43,58,105-108,124-129,148,151,202,212-218,240,248-254,264-269,272,275-277,301-346,367-372
+src/main/platform/node/NodexAppToolPipe.ts
+  s_3022e59a160914::t_d170974d91b550 8-12,31,39,41
+packages/nodex-app-tools-mcp/src/pipe.ts
+  s_3022e59a160914::t_d170974d91b550 1-2,20-24
+  s_3022e59a160914::t_666f5c458cc4f5 25
+src/main/default-project-source.test.ts
+  s_3022e59a160914::t_d170974d91b550 4,17,32-33,41,47,54,114-117,124
+src/main/platform/node/RuntimeArtifactVerification.ts
+  s_3022e59a160914::t_d170974d91b550 3,40
+src/main/platform/node/GitCommandPlatformNode.ts
+  s_3022e59a160914::t_d170974d91b550 1
+src/main/host-runtime/ApplicationHostRuntime.test.ts
+  s_3022e59a160914::t_d170974d91b550 1,49-60,73
+src/main/host-runtime/OpenCodeSetup.ts
+  s_3022e59a160914::t_d170974d91b550 20,83,87
+docs/product-specs/windows-host-behavior.md
+  s_3022e59a160914::t_d170974d91b550 1-49
+src/main/codex/codex-projectless-workspace-repair.test.ts
+  s_3022e59a160914::t_d170974d91b550 184-185
+src/main/browser/browser-profile-helper-client.test.ts
+  s_3022e59a160914::t_d170974d91b550 27,35-41,67-79,90-114
+src/main/codex/app-tools-launch-config.node.test.ts
+  s_3022e59a160914::t_d170974d91b550 7,25
+src/main/ipc/handlers/RemoteHostedPipIpc.node.test.ts
+  s_3022e59a160914::t_d170974d91b550 1,63,74
+src/main/platform/electron/ElectronCodexAttestation.ts
+  s_3022e59a160914::t_d170974d91b550 1,24-35
+src/main/codex-application/WorkspaceTextSearch.node.test.ts
+  s_3022e59a160914::t_d170974d91b550 2-11,50-54,58-62,69-78,212-214,224-228,236-238,251-254,262-267,280,284-285
+src/main/host-runtime/ChromeControlRuntime.ts
+  s_3022e59a160914::t_d170974d91b550 1,371
+src/main/ipc/handlers/GitWorkerIpc.node.test.ts
+  s_3022e59a160914::t_d170974d91b550 1,44,55
+src/main/browser-application/BrowserState.ts
+  s_3022e59a160914::t_d170974d91b550 404
+src/main/platform/node/CodexProcessEnvironment.ts
+  s_3022e59a160914::t_d170974d91b550 12-16,18-22
+src/main/platform/node/NodeExecutionRuntime.test.ts
+  s_3022e59a160914::t_d170974d91b550 1-139
+src/main/platform/node/file-export-cache.ts
+  s_3022e59a160914::t_d170974d91b550 5,27
+src/main/platform/node/OpenCodeExecutable.ts
+  s_3022e59a160914::t_d170974d91b550 1-2,12-13,16-19,23-34,36-39
+src/main/platform/node/BrowserProfileHelperNode.ts
+  s_3022e59a160914::t_d170974d91b550 8
+src/main/third-party-notices.test.ts
+  s_3022e59a160914::t_d170974d91b550 3,29,32,34,60-61,63,66-69
+src/main/platform/node/CodexHomeReceipt.ts
+  s_3022e59a160914::t_d170974d91b550 16,36,38,48,51-52
+src/main/app-tools/SessionPresentationTarget.ts
+  s_3022e59a160914::t_d170974d91b550 1,138
+src/main/platform/node/CodexPeerTransport.node.test.ts
+  s_3022e59a160914::t_d170974d91b550 2,24-27
+src/main/platform/node/NodexCliShell.node.test.ts
+  s_3022e59a160914::t_d170974d91b550 7-8
+src/main/platform/node/CodexAccountHome.test.ts
+  s_3022e59a160914::t_d170974d91b550 33,66-67,128,147-148
+src/main/ipc/handlers/ChromeControlSettingsIpc.node.test.ts
+  s_3022e59a160914::t_d170974d91b550 1,67,78
+docs/ARCHITECTURE.md
+  s_3022e59a160914::t_d170974d91b550 599-600,602-608
+packages/nodex-app-tools-mcp/src/bundle.test.ts
+  s_3022e59a160914::t_d170974d91b550 9,15
+src/main/platform/node/CodexSessionTransport.ts
+  s_3022e59a160914::t_d170974d91b550 12
+src/main/platform/node/NodeServices.ts
+  s_3022e59a160914::t_d170974d91b550 1-117
+src/main/platform/node/AgentRuntimeEntrypoint.node.test.ts
+  s_3022e59a160914::t_d170974d91b550 1,9-16,24,28,48,54,67,80,89,96
+src/main/platform/node/TerminalPty.test.ts
+  s_3022e59a160914::t_d170974d91b550 1-44
+packages/agent-runtime/vendor/shared/src/shell.ts
+  s_3022e59a160914::t_6afd5b2911cab0 51
+packages/agent-runtime/vendor/shared/src/windowsShell.ts
+  s_3022e59a160914::t_b16b7032985775 1-32
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "790c026f01a04f66753e6c381fb0bc48a8f519c3",
+  "prompts": {},
+  "sessions": {
+    "s_3022e59a160914": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1def126e-fd62-476f-9393-67b0835f01b6",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
