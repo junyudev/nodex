@@ -1,7 +1,16 @@
 diff --git a/dist/chunks/index.1TqnEahn.js b/dist/chunks/index.1TqnEahn.js
-index 50dd001b7..0eb01b576 100644
+index 50dd001b7b24be2eac6f37eeb1929ad4645aa1a9..2acbb4505bce78862daeea70f17e38f3d21ede66 100644
 --- a/dist/chunks/index.1TqnEahn.js
 +++ b/dist/chunks/index.1TqnEahn.js
+@@ -3579,7 +3579,7 @@ class ServerModuleRunner extends ModuleRunner {
+ 				try {
+ 					const result = await transformService.fetch(data[0], data[1], environment, false, data[2]);
+ 					if ("tmp" in result) {
+-						const code = await readFile(result.tmp);
++						const code = await readFile(result.tmp, "utf-8");
+ 						return { result: {
+ 							...result,
+ 							code
 @@ -4807,14 +4807,14 @@ async function maybeCollectChromiumGarbage(project, sessionId) {
  		// https://source.chromium.org/chromium/chromium/src/+/main:base/files/file_util_posix.cc
  		const tempDirectory = process.env.TMPDIR || "/tmp";
