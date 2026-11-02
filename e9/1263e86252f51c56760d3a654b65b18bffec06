@@ -1,0 +1,21 @@
+docs/release-windows.md
+  s_3609d9db04b3f2::t_51189474b56518 116-117
+scripts/ci/probe-windows-installer.ts
+  s_3609d9db04b3f2::t_51189474b56518 35-36,51,69-71,235,394
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e91263e86252f51c56760d3a654b65b18bffec06",
+  "prompts": {},
+  "sessions": {
+    "s_3609d9db04b3f2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19bd4-bc82-7710-93aa-a3b0b80b63c0",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
