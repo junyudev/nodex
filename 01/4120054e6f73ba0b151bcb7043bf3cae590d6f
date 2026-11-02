@@ -1,0 +1,23 @@
+src/main/core-client/core-client.node.test.ts
+  s_3609d9db04b3f2::t_5107c3f3862e04 174
+.github/workflows/windows.yml
+  s_3609d9db04b3f2::t_5107c3f3862e04 160-162
+docs/release-windows.md
+  s_3609d9db04b3f2::t_5107c3f3862e04 123-125
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "014120054e6f73ba0b151bcb7043bf3cae590d6f",
+  "prompts": {},
+  "sessions": {
+    "s_3609d9db04b3f2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19bd4-bc82-7710-93aa-a3b0b80b63c0",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
