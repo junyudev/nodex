@@ -160,6 +160,7 @@ export default defineConfig(async ({ command, mode }): Promise<UserConfig> => {
     },
     renderer: {
       server: {
+        host: "localhost",
         port: process.env.NODEX_DEV_RENDERER_PORT
           ? Number(process.env.NODEX_DEV_RENDERER_PORT)
           : 51284,
