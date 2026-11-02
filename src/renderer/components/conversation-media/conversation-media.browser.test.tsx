@@ -35,6 +35,36 @@ async function click(element: HTMLElement) {
     await Promise.resolve();
   });
 }
+/** Finish native seeking, or reject on test cancellation so every caller can unwind. */
+async function seekNativeAudio(
+  audio: HTMLAudioElement,
+  signal: AbortSignal,
+  change: () => void,
+): Promise<void> {
+  signal.throwIfAborted();
+  const listeners = new AbortController();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      signal.addEventListener("abort", () => reject(signal.reason), {
+        once: true,
+        signal: listeners.signal,
+      });
+      audio.addEventListener("seeked", () => resolve(), {
+        once: true,
+        signal: listeners.signal,
+      });
+      audio.addEventListener(
+        "error",
+        () => reject(new Error(audio.error?.message || "Native audio seek failed")),
+        { once: true, signal: listeners.signal },
+      );
+      change();
+    });
+  } finally {
+    listeners.abort();
+  }
+}
+
 function base64(bytes: Uint8Array) {
   let raw = "";
   for (const byte of bytes) raw += String.fromCharCode(byte);
@@ -92,7 +122,7 @@ async function canvasVideo(canvas: HTMLCanvasElement) {
   }
 }
 
-test("decodes captured file media, preserves grouped image identity through terminal text, and drives silent native audio/video", async () => {
+test("decodes captured file media, preserves grouped image identity through terminal text, and drives silent native audio/video", async (context) => {
   const originalBridge = window.electronBridge;
   const nativeMenu = vi.fn(async () => "open");
   window.electronBridge = {
@@ -211,9 +241,12 @@ test("decodes captured file media, preserves grouped image identity through term
     await waitFor(() => expect(audio.duration).toBeCloseTo(1));
     const seek = view.getByRole("slider", { name: "Seek in silent.wav" });
     await act(async () => {
-      fireEvent.change(seek, { target: { value: "0.5" } });
-      await Promise.resolve();
+      // The native timeupdate arrives after currentTime changes; own the complete seek.
+      await seekNativeAudio(audio, context.signal, () => {
+        fireEvent.change(seek, { target: { value: "0.5" } });
+      });
     });
+    expect(audio.seeking).toBe(false);
     expect(audio.currentTime).toBeCloseTo(0.5);
     expect(audio.paused).toBe(true);
     const video = view.getByLabelText("Synthetic video") as HTMLVideoElement;
@@ -280,4 +313,28 @@ test("decodes captured file media, preserves grouped image identity through term
     window.electronBridge = originalBridge;
     vi.restoreAllMocks();
   }
+});
+
+test("cancellation settles a pending native seek and releases its interaction", async () => {
+  const audio = document.createElement("audio");
+  const cancellation = new AbortController();
+  const reason = new Error("Native audio seek cancelled");
+  let starts = 0;
+  let released = false;
+  const change = () => {
+    starts += 1;
+  };
+  const waiting = (async () => {
+    try {
+      await seekNativeAudio(audio, cancellation.signal, change);
+    } finally {
+      released = true;
+    }
+  })();
+  const rejected = expect(waiting).rejects.toBe(reason);
+  cancellation.abort(reason);
+  await rejected;
+  expect(released).toBe(true);
+  await expect(seekNativeAudio(audio, cancellation.signal, change)).rejects.toBe(reason);
+  expect(starts).toBe(1);
 });
