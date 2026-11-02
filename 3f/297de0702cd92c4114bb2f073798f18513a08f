@@ -1,0 +1,103 @@
+.cargo/config.toml
+  s_0fab09190592d4::t_f10da6c8f72e50 7-11
+.github/workflows/windows.yml
+  s_0fab09190592d4::t_4f64660f13edbe 135
+docs/SECURITY.md
+  s_0fab09190592d4::t_960598b75a51d2 644-650
+docs/product-specs/desktop-startup-behavior.md
+  s_0fab09190592d4::t_58fd7c28a4abdc 79-85
+docs/release-windows.md
+  s_0fab09190592d4::t_9e03e5b8979ba4 54-57,73-136
+docs/windows-verification.md
+  s_0fab09190592d4::t_a071e84d26b923 22-24,31-34,55,71-74
+resources/third-party/microsoft-vc-runtime/NOTICE.txt
+  s_0fab09190592d4::t_2d2317b02ec9f0 1-22
+scripts/agent-runtime-native-windows.test.ts
+  s_0fab09190592d4::t_c1e5cdb460d06d 39-41
+scripts/agent-runtime-native.ts
+  s_0fab09190592d4::t_edabf7f0d010ad 243-245
+scripts/ci/probe-windows-installer.ts
+  s_0fab09190592d4::t_3a7fc6e9797248 179-182
+scripts/generate-third-party-notices.ts
+  s_0fab09190592d4::t_29ab255be8c6c4 218-226
+scripts/prepared-electron-build.ts
+  s_0fab09190592d4::t_4e0dbf57e39beb 82
+scripts/restore-packaged-runtime-closure.mjs
+  s_0fab09190592d4::t_5b4e441c7bd037 6,142-145
+scripts/rust-dev-runtime.test.ts
+  s_0fab09190592d4::t_899e696a34fafc 376-379
+scripts/rust-dev-runtime.ts
+  s_0fab09190592d4::t_57225b6c61381e 343-345
+scripts/stage-codex-runtime.ts
+  s_0fab09190592d4::t_ee81327e7d877c 47,757-760
+scripts/stage-rust-core.ts
+  s_0fab09190592d4::t_73ebc4961daf97 15,125
+scripts/stage-windows-runtime.test.ts
+  s_0fab09190592d4::t_0519f999deee2a 18-19,24
+scripts/testing/windows-pe-fixture.ts
+  s_0fab09190592d4::t_efbddc80f2b8db 1-46
+scripts/verify-windows-runtime.ts
+  s_0fab09190592d4::t_9e7d31a6bb4c83 1-2,10-12
+scripts/windows-pe.d.mts
+  s_0fab09190592d4::t_988ec94b58f2cb 1-9,15,17-18
+scripts/windows-pe.mjs
+  s_0fab09190592d4::t_d04a39d78f7bcd 2,4-5,29-167,184-185,202-216,221-222,225-230
+scripts/windows-pe.test.ts
+  s_0fab09190592d4::t_0fe63b190cd461 8-9,14-15,95-170
+scripts/windows-system-dlls.mjs
+  s_0fab09190592d4::t_009a884179d7f2 1-68
+scripts/windows-vc-runtime.d.mts
+  s_0fab09190592d4::t_de34c20c1c15fb 1-6
+scripts/windows-vc-runtime.mjs
+  s_0fab09190592d4::t_6ba31d2da6148a 1-102
+scripts/windows-vc-runtime.test.ts
+  s_0fab09190592d4::t_908294d1b4fa62 1-95
+src/main/app/ApplicationStateLive.ts
+  s_0fab09190592d4::t_cd09fa23b9b34f 21,78
+src/main/app/MainApplicationLive.ts
+  s_0fab09190592d4::t_a5cec92d9ffe1e 67-68,421,437-442
+src/main/app/MainFatalIncident.test.ts
+  s_0fab09190592d4::t_2747dee97a0a71 4,143-165
+src/main/app/MainFatalIncident.ts
+  s_0fab09190592d4::t_0614a1a2d49794 3,34-37,90-100
+src/main/app/MainObservability.ts
+  s_0fab09190592d4::t_073a264cc84e97 1,27,73,75,101,109-115
+src/main/core-client/core-launcher.ts
+  s_0fab09190592d4::t_08290882dbd5b8 21-45,435-441,581-585
+src/main/ipc/handlers/ApplicationBootstrapIpc.test.ts
+  s_0fab09190592d4::t_de9e760d7f225d 9,60-62,74,124-126
+src/main/ipc/handlers/ApplicationBootstrapIpc.ts
+  s_0fab09190592d4::t_2001ce90374e12 16,65,72,95-99
+src/main/platform/node/MainFatalIncidentStore.node.test.ts
+  s_0fab09190592d4::t_fb4b4261f80269 11,130-179
+src/main/platform/node/MainFatalIncidentStore.ts
+  s_0fab09190592d4::t_16fe600011f2b1 51-76,81,90-93,99,113-129,166-178
+src/preload/index.ts
+  s_0fab09190592d4::t_f3d18681e029e4 205
+src/renderer/env.d.ts
+  s_0fab09190592d4::t_b96e46bdd6c6b8 56-58
+src/shared/app-startup.ts
+  s_0fab09190592d4::t_95d4c5238155fe 32-37
+src/shared/ipc-api.ts
+  s_0fab09190592d4::t_8a5b1602d6cfcd 753-756
+src/shared/ipc-endpoint-policy.ts
+  s_0fab09190592d4::t_eb5c1aef2814ed 138
+tests/e2e/electron-startup-failure.spec.ts
+  s_0fab09190592d4::t_773b5ef03838dc 1-62
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3f297de0702cd92c4114bb2f073798f18513a08f",
+  "prompts": {},
+  "sessions": {
+    "s_0fab09190592d4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19b2c-6d48-7d11-b1a3-9c7313084d27",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
