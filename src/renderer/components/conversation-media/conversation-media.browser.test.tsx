@@ -210,10 +210,28 @@ test("decodes captured file media, preserves grouped image identity through term
     expect(audio).toBe(streamingAudio);
     await waitFor(() => expect(audio.duration).toBeCloseTo(1));
     const seek = view.getByRole("slider", { name: "Seek in silent.wav" });
-    await act(async () => {
-      fireEvent.change(seek, { target: { value: "0.5" } });
-      await Promise.resolve();
-    });
+    const seekEvents = new AbortController();
+    try {
+      await act(async () => {
+        // The native timeupdate arrives after currentTime changes; own the complete seek.
+        const seeked = new Promise<void>((resolve, reject) => {
+          audio.addEventListener("seeked", () => resolve(), {
+            once: true,
+            signal: seekEvents.signal,
+          });
+          audio.addEventListener(
+            "error",
+            () => reject(new Error(audio.error?.message || "Native audio seek failed")),
+            { once: true, signal: seekEvents.signal },
+          );
+        });
+        fireEvent.change(seek, { target: { value: "0.5" } });
+        await seeked;
+      });
+    } finally {
+      seekEvents.abort();
+    }
+    expect(audio.seeking).toBe(false);
     expect(audio.currentTime).toBeCloseTo(0.5);
     expect(audio.paused).toBe(true);
     const video = view.getByLabelText("Synthetic video") as HTMLVideoElement;
