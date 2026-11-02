@@ -1,0 +1,33 @@
+name: Set up Windows Rust
+description: Prepare the pinned native MSVC Rust toolchain and cache dependency sources per CPU.
+runs:
+  using: composite
+  steps:
+    - name: Prepare native rustup
+      shell: pwsh
+      run: |
+        $target = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'aarch64-pc-windows-msvc' } else { 'x86_64-pc-windows-msvc' }
+        $cargoBin = Join-Path $env:USERPROFILE '.cargo\bin'
+        if (-not (Get-Command rustup -ErrorAction SilentlyContinue)) {
+          Invoke-WebRequest "https://static.rust-lang.org/rustup/dist/$target/rustup-init.exe" -OutFile "$env:RUNNER_TEMP\rustup-init.exe"
+          & "$env:RUNNER_TEMP\rustup-init.exe" -y --profile minimal --default-toolchain none
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        }
+        $env:PATH = "$cargoBin;$env:PATH"
+        $cargoBin | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+        rustup set default-host $target
+        rustup show active-toolchain
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        $hostLine = rustc -vV | Select-String '^host:'
+        if ($hostLine -notmatch [regex]::Escape($target)) { throw "Rust host does not match $target`: $hostLine" }
+    - name: Cache Cargo dependencies
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          ~/.cargo/registry/index
+          ~/.cargo/registry/cache
+          ~/.cargo/registry/src
+          ~/.cargo/git/db
+        key: windows-cargo-${{ runner.arch }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock') }}
+        restore-keys: |
+          windows-cargo-${{ runner.arch }}-

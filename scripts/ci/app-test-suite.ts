@@ -16,10 +16,13 @@ export interface AppTestSuitePlan {
   readonly relatedPackageScript: string;
 }
 
-export const planAppTestSuite = (suite: AppTestSuite): AppTestSuitePlan => ({
+export const planAppTestSuite = (
+  suite: AppTestSuite,
+  platform: NodeJS.Platform = process.platform,
+): AppTestSuitePlan => ({
   needsPlaywright: runtimeForSuite(suite) === "chromium",
   needsRust: nativeRequirements(suite).length > 0,
-  needsXvfb: runtimeForSuite(suite) === "electron-node",
+  needsXvfb: platform === "linux" && runtimeForSuite(suite) === "electron-node",
   packageScript: "test:" + suite,
   relatedPackageScript: "test:" + suite + ":related",
 });

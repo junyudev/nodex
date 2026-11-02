@@ -15,6 +15,8 @@ describe("application test ownership", () => {
   test.each([
     ["src/main/new-application/behavior.node.test.ts", "core-client", "default"],
     ["src/main/new-application/behavior.test.ts", "main", "default"],
+    ["src/main/platform/node/NodeExecutionRuntime.test.ts", "main", "default"],
+    ["src/main/platform/node/AgentRuntimeEntrypoint.node.test.ts", "core-client", "default"],
     ["src/main/core-client/behavior.stress.node.test.ts", "core-client", "stress"],
     ["src/main/core-client/behavior.stress.test.ts", "main", "stress"],
     ["src/main/behavior.integration.ts", "integration", "default"],

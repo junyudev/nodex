@@ -1,3 +1,4 @@
+import { vitePlusCommand } from "../vite-plus-command";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 
@@ -167,7 +168,11 @@ export const parseStaticArguments = (args: readonly string[]): StaticCliArgument
 export const runStaticChecks = (
   checks: readonly Pick<StaticCheck, "command" | "name">[],
   execute: StaticExecutor = (executable, arguments_) => {
-    execFileSync(executable, arguments_, { cwd: process.cwd(), stdio: "inherit" });
+    const invocation =
+      executable === "vp" || executable === "vp.cmd"
+        ? vitePlusCommand(arguments_)
+        : { command: executable, args: [...arguments_] };
+    execFileSync(invocation.command, invocation.args, { cwd: process.cwd(), stdio: "inherit" });
   },
 ): void => {
   const vpExecutable = process.platform === "win32" ? "vp.cmd" : "vp";

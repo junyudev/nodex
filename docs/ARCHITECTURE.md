@@ -1399,17 +1399,18 @@ Update this file only when at least one of these changes:
 
 Do not add implementation chronology, current version inventories, individual file behavior, UI interaction detail, failure runbooks, or feature acceptance rules here. Replace obsolete architectural statements instead of appending a historical layer. Link to the narrow owner rather than restating its contract.
 
-| Information                                                                                                        | Source of truth                                                  |
-| ------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------- |
-| Domain vocabulary and ownership invariants                                                                         | [CONTEXT.md](../CONTEXT.md)                                      |
-| Significant decisions and tradeoffs                                                                                | [ADRs](adr/)                                                     |
-| User-visible behavior and public contracts                                                                         | [Product specifications](product-specs/index.md)                 |
-| Reliability, sync, recovery, backup, retention                                                                     | [RELIABILITY.md](RELIABILITY.md)                                 |
-| Security model and hardening                                                                                       | [SECURITY.md](SECURITY.md)                                       |
-| Cross-feature renderer construction, state ownership, shared UI/editor primitives, and UI verification conventions | [FRONTEND.md](FRONTEND.md)                                       |
-| Cross-cutting engineering principles                                                                               | [ENGINEERING_LEARNINGS.md](ENGINEERING_LEARNINGS.md)             |
-| Build, signing, notarization, distribution recovery                                                                | [release-macos.md](release-macos.md)                             |
-| Executable migration and protocol versions                                                                         | Source contracts, migration code, generated artifacts, and tests |
-| Temporary implementation sequence and evidence                                                                     | `notes.local/living-plans/`; see [plan requirements](PLANS.md)   |
+| Information                                                                                                        | Source of truth                                                                              |
+| ------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
+| Domain vocabulary and ownership invariants                                                                         | [CONTEXT.md](../CONTEXT.md)                                                                  |
+| Significant decisions and tradeoffs                                                                                | [ADRs](adr/)                                                                                 |
+| User-visible behavior and public contracts                                                                         | [Product specifications](product-specs/index.md)                                             |
+| Reliability, sync, recovery, backup, retention                                                                     | [RELIABILITY.md](RELIABILITY.md)                                                             |
+| Security model and hardening                                                                                       | [SECURITY.md](SECURITY.md)                                                                   |
+| Cross-feature renderer construction, state ownership, shared UI/editor primitives, and UI verification conventions | [FRONTEND.md](FRONTEND.md)                                                                   |
+| Cross-cutting engineering principles                                                                               | [ENGINEERING_LEARNINGS.md](ENGINEERING_LEARNINGS.md)                                         |
+| Build, signing, notarization, distribution recovery                                                                | [release-macos.md](release-macos.md)                                                         |
+| Windows packaging, installer probes, and verification layers                                                       | [release-windows.md](release-windows.md), [windows-verification.md](windows-verification.md) |
+| Executable migration and protocol versions                                                                         | Source contracts, migration code, generated artifacts, and tests                             |
+| Temporary implementation sequence and evidence                                                                     | `notes.local/living-plans/`; see [plan requirements](PLANS.md)                               |
 
 When two documents disagree, fix the narrow authoritative document first and then replace or remove the stale summary here.

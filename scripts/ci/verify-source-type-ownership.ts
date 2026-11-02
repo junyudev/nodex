@@ -1,3 +1,4 @@
+import { vitePlusCommand } from "../vite-plus-command";
 import { spawnSync } from "node:child_process";
 import {
   existsSync,
@@ -14,7 +15,7 @@ import { tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
 
 const projectRoot = resolve(import.meta.dirname, "../..");
-const vpExecutable = process.platform === "win32" ? "vp.cmd" : "vp";
+const vpInvocation = vitePlusCommand([]);
 const rawFixtureDirectories = [
   "scripts/fixtures/tooling/",
   "scripts/fixtures/effect-boundaries/",
@@ -49,8 +50,8 @@ export function verifySourceTypeOwnership(
   const covered = new Set<string>();
   for (const reference of solution.references) {
     const result = spawnSync(
-      vpExecutable,
-      ["exec", "tsc-rs", "--project", reference.path, "--listFilesOnly"],
+      vpInvocation.command,
+      [...vpInvocation.args, "exec", "tsc-rs", "--project", reference.path, "--listFilesOnly"],
       {
         cwd: canonicalDirectory,
         encoding: "utf8",

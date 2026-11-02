@@ -40,6 +40,42 @@ cancelled, missing, and failed results are rejected. Manual PR/Main dispatch
 can request full deterministic source coverage, but still cannot select
 Electron E2E, stress, performance, or macOS runtime in the merge loop.
 
+## Windows tier
+
+`.github/workflows/windows.yml` runs Rust workspace and application unit, Core-client, Main, renderer and integration
+suites natively on `windows-latest` (x64) and `windows-11-arm` (arm64). Pull requests
+with affected Rust, application, build, runtime, dependency, or Windows workflow
+paths select this deterministic tier. It is independent of the existing `required`
+aggregate while Windows support is being qualified.
+
+The daily Windows schedule and manual dispatch also build and stage each native
+runtime, package an unsigned per-user NSIS installer, upload it, silently install
+it, and probe the installed application. Pushes to `codex/windows-**` run this
+full tier for platform development feedback. PR runs omit packaging. These jobs
+use no signing credentials and do not publish a Release or update feed.
+
+The packaged probe requires the exact Electron host's ready isolated-run claim,
+a compatible Core descriptor with a named-pipe endpoint, the installed Core's
+artifact digest, a successful authenticated Core handshake, and a completed Agent
+Runtime execution handshake using verified standalone Node. The isolated probe
+explicitly starts the otherwise lazy execution process without provider credentials.
+Its bounded readiness record binds the exact host PID and isolated run ID and contains
+only execution identity and Node provenance. Electron process
+liveness alone cannot pass. It shuts down the owned Core generation, silently
+uninstalls, and rejects remaining installation files, protocol registration or
+shortcuts. Startup diagnostics remain a separate artifact from the installer.
+See [the Windows release runbook](release-windows.md).
+
+Test ownership, discovery and prerequisites live together in `config/test-suites.ts`.
+The typed suite planner selects Rust setup; each suite prepares its own native
+artifacts before execution. Main and integration use Electron's Node ABI on both
+Windows CPUs and the runners' interactive desktop; Xvfb is Linux-only.
+
+The native Rust setup verifies the MSVC host CPU and caches Cargo dependency
+sources by runner architecture, toolchain and lockfile. Writable Cargo targets
+remain independent per job; a dependency cache hit never substitutes for a build
+or test. Application installs use the shared Vite+ dependency cache.
+
 ## Affected test selection
 
 `CiGatePlan` owns both suite selection and one of three test modes:
