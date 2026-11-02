@@ -1,3 +1,6 @@
+import { ApplicationMenuSnapshots, findNativeMenuAccelerator } from "../application-menu-snapshot";
+import type { ApplicationMenuSnapshot } from "../../shared/application-menu";
+import type { BrowserWindow } from "electron";
 import { WebContentsDestructionSubscriptions } from "../platform/electron/WebContentsDestructionSubscriptions";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
@@ -22,6 +25,7 @@ import {
 import { join } from "node:path";
 import type { CommandKeymapState } from "../../shared/command-keybindings";
 import {
+  matchesKeyboardEventToAccelerator,
   getPrimaryCommandAccelerator,
   NEXT_PANEL_TAB_COMMAND_ID,
   PREVIOUS_PANEL_TAB_COMMAND_ID,
@@ -64,11 +68,17 @@ import { syncWindowNavigationChrome, type WindowZoomCommand } from "../window-na
 import { getFocusedFrameOwner } from "../platform/electron/FocusedWebContents";
 
 export interface ApplicationMenuNativePort {
+  readonly subscribeToWindowInput?: (
+    window: BrowserWindow,
+    listener: (event: Electron.Event, input: Electron.Input) => void,
+  ) => () => void;
   readonly shouldUseDarkColors: () => boolean;
-  readonly getFocusedWebContents: () => Pick<
-    WebContents,
-    "id" | "isDestroyed" | "undo" | "redo" | "getZoomLevel" | "setZoomLevel"
-  > | null;
+  readonly getFocusedWebContents: () =>
+    | (Pick<
+        WebContents,
+        "id" | "isDestroyed" | "undo" | "redo" | "getZoomLevel" | "setZoomLevel"
+      > & { readonly hostWebContents?: Pick<WebContents, "id"> | null })
+    | null;
   readonly buildFromTemplate: (template: MenuItemConstructorOptions[]) => Menu;
   readonly homePath: string;
   readonly isInApplicationsFolder: boolean;
@@ -93,6 +103,8 @@ export interface ApplicationMenuRuntimeOptions {
 export class ApplicationMenuRuntime extends Context.Service<
   ApplicationMenuRuntime,
   {
+    readonly snapshot: (webContentsId: number) => Effect.Effect<ApplicationMenuSnapshot>;
+    readonly invoke: (webContentsId: number, itemId: string) => Effect.Effect<boolean>;
     readonly refresh: (commandKeymap: CommandKeymapState) => void;
     readonly bindHistory: (webContentsId: number) => Effect.Effect<number>;
     readonly publishHistory: (
@@ -105,6 +117,13 @@ export class ApplicationMenuRuntime extends Context.Service<
 const electronNative = (
   rendererDestruction: WebContentsDestructionSubscriptions["Service"],
 ): ApplicationMenuNativePort => ({
+  subscribeToWindowInput: (window, listener) => {
+    const contents = window.webContents;
+    contents.on("before-input-event", listener);
+    return () => {
+      if (!contents.isDestroyed()) contents.off("before-input-event", listener);
+    };
+  },
   shouldUseDarkColors: () => nativeTheme.shouldUseDarkColors,
   getFocusedWebContents: getFocusedFrameOwner,
   buildFromTemplate: (template) => Menu.buildFromTemplate(template),
@@ -161,10 +180,22 @@ export const live = (
       const fork = <A, E>(operation: string, effect: Effect.Effect<A, E>): void => {
         callbacks.fork(effect.pipe(reportFailure(operation), Effect.asVoid));
       };
-      const targetWindow = () => options.windows.getLastFocused();
+      const snapshots = new ApplicationMenuSnapshots();
+      const installedWindows = new Map<number, () => void>();
+      let invocationWindow: BrowserWindow | null = null;
+      const targetWindow = () => invocationWindow ?? options.windows.getLastFocused();
+      const focusedContents = () => {
+        const focused = native.getFocusedWebContents();
+        if (!invocationWindow) return focused;
+        if (focused?.id === invocationWindow.webContents.id) return focused;
+        const owner = focused?.hostWebContents;
+        return owner?.id === invocationWindow.webContents.id
+          ? focused
+          : invocationWindow.webContents;
+      };
       const zoomFocusedContents = (command: WindowZoomCommand): void => {
         const window = targetWindow();
-        const focused = native.getFocusedWebContents() ?? window?.webContents;
+        const focused = focusedContents() ?? window?.webContents;
         if (!focused || focused.isDestroyed()) return;
         focused.setZoomLevel(
           command === "reset" ? 0 : focused.getZoomLevel() + (command === "in" ? 0.5 : -0.5),
@@ -180,7 +211,7 @@ export const live = (
       const historyByWindow = new Map<number, FocusedHistoryPublication>();
       const updateHistoryItems = () => {
         const window = targetWindow();
-        const focused = native.getFocusedWebContents();
+        const focused = focusedContents();
         const hostId = window?.webContents.id;
         const snapshot: SurfaceHistorySnapshot | null =
           hostId !== undefined && (!focused || focused.id === hostId)
@@ -283,6 +314,79 @@ export const live = (
         showMessageBox: options.showMessage,
       });
 
+      const snapshot = (webContentsId: number) =>
+        Effect.sync(() => {
+          const window = options.windows.get(webContentsId);
+          if (
+            !window ||
+            window.isDestroyed() ||
+            window.webContents.isDestroyed() ||
+            options.platform !== "win32"
+          )
+            return { menus: [] };
+          invocationWindow = window;
+          try {
+            updateHistoryItems();
+          } finally {
+            invocationWindow = null;
+          }
+          const result = snapshots.read(webContentsId, applicationMenu);
+          if (!installedWindows.has(webContentsId)) {
+            const release =
+              native.subscribeToWindowInput?.(window, (event, input) => {
+                if (input.type !== "keyDown" || input.isAutoRepeat || input.isComposing) return;
+                const item = findNativeMenuAccelerator(applicationMenu, (accelerator) =>
+                  matchesKeyboardEventToAccelerator(
+                    {
+                      key: input.key,
+                      code: input.code,
+                      ctrlKey: input.control,
+                      altKey: input.alt,
+                      shiftKey: input.shift,
+                      metaKey: input.meta,
+                    },
+                    accelerator,
+                    "windows",
+                  ),
+                );
+                if (!item) return;
+                event.preventDefault();
+                invocationWindow = window;
+                try {
+                  item.click(
+                    { triggeredByAccelerator: true } as Electron.KeyboardEvent,
+                    window,
+                    focusedContents() as WebContents,
+                  );
+                } finally {
+                  invocationWindow = null;
+                }
+              }) ?? (() => {});
+            installedWindows.set(webContentsId, release);
+            window.setAutoHideMenuBar(true);
+            window.removeMenu();
+          }
+          return result;
+        });
+      const invoke = (webContentsId: number, itemId: string) =>
+        Effect.sync(() => {
+          const window = options.windows.get(webContentsId);
+          if (!window || window.isDestroyed() || window.webContents.isDestroyed()) return false;
+          invocationWindow = window;
+          try {
+            updateHistoryItems();
+            const item = snapshots.resolve(webContentsId, itemId);
+            if (!item) return false;
+            item.click(
+              { triggeredByAccelerator: false } as Electron.KeyboardEvent,
+              window,
+              focusedContents() as WebContents,
+            );
+            return true;
+          } finally {
+            invocationWindow = null;
+          }
+        });
       const refresh = (commandKeymap: CommandKeymapState): void => {
         const accelerator = (commandId: string): string | undefined =>
           toElectronAccelerator(getPrimaryCommandAccelerator(commandKeymap, commandId));
@@ -339,7 +443,7 @@ export const live = (
           }),
           buildWindowEditMenu(options.platform, (direction) => {
             const window = targetWindow();
-            const focused = native.getFocusedWebContents();
+            const focused = focusedContents();
             if (focused && focused.id !== window?.webContents.id) {
               if (!focused.isDestroyed()) focused[direction]();
               return;
@@ -397,8 +501,39 @@ export const live = (
           buildWorkbenchViewMenu(commandKeymap, sendWorkbenchCommand, zoomFocusedContents),
           { role: "windowMenu" },
         ];
+        if (options.platform === "win32") {
+          const file = appTemplate.find((item) => item.label === "File")!;
+          (file.submenu as MenuItemConstructorOptions[]).push(
+            { type: "separator" },
+            { role: "quit", accelerator: "Ctrl+Q" },
+          );
+          const edit = appTemplate.find((item) => item.role === "editMenu")!;
+          edit.label = "Edit";
+          (edit.submenu as MenuItemConstructorOptions[]).push(
+            { type: "separator" },
+            {
+              label: "Settings",
+              accelerator: accelerator("settings"),
+              click: () => sendWorkbenchCommand({ commandId: "settings", source: "menu" }),
+            },
+          );
+          const navigationIndex = appTemplate.findIndex((item) => item.label === "Navigate");
+          const [navigation] = appTemplate.splice(navigationIndex, 1);
+          const view = appTemplate.find((item) => item.label === "View")!;
+          (view.submenu as MenuItemConstructorOptions[]).push({ type: "separator" }, navigation!);
+          appTemplate.splice(
+            appTemplate.findIndex((item) => item.role === "windowMenu"),
+            1,
+          );
+          appTemplate.push({
+            label: "Help",
+            submenu: [{ role: "about" }],
+          });
+        }
+        snapshots.clear();
         applicationMenu = native.buildFromTemplate(appTemplate);
         native.setApplicationMenu(applicationMenu);
+        for (const id of installedWindows.keys()) options.windows.get(id)?.removeMenu();
         updateHistoryItems();
       };
 
@@ -409,7 +544,12 @@ export const live = (
       yield* options.windows.events.pipe(
         Stream.runForEach((event) =>
           Effect.sync(() => {
-            if (event.kind === "released") historyByWindow.delete(event.window.webContentsId);
+            if (event.kind === "released") {
+              historyByWindow.delete(event.window.webContentsId);
+              snapshots.release(event.window.webContentsId);
+              installedWindows.get(event.window.webContentsId)?.();
+              installedWindows.delete(event.window.webContentsId);
+            }
             updateHistoryItems();
           }),
         ),
@@ -419,7 +559,13 @@ export const live = (
       return yield* Effect.acquireRelease(
         Effect.sync(() => {
           refresh(options.initialCommandKeymap);
-          return ApplicationMenuRuntime.of({ refresh, bindHistory, publishHistory });
+          return ApplicationMenuRuntime.of({
+            refresh,
+            bindHistory,
+            publishHistory,
+            snapshot,
+            invoke,
+          });
         }),
         () =>
           Effect.sync(() => {
@@ -427,6 +573,9 @@ export const live = (
             native.setApplicationMenu(null);
             applicationMenu = null;
             historyByWindow.clear();
+            snapshots.clear();
+            for (const release of installedWindows.values()) release();
+            installedWindows.clear();
           }),
       );
     }),

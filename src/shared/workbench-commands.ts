@@ -7,6 +7,7 @@ export const EXECUTE_WORKBENCH_COMMAND_HOST_CHANNEL = "execute-workbench-command
 
 export type WorkbenchCommandId = Extract<
   CommandId,
+  | "settings"
   | typeof TOGGLE_BOTTOM_PANEL_COMMAND_ID
   | typeof TOGGLE_FULL_VIEW_COMMAND_ID
   | typeof CAPTURE_TO_INBOX_COMMAND_ID

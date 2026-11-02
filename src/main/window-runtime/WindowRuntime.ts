@@ -1,3 +1,5 @@
+import { syncWindowNavigationChrome } from "../window-navigation-chrome";
+import { isWindowBackdropSupported } from "../platform/electron/WindowBackdrop";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FiberMap from "effect/FiberMap";
@@ -108,6 +110,7 @@ function applyElectronWindowBackdrop(
   const bounds = window.getBounds();
   const backdrop = resolveElectronWindowBackdrop({
     bounds,
+    backdropSupported: isWindowBackdropSupported(platform),
     // A hidden canonical shell has not had a chance to focus yet; preserving
     // native material avoids an opaque first paint followed by a focus flash.
     isFocused: !window.isVisible() || window.isFocused(),
@@ -155,8 +158,10 @@ const noWindowAppearance: WindowAppearancePort = {
 function createElectronWindowAppearance(platform: NodeJS.Platform): WindowAppearancePort {
   const opaqueSurfaceModes = new Map<number, boolean>();
   return {
-    apply: (window, force) =>
-      applyElectronWindowBackdrop(platform, window, opaqueSurfaceModes, force ?? false),
+    apply: (window, force) => {
+      syncWindowNavigationChrome(window, platform, nativeTheme.shouldUseDarkColors);
+      applyElectronWindowBackdrop(platform, window, opaqueSurfaceModes, force ?? false);
+    },
     forget: (windowId) => opaqueSurfaceModes.delete(windowId),
     subscribeToTheme: (listener) => {
       nativeTheme.on("updated", listener);

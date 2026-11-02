@@ -3,6 +3,7 @@ import {
   CODEX_ELECTRON_OPAQUE_DARK_BACKGROUND_COLOR,
   CODEX_ELECTRON_OPAQUE_LIGHT_BACKGROUND_COLOR,
   CODEX_ELECTRON_TRANSPARENT_BACKGROUND_COLOR,
+  supportsWindowsMica,
   resolveElectronWindowBackdrop,
   shouldUseOpaqueElectronWindowSurface,
 } from "./electron-window-backdrop";
@@ -32,7 +33,7 @@ describe("electron window backdrop", () => {
     ).toBe(true);
   });
 
-  test("uses opaque surfaces for unfocused supported windows", () => {
+  test("keeps Mica on blur while macOS becomes opaque", () => {
     expect(
       shouldUseOpaqueElectronWindowSurface({
         bounds: { width: 1200, height: 800 },
@@ -50,7 +51,7 @@ describe("electron window backdrop", () => {
         prefersReducedTransparency: false,
         scaleFactor: 1,
       }),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   test("keeps focused small Windows windows transparent", () => {
@@ -128,5 +129,32 @@ describe("electron window backdrop", () => {
     expect(backdrop.opaqueWindowSurfaceEnabled).toBe(true);
     expect(backdrop.backgroundColor).toBe(CODEX_ELECTRON_OPAQUE_LIGHT_BACKGROUND_COLOR);
     expect(backdrop.vibrancy).toBe(null);
+  });
+});
+
+test.each([
+  ["10.0.22621", "enabled", true],
+  ["10.0.26100", "enabled", true],
+  ["10.0.22000", "enabled", false],
+  ["10.0.19045", "enabled", false],
+  ["10.0.26100", "disabled_software", false],
+  ["invalid", "enabled", false],
+] as const)("Windows backdrop capability %s/%s", (release, gpu, supported) => {
+  expect(supportsWindowsMica(release, gpu)).toBe(supported);
+});
+test("an unsupported Windows backdrop paints an opaque themed surface", () => {
+  const backdrop = resolveElectronWindowBackdrop({
+    bounds: { width: 1200, height: 800 },
+    isFocused: true,
+    platform: "win32",
+    prefersReducedTransparency: false,
+    scaleFactor: 1,
+    prefersDarkColors: true,
+    backdropSupported: false,
+  });
+  expect(backdrop).toMatchObject({
+    backgroundColor: "#000000",
+    backgroundMaterial: "none",
+    opaqueWindowSurfaceEnabled: true,
   });
 });

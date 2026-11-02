@@ -308,7 +308,7 @@ export function ImagePreviewDialog({
         unstyledContent
         showCloseButton
         closeButtonAriaLabel="Close image preview"
-        closeButtonClassName="pointer-events-auto top-3 right-3 z-20 flex size-10 items-center justify-center rounded-full bg-token-editor-background/95 p-0 text-token-foreground shadow-md ring-1 ring-black/5 backdrop-blur-sm transition-transform hover:bg-token-menu-background hover:ring-token-focus-border active:scale-95"
+        closeButtonClassName="pointer-events-auto top-(--window-content-actions-top,12px) right-3 z-20 flex size-10 items-center justify-center rounded-full bg-token-editor-background/95 p-0 text-token-foreground shadow-md ring-1 ring-black/5 backdrop-blur-sm transition-transform hover:bg-token-menu-background hover:ring-token-focus-border active:scale-95"
         closeIconClassName="icon-sm"
         aria-label="Image preview"
         aria-describedby={undefined}
@@ -323,12 +323,12 @@ export function ImagePreviewDialog({
 
         <div
           className={cn(
-            "pointer-events-auto relative flex size-full flex-col items-center justify-center pt-12 pb-8",
+            "pointer-events-auto relative flex size-full flex-col items-center justify-center pt-(--window-content-top,48px) pb-8",
             hasNavigation ? "px-16 sm:px-20" : "px-4 sm:px-8",
           )}
           onClick={handleDismiss}
         >
-          <div className="absolute top-3 right-[60px] z-10 flex items-center gap-2">
+          <div className="absolute top-(--window-content-actions-top,12px) right-[60px] z-10 flex items-center gap-2">
             {onEditImage ? (
               <button
                 type="button"

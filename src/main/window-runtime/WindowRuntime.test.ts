@@ -408,3 +408,49 @@ it.effect("registers auxiliary windows without granting or persisting a Window S
     assert.isNull(runtime.resolveSessionId(77));
   }),
 );
+
+it.effect(
+  "refreshes caption chrome for every live primary window and releases theme observation",
+  () =>
+    Effect.gen(function* () {
+      const sessions = new WindowSessionState(mkdtempSync(join(tmpdir(), "window-theme-")));
+      const first = fakeWindow(91);
+      const second = fakeWindow(92);
+      const calls: Array<{ id: number; dark: boolean }> = [];
+      let dark = false;
+      let notify: (() => void) | null = null;
+      const scope = yield* Scope.make();
+      const context = yield* Layer.buildWithScope(
+        fromState(sessions, {
+          apply: (window) => {
+            calls.push({ id: window.webContents.id, dark });
+          },
+          forget: () => {},
+          subscribeToTheme: (listener) => {
+            notify = listener;
+            return () => {
+              notify = null;
+            };
+          },
+        }),
+        scope,
+      );
+      const runtime = Context.get(context, WindowRuntime);
+      runtime.attach(first.window, sessions.createFreshSession().id);
+      runtime.attach(second.window, sessions.createFreshSession().id);
+      calls.length = 0;
+      dark = true;
+      (notify as (() => void) | null)?.();
+      assert.deepEqual(calls, [
+        { id: 91, dark: true },
+        { id: 92, dark: true },
+      ]);
+      runtime.release(91, { disposition: "user-close" });
+      calls.length = 0;
+      dark = false;
+      (notify as (() => void) | null)?.();
+      assert.deepEqual(calls, [{ id: 92, dark: false }]);
+      yield* Scope.close(scope, Exit.void);
+      assert.isNull(notify);
+    }),
+);

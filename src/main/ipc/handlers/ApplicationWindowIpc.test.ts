@@ -31,10 +31,15 @@ it.effect("owns trusted window ingress and validates new-window requests", () =>
     });
     const openForRequest = vi.fn();
     const publishHistory = vi.fn(() => Effect.void);
+    const snapshot = vi.fn(() => Effect.succeed({ menus: [] }));
+    const invoke = vi.fn(() => Effect.succeed(true));
     const applicationWindows = ApplicationWindowRuntime.of({
       openForRequest,
     } as unknown as ApplicationWindowRuntime["Service"]);
-    const focusedWindow = { isFocused: () => true } as unknown as BrowserWindow;
+    const focusedWindow = {
+      isFocused: () => true,
+      isFullScreen: () => true,
+    } as unknown as BrowserWindow;
     const windows = WindowRuntime.of({
       get: () => focusedWindow,
       has: () => true,
@@ -56,6 +61,8 @@ it.effect("owns trusted window ingress and validates new-window requests", () =>
             Layer.succeed(
               ApplicationMenuRuntime,
               ApplicationMenuRuntime.of({
+                snapshot,
+                invoke,
                 refresh: () => undefined,
                 bindHistory: () => Effect.succeed(1),
                 publishHistory,
@@ -68,9 +75,13 @@ it.effect("owns trusted window ingress and validates new-window requests", () =>
     );
     assert.deepEqual([...handlers.keys()].sort(), [
       "app:runtime-capabilities:get",
+      "application-menu:invoke",
+      "application-menu:snapshot",
       "electron-window:focus:get",
+      "electron-window:fullscreen:get",
       "surface-history:bind",
       "surface-history:publish",
+      "window:appearance:sync",
       "window:new",
       "window:show-emoji-panel",
     ]);
@@ -85,6 +96,26 @@ it.effect("owns trusted window ingress and validates new-window requests", () =>
     assert.deepEqual(yield* handlers.get("app:runtime-capabilities:get")!(event), {
       enabledDevelopmentFeatures: ["database-page-reorder-menu"],
     });
+    assert.deepEqual(yield* handlers.get("application-menu:snapshot")!(event), { menus: [] });
+    assert.isTrue(yield* handlers.get("application-menu:invoke")!(event, "menu-item-1"));
+    assert.deepEqual(snapshot.mock.calls, [[17]]);
+    assert.deepEqual(invoke.mock.calls, [[17, "menu-item-1"]]);
+    assert.isTrue(yield* handlers.get("electron-window:fullscreen:get")!(event));
+    for (const input of [null, 10, "", {}]) {
+      assert.isTrue(
+        Exit.isFailure(
+          yield* handlers.get("application-menu:invoke")!(event, input).pipe(Effect.exit),
+        ),
+      );
+    }
+    assert.isTrue(
+      Exit.isFailure(
+        yield* handlers.get("window:appearance:sync")!(event, {
+          theme: "dark",
+          shellZoom: -1,
+        }).pipe(Effect.exit),
+      ),
+    );
     yield* handlers.get("window:new")!(event, { activeProjectSessionId: "session-1" });
     assert.strictEqual(openForRequest.mock.calls.length, 1);
     assert.deepEqual(openForRequest.mock.calls[0], [17, { activeProjectSessionId: "session-1" }]);
@@ -105,6 +136,11 @@ it.effect("owns trusted window ingress and validates new-window requests", () =>
       Effect.exit,
     );
     assert.isTrue(Exit.isFailure(rejected));
+    assert.isTrue(
+      Exit.isFailure(
+        yield* handlers.get("application-menu:invoke")!(foreign, "menu-item-1").pipe(Effect.exit),
+      ),
+    );
     assert.strictEqual(publishHistory.mock.calls.length, 1);
 
     yield* Scope.close(scope, Exit.void);

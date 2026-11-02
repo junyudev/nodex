@@ -1,5 +1,12 @@
+import {
+  readWindowFullscreen,
+  subscribeWindowFullscreen,
+  synchronizeWindowAppearance,
+} from "@/lib/application-menu";
+import { readThemePreference } from "@/lib/theme-preferences";
 import { useCallback, useEffect, useLayoutEffect, useState, type RefObject } from "react";
 import {
+  resolveWindowContentCaptionClearance,
   measureWorkbenchWindowControlsOverlay,
   normalizeWorkbenchWindowZoom,
   resolveWorkbenchHeaderSafeInsets,
@@ -7,10 +14,11 @@ import {
   type WorkbenchWindowControlsOverlay,
 } from "../../../shared/workbench-window-chrome";
 import {
+  WORKBENCH_APPLICATION_MENU_HEIGHT_PX,
   WORKBENCH_NAVIGATION_RAIL_WIDTH_PX,
   WORKBENCH_TITLEBAR_HEIGHT_PX,
   WORKBENCH_SURFACE_GUTTER_PX,
-} from "@/lib/workbench-shell-geometry";
+} from "../../../shared/workbench-window-chrome";
 import { useMotionValue, useTransform, type MotionValue } from "motion/react";
 import {
   CODEX_SHELL_MEDIUM_WIDTH_PX,
@@ -49,6 +57,7 @@ interface WorkbenchChromeLayoutInput {
   readonly bottomPanelOpen: boolean;
   readonly bottomPanelRequestedHeight: number | null;
   readonly headerLeftWidth: number;
+  readonly applicationMenuBarEnabled?: boolean;
   readonly isMacPlatform: boolean;
   readonly reducedMotion: boolean | null;
   /** The content panel fills the Scene, covering the Conversation. */
@@ -115,6 +124,7 @@ export function useWorkbenchChromeLayout({
   bottomPanelRequestedHeight: persistedBottomPanelHeight,
   headerLeftWidth,
   isMacPlatform,
+  applicationMenuBarEnabled = false,
   reducedMotion,
   rightPanelFullWidth,
   rightPanelFullView,
@@ -136,6 +146,7 @@ export function useWorkbenchChromeLayout({
         0,
         window.innerHeight / windowZoom -
           WORKBENCH_TITLEBAR_HEIGHT_PX -
+          (applicationMenuBarEnabled ? WORKBENCH_APPLICATION_MENU_HEIGHT_PX : 0) -
           WORKBENCH_SURFACE_GUTTER_PX,
       ),
       width: Math.max(
@@ -145,7 +156,7 @@ export function useWorkbenchChromeLayout({
           WORKBENCH_SURFACE_GUTTER_PX,
       ),
     };
-  }, [rootRef]);
+  }, [applicationMenuBarEnabled, rootRef]);
   const initialShellBodySize = readShellBodyFallbackSize();
   const shellBodySize = useElementSizeMotionValues({
     initialHeight: initialShellBodySize.height,
@@ -153,6 +164,19 @@ export function useWorkbenchChromeLayout({
     readFallbackSize: readShellBodyFallbackSize,
   });
   const rootFontSize = useMotionValue(readRootFontSize());
+  useLayoutEffect(() => {
+    if (!applicationMenuBarEnabled) return;
+    document.documentElement.style.setProperty(
+      "--app-shell-application-menu-height",
+      `${WORKBENCH_APPLICATION_MENU_HEIGHT_PX}px`,
+    );
+    return () => {
+      document.documentElement.style.removeProperty("--app-shell-application-menu-height");
+      document.documentElement.style.removeProperty("--window-content-actions-top");
+      document.documentElement.style.removeProperty("--window-content-top");
+    };
+  }, [applicationMenuBarEnabled]);
+  const [fullscreen, setFullscreen] = useState(false);
   const [windowZoom, setWindowZoom] = useState(1);
   const [windowControlsOverlay, setWindowControlsOverlay] =
     useState<WorkbenchNativeControlInsets | null>(null);
@@ -172,28 +196,80 @@ export function useWorkbenchChromeLayout({
   }, [activeSessionId, bottomPanelRequestedHeight, persistedBottomPanelHeight]);
 
   useEffect(() => {
+    if (!applicationMenuBarEnabled) return;
+    let active = true;
+    let observed = false;
+    const release = subscribeWindowFullscreen((value) => {
+      observed = true;
+      setFullscreen(value);
+    });
+    void readWindowFullscreen()
+      .then((value) => {
+        if (active && !observed) setFullscreen(value);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+      release();
+    };
+  }, [applicationMenuBarEnabled]);
+
+  useEffect(() => {
     const overlay = readWindowControlsOverlay();
+    let lastAppearance = "";
     const measure = () => {
       const pageZoomFactor = normalizeWorkbenchWindowZoom(window.api?.getWindowZoomFactor?.() ?? 1);
       rootFontSize.set(readRootFontSize());
-      setWindowZoom(readWindowZoom(rootRef.current) * pageZoomFactor);
+      const shellZoom = readWindowZoom(rootRef.current);
+      setWindowZoom(shellZoom * pageZoomFactor);
+      if (applicationMenuBarEnabled) {
+        const theme = readThemePreference();
+        const appearanceKey = `${theme}:${shellZoom}:${pageZoomFactor}`;
+        if (lastAppearance !== appearanceKey) {
+          lastAppearance = appearanceKey;
+          void synchronizeWindowAppearance({ theme, shellZoom }).catch(() => {});
+        }
+      }
       const overlayInsets = measureWorkbenchWindowControlsOverlay(
         overlay,
         window.innerWidth,
         pageZoomFactor,
       );
+      if (applicationMenuBarEnabled) {
+        const clearance = resolveWindowContentCaptionClearance(
+          overlayInsets?.right ?? 0,
+          overlay?.visible ? (overlay.getTitlebarAreaRect().height ?? 0) : 0,
+          fullscreen,
+        );
+        for (const [key, value] of [
+          ["--window-content-actions-top", clearance.actionsTop],
+          ["--window-content-top", clearance.contentTop],
+        ] as const) {
+          const next = `${value}px`;
+          if (document.documentElement.style.getPropertyValue(key) !== next)
+            document.documentElement.style.setProperty(key, next);
+        }
+      }
       setWindowControlsOverlay((current) =>
         sameControlInsets(current, overlayInsets) ? current : overlayInsets,
       );
     };
     measure();
+    const observer = applicationMenuBarEnabled ? new MutationObserver(measure) : null;
+    observer?.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["style", "class"],
+    });
+    if (rootRef.current)
+      observer?.observe(rootRef.current, { attributes: true, attributeFilter: ["style"] });
     window.addEventListener("resize", measure);
     overlay?.addEventListener("geometrychange", measure);
     return () => {
+      observer?.disconnect();
       window.removeEventListener("resize", measure);
       overlay?.removeEventListener("geometrychange", measure);
     };
-  }, [rootFontSize, rootRef]);
+  }, [applicationMenuBarEnabled, fullscreen, rootFontSize, rootRef]);
 
   const rightPanelFullWidthValue = useSyncedMotionValue(rightPanelFullWidth ? 1 : 0);
   const rightPanelFullViewValue = useSyncedMotionValue(rightPanelFullView ? 1 : 0);
@@ -321,12 +397,16 @@ export function useWorkbenchChromeLayout({
       userAgent: typeof navigator === "undefined" ? "" : navigator.userAgent,
       windowZoom,
       windowControlsOverlay,
+      fullscreen,
+      applicationMenu: applicationMenuBarEnabled,
     });
+  const workspaceSafeLeft = applicationMenuBarEnabled ? 8 : safeHeaderLeftWidth;
   const collapsedHeaderLeftFallbackWidth =
-    safeHeaderLeftWidth + LEFT_HEADER_COLLAPSED_RAIL_FALLBACK_WIDTH_PX;
+    workspaceSafeLeft +
+    (applicationMenuBarEnabled ? 0 : LEFT_HEADER_COLLAPSED_RAIL_FALLBACK_WIDTH_PX);
   const effectiveHeaderLeftWidth = sidebarLogicalCollapsed
     ? Math.max(headerLeftWidth, collapsedHeaderLeftFallbackWidth)
-    : Math.max(headerLeftWidth, safeHeaderLeftWidth + 24);
+    : Math.max(headerLeftWidth, workspaceSafeLeft + 24);
   const sidebarHeaderWidth = useTransform(
     [sidebarMotion.animatedWidth, leftHeaderContentWidth],
     ([width, contentWidth]) =>
@@ -349,7 +429,7 @@ export function useWorkbenchChromeLayout({
   const headerLeftShellSlotMinWidth = sidebarMotion.mounted
     ? sidebarLogicalCollapsed
       ? effectiveHeaderLeftWidth
-      : Math.max(headerLeftWidth, safeHeaderLeftWidth + 24)
+      : Math.max(headerLeftWidth, workspaceSafeLeft + 24)
     : effectiveHeaderLeftWidth;
 
   return {
@@ -362,7 +442,9 @@ export function useWorkbenchChromeLayout({
     effectiveHeaderLeftWidth,
     headerLeftShellSlotMinWidth,
     headerLeftShellSlotWidth,
-    headerLeftFallbackRailWidth: LEFT_HEADER_COLLAPSED_RAIL_FALLBACK_WIDTH_PX,
+    headerLeftFallbackRailWidth: applicationMenuBarEnabled
+      ? 0
+      : LEFT_HEADER_COLLAPSED_RAIL_FALLBACK_WIDTH_PX,
     headerLeftFallbackWidth: collapsedHeaderLeftFallbackWidth,
     mainContentTargetWidth,
     realSidebarMounted: sidebarMotion.mounted,

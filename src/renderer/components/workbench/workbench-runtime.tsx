@@ -1,3 +1,6 @@
+import type { CSSProperties } from "react";
+import { NodexApplicationMenubar } from "@/components/ui/application-menubar";
+import { WORKBENCH_APPLICATION_MENU_HEIGHT_PX } from "../../../shared/workbench-window-chrome";
 import { createLinkRouter, desktopLinkOpeningAdapter } from "@/lib/link-opening";
 import { LinkOpeningProvider } from "@/lib/web-link-navigation";
 import { createWorkbenchLinkPresenter, linkBrowserOwner } from "./workbench-link-opening";
@@ -136,7 +139,10 @@ import {
   useLocalConversationAccount,
   useLocalConversationConnection,
 } from "@/features/local-conversation";
-import { APP_SHELL_GLOBAL_HEADER_LAYER_CLASS } from "@/lib/app-shell-layers";
+import {
+  APP_SHELL_APPLICATION_MENU_LAYER_CLASS,
+  APP_SHELL_GLOBAL_HEADER_LAYER_CLASS,
+} from "@/lib/app-shell-layers";
 import { registerUserAttachmentImagePreviewOpener } from "@/lib/content-image";
 import { readDatabaseViewWindow, subscribeCodexPendingWorktreeWarnings } from "@/lib/api";
 import {
@@ -1762,6 +1768,10 @@ export function WorkbenchRuntime({
   const shellCanNavigateForward = workbenchWindow.canNavigateForward;
   const isMacPlatform =
     typeof navigator !== "undefined" && navigator.platform.toUpperCase().includes("MAC");
+  const applicationMenuBarEnabled =
+    typeof document !== "undefined" &&
+    document.documentElement.dataset.codexOs === "win32" &&
+    document.documentElement.dataset.codexWindowType === "electron";
   const {
     appShellHeaderEdgeScroll,
     appShellMainContentLayout,
@@ -1794,6 +1804,7 @@ export function WorkbenchRuntime({
     bottomPanelRequestedHeight: bottomPanel?.size.heightPx ?? null,
     headerLeftWidth,
     isMacPlatform,
+    applicationMenuBarEnabled,
     reducedMotion,
     rightPanelFullWidth,
     rightPanelFullView,
@@ -3717,6 +3728,10 @@ export function WorkbenchRuntime({
 
   const executeWorkbenchCommand = useCallback(
     ({ commandId, source }: WorkbenchCommandInvocation): boolean => {
+      if (commandId === "settings") {
+        openSettings();
+        return true;
+      }
       if (commandId === CAPTURE_TO_INBOX_COMMAND_ID) return captureToInbox(source);
       if (commandId === TOGGLE_BOTTOM_PANEL_COMMAND_ID) {
         toggleActiveBottomPanel();
@@ -3728,7 +3743,7 @@ export function WorkbenchRuntime({
       }
       return false;
     },
-    [captureToInbox, toggleActiveBottomPanel, toggleActiveWorkspaceFullView],
+    [captureToInbox, openSettings, toggleActiveBottomPanel, toggleActiveWorkspaceFullView],
   );
 
   const commandPort = useMemo<WorkbenchCommandPort>(
@@ -3755,7 +3770,7 @@ export function WorkbenchRuntime({
         closeFocusedPanelTab(null, { respectActiveElementGuard: true });
       },
       execute: (commandId, source) => {
-        if (commandId === CAPTURE_TO_INBOX_COMMAND_ID) {
+        if (commandId === CAPTURE_TO_INBOX_COMMAND_ID || commandId === "settings") {
           return executeWorkbenchCommand({ commandId, source });
         }
         if (!selectedSessionDetailReady) {
@@ -3839,6 +3854,7 @@ export function WorkbenchRuntime({
   const forwardShortcutLabel = resolveWorkbenchNavigationShortcutLabel("forward", isMacPlatform);
   const windowNavigationChrome = (
     <div className="flex items-center gap-1.5" data-testid="workbench-window-navigation-chrome">
+      {applicationMenuBarEnabled ? sidebarCollapseControlButton : null}
       <WindowNavigationToolbarButton
         label={backCommand.label}
         shortcutLabel={backShortcutLabel}
@@ -3855,7 +3871,7 @@ export function WorkbenchRuntime({
       >
         <BackIcon className="icon-xs -scale-x-100" />
       </WindowNavigationToolbarButton>
-      {sidebarCollapseControlButton}
+      {applicationMenuBarEnabled ? null : sidebarCollapseControlButton}
     </div>
   );
 
@@ -3867,7 +3883,7 @@ export function WorkbenchRuntime({
         align="start"
         order={100}
       >
-        {windowNavigationChrome}
+        {applicationMenuBarEnabled ? null : windowNavigationChrome}
       </HeaderAction>
       {sidebarLogicalCollapsed ? (
         <HeaderAction
@@ -4067,6 +4083,7 @@ export function WorkbenchRuntime({
   // A content strip starting at the window's leading edge clears the collapsed sidebar's controls.
   const rightPanelHeaderStartInsetWidth =
     activePanelOwnerKey &&
+    !applicationMenuBarEnabled &&
     sidebarLogicalCollapsed &&
     (rightPanelFullView || sessionWorkspace?.contentSide === "left")
       ? Math.max(0, effectiveHeaderLeftWidth - WORKBENCH_NAVIGATION_RAIL_WIDTH_PX)
@@ -4106,9 +4123,7 @@ export function WorkbenchRuntime({
     !realSidebarMounted &&
     (peekArea !== null || floatingSidebarResizing);
   const showInlineSidebar = realSidebarMounted;
-  const applicationMenuBarEnabled =
-    typeof document !== "undefined" &&
-    document.documentElement.getAttribute("data-codex-window-chrome") === "application-menu";
+
   const floatingSidebarOuterClassName =
     getCodexSidebarFloatingOuterClassName(applicationMenuBarEnabled);
   const openResourceTargetInProject = useCallback(
@@ -5741,15 +5756,17 @@ export function WorkbenchRuntime({
                 }
                 tabIndex={-1}
                 data-workbench-shell
+                data-app-shell-application-menu-bar={applicationMenuBarEnabled ? "true" : undefined}
                 data-app-shell-frame
                 data-app-shell-page-surface="true"
                 className="relative flex flex-col text-token-text-primary browser:bg-token-side-bar-background"
                 style={
                   {
+                    "--app-shell-application-menu-height": `${applicationMenuBarEnabled ? WORKBENCH_APPLICATION_MENU_HEIGHT_PX : 0}px`,
                     "--height-toolbar": `${WORKBENCH_TITLEBAR_HEIGHT_PX}px`,
                     "--height-titlebar": `${WORKBENCH_TITLEBAR_HEIGHT_PX}px`,
                     "--app-shell-navigation-rail-width": `${WORKBENCH_NAVIGATION_RAIL_WIDTH_PX}px`,
-                    "--spacing-token-safe-header-left": `${safeHeaderLeftWidth}px`,
+                    "--spacing-token-safe-header-left": `${applicationMenuBarEnabled ? 8 : safeHeaderLeftWidth}px`,
                     "--spacing-token-safe-header-right": `${safeHeaderRightWidth}px`,
                     "--app-shell-bottom-panel-height": bottomPanelAnimatedHeightCss,
                     width: "calc(100vw / var(--codex-window-zoom, 1))",
@@ -5775,6 +5792,26 @@ export function WorkbenchRuntime({
                     visibleTabIds={visibleProjectBrowserTabIds}
                   />
                 ) : null}
+                {applicationMenuBarEnabled ? (
+                  <div
+                    data-testid="workbench-application-menu-row"
+                    className={cn(
+                      "relative flex h-(--app-shell-application-menu-height) shrink-0 items-center gap-1 select-none",
+                      APP_SHELL_APPLICATION_MENU_LAYER_CLASS,
+                    )}
+                    style={
+                      {
+                        WebkitAppRegion: "drag",
+                        paddingLeft: safeHeaderLeftWidth,
+                        paddingRight: safeHeaderRightWidth,
+                      } as CSSProperties
+                    }
+                  >
+                    {windowNavigationChrome}
+                    <NodexApplicationMenubar />
+                    <div className="h-full min-w-0 flex-1" />
+                  </div>
+                ) : null}
                 <WorkbenchTitlebarProvider host={titlebarHost} active={!settingsPath}>
                   <header
                     ref={setTitlebarHost}
@@ -5782,7 +5819,7 @@ export function WorkbenchRuntime({
                     data-workbench-titlebar
                     data-app-shell-header-edge-scroll={appShellHeaderEdgeScroll ? "true" : "false"}
                     className={cn(
-                      "app-header-tint draggable pointer-events-none fixed inset-x-0 top-0 flex h-toolbar min-w-0 items-center",
+                      "app-header-tint draggable pointer-events-none fixed inset-x-0 top-(--app-shell-application-menu-height) flex h-toolbar min-w-0 items-center",
                       APP_SHELL_GLOBAL_HEADER_LAYER_CLASS,
                     )}
                   >

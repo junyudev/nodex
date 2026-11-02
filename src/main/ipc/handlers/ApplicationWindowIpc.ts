@@ -1,7 +1,9 @@
+import { z } from "zod";
+import { setWindowShellZoom, syncWindowNavigationChrome } from "../../window-navigation-chrome";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
-import { app, type IpcMainInvokeEvent } from "electron";
+import { app, nativeTheme, type IpcMainInvokeEvent } from "electron";
 import { parseDevelopmentFeatureEnvironment } from "../../../shared/development-features";
 import type { AppRuntimeCapabilities } from "../../../shared/runtime-capabilities";
 import { WindowSessionNewWindowRequestSchema } from "../../../shared/schemas/window-session";
@@ -74,6 +76,49 @@ export const live = (
           catch: (cause) => new ApplicationWindowIpcError({ operation, cause }),
         });
 
+      yield* ipc.handleQuery("application-menu:snapshot", (event) =>
+        authorize(event, "Application menu").pipe(Effect.andThen(menu.snapshot(event.sender.id))),
+      );
+      yield* ipc.handlePlainCommand("application-menu:invoke", (event, input: unknown) =>
+        authorize(event, "Application menu").pipe(
+          Effect.andThen(parse("parse-menu-item", () => z.string().min(1).max(128).parse(input))),
+          Effect.flatMap((id) => menu.invoke(event.sender.id, id)),
+        ),
+      );
+      yield* ipc.handlePlainCommand("window:appearance:sync", (event, input: unknown) =>
+        authorize(event, "Window appearance").pipe(
+          Effect.andThen(
+            parse("parse-window-appearance", () =>
+              z
+                .object({
+                  theme: z.enum(["light", "dark", "system"]),
+                  shellZoom: z.number().min(0.1).max(10),
+                })
+                .strict()
+                .parse(input),
+            ),
+          ),
+          Effect.tap((appearance) =>
+            Effect.sync(() => {
+              const window = windows.get(event.sender.id);
+              if (!window) return;
+              setWindowShellZoom(window, appearance.shellZoom);
+              nativeTheme.themeSource = appearance.theme;
+              syncWindowNavigationChrome(
+                window,
+                config.platform as NodeJS.Platform,
+                nativeTheme.shouldUseDarkColors,
+              );
+            }),
+          ),
+          Effect.asVoid,
+        ),
+      );
+      yield* ipc.handleQuery("electron-window:fullscreen:get", (event) =>
+        authorize(event, "Window fullscreen").pipe(
+          Effect.andThen(Effect.sync(() => windows.get(event.sender.id)?.isFullScreen() ?? false)),
+        ),
+      );
       yield* ipc.handleQuery("electron-window:focus:get", (event) =>
         authorize(event, "Window focus state").pipe(
           Effect.andThen(Effect.sync(() => windows.get(event.sender.id)?.isFocused() ?? false)),

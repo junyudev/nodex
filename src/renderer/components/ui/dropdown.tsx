@@ -138,7 +138,7 @@ interface NodexDropdownSubmenuProps {
   onOpenChange?: (open: boolean) => void;
 }
 
-function NodexDropdownSubmenu({ onOpenChange, ...props }: NodexDropdownSubmenuProps) {
+export function NodexDropdownSubmenu({ onOpenChange, ...props }: NodexDropdownSubmenuProps) {
   return (
     <MenuPrimitive.SubmenuRoot
       {...props}
@@ -154,18 +154,19 @@ interface NodexDropdownSubmenuTriggerProps extends ComponentPropsWithoutRef<"div
   closeDelay?: number;
 }
 
-const NodexDropdownSubmenuTrigger = forwardRef<HTMLDivElement, NodexDropdownSubmenuTriggerProps>(
-  function NodexDropdownSubmenuTrigger({ className, ...props }, ref) {
-    return (
-      <MenuPrimitive.SubmenuTrigger
-        ref={ref}
-        data-slot="dropdown-submenu-trigger"
-        className={cn(nodexMenuRowClassName, dropdownItemInteractiveClassName, className)}
-        {...props}
-      />
-    );
-  },
-);
+export const NodexDropdownSubmenuTrigger = forwardRef<
+  HTMLDivElement,
+  NodexDropdownSubmenuTriggerProps
+>(function NodexDropdownSubmenuTrigger({ className, ...props }, ref) {
+  return (
+    <MenuPrimitive.SubmenuTrigger
+      ref={ref}
+      data-slot="dropdown-submenu-trigger"
+      className={cn(nodexMenuRowClassName, dropdownItemInteractiveClassName, className)}
+      {...props}
+    />
+  );
+});
 
 interface NodexDropdownSubmenuContentProps extends ComponentPropsWithoutRef<"div"> {
   align?: "start" | "center" | "end";
@@ -176,60 +177,61 @@ interface NodexDropdownSubmenuContentProps extends ComponentPropsWithoutRef<"div
   motion?: "default" | "none";
 }
 
-const NodexDropdownSubmenuContent = forwardRef<HTMLDivElement, NodexDropdownSubmenuContentProps>(
-  function NodexDropdownSubmenuContent(
-    {
-      className,
-      children,
-      style,
-      collisionPadding = 6,
-      sideOffset = 4,
-      alignOffset = -4,
-      surface = "menu",
-      motion = "none",
-      ...props
-    },
-    ref,
-  ) {
-    const layerIndex = useNodexFloatingLayerIndex(style?.zIndex);
-
-    return (
-      <MenuPrimitive.Positioner
-        data-slot="dropdown-submenu-positioner"
-        collisionPadding={collisionPadding}
-        sideOffset={sideOffset}
-        alignOffset={alignOffset}
-        className={APP_SHELL_FLOATING_UI_LAYER_CLASS}
-        style={{ zIndex: layerIndex }}
-      >
-        <MenuPrimitive.Popup
-          ref={ref}
-          data-slot="dropdown-submenu-content"
-          style={{ ...CONTENT_BOUNDARY_STYLE, zIndex: layerIndex, ...style }}
-          className={cn(
-            surface === "bare"
-              ? cn(
-                  "m-0 flex min-w-[180px] select-none flex-col overflow-x-hidden overflow-y-auto p-0",
-                  APP_SHELL_FLOATING_UI_LAYER_CLASS,
-                )
-              : cn(
-                  dropdownContentSurfaceClassName,
-                  surface === "menu" && dropdownAdaptiveWidthClassName,
-                ),
-            motion === "default"
-              ? dropdownContentMotionClassName
-              : "data-closed:invisible data-closed:pointer-events-none",
-            className,
-          )}
-          {...mergeProps({ onKeyDown: handleMenuEditorKeyDown }, props)}
-          data-nodex-keyboard-scope="local"
-        >
-          <NodexFloatingLayerProvider zIndex={layerIndex}>{children}</NodexFloatingLayerProvider>
-        </MenuPrimitive.Popup>
-      </MenuPrimitive.Positioner>
-    );
+export const NodexDropdownSubmenuContent = forwardRef<
+  HTMLDivElement,
+  NodexDropdownSubmenuContentProps
+>(function NodexDropdownSubmenuContent(
+  {
+    className,
+    children,
+    style,
+    collisionPadding = 6,
+    sideOffset = 4,
+    alignOffset = -4,
+    surface = "menu",
+    motion = "none",
+    ...props
   },
-);
+  ref,
+) {
+  const layerIndex = useNodexFloatingLayerIndex(style?.zIndex);
+
+  return (
+    <MenuPrimitive.Positioner
+      data-slot="dropdown-submenu-positioner"
+      collisionPadding={collisionPadding}
+      sideOffset={sideOffset}
+      alignOffset={alignOffset}
+      className={APP_SHELL_FLOATING_UI_LAYER_CLASS}
+      style={{ zIndex: layerIndex }}
+    >
+      <MenuPrimitive.Popup
+        ref={ref}
+        data-slot="dropdown-submenu-content"
+        style={{ ...CONTENT_BOUNDARY_STYLE, zIndex: layerIndex, ...style }}
+        className={cn(
+          surface === "bare"
+            ? cn(
+                "m-0 flex min-w-[180px] select-none flex-col overflow-x-hidden overflow-y-auto p-0",
+                APP_SHELL_FLOATING_UI_LAYER_CLASS,
+              )
+            : cn(
+                dropdownContentSurfaceClassName,
+                surface === "menu" && dropdownAdaptiveWidthClassName,
+              ),
+          motion === "default"
+            ? dropdownContentMotionClassName
+            : "data-closed:invisible data-closed:pointer-events-none",
+          className,
+        )}
+        {...mergeProps({ onKeyDown: handleMenuEditorKeyDown }, props)}
+        data-nodex-keyboard-scope="local"
+      >
+        <NodexFloatingLayerProvider zIndex={layerIndex}>{children}</NodexFloatingLayerProvider>
+      </MenuPrimitive.Popup>
+    </MenuPrimitive.Positioner>
+  );
+});
 
 const dropdownContentSurfaceClassName = cn(
   nodexMenuSurfaceClassName,
