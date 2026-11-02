@@ -750,6 +750,10 @@ export interface IpcApi
     args: [];
     result: AppRuntimeCapabilities;
   };
+  "app:startup-failure-evidence": {
+    args: [];
+    result: import("./app-startup").AppStartupFailureEvidence | null;
+  };
   "app:await-initialization": { args: []; result: void };
   "app:get-core-authority-status": {
     args: [];

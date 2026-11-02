@@ -64,6 +64,8 @@ import { MainApplication, MainApplicationError } from "./MainApplication";
 import { MainCleanup } from "./MainCleanup";
 import { MainConfig } from "./MainConfig";
 import { NativeNotificationAuthorization } from "../platform/electron/NativeNotificationAuthorization";
+import * as Cause from "effect/Cause";
+import { MainObservability } from "./MainObservability";
 import { MainShutdown } from "./MainShutdown";
 import { ScopedCallbackRuntime } from "./ScopedCallbackRuntime";
 import { ApplicationWindowRuntime } from "../window-runtime/ApplicationWindowRuntime";
@@ -416,6 +418,7 @@ const startupFailureLive = (
   | ApplicationInitializationRuntime
   | ApplicationWindowShellRuntime
   | MainShutdown
+  | MainObservability
   | ScopedCallbackRuntime
   | WindowRuntime
 > =>
@@ -430,6 +433,12 @@ const startupFailureLive = (
 
       applicationLogger.error("Desktop app startup failed; preserving the canonical window", {
         error,
+      });
+      const observability = yield* MainObservability;
+      yield* observability.reportExit({
+        _tag: "Failure",
+        phase: "startup",
+        cause: Cause.fail(runtimeError("startup", error)),
       });
       yield* initialization.markFailed;
       shell.failAll(error);

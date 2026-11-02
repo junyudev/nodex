@@ -53,6 +53,9 @@ declare global {
       on: (event: string, callback: (...args: unknown[]) => void) => () => void;
       onAppUpdateStatus?: (callback: (status: AppUpdateStatus) => void) => () => void;
       awaitInitialization?: () => Promise<void>;
+      getStartupFailureEvidence?: () => Promise<
+        import("../shared/app-startup").AppStartupFailureEvidence | null
+      >;
       getCoreAuthorityStatus?: () => Promise<CoreAuthorityStatus>;
       onCoreAuthorityStatus?: (callback: (status: CoreAuthorityStatus) => void) => () => void;
       retryCoreAuthority?: () => Promise<void>;

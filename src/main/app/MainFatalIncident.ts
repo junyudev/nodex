@@ -1,5 +1,6 @@
 import * as Cause from "effect/Cause";
 import * as Schema from "effect/Schema";
+import { CoreStartupError } from "../core-client/core-launcher";
 import { CoreRuntimeError } from "../core-runtime/CoreRuntimeError";
 import { CoreHttpError, CoreTransportError } from "../core-client/local-http";
 import type { CleanupReport } from "./MainCleanup";
@@ -30,6 +31,10 @@ export interface MainFatalCause {
   readonly transportKind?: string;
   readonly code?: string;
   readonly status?: number;
+  readonly executable?: "nodex-core" | "nodex-core.exe";
+  readonly exitCode?: number | null;
+  readonly windowsStatus?: string | null;
+  readonly spawnCode?: string | null;
   readonly frames: readonly {
     readonly function: string;
     readonly line: number;
@@ -82,6 +87,17 @@ const framesOf = (error: unknown): MainFatalCause["frames"] => {
 
 const causeMetadata = (value: unknown): Omit<MainFatalCause, "kind" | "parent"> => {
   const base = { frames: framesOf(value) };
+  if (value instanceof CoreStartupError) {
+    return {
+      ...base,
+      name: "CoreStartupError",
+      reason: value.reason,
+      executable: value.executable,
+      exitCode: value.exitCode,
+      windowsStatus: value.windowsStatus,
+      spawnCode: value.spawnCode,
+    };
+  }
   if (Schema.is(MainApplicationError)(value)) {
     return {
       ...base,
