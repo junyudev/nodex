@@ -894,6 +894,8 @@ The test commands follow production boundaries:
   `.jsdom.test.ts` DOM behavior in jsdom. A `.test.ts` file must not rely on
   browser globals implicitly.
 - `vp run test:browser` runs browser-sensitive renderer contracts in Chromium.
+  The shared runner reclaims detached Chromium realms between isolated files
+  on every platform, so local and CI runs share the same browser lifecycle.
   Each invocation rebuilds its optimized dependency graph before testing; a
   cache populated by a focused run must not trigger reloads during a later
   full run. Keep lazily loaded runtimes that cause late dependency discovery
