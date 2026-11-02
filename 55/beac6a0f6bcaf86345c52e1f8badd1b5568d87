@@ -1,0 +1,23 @@
+scripts/ci/probe-windows-installer.ts
+  s_3609d9db04b3f2::t_25bc7d7d1a6356 50-57,141-147,156,218,223,282,406,408-409,411,415-436,444-445,449-458,460,467-475,477
+docs/product-specs/windows-host-behavior.md
+  s_3609d9db04b3f2::t_cc54c76dd679f7 19-22
+docs/release-windows.md
+  s_3609d9db04b3f2::t_cc54c76dd679f7 107-116
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "55beac6a0f6bcaf86345c52e1f8badd1b5568d87",
+  "prompts": {},
+  "sessions": {
+    "s_3609d9db04b3f2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19bd4-bc82-7710-93aa-a3b0b80b63c0",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
