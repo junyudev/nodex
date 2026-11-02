@@ -155,7 +155,6 @@ const mapBackup = (backup: CoreBackupRecord): BackupRecord => ({
   includesAssets: backup.includes_assets,
   dbBytes: backup.db_bytes,
   assetsBytes: backup.assets_bytes,
-  executionBytes: backup.execution_bytes,
   totalBytes: backup.total_bytes,
 });
 
@@ -206,19 +205,13 @@ export const mapCoreStoreAdministrationEvent = (
   effect: CoreAuthorizedDeliveryAtom,
 ): CoreStoreAdministrationInvalidation | null => projectCoreStoreAdministrationEvent(effect);
 
-type ProfileSnapshotSource = NonNullable<
-  Extract<StoreAdministrationIntent, { readonly kind: "create_backup" }>["profile_snapshot"]
->;
-export interface StoreAdministrationSnapshotPorts {
-  readonly capture: <A, E, R>(
-    use: (source?: ProfileSnapshotSource) => Effect.Effect<A, E, R>,
-  ) => Effect.Effect<A, unknown, R>;
-  readonly restore: <A, E, R>(
-    use: (source: ProfileSnapshotSource) => Effect.Effect<A, E, R>,
-  ) => Effect.Effect<A, unknown, R>;
+export interface StoreAdministrationRestorePorts {
+  /** Stop replies through ordinary controls before retiring the execution generation. */
+  readonly prepare: Effect.Effect<void, unknown>;
+  readonly withStopped: <A, E, R>(use: Effect.Effect<A, E, R>) => Effect.Effect<A, unknown, R>;
 }
 
-export const make = (options: { readonly snapshots?: StoreAdministrationSnapshotPorts } = {}) =>
+export const make = (options: { readonly restore?: StoreAdministrationRestorePorts } = {}) =>
   Effect.gen(function* () {
     const core = yield* CoreModules;
     const erasures = yield* PubSub.sliding<void>(1);
@@ -290,20 +283,15 @@ export const make = (options: { readonly snapshots?: StoreAdministrationSnapshot
       operationIdentifier: string,
       input: CreateBackupInput = {},
     ) {
-      const create = (profile_snapshot?: ProfileSnapshotSource) =>
-        apply("create-backup", {
-          operationId: operationIdentifier,
-          intent: {
-            kind: "create_backup",
-            label: input.label?.trim() || null,
-            include_assets: true,
-            trigger: input.trigger ?? "manual",
-            ...(profile_snapshot ? { profile_snapshot } : {}),
-          },
-        });
-      const committed = yield* (
-        options.snapshots ? options.snapshots.capture(create) : create()
-      ).pipe(Effect.mapError((cause) => error("create-backup", cause)));
+      const committed = yield* apply("create-backup", {
+        operationId: operationIdentifier,
+        intent: {
+          kind: "create_backup",
+          label: input.label?.trim() || null,
+          include_assets: true,
+          trigger: input.trigger ?? "manual",
+        },
+      });
       const coalescedBackupJobId = committed.outcome.coalesced_backup_job_id;
       if (coalescedBackupJobId) {
         return { kind: "coalesced" as const, activeJobId: coalescedBackupJobId };
@@ -656,18 +644,20 @@ export const make = (options: { readonly snapshots?: StoreAdministrationSnapshot
           new Error("Backup restore requires explicit confirmation"),
         );
       }
-      const restore = (profile_snapshot?: ProfileSnapshotSource) =>
-        apply("restore-backup", {
-          operationId: operationId(`restore-backup:${input.backupId}`),
-          intent: {
-            kind: "restore_backup",
-            backup_id: input.backupId,
-            create_safety_backup: input.createSafetyBackup !== false,
-            ...(profile_snapshot ? { profile_snapshot } : {}),
-          },
-        });
+      if (options.restore)
+        yield* options.restore.prepare.pipe(
+          Effect.mapError((cause) => error("stop-replies", cause)),
+        );
+      const restore = apply("restore-backup", {
+        operationId: operationId(`restore-backup:${input.backupId}`),
+        intent: {
+          kind: "restore_backup",
+          backup_id: input.backupId,
+          create_safety_backup: input.createSafetyBackup !== false,
+        },
+      });
       const committed = yield* (
-        options.snapshots ? options.snapshots.restore(restore) : restore()
+        options.restore ? options.restore.withStopped(restore) : restore
       ).pipe(Effect.mapError((cause) => error("restore-backup", cause)));
       const restoredBackupId = yield* requireBackupId("restore-backup", committed);
       return {
@@ -797,7 +787,7 @@ export const make = (options: { readonly snapshots?: StoreAdministrationSnapshot
   });
 
 export const layer = (
-  options: { readonly snapshots?: StoreAdministrationSnapshotPorts } = {},
+  options: { readonly restore?: StoreAdministrationRestorePorts } = {},
 ): Layer.Layer<StoreAdministration, never, CoreModules> =>
   Layer.effect(StoreAdministration, make(options));
 export const live = layer();

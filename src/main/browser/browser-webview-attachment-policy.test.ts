@@ -59,7 +59,7 @@ describe("Browser webview attachment policy", () => {
     expect(authorizeAttachment).toHaveBeenCalledWith(physicalRoute);
   });
 
-  test("fails closed before host authorization for a foreign window or URL", () => {
+  test("rejects foreign windows but leaves URL loading to the Browser guest", () => {
     const authorizeAttachment = vi.fn(() => ({
       ok: true as const,
       authorization,
@@ -80,10 +80,10 @@ describe("Browser webview attachment policy", () => {
         src: "javascript:alert(1)",
       }),
     ).toMatchObject({
-      ok: false,
-      reason: "navigation-url-blocked",
+      ok: true,
+      authorization,
     });
-    expect(authorizeAttachment).not.toHaveBeenCalled();
+    expect(authorizeAttachment).toHaveBeenCalledTimes(1);
   });
 
   test("uses the Main-owned storage identity returned by host authorization", () => {

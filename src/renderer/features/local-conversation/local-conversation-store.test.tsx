@@ -21733,6 +21733,7 @@ describe("local-conversation-store", () => {
           semanticKind: "generatedImage",
           markdownText: undefined,
           rawItem: {
+            generationId: null,
             id: "generated-image",
             type: "imageGeneration",
             status: "completed",

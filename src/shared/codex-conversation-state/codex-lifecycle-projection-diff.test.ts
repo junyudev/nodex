@@ -882,6 +882,7 @@ describe("scoped canonical lifecycle projection diff", () => {
       }
     >;
     const generatedImage = {
+      generationId: null,
       type: "imageGeneration",
       id: "generated-image",
       status: "completed",

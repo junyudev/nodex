@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import {
   cpSync,
   existsSync,
@@ -12,6 +13,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, expect, test } from "vite-plus/test";
 import { stageCodexRuntime, stageCodexRuntimeCandidate } from "./stage-codex-runtime";
+import { createAgentRuntimeRelockCandidate } from "./relock-agent-runtime";
 
 const roots: string[] = [];
 afterEach(() => {
@@ -46,6 +48,7 @@ function fixture(arch: "x64" | "arm64") {
     JSON.stringify({
       ...lock.packageManifest,
       entrypoint: "bin/codex.exe",
+      execServer: "bin/codex-exec-server.exe",
       target: build.targetTriple,
     }),
   );
@@ -107,4 +110,55 @@ test("rejects metadata that is not bound by the Windows release lock", async () 
   await expect(stageCodexRuntime(input.options)).rejects.toThrow(
     "metadata does not match the release lock",
   );
+});
+
+test("relocks both Windows archives independently and retains the macOS pin", async () => {
+  const inputs = [fixture("arm64"), fixture("x64")];
+  const first = inputs[0]!;
+  const archives = inputs.map((input) => {
+    const archive = join(first.root, input.build.assetName);
+    const tar =
+      process.platform === "win32"
+        ? join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe")
+        : "/usr/bin/tar";
+    execFileSync(tar, [
+      "-czf",
+      archive,
+      "-C",
+      input.source,
+      "bin",
+      "codex-package.json",
+      "codex-path",
+      "codex-resources",
+    ]);
+    return archive;
+  });
+  const manifest = archives
+    .map(
+      (archive) =>
+        `${createHash("sha256").update(readFileSync(archive)).digest("hex")}  ${archive.split(/[\\/]/u).at(-1)}\n`,
+    )
+    .join("");
+  first.lock.upstream.checksumManifest.sha256 = createHash("sha256").update(manifest).digest("hex");
+  first.lock.upstream.checksumManifest.size = Buffer.byteLength(manifest);
+  writeFileSync(join(first.root, first.lock.upstream.checksumManifest.assetName), manifest);
+  writeFileSync(first.lockPath, JSON.stringify(first.lock));
+  const candidate = await createAgentRuntimeRelockCandidate({
+    lockPath: first.lockPath,
+    projectRootPath: first.root,
+    outputPath: join(first.root, "candidate.json"),
+    windowsArm64ArchivePath: archives[0]!,
+    windowsX64ArchivePath: archives[1]!,
+  });
+  expect(candidate.builds["darwin-arm64"]).toEqual(first.lock.builds["darwin-arm64"]);
+  writeFileSync(first.lockPath, JSON.stringify(candidate));
+  for (const [index, arch] of (["arm64", "x64"] as const).entries()) {
+    const input = inputs[index]!;
+    const staged = await stageCodexRuntime({ ...input.options, lockPath: first.lockPath });
+    expect(staged.targetArch).toBe(arch);
+    expect(staged.packageManifest.execServer).toBe("bin/codex-exec-server.exe");
+    expect(candidate.builds[`win32-${arch}`].entrypointSha256).toBe(
+      createHash("sha256").update(nativeImage(arch)).digest("hex"),
+    );
+  }
 });

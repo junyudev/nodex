@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { BROWSER_SITE_PERMISSION_NAMES } from "./browser-permissions";
 import { parseAssetSource } from "../assets";
 import type {
   BrowserBrowsingDataKind,
@@ -15,13 +16,12 @@ import type {
 } from "../browser-sidebar";
 
 const MAX_ID_LENGTH = 512;
-const MAX_URL_LENGTH = 16_384;
 const MAX_TITLE_LENGTH = 2_048;
 const MAX_TEXT_LENGTH = 8_192;
 const MAX_BROWSER_IPC_BYTES = 64 * 1024;
 
 const BrowserIdSchema = z.string().trim().min(1).max(MAX_ID_LENGTH);
-const BrowserUrlSchema = z.string().max(MAX_URL_LENGTH);
+const BrowserUrlSchema = z.string();
 const BrowserManagedAssetSourceSchema = BrowserUrlSchema.refine(
   (source) => parseAssetSource(source) !== null,
   "Expected a managed Browser image asset",
@@ -44,6 +44,8 @@ export const BrowserSidebarTabIdentitySchema = z
 export const BrowserSidebarOpenNewTabRequestSchema = BrowserSidebarTabIdentitySchema.extend({
   url: BrowserUrlSchema,
   background: z.boolean(),
+  openInNewWindow: z.boolean().optional(),
+  browserSurface: z.enum(["downloads", "history"]).optional(),
 }).strict() satisfies z.ZodType<BrowserSidebarOpenNewTabRequest>;
 
 export const BrowserSidebarImageDragStateEventSchema = BrowserSidebarTabIdentitySchema.extend({
@@ -195,6 +197,28 @@ const TargetedCommandSchema = <Shape extends z.ZodRawShape>(shape: Shape) =>
   BrowserSidebarTabIdentitySchema.extend(shape).strict();
 
 export const BrowserSidebarCommandSchema = z.union([
+  TargetedCommandSchema({
+    type: z.literal("respond-permission"),
+    promptId: BrowserIdSchema,
+    mountGeneration: z.number().int().positive(),
+    action: z.enum(["allow", "allow-this-time", "deny", "dismiss"]),
+    geolocationAccuracy: z.enum(["approximate", "precise"]).optional(),
+  }).refine(
+    (value) =>
+      value.geolocationAccuracy === undefined ||
+      value.action === "allow" ||
+      value.action === "allow-this-time",
+  ),
+  TargetedCommandSchema({
+    type: z.literal("open-permission-system-settings"),
+    promptId: BrowserIdSchema,
+    mountGeneration: z.number().int().positive(),
+  }),
+  TargetedCommandSchema({
+    type: z.literal("reset-site-permissions"),
+    origin: z.string().url(),
+    permission: z.enum(BROWSER_SITE_PERMISSION_NAMES).optional(),
+  }),
   z
     .object({
       type: z.literal("register-renderer-session"),
@@ -265,11 +289,13 @@ export const BrowserSidebarCommandSchema = z.union([
   z
     .object({
       type: z.literal("open-external"),
+      fromErrorPage: z.boolean().optional(),
       url: BrowserUrlSchema,
     })
     .strict(),
   TargetedCommandSchema({
     type: z.literal("open-external"),
+    fromErrorPage: z.boolean().optional(),
     url: z.undefined().optional(),
   }),
   TargetedCommandSchema({ type: z.literal("close-tab") }),
@@ -434,7 +460,19 @@ export const BrowserSidebarDestroyWebviewRequestSchema = BrowserSidebarTabIdenti
 function assertBrowserIpcPayloadBudget(value: unknown): void {
   let json: string;
   try {
-    json = JSON.stringify(value);
+    // URL admission is owned by the entry point, not by a global transport size limit.
+    const urlFields = new Set([
+      "url",
+      "initialUrl",
+      "pendingUrl",
+      "faviconUrl",
+      "sourceUrl",
+      "origin",
+      "path",
+    ]);
+    json = JSON.stringify(value, (key, item: unknown) =>
+      urlFields.has(key) && typeof item === "string" ? "" : item,
+    );
   } catch {
     throw new Error("Browser IPC payload must be JSON serializable");
   }

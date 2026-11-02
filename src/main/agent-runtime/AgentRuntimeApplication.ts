@@ -27,6 +27,7 @@ import type {
 } from "@nodex/agent-runtime/contracts";
 import * as Context from "effect/Context";
 import * as Cause from "effect/Cause";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
@@ -38,7 +39,11 @@ import type * as Scope from "effect/Scope";
 import { stableStringifyBlockPropertyJson } from "../../shared/block-property-mutations";
 import { CoreApplicationAgent } from "../core-runtime/CoreApplicationAgent";
 import { CoreModules } from "../core-runtime/CoreModules";
-import { createOperationId, createStableOperationId } from "../core-runtime/operation-identity";
+import {
+  createDueWorkOperationId,
+  createOperationId,
+  createStableOperationId,
+} from "../core-runtime/operation-identity";
 import { ProjectRuntimeLifecycleRuntime } from "../host-runtime/ProjectRuntimeLifecycleRuntime";
 import type { ProjectWorkspaceApplyInput } from "../core-client/types";
 import { CoreModuleResponseError } from "../core-client/core-client";
@@ -170,9 +175,8 @@ export interface AgentRuntimeApplicationOptions {
     unknown,
     Scope.Scope
   >;
-  readonly withWriter?: <A, E, R>(
-    operation: Effect.Effect<A, E, R>,
-  ) => Effect.Effect<A, unknown, R>;
+  /** Tracks Runtime usage during product mutations; does not freeze or serialize them. */
+  readonly writing?: <A, E, R>(operation: Effect.Effect<A, E, R>) => Effect.Effect<A, unknown, R>;
   /** Explicit Profile-owned execution workspace; Core keeps its Project scope null. */
   readonly projectless: {
     readonly engineProjectId: string;
@@ -378,7 +382,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       ),
     );
   const ownedWrite = <A, E, R>(operation: string, effect: Effect.Effect<A, E, R>) =>
-    owned(operation, options.withWriter ? options.withWriter(effect) : effect);
+    owned(operation, options.writing ? options.writing(effect) : effect);
   const projectCatalog =
     options.providerCatalog?.project ??
     ((providers: AgentRuntimeOperations["providers.read"]["output"]) => Effect.succeed(providers));
@@ -641,7 +645,6 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
   const reconcileExecution = Effect.fn("AgentRuntimeApplication.reconcileExecution")(function* (
     connection: AgentRuntimeApplicationConnection,
     initial: Binding,
-    fence = false,
   ) {
     let binding = initial;
     for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -687,7 +690,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
               commandId: createOperationId("agent-runtime.archive"),
             });
         });
-        yield* fence && options.withWriter ? options.withWriter(repair) : repair;
+        yield* options.writing ? options.writing(repair) : repair;
       }
       const current = yield* readBinding(connection, binding.session_id, false);
       if ((current.project_id ?? null) === projectId) return current;
@@ -702,7 +705,6 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
   const reconcileProject = Effect.fn("AgentRuntimeApplication.reconcileProject")(function* (
     connection: AgentRuntimeApplicationConnection,
     projectId: string,
-    fence = false,
   ) {
     // Engine roots discover moved-out Sessions; Core's current placement discovers moved-in Sessions.
     let cursor: string | undefined;
@@ -720,7 +722,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           }),
         );
         if (found.value.kind === "agent_runtime_session_binding" && found.value.binding)
-          yield* reconcileExecution(connection, found.value.binding, fence);
+          yield* reconcileExecution(connection, found.value.binding);
       }
       cursor = page.nextCursor ?? undefined;
     } while (cursor !== undefined);
@@ -737,7 +739,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       if (page.value.kind !== "agent_runtime_session_binding_window")
         return yield* failure("placement", "Session placement metadata is unavailable");
       for (const binding of page.value.bindings.items)
-        yield* reconcileExecution(connection, binding, fence);
+        yield* reconcileExecution(connection, binding);
       after = page.value.bindings.next_cursor ?? undefined;
     } while (after !== undefined);
   });
@@ -2758,6 +2760,19 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     };
   });
 
+  const interruptReply = (
+    connection: AgentRuntimeApplicationConnection,
+    threadId: string,
+    runId: string,
+  ) =>
+    dispatch(connection, {
+      type: "run.interrupt",
+      commandId: commandId("stop", { threadId, runId }),
+      threadId,
+      runId,
+      holdQueue: true,
+    });
+
   const stop = Effect.fn("AgentRuntimeApplication.stop")(function* (
     input: AgentRuntimeSessionTarget & { readonly runId: string },
   ) {
@@ -2766,13 +2781,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     const loaded = yield* targetInfo(connection, input);
     if (!validId(input.runId)) return yield* failure("stop", "Run identity is required");
     if (loaded.thread.activeRunId !== input.runId) return { stopped: false };
-    yield* dispatch(connection, {
-      type: "run.interrupt",
-      commandId: commandId("stop", { threadId: loaded.threadId, runId: input.runId }),
-      threadId: loaded.threadId,
-      runId: input.runId,
-      holdQueue: true,
-    });
+    yield* interruptReply(connection, loaded.threadId, input.runId);
     return { stopped: true };
   });
 
@@ -3112,7 +3121,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     const thread = yield* connection.request("thread.read", {
       threadId: cleanup.runtime_thread_id,
     });
-    if (thread)
+    if (thread && thread.deletedAt === null)
       yield* dispatch(connection, {
         type: "thread.delete",
         threadId: cleanup.runtime_thread_id,
@@ -3281,15 +3290,175 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     );
     return result;
   });
-  const deleteSession = Effect.fn("AgentRuntimeApplication.deleteSession")(function* (
+  const deleteSessionContent = Effect.fn("AgentRuntimeApplication.deleteSessionContent")(function* (
     command: ProjectSessionDeleteCommandInput,
   ) {
     const result = yield* workspace.deleteProjectSession(command);
     yield* options.releaseDesktopSession?.(command.payload.sessionId) ?? Effect.void;
+    return result;
+  });
+  const deleteSession = Effect.fn("AgentRuntimeApplication.deleteSession")(function* (
+    command: ProjectSessionDeleteCommandInput,
+  ) {
+    const result = yield* deleteSessionContent(command);
     if (!options.runtimeExists || (yield* options.runtimeExists))
       yield* afterCommit(command.operationId, "delete-session", host(cleanupDeletedSessions()));
     return result;
   });
+
+  /** Rebuilds the Session set once per Store coordinate, retaining Runtime conversation truth. */
+  const reconcileStore = Effect.fn("AgentRuntimeApplication.reconcileStore")(function* (
+    connection: AgentRuntimeApplicationConnection,
+    coordinate: string,
+  ) {
+    const recorded = yield* connection.request("store.coordinate.read", {});
+    if (recorded.coordinate === coordinate) return;
+    const startedAt = yield* Clock.currentTimeMillis;
+    yield* Effect.logInfo("Reconciling Sessions with the conversation store").pipe(
+      Effect.annotateLogs({
+        coordinate,
+        previousCoordinate: recorded.coordinate,
+        runtimeId: connection.identity.runtimeId,
+      }),
+    );
+    const pending = new Set<string>();
+    let after: string | null = null;
+    do {
+      const page: CleanupWindow = yield* readCleanups(connection, after);
+      for (const cleanup of page.items) pending.add(cleanup.runtime_thread_id);
+      after = page.next_cursor ?? null;
+    } while (after !== null);
+    let cursor: string | undefined;
+    let scanned = 0;
+    do {
+      const page = yield* connection.request("execution.roots", { cursor, limit: 200 });
+      yield* Effect.forEach(
+        page.items,
+        (root) =>
+          Effect.gen(function* () {
+            const found = yield* core.workspace.read({
+              kind: "agent_runtime_session_binding_by_execution",
+              runtime_id: connection.identity.runtimeId,
+              runtime_thread_id: root.rootThreadId,
+            });
+            if (found.value.kind !== "agent_runtime_session_binding")
+              return yield* failure("reconcile-store", "Session execution metadata is unavailable");
+            const binding = found.value.binding;
+            if (root.deleted) {
+              if (!binding) return;
+              yield* deleteSessionContent({
+                operationId: createDueWorkOperationId(
+                  "agent-runtime.retire",
+                  `${coordinate}:${root.rootThreadId}`,
+                  { sessionId: binding.session_id },
+                ),
+                payload: { sessionId: binding.session_id },
+              });
+              return;
+            }
+            if (pending.has(root.rootThreadId)) return;
+            if (binding) {
+              yield* reconcileExecution(connection, binding);
+              return;
+            }
+            const project =
+              root.projectId && root.projectId !== options.projectless.engineProjectId
+                ? yield* workspace.getProject(root.projectId)
+                : null;
+            const identity = hash({
+              runtimeId: connection.identity.runtimeId,
+              rootThreadId: root.rootThreadId,
+            });
+            const adopted = {
+              session_id: `runtime:${identity}`,
+              project_id: project?.lifecycle === "active" ? project.id : null,
+              runtime_id: connection.identity.runtimeId,
+              runtime_thread_id: root.rootThreadId,
+              launch_request_id: `adopt:${identity}`,
+            };
+            yield* bindExecution({
+              binding: adopted,
+              operation: {
+                operationId: createDueWorkOperationId(
+                  "agent-runtime.adopt",
+                  `${coordinate}:${root.rootThreadId}`,
+                  adopted,
+                ),
+                intent: {
+                  kind: "create_agent_runtime_session",
+                  ...adopted,
+                  title: root.title,
+                  initial_page_ids: [],
+                },
+              },
+            });
+            yield* reconcileExecution(connection, { ...adopted, bound_at: root.createdAt });
+          }),
+        { concurrency: 4, discard: true },
+      );
+      scanned += page.items.length;
+      cursor = page.nextCursor ?? undefined;
+    } while (cursor !== undefined);
+    // Settle deletions once, so even a large tombstone set stays linear in the number of roots.
+    after = null;
+    do {
+      const page: CleanupWindow = yield* readCleanups(connection, after);
+      yield* Effect.forEach(page.items, (cleanup) => settleCleanup(connection, cleanup), {
+        concurrency: 4,
+        discard: true,
+      });
+      after = page.next_cursor ?? null;
+    } while (after !== null);
+    yield* connection.request("store.coordinate.record", { coordinate });
+    yield* Effect.logInfo("Sessions reconciled with the conversation store").pipe(
+      Effect.annotateLogs({
+        coordinate,
+        roots: scanned,
+        elapsedMs: (yield* Clock.currentTimeMillis) - startedAt,
+      }),
+    );
+  });
+
+  /** Stops all admitted replies using the same control as Stop, then waits for settlement. */
+  const stopRunningReplies = Effect.fn("AgentRuntimeApplication.stopRunningReplies")(
+    function* () {
+      const connection = yield* options.currentConnection;
+      if (!connection) return;
+      const interrupting = new Set<string>();
+      while (true) {
+        let cursor: string | undefined;
+        let running = 0;
+        do {
+          const page = yield* connection.request("execution.activity", { cursor });
+          yield* Effect.forEach(
+            page.items,
+            (root) =>
+              Effect.gen(function* () {
+                if (!root.activeRunId) return;
+                running += 1;
+                const key = `${root.rootThreadId}:${root.activeRunId}`;
+                if (interrupting.has(key)) return;
+                yield* interruptReply(connection, root.rootThreadId, root.activeRunId);
+                interrupting.add(key);
+              }),
+            { concurrency: 4, discard: true },
+          );
+          cursor = page.nextCursor ?? undefined;
+        } while (cursor !== undefined);
+        if (running === 0) return;
+        yield* Effect.sleep(100);
+      }
+    },
+    // Restore was confirmed: a reply that has not settled in time is ended by retiring the Runtime.
+    Effect.timeoutOption("30 seconds"),
+    Effect.flatMap(
+      Option.match({
+        onNone: () =>
+          Effect.logWarning("Replies were still stopping when restore retired the Agent Runtime"),
+        onSome: () => Effect.void,
+      }),
+    ),
+  );
 
   return {
     reconcileSessionActivity: sessionOrdering.reconcile,
@@ -3322,7 +3491,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           return { nativeThreadId: native.nativeId, cwd: bound.thread.worktreePath };
         }),
       ),
-    withExecutionLocationWriter: <A, E, R>(sessionId: string, use: Effect.Effect<A, E, R>) =>
+    withExecutionLocation: <A, E, R>(sessionId: string, use: Effect.Effect<A, E, R>) =>
       withSessionLane(sessionId, ownedWrite("execution-handoff", use)),
     generateStructured: (
       input: import("../../shared/agent-runtime-api").AgentRuntimeStructuredGenerationInput,
@@ -3860,7 +4029,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           if (options.runtimeExists && !(yield* options.runtimeExists))
             return { snapshotSequence: 0, run: null, runtimeRequest: null, nativeBackground: null };
           const connection = yield* options.connect;
-          yield* reconcileProject(connection, projectId, true);
+          yield* reconcileProject(connection, projectId);
           return yield* connection.request("project.activity", { projectId });
         }),
       ),
@@ -4117,6 +4286,9 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     retryPreparation: (input: Parameters<typeof retryPreparation>[0]) =>
       ownedWrite("retry-preparation", retryPreparation(input)),
     reconcileLiveExecutions: () => owned("reconcile-live", reconcileLiveExecutions()),
+    reconcileStore: (connection: AgentRuntimeApplicationConnection, coordinate: string) =>
+      ownedWrite("reconcile-store", host(reconcileStore(connection, coordinate))),
+    stopRunningReplies: () => owned("stop-replies", host(stopRunningReplies())),
     respond: (input: Parameters<typeof respond>[0]) =>
       ownedWrite("respond", respond(input).pipe(Effect.mapError(questionResponseFailure))),
     setModes: (input: Parameters<typeof setModes>[0]) => ownedWrite("mode", setModes(input)),

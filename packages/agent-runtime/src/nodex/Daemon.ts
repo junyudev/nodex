@@ -173,10 +173,6 @@ export async function runAgentRuntimeProcess(): Promise<void> {
           }
           continue;
         }
-        if (request?.method === "storage.snapshot.release") {
-          launch(request);
-          continue;
-        }
         if (request?.method === "shutdown") {
           closing = true;
           launch(request);

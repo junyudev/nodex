@@ -332,8 +332,7 @@ child and background work, retires its source and tool credentials, and waits fo
 terminal acknowledgments and durable detach effects. Metadata saying a connection is
 detached is insufficient while its work or cleanup remains pending. An idle shared Provider
 process may remain resident. Queued messages are preserved; queues explicitly
-held by the user remain held when the move completes. Main holds the Profile snapshot
-writer lease across the complete physical and journal transaction.
+held by the user remain held when the move completes.
 
 The transaction:
 

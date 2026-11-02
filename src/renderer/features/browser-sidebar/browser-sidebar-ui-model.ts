@@ -8,7 +8,8 @@ import {
   type BrowserSidebarLocalServersSnapshot,
   type BrowserSidebarViewport,
 } from "../../../shared/browser-sidebar";
-import { isBlankBrowserUrl, normalizeBrowserNavigationUrl } from "../../../shared/browser-url";
+import { isBlankBrowserUrl } from "../../../shared/browser-url";
+import { normalizeBrowserAddressInput } from "../../../shared/browser-address-input";
 
 export type { BrowserLocalServerShowMode, BrowserLocalServerSortMode };
 
@@ -51,9 +52,9 @@ export function shouldSkipBrowserAddressCommit(target: EventTarget | null): bool
 
 export function shouldCommitBrowserAddressEdit(currentUrl: string, draft: string): boolean {
   const trimmed = draft.trim();
-  if (trimmed.length === 0) return !isBlankBrowserUrl(currentUrl);
+  if (trimmed.length === 0) return false;
   if (trimmed === readBrowserAddressValue(currentUrl)) return false;
-  return normalizeBrowserNavigationUrl(trimmed) !== normalizeBrowserNavigationUrl(currentUrl);
+  return normalizeBrowserAddressInput(draft) !== normalizeBrowserAddressInput(currentUrl);
 }
 
 export function resolveBrowserLocalServerSettings(

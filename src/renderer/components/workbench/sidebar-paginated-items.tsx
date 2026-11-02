@@ -1,10 +1,23 @@
-import { useCallback, useEffect, useEffectEvent, useMemo, useRef, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from "react";
+import { flushSync } from "react-dom";
 import {
   CODEX_SIDEBAR_DEFAULT_PAGER_ROW_CLASS,
   paginateCodexSidebarItems,
   type CodexSidebarPaginationResult,
 } from "@/lib/codex-sidebar-pagination";
 import { CodexSidebarPagerButton } from "./codex-sidebar";
+import { useSidebarPagerMotion } from "./use-sidebar-pager-motion";
 
 /** A source the list reads in bounded windows after its first loaded rows. */
 export interface SidebarPaginatedSource {
@@ -17,7 +30,7 @@ export interface SidebarPaginatedSource {
 }
 
 export interface SidebarPaginatedItemsProps<T> {
-  readonly items: T[];
+  readonly items: readonly T[];
   readonly getKey: (item: T) => string;
   readonly maxItems?: number | null;
   /** Show more steps beyond the first page. The owner decides how long it is remembered. */
@@ -29,6 +42,13 @@ export interface SidebarPaginatedItemsProps<T> {
   readonly source?: SidebarPaginatedSource;
   readonly children: (pagination: CodexSidebarPaginationResult<T>, pager: ReactNode) => ReactNode;
 }
+
+interface SidebarPaginatedRowsMotion {
+  readonly clipRef: RefObject<HTMLDivElement | null>;
+  readonly contentRef: RefObject<HTMLDivElement | null>;
+}
+
+const SidebarPaginatedRowsContext = createContext<SidebarPaginatedRowsMotion | null>(null);
 
 export function SidebarPaginatedItems<T>({
   items,
@@ -43,21 +63,37 @@ export function SidebarPaginatedItems<T>({
   children,
 }: SidebarPaginatedItemsProps<T>) {
   const focusRestoreTargetRef = useRef<HTMLButtonElement | null>(null);
-  const expanded = extraPages > 0;
   const hasMoreAtSource = source?.hasMore ?? false;
+  // While Show less folds the list, the rows it hides stay on screen at this depth.
+  const [heldExtraPages, setHeldExtraPages] = useState<number | null>(null);
 
-  const pagination = useMemo(
-    () =>
+  const paginate = useCallback(
+    (depth: number) =>
       paginateCodexSidebarItems({
         items,
         getKey,
         maxItems,
-        extraPages,
+        extraPages: depth,
         forcedVisibleKey,
         suppressedKeys,
         pagerEnabled: Boolean(onExtraPagesChange),
+        moreAtSource: hasMoreAtSource,
       }),
-    [extraPages, forcedVisibleKey, getKey, items, maxItems, onExtraPagesChange, suppressedKeys],
+    [
+      forcedVisibleKey,
+      getKey,
+      hasMoreAtSource,
+      items,
+      maxItems,
+      onExtraPagesChange,
+      suppressedKeys,
+    ],
+  );
+  // The pager and source filling follow the owner's depth; the rows follow a fold in flight.
+  const pagination = useMemo(() => paginate(extraPages), [extraPages, paginate]);
+  const shown = useMemo(
+    () => (heldExtraPages === null ? pagination : paginate(heldExtraPages)),
+    [heldExtraPages, paginate, pagination],
   );
 
   // Keep one row beyond the revealed depth loaded, so a remembered depth refills itself
@@ -78,21 +114,61 @@ export function SidebarPaginatedItems<T>({
     if (fillRequest !== null) loadMore();
   }, [fillRequest]);
 
+  const { clipRef, contentRef, contentHeight, fold, hold, interruptFold } = useSidebarPagerMotion(
+    !fillsFromSource && !source?.loading,
+  );
+  const rowsMotion = useMemo(() => ({ clipRef, contentRef }), [clipRef, contentRef]);
+
+  // The pressed button can unmount when its direction runs out; keep focus on the pager
+  // without scrolling the sidebar to it.
   const restorePagerFocus = useCallback(() => {
     queueMicrotask(() => {
-      focusRestoreTargetRef.current?.focus();
+      focusRestoreTargetRef.current?.focus({ preventScroll: true });
     });
   }, []);
 
   const showMore = useCallback(() => {
+    // A press during a fold lets the rows it still covers go and unfolds from there.
+    interruptFold();
+    setHeldExtraPages(null);
+    hold();
     onExtraPagesChange?.(extraPages + 1);
     restorePagerFocus();
-  }, [extraPages, onExtraPagesChange, restorePagerFocus]);
+  }, [extraPages, hold, interruptFold, onExtraPagesChange, restorePagerFocus]);
 
+  const { lessExtraPages } = pagination;
   const showLess = useCallback(() => {
-    onExtraPagesChange?.(0);
+    if (lessExtraPages === null) return;
+    interruptFold();
+    const onScreen = heldExtraPages ?? extraPages;
+    if (!hold()) {
+      setHeldExtraPages(null);
+      onExtraPagesChange?.(lessExtraPages);
+      restorePagerFocus();
+      return;
+    }
+    // Lay out the rows that remain to learn the list's folded height, then bring back the
+    // rows on screen before the frame paints and fold the list up past them.
+    flushSync(() => {
+      setHeldExtraPages(null);
+      onExtraPagesChange?.(lessExtraPages);
+    });
+    const foldedHeight = contentHeight();
+    flushSync(() => setHeldExtraPages(onScreen));
+    if (foldedHeight === null) setHeldExtraPages(null);
+    else fold(foldedHeight, () => setHeldExtraPages(null));
     restorePagerFocus();
-  }, [onExtraPagesChange, restorePagerFocus]);
+  }, [
+    contentHeight,
+    extraPages,
+    fold,
+    heldExtraPages,
+    hold,
+    interruptFold,
+    lessExtraPages,
+    onExtraPagesChange,
+    restorePagerFocus,
+  ]);
 
   const hasOverflow = pagination.hasOverflow || hasMoreAtSource;
   const pager =
@@ -103,7 +179,7 @@ export function SidebarPaginatedItems<T>({
             Show more
           </CodexSidebarPagerButton>
         ) : null}
-        {expanded ? (
+        {lessExtraPages !== null ? (
           <CodexSidebarPagerButton
             ref={hasOverflow ? undefined : focusRestoreTargetRef}
             onClick={showLess}
@@ -114,5 +190,24 @@ export function SidebarPaginatedItems<T>({
       </div>
     ) : null;
 
-  return <>{children(pagination, pager)}</>;
+  return (
+    <SidebarPaginatedRowsContext value={rowsMotion}>
+      {children(shown, pager)}
+    </SidebarPaginatedRowsContext>
+  );
+}
+
+/**
+ * The rows of a paginated list, with its pager rendered after this box. Pager presses ease
+ * the box's height to the rows' new height while the pager rides its edge.
+ */
+export function SidebarPaginatedRows({ children }: { readonly children: ReactNode }) {
+  const motion = useContext(SidebarPaginatedRowsContext);
+  return (
+    <div ref={motion?.clipRef} data-sidebar-paginated-rows="">
+      <div ref={motion?.contentRef} className="flex flex-col">
+        {children}
+      </div>
+    </div>
+  );
 }

@@ -29,7 +29,7 @@ export const CORE_CLIENT_REQUIREMENTS = {
     },
     {
       "module": "store_administration",
-      "contract_version": 9
+      "contract_version": 10
     },
     {
       "module": "query",

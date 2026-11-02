@@ -3,6 +3,7 @@ import {
   Menu,
   session,
   shell,
+  systemPreferences,
   webContents,
   type MenuItemConstructorOptions,
   type WebContents,
@@ -42,6 +43,7 @@ export type BrowserWebContentsLike = Pick<
     options?: { forward?: boolean; findNext?: boolean; matchCase?: boolean },
   ) => number;
   isCurrentlyAudible?: () => boolean;
+  isCrashed?: () => boolean;
   navigationHistory?: {
     clear?(): void;
     getActiveIndex(): number;
@@ -64,12 +66,14 @@ export type BrowserWebContentsLike = Pick<
     callback: (success: boolean, failureReason: string) => void,
   ) => void;
   on(eventName: string, listener: (...args: unknown[]) => void): BrowserWebContentsLike;
+  once(eventName: string, listener: (...args: unknown[]) => void): BrowserWebContentsLike;
   removeListener(eventName: string, listener: (...args: unknown[]) => void): BrowserWebContentsLike;
   stopFindInPage?: (action: "clearSelection" | "keepSelection" | "activateSelection") => void;
 };
 
 /** Stateless Electron adapter for the Browser aggregate's synchronous physical operations. */
 export interface BrowserElectronPlatform {
+  readonly getMediaAccessStatus?: typeof systemPreferences.getMediaAccessStatus;
   readonly sessionFromPartition: typeof session.fromPartition;
   readonly openExternal: typeof shell.openExternal;
   readonly presentContextMenu: (
@@ -80,6 +84,7 @@ export interface BrowserElectronPlatform {
 }
 
 export const browserElectronPlatform: BrowserElectronPlatform = {
+  getMediaAccessStatus: (mediaType) => systemPreferences.getMediaAccessStatus(mediaType),
   sessionFromPartition: (partition) => session.fromPartition(partition),
   openExternal: (url, options) => shell.openExternal(url, options),
   presentContextMenu: (template, ownerWebContentsId) => {

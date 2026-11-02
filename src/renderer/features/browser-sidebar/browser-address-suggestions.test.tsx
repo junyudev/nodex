@@ -83,6 +83,26 @@ function renderAddress(source: BrowserAddressSuggestionsSource, url = "about:bla
 }
 
 describe("New tab address combobox", () => {
+  test.each(["about:blank", "https://example.com", "file:///tmp/page.html"])(
+    "does not navigate when submitting or blurring empty input from %s",
+    async (url) => {
+      const view = renderAddress({ useWorkspaceSuggestions: () => [] }, url);
+      await settleAsyncRender();
+      const input = view.getByPlaceholderText("Search or enter a URL") as HTMLInputElement;
+      await interact(() => {
+        input.focus();
+        fireEvent.change(input, { target: { value: "   " } });
+      });
+      await interact(() => fireEvent.submit(input.closest("form")!));
+      expect(navigations()).toEqual([]);
+      await interact(() => {
+        fireEvent.change(input, { target: { value: "" } });
+        input.blur();
+      });
+      expect(navigations()).toEqual([]);
+    },
+  );
+
   test("wraps keyboard selection, ignores composition, accepts a tool, and dismisses with Escape before restoring on a second Escape", async () => {
     const selectTool = vi.fn();
     const selectTab = vi.fn();
@@ -195,7 +215,7 @@ describe("New tab address combobox", () => {
     });
     await interact(() => blankInput.blur());
     expect(navigations().at(-1)).toMatchObject({
-      url: "https://www.google.com/search?q=a%20search",
+      url: "https://www.google.com/search?q=a+search",
     });
     expect(blank.queryByRole("listbox")).toBeNull();
   });

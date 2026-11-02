@@ -26,7 +26,9 @@ describe("browser-sidebar-ui-model", () => {
   test("commits address edits only for meaningful URL changes", () => {
     expect(shouldCommitBrowserAddressEdit("https://www.google.com/", "google.com")).toBe(false);
     expect(shouldCommitBrowserAddressEdit("about:blank", "")).toBe(false);
-    expect(shouldCommitBrowserAddressEdit("https://example.com", "")).toBe(true);
+    expect(shouldCommitBrowserAddressEdit("https://example.com", "")).toBe(false);
+    expect(shouldCommitBrowserAddressEdit("file:///tmp/page.html", "/tmp/page.html")).toBe(false);
+    expect(shouldCommitBrowserAddressEdit("file:///tmp/page.html", "/tmp/page.html\n")).toBe(true);
     expect(shouldCommitBrowserAddressEdit("https://example.com", "openai.com")).toBe(true);
   });
 

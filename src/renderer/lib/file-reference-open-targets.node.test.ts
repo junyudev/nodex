@@ -41,6 +41,7 @@ test("uses actual native applications and routes them by appPath", async () => {
       name: "Preview",
       appPath: "/Applications/Preview.app",
       iconDataUrl: "data:image/png;base64,AA==",
+      isSystemDefault: true,
     },
     applications: [],
   });
@@ -51,6 +52,7 @@ test("uses actual native applications and routes them by appPath", async () => {
     label: "Preview",
     appPath: "/Applications/Preview.app",
     iconUrl: "data:image/png;base64,AA==",
+    isSystemDefault: true,
   });
   expect(await openFileReferenceTarget(targets.primary!, { path: "/repo/diagram.pdf" })).toBe(true);
   expect(operations.openApplication).toHaveBeenCalledWith({
@@ -58,6 +60,32 @@ test("uses actual native applications and routes them by appPath", async () => {
     appPath: "/Applications/Preview.app",
   });
   expect(operations.open).not.toHaveBeenCalled();
+});
+
+test("keeps the OS default marker on the association when a viewer is promoted", async () => {
+  operations.native.mockResolvedValue({
+    defaultApplication: {
+      name: "Preview",
+      appPath: "/Applications/Preview.app",
+      iconDataUrl: null,
+      isSystemDefault: false,
+    },
+    applications: [
+      {
+        name: "PDF Reader",
+        appPath: "/Applications/PDF Reader.app",
+        iconDataUrl: null,
+        isSystemDefault: true,
+      },
+    ],
+  });
+  const targets = await readFileReferenceOpenTargets("/repo/report.pdf");
+  expect(targets.primary).toEqual(
+    expect.objectContaining({ label: "Preview", isSystemDefault: false }),
+  );
+  expect(targets.alternatives.filter((target) => target.isSystemDefault)).toEqual([
+    expect.objectContaining({ label: "PDF Reader", appPath: "/Applications/PDF Reader.app" }),
+  ]);
 });
 
 test.each(["empty", "failed"])(

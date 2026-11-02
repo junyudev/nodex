@@ -1,3 +1,4 @@
+import { buildTurnRenderModel } from "./projection/build-turn-render-model";
 import { describe, expect, test, vi } from "vite-plus/test";
 import type {
   AgentEvent,
@@ -335,6 +336,132 @@ describe("Agent Runtime reply phases", () => {
       },
     });
 
+  test.each(["claude", "codex", "opencode2"])(
+    "%s response starts survive streaming, settlement, older pages and a cold snapshot",
+    async (provider) => {
+      const responseStart = "2026-10-14T00:00:03.000Z";
+      const responseEnd = "2026-10-14T00:00:04.000Z";
+      const user: AgentTurnItem = {
+        ...base("user", 0),
+        type: "user_message",
+        messageId: "user-message",
+        text: "Check the result",
+        attachments: [],
+        inputIntent: "turn_start",
+        createdBy: "user",
+        creationSource: "web",
+      };
+      const first = { ...message("first-reply", 3), startedAt: "2026-10-14T00:00:02.000Z" };
+      const final = {
+        ...message("final-reply", 4),
+        startedAt: responseStart,
+        completedAt: responseEnd,
+        providerThreadId: `${provider}-thread`,
+        providerTurnId: `${provider}-turn`,
+        nativeItemRef: {
+          driver: provider,
+          nativeId: `${provider}-assistant`,
+          strength: "strong" as const,
+        },
+      };
+      const running = { ...final, status: "running" as const, streaming: true, completedAt: null };
+      const forProvider = (value: AgentRuntimeConversation): AgentRuntimeConversation => ({
+        ...value,
+        snapshot: {
+          ...value.snapshot,
+          projection: {
+            ...value.snapshot.projection,
+            thread: { ...value.snapshot.projection.thread, providerInstanceId: provider },
+            runs: value.snapshot.projection.runs.map((run) => ({
+              ...run,
+              providerInstanceId: provider,
+            })),
+          },
+        },
+      });
+      const initial = forProvider(
+        conversation([user, message("narration", 1), command(2)], "older"),
+      );
+      const older = { ...message("older-commentary", -1), startedAt: "2026-10-14T01:00:00.000Z" };
+      const { owner, wire, release } = await open(initial, [
+        {
+          snapshotSequence: 1,
+          items: [row(older)],
+          nextCursor: null,
+          hasMoreHistory: false,
+        },
+      ]);
+      const expectStart = (current: AgentRuntimeConversationOwner) => {
+        expect(current.readOwner.readTurn(entityKey)?.finalAssistantStartedAtMs).toBe(
+          Date.parse(responseStart),
+        );
+        // Runtime Runs and provider item starts need not share a host clock. No work anchor is invented.
+        expect(current.readOwner.readTurn(entityKey)?.firstTurnWorkItemStartedAtMs).toBeNull();
+      };
+      try {
+        wire.emit(event(first, 2));
+        wire.emit(event(running, 3));
+        expectStart(owner);
+        wire.emit(event({ ...running, text: "Updated final response" }, 4));
+        expectStart(owner);
+        wire.emit(event(final, 5));
+        complete(wire, initial, 6);
+        expectStart(owner);
+        expect(phases(owner, ["narration", "first-reply", "final-reply"])).toEqual([
+          "commentary",
+          "final_answer",
+          "final_answer",
+        ]);
+        const render = buildTurnRenderModel({
+          turn: owner.readOwner.readTurn(entityKey)!,
+          requests: [],
+          isLatestTurn: true,
+          isStreamingTurn: false,
+        });
+        expect(render.buckets.latestAssistantMessage?.assistantMessageActions?.sentAtMs).toBe(
+          Date.parse(responseStart),
+        );
+        expect(render.workedForItem).toBeNull();
+        await owner.loadHistoryBoundary(historyBoundary(owner));
+        expectStart(owner);
+        const persisted = forProvider(
+          settle(conversation([older, user, message("narration", 1), command(2), first, final])),
+        );
+        const reopened = await open(persisted);
+        try {
+          expectStart(reopened.owner);
+        } finally {
+          reopened.release();
+        }
+      } finally {
+        release();
+      }
+    },
+  );
+
+  test("timing-only corrections publish a Turn and a new untimed response cannot inherit an older start", async () => {
+    const initial = settle(conversation([message("first", 1)]));
+    const { owner, wire, release } = await open(initial);
+    const changed = vi.fn();
+    const stop = owner.readOwner.subscribeTurn(entityKey, changed);
+    try {
+      const correctedAt = "2026-10-14T00:00:05.000Z";
+      wire.emit(event({ ...message("first", 1), startedAt: correctedAt }));
+      expect(owner.readOwner.readTurn(entityKey)?.finalAssistantStartedAtMs).toBe(
+        Date.parse(correctedAt),
+      );
+      expect(changed).toHaveBeenCalledOnce();
+      wire.emit(event({ ...message("second", 2), startedAt: null }, 3));
+      expect(owner.readOwner.readTurn(entityKey)?.finalAssistantStartedAtMs).toBeNull();
+      expect(owner.readOwner.readItem(entityKey, "second")).toMatchObject({
+        completedAtMs: Date.parse(at),
+      });
+    } finally {
+      stop();
+      release();
+    }
+  });
+
   test("publishes running messages as commentary, including live replacements", async () => {
     const { owner, wire, release } = await open(conversation([message("first", 1)]));
     try {
@@ -540,6 +667,7 @@ describe("Agent Runtime reply phases", () => {
     try {
       await owner.loadHistoryBoundary(historyBoundary(owner));
       expect(published).toHaveBeenCalledOnce();
+      expect(owner.readOwner.readTurn(olderKey)?.finalAssistantStartedAtMs).toBe(Date.parse(at));
       expect(published.mock.results[0]?.value).toMatchObject([
         { phase: "commentary" },
         { phase: "final_answer" },

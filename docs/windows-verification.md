@@ -16,8 +16,9 @@ on each CPU. Core-client exercises the real Rust Core over named pipes under hos
 Node; Main and integration use Electron's ABI. It is described in [CI](CI.md); packaging and artifacts are described in
 [the Windows release runbook](release-windows.md).
 
-Main's private files and snapshot rendezvous use the bundled Core's one-shot native
-filesystem command. The suites verify the actual owner and protected permissions,
+Main's private files use the bundled Core's one-shot native filesystem command.
+Content backups and online execution clones use the native platform filesystem
+boundary, including private destination files and reparse-point rejection. The suites verify the actual owner and protected permissions,
 without depending on a PowerShell runtime. The typed suite owners prepare that Core
 executable before either host Node or Electron starts the tests.
 

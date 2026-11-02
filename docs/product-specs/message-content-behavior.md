@@ -29,6 +29,18 @@ beside it renders by the same Markdown rules.
 There is no second message format. Every surface that accepts written input
 reads it as message text, and every surface that shows it renders the result.
 
+## Opening links and files
+
+User-message file links use the actual primary native destination. Assistant
+file references use a Files preview; citations and double-click retain the tab.
+Local `.html` and `.htm` files without a line location or explicit native target
+open in Nodex's Browser when available, independently of URL preferences.
+Remote paths keep their execution host. Web links in either message use the
+shared destination settings, modifiers and conversation Browser context described
+in [Workbench shell](workbench-shell.md#link-opening). Page and Session links
+remain app destinations. Detailed file gestures and menus belong to
+[Transcript behavior](codex-thread-transcript-behavior.md).
+
 ## Composers
 
 A Composer edits message text. The text is what the user types, shown as typed;

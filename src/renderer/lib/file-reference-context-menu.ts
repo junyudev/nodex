@@ -3,7 +3,8 @@ import { getFileManagerRevealLabel } from "../../shared/file-link-openers";
 import type { NativeContextMenuItem } from "../../shared/native-context-menu";
 import { showNativeContextMenu } from "./native-context-menu";
 import { writeTextToClipboard } from "./clipboard";
-import { openExternalUrl } from "./file-system-operations";
+import { openLink } from "./link-opening";
+import { isBrowserHtmlFilePath } from "../../shared/browser-url-policy";
 import {
   openFileReferenceTarget,
   readFileReferenceOpenTargets,
@@ -25,6 +26,9 @@ export interface FileReferenceContextMenuRequest {
   readonly y: number;
   readonly isCurrent?: () => boolean;
   readonly includeOpenFile?: boolean;
+  readonly sidePanel?: boolean;
+  readonly browserAvailable?: boolean;
+  readonly openLink?: typeof openLink;
 }
 
 export interface CapturedFileReferenceContextMenu {
@@ -39,7 +43,10 @@ export async function buildFileReferenceContextMenu({
   label,
   open,
   isCurrent = () => true,
-  includeOpenFile = true,
+  includeOpenFile,
+  sidePanel = includeOpenFile ?? true,
+  browserAvailable = false,
+  openLink: openUrl = openLink,
 }: Omit<FileReferenceContextMenuRequest, "x" | "y">): Promise<CapturedFileReferenceContextMenu> {
   const empty: CapturedFileReferenceContextMenu = { items: [], select: async () => undefined };
   if (!isCurrent()) return empty;
@@ -61,13 +68,19 @@ export async function buildFileReferenceContextMenu({
     return { id, label, ...extras };
   };
   const items: NativeContextMenuItem[] = [];
-  if (includeOpenFile)
+  if (sidePanel)
     items.push(
       item(
         "file-reference:open",
         "Open file",
-        () => open(target, { title: label, mode: "preview" }),
+        () => open(target, { hostId, title: label, mode: "preview", sidePanel: true }),
         { iconKey: "folder" },
+      ),
+    );
+  if (!sidePanel && hostId === "local" && browserAvailable && isBrowserHtmlFilePath(target.path))
+    items.push(
+      item("file-reference:browser", "View in browser", () =>
+        open(target, { hostId, sidePanel: false }),
       ),
     );
   if (targets.primary) {
@@ -96,7 +109,11 @@ export async function buildFileReferenceContextMenu({
     });
   }
   if (github)
-    items.push(item("file-reference:github", "Open in GitHub", () => openExternalUrl(github)));
+    items.push(
+      item("file-reference:github", "Open in GitHub", () =>
+        openUrl({ url: github, hostId, initiator: "file_context_menu" }),
+      ),
+    );
   if (targets.primary || github) items.push({ type: "separator" });
   items.push(
     item("file-reference:save", "Save as…", async () => {

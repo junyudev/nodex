@@ -53,6 +53,8 @@ import {
 import { cn } from "../../lib/utils";
 
 const HOOK_EVENT_DESCRIPTIONS: Record<HookEventName, string> = {
+  preModelRequest: "Before a model request",
+  postModelRequest: "After a model response",
   preToolUse: "Before a tool executes",
   permissionRequest: "When permission is requested",
   postToolUse: "After a tool executes",

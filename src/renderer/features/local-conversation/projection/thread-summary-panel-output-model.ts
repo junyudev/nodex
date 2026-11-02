@@ -1,3 +1,4 @@
+import type { WorkspacePathState } from "../../../../shared/types";
 import type { ThreadItem } from "@nodex/codex-app-server-protocol/v2";
 import type { CodexConversationItem, CodexConversationTurn } from "../../../lib/types";
 import { getCodexFileChangeEntries } from "../../../../shared/codex-file-change";
@@ -82,10 +83,10 @@ export type ThreadSummaryPanelOutputOpenTarget =
   | { type: "file"; path: string }
   | { type: "url"; url: string };
 
-export interface CollectTurnEndResourcePathsOptions {
+export interface TurnOutputOptions {
   cwd?: string | null;
   projectlessOutputDirectory?: string | null;
-  includeAppgenResources?: boolean;
+  pathStates?: ReadonlyMap<string, WorkspacePathState | null>;
 }
 
 interface MarkdownLink {
@@ -121,22 +122,24 @@ interface ThreadSummaryPanelTurnArtifacts {
   referencedFilePaths: string[];
 }
 
-const MAX_SUMMARY_PANEL_OUTPUT_ROWS = 5;
+export const MAX_SUMMARY_PANEL_OUTPUT_ROWS = 5;
 const IMAGE_EXTENSION_PATTERN = /\.(?:apng|avif|gif|jpe?g|png|svg|webp)$/iu;
 const FILE_REFERENCE_PATTERN = /\u3010([^\u2020\u3011\n]+)\u2020L\d+(?:-L\d+)?\u3011/gu;
 const URL_PATTERN = /\bhttps?:\/\/[^\s<>)"'`]+/giu;
 const URL_TRAILING_PUNCTUATION_PATTERN = /[.,;!?]+$/u;
 const LOCAL_URL_UNSAFE_PATH_PATTERN = /[()[\]]/u;
-const LOCAL_WEBSITE_FILE_EXTENSION_PATTERN = /\.(?:html?|xhtml)$/iu;
 const APPGEN_MCP_SERVER = "codex_apps";
 const APPGEN_MCP_TOOL_PATTERN = /^sites[._]/u;
 const MARKDOWN_LINK_ESCAPABLE_CHARACTERS = new Set(" !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~");
-const MARKDOWN_OUTPUT_EXTENSIONS = new Set([
+const OUTPUT_FILE_EXTENSIONS = new Set([
   "avif",
   "csv",
   "doc",
   "docx",
   "gif",
+  "htm",
+  "html",
+  "xhtml",
   "jpeg",
   "jpg",
   "md",
@@ -262,9 +265,9 @@ function normalizeOutputExtension(path: string): string | null {
   return name.slice(index + 1);
 }
 
-function hasMarkdownOutputExtension(path: string): boolean {
+function hasDeliverableExtension(path: string): boolean {
   const extension = normalizeOutputExtension(path);
-  return extension !== null && MARKDOWN_OUTPUT_EXTENSIONS.has(extension);
+  return extension !== null && OUTPUT_FILE_EXTENSIONS.has(extension);
 }
 
 function normalizeMarkdownOutputPath(
@@ -670,7 +673,7 @@ function collectMarkdownLinkedOutputs(
   cwd: string | null | undefined,
   googleDriveTitles: ReadonlyMap<string, string>,
   projectlessOutputDirectory: string | null | undefined,
-  policy?: {
+  policy: {
     readonly referencedPaths: readonly string[];
     readonly hasCitations: boolean;
     readonly readResourceKeys: ReadonlySet<string>;
@@ -682,10 +685,9 @@ function collectMarkdownLinkedOutputs(
     const googleDrive = resolveGoogleDriveResource(normalizedUrl);
     if (googleDrive) {
       if (
-        policy &&
-        (policy.hasCitations ||
-          policy.suppressUnmatchedReadResources ||
-          policy.readResourceKeys.has(googleDrive.key))
+        policy.hasCitations ||
+        policy.suppressUnmatchedReadResources ||
+        policy.readResourceKeys.has(googleDrive.key)
       )
         return [];
       const title = googleDriveTitles.get(googleDrive.key) ?? link.label;
@@ -702,18 +704,15 @@ function collectMarkdownLinkedOutputs(
     }
 
     const path = normalizeMarkdownOutputPath(link.destination, cwd);
-    if (!path) return [];
-    if (policy) {
-      if (!LINK_OUTPUT_EXTENSIONS.has(normalizeOutputExtension(path) ?? "")) return [];
-      if (isScratchOutputPath(path, cwd)) return [];
-      if (
-        policy.referencedPaths.some(
-          (reference) =>
-            normalizeOutputIdentity(reference, cwd) === normalizeOutputIdentity(path, cwd),
-        )
+    if (!path || !LINK_OUTPUT_EXTENSIONS.has(normalizeOutputExtension(path) ?? "")) return [];
+    if (isScratchOutputPath(path, cwd)) return [];
+    if (
+      policy.referencedPaths.some(
+        (reference) =>
+          normalizeOutputIdentity(reference, cwd) === normalizeOutputIdentity(path, cwd),
       )
-        return [];
-    } else if (!hasMarkdownOutputExtension(path)) return [];
+    )
+      return [];
     if (
       !isResourceInsideProjectlessOutputDirectory({
         cwd,
@@ -879,12 +878,19 @@ function collectReferencedArtifactPaths(item: CodexConversationItem): string[] {
   });
 }
 
-function collectEditedArtifactPaths(item: CodexConversationItem, completedOnly: boolean): string[] {
-  if (completedOnly && (asRecord(item.rawItem)?.status ?? item.status) !== "completed") return [];
+function collectEditedArtifactPaths(item: CodexConversationItem): string[] {
+  if ((asRecord(item.rawItem)?.status ?? item.status) !== "completed") return [];
   const entries = getCodexFileChangeEntries(item.fileChange?.changes);
   return entries.flatMap(([path, patch]) => {
-    if (patch.type === "delete") return [];
-    const outputPath = patch.type === "update" && patch.movePath ? patch.movePath : path;
+    if (
+      patch.type === "delete" ||
+      (patch.type === "nonRenderable" && patch.originalType === "delete")
+    )
+      return [];
+    const outputPath =
+      (patch.type === "update" || patch.type === "nonRenderable") && patch.movePath
+        ? patch.movePath
+        : path;
     const normalized = normalizeArtifactPath(outputPath);
     return normalized ? [normalized] : [];
   });
@@ -892,7 +898,7 @@ function collectEditedArtifactPaths(item: CodexConversationItem, completedOnly: 
 
 function collectTurnArtifacts(
   turn: CodexConversationTurn,
-  completedOnly = false,
+  cwd: string | null | undefined,
 ): ThreadSummaryPanelTurnArtifacts {
   const editedFilePaths: string[] = [];
   const outputFilePaths: string[] = [];
@@ -903,7 +909,7 @@ function collectTurnArtifacts(
   const visualizationPaths = new Set<string>();
 
   for (const item of turn.items) {
-    for (const path of collectEditedArtifactPaths(item, completedOnly)) {
+    for (const path of collectEditedArtifactPaths(item)) {
       addArtifactPath(editedSeen, editedFilePaths, path);
     }
 
@@ -915,7 +921,10 @@ function collectTurnArtifacts(
     const references = readTurnArtifactReferences(text);
     for (const path of references.visualizationPaths) {
       const normalized = normalizeArtifactPath(path);
-      if (normalized) visualizationPaths.add(normalized.toLowerCase());
+      if (normalized) {
+        visualizationPaths.add(normalizeOutputIdentity(normalized, cwd));
+        addArtifactPath(referencedSeen, referencedFilePaths, normalized);
+      }
     }
     for (const citation of references.citations) {
       if (citation.mode === "live" || isHttpUrl(citation.path)) continue;
@@ -927,8 +936,12 @@ function collectTurnArtifacts(
   }
 
   return {
-    editedFilePaths: editedFilePaths.filter((path) => !visualizationPaths.has(path.toLowerCase())),
-    outputFilePaths: outputFilePaths.filter((path) => !visualizationPaths.has(path.toLowerCase())),
+    editedFilePaths: editedFilePaths.filter(
+      (path) => !visualizationPaths.has(normalizeOutputIdentity(path, cwd)),
+    ),
+    outputFilePaths: outputFilePaths.filter(
+      (path) => !visualizationPaths.has(normalizeOutputIdentity(path, cwd)),
+    ),
     referencedFilePaths,
   };
 }
@@ -943,72 +956,6 @@ function isScratchOutputPath(path: string, cwd: string | null | undefined): bool
     const scratch = normalizeOutputIdentity(root, cwd);
     return identity === scratch || identity.startsWith(`${scratch}/`);
   });
-}
-
-function isMarkdownReferenceExcludedFromEndCardResource(path: string): boolean {
-  const extension = normalizeOutputExtension(path);
-  return extension === "md" || extension === "mdx";
-}
-
-function collectTurnArtifactFileOutputs(
-  artifacts: ThreadSummaryPanelTurnArtifacts,
-  cwd: string | null | undefined,
-  projectlessOutputDirectory: string | null | undefined,
-): ThreadSummaryPanelOutputDraft[] {
-  const outputs: ThreadSummaryPanelOutputDraft[] = [];
-  const seen = new Set<string>();
-
-  const pushPath = (path: string) => {
-    if (!hasMarkdownOutputExtension(path)) return;
-    if (
-      !isResourceInsideProjectlessOutputDirectory({
-        cwd,
-        projectlessOutputDirectory,
-        resourcePath: path,
-      })
-    )
-      return;
-
-    const outputPath = resolveOutputPath(path, cwd);
-    const key = normalizePathSegments(outputPath).toLowerCase();
-    if (seen.has(key)) return;
-
-    seen.add(key);
-    outputs.push({ kind: "file", path: outputPath });
-  };
-
-  for (const path of artifacts.editedFilePaths) pushPath(path);
-  for (const path of artifacts.referencedFilePaths) {
-    if (!isMarkdownReferenceExcludedFromEndCardResource(path)) pushPath(path);
-  }
-
-  return outputs;
-}
-
-function resolveSingleEditedWebsiteTarget(
-  artifacts: ThreadSummaryPanelTurnArtifacts,
-  cwd: string | null | undefined,
-  projectlessOutputDirectory: string | null | undefined,
-): string | null {
-  const targets = new Map<string, string>();
-
-  for (const path of artifacts.editedFilePaths) {
-    if (!LOCAL_WEBSITE_FILE_EXTENSION_PATTERN.test(path)) continue;
-    if (
-      !isResourceInsideProjectlessOutputDirectory({
-        cwd,
-        projectlessOutputDirectory,
-        resourcePath: path,
-      })
-    )
-      continue;
-
-    const target = resolveOutputPath(path, cwd);
-    const key = normalizePathSegments(target).toLowerCase();
-    if (!targets.has(key)) targets.set(key, target);
-  }
-
-  return targets.size === 1 ? (targets.values().next().value ?? null) : null;
 }
 
 function isPathOutputDraft(
@@ -1067,134 +1014,37 @@ function isCompletedTurn(turn: CodexConversationTurn): boolean {
   return turn.status === "completed" || String(turn.status) === "complete";
 }
 
-function collectAssistantTextByTurn(turn: CodexConversationTurn): string | null {
-  const text = turn.items
-    .flatMap((item) => {
-      const assistantText = resolveAssistantText(item);
-      return assistantText ? [assistantText] : [];
-    })
-    .join("\n");
-
-  return text.length > 0 ? text : null;
-}
-
-function collectOutputDrafts(
-  turns: readonly CodexConversationTurn[],
-  cwd: string | null | undefined,
-  projectlessOutputDirectory: string | null | undefined,
-): ThreadSummaryPanelOutputDraft[] {
-  const outputs = new Map<string, ThreadSummaryPanelOutputDraft>();
-
-  for (const turn of turns) {
-    const assistantText = collectAssistantTextByTurn(turn);
-    const turnArtifacts = collectTurnArtifacts(turn);
-
-    for (const path of turnArtifacts.referencedFilePaths) {
-      if (
-        !isResourceInsideProjectlessOutputDirectory({
-          cwd,
-          projectlessOutputDirectory,
-          resourcePath: path,
-        })
-      )
-        continue;
-      addOutput(outputs, { kind: "file", path: resolveOutputPath(path, cwd) });
-    }
-
-    for (const item of turn.items) {
-      if (item.type === "imageGeneration") {
-        const path = resolveImageGenerationPath(item);
-        if (
-          path &&
-          isResourceInsideProjectlessOutputDirectory({
-            cwd,
-            projectlessOutputDirectory,
-            resourcePath: path,
-          })
-        ) {
-          addOutput(outputs, { kind: "generated-image", path: resolveOutputPath(path, cwd) });
-        }
-        continue;
-      }
-
-      if (item.type === "imageView") {
-        const path = resolveImageViewPath(item);
-        if (
-          path &&
-          isResourceInsideProjectlessOutputDirectory({
-            cwd,
-            projectlessOutputDirectory,
-            resourcePath: path,
-          })
-        ) {
-          addOutput(outputs, { kind: "image", path: resolveOutputPath(path, cwd) });
-        }
-      }
-    }
-
-    if (!isCompletedTurn(turn)) continue;
-
-    const googleDriveTitles = collectGoogleDriveTitleMap(turn);
-    const linkedOutputs = collectMarkdownLinkedOutputs(
-      assistantText,
-      cwd,
-      googleDriveTitles,
-      projectlessOutputDirectory,
-    );
-    const artifactFileOutputs = collectTurnArtifactFileOutputs(
-      turnArtifacts,
-      cwd,
-      projectlessOutputDirectory,
-    );
-    const appgenOutputs = collectAppgenArtifacts(turn);
-    for (const output of linkedOutputs) addOutput(outputs, output);
-    for (const output of artifactFileOutputs) addOutput(outputs, output);
-    for (const output of appgenOutputs) addOutput(outputs, output);
-
-    const hasFileResource =
-      linkedOutputs.some((output) => output.kind === "file") || artifactFileOutputs.length > 0;
-    if (hasFileResource || appgenOutputs.length > 0) continue;
-
-    const websiteTarget = resolveSingleLocalWebsiteUrl(assistantText);
-    if (websiteTarget) {
-      addOutput(outputs, { kind: "website", target: websiteTarget });
-      continue;
-    }
-
-    const editedWebsiteTarget = resolveSingleEditedWebsiteTarget(
-      turnArtifacts,
-      cwd,
-      projectlessOutputDirectory,
-    );
-    if (editedWebsiteTarget) addOutput(outputs, { kind: "website", target: editedWebsiteTarget });
-  }
-
-  return [...outputs.values()];
-}
-
 export function collectTurnEndResourcePaths(
   turn: CodexConversationTurn,
-  options: CollectTurnEndResourcePathsOptions = {},
+  options: TurnOutputOptions = {},
 ): string[] {
   return getTurnEndResourcePaths(collectTurnEndResources(turn, options));
 }
 
-/** Completed response outputs; source references and edited files alone are not outputs. */
-export function collectTurnEndResources(
+export interface TurnOutputCandidate {
+  readonly resource: ThreadSummaryPanelOutputRow;
+  readonly requiresNonSourcePath: boolean;
+  /** A local preview URL yields to confirmed edited-file deliverables from its own turn. */
+  readonly websiteFallbackPaths?: readonly string[];
+}
+
+/** The shared per-turn classifier; path-state confirmation is applied by both consumers. */
+export function collectTurnOutputCandidates(
   turn: CodexConversationTurn,
-  options: CollectTurnEndResourcePathsOptions = {},
-): ThreadSummaryPanelOutputRow[] {
+  options: TurnOutputOptions = {},
+): TurnOutputCandidate[] {
   if (!isCompletedTurn(turn)) return [];
   const cwd = options.cwd ?? null;
   const directory = options.projectlessOutputDirectory;
-  const artifacts = collectTurnArtifacts(turn, true);
+  const artifacts = collectTurnArtifacts(turn, cwd);
   const assistantText = turn.items.findLast((item) => resolveAssistantText(item) !== null);
   const text = assistantText ? resolveAssistantText(assistantText) : null;
   const citations = readTurnArtifactReferences(text ?? "").citations;
   const titles = collectGoogleDriveTitleMap(turn);
   const outputs = new Map<string, ThreadSummaryPanelOutputDraft>();
-  for (const path of artifacts.outputFilePaths) {
-    if (!hasMarkdownOutputExtension(path) || isScratchOutputPath(path, cwd)) continue;
+  const editedKeys = new Set<string>();
+  for (const path of artifacts.editedFilePaths) {
+    if (!hasDeliverableExtension(path) || isScratchOutputPath(path, cwd)) continue;
     if (
       !isResourceInsideProjectlessOutputDirectory({
         cwd,
@@ -1203,13 +1053,60 @@ export function collectTurnEndResources(
       })
     )
       continue;
-    addOutput(outputs, { kind: "file", path: resolveOutputPath(path, cwd) });
+    if (
+      artifacts.referencedFilePaths.some(
+        (reference) =>
+          normalizeOutputIdentity(reference, cwd) === normalizeOutputIdentity(path, cwd),
+      )
+    )
+      continue;
+    const output = { kind: "file", path: resolveOutputPath(path, cwd) } as const;
+    addOutput(outputs, output);
+    if (!directory) editedKeys.add(getOutputKey(output));
+  }
+  const addExplicitOutput = (output: ThreadSummaryPanelOutputDraft) => {
+    editedKeys.delete(getOutputKey(output));
+    addOutput(outputs, output);
+  };
+  for (const item of turn.items) {
+    const kind =
+      item.type === "imageGeneration"
+        ? "generated-image"
+        : item.type === "imageView"
+          ? "image"
+          : null;
+    if (!kind) continue;
+    const rawPath =
+      kind === "generated-image" ? resolveImageGenerationPath(item) : resolveImageViewPath(item);
+    const path = rawPath ? normalizeArtifactPath(rawPath) : null;
+    if (!path || isScratchOutputPath(path, cwd)) continue;
+    if (
+      !isResourceInsideProjectlessOutputDirectory({
+        cwd,
+        projectlessOutputDirectory: directory,
+        resourcePath: path,
+      })
+    )
+      continue;
+    addExplicitOutput({ kind, path: resolveOutputPath(path, cwd) });
+  }
+  for (const path of artifacts.outputFilePaths) {
+    if (!hasDeliverableExtension(path) || isScratchOutputPath(path, cwd)) continue;
+    if (
+      !isResourceInsideProjectlessOutputDirectory({
+        cwd,
+        projectlessOutputDirectory: directory,
+        resourcePath: path,
+      })
+    )
+      continue;
+    addExplicitOutput({ kind: "file", path: resolveOutputPath(path, cwd) });
   }
   for (const citation of citations) {
     if ((citation.purpose ?? "output") !== "output" || citation.mode === "live") continue;
     const drive = resolveGoogleDriveResource(citation.path);
     if (!drive) continue;
-    addOutput(outputs, {
+    addExplicitOutput({
       kind: "google-drive",
       url: normalizeUrl(citation.path),
       resourceKind: drive.kind,
@@ -1221,46 +1118,117 @@ export function collectTurnEndResources(
     hasCitations: citations.length > 0,
     ...collectGoogleDriveReadPolicy(turn),
   }))
-    addOutput(outputs, output);
-  const appgenOutputs = options.includeAppgenResources ? collectAppgenArtifacts(turn) : [];
+    addExplicitOutput(output);
+  const appgenOutputs = collectAppgenArtifacts(turn);
   for (const output of appgenOutputs) addOutput(outputs, output);
   if (
     appgenOutputs.length === 0 &&
-    ![...outputs.values()].some((output) => output.kind === "file") &&
+    ![...outputs.values()].some(
+      (output) => output.kind === "file" && !editedKeys.has(getOutputKey(output)),
+    ) &&
     !citations.some(
       (citation) => citation.mode === "live" && (citation.purpose ?? "output") === "output",
     )
   ) {
-    const website =
-      resolveSingleLocalWebsiteUrl(text) ??
-      resolveSingleEditedWebsiteTarget(
-        {
-          ...artifacts,
-          editedFilePaths: artifacts.editedFilePaths.filter(
-            (path) => !isScratchOutputPath(path, cwd),
-          ),
-        },
-        cwd,
-        directory,
-      );
+    const website = resolveSingleLocalWebsiteUrl(text);
     if (website) addOutput(outputs, { kind: "website", target: website });
   }
-  return [...outputs.values()].map((output) => buildOutputRow(output, new Map()));
+  const drafts = [...outputs.values()];
+  const imagePaths = drafts
+    .filter(isPathOutputDraft)
+    .filter(
+      (output) => output.kind === "generated-image" || IMAGE_EXTENSION_PATTERN.test(output.path),
+    )
+    .map((output) => output.path);
+  const imageNumbers = drafts.some((output) => output.kind === "generated-image")
+    ? new Map(imagePaths.map((path, index) => [path, imagePaths.length - index]))
+    : new Map<string, number>();
+  return drafts.map((output) => ({
+    resource: buildOutputRow(output, imageNumbers),
+    requiresNonSourcePath: editedKeys.has(getOutputKey(output)),
+    ...(output.kind === "website"
+      ? {
+          websiteFallbackPaths: drafts.flatMap((draft) =>
+            draft.kind === "file" ? [draft.path] : [],
+          ),
+        }
+      : {}),
+  }));
 }
 
-/** Loading passes an empty set; a failed query has no set and retains candidates. */
-export function filterTurnEndResources(
-  resources: readonly ThreadSummaryPanelOutputRow[],
-  existingFilePaths: ReadonlySet<string> | undefined,
+/** Missing entries are loading; null entries or an absent map represent failed queries. */
+export function filterTurnOutputCandidates(
+  candidates: readonly TurnOutputCandidate[],
+  pathStates: ReadonlyMap<string, WorkspacePathState | null> | undefined,
   cwd?: string | null,
-): readonly ThreadSummaryPanelOutputRow[] {
-  if (!existingFilePaths) return resources;
-  const existing = new Set(
-    [...existingFilePaths].map((path) => normalizeOutputIdentity(path, cwd)),
+): ThreadSummaryPanelOutputRow[] {
+  const states =
+    pathStates &&
+    new Map([...pathStates].map(([path, state]) => [normalizeOutputIdentity(path, cwd), state]));
+  return candidates.flatMap<ThreadSummaryPanelOutputRow>(
+    ({ resource, requiresNonSourcePath, websiteFallbackPaths }) => {
+      if (
+        websiteFallbackPaths?.some((path) => {
+          const state = states?.get(normalizeOutputIdentity(path, cwd));
+          return state?.exists && state.isGitSourcePath === false;
+        })
+      )
+        return [];
+      if (!isPathOutputRow(resource)) return [resource];
+      const state = states?.get(normalizeOutputIdentity(resource.path, cwd));
+      if (states && state !== null && !state?.exists) return [];
+      // A failed query retains explicit outputs, but unknown Git state never promotes edited Project files.
+      if (requiresNonSourcePath && state?.isGitSourcePath !== false) return [];
+      return [resource];
+    },
   );
-  return resources.filter(
-    (resource) =>
-      resource.kind !== "file" || existing.has(normalizeOutputIdentity(resource.path, cwd)),
+}
+
+/** Protocol image resources already have an inline transcript gallery. Authored image files stay here. */
+export function projectTurnEndOutputCandidates(
+  candidates: readonly TurnOutputCandidate[],
+): TurnOutputCandidate[] {
+  return candidates.filter(
+    ({ resource }) => resource.kind !== "generated-image" && resource.kind !== "image",
+  );
+}
+
+export function collectTurnEndResources(
+  turn: CodexConversationTurn,
+  options: TurnOutputOptions = {},
+): ThreadSummaryPanelOutputRow[] {
+  return filterTurnOutputCandidates(
+    projectTurnEndOutputCandidates(collectTurnOutputCandidates(turn, options)),
+    options.pathStates,
+    options.cwd,
+  );
+}
+
+/** Newest turns first; path-state filtering must precede identity deduplication. */
+export function collectThreadOutputCandidates(
+  turns: readonly CodexConversationTurn[],
+  options: TurnOutputOptions = {},
+): TurnOutputCandidate[] {
+  return [...turns].reverse().flatMap((turn) => collectTurnOutputCandidates(turn, options));
+}
+
+export function selectThreadSummaryOutputRows(
+  resources: readonly ThreadSummaryPanelOutputRow[],
+): ThreadSummaryPanelOutputRow[] {
+  const outputs = new Map<string, ThreadSummaryPanelOutputRow>();
+  for (const resource of resources) {
+    const key = getOutputKey(resource);
+    if (outputs.has(key)) continue;
+    outputs.set(key, resource);
+    if (outputs.size === MAX_SUMMARY_PANEL_OUTPUT_ROWS) break;
+  }
+  const rows = [...outputs.values()];
+  // Turns number their own images; across the Chat the list counts down from its newest turn.
+  let generatedImageNumber = rows.filter((row) => row.kind === "generated-image").length;
+  return rows.map((row) =>
+    row.kind === "generated-image"
+      ? { ...row, label: `Generated image ${generatedImageNumber--}` }
+      : row,
   );
 }
 
@@ -1271,21 +1239,6 @@ export function getTurnEndResourcePaths(
     if (resource.kind === "file") return [resource.path];
     return resource.kind === "website" && !isHttpUrl(resource.target) ? [resource.target] : [];
   });
-}
-
-function buildGeneratedImageNumbers(
-  outputs: readonly ThreadSummaryPanelOutputDraft[],
-): Map<string, number> {
-  if (!outputs.some((output) => output.kind === "generated-image")) return new Map();
-
-  const imagePaths = outputs.flatMap((output) => {
-    if (!isPathOutputDraft(output)) return [];
-    return output.kind === "generated-image" || IMAGE_EXTENSION_PATTERN.test(output.path)
-      ? [output.path]
-      : [];
-  });
-
-  return new Map(imagePaths.map((path, index) => [path, imagePaths.length - index]));
 }
 
 function formatWebsiteOutputLabel(target: string): string {
@@ -1360,21 +1313,15 @@ function buildOutputRow(
 
 export function buildThreadSummaryPanelOutputRows(
   turns: readonly CodexConversationTurn[],
-  options: {
-    cwd?: string | null;
-    projectlessOutputDirectory?: string | null;
-  } = {},
+  options: TurnOutputOptions = {},
 ): ThreadSummaryPanelOutputRow[] {
-  const outputs = collectOutputDrafts(
-    turns,
-    options.cwd ?? null,
-    options.projectlessOutputDirectory ?? null,
+  return selectThreadSummaryOutputRows(
+    filterTurnOutputCandidates(
+      collectThreadOutputCandidates(turns, options),
+      options.pathStates,
+      options.cwd,
+    ),
   );
-  const generatedImageNumbers = buildGeneratedImageNumbers(outputs);
-
-  return outputs
-    .slice(0, MAX_SUMMARY_PANEL_OUTPUT_ROWS)
-    .map((output) => buildOutputRow(output, generatedImageNumbers));
 }
 
 export function isThreadSummaryPanelImagePreviewableOutput(

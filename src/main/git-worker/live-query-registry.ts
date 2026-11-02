@@ -11,6 +11,7 @@ import type {
   GitReviewLiveQuery,
   GitReviewLiveQueryMethod,
   GitReviewLiveQueryResult,
+  GitReviewSummaryResult,
 } from "../../shared/types";
 import type { GitWorkerLiveQueryEvent } from "../../shared/git-worker-protocol";
 import type { GitReviewRepositoryChange } from "./repository-watcher";
@@ -285,16 +286,34 @@ class GitLiveQueryRegistryState implements GitLiveQueryRegistry {
     let retryDelay: number | null = null;
     const attempt = Effect.gen({ self: this }, function* () {
       const trackedParams = this.#trackedPhaseParams(state.query);
+      let trackedSummary: GitReviewSummaryResult | null = null;
+      let trackedSuccess: Extract<GitReviewSummaryResult, { type: "success" }> | null = null;
       if (trackedParams) {
         const tracked = yield* this.#read(state, generation, "tracked", trackedParams);
         if (!this.#isCurrent(state, generation) || isStaleResult(tracked)) return;
-        this.#publishResult(state, generation, "tracked", tracked);
+        trackedSummary =
+          state.query.method === "review-summary" ? (tracked as GitReviewSummaryResult) : null;
+        trackedSuccess =
+          trackedSummary?.type === "success" && trackedSummary.files.length > 0
+            ? trackedSummary
+            : null;
+        if (state.query.method !== "review-summary" || trackedSuccess) {
+          this.#publishResult(state, generation, "tracked", tracked);
+        }
       }
-      const complete = yield* this.#read(state, generation, "complete", state.query.params);
+      const complete =
+        trackedSummary && trackedSummary.type !== "success"
+          ? trackedSummary
+          : yield* this.#read(state, generation, "complete", state.query.params);
       if (!this.#isCurrent(state, generation) || isStaleResult(complete)) return;
-      this.#publishResult(state, generation, "complete", complete);
+      // Keep a useful tracked snapshot when the untracked scan cannot complete.
+      const result =
+        trackedSuccess && (complete as GitReviewSummaryResult).type === "error"
+          ? trackedSuccess
+          : complete;
+      this.#publishResult(state, generation, "complete", result);
       if (
-        isRetryableOperationalError(complete) &&
+        isRetryableOperationalError(result) &&
         state.errorRetryCount < GIT_LIVE_QUERY_MAX_RETRIES
       ) {
         state.errorRetryCount += 1;

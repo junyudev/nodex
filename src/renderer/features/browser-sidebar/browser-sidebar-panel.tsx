@@ -1,3 +1,8 @@
+import { BrowserPermissionPromptPopover, permissionShortLabel } from "./browser-permission-prompt";
+import type {
+  BrowserPermissionAction,
+  BrowserPermissionPrompt,
+} from "../../../shared/browser/browser-permissions";
 import {
   useCallback,
   useEffect,
@@ -70,13 +75,13 @@ import type {
   BrowserCredentialSummary,
   BrowserSiteInfo,
 } from "../../../shared/browser-profile";
-import {
-  isBlankBrowserUrl,
-  normalizeBrowserNavigationUrl,
-  resolveBrowserTabTitle,
-} from "../../../shared/browser-url";
+import { isBlankBrowserUrl, resolveBrowserTabTitle } from "../../../shared/browser-url";
+import { normalizeBrowserAddressInput } from "../../../shared/browser-address-input";
+import { isErrorPageExternalUrl } from "../../../shared/browser-url-policy";
 import { createSecureRuntimeId } from "../../../shared/secure-runtime-id";
 import { useTheme } from "@/lib/use-theme";
+import { openLink } from "@/lib/link-opening";
+import { useLinkOpening } from "@/lib/web-link-navigation";
 import {
   BROWSER_SIDEBAR_VISIBLE_WEBVIEW_Z_INDEX,
   browserSidebarRendererWebviewManager,
@@ -300,6 +305,7 @@ export function BrowserSidebarPanel({
     : (activeSession?.thread?.threadId ?? activeSession?.id ?? null);
   const browserRuntimeAvailable = typeof window !== "undefined" && Boolean(window.api);
   const browserRuntime = useBrowserSidebarRendererState();
+  const linkOpening = useLinkOpening();
   const { resolved: themeVariant } = useTheme();
   const webviewHostRef = useRef<HTMLDivElement | null>(null);
   const syncWebviewPresentationRef = useRef<(() => void) | null>(null);
@@ -319,6 +325,7 @@ export function BrowserSidebarPanel({
   >(null);
   const addressListId = useId();
   const addressListRef = useRef<HTMLDivElement | null>(null);
+  const addressBarRef = useRef<HTMLDivElement | null>(null);
   const skipAddressCommitRef = useRef(false);
   const [localServers, setLocalServers] = useState<BrowserSidebarLocalServersSnapshot | null>(null);
   const [localServerPreferences, setLocalServerPreferences] =
@@ -336,6 +343,7 @@ export function BrowserSidebarPanel({
   const [downloadsOpen, setDownloadsOpen] = useState(false);
   const [profileImportOpen, setProfileImportOpen] = useState(false);
   const [siteInfo, setSiteInfo] = useState<BrowserSiteInfo | null>(null);
+  const [siteInfoRevision, setSiteInfoRevision] = useState(0);
   const [credentialCandidate, setCredentialCandidate] =
     useState<BrowserCredentialSaveCandidate | null>(null);
   const [downloadsSnapshot, setDownloadsSnapshot] = useState<BrowserDownloadsSnapshot>({
@@ -356,6 +364,7 @@ export function BrowserSidebarPanel({
   const isBlank = !snapshot.hasBrowserPage || isBlankBrowserUrl(snapshot.url);
   const commentMode = snapshot.interactionMode === "comment";
   const pageActionsDisabled = snapshot.pageActionsDisabled || isBlank;
+  const canOpenExternally = !snapshot.failure || isErrorPageExternalUrl(snapshot.failure.failedUrl);
   const initialWebviewUrlRef = useRef(snapshot.url);
   if (isBlank) {
     initialWebviewUrlRef.current = "about:blank";
@@ -396,6 +405,28 @@ export function BrowserSidebarPanel({
     [browserConversationId, browserTabId, browserViewScopeId],
   );
   const browserIdentityKey = makeBrowserSidebarTabKey(browserIdentity);
+  const respondToPermissionPrompt = async (
+    prompt: BrowserPermissionPrompt,
+    action: BrowserPermissionAction,
+  ) =>
+    (
+      await command({
+        type: "respond-permission",
+        ...browserIdentity,
+        promptId: prompt.id,
+        mountGeneration: prompt.mountGeneration,
+        action,
+      })
+    ).ok;
+  const openPermissionSystemSettings = async (prompt: BrowserPermissionPrompt) =>
+    (
+      await command({
+        type: "open-permission-system-settings",
+        ...browserIdentity,
+        promptId: prompt.id,
+        mountGeneration: prompt.mountGeneration,
+      })
+    ).ok;
   const browserUseState = eventBrowserUseState ?? browserRuntime.browserUseState;
   const activeBrowserUseTabId =
     browserUseState.activeBrowserTabIdsByConversationScope[
@@ -435,8 +466,33 @@ export function BrowserSidebarPanel({
   }, [activeAddressOptionId]);
 
   const handleOpenNewTab = useEffectEvent((request: BrowserSidebarOpenNewTabRequest) => {
+    if (request.browserSurface === "downloads") {
+      setDownloadsOpen(true);
+      return;
+    }
+    if (request.browserSurface === "history") {
+      onOpenBrowserSettings?.("history");
+      return;
+    }
     void onOpenNewTab?.(request);
   });
+
+  const openExternally = async () => {
+    if (snapshot.failure) {
+      if (!isErrorPageExternalUrl(snapshot.failure.failedUrl)) return;
+      await command({
+        type: "open-external",
+        ...browserIdentity,
+        fromErrorPage: true,
+      });
+      return;
+    }
+    await (linkOpening?.openLink ?? openLink)({
+      url: snapshot.pendingUrl ?? snapshot.url,
+      initiator: "open_in_browser_bridge",
+      openTarget: "external-browser",
+    });
+  };
 
   useEffect(() => {
     if (!browserRuntimeAvailable || isBlank || registeredBrowserKey !== browserIdentityKey) {
@@ -461,6 +517,8 @@ export function BrowserSidebarPanel({
     isBlank,
     registeredBrowserKey,
     snapshot.url,
+    snapshot.permissionPrompts?.length,
+    siteInfoRevision,
   ]);
 
   useEffect(() => {
@@ -936,8 +994,8 @@ export function BrowserSidebarPanel({
   ]);
 
   const navigateTo = useCallback(
-    (rawUrl: string) => {
-      const url = normalizeBrowserNavigationUrl(rawUrl);
+    (url: string, originalUrl = url) => {
+      if (!url) return;
       const hasBrowserPage = !isBlankBrowserUrl(url);
       setSnapshot((current) => ({
         ...current,
@@ -955,7 +1013,7 @@ export function BrowserSidebarPanel({
         url,
         source: "manual",
         initiator: "address_bar",
-        originalUrl: rawUrl,
+        originalUrl,
       });
     },
     [browserIdentity, command],
@@ -966,7 +1024,7 @@ export function BrowserSidebarPanel({
       setAddressValue(readBrowserAddressValue(snapshot.url));
       return;
     }
-    navigateTo(addressValue);
+    navigateTo(normalizeBrowserAddressInput(addressValue), addressValue);
   };
 
   const acceptAddressSuggestion = (
@@ -1141,7 +1199,7 @@ export function BrowserSidebarPanel({
             className="no-drag flex min-w-0 flex-1 items-center justify-center px-1 text-sm text-token-text-primary"
             onSubmit={submitAddress}
           >
-            <div className="relative w-full min-w-0 max-w-[770px]">
+            <div ref={addressBarRef} className="relative w-full min-w-0 max-w-[770px]">
               <ViewerInputCapsule className={BROWSER_ADDRESS_BAR_CLASS}>
                 <div
                   className={cn(
@@ -1154,6 +1212,13 @@ export function BrowserSidebarPanel({
                     siteInfo={siteInfo}
                     disabled={pageActionsDisabled}
                     onClearSiteData={() => clearBrowsingData("site-data")}
+                    onResetPermissions={(origin) =>
+                      void command({
+                        type: "reset-site-permissions",
+                        ...browserIdentity,
+                        origin,
+                      }).then(() => setSiteInfoRevision((revision) => revision + 1))
+                    }
                   />
                 </div>
                 <input
@@ -1194,11 +1259,7 @@ export function BrowserSidebarPanel({
                       return;
                     }
                     if (shouldSkipBrowserAddressCommit(event.relatedTarget)) return;
-                    if (!shouldCommitBrowserAddressEdit(snapshot.url, addressValue)) {
-                      setAddressValue(readBrowserAddressValue(snapshot.url));
-                      return;
-                    }
-                    navigateTo(addressValue);
+                    commitAddress();
                   }}
                   onChange={(event) => {
                     skipAddressCommitRef.current = false;
@@ -1239,24 +1300,32 @@ export function BrowserSidebarPanel({
                     setAddressValue(readBrowserAddressValue(snapshot.url));
                   }}
                 />
-                <button
-                  type="button"
-                  data-browser-sidebar-open-external
-                  data-browser-sidebar-skip-address-commit
-                  className={cn(
-                    "mr-0.5 inline-flex size-7 shrink-0 items-center justify-center rounded-full text-token-text-tertiary transition-opacity",
-                    pageActionsDisabled
-                      ? "cursor-default opacity-0"
-                      : "cursor-interaction opacity-0 hover:bg-token-foreground/5 hover:text-token-text-primary focus-visible:bg-token-foreground/5 group-hover/address-bar:opacity-100 group-focus-within/address-bar:opacity-100",
-                  )}
-                  disabled={pageActionsDisabled}
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => void command({ type: "open-external", ...browserIdentity })}
-                  aria-label="Open externally"
-                >
-                  <BrowserExternalIcon className="icon-xs" />
-                </button>
+                {canOpenExternally ? (
+                  <button
+                    type="button"
+                    data-browser-sidebar-open-external
+                    data-browser-sidebar-skip-address-commit
+                    className={cn(
+                      "mr-0.5 inline-flex size-7 shrink-0 items-center justify-center rounded-full text-token-text-tertiary transition-opacity",
+                      pageActionsDisabled
+                        ? "cursor-default opacity-0"
+                        : "cursor-interaction opacity-0 hover:bg-token-foreground/5 hover:text-token-text-primary focus-visible:bg-token-foreground/5 group-hover/address-bar:opacity-100 group-focus-within/address-bar:opacity-100",
+                    )}
+                    disabled={pageActionsDisabled}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => void openExternally()}
+                    aria-label="Open externally"
+                  >
+                    <BrowserExternalIcon className="icon-xs" />
+                  </button>
+                ) : null}
               </ViewerInputCapsule>
+              <BrowserPermissionPromptPopover
+                prompt={snapshot.permissionPrompts?.[0] ?? null}
+                anchor={addressBarRef}
+                onRespond={respondToPermissionPrompt}
+                onOpenSystemSettings={openPermissionSystemSettings}
+              />
               {addressSuggestionsOpen ? (
                 <div
                   ref={addressListRef}
@@ -1677,11 +1746,13 @@ function BrowserSiteInfoMenu({
   siteInfo,
   disabled,
   onClearSiteData,
+  onResetPermissions,
 }: {
   url: string;
   siteInfo: BrowserSiteInfo | null;
   disabled: boolean;
   onClearSiteData: () => void;
+  onResetPermissions: (origin: string) => void;
 }) {
   const fallbackOrigin = readBrowserOriginLabel(url);
   const origin = siteInfo?.origin ?? fallbackOrigin;
@@ -1689,10 +1760,8 @@ function BrowserSiteInfoMenu({
   const connectionLabel = siteInfo?.connection
     ? browserConnectionLabel(siteInfo.connection)
     : "Checking connection…";
-  const allowedPermissions =
-    siteInfo?.permissions
-      ?.filter((permission) => permission.state === "allow")
-      .map((permission) => permission.permission) ?? [];
+  const decided = siteInfo?.permissions?.filter((permission) => permission.state !== "ask") ?? [];
+  const siteOrigin = siteInfo?.origin ?? null;
   return (
     <NodexDropdownMenu
       align="start"
@@ -1713,18 +1782,35 @@ function BrowserSiteInfoMenu({
     >
       <div className="px-[var(--padding-row-x)] py-2">
         <div className="truncate text-sm font-medium text-token-text-primary">{origin}</div>
-        <div className="mt-1 text-xs text-token-text-secondary">{connectionLabel}</div>
+        <div className="mt-1 text-xs text-token-text-secondary">
+          {connectionLabel}
+          {siteInfo
+            ? ` · ${siteInfo.cookieCount} cookie${siteInfo.cookieCount === 1 ? "" : "s"}`
+            : null}
+        </div>
       </div>
-      <NodexDropdownSeparator />
-      <div className="px-[var(--padding-row-x)] py-2 text-xs leading-5 text-token-text-secondary">
-        {siteInfo && typeof siteInfo.cookieCount === "number"
-          ? `${siteInfo.cookieCount} cookie${siteInfo.cookieCount === 1 ? "" : "s"} · ${
-              allowedPermissions.length > 0
-                ? `Allowed: ${allowedPermissions.join(", ")}`
-                : "Sensitive permissions are blocked by default"
-            }.`
-          : "Sensitive permissions are blocked by default."}
-      </div>
+      {decided.length > 0 ? (
+        <>
+          <NodexDropdownSeparator />
+          <div className="flex flex-col gap-1 px-[var(--padding-row-x)] py-2">
+            {decided.map(({ permission, state }) => (
+              <div key={permission} className="flex items-center justify-between gap-3 text-sm">
+                <span className="truncate text-token-text-primary">
+                  {permissionShortLabel(permission)}
+                </span>
+                <span className="shrink-0 text-token-text-secondary">
+                  {state === "allow" ? "Allowed" : "Blocked"}
+                </span>
+              </div>
+            ))}
+          </div>
+          {siteOrigin ? (
+            <NodexDropdownItem onSelect={() => onResetPermissions(siteOrigin)}>
+              Reset permissions
+            </NodexDropdownItem>
+          ) : null}
+        </>
+      ) : null}
       <NodexDropdownSeparator />
       <NodexDropdownItem onSelect={onClearSiteData}>
         Clear built-in Browser site data
@@ -3348,7 +3434,8 @@ function makeInitialSnapshot(
   browserConversationId: string,
   browserViewScopeId = "unassigned-window-session",
 ): BrowserSidebarTabSnapshot {
-  const url = normalizeBrowserNavigationUrl(readBrowserConfigUrl(tab));
+  const initialUrl = readBrowserConfigUrl(tab);
+  const url = isBlankBrowserUrl(initialUrl) ? "about:blank" : initialUrl;
   const persistedDeviceToolbarState = readBrowserConfigDeviceToolbarState(tab);
   const deviceToolbarVisible =
     persistedDeviceToolbarState?.toolbarState.isEnabled ??

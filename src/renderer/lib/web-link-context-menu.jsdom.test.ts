@@ -78,3 +78,21 @@ test("saves links through the native download command", async () => {
   });
   expect(invoke).toHaveBeenCalledWith("browser-link:save", { url: "https://example.test/file" });
 });
+
+test("routes an explicit default-browser choice through the semantic link owner", async () => {
+  const openLink = vi.fn(async () => true);
+  ports.menu.mockResolvedValue("open-in-external-browser");
+  await openWebLinkContextMenu({
+    url: "https://example.test",
+    x: 1,
+    y: 2,
+    isCurrent: () => true,
+    navigation: { openLink, browserAvailable: true },
+  });
+  expect(openLink).toHaveBeenCalledWith({
+    url: "https://example.test",
+    initiator: "link_context_menu",
+    openTarget: "external-browser",
+  });
+  expect(ports.external).not.toHaveBeenCalled();
+});

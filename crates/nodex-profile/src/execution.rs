@@ -1,444 +1,350 @@
-//! Captures the execution owner's durable identity, database and immutable attachments.
+//! Copies current execution content online. Runtime owns schema interpretation and import.
 use std::fs;
-use std::io::Read;
+use std::path::Path;
+use std::time::Duration;
 
-use std::path::{Path, PathBuf};
-
-use nodex_core::administration::{ProfileCloneExecution, ProfileCloneThread};
-use nodex_core::infrastructure::store_lock::ProfileStoreLock;
+use rusqlite::{Connection, OpenFlags};
 use serde::{Deserialize, Serialize};
 
-use crate::control::ExecutionSnapshot;
-use crate::files::{self, invalid};
-use crate::{Result, codex};
+use crate::{Result, files};
 
 #[derive(Clone, Debug, Deserialize, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ExecutionSnapshotReceipt {
-    pub version: u32,
-    pub runtime_id: String,
-    pub runtime_generation: Option<String>,
-    pub sequence: u64,
-    pub required_session_count: usize,
-    pub content_sha256: String,
+    pub captured_at: String,
+    pub database_bytes: u64,
+    pub attachment_files: u64,
+    pub attachment_bytes: u64,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-struct Owner {
-    pid: i32,
-    token: String,
-}
-
-/// The offline guard also excludes a new Desktop from opening the source Profile.
-pub(crate) struct OfflineLease {
-    _core: ProfileStoreLock,
-    _writer: RuntimeWriterLease,
-}
-pub(crate) struct RuntimeWriterLease {
-    directory: PathBuf,
-    owner: Owner,
-}
-
-fn owner(directory: &Path) -> Result<Owner> {
-    files::require_directory(directory)?;
-    let meta = fs::symlink_metadata(directory)?;
-    if nodex_platform::private_fs::require_owned(directory, &meta).is_err()
-        || !nodex_platform::private_fs::is_private(directory, &meta)?
-    {
-        return Err(invalid(
-            "Execution writer ownership must be private and user-owned",
-        ));
-    }
-    let mut data = String::new();
-    files::read_file(&directory.join("owner.json"))?
-        .take(1025)
-        .read_to_string(&mut data)?;
-    let owner: Owner = serde_json::from_str(&data)?;
-    if data.len() > 1024 || owner.pid <= 0 || owner.token.is_empty() || owner.token.len() > 256 {
-        return Err(invalid("Execution writer ownership is malformed"));
-    }
-    Ok(owner)
-}
-
-fn dead(pid: i32) -> bool {
-    u32::try_from(pid).is_ok_and(|pid| !nodex_platform::process::process_is_alive(pid))
-}
-
-fn claim(directory: &Path, owner: &Owner) -> Result<()> {
-    nodex_platform::private_fs::create_dir(directory)?;
-    use std::io::Write;
-    files::create_file(&directory.join("owner.json"))?.write_all(&serde_json::to_vec(owner)?)?;
-    Ok(())
-}
-
-impl OfflineLease {
-    pub(crate) fn acquire(profile: &Path) -> Result<Self> {
-        let core = ProfileStoreLock::acquire(profile)?;
-        Ok(Self {
-            _core: core,
-            _writer: RuntimeWriterLease::acquire(profile)?,
-        })
-    }
-}
-
-impl RuntimeWriterLease {
-    pub(crate) fn acquire(profile: &Path) -> Result<Self> {
-        let home = profile.join("agent-runtime");
-        files::private_directory(&home)?;
-        let directory = home.join(".writer.lock");
-        let mine = Owner {
-            pid: std::process::id() as i32,
-            token: format!(
-                "profile:{}:{}",
-                std::process::id(),
-                std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map_err(|_| invalid("System clock cannot identify snapshot ownership"))?
-                    .as_nanos()
-            ),
-        };
-        if files::exists(&directory)? {
-            let stale = owner(&directory)?;
-            if !dead(stale.pid) {
-                return Err(invalid("An execution writer still owns the source Profile"));
-            }
-            let recovery = directory.join(".recovering");
-            claim(&recovery, &mine)?;
-            if owner(&directory)? != stale || !dead(stale.pid) {
-                if owner(&recovery).is_ok_and(|current| current == mine) {
-                    let _ = fs::remove_dir_all(&recovery);
-                }
-                return Err(invalid(
-                    "Execution writer ownership changed during recovery",
-                ));
-            }
-            fs::remove_dir_all(&directory)?;
-        }
-        claim(&directory, &mine)?;
-        Ok(Self {
-            directory,
-            owner: mine,
-        })
-    }
-}
-
-impl Drop for RuntimeWriterLease {
-    fn drop(&mut self) {
-        if owner(&self.directory).is_ok_and(|current| current == self.owner) {
-            let _ = fs::remove_dir_all(&self.directory);
-        }
-    }
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ImportedExecution<'a> {
+    version: u32,
+    source_profile_home: &'a Path,
+    imported_at: &'a str,
 }
 
 pub(crate) fn capture(
     source_profile: &Path,
     staging_profile: &Path,
-    target_profile: &Path,
-    required: &[ProfileCloneExecution],
-    live: Option<&ExecutionSnapshot>,
-) -> Result<(Option<ExecutionSnapshotReceipt>, Vec<ProfileCloneThread>)> {
-    let home = source_profile.join("agent-runtime");
-    let database = live.map_or_else(
-        || home.join("agent-runtime.sqlite"),
-        |snapshot| snapshot.database_path.clone(),
-    );
+) -> Result<Option<ExecutionSnapshotReceipt>> {
+    let source = source_profile.join("agent-runtime");
+    if !files::exists(&source)? {
+        return Ok(None);
+    }
+    files::require_directory(&source)?;
+    let database = source.join("agent-runtime.sqlite");
     if !files::exists(&database)? {
-        if !required.is_empty() {
-            return Err(invalid(
-                "Source Profile has bound Sessions without their execution database",
-            ));
-        }
-        return Ok((None, Vec::new()));
+        return Ok(None);
     }
-    files::require_directory(&home)?;
-    if !fs::canonicalize(&database)?.starts_with(fs::canonicalize(source_profile)?) {
-        return Err(invalid(
-            "Execution snapshot database is outside its Profile owner",
-        ));
-    }
-    files::require_directory(&home.join("userdata"))?;
-    let identity = live.map_or_else(
-        || home.join("userdata/environment-id"),
-        |snapshot| snapshot.environment_id_path.clone(),
-    );
-    let attachments = live.map_or_else(
-        || home.join("userdata/attachments"),
-        |snapshot| snapshot.attachments_path.clone(),
-    );
-    if identity != home.join("userdata/environment-id")
-        || attachments != home.join("userdata/attachments")
-    {
-        return Err(invalid(
-            "Execution snapshot closure is outside its Profile owner",
-        ));
-    }
-    let mut id = String::new();
-    files::read_file(&identity)?
-        .take(4097)
-        .read_to_string(&mut id)?;
-    let runtime_id = id.trim().to_owned();
-    if runtime_id.is_empty()
-        || id.len() > 4096
-        || live.is_some_and(|snapshot| snapshot.runtime_id != runtime_id)
-        || required
-            .iter()
-            .any(|binding| binding.runtime_id != runtime_id)
-    {
-        return Err(invalid(
-            "Execution identity does not match the retained Session bindings",
-        ));
-    }
-    let destination = staging_profile.join("agent-runtime");
-    files::private_directory(&destination)?;
-    let source = codex::DatabaseSource::open(database)?;
-    let target_db = destination.join("agent-runtime.sqlite");
-    source.snapshot(&target_db)?;
-    let connection = rusqlite::Connection::open(&target_db)?;
-    for binding in required {
-        let exists: bool = connection.query_row("SELECT EXISTS(SELECT 1 FROM orchestration_v2_projection_threads WHERE thread_id = ?1 AND deleted_at IS NULL)", [&binding.thread_id], |row| row.get(0))?;
-        if !exists {
-            return Err(invalid(format!(
-                "Session {} has no recoverable execution Thread",
-                binding.session_id
-            )));
-        }
-    }
-    let busy: bool = connection.query_row("SELECT EXISTS(SELECT 1 FROM orchestration_v2_projection_runs WHERE status NOT IN ('completed','interrupted','failed','cancelled','rolled_back')) OR EXISTS(SELECT 1 FROM orchestration_v2_effect_outbox WHERE status NOT IN ('succeeded','failed','cancelled'))", [], |row| row.get(0))?;
-    if busy {
-        return Err(invalid("Execution must be idle before cloning the Profile"));
-    }
-    let has_active_events: bool = connection.query_row("SELECT EXISTS(SELECT 1 FROM pragma_table_info('orchestration_events') WHERE name='application_event_version')", [], |row| row.get(0))?;
-    let sequence_query = if has_active_events {
-        "SELECT COALESCE(MAX(sequence),0) FROM orchestration_events WHERE aggregate_kind='project' OR (application_event_version=2 AND aggregate_kind='thread')"
-    } else {
-        "SELECT COALESCE(MAX(sequence),0) FROM orchestration_events"
-    };
-    let sequence =
-        u64::try_from(connection.query_row(sequence_query, [], |row| row.get::<_, i64>(0))?)
-            .map_err(|_| invalid("Execution sequence is invalid"))?;
-    if live.is_some_and(|snapshot| snapshot.sequence != sequence) {
-        return Err(invalid(
-            "Execution snapshot watermark does not match its database",
-        ));
-    }
-    let native = native_codex_requirements(&connection)?;
-    super::execution_relocation::relocate(&connection, source_profile, target_profile)?;
+    files::require_file(&database)?;
+    files::require_directory(&source.join("userdata"))?;
+    let target = staging_profile.join("agent-runtime");
+    files::private_directory(&target)?;
+    let target_database = target.join("agent-runtime.sqlite");
+    // A live WAL database must be opened normally, never immutable. VACUUM INTO
+    // owns one read snapshot and does not require the Runtime's writer lease.
+    let connection = Connection::open_with_flags(
+        &database,
+        OpenFlags::SQLITE_OPEN_READ_ONLY
+            | OpenFlags::SQLITE_OPEN_NO_MUTEX
+            | OpenFlags::SQLITE_OPEN_NOFOLLOW,
+    )?;
+    connection.busy_timeout(Duration::from_secs(5))?;
+    let captured_at = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    files::write_synced(&target_database, &[])?;
+    connection.execute(
+        "VACUUM INTO ?1",
+        [target_database
+            .to_str()
+            .ok_or_else(|| files::invalid("Execution snapshot path must be UTF-8"))?],
+    )?;
     drop(connection);
-    files::copy_file(&identity, &destination.join("userdata/environment-id"))?;
-    let inventory = files::inventory(&home.join("userdata"), &["attachments"], &[])?;
-    for relative in inventory.keys() {
-        files::copy_file(
-            &home.join("userdata").join(relative),
-            &destination.join("userdata").join(relative),
-        )?;
-    }
-    source.verify_unchanged()?;
-    if inventory != files::inventory(&home.join("userdata"), &["attachments"], &[])? {
-        return Err(invalid("Execution attachments changed during capture"));
-    }
-    Ok((
-        Some(ExecutionSnapshotReceipt {
-            version: 1,
-            runtime_id,
-            runtime_generation: live.map(|snapshot| snapshot.runtime_generation.clone()),
-            sequence,
-            required_session_count: required.len(),
-            content_sha256: files::digest_tree(&destination)?,
-        }),
-        native,
-    ))
-}
-
-fn native_codex_requirements(connection: &rusqlite::Connection) -> Result<Vec<ProfileCloneThread>> {
-    let mut statement = connection.prepare("SELECT DISTINCT json_extract(payload_json,'$.nativeThreadRef.nativeId') FROM orchestration_v2_projection_provider_threads WHERE json_extract(payload_json,'$.driver') = 'codex' AND json_type(payload_json,'$.nativeThreadRef.nativeId')='text' LIMIT 100001")?;
-    let mut rows = statement.query([])?;
-    let mut threads = Vec::new();
-    let mut bytes = 0usize;
-    while let Some(row) = rows.next()? {
-        let value = row.get_ref(0)?;
-        let rusqlite::types::ValueRef::Text(value) = value else {
-            return Err(invalid("Native execution reference is malformed"));
-        };
-        bytes = bytes.saturating_add(value.len());
-        if threads.len() >= 100000 || bytes > 16 * 1024 * 1024 {
-            return Err(invalid(
-                "Native execution references exceed snapshot bounds",
-            ));
-        }
-        threads.push(ProfileCloneThread {
-            thread_id: row.get(0)?,
-            backend_kind: "codex".into(),
-            execution_host_id: "local".into(),
-        });
-    }
-    Ok(threads)
+    nodex_platform::private_fs::sync_file(&target_database)?;
+    let database_bytes = fs::metadata(&target_database)?.len();
+    let userdata = target.join("userdata");
+    files::private_directory(&userdata)?;
+    let (attachment_files, attachment_bytes) = files::copy_attachments(
+        &source.join("userdata/attachments"),
+        &userdata.join("attachments"),
+    )?;
+    files::copy_file(
+        &source.join("userdata/environment-id"),
+        &userdata.join("environment-id"),
+    )?;
+    let imported_at = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    let marker = ImportedExecution {
+        version: 1,
+        source_profile_home: source_profile,
+        imported_at: &imported_at,
+    };
+    files::write_synced(
+        &target.join("imported-execution.json"),
+        &serde_json::to_vec_pretty(&marker)?,
+    )?;
+    files::sync_directory(&userdata)?;
+    files::sync_directory(&target)?;
+    Ok(Some(ExecutionSnapshotReceipt {
+        captured_at,
+        database_bytes,
+        attachment_files,
+        attachment_bytes,
+    }))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write;
+    use nodex_platform::private_fs::symlink;
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, AtomicU64, Ordering},
+    };
 
-    fn fixture(profile: &Path) -> PathBuf {
+    fn fixture(profile: &Path) -> Connection {
         let home = profile.join("agent-runtime");
-        files::private_directory(&home.join("userdata/attachments")).unwrap();
-        files::create_file(&home.join("userdata/environment-id"))
-            .unwrap()
-            .write_all(b"engine\n")
+        nodex_platform::private_fs::create_dir_all(home.join("userdata/attachments/images"))
             .unwrap();
-        files::create_file(&home.join("userdata/attachments/image.png"))
-            .unwrap()
-            .write_all(b"image")
+        nodex_platform::private_fs::write(home.join("userdata/environment-id"), b"engine:test\n")
             .unwrap();
-        let path = home.join("agent-runtime.sqlite");
-        let database = rusqlite::Connection::open(&path).unwrap();
-        database.execute_batch("CREATE TABLE orchestration_v2_projection_threads(thread_id TEXT PRIMARY KEY,deleted_at TEXT,payload_json TEXT); CREATE TABLE orchestration_v2_projection_runs(status TEXT); CREATE TABLE orchestration_v2_effect_outbox(status TEXT); CREATE TABLE orchestration_v2_projection_provider_threads(payload_json TEXT); CREATE TABLE orchestration_events(sequence INTEGER,event_type TEXT,payload_json TEXT); INSERT INTO orchestration_v2_projection_threads VALUES ('root',NULL,'{}'); INSERT INTO orchestration_events VALUES (7,'thread.created','{}'); INSERT INTO orchestration_v2_projection_provider_threads VALUES ('{\"driver\":\"codex\",\"nativeThreadRef\":{\"driver\":\"codex\",\"nativeId\":\"native-root\",\"strength\":\"strong\"}}')").unwrap();
-        path
-    }
-
-    fn required() -> Vec<ProfileCloneExecution> {
-        vec![ProfileCloneExecution {
-            session_id: "session".into(),
-            runtime_id: "engine".into(),
-            thread_id: "root".into(),
-        }]
-    }
-
-    #[test]
-    fn captures_identity_database_attachments_and_native_requirements_as_an_independent_closure() {
-        let source = nodex_platform::test_support::tempdir().unwrap();
-        let staging = nodex_platform::test_support::tempdir().unwrap();
-        let path = fixture(source.path());
-        let (receipt, native) = capture(
-            source.path(),
-            staging.path(),
-            staging.path(),
-            &required(),
-            None,
+        nodex_platform::private_fs::write(
+            home.join("userdata/attachments/images/a.png"),
+            b"immutable attachment",
         )
         .unwrap();
-        let receipt = receipt.unwrap();
-        assert_eq!(receipt.runtime_id, "engine");
-        assert_eq!(receipt.sequence, 7);
-        assert_eq!(receipt.required_session_count, 1);
-        assert_eq!(native[0].thread_id, "native-root");
-        fs::remove_file(path).unwrap();
-        fs::remove_file(
-            source
-                .path()
-                .join("agent-runtime/userdata/attachments/image.png"),
-        )
-        .unwrap();
-        assert_eq!(
-            fs::read(
-                staging
-                    .path()
-                    .join("agent-runtime/userdata/attachments/image.png")
+        // A live lease and an unusable provider catalog must not participate in capture.
+        nodex_platform::private_fs::create_dir(home.join(".writer.lock")).unwrap();
+        nodex_platform::private_fs::write(home.join("provider-catalog.json"), b"not a catalog")
+            .unwrap();
+        let provider = profile.join("missing-provider");
+        nodex_platform::private_fs::create_dir(&provider).unwrap();
+        nodex_platform::private_fs::directory_link(&provider, &profile.join("agent")).unwrap();
+        fs::remove_dir(&provider).unwrap();
+        let connection = Connection::open(home.join("agent-runtime.sqlite")).unwrap();
+        connection.execute_batch("PRAGMA journal_mode=WAL; CREATE TABLE history(id INTEGER PRIMARY KEY, value INTEGER, body BLOB); CREATE TABLE watermark(value INTEGER); INSERT INTO watermark VALUES(0); INSERT INTO history VALUES(1,0,zeroblob(4096));").unwrap();
+        connection
+            .execute(
+                "INSERT INTO history SELECT id + 1, value, body FROM history",
+                [],
             )
-            .unwrap(),
-            b"image"
-        );
-        let cloned =
-            rusqlite::Connection::open(staging.path().join("agent-runtime/agent-runtime.sqlite"))
-                .unwrap();
-        assert_eq!(
-            cloned
-                .query_row(
-                    "SELECT thread_id FROM orchestration_v2_projection_threads",
-                    [],
-                    |row| row.get::<_, String>(0)
-                )
-                .unwrap(),
-            "root"
-        );
+            .unwrap();
+        for _ in 0..11 {
+            connection.execute("INSERT INTO history SELECT id + (SELECT max(id) FROM history), value, body FROM history", []).unwrap();
+        }
+        connection
+    }
+
+    fn publish_content_backup(
+        profile: &Path,
+    ) -> nodex_core::infrastructure::store::SqliteStoreKernel {
+        use nodex_core_contracts::administration::{BackupTrigger, StoreAdministrationIntent};
+        use nodex_core_contracts::{
+            AdapterKind, BoundModuleContext, LibraryId, ModuleApplyRequest, ProfileId,
+            STORE_ADMINISTRATION_CONTRACT_VERSION, StoreEpoch,
+        };
+        let kernel = nodex_core::infrastructure::store::SqliteStoreKernel::open(profile).unwrap();
+        kernel.writer().call(|connection| {
+            connection.execute_batch("INSERT INTO profiles(id,created_at,updated_at) VALUES('profile:clone','2026-11-01T00:00:00.000Z','2026-11-01T00:00:00.000Z'); INSERT INTO libraries(id,profile_id,created_at,updated_at) VALUES('library:clone','profile:clone','2026-11-01T00:00:00.000Z','2026-11-01T00:00:00.000Z'); INSERT INTO block_store_metadata(id,store_epoch,created_at,updated_at) VALUES(1,'epoch:clone','2026-11-01T00:00:00.000Z','2026-11-01T00:00:00.000Z');")?;
+            Ok(())
+        }).unwrap();
+        let (profile_id, library_id, epoch): (String, String, String) = kernel.readers().read_default(|connection| Ok(connection.query_row(
+            "SELECT profile_id,id,(SELECT store_epoch FROM block_store_metadata WHERE id=1) FROM libraries",
+            [], |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?)))?)).unwrap();
+        let context = BoundModuleContext {
+            profile_id: ProfileId(profile_id.clone()),
+            library_id: LibraryId(library_id.clone()),
+            project_id: None,
+            connection_id: "profile-clone-test".into(),
+            adapter: AdapterKind::Test,
+            editor_history_owner: None,
+            agent_attribution: None,
+        };
+        nodex_core::administration::StoreAdministrationModule::new(profile_id, library_id, &kernel)
+            .apply(
+                &context,
+                ModuleApplyRequest {
+                    contract_version: STORE_ADMINISTRATION_CONTRACT_VERSION,
+                    operation_id: "clone:content-backup".into(),
+                    store_epoch: StoreEpoch(epoch),
+                    intent: StoreAdministrationIntent::CreateBackup {
+                        label: None,
+                        include_assets: true,
+                        trigger: BackupTrigger::Manual,
+                    },
+                },
+            )
+            .unwrap();
+        kernel
     }
 
     #[test]
-    fn rejects_wrong_identity_missing_threads_busy_work_and_mismatched_watermarks() {
-        for variant in ["identity", "thread", "busy", "watermark"] {
-            let source = nodex_platform::test_support::tempdir().unwrap();
-            let staging = nodex_platform::test_support::tempdir().unwrap();
-            let path = fixture(source.path());
-            let mut bindings = required();
-            if variant == "identity" {
-                bindings[0].runtime_id = "other-engine".into();
+    fn clone_publishes_a_consistent_snapshot_while_core_and_execution_are_open() {
+        let source = nodex_platform::test_support::tempdir().unwrap();
+        let target = nodex_platform::test_support::tempdir().unwrap();
+        let mut writer = fixture(source.path());
+        let _core = publish_content_backup(source.path());
+        let clone_home = target.path().join("clone");
+        let running = Arc::new(AtomicBool::new(true));
+        let commits = Arc::new(AtomicU64::new(0));
+        std::thread::scope(|scope| {
+            let running_writer = Arc::clone(&running);
+            let writer_commits = Arc::clone(&commits);
+            let handle = scope.spawn(move || {
+                while running_writer.load(Ordering::SeqCst) {
+                    let transaction = writer.transaction().unwrap();
+                    transaction
+                        .execute("UPDATE watermark SET value=value+1", [])
+                        .unwrap();
+                    transaction
+                        .execute(
+                            "UPDATE history SET value=(SELECT value FROM watermark) WHERE id <= 2",
+                            [],
+                        )
+                        .unwrap();
+                    transaction.commit().unwrap();
+                    writer_commits.fetch_add(1, Ordering::SeqCst);
+                    std::thread::yield_now();
+                }
+            });
+            while commits.load(Ordering::SeqCst) == 0 {
+                std::thread::yield_now();
             }
-            if variant == "thread" {
-                bindings[0].thread_id = "missing".into();
-            }
-            if variant == "busy" {
-                rusqlite::Connection::open(&path)
-                    .unwrap()
-                    .execute(
-                        "INSERT INTO orchestration_v2_projection_runs VALUES ('running')",
-                        [],
-                    )
-                    .unwrap();
-            }
-            let snapshot = ExecutionSnapshot {
-                runtime_id: "engine".into(),
-                runtime_generation: "generation".into(),
-                native_histories: vec![],
-                sequence: 8,
-                database_path: path,
-                attachments_path: source.path().join("agent-runtime/userdata/attachments"),
-                environment_id_path: source.path().join("agent-runtime/userdata/environment-id"),
-            };
-            assert!(
-                capture(
-                    source.path(),
-                    staging.path(),
-                    staging.path(),
-                    &bindings,
-                    (variant == "watermark").then_some(&snapshot)
+            let before = commits.load(Ordering::SeqCst);
+            let outcome = crate::materialize_profile_clone(crate::ProfileCloneRequest {
+                source_profile_home: source.path().to_path_buf(),
+                target_profile_home: clone_home.clone(),
+                backup: crate::ProfileCloneBackupSelection::Latest,
+            });
+            let after = commits.load(Ordering::SeqCst);
+            running.store(false, Ordering::SeqCst);
+            handle.join().unwrap();
+            let clone_receipt = outcome.unwrap();
+            let published_receipt: serde_json::Value = serde_json::from_slice(
+                &fs::read(clone_home.join("profile-snapshot.json")).unwrap(),
+            )
+            .unwrap();
+            assert_eq!(
+                published_receipt,
+                serde_json::to_value(&clone_receipt).unwrap()
+            );
+            assert!(published_receipt.get("conversations").is_none());
+            let receipt = clone_receipt.execution.unwrap();
+            assert!(after > before, "source commits continue during capture");
+            let database = clone_home.join("agent-runtime/agent-runtime.sqlite");
+            for relative in [
+                "agent-runtime/agent-runtime.sqlite",
+                "agent-runtime/userdata/environment-id",
+                "agent-runtime/userdata/attachments/images/a.png",
+                "agent-runtime/imported-execution.json",
+            ] {
+                nodex_platform::private_fs::checked_metadata(
+                    &clone_home.join(relative),
+                    nodex_platform::private_fs::EntryKind::File,
+                    Some(0o600),
                 )
-                .is_err(),
-                "{variant}"
+                .unwrap();
+            }
+            let snapshot =
+                Connection::open_with_flags(&database, OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap();
+            assert_eq!(
+                snapshot
+                    .query_row("PRAGMA integrity_check", [], |r| r.get::<_, String>(0))
+                    .unwrap(),
+                "ok"
+            );
+            let (watermark, first, second): (i64, i64, i64) = snapshot.query_row("SELECT value, (SELECT value FROM history WHERE id=1), (SELECT value FROM history WHERE id=2) FROM watermark", [], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?))).unwrap();
+            assert_eq!(first, watermark);
+            assert_eq!(second, watermark);
+            assert_eq!(
+                receipt.database_bytes,
+                fs::metadata(database).unwrap().len()
+            );
+            assert_eq!(receipt.attachment_files, 1);
+            assert_eq!(
+                receipt.attachment_bytes,
+                b"immutable attachment".len() as u64
+            );
+            assert_eq!(
+                fs::read(clone_home.join("agent-runtime/userdata/attachments/images/a.png"))
+                    .unwrap(),
+                b"immutable attachment"
+            );
+            assert_eq!(
+                fs::read(clone_home.join("agent-runtime/userdata/environment-id")).unwrap(),
+                b"engine:test\n"
+            );
+            let marker: serde_json::Value = serde_json::from_slice(
+                &fs::read(clone_home.join("agent-runtime/imported-execution.json")).unwrap(),
+            )
+            .unwrap();
+            assert_eq!(marker.as_object().unwrap().len(), 3);
+            assert_eq!(marker["version"], 1);
+            assert_eq!(
+                marker["sourceProfileHome"],
+                source.path().canonicalize().unwrap().to_str().unwrap()
+            );
+            chrono::DateTime::parse_from_rfc3339(marker["importedAt"].as_str().unwrap()).unwrap();
+            assert!(!clone_home.join("agent").exists());
+            assert!(
+                !clone_home
+                    .join("agent-runtime/provider-catalog.json")
+                    .exists()
+            );
+        });
+    }
+
+    #[test]
+    fn rejects_attachment_file_directory_and_root_symlinks() {
+        for relative in ["images/a.png", "images", ""] {
+            let source = nodex_platform::test_support::tempdir().unwrap();
+            let target = nodex_platform::test_support::tempdir().unwrap();
+            let _connection = fixture(source.path());
+            let attachments = source.path().join("agent-runtime/userdata/attachments");
+            let path = if relative.is_empty() {
+                attachments
+            } else {
+                attachments.join(relative)
+            };
+            if path.is_dir() {
+                fs::remove_dir_all(&path).unwrap();
+            } else {
+                fs::remove_file(&path).unwrap();
+            }
+            let outside = source.path().join("outside");
+            if relative == "images/a.png" {
+                nodex_platform::private_fs::write(&outside, b"outside").unwrap();
+                symlink(&outside, &path).unwrap();
+            } else {
+                nodex_platform::private_fs::create_dir(&outside).unwrap();
+                nodex_platform::private_fs::directory_link(&outside, &path).unwrap();
+            }
+            let error = capture(
+                &source.path().canonicalize().unwrap(),
+                &target.path().canonicalize().unwrap(),
+            )
+            .unwrap_err();
+            assert!(
+                error.to_string().contains("symbolic links")
+                    || error.to_string().contains("real directory"),
+                "{error}"
+            );
+            assert!(
+                !target
+                    .path()
+                    .join("agent-runtime/imported-execution.json")
+                    .exists()
             );
         }
     }
 
     #[test]
-    fn missing_execution_storage_cannot_satisfy_a_bound_session() {
+    fn absent_execution_database_needs_no_runtime_or_provider_data() {
         let source = nodex_platform::test_support::tempdir().unwrap();
-        let staging = nodex_platform::test_support::tempdir().unwrap();
-        assert!(
-            capture(
-                source.path(),
-                staging.path(),
-                staging.path(),
-                &required(),
-                None
-            )
-            .is_err()
-        );
-        assert!(
-            capture(source.path(), staging.path(), staging.path(), &[], None)
-                .unwrap()
-                .0
-                .is_none()
-        );
-    }
-
-    #[test]
-    fn offline_capture_excludes_existing_and_replacement_writers_and_releases_ownership() {
-        let source = nodex_platform::test_support::tempdir().unwrap();
-        let lease = OfflineLease::acquire(source.path()).unwrap();
-        let directory = source.path().join("agent-runtime/.writer.lock");
-        assert_eq!(owner(&directory).unwrap().pid, std::process::id() as i32);
-        assert!(OfflineLease::acquire(source.path()).is_err());
-        drop(lease);
-        assert!(!directory.exists());
-        let home = source.path().join("agent-runtime");
-        claim(
-            &home.join(".writer.lock"),
-            &Owner {
-                pid: std::process::id() as i32,
-                token: "live".into(),
-            },
-        )
-        .unwrap();
-        assert!(OfflineLease::acquire(source.path()).is_err());
-        assert_eq!(owner(&directory).unwrap().token, "live");
+        let target = nodex_platform::test_support::tempdir().unwrap();
+        assert!(capture(source.path(), target.path()).unwrap().is_none());
+        nodex_platform::private_fs::create_dir(source.path().join("agent-runtime")).unwrap();
+        assert!(capture(source.path(), target.path()).unwrap().is_none());
+        assert!(!target.path().join("agent-runtime").exists());
     }
 }

@@ -1,3 +1,8 @@
+import {
+  DEFAULT_LINK_OPENING_SETTINGS,
+  sameLinkOpeningSettings,
+  type LinkOpeningSettings,
+} from "../../shared/link-opening-settings";
 import type { AgentRuntimeSettings } from "../../shared/agent-runtime-settings";
 import {
   DEFAULT_USAGE_METER_SETTINGS,
@@ -84,6 +89,8 @@ import {
   getAgentRuntimeSettings,
   updateAgentRuntimeSettings,
   getUsageMeterSettings,
+  getLinkOpeningSettings,
+  updateLinkOpeningSettings,
   updateUsageMeterSettings,
   getInboxSettings,
   resetCommandKeybindings,
@@ -130,6 +137,7 @@ export interface ApplicationSettingsSnapshot {
   readonly composerPredictions: ComposerPredictionSettings;
   readonly agentRuntime: AgentRuntimeSettings;
   readonly usageMeters: UsageMeterSettings;
+  readonly linkOpening: LinkOpeningSettings;
 }
 
 export type ApplicationSettingsCommand =
@@ -168,6 +176,7 @@ export type ApplicationSettingsCommand =
   | { readonly type: "update-window-restore"; readonly input: UpdateWindowRestoreSettingsInput }
   | { readonly type: "update-agent-runtime"; readonly input: AgentRuntimeSettings }
   | { readonly type: "update-composer-predictions"; readonly input: ComposerPredictionSettings }
+  | { readonly type: "update-link-opening"; readonly input: LinkOpeningSettings }
   | { readonly type: "update-usage-meters"; readonly input: UsageMeterSettings }
   | { readonly type: "update-inbox"; readonly input: UpdateInboxSettingsInput };
 
@@ -185,6 +194,7 @@ export class ApplicationSettings extends Context.Service<
   ApplicationSettings,
   {
     /** Current Profile meter choices and subsequent saved changes. */
+    readonly linkOpeningSettingsChanges: Stream.Stream<LinkOpeningSettings>;
     readonly usageMeterSettingsChanges: Stream.Stream<UsageMeterSettings>;
     /** Latest saved preference; slow observers may coalesce intermediate invalidations. */
     readonly composerPredictionSettingsChanges: Stream.Stream<ComposerPredictionSettings>;
@@ -291,6 +301,7 @@ function makeSnapshot(
     composerPredictions: getComposerPredictionSettings(snapshotSource),
     agentRuntime: getAgentRuntimeSettings(snapshotSource),
     usageMeters: getUsageMeterSettings(snapshotSource),
+    linkOpening: getLinkOpeningSettings(snapshotSource),
   };
 }
 
@@ -357,6 +368,9 @@ function applyCommand(
     case "update-composer-predictions":
       updateComposerPredictionSettings(command.input, source);
       return;
+    case "update-link-opening":
+      updateLinkOpeningSettings(command.input, source);
+      return;
     case "update-usage-meters":
       updateUsageMeterSettings(command.input, source);
       return;
@@ -380,6 +394,7 @@ export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
   };
   const writes = yield* Semaphore.make(1);
   const usageMeters = yield* SubscriptionRef.make(DEFAULT_USAGE_METER_SETTINGS);
+  const linkOpening = yield* SubscriptionRef.make(DEFAULT_LINK_OPENING_SETTINGS);
   // Observers invalidate predictions and reread settings before admitting new work.
   const composerPredictionChanges = yield* PubSub.sliding<ComposerPredictionSettings>(1);
   yield* Effect.addFinalizer(() => PubSub.shutdown(composerPredictionChanges));
@@ -402,6 +417,9 @@ export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
     const snapshot = yield* attempt("read", () => makeSnapshot(source, buildDefaultChannel));
     if (!sameUsageMeterSettings(yield* SubscriptionRef.get(usageMeters), snapshot.usageMeters)) {
       yield* SubscriptionRef.set(usageMeters, snapshot.usageMeters);
+    }
+    if (!sameLinkOpeningSettings(yield* SubscriptionRef.get(linkOpening), snapshot.linkOpening)) {
+      yield* SubscriptionRef.set(linkOpening, snapshot.linkOpening);
     }
     const previousHome = yield* Ref.get(activeCodexHome);
     if (previousHome === undefined) {
@@ -429,6 +447,7 @@ export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
 
   return ApplicationSettings.of({
     usageMeterSettingsChanges: SubscriptionRef.changes(usageMeters),
+    linkOpeningSettingsChanges: SubscriptionRef.changes(linkOpening),
     composerPredictionSettingsChanges: Stream.fromPubSub(composerPredictionChanges),
     acpLaunchConfiguration: (instanceId) =>
       writes.withPermits(1)(

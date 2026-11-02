@@ -12,7 +12,7 @@ const segment = /^[A-Za-z0-9_-]{1,256}$/;
 const absent = (cause: unknown) =>
   typeof cause === "object" && cause !== null && "code" in cause && cause.code === "ENOENT";
 const validateSegment = (value: string) => {
-  if (!segment.test(value)) throw new Error("Invalid restored Claude history key.");
+  if (!segment.test(value)) throw new Error("Invalid Claude history key.");
   return value;
 };
 const suffix = (key: SessionKey) => {
@@ -109,7 +109,7 @@ async function read(
   }
 }
 
-/** Instance-scoped native history for standalone SDK operations and restored-session mirrors. */
+/** Instance-scoped native history for standalone SDK operations. */
 export function createClaudeSessionStores() {
   const stores = new Map<string, SessionStore>();
   const lanes = new Map<string, Promise<void>>();
@@ -117,25 +117,11 @@ export function createClaudeSessionStores() {
   const indices = new Map<string, { stamp: string; records: number; uuids: Map<string, string> }>();
   const hash = (entry: SessionStoreEntry) =>
     createHash("sha256").update(JSON.stringify(entry)).digest("hex");
-  const requireSession = (store: SessionStore, sessionId: string | undefined): SessionStore => {
-    if (sessionId === undefined) return store;
-    validateSegment(sessionId);
-    return {
-      ...store,
-      load: async (key) => {
-        const entries = await store.load(key);
-        // The SDK otherwise falls back to the auth home's history before spawning the CLI.
-        if (key.subpath === undefined && key.sessionId === sessionId && !entries?.length)
-          throw new Error("Claude session history is unavailable.");
-        return entries;
-      },
-    };
-  };
-  return (home: string, requiredSessionId?: string): SessionStore => {
+  return (home: string): SessionStore => {
     if (!path.isAbsolute(home) || path.normalize(home) !== home)
       throw new Error("Claude history requires an absolute managed path.");
     const cached = stores.get(home);
-    if (cached !== undefined) return requireSession(cached, requiredSessionId);
+    if (cached !== undefined) return cached;
     if (stores.size >= 256)
       throw new Error("Claude history configuration exceeds its instance boundary.");
     const locate = async (key: SessionKey, create = false) => {
@@ -358,6 +344,6 @@ export function createClaudeSessionStores() {
         }),
     };
     stores.set(home, store);
-    return requireSession(store, requiredSessionId);
+    return store;
   };
 }

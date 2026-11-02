@@ -1220,8 +1220,13 @@ describe("buildTurnRenderModel", () => {
         status: "completed",
         firstTurnWorkItemStartedAtMs: 1_000,
         finalAssistantStartedAtMs: 8_000,
+        assistantResponseWorkDurationMs: 7_000,
         itemIds: ["user_1", "exec_1", "assistant_1"],
-        items: [buildUserItem(), buildExecItem({ status: "completed" }), buildAssistantItem()],
+        items: [
+          buildUserItem(),
+          buildExecItem({ status: "completed", startedAtMs: 1_000 }),
+          buildAssistantItem({ startedAtMs: 8_000 }),
+        ],
       }),
       requests: [],
       isLatestTurn: false,
@@ -1476,4 +1481,108 @@ test("a working sibling keeps a delegated group active after its first task fini
   expect(model.liveActivity.fallback.isVisible).toBe(false);
   expect(model.defaultAgentBodyCollapsed).toBe(false);
   expect(model.agentBodyUnits).toHaveLength(1);
+});
+
+describe("closing message action visibility", () => {
+  const selectTurnRenderModel = createTurnRenderModelSelector();
+  const render = (
+    turn: CodexConversationTurn,
+    options: { isMostRecentTurn?: boolean; surface?: "main" | "preview" } = {},
+  ) =>
+    selectTurnRenderModel({
+      entry: buildVisibleEntry(turn, options.isMostRecentTurn ?? true),
+      surface: options.surface,
+      canForkTurn: true,
+      canEditTurnUserPrefix: true,
+    });
+  const readVisibility = (model: ThreadTurnModel) => ({
+    reply: model.buckets.assistantItem?.assistantMessageActions?.alwaysVisible === true,
+    prompt: model.buckets.userItems.at(-1)?.userMessageActions?.alwaysVisible === true,
+  });
+  const answered = buildTurn({
+    status: "completed",
+    items: [buildUserItem(), buildAssistantItem()],
+  });
+
+  test("keeps the settled latest reply's actions visible and leaves its prompt on hover", () => {
+    expect(readVisibility(render(answered))).toEqual({ reply: true, prompt: false });
+  });
+
+  test("returns earlier replies to hover-only actions once a newer turn exists", () => {
+    expect(readVisibility(render(answered, { isMostRecentTurn: false }))).toEqual({
+      reply: false,
+      prompt: false,
+    });
+  });
+
+  test("pins the prompt's actions when the settled latest turn has no reply actions", () => {
+    const unanswered = buildTurn({ status: "interrupted", items: [buildUserItem()] });
+    expect(readVisibility(render(unanswered))).toEqual({ reply: false, prompt: true });
+    expect(readVisibility(render(unanswered, { isMostRecentTurn: false }))).toEqual({
+      reply: false,
+      prompt: false,
+    });
+  });
+
+  test("does not pin anything while the latest turn is still running", () => {
+    const running = buildTurn({ status: "inProgress", items: [buildUserItem()] });
+    expect(readVisibility(render(running))).toEqual({ reply: false, prompt: false });
+  });
+
+  test("previews keep the latest reply's actions on hover", () => {
+    expect(readVisibility(render(answered, { surface: "preview" }))).toEqual({
+      reply: false,
+      prompt: false,
+    });
+  });
+});
+
+test.each([100_000, -100_000])(
+  "worked duration stays on one clock with execution-host skew of %sms",
+  (skew) => {
+    const observedStart = 1000;
+    const model = buildTurnRenderModel({
+      turn: buildTurn({
+        status: "completed",
+        firstTurnWorkItemStartedAtMs: observedStart,
+        finalAssistantStartedAtMs: 8000 + skew,
+        assistantResponseWorkDurationMs: 7000,
+        items: [
+          buildUserItem(),
+          buildExecItem({ status: "completed", startedAtMs: 1000 + skew }),
+          buildAssistantItem({ startedAtMs: 8000 + skew }),
+        ],
+      }),
+      requests: [],
+      isLatestTurn: true,
+      isStreamingTurn: false,
+    });
+    expect(model.workedForItem).toMatchObject({
+      status: "worked",
+      startedAtMs: observedStart,
+      completedAtMs: 8000,
+    });
+    expect(model.buckets.latestAssistantMessage?.assistantMessageActions?.sentAtMs).toBe(
+      8000 + skew,
+    );
+  },
+);
+
+test("a response start cannot complete worked duration without a recorded work start", () => {
+  const model = buildTurnRenderModel({
+    turn: buildTurn({
+      status: "completed",
+      firstTurnWorkItemStartedAtMs: 1000,
+      finalAssistantStartedAtMs: 108_000,
+      items: [
+        buildUserItem(),
+        buildExecItem({ status: "completed" }),
+        buildAssistantItem({ startedAtMs: 108_000 }),
+      ],
+    }),
+    requests: [],
+    isLatestTurn: true,
+    isStreamingTurn: false,
+  });
+  expect(model.workedForItem).toBeNull();
 });

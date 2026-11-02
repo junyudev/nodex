@@ -1,6 +1,7 @@
 import {
   forwardRef,
   type KeyboardEvent,
+  type MouseEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
@@ -38,7 +39,7 @@ export interface NfmCompactLinkToolbarProps {
   editTooltip: ReactNode;
   editLabel: string;
   disabledReason?: ReactNode;
-  onOpenLink: () => void;
+  onOpenLink: (event: MouseEvent<HTMLButtonElement>) => void;
   onClearLink: () => void;
   onCopyLink: () => void;
   onEditLink: () => void;
@@ -169,7 +170,13 @@ export function NfmCompactLinkToolbar({
               event.preventDefault();
               event.stopPropagation();
               if (!canOpen) return;
-              onOpenLink();
+              onOpenLink(event);
+            }}
+            onAuxClick={(event) => {
+              if (!canOpen || event.button !== 1) return;
+              event.preventDefault();
+              event.stopPropagation();
+              onOpenLink(event);
             }}
             className={cn(NFM_LINK_TOOLBAR_BUTTON_CLASS, "text-token-text-primary")}
           >

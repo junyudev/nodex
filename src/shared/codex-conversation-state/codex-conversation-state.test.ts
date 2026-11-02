@@ -1,3 +1,4 @@
+import { resolveAssistantResponseWorkDurationMs } from "../codex-assistant-response-timing";
 import { assertCodexFailedTurnContinuation } from "./codex-failed-turn-continuation";
 import { describe, expect, test } from "vite-plus/test";
 import type { ServerRequest } from "@nodex/codex-app-server-protocol";
@@ -1172,8 +1173,28 @@ describe("protocol-backed canonical conversation state", () => {
     expect(state.turns[0]?.items[0] === agentActivityV2MultiActionCommandItem).toBe(true);
   });
 
+  test.each([
+    { source: { fileId: "file_123" }, expected: "file-service://file_123" },
+    {
+      source: { fileId: "file_123", savedPath: "/images/generated.png" },
+      expected: "/images/generated.png",
+    },
+  ])("materializes a generated image reference $source", ({ source, expected }) => {
+    const item = {
+      type: "imageGeneration",
+      id: "generated-1",
+      status: "completed",
+      revisedPrompt: null,
+      failure: null,
+      generationId: null,
+      ...source,
+    } satisfies ThreadItem;
+    expect(materializeCodexCanonicalProtocolItem(item)).toEqual({ ...item, src: expected });
+  });
+
   test("materializes hydrated image and collaboration items with exact app-side fields", () => {
     const image = {
+      generationId: null,
       type: "imageGeneration",
       id: "hydrated-image",
       status: "completed",
@@ -1531,4 +1552,77 @@ test("merges per-assistant starts without substituting a turn completion time", 
     merged.assistantMessageStartedAtMsById,
   );
   expect(hydratedAgain.finalAssistantStartedAtMs).toBeNull();
+});
+
+test("hydrates the selected response start and keeps it across resume and older commentary", () => {
+  const template = buildAgentActivityV2CorpusThread([]).turns[0]!;
+  const response = (id: string, startedAtMs: number | null): ThreadItem => ({
+    type: "agentMessage",
+    id,
+    text: id,
+    phase: "final_answer",
+    delivery: null,
+    memoryCitation: null,
+    questions: null,
+    startedAtMs,
+    completedAtMs: 90_000,
+  });
+  const hydrate = (items: ThreadItem[]) =>
+    hydrateCanonicalFixtureTurns([{ ...template, items, completedAt: 100 }]).turns[0]!;
+  const final = response("final", 5000);
+  const existing = hydrate([response("earlier", 3000), final]);
+  expect(existing.finalAssistantStartedAtMs).toBe(5000);
+  const older = { ...response("commentary", 70_000), phase: "commentary" as const };
+  const merged = mergeCodexCanonicalTurnState(existing, hydrate([older]), {
+    itemMergeMode: "prepend",
+  });
+  expect(merged.finalAssistantStartedAtMs).toBe(5000);
+  const resumed = mergeCodexCanonicalTurnState(merged, hydrate([final]), {
+    isResumeSnapshot: true,
+  });
+  expect(resumed.finalAssistantStartedAtMs).toBe(5000);
+  const async = { ...response("question", 80_000), delivery: "async" as const };
+  expect(hydrate([final, async]).finalAssistantStartedAtMs).toBe(5000);
+  expect(hydrate([response("untimed", null)]).finalAssistantStartedAtMs).toBeNull();
+  expect(
+    mergeCodexCanonicalTurnState(existing, hydrate([response("new", null)]))
+      .finalAssistantStartedAtMs,
+  ).toBeNull();
+});
+
+test("joining native history prefers the selected response's recorded start over an observed anchor", () => {
+  const template = buildAgentActivityV2CorpusThread([]).turns[0]!;
+  const response: ThreadItem = {
+    type: "agentMessage",
+    id: "response",
+    text: "Done",
+    phase: "final_answer",
+    memoryCitation: null,
+    delivery: null,
+    questions: null,
+  };
+  const base = hydrateCanonicalFixtureTurns([{ ...template, items: [response] }]).turns[0]!;
+  const live = {
+    ...base,
+    finalAssistantStartedAtMs: 70_001,
+    assistantMessageStartedAtMsById: { response: 7000 },
+  };
+  const history = hydrateCanonicalFixtureTurns([
+    { ...template, items: [{ ...response, startedAtMs: 7000 }] },
+  ]).turns[0]!;
+  expect(history.finalAssistantStartedAtMs).toBe(7000);
+  expect(
+    mergeCodexCanonicalTurnState(live, history, { isResumeSnapshot: true })
+      .finalAssistantStartedAtMs,
+  ).toBe(7000);
+});
+
+test("observed approval reviews cannot anchor execution-host worked duration", () => {
+  expect(
+    resolveAssistantResponseWorkDurationMs([
+      { id: "review", type: "automaticApprovalReview", startedAtMs: 200_000 },
+      { id: "thought", type: "reasoning", startedAtMs: 1000 },
+      { id: "answer", type: "agentMessage", startedAtMs: 8000 },
+    ]),
+  ).toBe(7000);
 });

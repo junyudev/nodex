@@ -146,7 +146,6 @@ export const makeWithPorts = Effect.fn("AgentRuntime.ProviderConfiguration")(fun
   const desired = yield* Ref.make(initial);
   const current = yield* Ref.make(initial);
   const lane = yield* Semaphore.make(1);
-  const processScope = yield* Effect.scope;
   const refresh = Effect.gen(function* () {
     const before = yield* Ref.get(current);
     const wanted = yield* Ref.get(desired);
@@ -189,14 +188,6 @@ export const makeWithPorts = Effect.fn("AgentRuntime.ProviderConfiguration")(fun
     /** Stops new requests while the host cancels accepted work, without replacing live drivers. */
     closeAdmission: (config: ProviderInstanceConfigMap) =>
       lane.withPermits(1)(ports.admission ? ports.admission(config) : Effect.void),
-    withSuspended: <A, E, R>(effect: Effect.Effect<A, E, R>) =>
-      lane.withPermits(1)(
-        Effect.acquireUseRelease(
-          Ref.get(current).pipe(Effect.tap(() => ports.reconcile({}))),
-          () => effect,
-          (saved) => (processScope.state._tag === "Closed" ? Effect.void : ports.reconcile(saved)),
-        ),
-      ),
     configure: (config: ProviderInstanceConfigMap) =>
       lane.withPermits(1)(
         Effect.gen(function* () {

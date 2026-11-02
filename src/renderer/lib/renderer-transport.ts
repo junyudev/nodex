@@ -9,6 +9,12 @@ import type { ProjectionScope, ProjectionStreamMessage } from "../../shared/proj
 import type { ContentRoutingIdentity } from "../../shared/content-routing-context";
 
 export interface RendererTransport {
+  subscribeLinkOpeningSettingsChanges?: (
+    callback: (settings: import("../../shared/link-opening-settings").LinkOpeningSettings) => void,
+  ) => () => void;
+  subscribeLinkOpenRequests?: (
+    callback: (request: import("../../shared/link-opening").LinkOpenRequest) => void,
+  ) => () => void;
   subscribePageTextRewriteEvents?: (
     callback: (event: import("../../shared/page-text-rewrite").PageTextRewriteEvent) => void,
   ) => () => void;

@@ -261,29 +261,29 @@ describe("SidebarPagesSection", () => {
       <DepthOwner
         {...baseProps}
         activeRoot={null}
-        dataSource={dataSource(pages(18))}
+        dataSource={dataSource(pages(14))}
         onExtraPagesChange={onExtraPagesChange}
       />,
     );
+    const press = async (name: "Show more" | "Show less") => {
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name }));
+        await Promise.resolve();
+      });
+    };
 
     expect(contentRowTitles()).toHaveLength(5);
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Show more" }));
-      await Promise.resolve();
-    });
-    expect(contentRowTitles()).toHaveLength(15);
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Show more" }));
-      await Promise.resolve();
-    });
-    expect(contentRowTitles()).toHaveLength(18);
+    await press("Show more");
+    expect(contentRowTitles()).toHaveLength(10);
+    await press("Show more");
+    expect(contentRowTitles()).toHaveLength(14);
     expect(screen.queryByRole("button", { name: "Show more" })).toBeNull();
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Show less" }));
-      await Promise.resolve();
-    });
+    await press("Show less");
+    expect(contentRowTitles()).toHaveLength(10);
+    await press("Show less");
     expect(contentRowTitles()).toHaveLength(5);
-    expect(onExtraPagesChange.mock.calls).toEqual([[1], [2], [0]]);
+    expect(screen.queryByRole("button", { name: "Show less" })).toBeNull();
+    expect(onExtraPagesChange.mock.calls).toEqual([[1], [2], [1], [0]]);
   });
 
   test("opens a Page's shared resource menu from the whole row context target", async () => {
@@ -395,7 +395,7 @@ describe("SidebarPagesSection", () => {
       <DepthOwner
         {...baseProps}
         activeRoot={null}
-        initialExtraPages={2}
+        initialExtraPages={4}
         dataSource={windowedDataSource(60, onRead)}
       />,
     );
@@ -411,14 +411,14 @@ describe("SidebarPagesSection", () => {
   test("opening a listed root changes neither the rows nor their order", async () => {
     const source = windowedDataSource(30);
     const view = renderWithMaitai(
-      <DepthOwner {...baseProps} activeRoot={null} initialExtraPages={1} dataSource={source} />,
+      <DepthOwner {...baseProps} activeRoot={null} initialExtraPages={2} dataSource={source} />,
     );
     const before = contentRowTitles();
     view.rerender(
       <DepthOwner
         {...baseProps}
         activeRoot={{ kind: "page", pageId: "page:12" }}
-        initialExtraPages={1}
+        initialExtraPages={2}
         dataSource={source}
       />,
     );
@@ -446,7 +446,7 @@ describe("SidebarPagesSection", () => {
       "Page 5",
       "Page 27",
     ]);
-    for (let step = 0; step < 2; step += 1) {
+    for (let step = 0; step < 4; step += 1) {
       await act(async () => {
         fireEvent.click(screen.getByRole("button", { name: "Show more" }));
         await Promise.resolve();
@@ -461,8 +461,8 @@ describe("SidebarPagesSection", () => {
       fireEvent.click(screen.getByRole("button", { name: "Show more" }));
       await Promise.resolve();
     });
-    await waitFor(() => expect(contentRowTitles()).toHaveLength(35));
-    expect(contentRowTitles()).toEqual(pages(35).map((page) => page.title));
+    await waitFor(() => expect(contentRowTitles()).toHaveLength(30));
+    expect(contentRowTitles()).toEqual(pages(30).map((page) => page.title));
   });
 
   test("omits a selected resource that Content does not list", () => {

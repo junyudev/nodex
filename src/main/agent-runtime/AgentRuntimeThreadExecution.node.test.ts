@@ -134,7 +134,7 @@ const harness = (
         Effect.sync(() =>
           state.available ? { connection, thread: state.thread, sessionId: "session" } : null,
         ),
-      withExecutionLocationWriter: <A, E, R>(sessionId: string, use: Effect.Effect<A, E, R>) =>
+      withExecutionLocation: <A, E, R>(sessionId: string, use: Effect.Effect<A, E, R>) =>
         Effect.acquireUseRelease(
           Effect.sync(() => {
             assert.strictEqual(sessionId, "session");
@@ -238,7 +238,7 @@ it.effect(
 );
 
 it.effect(
-  "holds the snapshot writer through quiescence and durable commit, then releases verified recovery",
+  "retains Runtime usage through quiescence and durable commit, then releases verified recovery",
   () =>
     Effect.gen(function* () {
       const f = yield* harness();

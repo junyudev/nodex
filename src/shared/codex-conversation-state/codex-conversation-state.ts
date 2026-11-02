@@ -3,6 +3,10 @@ import type {
   CodexQuestionResponseMetadata,
 } from "../codex-question-response";
 import { produce, type Draft } from "immer";
+import {
+  resolveAssistantResponseStartedAtMs,
+  resolveAssistantResponseWorkDurationMs,
+} from "../codex-assistant-response-timing";
 import { mergeCodexItemCompletionEvidence } from "./codex-item-completion";
 import {
   residentConversationTurns,
@@ -59,6 +63,7 @@ import type { ThreadTokenUsage } from "@nodex/codex-app-server-protocol/v2/Threa
 import { isCodexProtocolThreadItem } from "../codex-protocol-thread-item";
 import type { CodexQueuedFollowUp } from "../codex-queued-follow-up-state";
 import { normalizeCodexServiceTier } from "../codex-service-tier";
+import { codexImageInputSource } from "../codex-image-input";
 import type {
   CodexFileChangeLineCounts,
   CodexImportedMarkdownImage,
@@ -926,6 +931,8 @@ export interface CodexCanonicalTurnContext {
   readonly completedAtMs?: number | null;
   readonly firstTurnWorkItemStartedAtMs?: number | null;
   readonly finalAssistantStartedAtMs: number | null;
+  /** Elapsed execution-host work before the selected response; independent of observer clocks. */
+  readonly assistantResponseWorkDurationMs?: number | null;
   readonly assistantMessageStartedAtMsById?: Readonly<Record<string, number>>;
   /** Explicit lifecycle for statusless protocol items such as reasoning. */
   readonly lifecycleStatusByItemId?: Readonly<Record<string, CodexItemStatus>>;
@@ -1328,7 +1335,11 @@ export function materializeCodexCanonicalProtocolItem(
       typeof item.savedPath === "string" ? normalizeCodexImageSource(item.savedPath) : null;
     return {
       ...item,
-      src: savedSource ?? normalizeCodexImageSource(item.result),
+      src:
+        savedSource ??
+        ("fileId" in item
+          ? codexImageInputSource({ type: "image", fileId: item.fileId })
+          : normalizeCodexImageSource(item.result)),
     } satisfies CodexCanonicalImageGenerationItem;
   }
 
@@ -1373,7 +1384,8 @@ export function createCodexCanonicalTurnState(
     diff: null,
     turnStartedAtMs: protocolSecondsToMilliseconds(startedAt),
     completedAtMs: protocolSecondsToMilliseconds(completedAt),
-    finalAssistantStartedAtMs: null,
+    finalAssistantStartedAtMs: resolveAssistantResponseStartedAtMs({ items }),
+    assistantResponseWorkDurationMs: resolveAssistantResponseWorkDurationMs(items),
     lifecycleStatusByItemId: buildCodexInitialItemLifecycleStatusById(items, header.status),
   };
   if (turn.status !== "failed" || !turn.error) return canonical;
@@ -1661,6 +1673,15 @@ export function mergeCodexCanonicalTurnState(
       : options.preserveExistingTerminalState && terminalRegression
         ? existing.items
         : mergeCodexCanonicalHydratedItems(existing.items, incoming.items);
+  const assistantMessageStartedAtMsById =
+    existing.assistantMessageStartedAtMsById === undefined
+      ? incoming.assistantMessageStartedAtMsById
+      : incoming.assistantMessageStartedAtMsById === undefined
+        ? existing.assistantMessageStartedAtMsById
+        : {
+            ...incoming.assistantMessageStartedAtMsById,
+            ...existing.assistantMessageStartedAtMsById,
+          };
   const merged: CodexCanonicalTurnState = {
     ...incoming,
     ...(itemsPagination == null ? {} : { itemsPagination }),
@@ -1686,19 +1707,15 @@ export function mergeCodexCanonicalTurnState(
       incoming.interruptedCommandExecutionItemIds ?? existing.interruptedCommandExecutionItemIds,
     commandExecutionStartedAtMsById:
       existing.commandExecutionStartedAtMsById ?? incoming.commandExecutionStartedAtMsById,
-    assistantMessageStartedAtMsById:
-      existing.assistantMessageStartedAtMsById === undefined
-        ? incoming.assistantMessageStartedAtMsById
-        : incoming.assistantMessageStartedAtMsById === undefined
-          ? existing.assistantMessageStartedAtMsById
-          : {
-              ...incoming.assistantMessageStartedAtMsById,
-              ...existing.assistantMessageStartedAtMsById,
-            },
+    assistantMessageStartedAtMsById,
     turnStartedAtMs: existing.turnStartedAtMs ?? incoming.turnStartedAtMs,
     completedAtMs: existing.completedAtMs ?? incoming.completedAtMs,
-    finalAssistantStartedAtMs:
-      existing.finalAssistantStartedAtMs ?? incoming.finalAssistantStartedAtMs,
+    assistantResponseWorkDurationMs: resolveAssistantResponseWorkDurationMs(items),
+    finalAssistantStartedAtMs: resolveAssistantResponseStartedAtMs(
+      { items, assistantMessageStartedAtMsById },
+      existing,
+      incoming,
+    ),
     lifecycleStatusByItemId: mergeCodexLifecycleStatusByItemId(
       existing.lifecycleStatusByItemId,
       incoming.lifecycleStatusByItemId,
@@ -1870,6 +1887,7 @@ function createCodexCanonicalCompletedSyntheticTurn(
     turnStartedAtMs: null,
     firstTurnWorkItemStartedAtMs: null,
     finalAssistantStartedAtMs: null,
+    assistantResponseWorkDurationMs: null,
     hookRuns: [],
   };
 }
@@ -1903,6 +1921,7 @@ export function mutateCodexCanonicalInProgressSyntheticItem(
       turnStartedAtMs: observedAtMs,
       firstTurnWorkItemStartedAtMs: null,
       finalAssistantStartedAtMs: null,
+      assistantResponseWorkDurationMs: null,
       hookRuns: [],
     },
     () => globalThis.crypto.randomUUID(),

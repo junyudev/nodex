@@ -37,6 +37,45 @@ const decodeThreadItems = Schema.decodeUnknownEffect(
   CodexRpc.CLIENT_REQUEST_RESPONSES["thread/items/list"],
 );
 
+it.effect("decodes the account-session listing through its shared response schema", () =>
+  Effect.gen(function* () {
+    const response = { activeSessionId: null, sessions: [] };
+    assert.deepStrictEqual(
+      yield* Schema.decodeUnknownEffect(CodexRpc.CLIENT_REQUEST_RESPONSES["accountSession/list"])(
+        response,
+      ),
+      response,
+    );
+  }),
+);
+
+it.effect("preserves generated-image references and item lifecycle times", () =>
+  Effect.gen(function* () {
+    for (const source of [{ result: "AQID" }, { fileId: "file_123" }]) {
+      const response = {
+        data: [
+          {
+            turnId: "turn-1",
+            item: {
+              type: "imageGeneration",
+              id: "generated-1",
+              status: "completed",
+              revisedPrompt: null,
+              failure: null,
+              generationId: "generation-1",
+              startedAtMs: 1_000,
+              completedAtMs: 2_000,
+              ...source,
+            },
+          },
+        ],
+        nextCursor: null,
+      } as const;
+      assert.deepStrictEqual(yield* decodeThreadItems(response), response);
+    }
+  }),
+);
+
 it.effect("preserves each image source and item timing in paginated history", () =>
   Effect.gen(function* () {
     for (const source of [{ url: "https://example.com/image.png" }, { fileId: "file_123" }]) {

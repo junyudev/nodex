@@ -130,6 +130,12 @@ handoff journal, while Core retains product Session placement and binding. See
 [Agent Runtime behavior](product-specs/agent-runtime-behavior.md) and
 [ADR 0068](adr/0068-agent-runtime-execution-authority.md).
 
+The Session set follows the execution store's conversations. The Store and the execution
+store are separate authorities that a restore or an imported execution store can leave
+disagreeing; the Runtime records the Store coordinate it was last reconciled with, and Main
+reconciles the complete Session set whenever that coordinate differs from Core's current
+one. See [Backup, Restore, and Maintenance](reliability/backup-restore-and-maintenance.md#sessions-after-a-restore).
+
 Blocks, Documents, owner registries, search/asset projections, and top-level placement are physically Library-scoped. A Project coordinate retained by a receipt, change log, automation record, recovery artifact, or delivery packet names actor/execution/delivery provenance, not content ownership. `library_block_placements` is the sole root-order authority; runtime mutations do not dual-write a Project-local placement graph.
 
 Projectless execution retains a null actor Project. Authenticated Profile content access and event delivery remain independent of that actor coordinate; content location never supplies a fallback execution identity.
@@ -869,8 +875,7 @@ version and response-admission Module while retaining their distinct authorizati
 delivery responsibilities. Status observation selects an exact Run and its restart
 continuations through the execution owner, shares Core, native and Runtime invalidations,
 and never hydrates child histories. Runtime persistence owns the lifetime and transaction
-affinity of its independent read-only SQLite connection. Product writers share
-snapshot admission without holding a Project lifecycle gate across Host callbacks.
+affinity of its independent read-only SQLite connection.
 Live Session activity (running, waiting, background) is one Main-owned projection derived from
 the Runtime per process generation and served to every window; it is never copied into Core.
 Claude subscription usage is likewise one Main-owned snapshot served to every window, read only
@@ -1315,6 +1320,7 @@ These invariants cross subsystem boundaries. Narrower domain and feature invaria
 23. Native clipboard descriptors and Main lifecycle state are routing evidence only. Core's durable bundle and cut claim are the sole structural copy and move authority; every non-authoritative path remains portable content.
 24. Blocks have one exact text language, [Nodex Markdown](references/nodex-markdown.md). Core links its Rust implementation natively and the app runs the same implementation through WebAssembly; exact writes and portable exports share that writer and fixture. [ADR 0073](adr/0073-one-text-language-for-blocks.md) records the boundary, while [Markdown Interchange](references/markdown-interchange.md) owns clipboard and HTML conversion. Written messages are message text: a message's Page body, its bubble, its Composer draft, and what a chat receives from it are projections of that one document; see [Message Content Behavior](product-specs/message-content-behavior.md).
 25. An Agent reply's outcome comes only from its Agent's evidence. A failure of Nodex's own observation leads to reattachment and reconciliation, never an invented outcome, and every unfinished reply is bound to a live native turn or a durable scheduled recovery; see [Agent Runtime behavior](product-specs/agent-runtime-behavior.md#request-recovery-and-continuation).
+26. Backups capture only what Nodex alone writes, the Store and its managed assets, from one online snapshot. Backup, restore and Profile cloning never wait for, pause or coordinate with an Agent, and never read an Agent's native home; restore rewinds content while conversations stay with the execution store. See [Backup, Restore, and Maintenance](reliability/backup-restore-and-maintenance.md).
 
 ## Codemap
 

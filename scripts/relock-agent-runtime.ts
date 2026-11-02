@@ -19,7 +19,9 @@ const ZERO_SHA256 = "0".repeat(64);
 
 export type AgentRuntimeRelockOptions = {
   agentRuntimePlatformContractVerifier?: AgentRuntimeMacosPlatformContractVerifier;
-  arm64ArchivePath: string;
+  arm64ArchivePath?: string;
+  windowsArm64ArchivePath?: string;
+  windowsX64ArchivePath?: string;
   lockPath?: string;
   outputPath: string;
   projectRootPath?: string;
@@ -64,39 +66,48 @@ export async function createAgentRuntimeRelockCandidate(
   const temporaryRoot = path.join(os.tmpdir(), `nodex-runtime-relock-${randomUUID()}`);
   mkdirSync(temporaryRoot, { recursive: true });
   try {
-    const arm64ArchivePath = path.resolve(options.arm64ArchivePath);
-
-    const builds = {
-      ...lock.builds,
-      "darwin-arm64": inspectArchive({
-        archivePath: arm64ArchivePath,
-        current: lock.builds["darwin-arm64"],
-      }),
-    };
-    let candidate = parseCodexAppServerReleaseLock({ ...lock, builds });
+    let candidate = lock;
+    const archives = [
+      ["darwin-arm64", options.arm64ArchivePath, "darwin", "arm64"],
+      ["win32-arm64", options.windowsArm64ArchivePath, "win32", "arm64"],
+      ["win32-x64", options.windowsX64ArchivePath, "win32", "x64"],
+    ] as const;
+    if (!archives.some(([, archivePath]) => archivePath)) {
+      throw new Error("At least one official Codex release archive is required");
+    }
     const candidatePath = path.join(temporaryRoot, "candidate.lock.json");
-    writeFileSync(candidatePath, `${JSON.stringify(candidate, null, 2)}\n`);
-
-    const stagedArm64 = await stageCodexRuntimeCandidate({
-      agentRuntimePlatformContractVerifier: options.agentRuntimePlatformContractVerifier,
-      archivePath: arm64ArchivePath,
-      lockPath: candidatePath,
-      outputPath: path.join(temporaryRoot, "stage-arm64"),
-      projectRootPath: projectRoot,
-      targetArch: "arm64",
-      targetPlatform: "darwin",
-    });
-    candidate = parseCodexAppServerReleaseLock({
-      ...candidate,
-      builds: {
-        ...candidate.builds,
-        "darwin-arm64": {
-          ...candidate.builds["darwin-arm64"],
-          entrypointSha256: stagedArm64.metadata.releaseAsset.entrypointSha256,
-          runtimeMetadataSha256: stagedArm64.metadataSha256,
+    for (const [key, archive, targetPlatform, targetArch] of archives) {
+      if (!archive) continue;
+      const archivePath = path.resolve(archive);
+      candidate = parseCodexAppServerReleaseLock({
+        ...candidate,
+        builds: {
+          ...candidate.builds,
+          [key]: inspectArchive({ archivePath, current: candidate.builds[key] }),
         },
-      },
-    });
+      });
+      writeFileSync(candidatePath, `${JSON.stringify(candidate, null, 2)}\n`);
+      const staged = await stageCodexRuntimeCandidate({
+        agentRuntimePlatformContractVerifier: options.agentRuntimePlatformContractVerifier,
+        archivePath,
+        lockPath: candidatePath,
+        outputPath: path.join(temporaryRoot, `stage-${key}`),
+        projectRootPath: projectRoot,
+        targetArch,
+        targetPlatform,
+      });
+      candidate = parseCodexAppServerReleaseLock({
+        ...candidate,
+        builds: {
+          ...candidate.builds,
+          [key]: {
+            ...candidate.builds[key],
+            entrypointSha256: staged.metadata.releaseAsset.entrypointSha256,
+            runtimeMetadataSha256: staged.metadataSha256,
+          },
+        },
+      });
+    }
     return candidate;
   } finally {
     rmSync(temporaryRoot, { force: true, recursive: true });
@@ -106,14 +117,18 @@ export async function createAgentRuntimeRelockCandidate(
 export function parseAgentRuntimeRelockCli(argv: string[]): AgentRuntimeRelockOptions {
   const args = argv.filter((value) => value !== "--");
   let arm64ArchivePath: string | undefined;
+  let windowsArm64ArchivePath: string | undefined;
+  let windowsX64ArchivePath: string | undefined;
   let lockPath: string | undefined;
   let outputPath: string | undefined;
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     const value = args[index + 1];
-    if (arg === "--arm64" || arg === "--base-lock" || arg === "--out") {
+    if (["--arm64", "--windows-arm64", "--windows-x64", "--base-lock", "--out"].includes(arg!)) {
       if (!value) throw new Error(`Missing value for ${arg}`);
       if (arg === "--arm64") arm64ArchivePath = value;
+      if (arg === "--windows-arm64") windowsArm64ArchivePath = value;
+      if (arg === "--windows-x64") windowsX64ArchivePath = value;
       if (arg === "--base-lock") lockPath = value;
       if (arg === "--out") outputPath = value;
       index += 1;
@@ -121,8 +136,8 @@ export function parseAgentRuntimeRelockCli(argv: string[]): AgentRuntimeRelockOp
     }
     throw new Error(`Unexpected argument: ${arg}`);
   }
-  if (!arm64ArchivePath) {
-    throw new Error("--arm64 official Codex release archive is required");
+  if (!arm64ArchivePath && !windowsArm64ArchivePath && !windowsX64ArchivePath) {
+    throw new Error("At least one official Codex release archive is required");
   }
   if (!lockPath) throw new Error("--base-lock is required");
   if (!outputPath) throw new Error("--out is required");
@@ -131,7 +146,13 @@ export function parseAgentRuntimeRelockCli(argv: string[]): AgentRuntimeRelockOp
   if (resolvedOutputPath === canonicalLockPath) {
     throw new Error("Relock output must not overwrite the canonical release lock");
   }
-  return { arm64ArchivePath, lockPath, outputPath: resolvedOutputPath };
+  return {
+    arm64ArchivePath,
+    windowsArm64ArchivePath,
+    windowsX64ArchivePath,
+    lockPath,
+    outputPath: resolvedOutputPath,
+  };
 }
 
 export function writeAgentRuntimeRelockCandidate(

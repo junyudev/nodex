@@ -1,3 +1,7 @@
+import {
+  LINK_OPENING_SETTINGS_CHANGED_CHANNEL,
+  LinkOpeningSettingsSchema,
+} from "../../../shared/link-opening-settings";
 import { AgentRuntimeSettingsSchema } from "../../../shared/agent-runtime-settings";
 import {
   USAGE_METER_SETTINGS_CHANGED_CHANNEL,
@@ -81,6 +85,7 @@ type SettingsReadChannel =
   | "settings:telemetry:get"
   | "settings:thread-notifications:get"
   | "settings:window-restore:get"
+  | "settings:link-opening:get"
   | "settings:usage-meters:get"
   | "settings:agent-runtime:get"
   | "settings:composer-predictions:get"
@@ -190,6 +195,14 @@ export const live: Layer.Layer<
       Stream.runForEach((settings) =>
         Effect.sync(() => {
           safeBroadcastToWindows(windows.all(), USAGE_METER_SETTINGS_CHANGED_CHANNEL, [settings]);
+        }),
+      ),
+      Effect.forkScoped({ startImmediately: true }),
+    );
+    yield* applicationSettings.linkOpeningSettingsChanges.pipe(
+      Stream.runForEach((settings) =>
+        Effect.sync(() => {
+          safeBroadcastToWindows(windows.all(), LINK_OPENING_SETTINGS_CHANGED_CHANNEL, [settings]);
         }),
       ),
       Effect.forkScoped({ startImmediately: true }),
@@ -676,6 +689,25 @@ export const live: Layer.Layer<
             "update-usage-meter-settings",
             { type: "update-usage-meters", input: parsed },
             (value) => value.usageMeters,
+          ),
+        ),
+      ),
+    );
+    yield* handleRead(
+      "settings:link-opening:get",
+      "Link opening settings",
+      (value) => value.linkOpening,
+    );
+    yield* ipc.handlePlainCommand("settings:link-opening:update", (event, input: unknown) =>
+      authorize(event, "Link opening settings").pipe(
+        Effect.andThen(
+          parse("parse-link-opening-settings", () => LinkOpeningSettingsSchema.parse(input)),
+        ),
+        Effect.flatMap((parsed) =>
+          update(
+            "update-link-opening-settings",
+            { type: "update-link-opening", input: parsed },
+            (value) => value.linkOpening,
           ),
         ),
       ),

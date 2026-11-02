@@ -39,7 +39,7 @@ const fixture = Effect.fnUntraced(function* () {
   const sessionId = randomUUID();
   const key = { projectKey: "source-workspace", sessionId };
   const stores = createClaudeSessionStores();
-  const homes = ["alpha", "beta", "restored"].map((name) => path.join(root, name));
+  const homes = ["alpha", "beta"].map((name) => path.join(root, name));
   const accountAlias = path.join(root, "alpha-account");
   yield* Effect.promise(async () => {
     await mkdir(cwd);
@@ -153,76 +153,45 @@ it.live("looks up each instance's subagent without changing process-wide configu
   }).pipe(Effect.provide(runnerLayer)),
 );
 
-it.live("gives restored history precedence over the configured account for fork and lookup", () =>
+it.live("deletes a temporary native fork from its account while retaining every source", () =>
   Effect.gen(function* () {
     const f = yield* fixture();
     const runner = yield* ClaudeAgentSdkQueryRunner;
+    const beforeEnvironment = accountEnvironment();
     const configDirectory = f.homes[0]!;
-    const restoredHistoryPath = f.homes[2]!;
-    const source = { ...f.identity, configDirectory, restoredHistoryPath };
-    const [fork, tool] = yield* Effect.all(
-      [
-        runner.forkSession({ ...source, options: { dir: f.cwd } }),
-        runner.subagentLaunchToolUseId({ ...source, dir: f.cwd, agentId: "child" }),
-      ],
-      { concurrency: "unbounded" },
-    );
-    expect(tool).toBe("tool:restored");
-    yield* Effect.promise(async () => {
-      expect(await f.readMessages(restoredHistoryPath, fork.sessionId)).toEqual(
-        await f.readMessages(restoredHistoryPath, f.sessionId),
-      );
-      expect(await f.readMessages(configDirectory, fork.sessionId)).toBeNull();
+    const fork = yield* runner.forkSession({
+      ...f.identity,
+      configDirectory,
+      options: { dir: f.cwd },
     });
-  }).pipe(Effect.provide(runnerLayer)),
-);
-
-it.live(
-  "deletes a temporary native fork from its account and restored mirror while retaining every source",
-  () =>
-    Effect.gen(function* () {
-      const f = yield* fixture();
-      const runner = yield* ClaudeAgentSdkQueryRunner;
-      const beforeEnvironment = accountEnvironment();
-      const configDirectory = f.homes[0]!;
-      const restoredHistoryPath = f.homes[2]!;
-      const fork = yield* runner.forkSession({
-        ...f.identity,
-        configDirectory,
-        restoredHistoryPath,
-        options: { dir: f.cwd },
-      });
-      // The CLI writes locally even when the SDK mirrors a restored transcript.
-      yield* Effect.promise(async () => {
-        const stores = createClaudeSessionStores();
-        const entries = await stores(restoredHistoryPath).load({
-          projectKey: "source-workspace",
-          sessionId: fork.sessionId,
-        });
-        for (const home of f.homes.slice(0, 2)) {
-          await stores(home).append(
-            { projectKey: "source-workspace", sessionId: fork.sessionId },
-            entries!,
-          );
-        }
-      });
-      yield* runner.deleteSession({
-        ...f.identity,
+    yield* Effect.promise(async () => {
+      const stores = createClaudeSessionStores();
+      const entries = await stores(configDirectory).load({
+        projectKey: "source-workspace",
         sessionId: fork.sessionId,
-        configDirectory: f.accountAlias,
-        restoredHistoryPath,
-        options: { dir: f.cwd },
       });
-      yield* Effect.promise(async () => {
-        expect(await f.readMessages(configDirectory, fork.sessionId)).toBeNull();
-        expect(await f.readMessages(restoredHistoryPath, fork.sessionId)).toBeNull();
-        expect(await f.readMessages(f.homes[1]!, fork.sessionId)).not.toBeNull();
-        for (const home of f.homes) {
-          expect(await f.readMessages(home, f.sessionId)).not.toBeNull();
-        }
-      });
-      expect(accountEnvironment()).toEqual(beforeEnvironment);
-    }).pipe(Effect.provide(runnerLayer)),
+      for (const home of f.homes.slice(0, 2)) {
+        await stores(home).append(
+          { projectKey: "source-workspace", sessionId: fork.sessionId },
+          entries!,
+        );
+      }
+    });
+    yield* runner.deleteSession({
+      ...f.identity,
+      sessionId: fork.sessionId,
+      configDirectory: f.accountAlias,
+      options: { dir: f.cwd },
+    });
+    yield* Effect.promise(async () => {
+      expect(await f.readMessages(configDirectory, fork.sessionId)).toBeNull();
+      expect(await f.readMessages(f.homes[1]!, fork.sessionId)).not.toBeNull();
+      for (const home of f.homes) {
+        expect(await f.readMessages(home, f.sessionId)).not.toBeNull();
+      }
+    });
+    expect(accountEnvironment()).toEqual(beforeEnvironment);
+  }).pipe(Effect.provide(runnerLayer)),
 );
 
 it.live(

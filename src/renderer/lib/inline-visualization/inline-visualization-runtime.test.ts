@@ -39,6 +39,6 @@ describe("inline visualization host boundary", () => {
     await handlers.openExternal({ href: "https://example.com" });
     expect(callbacks.interact).toHaveBeenCalledTimes(3);
     expect(callbacks.mode).toHaveBeenCalledWith("fullscreen");
-    expect(callbacks.openExternal).toHaveBeenCalledWith("https://example.com");
+    expect(callbacks.openExternal).toHaveBeenCalledWith("https://example.com/");
   });
 });

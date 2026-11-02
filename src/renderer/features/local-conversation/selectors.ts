@@ -120,6 +120,7 @@ export interface VisibleConversationTurnRenderRevision {
   readonly turnStartedAtMs: number | null | undefined;
   readonly firstTurnWorkItemStartedAtMs: number | null | undefined;
   readonly finalAssistantStartedAtMs: number | null | undefined;
+  readonly assistantResponseWorkDurationMs: number | null | undefined;
   readonly startedAt: number | null | undefined;
   readonly completedAt: number | null | undefined;
   readonly durationMs: number | null | undefined;
@@ -174,6 +175,7 @@ export function buildVisibleConversationTurnRenderRevision(
     turnStartedAtMs: turn.turnStartedAtMs,
     firstTurnWorkItemStartedAtMs: turn.firstTurnWorkItemStartedAtMs,
     finalAssistantStartedAtMs: turn.finalAssistantStartedAtMs,
+    assistantResponseWorkDurationMs: turn.assistantResponseWorkDurationMs,
     startedAt: turn.startedAt,
     completedAt: turn.completedAt,
     durationMs: turn.durationMs,
@@ -210,6 +212,7 @@ export function areVisibleConversationTurnRenderRevisionsEqual(
     left.turnStartedAtMs !== right.turnStartedAtMs ||
     left.firstTurnWorkItemStartedAtMs !== right.firstTurnWorkItemStartedAtMs ||
     left.finalAssistantStartedAtMs !== right.finalAssistantStartedAtMs ||
+    left.assistantResponseWorkDurationMs !== right.assistantResponseWorkDurationMs ||
     left.startedAt !== right.startedAt ||
     left.completedAt !== right.completedAt ||
     left.durationMs !== right.durationMs ||

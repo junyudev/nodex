@@ -1,3 +1,6 @@
+import { parseMcpAppLinkRequest } from "../../../shared/mcp-app/mcp-app-navigation";
+import { openLink } from "../link-opening";
+import type { LinkOpenRequest } from "../../../shared/link-opening";
 import {
   requireMcpAppScopedResource,
   requireMcpAppScopedTool,
@@ -62,6 +65,11 @@ function parseToolCall(value: unknown): {
 }
 
 export interface McpAppHostDispatcherOptions {
+  readonly openLink?: (request: LinkOpenRequest) => Promise<boolean>;
+  readonly hostId?: string;
+  readonly getDisplayMode?: () => string;
+  readonly isFirstParty?: boolean;
+  readonly isCurrent?: () => boolean;
   getScope?(): McpAppScopeSnapshot | Promise<McpAppScopeSnapshot>;
   onBackgroundColor?(value: unknown): void;
   onDisplayMode?(value: unknown): unknown | Promise<unknown>;
@@ -184,11 +192,26 @@ export class McpAppHostDispatcher {
   }
 
   async #openExternal(value: unknown): Promise<void> {
-    const record = asRecord(value);
-    if (!record || typeof record.href !== "string") {
+    if (this.#options.isCurrent?.() === false)
+      throw new McpAppRpcError("The app is inactive", -32_000);
+    let request;
+    try {
+      request = parseMcpAppLinkRequest(value);
+    } catch {
       throw new McpAppRpcError("Invalid external navigation request", -32_602);
     }
-    await invokePlainCommand(openMcpExternalUrlCommand, record.href);
+    const forceExternal =
+      this.#options.getDisplayMode?.() === "modal" ||
+      (request.openMode === "popup" && this.#options.isFirstParty === true);
+    await invokePlainCommand(openMcpExternalUrlCommand, request.href);
+    if (this.#options.isCurrent?.() === false || request.href.startsWith("nodex:")) return;
+    await (this.#options.openLink ?? openLink)({
+      url: request.href,
+      hostId: this.#options.hostId,
+      initiator: "mcp_app_resource",
+      source: "manual",
+      ...(forceExternal ? { openTarget: "external-browser" } : {}),
+    });
   }
 
   #getScope(): McpAppScopeSnapshot | Promise<McpAppScopeSnapshot> {

@@ -20,6 +20,9 @@ const first = await lines.next();
 const bootstrap = first.done ? null : JSON.parse(first.value);
 // Provider configuration arrives only as the first stdin frame.
 if (bootstrap?.type !== "bootstrap") process.exit(3);
+// Simulates startup work, such as an imported execution store, finishing before readiness.
+const readyDelayMs = Number(process.env.NODEX_FIXTURE_READY_DELAY_MS ?? 0);
+if (readyDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, readyDelayMs));
 send({ type: "ready", identity });
 
 for await (const line of { [Symbol.asyncIterator]: () => lines }) {
@@ -96,13 +99,6 @@ for await (const line of { [Symbol.asyncIterator]: () => lines }) {
       success(request.id, null);
       continue;
     }
-    if (request.input.projectId === "host-auth") {
-      pendingHosts.set(request.id, request.id);
-      send({ type: "host.request", id: request.id, operation: "provider.auth",
-        identity: { runtimeId: identity.runtimeId, runtimeGeneration: identity.runtimeGeneration, providerInstanceId: "codex" },
-        refresh: true, previousAccountId: "account" });
-      continue;
-    }
     if (request.input.projectId === "exit") process.exit(9);
     if (request.input.projectId === "bootstrap") {
       success(request.id, {
@@ -131,11 +127,6 @@ for await (const line of { [Symbol.asyncIterator]: () => lines }) {
       title: request.input.projectId,
       workspaceRoot: "/tmp",
     }), request.input.projectId === "first" ? 30 : 1);
-    continue;
-  }
-  if (request.method === "storage.snapshot.release") {
-    success(request.id, { released: true });
-    for (const id of blocked.splice(0)) success(id, null);
     continue;
   }
   if (request.method === "events.observe") {

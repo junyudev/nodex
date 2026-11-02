@@ -669,7 +669,12 @@ async function handleCodex(message) {
       return;
     case "account/read":
       reply({
-        account: { type: "chatgpt", email: "runtime@nodex.invalid", planType: "plus" },
+        account: {
+          type: "chatgpt",
+          workspaceName: null,
+          email: "runtime@nodex.invalid",
+          planType: "plus",
+        },
         requiresOpenaiAuth: false,
       });
       return;

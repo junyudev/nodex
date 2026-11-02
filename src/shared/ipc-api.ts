@@ -1519,6 +1519,10 @@ export interface IpcApi
     result: string | null;
   };
   "shell:file-link-openers:list-available": { args: []; result: FileLinkOpenerId[] };
+  "shell:default-browser:get": {
+    args: [];
+    result: import("./system-default-browser").SystemDefaultBrowser | null;
+  };
   "file-open-applications": {
     args: [input: import("./file-open-applications").FileOpenApplicationsInput];
     result: import("./file-open-applications").FileOpenApplicationsResult;
@@ -1527,6 +1531,14 @@ export interface IpcApi
   "settings:app-updates:update": {
     args: [input: UpdateAppUpdateSettingsInput];
     result: AppUpdateSettings;
+  };
+  "settings:link-opening:get": {
+    args: [];
+    result: import("./link-opening-settings").LinkOpeningSettings;
+  };
+  "settings:link-opening:update": {
+    args: [input: import("./link-opening-settings").LinkOpeningSettings];
+    result: import("./link-opening-settings").LinkOpeningSettings;
   };
   "settings:usage-meters:get": {
     args: [];
@@ -1626,9 +1638,9 @@ export interface IpcApi
     args: [input: WorkspaceDirectoryEntriesInput];
     result: WorkspaceDirectoryEntriesResult;
   };
-  "workspace-paths-exist": {
-    args: [import("./types").WorkspacePathsExistInput];
-    result: import("./types").WorkspacePathsExistResult;
+  "workspace-path-states": {
+    args: [import("./types").WorkspacePathStatesInput];
+    result: import("./types").WorkspacePathStatesResult;
   };
   "workspace-text-search:start": {
     args: [input: import("./workspace-text-search").WorkspaceTextSearchRequest];
@@ -3123,6 +3135,8 @@ export interface IpcEvents {
   "chrome-control-settings-changed": ChromeControlRuntimeSnapshot;
   "claude-agent-settings-changed": void;
   "agent-settings-changed": void;
+  "link-opening-settings-changed": import("./link-opening-settings").LinkOpeningSettings;
+  "link:open-requested": import("./link-opening").LinkOpenRequest;
   "usage-meter-settings-changed": import("./usage-meter-settings").UsageMeterSettings;
   "composer-prediction-settings-changed": import("./composer-prediction-settings").ComposerPredictionSettings;
   "desktop-notification:action": DesktopNotificationActionInvocation;

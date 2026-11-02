@@ -21,7 +21,11 @@ import {
   NodexDialogHeader,
   NodexDialogTitle,
 } from "../ui/dialog";
-import { NodexSettingsPageSurface as SettingsPageSurface } from "../ui/settings";
+import {
+  NodexSettingsPageSurface as SettingsPageSurface,
+  NodexSettingsSection,
+} from "../ui/settings";
+import { ExternalBrowserLinkShortcutSettingRow } from "./link-opening-settings-controls";
 import { KeystrokeSearchIcon } from "../shared/icons";
 import {
   findCommandKeybindingConflict,
@@ -329,6 +333,10 @@ export function KeyboardShortcutsSettingsPage() {
           </table>
         )}
       </div>
+
+      <NodexSettingsSection>
+        <ExternalBrowserLinkShortcutSettingRow />
+      </NodexSettingsSection>
 
       {state?.hasCustomBindings ? (
         <div className="flex items-center justify-end gap-2">

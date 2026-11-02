@@ -1,7 +1,7 @@
 import {
-  parseProfileConversationSnapshot,
-  type ProfileConversationSnapshot,
-} from "./profile-conversation-snapshot";
+  parseProfileExecutionSnapshot,
+  type ProfileExecutionSnapshot,
+} from "./profile-execution-snapshot";
 import { randomUUID } from "node:crypto";
 import {
   chmod,
@@ -38,7 +38,7 @@ export interface DevelopmentSeedProvenance {
 }
 
 export interface DevelopmentProfileSnapshotProvenance {
-  readonly conversations: ProfileConversationSnapshot;
+  readonly execution: ProfileExecutionSnapshot | null;
   readonly sourceProfileHome: string;
   readonly sourceProfileFingerprint: string;
   readonly backupIntegrityEvidenceVersion: number;
@@ -102,6 +102,10 @@ const parseSeed = (value: unknown): DevelopmentSeedProvenance | undefined => {
 
 const parseProfileSnapshot = (value: unknown): DevelopmentProfileSnapshotProvenance | undefined => {
   if (value === undefined) return undefined;
+  if (isRecord(value) && "conversations" in value)
+    throw new Error(
+      "Development home was provisioned by an earlier Profile clone format. Use a new --home, or delete this one after a clean stop and provision it again.",
+    );
   if (
     !isRecord(value) ||
     typeof value.sourceProfileHome !== "string" ||
@@ -130,7 +134,7 @@ const parseProfileSnapshot = (value: unknown): DevelopmentProfileSnapshotProvena
     throw new Error("Development home Profile snapshot provenance is invalid");
   }
   return {
-    conversations: parseProfileConversationSnapshot(value.conversations),
+    execution: parseProfileExecutionSnapshot(value.execution),
     sourceProfileHome: value.sourceProfileHome,
     sourceProfileFingerprint: value.sourceProfileFingerprint,
     backupIntegrityEvidenceVersion: value.backupIntegrityEvidenceVersion,

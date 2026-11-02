@@ -1,8 +1,11 @@
-import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { act, fireEvent } from "@testing-library/react";
 import { renderWithMaitai as render } from "../../test/thread-maitai";
 import { settleAsyncRender } from "../../test/dom";
 import { FileLinkAnchor, openFileReferenceContextMenu } from "./file-link-anchor";
+import { createLinkRouter } from "@/lib/link-opening";
+import { LinkOpeningProvider } from "@/lib/web-link-navigation";
+import { FileReferenceIntentProvider } from "@/lib/file-reference-intent";
 import { FileReferenceRouterProvider } from "@/lib/file-reference-router";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import { installWindowApi } from "../../test/browser-globals";
@@ -16,6 +19,7 @@ vi.mock("@/lib/native-context-menu", () => ({ showNativeContextMenu: menu.show }
 vi.mock("@/lib/clipboard", () => ({ writeTextToClipboard: menu.copy }));
 
 describe("FileLinkAnchor", () => {
+  afterEach(() => vi.restoreAllMocks());
   beforeEach(() => {
     invoke.mockReset();
     invoke.mockImplementation(async (channel) => {
@@ -146,7 +150,7 @@ describe("FileLinkAnchor", () => {
     );
   });
 
-  test("routes modified and middle clicks to the configured external opener", async () => {
+  test("saves Alt-only file clicks and opens the actual primary target on middle click", async () => {
     const openWorkspaceFileTab = vi.fn(async () => true);
     const { container } = render(
       <NodexTooltipProvider>
@@ -166,11 +170,10 @@ describe("FileLinkAnchor", () => {
       await Promise.resolve();
     });
     expect(openWorkspaceFileTab).not.toHaveBeenCalled();
-    expect(invoke).toHaveBeenCalledWith(
-      "shell:open-file-link",
-      { path: "/workspace/project/src/index.ts" },
-      "vscode",
-    );
+    expect(invoke).toHaveBeenCalledWith("workspace-file:save-copy", {
+      hostId: "local",
+      path: "/workspace/project/src/index.ts",
+    });
 
     vi.mocked(invoke).mockClear();
     await act(async () => {
@@ -182,6 +185,104 @@ describe("FileLinkAnchor", () => {
       "shell:open-file-link",
       { path: "/workspace/project/src/index.ts" },
       "vscode",
+    );
+  });
+  test.each([
+    ["plain", {}, "browser", "default", "split"],
+    ["primary", { metaKey: true }, "external", "new-background-tab", undefined],
+    ["primary+shift", { metaKey: true, shiftKey: true }, "browser", "new-tab", undefined],
+    ["middle", { button: 1 }, "browser", "new-background-tab", undefined],
+    ["alt", { altKey: true }, "save", undefined, undefined],
+    ["primary+alt", { metaKey: true, altKey: true }, "browser", "default", "full-width"],
+  ] as const)(
+    "web %s activation reaches the shared router",
+    async (_name, activation, destination, disposition, presentationIntent) => {
+      vi.spyOn(window.navigator, "platform", "get").mockReturnValue("MacIntel");
+      const browser = vi.fn(async () => true);
+      const external = vi.fn(async () => true);
+      const save = vi.fn(async () => true);
+      const links = createLinkRouter({
+        browserAvailable: true,
+        browser: () => ({ available: true, open: browser }),
+        readSettings: async () => ({
+          openLinkInTarget: "in-app-browser",
+          openLocalUrlInTarget: "in-app-browser",
+          externalBrowserLinkShortcut: "primary",
+        }),
+        openExternal: external,
+        saveLink: save,
+      });
+      const { getByRole } = render(
+        <LinkOpeningProvider router={links}>
+          <FileReferenceIntentProvider sidePanel markdownContext>
+            <FileLinkAnchor href="https://example.com">Example</FileLinkAnchor>
+          </FileReferenceIntentProvider>
+        </LinkOpeningProvider>,
+      );
+      const anchor = getByRole("link", { name: "Example" });
+      await act(async () => {
+        if ("button" in activation)
+          fireEvent(anchor, new MouseEvent("auxclick", { bubbles: true, ...activation }));
+        else fireEvent.click(anchor, activation);
+        await Promise.resolve();
+      });
+      if (destination === "browser")
+        expect(browser).toHaveBeenCalledWith(
+          expect.objectContaining({
+            url: "https://example.com",
+            initiator: "markdown_link_click",
+            hostId: "local",
+            disposition,
+            ...(presentationIntent ? { presentationIntent } : {}),
+          }),
+        );
+      else
+        expect(destination === "save" ? save : external).toHaveBeenCalledExactlyOnceWith(
+          "https://example.com",
+        );
+      expect(browser.mock.calls.length + external.mock.calls.length + save.mock.calls.length).toBe(
+        1,
+      );
+    },
+  );
+  test("user file intent selects the actual primary native target instead of a Files preview", async () => {
+    const panel = vi.fn(async () => true);
+    const view = render(
+      <FileReferenceIntentProvider sidePanel={false} markdownContext>
+        <FileReferenceRouterProvider openWorkspaceFileTab={panel}>
+          <FileLinkAnchor href="/repo/file.ts">File</FileLinkAnchor>
+        </FileReferenceRouterProvider>
+      </FileReferenceIntentProvider>,
+    );
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "File" }));
+      await Promise.resolve();
+    });
+    expect(panel).not.toHaveBeenCalled();
+    expect(invoke).toHaveBeenCalledWith(
+      "shell:open-file-link",
+      { path: "/repo/file.ts" },
+      "vscode",
+    );
+  });
+  test("relative trailing-slash directories retain file-manager intent after resolving the path", async () => {
+    const panel = vi.fn(async () => true);
+    const view = render(
+      <FileReferenceRouterProvider openWorkspaceFileTab={panel}>
+        <FileLinkAnchor href="folder/" cwd="/repo">
+          Folder
+        </FileLinkAnchor>
+      </FileReferenceRouterProvider>,
+    );
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Folder" }));
+      await Promise.resolve();
+    });
+    expect(panel).not.toHaveBeenCalled();
+    expect(invoke).toHaveBeenCalledWith(
+      "shell:open-file-link",
+      { path: "/repo/folder/" },
+      "fileManager",
     );
   });
 });

@@ -7,6 +7,10 @@ const MAX_GIT_WORKER_ID_LENGTH = 256;
 const MAX_GIT_WORKER_PROBE_NONCE_LENGTH = 1_024;
 
 export interface GitWorkerMethodMap {
+  "path-source-states": {
+    params: { cwd: string; paths: string[] };
+    result: Pick<import("./types").WorkspacePathState, "path" | "isGitSourcePath">[];
+  };
   "stable-metadata": {
     params: import("./types").GitReviewRepositoryMetadataRequest;
     result: import("./types").GitReviewRepositoryMetadataResult;
@@ -382,7 +386,7 @@ function isMethodParams(method: unknown, params: unknown): method is GitWorkerMe
   }
   if (method === "review-diff") return isReviewDiffParams(params);
   if (method === "review-cat-file") return isCatFileParams(params);
-  if (method === "review-generated-paths") {
+  if (method === "review-generated-paths" || method === "path-source-states") {
     return (
       isCwdParams(params) &&
       Array.isArray(params.paths) &&
@@ -532,6 +536,17 @@ function hasResultShape(value: unknown): boolean {
 }
 
 function isMethodResult(method: GitWorkerMethod, value: unknown): boolean {
+  if (method === "path-source-states") {
+    return (
+      Array.isArray(value) &&
+      value.every(
+        (state) =>
+          isRecord(state) &&
+          typeof state.path === "string" &&
+          (state.isGitSourcePath === null || typeof state.isGitSourcePath === "boolean"),
+      )
+    );
+  }
   if (method === "stable-metadata") return isStableMetadataResult(value);
   if (method === "status-summary") return isStatusSummaryResult(value);
   if (method === "review-summary") return isReviewSummaryResult(value);
@@ -664,6 +679,7 @@ export function isGitWorkerMessageFromThread(value: unknown): value is GitWorker
 }
 
 const GIT_WORKER_METHODS: Record<GitWorkerMethod, true> = {
+  "path-source-states": true,
   "action-status": true,
   "base-branch": true,
   "blame-file": true,

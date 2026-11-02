@@ -1,3 +1,4 @@
+import { DEFAULT_LINK_OPENING_SETTINGS } from "../../shared/link-opening-settings";
 import { DEFAULT_USAGE_METER_SETTINGS } from "../../shared/usage-meter-settings";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
@@ -10,6 +11,7 @@ export function makeTestApplicationSettings(input?: {
   readonly pullRequestInstructions?: string;
 }): ApplicationSettings["Service"] {
   return ApplicationSettings.of({
+    linkOpeningSettingsChanges: Stream.succeed(DEFAULT_LINK_OPENING_SETTINGS),
     usageMeterSettingsChanges: Stream.succeed(DEFAULT_USAGE_METER_SETTINGS),
     composerPredictionSettingsChanges: Stream.empty,
     acpLaunchConfiguration: () => Effect.die("Unused ACP launch configuration"),
@@ -17,6 +19,7 @@ export function makeTestApplicationSettings(input?: {
     claudeLaunchConfiguration: () => Effect.die("Unused Claude launch configuration"),
     snapshot: () =>
       Effect.succeed({
+        linkOpening: DEFAULT_LINK_OPENING_SETTINGS,
         usageMeters: DEFAULT_USAGE_METER_SETTINGS,
         composerPredictions: { enabled: true },
         developer: { detailLevel: input?.detailLevel ?? "STEPS_COMMANDS" },

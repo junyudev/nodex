@@ -1,3 +1,4 @@
+import { resolveAssistantResponseStartedAtMs } from "../../../shared/codex-assistant-response-timing";
 import { createAgentApprovalRuntime } from "./agent-approval-runtime";
 import {
   agentApprovalSuppressesItem,
@@ -809,6 +810,7 @@ export class AgentRuntimeConversationOwner {
     reset?: Omit<CodexTranscriptSnapshot, "itemsByKey">,
   ): void {
     const corrected = [...changes];
+    const turnsByKey = reset ? { ...reset.turnsByKey } : undefined;
     const touched = new Set<string>();
     const itemChanges = new Map<string, number>();
     changes.forEach((change, index) => {
@@ -844,8 +846,33 @@ export class AgentRuntimeConversationOwner {
         if (changeIndex === undefined) corrected.push(replacement);
         else corrected[changeIndex] = replacement;
       });
+      const finalAssistantStartedAtMs = resolveAssistantResponseStartedAtMs({
+        items: turn.itemIds.map((id) => {
+          const source = this.#items.get(id);
+          return {
+            id,
+            type: source?.type === "assistant_message" ? "agentMessage" : (source?.type ?? ""),
+            startedAtMs: agentRuntimeTime(source?.startedAt),
+          };
+        }),
+      });
+      if (turn.details.finalAssistantStartedAtMs === finalAssistantStartedAtMs) continue;
+      const details = { ...turn.details, finalAssistantStartedAtMs };
+      this.#turns.set(entityKey, { ...turn, details });
+      const turnChange: CodexTranscriptChange = {
+        type: "turn",
+        key: { ...this.readOwner.key, entityKey },
+        details,
+        hasSubagentActivity: turn.hasSubagentActivity,
+      };
+      const index = corrected.findIndex(
+        (change) => change.type === "turn" && change.key.entityKey === entityKey,
+      );
+      if (index < 0) corrected.push(turnChange);
+      else corrected[index] = turnChange;
+      if (turnsByKey?.[entityKey]) turnsByKey[entityKey] = { ...turnsByKey[entityKey], details };
     }
-    if (!reset) {
+    if (!reset || !turnsByKey) {
       this.readOwner.applyEvent({ type: "changes", changes: corrected });
       return;
     }
@@ -855,7 +882,7 @@ export class AgentRuntimeConversationOwner {
         itemsByKey[codexTranscriptItemAddress(change.key.entityKey, change.key.itemId)] =
           change.value;
     }
-    this.readOwner.applyEvent({ type: "reset", value: { ...reset, itemsByKey } });
+    this.readOwner.applyEvent({ type: "reset", value: { ...reset, turnsByKey, itemsByKey } });
   }
 
   #reset(snapshot: AgentSnapshot): void {
@@ -1408,7 +1435,7 @@ export class AgentRuntimeConversationOwner {
       type: item.type,
       nodeId: item.nodeId,
       status: item.status,
-      startedAt: item.startedAt,
+      startedAt: item.startedAt ?? (item.type === source.type ? source.startedAt : null),
       nativeItemRef: item.nativeItemRef,
       providerTurnId: item.providerTurnId,
       providerThreadId: item.providerThreadId,

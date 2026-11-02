@@ -52,6 +52,7 @@ describe("mcp-tool-call-resource-utils", () => {
     const statuses: ProtocolListMcpServerStatusResponse = {
       data: [
         {
+          toolListMeta: null,
           name: "docs",
           pluginId: null,
           httpOrigin: null,
@@ -89,6 +90,7 @@ describe("mcp-tool-call-resource-utils", () => {
     const statuses: ProtocolListMcpServerStatusResponse = {
       data: [
         {
+          toolListMeta: null,
           name: "docs",
           pluginId: null,
           httpOrigin: null,

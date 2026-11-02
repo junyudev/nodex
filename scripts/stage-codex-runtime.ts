@@ -113,7 +113,11 @@ function targetReleaseLock(
   return {
     ...lock,
     requiredArtifacts: build.requiredArtifacts,
-    packageManifest: { ...lock.packageManifest, entrypoint: "bin/codex.exe" },
+    packageManifest: {
+      ...lock.packageManifest,
+      entrypoint: "bin/codex.exe",
+      execServer: "bin/codex-exec-server.exe",
+    },
   };
 }
 
@@ -384,6 +388,7 @@ function readAndValidatePackageManifest(
     candidate.version !== expected.version ||
     candidate.variant !== expected.variant ||
     candidate.entrypoint !== expected.entrypoint ||
+    candidate.execServer !== expected.execServer ||
     candidate.resourcesDir !== expected.resourcesDir ||
     candidate.pathDir !== expected.pathDir ||
     candidate.target !== targetTriple
@@ -398,6 +403,7 @@ function readAndValidatePackageManifest(
     target: targetTriple,
     variant: expected.variant,
     entrypoint: expected.entrypoint,
+    execServer: expected.execServer,
     resourcesDir: expected.resourcesDir,
     pathDir: expected.pathDir,
   };

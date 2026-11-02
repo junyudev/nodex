@@ -7,7 +7,7 @@ import type {
   WorkspaceFileTextReadInput,
   WorkspaceFileWriteInput,
   WorkspaceFileWatchStopInput,
-  WorkspacePathsExistInput,
+  WorkspacePathStatesInput,
 } from "../types";
 import { WORKSPACE_FILE_BINARY_MAX_BYTES, WORKSPACE_FILE_PREVIEW_MAX_BYTES } from "../types";
 
@@ -51,9 +51,13 @@ export const WorkspaceFileBinaryReadInputSchema = WorkspaceFileRequestSchema.ext
   maxBytes: z.number().int().positive().max(WORKSPACE_FILE_BINARY_MAX_BYTES).optional(),
 }).strict() satisfies z.ZodType<WorkspaceFileBinaryReadInput>;
 
-export const WorkspacePathsExistInputSchema = z
-  .object({ hostId: hostIdSchema, paths: z.array(z.string().min(1)) })
-  .strict() satisfies z.ZodType<WorkspacePathsExistInput>;
+export const WorkspacePathStatesInputSchema = z
+  .object({
+    hostId: hostIdSchema,
+    cwd: exactFilePathSchema.nullable().optional(),
+    paths: z.array(exactFilePathSchema),
+  })
+  .strict() satisfies z.ZodType<WorkspacePathStatesInput>;
 
 export const WorkspaceFileTextReadInputSchema = WorkspaceFileRequestSchema.extend({
   maxBytes: positiveByteLimitSchema,

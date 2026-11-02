@@ -26,7 +26,7 @@ import {
   WorkspaceFileWatchStopInputSchema,
   WorkspaceFileWriteInputSchema,
   WorkspaceLocalFileRequestSchema,
-  WorkspacePathsExistInputSchema,
+  WorkspacePathStatesInputSchema,
 } from "../../../shared/schemas/workspace-files";
 import { WorkspaceFileSaveDataInputSchema } from "../../../shared/native-file-save";
 import { WorkspaceFileQueries } from "../../host-runtime/WorkspaceFileQueries";
@@ -232,12 +232,12 @@ export const live = (
           ),
         ),
       );
-      yield* ipc.handleQuery("workspace-paths-exist", (event, input: unknown) =>
+      yield* ipc.handleQuery("workspace-path-states", (event, input: unknown) =>
         runEffect(
-          "workspace-paths-exist",
+          "workspace-path-states",
           event,
-          decode(WorkspacePathsExistInputSchema, input).pipe(
-            Effect.flatMap(fileQueries.pathsExist),
+          decode(WorkspacePathStatesInputSchema, input).pipe(
+            Effect.flatMap(fileQueries.pathStates),
           ),
         ),
       );

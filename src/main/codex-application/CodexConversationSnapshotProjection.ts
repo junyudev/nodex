@@ -98,6 +98,7 @@ export const projectCodexConversationTurn = (input: {
     turnStartedAtMs: input.afterTurn.turnStartedAtMs,
     firstTurnWorkItemStartedAtMs: input.afterTurn.firstTurnWorkItemStartedAtMs,
     finalAssistantStartedAtMs: input.afterTurn.finalAssistantStartedAtMs,
+    assistantResponseWorkDurationMs: input.afterTurn.assistantResponseWorkDurationMs,
     assistantMessageStartedAtMsById:
       input.afterTurn.assistantMessageStartedAtMsById === undefined
         ? undefined

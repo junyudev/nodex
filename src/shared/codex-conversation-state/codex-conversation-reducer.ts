@@ -1,3 +1,7 @@
+import {
+  resolveAssistantResponseStartedAtMs,
+  resolveAssistantResponseWorkDurationMs,
+} from "../codex-assistant-response-timing";
 import { enablePatches, produceWithPatches, type Draft, type Patch } from "immer";
 import { isCodexRecoveryModelOutput, recoverCodexProviderRetry } from "./codex-provider-recovery";
 import {
@@ -282,6 +286,7 @@ function synthesizeMissingTurn(
     turnStartedAtMs: context.now(),
     firstTurnWorkItemStartedAtMs: null,
     finalAssistantStartedAtMs: null,
+    assistantResponseWorkDurationMs: null,
     diff: null,
   };
 }
@@ -477,7 +482,7 @@ export function reduceCodexItemLifecycleMetadata(
       };
     }
     if (item.type === "agentMessage" && item.delivery !== "async") {
-      finalAssistantStartedAtMs = context.now();
+      finalAssistantStartedAtMs = assistantMessageStartedAtMsById?.[item.id] ?? null;
     }
     if (isCodexLifecycleFirstTurnWorkItem(item) && firstTurnWorkItemStartedAtMs == null) {
       firstTurnWorkItemStartedAtMs = context.now();
@@ -562,8 +567,17 @@ function applyLifecycleMetadataDraft(
 }
 function upsertLifecycleItem(turn: Draft<CodexCanonicalTurnState>, item: CodexCanonicalItem): void {
   const index = turn.items.findIndex((candidate) => candidate.id === item.id);
-  if (index < 0) turn.items.push(item as Draft<CodexCanonicalItem>);
-  else turn.items[index] = item as Draft<CodexCanonicalItem>;
+  const existing = turn.items[index];
+  const startedAtMs =
+    existing?.type === item.type && "startedAtMs" in existing ? existing.startedAtMs : undefined;
+  const next =
+    ("startedAtMs" in item && item.startedAtMs != null) || startedAtMs == null
+      ? item
+      : { ...item, startedAtMs };
+  if (index < 0) turn.items.push(next as Draft<CodexCanonicalItem>);
+  else turn.items[index] = next as Draft<CodexCanonicalItem>;
+  turn.finalAssistantStartedAtMs = resolveAssistantResponseStartedAtMs(turn);
+  turn.assistantResponseWorkDurationMs = resolveAssistantResponseWorkDurationMs(turn.items);
 }
 function mutateItemStarted(
   state: Draft<CodexCanonicalConversationState>,
@@ -588,7 +602,18 @@ function mutateItemStarted(
   applyLifecycleMetadataDraft(turn, metadata);
   if (!metadata.shouldUpsertItem) return;
   enqueueCollabHydrationEffect(item, effects);
-  let nextItem = materializeCanonicalLifecycleItem(item, context);
+  let nextItem = materializeCanonicalLifecycleItem(
+    {
+      ...item,
+      startedAtMs:
+        item.startedAtMs ??
+        (item.type === "agentMessage"
+          ? turn.assistantMessageStartedAtMsById?.[item.id]
+          : undefined) ??
+        notification.params.startedAtMs,
+    },
+    context,
+  );
   if (item.type === "contextCompaction") {
     nextItem = {
       ...item,

@@ -5,6 +5,7 @@ import { applyCodexHookStatePatch, normalizeCodexHooksCwds } from "./use-codex-h
 
 function hook(key: string, currentHash: string): HookMetadata {
   return {
+    environmentId: null,
     key,
     eventName: "stop",
     handlerType: "command",

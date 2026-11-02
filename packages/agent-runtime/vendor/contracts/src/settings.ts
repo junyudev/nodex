@@ -612,9 +612,6 @@ export function makeProviderSettingsSchema<const Fields extends Schema.Struct.Fi
 export const CodexSettings = makeProviderSettingsSchema(
   {
     isolated: Schema.optionalKey(Schema.Boolean),
-    hostAuthentication: Schema.optionalKey(Schema.Boolean).pipe(
-      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
-    ),
     setupMode: Schema.optionalKey(Schema.Literals(["managed", "existing"])).pipe(
       Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
     ),
@@ -678,10 +675,6 @@ const CLAUDE_AUTO_COMPACT_WINDOW_PATTERN = /^(?:|[1-9]\d{5}|1000000)$/;
 export const ClaudeSettings = makeProviderSettingsSchema(
   {
     isolated: Schema.optionalKey(Schema.Boolean),
-    /** Private managed transcript storage; the configured home continues to own authentication. */
-    restoredHistoryPath: Schema.optionalKey(TrimmedString).pipe(
-      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
-    ),
     /** Execution constraints of instance-specific models, separate from picker descriptors. */
     modelTraits: Schema.optionalKey(Schema.Record(Schema.String, Schema.Struct({
       disableThinking: Schema.optionalKey(Schema.Boolean),

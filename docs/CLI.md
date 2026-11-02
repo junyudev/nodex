@@ -31,28 +31,29 @@ directory. On macOS, regular-file copies prefer APFS copy-on-write and fall back
 to ordinary copy when unavailable. The materializer preserves semantic
 identities and the imported Store epoch, remints instance secrets, performs the
 clone-specific semantic checks, then atomically publishes the target with a
-`profile-snapshot.json` receipt. Before publication, the Profile materializer
-captures idle local Codex conversations and relocates native selected rollout
-paths. It checks every local Codex Thread from the Store against its complete
-rollout ancestry. Missing native history rejects the clone; explicitly use
-`--allow-missing-conversations` only for incomplete diagnostic reproduction.
-The receipt records missing Thread IDs, external-host/backend counts, capture
-timestamps, and a native-artifact digest. An open source Desktop coordinates a
-temporary pause of its idle local Agent and reconnects it after source capture;
-windows and Core stay open. Active conversations and Agent background terminals
-are allowed to finish, and cancellation releases the pause. Both the source Desktop
-and clone command must support coordination. Older Desktops and external Agent
-runtimes still require stopping the source Agent when its writers prevent capture.
+`profile-snapshot.json` receipt.
 
-The selected Store backup and current native conversation capture have separate
-timestamps: `--backup` does not select historical native state. Native pagination
-indexes are included; execution queues are excluded. Historical workspace/file
-paths remain unchanged. See [development snapshots](development.md#real-profile-snapshots)
-for the precise scope. It copies neither Agent credentials nor
-arbitrary files from the source Profile. The receipt records the evidence-backed
-local-fork provenance and reports managed asset references that were already
+When the source has an execution store, the clone also copies its current
+conversations online from one consistent read snapshot, together with their
+attachments. The source may be running Agents: nothing in it is paused, locked or
+notified, and no Agent home such as `~/.codex` or `~/.claude` is read. The cloned
+Profile reads those transcripts normally and never continues the source's native Agent
+conversations; its next message in a chat starts a fresh native conversation that
+receives the chat's earlier history through a context handoff. Replies that were running
+or queued in the source are cancelled in the clone and copied scheduled automations are
+disabled, so nothing copied runs on its own.
+
+The selected Store backup and the conversation copy have separate timestamps:
+`--backup` does not rewind conversations. Historical workspace and external file paths
+remain unchanged. See [development snapshots](development.md#real-profile-snapshots)
+for the precise scope. It copies neither Agent credentials nor arbitrary files from
+the source Profile. The receipt records the evidence-backed local-fork provenance,
+execution capture evidence, and managed asset references that were already
 missing from the source backup; formal restore continues to require a complete
 asset closure and rotates the installed Store epoch.
+
+`nodex backup create` creates the same Store and managed-asset snapshot as Settings →
+Backups. It runs while Agents work and never pauses them.
 
 ## Profile Store checks
 

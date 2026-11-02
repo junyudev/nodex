@@ -17,6 +17,7 @@ export interface NativeMenuTarget {
   readonly opener?: FileLinkOpenerId;
   readonly appPath?: string;
   readonly systemDefault?: true;
+  readonly isSystemDefault?: boolean;
 }
 
 /** Installed native viewers take precedence; editor targets retain the user's preferred opener. */
@@ -40,6 +41,7 @@ export async function readFileReferenceOpenTargets(path: string): Promise<{
       id: `application:${app.appPath}`,
       label: app.name,
       appPath: app.appPath,
+      isSystemDefault: app.isSystemDefault,
       ...(app.iconDataUrl ? { iconUrl: app.iconDataUrl } : {}),
     }));
     return { primary: alternatives[0] ?? null, alternatives };

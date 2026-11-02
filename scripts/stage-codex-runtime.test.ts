@@ -65,6 +65,7 @@ function fixture(
   const files = new Map([
     ["bin/codex", "app-server"],
     ["bin/codex-code-mode-host", "code-mode"],
+    ["bin/codex-exec-server", "exec-server"],
     ["codex-path/rg", "rg"],
     ["codex-resources/voice/bin/codex-voice-host", "voice-host"],
   ]);
@@ -77,6 +78,7 @@ function fixture(
   }
   const packageManifest = {
     entrypoint: "bin/codex",
+    execServer: "bin/codex-exec-server",
     layoutVersion: 1,
     pathDir: "codex-path",
     resourcesDir: "codex-resources",
@@ -631,7 +633,7 @@ describe.skipIf(process.platform === "win32")("stage-codex-runtime", () => {
     expect(existsSync(path.join(externalRuntimeRoot, "agent-runtime.json"))).toBe(true);
   });
 
-  test.each(["bin/codex-code-mode-host", "codex-path/rg"])(
+  test.each(["bin/codex-code-mode-host", "bin/codex-exec-server", "codex-path/rg"])(
     "rejects a source missing required closure artifact %s",
     async (omitArtifact) => {
       const input = fixture({ omitArtifact });

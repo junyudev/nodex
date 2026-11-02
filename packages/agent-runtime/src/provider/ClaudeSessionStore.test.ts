@@ -96,19 +96,17 @@ it("serializes concurrent mirrors, deduplicates retries, and supports the real S
   ).toEqual([first.message, second.message]);
 });
 
-it("requires captured history for managed resume and counts entries without UUIDs toward admission", async () => {
-  const { root, store } = await fixture();
-  const required = createClaudeSessionStores()(root, id);
-  await expect(required.load(key)).rejects.toThrow("history is unavailable");
+it("counts entries without UUIDs toward transcript admission", async () => {
+  const { store } = await fixture();
   await store.append(key, [{ type: "user", message: { content: "captured" } }]);
-  expect(await required.load(key)).toEqual([{ type: "user", message: { content: "captured" } }]);
+  expect(await store.load(key)).toEqual([{ type: "user", message: { content: "captured" } }]);
   await expect(
     store.append(
       key,
       Array.from({ length: 250_000 }, () => ({ type: "system" })),
     ),
   ).rejects.toThrow("native persistence boundary");
-  expect(await required.load(key)).toHaveLength(1);
+  expect(await store.load(key)).toHaveLength(1);
 });
 
 it("discards a native fork and its children without changing source history or accepting late mirrors", async () => {

@@ -30,6 +30,24 @@ const acquire = (
     host,
   });
 
+it.live("waits for startup work within the requested readiness budget", () =>
+  Effect.gen(function* () {
+    const start = (readinessTimeoutMs: number) =>
+      acquireAgentRuntimeProcess({
+        executable: process.execPath,
+        entryPath,
+        configuration: { home: "/tmp", cwd: "/tmp", providers: {} },
+        environment: { ...process.env, NODEX_FIXTURE_READY_DELAY_MS: "300" },
+        readinessTimeoutMs,
+        host: () => Effect.succeed({ sequence: 9 }),
+      }).pipe(Effect.scoped, Effect.exit);
+    const tooShort = yield* start(50);
+    assert.isTrue(Exit.isFailure(tooShort));
+    const enough = yield* start(5_000);
+    assert.isTrue(Exit.isSuccess(enough));
+  }).pipe(Effect.provide(NodeServices.layer)),
+);
+
 it.live("withdraws an interrupted utility over the existing Runtime connection", () =>
   Effect.gen(function* () {
     const connection = yield* acquire();
@@ -162,27 +180,6 @@ it.live("Host callbacks may re-enter the process without blocking their command 
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 
-it.live("admits private provider authentication separately from Turn tool identity", () =>
-  Effect.gen(function* () {
-    let calls = 0;
-    const connection = yield* acquire((request) =>
-      Effect.sync(() => {
-        calls += 1;
-        assert.strictEqual(request.operation, "provider.auth");
-        if (request.operation !== "provider.auth")
-          return assert.fail("expected provider auth callback");
-        assert.strictEqual(request.identity.runtimeId, "fixture-runtime");
-        assert.strictEqual(request.identity.providerInstanceId, "codex");
-        assert.strictEqual(request.refresh, true);
-        assert.strictEqual(request.previousAccountId, "account");
-        return null;
-      }),
-    );
-    assert.isNull(yield* connection.request("project.read", { projectId: "host-auth" }));
-    assert.strictEqual(calls, 1);
-  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
-);
-
 it.live("unexpected process exit rejects pending work and Scope close reaps the child", () =>
   Effect.gen(function* () {
     const scope = yield* Scope.make();
@@ -226,7 +223,7 @@ it.live(
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 
-it.live("snapshot release remains admitted with every normal request slot occupied", () =>
+it.live("shutdown remains admitted with every normal request slot occupied", () =>
   Effect.gen(function* () {
     const connection = yield* acquire();
     const notifications = yield* connection.subscribeNotifications;
@@ -241,14 +238,10 @@ it.live("snapshot release remains admitted with every normal request slot occupi
     const refused = yield* connection.request("runtime.identity", {}).pipe(Effect.flip);
     assert.isTrue(Schema.is(AgentRuntimeProcessError)(refused));
     assert.strictEqual(refused.reason, "pressure");
-    assert.deepEqual(yield* connection.request("storage.snapshot.release", { leaseId: "lease" }), {
-      released: true,
+    assert.deepEqual(yield* connection.request("shutdown", {}), {
+      stopped: true,
     });
-    yield* Effect.forEach(pending, Fiber.join);
-    assert.strictEqual(
-      (yield* connection.request("runtime.identity", {})).runtimeId,
-      "fixture-runtime",
-    );
+    yield* Effect.forEach(pending, (fiber) => Fiber.await(fiber));
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 

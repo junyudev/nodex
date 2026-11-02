@@ -164,10 +164,8 @@ export interface ThreadLeafBlockProps {
   allowInProgressTurnDiff?: boolean;
   turnDiffHoverPreviewDisabled?: boolean;
   assistantAfter?: ReactNode;
-  alwaysShowAssistantMessageActions?: boolean;
   compactUserMessageActions?: boolean;
   hideUserMessageActions?: boolean;
-  alwaysShowUserMessageActions?: boolean;
 }
 
 export interface ThreadSpecialBlockProps {
@@ -989,7 +987,6 @@ export function UserMessageBubble({
   threadCwd,
   compactUserMessageActions = false,
   hideUserMessageActions = false,
-  alwaysShowUserMessageActions = false,
 }: ThreadLeafBlockProps) {
   const content = block.entry.markdownText ?? "";
   const userActions = block.userMessageActions;
@@ -1124,7 +1121,7 @@ export function UserMessageBubble({
                 <div
                   className={cn(
                     "opacity-0 group-focus-within:opacity-100 group-hover:opacity-100",
-                    alwaysShowUserMessageActions && "opacity-100",
+                    userActions?.alwaysVisible && "opacity-100",
                   )}
                 >
                   <CopyMessageActionButton text={content} feedbackMs={USER_COPY_FEEDBACK_MS} />
@@ -1165,7 +1162,7 @@ export function UserMessageBubble({
                 hideUserMessageActions ? null : (
                   <ThreadMessageActionRow
                     align="end"
-                    className={alwaysShowUserMessageActions ? "opacity-100" : undefined}
+                    className={userActions?.alwaysVisible ? "opacity-100" : undefined}
                   >
                     <MessageTimestamp sentAtMs={userActions?.sentAtMs ?? null} variant="user" />
                     <div className="flex items-center gap-0.5">
@@ -1369,7 +1366,6 @@ export function ThreadAssistantBodyBlock({
   onForkFromTurn,
   onOpenThread,
   assistantAfter,
-  alwaysShowAssistantMessageActions = false,
 }: ThreadLeafBlockProps) {
   const block = useCodexTranscriptBlock(inputBlock);
   const entityKey = useContext(CodexTranscriptTurnEntityContext);
@@ -1491,7 +1487,6 @@ export function ThreadAssistantBodyBlock({
             turnId={block.turnId}
             isLatestTurn={isLatestTurn}
             onForkFromTurn={onForkFromTurn}
-            alwaysShowActions={alwaysShowAssistantMessageActions}
           />
         ) : null}
       </div>
@@ -1505,7 +1500,6 @@ export function ThreadAssistantActionsBlock({
   projectlessOutputDirectory,
   isLatestTurn,
   onForkFromTurn,
-  alwaysShowAssistantMessageActions = false,
 }: ThreadSpecialBlockProps & {
   onForkFromTurn?: (input: {
     threadId: string;
@@ -1513,7 +1507,6 @@ export function ThreadAssistantActionsBlock({
     message: string;
     isLatestTurn: boolean;
   }) => void | Promise<void>;
-  alwaysShowAssistantMessageActions?: boolean;
 }) {
   if (block.type !== "assistantActions") return null;
 
@@ -1536,7 +1529,6 @@ export function ThreadAssistantActionsBlock({
         turnId={block.turnId}
         isLatestTurn={isLatestTurn}
         onForkFromTurn={onForkFromTurn}
-        alwaysShowActions={alwaysShowAssistantMessageActions}
       />
     </div>
   );

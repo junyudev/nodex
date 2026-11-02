@@ -10,7 +10,7 @@ import type {
   CodexTranscriptWorkSlice,
 } from "../normalized-transcript-read-owner";
 import { parseCodexRealtimeDelegationText } from "../../../../shared/codex-delegation";
-import { collectTurnEndResources } from "./thread-summary-panel-output-model";
+import { collectTurnOutputCandidates } from "./thread-summary-panel-output-model";
 import type { CodexCanonicalItem } from "../../../../shared/types";
 import type { ConversationTurnListEntry, NormalizedConversationTurnEntry } from "../selectors";
 import { isNormalizedConversationTurnEntry } from "../selectors";
@@ -506,7 +506,7 @@ export function projectNormalizedTimelineEntries(input: {
       active.delete(entry.turnId);
       const base = byTurnId.get(entry.turnId);
       const turn = base ? input.owner.readTurn(base.historyEntityKey) : null;
-      if (base && turn && collectTurnEndResources(turn, {}).length > 0) {
+      if (base && turn && collectTurnOutputCandidates(turn, {}).length > 0) {
         voice = null;
         descriptors.push({
           base,

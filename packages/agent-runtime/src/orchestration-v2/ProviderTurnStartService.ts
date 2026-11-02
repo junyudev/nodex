@@ -49,6 +49,7 @@ import * as RunExecutionService from "./RunExecutionService.ts";
 import * as RuntimePolicy from "./RuntimePolicy.ts";
 import { ThreadCommandExecutor } from "./ThreadCommandExecutor.ts";
 import { restartCancelledBackgroundWorkNote } from "./RestartBackgroundNote.ts";
+import { detachNativeConversation } from "./NativeConversation.ts";
 import { nativeThreadHistoryEvents } from "./NativeThreadHistory.ts";
 
 export class ProviderTurnStartError extends Schema.TaggedError<ProviderTurnStartError>()(
@@ -1011,7 +1012,8 @@ export const layer: Layer.Layer<
           );
           if (
             fresh !== undefined &&
-            (run.restartContinuationOfRunId !== undefined ||
+            ((providerThread.contextHandoffRequired === true && !hasPreparedHistory) ||
+              run.restartContinuationOfRunId !== undefined ||
               (projection.thread.forkedFrom?.type === "run" && !hasPreparedHistory))
           )
             yield* carryPortableHistory(fresh);
@@ -1072,7 +1074,7 @@ export const layer: Layer.Layer<
             // The native ref is dropped so the adapter binds a fresh native
             // session instead of retrying the resume that just failed, while
             // still adopting this row's identity.
-            existingProviderThread: { ...providerThread, nativeThreadRef: null },
+            existingProviderThread: detachNativeConversation(providerThread, yield* DateTime.now),
           }),
         );
         if (replacement === undefined) return undefined;
@@ -1172,8 +1174,10 @@ export const layer: Layer.Layer<
         previousUsage,
         knownModelWindow,
       });
+      const { contextHandoffRequired: _handoffRequired, ...attachedProviderThread } =
+        loadedProviderThread;
       const runningProviderThread: OrchestrationV2ProviderThread = {
-        ...loadedProviderThread,
+        ...attachedProviderThread,
         contextUsage: handoffUsage,
         id: providerThread.id,
         driver: session.driver,

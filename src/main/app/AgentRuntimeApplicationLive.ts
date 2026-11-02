@@ -24,7 +24,6 @@ import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 import * as FileSystem from "effect/FileSystem";
 import type * as Scope from "effect/Scope";
-import { z } from "zod";
 import { agentRuntimeProviderId } from "../../shared/agent-runtime-provider";
 import { codexCliAppServerArgs } from "../../shared/codex-app-server-launch";
 import type { ClaudeAgentInstanceConfig } from "../../shared/types";
@@ -74,15 +73,7 @@ import { DatabaseNotifierRuntime } from "../host-runtime/DatabaseNotifierRuntime
 import { DesktopToolRuntime } from "../host-runtime/DesktopToolRuntime";
 import { WindowRuntime } from "../window-runtime/WindowRuntime";
 import { subscribe as subscribeExecutionChanges } from "../agent-runtime/AgentRuntimeExecutionChanges";
-import { make as makeSnapshotAdmission } from "../agent-runtime/AgentRuntimeSnapshotAdmission";
-import {
-  AgentRuntimeProfileSnapshot,
-  make as makeProfileSnapshot,
-} from "../agent-runtime/AgentRuntimeProfileSnapshot";
-import { nativeHistorySources } from "../agent-runtime/AgentRuntimeSnapshotSources";
-import { make as makeProviderAuthentication } from "../agent-runtime/AgentRuntimeProviderAuthentication";
-import { readAgentRuntimeNativeHistory } from "../platform/node/AgentRuntimeNativeHistory";
-import { materializeRestoredCodexConfiguration } from "../platform/node/AgentRuntimeNativeConfiguration";
+import { nativeImportSources } from "../agent-runtime/AgentRuntimeNativeImportSources";
 import { WorktreeShellEnvironmentRuntime } from "../host-runtime/WorktreeShellEnvironmentRuntime";
 import {
   agentRuntimeEntrypoint,
@@ -116,6 +107,8 @@ import {
 
 /** A quiet execution process with no live or pending work stops after this period. */
 const AGENT_RUNTIME_IDLE_AFTER = "3 minutes";
+/** An imported execution store is transformed before the process reports readiness. */
+const IMPORTED_EXECUTION_READINESS_MS = 10 * 60_000;
 
 /** Custom capabilities use the execution catalog's option IDs. */
 export function runtimeClaudeModels(instance: ClaudeAgentInstanceConfig) {
@@ -183,7 +176,6 @@ const supervisor = Layer.effectContext(
     });
     const fs = yield* FileSystem.FileSystem;
     const database = yield* DatabaseNotifierRuntime;
-    const admission = yield* makeSnapshotAdmission();
     const ready = yield* Deferred.make<AgentRuntimeSupervisor["Service"]>();
     const toolsReady = yield* Deferred.make<AgentRuntimeHostToolExecutor>();
     const executionChanges = Deferred.await(ready).pipe(
@@ -193,9 +185,6 @@ const supervisor = Layer.effectContext(
           Stream.merge(database.projectSessionInvalidations.pipe(Stream.map(() => undefined))),
         ),
       ),
-    );
-    const restoredHistories = yield* Effect.cached(
-      Effect.tryPromise(() => readAgentRuntimeNativeHistory(config.nodexHome)),
     );
     const keptProviderCatalog = yield* makeProviderCatalog({
       home: join(config.nodexHome, "agent-runtime"),
@@ -212,7 +201,6 @@ const supervisor = Layer.effectContext(
             codexLaunch.configOverrides,
           ],
           providers: [snapshot.claudeAgents, snapshot.openCodeAgents, snapshot.acpAgents],
-          histories: [...(yield* restoredHistories)],
           nodex: (yield* nodexAccount.managed)?.identity ?? null,
         };
         return createHash("sha256").update(JSON.stringify(declaration)).digest("hex");
@@ -241,13 +229,13 @@ const supervisor = Layer.effectContext(
       AgentRuntimeIdentity,
       Readonly<Record<string, string | undefined>>
     >();
-    const physicalNativeHistories = (connection: AgentRuntimeApplicationConnection) =>
+    const physicalNativeImportSources = (connection: AgentRuntimeApplicationConnection) =>
       Effect.try(() => {
         const configuration = prepared.get(connection.identity);
         const environment = preparedEnvironment.get(connection.identity);
         if (!configuration || !environment)
           throw new Error("Physical provider configuration is unavailable");
-        return nativeHistorySources({
+        return nativeImportSources({
           configuration,
           environment,
           homeDirectory: config.homeDirectory,
@@ -261,7 +249,7 @@ const supervisor = Layer.effectContext(
       ),
       nativeImportSourceHome: (connection, input) =>
         Effect.gen(function* () {
-          const histories = yield* physicalNativeHistories(connection);
+          const histories = yield* physicalNativeImportSources(connection);
           const providerId =
             input.backendKind === "codex"
               ? agentRuntimeProviderId({ kind: "codex" })
@@ -280,7 +268,7 @@ const supervisor = Layer.effectContext(
               message: "Native history configuration is unavailable",
               admissionRejected: true,
             });
-          // Active account and restored history homes are frozen for this Main lifetime, so
+          // Active account homes are fixed for this physical generation, so
           // provider refresh cannot replace this source after import admission.
           return yield* Effect.tryPromise(() => canonicalNativeSessionHome(sourceHome));
         }),
@@ -339,10 +327,8 @@ const supervisor = Layer.effectContext(
       releaseDesktopSession: desktop.releaseSession,
       reconcileWorkspace: workspace.reconcile,
       // Product writers span Core admission through execution acknowledgement; hold the process.
-      withWriter: (operation) =>
-        admission.withWriter(
-          Deferred.await(ready).pipe(Effect.flatMap((runtime) => runtime.writing(operation))),
-        ),
+      writing: (operation) =>
+        Deferred.await(ready).pipe(Effect.flatMap((runtime) => runtime.writing(operation))),
       runtimeExists: fs.exists(join(config.nodexHome, "agent-runtime", "agent-runtime.sqlite")),
       subscribeExecutionChanges: executionChanges,
     });
@@ -420,7 +406,6 @@ const supervisor = Layer.effectContext(
       configurationChanges: settings.composerPredictionSettingsChanges,
     }).pipe(Effect.forkScoped);
     const drivers = new Map<string, string>();
-    const readProviderAuth = yield* makeProviderAuthentication();
     const readConfiguration = Effect.gen(function* () {
       const executable = yield* Effect.try({
         try: () =>
@@ -583,30 +568,6 @@ const supervisor = Layer.effectContext(
         providers,
         host: { tools: runtimeHostToolCatalog },
       };
-      const histories = yield* restoredHistories;
-      for (const [id, history] of histories) {
-        const provider = providers[id];
-        if (!provider) continue;
-        if (provider.driver !== history.driver)
-          return yield* Effect.fail(
-            new Error("Restored native history does not match its configured provider"),
-          );
-        const providerConfig = yield* Effect.try(() =>
-          z.record(z.string(), z.unknown()).parse(provider.config),
-        );
-        providers[id] = {
-          ...provider,
-          config:
-            history.driver === "codex"
-              ? {
-                  ...providerConfig,
-                  homePath: history.homePath,
-                  hostAuthentication: true,
-                  launchArgs: `${String(providerConfig.launchArgs ?? "")} -c 'cli_auth_credentials_store="ephemeral"' -c ${shellQuote(`sqlite_home=${JSON.stringify(history.homePath)}`)}`,
-                }
-              : { ...providerConfig, restoredHistoryPath: history.homePath },
-        };
-      }
       for (const [id, provider] of Object.entries(providers)) drivers.set(id, provider.driver);
       return { configuration, environment, executable };
     });
@@ -622,15 +583,6 @@ const supervisor = Layer.effectContext(
         Effect.gen(function* () {
           const { configuration, environment, executable } = yield* readConfiguration;
           yield* ensureProjectlessWorkspaceRoot;
-          for (const history of (yield* restoredHistories).values()) {
-            if (history.driver !== "codex") continue;
-            yield* Effect.tryPromise(() =>
-              materializeRestoredCodexConfiguration({
-                configuredHome: platform.accountHome.sharedHome,
-                historyHome: history.homePath,
-              }),
-            );
-          }
           const entryPath = agentRuntimeEntrypoint(config);
           // A development build can lack the bundle; say so instead of a bare process exit.
           if (!(yield* fs.exists(entryPath)))
@@ -639,12 +591,14 @@ const supervisor = Layer.effectContext(
                 `Agent execution is not built: ${entryPath} is missing (vp run build:agent-runtime)`,
               ),
             );
+          const importing = yield* fs.exists(join(configuration.home, "imported-execution.json"));
           const connection = yield* acquireAgentRuntimeProcess({
             executable,
             entryPath,
             configuration,
             environment,
             host,
+            ...(importing ? { readinessTimeoutMs: IMPORTED_EXECUTION_READINESS_MS } : {}),
           });
           prepared.set(connection.identity, configuration);
           preparedEnvironment.set(connection.identity, environment);
@@ -661,7 +615,6 @@ const supervisor = Layer.effectContext(
           providers: configuration.providers,
           providerDriver: (id) => drivers.get(id),
           execute,
-          readProviderAuth,
         }).pipe(
           Effect.tap(() =>
             userInputAutoResolution
@@ -687,10 +640,29 @@ const supervisor = Layer.effectContext(
           Effect.tap(() => product.reconcileSessionActivity(connection).pipe(Effect.forkScoped)),
           Effect.tap(() =>
             Deferred.await(toolsReady).pipe(
+              Effect.andThen(
+                // Its own failure must not block cleanup or live reconciliation below.
+                product
+                  .reconcileStore(
+                    connection,
+                    `${core.identity.profileId}:${core.identity.storeEpoch}`,
+                  )
+                  .pipe(
+                    Effect.catchCause((cause) =>
+                      Effect.logWarning(
+                        "Session reconciliation will retry after the next connection",
+                      ).pipe(
+                        Effect.annotateLogs({ cause, runtimeId: connection.identity.runtimeId }),
+                      ),
+                    ),
+                  ),
+              ),
               Effect.andThen(product.cleanupDeletedSessions),
               Effect.andThen(product.reconcileLiveExecutions()),
-              Effect.catchCause(() =>
-                Effect.logWarning("Agent execution cleanup will retry after the next connection"),
+              Effect.catchCause((cause) =>
+                Effect.logWarning(
+                  "Agent execution reconciliation will retry after the next connection",
+                ).pipe(Effect.annotateLogs({ cause, runtimeId: connection.identity.runtimeId })),
               ),
               Effect.forkScoped,
             ),
@@ -755,31 +727,6 @@ const supervisor = Layer.effectContext(
       connectionChanges: runtime.connectionChanges,
       activityChanges: activity.activityChanges,
     });
-    // A held storage lease spans the capture with no request in flight.
-    const snapshotAdmission = {
-      withWriter: admission.withWriter,
-      withSnapshot: <A, E, R>(operation: Effect.Effect<A, E, R>) =>
-        admission.withSnapshot(runtime.retained(operation)),
-    };
-    const profileSnapshot = yield* makeProfileSnapshot(runtime, snapshotAdmission, {
-      isUnused: fs
-        .exists(join(config.nodexHome, "agent-runtime", "agent-runtime.sqlite"))
-        .pipe(Effect.map((exists) => !exists)),
-      prepareRestore: (source) =>
-        Effect.gen(function* () {
-          const root = join(config.nodexHome, "runtime", "snapshots");
-          yield* fs.makeDirectory(root, { recursive: true, mode: 0o700 });
-          const directory = yield* fs.makeTempDirectoryScoped({
-            directory: root,
-            prefix: "restore-",
-          });
-          const databasePath = join(directory, "agent-runtime.sqlite");
-          // The source is an already completed online backup held by the exact engine lease.
-          yield* fs.copyFile(source.databasePath, databasePath);
-          return { ...source, databasePath };
-        }),
-      nativeHistories: physicalNativeHistories,
-    });
     // Managed worktree listing and retention learn about Agent chats from here on.
     yield* (yield* AgentChatWorktrees).register(product.worktreeChats);
     return Context.make(AgentRuntimeSupervisor, runtime).pipe(
@@ -795,7 +742,6 @@ const supervisor = Layer.effectContext(
       }),
       Context.add(AgentRuntimeClaudeUsage, claudeUsage),
       Context.add(AgentRuntimeApplication, product),
-      Context.add(AgentRuntimeProfileSnapshot, profileSnapshot),
       Context.add(HostActivation, {
         activate: (tools) => Deferred.succeed(toolsReady, tools).pipe(Effect.asVoid),
         resume: runtime.getUnlessQuiet.pipe(Effect.asVoid),
@@ -809,7 +755,7 @@ const supervisor = Layer.effectContext(
   ),
 ).pipe(Layer.provide(NodeServices.layer));
 
-/** Execution and Profile coordination depend only on Core and native filesystem capabilities. */
+/** Execution lifecycle depends only on Core and native filesystem capabilities. */
 export const runtime = supervisor.pipe(
   Layer.provideMerge(
     Layer.mergeAll(promptImagesLayer.pipe(Layer.provide(imageFittingLayer)), sessionWorkspaceLayer),

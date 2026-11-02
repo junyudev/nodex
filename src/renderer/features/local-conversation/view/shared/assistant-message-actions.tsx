@@ -35,7 +35,6 @@ export function AssistantMessageActionsRow({
   turnId,
   isLatestTurn,
   onForkFromTurn,
-  alwaysShowActions = false,
 }: {
   actions: ThreadAssistantMessageActionsModel;
   copySource?: CodexConversationItem;
@@ -50,7 +49,6 @@ export function AssistantMessageActionsRow({
     message: string;
     isLatestTurn: boolean;
   }) => void | Promise<void>;
-  alwaysShowActions?: boolean;
 }) {
   const owner = useContext(CodexTranscriptReadOwnerContext);
   const entityKey = useContext(CodexTranscriptTurnEntityContext);
@@ -93,7 +91,7 @@ export function AssistantMessageActionsRow({
         <div
           className={cn(
             "flex h-full items-center gap-0.5",
-            !alwaysShowActions &&
+            !actions.alwaysVisible &&
               "opacity-0 group-focus-within:opacity-100 group-hover:opacity-100",
           )}
         >

@@ -1,4 +1,5 @@
 import { ProviderRequestKind } from "@t3tools/contracts";
+import { isClosedNativeDetachment } from "./NativeConversation.ts";
 import {
   boundConversationRewindContext,
   conversationRewindContext,
@@ -1827,6 +1828,7 @@ export function applyToProjection(
     case "provider-thread.updated":
       // Closed native histories are audit records. Late native notifications cannot revive them.
       if (
+        !isClosedNativeDetachment(event.payload) &&
         base.providerThreads.some(
           (thread) => thread.id === event.payload.id && thread.status === "closed",
         )
@@ -3638,7 +3640,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             const retired = yield* sql<{ provider_thread_id: string }>`
               SELECT provider_thread_id FROM orchestration_v2_projection_provider_threads
               WHERE provider_thread_id = ${event.payload.id} AND status = 'closed' LIMIT 1`;
-            if (retired.length > 0) break;
+            if (retired.length > 0 && !isClosedNativeDetachment(event.payload)) break;
             const payloadJson = yield* encodeProviderThreadPayload(event.payload);
             const payload = parseEncodedPayload(payloadJson);
             const hostIdentityJson = JSON.stringify({

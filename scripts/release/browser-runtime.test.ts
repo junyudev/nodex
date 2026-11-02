@@ -5,6 +5,7 @@ import { afterEach, expect, test } from "vite-plus/test";
 import { writeBrowserRuntimeFixture } from "../../src/main/codex/browser-runtime-test-fixture";
 import { archiveBrowserRuntime } from "../archive-browser-runtime";
 import {
+  awaitBrowserRuntimePublicationPlan,
   browserRuntimeReleaseArguments,
   planBrowserRuntimePublication,
   verifyBrowserRuntimePublishInput,
@@ -35,6 +36,28 @@ test.skipIf(process.platform === "win32")(
     expect(args).not.toContain("--latest");
   },
 );
+
+test("Browser runtime publication waits for a just-created draft to become listed", async () => {
+  const expected = new Map([["arm64.tar.gz", { sha256: "a".repeat(64), size: 10 }]]);
+  const listings = [null, null, { assets: [], draft: true, prerelease: false, tag_name: "t" }];
+  let reads = 0;
+  const readPlan = () => planBrowserRuntimePublication(listings[reads++] ?? null, expected);
+
+  await expect(
+    awaitBrowserRuntimePublicationPlan(readPlan, (plan) => plan.kind !== "create", { delayMs: 0 }),
+  ).resolves.toEqual({ kind: "resume-draft", missingAssetNames: ["arm64.tar.gz"] });
+  expect(reads).toBe(3);
+
+  reads = 0;
+  listings.splice(0, listings.length);
+  await expect(
+    awaitBrowserRuntimePublicationPlan(readPlan, (plan) => plan.kind !== "create", {
+      attempts: 4,
+      delayMs: 0,
+    }),
+  ).resolves.toEqual({ kind: "create" });
+  expect(reads).toBe(4);
+});
 
 test.skipIf(process.platform === "win32")(
   "Browser runtime publication resumes only exact missing draft assets",

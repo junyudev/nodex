@@ -14,11 +14,7 @@ import {
 import type { BrowserAnnotationDesignChange } from "../../../shared/browser-annotation";
 import { createSecureUuid } from "../../../shared/secure-runtime-id";
 import { APP_SHELL_BROWSER_WEBVIEW_LAYER_INDEX } from "../../lib/app-shell-layers";
-import {
-  isAllowedBrowserNavigationUrl,
-  isBlankBrowserUrl,
-  normalizeBrowserNavigationUrl,
-} from "../../../shared/browser-url";
+import { isBlankBrowserUrl } from "../../../shared/browser-url";
 import {
   invokeBrowserSidebarCommand,
   notifyBrowserWebviewHostCreated,
@@ -181,7 +177,6 @@ class BrowserSidebarRendererWebviewHost implements ManagedBrowserWebviewHost {
     );
     this.webview.setAttribute("data-browser-sidebar-webview-host-root", "");
     this.webview.setAttribute("data-browser-sidebar-webview-host-kind", input.hostKind);
-    this.webview.setAttribute("allowpopups", "false");
 
     this.cursorOverlayHost.className = "pointer-events-none absolute inset-0";
     this.cursorOverlayHost.setAttribute("data-browser-sidebar-cursor-overlay-host", "");
@@ -954,9 +949,7 @@ function hostClaimPriority(input: BrowserSidebarHostClaimInput): number {
 }
 
 function normalizeInitialWebviewUrl(url: string): string {
-  if (isBlankBrowserUrl(url)) return "about:blank";
-  const normalizedUrl = normalizeBrowserNavigationUrl(url);
-  return isAllowedBrowserNavigationUrl(normalizedUrl) ? normalizedUrl : "about:blank";
+  return isBlankBrowserUrl(url) ? "about:blank" : url;
 }
 
 function resolveBrowserStorageId(

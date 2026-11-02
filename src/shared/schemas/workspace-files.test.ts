@@ -7,7 +7,7 @@ import {
   WorkspaceFileTextReadInputSchema,
   WorkspaceFileWriteInputSchema,
   WorkspaceLocalFileRequestSchema,
-  WorkspacePathsExistInputSchema,
+  WorkspacePathStatesInputSchema,
 } from "./workspace-files";
 import { WORKSPACE_FILE_BINARY_MAX_BYTES, WORKSPACE_FILE_PREVIEW_MAX_BYTES } from "../types";
 
@@ -43,7 +43,7 @@ describe("workspace file IPC schemas", () => {
       }),
     ).toThrow();
     const paths = { hostId: "ssh:build", paths: ["/workspace/report.md", "/workspace/trailing "] };
-    expect(WorkspacePathsExistInputSchema.parse(paths)).toEqual(paths);
+    expect(WorkspacePathStatesInputSchema.parse(paths)).toEqual(paths);
     const directory = {
       hostId: "ssh:build",
       workspaceRoot: "/workspace/trailing ",

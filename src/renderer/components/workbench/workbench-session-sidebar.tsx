@@ -119,7 +119,7 @@ import type {
   SidebarListId,
 } from "@/lib/sidebar-section-prefs";
 import { resolveSidebarSessionPlacement } from "@/lib/sidebar-session-placement";
-import { SidebarPaginatedItems } from "./sidebar-paginated-items";
+import { SidebarPaginatedItems, SidebarPaginatedRows } from "./sidebar-paginated-items";
 import {
   SidebarCustomSections,
   SidebarProjectSectionMenu,
@@ -239,24 +239,26 @@ function SidebarProjectGroupRowsContent({
     <div className="isolate flex flex-col [contain:layout]">
       <SidebarProjectSortableContext groupIds={reorder.groupIds}>
         <div className="flex flex-col" role="list" aria-label="Projects">
-          {orderedVisibleItems.length > 0 ? (
-            orderedVisibleItems.map((group, index) => (
-              <Fragment key={group.project.id}>
-                {reorder.dropIndicatorIndex === index ? <SidebarDropIndicator /> : null}
-                {renderProjectGroup(group, reorder.controller)}
-              </Fragment>
-            ))
-          ) : (
-            <div
-              className="px-row-x py-row-y text-sm text-token-description-foreground"
-              role="listitem"
-            >
-              {loading ? "Loading projects..." : emptyText}
-            </div>
-          )}
-          {reorder.dropIndicatorIndex === orderedVisibleItems.length ? (
-            <SidebarDropIndicator />
-          ) : null}
+          <SidebarPaginatedRows>
+            {orderedVisibleItems.length > 0 ? (
+              orderedVisibleItems.map((group, index) => (
+                <Fragment key={group.project.id}>
+                  {reorder.dropIndicatorIndex === index ? <SidebarDropIndicator /> : null}
+                  {renderProjectGroup(group, reorder.controller)}
+                </Fragment>
+              ))
+            ) : (
+              <div
+                className="px-row-x py-row-y text-sm text-token-description-foreground"
+                role="listitem"
+              >
+                {loading ? "Loading projects..." : emptyText}
+              </div>
+            )}
+            {reorder.dropIndicatorIndex === orderedVisibleItems.length ? (
+              <SidebarDropIndicator />
+            ) : null}
+          </SidebarPaginatedRows>
           {pager}
         </div>
       </SidebarProjectSortableContext>
@@ -423,46 +425,48 @@ function SidebarThreadContainerRowsContent({
       {(pagination, pager) => (
         <div className="isolate flex flex-col [contain:layout]">
           <div className="flex flex-col" role="list" aria-label="Chats">
-            {pagination.visibleItems.length > 0 ? (
-              <SidebarThreadSortableRows
-                containerId={containerId}
-                getSessionId={getSessionId}
-                getItemId={(threadKey) => getSessionId(threadKey) ?? undefined}
-                getThreadId={getThreadId}
-                itemIds={reorder.displayedVisibleThreadKeys.flatMap((threadKey) => {
-                  const sessionId = getSessionId(threadKey);
-                  return sessionId === null ? [] : [sessionId];
-                })}
-                visibleThreadKeys={pagination.visibleItems}
-                sortableThreadKeysInDisplayOrder={reorder.displayedVisibleThreadKeys}
-                controller={reorder.controller}
-                dropIndicatorTarget={reorder.dropIndicatorTarget}
-                renderThread={renderThread}
-                renderDragOverlay={(threadKey) => {
-                  const item = itemsByKey.get(threadKey);
-                  if (!item) return null;
-                  return (
-                    <div className="flex h-[var(--height-token-nav-row)] max-w-80 items-center gap-2 px-2 text-base text-token-foreground">
-                      <span className="flex size-5 shrink-0 items-center justify-center">
-                        <ThreadIcon className="icon-xs" />
-                      </span>
-                      <span className="min-w-0 truncate">{item.title}</span>
-                    </div>
-                  );
-                }}
-                sourceProjectKind="local"
-                targetProjectKind="local"
-              />
-            ) : null}
-            {pagination.visibleItems.length === 0 || collectionState.kind === "error" ? (
-              <SidebarSessionCollectionFallback
-                state={collectionState}
-                loadingText="Loading chats..."
-                emptyText="No projectless chats"
-                placement="section"
-                onRetry={onRetry}
-              />
-            ) : null}
+            <SidebarPaginatedRows>
+              {pagination.visibleItems.length > 0 ? (
+                <SidebarThreadSortableRows
+                  containerId={containerId}
+                  getSessionId={getSessionId}
+                  getItemId={(threadKey) => getSessionId(threadKey) ?? undefined}
+                  getThreadId={getThreadId}
+                  itemIds={reorder.displayedVisibleThreadKeys.flatMap((threadKey) => {
+                    const sessionId = getSessionId(threadKey);
+                    return sessionId === null ? [] : [sessionId];
+                  })}
+                  visibleThreadKeys={pagination.visibleItems}
+                  sortableThreadKeysInDisplayOrder={reorder.displayedVisibleThreadKeys}
+                  controller={reorder.controller}
+                  dropIndicatorTarget={reorder.dropIndicatorTarget}
+                  renderThread={renderThread}
+                  renderDragOverlay={(threadKey) => {
+                    const item = itemsByKey.get(threadKey);
+                    if (!item) return null;
+                    return (
+                      <div className="flex h-[var(--height-token-nav-row)] max-w-80 items-center gap-2 px-2 text-base text-token-foreground">
+                        <span className="flex size-5 shrink-0 items-center justify-center">
+                          <ThreadIcon className="icon-xs" />
+                        </span>
+                        <span className="min-w-0 truncate">{item.title}</span>
+                      </div>
+                    );
+                  }}
+                  sourceProjectKind="local"
+                  targetProjectKind="local"
+                />
+              ) : null}
+              {pagination.visibleItems.length === 0 || collectionState.kind === "error" ? (
+                <SidebarSessionCollectionFallback
+                  state={collectionState}
+                  loadingText="Loading chats..."
+                  emptyText="No projectless chats"
+                  placement="section"
+                  onRetry={onRetry}
+                />
+              ) : null}
+            </SidebarPaginatedRows>
             {pager}
           </div>
         </div>
@@ -657,55 +661,60 @@ function SidebarProjectThreadRowsContent({
 
         return (
           <CodexProjectSessionList project={project} showAll={extraPages > 0}>
-            <SidebarThreadDropContainer containerId={pinnedContainerId} targetProjectKind="local">
-              <SidebarThreadSortableRows
-                containerId={pinnedContainerId}
-                getSessionId={getSessionId}
-                getItemId={(threadKey) => getSessionId(threadKey) ?? undefined}
-                getThreadId={getThreadId}
-                itemIds={pinnedReorder.displayedVisibleThreadKeys.flatMap((threadKey) => {
-                  const sessionId = getSessionId(threadKey);
-                  return sessionId === null ? [] : [sessionId];
-                })}
-                visibleThreadKeys={visiblePinnedThreadKeys}
-                sortableThreadKeysInDisplayOrder={pinnedReorder.displayedVisibleThreadKeys}
-                controller={pinnedReorder.controller}
-                dropIndicatorTarget={pinnedReorder.dropIndicatorTarget}
-                renderThread={renderThread}
-                renderDragOverlay={renderDragOverlay}
-                sourceProjectKind="local"
-                targetProjectKind="local"
-              />
-            </SidebarThreadDropContainer>
-            <SidebarThreadDropContainer containerId={regularContainerId} targetProjectKind="local">
-              <SidebarThreadSortableRows
+            <SidebarPaginatedRows>
+              <SidebarThreadDropContainer containerId={pinnedContainerId} targetProjectKind="local">
+                <SidebarThreadSortableRows
+                  containerId={pinnedContainerId}
+                  getSessionId={getSessionId}
+                  getItemId={(threadKey) => getSessionId(threadKey) ?? undefined}
+                  getThreadId={getThreadId}
+                  itemIds={pinnedReorder.displayedVisibleThreadKeys.flatMap((threadKey) => {
+                    const sessionId = getSessionId(threadKey);
+                    return sessionId === null ? [] : [sessionId];
+                  })}
+                  visibleThreadKeys={visiblePinnedThreadKeys}
+                  sortableThreadKeysInDisplayOrder={pinnedReorder.displayedVisibleThreadKeys}
+                  controller={pinnedReorder.controller}
+                  dropIndicatorTarget={pinnedReorder.dropIndicatorTarget}
+                  renderThread={renderThread}
+                  renderDragOverlay={renderDragOverlay}
+                  sourceProjectKind="local"
+                  targetProjectKind="local"
+                />
+              </SidebarThreadDropContainer>
+              <SidebarThreadDropContainer
                 containerId={regularContainerId}
-                getSessionId={getSessionId}
-                getItemId={(threadKey) => getSessionId(threadKey) ?? undefined}
-                getThreadId={getThreadId}
-                itemIds={regularReorder.displayedVisibleThreadKeys.flatMap((threadKey) => {
-                  const sessionId = getSessionId(threadKey);
-                  return sessionId === null ? [] : [sessionId];
-                })}
-                visibleThreadKeys={visibleRegularThreadKeys}
-                sortableThreadKeysInDisplayOrder={regularReorder.displayedVisibleThreadKeys}
-                controller={regularReorder.controller}
-                dropIndicatorTarget={regularReorder.dropIndicatorTarget}
-                renderThread={renderThread}
-                renderDragOverlay={renderDragOverlay}
-                sourceProjectKind="local"
                 targetProjectKind="local"
-              />
-            </SidebarThreadDropContainer>
-            {pagination.visibleItems.length === 0 || collectionState.kind === "error" ? (
-              <SidebarSessionCollectionFallback
-                state={collectionState}
-                loadingText={null}
-                emptyText="No chats inside"
-                placement="project-child"
-                onRetry={onRetry}
-              />
-            ) : null}
+              >
+                <SidebarThreadSortableRows
+                  containerId={regularContainerId}
+                  getSessionId={getSessionId}
+                  getItemId={(threadKey) => getSessionId(threadKey) ?? undefined}
+                  getThreadId={getThreadId}
+                  itemIds={regularReorder.displayedVisibleThreadKeys.flatMap((threadKey) => {
+                    const sessionId = getSessionId(threadKey);
+                    return sessionId === null ? [] : [sessionId];
+                  })}
+                  visibleThreadKeys={visibleRegularThreadKeys}
+                  sortableThreadKeysInDisplayOrder={regularReorder.displayedVisibleThreadKeys}
+                  controller={regularReorder.controller}
+                  dropIndicatorTarget={regularReorder.dropIndicatorTarget}
+                  renderThread={renderThread}
+                  renderDragOverlay={renderDragOverlay}
+                  sourceProjectKind="local"
+                  targetProjectKind="local"
+                />
+              </SidebarThreadDropContainer>
+              {pagination.visibleItems.length === 0 || collectionState.kind === "error" ? (
+                <SidebarSessionCollectionFallback
+                  state={collectionState}
+                  loadingText={null}
+                  emptyText="No chats inside"
+                  placement="project-child"
+                  onRetry={onRetry}
+                />
+              ) : null}
+            </SidebarPaginatedRows>
             <SidebarThreadDropContainer
               containerId={regularContainerId}
               projectDropZone="project-pagination"

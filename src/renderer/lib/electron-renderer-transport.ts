@@ -366,6 +366,20 @@ export function createElectronRendererTransport(bridge: ElectronRendererBridge):
         callback(payload);
       });
     },
+    subscribeLinkOpeningSettingsChanges(callback) {
+      return bridge.on("link-opening-settings-changed", (...args: unknown[]) => {
+        const payload = args[0] as
+          | import("../../shared/link-opening-settings").LinkOpeningSettings
+          | undefined;
+        if (payload) callback(payload);
+      });
+    },
+    subscribeLinkOpenRequests(callback) {
+      return bridge.on("link:open-requested", (...args: unknown[]) => {
+        const payload = args[0] as import("../../shared/link-opening").LinkOpenRequest | undefined;
+        if (payload) callback(payload);
+      });
+    },
     subscribeUsageMeterSettingsChanges(callback) {
       return bridge.on("usage-meter-settings-changed", (...args: unknown[]) => {
         const payload = args[0] as

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
+import { JsonSchema, Schema, SchemaRepresentation } from "effect";
 import {
   distributeObjectUnions,
   normalizeCodexRealtimeSchemaFieldNames,
@@ -99,6 +100,54 @@ describe("Effect Codex schema generation", () => {
       { method: "account/usage/read", paramsType: "GetUsageParams | undefined" },
       { method: "thread/start", paramsType: "ThreadStartParams" },
     ]);
+  });
+
+  it("preserves shared fields through nested image-source alternatives", () => {
+    const schema = {
+      $schema: "http://json-schema.org/draft-07/schema#",
+      type: "object",
+      properties: { startedAtMs: { type: "number" } },
+      required: ["startedAtMs"],
+      oneOf: [
+        {
+          type: "object",
+          properties: { type: { const: "imageGeneration" } },
+          required: ["type"],
+          anyOf: [
+            { type: "object", properties: { fileId: { type: "string" } }, required: ["fileId"] },
+            { type: "object", properties: { result: { type: "string" } }, required: ["result"] },
+          ],
+        },
+        {
+          type: "object",
+          properties: { type: { const: "plan" }, text: { type: "string" } },
+          required: ["type", "text"],
+        },
+      ],
+    } as const satisfies SchemaJson;
+    const original = createGeneratedCodexSchema(schema);
+    const normalized = {
+      $schema: schema.$schema,
+      ...(distributeObjectUnions(schema) as object),
+    };
+    const distributed = createGeneratedCodexSchema(normalized);
+    const imported = SchemaRepresentation.fromJsonSchemaDocument(
+      JsonSchema.fromSchemaDraft2020_12(normalized),
+    );
+    for (const [value, valid] of [
+      [{ type: "imageGeneration", startedAtMs: 1, fileId: "file-1" }, true],
+      [{ type: "imageGeneration", startedAtMs: 1, result: "AQID" }, true],
+      [{ type: "imageGeneration", startedAtMs: 1, fileId: "file-1", result: "AQID" }, true],
+      [{ type: "plan", startedAtMs: 1, text: "Ship" }, true],
+      [{ type: "imageGeneration", fileId: "file-1" }, false],
+      [{ type: "imageGeneration", startedAtMs: 1 }, false],
+      [{ type: "imageGeneration", startedAtMs: "invalid", result: "AQID" }, false],
+      [{ type: "plan", startedAtMs: 1 }, false],
+    ] as const) {
+      expect(original.safeParse(value).success).toBe(valid);
+      expect(distributed.safeParse(value).success).toBe(valid);
+      expect(Schema.is(imported)(value)).toBe(valid);
+    }
   });
 
   it.each(["oneOf", "anyOf"])("distributes shared object fields over %s branches", (union) => {

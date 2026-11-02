@@ -1,29 +1,30 @@
 import { describe, expect, test } from "vite-plus/test";
 import { parseExternalNavigationUrl } from "./external-navigation";
 
-describe("parseExternalNavigationUrl", () => {
-  test("normalizes credential-free web links", () => {
-    expect(parseExternalNavigationUrl("https://example.com/spec#page=2").toString()).toBe(
-      "https://example.com/spec#page=2",
-    );
-    expect(parseExternalNavigationUrl("http://localhost:3000/docs").toString()).toBe(
-      "http://localhost:3000/docs",
-    );
-  });
-
+describe("explicit external navigation", () => {
   test.each([
     "file:///tmp/report.pdf",
-    "javascript:alert(1)",
     "https://user:secret@example.com/private",
-  ])("rejects an unsafe external target: %s", (value) => {
-    expect(() => parseExternalNavigationUrl(value)).toThrow(
-      "External navigation requires a credential-free HTTP(S) URL",
-    );
+    "http://example.com/",
+    "mailto:hello@example.com",
+    "sms:+123",
+    "tel:+123",
+    "vscode://file/tmp/report.txt",
+    "vscode-insiders://vscode-remote/ssh-remote+host/tmp/report.txt",
+    "onepassword://grant-brokered-access?access_request_reference=abc_123",
+    `https://example.com/${"x".repeat(80_000)}`,
+  ])("admits an explicit external target: %s", (value) => {
+    expect(parseExternalNavigationUrl(value).protocol).toBe(new URL(value).protocol);
   });
-
-  test("rejects unbounded URLs", () => {
-    expect(() => parseExternalNavigationUrl(`https://example.com/${"x".repeat(8_192)}`)).toThrow(
-      "External URL is too long",
-    );
+  test.each([
+    "javascript:alert(1)",
+    "data:text/html,hello",
+    "about:blank",
+    "vscode://user:secret@file/tmp/a",
+    "vscode://unknown/tmp/a",
+    "onepassword://grant-brokered-access/?access_request_reference=abc",
+    "unknown://example.com",
+  ])("rejects unsupported external targets: %s", (value) => {
+    expect(() => parseExternalNavigationUrl(value)).toThrow("This URL cannot be opened externally");
   });
 });

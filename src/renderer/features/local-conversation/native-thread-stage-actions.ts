@@ -21,7 +21,6 @@ export function composeNativeThreadStageActions(
     onOpenVoiceSettings: host.onOpenVoiceSettings,
     onOpenSummaryBrowserRow: host.onOpenSummaryBrowserRow,
     onOpenSummaryScheduledAutomation: host.onOpenSummaryScheduledAutomation,
-    onOpenSummaryOutputInSidePanel: host.onOpenSummaryOutputInSidePanel,
     onOpenSummaryGitReview: host.onOpenSummaryGitReview,
     onOpenProcessManager: host.onOpenProcessManager,
     onOpenBackgroundTerminalOutput: host.onOpenBackgroundTerminalOutput,

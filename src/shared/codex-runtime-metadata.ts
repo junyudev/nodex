@@ -17,6 +17,7 @@ export type AgentRuntimeArtifact = {
 
 export type CodexAppServerPackageManifest = {
   entrypoint: string;
+  execServer: string;
   layoutVersion: number;
   pathDir: string;
   resourcesDir: string;

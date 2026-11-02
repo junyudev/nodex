@@ -122,6 +122,28 @@ it.effect("nonpaginated history uses exclusive turn IDs and rejects unknown anch
     assert.include(String(error.cause), "Unknown cursor");
   }),
 );
+test("native history preserves generated image source identity", () => {
+  for (const source of [{ result: "AQID" }, { fileId: "file_123" }]) {
+    const item = {
+      type: "imageGeneration",
+      id: "generated-1",
+      status: "completed",
+      revisedPrompt: null,
+      failure: null,
+      generationId: null,
+      ...source,
+    } as const;
+    expect(serializeCodexReadThreadProtocolItem(item, false, 0)).toEqual({
+      type: "imageGeneration",
+      id: "generated-1",
+      status: "completed",
+      revisedPrompt: null,
+      savedPath: null,
+      ...source,
+    });
+  }
+});
+
 test("output budget does not truncate user/assistant input and structured output reports original size", () => {
   expect(
     serializeCodexReadThreadProtocolItem(

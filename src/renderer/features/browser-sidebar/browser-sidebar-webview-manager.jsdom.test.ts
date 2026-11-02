@@ -87,6 +87,28 @@ function getManagerRoot(
 }
 
 describe("BrowserSidebarRendererWebviewManager", () => {
+  test.each(["file:///tmp/page.html", "data:text/html,hello", "javascript:alert(1)"])(
+    "passes the trusted initial destination %s through to the webview",
+    (initialUrl) => {
+      const manager = createManager();
+      const identity = {
+        browserConversationId: "session-1",
+        browserViewScopeId: "window-session-1",
+        browserTabId: "tab-browser",
+      };
+      manager.syncWebview({
+        ...identity,
+        projectId: "alpha",
+        hostKind: "panel",
+        initialUrl,
+        bounds: visibleBounds,
+        mountGeneration: manager.claimMountGeneration(identity),
+        onHostCreated: () => undefined,
+      });
+      expect(getManagerRoot()?.querySelector("webview")?.getAttribute("src")).toBe(initialUrl);
+    },
+  );
+
   test("retries a rejected host registration without another lease update", async () => {
     vi.useFakeTimers();
     const commands: Record<string, unknown>[] = [];

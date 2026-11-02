@@ -35,6 +35,23 @@ import type { ThreadPlanSidePanelTarget, ThreadStageActions } from "../../thread
 import { projectNativeTaskRows } from "../../native-task-presentation";
 import { buildThreadHandoffOperation } from "../../../../test/thread-handoff-fixture";
 
+const outputOpeners = vi.hoisted(() => ({
+  openFile: vi.fn(),
+  openDefault: vi.fn(),
+  openLink: vi.fn(),
+}));
+vi.mock("@/lib/link-opening", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/link-opening")>()),
+  openLink: outputOpeners.openLink,
+}));
+vi.mock("@/lib/file-reference-router", () => ({
+  useFileReferenceRouter: () => ({ open: outputOpeners.openFile }),
+}));
+vi.mock("@/lib/file-system-operations", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/file-system-operations")>()),
+  openPathWithDefaultApplication: outputOpeners.openDefault,
+}));
+
 let invokeCalls: unknown[][] = [];
 let gitWorkerCalls: Array<{ method: string; params: unknown }> = [];
 let mockInvokeImpl: ((channel: string, ...args: unknown[]) => Promise<unknown>) | null = null;
@@ -51,6 +68,15 @@ const pendingByDefaultInvokeChannels = new Set([
 
 async function invokeForTest(channel: string, ...args: unknown[]): Promise<unknown> {
   invokeCalls.push([channel, ...args]);
+  if (channel === "workspace-path-states") {
+    return {
+      states: (args[0] as { paths: string[] }).paths.map((path) => ({
+        path,
+        exists: true,
+        isGitSourcePath: true,
+      })),
+    };
+  }
   if (mockInvokeImpl) {
     const result = await mockInvokeImpl(channel, ...args);
     if (channel === "codex:app-server:request" && result == null) {
@@ -216,6 +242,23 @@ async function clickAndAct(target: Element): Promise<void> {
   });
 }
 
+function makeFileOutputTurns(path: string): CodexConversationTurn[] {
+  const text = `:codex-file-citation{path="${path}"}`;
+  return [
+    {
+      items: [
+        {
+          itemId: "assistant",
+          type: "agentMessage",
+          markdownText: text,
+          rawItem: { id: "assistant", type: "agentMessage", text },
+        },
+      ],
+      status: "completed",
+    },
+  ] as unknown as CodexConversationTurn[];
+}
+
 async function expectTooltipContent(trigger: HTMLElement, expected: string): Promise<void> {
   expect(trigger.hasAttribute("title")).toBe(false);
   await act(async () => {
@@ -368,6 +411,9 @@ describe("ThreadFloatingSummaryPanel", () => {
     invokeCalls = [];
     gitWorkerCalls = [];
     mockInvokeImpl = null;
+    outputOpeners.openFile.mockReset().mockResolvedValue(true);
+    outputOpeners.openDefault.mockReset().mockResolvedValue(true);
+    outputOpeners.openLink.mockReset().mockResolvedValue(true);
     Object.defineProperty(window, "api", {
       configurable: true,
       value: { invoke: invokeForTest, on: () => () => undefined },
@@ -2096,7 +2142,7 @@ describe("ThreadFloatingSummaryPanel", () => {
             type: "webSearch",
           },
         ],
-        status: "inProgress",
+        status: "completed",
       },
     ] as unknown as CodexConversationTurn[];
 
@@ -2153,6 +2199,7 @@ describe("ThreadFloatingSummaryPanel", () => {
       />,
     );
 
+    await view.findByText("Generated image 1");
     const content = textContent(view.container);
     const orderedTitles = [
       "Scheduled",
@@ -3012,7 +3059,7 @@ describe("ThreadFloatingSummaryPanel", () => {
     expect(call?.hideCodeBlocks).toBe(false);
   });
 
-  test("suppresses outputs when the active thread is in a git environment", async () => {
+  test("shows deliverable outputs alongside the Git environment", async () => {
     mockInvokeImpl = async (channel: string, input?: unknown) => {
       if (channel !== "review-summary") return null;
       return makeSnapshot((input as { source: GitReviewSource }).source, 0, 0);
@@ -3060,8 +3107,9 @@ describe("ThreadFloatingSummaryPanel", () => {
       expect(invokeCalls.some((call) => call[0] === "review-summary")).toBe(false);
       const content = textContent(view.container);
       expect(content.includes("Clean")).toBe(false);
-      expect(content.includes("Outputs")).toBe(false);
-      expect(content.includes("Generated image 1")).toBe(false);
+      expect(view.getByText("Environment")).toBeDefined();
+      expect(view.getByText("Outputs")).toBeDefined();
+      expect(view.getByText("Generated image 1")).toBeDefined();
     });
   });
 
@@ -3122,7 +3170,7 @@ describe("ThreadFloatingSummaryPanel", () => {
     });
   });
 
-  test("opens generated image output rows in the image preview dialog", async () => {
+  test("opens generated image output rows in the file preview", async () => {
     const turns = [
       {
         items: [
@@ -3154,225 +3202,182 @@ describe("ThreadFloatingSummaryPanel", () => {
       />,
     );
 
+    const outputRow = (await view.findByText("Generated image 1")).closest(
+      "[role='button']",
+    ) as HTMLElement | null;
+    expect(Boolean(outputRow)).toBe(true);
+    await act(async () => {
+      fireEvent.click(outputRow as HTMLElement);
+    });
+
+    await waitFor(() =>
+      expect(outputOpeners.openFile).toHaveBeenCalledWith(
+        { path: "/repo/project/generated-one.png" },
+        expect.objectContaining({ sidePanel: true, title: "Generated image 1" }),
+      ),
+    );
+    expect(outputOpeners.openDefault).not.toHaveBeenCalled();
+  });
+
+  for (const extension of ["md", "pdf"]) {
+    test(`opens ${extension} summary outputs through the file router on the Chat's host`, async () => {
+      const path = `/repo/project/dist/report.${extension}`;
+      const view = renderSummary(
+        <ThreadFloatingSummaryPanel
+          mounted
+          open
+          sourceRoot={{ hostId: "ssh:remote", threadId: "thread-1" }}
+          activeThreadId="thread-1"
+          cwd="/repo/project/dist"
+          projectWorkspacePath="/repo/project"
+          turns={makeFileOutputTurns(path)}
+          onErrorMessage={() => undefined}
+        />,
+      );
+
+      const row = await view.findByRole("button", { name: `report.${extension}` });
+      await clickAndAct(row);
+
+      await waitFor(() =>
+        expect(outputOpeners.openFile).toHaveBeenCalledWith(
+          { path },
+          expect.objectContaining({
+            hostId: "ssh:remote",
+            cwd: "/repo/project/dist",
+            workspaceRoot: "/repo/project",
+            sidePanel: true,
+            title: `report.${extension}`,
+          }),
+        ),
+      );
+      expect(outputOpeners.openDefault).not.toHaveBeenCalled();
+    });
+  }
+
+  test("hands a local HTML summary output to the file router, never the default application", async () => {
+    const path = "/repo/project/dist/report.html";
+    const view = renderSummary(
+      <ThreadFloatingSummaryPanel
+        mounted
+        open
+        activeThreadId="thread-1"
+        cwd="/repo/project"
+        projectWorkspacePath="/repo/project"
+        turns={makeFileOutputTurns(path)}
+        onErrorMessage={() => undefined}
+      />,
+    );
+
+    const row = await view.findByRole("button", { name: "report.html" });
+    await clickAndAct(row);
+
+    await waitFor(() =>
+      expect(outputOpeners.openFile).toHaveBeenCalledWith(
+        { path },
+        expect.objectContaining({ sidePanel: true, title: "report.html" }),
+      ),
+    );
+    expect(outputOpeners.openDefault).not.toHaveBeenCalled();
+  });
+
+  test("reports when a summary output cannot be opened", async () => {
+    outputOpeners.openFile.mockResolvedValue(false);
+    const onErrorMessage = vi.fn();
+    const view = renderSummary(
+      <ThreadFloatingSummaryPanel
+        mounted
+        open
+        activeThreadId="thread-1"
+        cwd={null}
+        projectWorkspacePath={null}
+        turns={makeFileOutputTurns("/repo/project/dist/report.pdf")}
+        onErrorMessage={onErrorMessage}
+      />,
+    );
+
+    const row = await view.findByRole("button", { name: "report.pdf" });
+    await clickAndAct(row);
+
+    await waitFor(() => expect(onErrorMessage).toHaveBeenLastCalledWith("Could not open output"));
+  });
+
+  test("opens URL summary panel output rows through link routing", async () => {
+    const driveUrl = "https://docs.google.com/document/d/doc-123/edit";
+    const turns = [
+      {
+        items: [
+          {
+            itemId: "drive-tool",
+            type: "mcpToolCall",
+            mcpToolCall: {
+              callId: "drive-tool",
+              functionName: "google-drive__create_document",
+              pluginId: null,
+              mcpAppResourceUri: undefined,
+              source: null,
+              invocation: {
+                server: "google-drive",
+                tool: "create_document",
+                arguments: {},
+              },
+              result: {
+                type: "success",
+                content: [],
+                structuredContent: {
+                  title: "Reference Roadmap",
+                  document_url: driveUrl,
+                },
+                raw: {
+                  content: [],
+                  structuredContent: {
+                    title: "Reference Roadmap",
+                    document_url: driveUrl,
+                  },
+                  _meta: null,
+                },
+              },
+              durationMs: null,
+              completed: true,
+            },
+          },
+          {
+            itemId: "assistant",
+            type: "agentMessage",
+            kind: "assistantMessage",
+            semanticKind: "assistantMessage",
+            markdownText: `Created [Draft](${driveUrl}).`,
+          },
+        ],
+        status: "completed",
+      },
+    ] as unknown as CodexConversationTurn[];
+
+    const view = renderSummary(
+      <ThreadFloatingSummaryPanel
+        mounted
+        open
+        activeThreadId="thread-1"
+        cwd={null}
+        projectWorkspacePath={null}
+        turns={turns}
+        onErrorMessage={() => undefined}
+      />,
+    );
+
     const outputRow = view
-      .getByText("Generated image 1")
+      .getByText("Reference Roadmap")
       .closest("[role='button']") as HTMLElement | null;
     expect(Boolean(outputRow)).toBe(true);
     await act(async () => {
       fireEvent.click(outputRow as HTMLElement);
     });
 
-    const preview = await view.findByTestId("summary-image-preview");
-    const previewImage = preview.querySelector("img");
-    if (!(previewImage instanceof HTMLImageElement)) {
-      throw new Error("expected generated image preview dialog");
-    }
-    expect(previewImage.alt).toBe("Generated image 1");
-    expect(previewImage.src).toBe("app://fs/@fs/repo/project/generated-one.png");
-    expect(invokeCalls.some((call) => call[0] === "shell:open-file-link")).toBe(false);
-  });
-
-  test("opens non-image summary panel output rows through the side panel opener first", async () => {
-    mockInvokeImpl = async (channel: string) => channel === "shell:open-file-link";
-    const openedOutputs: unknown[] = [];
-    const actions = {
-      onOpenSummaryOutputInSidePanel: async (target) => {
-        openedOutputs.push(target);
-        return true;
-      },
-    } as Partial<ThreadStageActions> as ThreadStageActions;
-    const turns = [
-      {
-        items: [
-          {
-            itemId: "assistant",
-            type: "agentMessage",
-            markdownText: "Saved report at 【/repo/project/dist/report.txt†L1】.",
-            rawItem: {
-              id: "assistant",
-              type: "agentMessage",
-              text: "Saved report at 【/repo/project/dist/report.txt†L1】.",
-            },
-          },
-        ],
-        status: "completed",
-      },
-    ] as unknown as CodexConversationTurn[];
-
-    const view = renderSummary(
-      <ThreadFloatingSummaryPanel
-        mounted
-        open
-        activeThreadId="thread-1"
-        cwd={null}
-        projectWorkspacePath={null}
-        turns={turns}
-        actions={actions}
-        onErrorMessage={() => undefined}
-      />,
-    );
-
-    const outputRow = view.getByText("report.txt").closest("[role='button']") as HTMLElement | null;
-    expect(Boolean(outputRow)).toBe(true);
-    await act(async () => {
-      fireEvent.click(outputRow as HTMLElement);
-    });
-
-    expect(JSON.stringify(openedOutputs)).toBe(
-      JSON.stringify([
-        {
-          path: "/repo/project/dist/report.txt",
-          title: "report.txt",
-        },
-      ]),
-    );
-    expect(invokeCalls.some((call) => call[0] === "shell:open-file-link")).toBe(false);
-  });
-
-  test("falls back to the desktop file opener when summary output side panel open is unavailable", async () => {
-    mockInvokeImpl = async (channel: string) => channel === "shell:open-file-link";
-    const actions = {
-      onOpenSummaryOutputInSidePanel: async () => false,
-    } as Partial<ThreadStageActions> as ThreadStageActions;
-    const turns = [
-      {
-        items: [
-          {
-            itemId: "assistant",
-            type: "agentMessage",
-            markdownText: "Saved report at 【/repo/project/dist/report.txt†L1】.",
-            rawItem: {
-              id: "assistant",
-              type: "agentMessage",
-              text: "Saved report at 【/repo/project/dist/report.txt†L1】.",
-            },
-          },
-        ],
-        status: "completed",
-      },
-    ] as unknown as CodexConversationTurn[];
-
-    const view = renderSummary(
-      <ThreadFloatingSummaryPanel
-        mounted
-        open
-        activeThreadId="thread-1"
-        cwd={null}
-        projectWorkspacePath={null}
-        turns={turns}
-        actions={actions}
-        onErrorMessage={() => undefined}
-      />,
-    );
-
-    const outputRow = view.getByText("report.txt").closest("[role='button']") as HTMLElement | null;
-    expect(Boolean(outputRow)).toBe(true);
-    await act(async () => {
-      fireEvent.click(outputRow as HTMLElement);
-    });
-
-    expect(
-      invokeCalls.some(
-        (call) =>
-          call[0] === "shell:open-file-link" &&
-          JSON.stringify(call).includes("/repo/project/dist/report.txt") &&
-          JSON.stringify(call).includes("fileManager"),
+    await waitFor(() =>
+      expect(outputOpeners.openLink).toHaveBeenCalledWith(
+        expect.objectContaining({ url: driveUrl, initiator: "mcp_app_resource" }),
       ),
-    ).toBe(true);
-  });
-
-  test("opens URL summary panel output rows through the browser opener", async () => {
-    const originalOpen = window.open;
-    const openedUrls: string[] = [];
-    Object.defineProperty(window, "open", {
-      configurable: true,
-      value: (url?: string | URL) => {
-        openedUrls.push(String(url ?? ""));
-        return null;
-      },
-    });
-
-    try {
-      const driveUrl = "https://docs.google.com/document/d/doc-123/edit";
-      const turns = [
-        {
-          items: [
-            {
-              itemId: "drive-tool",
-              type: "mcpToolCall",
-              mcpToolCall: {
-                callId: "drive-tool",
-                functionName: "google-drive__create_document",
-                pluginId: null,
-                mcpAppResourceUri: undefined,
-                source: null,
-                invocation: {
-                  server: "google-drive",
-                  tool: "create_document",
-                  arguments: {},
-                },
-                result: {
-                  type: "success",
-                  content: [],
-                  structuredContent: {
-                    title: "Reference Roadmap",
-                    document_url: driveUrl,
-                  },
-                  raw: {
-                    content: [],
-                    structuredContent: {
-                      title: "Reference Roadmap",
-                      document_url: driveUrl,
-                    },
-                    _meta: null,
-                  },
-                },
-                durationMs: null,
-                completed: true,
-              },
-            },
-            {
-              itemId: "assistant",
-              type: "agentMessage",
-              kind: "assistantMessage",
-              semanticKind: "assistantMessage",
-              markdownText: `Created [Draft](${driveUrl}).`,
-            },
-          ],
-          status: "completed",
-        },
-      ] as unknown as CodexConversationTurn[];
-
-      const view = renderSummary(
-        <ThreadFloatingSummaryPanel
-          mounted
-          open
-          activeThreadId="thread-1"
-          cwd={null}
-          projectWorkspacePath={null}
-          turns={turns}
-          onErrorMessage={() => undefined}
-        />,
-      );
-
-      const outputRow = view
-        .getByText("Reference Roadmap")
-        .closest("[role='button']") as HTMLElement | null;
-      expect(Boolean(outputRow)).toBe(true);
-      await act(async () => {
-        fireEvent.click(outputRow as HTMLElement);
-      });
-
-      await waitFor(() => {
-        expect(openedUrls.join(",")).toBe(driveUrl);
-      });
-      expect(invokeCalls.some((call) => call[0] === "shell:open-file-link")).toBe(false);
-    } finally {
-      Object.defineProperty(window, "open", {
-        configurable: true,
-        value: originalOpen,
-      });
-    }
+    );
+    expect(invokeCalls.some((call) => call[0] === "shell:open-file-link")).toBe(false);
   });
 
   for (const projectless of [false, true]) {

@@ -11,7 +11,7 @@ import {
   type BrowserSidebarViewport,
   type BrowserUseTabState,
 } from "../../shared/browser-sidebar";
-import { isAllowedBrowserNavigationUrl } from "../../shared/browser-url";
+import { isBrowserUseNavigationUrl } from "../../shared/browser-url-policy";
 import type { BrowserAutomationHost } from "../browser-application/BrowserApplication";
 import type { BrowserWebContentsLike } from "../platform/electron/BrowserElectronPlatform";
 import {
@@ -79,7 +79,11 @@ export interface BrowserUseIabApiOptions {
   cdpCommandTimeoutMs?: number;
   route: BrowserUseRoute;
   cursorArrivalTimeoutMs?: number;
-  grantDownload?: (identity: BrowserSidebarTabIdentity, sourceUrl: string, ttlMs?: number) => void;
+  grantDownload?: (
+    identity: BrowserSidebarTabIdentity & { readonly webContentsId: number },
+    sourceUrl: string,
+    ttlMs?: number,
+  ) => void;
   pageReadyTimeoutMs?: number;
   policyStore?: BrowserUsePolicyReader;
   subscribeWebviewAttached: (listener: (event: BrowserSidebarTabIdentity) => void) => () => void;
@@ -221,11 +225,7 @@ function isCaptureSurfaceReady(
 }
 
 function assertAllowedBrowserUseNavigationUrl(value: unknown): string {
-  if (typeof value !== "string" || !isAllowedBrowserNavigationUrl(value)) {
-    throw new Error("Browser Use navigation URL is not allowed");
-  }
-  const parsed = new URL(value);
-  if (!["http:", "https:"].includes(parsed.protocol) && value !== "about:blank") {
+  if (typeof value !== "string" || !isBrowserUseNavigationUrl(value)) {
     throw new Error("Browser Use navigation URL is not allowed");
   }
   return value;
@@ -260,6 +260,7 @@ class BrowserUseIabApiState implements BrowserUseIabApi {
   private selectedTabId: number | null = null;
   private recordedTurnId: string | null = null;
   private disposed = false;
+  private readonly unsubscribeNavigationBlocked: () => void;
 
   constructor(options: BrowserUseIabApiOptions) {
     this.appSessionId = options.appSessionId;
@@ -279,6 +280,23 @@ class BrowserUseIabApiState implements BrowserUseIabApi {
     this.policyStore = options.policyStore ?? null;
     this.route = options.route;
     this.subscribeWebviewAttached = options.subscribeWebviewAttached;
+    this.unsubscribeNavigationBlocked = this.browser.subscribeNavigationBlocked((event) => {
+      if (
+        event.browserConversationId !== this.route.browserConversationId ||
+        event.browserViewScopeId !== this.route.browserViewScopeId
+      )
+        return;
+      const tab = [...this.controlledTabs.values()].find(
+        (candidate) => candidate.browserTabId === event.browserTabId,
+      );
+      if (!tab) return;
+      for (const listener of this.cdpEventListeners)
+        listener({
+          method: "Page.navigationBlocked",
+          params: { errorText: event.errorText, resourceType: event.resourceType, url: event.url },
+          source: { tabId: tab.id },
+        });
+    });
   }
 
   ping(): string {
@@ -423,6 +441,7 @@ class BrowserUseIabApiState implements BrowserUseIabApi {
     } catch (error) {
       failures.push(error);
     } finally {
+      this.unsubscribeNavigationBlocked();
       this.cdpEventListeners.clear();
     }
     if (failures.length > 0) {
@@ -512,6 +531,10 @@ class BrowserUseIabApiState implements BrowserUseIabApi {
     const snapshot = this.browser.getTab(toIdentity(this.route, resolvedEntry[0]));
     if (!snapshot) throw new Error(`Unknown tab: ${params.tabId}`);
 
+    this.assertNavigationAllowed(
+      toIdentity(this.route, snapshot.browserTabId),
+      this.browser.getWebContents(snapshot)?.getURL() || snapshot.url,
+    );
     const existing = [...this.controlledTabs.values()].find(
       (tab) => tab.browserTabId === snapshot.browserTabId,
     );
@@ -676,7 +699,10 @@ class BrowserUseIabApiState implements BrowserUseIabApi {
       );
     }
     if (params.method === "Page.navigate") {
-      const url = assertAllowedBrowserUseNavigationUrl(params.commandParams?.url);
+      const url = this.assertNavigationAllowed(
+        toIdentity(this.route, tab.browserTabId),
+        params.commandParams?.url,
+      );
       this.assertPolicyAllows("origin", url);
     }
     if (params.method === "Page.navigateToHistoryEntry") {
@@ -691,7 +717,10 @@ class BrowserUseIabApiState implements BrowserUseIabApi {
       );
       const entries = isRecord(history) && Array.isArray(history.entries) ? history.entries : [];
       const selectedEntry = entries.find((entry) => isRecord(entry) && entry.id === entryId);
-      assertAllowedBrowserUseNavigationUrl(isRecord(selectedEntry) ? selectedEntry.url : undefined);
+      this.assertNavigationAllowed(
+        toIdentity(this.route, tab.browserTabId),
+        isRecord(selectedEntry) ? selectedEntry.url : undefined,
+      );
       this.assertPolicyAllows(
         "origin",
         isRecord(selectedEntry) && typeof selectedEntry.url === "string" ? selectedEntry.url : "",
@@ -835,7 +864,7 @@ class BrowserUseIabApiState implements BrowserUseIabApi {
 
   private allowDownload(rawParams: unknown): void {
     const params = BrowserUseTabParamsSchema.extend({
-      url: z.string().trim().min(1).max(16_384),
+      url: z.string().min(1),
     })
       .passthrough()
       .parse(rawParams);
@@ -843,7 +872,10 @@ class BrowserUseIabApiState implements BrowserUseIabApi {
     this.recordTurn(params);
     const tab = this.requireControlledTab(params.tabId);
     this.assertPolicyAllows("download", params.url);
-    this.grantDownload(toIdentity(this.route, tab.browserTabId), params.url, 10_000);
+    const identity = toIdentity(this.route, tab.browserTabId);
+    const contents = this.browser.getWebContents(identity);
+    if (!contents || contents.isDestroyed()) throw new Error("Browser Use page is not available");
+    this.grantDownload({ ...identity, webContentsId: contents.id }, params.url, 10_000);
   }
 
   private assertPolicyAllows(
@@ -1015,9 +1047,19 @@ class BrowserUseIabApiState implements BrowserUseIabApi {
     return id;
   }
 
+  private assertNavigationAllowed(identity: BrowserSidebarTabIdentity, value: unknown): string {
+    if (typeof value === "string") this.browser.assertNavigationAllowed(identity, value);
+    return assertAllowedBrowserUseNavigationUrl(value);
+  }
+
   private requireControlledTab(tabId: number): ControlledBrowserUseTab {
     const tab = this.controlledTabs.get(tabId);
     if (!tab) throw new Error(`Unknown tab: ${tabId}`);
+    const identity = toIdentity(this.route, tab.browserTabId);
+    const snapshot = this.browser.getTab(identity);
+    const contents = this.browser.getWebContents(identity);
+    this.assertNavigationAllowed(identity, contents?.getURL() || snapshot?.url || "about:blank");
+    if (snapshot && !this.browser.isControlled(identity)) this.publishControlledTab(tab, snapshot);
     return tab;
   }
 

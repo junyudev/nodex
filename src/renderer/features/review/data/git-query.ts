@@ -1,5 +1,6 @@
 import { hashKey, type QueryClient, type QueryKey, type QueryMeta } from "@tanstack/react-query";
 import type {
+  GitReviewLiveEvent,
   GitReviewLiveQuery,
   GitReviewLiveQueryMethod,
   GitReviewLiveQueryResult,
@@ -26,6 +27,15 @@ export interface GitLiveQueryMeta extends QueryMeta {
 }
 
 export type GitWorkerQueryClient = Pick<GitWorkerClient, "request" | "subscribe">;
+
+/** Calls the listener whenever the user returns to the window. */
+export type WindowFocusSource = (listener: () => void) => () => void;
+
+const subscribeToWindowFocus: WindowFocusSource = (listener) => {
+  if (typeof window === "undefined") return () => {};
+  window.addEventListener("focus", listener);
+  return () => window.removeEventListener("focus", listener);
+};
 
 export function buildGitWorkerQueryKey<Method extends GitWorkerMethod>(input: {
   method: Method;
@@ -92,6 +102,36 @@ export function createGitLiveWorkerQuery<Method extends GitReviewLiveQueryMethod
   };
 }
 
+type GitLiveUpdatePhase = Extract<GitReviewLiveEvent, { phase: unknown }>["phase"];
+
+/**
+ * The last live update written to a query. A null generation means the next
+ * worker generation is unknown (a new or re-established subscription).
+ */
+export interface AcceptedGitLiveUpdate {
+  readonly generation: number | null;
+  readonly phase: GitLiveUpdatePhase;
+}
+
+/**
+ * Whether a live update may replace what the query shows. Results only grow
+ * more complete: a later generation's tracked-only phase never replaces a
+ * complete result, so a list keeps showing until the next complete one arrives.
+ */
+export function acceptsGitLiveUpdate(
+  accepted: AcceptedGitLiveUpdate | null,
+  update: { readonly generation: number; readonly phase: GitLiveUpdatePhase },
+): boolean {
+  if (accepted === null) return true;
+  if (accepted.generation !== null) {
+    if (update.generation < accepted.generation) return false;
+    if (update.generation === accepted.generation) {
+      return accepted.phase === "tracked" && update.phase === "complete";
+    }
+  }
+  return accepted.phase !== "complete" || update.phase === "complete";
+}
+
 interface LiveEntry {
   consumers: number;
   method: GitReviewLiveQueryMethod;
@@ -101,6 +141,9 @@ interface LiveEntry {
   recoveryTimer: ReturnType<typeof setTimeout> | null;
   subscriptionId: string;
   observed: boolean;
+  accepted: AcceptedGitLiveUpdate | null;
+  /** The worker cannot watch the whole repository; refresh when the window regains focus. */
+  requiresRecovery: boolean;
 }
 
 export class GitLiveQueryCoordinator {
@@ -110,8 +153,13 @@ export class GitLiveQueryCoordinator {
   readonly #client: GitWorkerQueryClient;
   readonly #unsubscribeCache: () => void;
   readonly #unsubscribe: () => void;
+  readonly #unsubscribeFocus: () => void;
 
-  constructor(queryClient: QueryClient, client: GitWorkerQueryClient = getGitWorkerClient()) {
+  constructor(
+    queryClient: QueryClient,
+    client: GitWorkerQueryClient = getGitWorkerClient(),
+    onWindowFocus: WindowFocusSource = subscribeToWindowFocus,
+  ) {
     this.#queryClient = queryClient;
     this.#client = client;
     this.#unsubscribe = client.subscribe((message) => {
@@ -124,15 +172,25 @@ export class GitLiveQueryCoordinator {
       if (message.type !== "git-live-query-event") return;
       const entry = this.#entriesBySubscriptionId.get(message.event.subscriptionId);
       if (!entry || message.event.method !== entry.method) return;
+      entry.requiresRecovery = message.event.requiresRecovery;
       if (message.event.type === "git-live-query-failed") {
         this.#scheduleRecovery(entry);
         return;
       }
+      const { generation, phase } = message.event;
+      if (!acceptsGitLiveUpdate(entry.accepted, { generation, phase })) return;
+      entry.accepted = { generation, phase };
       this.#queryClient.setQueryData(
         entry.queryKey,
         message.event.result as GitReviewLiveQueryResult["result"],
       );
-      if (message.event.requiresRecovery) this.#scheduleRecovery(entry);
+    });
+    // A degraded repository watch can miss changes; catch up when the user returns,
+    // rather than recomputing on a timer while nothing is looking.
+    this.#unsubscribeFocus = onWindowFocus(() => {
+      for (const entry of this.#entriesByHash.values()) {
+        if (entry.requiresRecovery && this.#isActive(entry)) this.#recover(entry);
+      }
     });
     this.#unsubscribeCache = queryClient.getQueryCache().subscribe(() => {
       this.#syncObservedQueries();
@@ -164,6 +222,7 @@ export class GitLiveQueryCoordinator {
   dispose(): void {
     this.#unsubscribe();
     this.#unsubscribeCache();
+    this.#unsubscribeFocus();
     for (const entry of this.#entriesByHash.values()) {
       if (entry.releaseTimer) clearTimeout(entry.releaseTimer);
       if (entry.recoveryTimer) clearTimeout(entry.recoveryTimer);
@@ -189,6 +248,8 @@ export class GitLiveQueryCoordinator {
   }
 
   #subscribe(entry: LiveEntry): void {
+    // A new worker subscription numbers its generations afresh; what is shown stays.
+    if (entry.accepted) entry.accepted = { generation: null, phase: entry.accepted.phase };
     void this.#client
       .request({
         method: "subscribe-live-query",
@@ -207,17 +268,20 @@ export class GitLiveQueryCoordinator {
     if (entry.recoveryTimer || !this.#isActive(entry)) return;
     entry.recoveryTimer = setTimeout(() => {
       entry.recoveryTimer = null;
-      if (!this.#isActive(entry)) return;
-      void this.#client
-        .request({
-          method: "recover-live-query",
-          params: { subscriptionId: entry.subscriptionId },
-        })
-        .then((result) => {
-          if (!result.recovered) this.#subscribe(entry);
-        })
-        .catch(() => this.#scheduleRecovery(entry));
+      if (this.#isActive(entry)) this.#recover(entry);
     }, GIT_LIVE_RECOVERY_DELAY_MS);
+  }
+
+  #recover(entry: LiveEntry): void {
+    void this.#client
+      .request({
+        method: "recover-live-query",
+        params: { subscriptionId: entry.subscriptionId },
+      })
+      .then((result) => {
+        if (!result.recovered) this.#subscribe(entry);
+      })
+      .catch(() => this.#scheduleRecovery(entry));
   }
 
   #ensureEntry(
@@ -239,6 +303,12 @@ export class GitLiveQueryCoordinator {
       recoveryTimer: null,
       subscriptionId: crypto.randomUUID(),
       observed: false,
+      // Data already cached came from a full read; live partial phases must not replace it.
+      accepted:
+        this.#queryClient.getQueryData(input.queryKey) === undefined
+          ? null
+          : { generation: null, phase: "complete" },
+      requiresRecovery: false,
     };
     this.#entriesByHash.set(queryHash, entry);
     this.#entriesBySubscriptionId.set(entry.subscriptionId, entry);

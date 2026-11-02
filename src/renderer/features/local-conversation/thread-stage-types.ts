@@ -1,5 +1,6 @@
 import type { ComposerChatKey } from "@/lib/composer-draft-intents";
 import type { HookStats } from "./projection/hook-stats";
+import type { ThreadSummaryPanelOutputRow } from "./projection/thread-summary-panel-output-model";
 import type { WorkspaceSearchContext } from "@/lib/workspace-search-context";
 import type { WorkbenchSubmitPresentation } from "../../../shared/nodex-app-tools/workbench";
 import type { ReactEventHandler, ReactNode } from "react";
@@ -177,17 +178,6 @@ export interface ThreadSummaryPanelComputerUsePipState {
 }
 
 export interface ThreadTurnDiffFileSidePanelTarget {
-  cwd?: string | null;
-  path: string;
-  title: string;
-  workspaceRoot?: string | null;
-  line?: number;
-  column?: number;
-  endLine?: number;
-  endColumn?: number;
-}
-
-export interface ThreadSummaryPanelOutputSidePanelTarget {
   cwd?: string | null;
   path: string;
   title: string;
@@ -505,9 +495,6 @@ export interface ThreadStageActions {
   onOpenSummaryScheduledAutomation?: (
     input: ThreadSummaryPanelScheduledAutomationOpenInput,
   ) => void | Promise<void>;
-  onOpenSummaryOutputInSidePanel?: (
-    target: ThreadSummaryPanelOutputSidePanelTarget,
-  ) => boolean | Promise<boolean>;
   onOpenSummaryGitReview?: (input: ThreadSummaryPanelGitReviewOpenInput) => void | Promise<void>;
   onStartSummaryGitAction?: (input: ThreadSummaryPanelGitActionInput) => void | Promise<void>;
   onOpenProcessManager?: () => void | Promise<void>;
@@ -625,7 +612,6 @@ export type ThreadStageHostActions = Pick<
   | "onOpenVoiceSettings"
   | "onOpenSummaryBrowserRow"
   | "onOpenSummaryScheduledAutomation"
-  | "onOpenSummaryOutputInSidePanel"
   | "onOpenSummaryGitReview"
   | "onOpenProcessManager"
   | "onOpenBackgroundTerminalOutput"
@@ -682,11 +668,15 @@ export interface ThreadUserMessageActionsModel {
   hookStats?: HookStats | null;
   canEdit: boolean;
   sentAtMs: number | null;
+  /** The settled latest turn's closing message keeps its actions visible without hover. */
+  alwaysVisible?: boolean;
 }
 
 export interface ThreadAssistantMessageActionsModel {
   showTimestampWithoutActions?: boolean;
   timestampHoverOnly?: boolean;
+  /** The settled latest turn's closing message keeps its actions visible without hover. */
+  alwaysVisible?: boolean;
   metadata?: import("./projection/turn-footer-metadata").TurnFooterMetadata;
   hookStats?: HookStats | null;
   copyText: string | null;
@@ -707,6 +697,17 @@ export interface ThreadAssistantActionsBlockModel {
   type: "assistantActions";
   entry: CodexConversationItem;
   actions: ThreadAssistantMessageActionsModel;
+}
+
+/** A completed turn's confirmed deliverables, placed with its reply above the reply's actions. */
+export interface ThreadTurnOutputsBlockModel {
+  id: string;
+  turnId: string | null;
+  createdAt: number;
+  updatedAt: number;
+  searchableText: string;
+  type: "turnOutputs";
+  resources: readonly ThreadSummaryPanelOutputRow[];
 }
 
 export interface ThreadWorkedForBlockModel extends ThreadRenderKeyedBlockFields {
@@ -986,6 +987,7 @@ export type ThreadAgentRenderUnit = (
 export type ThreadBlockModel =
   | ThreadTranscriptBlockModel
   | ThreadAssistantActionsBlockModel
+  | ThreadTurnOutputsBlockModel
   | ThreadGeneratedImageGalleryBlockModel
   | ThreadWorkedForBlockModel
   | ThreadAgentActivityGroupBlockModel;

@@ -188,7 +188,7 @@ describe("ordinary message targets keep their mounted source", () => {
           await Promise.resolve();
         });
         await act(async () => {
-          fireEvent.click(button, { altKey: true });
+          fireEvent.click(button, { ctrlKey: true, metaKey: true });
           await Promise.resolve();
         });
         menu.show.mockResolvedValue("file-reference:reveal");
@@ -391,8 +391,12 @@ describe("ordinary message targets keep their mounted source", () => {
       await click(await view.findByRole("button", { name: "a%20b.ts (line 7)" }));
       await click(await view.findByRole("button", { name: "c%20d.ts (line 4)" }));
       expect(native.opened.mock.calls.map(([input]) => input)).toEqual([
-        expect.objectContaining({ path: "/source/src/a%20b.ts", location: { line: 7 } }),
-        expect.objectContaining({ path: "/source/src/c%20d.ts" }),
+        expect.objectContaining({
+          path: "/source/src/a%20b.ts",
+          mode: "preview",
+          location: { line: 7 },
+        }),
+        expect.objectContaining({ path: "/source/src/c%20d.ts", mode: "durable" }),
       ]);
       const external = view.getByRole("link", { name: "$review #abcdef" });
       expect(external.querySelector("button,[data-hex-color-swatch]")).toBeNull();

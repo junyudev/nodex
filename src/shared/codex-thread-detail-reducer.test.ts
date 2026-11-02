@@ -76,3 +76,23 @@ test("preserves observed assistant starts while merging additional message start
       .assistantMessageStartedAtMsById,
   ).toEqual(merged.assistantMessageStartedAtMsById);
 });
+
+test("a new response with unknown timing clears the previous response's summary anchors", () => {
+  const existing = buildTurn({
+    finalAssistantStartedAtMs: 8000,
+    assistantResponseWorkDurationMs: 7000,
+  });
+  expect(mergeCodexTurnSummary(existing, buildTurn())).toMatchObject({
+    finalAssistantStartedAtMs: 8000,
+    assistantResponseWorkDurationMs: 7000,
+  });
+  expect(
+    mergeCodexTurnSummary(
+      existing,
+      buildTurn({
+        finalAssistantStartedAtMs: null,
+        assistantResponseWorkDurationMs: null,
+      }),
+    ),
+  ).toMatchObject({ finalAssistantStartedAtMs: null, assistantResponseWorkDurationMs: null });
+});

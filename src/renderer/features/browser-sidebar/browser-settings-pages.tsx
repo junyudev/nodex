@@ -1,4 +1,5 @@
 import { DeleteIcon, DownloadIcon, RefreshIcon, SearchIcon } from "@/components/shared/icons";
+import { LinkDestinationSettingRows } from "@/components/workbench/link-opening-settings-controls";
 import {
   useCallback,
   useEffect,
@@ -201,6 +202,7 @@ function BrowserSettingsOverview({
       subtitle="Manage the built-in Browser and its shared Profile."
     >
       <BrowserOverviewSection anchor="general" title="General">
+        <LinkDestinationSettingRows />
         <CapabilityRow label="Profile import" capability={capabilities.profileImport} />
         <NodexSettingsRow
           label="Import browser data"

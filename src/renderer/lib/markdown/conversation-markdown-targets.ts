@@ -1,4 +1,4 @@
-import type { FileLinkTarget } from "../../../shared/file-link-openers";
+import { parseFileReferenceLocation, type FileLinkTarget } from "../../../shared/file-link-openers";
 import type { CodexComposerSkill } from "../../../shared/types";
 
 export interface ConversationFileTarget {
@@ -58,17 +58,7 @@ function decodeAuthoredUri(value: string): string {
 /** Locations are authored syntax. Already resolved Files paths never enter this decoder. */
 export function readConversationNativeReference(source: string): Readonly<FileLinkTarget> {
   const value = source.replaceAll("`", "").trim();
-  const location =
-    /^(.*?):(\d+)(?::(\d+))?(?:[-–](\d+)(?::(\d+))?)?$/u.exec(value) ??
-    /^(.*?)#L(\d+)(?:C(\d+))?(?:-L(\d+)(?:C(\d+))?)?$/u.exec(value);
-  if (!location) return { path: value };
-  return {
-    path: location[1]!,
-    line: Number.parseInt(location[2]!, 10),
-    ...(location[3] ? { column: Number.parseInt(location[3], 10) } : {}),
-    ...(location[4] ? { endLine: Number.parseInt(location[4], 10) } : {}),
-    ...(location[5] ? { endColumn: Number.parseInt(location[5], 10) } : {}),
-  };
+  return parseFileReferenceLocation(value);
 }
 
 export function isConversationFileReference(source: string): boolean {

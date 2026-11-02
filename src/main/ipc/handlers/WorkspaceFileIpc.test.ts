@@ -98,10 +98,10 @@ it.effect("releases active file watches and renderer listeners with the Main Sco
             } as unknown as ElectronDesktop["Service"]),
             Layer.succeed(WorkspaceFileQueries, {
               directory: () => Effect.die("unused"),
-              pathsExist: () =>
+              pathStates: () =>
                 Effect.sync(() => {
                   existenceReads += 1;
-                  return { existingPaths: [] };
+                  return { states: [] };
                 }),
               metadata: () => Effect.die("unused"),
               text: (input) =>
@@ -206,7 +206,7 @@ it.effect("releases active file watches and renderer listeners with the Main Sco
       assert.strictEqual((invalidInput.failure as WorkspaceFileUserError).code, "invalid_path");
     }
     authorized = false;
-    const exists = handlers.get("workspace-paths-exist");
+    const exists = handlers.get("workspace-path-states");
     assert.isDefined(exists);
     const denied = yield* Effect.result(
       exists({ sender } as unknown as IpcMainInvokeEvent, { paths: ["/tmp"] }),

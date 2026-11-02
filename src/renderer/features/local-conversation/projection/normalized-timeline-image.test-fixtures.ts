@@ -6,7 +6,15 @@ export function nativeGeneratedImage(
   status = "in_progress",
   src = "",
 ): Extract<ThreadItem, { type: "imageGeneration" }> {
-  return { type: "imageGeneration", id, status, revisedPrompt: null, result: src, failure: null };
+  return {
+    generationId: null,
+    type: "imageGeneration",
+    id,
+    status,
+    revisedPrompt: null,
+    result: src,
+    failure: null,
+  };
 }
 
 export function imageReceipt(

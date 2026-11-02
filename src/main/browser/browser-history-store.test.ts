@@ -51,7 +51,7 @@ it.layer(NodeServices.layer)("Browser history runtime", (it) => {
     ),
   );
 
-  it.effect("rejects credential-bearing and non-web URLs", () =>
+  it.effect("records admitted page URLs without a scheme or credential filter", () =>
     withHistory(({ filePath }) =>
       Effect.gen(function* () {
         const history = yield* makeBrowserHistoryRuntime(filePath);
@@ -60,7 +60,9 @@ it.layer(NodeServices.layer)("Browser history runtime", (it) => {
           url: "https://user:secret@example.com/",
           title: "credential",
         });
-        assert.isEmpty((yield* history.list()).entries);
+        yield* history.record({ url: "file:///tmp/index.html", title: "Local" });
+        yield* history.record({ url: `data:text/html,${"x".repeat(20_000)}`, title: "Data" });
+        assert.lengthOf((yield* history.list()).entries, 4);
       }),
     ),
   );

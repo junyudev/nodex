@@ -24,10 +24,6 @@ import {
 } from "../projection/agent-body-collapse-presentation";
 import { CodexFirstResponseVisibilityMarker } from "../codex-turn-first-response-view";
 import { CodexTranscriptReasoningSummary } from "../normalized-transcript-hooks";
-import { LocalConversationEndResources } from "./local-conversation-end-resources";
-import type { ThreadSummaryPanelOutputRow } from "../projection/thread-summary-panel-output-model";
-
-const EMPTY_END_RESOURCES: readonly ThreadSummaryPanelOutputRow[] = [];
 
 const EMPTY_THREAD_LIVE_ACTIVITY: ThreadTurnModel["liveActivity"] = {
   global: {
@@ -59,7 +55,6 @@ function normalizeThreadLiveActivity(turn: ThreadTurnModel): ThreadTurnModel {
 interface ThreadTurnProps {
   agentBodyEnd?: import("react").ReactNode;
   hostId?: string;
-  endResources?: readonly ThreadSummaryPanelOutputRow[];
   turn: ThreadTurnModel;
   mcpApps?: readonly ProtocolAppInfo[];
   agentBodyCollapsed: boolean;
@@ -245,7 +240,6 @@ export function resolveThreadBlockRenderKey(block: { id: string; renderKey?: unk
 
 function ThreadTurnBody({
   hostId = "local",
-  endResources = EMPTY_END_RESOURCES,
   agentBodyUnits,
   agentBodyEnd,
   turn,
@@ -493,27 +487,12 @@ function ThreadTurnBody({
           </>
         ) : null}
 
-        {endResources.length > 0 ? (
-          <>
-            <ThreadGap />
-            <div ref={latestTurnFollowContentRef}>
-              <LocalConversationEndResources
-                resources={endResources}
-                hostId={hostId}
-                cwd={threadCwd}
-                workspaceRoot={projectWorkspacePath}
-              />
-            </div>
-          </>
-        ) : null}
-
         {agentBodyEnd ? (
           // Where the Agent is waiting: after everything it has said and done in this turn.
           <>
             {turn.leadingBlocks.length > 0 ||
             agentBodyUnits.length > 0 ||
-            turn.trailingBlocks.length > 0 ||
-            endResources.length > 0 ? (
+            turn.trailingBlocks.length > 0 ? (
               <ThreadGap />
             ) : null}
             <div ref={latestTurnFollowContentRef}>{agentBodyEnd}</div>

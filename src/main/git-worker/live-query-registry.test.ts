@@ -7,6 +7,8 @@ import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import { describe, expect, test, vi } from "vite-plus/test";
+import type { GitReviewSummaryResult } from "../../shared/types";
+import type { GitWorkerLiveQueryEvent } from "../../shared/git-worker-protocol";
 import {
   GIT_LIVE_QUERY_DEBOUNCE_MS,
   makeGitLiveQueryRegistry,
@@ -77,6 +79,52 @@ const makeRepository = Effect.gen(function* () {
 
 const settle = Effect.yieldNow.pipe(Effect.andThen(Effect.yieldNow));
 
+const reviewQuery = {
+  method: "review-summary",
+  params: { cwd: "/repo", source: "unstaged", includeUntrackedFiles: true },
+} as const;
+
+const summary = (
+  paths: string[],
+  status: "modified" | "untracked" = "modified",
+): Extract<GitReviewSummaryResult, { type: "success" }> => ({
+  type: "success",
+  source: "unstaged",
+  files: paths.map((path) => ({
+    path,
+    previousPath: null,
+    status,
+    rawStatus: status === "untracked" ? "??" : "M",
+    oldOid: null,
+    newOid: null,
+    revision: null,
+    additions: 1,
+    deletions: 0,
+    safety: {
+      binary: false,
+      tooLarge: false,
+      invalidText: false,
+      renderable: true,
+      sizeBytes: 1,
+      mimeType: "text/plain",
+      skipReason: null,
+    },
+  })),
+  snapshotGeneration: 1,
+  stageCounts: {
+    stagedFileCount: 0,
+    unstagedFileCount: status === "modified" ? paths.length : 0,
+    untrackedFileCount: status === "untracked" ? paths.length : 0,
+  },
+  untrackedFilesOmitted: 0,
+});
+
+const reviewError: GitReviewSummaryResult = {
+  type: "error",
+  source: "unstaged",
+  errorMessage: "Could not read changes.",
+};
+
 describe("GitLiveQueryRegistry", () => {
   test("defines an exhaustive semantic invalidation matrix", () => {
     expect(shouldRefreshGitLiveQuery("review-summary", "working-tree")).toBe(true);
@@ -85,38 +133,150 @@ describe("GitLiveQueryRegistry", () => {
     expect(shouldRefreshGitLiveQuery("branch-commits", "remote-refs")).toBe(true);
   });
 
-  it.effect("publishes tracked data before the complete result", () =>
+  it.effect("publishes useful tracked data before the complete result", () =>
     Effect.gen(function* () {
       const fake = yield* makeRepository;
       const complete = yield* Deferred.make<unknown>();
+      const trackedSummary = summary(["tracked.ts"]);
+      const completeSummary = summary(["tracked.ts", "new.ts"]);
       const execute: GitLiveQueryRegistryOptions["execute"] = vi.fn((input) => {
         const params = input.params as { includeUntrackedFiles?: boolean };
         return params.includeUntrackedFiles === false
-          ? Effect.succeed({ type: "success", files: [] })
+          ? Effect.succeed(trackedSummary)
           : Deferred.await(complete);
       });
-      const phases: string[] = [];
+      const events: GitWorkerLiveQueryEvent["event"][] = [];
       const registry = yield* makeGitLiveQueryRegistry({
         registry: { get: () => Effect.succeed(fake.repository) },
         execute,
-        publish: (event) => {
-          if (event.event.type === "git-live-query-updated") phases.push(event.event.phase);
-        },
+        publish: (event) => events.push(event.event),
       });
       yield* registry.subscribe({
         subscriptionId: "review",
-        query: {
-          method: "review-summary",
-          params: { cwd: "/repo", source: "unstaged", includeUntrackedFiles: true },
-        },
+        query: reviewQuery,
       });
       yield* settle;
-      expect(phases).toEqual(["tracked"]);
+      expect(events).toEqual([
+        expect.objectContaining({ phase: "tracked", result: trackedSummary }),
+      ]);
 
-      yield* Deferred.succeed(complete, { type: "success", files: [] });
+      yield* Deferred.succeed(complete, completeSummary);
       yield* settle;
-      expect(phases).toEqual(["tracked", "complete"]);
+      expect(events).toEqual([
+        expect.objectContaining({ phase: "tracked", result: trackedSummary }),
+        expect.objectContaining({ phase: "complete", result: completeSummary }),
+      ]);
     }),
+  );
+
+  it.effect("waits for the complete result when all changed files are untracked", () =>
+    Effect.gen(function* () {
+      const fake = yield* makeRepository;
+      const complete = yield* Deferred.make<GitReviewSummaryResult>();
+      const events: GitWorkerLiveQueryEvent["event"][] = [];
+      const completeSummary = summary(["new.ts"], "untracked");
+      const registry = yield* makeGitLiveQueryRegistry({
+        registry: { get: () => Effect.succeed(fake.repository) },
+        execute: (input) =>
+          (input.params as { includeUntrackedFiles?: boolean }).includeUntrackedFiles === false
+            ? Effect.succeed(summary([]))
+            : Deferred.await(complete),
+        publish: (event) => events.push(event.event),
+      });
+      yield* registry.subscribe({ subscriptionId: "review", query: reviewQuery });
+      yield* settle;
+      expect(events).toEqual([]);
+
+      yield* Deferred.succeed(complete, completeSummary);
+      yield* settle;
+      expect(events).toEqual([
+        expect.objectContaining({ phase: "complete", result: completeSummary }),
+      ]);
+    }),
+  );
+
+  it.effect("stops the attempt when the tracked read returns an operational error", () =>
+    Effect.gen(function* () {
+      const fake = yield* makeRepository;
+      const events: GitWorkerLiveQueryEvent["event"][] = [];
+      const execute: GitLiveQueryRegistryOptions["execute"] = vi.fn(() =>
+        Effect.succeed(reviewError),
+      );
+      const registry = yield* makeGitLiveQueryRegistry({
+        registry: { get: () => Effect.succeed(fake.repository) },
+        execute,
+        publish: (event) => events.push(event.event),
+      });
+      yield* registry.subscribe({ subscriptionId: "review", query: reviewQuery });
+      yield* settle;
+
+      expect(execute).toHaveBeenCalledTimes(1);
+      expect(execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          params: { ...reviewQuery.params, includeUntrackedFiles: false },
+        }),
+      );
+      expect(events).toEqual([expect.objectContaining({ phase: "complete", result: reviewError })]);
+    }),
+  );
+
+  it.effect("completes with the useful tracked snapshot if the untracked scan fails", () =>
+    Effect.gen(function* () {
+      const fake = yield* makeRepository;
+      const events: GitWorkerLiveQueryEvent["event"][] = [];
+      const trackedSummary = summary(["tracked.ts"]);
+      const execute: GitLiveQueryRegistryOptions["execute"] = vi.fn((input) =>
+        Effect.succeed(
+          (input.params as { includeUntrackedFiles?: boolean }).includeUntrackedFiles === false
+            ? trackedSummary
+            : reviewError,
+        ),
+      );
+      const registry = yield* makeGitLiveQueryRegistry({
+        registry: { get: () => Effect.succeed(fake.repository) },
+        execute,
+        publish: (event) => events.push(event.event),
+      });
+      yield* registry.subscribe({ subscriptionId: "review", query: reviewQuery });
+      yield* settle;
+      expect(events).toEqual([
+        expect.objectContaining({ phase: "tracked", result: trackedSummary }),
+        expect.objectContaining({ phase: "complete", result: trackedSummary }),
+      ]);
+
+      yield* TestClock.adjust(5_000);
+      expect(execute).toHaveBeenCalledTimes(2);
+    }),
+  );
+
+  it.effect.each([[], ["tracked.ts"]])(
+    "publishes a successful empty complete result with tracked paths %j",
+    (trackedPaths) =>
+      Effect.gen(function* () {
+        const fake = yield* makeRepository;
+        const events: GitWorkerLiveQueryEvent["event"][] = [];
+        const trackedSummary = summary(trackedPaths);
+        const emptySummary = summary([]);
+        const registry = yield* makeGitLiveQueryRegistry({
+          registry: { get: () => Effect.succeed(fake.repository) },
+          execute: (input) =>
+            Effect.succeed(
+              (input.params as { includeUntrackedFiles?: boolean }).includeUntrackedFiles === false
+                ? trackedSummary
+                : emptySummary,
+            ),
+          publish: (event) => events.push(event.event),
+        });
+        yield* registry.subscribe({ subscriptionId: "review", query: reviewQuery });
+        yield* settle;
+
+        expect(events).toEqual([
+          ...(trackedPaths.length > 0
+            ? [expect.objectContaining({ phase: "tracked", result: trackedSummary })]
+            : []),
+          expect.objectContaining({ phase: "complete", result: emptySummary }),
+        ]);
+      }),
   );
 
   it.effect("coalesces a burst of relevant changes into one refresh", () =>

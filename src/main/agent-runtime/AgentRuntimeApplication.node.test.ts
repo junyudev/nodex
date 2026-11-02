@@ -25,6 +25,7 @@ import * as Deferred from "effect/Deferred";
 import * as FileSystem from "effect/FileSystem";
 import * as Fiber from "effect/Fiber";
 import * as Stream from "effect/Stream";
+import * as TestClock from "effect/testing/TestClock";
 import { CoreModules, live as coreModulesLive } from "../core-runtime/CoreModules";
 import { CoreSessionAccess } from "../core-runtime/CoreAuthority";
 import { classifyCoreOperationFailure } from "../core-runtime/CoreRuntimeError";
@@ -233,6 +234,9 @@ const setup = (
     ...additionalProviders,
   ] as unknown as AgentRuntimeOperations["providers.read"]["output"];
   const state = {
+    storeCoordinate: null as string | null,
+    missingProjects: new Set<string>(),
+    stopSettles: true,
     archived: false,
     lifecycle: "active",
     mode: "auto",
@@ -783,6 +787,18 @@ const setup = (
             },
           });
         }
+        if (command.type === "run.interrupt" && state.stopSettles) {
+          const current = snapshots.get(command.threadId)!;
+          snapshots.set(command.threadId, {
+            ...current,
+            projection: {
+              ...current.projection,
+              runs: current.projection.runs.map((run) =>
+                run.id === command.runId ? { ...run, status: "interrupted" as const } : run,
+              ),
+            },
+          });
+        }
         if (
           command.type === "thread.archive" ||
           command.type === "thread.unarchive" ||
@@ -936,6 +952,33 @@ const setup = (
           .get(request.threadId)
           ?.projection.runs.find((candidate) => candidate.id === request.runId);
         return (run ? { status: run.status } : null) as AgentRuntimeOperations[M]["output"];
+      }
+      if (method === "store.coordinate.read")
+        return { coordinate: state.storeCoordinate } as AgentRuntimeOperations[M]["output"];
+      if (method === "store.coordinate.record") {
+        state.storeCoordinate = (input as { coordinate: string }).coordinate;
+        return { recorded: true } as AgentRuntimeOperations[M]["output"];
+      }
+      if (method === "execution.roots") {
+        const request = input as { cursor?: string; limit?: number };
+        const roots = [...snapshots.values()]
+          .map((value) => value.projection.thread)
+          .filter((thread) => thread.lineage.rootThreadId === thread.id)
+          .sort((a, b) => a.id.localeCompare(b.id));
+        const items = roots
+          .filter((thread) => !request.cursor || thread.id > request.cursor)
+          .slice(0, request.limit ?? 200);
+        const last = items.at(-1);
+        return {
+          items: items.map((thread) => ({
+            rootThreadId: thread.id,
+            projectId: thread.projectId,
+            title: thread.title,
+            createdAt: thread.createdAt,
+            deleted: thread.deletedAt !== null,
+          })),
+          nextCursor: last && roots.some((thread) => thread.id > last.id) ? last.id : null,
+        } as AgentRuntimeOperations[M]["output"];
       }
       if (method === "execution.activity")
         return {
@@ -1223,6 +1266,10 @@ const setup = (
   }).pipe(
     Effect.provideService(CoreModules, { workspace: coreWorkspace ?? { read, apply } } as never),
     Effect.provideService(ProjectWorkspace, {
+      getProject: (id: string) =>
+        Effect.succeed(
+          state.missingProjects.has(id) ? null : ({ id, lifecycle: state.lifecycle } as never),
+        ),
       getProjectSession: (id: string) =>
         Effect.succeed(
           state.nativeSession?.id === id && !bindings.has(id)
@@ -1287,6 +1334,7 @@ const setup = (
   );
   return {
     owner,
+    connection,
     bindings,
     titles,
     snapshots,
@@ -2244,7 +2292,7 @@ it.effect("background operations route exact Session targets with stable write i
   Effect.gen(function* () {
     let writes = 0;
     const fixture = setup({
-      withWriter: (effect) =>
+      writing: (effect) =>
         Effect.sync(() => {
           writes += 1;
         }).pipe(Effect.andThen(effect)),
@@ -4205,11 +4253,11 @@ it.effect(
     }),
 );
 
-it.effect("writer admission holds the complete launch saga and leaves inspections outside it", () =>
+it.effect("Runtime usage spans the complete launch saga and leaves inspections outside it", () =>
   Effect.gen(function* () {
     let writers = 0;
     const fixture = setup({
-      withWriter: (effect) =>
+      writing: (effect) =>
         Effect.gen(function* () {
           writers++;
           return yield* effect;
@@ -4243,7 +4291,7 @@ it.effect("Session lifecycle waits for the handoff lane while stop remains avail
       const entered = yield* Deferred.make<void>();
       const release = yield* Deferred.make<void>();
       const handoff = yield* owner
-        .withExecutionLocationWriter(
+        .withExecutionLocation(
           started.sessionId,
           Effect.gen(function* () {
             setExecutionHold(fixture, started.threadId, true);
@@ -7107,5 +7155,192 @@ it.effect("automatic launches do not confirm a person-authored message", () =>
     const owner = yield* f.owner;
     yield* owner.launch({ ...launch, messageOrigin: "automation" });
     assert.deepEqual(f.acceptedUserMessages, []);
+  }),
+);
+
+it.effect.each(["existing", "missing", "archived"])(
+  "adopts unbound conversations with %s Projects",
+  (kind) =>
+    Effect.gen(function* () {
+      const f = setup();
+      const owner = yield* f.owner;
+      const root = snapshot("retained-conversation");
+      f.snapshots.set(root.projection.thread.id, {
+        ...root,
+        projection: {
+          ...root.projection,
+          thread: { ...root.projection.thread, title: "Retained conversation" },
+        },
+      });
+      if (kind === "missing") f.state.missingProjects.add("project");
+      if (kind === "archived") f.state.lifecycle = "archived";
+      yield* owner.reconcileStore(f.connection(), "profile:restored-epoch");
+      const binding = [...f.bindings.values()][0]!;
+      assert.equal(binding.project_id, kind === "existing" ? "project" : null);
+      assert.equal(binding.runtime_thread_id, "retained-conversation");
+      const admission = f.applied.find(
+        (operation) => operation.intent.kind === "create_agent_runtime_session",
+      )!;
+      assert.equal(admission.intent.kind, "create_agent_runtime_session");
+      if (admission.intent.kind !== "create_agent_runtime_session")
+        return assert.fail("Expected Session adoption");
+      assert.equal(admission.intent.title, "Retained conversation");
+      assert.deepEqual(admission.intent.initial_page_ids, []);
+      assert.equal(f.state.storeCoordinate, "profile:restored-epoch");
+      assert.isFalse([...f.commands.values()].some((command) => command.type === "thread.create"));
+    }),
+);
+
+it.effect("retires Sessions for deleted roots without deleting the conversation again", () =>
+  Effect.gen(function* () {
+    const f = setup();
+    const owner = yield* f.owner;
+    const created = yield* owner.launch(launch);
+    const current = f.snapshots.get(created.threadId)!;
+    f.snapshots.set(created.threadId, {
+      ...current,
+      projection: {
+        ...current.projection,
+        thread: { ...current.projection.thread, deletedAt: "2026-11-01T00:00:00Z" },
+      },
+    });
+    yield* owner.reconcileStore(f.connection(), "profile:restored");
+    assert.isFalse(f.bindings.has(created.sessionId));
+    assert.equal(f.cleanups.size, 0);
+    assert.isTrue(f.order.includes("core.delete"));
+    assert.isFalse([...f.commands.values()].some((command) => command.type === "thread.delete"));
+    assert.equal(f.state.storeCoordinate, "profile:restored");
+  }),
+);
+
+it.effect(
+  "retries a failed reconciliation before recording the coordinate, without duplicate adoption",
+  () =>
+    Effect.gen(function* () {
+      const f = setup();
+      const owner = yield* f.owner;
+      f.snapshots.set("unbound", snapshot("unbound"));
+      f.state.failCoreAcknowledgment = true;
+      f.state.failEngineArchive = true;
+      f.state.archived = true;
+      yield* owner.reconcileStore(f.connection(), "profile:new").pipe(Effect.flip);
+      assert.isNull(f.state.storeCoordinate);
+      assert.equal(f.bindings.size, 1);
+      const first = [...f.bindings.values()][0]!;
+      f.state.failCoreAcknowledgment = false;
+      f.state.failEngineArchive = false;
+      yield* owner.reconcileStore(f.connection(), "profile:new");
+      assert.equal(f.bindings.size, 1);
+      assert.deepEqual([...f.bindings.values()][0], first);
+      assert.equal(f.state.storeCoordinate, "profile:new");
+      assert.equal(
+        f.applied.filter((input) => input.intent.kind === "create_agent_runtime_session").length,
+        1,
+      );
+    }),
+);
+
+it.effect("does no full pass for a matching coordinate and pages all roots after a change", () =>
+  Effect.gen(function* () {
+    const f = setup();
+    const owner = yield* f.owner;
+    f.state.storeCoordinate = "profile:same";
+    yield* owner.reconcileStore(f.connection(), "profile:same");
+    assert.deepEqual(
+      f.calls.map((call) => call.method),
+      ["store.coordinate.read"],
+    );
+    for (let index = 0; index < 205; index += 1) {
+      const id = `root:${String(index).padStart(3, "0")}`;
+      f.snapshots.set(id, snapshot(id));
+    }
+    f.snapshots.set("delegated-child", snapshot("delegated-child", "root:000"));
+    yield* owner.reconcileStore(f.connection(), "profile:changed");
+    assert.equal(f.bindings.size, 205);
+    assert.equal(f.calls.filter((call) => call.method === "execution.roots").length, 2);
+    assert.equal(f.state.storeCoordinate, "profile:changed");
+  }),
+);
+
+it.effect("does not re-adopt a root whose Core deletion is pending", () =>
+  Effect.gen(function* () {
+    const f = setup();
+    const owner = yield* f.owner;
+    f.snapshots.set("deleted-session-root", snapshot("deleted-session-root"));
+    f.cleanups.set("deleted", {
+      cleanup_id: "deleted",
+      session_id: "deleted",
+      project_id: "project",
+      runtime_id: "engine",
+      runtime_thread_id: "deleted-session-root",
+      created_at: "2026-11-01T00:00:00Z",
+    });
+    yield* owner.reconcileStore(f.connection(), "profile:new");
+    assert.equal(f.bindings.size, 0);
+    assert.equal(f.cleanups.size, 0);
+    assert.isNotNull(f.snapshots.get("deleted-session-root")!.projection.thread.deletedAt);
+  }),
+);
+
+it.effect("stops running replies with the ordinary interrupt and waits for settlement", () =>
+  Effect.gen(function* () {
+    const f = setup();
+    const owner = yield* f.owner;
+    const current = snapshot("reply");
+    f.snapshots.set("reply", {
+      ...current,
+      projection: {
+        ...current.projection,
+        runs: [{ id: "running", status: "running" } as never],
+      },
+    });
+    const stopping = yield* owner.stopRunningReplies().pipe(Effect.forkScoped);
+    yield* TestClock.adjust(100);
+    yield* Fiber.join(stopping);
+    assert.deepEqual(
+      [...f.commands.values()].map(({ commandId: _id, ...command }) => command),
+      [{ type: "run.interrupt", threadId: "reply", runId: "running", holdQueue: true }],
+    );
+    assert.equal(f.calls.filter((call) => call.method === "execution.activity").length, 2);
+  }),
+);
+
+it.effect(
+  "bounds restore reply settlement, then lets restore proceed without reissuing interrupts",
+  () =>
+    Effect.gen(function* () {
+      const f = setup();
+      const owner = yield* f.owner;
+      f.state.stopSettles = false;
+      const current = snapshot("reply");
+      f.snapshots.set("reply", {
+        ...current,
+        projection: {
+          ...current.projection,
+          runs: [{ id: "running", status: "running" } as never],
+        },
+      });
+      const stopping = yield* owner.stopRunningReplies().pipe(Effect.result, Effect.forkScoped);
+      yield* TestClock.adjust("30 seconds");
+      assert.equal((yield* Fiber.join(stopping))._tag, "Success");
+      assert.equal(f.commands.size, 1);
+    }),
+);
+
+it.effect("aligns inactive bound roots with restored Session placement and archive", () =>
+  Effect.gen(function* () {
+    const f = setup();
+    const owner = yield* f.owner;
+    const opened = yield* owner.launch(launch);
+    f.bindings.set(opened.sessionId, {
+      ...f.bindings.get(opened.sessionId)!,
+      project_id: "restored-project",
+    });
+    f.state.archived = true;
+    yield* owner.reconcileStore(f.connection(), "profile:restored-placement");
+    const thread = f.snapshots.get(opened.threadId)!.projection.thread;
+    assert.equal(thread.projectId, "restored-project");
+    assert.isNotNull(thread.archivedAt);
+    assert.equal(f.state.storeCoordinate, "profile:restored-placement");
   }),
 );

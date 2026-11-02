@@ -24,8 +24,14 @@ beforeEach(() => {
     invoke: async (channel, ...args) =>
       channel === "persisted-atom:sync-request"
         ? { revision: 0, values: {} }
-        : channel === "workspace-paths-exist"
-          ? { existingPaths: (args[0] as { paths: string[] }).paths }
+        : channel === "workspace-path-states"
+          ? {
+              states: (args[0] as { paths: string[] }).paths.map((path) => ({
+                path,
+                exists: true,
+                isGitSourcePath: null,
+              })),
+            }
           : channel === "codex:app-server:request"
             ? { type: "result", result: undefined }
             : undefined,

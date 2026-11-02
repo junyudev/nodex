@@ -1,3 +1,5 @@
+import { snapshotLinkActivation } from "@/lib/link-activation";
+import { useThreadMentionRuntime } from "./thread-mention-chip";
 import { formatKeyboardShortcut, isTableCellSelection } from "@blocknote/core";
 import { FormattingToolbarExtension, LinkToolbarExtension } from "@blocknote/core/extensions";
 import {
@@ -29,6 +31,7 @@ import {
   type LinkToolbarProps,
   type NfmResolvedLinkAction,
 } from "./nfm-link-toolbar-deps";
+import { useLinkOpening } from "@/lib/web-link-navigation";
 import { useFileReferenceRouter } from "@/lib/file-reference-router";
 import { useNfmLinkEditorState } from "./nfm-edit-link-menu-items";
 import { applyNfmLinkEditAtRange } from "./nfm-link-editing";
@@ -426,6 +429,8 @@ export function NfmLinkToolbar(props: NfmLinkToolbarProps) {
   const dict = useDictionary();
   const { opener } = useFileLinkOpener();
   const fileReferenceRouter = useFileReferenceRouter();
+  const sessionHost = useThreadMentionRuntime();
+  const links = useLinkOpening();
   const hostRuntime = useBlockReferenceHostRuntime();
   const { deleteLink } = useExtension(LinkToolbarExtension);
   const [isEditing, setIsEditing] = useState(false);
@@ -546,10 +551,11 @@ export function NfmLinkToolbar(props: NfmLinkToolbarProps) {
       editTooltip={dict.link_toolbar.edit.tooltip}
       editLabel={dict.link_toolbar.edit.tooltip}
       disabledReason={!canOpen ? tooltip : undefined}
-      onOpenLink={() => {
+      onOpenLink={(event) => {
         if (!canOpen) return;
         if (action?.kind === "local-file" || action?.kind === "workspace-file") {
           void fileReferenceRouter.open(action.target, {
+            activation: snapshotLinkActivation(event),
             cwd: props.projectWorkspacePath,
             workspaceRoot: props.projectWorkspacePath,
           });
@@ -562,13 +568,19 @@ export function NfmLinkToolbar(props: NfmLinkToolbarProps) {
           undefined,
           hostRuntime?.openPage
             ? {
+                openSession: sessionHost.openSession,
                 openPage: (pageId) =>
                   hostRuntime.openPage?.({
                     routingContext: hostRuntime.contentRoutingContext,
                     pageId,
                   }),
               }
-            : undefined,
+            : { openSession: sessionHost.openSession },
+          {
+            openLink: links?.openLink,
+            hostId: fileReferenceRouter.hostId,
+            activation: snapshotLinkActivation(event),
+          },
         );
       }}
       onClearLink={() => {

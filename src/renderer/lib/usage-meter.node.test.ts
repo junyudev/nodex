@@ -15,6 +15,7 @@ import {
   formatUsageAge,
   formatUsageCountdown,
   formatUsagePlan,
+  formatChatGptPlan,
   getRemainingRateLimitPercent,
   resolveUsageSeverity,
   runtimeUsageReading,
@@ -25,6 +26,13 @@ type RuntimeProvider = AgentRuntimeOperations["providers.read"]["output"][number
 
 const HOUR = 60 * 60_000;
 const NOW = new Date(2027, 4, 12, 9, 0).getTime();
+
+test.each([
+  ["sci", "ChatGPT Academic Researchers"],
+  ["sci_plus", "ChatGPT Academic Researchers Plus"],
+])("names the academic research plan %s", (plan, expected) => {
+  expect(formatChatGptPlan(plan)).toBe(expected);
+});
 
 const reading = (overrides: Partial<UsageReading> = {}): UsageReading => ({
   provider: "claude",

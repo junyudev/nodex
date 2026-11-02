@@ -166,15 +166,7 @@ export interface BrowserSiteInfo extends BrowserSidebarTabIdentity {
   connection: "secure" | "insecure" | "local" | "none";
   cookieCount: number;
   permissions: Array<{
-    permission:
-      | "camera"
-      | "clipboard-read"
-      | "display-capture"
-      | "geolocation"
-      | "media"
-      | "microphone"
-      | "notifications"
-      | "open-external";
+    permission: import("./browser/browser-permissions").BrowserSitePermissionName;
     state: "allow" | "ask" | "block";
   }>;
 }

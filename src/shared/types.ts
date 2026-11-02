@@ -960,13 +960,21 @@ export interface WorkspaceFileRequest {
   path: string;
 }
 
-export interface WorkspacePathsExistInput {
+export interface WorkspacePathStatesInput {
   hostId?: string;
+  cwd?: string | null;
   paths: string[];
 }
 
-export interface WorkspacePathsExistResult {
-  existingPaths: string[];
+export interface WorkspacePathState {
+  path: string;
+  exists: boolean;
+  /** null when the execution host cannot establish Git visibility. */
+  isGitSourcePath: boolean | null;
+}
+
+export interface WorkspacePathStatesResult {
+  states: WorkspacePathState[];
 }
 
 export interface WorkspaceFileTextReadInput extends WorkspaceFileRequest {
@@ -1508,7 +1516,6 @@ export interface BackupRecord {
   includesAssets: boolean;
   dbBytes: number;
   assetsBytes: number;
-  executionBytes: number;
   totalBytes: number;
 }
 
@@ -2920,6 +2927,8 @@ export interface CodexTurnSummary {
   turnStartedAtMs?: number | null;
   firstTurnWorkItemStartedAtMs?: number | null;
   finalAssistantStartedAtMs?: number | null;
+  /** Execution-host elapsed work before the selected response, without observer-clock skew. */
+  assistantResponseWorkDurationMs?: number | null;
   assistantMessageStartedAtMsById?: Record<string, number>;
   startedAt?: number | null;
   completedAt?: number | null;

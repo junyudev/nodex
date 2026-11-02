@@ -61,6 +61,19 @@ import {
   WandSparkles as LucideWandSparkles,
   WifiOff as LucideWifiOff,
   XCircle as LucideXCircle,
+  AppWindow as LucideAppWindow,
+  Box as LucideBox,
+  Clipboard as LucideClipboard,
+  Cookie as LucideCookie,
+  Glasses as LucideGlasses,
+  Hand as LucideHand,
+  Hourglass as LucideHourglass,
+  MapPin as LucideMapPin,
+  MonitorUp as LucideMonitorUp,
+  Music as LucideMusic,
+  Network as LucideNetwork,
+  Type as LucideType,
+  Video as LucideVideo,
   type LucideIcon as LucideIconType,
   type LucideProps,
 } from "lucide-react";
@@ -303,3 +316,28 @@ export const WandSparkles: LucideIconType = /* @__PURE__ */ createGenericIcon(
 );
 export const WifiOff: LucideIconType = /* @__PURE__ */ createGenericIcon(LucideWifiOff, "WifiOff");
 export const XCircle: LucideIconType = /* @__PURE__ */ createGenericIcon(LucideXCircle, "XCircle");
+export const AppWindow: LucideIconType = /* @__PURE__ */ createGenericIcon(
+  LucideAppWindow,
+  "AppWindow",
+);
+export const Box: LucideIconType = /* @__PURE__ */ createGenericIcon(LucideBox, "Box");
+export const Clipboard: LucideIconType = /* @__PURE__ */ createGenericIcon(
+  LucideClipboard,
+  "Clipboard",
+);
+export const Cookie: LucideIconType = /* @__PURE__ */ createGenericIcon(LucideCookie, "Cookie");
+export const Glasses: LucideIconType = /* @__PURE__ */ createGenericIcon(LucideGlasses, "Glasses");
+export const Hand: LucideIconType = /* @__PURE__ */ createGenericIcon(LucideHand, "Hand");
+export const Hourglass: LucideIconType = /* @__PURE__ */ createGenericIcon(
+  LucideHourglass,
+  "Hourglass",
+);
+export const MapPin: LucideIconType = /* @__PURE__ */ createGenericIcon(LucideMapPin, "MapPin");
+export const MonitorUp: LucideIconType = /* @__PURE__ */ createGenericIcon(
+  LucideMonitorUp,
+  "MonitorUp",
+);
+export const Music: LucideIconType = /* @__PURE__ */ createGenericIcon(LucideMusic, "Music");
+export const Network: LucideIconType = /* @__PURE__ */ createGenericIcon(LucideNetwork, "Network");
+export const Type: LucideIconType = /* @__PURE__ */ createGenericIcon(LucideType, "Type");
+export const Video: LucideIconType = /* @__PURE__ */ createGenericIcon(LucideVideo, "Video");

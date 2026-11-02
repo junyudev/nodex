@@ -9,7 +9,7 @@ import {
   RunId,
   ThreadId,
 } from "@t3tools/contracts";
-import { assert, expect, it } from "@effect/vitest";
+import { expect, it } from "@effect/vitest";
 import * as ExecutionHost from "@t3tools/provider-core/server/ExecutionHost";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -184,53 +184,6 @@ it.live("keeps a refused host Turn out of the admitted registry", () =>
     });
     const result = yield* Fiber.join(pending);
     expect(result._tag).toBe("Failure");
-    expect(yield* bridge.preparedTurn(turn.threadId)).toBeUndefined();
-  }).pipe(Effect.provide(identity), Effect.provide(NodeServices.layer)),
-);
-
-it.live("borrows provider credentials without minting foreground tool authority", () =>
-  Effect.gen(function* () {
-    const emitted = yield* Deferred.make<AgentHostRequest>();
-    const bridge = yield* make(
-      { home: "/runtime", cwd: "/workspace", providers: {}, host: { tools: [] } },
-      (notification) =>
-        notification.type === "host.request"
-          ? Deferred.succeed(emitted, notification).pipe(Effect.asVoid)
-          : Effect.void,
-    );
-    const pending = yield* bridge
-      .readProviderAuth({
-        providerInstanceId: turn.providerInstanceId,
-        refresh: true,
-        previousAccountId: "account",
-      })
-      .pipe(Effect.forkChild);
-    const request = yield* Deferred.await(emitted);
-    expect(request.operation).toBe("provider.auth");
-    if (request.operation !== "provider.auth") return assert.fail("expected provider auth request");
-    expect(request.identity).toEqual({
-      runtimeId: bridge.runtimeId,
-      runtimeGeneration: bridge.runtimeGeneration,
-      providerInstanceId: turn.providerInstanceId,
-    });
-    expect(request.previousAccountId).toBe("account");
-    yield* bridge.accept({
-      type: "host.result",
-      id: request.id,
-      success: true,
-      output: {
-        kind: "chatgpt",
-        accessToken: "fixture-token",
-        accountId: "account",
-        planType: null,
-      },
-    });
-    expect(yield* Fiber.join(pending)).toEqual({
-      kind: "chatgpt",
-      accessToken: "fixture-token",
-      accountId: "account",
-      planType: null,
-    });
     expect(yield* bridge.preparedTurn(turn.threadId)).toBeUndefined();
   }).pipe(Effect.provide(identity), Effect.provide(NodeServices.layer)),
 );

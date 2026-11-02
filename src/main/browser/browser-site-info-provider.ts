@@ -2,25 +2,17 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import type { BrowserSiteInfo } from "../../shared/browser-profile";
 import type { BrowserSidebarTabIdentity } from "../../shared/browser-sidebar";
+import type { BrowserSessionPermissions } from "./browser-session-permissions";
 
 interface BrowserSiteInfoTabReader {
-  readonly getTabSnapshot: (identity: BrowserSidebarTabIdentity) => { readonly url: string } | null;
+  readonly getTabSnapshot: (
+    identity: BrowserSidebarTabIdentity,
+  ) => { readonly url: string; readonly webContentsId?: number | null } | null;
 }
 
 interface BrowserSiteInfoCookieStore {
   readonly get: (filter: { readonly url: string }) => Promise<unknown[]>;
 }
-
-const DEFAULT_BLOCKED_PERMISSIONS: BrowserSiteInfo["permissions"] = [
-  { permission: "camera", state: "block" },
-  { permission: "clipboard-read", state: "block" },
-  { permission: "display-capture", state: "block" },
-  { permission: "geolocation", state: "block" },
-  { permission: "media", state: "block" },
-  { permission: "microphone", state: "block" },
-  { permission: "notifications", state: "block" },
-  { permission: "open-external", state: "block" },
-];
 
 export class BrowserSiteInfoRuntimeError extends Schema.TaggedError<BrowserSiteInfoRuntimeError>()(
   "BrowserSiteInfoRuntimeError",
@@ -39,6 +31,7 @@ const runtimeError = (operation: string, cause: unknown): BrowserSiteInfoRuntime
 export const makeBrowserSiteInfoRuntime = (
   tabs: BrowserSiteInfoTabReader,
   cookies: BrowserSiteInfoCookieStore,
+  permissions: Pick<BrowserSessionPermissions, "sitePermissions">,
 ): BrowserSiteInfoRuntime => ({
   get: (identity) =>
     Effect.gen(function* () {
@@ -62,7 +55,9 @@ export const makeBrowserSiteInfoRuntime = (
         origin: site?.url.origin ?? null,
         connection: site?.connection ?? "none",
         cookieCount,
-        permissions: DEFAULT_BLOCKED_PERMISSIONS.map((permission) => ({ ...permission })),
+        permissions: site
+          ? permissions.sitePermissions(tab.webContentsId ?? undefined, site.url.origin)
+          : [],
       };
     }),
 });

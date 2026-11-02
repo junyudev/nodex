@@ -10,13 +10,7 @@ import {
 import { expect, test } from "@playwright/test";
 import { openProjectBoard } from "../../scripts/scenarios/harness/project-board-ui";
 import { openSpace } from "../../scripts/scenarios/harness/space-ui";
-import {
-  _electron as electron,
-  type CDPSession,
-  type ElectronApplication,
-  type Locator,
-  type Page,
-} from "playwright";
+import type { CDPSession, ElectronApplication, Locator, Page } from "playwright";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
@@ -73,7 +67,7 @@ import {
   type ConvergenceProject,
   type ConvergencePage,
 } from "./support/editor-scenario";
-import { isolatedElectronArguments } from "../../scripts/isolated-run/electron-arguments";
+import { launchTestElectron } from "../../scripts/testing/launch-electron";
 
 async function expectClosingSideMenuToBeInert({
   page,
@@ -631,7 +625,7 @@ async function readConvergenceBoardTotal(
 }
 
 async function launchLargeContentFixtureApplication(): Promise<ElectronApplication> {
-  return electron.launch({ args: [largeContentElectronMain, ...isolatedElectronArguments()] });
+  return launchTestElectron({ args: [largeContentElectronMain] });
 }
 
 async function buildLargeContentFixture(outDir: string): Promise<string> {

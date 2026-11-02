@@ -22,14 +22,16 @@ export function nativeSessionMediaResources(item: ThreadItem): readonly NativeMe
       { id: "image", media: "image", resource: { name: basename(item.path), source: item.path } },
     ];
   if (item.type === "imageGeneration") {
-    if (!item.savedPath && !item.result) return [];
+    const result = "result" in item ? item.result : null;
+    if (!item.savedPath && !result)
+      return "fileId" in item ? [{ id: "image", media: "image", resource: null }] : [];
     return [
       {
         id: "image",
         media: "image",
         resource: {
           name: "Generated image.png",
-          source: item.result ? `data:image/png;base64,${item.result}` : item.savedPath!,
+          source: result ? `data:image/png;base64,${result}` : item.savedPath!,
           mimeType: "image/png",
         },
       },

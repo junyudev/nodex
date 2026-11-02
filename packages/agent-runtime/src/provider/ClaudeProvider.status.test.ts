@@ -39,7 +39,7 @@ const withFakeClaude = <A, E>(
       .makeTempDirectoryScoped({ prefix: "nodex-claude-status-" })
       .pipe(Effect.flatMap((directory) => fs.realPath(directory)));
     const binaryPath = NodePath.join(cwd, "claude");
-    yield* fs.writeFileString(binaryPath, "#!/bin/sh\necho '2.1.310 (Claude Code)'\n");
+    yield* fs.writeFileString(binaryPath, "#!/bin/sh\necho '2.1.316 (Claude Code)'\n");
     yield* fs.chmod(binaryPath, 0o755);
     const settings = Schema.decodeSync(ClaudeSettings)({
       binaryPath,

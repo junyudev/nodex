@@ -5,6 +5,8 @@ import type { CodexHooksSettingsSelection, CodexHooksSettingsSource } from "./co
 import { normalizeCodexHooksSettingsSource } from "./codex-hooks-route";
 
 export const CODEX_HOOK_EVENT_LABELS: Record<HookEventName, string> = {
+  preModelRequest: "PreModelRequest",
+  postModelRequest: "PostModelRequest",
   preToolUse: "PreToolUse",
   permissionRequest: "PermissionRequest",
   postToolUse: "PostToolUse",
@@ -20,6 +22,8 @@ export const CODEX_HOOK_EVENT_LABELS: Record<HookEventName, string> = {
 };
 
 export const CODEX_HOOK_EVENT_ORDER: readonly HookEventName[] = [
+  "preModelRequest",
+  "postModelRequest",
   "preToolUse",
   "permissionRequest",
   "postToolUse",

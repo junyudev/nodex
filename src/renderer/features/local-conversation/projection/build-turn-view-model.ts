@@ -22,9 +22,11 @@ import type {
   ThreadTranscriptBlockModel,
   ThreadTurnModel,
   ThreadTurnRenderBuckets,
+  ThreadTurnOutputsBlockModel,
   ThreadTurnSubagentActivityState,
   ThreadWorkedForBlockModel,
 } from "../thread-stage-types";
+import type { ThreadSummaryPanelOutputRow } from "./thread-summary-panel-output-model";
 import { projectThreadActivityPresentation } from "./thread-activity-presentation";
 import {
   countAgentBodyUnits,
@@ -52,12 +54,16 @@ interface BuildTurnViewModelInput {
   allowCopyWhileStreaming?: boolean;
   showTimestampWithoutActions?: boolean;
   timestampHoverOnly?: boolean;
+  /** Keep the settled latest turn's closing actions visible; hosts like previews keep them on hover. */
+  pinLatestTurnActions?: boolean;
   cwd?: string | null;
   hostId?: string;
   goalTimeUsedSeconds?: number;
   mcpApps?: readonly ProtocolAppInfo[];
   mcpServerStatuses?: ProtocolListMcpServerStatusResponse | null;
   endResourcePaths?: readonly string[];
+  /** Confirmed deliverables shown with the reply; timeline turns place them on their own row. */
+  endResources?: readonly ThreadSummaryPanelOutputRow[];
   subagentActivityState?: ThreadTurnSubagentActivityState;
 }
 
@@ -72,7 +78,15 @@ type TurnActionInput = Pick<
 > & {
   hookStats: HookStats | null;
   metadata?: TurnFooterMetadata;
+  pinned: boolean;
 };
+
+/** Whether the turn's closing message actions stay visible without hover. */
+function resolvePinnedTurnActions(
+  input: Pick<BuildTurnViewModelInput, "pinLatestTurnActions" | "isLatestTurn" | "isStreamingTurn">,
+): boolean {
+  return input.pinLatestTurnActions === true && input.isLatestTurn && !input.isStreamingTurn;
+}
 
 const EMPTY_SUBAGENT_ACTIVITY_STATE: ThreadTurnSubagentActivityState = {
   hasActivity: false,
@@ -195,6 +209,8 @@ function applyUserMessageActions(
     hookStats: HookStats | null;
     fallbackHookStats: HookStats | null;
     isTurnPrefix?: boolean;
+    /** Pins the prompt's actions when it closes the turn without a reply action row. */
+    pinLastMessage?: boolean;
   },
 ): ThreadTranscriptBlockModel[] {
   if (userItems.length === 0) return userItems;
@@ -219,6 +235,9 @@ function applyUserMessageActions(
         block.entry.deliveryStatus === "not-sent" || input.isTurnPrefix === false
           ? null
           : resolveUserMessageSentAt(input.turn, index),
+      ...(input.pinLastMessage === true && index === userItems.length - 1
+        ? { alwaysVisible: true }
+        : {}),
     },
   }));
 }
@@ -258,6 +277,26 @@ function buildGeneratedImageGalleryBlock(
   };
 }
 
+function buildTurnOutputsBlock(
+  turnId: string | null,
+  turnKey: string,
+  turn: CodexConversationTurn | null,
+  resources: readonly ThreadSummaryPanelOutputRow[] | undefined,
+): ThreadTurnOutputsBlockModel | null {
+  if (!resources || resources.length === 0) return null;
+  const timestamps = (turn?.items ?? []).flatMap((item) => [item.createdAt, item.updatedAt]);
+  const updatedAt = timestamps.length === 0 ? 0 : Math.max(...timestamps);
+  return {
+    id: `${turnKey}:outputs`,
+    turnId,
+    createdAt: updatedAt,
+    updatedAt,
+    searchableText: "",
+    type: "turnOutputs",
+    resources,
+  };
+}
+
 function buildAssistantMessageActionsModel(
   assistantItem: ThreadTranscriptBlockModel | null,
   input: TurnActionInput,
@@ -283,7 +322,12 @@ function buildAssistantMessageActionsModel(
     canFork,
     ...(input.showTimestampWithoutActions ? { showTimestampWithoutActions: true } : {}),
     ...(input.timestampHoverOnly ? { timestampHoverOnly: true } : {}),
+    ...(input.pinned ? { alwaysVisible: true } : {}),
   };
+}
+
+function hasAssistantActionRow(block: ThreadTranscriptBlockModel | null): boolean {
+  return block?.type === "assistantMessage" && block.assistantMessageActions != null;
 }
 
 function applyAssistantMessageActions(
@@ -356,6 +400,7 @@ function buildGeneratedImageActionsBlock(
       sentAtMs: resolveAssistantMessageSentAt(input.turn),
       ...(input.showTimestampWithoutActions ? { showTimestampWithoutActions: true } : {}),
       ...(input.timestampHoverOnly ? { timestampHoverOnly: true } : {}),
+      ...(input.pinned ? { alwaysVisible: true } : {}),
       canFork,
       ...(input.metadata ? { metadata: input.metadata } : {}),
       ...(input.hookStats ? { hookStats: input.hookStats } : {}),
@@ -492,6 +537,7 @@ export function buildTurnViewModel(input: BuildTurnViewModelInput): ThreadTurnMo
     ...input,
     metadata: completedMetadata,
     hookStats: input.isStreamingTurn ? null : buildHookStats(input.turn?.hookRuns),
+    pinned: resolvePinnedTurnActions(input),
   };
   const workedForItem = input.workedForItem ?? null;
   const workedForTiming = input.workedForTiming ?? null;
@@ -532,6 +578,13 @@ export function buildTurnViewModel(input: BuildTurnViewModelInput): ThreadTurnMo
     input.includeGeneratedImages === false
       ? null
       : buildGeneratedImageGalleryBlock(input.turnId, turnKey, buckets, input);
+  // Outputs belong to the reply: beneath its text and images, above its actions.
+  const turnOutputsBlock = buildTurnOutputsBlock(
+    input.turnId,
+    turnKey,
+    input.turn,
+    input.endResources,
+  );
   const nextAssistantItem =
     buckets.assistantItem === null
       ? null
@@ -544,6 +597,7 @@ export function buildTurnViewModel(input: BuildTurnViewModelInput): ThreadTurnMo
             includeActions: input.voiceWorkActivity === undefined,
             assistantAfterBlocks: [
               ...(generatedImageGalleryBlock ? [generatedImageGalleryBlock] : []),
+              ...(turnOutputsBlock ? [turnOutputsBlock] : []),
               ...buckets.postAssistantItems,
               ...(buckets.unifiedDiffItem ? [buckets.unifiedDiffItem] : []),
             ].filter((block) => !turnOwnerHiddenBlockIds.has(block.id)),
@@ -613,6 +667,10 @@ export function buildTurnViewModel(input: BuildTurnViewModelInput): ThreadTurnMo
         hookStats: actionInput.hookStats,
         fallbackHookStats:
           !nextAssistantItem && !generatedImageGalleryBlock ? actionInput.hookStats : null,
+        pinLastMessage:
+          actionInput.pinned &&
+          !hasAssistantActionRow(nextAssistantItem) &&
+          deferredAssistantActionsBlock === null,
       },
     ),
     assistantItem: nextAssistantItem,
@@ -657,6 +715,7 @@ export function buildTurnViewModel(input: BuildTurnViewModelInput): ThreadTurnMo
     ...(buckets.systemEventItem ? [buckets.systemEventItem] : []),
     ...(buckets.assistantItem ? [buckets.assistantItem] : []),
     ...(!buckets.assistantItem && generatedImageGalleryBlock ? [generatedImageGalleryBlock] : []),
+    ...(turnOutputsBlock ? [turnOutputsBlock] : []),
     ...(deferredAssistantActionsBlock ? [deferredAssistantActionsBlock] : []),
     ...buckets.postAssistantItems,
     ...buckets.mcpServerElicitationItems,

@@ -1,6 +1,8 @@
 import "./workbench-testkit/workbench-shell-harness";
-import { describe, test, expect } from "vite-plus/test";
+import { beforeEach, describe, test, expect, vi } from "vite-plus/test";
+import type { ComponentProps } from "react";
 import type { MotionValue } from "motion/react";
+import type { FileReferenceRouterPort } from "@/lib/file-reference-router";
 import { settleAsyncRender, textContent } from "../../test/dom";
 import { act, fireEvent, waitFor, within } from "@testing-library/react";
 import { TOGGLE_BOTTOM_PANEL_COMMAND_ID } from "../../../shared/workbench-commands";
@@ -66,6 +68,32 @@ import {
   waitForThreadRow,
 } from "./workbench-testkit/workbench-shell-harness";
 import type { FloatingComposerPlacement } from "@/features/floating-composer/floating-composer";
+
+const fileReferencePort = vi.hoisted(() => ({
+  openWorkspaceFileTab: undefined as FileReferenceRouterPort["openWorkspaceFileTab"] | undefined,
+}));
+vi.mock("@/lib/file-reference-router", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/file-reference-router")>();
+  return {
+    ...actual,
+    FileReferenceRouterProvider: (
+      props: ComponentProps<typeof actual.FileReferenceRouterProvider>,
+    ) => {
+      fileReferencePort.openWorkspaceFileTab = props.openWorkspaceFileTab;
+      return <actual.FileReferenceRouterProvider {...props} />;
+    },
+  };
+});
+beforeEach(() => {
+  fileReferencePort.openWorkspaceFileTab = undefined;
+});
+
+function openWorkbenchFile(
+  input: Omit<Parameters<FileReferenceRouterPort["openWorkspaceFileTab"]>[0], "panelId" | "mode">,
+): Promise<boolean> {
+  if (!fileReferencePort.openWorkspaceFileTab) throw new Error("Expected the Workbench file port");
+  return fileReferencePort.openWorkspaceFileTab({ ...input, panelId: "right", mode: "preview" });
+}
 
 // Layout fixtures control the body budget independently of fixed window chrome.
 const setShellBodyWidthForTest = (width: number) =>
@@ -2211,33 +2239,21 @@ describe("workbench session shell / layout-panel-actions", () => {
     );
   });
 
-  test("summary output side-panel opener creates a renderer-local Files preview tab", async () => {
+  test("the file router's Workbench port creates a renderer-local Files preview tab", async () => {
     const screen = renderWorkbench({
       sessionsByProject: { alpha: [makeAttachedSession({ rightCollapsed: true })] },
     });
     await settleAsyncRender();
     await settleAsyncRender();
 
-    const actions = getLastThreadStageActions();
-    const openOutput = actions.onOpenSummaryOutputInSidePanel as
-      | ((input: {
-          cwd?: string | null;
-          path: string;
-          title: string;
-          workspaceRoot?: string | null;
-        }) => Promise<boolean>)
-      | undefined;
-    expect(typeof openOutput).toBe("function");
-
     let opened = false;
     await act(async () => {
-      opened =
-        (await openOutput?.({
-          cwd: "/Users/asc/.nodex/worktrees/abcd/nodex",
-          path: "/Users/asc/.nodex/worktrees/abcd/nodex/reports/summary.txt",
-          title: "summary.txt",
-          workspaceRoot: "/Users/asc/.nodex/worktrees/abcd/nodex",
-        })) ?? false;
+      opened = await openWorkbenchFile({
+        cwd: "/Users/asc/.nodex/worktrees/abcd/nodex",
+        path: "/Users/asc/.nodex/worktrees/abcd/nodex/reports/summary.txt",
+        title: "summary.txt",
+        workspaceRoot: "/Users/asc/.nodex/worktrees/abcd/nodex",
+      });
     });
     await settleAsyncRender();
 
@@ -2263,18 +2279,8 @@ describe("workbench session shell / layout-panel-actions", () => {
     await settleAsyncRender();
     await settleAsyncRender();
 
-    const openOutput = getLastThreadStageActions().onOpenSummaryOutputInSidePanel as
-      | ((input: {
-          cwd?: string | null;
-          path: string;
-          title: string;
-          workspaceRoot?: string | null;
-        }) => Promise<boolean>)
-      | undefined;
-    expect(typeof openOutput).toBe("function");
-
     await act(async () => {
-      await openOutput?.({
+      await openWorkbenchFile({
         cwd: "/Users/asc/repo/nodex",
         path: "/Users/asc/repo/nodex/reports/summary.txt",
         title: "summary.txt",
@@ -2293,7 +2299,7 @@ describe("workbench session shell / layout-panel-actions", () => {
 
     await pointerDownAndSettle(fileTreeSurface);
     await act(async () => {
-      await openOutput?.({
+      await openWorkbenchFile({
         cwd: "/Users/asc/repo/nodex",
         path: "/Users/asc/repo/nodex/reports/details.json",
         title: "details.json",
@@ -2351,14 +2357,9 @@ describe("workbench session shell / layout-panel-actions", () => {
       },
     });
     await settleAsyncRender();
-    const openOutput = (await waitForLastThreadStageActions())
-      .onOpenSummaryOutputInSidePanel as (input: {
-      path: string;
-      title: string;
-      cwd: string;
-    }) => Promise<boolean>;
+    await waitForLastThreadStageActions();
     await act(async () => {
-      expect(await openOutput({ path, title: "report.txt", cwd: "/workspace" })).toBe(true);
+      expect(await openWorkbenchFile({ path, title: "report.txt", cwd: "/workspace" })).toBe(true);
     });
     await waitFor(() =>
       expect(screen.getAllByRole("tab", { name: "report.txt", selected: true })).toHaveLength(1),
@@ -2387,11 +2388,8 @@ describe("workbench session shell / layout-panel-actions", () => {
     await settleAsyncRender();
     await settleAsyncRender();
 
-    const openOutput = getLastThreadStageActions().onOpenSummaryOutputInSidePanel as
-      | ((input: { path: string; title: string }) => Promise<boolean>)
-      | undefined;
     await act(async () => {
-      await openOutput?.({
+      await openWorkbenchFile({
         path: `${secondaryRoot}/reports/summary.txt`,
         title: "summary.txt",
       });
@@ -2415,7 +2413,7 @@ describe("workbench session shell / layout-panel-actions", () => {
     ).toBe(false);
   });
 
-  test("summary output side-panel opener supports projectless file previews", async () => {
+  test("the file router's Workbench port supports projectless file previews", async () => {
     const projectlessSession = makeAttachedSession({
       id: "session:projectless:summary-output",
       projectId: null,
@@ -2448,19 +2446,12 @@ describe("workbench session shell / layout-panel-actions", () => {
       ).toBe(true);
     });
 
-    const actions = getLastThreadStageActions();
-    const openOutput = actions.onOpenSummaryOutputInSidePanel as
-      | ((input: { path: string; title: string }) => Promise<boolean>)
-      | undefined;
-    expect(typeof openOutput).toBe("function");
-
     let opened = false;
     await act(async () => {
-      opened =
-        (await openOutput?.({
-          path: "/Users/asc/Downloads/nodex-output/report.md",
-          title: "report.md",
-        })) ?? false;
+      opened = await openWorkbenchFile({
+        path: "/Users/asc/Downloads/nodex-output/report.md",
+        title: "report.md",
+      });
     });
     await settleAsyncRender();
 

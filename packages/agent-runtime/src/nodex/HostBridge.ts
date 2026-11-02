@@ -420,27 +420,6 @@ export const make = Effect.fn("AgentRuntime.makeHostBridge")(function* (
     runtimeId,
     runtimeGeneration,
     accept,
-    readProviderAuth: (input: {
-      readonly providerInstanceId: import("@t3tools/contracts").ProviderInstanceId;
-      readonly refresh: boolean;
-      readonly previousAccountId: string | null;
-    }) =>
-      exchange({
-        type: "host.request",
-        operation: "provider.auth",
-        identity: { runtimeId, runtimeGeneration, providerInstanceId: input.providerInstanceId },
-        refresh: input.refresh,
-        previousAccountId: input.previousAccountId,
-      }).pipe(
-        Effect.flatMap(Schema.decodeUnknownEffect(ExecutionHost.ProviderAuthentication)),
-        Effect.mapError(
-          () =>
-            new ExecutionHost.ExecutionHostError({
-              operation: "provider.auth",
-              message: "Configured provider authentication is unavailable.",
-            }),
-        ),
-      ),
     captureNativeToolCall: Effect.fn("AgentRuntime.captureNativeToolCall")(function* (input: {
       readonly identity: ExecutionHost.HostTurnIdentity;
       readonly nativeCallId: string;
@@ -618,7 +597,6 @@ export const layerExecutionHost = Layer.effect(
       prepareTurn: bridge.prepareTurn,
       captureNativeToolCall: bridge.captureNativeToolCall,
       releaseNativeToolCall: bridge.releaseNativeToolCall,
-      readProviderAuth: bridge.readProviderAuth,
       registerNativeSession: bridge.registerNativeSession,
       prepareThread: bridge.prepareThread,
       observeNativeTurn: bridge.observeNativeTurn,

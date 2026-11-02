@@ -90,7 +90,6 @@ function SharedConnectedSessionThread({
   onOpenSummarySideChatRow,
   onOpenSummaryBrowserRow,
   onOpenSummaryScheduledAutomation,
-  onOpenSummaryOutputInSidePanel,
   onOpenProcessManager,
   onOpenBackgroundTerminalOutput,
   onToggleSummaryComputerUsePip,
@@ -182,7 +181,6 @@ function SharedConnectedSessionThread({
   onOpenSummaryScheduledAutomation: NonNullable<
     ThreadStageActions["onOpenSummaryScheduledAutomation"]
   >;
-  onOpenSummaryOutputInSidePanel: NonNullable<ThreadStageActions["onOpenSummaryOutputInSidePanel"]>;
   onOpenProcessManager?: ThreadStageActions["onOpenProcessManager"];
   onOpenBackgroundTerminalOutput?: ThreadStageActions["onOpenBackgroundTerminalOutput"];
   onToggleSummaryComputerUsePip: NonNullable<ThreadStageActions["onToggleSummaryComputerUsePip"]>;
@@ -420,7 +418,6 @@ function SharedConnectedSessionThread({
       onOpenVoiceSettings,
       onOpenSummaryBrowserRow,
       onOpenSummaryScheduledAutomation,
-      onOpenSummaryOutputInSidePanel,
       onOpenSummaryGitReview,
       onOpenProcessManager,
       onOpenBackgroundTerminalOutput,
@@ -924,7 +921,6 @@ export function ProjectSessionThreadComposerDock({
       onOpenSummarySideChatRow={noOp}
       onOpenSummaryBrowserRow={noOp}
       onOpenSummaryScheduledAutomation={noOp}
-      onOpenSummaryOutputInSidePanel={() => false}
       onToggleSummaryComputerUsePip={noOp}
       rightPanelComposerOverlayEnabled={false}
       rightPanelComposerOverlayTarget={null}

@@ -1,13 +1,16 @@
+import { stat } from "node:fs/promises";
 import path from "node:path";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FiberMap from "effect/FiberMap";
+import * as Predicate from "effect/Predicate";
 import * as Queue from "effect/Queue";
 import * as Semaphore from "effect/Semaphore";
 import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import type { FileWatchHost } from "../file-watch-host";
+import { FileWatchError } from "../file-watch-host";
 import { getLogger } from "../logging/logger";
 
 export const GIT_REVIEW_REPOSITORY_CHANGE_DELAY_MS = 1_000;
@@ -62,6 +65,7 @@ export interface GitReviewRepositoryWatcher {
 export interface GitReviewRepositoryWatcherOptions {
   readonly roots: GitReviewWatchRoots;
   readonly host: FileWatchHost;
+  readonly stat?: (directory: string) => Effect.Effect<{ isDirectory(): boolean }, FileWatchError>;
   readonly onChange: (
     event: GitReviewRepositoryChangedEvent,
   ) => Effect.Effect<void, never, Scope.Scope>;
@@ -73,6 +77,7 @@ export interface GitReviewRepositoryWatcherOptions {
 interface WatchTarget {
   readonly changeType: GitReviewRepositoryChange;
   readonly path: string;
+  readonly parentPath?: string;
   readonly recursive: boolean;
   readonly shouldHandleChangedPath: (changedPath: string) => boolean;
   readonly watchPath: string;
@@ -80,6 +85,7 @@ interface WatchTarget {
 
 interface WatchTargetState {
   available: boolean;
+  missing: boolean;
   recursiveCoverage: boolean;
   attempted: boolean;
   readonly firstAttempt: Deferred.Deferred<void>;
@@ -128,10 +134,12 @@ function watchTargets(roots: GitReviewWatchRoots): readonly WatchTarget[] {
     targetPath: string,
     changeType: GitReviewRepositoryChange,
     shouldHandleChangedPath: (changedPath: string) => boolean,
+    parentPath?: string,
   ) => {
     targets.push({
       changeType,
       path: targetPath,
+      parentPath,
       recursive: true,
       shouldHandleChangedPath,
       watchPath: targetPath,
@@ -146,14 +154,20 @@ function watchTargets(roots: GitReviewWatchRoots): readonly WatchTarget[] {
   file(path.join(commonDir, "packed-refs"), "remote-refs");
 
   const localHeadsDirectory = path.join(commonDir, "refs", "heads");
-  directory(localHeadsDirectory, "head", (changedPath) =>
-    isUnlockedPath(localHeadsDirectory, changedPath),
+  directory(
+    localHeadsDirectory,
+    "head",
+    (changedPath) => isUnlockedPath(localHeadsDirectory, changedPath),
+    path.dirname(localHeadsDirectory),
   );
 
   const refsDirectory = path.join(commonDir, "refs");
   const remoteRefsDirectory = path.join(refsDirectory, "remotes");
-  directory(refsDirectory, "remote-refs", (changedPath) =>
-    isUnlockedPath(remoteRefsDirectory, changedPath),
+  directory(
+    refsDirectory,
+    "remote-refs",
+    (changedPath) => isUnlockedPath(remoteRefsDirectory, changedPath),
+    commonDir,
   );
 
   file(path.join(commonDir, "config"), "config");
@@ -164,6 +178,7 @@ function watchTargets(roots: GitReviewWatchRoots): readonly WatchTarget[] {
     infoDirectory,
     "config",
     (changedPath) => changedPath === excludePath || changedPath === attributesPath,
+    commonDir,
   );
 
   file(path.join(gitDir, "config.worktree"), "config");
@@ -232,6 +247,18 @@ function logWatchFailure(message: string, details: Record<string, unknown>): voi
   logger.warn(message, details);
 }
 
+function isMissingPathError(cause: unknown): boolean {
+  return (
+    Predicate.hasProperty(cause, "code") && (cause.code === "ENOENT" || cause.code === "ENOTDIR")
+  );
+}
+
+const statWatchDirectory = (directory: string) =>
+  Effect.tryPromise({
+    try: () => stat(directory),
+    catch: (cause) => new FileWatchError({ path: directory, cause }),
+  });
+
 /** Acquires every native watch target and owns its retry and emission fibers in one Scope. */
 export const makeGitReviewRepositoryWatcher = (
   options: GitReviewRepositoryWatcherOptions,
@@ -251,6 +278,7 @@ export const makeGitReviewRepositoryWatcher = (
     for (const target of targets) {
       states.set(target, {
         available: false,
+        missing: false,
         recursiveCoverage: false,
         attempted: false,
         firstAttempt: yield* Deferred.make<void>(),
@@ -261,7 +289,8 @@ export const makeGitReviewRepositoryWatcher = (
 
     const requiresRecovery = () =>
       [...states.entries()].some(
-        ([target, state]) => !state.available || (target.recursive && !state.recursiveCoverage),
+        ([target, state]) =>
+          !state.missing && (!state.available || (target.recursive && !state.recursiveCoverage)),
       );
     const updateRequiresRecovery = Effect.fn("GitReviewRepositoryWatcher.updateRequiresRecovery")(
       function* () {
@@ -280,6 +309,31 @@ export const makeGitReviewRepositoryWatcher = (
         discard: true,
       });
     };
+    const settleAttempt = Effect.fn("GitReviewRepositoryWatcher.settleAttempt")(function* (
+      state: WatchTargetState,
+    ) {
+      if (!state.attempted) {
+        state.attempted = true;
+        yield* Deferred.succeed(state.firstAttempt, undefined);
+      }
+      yield* settleRecovery(state);
+      yield* updateRequiresRecovery();
+    });
+    const refreshMetadataDirectories = Effect.fn(
+      "GitReviewRepositoryWatcher.refreshMetadataDirectories",
+    )(function* (changedPaths: readonly string[]) {
+      for (const [target, state] of states) {
+        if (target.parentPath === undefined) continue;
+        const affected =
+          changedPaths.length === 0 ||
+          changedPaths.some(
+            (changedPath) =>
+              isPathInside(changedPath, target.path) ||
+              (state.missing && isPathInside(target.path, changedPath)),
+          );
+        if (affected) yield* Queue.offer(state.retryWake, undefined);
+      }
+    });
     const signalChange = Effect.fn("GitReviewRepositoryWatcher.signalChange")(function* (
       target: WatchTarget,
       changedPaths?: readonly string[],
@@ -352,7 +406,21 @@ export const makeGitReviewRepositoryWatcher = (
       if (!state) continue;
       yield* Effect.forever(
         Effect.gen(function* () {
-          yield* options.host
+          if (target.parentPath !== undefined) {
+            const entry = yield* (options.stat ?? statWatchDirectory)(target.watchPath);
+            state.missing = !entry.isDirectory();
+            if (state.missing) {
+              const wasAvailable = state.available;
+              state.available = false;
+              state.recursiveCoverage = false;
+              yield* settleAttempt(state);
+              if (wasAvailable) yield* signalChange(target);
+              // An absent metadata directory is healthy until its parent observes creation.
+              yield* Queue.take(state.retryWake);
+              return;
+            }
+          }
+          const watch = options.host
             .watch({
               path: target.watchPath,
               recursive: target.recursive,
@@ -362,52 +430,55 @@ export const makeGitReviewRepositoryWatcher = (
                   : "changed-path",
             })
             .pipe(
-              Stream.runForEach((event) => {
-                if (event._tag === "Ready") {
-                  return Effect.gen(function* () {
+              Stream.runForEach(
+                Effect.fn("GitReviewRepositoryWatcher.onWatchEvent")(function* (event) {
+                  if (event._tag === "Ready") {
                     const recovering = state.attempted;
                     state.available = true;
                     state.recursiveCoverage = event.coverage.recursive;
-                    if (!state.attempted) {
-                      state.attempted = true;
-                      yield* Deferred.succeed(state.firstAttempt, undefined);
-                    }
-                    yield* settleRecovery(state);
-                    yield* updateRequiresRecovery();
+                    yield* settleAttempt(state);
                     if (recovering) yield* signalChange(target);
-                  });
-                }
+                    return;
+                  }
 
-                const acceptedPaths = event.changedPaths.flatMap((changedPath) => {
-                  if (!target.shouldHandleChangedPath(changedPath)) return [];
-                  if (target.changeType !== "working-tree") return [changedPath];
-                  const affectedPath = affectedWorkingTreePath(options.roots, changedPath);
-                  return affectedPath === null ? [] : [affectedPath];
-                });
-                if (event.changedPaths.length > 0 && acceptedPaths.length === 0) {
-                  return Effect.void;
-                }
-                const includesRoot =
-                  target.changeType === "working-tree" &&
-                  acceptedPaths.includes(options.roots.root);
-                return signalChange(
-                  target,
-                  event.changedPaths.length === 0 || includesRoot ? undefined : acceptedPaths,
-                );
-              }),
+                  if (target.watchPath === options.roots.commonDir && target.recursive) {
+                    yield* refreshMetadataDirectories(event.changedPaths);
+                  }
+                  const acceptedPaths = event.changedPaths.flatMap((changedPath) => {
+                    if (!target.shouldHandleChangedPath(changedPath)) return [];
+                    if (target.changeType !== "working-tree") return [changedPath];
+                    const affectedPath = affectedWorkingTreePath(options.roots, changedPath);
+                    return affectedPath === null ? [] : [affectedPath];
+                  });
+                  if (event.changedPaths.length > 0 && acceptedPaths.length === 0) {
+                    return;
+                  }
+                  const includesRoot =
+                    target.changeType === "working-tree" &&
+                    acceptedPaths.includes(options.roots.root);
+                  yield* signalChange(
+                    target,
+                    event.changedPaths.length === 0 || includesRoot ? undefined : acceptedPaths,
+                  );
+                }),
+              ),
             );
+          yield* target.parentPath === undefined
+            ? watch
+            : Effect.raceFirst(watch, Queue.take(state.retryWake));
         }).pipe(
           Effect.catch((error) =>
             Effect.gen(function* () {
               const wasAvailable = state.available;
               state.available = false;
               state.recursiveCoverage = false;
-              if (!state.attempted) {
-                state.attempted = true;
-                yield* Deferred.succeed(state.firstAttempt, undefined);
+              state.missing = target.parentPath !== undefined && isMissingPathError(error.cause);
+              yield* settleAttempt(state);
+              if (state.missing) {
+                if (wasAvailable) yield* signalChange(target);
+                yield* Queue.take(state.retryWake);
+                return;
               }
-              yield* settleRecovery(state);
-              yield* updateRequiresRecovery();
               logWatchFailure("Could not watch Git repository path", {
                 path: target.path,
                 error,
@@ -434,9 +505,9 @@ export const makeGitReviewRepositoryWatcher = (
         Effect.gen(function* () {
           const waiters: Deferred.Deferred<void>[] = [];
           for (const state of states.values()) {
-            if (state.available) continue;
+            if (state.available || state.missing) continue;
             const waiter = yield* Deferred.make<void>();
-            if (state.available) continue;
+            if (state.available || state.missing) continue;
             state.recoveryWaiters.add(waiter);
             waiters.push(waiter);
             yield* Queue.offer(state.retryWake, undefined);

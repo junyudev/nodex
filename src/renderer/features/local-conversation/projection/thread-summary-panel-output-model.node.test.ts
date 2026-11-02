@@ -47,6 +47,7 @@ function buildItem(
     semanticKind: "systemEvent",
     createdAt: 1,
     updatedAt: 1,
+    status: "completed",
     ...overrides,
   };
 }
@@ -149,7 +150,7 @@ describe("buildThreadSummaryPanelOutputRows", () => {
     expect(rows.map((row) => row.kind).join(",")).toBe("generated-image,image");
   });
 
-  test("collects file outputs from assistant file references", () => {
+  test("keeps legacy assistant source references out of outputs", () => {
     const rows = buildThreadSummaryPanelOutputRows(
       [
         buildTurn([
@@ -166,10 +167,7 @@ describe("buildThreadSummaryPanelOutputRows", () => {
       },
     );
 
-    expect(rows.length).toBe(1);
-    expect(rows[0]?.kind ?? "").toBe("file");
-    expect(rows[0] ? outputPath(rows[0]) : "").toBe("/repo/project/src/renderer/app.tsx");
-    expect(rows[0]?.label ?? "").toBe("app.tsx");
+    expect(rows).toEqual([]);
   });
 
   test("marks generated images, image views, and image file references as previewable", () => {
@@ -179,7 +177,7 @@ describe("buildThreadSummaryPanelOutputRows", () => {
           kind: "assistantMessage",
           semanticKind: "assistantMessage",
           markdownText:
-            "Saved \u3010F:/tmp/nodex/chart.webp\u2020L1\u3011 and \u3010F:/tmp/nodex/report.txt\u2020L1\u3011.",
+            ':codex-file-citation{path="/tmp/nodex/chart.webp"} [report](/tmp/nodex/report.pdf)',
         }),
         buildItem("image-view-1", "imageView", {
           rawItem: {
@@ -201,7 +199,7 @@ describe("buildThreadSummaryPanelOutputRows", () => {
     ]);
 
     const chart = rows.find((row) => outputPath(row) === "/tmp/nodex/chart.webp");
-    const report = rows.find((row) => outputPath(row) === "/tmp/nodex/report.txt");
+    const report = rows.find((row) => outputPath(row) === "/tmp/nodex/report.pdf");
     const imageView = rows.find((row) => outputPath(row) === "/tmp/nodex/reference.jpg");
     const generated = rows.find((row) => outputPath(row) === "/tmp/nodex/generated.png");
 
@@ -408,6 +406,12 @@ describe("buildThreadSummaryPanelOutputRows", () => {
       ],
       {
         cwd: "/repo/project",
+        pathStates: new Map(
+          ["reports/summary.pdf", "reports/final.pdf"].map((relative) => {
+            const path = `/repo/project/${relative}`;
+            return [path, { path, exists: true, isGitSourcePath: false }];
+          }),
+        ),
       },
     );
 
@@ -452,8 +456,8 @@ describe("buildThreadSummaryPanelOutputRows", () => {
             kind: "assistantMessage",
             semanticKind: "assistantMessage",
             markdownText: [
-              "Saved \u3010F:output/inside.pdf\u2020L1\u3011.",
-              "Also saved \u3010F:outside/outside.pdf\u2020L1\u3011.",
+              ':codex-file-citation{path="output/inside.pdf"}',
+              ':codex-file-citation{path="outside/outside.pdf"}',
             ].join("\n"),
           }),
           buildItem("generated-1", "imageGeneration", {
@@ -495,11 +499,11 @@ describe("buildThreadSummaryPanelOutputRows", () => {
 
     expect(rows.length).toBe(3);
     expect(rows.map(outputPath).join(",")).toBe(
-      "/repo/project/output/inside.pdf,/repo/project/output/chart.png,/repo/project/output/report.pdf",
+      "/repo/project/output/report.pdf,/repo/project/output/chart.png,/repo/project/output/inside.pdf",
     );
   });
 
-  test("uses a single completed edited HTML artifact as a local website output", () => {
+  test("classifies a confirmed edited HTML deliverable as a file", () => {
     const rows = buildThreadSummaryPanelOutputRows(
       [
         buildTurn([
@@ -517,11 +521,17 @@ describe("buildThreadSummaryPanelOutputRows", () => {
       ],
       {
         cwd: "/repo/project",
+        pathStates: new Map([
+          [
+            "/repo/project/dist/index.html",
+            { path: "/repo/project/dist/index.html", exists: true, isGitSourcePath: false },
+          ],
+        ]),
       },
     );
 
     expect(rows.length).toBe(1);
-    expect(rows[0]?.kind ?? "").toBe("website");
+    expect(rows[0]?.kind ?? "").toBe("file");
     expect(rows[0]?.label ?? "").toBe("index.html");
     const target = rows[0] ? resolveThreadSummaryPanelOutputOpenTarget(rows[0]) : null;
     expect(target?.type ?? "").toBe("file");

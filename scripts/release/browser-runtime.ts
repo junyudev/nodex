@@ -65,6 +65,24 @@ export function planBrowserRuntimePublication(
   return { kind: "resume-draft", missingAssetNames };
 }
 
+/**
+ * GitHub's release list is eventually consistent after create, upload, and publish. Re-read until
+ * the plan reflects the mutation just made; a bounded miss fails, and rerunning resumes.
+ */
+export async function awaitBrowserRuntimePublicationPlan(
+  readPlan: () => BrowserRuntimePublicationPlan,
+  settled: (plan: BrowserRuntimePublicationPlan) => boolean,
+  options: { readonly attempts?: number; readonly delayMs?: number } = {},
+): Promise<BrowserRuntimePublicationPlan> {
+  const attempts = options.attempts ?? 10;
+  let plan = readPlan();
+  for (let attempt = 1; attempt < attempts && !settled(plan); attempt += 1) {
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, options.delayMs ?? 3_000));
+    plan = readPlan();
+  }
+  return plan;
+}
+
 const readBrowserRuntimeRelease = (
   repo: string,
   tag: string,
@@ -164,16 +182,15 @@ export async function publishBrowserRuntime(options: BrowserRuntimePublishOption
     );
   }
 
-  let plan = planBrowserRuntimePublication(
-    readBrowserRuntimeRelease(options.repo, options.tag),
-    expected,
-  );
+  const readPlan = () =>
+    planBrowserRuntimePublication(readBrowserRuntimeRelease(options.repo, options.tag), expected);
+  let plan = readPlan();
   if (plan.kind === "create") {
     run(browserRuntimeReleaseArguments(options));
-    plan = planBrowserRuntimePublication(
-      readBrowserRuntimeRelease(options.repo, options.tag),
-      expected,
-    );
+    plan = await awaitBrowserRuntimePublicationPlan(readPlan, (next) => next.kind !== "create");
+    if (plan.kind === "create") {
+      throw new Error("The created Browser runtime draft is not visible yet; rerun to resume.");
+    }
   }
   if (plan.kind === "resume-draft") {
     const missingPaths = plan.missingAssetNames.map((name) => {
@@ -184,9 +201,9 @@ export async function publishBrowserRuntime(options: BrowserRuntimePublishOption
     if (missingPaths.length > 0) {
       run(["release", "upload", options.tag, ...missingPaths, "--repo", options.repo]);
     }
-    const completedDraft = planBrowserRuntimePublication(
-      readBrowserRuntimeRelease(options.repo, options.tag),
-      expected,
+    const completedDraft = await awaitBrowserRuntimePublicationPlan(
+      readPlan,
+      (next) => next.kind !== "resume-draft" || next.missingAssetNames.length === 0,
     );
     if (completedDraft.kind !== "resume-draft" || completedDraft.missingAssetNames.length > 0) {
       throw new Error("Browser runtime draft does not contain the exact locked assets.");
@@ -206,9 +223,9 @@ export async function publishBrowserRuntime(options: BrowserRuntimePublishOption
     ]);
   }
 
-  const completed = planBrowserRuntimePublication(
-    readBrowserRuntimeRelease(options.repo, options.tag),
-    expected,
+  const completed = await awaitBrowserRuntimePublicationPlan(
+    readPlan,
+    (next) => next.kind === "verify-published",
   );
   if (completed.kind !== "verify-published") {
     throw new Error("Browser runtime release was not published with its exact locked assets.");

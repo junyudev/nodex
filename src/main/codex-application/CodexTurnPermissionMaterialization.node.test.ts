@@ -92,6 +92,7 @@ const disabledFastMode: ConfigRequirementsReadResponse = {
     checkForUpdateOnStartup: null,
     allowLoginShell: null,
     feedback: null,
+    otel: null,
   },
 };
 

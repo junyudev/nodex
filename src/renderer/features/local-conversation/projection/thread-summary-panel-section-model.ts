@@ -31,7 +31,6 @@ export interface ThreadSummaryPanelSectionModelInput {
   hasEnvironment: boolean;
   hasPlan: boolean;
   outputCount: number;
-  suppressOutputs: boolean;
   sideChatCount: number;
   backgroundSubagentRows: readonly Pick<
     ThreadComposerShellBackgroundAgentRowModel,
@@ -113,7 +112,7 @@ export function buildThreadSummaryPanelSectionModel(
           autoCollapse: false,
         }
       : null,
-    input.outputCount > 0 && !input.suppressOutputs
+    input.outputCount > 0
       ? {
           kind: "outputs",
           sectionKey: "artifacts",

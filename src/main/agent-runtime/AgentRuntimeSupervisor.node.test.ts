@@ -97,36 +97,6 @@ it.effect("failed restore allows a fresh generation without reviving the old con
   }).pipe(Effect.scoped),
 );
 
-it.live("a stale snapshot cannot stop the replacement physical generation", () =>
-  Effect.gen(function* () {
-    const f = yield* fixture;
-    const supervisor = yield* make({
-      acquire: () => f.acquire,
-      activate: () => Effect.succeed(() => Effect.succeed({})),
-    });
-    const first = yield* supervisor.get();
-    yield* Deferred.succeed(
-      f.generations[0]!.terminated,
-      new AgentRuntimeProcessError({ reason: "closed", message: "fixture exit" }),
-    );
-    yield* Deferred.await(f.generations[0]!.released).pipe(Effect.timeout("5 seconds"));
-    const replacement = yield* supervisor.get();
-    let installed = false;
-    const result = yield* supervisor
-      .withStopped(
-        Effect.sync(() => {
-          installed = true;
-        }),
-        { expectedConnection: first, retireOnSuccess: true },
-      )
-      .pipe(Effect.exit);
-    assert.isTrue(Exit.isFailure(result));
-    assert.isFalse(installed);
-    assert.isFalse(yield* Deferred.isDone(f.generations[1]!.released));
-    assert.strictEqual(yield* supervisor.get(), replacement);
-  }).pipe(Effect.scoped),
-);
-
 it.effect(
   "bounds crash recovery per sliding window even when Agent actions keep asking for execution",
   () =>

@@ -8,6 +8,33 @@ import {
 } from "./git-worker-protocol";
 
 describe("Git worker protocol", () => {
+  it("validates path source-state requests and nullable visibility results", () => {
+    const request = (params: unknown) => ({
+      type: "worker-request",
+      workerId: "git",
+      request: { id: "states", method: "path-source-states", params, enqueuedAtMs: 1 },
+    });
+    expect(isGitWorkerMessageFromView(request({ cwd: "/repo", paths: ["/repo/report.pdf"] }))).toBe(
+      true,
+    );
+    for (const params of [
+      { paths: [] },
+      { cwd: "/repo", paths: [42] },
+      { cwd: "/repo", paths: ["x".repeat(4097)] },
+    ])
+      expect(isGitWorkerMessageFromView(request(params))).toBe(false);
+    const response = (isGitSourcePath: unknown) => ({
+      type: "worker-response",
+      workerId: "git",
+      id: "states",
+      method: "path-source-states",
+      result: { type: "ok", value: [{ path: "/repo/report.pdf", isGitSourcePath }] },
+    });
+    for (const state of [true, false, null])
+      expect(isGitWorkerMessageFromThread(response(state))).toBe(true);
+    for (const state of [undefined, "ignored", 0])
+      expect(isGitWorkerMessageFromThread(response(state))).toBe(false);
+  });
   it("requires a nullable origin URL in stable repository metadata", () => {
     const metadata = {
       cwd: "/repo",

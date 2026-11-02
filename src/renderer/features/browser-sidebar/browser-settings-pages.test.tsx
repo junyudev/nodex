@@ -1,7 +1,9 @@
 import { act, fireEvent, screen } from "@testing-library/react";
 import { describe, expect, test, vi } from "vite-plus/test";
 import { DEFAULT_BROWSER_USE_POLICY } from "../../../shared/browser-use-policy";
+import { DEFAULT_LINK_OPENING_SETTINGS } from "../../../shared/link-opening-settings";
 import { render, settleAsyncRender } from "../../test/dom";
+import { TestQueryProvider } from "../../test/query";
 import { BrowserSettingsPage } from "./browser-settings-pages";
 
 const invokeMock = vi.hoisted(() => vi.fn());
@@ -34,6 +36,7 @@ const capabilities = {
 function configureInvokeMock() {
   invokeMock.mockImplementation(async (channel: string) => {
     if (channel === "browser-profile-capabilities") return capabilities;
+    if (channel === "settings:link-opening:get") return DEFAULT_LINK_OPENING_SETTINGS;
     if (channel === "browser-use-policy-get") return DEFAULT_BROWSER_USE_POLICY;
     if (channel === "browser-use-policy-update-modes") return DEFAULT_BROWSER_USE_POLICY;
     if (channel === "browser-use-policy-update-origin-rule") return DEFAULT_BROWSER_USE_POLICY;
@@ -69,12 +72,14 @@ function renderBrowser({
 } = {}) {
   configureInvokeMock();
   return render(
-    <BrowserSettingsPage
-      browserAnchor={null}
-      browserDetail={browserDetail}
-      onOpenBrowserDetail={onOpenBrowserDetail}
-      open
-    />,
+    <TestQueryProvider>
+      <BrowserSettingsPage
+        browserAnchor={null}
+        browserDetail={browserDetail}
+        onOpenBrowserDetail={onOpenBrowserDetail}
+        open
+      />
+    </TestQueryProvider>,
   );
 }
 
@@ -85,6 +90,12 @@ describe("Browser settings information architecture", () => {
     await settleAsyncRender();
 
     expect(screen.getByRole("heading", { name: "General" })).toBeTruthy();
+    expect(
+      await screen.findByRole("button", {
+        name: "Web URL and link open destination: Default browser",
+      }),
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Local URL open destination: Nodex" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Autofill and passwords" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Permissions" })).toBeTruthy();
     expect(screen.getByText("Control existing browsers")).toBeTruthy();

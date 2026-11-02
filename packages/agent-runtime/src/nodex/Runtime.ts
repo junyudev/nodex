@@ -59,6 +59,7 @@ import * as Fiber from "effect/Fiber";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as ServerActivation from "../serverActivation.ts";
+import * as ImportedExecution from "./ImportedExecution.ts";
 import * as ProviderConfiguration from "./ProviderConfiguration.ts";
 import { NodePtyAdapterLive } from "./NodePtyAdapter.ts";
 import type { AgentRuntimeConfiguration } from "./Interface.ts";
@@ -245,6 +246,7 @@ export const acquireExecution = Effect.gen(function* () {
   const recovery = yield* Recovery.ProviderRuntimeRecoveryService;
   const orchestrator = yield* Orchestrator.OrchestratorV2;
   const sessions = yield* ProviderSessions.ProviderSessionManagerV2;
+  yield* ImportedExecution.consume((yield* ServerConfig.ServerConfig).baseDir);
   yield* settings.start;
   const projectionStore = yield* ProjectionStore.ProjectionStoreV2;
   const discardSideChats = Effect.suspend(() =>

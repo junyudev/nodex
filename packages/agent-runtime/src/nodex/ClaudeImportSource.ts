@@ -25,7 +25,7 @@ export const openClaudeImportSource = Effect.fn("ClaudeImportSource.open")(funct
   const sdk = yield* Effect.tryPromise({ try: loadClaudeAgentSdk, catch: failure });
   const records = yield* Effect.tryPromise({
     try: () =>
-      createClaudeSessionStores()(input.sourceHome, input.sourceNativeThreadId).load({
+      createClaudeSessionStores()(input.sourceHome).load({
         projectKey: "native-import",
         sessionId: input.sourceNativeThreadId,
       }),

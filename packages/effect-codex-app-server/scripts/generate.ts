@@ -353,6 +353,7 @@ function resolveResponseTypeName(
   generatedSchemaNames: ReadonlySet<string>,
 ): string {
   const overrides: Record<string, string> = {
+    "accountSession/list": "AccountSessionsResponse",
     "account/gatewayOAuth/read": "GatewayOAuthReadResponse",
     "account/gatewayOAuth/login": "GatewayOAuthLoginResponse",
     "account/gatewayOAuth/cancel": "GatewayOAuthCancelResponse",

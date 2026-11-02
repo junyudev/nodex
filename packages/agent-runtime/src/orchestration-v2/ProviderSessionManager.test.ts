@@ -2982,7 +2982,6 @@ it.effect("ProviderSessionManagerV2 defers idle release while background work is
         runtimePolicy,
       });
 
-      assert.isFalse(yield* manager.isSnapshotIdle);
       assert.deepEqual(
         yield* manager.busyThreads,
         new Map([[modelSelection.instanceId, new Set([threadId])]]),
@@ -2995,7 +2994,6 @@ it.effect("ProviderSessionManagerV2 defers idle release while background work is
       assert.equal((yield* Ref.get(state)).closeCount, 0);
 
       yield* Ref.set(pendingWork, false);
-      assert.isTrue(yield* manager.isSnapshotIdle);
       assert.equal((yield* manager.busyThreads).size, 0);
       yield* TestClock.adjust("1 second");
       yield* Effect.yieldNow;
@@ -3013,32 +3011,6 @@ it.effect("ProviderSessionManagerV2 defers idle release while background work is
       ),
     );
   }),
-);
-
-it.effect(
-  "ProviderSessionManagerV2 refuses snapshot admission when a native runtime cannot prove idle",
-  () =>
-    Effect.gen(function* () {
-      const state = yield* Ref.make(emptyState);
-      yield* Effect.gen(function* () {
-        const eventSink = yield* EventSink.EventSinkV2;
-        const idAllocator = yield* IdAllocator.IdAllocatorV2;
-        const manager = yield* ProviderSessionManager.ProviderSessionManagerV2;
-        const now = yield* DateTime.now;
-        const threadId = ThreadId.make("thread:snapshot-unknown-native");
-        const providerSessionId = yield* idAllocator.allocate.providerSession({
-          providerInstanceId: modelSelection.instanceId,
-          threadId,
-        });
-        yield* eventSink.write({
-          events: [yield* makeThreadCreatedEvent({ idAllocator, threadId, now })],
-        });
-        yield* manager.open({ threadId, providerSessionId, modelSelection, runtimePolicy });
-        assert.isFalse(yield* manager.isSnapshotIdle);
-        assert.isTrue(Option.isSome(yield* manager.get(providerSessionId)));
-        assert.equal((yield* Ref.get(state)).closeCount, 0);
-      }).pipe(Effect.provide(layerTest({ state, idleTimeoutMs: 1000 })));
-    }),
 );
 
 it.effect("ProviderSessionManagerV2 releases pinned idle sessions once the pin cap expires", () =>

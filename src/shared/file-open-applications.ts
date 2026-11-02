@@ -2,6 +2,8 @@ export interface FileOpenApplication {
   name: string;
   appPath: string;
   iconDataUrl: string | null;
+  /** Actual OS association, independently of a promoted viewer. */
+  isSystemDefault: boolean;
 }
 
 export interface FileOpenApplicationsInput {
@@ -9,7 +11,7 @@ export interface FileOpenApplicationsInput {
 }
 
 export interface FileOpenApplicationsResult {
-  /** The app a file opens in by default: its type's well-known viewer when installed, else the system default. */
+  /** Primary native destination: its type's well-known viewer when installed, else the OS association. */
   defaultApplication: FileOpenApplication | null;
   /** Other apps that can open the file, in system order. */
   applications: FileOpenApplication[];

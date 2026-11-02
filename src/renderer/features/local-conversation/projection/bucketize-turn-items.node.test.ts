@@ -7,6 +7,7 @@ import type {
 import type { ThreadTranscriptBlockModel, ThreadWorkedForBlockModel } from "../thread-stage-types";
 import { bucketizeTurnItems } from "./bucketize-turn-items";
 import { buildTurnViewModel } from "./build-turn-view-model";
+import type { ThreadSummaryPanelOutputRow } from "./thread-summary-panel-output-model";
 
 function buildItem(overrides: Partial<ThreadTranscriptBlockModel>): ThreadTranscriptBlockModel {
   return {
@@ -45,6 +46,14 @@ function buildWorkedForItem(
     ...overrides,
   };
 }
+
+const reportOutput: ThreadSummaryPanelOutputRow = {
+  id: "file:/workspace/notes.local/report/index.html",
+  kind: "file",
+  path: "/workspace/notes.local/report/index.html",
+  label: "index.html",
+  title: "/workspace/notes.local/report/index.html",
+};
 
 function multiAgentRawItem(
   id: string,
@@ -201,6 +210,33 @@ describe("bucketizeTurnItems", () => {
         ? (assistantBlock.assistantAfterBlocks?.map((block) => block.type).join(",") ?? "")
         : "",
     ).toBe("turnDiff");
+  });
+
+  test("places a turn's outputs with its reply, above the turn diff and the reply's actions", () => {
+    const buckets = bucketizeTurnItems({
+      items: [
+        buildItem({ id: "user", type: "userMessage" }),
+        buildItem({ id: "assistant", type: "assistantMessage" }),
+        buildItem({ id: "diff", type: "turnDiff" }),
+      ],
+    });
+
+    const turn = buildTurnViewModel({
+      turnId: "turn_1",
+      turn: null,
+      buckets,
+      isLatestTurn: true,
+      isStreamingTurn: false,
+      isBlocked: false,
+      endResources: [reportOutput],
+    });
+
+    expect(turn.blocks.map((block) => block.type).join(",")).toBe("userMessage,assistantMessage");
+    const assistant = turn.blocks.find((block) => block.type === "assistantMessage");
+    const after = assistant?.type === "assistantMessage" ? assistant.assistantAfterBlocks : [];
+    expect(after?.map((block) => block.type).join(",")).toBe("turnOutputs,turnDiff");
+    const outputs = after?.[0];
+    expect(outputs?.type === "turnOutputs" ? outputs.resources : []).toEqual([reportOutput]);
   });
 
   test("lifts streaming turn diffs into above-composer blocks and keeps live activity separate", () => {
@@ -954,6 +990,20 @@ describe("bucketizeTurnItems", () => {
     const deferredActions = turn.trailingBlocks[0];
     expect(deferredActions?.type === "assistantActions" && deferredActions.actions.copyText).toBe(
       "Done",
+    );
+
+    // Outputs still sit above the reply's actions when those actions stand alone.
+    const withOutputs = buildTurnViewModel({
+      turnId: "turn_1",
+      turn: null,
+      buckets,
+      isLatestTurn: false,
+      isStreamingTurn: false,
+      isBlocked: false,
+      endResources: [reportOutput],
+    });
+    expect(withOutputs.trailingBlocks.map((block) => block.type).join(",")).toBe(
+      "turnOutputs,assistantActions",
     );
   });
 

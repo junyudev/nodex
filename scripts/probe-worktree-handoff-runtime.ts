@@ -14,6 +14,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
+import { stringify as stringifyToml } from "smol-toml";
 import type { ServerNotification } from "@nodex/codex-app-server-protocol";
 import type {
   ThreadReadResponse,
@@ -293,19 +294,27 @@ async function probeWorktreeHandoffRuntimePromise(
   let secondClient: CodexProbeSessionLease | null = null;
   let thirdClient: CodexProbeSessionLease | null = null;
   const responsesServer = await startBlockingResponsesServer();
+  const providerConfig = {
+    name: "Nodex handoff probe",
+    base_url: `${responsesServer.baseUrl}/v1`,
+    env_key: "NODEX_HANDOFF_PROBE_API_KEY",
+    wire_api: "responses",
+    request_max_retries: 0,
+    stream_max_retries: 0,
+  };
   const probeConfig = {
-    "model_providers.nodex-handoff-probe": {
-      name: "Nodex handoff probe",
-      base_url: `${responsesServer.baseUrl}/v1`,
-      env_key: "NODEX_HANDOFF_PROBE_API_KEY",
-      wire_api: "responses",
-      request_max_retries: 0,
-      stream_max_retries: 0,
-    },
     harness: "native",
     "features.plugins": false,
   } as const;
   try {
+    writeFileSync(
+      path.join(stateHome, "config.toml"),
+      stringifyToml({
+        model_provider: "nodex-handoff-probe",
+        model_providers: { "nodex-handoff-probe": providerConfig },
+      }),
+      { mode: 0o600 },
+    );
     firstClient = await createClient(
       callbacks,
       input.binaryPath,

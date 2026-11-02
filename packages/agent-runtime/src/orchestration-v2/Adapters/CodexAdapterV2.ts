@@ -18,7 +18,6 @@ import {
 import type { ManagedServerProvider } from "@t3tools/provider-core/server/snapshot";
 import type { CodexEffectiveRuntime } from "../../provider/CodexManagedRuntime.ts";
 import * as ExecutionHost from "@t3tools/provider-core/server/ExecutionHost";
-import { authenticateCodexClient } from "../../provider/CodexHostAuthentication.ts";
 import {
   buildCodexInitializeParams,
   codexAppServerEnvironment,
@@ -2116,59 +2115,9 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                 }),
               );
             yield* client.notify("initialized", undefined);
-            if (adapterOptions.settings.hostAuthentication) {
-              if (!executionHost.readProviderAuth)
-                return yield* new ExecutionHost.ExecutionHostError({
-                  operation: "provider.auth",
-                  message: "Configured Codex authentication is unavailable.",
-                });
-              yield* authenticateCodexClient(
-                client,
-                executionHost.readProviderAuth({
-                  providerInstanceId: adapterOptions.instanceId,
-                  refresh: false,
-                  previousAccountId: null,
-                }),
-              );
-            }
             yield* Ref.set(initialized, true);
           }),
         );
-        if (adapterOptions.settings.hostAuthentication) {
-          yield* client.handleServerRequest("account/chatgptAuthTokens/refresh", (params) =>
-            Effect.gen(function* () {
-              if (!executionHost.readProviderAuth)
-                return yield* new ExecutionHost.ExecutionHostError({
-                  operation: "provider.auth",
-                  message: "Configured Codex authentication is unavailable.",
-                });
-              const auth = yield* executionHost.readProviderAuth({
-                providerInstanceId: adapterOptions.instanceId,
-                refresh: true,
-                previousAccountId: params.previousAccountId ?? null,
-              });
-              if (auth.kind !== "chatgpt")
-                return yield* new ExecutionHost.ExecutionHostError({
-                  operation: "provider.auth",
-                  message: "Configured Codex account changed.",
-                });
-              return {
-                accessToken: auth.accessToken,
-                chatgptAccountId: auth.accountId,
-                chatgptPlanType: auth.planType,
-              };
-            }).pipe(
-              Effect.mapError(
-                () =>
-                  new CodexErrors.CodexAppServerRequestError({
-                    code: -32001,
-                    method: "account/chatgptAuthTokens/refresh",
-                    errorMessage: "Configured Codex authentication is unavailable.",
-                  }),
-              ),
-            ),
-          );
-        }
         const now = yield* DateTime.now;
         const session = providerSession({
           providerSessionId: input.providerSessionId,

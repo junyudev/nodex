@@ -294,11 +294,11 @@ mod tests {
     }
 
     #[test]
-    fn profile_clone_schema_validates_both_store_and_conversation_receipts() {
+    fn profile_clone_schema_validates_store_provenance_and_optional_execution() {
         let schema = result(&["profile", "clone"]);
         let validator = jsonschema::validator_for(&schema).expect("Profile clone schema");
         let receipt = json!({
-            "version": 5,
+            "version": 6,
             "sourceProfileFingerprint": "source",
             "backupIntegrityEvidenceVersion": 1,
             "missingManagedAssetCount": 0,
@@ -310,33 +310,28 @@ mod tests {
             "storeEpoch": "clone-epoch",
             "profileId": "profile",
             "libraryId": "library",
-            "conversations": {
-                "version": 1,
-                "captureStartedAt": "2026-09-22T01:00:00Z",
-                "captureCompletedAt": "2026-09-22T01:00:01Z",
-                "requiredThreadCount": 1,
-                "capturedThreadCount": 1,
-                "externalThreadCount": 0,
-                "missingThreadIds": [],
-                "rolloutCount": 1,
-                "nativeStateSchema": "state_5",
-                "contentSha256": "digest"
+            "execution": {
+                "capturedAt": "2026-09-22T01:00:00Z",
+                "databaseBytes": 4096,
+                "attachmentFiles": 1,
+                "attachmentBytes": 100
             }
         });
         let typed: nodex_profile::ProfileCloneReceipt =
             serde_json::from_value(receipt.clone()).expect("typed Profile receipt");
         let serialized = serde_json::to_value(typed).unwrap();
         assert!(validator.is_valid(&serialized));
-        for property in ["profileId", "conversations"] {
-            let mut incomplete = serialized.clone();
-            incomplete.as_object_mut().unwrap().remove(property);
-            assert!(
-                !validator.is_valid(&incomplete),
-                "Profile clone schema must require {property}"
-            );
-        }
+        let mut incomplete = serialized.clone();
+        incomplete.as_object_mut().unwrap().remove("profileId");
+        assert!(
+            !validator.is_valid(&incomplete),
+            "Store provenance is required"
+        );
+        let mut without_execution = serialized.clone();
+        without_execution["execution"] = Value::Null;
+        assert!(validator.is_valid(&without_execution));
         let mut invalid = serialized;
-        invalid["conversations"]["capturedThreadCount"] = json!("one");
+        invalid["execution"]["databaseBytes"] = json!("one");
         assert!(!validator.is_valid(&invalid));
     }
 

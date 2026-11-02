@@ -32,6 +32,7 @@ import {
   queryClaudeAppliedSettings,
   type ClaudeAppliedSettings,
 } from "../../provider/ClaudeAppliedSettings.ts";
+import * as ClaudeSessionHistory from "../../provider/ClaudeSessionHistory.ts";
 import { createClaudeSessionStores } from "../../provider/ClaudeSessionStore.ts";
 import { SIDE_CHAT_BOUNDARY_TEXT } from "../../nodex/SideChat.ts";
 import type {
@@ -387,7 +388,6 @@ export type ClaudeAgentSdkQueryOptions = Omit<
   ClaudeQueryOptions,
   "maxTurns" | "model" | "permissionMode" | "resume" | "sessionId" | "tools"
 > & {
-  readonly restoredHistoryPath?: string;
   readonly model: string;
   readonly tools: NonNullable<ClaudeQueryOptions["tools"]>;
   readonly permissionMode: NonNullable<ClaudeQueryOptions["permissionMode"]>;
@@ -460,6 +460,15 @@ export class ClaudeAgentSdkQueryRunnerError extends Schema.TaggedError<ClaudeAge
   }
 }
 
+export class ClaudeNativeSessionUnavailableError extends Schema.TaggedError<ClaudeNativeSessionUnavailableError>()(
+  "ClaudeNativeSessionUnavailableError",
+  { sessionId: Schema.String },
+) {
+  override get message(): string {
+    return `Claude session ${this.sessionId} has no conversation to resume.`;
+  }
+}
+
 export class ClaudeBackgroundWorkBlocksQueryReplacementError extends Schema.TaggedError<ClaudeBackgroundWorkBlocksQueryReplacementError>()(
   "ClaudeBackgroundWorkBlocksQueryReplacementError",
   {},
@@ -471,6 +480,9 @@ export class ClaudeBackgroundWorkBlocksQueryReplacementError extends Schema.Tagg
 
 export interface ClaudeAgentSdkQueryRunnerShape {
   readonly allocateSessionId: Effect.Effect<string, ClaudeAgentSdkQueryRunnerError>;
+  readonly sessionHistoryAvailable?: (
+    input: ClaudeSessionHistory.ClaudeSessionHistoryInput,
+  ) => Effect.Effect<boolean, ClaudeAgentSdkQueryRunnerError>;
   readonly open: (
     input: ClaudeAgentSdkQueryOpenInput,
   ) => Effect.Effect<ClaudeAgentSdkQuerySession, ClaudeAgentSdkQueryRunnerError>;
@@ -494,7 +506,6 @@ export class ClaudeAgentSdkQueryRunner extends Context.Service<
 
 export interface ClaudeAgentSdkSessionForkInput {
   readonly configDirectory?: string;
-  readonly restoredHistoryPath?: string;
   readonly sessionId: string;
   readonly options: ForkSessionOptions;
   readonly threadId: ThreadId;
@@ -510,7 +521,6 @@ export interface ClaudeAgentSdkSessionDeleteInput extends Omit<
 
 export interface ClaudeAgentSdkSubagentLookupInput {
   readonly configDirectory?: string;
-  readonly restoredHistoryPath?: string;
   readonly sessionId: string;
   readonly agentId: string;
   readonly dir: string | null;
@@ -742,17 +752,20 @@ export const layerQueryRunner: Layer.Layer<
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
     const standaloneHistoryPath = Effect.fnUntraced(function* (
-      input: { readonly restoredHistoryPath?: string; readonly configDirectory?: string },
+      input: { readonly configDirectory?: string },
       cwd: string | null,
     ) {
-      if (input.restoredHistoryPath !== undefined) return input.restoredHistoryPath;
       if (input.configDirectory === undefined) return undefined;
-      // A configured account home may be a symlink. Restored Profile history
-      // keeps its stricter managed-path validation instead of following aliases.
       return yield* fileSystem.realPath(path.resolve(cwd ?? ".", input.configDirectory));
     });
 
     return ClaudeAgentSdkQueryRunner.of({
+      sessionHistoryAvailable: (input) =>
+        ClaudeSessionHistory.available(input).pipe(
+          Effect.provideService(FileSystem.FileSystem, fileSystem),
+          Effect.provideService(Path.Path, path),
+          Effect.mapError((cause) => queryRunnerError(cause, "sessionHistoryAvailable")),
+        ),
       allocateSessionId: crypto
         .randomUUIDv4()
         .pipe(Effect.mapError((cause) => queryRunnerError(cause, "allocateSessionId"))),
@@ -788,19 +801,7 @@ export const layerQueryRunner: Layer.Layer<
         // which every local user can read. They go over the CLI's stdin control
         // channel instead, so header credentials stay out of its argv and out
         // of the environment every command the agent runs inherits.
-        const { mcpServers, restoredHistoryPath, ...nativeOptions } = input.options;
-        const sessionStore =
-          restoredHistoryPath === undefined
-            ? undefined
-            : sessionStores(restoredHistoryPath, input.options.resume);
-        const queryOptions =
-          sessionStore === undefined
-            ? nativeOptions
-            : {
-                ...nativeOptions,
-                sessionStore,
-                sessionStoreFlush: "eager" as const,
-              };
+        const { mcpServers, ...queryOptions } = input.options;
         // The SDK spawns a native binary as `path ...executableArgs ...sdkArgs`,
         // which lets the agent scope wrapper go in front of the CLI while the
         // SDK keeps its own stderr capture and exit reporting. The SDK runs a
@@ -1128,7 +1129,7 @@ export const layerQueryRunner: Layer.Layer<
               ...(historyPath === undefined
                 ? {}
                 : {
-                    sessionStore: sessionStores(historyPath, input.sessionId),
+                    sessionStore: sessionStores(historyPath),
                   }),
             }),
           catch: (cause) => queryRunnerError(cause, "forkSession"),
@@ -1156,22 +1157,14 @@ export const layerQueryRunner: Layer.Layer<
           ),
           Effect.mapError((cause) => queryRunnerError(cause, "deleteSession")),
         );
-        // Restored history is mirrored: the CLI also persists its local copy.
-        const historyPaths = new Set(
-          [nativeHistoryPath, input.restoredHistoryPath].filter(
-            (value): value is string => value !== undefined,
-          ),
-        );
-        for (const historyPath of historyPaths) {
-          yield* Effect.tryPromise({
-            try: async () =>
-              (await loadClaudeAgentSdk()).deleteSession(input.sessionId, {
-                ...input.options,
-                sessionStore: sessionStores(historyPath),
-              }),
-            catch: (cause) => queryRunnerError(cause, "deleteSession"),
-          });
-        }
+        yield* Effect.tryPromise({
+          try: async () =>
+            (await loadClaudeAgentSdk()).deleteSession(input.sessionId, {
+              ...input.options,
+              sessionStore: sessionStores(nativeHistoryPath),
+            }),
+          catch: (cause) => queryRunnerError(cause, "deleteSession"),
+        });
       }),
       subagentLaunchToolUseId: Effect.fn("ClaudeAgentSdkQueryRunner.subagentLaunchToolUseId")(
         function* (input: ClaudeAgentSdkSubagentLookupInput) {
@@ -1289,9 +1282,6 @@ export function makeClaudeQueryOptions(input: {
           autoCompactWindow: Number(input.settings.autoCompactWindow),
         } as ClaudeSdkSettings);
   const options: ClaudeAgentSdkQueryOptions = {
-    ...(input.settings?.restoredHistoryPath === undefined
-      ? {}
-      : { restoredHistoryPath: input.settings.restoredHistoryPath }),
     model: compiledSelection.apiModelId,
     tools: claudeAgentSdkQueryToolsForSdk(selectedTools),
     permissionMode: input.permissionMode ?? "acceptEdits",
@@ -3887,9 +3877,6 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           ...(adapterOptions.environment.CLAUDE_CONFIG_DIR === undefined
             ? {}
             : { configDirectory: adapterOptions.environment.CLAUDE_CONFIG_DIR }),
-          ...(adapterOptions.settings.restoredHistoryPath === undefined
-            ? {}
-            : { restoredHistoryPath: adapterOptions.settings.restoredHistoryPath }),
           sessionId: nativeThreadId,
           options: {
             ...(discardInput.runtimePolicy.cwd === null
@@ -4985,9 +4972,6 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               ...(adapterOptions.environment.CLAUDE_CONFIG_DIR === undefined
                 ? {}
                 : { configDirectory: adapterOptions.environment.CLAUDE_CONFIG_DIR }),
-              ...(adapterOptions.settings.restoredHistoryPath === undefined
-                ? {}
-                : { restoredHistoryPath: adapterOptions.settings.restoredHistoryPath }),
               sessionId: resume.nativeThreadId,
               agentId: resume.taskId,
               dir: resume.context.input.runtimePolicy.cwd,
@@ -10071,6 +10055,27 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           ),
           resumeThread: Effect.fn("ClaudeAdapterV2.resumeThread")(
             function* (threadInput: { readonly providerThread: OrchestrationV2ProviderThread }) {
+              const nativeId = threadInput.providerThread.nativeThreadRef?.nativeId;
+              const live = yield* Ref.get(queryContext);
+              const liveOwnsHistory =
+                live !== null && !live.stopping && live.nativeThreadId === nativeId;
+              if (nativeId && !liveOwnsHistory && queryRunner.sessionHistoryAvailable) {
+                const available = yield* queryRunner
+                  .sessionHistoryAvailable({
+                    sessionId: nativeId,
+                    cwd: session.cwd,
+                    configDirectory: homePath,
+                  })
+                  .pipe(Effect.orElseSucceed(() => true));
+                if (!available)
+                  return yield* new ProviderAdapter.ProviderAdapterResumeThreadError({
+                    driver: CLAUDE_PROVIDER,
+                    providerSessionId: input.providerSessionId,
+                    providerThreadId: threadInput.providerThread.id,
+                    retryable: false,
+                    cause: new ClaudeNativeSessionUnavailableError({ sessionId: nativeId }),
+                  });
+              }
               const updatedAt = yield* DateTime.now;
               return {
                 ...threadInput.providerThread,
@@ -10081,14 +10086,15 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             },
             (effect, threadInput) =>
               effect.pipe(
-                Effect.mapError(
-                  (cause) =>
-                    new ProviderAdapter.ProviderAdapterResumeThreadError({
-                      driver: CLAUDE_PROVIDER,
-                      providerSessionId: input.providerSessionId,
-                      providerThreadId: threadInput.providerThread.id,
-                      cause,
-                    }),
+                Effect.mapError((cause) =>
+                  Schema.is(ProviderAdapter.ProviderAdapterResumeThreadError)(cause)
+                    ? cause
+                    : new ProviderAdapter.ProviderAdapterResumeThreadError({
+                        driver: CLAUDE_PROVIDER,
+                        providerSessionId: input.providerSessionId,
+                        providerThreadId: threadInput.providerThread.id,
+                        cause,
+                      }),
                 ),
               ),
           ),
@@ -10294,9 +10300,6 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                 ...(adapterOptions.environment.CLAUDE_CONFIG_DIR === undefined
                   ? {}
                   : { configDirectory: adapterOptions.environment.CLAUDE_CONFIG_DIR }),
-                ...(adapterOptions.settings.restoredHistoryPath === undefined
-                  ? {}
-                  : { restoredHistoryPath: adapterOptions.settings.restoredHistoryPath }),
                 sessionId: sourceNativeThreadId,
                 options: forkOptions,
                 threadId: forkInput.targetThreadId,

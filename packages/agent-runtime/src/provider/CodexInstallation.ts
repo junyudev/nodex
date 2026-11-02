@@ -44,6 +44,7 @@ const PackageManifest = Schema.Struct({
   version: Version,
   target: Schema.String,
   entrypoint: Schema.String,
+  execServer: Schema.String,
 });
 const decodeVersion = Schema.decodeUnknownEffect(Version);
 const encodeRecord = Schema.encodeEffect(Schema.fromJsonString(InstalledRelease));
@@ -151,6 +152,7 @@ export const makeCodexInstallation = Effect.fn("makeCodexInstallation")(function
   const managedDirectory = path.join(options.baseDir, "tools", "codex");
   const activePath = path.join(managedDirectory, "active.json");
   const executableName = platform === "win32" ? "codex.exe" : "codex";
+  const execServerPath = `bin/codex-exec-server${platform === "win32" ? ".exe" : ""}`;
   const gate = yield* Semaphore.make(1);
   let leases = 0;
   let running: { readonly operationId: string; readonly fiber: Fiber.Fiber<void> } | undefined;
@@ -189,7 +191,8 @@ export const makeCodexInstallation = Effect.fn("makeCodexInstallation")(function
     if (
       manifest.version !== version ||
       manifest.target !== target ||
-      manifest.entrypoint !== `bin/${executableName}`
+      manifest.entrypoint !== `bin/${executableName}` ||
+      manifest.execServer !== execServerPath
     )
       return yield* installationError(
         "verify",
@@ -198,6 +201,7 @@ export const makeCodexInstallation = Effect.fn("makeCodexInstallation")(function
     for (const name of [
       `bin/${executableName}`,
       `bin/codex-code-mode-host${platform === "win32" ? ".exe" : ""}`,
+      execServerPath,
       `codex-path/rg${platform === "win32" ? ".exe" : ""}`,
     ]) {
       const info = yield* fs.stat(path.join(directory, name));
@@ -236,14 +240,21 @@ export const makeCodexInstallation = Effect.fn("makeCodexInstallation")(function
   });
   const compatibility = Effect.fn("CodexInstallation.compatibility")(function* (version: string) {
     const manifest = yield* manifestService.current;
-    return (
+    const advisory =
       resolveProviderCompatibility(manifest.compatibility, DRIVER, version) ??
       resolveProviderCompatibility(
         ModelManifest.BUNDLED_MODEL_MANIFEST.compatibility,
         DRIVER,
         version,
-      )
-    );
+      );
+    if (advisory || version !== releaseLock.appServerRuntimeVersion) return advisory;
+    // The release lock admits the conformance-tested runtime independently of optional catalog policy.
+    return {
+      status: "supported" as const,
+      message: null,
+      recommendedVersion: releaseLock.appServerRuntimeVersion,
+      recommendedRange: null,
+    };
   });
   const resolveManaged = Effect.fn("CodexInstallation.resolveManaged")(
     function* () {

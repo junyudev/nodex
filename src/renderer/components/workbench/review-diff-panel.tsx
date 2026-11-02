@@ -135,14 +135,13 @@ import {
   openFileReferenceTarget,
   readFileReferenceOpenTargets,
 } from "@/lib/file-reference-open-targets";
-import { openExternalUrl } from "@/lib/file-system-operations";
+import { openLink } from "@/lib/link-opening";
+import { useLinkOpening } from "@/lib/web-link-navigation";
 import { readWorkspaceFileGitHubUrl } from "@/lib/workspace-file-operations";
-import { useFileLinkOpener } from "@/lib/use-file-link-opener";
 import {
   buildReviewFileContextMenu,
   readReviewContextMenuLine,
   reviewFileOpenTargetActionId,
-  reviewFileTargetPreferredOpener,
 } from "@/features/review/model/review-file-context-menu";
 import type {
   CodexTurnDiffPatchBatch,
@@ -1712,7 +1711,7 @@ const ReviewFileRow = memo(function ReviewFileRow({
   recordReviewRuntimeEvent({ type: "row-render", path: entry.displayPath });
   const { useTheme, FileDiff } = deps;
   const fileReferenceRouter = useFileReferenceRouter();
-  const { setOpener } = useFileLinkOpener();
+  const links = useLinkOpening();
   const { resolved } = useTheme();
   const rowRef = useRef<HTMLElement | null>(null);
   const menuScopeRef = useRef<{ sourceKey: string; request: number } | null>(null);
@@ -2000,7 +1999,12 @@ const ReviewFileRow = memo(function ReviewFileRow({
             return;
           }
           if (selectedId === "open-in-github") {
-            if (githubUrl) await openExternalUrl(githubUrl);
+            if (githubUrl)
+              await (links?.openLink ?? openLink)({
+                url: githubUrl,
+                hostId: fileReferenceRouter.hostId,
+                initiator: "review_github_link",
+              });
             return;
           }
           if (selectedId === "open-in-new-tab") {
@@ -2033,9 +2037,6 @@ const ReviewFileRow = memo(function ReviewFileRow({
                   (candidate) => reviewFileOpenTargetActionId(candidate) === selectedId,
                 );
           if (!target || !file) return;
-          const preferredOpener =
-            selectedId === "open-primary" ? null : reviewFileTargetPreferredOpener(target);
-          if (preferredOpener) setOpener(preferredOpener);
           await openFileReferenceTarget(target, file);
         })
         .catch(() => {});
@@ -2051,7 +2052,7 @@ const ReviewFileRow = memo(function ReviewFileRow({
       entry.patchText,
       existingAnnotationKeys,
       fileReferenceRouter,
-      setOpener,
+      links,
       onToggleWrap,
       workspaceRoot,
     ],

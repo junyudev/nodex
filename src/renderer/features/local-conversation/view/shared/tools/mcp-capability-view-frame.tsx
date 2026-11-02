@@ -1,3 +1,4 @@
+import { useLinkOpening } from "@/lib/web-link-navigation";
 import { useCallback, useEffect, useLayoutEffect, useState, useSyncExternalStore } from "react";
 import { Maximize2, Minimize2 } from "@/components/shared/icons/generic-icons";
 import { NodexTooltip } from "../../../../../components/ui/tooltip";
@@ -39,6 +40,7 @@ export function McpCapabilityViewFrame({
   const runtimeManager = useMcpAppRuntimeManager();
   const sendFollowUpMessage = useMcpAppFollowUpHandler();
   const source = useConversationMarkdownSource();
+  const links = useLinkOpening();
   const readContextRecipient = useComposerAppModelContextRecipient(source);
   const isSidePanel = mode === "side-panel";
 
@@ -75,6 +77,8 @@ export function McpCapabilityViewFrame({
       resource,
       ...(sendFollowUpMessage ? { sendFollowUpMessage } : {}),
       modelContext,
+      openLink: links?.openLink,
+      hostId: source?.hostId,
     });
     return () => {
       current = false;
@@ -87,6 +91,7 @@ export function McpCapabilityViewFrame({
     sendFollowUpMessage,
     source,
     readContextRecipient,
+    links?.openLink,
   ]);
 
   const subscribeRuntime = useCallback(

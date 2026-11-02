@@ -199,10 +199,20 @@ export function parseCodexNotificationEntries(
   return entries;
 }
 
+function isObjectAlternative(value: SchemaJson): boolean {
+  if (!isSchemaObject(value)) return false;
+  if (value.type === "object") return true;
+  if (value.type !== undefined) return false;
+  return ["oneOf", "anyOf"].some((key) => {
+    const branches = value[key];
+    return Array.isArray(branches) && branches.length > 0 && branches.every(isObjectAlternative);
+  });
+}
+
 /**
  * Effect's JSON Schema importer cannot represent an object intersected with a
- * oneOf or anyOf. Distributing the shared object fields over each branch
- * preserves the JSON Schema contract while keeping the discriminator useful.
+ * oneOf or anyOf. Distribute shared fields through nested object alternatives
+ * while preserving each union's inclusive or exclusive choice semantics.
  */
 export function distributeObjectUnions(value: SchemaJson): SchemaJson {
   if (Array.isArray(value)) {
@@ -221,10 +231,7 @@ export function distributeObjectUnions(value: SchemaJson): SchemaJson {
 
   for (const union of ["oneOf", "anyOf"] as const) {
     const branches = normalized[union];
-    if (
-      !Array.isArray(branches) ||
-      !branches.every((branch) => isSchemaObject(branch) && branch.type === "object")
-    ) {
+    if (!Array.isArray(branches) || !branches.every(isObjectAlternative)) {
       continue;
     }
 
@@ -239,12 +246,12 @@ export function distributeObjectUnions(value: SchemaJson): SchemaJson {
         if (!isSchemaObject(branch)) return branch;
         const branchProperties = isSchemaObject(branch.properties) ? branch.properties : {};
         const branchRequired = Array.isArray(branch.required) ? branch.required : [];
-        return {
+        return distributeObjectUnions({
           ...sharedSchema,
           ...branch,
           properties: { ...sharedProperties, ...branchProperties },
           required: [...new Set([...sharedRequired, ...branchRequired])],
-        };
+        });
       }),
     };
   }

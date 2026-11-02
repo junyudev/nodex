@@ -280,10 +280,7 @@ export const validateProviderMutation = (
   return Effect.void;
 };
 
-export const make = Effect.fn("AcpManagement.make")(function* (
-  withWriter: <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E | Error, R>,
-  runtimeGeneration: string,
-) {
+export const make = Effect.fn("AcpManagement.make")(function* (runtimeGeneration: string) {
   const catalog = yield* AcpRegistryCatalog;
   const registry = yield* ProviderInstanceRegistry;
   const sessions = yield* ProviderSessionManagerV2;
@@ -608,10 +605,8 @@ export const make = Effect.fn("AcpManagement.make")(function* (
             error: null,
           },
           `install:${request.input.agentId}:${request.input.distribution ?? "auto"}:${request.input.expectedInstallationId ?? "unreviewed"}`,
-          withWriter(
-            catalog.prepare(request.input, (progress) =>
-              operations.progress(request.input.operationId, progress),
-            ),
+          catalog.prepare(request.input, (progress) =>
+            operations.progress(request.input.operationId, progress),
           ),
         );
       case "acp.operation.read":
@@ -656,9 +651,7 @@ export const make = Effect.fn("AcpManagement.make")(function* (
             error: null,
           },
           `connect:${request.input.instanceId}:${request.input.cwd}:${createHash("sha256").update(JSON.stringify(config.entry)).digest("hex")}`,
-          withWriter(
-            withCurrent(selected, selected.acpSessionManagement.connect(request.input.cwd)),
-          ),
+          withCurrent(selected, selected.acpSessionManagement.connect(request.input.cwd)),
         );
       }
       case "acp.auth.read":

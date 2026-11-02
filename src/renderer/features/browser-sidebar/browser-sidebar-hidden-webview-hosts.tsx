@@ -13,7 +13,7 @@ import {
   matchesBrowserSidebarTabIdentity,
   requireWorkbenchBrowserTabProjectionId,
 } from "../../../shared/browser-sidebar";
-import { isBlankBrowserUrl, normalizeBrowserNavigationUrl } from "../../../shared/browser-url";
+import { isBlankBrowserUrl } from "../../../shared/browser-url";
 import type { WorkbenchTabProjection } from "@/lib/types";
 import { notifyBrowserWebviewDestroyed } from "./browser-sidebar-commands";
 import { useTheme } from "@/lib/use-theme";
@@ -258,7 +258,7 @@ function HiddenBrowserWebviewHost({
 }) {
   // A retained Browser page owns one webview for the lifetime of its route identity. URL, title,
   // viewport, and presentation changes are live projections of that page, not remount signals.
-  const initialUrlRef = useRef(normalizeBrowserNavigationUrl(descriptor.initialUrl));
+  const initialUrlRef = useRef(descriptor.initialUrl);
   const leaseRef = useRef<BrowserSidebarHostLease | null>(null);
   const claimInput = useMemo<BrowserSidebarHostClaimInput>(
     () => ({

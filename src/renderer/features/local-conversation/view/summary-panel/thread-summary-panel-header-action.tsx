@@ -20,10 +20,7 @@ export interface ThreadSummaryPanelHeaderActionProps {
   onPinnedOpenToggle?: () => void;
   popoverOpen?: boolean;
   scheduledAutomation?: ThreadSummaryPanelScheduledAutomationRow | null;
-  actions?: Pick<
-    ThreadStageActions,
-    "onOpenSummaryOutputInSidePanel" | "onOpenSummaryScheduledAutomation" | "onOpenSubagentsPanel"
-  >;
+  actions?: Pick<ThreadStageActions, "onOpenSummaryScheduledAutomation" | "onOpenSubagentsPanel">;
 }
 
 export function ThreadSummaryPanelHeaderAction({

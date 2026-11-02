@@ -167,6 +167,39 @@
       "description": "A path that is guaranteed to be absolute and normalized (though it is not guaranteed to be canonicalized or exist on the filesystem).\n\nIMPORTANT: When deserializing an `AbsolutePathBuf`, a base path must be set using [AbsolutePathBufGuard::new]. If no base path is set, the deserialization will fail unless the path being deserialized is already absolute.",
       "type": "string"
     },
+    "definitions__v2__AccountSessionsListParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "refreshWorkspaceMetadata": {
+          "type": "boolean"
+        }
+      },
+      "title": "AccountSessionsListParams",
+      "type": "object"
+    },
+    "definitions__v2__AccountSessionsSwitchParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "accountId": {
+          "description": "Workspace to select within that login; this is not a user identifier.",
+          "type": "string"
+        },
+        "allowBrowserLogin": {
+          "description": "Allow Core to start browser sign-in if this session needs SSO for the workspace.",
+          "type": "boolean"
+        },
+        "sessionId": {
+          "description": "Opaque active-login identifier returned by accountSession/list.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "accountId",
+        "sessionId"
+      ],
+      "title": "AccountSessionsSwitchParams",
+      "type": "object"
+    },
     "definitions__v2__AddCreditsNudgeCreditType": {
       "enum": [
         "credits",
@@ -178,6 +211,13 @@
       "properties": {
         "kind": {
           "$ref": "#/definitions/definitions__v2__AdditionalContextKind"
+        },
+        "name": {
+          "description": "Optional name for untrusted context, used to label its tool output.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "value": {
           "type": "string"
@@ -1524,6 +1564,61 @@
       ],
       "type": "string"
     },
+    "definitions__v2__FeedbackSaveParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "classification": {
+          "type": "string"
+        },
+        "extraLogFiles": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "includeLogs": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "savePath": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/definitions__v2__LegacyAppPathString"
+            }
+          ],
+          "description": "Absolute, previously unused ZIP path on the app-server host. The caller owns this file, including after a disconnected RPC."
+        },
+        "tags": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "threadId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "classification",
+        "savePath"
+      ],
+      "title": "FeedbackSaveParams",
+      "type": "object"
+    },
     "definitions__v2__FeedbackUploadParams": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "properties": {
@@ -1911,6 +2006,33 @@
         }
       ]
     },
+    "definitions__v2__GcpSetupParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "credentialFile": {
+          "description": "Absolute path to a credential file on the app-server host. Omit or pass `null` to clear the active user configuration's override and use ADC. If another configuration layer would still supply a credential file, setup fails without saving changes.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "location": {
+          "description": "Vertex AI location. Omission or null selects `global`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "projectId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "projectId"
+      ],
+      "title": "GcpSetupParams",
+      "type": "object"
+    },
     "definitions__v2__GetAccountParams": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "properties": {
@@ -1963,11 +2085,18 @@
       "$schema": "http://json-schema.org/draft-07/schema#",
       "properties": {
         "cwds": {
-          "description": "When empty, defaults to the current session working directory.",
+          "description": "Working directories to inspect when no thread is specified. An empty list uses the session cwd.",
           "items": {
             "type": "string"
           },
           "type": "array"
+        },
+        "threadId": {
+          "description": "List a loaded thread's hooks, including its selected environments. Omit `cwds` in this mode.",
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "title": "HooksListParams",
@@ -4760,8 +4889,7 @@
     },
     "definitions__v2__ReviewDelivery": {
       "enum": [
-        "inline",
-        "detached"
+        "inline"
       ],
       "type": "string"
     },
@@ -4778,7 +4906,7 @@
             }
           ],
           "default": null,
-          "description": "Where to run the review: inline (default) on the current thread or detached on a new thread (returned in `reviewThreadId`). Detached delivery is deprecated and emits `deprecationNotice`. Use `thread/start` followed by an inline review for a separate review thread."
+          "description": "Reviews run inline on the supplied thread. Omit this field or pass `inline`. To review on a separate thread, start a thread first and use its id."
         },
         "target": {
           "$ref": "#/definitions/definitions__v2__ReviewTarget"
@@ -5466,6 +5594,10 @@
           ],
           "description": "Override where approval requests are routed for review on this thread and subsequent turns."
         },
+        "attachToSource": {
+          "description": "Persist the fork as an attached thread of its resolved source, hidden from ordinary lists. The source cannot be deleted while attached threads exist. Requires a paginated source and local storage; incompatible with ephemeral and deferGoalContinuation. Omitted or false creates an ordinary fork.",
+          "type": "boolean"
+        },
         "baseInstructions": {
           "type": [
             "string",
@@ -5509,8 +5641,12 @@
           "description": "When true, return only thread metadata and live fork state without populating `thread.turns`. This is useful when the client plans to call `thread/turns/list` immediately after forking. Full-history hydration is deprecated for paginated threads; use this with `thread/turns/list` and `thread/items/list` instead.",
           "type": "boolean"
         },
+        "experimentalDisablePredictionMcp": {
+          "description": "Disable MCP servers in prediction mode when the inherited window uses incremental tools on Responses Lite. Requires `experimentalPredictionMode: true`.",
+          "type": "boolean"
+        },
         "experimentalPredictionMode": {
-          "description": "Start from the loaded parent's effective config, tools, environments, and persisted history to maximize prompt-cache reuse. Requires a loaded, persisted parent and `ephemeral: true`. Enables `features.reasoning_effort_override` on the fork. Cannot be combined with configuration overrides, `path`, `lastTurnId`, or `beforeTurnId`.",
+          "description": "Start from the loaded parent's effective config, tools, environments, and persisted history to maximize prompt-cache reuse. Requires a loaded, persisted parent and `ephemeral: true`. Enables `features.reasoning_effort_override` on the fork. Only `config.thread_unload_delay_secs` may override the inherited config. Cannot be combined with `path`, `lastTurnId`, or `beforeTurnId`.",
           "type": "boolean"
         },
         "lastTurnId": {
@@ -5882,6 +6018,13 @@
             "null"
           ]
         },
+        "attachedToThreadId": {
+          "description": "Return only persistent threads attached to this thread, including empty threads. Mutually exclusive with parentThreadId and ancestorThreadId. Omitting this filter keeps attached threads hidden from ordinary listings.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "cursor": {
           "description": "Opaque pagination cursor returned by a previous call.",
           "type": [
@@ -6052,6 +6195,20 @@
         "threadId"
       ],
       "title": "ThreadMemoryModeSetParams",
+      "type": "object"
+    },
+    "definitions__v2__ThreadMemoryReadParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "threadId": {
+          "description": "The thread must already be started or resumed.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "threadId"
+      ],
+      "title": "ThreadMemoryReadParams",
       "type": "object"
     },
     "definitions__v2__ThreadMetadataGitInfoUpdateParams": {
@@ -6623,6 +6780,13 @@
               "type": "null"
             }
           ]
+        },
+        "voiceSessionId": {
+          "description": "Client-generated identifier for the product voice session. This is distinct from `realtimeSessionId`.",
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "required": [
@@ -6912,6 +7076,83 @@
         "threadId"
       ],
       "title": "ThreadRevertParams",
+      "type": "object"
+    },
+    "definitions__v2__ThreadSampleCancelParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "requestId": {
+          "$ref": "#/definitions/definitions__v2__RequestId"
+        }
+      },
+      "required": [
+        "requestId"
+      ],
+      "title": "ThreadSampleCancelParams",
+      "type": "object"
+    },
+    "definitions__v2__ThreadSampleParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "disableMcp": {
+          "description": "Disable MCP servers when the inherited window uses incremental tools on Responses Lite.",
+          "type": "boolean"
+        },
+        "effort": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/definitions__v2__ReasoningEffort"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Applied only when the provider and model support cache-preserving reasoning-effort updates."
+        },
+        "expectedTurnId": {
+          "description": "The loaded source's latest completed, failed, or interrupted turn. Stale or active sources are rejected.",
+          "type": "string"
+        },
+        "prompt": {
+          "type": "string"
+        },
+        "responsesapiClientMetadata": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Optional metadata to enrich Codex's ResponsesAPI turn metadata.",
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "threadId": {
+          "type": "string"
+        },
+        "threadSource": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/definitions__v2__ThreadSource"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "turnTrigger": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "expectedTurnId",
+        "prompt",
+        "threadId"
+      ],
+      "title": "ThreadSampleParams",
       "type": "object"
     },
     "definitions__v2__ThreadSearchOccurrencesParams": {
@@ -8004,7 +8245,17 @@
           "additionalProperties": {
             "type": "string"
           },
-          "description": "Optional metadata to enrich Codex's ResponsesAPI turn metadata.\n\nEntries are flattened into the JSON string sent as `client_metadata[\"x-codex-turn-metadata\"]` on ResponsesAPI HTTP and websocket requests.\n\nThey are not sent as top-level ResponsesAPI `client_metadata` keys, and reserved keys such as `session_id`, `thread_id`, `turn_id`, and `window_id` cannot be overridden.",
+          "description": "Optional metadata to enrich Codex's ResponsesAPI turn metadata. Replaces unprotected client-provided entries when supplied; an empty map clears them.\n\nEntries are flattened into the JSON string sent as `client_metadata[\"x-codex-turn-metadata\"]` on ResponsesAPI HTTP and websocket requests.\n\nThey are not sent as top-level ResponsesAPI `client_metadata` keys, and reserved keys such as `session_id`, `thread_id`, `turn_id`, and `window_id` cannot be overridden.",
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "responsesapiClientMetadataPatch": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Merge entries into the ResponsesAPI turn metadata without removing existing entries. Applied after `responsesapiClientMetadata` if both are provided; reserved keys remain protected.",
           "type": [
             "object",
             "null"
@@ -8124,7 +8375,17 @@
           "additionalProperties": {
             "type": "string"
           },
-          "description": "Optional metadata to enrich Codex's ResponsesAPI turn metadata.\n\nEntries are flattened into the JSON string sent as `client_metadata[\"x-codex-turn-metadata\"]` on ResponsesAPI HTTP and websocket requests.\n\nThey are not sent as top-level ResponsesAPI `client_metadata` keys, and reserved keys such as `session_id`, `thread_id`, `turn_id`, and `window_id` cannot be overridden.",
+          "description": "Optional metadata to enrich Codex's ResponsesAPI turn metadata. Replaces unprotected client-provided entries when supplied; an empty map clears them.\n\nEntries are flattened into the JSON string sent as `client_metadata[\"x-codex-turn-metadata\"]` on ResponsesAPI HTTP and websocket requests.\n\nThey are not sent as top-level ResponsesAPI `client_metadata` keys, and reserved keys such as `session_id`, `thread_id`, `turn_id`, and `window_id` cannot be overridden.",
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "responsesapiClientMetadataPatch": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Merge entries into the ResponsesAPI turn metadata without removing existing entries. Applied after `responsesapiClientMetadata` if both are provided; reserved keys remain protected.",
           "type": [
             "object",
             "null"
@@ -8712,6 +8973,54 @@
         },
         "method": {
           "enum": [
+            "thread/sample"
+          ],
+          "title": "Thread/sampleRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/definitions__v2__ThreadSampleParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Thread/sampleRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/definitions__v2__RequestId"
+        },
+        "method": {
+          "enum": [
+            "thread/sample/cancel"
+          ],
+          "title": "Thread/sample/cancelRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/definitions__v2__ThreadSampleCancelParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Thread/sample/cancelRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/definitions__v2__RequestId"
+        },
+        "method": {
+          "enum": [
             "thread/archive"
           ],
           "title": "Thread/archiveRequestMethod",
@@ -9281,6 +9590,30 @@
         "params"
       ],
       "title": "Thread/memoryMode/setRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/definitions__v2__RequestId"
+        },
+        "method": {
+          "enum": [
+            "thread/memory/read"
+          ],
+          "title": "Thread/memory/readRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/definitions__v2__ThreadMemoryReadParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Thread/memory/readRequest",
       "type": "object"
     },
     {
@@ -11893,6 +12226,30 @@
         },
         "method": {
           "enum": [
+            "account/gcp/setup"
+          ],
+          "title": "Account/gcp/setupRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/definitions__v2__GcpSetupParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Account/gcp/setupRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/definitions__v2__RequestId"
+        },
+        "method": {
+          "enum": [
             "account/bedrock/checkGovCloudRequirements"
           ],
           "title": "Account/bedrock/checkGovCloudRequirementsRequestMethod",
@@ -11932,6 +12289,54 @@
         "params"
       ],
       "title": "Account/login/cancelRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/definitions__v2__RequestId"
+        },
+        "method": {
+          "enum": [
+            "accountSession/list"
+          ],
+          "title": "AccountSession/listRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/definitions__v2__AccountSessionsListParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "AccountSession/listRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/definitions__v2__RequestId"
+        },
+        "method": {
+          "enum": [
+            "accountSession/switch"
+          ],
+          "title": "AccountSession/switchRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/definitions__v2__AccountSessionsSwitchParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "AccountSession/switchRequest",
       "type": "object"
     },
     {
@@ -12110,6 +12515,30 @@
         "params"
       ],
       "title": "Feedback/uploadRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/definitions__v2__RequestId"
+        },
+        "method": {
+          "enum": [
+            "feedback/save"
+          ],
+          "title": "Feedback/saveRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/definitions__v2__FeedbackSaveParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Feedback/saveRequest",
       "type": "object"
     },
     {

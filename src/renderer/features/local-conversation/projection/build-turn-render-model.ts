@@ -25,7 +25,10 @@ import {
   type ProjectlessOutputScope,
   type TurnDiffPayload,
 } from "./projectless-output-scope";
-import { collectTurnEndResourcePaths } from "./thread-summary-panel-output-model";
+import {
+  collectTurnEndResourcePaths,
+  type ThreadSummaryPanelOutputRow,
+} from "./thread-summary-panel-output-model";
 import { buildTurnViewModel } from "./build-turn-view-model";
 import type {
   ThreadRendererItemModel,
@@ -59,6 +62,8 @@ export interface BuildTurnRenderModelInput {
   mcpApps?: readonly ProtocolAppInfo[];
   mcpServerStatuses?: ProtocolListMcpServerStatusResponse | null;
   endResourcePaths?: readonly string[];
+  /** Confirmed deliverables rendered with the reply. */
+  endResources?: readonly ThreadSummaryPanelOutputRow[];
 }
 
 export type TurnRenderSurface = "main" | "preview";
@@ -81,6 +86,8 @@ export interface SelectTurnRenderModelInput {
   mcpApps?: readonly ProtocolAppInfo[];
   mcpServerStatuses?: ProtocolListMcpServerStatusResponse | null;
   endResourcePaths?: readonly string[];
+  /** Confirmed deliverables rendered with the reply. */
+  endResources?: readonly ThreadSummaryPanelOutputRow[];
 }
 
 type TurnRenderModelBuilder = (input: BuildTurnRenderModelInput) => ThreadTurnModel;
@@ -272,9 +279,12 @@ function resolveWorkedForCompletedAtMs(
   const finalAssistantStartedAtMs = resolveFiniteTimestamp(turn.finalAssistantStartedAtMs);
   if (finalAssistantStartedAtMs === null) return null;
 
-  return hasRenderableFinalAssistantContent(items[boundaryIndex])
-    ? finalAssistantStartedAtMs
-    : null;
+  if (!hasRenderableFinalAssistantContent(items[boundaryIndex])) return null;
+  const startedAtMs = resolveFiniteTimestamp(turn.firstTurnWorkItemStartedAtMs);
+  if (startedAtMs === null) return null;
+  const durationMs = resolveFiniteTimestamp(turn.assistantResponseWorkDurationMs);
+  // Live work starts on the observer clock. Add an execution-host interval instead of mixing clocks.
+  return durationMs === null ? null : startedAtMs + durationMs;
 }
 
 function buildWorkedForItem(
@@ -340,6 +350,7 @@ export function buildTurnRenderModel(input: BuildTurnRenderModelInput): ThreadTu
     cwd: input.cwd,
     projectlessOutputDirectory: input.projectlessOutputDirectory,
   };
+  // The synchronous fallback keeps edited Project paths in Review until host confirmation.
   const endResourcePaths =
     input.endResourcePaths ??
     collectTurnEndResourcePaths(input.turn, {
@@ -434,10 +445,12 @@ export function buildTurnRenderModel(input: BuildTurnRenderModelInput): ThreadTu
     allowCopyWhileStreaming: input.surface === "preview",
     showTimestampWithoutActions: input.surface === "preview",
     timestampHoverOnly: input.timestampHoverOnly ?? false,
+    pinLatestTurnActions: input.surface !== "preview",
     goalTimeUsedSeconds: input.goalTimeUsedSeconds,
     cwd: input.cwd,
     hostId: input.hostId,
     endResourcePaths,
+    endResources: input.endResources,
     mcpApps: input.mcpApps,
     mcpServerStatuses: input.mcpServerStatuses,
     voiceWorkActivity: voiceWork?.state,
@@ -496,6 +509,7 @@ export function createTurnRenderModelSelector(
       input.hostId,
       input.projectlessOutputDirectory,
       input.endResourcePaths,
+      input.endResources?.map((resource) => [resource.id, resource.label]),
       input.workSegment,
       resolveSelectorIdentity(input.mcpApps),
       resolveSelectorIdentity(input.mcpServerStatuses),
@@ -539,6 +553,7 @@ export function createTurnRenderModelSelector(
       mcpApps: input.mcpApps,
       mcpServerStatuses: input.mcpServerStatuses,
       endResourcePaths: input.endResourcePaths,
+      endResources: input.endResources,
       workSegment: input.workSegment,
     });
     const nextModels = isSameRevision

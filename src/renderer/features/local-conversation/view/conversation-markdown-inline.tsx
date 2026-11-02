@@ -37,9 +37,11 @@ function createInlineLease() {
 function ConversationTarget({
   target,
   href,
+  durable = false,
 }: {
   readonly target: ConversationMarkdownTarget;
   readonly href?: string;
+  readonly durable?: boolean;
 }) {
   const source = useConversationMarkdownSource();
   const [lease] = useState(createInlineLease);
@@ -57,6 +59,7 @@ function ConversationTarget({
   if (target.kind === "file")
     return (
       <FileReferenceButton
+        mode={durable ? "durable" : "preview"}
         target={target.reference}
         label={target.label}
         href={href}
@@ -218,7 +221,7 @@ export const renderConversationInline: ConversationInlineRenderer = (
       ...(Number.isSafeInteger(line) && line > 0 ? { line } : {}),
       ...(Number.isSafeInteger(endLine) && endLine > 0 ? { endLine } : {}),
     };
-    return <ConversationTarget target={presentConversationFileTarget(reference, "")} />;
+    return <ConversationTarget durable target={presentConversationFileTarget(reference, "")} />;
   }
   if (token.type !== "text" || node.children.length > 0) return undefined;
   const text = node.segments.map((segment) => segment.text).join("");

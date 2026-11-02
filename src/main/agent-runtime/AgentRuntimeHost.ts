@@ -5,7 +5,6 @@ import type {
   AgentHostExecutionIdentity,
   AgentNativeSessionAuthority,
   AgentRuntimeConfiguration,
-  AgentProviderAuthentication,
   AgentThreadAuthority,
 } from "@nodex/agent-runtime/contracts";
 import * as Effect from "effect/Effect";
@@ -69,11 +68,6 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
       CodexTurnPresentation["Service"],
       "observeRuntimeMessage" | "finishRuntimeSource" | "finishRuntimeLease" | "finish"
     >;
-    readonly readProviderAuth?: (input: {
-      readonly refresh: boolean;
-      readonly previousAccountId: string | null;
-      readonly isActive: () => boolean;
-    }) => Effect.Effect<AgentProviderAuthentication, unknown>;
   },
 ) {
   const coreAuthority = yield* CoreAuthority;
@@ -174,26 +168,6 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
 
   const execute = Effect.fn("AgentRuntimeHost.execute")(
     function* (request: AgentHostRequest) {
-      if (request.operation === "provider.auth") {
-        const provider = options.providers[request.identity.providerInstanceId];
-        const settings = provider?.config;
-        const isActive = () => isCurrentLease(request.identity);
-        if (
-          !isActive() ||
-          provider?.driver !== "codex" ||
-          !settings ||
-          typeof settings !== "object" ||
-          !("hostAuthentication" in settings) ||
-          settings.hostAuthentication !== true ||
-          !options.readProviderAuth
-        )
-          return yield* unavailable("provider.auth");
-        return yield* options.readProviderAuth({
-          refresh: request.refresh,
-          previousAccountId: request.previousAccountId,
-          isActive,
-        });
-      }
       if (request.operation === "turn.prepare") return yield* prepare(request.identity);
       if (request.operation === "thread.prepare") {
         const { identity } = request;

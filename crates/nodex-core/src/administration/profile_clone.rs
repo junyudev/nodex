@@ -15,12 +15,8 @@ use crate::infrastructure::store::STORE_FILE_NAME;
 use super::{backup, restore};
 
 const PROFILE_SNAPSHOT_FILE_NAME: &str = "profile-snapshot.json";
-const PROFILE_SNAPSHOT_VERSION: u32 = 5;
+const PROFILE_SNAPSHOT_VERSION: u32 = 6;
 const PRIVATE_FILE_MODE: u32 = 0o600;
-const MAX_CLONE_THREADS: usize = 100_000;
-const MAX_THREAD_METADATA_BYTES: usize = 16 * 1024 * 1024;
-const AGENT_RUNTIME_BINDINGS_STORE_REVISION: u32 = 178;
-
 #[derive(Clone, Debug, Deserialize, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ProfileCloneBackupSelection {
@@ -52,29 +48,12 @@ pub struct ProfileStoreCloneReceipt {
     pub library_id: String,
 }
 
-/// Store-owned requirements that another persistence owner must satisfy before publication.
-#[derive(Clone, Debug)]
-pub struct ProfileCloneThread {
-    pub thread_id: String,
-    pub backend_kind: String,
-    pub execution_host_id: String,
-}
-
-#[derive(Clone, Debug)]
-pub struct ProfileCloneExecution {
-    pub session_id: String,
-    pub runtime_id: String,
-    pub thread_id: String,
-}
-
 /// A verified, unpublished Store clone. Dropping it removes only its owned staging tree.
 pub struct PreparedProfileClone {
     source: PathBuf,
     target: PathBuf,
     staging: PathBuf,
     receipt: ProfileStoreCloneReceipt,
-    threads: Vec<ProfileCloneThread>,
-    executions: Vec<ProfileCloneExecution>,
     published: bool,
 }
 
@@ -91,13 +70,6 @@ impl PreparedProfileClone {
     pub fn store_receipt(&self) -> &ProfileStoreCloneReceipt {
         &self.receipt
     }
-    pub fn threads(&self) -> &[ProfileCloneThread] {
-        &self.threads
-    }
-    pub fn executions(&self) -> &[ProfileCloneExecution] {
-        &self.executions
-    }
-
     /// Publishes only after the outer Profile owner has prepared every required artifact.
     pub fn publish(mut self, receipt: &impl Serialize) -> Result<(), StoreError> {
         write_receipt(&self.staging, receipt)?;
@@ -139,18 +111,11 @@ pub fn prepare_profile_clone(
     let fingerprint = hex::encode(Sha256::digest(nodex_platform::process::path_bytes(&source)));
     let result = (|| {
         let receipt = materialize_staging_profile(&staging, &backup, fingerprint)?;
-        let connection =
-            crate::infrastructure::sqlite::open_immutable_reader(&staging.join(STORE_FILE_NAME))?;
-        let threads =
-            read_clone_threads(&connection, MAX_CLONE_THREADS, MAX_THREAD_METADATA_BYTES)?;
-        let executions = read_clone_executions(&connection, receipt.store_schema_version)?;
         Ok(PreparedProfileClone {
             source,
             target: target.clone(),
             staging: staging.clone(),
             receipt,
-            threads,
-            executions,
             published: false,
         })
     })();
@@ -158,83 +123,6 @@ pub fn prepare_profile_clone(
         remove_owned_staging_directory(&target, &staging)?;
     }
     result
-}
-
-/// Reads only execution references, with the same allocation bounds as native requirements.
-pub(super) fn read_clone_executions(
-    connection: &rusqlite::Connection,
-    store_schema_version: u32,
-) -> Result<Vec<ProfileCloneExecution>, StoreError> {
-    // Supported predecessors retain their source revision until the target Core opens them.
-    if store_schema_version < AGENT_RUNTIME_BINDINGS_STORE_REVISION {
-        return Ok(Vec::new());
-    }
-    let mut statement = connection.prepare("SELECT session_id, runtime_id, runtime_thread_id FROM project_session_execution_bindings ORDER BY session_id")?;
-    let mut rows = statement.query([])?;
-    let mut executions = Vec::new();
-    let mut bytes = 0usize;
-    while let Some(row) = rows.next()? {
-        if executions.len() >= MAX_CLONE_THREADS {
-            return Err(invalid_profile(
-                "Profile execution references exceed their row budget",
-            ));
-        }
-        for column in 0..3 {
-            let rusqlite::types::ValueRef::Text(value) = row.get_ref(column)? else {
-                return Err(corrupt("Profile execution references must be text"));
-            };
-            bytes = bytes.saturating_add(value.len());
-            if bytes > MAX_THREAD_METADATA_BYTES {
-                return Err(invalid_profile(
-                    "Profile execution references exceed their byte budget",
-                ));
-            }
-        }
-        executions.push(ProfileCloneExecution {
-            session_id: row.get(0)?,
-            runtime_id: row.get(1)?,
-            thread_id: row.get(2)?,
-        });
-    }
-    Ok(executions)
-}
-
-/// Bounds retained Thread requirements before allocating text from SQLite cells.
-fn read_clone_threads(
-    connection: &rusqlite::Connection,
-    max_rows: usize,
-    max_bytes: usize,
-) -> Result<Vec<ProfileCloneThread>, StoreError> {
-    let mut statement = connection.prepare(
-        "SELECT thread_id, agent_backend_kind, execution_host_id FROM codex_threads ORDER BY thread_id",
-    )?;
-    let mut rows = statement.query([])?;
-    let mut threads = Vec::new();
-    let mut bytes = 0usize;
-    while let Some(row) = rows.next()? {
-        if threads.len() >= max_rows {
-            return Err(invalid_profile(
-                "Profile clone Thread metadata exceeds its row budget",
-            ));
-        }
-        for column in 0..3 {
-            let rusqlite::types::ValueRef::Text(value) = row.get_ref(column)? else {
-                return Err(corrupt("Profile clone Thread metadata must be text"));
-            };
-            bytes = bytes.saturating_add(value.len());
-            if bytes > max_bytes {
-                return Err(invalid_profile(
-                    "Profile clone Thread metadata exceeds its byte budget",
-                ));
-            }
-        }
-        threads.push(ProfileCloneThread {
-            thread_id: row.get(0)?,
-            backend_kind: row.get(1)?,
-            execution_host_id: row.get(2)?,
-        });
-    }
-    Ok(threads)
 }
 
 #[cfg(test)]
@@ -462,62 +350,6 @@ mod tests {
     use crate::infrastructure::store::SqliteStoreKernel;
 
     use super::*;
-
-    #[test]
-    fn bounds_clone_thread_rows_and_text_bytes_without_truncating() {
-        let connection = rusqlite::Connection::open_in_memory().unwrap();
-        connection.execute_batch(
-            "CREATE TABLE codex_threads(thread_id TEXT PRIMARY KEY, agent_backend_kind TEXT, execution_host_id TEXT)",
-        ).unwrap();
-        assert!(read_clone_threads(&connection, 0, 0).unwrap().is_empty());
-        let records = [["first", "codex", "local"], ["second", "acp", "remote"]];
-        for record in records {
-            connection
-                .execute("INSERT INTO codex_threads VALUES(?1, ?2, ?3)", record)
-                .unwrap();
-        }
-        let bytes = records
-            .iter()
-            .flatten()
-            .map(|value| value.len())
-            .sum::<usize>();
-        let threads = read_clone_threads(&connection, 2, bytes).unwrap();
-        assert_eq!(threads.len(), 2);
-        assert_eq!(threads[0].thread_id, "first");
-        assert_eq!(threads[1].backend_kind, "acp");
-        assert_eq!(threads[1].execution_host_id, "remote");
-        for (rows, bytes, message) in [(1, bytes, "row budget"), (2, bytes - 1, "byte budget")] {
-            let error = read_clone_threads(&connection, rows, bytes).unwrap_err();
-            assert_eq!(error.code, StoreErrorCode::InvalidProfile);
-            assert!(error.message.contains(message));
-        }
-    }
-
-    #[test]
-    fn rejects_oversized_cells_in_every_clone_thread_column() {
-        let connection = rusqlite::Connection::open_in_memory().unwrap();
-        connection.execute_batch(
-            "CREATE TABLE codex_threads(thread_id TEXT, agent_backend_kind TEXT, execution_host_id TEXT)",
-        ).unwrap();
-        for column in 0..3 {
-            connection.execute("DELETE FROM codex_threads", []).unwrap();
-            let mut record = ["a".to_owned(), "a".to_owned(), "a".to_owned()];
-            record[column] = "é".repeat(8);
-            connection
-                .execute("INSERT INTO codex_threads VALUES(?1, ?2, ?3)", record)
-                .unwrap();
-            let error = read_clone_threads(&connection, 1, 8).unwrap_err();
-            assert!(error.message.contains("byte budget"));
-            assert_eq!(read_clone_threads(&connection, 1, 18).unwrap().len(), 1);
-        }
-    }
-
-    #[test]
-    fn execution_requirements_skip_only_predecessors_without_runtime_bindings() {
-        let connection = rusqlite::Connection::open_in_memory().unwrap();
-        assert!(read_clone_executions(&connection, 177).unwrap().is_empty());
-        assert!(read_clone_executions(&connection, 178).is_err());
-    }
 
     #[test]
     fn clones_a_published_backup_as_an_isolated_local_fork() {

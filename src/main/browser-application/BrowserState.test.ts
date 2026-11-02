@@ -27,6 +27,8 @@ import { makeBrowserWebContentsListenerRuntime } from "../browser/BrowserWebCont
 import type { BrowserWebContentsLike } from "../platform/electron/BrowserElectronPlatform";
 import { BrowserForkTransferError, makeBrowserForkTransfer } from "./BrowserForkTransfer";
 import { BrowserState } from "./BrowserState";
+import { makeWebContentsDestructionSubscriptions } from "../platform/electron/WebContentsDestructionSubscriptions";
+import type { BrowserPermissionStore } from "../browser/browser-permission-store";
 
 const identity = {
   browserConversationId: "conversation-1",
@@ -113,7 +115,18 @@ class FakeWebContents extends EventEmitter {
   reload() {}
   reloadIgnoringCache() {}
   send() {}
-  setWindowOpenHandler() {}
+  windowOpenHandler:
+    | ((details: { url: string; disposition: string }) => { action: "deny" | "allow" })
+    | null = null;
+  setWindowOpenHandler(
+    handler: (details: { url: string; disposition: string }) => { action: "deny" | "allow" },
+  ) {
+    this.windowOpenHandler = handler;
+  }
+  backgroundThrottling = true;
+  setBackgroundThrottling(enabled: boolean) {
+    this.backgroundThrottling = enabled;
+  }
   setZoomFactor() {}
   stop() {}
 }
@@ -145,25 +158,36 @@ const makeFixture = (
   options: {
     readonly contents?: FakeWebContents;
     readonly page?: BrowserSerializedPage;
+    readonly permissionStore?: BrowserPermissionStore;
   } = {},
 ) =>
   Effect.gen(function* () {
     const contents = options.contents ?? new FakeWebContents();
+    const owner = Object.assign(new EventEmitter(), { isDestroyed: () => false });
     const events: BrowserSidebarEvent[] = [];
+    const externalUrls: string[] = [];
     const pages = makeMemoryPages(options.page ? [options.page] : []);
     const runBackground = yield* FiberSet.makeRuntime<never, void, never>();
     const runtimeRegistry = makeBrowserRuntimeRegistry();
     const state = new BrowserState({
+      rendererDestruction: yield* makeWebContentsDestructionSubscriptions,
+      permissionStore: options.permissionStore,
       earlyPageRestores: yield* makeBrowserEarlyPageRestoreRuntime<BrowserSidebarTabSnapshot>(),
       electron: {
         sessionFromPartition: (() => ({
           clearCache: async () => undefined,
           clearData: async () => undefined,
         })) as never,
-        openExternal: async () => undefined,
+        openExternal: async (url) => {
+          externalUrls.push(url);
+        },
         presentContextMenu: () => undefined,
         webContentsFromId: (webContentsId) =>
-          webContentsId === contents.id ? (contents as unknown as BrowserWebContentsLike) : null,
+          webContentsId === contents.id
+            ? (contents as unknown as BrowserWebContentsLike)
+            : webContentsId === 7
+              ? (owner as unknown as BrowserWebContentsLike)
+              : null,
       },
       clipboard: { writeImage: () => Effect.void, writeText: () => Effect.void },
       events: { publish: (event) => events.push(event) },
@@ -178,7 +202,7 @@ const makeFixture = (
       siteStatus: { cachedCommentModeBlocked: () => null },
       webContentsListeners: yield* makeBrowserWebContentsListenerRuntime,
     });
-    return { contents, events, pages: pages.pages, runtimeRegistry, state };
+    return { contents, owner, events, externalUrls, pages: pages.pages, runtimeRegistry, state };
   });
 
 const registerTab = (state: BrowserState, browserStorageId = "browser:durable") =>
@@ -247,7 +271,7 @@ function sourceScene() {
 }
 
 describe("BrowserState semantic capability", () => {
-  it.effect("binds durable history to one storage identity and rejects unsafe navigation", () =>
+  it.effect("binds durable history to one storage identity and admits direct navigation", () =>
     Effect.gen(function* () {
       const page: BrowserSerializedPage = {
         schemaVersion: 1,
@@ -279,7 +303,7 @@ describe("BrowserState semantic capability", () => {
           ...identity,
           url: "javascript:alert(document.cookie)",
         }),
-      ).toEqual({ ok: false, message: "This URL is not allowed in the built-in Browser" });
+      ).toMatchObject({ ok: true, snapshot: { url: "javascript:alert(document.cookie)" } });
       assert.deepEqual(contents.loadUrls, []);
     }),
   );
@@ -723,3 +747,481 @@ describe("BrowserState semantic capability", () => {
     }),
   );
 });
+
+describe("Browser entry-point navigation policies", () => {
+  it.effect("loads direct manual file, data and credentialed URLs without address searches", () =>
+    Effect.gen(function* () {
+      const { state, contents } = yield* makeFixture();
+      yield* registerTab(state);
+      yield* hostCreated(state);
+      for (const url of [
+        "file:///tmp/index.html",
+        "data:text/html,Hello",
+        "https://user:secret@example.com/private",
+        `data:text/html,${"x".repeat(80_000)}`,
+      ]) {
+        const result = yield* state.handleCommand({ type: "navigate", ...identity, url });
+        assert.isTrue(result.ok);
+        yield* Effect.yieldNow;
+        expect(contents.loadUrls.at(-1)).toBe(url);
+        for (const name of ["will-navigate", "will-redirect", "will-frame-navigate"]) {
+          let prevented = false;
+          contents.emit(name, {
+            url,
+            isMainFrame: true,
+            preventDefault: () => {
+              prevented = true;
+            },
+          });
+          assert.isFalse(prevented);
+        }
+      }
+    }),
+  );
+
+  it.effect("restricts Agent page hooks and subframes only for the control lifetime", () =>
+    Effect.gen(function* () {
+      const { state, contents } = yield* makeFixture();
+      yield* registerTab(state);
+      yield* hostCreated(state);
+      const blocked: Array<{ url: string; resourceType: string }> = [];
+      const unsubscribe = state.subscribeNavigationBlocked((event) => blocked.push(event));
+      state.upsertBrowserUseTab({
+        ...readTab(state),
+        codexSessionId: "session-1",
+        captureActive: false,
+        released: false,
+      });
+      for (const name of ["will-navigate", "will-redirect", "will-frame-navigate"]) {
+        let prevented = false;
+        contents.emit(name, {
+          url: "file:///tmp/private",
+          isMainFrame: true,
+          preventDefault: () => {
+            prevented = true;
+          },
+        });
+        assert.isTrue(prevented);
+      }
+      assert.isTrue(
+        state.isRestrictedBrowserNavigation(contents.id, "file:///tmp/private", "subFrame"),
+      );
+      for (const url of ["data:text/html,Frame", "about:blank", "about:srcdoc"]) {
+        assert.isFalse(state.isRestrictedBrowserNavigation(contents.id, url, "subFrame"));
+        let prevented = false;
+        contents.emit("will-redirect", {
+          url,
+          isMainFrame: false,
+          preventDefault: () => {
+            prevented = true;
+          },
+        });
+        assert.isFalse(prevented);
+      }
+      assert.isTrue(
+        state.isRestrictedBrowserNavigation(contents.id, "data:text/html,Main", "mainFrame"),
+      );
+      expect(blocked).toContainEqual(
+        expect.objectContaining({ url: "file:///tmp/private", resourceType: "subFrame" }),
+      );
+      state.releaseBrowserUseTab(identity);
+      assert.isFalse(
+        state.isRestrictedBrowserNavigation(contents.id, "file:///tmp/private", "subFrame"),
+      );
+      let prevented = false;
+      contents.emit("will-redirect", {
+        url: "file:///tmp/private",
+        isMainFrame: true,
+        preventDefault: () => {
+          prevented = true;
+        },
+      });
+      assert.isFalse(prevented);
+      unsubscribe();
+    }),
+  );
+
+  it.effect("enforces Agent policy during guest attachment before renderer acknowledgement", () =>
+    Effect.gen(function* () {
+      const { state, contents } = yield* makeFixture();
+      yield* registerTab(state);
+      state.upsertBrowserUseTab({
+        ...readTab(state),
+        codexSessionId: "session-1",
+        captureActive: false,
+        released: false,
+      });
+      state.registerAttachedWebviewOwnership(42, contents.id, identity, "browser:durable");
+      assert.isTrue(
+        state.isRestrictedBrowserNavigation(contents.id, "file:///tmp/private", "subFrame"),
+      );
+      let prevented = false;
+      contents.emit("will-frame-navigate", {
+        url: "file:///tmp/private",
+        isMainFrame: false,
+        preventDefault: () => {
+          prevented = true;
+        },
+      });
+      assert.isTrue(prevented);
+      state.releaseBrowserUseTab(identity);
+      assert.isFalse(
+        state.isRestrictedBrowserNavigation(contents.id, "file:///tmp/private", "subFrame"),
+      );
+    }),
+  );
+
+  it.effect("restores manual navigation history without quarantining its schemes", () =>
+    Effect.gen(function* () {
+      const entries = [
+        "file:///tmp/index.html",
+        "data:text/html,Hello",
+        "https://user:secret@example.com/private",
+      ].map((url) => ({ url, title: url }));
+      const page: BrowserSerializedPage = {
+        schemaVersion: 1,
+        runtime: "electron-webview",
+        browserStorageId: "browser:durable",
+        identity,
+        title: "Local",
+        url: entries[0]!.url,
+        updatedAt: 1,
+        navigation: { currentIndex: 0, entries },
+      };
+      const { state, contents, pages } = yield* makeFixture({ page });
+      yield* registerTab(state);
+      yield* hostCreated(state);
+      expect(contents.restoredHistory).toEqual(page.navigation);
+      expect(pages.get("browser:durable")?.navigation.entries).toEqual(entries);
+    }),
+  );
+
+  it.effect("rejects Agent control of a currently loaded file page", () =>
+    Effect.gen(function* () {
+      const { state, contents } = yield* makeFixture();
+      yield* registerTab(state);
+      yield* hostCreated(state);
+      contents.url = "file:///tmp/index.html";
+      expect(() =>
+        state.upsertBrowserUseTab({
+          ...readTab(state),
+          codexSessionId: "session-1",
+          captureActive: false,
+          released: false,
+        }),
+      ).toThrow("Browser Use URL policy");
+      assert.isFalse(state.isRestrictedBrowserNavigation(contents.id, "file:///tmp/index.html"));
+    }),
+  );
+
+  it.effect("opens popup dispositions through the opener's Browser tab request", () =>
+    Effect.gen(function* () {
+      const { state, contents, events, externalUrls } = yield* makeFixture();
+      yield* registerTab(state);
+      state.registerAttachedWebviewOwnership(42, contents.id, identity, "browser:durable");
+      yield* hostCreated(state);
+      for (const disposition of [
+        "other",
+        "background-tab",
+        "foreground-tab",
+        "new-window",
+        "default",
+      ]) {
+        events.length = 0;
+        expect(
+          contents.windowOpenHandler?.({ url: "file:///tmp/popup.html", disposition }),
+        ).toEqual({ action: "deny" });
+        const requests = events.filter((event) => event.kind === "openNewTab");
+        if (disposition === "other") {
+          expect(requests).toEqual([]);
+          continue;
+        }
+        expect(requests).toEqual([
+          {
+            kind: "openNewTab",
+            value: {
+              ...identity,
+              url: "file:///tmp/popup.html",
+              background: disposition === "background-tab",
+            },
+          },
+        ]);
+      }
+      expect(externalUrls).toEqual([]);
+      contents.url = "https://example.com/";
+      state.upsertBrowserUseTab({
+        ...readTab(state),
+        codexSessionId: "session-1",
+        captureActive: false,
+        released: false,
+      });
+      events.length = 0;
+      contents.windowOpenHandler?.({
+        url: "file:///tmp/popup.html",
+        disposition: "foreground-tab",
+      });
+      expect(events.filter((event) => event.kind === "openNewTab")).toEqual([]);
+    }),
+  );
+
+  it.effect("routes Browser chrome surfaces and throttles local pages by visibility", () =>
+    Effect.gen(function* () {
+      const { state, contents, events } = yield* makeFixture();
+      yield* registerTab(state);
+      yield* hostCreated(state);
+      for (const surface of ["downloads", "history"] as const) {
+        const result = yield* state.handleCommand({
+          type: "navigate",
+          ...identity,
+          url: `chrome://${surface}`,
+        });
+        assert.isTrue(result.ok);
+        expect(events.at(-1)).toEqual({
+          kind: "openNewTab",
+          value: {
+            ...identity,
+            url: `chrome://${surface}`,
+            background: false,
+            browserSurface: surface,
+          },
+        });
+      }
+      yield* state.handleCommand({ type: "navigate", ...identity, url: "file:///tmp/index.html" });
+      assert.isFalse(contents.backgroundThrottling);
+      yield* state.handleCommand({ type: "navigate", ...identity, url: "https://example.com/" });
+      assert.isTrue(contents.backgroundThrottling);
+    }),
+  );
+
+  it.effect(
+    "scopes error-page external opening to the current failure and narrower URL policy",
+    () =>
+      Effect.gen(function* () {
+        const { state, contents, externalUrls } = yield* makeFixture();
+        yield* registerTab(state);
+        yield* hostCreated(state);
+        for (const [url, allowed] of [
+          ["https://example.com/failure", true],
+          ["http://localhost:3000/failure", true],
+          ["http://example.com/failure", false],
+          ["file:///tmp/failure", false],
+        ] as const) {
+          contents.emit("did-fail-load", {}, -105, "ERR_NAME_NOT_RESOLVED", url, true);
+          const result = yield* state.handleCommand({
+            type: "open-external",
+            ...identity,
+            fromErrorPage: true,
+          });
+          expect(result.ok).toBe(allowed);
+        }
+        expect(externalUrls).toEqual([
+          "https://example.com/failure",
+          "http://localhost:3000/failure",
+        ]);
+        expect(
+          yield* state.handleCommand({
+            type: "open-external",
+            ...identity,
+            fromErrorPage: true,
+            url: "https://stale.example/",
+          }),
+        ).toMatchObject({ ok: false });
+      }),
+  );
+});
+
+const permissionFixture = Effect.gen(function* () {
+  const fixture = yield* makeFixture();
+  const { state, runtimeRegistry, contents } = fixture;
+  yield* registerTab(state);
+  const route = {
+    ...identity,
+    browserStorageId: "browser:durable",
+    rendererInstanceId: "permission-renderer",
+    hostGeneration: 1,
+    mountGeneration: 2,
+  };
+  runtimeRegistry.registerRendererSession({
+    browserViewScopeId: identity.browserViewScopeId,
+    ownerWebContentsId: 7,
+    rendererInstanceId: route.rendererInstanceId,
+  });
+  const registered = runtimeRegistry.registerHost(7, {
+    ...route,
+    hostKind: "panel",
+    pagePersistence: "durable",
+  });
+  assert.isTrue(registered.ok);
+  const admission = state.authorizeWebviewAttachment(7, route);
+  if (!admission.ok) throw new Error("Permission guest admission failed");
+  state.consumeAuthorizedWebviewAttachment(admission.authorization.attachToken, 7, contents.id);
+  state.registerAttachedWebviewOwnership(7, contents.id, route, route.browserStorageId);
+  yield* state.handleWebviewHostCreated(
+    {
+      ...route,
+      projectId: "project-1",
+      hostKind: "panel",
+      webContentsId: contents.id,
+      initialUrl: "https://example.com/page",
+    },
+    7,
+  );
+  contents.url = "https://example.com/page";
+  contents.emit("did-navigate", {}, contents.url);
+  const results: boolean[] = [];
+  const request = () =>
+    state.permissions.request(
+      contents as never,
+      "notifications",
+      (allowed) => results.push(allowed),
+      { requestingUrl: contents.url, isMainFrame: true },
+    );
+  return { ...fixture, results, request, route };
+});
+
+describe("Browser permission presentation lifetime", () => {
+  it.effect("publishes prompts through the tab snapshot and accepts only its presented owner", () =>
+    Effect.gen(function* () {
+      const { state, request, results, events } = yield* permissionFixture;
+      request();
+      const prompt = readTab(state).permissionPrompts?.[0];
+      if (!prompt) throw new Error("Missing Browser prompt snapshot");
+      assert.isTrue(
+        events.some(
+          (event) =>
+            event.kind === "state" &&
+            event.value.tabs.some((tab) =>
+              tab.permissionPrompts?.some((value) => value.id === prompt.id),
+            ),
+        ),
+      );
+      const command = {
+        ...identity,
+        type: "respond-permission" as const,
+        promptId: prompt.id,
+        mountGeneration: prompt.mountGeneration,
+        action: "allow-this-time" as const,
+      };
+      assert.isFalse((yield* state.handleCommand(command, { ownerWebContentsId: 8 })).ok);
+      assert.isEmpty(results);
+      assert.isTrue((yield* state.handleCommand(command, { ownerWebContentsId: 7 })).ok);
+      assert.deepEqual(results, [true]);
+      assert.isEmpty(readTab(state).permissionPrompts);
+    }),
+  );
+
+  for (const end of [
+    "navigation",
+    "same-url-reload",
+    "close",
+    "renderer-loss",
+    "guest-loss",
+    "renderer-replaced",
+    "owner-destroyed",
+    "owner-reload",
+  ] as const) {
+    it.effect(`dismisses the Electron callback on ${end}`, () =>
+      Effect.gen(function* () {
+        const { state, request, results, contents, owner } = yield* permissionFixture;
+        request();
+        const prompt = readTab(state).permissionPrompts?.[0];
+        if (!prompt) throw new Error("Missing Browser prompt snapshot");
+        if (end === "navigation")
+          contents.emit("did-start-navigation", {}, "https://other.example/", false, true);
+        if (end === "same-url-reload")
+          contents.emit("did-start-navigation", {}, contents.url, false, true);
+        if (end === "close") yield* state.handleCommand({ ...identity, type: "close-tab" });
+        if (end === "renderer-loss") owner.emit("render-process-gone");
+        if (end === "owner-destroyed") owner.emit("destroyed");
+        if (end === "owner-reload")
+          owner.emit("did-start-navigation", { isMainFrame: true, isSameDocument: false });
+        if (end === "guest-loss") contents.emit("render-process-gone", {}, { reason: "crashed" });
+        if (end === "renderer-replaced")
+          yield* state.handleCommand(
+            {
+              type: "register-renderer-session",
+              browserViewScopeId: identity.browserViewScopeId,
+              rendererInstanceId: "replacement",
+            },
+            { ownerWebContentsId: 7 },
+          );
+        assert.deepEqual(results, [false]);
+        const result = yield* state.handleCommand(
+          {
+            ...identity,
+            type: "respond-permission",
+            promptId: prompt.id,
+            mountGeneration: prompt.mountGeneration,
+            action: "allow-this-time",
+          },
+          { ownerWebContentsId: 7 },
+        );
+        assert.isFalse(result.ok);
+      }),
+    );
+  }
+});
+
+it.effect("resets only the current presented origin under its renderer owner", () =>
+  Effect.gen(function* () {
+    const fixture = yield* permissionFixture;
+    const command = {
+      ...identity,
+      type: "reset-site-permissions" as const,
+      origin: "https://example.com",
+    };
+    assert.isFalse((yield* fixture.state.handleCommand(command, { ownerWebContentsId: 8 })).ok);
+    assert.isFalse(
+      (yield* fixture.state.handleCommand(
+        { ...command, origin: "https://foreign.example" },
+        { ownerWebContentsId: 7 },
+      )).ok,
+    );
+    fixture.request();
+    assert.isTrue((yield* fixture.state.handleCommand(command, { ownerWebContentsId: 7 })).ok);
+    assert.deepEqual(fixture.results, [false]);
+    assert.isEmpty(readTab(fixture.state).permissionPrompts);
+  }),
+);
+
+it.effect("uses native input activation for clipboard writes and clears it on navigation", () =>
+  Effect.gen(function* () {
+    const { contents, state } = yield* permissionFixture;
+    const results: boolean[] = [];
+    const request = () =>
+      state.permissions.request(
+        contents as never,
+        "clipboard-sanitized-write",
+        (allowed) => results.push(allowed),
+        { isMainFrame: true, requestingUrl: contents.url },
+      );
+    contents.emit("before-mouse-event", {}, { type: "mouseMove" });
+    request();
+    assert.isEmpty(results);
+    state.permissions.release(contents.id);
+    contents.emit("before-mouse-event", {}, { type: "mouseDown" });
+    request();
+    assert.deepEqual(results, [false, true]);
+    contents.emit("did-start-navigation", {}, contents.url, false, true);
+    request();
+    assert.lengthOf(results, 2);
+    state.permissions.dispose();
+  }),
+);
+
+it.effect("uses native page liveness after a crashed page reloads", () =>
+  Effect.gen(function* () {
+    const { state, contents, request, results } = yield* permissionFixture;
+    let crashed = true;
+    Object.assign(contents, { isCrashed: () => crashed });
+    contents.emit("render-process-gone", {}, { reason: "crashed" });
+    request();
+    assert.deepEqual(results, [false]);
+    crashed = false;
+    contents.emit("did-navigate", {}, contents.url);
+    request();
+    assert.lengthOf(results, 1);
+    assert.lengthOf(readTab(state).permissionPrompts ?? [], 1);
+    state.permissions.dispose();
+  }),
+);

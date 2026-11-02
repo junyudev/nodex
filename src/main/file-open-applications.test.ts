@@ -47,8 +47,10 @@ test("keeps the default separate, deduplicates in system order and excludes Node
     name: "QuickTime Player",
     appPath: "/Applications/QuickTime Player.app",
     iconDataUrl: null,
+    isSystemDefault: true,
   });
   expect(result.applications.map((app) => app.name)).toEqual(["Zed", "IINA"]);
+  expect(result.applications.every((app) => !app.isSystemDefault)).toBe(true);
 });
 
 test("opens a file type's well-known viewer ahead of whichever app claimed the default", () => {
@@ -65,9 +67,52 @@ test("opens a file type's well-known viewer ahead of whichever app claimed the d
     prioritizedBundleIdsForFile("/clips/review.WEBM"),
   );
   expect(result.defaultApplication?.name).toBe("QuickTime Player");
+  expect(result.defaultApplication?.isSystemDefault).toBe(false);
   expect(result.applications.map((app) => app.name)).toEqual(["Fig Player", "Anty"]);
+  expect(result.applications.filter((app) => app.isSystemDefault).map((app) => app.name)).toEqual([
+    "Fig Player",
+  ]);
   expect(prioritizedBundleIdsForFile("/notes/plan.txt")).toEqual([]);
 });
+
+test("marks a promoted viewer as default only when its normalized path matches the OS association", () => {
+  const result = parseLaunchServicesApplications(
+    JSON.stringify({
+      defaultApplication: application(
+        "Preview",
+        "/Applications/./Preview.app/",
+        "com.apple.Preview",
+      ),
+      applications: [
+        application("Preview", "/Applications/Preview.app", "com.apple.Preview"),
+        application("Other Preview", "/Applications/Other Preview.app", "com.apple.Preview"),
+      ],
+    }),
+    "",
+    prioritizedBundleIdsForFile("/repo/report.pdf"),
+  );
+  expect(result.defaultApplication?.isSystemDefault).toBe(true);
+  expect(result.applications).toEqual([
+    expect.objectContaining({ appPath: "/Applications/Other Preview.app", isSystemDefault: false }),
+  ]);
+});
+
+test.each([null, application("Nodex", "/Applications/Nodex.app", "app.jyu.nodex")])(
+  "does not invent a system default when promoting a viewer without an available OS association",
+  (defaultApplication) => {
+    const result = parseLaunchServicesApplications(
+      JSON.stringify({
+        defaultApplication,
+        applications: [application("Preview", undefined, "com.apple.Preview")],
+      }),
+      "",
+      prioritizedBundleIdsForFile("/repo/report.pdf"),
+    );
+    expect(result.defaultApplication).toEqual(
+      expect.objectContaining({ name: "Preview", isSystemDefault: false }),
+    );
+  },
+);
 
 test("caps alternatives and permits a missing or excluded default", () => {
   const result = parseLaunchServicesApplications(
@@ -118,7 +163,9 @@ test("validates exact existing paths before discovery and tolerates missing icon
   });
   expect(readApplications).toHaveBeenCalledWith(filePath);
   expect(result.defaultApplication?.iconDataUrl).toBe("data:image/png;base64,fixture");
+  expect(result.defaultApplication?.isSystemDefault).toBe(true);
   expect(result.applications[0]?.iconDataUrl).toBeNull();
+  expect(result.applications[0]?.isSystemDefault).toBe(false);
   readApplications.mockClear();
   await expect(
     readFileOpenApplications(path.join(root, "missing"), { readApplications, readIcon }),

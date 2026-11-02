@@ -1,9 +1,9 @@
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import path from "node:path";
 import { build } from "esbuild";
-import { _electron as electron, type ElectronApplication } from "playwright";
+import type { ElectronApplication } from "playwright";
 import { expect, test } from "vite-plus/test";
-import { isolatedElectronArguments } from "../../../scripts/isolated-run/electron-arguments";
+import { launchTestElectron } from "../../../scripts/testing/launch-electron";
 
 // Exercise the actual Electron SDK and streamed envelope path without a remote transport.
 test("keeps crash diagnostics and streamed spans private in Electron", async () => {
@@ -63,8 +63,8 @@ test("keeps crash diagnostics and streamed spans private in Electron", async () 
         ([key, value]) => key !== "ELECTRON_RUN_AS_NODE" && value !== undefined,
       ),
     ) as Record<string, string>;
-    application = await electron.launch({
-      args: [path.join(directory, "main.cjs"), ...isolatedElectronArguments()],
+    application = await launchTestElectron({
+      args: [path.join(directory, "main.cjs")],
       env,
     });
     const result = await application.evaluate(async () => {

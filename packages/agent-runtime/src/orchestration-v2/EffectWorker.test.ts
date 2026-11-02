@@ -113,7 +113,6 @@ function layerExecutorFor(input: {
         discardSideChatNative: () => Effect.void,
         busyInstances: Effect.succeed(new Set()),
         busyThreads: Effect.succeed(new Map()),
-        isSnapshotIdle: Effect.succeed(true),
         open: () => Effect.die("unused open"),
         get: () => Effect.succeed(Option.none()),
         close: () => Effect.void,

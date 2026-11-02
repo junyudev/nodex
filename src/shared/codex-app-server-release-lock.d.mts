@@ -6,6 +6,7 @@ export const CODEX_APP_SERVER_REQUIRED_ARTIFACTS: readonly [
   "codex-package.json",
   "bin/codex",
   "bin/codex-code-mode-host",
+  "bin/codex-exec-server",
   "codex-path/rg",
 ];
 export const OFFICIAL_CODEX_MACOS_SIGNING_TEAM_ID: "2DC432GLL2";
@@ -51,6 +52,7 @@ export interface CodexAppServerReleaseLock {
   };
   packageManifest: {
     entrypoint: string;
+    execServer: string;
     layoutVersion: number;
     pathDir: string;
     resourcesDir: string;

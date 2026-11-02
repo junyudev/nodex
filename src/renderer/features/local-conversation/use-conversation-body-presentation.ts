@@ -89,6 +89,7 @@ export function buildConversationPresentationTurns(
       durationMs: details.durationMs,
       firstTurnWorkItemStartedAtMs: details.firstTurnWorkItemStartedAtMs,
       finalAssistantStartedAtMs: details.finalAssistantStartedAtMs,
+      assistantResponseWorkDurationMs: details.assistantResponseWorkDurationMs,
       assistantMessageStartedAtMsById: details.assistantMessageStartedAtMsById,
       commandExecutionStartedAtMsById: details.commandExecutionStartedAtMsById,
       interruptedCommandExecutionItemIds: details.interruptedCommandExecutionItemIds

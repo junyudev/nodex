@@ -1,18 +1,10 @@
 //! Profile provisioning composes persistence owners before publishing a new home.
 #![forbid(unsafe_code)]
 
-mod claude_history;
-mod codex;
-mod control;
 mod execution;
-mod execution_relocation;
 mod files;
-mod goals;
-mod snapshot;
-pub use snapshot::ExecutionProfileSnapshotParticipant;
-
-pub use codex::ConversationSnapshotReceipt;
 pub use execution::ExecutionSnapshotReceipt;
+
 pub use nodex_core::administration::{
     ProfileCloneBackupSelection, ProfileCloneRequest, ProfileStoreCheck, ProfileStoreStatus,
     check_profile_store,
@@ -28,9 +20,9 @@ pub enum ProfileCloneError {
     Invalid(String),
     #[error("Profile clone filesystem operation failed: {0}")]
     Io(#[from] std::io::Error),
-    #[error("Profile conversation database operation failed: {0}")]
+    #[error("Profile execution database operation failed: {0}")]
     Sqlite(#[from] rusqlite::Error),
-    #[error("Profile conversation data is invalid: {0}")]
+    #[error("Profile execution data is invalid: {0}")]
     Json(#[from] serde_json::Error),
     #[error("{0}")]
     Store(#[from] nodex_core::infrastructure::sqlite::StoreError),
@@ -62,55 +54,17 @@ type Result<T> = std::result::Result<T, ProfileCloneError>;
 pub struct ProfileCloneReceipt {
     #[serde(flatten)]
     pub store: StoreCloneReceipt,
-    pub conversations: ConversationSnapshotReceipt,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub execution: Option<ExecutionSnapshotReceipt>,
 }
 
-/// Captures the selected Store backup and current idle native history as separately dated inputs.
-/// Missing history is a rejected clone unless explicitly requested for diagnostic reproduction.
-pub fn materialize_profile_clone(
-    request: ProfileCloneRequest,
-    allow_missing_conversations: bool,
-) -> Result<ProfileCloneReceipt> {
-    let source = request.source_profile_home.canonicalize()?;
-    let lease = control::SnapshotLease::acquire(&source)?;
-    let offline = if lease.is_none() {
-        Some(execution::OfflineLease::acquire(&source)?)
-    } else {
-        None
-    };
+/// Combines a published content backup with the source's current online execution snapshot.
+pub fn materialize_profile_clone(request: ProfileCloneRequest) -> Result<ProfileCloneReceipt> {
     let prepared = prepare_profile_clone(request)?;
-    let (execution, mut native) = execution::capture(
-        prepared.source_home(),
-        prepared.staging_home(),
-        prepared.target_home(),
-        prepared.executions(),
-        lease.as_ref().and_then(control::SnapshotLease::execution),
-    )?;
-    native.extend_from_slice(prepared.threads());
-    let conversations = codex::capture(
-        prepared.source_home(),
-        prepared.staging_home(),
-        prepared.target_home(),
-        &native,
-    )?;
-    if !allow_missing_conversations && !conversations.missing_thread_ids.is_empty() {
-        return Err(ProfileCloneError::Invalid(format!(
-            "Source Profile has no recoverable native history for {} local Thread(s) (first: {}). Restore the source conversation data, or use --allow-missing-conversations for an explicitly incomplete diagnostic clone",
-            conversations.missing_thread_ids.len(),
-            conversations.missing_thread_ids[0],
-        )));
-    }
+    let execution = execution::capture(prepared.source_home(), prepared.staging_home())?;
     let receipt = ProfileCloneReceipt {
         store: prepared.store_receipt().clone(),
-        conversations,
         execution,
     };
-    drop(offline);
-    if let Some(lease) = lease {
-        lease.finish()?;
-    }
     prepared.publish(&receipt)?;
     Ok(receipt)
 }

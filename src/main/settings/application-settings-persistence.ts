@@ -1,5 +1,10 @@
 import { syncDirectorySync } from "../platform/node/filesystem-durability";
 import {
+  LinkOpeningSettingsSchema,
+  DEFAULT_LINK_OPENING_SETTINGS,
+  type LinkOpeningSettings,
+} from "../../shared/link-opening-settings";
+import {
   AgentRuntimeSettingsSchema,
   DEFAULT_AGENT_RUNTIME_SETTINGS,
   type AgentRuntimeSettings,
@@ -129,6 +134,9 @@ interface ServerTomlConfig {
   composer_predictions_enabled?: boolean;
   default_runtime_mode?: AgentRuntimeSettings["defaultRuntimeMode"];
   usage_meters?: Partial<UsageMeterSettings>;
+  open_link_in_target?: LinkOpeningSettings["openLinkInTarget"];
+  open_local_url_in_target?: LinkOpeningSettings["openLocalUrlInTarget"];
+  external_browser_link_shortcut?: LinkOpeningSettings["externalBrowserLinkShortcut"];
   inbox_suggestions?: InboxSuggestionMode;
   /** Read only to migrate the former boolean preference. */
   inbox_suggestions_enabled?: boolean;
@@ -1452,6 +1460,39 @@ export function updateUsageMeterSettings(
   writeProfileServerTomlConfig(source, {
     ...loadProfileServerTomlConfig(source),
     usage_meters: settings,
+  });
+  return settings;
+}
+
+/** Profile-owned URL destinations; absent values use the effective Desktop defaults. */
+export function getLinkOpeningSettings(
+  source: ApplicationSettingsDocumentSource,
+): LinkOpeningSettings {
+  const config = loadProfileServerTomlConfig(source);
+  return {
+    openLinkInTarget:
+      LinkOpeningSettingsSchema.shape.openLinkInTarget.safeParse(config.open_link_in_target).data ??
+      DEFAULT_LINK_OPENING_SETTINGS.openLinkInTarget,
+    openLocalUrlInTarget:
+      LinkOpeningSettingsSchema.shape.openLocalUrlInTarget.safeParse(
+        config.open_local_url_in_target,
+      ).data ?? DEFAULT_LINK_OPENING_SETTINGS.openLocalUrlInTarget,
+    externalBrowserLinkShortcut:
+      LinkOpeningSettingsSchema.shape.externalBrowserLinkShortcut.safeParse(
+        config.external_browser_link_shortcut,
+      ).data ?? DEFAULT_LINK_OPENING_SETTINGS.externalBrowserLinkShortcut,
+  };
+}
+export function updateLinkOpeningSettings(
+  input: LinkOpeningSettings,
+  source: ApplicationSettingsDocumentSource,
+): LinkOpeningSettings {
+  const settings = LinkOpeningSettingsSchema.parse(input);
+  writeProfileServerTomlConfig(source, {
+    ...loadProfileServerTomlConfig(source),
+    open_link_in_target: settings.openLinkInTarget,
+    open_local_url_in_target: settings.openLocalUrlInTarget,
+    external_browser_link_shortcut: settings.externalBrowserLinkShortcut,
   });
   return settings;
 }

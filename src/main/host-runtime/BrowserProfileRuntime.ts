@@ -183,6 +183,7 @@ export const live = (
       const siteInfo = makeBrowserSiteInfoRuntime(
         { getTabSnapshot: browser.projection.getTab },
         browserSession.cookies,
+        browser.permissions,
       );
 
       const download = yield* makeBrowserDownloadRuntime({

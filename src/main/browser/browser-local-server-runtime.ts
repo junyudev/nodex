@@ -14,7 +14,6 @@ import type {
   BrowserSidebarLocalServerRoute,
   BrowserSidebarLocalServersSnapshot,
 } from "../../shared/browser-sidebar";
-import { normalizeBrowserNavigationUrl } from "../../shared/browser-url";
 import type { ElectronNetError } from "../platform/electron/ElectronNet";
 import { MAIN_OBSERVATION_EVENT_CAPACITY } from "../runtime-limits";
 
@@ -320,7 +319,7 @@ export const makeBrowserLocalServerRuntime = (
 
 const parseLocalServerUrl = (value: string): URL[] => {
   try {
-    const url = new URL(normalizeBrowserNavigationUrl(value));
+    const url = new URL(value || "about:blank");
     return isLocalServerUrl(url) ? [url] : [];
   } catch {
     return [];
@@ -335,7 +334,7 @@ const isLocalServerUrl = (url: URL): boolean =>
 
 const readLocalServerOrigin = (value: string): string => {
   try {
-    return new URL(normalizeBrowserNavigationUrl(value)).origin;
+    return new URL(value || "about:blank").origin;
   } catch {
     return value;
   }

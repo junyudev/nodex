@@ -559,13 +559,6 @@ export const live = (
                   }),
                 ),
               ),
-          ).pipe((request) =>
-            endpoint.withRequest(
-              request,
-              method === "turn/interrupt" ||
-                method === "thread/backgroundTerminals/terminate" ||
-                method === "thread/backgroundTerminals/clean",
-            ),
           );
         });
 
@@ -649,7 +642,7 @@ export const live = (
                   }),
                 ),
               );
-            }).pipe(endpoint.withRequest);
+            });
           }),
         connection: (hostId) =>
           endpoints

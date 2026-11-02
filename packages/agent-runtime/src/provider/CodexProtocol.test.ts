@@ -209,6 +209,8 @@ it("accepts account plans declared by the pinned protocol", () => {
     "edu_plus",
     "edu_pro",
     "promax",
+    "sci",
+    "sci_plus",
     "unknown",
   ];
 
@@ -218,6 +220,7 @@ it("accepts account plans declared by the pinned protocol", () => {
         email: "user@example.com",
         planType,
         type: "chatgpt",
+        workspaceName: null,
       },
       requiresOpenaiAuth: true,
     };

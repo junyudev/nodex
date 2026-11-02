@@ -1002,6 +1002,18 @@ export const ClientRequest__ThreadMemoryMode = Schema.Literals(["enabled", "disa
   identifier: "ClientRequest__ThreadMemoryMode",
 });
 
+export type ClientRequest__ThreadMemoryReadParams = { readonly threadId: string } & {
+  readonly [x: string]: CodexJsonExtension;
+};
+export const ClientRequest__ThreadMemoryReadParams = Schema.StructWithRest(
+  Schema.Struct({
+    threadId: Schema.String.annotate({
+      description: "The thread must already be started or resumed.",
+    }),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "ClientRequest__ThreadMemoryReadParams" });
+
 export type ClientRequest__MemoryStatusParams = {
   readonly minConsolidatedThreads?: number | null;
 } & { readonly [x: string]: CodexJsonExtension };
@@ -1484,15 +1496,26 @@ export const ClientRequest__SkillsListParams = Schema.StructWithRest(
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "ClientRequest__SkillsListParams" });
 
-export type ClientRequest__HooksListParams = { readonly cwds?: ReadonlyArray<string> } & {
-  readonly [x: string]: CodexJsonExtension;
-};
+export type ClientRequest__HooksListParams = {
+  readonly cwds?: ReadonlyArray<string>;
+  readonly threadId?: string | null;
+} & { readonly [x: string]: CodexJsonExtension };
 export const ClientRequest__HooksListParams = Schema.StructWithRest(
   Schema.Struct({
     cwds: Schema.optionalKey(
       Schema.Array(Schema.String).annotate({
-        description: "When empty, defaults to the current session working directory.",
+        description:
+          "Working directories to inspect when no thread is specified. An empty list uses the session cwd.",
       }),
+    ),
+    threadId: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "List a loaded thread's hooks, including its selected environments. Omit `cwds` in this mode.",
+        }),
+        Schema.Null,
+      ]),
     ),
   }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
@@ -2043,8 +2066,8 @@ export const ClientRequest__ThreadRealtimeListVoicesParams = Schema.Record(
   identifier: "ClientRequest__ThreadRealtimeListVoicesParams",
 });
 
-export type ClientRequest__ReviewDelivery = "inline" | "detached";
-export const ClientRequest__ReviewDelivery = Schema.Literals(["inline", "detached"]).annotate({
+export type ClientRequest__ReviewDelivery = "inline";
+export const ClientRequest__ReviewDelivery = Schema.Literal("inline").annotate({
   identifier: "ClientRequest__ReviewDelivery",
 });
 
@@ -2499,6 +2522,35 @@ export const ClientRequest__BedrockSetupParams = Schema.Union(
   { mode: "oneOf" },
 ).annotate({ identifier: "ClientRequest__BedrockSetupParams" });
 
+export type ClientRequest__GcpSetupParams = {
+  readonly credentialFile?: string | null;
+  readonly location?: string | null;
+  readonly projectId: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const ClientRequest__GcpSetupParams = Schema.StructWithRest(
+  Schema.Struct({
+    credentialFile: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "Absolute path to a credential file on the app-server host. Omit or pass `null` to clear the active user configuration's override and use ADC. If another configuration layer would still supply a credential file, setup fails without saving changes.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    location: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description: "Vertex AI location. Omission or null selects `global`.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    projectId: Schema.String,
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "ClientRequest__GcpSetupParams" });
+
 export type ClientRequest__BedrockCheckGovCloudRequirementsParams = {
   readonly [x: string]: Schema.Json;
 };
@@ -2514,6 +2566,37 @@ export const ClientRequest__CancelLoginAccountParams = Schema.StructWithRest(
   Schema.Struct({ loginId: Schema.String }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "ClientRequest__CancelLoginAccountParams" });
+
+export type ClientRequest__AccountSessionsListParams = {
+  readonly refreshWorkspaceMetadata?: boolean;
+} & { readonly [x: string]: CodexJsonExtension };
+export const ClientRequest__AccountSessionsListParams = Schema.StructWithRest(
+  Schema.Struct({ refreshWorkspaceMetadata: Schema.optionalKey(Schema.Boolean) }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "ClientRequest__AccountSessionsListParams" });
+
+export type ClientRequest__AccountSessionsSwitchParams = {
+  readonly accountId: string;
+  readonly allowBrowserLogin?: boolean;
+  readonly sessionId: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const ClientRequest__AccountSessionsSwitchParams = Schema.StructWithRest(
+  Schema.Struct({
+    accountId: Schema.String.annotate({
+      description: "Workspace to select within that login; this is not a user identifier.",
+    }),
+    allowBrowserLogin: Schema.optionalKey(
+      Schema.Boolean.annotate({
+        description:
+          "Allow Core to start browser sign-in if this session needs SSO for the workspace.",
+      }),
+    ),
+    sessionId: Schema.String.annotate({
+      description: "Opaque active-login identifier returned by accountSession/list.",
+    }),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "ClientRequest__AccountSessionsSwitchParams" });
 
 export type ClientRequest__GetAccountRateLimitsParams = {
   readonly excludeResetCreditDetails?: boolean;
@@ -4321,6 +4404,8 @@ export const ServerNotification__HookOutputEntryKind = Schema.Literals([
 ]).annotate({ identifier: "ServerNotification__HookOutputEntryKind" });
 
 export type ServerNotification__HookEventName =
+  | "preModelRequest"
+  | "postModelRequest"
   | "preToolUse"
   | "permissionRequest"
   | "postToolUse"
@@ -4334,6 +4419,8 @@ export type ServerNotification__HookEventName =
   | "stop"
   | "interrupt";
 export const ServerNotification__HookEventName = Schema.Literals([
+  "preModelRequest",
+  "postModelRequest",
   "preToolUse",
   "permissionRequest",
   "postToolUse",
@@ -4588,6 +4675,7 @@ export const ServerNotification__ProcessOutputStream = Schema.Union(
 
 export type ServerNotification__ProcessExitedNotification = {
   readonly exitCode: number;
+  readonly outputDrainTimedOut?: boolean | null;
   readonly processHandle: string;
   readonly stderr: string;
   readonly stderrCapReached: boolean;
@@ -4598,6 +4686,15 @@ export const ServerNotification__ProcessExitedNotification = Schema.StructWithRe
   Schema.Struct({
     exitCode: Schema.Number.annotate({ description: "Process exit code.", format: "int32" }).check(
       Schema.isInt().annotate({ expected: "an integer" }),
+    ),
+    outputDrainTimedOut: Schema.optionalKey(
+      Schema.Union([
+        Schema.Boolean.annotate({
+          description:
+            "Whether output collection hit its post-exit deadline before seeing EOF or reaching the requested byte cap on either stream. Older servers omit this field.",
+        }),
+        Schema.Null,
+      ]),
     ),
     processHandle: Schema.String.annotate({
       description: "Client-supplied, connection-scoped `processHandle` from `process/spawn`.",
@@ -4818,6 +4915,8 @@ export type ServerNotification__PlanType =
   | "edu"
   | "edu_plus"
   | "edu_pro"
+  | "sci"
+  | "sci_plus"
   | "unknown";
 export const ServerNotification__PlanType = Schema.Literals([
   "free",
@@ -4837,6 +4936,8 @@ export const ServerNotification__PlanType = Schema.Literals([
   "edu",
   "edu_plus",
   "edu_pro",
+  "sci",
+  "sci_plus",
   "unknown",
 ]).annotate({ identifier: "ServerNotification__PlanType" });
 
@@ -5935,6 +6036,8 @@ export type V2AccountRateLimitsUpdatedNotification__PlanType =
   | "edu"
   | "edu_plus"
   | "edu_pro"
+  | "sci"
+  | "sci_plus"
   | "unknown";
 export const V2AccountRateLimitsUpdatedNotification__PlanType = Schema.Literals([
   "free",
@@ -5954,6 +6057,8 @@ export const V2AccountRateLimitsUpdatedNotification__PlanType = Schema.Literals(
   "edu",
   "edu_plus",
   "edu_pro",
+  "sci",
+  "sci_plus",
   "unknown",
 ]).annotate({ identifier: "V2AccountRateLimitsUpdatedNotification__PlanType" });
 
@@ -6000,6 +6105,18 @@ export const V2AccountRateLimitsUpdatedNotification__RateLimitReachedType = Sche
   "workspace_owner_usage_limit_reached",
   "workspace_member_usage_limit_reached",
 ]).annotate({ identifier: "V2AccountRateLimitsUpdatedNotification__RateLimitReachedType" });
+
+export type V2AccountSessionsResponse__AccountSessionWorkspaceKind = "personal" | "workspace";
+export const V2AccountSessionsResponse__AccountSessionWorkspaceKind = Schema.Literals([
+  "personal",
+  "workspace",
+]).annotate({ identifier: "V2AccountSessionsResponse__AccountSessionWorkspaceKind" });
+
+export type V2AccountSessionsSwitchResponse__AccountSessionWorkspaceKind = "personal" | "workspace";
+export const V2AccountSessionsSwitchResponse__AccountSessionWorkspaceKind = Schema.Literals([
+  "personal",
+  "workspace",
+]).annotate({ identifier: "V2AccountSessionsSwitchResponse__AccountSessionWorkspaceKind" });
 
 export type V2AccountUpdatedNotification__AuthMode =
   | "apikey"
@@ -6062,6 +6179,8 @@ export type V2AccountUpdatedNotification__PlanType =
   | "edu"
   | "edu_plus"
   | "edu_pro"
+  | "sci"
+  | "sci_plus"
   | "unknown";
 export const V2AccountUpdatedNotification__PlanType = Schema.Literals([
   "free",
@@ -6081,6 +6200,8 @@ export const V2AccountUpdatedNotification__PlanType = Schema.Literals([
   "edu",
   "edu_plus",
   "edu_pro",
+  "sci",
+  "sci_plus",
   "unknown",
 ]).annotate({ identifier: "V2AccountUpdatedNotification__PlanType" });
 
@@ -6692,6 +6813,11 @@ export const V2ConfigRequirementsReadResponse__NetworkDomainPermission = Schema.
   "deny",
 ]).annotate({ identifier: "V2ConfigRequirementsReadResponse__NetworkDomainPermission" });
 
+export type V2ConfigRequirementsReadResponse__LegacyAppPathString = string;
+export const V2ConfigRequirementsReadResponse__LegacyAppPathString = Schema.String.annotate({
+  identifier: "V2ConfigRequirementsReadResponse__LegacyAppPathString",
+});
+
 export type V2ConfigRequirementsReadResponse__AutoReviewRequirements = {
   readonly ignoreRules?: ReadonlyArray<string> | null;
   readonly requiredOnModels?: ReadonlyArray<string> | null;
@@ -6875,6 +7001,42 @@ export const V2ConfigRequirementsReadResponse__NetworkUnixSocketPermission = Sch
   "allow",
   "deny",
 ]).annotate({ identifier: "V2ConfigRequirementsReadResponse__NetworkUnixSocketPermission" });
+
+export type V2ConfigRequirementsReadResponse__OtelHttpProtocol = "binary" | "json";
+export const V2ConfigRequirementsReadResponse__OtelHttpProtocol = Schema.Literals([
+  "binary",
+  "json",
+]).annotate({ identifier: "V2ConfigRequirementsReadResponse__OtelHttpProtocol" });
+
+export type V2ConfigRequirementsReadResponse__OtelTlsConfig = {
+  readonly "ca-certificate"?: string | null;
+  readonly "client-certificate"?: string | null;
+  readonly "client-private-key"?: string | null;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ConfigRequirementsReadResponse__OtelTlsConfig = Schema.StructWithRest(
+  Schema.Struct({
+    "ca-certificate": Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+    "client-certificate": Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+    "client-private-key": Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "V2ConfigRequirementsReadResponse__OtelTlsConfig" });
+
+export type V2ConfigRequirementsReadResponse__OtelToolResultLogConfig = {
+  readonly max_bytes: number;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ConfigRequirementsReadResponse__OtelToolResultLogConfig = Schema.StructWithRest(
+  Schema.Struct({
+    max_bytes: Schema.Number.annotate({ format: "uint" })
+      .check(Schema.isInt().annotate({ expected: "an integer" }))
+      .check(
+        Schema.isGreaterThanOrEqualTo(0).annotate({
+          expected: "a value greater than or equal to 0",
+        }),
+      ),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "V2ConfigRequirementsReadResponse__OtelToolResultLogConfig" });
 
 export type V2ConfigValueWriteParams__MergeStrategy = "replace" | "upsert";
 export const V2ConfigValueWriteParams__MergeStrategy = Schema.Literals([
@@ -7363,6 +7525,16 @@ export const V2ExternalAgentConfigImportProgressNotification__ExternalAgentConfi
       "V2ExternalAgentConfigImportProgressNotification__ExternalAgentConfigMigrationItemType",
   });
 
+export type V2FeedbackSaveParams__LegacyAppPathString = string;
+export const V2FeedbackSaveParams__LegacyAppPathString = Schema.String.annotate({
+  identifier: "V2FeedbackSaveParams__LegacyAppPathString",
+});
+
+export type V2FeedbackSaveResponse__LegacyAppPathString = string;
+export const V2FeedbackSaveResponse__LegacyAppPathString = Schema.String.annotate({
+  identifier: "V2FeedbackSaveResponse__LegacyAppPathString",
+});
+
 export type V2FileChangePatchUpdatedNotification__PatchChangeKind =
   | ({ readonly type: "add" } & { readonly [x: string]: CodexJsonExtension })
   | ({ readonly type: "delete" } & { readonly [x: string]: CodexJsonExtension })
@@ -7579,6 +7751,8 @@ export type V2GetAccountRateLimitsResponse__PlanType =
   | "edu"
   | "edu_plus"
   | "edu_pro"
+  | "sci"
+  | "sci_plus"
   | "unknown";
 export const V2GetAccountRateLimitsResponse__PlanType = Schema.Literals([
   "free",
@@ -7598,6 +7772,8 @@ export const V2GetAccountRateLimitsResponse__PlanType = Schema.Literals([
   "edu",
   "edu_plus",
   "edu_pro",
+  "sci",
+  "sci_plus",
   "unknown",
 ]).annotate({ identifier: "V2GetAccountRateLimitsResponse__PlanType" });
 
@@ -7663,6 +7839,8 @@ export type V2GetAccountResponse__PlanType =
   | "edu"
   | "edu_plus"
   | "edu_pro"
+  | "sci"
+  | "sci_plus"
   | "unknown";
 export const V2GetAccountResponse__PlanType = Schema.Literals([
   "free",
@@ -7682,6 +7860,8 @@ export const V2GetAccountResponse__PlanType = Schema.Literals([
   "edu",
   "edu_plus",
   "edu_pro",
+  "sci",
+  "sci_plus",
   "unknown",
 ]).annotate({ identifier: "V2GetAccountResponse__PlanType" });
 
@@ -7850,6 +8030,8 @@ export const V2HookCompletedNotification__HookOutputEntryKind = Schema.Literals(
 ]).annotate({ identifier: "V2HookCompletedNotification__HookOutputEntryKind" });
 
 export type V2HookCompletedNotification__HookEventName =
+  | "preModelRequest"
+  | "postModelRequest"
   | "preToolUse"
   | "permissionRequest"
   | "postToolUse"
@@ -7863,6 +8045,8 @@ export type V2HookCompletedNotification__HookEventName =
   | "stop"
   | "interrupt";
 export const V2HookCompletedNotification__HookEventName = Schema.Literals([
+  "preModelRequest",
+  "postModelRequest",
   "preToolUse",
   "permissionRequest",
   "postToolUse",
@@ -7926,11 +8110,9 @@ export const V2HookCompletedNotification__HookSource = Schema.Literals([
   "unknown",
 ]).annotate({ identifier: "V2HookCompletedNotification__HookSource" });
 
-export type V2HookCompletedNotification__AbsolutePathBuf = string;
-export const V2HookCompletedNotification__AbsolutePathBuf = Schema.String.annotate({
-  description:
-    "A path that is guaranteed to be absolute and normalized (though it is not guaranteed to be canonicalized or exist on the filesystem).\n\nIMPORTANT: When deserializing an `AbsolutePathBuf`, a base path must be set using [AbsolutePathBufGuard::new]. If no base path is set, the deserialization will fail unless the path being deserialized is already absolute.",
-  identifier: "V2HookCompletedNotification__AbsolutePathBuf",
+export type V2HookCompletedNotification__LegacyAppPathString = string;
+export const V2HookCompletedNotification__LegacyAppPathString = Schema.String.annotate({
+  identifier: "V2HookCompletedNotification__LegacyAppPathString",
 });
 
 export type V2HookCompletedNotification__HookRunStatus =
@@ -7957,6 +8139,8 @@ export const V2HooksListResponse__HookErrorInfo = Schema.StructWithRest(
 ).annotate({ identifier: "V2HooksListResponse__HookErrorInfo" });
 
 export type V2HooksListResponse__HookEventName =
+  | "preModelRequest"
+  | "postModelRequest"
   | "preToolUse"
   | "permissionRequest"
   | "postToolUse"
@@ -7970,6 +8154,8 @@ export type V2HooksListResponse__HookEventName =
   | "stop"
   | "interrupt";
 export const V2HooksListResponse__HookEventName = Schema.Literals([
+  "preModelRequest",
+  "postModelRequest",
   "preToolUse",
   "permissionRequest",
   "postToolUse",
@@ -8040,6 +8226,8 @@ export const V2HookStartedNotification__HookOutputEntryKind = Schema.Literals([
 ]).annotate({ identifier: "V2HookStartedNotification__HookOutputEntryKind" });
 
 export type V2HookStartedNotification__HookEventName =
+  | "preModelRequest"
+  | "postModelRequest"
   | "preToolUse"
   | "permissionRequest"
   | "postToolUse"
@@ -8053,6 +8241,8 @@ export type V2HookStartedNotification__HookEventName =
   | "stop"
   | "interrupt";
 export const V2HookStartedNotification__HookEventName = Schema.Literals([
+  "preModelRequest",
+  "postModelRequest",
   "preToolUse",
   "permissionRequest",
   "postToolUse",
@@ -8112,11 +8302,9 @@ export const V2HookStartedNotification__HookSource = Schema.Literals([
   "unknown",
 ]).annotate({ identifier: "V2HookStartedNotification__HookSource" });
 
-export type V2HookStartedNotification__AbsolutePathBuf = string;
-export const V2HookStartedNotification__AbsolutePathBuf = Schema.String.annotate({
-  description:
-    "A path that is guaranteed to be absolute and normalized (though it is not guaranteed to be canonicalized or exist on the filesystem).\n\nIMPORTANT: When deserializing an `AbsolutePathBuf`, a base path must be set using [AbsolutePathBufGuard::new]. If no base path is set, the deserialization will fail unless the path being deserialized is already absolute.",
-  identifier: "V2HookStartedNotification__AbsolutePathBuf",
+export type V2HookStartedNotification__LegacyAppPathString = string;
+export const V2HookStartedNotification__LegacyAppPathString = Schema.String.annotate({
+  identifier: "V2HookStartedNotification__LegacyAppPathString",
 });
 
 export type V2HookStartedNotification__HookRunStatus =
@@ -9941,6 +10129,8 @@ export const V2PluginReadResponse__AppSummary = Schema.StructWithRest(
 });
 
 export type V2PluginReadResponse__HookEventName =
+  | "preModelRequest"
+  | "postModelRequest"
   | "preToolUse"
   | "permissionRequest"
   | "postToolUse"
@@ -9954,6 +10144,8 @@ export type V2PluginReadResponse__HookEventName =
   | "stop"
   | "interrupt";
 export const V2PluginReadResponse__HookEventName = Schema.Literals([
+  "preModelRequest",
+  "postModelRequest",
   "preToolUse",
   "permissionRequest",
   "postToolUse",
@@ -10886,10 +11078,10 @@ export const V2RemoteControlStatusReadResponse__RemoteControlConnectionStatus = 
   "errored",
 ]).annotate({ identifier: "V2RemoteControlStatusReadResponse__RemoteControlConnectionStatus" });
 
-export type V2ReviewStartParams__ReviewDelivery = "inline" | "detached";
-export const V2ReviewStartParams__ReviewDelivery = Schema.Literals(["inline", "detached"]).annotate(
-  { identifier: "V2ReviewStartParams__ReviewDelivery" },
-);
+export type V2ReviewStartParams__ReviewDelivery = "inline";
+export const V2ReviewStartParams__ReviewDelivery = Schema.Literal("inline").annotate({
+  identifier: "V2ReviewStartParams__ReviewDelivery",
+});
 
 export type V2ReviewStartParams__ReviewTarget =
   | ({ readonly type: "uncommittedChanges" } & { readonly [x: string]: CodexJsonExtension })
@@ -17917,6 +18109,29 @@ export const V2ThreadRevertResponse__TurnStatus = Schema.Literals([
   "inProgress",
 ]).annotate({ identifier: "V2ThreadRevertResponse__TurnStatus" });
 
+export type V2ThreadSampleCancelParams__RequestId = string | number;
+export const V2ThreadSampleCancelParams__RequestId = Schema.Union([
+  Schema.String,
+  Schema.Number.annotate({ format: "int64" }).check(
+    Schema.isInt().annotate({ expected: "an integer" }),
+  ),
+]).annotate({ identifier: "V2ThreadSampleCancelParams__RequestId" });
+
+export type V2ThreadSampleParams__ReasoningEffort = string;
+export const V2ThreadSampleParams__ReasoningEffort = Schema.String.annotate({
+  description: "A non-empty reasoning effort value advertised by the model.",
+}).check(
+  Schema.isMinLength(1).annotate({
+    expected: "a value with a length of at least 1",
+    identifier: "V2ThreadSampleParams__ReasoningEffort",
+  }),
+);
+
+export type V2ThreadSampleParams__ThreadSource = string;
+export const V2ThreadSampleParams__ThreadSource = Schema.String.annotate({
+  identifier: "V2ThreadSampleParams__ThreadSource",
+});
+
 export type V2ThreadSearchOccurrencesResponse__ThreadSearchTextRange = {
   readonly end: number;
   readonly start: number;
@@ -23735,6 +23950,14 @@ export const ClientRequest__UserVerificationCancelParams = Schema.StructWithRest
   identifier: "ClientRequest__UserVerificationCancelParams",
 });
 
+export type ClientRequest__ThreadSampleCancelParams = {
+  readonly requestId: ClientRequest__RequestId;
+} & { readonly [x: string]: CodexJsonExtension };
+export const ClientRequest__ThreadSampleCancelParams = Schema.StructWithRest(
+  Schema.Struct({ requestId: ClientRequest__RequestId }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "ClientRequest__ThreadSampleCancelParams" });
+
 export type ClientRequest__InitializeParams = {
   readonly capabilities?: ClientRequest__InitializeCapabilities | null;
   readonly clientInfo: ClientRequest__ClientInfo;
@@ -23808,6 +24031,35 @@ export const ClientRequest__TurnEnvironmentParams = Schema.StructWithRest(
   }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "ClientRequest__TurnEnvironmentParams" });
+
+export type ClientRequest__FeedbackSaveParams = {
+  readonly classification: string;
+  readonly extraLogFiles?: ReadonlyArray<string> | null;
+  readonly includeLogs?: boolean;
+  readonly reason?: string | null;
+  readonly savePath: ClientRequest__LegacyAppPathString;
+  readonly tags?: { readonly [x: string]: string } | null;
+  readonly threadId?: string | null;
+} & { readonly [x: string]: CodexJsonExtension };
+export const ClientRequest__FeedbackSaveParams = Schema.StructWithRest(
+  Schema.Struct({
+    classification: Schema.String,
+    extraLogFiles: Schema.optionalKey(Schema.Union([Schema.Array(Schema.String), Schema.Null])),
+    includeLogs: Schema.optionalKey(Schema.Boolean),
+    reason: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+    savePath: Schema.suspend(
+      (): Schema.Codec<ClientRequest__LegacyAppPathString> => ClientRequest__LegacyAppPathString,
+    ).annotate({
+      description:
+        "Absolute, previously unused ZIP path on the app-server host. The caller owns this file, including after a disconnected RPC.",
+    }),
+    tags: Schema.optionalKey(
+      Schema.Union([Schema.Record(Schema.String, Schema.String), Schema.Null]),
+    ),
+    threadId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "ClientRequest__FeedbackSaveParams" });
 
 export type ClientRequest__ProjectRoot = { readonly path: ClientRequest__AbsolutePathBuf } & {
   readonly [x: string]: CodexJsonExtension;
@@ -24099,6 +24351,7 @@ export const ClientRequest__SelectedCapabilityRoot = Schema.StructWithRest(
 export type ClientRequest__ThreadForkParams = {
   readonly approvalPolicy?: ClientRequest__AskForApproval | null;
   readonly approvalsReviewer?: ClientRequest__ApprovalsReviewer | null;
+  readonly attachToSource?: boolean;
   readonly baseInstructions?: string | null;
   readonly beforeTurnId?: string | null;
   readonly config?: { readonly [x: string]: Schema.Json } | null;
@@ -24107,6 +24360,7 @@ export type ClientRequest__ThreadForkParams = {
   readonly developerInstructions?: string | null;
   readonly ephemeral?: boolean;
   readonly excludeTurns?: boolean;
+  readonly experimentalDisablePredictionMcp?: boolean;
   readonly experimentalPredictionMode?: boolean;
   readonly lastTurnId?: string | null;
   readonly model?: string | null;
@@ -24126,6 +24380,12 @@ export const ClientRequest__ThreadForkParams = Schema.StructWithRest(
       Schema.Union([ClientRequest__ApprovalsReviewer, Schema.Null]).annotate({
         description:
           "Override where approval requests are routed for review on this thread and subsequent turns.",
+      }),
+    ),
+    attachToSource: Schema.optionalKey(
+      Schema.Boolean.annotate({
+        description:
+          "Persist the fork as an attached thread of its resolved source, hidden from ordinary lists. The source cannot be deleted while attached threads exist. Requires a paginated source and local storage; incompatible with ephemeral and deferGoalContinuation. Omitted or false creates an ordinary fork.",
       }),
     ),
     baseInstructions: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
@@ -24159,10 +24419,16 @@ export const ClientRequest__ThreadForkParams = Schema.StructWithRest(
           "When true, return only thread metadata and live fork state without populating `thread.turns`. This is useful when the client plans to call `thread/turns/list` immediately after forking. Full-history hydration is deprecated for paginated threads; use this with `thread/turns/list` and `thread/items/list` instead.",
       }),
     ),
+    experimentalDisablePredictionMcp: Schema.optionalKey(
+      Schema.Boolean.annotate({
+        description:
+          "Disable MCP servers in prediction mode when the inherited window uses incremental tools on Responses Lite. Requires `experimentalPredictionMode: true`.",
+      }),
+    ),
     experimentalPredictionMode: Schema.optionalKey(
       Schema.Boolean.annotate({
         description:
-          "Start from the loaded parent's effective config, tools, environments, and persisted history to maximize prompt-cache reuse. Requires a loaded, persisted parent and `ephemeral: true`. Enables `features.reasoning_effort_override` on the fork. Cannot be combined with configuration overrides, `path`, `lastTurnId`, or `beforeTurnId`.",
+          "Start from the loaded parent's effective config, tools, environments, and persisted history to maximize prompt-cache reuse. Requires a loaded, persisted parent and `ephemeral: true`. Enables `features.reasoning_effort_override` on the fork. Only `config.thread_unload_delay_secs` may override the inherited config. Cannot be combined with `path`, `lastTurnId`, or `beforeTurnId`.",
       }),
     ),
     lastTurnId: Schema.optionalKey(
@@ -24394,6 +24660,50 @@ export const ClientRequest__ConfigurationReasoning = Schema.StructWithRest(
   description: "Reasoning settings interpreted by the backend for the routed model.",
   identifier: "ClientRequest__ConfigurationReasoning",
 });
+
+export type ClientRequest__ThreadSampleParams = {
+  readonly disableMcp?: boolean;
+  readonly effort?: ClientRequest__ReasoningEffort | null;
+  readonly expectedTurnId: string;
+  readonly prompt: string;
+  readonly responsesapiClientMetadata?: { readonly [x: string]: string } | null;
+  readonly threadId: string;
+  readonly threadSource?: ClientRequest__ThreadSource | null;
+  readonly turnTrigger?: string | null;
+} & { readonly [x: string]: CodexJsonExtension };
+export const ClientRequest__ThreadSampleParams = Schema.StructWithRest(
+  Schema.Struct({
+    disableMcp: Schema.optionalKey(
+      Schema.Boolean.annotate({
+        description:
+          "Disable MCP servers when the inherited window uses incremental tools on Responses Lite.",
+      }),
+    ),
+    effort: Schema.optionalKey(
+      Schema.Union([ClientRequest__ReasoningEffort, Schema.Null]).annotate({
+        description:
+          "Applied only when the provider and model support cache-preserving reasoning-effort updates.",
+      }),
+    ),
+    expectedTurnId: Schema.String.annotate({
+      description:
+        "The loaded source's latest completed, failed, or interrupted turn. Stale or active sources are rejected.",
+    }),
+    prompt: Schema.String,
+    responsesapiClientMetadata: Schema.optionalKey(
+      Schema.Union([
+        Schema.Record(Schema.String, Schema.String).annotate({
+          description: "Optional metadata to enrich Codex's ResponsesAPI turn metadata.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    threadId: Schema.String,
+    threadSource: Schema.optionalKey(Schema.Union([ClientRequest__ThreadSource, Schema.Null])),
+    turnTrigger: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "ClientRequest__ThreadSampleParams" });
 
 export type ClientRequest__Settings = {
   readonly developer_instructions?: string | null;
@@ -24722,6 +25032,7 @@ export const ClientRequest__ThreadMemoryModeSetParams = Schema.StructWithRest(
 export type ClientRequest__ThreadListParams = {
   readonly ancestorThreadId?: string | null;
   readonly archived?: boolean | null;
+  readonly attachedToThreadId?: string | null;
   readonly cursor?: string | null;
   readonly cwd?: ClientRequest__ThreadListCwdFilter | null;
   readonly excludedThreadIds?: ReadonlyArray<string> | null;
@@ -24753,6 +25064,15 @@ export const ClientRequest__ThreadListParams = Schema.StructWithRest(
         Schema.Boolean.annotate({
           description:
             "Optional archived filter; when set to true, only archived threads are returned. If false or null, only non-archived threads are returned.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    attachedToThreadId: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "Return only persistent threads attached to this thread, including empty threads. Mutually exclusive with parentThreadId and ancestorThreadId. Omitting this filter keeps attached threads hidden from ordinary listings.",
         }),
         Schema.Null,
       ]),
@@ -25129,10 +25449,22 @@ export const ClientRequest__PluginShareTarget = Schema.StructWithRest(
 
 export type ClientRequest__AdditionalContextEntry = {
   readonly kind: ClientRequest__AdditionalContextKind;
+  readonly name?: string | null;
   readonly value: string;
 } & { readonly [x: string]: CodexJsonExtension };
 export const ClientRequest__AdditionalContextEntry = Schema.StructWithRest(
-  Schema.Struct({ kind: ClientRequest__AdditionalContextKind, value: Schema.String }),
+  Schema.Struct({
+    kind: ClientRequest__AdditionalContextKind,
+    name: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description: "Optional name for untrusted context, used to label its tool output.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    value: Schema.String,
+  }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "ClientRequest__AdditionalContextEntry" });
 
@@ -25192,7 +25524,7 @@ export const ClientRequest__ReviewStartParams = Schema.StructWithRest(
     delivery: Schema.optionalKey(
       Schema.Union([ClientRequest__ReviewDelivery, Schema.Null]).annotate({
         description:
-          "Where to run the review: inline (default) on the current thread or detached on a new thread (returned in `reviewThreadId`). Detached delivery is deprecated and emits `deprecationNotice`. Use `thread/start` followed by an inline review for a separate review thread.",
+          "Reviews run inline on the supplied thread. Omit this field or pass `inline`. To review on a separate thread, start a thread first and use its id.",
       }),
     ),
     target: ClientRequest__ReviewTarget,
@@ -26378,6 +26710,8 @@ export type ServerNotification__CodexErrorInfo =
   | "rateLimitExceeded"
   | "flexUnavailable"
   | "serverOverloaded"
+  | "modelNotFound"
+  | "policyCapacityUnavailable"
   | "cyberPolicy"
   | "misalignmentPolicyViolation"
   | "tooManyDenials"
@@ -26422,6 +26756,8 @@ export const ServerNotification__CodexErrorInfo = Schema.Union([
     "rateLimitExceeded",
     "flexUnavailable",
     "serverOverloaded",
+    "modelNotFound",
+    "policyCapacityUnavailable",
     "cyberPolicy",
     "misalignmentPolicyViolation",
     "tooManyDenials",
@@ -26596,6 +26932,23 @@ export const ServerNotification__MisalignmentErrorDetails = Schema.StructWithRes
   }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "ServerNotification__MisalignmentErrorDetails" });
+
+export type ServerNotification__ImageGenerationInputImage = {
+  readonly path: ServerNotification__AbsolutePathBuf;
+  readonly sha256: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const ServerNotification__ImageGenerationInputImage = Schema.StructWithRest(
+  Schema.Struct({
+    path: ServerNotification__AbsolutePathBuf,
+    sha256: Schema.String.annotate({
+      description: "Lowercase SHA-256 of the file bytes read before image normalization.",
+    }),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({
+  description: "A local image file successfully read for this exact image-generation request.",
+  identifier: "ServerNotification__ImageGenerationInputImage",
+});
 
 export type ServerNotification__FsChangedNotification = {
   readonly changedPaths: ReadonlyArray<ServerNotification__AbsolutePathBuf>;
@@ -28266,6 +28619,42 @@ export const V2AccountRateLimitsUpdatedNotification__RateLimitSnapshot = Schema.
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "V2AccountRateLimitsUpdatedNotification__RateLimitSnapshot" });
 
+export type V2AccountSessionsResponse__AccountSessionWorkspace = {
+  readonly accountId: string;
+  readonly imageUrl?: string | null;
+  readonly kind?: V2AccountSessionsResponse__AccountSessionWorkspaceKind | null;
+  readonly name?: string | null;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2AccountSessionsResponse__AccountSessionWorkspace = Schema.StructWithRest(
+  Schema.Struct({
+    accountId: Schema.String,
+    imageUrl: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+    kind: Schema.optionalKey(
+      Schema.Union([V2AccountSessionsResponse__AccountSessionWorkspaceKind, Schema.Null]),
+    ),
+    name: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "V2AccountSessionsResponse__AccountSessionWorkspace" });
+
+export type V2AccountSessionsSwitchResponse__AccountSessionWorkspace = {
+  readonly accountId: string;
+  readonly imageUrl?: string | null;
+  readonly kind?: V2AccountSessionsSwitchResponse__AccountSessionWorkspaceKind | null;
+  readonly name?: string | null;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2AccountSessionsSwitchResponse__AccountSessionWorkspace = Schema.StructWithRest(
+  Schema.Struct({
+    accountId: Schema.String,
+    imageUrl: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+    kind: Schema.optionalKey(
+      Schema.Union([V2AccountSessionsSwitchResponse__AccountSessionWorkspaceKind, Schema.Null]),
+    ),
+    name: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "V2AccountSessionsSwitchResponse__AccountSessionWorkspace" });
+
 export type V2AppListUpdatedNotification__AppMetadata = {
   readonly categories?: ReadonlyArray<string> | null;
   readonly developer?: string | null;
@@ -28758,6 +29147,27 @@ export const V2ConfigRequirementsReadResponse__ApplicationNetworkRequirements =
     [Schema.Record(Schema.String, CodexJsonExtension)],
   ).annotate({ identifier: "V2ConfigRequirementsReadResponse__ApplicationNetworkRequirements" });
 
+export type V2ConfigRequirementsReadResponse__ApplicationStorageRequirements = {
+  readonly defaultProjectParent?: V2ConfigRequirementsReadResponse__LegacyAppPathString | null;
+  readonly projectlessWorkspaceRoot?: V2ConfigRequirementsReadResponse__LegacyAppPathString | null;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ConfigRequirementsReadResponse__ApplicationStorageRequirements =
+  Schema.StructWithRest(
+    Schema.Struct({
+      defaultProjectParent: Schema.optionalKey(
+        Schema.Union([V2ConfigRequirementsReadResponse__LegacyAppPathString, Schema.Null]),
+      ),
+      projectlessWorkspaceRoot: Schema.optionalKey(
+        Schema.Union([V2ConfigRequirementsReadResponse__LegacyAppPathString, Schema.Null]),
+      ),
+    }),
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    description:
+      "Managed storage settings for new Desktop workspaces, not filesystem access restrictions.",
+    identifier: "V2ConfigRequirementsReadResponse__ApplicationStorageRequirements",
+  });
+
 export type V2ConfigRequirementsReadResponse__ComputerUseMacosRequirements = {
   readonly bundleIds?: {
     readonly [x: string]: V2ConfigRequirementsReadResponse__AllowDenyRequirement;
@@ -28884,6 +29294,7 @@ export type V2ConfigRequirementsReadResponse__NetworkRequirements = {
   readonly enabled?: boolean | null;
   readonly httpPort?: number | null;
   readonly managedAllowedDomainsOnly?: boolean | null;
+  readonly reviewDomains?: ReadonlyArray<string> | null;
   readonly socksPort?: number | null;
   readonly unixSockets?: {
     readonly [x: string]: V2ConfigRequirementsReadResponse__NetworkUnixSocketPermission;
@@ -28926,7 +29337,7 @@ export const V2ConfigRequirementsReadResponse__NetworkRequirements = Schema.Stru
         Schema.Record(
           Schema.String,
           V2ConfigRequirementsReadResponse__NetworkDomainPermission,
-        ).annotate({ description: "Canonical network permission map for `experimental_network`." }),
+        ).annotate({ description: "Canonical managed network permission map." }),
         Schema.Null,
       ]),
     ),
@@ -28952,6 +29363,14 @@ export const V2ConfigRequirementsReadResponse__NetworkRequirements = Schema.Stru
         Schema.Null,
       ]),
     ),
+    reviewDomains: Schema.optionalKey(
+      Schema.Union([
+        Schema.Array(Schema.String).annotate({
+          description: "Host patterns routed to network approval before ordinary allow rules.",
+        }),
+        Schema.Null,
+      ]),
+    ),
     socksPort: Schema.optionalKey(
       Schema.Union([
         Schema.Number.annotate({ format: "uint16" })
@@ -28969,15 +29388,73 @@ export const V2ConfigRequirementsReadResponse__NetworkRequirements = Schema.Stru
         Schema.Record(
           Schema.String,
           V2ConfigRequirementsReadResponse__NetworkUnixSocketPermission,
-        ).annotate({
-          description: "Canonical unix socket permission map for `experimental_network`.",
-        }),
+        ).annotate({ description: "Canonical managed unix socket permission map." }),
         Schema.Null,
       ]),
     ),
   }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "V2ConfigRequirementsReadResponse__NetworkRequirements" });
+
+export type V2ConfigRequirementsReadResponse__OtelExporter =
+  | "none"
+  | "statsig"
+  | ({
+      readonly "otlp-http": {
+        readonly endpoint: string;
+        readonly headers: { readonly [x: string]: string };
+        readonly protocol: V2ConfigRequirementsReadResponse__OtelHttpProtocol;
+        readonly tls?: V2ConfigRequirementsReadResponse__OtelTlsConfig | null;
+      } & { readonly [x: string]: CodexJsonExtension };
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly "otlp-grpc": {
+        readonly endpoint: string;
+        readonly headers: { readonly [x: string]: string };
+        readonly tls?: V2ConfigRequirementsReadResponse__OtelTlsConfig | null;
+      } & { readonly [x: string]: CodexJsonExtension };
+    } & { readonly [x: string]: CodexJsonExtension });
+export const V2ConfigRequirementsReadResponse__OtelExporter = Schema.Union(
+  [
+    Schema.Literals(["none", "statsig"]),
+    Schema.StructWithRest(
+      Schema.Struct({
+        "otlp-http": Schema.StructWithRest(
+          Schema.Struct({
+            endpoint: Schema.String,
+            headers: Schema.Record(Schema.String, Schema.String).annotate({
+              description: "Header names are retained; values are redacted by the server.",
+            }),
+            protocol: V2ConfigRequirementsReadResponse__OtelHttpProtocol,
+            tls: Schema.optionalKey(
+              Schema.Union([V2ConfigRequirementsReadResponse__OtelTlsConfig, Schema.Null]),
+            ),
+          }),
+          [Schema.Record(Schema.String, CodexJsonExtension)],
+        ),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "OtlpHttpOtelExporter" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        "otlp-grpc": Schema.StructWithRest(
+          Schema.Struct({
+            endpoint: Schema.String,
+            headers: Schema.Record(Schema.String, Schema.String).annotate({
+              description: "Header names are retained; values are redacted by the server.",
+            }),
+            tls: Schema.optionalKey(
+              Schema.Union([V2ConfigRequirementsReadResponse__OtelTlsConfig, Schema.Null]),
+            ),
+          }),
+          [Schema.Record(Schema.String, CodexJsonExtension)],
+        ),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "OtlpGrpcOtelExporter" }),
+  ],
+  { mode: "oneOf" },
+).annotate({ identifier: "V2ConfigRequirementsReadResponse__OtelExporter" });
 
 export type V2ConfigWarningNotification__TextRange = {
   readonly end: V2ConfigWarningNotification__TextPosition;
@@ -29162,6 +29639,8 @@ export type V2ErrorNotification__CodexErrorInfo =
   | "rateLimitExceeded"
   | "flexUnavailable"
   | "serverOverloaded"
+  | "modelNotFound"
+  | "policyCapacityUnavailable"
   | "cyberPolicy"
   | "misalignmentPolicyViolation"
   | "tooManyDenials"
@@ -29206,6 +29685,8 @@ export const V2ErrorNotification__CodexErrorInfo = Schema.Union([
     "rateLimitExceeded",
     "flexUnavailable",
     "serverOverloaded",
+    "modelNotFound",
+    "policyCapacityUnavailable",
     "cyberPolicy",
     "misalignmentPolicyViolation",
     "tooManyDenials",
@@ -29927,10 +30408,12 @@ export type V2GetAccountResponse__Account =
       readonly email: string | null;
       readonly planType: V2GetAccountResponse__PlanType;
       readonly type: "chatgpt";
+      readonly workspaceName?: string | null;
     } & { readonly [x: string]: CodexJsonExtension })
   | ({ readonly type: "amazonBedrock"; readonly usesCodexManagedCredentials?: boolean } & {
       readonly [x: string]: CodexJsonExtension;
-    });
+    })
+  | ({ readonly type: "gcp" } & { readonly [x: string]: CodexJsonExtension });
 export const V2GetAccountResponse__Account = Schema.Union(
   [
     Schema.StructWithRest(
@@ -29942,6 +30425,14 @@ export const V2GetAccountResponse__Account = Schema.Union(
         email: Schema.Union([Schema.String, Schema.Null]),
         planType: V2GetAccountResponse__PlanType,
         type: Schema.Literal("chatgpt").annotate({ title: "ChatgptAccountType" }),
+        workspaceName: Schema.optionalKey(
+          Schema.Union([
+            Schema.String.annotate({
+              description: "Display name of the selected ChatGPT workspace, when available.",
+            }),
+            Schema.Null,
+          ]),
+        ),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
     ).annotate({ title: "ChatgptAccount" }),
@@ -29954,6 +30445,13 @@ export const V2GetAccountResponse__Account = Schema.Union(
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
     ).annotate({ title: "AmazonBedrockAccount" }),
+    Schema.StructWithRest(
+      Schema.Struct({ type: Schema.Literal("gcp").annotate({ title: "GcpAccountType" }) }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({
+      title: "GcpAccount",
+      description: "Google Cloud Vertex AI with externally managed credentials.",
+    }),
   ],
   { mode: "oneOf" },
 ).annotate({ identifier: "V2GetAccountResponse__Account" });
@@ -29976,6 +30474,7 @@ export type V2GetAccountTokenUsageResponse__ThreadUsage = {
   readonly estimatedUsageCreditsMicros: number;
   readonly estimatedUsageUsdMicros?: number | null;
   readonly groups: ReadonlyArray<V2GetAccountTokenUsageResponse__ThreadUsageBreakdownGroup>;
+  readonly nativeUsageUsdMicros?: number | null;
   readonly threadId: string;
 } & { readonly [x: string]: CodexJsonExtension };
 export const V2GetAccountTokenUsageResponse__ThreadUsage = Schema.StructWithRest(
@@ -29992,6 +30491,16 @@ export const V2GetAccountTokenUsageResponse__ThreadUsage = Schema.StructWithRest
       ]),
     ),
     groups: Schema.Array(V2GetAccountTokenUsageResponse__ThreadUsageBreakdownGroup),
+    nativeUsageUsdMicros: Schema.optionalKey(
+      Schema.Union([
+        Schema.Number.annotate({
+          description:
+            "Native dollar usage, independent of credit estimates. None means unknown, not zero.",
+          format: "int64",
+        }).check(Schema.isInt().annotate({ expected: "an integer" })),
+        Schema.Null,
+      ]),
+    ),
     threadId: Schema.String,
   }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
@@ -30046,6 +30555,7 @@ export type V2HooksListResponse__HookMetadata =
       readonly currentHash: string;
       readonly displayOrder: number;
       readonly enabled: boolean;
+      readonly environmentId?: string | null;
       readonly eventName: V2HooksListResponse__HookEventName;
       readonly isManaged: boolean;
       readonly key: string;
@@ -30065,6 +30575,7 @@ export type V2HooksListResponse__HookMetadata =
       readonly currentHash: string;
       readonly displayOrder: number;
       readonly enabled: boolean;
+      readonly environmentId?: string | null;
       readonly eventName: V2HooksListResponse__HookEventName;
       readonly isManaged: boolean;
       readonly key: string;
@@ -30084,6 +30595,7 @@ export type V2HooksListResponse__HookMetadata =
       readonly currentHash: string;
       readonly displayOrder: number;
       readonly enabled: boolean;
+      readonly environmentId?: string | null;
       readonly eventName: V2HooksListResponse__HookEventName;
       readonly isManaged: boolean;
       readonly key: string;
@@ -30101,6 +30613,7 @@ export type V2HooksListResponse__HookMetadata =
       readonly currentHash: string;
       readonly displayOrder: number;
       readonly enabled: boolean;
+      readonly environmentId?: string | null;
       readonly eventName: V2HooksListResponse__HookEventName;
       readonly isManaged: boolean;
       readonly key: string;
@@ -30138,6 +30651,15 @@ export const V2HooksListResponse__HookMetadata = Schema.Union(
           Schema.isInt().annotate({ expected: "an integer" }),
         ),
         enabled: Schema.Boolean,
+        environmentId: Schema.optionalKey(
+          Schema.Union([
+            Schema.String.annotate({
+              description:
+                "The owning execution environment, if this hook came from its requirements.",
+            }),
+            Schema.Null,
+          ]),
+        ),
         eventName: V2HooksListResponse__HookEventName,
         isManaged: Schema.Boolean,
         key: Schema.String,
@@ -30183,6 +30705,15 @@ export const V2HooksListResponse__HookMetadata = Schema.Union(
           Schema.isInt().annotate({ expected: "an integer" }),
         ),
         enabled: Schema.Boolean,
+        environmentId: Schema.optionalKey(
+          Schema.Union([
+            Schema.String.annotate({
+              description:
+                "The owning execution environment, if this hook came from its requirements.",
+            }),
+            Schema.Null,
+          ]),
+        ),
         eventName: V2HooksListResponse__HookEventName,
         isManaged: Schema.Boolean,
         key: Schema.String,
@@ -30228,6 +30759,15 @@ export const V2HooksListResponse__HookMetadata = Schema.Union(
           Schema.isInt().annotate({ expected: "an integer" }),
         ),
         enabled: Schema.Boolean,
+        environmentId: Schema.optionalKey(
+          Schema.Union([
+            Schema.String.annotate({
+              description:
+                "The owning execution environment, if this hook came from its requirements.",
+            }),
+            Schema.Null,
+          ]),
+        ),
         eventName: V2HooksListResponse__HookEventName,
         isManaged: Schema.Boolean,
         key: Schema.String,
@@ -30271,6 +30811,15 @@ export const V2HooksListResponse__HookMetadata = Schema.Union(
           Schema.isInt().annotate({ expected: "an integer" }),
         ),
         enabled: Schema.Boolean,
+        environmentId: Schema.optionalKey(
+          Schema.Union([
+            Schema.String.annotate({
+              description:
+                "The owning execution environment, if this hook came from its requirements.",
+            }),
+            Schema.Null,
+          ]),
+        ),
         eventName: V2HooksListResponse__HookEventName,
         isManaged: Schema.Boolean,
         key: Schema.String,
@@ -30522,6 +31071,23 @@ export const V2ItemCompletedNotification__CollabAgentState = Schema.StructWithRe
   }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "V2ItemCompletedNotification__CollabAgentState" });
+
+export type V2ItemCompletedNotification__ImageGenerationInputImage = {
+  readonly path: V2ItemCompletedNotification__AbsolutePathBuf;
+  readonly sha256: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ItemCompletedNotification__ImageGenerationInputImage = Schema.StructWithRest(
+  Schema.Struct({
+    path: V2ItemCompletedNotification__AbsolutePathBuf,
+    sha256: Schema.String.annotate({
+      description: "Lowercase SHA-256 of the file bytes read before image normalization.",
+    }),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({
+  description: "A local image file successfully read for this exact image-generation request.",
+  identifier: "V2ItemCompletedNotification__ImageGenerationInputImage",
+});
 
 export type V2ItemGuardianApprovalReviewCompletedNotification__FileSystemSpecialPath =
   | ({ readonly kind: "root" } & { readonly [x: string]: CodexJsonExtension })
@@ -30923,6 +31489,23 @@ export const V2ItemStartedNotification__CollabAgentState = Schema.StructWithRest
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "V2ItemStartedNotification__CollabAgentState" });
 
+export type V2ItemStartedNotification__ImageGenerationInputImage = {
+  readonly path: V2ItemStartedNotification__AbsolutePathBuf;
+  readonly sha256: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ItemStartedNotification__ImageGenerationInputImage = Schema.StructWithRest(
+  Schema.Struct({
+    path: V2ItemStartedNotification__AbsolutePathBuf,
+    sha256: Schema.String.annotate({
+      description: "Lowercase SHA-256 of the file bytes read before image normalization.",
+    }),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({
+  description: "A local image file successfully read for this exact image-generation request.",
+  identifier: "V2ItemStartedNotification__ImageGenerationInputImage",
+});
+
 export type V2ListMcpServerStatusResponse__McpServerStatus = {
   readonly authStatus: V2ListMcpServerStatusResponse__McpAuthStatus;
   readonly httpOrigin?: string | null;
@@ -30933,6 +31516,7 @@ export type V2ListMcpServerStatusResponse__McpServerStatus = {
   readonly runtimeStatus?: V2ListMcpServerStatusResponse__McpServerConnectionStatus | null;
   readonly serverCapabilities?: Schema.Json;
   readonly serverInfo?: V2ListMcpServerStatusResponse__McpServerInfo | null;
+  readonly toolListMeta?: Schema.Json;
   readonly tools: { readonly [x: string]: V2ListMcpServerStatusResponse__Tool };
   readonly toolsError?: string | null;
 } & { readonly [x: string]: CodexJsonExtension };
@@ -30970,6 +31554,13 @@ export const V2ListMcpServerStatusResponse__McpServerStatus = Schema.StructWithR
     ),
     serverInfo: Schema.optionalKey(
       Schema.Union([V2ListMcpServerStatusResponse__McpServerInfo, Schema.Null]),
+    ),
+    toolListMeta: Schema.optionalKey(
+      Schema.Json.annotate({
+        expected: "JSON value",
+        description:
+          "Opaque `_meta` from the first page of the corresponding MCP tool catalog. Null when unavailable.",
+      }),
     ),
     tools: Schema.Record(Schema.String, V2ListMcpServerStatusResponse__Tool),
     toolsError: Schema.optionalKey(
@@ -32352,6 +32943,8 @@ export type V2ReviewStartResponse__CodexErrorInfo =
   | "rateLimitExceeded"
   | "flexUnavailable"
   | "serverOverloaded"
+  | "modelNotFound"
+  | "policyCapacityUnavailable"
   | "cyberPolicy"
   | "misalignmentPolicyViolation"
   | "tooManyDenials"
@@ -32396,6 +32989,8 @@ export const V2ReviewStartResponse__CodexErrorInfo = Schema.Union([
     "rateLimitExceeded",
     "flexUnavailable",
     "serverOverloaded",
+    "modelNotFound",
+    "policyCapacityUnavailable",
     "cyberPolicy",
     "misalignmentPolicyViolation",
     "tooManyDenials",
@@ -32789,6 +33384,23 @@ export const V2ReviewStartResponse__CollabAgentState = Schema.StructWithRest(
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "V2ReviewStartResponse__CollabAgentState" });
 
+export type V2ReviewStartResponse__ImageGenerationInputImage = {
+  readonly path: V2ReviewStartResponse__AbsolutePathBuf;
+  readonly sha256: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ReviewStartResponse__ImageGenerationInputImage = Schema.StructWithRest(
+  Schema.Struct({
+    path: V2ReviewStartResponse__AbsolutePathBuf,
+    sha256: Schema.String.annotate({
+      description: "Lowercase SHA-256 of the file bytes read before image normalization.",
+    }),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({
+  description: "A local image file successfully read for this exact image-generation request.",
+  identifier: "V2ReviewStartResponse__ImageGenerationInputImage",
+});
+
 export type V2SkillsListResponse__SkillDependencies = {
   readonly tools: ReadonlyArray<V2SkillsListResponse__SkillToolDependency>;
 } & { readonly [x: string]: CodexJsonExtension };
@@ -32886,6 +33498,23 @@ export const V2ThreadBackgroundTerminalsListResponse__ThreadBackgroundTerminal =
     }),
     [Schema.Record(Schema.String, CodexJsonExtension)],
   ).annotate({ identifier: "V2ThreadBackgroundTerminalsListResponse__ThreadBackgroundTerminal" });
+
+export type V2ThreadForkResponse__ImageGenerationInputImage = {
+  readonly path: V2ThreadForkResponse__AbsolutePathBuf;
+  readonly sha256: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ThreadForkResponse__ImageGenerationInputImage = Schema.StructWithRest(
+  Schema.Struct({
+    path: V2ThreadForkResponse__AbsolutePathBuf,
+    sha256: Schema.String.annotate({
+      description: "Lowercase SHA-256 of the file bytes read before image normalization.",
+    }),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({
+  description: "A local image file successfully read for this exact image-generation request.",
+  identifier: "V2ThreadForkResponse__ImageGenerationInputImage",
+});
 
 export type V2ThreadForkResponse__ThreadEnvironment = {
   readonly cwd: V2ThreadForkResponse__LegacyAppPathString;
@@ -33137,6 +33766,8 @@ export type V2ThreadForkResponse__CodexErrorInfo =
   | "rateLimitExceeded"
   | "flexUnavailable"
   | "serverOverloaded"
+  | "modelNotFound"
+  | "policyCapacityUnavailable"
   | "cyberPolicy"
   | "misalignmentPolicyViolation"
   | "tooManyDenials"
@@ -33181,6 +33812,8 @@ export const V2ThreadForkResponse__CodexErrorInfo = Schema.Union([
     "rateLimitExceeded",
     "flexUnavailable",
     "serverOverloaded",
+    "modelNotFound",
+    "policyCapacityUnavailable",
     "cyberPolicy",
     "misalignmentPolicyViolation",
     "tooManyDenials",
@@ -33863,6 +34496,23 @@ export const V2ThreadItemsListResponse__CollabAgentState = Schema.StructWithRest
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "V2ThreadItemsListResponse__CollabAgentState" });
 
+export type V2ThreadItemsListResponse__ImageGenerationInputImage = {
+  readonly path: V2ThreadItemsListResponse__AbsolutePathBuf;
+  readonly sha256: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ThreadItemsListResponse__ImageGenerationInputImage = Schema.StructWithRest(
+  Schema.Struct({
+    path: V2ThreadItemsListResponse__AbsolutePathBuf,
+    sha256: Schema.String.annotate({
+      description: "Lowercase SHA-256 of the file bytes read before image normalization.",
+    }),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({
+  description: "A local image file successfully read for this exact image-generation request.",
+  identifier: "V2ThreadItemsListResponse__ImageGenerationInputImage",
+});
+
 export type V2ThreadItemsReadResponse__TextElement = {
   readonly byteRange: V2ThreadItemsReadResponse__ByteRange;
   readonly placeholder?: string | null;
@@ -34082,6 +34732,40 @@ export const V2ThreadItemsReadResponse__CollabAgentState = Schema.StructWithRest
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "V2ThreadItemsReadResponse__CollabAgentState" });
 
+export type V2ThreadItemsReadResponse__ImageGenerationInputImage = {
+  readonly path: V2ThreadItemsReadResponse__AbsolutePathBuf;
+  readonly sha256: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ThreadItemsReadResponse__ImageGenerationInputImage = Schema.StructWithRest(
+  Schema.Struct({
+    path: V2ThreadItemsReadResponse__AbsolutePathBuf,
+    sha256: Schema.String.annotate({
+      description: "Lowercase SHA-256 of the file bytes read before image normalization.",
+    }),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({
+  description: "A local image file successfully read for this exact image-generation request.",
+  identifier: "V2ThreadItemsReadResponse__ImageGenerationInputImage",
+});
+
+export type V2ThreadListResponse__ImageGenerationInputImage = {
+  readonly path: V2ThreadListResponse__AbsolutePathBuf;
+  readonly sha256: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ThreadListResponse__ImageGenerationInputImage = Schema.StructWithRest(
+  Schema.Struct({
+    path: V2ThreadListResponse__AbsolutePathBuf,
+    sha256: Schema.String.annotate({
+      description: "Lowercase SHA-256 of the file bytes read before image normalization.",
+    }),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({
+  description: "A local image file successfully read for this exact image-generation request.",
+  identifier: "V2ThreadListResponse__ImageGenerationInputImage",
+});
+
 export type V2ThreadListResponse__ThreadEnvironment = {
   readonly cwd: V2ThreadListResponse__LegacyAppPathString;
   readonly environmentId: string;
@@ -34267,6 +34951,8 @@ export type V2ThreadListResponse__CodexErrorInfo =
   | "rateLimitExceeded"
   | "flexUnavailable"
   | "serverOverloaded"
+  | "modelNotFound"
+  | "policyCapacityUnavailable"
   | "cyberPolicy"
   | "misalignmentPolicyViolation"
   | "tooManyDenials"
@@ -34311,6 +34997,8 @@ export const V2ThreadListResponse__CodexErrorInfo = Schema.Union([
     "rateLimitExceeded",
     "flexUnavailable",
     "serverOverloaded",
+    "modelNotFound",
+    "policyCapacityUnavailable",
     "cyberPolicy",
     "misalignmentPolicyViolation",
     "tooManyDenials",
@@ -34664,6 +35352,23 @@ export const V2ThreadListResponse__ThreadReadState = Schema.StructWithRest(
   identifier: "V2ThreadListResponse__ThreadReadState",
 });
 
+export type V2ThreadMetadataUpdateResponse__ImageGenerationInputImage = {
+  readonly path: V2ThreadMetadataUpdateResponse__AbsolutePathBuf;
+  readonly sha256: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ThreadMetadataUpdateResponse__ImageGenerationInputImage = Schema.StructWithRest(
+  Schema.Struct({
+    path: V2ThreadMetadataUpdateResponse__AbsolutePathBuf,
+    sha256: Schema.String.annotate({
+      description: "Lowercase SHA-256 of the file bytes read before image normalization.",
+    }),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({
+  description: "A local image file successfully read for this exact image-generation request.",
+  identifier: "V2ThreadMetadataUpdateResponse__ImageGenerationInputImage",
+});
+
 export type V2ThreadMetadataUpdateResponse__ThreadEnvironment = {
   readonly cwd: V2ThreadMetadataUpdateResponse__LegacyAppPathString;
   readonly environmentId: string;
@@ -34849,6 +35554,8 @@ export type V2ThreadMetadataUpdateResponse__CodexErrorInfo =
   | "rateLimitExceeded"
   | "flexUnavailable"
   | "serverOverloaded"
+  | "modelNotFound"
+  | "policyCapacityUnavailable"
   | "cyberPolicy"
   | "misalignmentPolicyViolation"
   | "tooManyDenials"
@@ -34893,6 +35600,8 @@ export const V2ThreadMetadataUpdateResponse__CodexErrorInfo = Schema.Union([
     "rateLimitExceeded",
     "flexUnavailable",
     "serverOverloaded",
+    "modelNotFound",
+    "policyCapacityUnavailable",
     "cyberPolicy",
     "misalignmentPolicyViolation",
     "tooManyDenials",
@@ -35306,6 +36015,8 @@ export type V2ThreadQueueStartResponse__CodexErrorInfo =
   | "rateLimitExceeded"
   | "flexUnavailable"
   | "serverOverloaded"
+  | "modelNotFound"
+  | "policyCapacityUnavailable"
   | "cyberPolicy"
   | "misalignmentPolicyViolation"
   | "tooManyDenials"
@@ -35350,6 +36061,8 @@ export const V2ThreadQueueStartResponse__CodexErrorInfo = Schema.Union([
     "rateLimitExceeded",
     "flexUnavailable",
     "serverOverloaded",
+    "modelNotFound",
+    "policyCapacityUnavailable",
     "cyberPolicy",
     "misalignmentPolicyViolation",
     "tooManyDenials",
@@ -35744,6 +36457,23 @@ export const V2ThreadQueueStartResponse__CollabAgentState = Schema.StructWithRes
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "V2ThreadQueueStartResponse__CollabAgentState" });
 
+export type V2ThreadQueueStartResponse__ImageGenerationInputImage = {
+  readonly path: V2ThreadQueueStartResponse__AbsolutePathBuf;
+  readonly sha256: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ThreadQueueStartResponse__ImageGenerationInputImage = Schema.StructWithRest(
+  Schema.Struct({
+    path: V2ThreadQueueStartResponse__AbsolutePathBuf,
+    sha256: Schema.String.annotate({
+      description: "Lowercase SHA-256 of the file bytes read before image normalization.",
+    }),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({
+  description: "A local image file successfully read for this exact image-generation request.",
+  identifier: "V2ThreadQueueStartResponse__ImageGenerationInputImage",
+});
+
 export type V2ThreadQueueUpdateParams__TextElement = {
   readonly byteRange: V2ThreadQueueUpdateParams__ByteRange;
   readonly placeholder?: string | null;
@@ -35808,6 +36538,23 @@ export const V2ThreadReadResponse__ThreadReadState = Schema.StructWithRest(
   description:
     "The first unread position in a durable local thread. A null position means read. The opaque revision guards edits against activity or marks the caller has not seen.",
   identifier: "V2ThreadReadResponse__ThreadReadState",
+});
+
+export type V2ThreadReadResponse__ImageGenerationInputImage = {
+  readonly path: V2ThreadReadResponse__AbsolutePathBuf;
+  readonly sha256: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ThreadReadResponse__ImageGenerationInputImage = Schema.StructWithRest(
+  Schema.Struct({
+    path: V2ThreadReadResponse__AbsolutePathBuf,
+    sha256: Schema.String.annotate({
+      description: "Lowercase SHA-256 of the file bytes read before image normalization.",
+    }),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({
+  description: "A local image file successfully read for this exact image-generation request.",
+  identifier: "V2ThreadReadResponse__ImageGenerationInputImage",
 });
 
 export type V2ThreadReadResponse__ThreadEnvironment = {
@@ -35995,6 +36742,8 @@ export type V2ThreadReadResponse__CodexErrorInfo =
   | "rateLimitExceeded"
   | "flexUnavailable"
   | "serverOverloaded"
+  | "modelNotFound"
+  | "policyCapacityUnavailable"
   | "cyberPolicy"
   | "misalignmentPolicyViolation"
   | "tooManyDenials"
@@ -36039,6 +36788,8 @@ export const V2ThreadReadResponse__CodexErrorInfo = Schema.Union([
     "rateLimitExceeded",
     "flexUnavailable",
     "serverOverloaded",
+    "modelNotFound",
+    "policyCapacityUnavailable",
     "cyberPolicy",
     "misalignmentPolicyViolation",
     "tooManyDenials",
@@ -36854,6 +37605,23 @@ export const V2ThreadResumeResponse__Settings = Schema.StructWithRest(
   identifier: "V2ThreadResumeResponse__Settings",
 });
 
+export type V2ThreadResumeResponse__ImageGenerationInputImage = {
+  readonly path: V2ThreadResumeResponse__AbsolutePathBuf;
+  readonly sha256: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ThreadResumeResponse__ImageGenerationInputImage = Schema.StructWithRest(
+  Schema.Struct({
+    path: V2ThreadResumeResponse__AbsolutePathBuf,
+    sha256: Schema.String.annotate({
+      description: "Lowercase SHA-256 of the file bytes read before image normalization.",
+    }),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({
+  description: "A local image file successfully read for this exact image-generation request.",
+  identifier: "V2ThreadResumeResponse__ImageGenerationInputImage",
+});
+
 export type V2ThreadResumeResponse__CodexErrorInfo =
   | "contextWindowExceeded"
   | "sessionBudgetExceeded"
@@ -36861,6 +37629,8 @@ export type V2ThreadResumeResponse__CodexErrorInfo =
   | "rateLimitExceeded"
   | "flexUnavailable"
   | "serverOverloaded"
+  | "modelNotFound"
+  | "policyCapacityUnavailable"
   | "cyberPolicy"
   | "misalignmentPolicyViolation"
   | "tooManyDenials"
@@ -36905,6 +37675,8 @@ export const V2ThreadResumeResponse__CodexErrorInfo = Schema.Union([
     "rateLimitExceeded",
     "flexUnavailable",
     "serverOverloaded",
+    "modelNotFound",
+    "policyCapacityUnavailable",
     "cyberPolicy",
     "misalignmentPolicyViolation",
     "tooManyDenials",
@@ -37483,6 +38255,23 @@ export const V2ThreadResumeResponse__ThreadStatus = Schema.Union(
   { mode: "oneOf" },
 ).annotate({ identifier: "V2ThreadResumeResponse__ThreadStatus" });
 
+export type V2ThreadRevertResponse__ImageGenerationInputImage = {
+  readonly path: V2ThreadRevertResponse__AbsolutePathBuf;
+  readonly sha256: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ThreadRevertResponse__ImageGenerationInputImage = Schema.StructWithRest(
+  Schema.Struct({
+    path: V2ThreadRevertResponse__AbsolutePathBuf,
+    sha256: Schema.String.annotate({
+      description: "Lowercase SHA-256 of the file bytes read before image normalization.",
+    }),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({
+  description: "A local image file successfully read for this exact image-generation request.",
+  identifier: "V2ThreadRevertResponse__ImageGenerationInputImage",
+});
+
 export type V2ThreadRevertResponse__ThreadEnvironment = {
   readonly cwd: V2ThreadRevertResponse__LegacyAppPathString;
   readonly environmentId: string;
@@ -37668,6 +38457,8 @@ export type V2ThreadRevertResponse__CodexErrorInfo =
   | "rateLimitExceeded"
   | "flexUnavailable"
   | "serverOverloaded"
+  | "modelNotFound"
+  | "policyCapacityUnavailable"
   | "cyberPolicy"
   | "misalignmentPolicyViolation"
   | "tooManyDenials"
@@ -37712,6 +38503,8 @@ export const V2ThreadRevertResponse__CodexErrorInfo = Schema.Union([
     "rateLimitExceeded",
     "flexUnavailable",
     "serverOverloaded",
+    "modelNotFound",
+    "policyCapacityUnavailable",
     "cyberPolicy",
     "misalignmentPolicyViolation",
     "tooManyDenials",
@@ -38073,6 +38866,23 @@ export const V2ThreadSearchOccurrencesResponse__ThreadSearchOccurrence = Schema.
   identifier: "V2ThreadSearchOccurrencesResponse__ThreadSearchOccurrence",
 });
 
+export type V2ThreadSearchResponse__ImageGenerationInputImage = {
+  readonly path: V2ThreadSearchResponse__AbsolutePathBuf;
+  readonly sha256: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ThreadSearchResponse__ImageGenerationInputImage = Schema.StructWithRest(
+  Schema.Struct({
+    path: V2ThreadSearchResponse__AbsolutePathBuf,
+    sha256: Schema.String.annotate({
+      description: "Lowercase SHA-256 of the file bytes read before image normalization.",
+    }),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({
+  description: "A local image file successfully read for this exact image-generation request.",
+  identifier: "V2ThreadSearchResponse__ImageGenerationInputImage",
+});
+
 export type V2ThreadSearchResponse__ThreadEnvironment = {
   readonly cwd: V2ThreadSearchResponse__LegacyAppPathString;
   readonly environmentId: string;
@@ -38258,6 +39068,8 @@ export type V2ThreadSearchResponse__CodexErrorInfo =
   | "rateLimitExceeded"
   | "flexUnavailable"
   | "serverOverloaded"
+  | "modelNotFound"
+  | "policyCapacityUnavailable"
   | "cyberPolicy"
   | "misalignmentPolicyViolation"
   | "tooManyDenials"
@@ -38302,6 +39114,8 @@ export const V2ThreadSearchResponse__CodexErrorInfo = Schema.Union([
     "rateLimitExceeded",
     "flexUnavailable",
     "serverOverloaded",
+    "modelNotFound",
+    "policyCapacityUnavailable",
     "cyberPolicy",
     "misalignmentPolicyViolation",
     "tooManyDenials",
@@ -38876,6 +39690,23 @@ export const V2ThreadSettingsUpdateParams__SandboxPolicy = Schema.Union(
   { mode: "oneOf" },
 ).annotate({ identifier: "V2ThreadSettingsUpdateParams__SandboxPolicy" });
 
+export type V2ThreadStartedNotification__ImageGenerationInputImage = {
+  readonly path: V2ThreadStartedNotification__AbsolutePathBuf;
+  readonly sha256: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ThreadStartedNotification__ImageGenerationInputImage = Schema.StructWithRest(
+  Schema.Struct({
+    path: V2ThreadStartedNotification__AbsolutePathBuf,
+    sha256: Schema.String.annotate({
+      description: "Lowercase SHA-256 of the file bytes read before image normalization.",
+    }),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({
+  description: "A local image file successfully read for this exact image-generation request.",
+  identifier: "V2ThreadStartedNotification__ImageGenerationInputImage",
+});
+
 export type V2ThreadStartedNotification__ThreadEnvironment = {
   readonly cwd: V2ThreadStartedNotification__LegacyAppPathString;
   readonly environmentId: string;
@@ -39061,6 +39892,8 @@ export type V2ThreadStartedNotification__CodexErrorInfo =
   | "rateLimitExceeded"
   | "flexUnavailable"
   | "serverOverloaded"
+  | "modelNotFound"
+  | "policyCapacityUnavailable"
   | "cyberPolicy"
   | "misalignmentPolicyViolation"
   | "tooManyDenials"
@@ -39105,6 +39938,8 @@ export const V2ThreadStartedNotification__CodexErrorInfo = Schema.Union([
     "rateLimitExceeded",
     "flexUnavailable",
     "serverOverloaded",
+    "modelNotFound",
+    "policyCapacityUnavailable",
     "cyberPolicy",
     "misalignmentPolicyViolation",
     "tooManyDenials",
@@ -39521,6 +40356,23 @@ export const V2ThreadStartParams__SelectedCapabilityRoot = Schema.StructWithRest
   identifier: "V2ThreadStartParams__SelectedCapabilityRoot",
 });
 
+export type V2ThreadStartResponse__ImageGenerationInputImage = {
+  readonly path: V2ThreadStartResponse__AbsolutePathBuf;
+  readonly sha256: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ThreadStartResponse__ImageGenerationInputImage = Schema.StructWithRest(
+  Schema.Struct({
+    path: V2ThreadStartResponse__AbsolutePathBuf,
+    sha256: Schema.String.annotate({
+      description: "Lowercase SHA-256 of the file bytes read before image normalization.",
+    }),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({
+  description: "A local image file successfully read for this exact image-generation request.",
+  identifier: "V2ThreadStartResponse__ImageGenerationInputImage",
+});
+
 export type V2ThreadStartResponse__ThreadEnvironment = {
   readonly cwd: V2ThreadStartResponse__LegacyAppPathString;
   readonly environmentId: string;
@@ -39771,6 +40623,8 @@ export type V2ThreadStartResponse__CodexErrorInfo =
   | "rateLimitExceeded"
   | "flexUnavailable"
   | "serverOverloaded"
+  | "modelNotFound"
+  | "policyCapacityUnavailable"
   | "cyberPolicy"
   | "misalignmentPolicyViolation"
   | "tooManyDenials"
@@ -39815,6 +40669,8 @@ export const V2ThreadStartResponse__CodexErrorInfo = Schema.Union([
     "rateLimitExceeded",
     "flexUnavailable",
     "serverOverloaded",
+    "modelNotFound",
+    "policyCapacityUnavailable",
     "cyberPolicy",
     "misalignmentPolicyViolation",
     "tooManyDenials",
@@ -40406,6 +41262,23 @@ export const V2ThreadTimelineListResponse__CollabAgentState = Schema.StructWithR
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "V2ThreadTimelineListResponse__CollabAgentState" });
 
+export type V2ThreadTimelineListResponse__ImageGenerationInputImage = {
+  readonly path: V2ThreadTimelineListResponse__AbsolutePathBuf;
+  readonly sha256: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ThreadTimelineListResponse__ImageGenerationInputImage = Schema.StructWithRest(
+  Schema.Struct({
+    path: V2ThreadTimelineListResponse__AbsolutePathBuf,
+    sha256: Schema.String.annotate({
+      description: "Lowercase SHA-256 of the file bytes read before image normalization.",
+    }),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({
+  description: "A local image file successfully read for this exact image-generation request.",
+  identifier: "V2ThreadTimelineListResponse__ImageGenerationInputImage",
+});
+
 export type V2ThreadTimelineListResponse__ThreadRealtimeItem =
   | ({
       readonly id: string;
@@ -40504,6 +41377,8 @@ export type V2ThreadTimelineListResponse__CodexErrorInfo =
   | "rateLimitExceeded"
   | "flexUnavailable"
   | "serverOverloaded"
+  | "modelNotFound"
+  | "policyCapacityUnavailable"
   | "cyberPolicy"
   | "misalignmentPolicyViolation"
   | "tooManyDenials"
@@ -40548,6 +41423,8 @@ export const V2ThreadTimelineListResponse__CodexErrorInfo = Schema.Union([
     "rateLimitExceeded",
     "flexUnavailable",
     "serverOverloaded",
+    "modelNotFound",
+    "policyCapacityUnavailable",
     "cyberPolicy",
     "misalignmentPolicyViolation",
     "tooManyDenials",
@@ -40751,6 +41628,8 @@ export type V2ThreadTurnsListResponse__CodexErrorInfo =
   | "rateLimitExceeded"
   | "flexUnavailable"
   | "serverOverloaded"
+  | "modelNotFound"
+  | "policyCapacityUnavailable"
   | "cyberPolicy"
   | "misalignmentPolicyViolation"
   | "tooManyDenials"
@@ -40795,6 +41674,8 @@ export const V2ThreadTurnsListResponse__CodexErrorInfo = Schema.Union([
     "rateLimitExceeded",
     "flexUnavailable",
     "serverOverloaded",
+    "modelNotFound",
+    "policyCapacityUnavailable",
     "cyberPolicy",
     "misalignmentPolicyViolation",
     "tooManyDenials",
@@ -41189,6 +42070,40 @@ export const V2ThreadTurnsListResponse__CollabAgentState = Schema.StructWithRest
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "V2ThreadTurnsListResponse__CollabAgentState" });
 
+export type V2ThreadTurnsListResponse__ImageGenerationInputImage = {
+  readonly path: V2ThreadTurnsListResponse__AbsolutePathBuf;
+  readonly sha256: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ThreadTurnsListResponse__ImageGenerationInputImage = Schema.StructWithRest(
+  Schema.Struct({
+    path: V2ThreadTurnsListResponse__AbsolutePathBuf,
+    sha256: Schema.String.annotate({
+      description: "Lowercase SHA-256 of the file bytes read before image normalization.",
+    }),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({
+  description: "A local image file successfully read for this exact image-generation request.",
+  identifier: "V2ThreadTurnsListResponse__ImageGenerationInputImage",
+});
+
+export type V2ThreadUnarchiveResponse__ImageGenerationInputImage = {
+  readonly path: V2ThreadUnarchiveResponse__AbsolutePathBuf;
+  readonly sha256: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ThreadUnarchiveResponse__ImageGenerationInputImage = Schema.StructWithRest(
+  Schema.Struct({
+    path: V2ThreadUnarchiveResponse__AbsolutePathBuf,
+    sha256: Schema.String.annotate({
+      description: "Lowercase SHA-256 of the file bytes read before image normalization.",
+    }),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({
+  description: "A local image file successfully read for this exact image-generation request.",
+  identifier: "V2ThreadUnarchiveResponse__ImageGenerationInputImage",
+});
+
 export type V2ThreadUnarchiveResponse__ThreadEnvironment = {
   readonly cwd: V2ThreadUnarchiveResponse__LegacyAppPathString;
   readonly environmentId: string;
@@ -41374,6 +42289,8 @@ export type V2ThreadUnarchiveResponse__CodexErrorInfo =
   | "rateLimitExceeded"
   | "flexUnavailable"
   | "serverOverloaded"
+  | "modelNotFound"
+  | "policyCapacityUnavailable"
   | "cyberPolicy"
   | "misalignmentPolicyViolation"
   | "tooManyDenials"
@@ -41418,6 +42335,8 @@ export const V2ThreadUnarchiveResponse__CodexErrorInfo = Schema.Union([
     "rateLimitExceeded",
     "flexUnavailable",
     "serverOverloaded",
+    "modelNotFound",
+    "policyCapacityUnavailable",
     "cyberPolicy",
     "misalignmentPolicyViolation",
     "tooManyDenials",
@@ -41761,6 +42680,8 @@ export type V2TurnCompletedNotification__CodexErrorInfo =
   | "rateLimitExceeded"
   | "flexUnavailable"
   | "serverOverloaded"
+  | "modelNotFound"
+  | "policyCapacityUnavailable"
   | "cyberPolicy"
   | "misalignmentPolicyViolation"
   | "tooManyDenials"
@@ -41805,6 +42726,8 @@ export const V2TurnCompletedNotification__CodexErrorInfo = Schema.Union([
     "rateLimitExceeded",
     "flexUnavailable",
     "serverOverloaded",
+    "modelNotFound",
+    "policyCapacityUnavailable",
     "cyberPolicy",
     "misalignmentPolicyViolation",
     "tooManyDenials",
@@ -42199,6 +43122,23 @@ export const V2TurnCompletedNotification__CollabAgentState = Schema.StructWithRe
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "V2TurnCompletedNotification__CollabAgentState" });
 
+export type V2TurnCompletedNotification__ImageGenerationInputImage = {
+  readonly path: V2TurnCompletedNotification__AbsolutePathBuf;
+  readonly sha256: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2TurnCompletedNotification__ImageGenerationInputImage = Schema.StructWithRest(
+  Schema.Struct({
+    path: V2TurnCompletedNotification__AbsolutePathBuf,
+    sha256: Schema.String.annotate({
+      description: "Lowercase SHA-256 of the file bytes read before image normalization.",
+    }),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({
+  description: "A local image file successfully read for this exact image-generation request.",
+  identifier: "V2TurnCompletedNotification__ImageGenerationInputImage",
+});
+
 export type V2TurnPlanUpdatedNotification__TurnPlanStep = {
   readonly status: V2TurnPlanUpdatedNotification__TurnPlanStepStatus;
   readonly step: string;
@@ -42215,6 +43155,8 @@ export type V2TurnStartedNotification__CodexErrorInfo =
   | "rateLimitExceeded"
   | "flexUnavailable"
   | "serverOverloaded"
+  | "modelNotFound"
+  | "policyCapacityUnavailable"
   | "cyberPolicy"
   | "misalignmentPolicyViolation"
   | "tooManyDenials"
@@ -42259,6 +43201,8 @@ export const V2TurnStartedNotification__CodexErrorInfo = Schema.Union([
     "rateLimitExceeded",
     "flexUnavailable",
     "serverOverloaded",
+    "modelNotFound",
+    "policyCapacityUnavailable",
     "cyberPolicy",
     "misalignmentPolicyViolation",
     "tooManyDenials",
@@ -42653,12 +43597,41 @@ export const V2TurnStartedNotification__CollabAgentState = Schema.StructWithRest
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "V2TurnStartedNotification__CollabAgentState" });
 
+export type V2TurnStartedNotification__ImageGenerationInputImage = {
+  readonly path: V2TurnStartedNotification__AbsolutePathBuf;
+  readonly sha256: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2TurnStartedNotification__ImageGenerationInputImage = Schema.StructWithRest(
+  Schema.Struct({
+    path: V2TurnStartedNotification__AbsolutePathBuf,
+    sha256: Schema.String.annotate({
+      description: "Lowercase SHA-256 of the file bytes read before image normalization.",
+    }),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({
+  description: "A local image file successfully read for this exact image-generation request.",
+  identifier: "V2TurnStartedNotification__ImageGenerationInputImage",
+});
+
 export type V2TurnStartParams__AdditionalContextEntry = {
   readonly kind: V2TurnStartParams__AdditionalContextKind;
+  readonly name?: string | null;
   readonly value: string;
 } & { readonly [x: string]: CodexJsonExtension };
 export const V2TurnStartParams__AdditionalContextEntry = Schema.StructWithRest(
-  Schema.Struct({ kind: V2TurnStartParams__AdditionalContextKind, value: Schema.String }),
+  Schema.Struct({
+    kind: V2TurnStartParams__AdditionalContextKind,
+    name: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description: "Optional name for untrusted context, used to label its tool output.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    value: Schema.String,
+  }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "V2TurnStartParams__AdditionalContextEntry" });
 
@@ -42875,6 +43848,8 @@ export type V2TurnStartResponse__CodexErrorInfo =
   | "rateLimitExceeded"
   | "flexUnavailable"
   | "serverOverloaded"
+  | "modelNotFound"
+  | "policyCapacityUnavailable"
   | "cyberPolicy"
   | "misalignmentPolicyViolation"
   | "tooManyDenials"
@@ -42919,6 +43894,8 @@ export const V2TurnStartResponse__CodexErrorInfo = Schema.Union([
     "rateLimitExceeded",
     "flexUnavailable",
     "serverOverloaded",
+    "modelNotFound",
+    "policyCapacityUnavailable",
     "cyberPolicy",
     "misalignmentPolicyViolation",
     "tooManyDenials",
@@ -43308,12 +44285,41 @@ export const V2TurnStartResponse__CollabAgentState = Schema.StructWithRest(
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "V2TurnStartResponse__CollabAgentState" });
 
+export type V2TurnStartResponse__ImageGenerationInputImage = {
+  readonly path: V2TurnStartResponse__AbsolutePathBuf;
+  readonly sha256: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2TurnStartResponse__ImageGenerationInputImage = Schema.StructWithRest(
+  Schema.Struct({
+    path: V2TurnStartResponse__AbsolutePathBuf,
+    sha256: Schema.String.annotate({
+      description: "Lowercase SHA-256 of the file bytes read before image normalization.",
+    }),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({
+  description: "A local image file successfully read for this exact image-generation request.",
+  identifier: "V2TurnStartResponse__ImageGenerationInputImage",
+});
+
 export type V2TurnSteerParams__AdditionalContextEntry = {
   readonly kind: V2TurnSteerParams__AdditionalContextKind;
+  readonly name?: string | null;
   readonly value: string;
 } & { readonly [x: string]: CodexJsonExtension };
 export const V2TurnSteerParams__AdditionalContextEntry = Schema.StructWithRest(
-  Schema.Struct({ kind: V2TurnSteerParams__AdditionalContextKind, value: Schema.String }),
+  Schema.Struct({
+    kind: V2TurnSteerParams__AdditionalContextKind,
+    name: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description: "Optional name for untrusted context, used to label its tool output.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    value: Schema.String,
+  }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "V2TurnSteerParams__AdditionalContextEntry" });
 
@@ -44066,6 +45072,7 @@ export type ClientRequest__ThreadRealtimeStartParams = {
   readonly transport?: ClientRequest__ThreadRealtimeStartTransport | null;
   readonly version?: ClientRequest__RealtimeConversationVersion | null;
   readonly voice?: ClientRequest__RealtimeVoice | null;
+  readonly voiceSessionId?: string | null;
 } & { readonly [x: string]: CodexJsonExtension };
 export const ClientRequest__ThreadRealtimeStartParams = Schema.StructWithRest(
   Schema.Struct({
@@ -44198,6 +45205,15 @@ export const ClientRequest__ThreadRealtimeStartParams = Schema.StructWithRest(
       }),
     ),
     voice: Schema.optionalKey(Schema.Union([ClientRequest__RealtimeVoice, Schema.Null])),
+    voiceSessionId: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "Client-generated identifier for the product voice session. This is distinct from `realtimeSessionId`.",
+        }),
+        Schema.Null,
+      ]),
+    ),
   }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({
@@ -44995,7 +46011,7 @@ export type ServerNotification__HookRunSummary = {
   readonly id: string;
   readonly scope: ServerNotification__HookScope;
   readonly source?: ServerNotification__HookSource;
-  readonly sourcePath: ServerNotification__AbsolutePathBuf;
+  readonly sourcePath: ServerNotification__LegacyAppPathString;
   readonly startedAt: number;
   readonly status: ServerNotification__HookRunStatus;
   readonly statusMessage?: string | null;
@@ -45032,7 +46048,7 @@ export const ServerNotification__HookRunSummary = Schema.StructWithRest(
         (): Schema.Codec<ServerNotification__HookSource> => ServerNotification__HookSource,
       ).annotate({ default: "unknown" }),
     ),
-    sourcePath: ServerNotification__AbsolutePathBuf,
+    sourcePath: ServerNotification__LegacyAppPathString,
     startedAt: Schema.Number.annotate({ format: "int64" }).check(
       Schema.isInt().annotate({ expected: "an integer" }),
     ),
@@ -45434,6 +46450,62 @@ export const ServerRequest__McpElicitationTitledMultiSelectEnumSchema = Schema.S
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "ServerRequest__McpElicitationTitledMultiSelectEnumSchema" });
 
+export type V2AccountSessionsResponse__AccountSession = {
+  readonly displayName?: string | null;
+  readonly email?: string | null;
+  readonly imageUrl?: string | null;
+  readonly isActive: boolean;
+  readonly lastUsedAt: number;
+  readonly selectedWorkspaceAccountId?: string | null;
+  readonly sessionId: string;
+  readonly userId?: string | null;
+  readonly workspaces: ReadonlyArray<V2AccountSessionsResponse__AccountSessionWorkspace>;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2AccountSessionsResponse__AccountSession = Schema.StructWithRest(
+  Schema.Struct({
+    displayName: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+    email: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+    imageUrl: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+    isActive: Schema.Boolean,
+    lastUsedAt: Schema.Number.annotate({ format: "int64" }).check(
+      Schema.isInt().annotate({ expected: "an integer" }),
+    ),
+    selectedWorkspaceAccountId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+    sessionId: Schema.String,
+    userId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+    workspaces: Schema.Array(V2AccountSessionsResponse__AccountSessionWorkspace),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "V2AccountSessionsResponse__AccountSession" });
+
+export type V2AccountSessionsSwitchResponse__AccountSession = {
+  readonly displayName?: string | null;
+  readonly email?: string | null;
+  readonly imageUrl?: string | null;
+  readonly isActive: boolean;
+  readonly lastUsedAt: number;
+  readonly selectedWorkspaceAccountId?: string | null;
+  readonly sessionId: string;
+  readonly userId?: string | null;
+  readonly workspaces: ReadonlyArray<V2AccountSessionsSwitchResponse__AccountSessionWorkspace>;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2AccountSessionsSwitchResponse__AccountSession = Schema.StructWithRest(
+  Schema.Struct({
+    displayName: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+    email: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+    imageUrl: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+    isActive: Schema.Boolean,
+    lastUsedAt: Schema.Number.annotate({ format: "int64" }).check(
+      Schema.isInt().annotate({ expected: "an integer" }),
+    ),
+    selectedWorkspaceAccountId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+    sessionId: Schema.String,
+    userId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+    workspaces: Schema.Array(V2AccountSessionsSwitchResponse__AccountSessionWorkspace),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "V2AccountSessionsSwitchResponse__AccountSession" });
+
 export type V2AppListUpdatedNotification__AppInfo = {
   readonly appMetadata?: V2AppListUpdatedNotification__AppMetadata | null;
   readonly branding?: V2AppListUpdatedNotification__AppBranding | null;
@@ -45637,11 +46709,15 @@ export const V2ConfigReadResponse__ConfigLayerMetadata = Schema.StructWithRest(
 
 export type V2ConfigRequirementsReadResponse__ApplicationRequirements = {
   readonly network?: V2ConfigRequirementsReadResponse__ApplicationNetworkRequirements | null;
+  readonly storage?: V2ConfigRequirementsReadResponse__ApplicationStorageRequirements | null;
 } & { readonly [x: string]: CodexJsonExtension };
 export const V2ConfigRequirementsReadResponse__ApplicationRequirements = Schema.StructWithRest(
   Schema.Struct({
     network: Schema.optionalKey(
       Schema.Union([V2ConfigRequirementsReadResponse__ApplicationNetworkRequirements, Schema.Null]),
+    ),
+    storage: Schema.optionalKey(
+      Schema.Union([V2ConfigRequirementsReadResponse__ApplicationStorageRequirements, Schema.Null]),
     ),
   }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
@@ -45712,8 +46788,10 @@ export type V2ConfigRequirementsReadResponse__ManagedHooksRequirements = {
   readonly Interrupt?: ReadonlyArray<V2ConfigRequirementsReadResponse__ConfiguredHookMatcherGroup>;
   readonly PermissionRequest: ReadonlyArray<V2ConfigRequirementsReadResponse__ConfiguredHookMatcherGroup>;
   readonly PostCompact: ReadonlyArray<V2ConfigRequirementsReadResponse__ConfiguredHookMatcherGroup>;
+  readonly PostModelRequest?: ReadonlyArray<V2ConfigRequirementsReadResponse__ConfiguredHookMatcherGroup>;
   readonly PostToolUse: ReadonlyArray<V2ConfigRequirementsReadResponse__ConfiguredHookMatcherGroup>;
   readonly PreCompact: ReadonlyArray<V2ConfigRequirementsReadResponse__ConfiguredHookMatcherGroup>;
+  readonly PreModelRequest?: ReadonlyArray<V2ConfigRequirementsReadResponse__ConfiguredHookMatcherGroup>;
   readonly PreToolUse: ReadonlyArray<V2ConfigRequirementsReadResponse__ConfiguredHookMatcherGroup>;
   readonly SessionEnd?: ReadonlyArray<V2ConfigRequirementsReadResponse__ConfiguredHookMatcherGroup>;
   readonly SessionStart: ReadonlyArray<V2ConfigRequirementsReadResponse__ConfiguredHookMatcherGroup>;
@@ -45733,8 +46811,18 @@ export const V2ConfigRequirementsReadResponse__ManagedHooksRequirements = Schema
     ),
     PermissionRequest: Schema.Array(V2ConfigRequirementsReadResponse__ConfiguredHookMatcherGroup),
     PostCompact: Schema.Array(V2ConfigRequirementsReadResponse__ConfiguredHookMatcherGroup),
+    PostModelRequest: Schema.optionalKey(
+      Schema.Array(V2ConfigRequirementsReadResponse__ConfiguredHookMatcherGroup).annotate({
+        default: [],
+      }),
+    ),
     PostToolUse: Schema.Array(V2ConfigRequirementsReadResponse__ConfiguredHookMatcherGroup),
     PreCompact: Schema.Array(V2ConfigRequirementsReadResponse__ConfiguredHookMatcherGroup),
+    PreModelRequest: Schema.optionalKey(
+      Schema.Array(V2ConfigRequirementsReadResponse__ConfiguredHookMatcherGroup).annotate({
+        default: [],
+      }),
+    ),
     PreToolUse: Schema.Array(V2ConfigRequirementsReadResponse__ConfiguredHookMatcherGroup),
     SessionEnd: Schema.optionalKey(
       Schema.Array(V2ConfigRequirementsReadResponse__ConfiguredHookMatcherGroup).annotate({
@@ -45763,6 +46851,49 @@ export const V2ConfigRequirementsReadResponse__ModelsRequirements = Schema.Struc
   }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "V2ConfigRequirementsReadResponse__ModelsRequirements" });
+
+export type V2ConfigRequirementsReadResponse__OtelRequirements = {
+  readonly environment?: string | null;
+  readonly exporter?: V2ConfigRequirementsReadResponse__OtelExporter | null;
+  readonly log_agent_responses?: boolean | null;
+  readonly log_guardian_assessments?: boolean | null;
+  readonly log_user_prompt?: boolean | null;
+  readonly metrics_exporter?: V2ConfigRequirementsReadResponse__OtelExporter | null;
+  readonly span_attributes?: { readonly [x: string]: string } | null;
+  readonly tool_result?: V2ConfigRequirementsReadResponse__OtelToolResultLogConfig | null;
+  readonly trace_exporter?: V2ConfigRequirementsReadResponse__OtelExporter | null;
+  readonly tracestate?: { readonly [x: string]: { readonly [x: string]: string } } | null;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ConfigRequirementsReadResponse__OtelRequirements = Schema.StructWithRest(
+  Schema.Struct({
+    environment: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+    exporter: Schema.optionalKey(
+      Schema.Union([V2ConfigRequirementsReadResponse__OtelExporter, Schema.Null]),
+    ),
+    log_agent_responses: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
+    log_guardian_assessments: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
+    log_user_prompt: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
+    metrics_exporter: Schema.optionalKey(
+      Schema.Union([V2ConfigRequirementsReadResponse__OtelExporter, Schema.Null]),
+    ),
+    span_attributes: Schema.optionalKey(
+      Schema.Union([Schema.Record(Schema.String, Schema.String), Schema.Null]),
+    ),
+    tool_result: Schema.optionalKey(
+      Schema.Union([V2ConfigRequirementsReadResponse__OtelToolResultLogConfig, Schema.Null]),
+    ),
+    trace_exporter: Schema.optionalKey(
+      Schema.Union([V2ConfigRequirementsReadResponse__OtelExporter, Schema.Null]),
+    ),
+    tracestate: Schema.optionalKey(
+      Schema.Union([
+        Schema.Record(Schema.String, Schema.Record(Schema.String, Schema.String)),
+        Schema.Null,
+      ]),
+    ),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "V2ConfigRequirementsReadResponse__OtelRequirements" });
 
 export type V2ConfigWriteResponse__ConfigLayerMetadata = {
   readonly name: V2ConfigWriteResponse__ConfigLayerSource;
@@ -45984,7 +47115,7 @@ export type V2HookCompletedNotification__HookRunSummary = {
   readonly id: string;
   readonly scope: V2HookCompletedNotification__HookScope;
   readonly source?: V2HookCompletedNotification__HookSource;
-  readonly sourcePath: V2HookCompletedNotification__AbsolutePathBuf;
+  readonly sourcePath: V2HookCompletedNotification__LegacyAppPathString;
   readonly startedAt: number;
   readonly status: V2HookCompletedNotification__HookRunStatus;
   readonly statusMessage?: string | null;
@@ -46022,7 +47153,7 @@ export const V2HookCompletedNotification__HookRunSummary = Schema.StructWithRest
           V2HookCompletedNotification__HookSource,
       ).annotate({ default: "unknown" }),
     ),
-    sourcePath: V2HookCompletedNotification__AbsolutePathBuf,
+    sourcePath: V2HookCompletedNotification__LegacyAppPathString,
     startedAt: Schema.Number.annotate({ format: "int64" }).check(
       Schema.isInt().annotate({ expected: "an integer" }),
     ),
@@ -46059,7 +47190,7 @@ export type V2HookStartedNotification__HookRunSummary = {
   readonly id: string;
   readonly scope: V2HookStartedNotification__HookScope;
   readonly source?: V2HookStartedNotification__HookSource;
-  readonly sourcePath: V2HookStartedNotification__AbsolutePathBuf;
+  readonly sourcePath: V2HookStartedNotification__LegacyAppPathString;
   readonly startedAt: number;
   readonly status: V2HookStartedNotification__HookRunStatus;
   readonly statusMessage?: string | null;
@@ -46097,7 +47228,7 @@ export const V2HookStartedNotification__HookRunSummary = Schema.StructWithRest(
           V2HookStartedNotification__HookSource,
       ).annotate({ default: "unknown" }),
     ),
-    sourcePath: V2HookStartedNotification__AbsolutePathBuf,
+    sourcePath: V2HookStartedNotification__LegacyAppPathString,
     startedAt: Schema.Number.annotate({ format: "int64" }).check(
       Schema.isInt().annotate({ expected: "an integer" }),
     ),
@@ -51355,6 +52486,7 @@ export type ClientRequest__TurnSteerParams = {
   readonly expectedTurnId: string;
   readonly input: ReadonlyArray<ClientRequest__UserInput>;
   readonly responsesapiClientMetadata?: { readonly [x: string]: string } | null;
+  readonly responsesapiClientMetadataPatch?: { readonly [x: string]: string } | null;
   readonly threadId: string;
 } & { readonly [x: string]: CodexJsonExtension };
 export const ClientRequest__TurnSteerParams = Schema.StructWithRest(
@@ -51378,7 +52510,16 @@ export const ClientRequest__TurnSteerParams = Schema.StructWithRest(
       Schema.Union([
         Schema.Record(Schema.String, Schema.String).annotate({
           description:
-            'Optional metadata to enrich Codex\'s ResponsesAPI turn metadata.\n\nEntries are flattened into the JSON string sent as `client_metadata["x-codex-turn-metadata"]` on ResponsesAPI HTTP and websocket requests.\n\nThey are not sent as top-level ResponsesAPI `client_metadata` keys, and reserved keys such as `session_id`, `thread_id`, `turn_id`, and `window_id` cannot be overridden.',
+            'Optional metadata to enrich Codex\'s ResponsesAPI turn metadata. Replaces unprotected client-provided entries when supplied; an empty map clears them.\n\nEntries are flattened into the JSON string sent as `client_metadata["x-codex-turn-metadata"]` on ResponsesAPI HTTP and websocket requests.\n\nThey are not sent as top-level ResponsesAPI `client_metadata` keys, and reserved keys such as `session_id`, `thread_id`, `turn_id`, and `window_id` cannot be overridden.',
+        }),
+        Schema.Null,
+      ]),
+    ),
+    responsesapiClientMetadataPatch: Schema.optionalKey(
+      Schema.Union([
+        Schema.Record(Schema.String, Schema.String).annotate({
+          description:
+            "Merge entries into the ResponsesAPI turn metadata without removing existing entries. Applied after `responsesapiClientMetadata` if both are provided; reserved keys remain protected.",
         }),
         Schema.Null,
       ]),
@@ -51574,17 +52715,23 @@ export const ServerNotification__ThreadSettings = Schema.StructWithRest(
 
 export type ServerNotification__ThreadItem =
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly clientId?: string | null;
       readonly content: ReadonlyArray<ServerNotification__UserInput>;
       readonly id: string;
       readonly type: "userMessage";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly fragments: ReadonlyArray<ServerNotification__HookPromptFragment>;
       readonly id: string;
       readonly type: "hookPrompt";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly delivery?: ServerNotification__AgentMessageDelivery | null;
       readonly id: string;
       readonly memoryCitation?: ServerNotification__MemoryCitation | null;
@@ -51594,22 +52741,32 @@ export type ServerNotification__ThreadItem =
       readonly type: "agentMessage";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly id: string;
       readonly name: string;
       readonly namespace?: string | null;
       readonly output: ServerNotification__FunctionCallOutputBody;
       readonly type: "functionCallOutput";
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly id: string; readonly text: string; readonly type: "plan" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly text: string;
+      readonly type: "plan";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly content?: ReadonlyArray<string>;
       readonly id: string;
       readonly summary?: ReadonlyArray<string>;
       readonly type: "reasoning";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly aggregatedOutput?: string | null;
       readonly command: string;
       readonly commandActions: ReadonlyArray<ServerNotification__CommandAction>;
@@ -51625,12 +52782,16 @@ export type ServerNotification__ThreadItem =
       readonly type: "commandExecution";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly changes: ReadonlyArray<ServerNotification__FileUpdateChange>;
       readonly id: string;
       readonly status: ServerNotification__PatchApplyStatus;
       readonly type: "fileChange";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly appContext?: ServerNotification__McpToolCallAppContext | null;
       readonly arguments: Schema.Json;
       readonly durationMs?: number | null;
@@ -51647,6 +52808,8 @@ export type ServerNotification__ThreadItem =
       readonly type: "mcpToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly arguments: Schema.Json;
       readonly contentItems?: ReadonlyArray<ServerNotification__DynamicToolCallOutputContentItem> | null;
       readonly durationMs?: number | null;
@@ -51658,6 +52821,8 @@ export type ServerNotification__ThreadItem =
       readonly type: "dynamicToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly agentsStates: { readonly [x: string]: ServerNotification__CollabAgentState };
       readonly id: string;
       readonly model?: string | null;
@@ -51670,6 +52835,8 @@ export type ServerNotification__ThreadItem =
       readonly type: "collabAgentToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly agentPath: string;
       readonly agentThreadId: string;
       readonly id: string;
@@ -51679,6 +52846,8 @@ export type ServerNotification__ThreadItem =
       readonly type: "subAgentActivity";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly action?: ServerNotification__WebSearchAction | null;
       readonly id: string;
       readonly query: string;
@@ -51686,53 +52855,150 @@ export type ServerNotification__ThreadItem =
       readonly type: "webSearch";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly id: string;
       readonly path: ServerNotification__LegacyAppPathString;
       readonly type: "imageView";
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly durationMs: number; readonly id: string; readonly type: "sleep" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
   | ({
-      readonly failure?: ServerNotification__ImageGenerationFailure | null;
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly durationMs: number;
       readonly id: string;
-      readonly result: string;
+      readonly type: "sleep";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly failure?: ServerNotification__ImageGenerationFailure | null;
+      readonly generationId?: string | null;
+      readonly id: string;
+      readonly inputImages?: ReadonlyArray<ServerNotification__ImageGenerationInputImage>;
       readonly revisedPrompt?: string | null;
       readonly savedPath?: ServerNotification__AbsolutePathBuf | null;
       readonly status: string;
       readonly transparentBackground?: boolean | null;
       readonly type: "imageGeneration";
+      readonly fileId: string;
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly id: string; readonly review: string; readonly type: "enteredReviewMode" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
-  | ({ readonly id: string; readonly review: string; readonly type: "exitedReviewMode" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
-  | ({ readonly id: string; readonly type: "contextCompaction" } & {
-      readonly [x: string]: CodexJsonExtension;
-    });
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly failure?: ServerNotification__ImageGenerationFailure | null;
+      readonly generationId?: string | null;
+      readonly id: string;
+      readonly inputImages?: ReadonlyArray<ServerNotification__ImageGenerationInputImage>;
+      readonly revisedPrompt?: string | null;
+      readonly savedPath?: ServerNotification__AbsolutePathBuf | null;
+      readonly status: string;
+      readonly transparentBackground?: boolean | null;
+      readonly type: "imageGeneration";
+      readonly result: string;
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly review: string;
+      readonly type: "enteredReviewMode";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly review: string;
+      readonly type: "exitedReviewMode";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly type: "contextCompaction";
+    } & { readonly [x: string]: CodexJsonExtension });
 export const ServerNotification__ThreadItem = Schema.Union(
   [
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         clientId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         content: Schema.Array(ServerNotification__UserInput),
         id: Schema.String,
         type: Schema.Literal("userMessage").annotate({ title: "UserMessageThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "UserMessageThreadItem" }),
+    ).annotate({
+      title: "UserMessageThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         fragments: Schema.Array(ServerNotification__HookPromptFragment),
         id: Schema.String,
         type: Schema.Literal("hookPrompt").annotate({ title: "HookPromptThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "HookPromptThreadItem" }),
+    ).annotate({
+      title: "HookPromptThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         delivery: Schema.optionalKey(
           Schema.Union([ServerNotification__AgentMessageDelivery, Schema.Null]),
         ),
@@ -51748,9 +53014,31 @@ export const ServerNotification__ThreadItem = Schema.Union(
         type: Schema.Literal("agentMessage").annotate({ title: "AgentMessageThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "AgentMessageThreadItem" }),
+    ).annotate({
+      title: "AgentMessageThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         name: Schema.String,
         namespace: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
@@ -51760,9 +53048,31 @@ export const ServerNotification__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "FunctionCallOutputThreadItem" }),
+    ).annotate({
+      title: "FunctionCallOutputThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         text: Schema.String,
         type: Schema.Literal("plan").annotate({ title: "PlanThreadItemType" }),
@@ -51775,15 +53085,55 @@ export const ServerNotification__ThreadItem = Schema.Union(
     }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         content: Schema.optionalKey(Schema.Array(Schema.String).annotate({ default: [] })),
         id: Schema.String,
         summary: Schema.optionalKey(Schema.Array(Schema.String).annotate({ default: [] })),
         type: Schema.Literal("reasoning").annotate({ title: "ReasoningThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ReasoningThreadItem" }),
+    ).annotate({
+      title: "ReasoningThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         aggregatedOutput: Schema.optionalKey(
           Schema.Union([
             Schema.String.annotate({
@@ -51858,18 +53208,62 @@ export const ServerNotification__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "CommandExecutionThreadItem" }),
+    ).annotate({
+      title: "CommandExecutionThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         changes: Schema.Array(ServerNotification__FileUpdateChange),
         id: Schema.String,
         status: ServerNotification__PatchApplyStatus,
         type: Schema.Literal("fileChange").annotate({ title: "FileChangeThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "FileChangeThreadItem" }),
+    ).annotate({
+      title: "FileChangeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         appContext: Schema.optionalKey(
           Schema.Union([ServerNotification__McpToolCallAppContext, Schema.Null]),
         ),
@@ -51913,9 +53307,31 @@ export const ServerNotification__ThreadItem = Schema.Union(
         type: Schema.Literal("mcpToolCall").annotate({ title: "McpToolCallThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "McpToolCallThreadItem" }),
+    ).annotate({
+      title: "McpToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         arguments: Schema.Json.annotate({ expected: "JSON value" }),
         contentItems: Schema.optionalKey(
           Schema.Union([
@@ -51942,9 +53358,31 @@ export const ServerNotification__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "DynamicToolCallThreadItem" }),
+    ).annotate({
+      title: "DynamicToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         agentsStates: Schema.Record(Schema.String, ServerNotification__CollabAgentState).annotate({
           description: "Last known status of the target agents, when available.",
         }),
@@ -51990,9 +53428,31 @@ export const ServerNotification__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "CollabAgentToolCallThreadItem" }),
+    ).annotate({
+      title: "CollabAgentToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         agentPath: Schema.String,
         agentThreadId: Schema.String,
         id: Schema.String,
@@ -52016,9 +53476,31 @@ export const ServerNotification__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "SubAgentActivityThreadItem" }),
+    ).annotate({
+      title: "SubAgentActivityThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         action: Schema.optionalKey(
           Schema.Union([ServerNotification__WebSearchAction, Schema.Null]),
         ),
@@ -52036,17 +53518,61 @@ export const ServerNotification__ThreadItem = Schema.Union(
         type: Schema.Literal("webSearch").annotate({ title: "WebSearchThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "WebSearchThreadItem" }),
+    ).annotate({
+      title: "WebSearchThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         path: ServerNotification__LegacyAppPathString,
         type: Schema.Literal("imageView").annotate({ title: "ImageViewThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ImageViewThreadItem" }),
+    ).annotate({
+      title: "ImageViewThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         durationMs: Schema.Number.annotate({ format: "uint64" })
           .check(Schema.isInt().annotate({ expected: "an integer" }))
           .check(
@@ -52062,27 +53588,140 @@ export const ServerNotification__ThreadItem = Schema.Union(
       title: "SleepThreadItem",
       description: "Display item emitted by the interruptible `clock.sleep` tool.",
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        failure: Schema.optionalKey(
-          Schema.Union([ServerNotification__ImageGenerationFailure, Schema.Null]),
-        ),
-        id: Schema.String,
-        result: Schema.String,
-        revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-        savedPath: Schema.optionalKey(
-          Schema.Union([ServerNotification__AbsolutePathBuf, Schema.Null]),
-        ),
-        status: Schema.String,
-        transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
-        type: Schema.Literal("imageGeneration").annotate({
-          title: "ImageGenerationThreadItemType",
+    Schema.Union([
+      Schema.StructWithRest(
+        Schema.Struct({
+          completedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          startedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item started, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          failure: Schema.optionalKey(
+            Schema.Union([ServerNotification__ImageGenerationFailure, Schema.Null]),
+          ),
+          generationId: Schema.optionalKey(
+            Schema.Union([
+              Schema.String.annotate({
+                description:
+                  "Image generation identifier for the generated image, when provided by the image backend.",
+              }),
+              Schema.Null,
+            ]),
+          ),
+          id: Schema.String,
+          inputImages: Schema.optionalKey(
+            Schema.Array(ServerNotification__ImageGenerationInputImage).annotate({
+              description:
+                "Observed local inputs for a completed generation, absent on older items.",
+            }),
+          ),
+          revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+          savedPath: Schema.optionalKey(
+            Schema.Union([ServerNotification__AbsolutePathBuf, Schema.Null]),
+          ),
+          status: Schema.String,
+          transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
+          type: Schema.Literal("imageGeneration").annotate({
+            title: "ImageGenerationThreadItemType",
+          }),
+          fileId: Schema.String,
         }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({
+        title: "FileIdThreadItem",
+        description:
+          "Either inline generated-image data or its durable attachment-store identity.\n\n`File` must remain first so rollouts written during the migration, which contain both an empty `result` and a `fileId`, retain the file reference when deserialized.",
       }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ImageGenerationThreadItem" }),
+      Schema.StructWithRest(
+        Schema.Struct({
+          completedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          startedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item started, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          failure: Schema.optionalKey(
+            Schema.Union([ServerNotification__ImageGenerationFailure, Schema.Null]),
+          ),
+          generationId: Schema.optionalKey(
+            Schema.Union([
+              Schema.String.annotate({
+                description:
+                  "Image generation identifier for the generated image, when provided by the image backend.",
+              }),
+              Schema.Null,
+            ]),
+          ),
+          id: Schema.String,
+          inputImages: Schema.optionalKey(
+            Schema.Array(ServerNotification__ImageGenerationInputImage).annotate({
+              description:
+                "Observed local inputs for a completed generation, absent on older items.",
+            }),
+          ),
+          revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+          savedPath: Schema.optionalKey(
+            Schema.Union([ServerNotification__AbsolutePathBuf, Schema.Null]),
+          ),
+          status: Schema.String,
+          transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
+          type: Schema.Literal("imageGeneration").annotate({
+            title: "ImageGenerationThreadItemType",
+          }),
+          result: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({
+        title: "ResultThreadItem",
+        description:
+          "Either inline generated-image data or its durable attachment-store identity.\n\n`File` must remain first so rollouts written during the migration, which contain both an empty `result` and a `fileId`, retain the file reference when deserialized.",
+      }),
+    ]),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         review: Schema.String,
         type: Schema.Literal("enteredReviewMode").annotate({
@@ -52090,9 +53729,31 @@ export const ServerNotification__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "EnteredReviewModeThreadItem" }),
+    ).annotate({
+      title: "EnteredReviewModeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         review: Schema.String,
         type: Schema.Literal("exitedReviewMode").annotate({
@@ -52100,16 +53761,42 @@ export const ServerNotification__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ExitedReviewModeThreadItem" }),
+    ).annotate({
+      title: "ExitedReviewModeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         type: Schema.Literal("contextCompaction").annotate({
           title: "ContextCompactionThreadItemType",
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ContextCompactionThreadItem" }),
+    ).annotate({
+      title: "ContextCompactionThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
   ],
   { mode: "oneOf" },
 ).annotate({ identifier: "ServerNotification__ThreadItem" });
@@ -52259,17 +53946,23 @@ export const V2ConfigWriteResponse__OverriddenMetadata = Schema.StructWithRest(
 
 export type V2ItemCompletedNotification__ThreadItem =
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly clientId?: string | null;
       readonly content: ReadonlyArray<V2ItemCompletedNotification__UserInput>;
       readonly id: string;
       readonly type: "userMessage";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly fragments: ReadonlyArray<V2ItemCompletedNotification__HookPromptFragment>;
       readonly id: string;
       readonly type: "hookPrompt";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly delivery?: V2ItemCompletedNotification__AgentMessageDelivery | null;
       readonly id: string;
       readonly memoryCitation?: V2ItemCompletedNotification__MemoryCitation | null;
@@ -52279,22 +53972,32 @@ export type V2ItemCompletedNotification__ThreadItem =
       readonly type: "agentMessage";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly id: string;
       readonly name: string;
       readonly namespace?: string | null;
       readonly output: V2ItemCompletedNotification__FunctionCallOutputBody;
       readonly type: "functionCallOutput";
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly id: string; readonly text: string; readonly type: "plan" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly text: string;
+      readonly type: "plan";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly content?: ReadonlyArray<string>;
       readonly id: string;
       readonly summary?: ReadonlyArray<string>;
       readonly type: "reasoning";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly aggregatedOutput?: string | null;
       readonly command: string;
       readonly commandActions: ReadonlyArray<V2ItemCompletedNotification__CommandAction>;
@@ -52310,12 +54013,16 @@ export type V2ItemCompletedNotification__ThreadItem =
       readonly type: "commandExecution";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly changes: ReadonlyArray<V2ItemCompletedNotification__FileUpdateChange>;
       readonly id: string;
       readonly status: V2ItemCompletedNotification__PatchApplyStatus;
       readonly type: "fileChange";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly appContext?: V2ItemCompletedNotification__McpToolCallAppContext | null;
       readonly arguments: Schema.Json;
       readonly durationMs?: number | null;
@@ -52332,6 +54039,8 @@ export type V2ItemCompletedNotification__ThreadItem =
       readonly type: "mcpToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly arguments: Schema.Json;
       readonly contentItems?: ReadonlyArray<V2ItemCompletedNotification__DynamicToolCallOutputContentItem> | null;
       readonly durationMs?: number | null;
@@ -52343,6 +54052,8 @@ export type V2ItemCompletedNotification__ThreadItem =
       readonly type: "dynamicToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly agentsStates: {
         readonly [x: string]: V2ItemCompletedNotification__CollabAgentState;
       };
@@ -52357,6 +54068,8 @@ export type V2ItemCompletedNotification__ThreadItem =
       readonly type: "collabAgentToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly agentPath: string;
       readonly agentThreadId: string;
       readonly id: string;
@@ -52366,6 +54079,8 @@ export type V2ItemCompletedNotification__ThreadItem =
       readonly type: "subAgentActivity";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly action?: V2ItemCompletedNotification__WebSearchAction | null;
       readonly id: string;
       readonly query: string;
@@ -52373,53 +54088,150 @@ export type V2ItemCompletedNotification__ThreadItem =
       readonly type: "webSearch";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly id: string;
       readonly path: V2ItemCompletedNotification__LegacyAppPathString;
       readonly type: "imageView";
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly durationMs: number; readonly id: string; readonly type: "sleep" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
   | ({
-      readonly failure?: V2ItemCompletedNotification__ImageGenerationFailure | null;
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly durationMs: number;
       readonly id: string;
-      readonly result: string;
+      readonly type: "sleep";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly failure?: V2ItemCompletedNotification__ImageGenerationFailure | null;
+      readonly generationId?: string | null;
+      readonly id: string;
+      readonly inputImages?: ReadonlyArray<V2ItemCompletedNotification__ImageGenerationInputImage>;
       readonly revisedPrompt?: string | null;
       readonly savedPath?: V2ItemCompletedNotification__AbsolutePathBuf | null;
       readonly status: string;
       readonly transparentBackground?: boolean | null;
       readonly type: "imageGeneration";
+      readonly fileId: string;
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly id: string; readonly review: string; readonly type: "enteredReviewMode" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
-  | ({ readonly id: string; readonly review: string; readonly type: "exitedReviewMode" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
-  | ({ readonly id: string; readonly type: "contextCompaction" } & {
-      readonly [x: string]: CodexJsonExtension;
-    });
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly failure?: V2ItemCompletedNotification__ImageGenerationFailure | null;
+      readonly generationId?: string | null;
+      readonly id: string;
+      readonly inputImages?: ReadonlyArray<V2ItemCompletedNotification__ImageGenerationInputImage>;
+      readonly revisedPrompt?: string | null;
+      readonly savedPath?: V2ItemCompletedNotification__AbsolutePathBuf | null;
+      readonly status: string;
+      readonly transparentBackground?: boolean | null;
+      readonly type: "imageGeneration";
+      readonly result: string;
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly review: string;
+      readonly type: "enteredReviewMode";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly review: string;
+      readonly type: "exitedReviewMode";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly type: "contextCompaction";
+    } & { readonly [x: string]: CodexJsonExtension });
 export const V2ItemCompletedNotification__ThreadItem = Schema.Union(
   [
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         clientId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         content: Schema.Array(V2ItemCompletedNotification__UserInput),
         id: Schema.String,
         type: Schema.Literal("userMessage").annotate({ title: "UserMessageThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "UserMessageThreadItem" }),
+    ).annotate({
+      title: "UserMessageThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         fragments: Schema.Array(V2ItemCompletedNotification__HookPromptFragment),
         id: Schema.String,
         type: Schema.Literal("hookPrompt").annotate({ title: "HookPromptThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "HookPromptThreadItem" }),
+    ).annotate({
+      title: "HookPromptThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         delivery: Schema.optionalKey(
           Schema.Union([V2ItemCompletedNotification__AgentMessageDelivery, Schema.Null]),
         ),
@@ -52440,9 +54252,31 @@ export const V2ItemCompletedNotification__ThreadItem = Schema.Union(
         type: Schema.Literal("agentMessage").annotate({ title: "AgentMessageThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "AgentMessageThreadItem" }),
+    ).annotate({
+      title: "AgentMessageThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         name: Schema.String,
         namespace: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
@@ -52452,9 +54286,31 @@ export const V2ItemCompletedNotification__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "FunctionCallOutputThreadItem" }),
+    ).annotate({
+      title: "FunctionCallOutputThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         text: Schema.String,
         type: Schema.Literal("plan").annotate({ title: "PlanThreadItemType" }),
@@ -52467,15 +54323,55 @@ export const V2ItemCompletedNotification__ThreadItem = Schema.Union(
     }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         content: Schema.optionalKey(Schema.Array(Schema.String).annotate({ default: [] })),
         id: Schema.String,
         summary: Schema.optionalKey(Schema.Array(Schema.String).annotate({ default: [] })),
         type: Schema.Literal("reasoning").annotate({ title: "ReasoningThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ReasoningThreadItem" }),
+    ).annotate({
+      title: "ReasoningThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         aggregatedOutput: Schema.optionalKey(
           Schema.Union([
             Schema.String.annotate({
@@ -52550,18 +54446,62 @@ export const V2ItemCompletedNotification__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "CommandExecutionThreadItem" }),
+    ).annotate({
+      title: "CommandExecutionThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         changes: Schema.Array(V2ItemCompletedNotification__FileUpdateChange),
         id: Schema.String,
         status: V2ItemCompletedNotification__PatchApplyStatus,
         type: Schema.Literal("fileChange").annotate({ title: "FileChangeThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "FileChangeThreadItem" }),
+    ).annotate({
+      title: "FileChangeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         appContext: Schema.optionalKey(
           Schema.Union([V2ItemCompletedNotification__McpToolCallAppContext, Schema.Null]),
         ),
@@ -52605,9 +54545,31 @@ export const V2ItemCompletedNotification__ThreadItem = Schema.Union(
         type: Schema.Literal("mcpToolCall").annotate({ title: "McpToolCallThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "McpToolCallThreadItem" }),
+    ).annotate({
+      title: "McpToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         arguments: Schema.Json.annotate({ expected: "JSON value" }),
         contentItems: Schema.optionalKey(
           Schema.Union([
@@ -52634,9 +54596,31 @@ export const V2ItemCompletedNotification__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "DynamicToolCallThreadItem" }),
+    ).annotate({
+      title: "DynamicToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         agentsStates: Schema.Record(
           Schema.String,
           V2ItemCompletedNotification__CollabAgentState,
@@ -52683,9 +54667,31 @@ export const V2ItemCompletedNotification__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "CollabAgentToolCallThreadItem" }),
+    ).annotate({
+      title: "CollabAgentToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         agentPath: Schema.String,
         agentThreadId: Schema.String,
         id: Schema.String,
@@ -52709,9 +54715,31 @@ export const V2ItemCompletedNotification__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "SubAgentActivityThreadItem" }),
+    ).annotate({
+      title: "SubAgentActivityThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         action: Schema.optionalKey(
           Schema.Union([V2ItemCompletedNotification__WebSearchAction, Schema.Null]),
         ),
@@ -52729,17 +54757,61 @@ export const V2ItemCompletedNotification__ThreadItem = Schema.Union(
         type: Schema.Literal("webSearch").annotate({ title: "WebSearchThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "WebSearchThreadItem" }),
+    ).annotate({
+      title: "WebSearchThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         path: V2ItemCompletedNotification__LegacyAppPathString,
         type: Schema.Literal("imageView").annotate({ title: "ImageViewThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ImageViewThreadItem" }),
+    ).annotate({
+      title: "ImageViewThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         durationMs: Schema.Number.annotate({ format: "uint64" })
           .check(Schema.isInt().annotate({ expected: "an integer" }))
           .check(
@@ -52755,27 +54827,140 @@ export const V2ItemCompletedNotification__ThreadItem = Schema.Union(
       title: "SleepThreadItem",
       description: "Display item emitted by the interruptible `clock.sleep` tool.",
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        failure: Schema.optionalKey(
-          Schema.Union([V2ItemCompletedNotification__ImageGenerationFailure, Schema.Null]),
-        ),
-        id: Schema.String,
-        result: Schema.String,
-        revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-        savedPath: Schema.optionalKey(
-          Schema.Union([V2ItemCompletedNotification__AbsolutePathBuf, Schema.Null]),
-        ),
-        status: Schema.String,
-        transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
-        type: Schema.Literal("imageGeneration").annotate({
-          title: "ImageGenerationThreadItemType",
+    Schema.Union([
+      Schema.StructWithRest(
+        Schema.Struct({
+          completedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          startedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item started, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          failure: Schema.optionalKey(
+            Schema.Union([V2ItemCompletedNotification__ImageGenerationFailure, Schema.Null]),
+          ),
+          generationId: Schema.optionalKey(
+            Schema.Union([
+              Schema.String.annotate({
+                description:
+                  "Image generation identifier for the generated image, when provided by the image backend.",
+              }),
+              Schema.Null,
+            ]),
+          ),
+          id: Schema.String,
+          inputImages: Schema.optionalKey(
+            Schema.Array(V2ItemCompletedNotification__ImageGenerationInputImage).annotate({
+              description:
+                "Observed local inputs for a completed generation, absent on older items.",
+            }),
+          ),
+          revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+          savedPath: Schema.optionalKey(
+            Schema.Union([V2ItemCompletedNotification__AbsolutePathBuf, Schema.Null]),
+          ),
+          status: Schema.String,
+          transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
+          type: Schema.Literal("imageGeneration").annotate({
+            title: "ImageGenerationThreadItemType",
+          }),
+          fileId: Schema.String,
         }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({
+        title: "FileIdThreadItem",
+        description:
+          "Either inline generated-image data or its durable attachment-store identity.\n\n`File` must remain first so rollouts written during the migration, which contain both an empty `result` and a `fileId`, retain the file reference when deserialized.",
       }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ImageGenerationThreadItem" }),
+      Schema.StructWithRest(
+        Schema.Struct({
+          completedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          startedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item started, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          failure: Schema.optionalKey(
+            Schema.Union([V2ItemCompletedNotification__ImageGenerationFailure, Schema.Null]),
+          ),
+          generationId: Schema.optionalKey(
+            Schema.Union([
+              Schema.String.annotate({
+                description:
+                  "Image generation identifier for the generated image, when provided by the image backend.",
+              }),
+              Schema.Null,
+            ]),
+          ),
+          id: Schema.String,
+          inputImages: Schema.optionalKey(
+            Schema.Array(V2ItemCompletedNotification__ImageGenerationInputImage).annotate({
+              description:
+                "Observed local inputs for a completed generation, absent on older items.",
+            }),
+          ),
+          revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+          savedPath: Schema.optionalKey(
+            Schema.Union([V2ItemCompletedNotification__AbsolutePathBuf, Schema.Null]),
+          ),
+          status: Schema.String,
+          transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
+          type: Schema.Literal("imageGeneration").annotate({
+            title: "ImageGenerationThreadItemType",
+          }),
+          result: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({
+        title: "ResultThreadItem",
+        description:
+          "Either inline generated-image data or its durable attachment-store identity.\n\n`File` must remain first so rollouts written during the migration, which contain both an empty `result` and a `fileId`, retain the file reference when deserialized.",
+      }),
+    ]),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         review: Schema.String,
         type: Schema.Literal("enteredReviewMode").annotate({
@@ -52783,9 +54968,31 @@ export const V2ItemCompletedNotification__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "EnteredReviewModeThreadItem" }),
+    ).annotate({
+      title: "EnteredReviewModeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         review: Schema.String,
         type: Schema.Literal("exitedReviewMode").annotate({
@@ -52793,16 +55000,42 @@ export const V2ItemCompletedNotification__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ExitedReviewModeThreadItem" }),
+    ).annotate({
+      title: "ExitedReviewModeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         type: Schema.Literal("contextCompaction").annotate({
           title: "ContextCompactionThreadItemType",
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ContextCompactionThreadItem" }),
+    ).annotate({
+      title: "ContextCompactionThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
   ],
   { mode: "oneOf" },
 ).annotate({ identifier: "V2ItemCompletedNotification__ThreadItem" });
@@ -52839,17 +55072,23 @@ export const V2ItemGuardianApprovalReviewStartedNotification__FileSystemSandboxE
 
 export type V2ItemStartedNotification__ThreadItem =
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly clientId?: string | null;
       readonly content: ReadonlyArray<V2ItemStartedNotification__UserInput>;
       readonly id: string;
       readonly type: "userMessage";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly fragments: ReadonlyArray<V2ItemStartedNotification__HookPromptFragment>;
       readonly id: string;
       readonly type: "hookPrompt";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly delivery?: V2ItemStartedNotification__AgentMessageDelivery | null;
       readonly id: string;
       readonly memoryCitation?: V2ItemStartedNotification__MemoryCitation | null;
@@ -52859,22 +55098,32 @@ export type V2ItemStartedNotification__ThreadItem =
       readonly type: "agentMessage";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly id: string;
       readonly name: string;
       readonly namespace?: string | null;
       readonly output: V2ItemStartedNotification__FunctionCallOutputBody;
       readonly type: "functionCallOutput";
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly id: string; readonly text: string; readonly type: "plan" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly text: string;
+      readonly type: "plan";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly content?: ReadonlyArray<string>;
       readonly id: string;
       readonly summary?: ReadonlyArray<string>;
       readonly type: "reasoning";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly aggregatedOutput?: string | null;
       readonly command: string;
       readonly commandActions: ReadonlyArray<V2ItemStartedNotification__CommandAction>;
@@ -52890,12 +55139,16 @@ export type V2ItemStartedNotification__ThreadItem =
       readonly type: "commandExecution";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly changes: ReadonlyArray<V2ItemStartedNotification__FileUpdateChange>;
       readonly id: string;
       readonly status: V2ItemStartedNotification__PatchApplyStatus;
       readonly type: "fileChange";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly appContext?: V2ItemStartedNotification__McpToolCallAppContext | null;
       readonly arguments: Schema.Json;
       readonly durationMs?: number | null;
@@ -52912,6 +55165,8 @@ export type V2ItemStartedNotification__ThreadItem =
       readonly type: "mcpToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly arguments: Schema.Json;
       readonly contentItems?: ReadonlyArray<V2ItemStartedNotification__DynamicToolCallOutputContentItem> | null;
       readonly durationMs?: number | null;
@@ -52923,6 +55178,8 @@ export type V2ItemStartedNotification__ThreadItem =
       readonly type: "dynamicToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly agentsStates: { readonly [x: string]: V2ItemStartedNotification__CollabAgentState };
       readonly id: string;
       readonly model?: string | null;
@@ -52935,6 +55192,8 @@ export type V2ItemStartedNotification__ThreadItem =
       readonly type: "collabAgentToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly agentPath: string;
       readonly agentThreadId: string;
       readonly id: string;
@@ -52944,6 +55203,8 @@ export type V2ItemStartedNotification__ThreadItem =
       readonly type: "subAgentActivity";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly action?: V2ItemStartedNotification__WebSearchAction | null;
       readonly id: string;
       readonly query: string;
@@ -52951,53 +55212,150 @@ export type V2ItemStartedNotification__ThreadItem =
       readonly type: "webSearch";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly id: string;
       readonly path: V2ItemStartedNotification__LegacyAppPathString;
       readonly type: "imageView";
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly durationMs: number; readonly id: string; readonly type: "sleep" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
   | ({
-      readonly failure?: V2ItemStartedNotification__ImageGenerationFailure | null;
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly durationMs: number;
       readonly id: string;
-      readonly result: string;
+      readonly type: "sleep";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly failure?: V2ItemStartedNotification__ImageGenerationFailure | null;
+      readonly generationId?: string | null;
+      readonly id: string;
+      readonly inputImages?: ReadonlyArray<V2ItemStartedNotification__ImageGenerationInputImage>;
       readonly revisedPrompt?: string | null;
       readonly savedPath?: V2ItemStartedNotification__AbsolutePathBuf | null;
       readonly status: string;
       readonly transparentBackground?: boolean | null;
       readonly type: "imageGeneration";
+      readonly fileId: string;
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly id: string; readonly review: string; readonly type: "enteredReviewMode" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
-  | ({ readonly id: string; readonly review: string; readonly type: "exitedReviewMode" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
-  | ({ readonly id: string; readonly type: "contextCompaction" } & {
-      readonly [x: string]: CodexJsonExtension;
-    });
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly failure?: V2ItemStartedNotification__ImageGenerationFailure | null;
+      readonly generationId?: string | null;
+      readonly id: string;
+      readonly inputImages?: ReadonlyArray<V2ItemStartedNotification__ImageGenerationInputImage>;
+      readonly revisedPrompt?: string | null;
+      readonly savedPath?: V2ItemStartedNotification__AbsolutePathBuf | null;
+      readonly status: string;
+      readonly transparentBackground?: boolean | null;
+      readonly type: "imageGeneration";
+      readonly result: string;
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly review: string;
+      readonly type: "enteredReviewMode";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly review: string;
+      readonly type: "exitedReviewMode";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly type: "contextCompaction";
+    } & { readonly [x: string]: CodexJsonExtension });
 export const V2ItemStartedNotification__ThreadItem = Schema.Union(
   [
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         clientId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         content: Schema.Array(V2ItemStartedNotification__UserInput),
         id: Schema.String,
         type: Schema.Literal("userMessage").annotate({ title: "UserMessageThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "UserMessageThreadItem" }),
+    ).annotate({
+      title: "UserMessageThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         fragments: Schema.Array(V2ItemStartedNotification__HookPromptFragment),
         id: Schema.String,
         type: Schema.Literal("hookPrompt").annotate({ title: "HookPromptThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "HookPromptThreadItem" }),
+    ).annotate({
+      title: "HookPromptThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         delivery: Schema.optionalKey(
           Schema.Union([V2ItemStartedNotification__AgentMessageDelivery, Schema.Null]),
         ),
@@ -53018,9 +55376,31 @@ export const V2ItemStartedNotification__ThreadItem = Schema.Union(
         type: Schema.Literal("agentMessage").annotate({ title: "AgentMessageThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "AgentMessageThreadItem" }),
+    ).annotate({
+      title: "AgentMessageThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         name: Schema.String,
         namespace: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
@@ -53030,9 +55410,31 @@ export const V2ItemStartedNotification__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "FunctionCallOutputThreadItem" }),
+    ).annotate({
+      title: "FunctionCallOutputThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         text: Schema.String,
         type: Schema.Literal("plan").annotate({ title: "PlanThreadItemType" }),
@@ -53045,15 +55447,55 @@ export const V2ItemStartedNotification__ThreadItem = Schema.Union(
     }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         content: Schema.optionalKey(Schema.Array(Schema.String).annotate({ default: [] })),
         id: Schema.String,
         summary: Schema.optionalKey(Schema.Array(Schema.String).annotate({ default: [] })),
         type: Schema.Literal("reasoning").annotate({ title: "ReasoningThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ReasoningThreadItem" }),
+    ).annotate({
+      title: "ReasoningThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         aggregatedOutput: Schema.optionalKey(
           Schema.Union([
             Schema.String.annotate({
@@ -53128,18 +55570,62 @@ export const V2ItemStartedNotification__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "CommandExecutionThreadItem" }),
+    ).annotate({
+      title: "CommandExecutionThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         changes: Schema.Array(V2ItemStartedNotification__FileUpdateChange),
         id: Schema.String,
         status: V2ItemStartedNotification__PatchApplyStatus,
         type: Schema.Literal("fileChange").annotate({ title: "FileChangeThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "FileChangeThreadItem" }),
+    ).annotate({
+      title: "FileChangeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         appContext: Schema.optionalKey(
           Schema.Union([V2ItemStartedNotification__McpToolCallAppContext, Schema.Null]),
         ),
@@ -53183,9 +55669,31 @@ export const V2ItemStartedNotification__ThreadItem = Schema.Union(
         type: Schema.Literal("mcpToolCall").annotate({ title: "McpToolCallThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "McpToolCallThreadItem" }),
+    ).annotate({
+      title: "McpToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         arguments: Schema.Json.annotate({ expected: "JSON value" }),
         contentItems: Schema.optionalKey(
           Schema.Union([
@@ -53212,9 +55720,31 @@ export const V2ItemStartedNotification__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "DynamicToolCallThreadItem" }),
+    ).annotate({
+      title: "DynamicToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         agentsStates: Schema.Record(
           Schema.String,
           V2ItemStartedNotification__CollabAgentState,
@@ -53261,9 +55791,31 @@ export const V2ItemStartedNotification__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "CollabAgentToolCallThreadItem" }),
+    ).annotate({
+      title: "CollabAgentToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         agentPath: Schema.String,
         agentThreadId: Schema.String,
         id: Schema.String,
@@ -53287,9 +55839,31 @@ export const V2ItemStartedNotification__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "SubAgentActivityThreadItem" }),
+    ).annotate({
+      title: "SubAgentActivityThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         action: Schema.optionalKey(
           Schema.Union([V2ItemStartedNotification__WebSearchAction, Schema.Null]),
         ),
@@ -53307,17 +55881,61 @@ export const V2ItemStartedNotification__ThreadItem = Schema.Union(
         type: Schema.Literal("webSearch").annotate({ title: "WebSearchThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "WebSearchThreadItem" }),
+    ).annotate({
+      title: "WebSearchThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         path: V2ItemStartedNotification__LegacyAppPathString,
         type: Schema.Literal("imageView").annotate({ title: "ImageViewThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ImageViewThreadItem" }),
+    ).annotate({
+      title: "ImageViewThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         durationMs: Schema.Number.annotate({ format: "uint64" })
           .check(Schema.isInt().annotate({ expected: "an integer" }))
           .check(
@@ -53333,27 +55951,140 @@ export const V2ItemStartedNotification__ThreadItem = Schema.Union(
       title: "SleepThreadItem",
       description: "Display item emitted by the interruptible `clock.sleep` tool.",
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        failure: Schema.optionalKey(
-          Schema.Union([V2ItemStartedNotification__ImageGenerationFailure, Schema.Null]),
-        ),
-        id: Schema.String,
-        result: Schema.String,
-        revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-        savedPath: Schema.optionalKey(
-          Schema.Union([V2ItemStartedNotification__AbsolutePathBuf, Schema.Null]),
-        ),
-        status: Schema.String,
-        transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
-        type: Schema.Literal("imageGeneration").annotate({
-          title: "ImageGenerationThreadItemType",
+    Schema.Union([
+      Schema.StructWithRest(
+        Schema.Struct({
+          completedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          startedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item started, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          failure: Schema.optionalKey(
+            Schema.Union([V2ItemStartedNotification__ImageGenerationFailure, Schema.Null]),
+          ),
+          generationId: Schema.optionalKey(
+            Schema.Union([
+              Schema.String.annotate({
+                description:
+                  "Image generation identifier for the generated image, when provided by the image backend.",
+              }),
+              Schema.Null,
+            ]),
+          ),
+          id: Schema.String,
+          inputImages: Schema.optionalKey(
+            Schema.Array(V2ItemStartedNotification__ImageGenerationInputImage).annotate({
+              description:
+                "Observed local inputs for a completed generation, absent on older items.",
+            }),
+          ),
+          revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+          savedPath: Schema.optionalKey(
+            Schema.Union([V2ItemStartedNotification__AbsolutePathBuf, Schema.Null]),
+          ),
+          status: Schema.String,
+          transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
+          type: Schema.Literal("imageGeneration").annotate({
+            title: "ImageGenerationThreadItemType",
+          }),
+          fileId: Schema.String,
         }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({
+        title: "FileIdThreadItem",
+        description:
+          "Either inline generated-image data or its durable attachment-store identity.\n\n`File` must remain first so rollouts written during the migration, which contain both an empty `result` and a `fileId`, retain the file reference when deserialized.",
       }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ImageGenerationThreadItem" }),
+      Schema.StructWithRest(
+        Schema.Struct({
+          completedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          startedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item started, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          failure: Schema.optionalKey(
+            Schema.Union([V2ItemStartedNotification__ImageGenerationFailure, Schema.Null]),
+          ),
+          generationId: Schema.optionalKey(
+            Schema.Union([
+              Schema.String.annotate({
+                description:
+                  "Image generation identifier for the generated image, when provided by the image backend.",
+              }),
+              Schema.Null,
+            ]),
+          ),
+          id: Schema.String,
+          inputImages: Schema.optionalKey(
+            Schema.Array(V2ItemStartedNotification__ImageGenerationInputImage).annotate({
+              description:
+                "Observed local inputs for a completed generation, absent on older items.",
+            }),
+          ),
+          revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+          savedPath: Schema.optionalKey(
+            Schema.Union([V2ItemStartedNotification__AbsolutePathBuf, Schema.Null]),
+          ),
+          status: Schema.String,
+          transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
+          type: Schema.Literal("imageGeneration").annotate({
+            title: "ImageGenerationThreadItemType",
+          }),
+          result: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({
+        title: "ResultThreadItem",
+        description:
+          "Either inline generated-image data or its durable attachment-store identity.\n\n`File` must remain first so rollouts written during the migration, which contain both an empty `result` and a `fileId`, retain the file reference when deserialized.",
+      }),
+    ]),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         review: Schema.String,
         type: Schema.Literal("enteredReviewMode").annotate({
@@ -53361,9 +56092,31 @@ export const V2ItemStartedNotification__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "EnteredReviewModeThreadItem" }),
+    ).annotate({
+      title: "EnteredReviewModeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         review: Schema.String,
         type: Schema.Literal("exitedReviewMode").annotate({
@@ -53371,16 +56124,42 @@ export const V2ItemStartedNotification__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ExitedReviewModeThreadItem" }),
+    ).annotate({
+      title: "ExitedReviewModeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         type: Schema.Literal("contextCompaction").annotate({
           title: "ContextCompactionThreadItemType",
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ContextCompactionThreadItem" }),
+    ).annotate({
+      title: "ContextCompactionThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
   ],
   { mode: "oneOf" },
 ).annotate({ identifier: "V2ItemStartedNotification__ThreadItem" });
@@ -54360,17 +57139,23 @@ export const V2RawResponseItemCompletedNotification__ResponseItem = Schema.Union
 
 export type V2ReviewStartResponse__ThreadItem =
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly clientId?: string | null;
       readonly content: ReadonlyArray<V2ReviewStartResponse__UserInput>;
       readonly id: string;
       readonly type: "userMessage";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly fragments: ReadonlyArray<V2ReviewStartResponse__HookPromptFragment>;
       readonly id: string;
       readonly type: "hookPrompt";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly delivery?: V2ReviewStartResponse__AgentMessageDelivery | null;
       readonly id: string;
       readonly memoryCitation?: V2ReviewStartResponse__MemoryCitation | null;
@@ -54380,22 +57165,32 @@ export type V2ReviewStartResponse__ThreadItem =
       readonly type: "agentMessage";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly id: string;
       readonly name: string;
       readonly namespace?: string | null;
       readonly output: V2ReviewStartResponse__FunctionCallOutputBody;
       readonly type: "functionCallOutput";
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly id: string; readonly text: string; readonly type: "plan" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly text: string;
+      readonly type: "plan";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly content?: ReadonlyArray<string>;
       readonly id: string;
       readonly summary?: ReadonlyArray<string>;
       readonly type: "reasoning";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly aggregatedOutput?: string | null;
       readonly command: string;
       readonly commandActions: ReadonlyArray<V2ReviewStartResponse__CommandAction>;
@@ -54411,12 +57206,16 @@ export type V2ReviewStartResponse__ThreadItem =
       readonly type: "commandExecution";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly changes: ReadonlyArray<V2ReviewStartResponse__FileUpdateChange>;
       readonly id: string;
       readonly status: V2ReviewStartResponse__PatchApplyStatus;
       readonly type: "fileChange";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly appContext?: V2ReviewStartResponse__McpToolCallAppContext | null;
       readonly arguments: Schema.Json;
       readonly durationMs?: number | null;
@@ -54433,6 +57232,8 @@ export type V2ReviewStartResponse__ThreadItem =
       readonly type: "mcpToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly arguments: Schema.Json;
       readonly contentItems?: ReadonlyArray<V2ReviewStartResponse__DynamicToolCallOutputContentItem> | null;
       readonly durationMs?: number | null;
@@ -54444,6 +57245,8 @@ export type V2ReviewStartResponse__ThreadItem =
       readonly type: "dynamicToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly agentsStates: { readonly [x: string]: V2ReviewStartResponse__CollabAgentState };
       readonly id: string;
       readonly model?: string | null;
@@ -54456,6 +57259,8 @@ export type V2ReviewStartResponse__ThreadItem =
       readonly type: "collabAgentToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly agentPath: string;
       readonly agentThreadId: string;
       readonly id: string;
@@ -54465,6 +57270,8 @@ export type V2ReviewStartResponse__ThreadItem =
       readonly type: "subAgentActivity";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly action?: V2ReviewStartResponse__WebSearchAction | null;
       readonly id: string;
       readonly query: string;
@@ -54472,53 +57279,150 @@ export type V2ReviewStartResponse__ThreadItem =
       readonly type: "webSearch";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly id: string;
       readonly path: V2ReviewStartResponse__LegacyAppPathString;
       readonly type: "imageView";
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly durationMs: number; readonly id: string; readonly type: "sleep" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
   | ({
-      readonly failure?: V2ReviewStartResponse__ImageGenerationFailure | null;
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly durationMs: number;
       readonly id: string;
-      readonly result: string;
+      readonly type: "sleep";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly failure?: V2ReviewStartResponse__ImageGenerationFailure | null;
+      readonly generationId?: string | null;
+      readonly id: string;
+      readonly inputImages?: ReadonlyArray<V2ReviewStartResponse__ImageGenerationInputImage>;
       readonly revisedPrompt?: string | null;
       readonly savedPath?: V2ReviewStartResponse__AbsolutePathBuf | null;
       readonly status: string;
       readonly transparentBackground?: boolean | null;
       readonly type: "imageGeneration";
+      readonly fileId: string;
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly id: string; readonly review: string; readonly type: "enteredReviewMode" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
-  | ({ readonly id: string; readonly review: string; readonly type: "exitedReviewMode" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
-  | ({ readonly id: string; readonly type: "contextCompaction" } & {
-      readonly [x: string]: CodexJsonExtension;
-    });
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly failure?: V2ReviewStartResponse__ImageGenerationFailure | null;
+      readonly generationId?: string | null;
+      readonly id: string;
+      readonly inputImages?: ReadonlyArray<V2ReviewStartResponse__ImageGenerationInputImage>;
+      readonly revisedPrompt?: string | null;
+      readonly savedPath?: V2ReviewStartResponse__AbsolutePathBuf | null;
+      readonly status: string;
+      readonly transparentBackground?: boolean | null;
+      readonly type: "imageGeneration";
+      readonly result: string;
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly review: string;
+      readonly type: "enteredReviewMode";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly review: string;
+      readonly type: "exitedReviewMode";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly type: "contextCompaction";
+    } & { readonly [x: string]: CodexJsonExtension });
 export const V2ReviewStartResponse__ThreadItem = Schema.Union(
   [
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         clientId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         content: Schema.Array(V2ReviewStartResponse__UserInput),
         id: Schema.String,
         type: Schema.Literal("userMessage").annotate({ title: "UserMessageThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "UserMessageThreadItem" }),
+    ).annotate({
+      title: "UserMessageThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         fragments: Schema.Array(V2ReviewStartResponse__HookPromptFragment),
         id: Schema.String,
         type: Schema.Literal("hookPrompt").annotate({ title: "HookPromptThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "HookPromptThreadItem" }),
+    ).annotate({
+      title: "HookPromptThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         delivery: Schema.optionalKey(
           Schema.Union([V2ReviewStartResponse__AgentMessageDelivery, Schema.Null]),
         ),
@@ -54534,9 +57438,31 @@ export const V2ReviewStartResponse__ThreadItem = Schema.Union(
         type: Schema.Literal("agentMessage").annotate({ title: "AgentMessageThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "AgentMessageThreadItem" }),
+    ).annotate({
+      title: "AgentMessageThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         name: Schema.String,
         namespace: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
@@ -54546,9 +57472,31 @@ export const V2ReviewStartResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "FunctionCallOutputThreadItem" }),
+    ).annotate({
+      title: "FunctionCallOutputThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         text: Schema.String,
         type: Schema.Literal("plan").annotate({ title: "PlanThreadItemType" }),
@@ -54561,15 +57509,55 @@ export const V2ReviewStartResponse__ThreadItem = Schema.Union(
     }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         content: Schema.optionalKey(Schema.Array(Schema.String).annotate({ default: [] })),
         id: Schema.String,
         summary: Schema.optionalKey(Schema.Array(Schema.String).annotate({ default: [] })),
         type: Schema.Literal("reasoning").annotate({ title: "ReasoningThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ReasoningThreadItem" }),
+    ).annotate({
+      title: "ReasoningThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         aggregatedOutput: Schema.optionalKey(
           Schema.Union([
             Schema.String.annotate({
@@ -54644,18 +57632,62 @@ export const V2ReviewStartResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "CommandExecutionThreadItem" }),
+    ).annotate({
+      title: "CommandExecutionThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         changes: Schema.Array(V2ReviewStartResponse__FileUpdateChange),
         id: Schema.String,
         status: V2ReviewStartResponse__PatchApplyStatus,
         type: Schema.Literal("fileChange").annotate({ title: "FileChangeThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "FileChangeThreadItem" }),
+    ).annotate({
+      title: "FileChangeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         appContext: Schema.optionalKey(
           Schema.Union([V2ReviewStartResponse__McpToolCallAppContext, Schema.Null]),
         ),
@@ -54699,9 +57731,31 @@ export const V2ReviewStartResponse__ThreadItem = Schema.Union(
         type: Schema.Literal("mcpToolCall").annotate({ title: "McpToolCallThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "McpToolCallThreadItem" }),
+    ).annotate({
+      title: "McpToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         arguments: Schema.Json.annotate({ expected: "JSON value" }),
         contentItems: Schema.optionalKey(
           Schema.Union([
@@ -54728,9 +57782,31 @@ export const V2ReviewStartResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "DynamicToolCallThreadItem" }),
+    ).annotate({
+      title: "DynamicToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         agentsStates: Schema.Record(
           Schema.String,
           V2ReviewStartResponse__CollabAgentState,
@@ -54777,9 +57853,31 @@ export const V2ReviewStartResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "CollabAgentToolCallThreadItem" }),
+    ).annotate({
+      title: "CollabAgentToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         agentPath: Schema.String,
         agentThreadId: Schema.String,
         id: Schema.String,
@@ -54803,9 +57901,31 @@ export const V2ReviewStartResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "SubAgentActivityThreadItem" }),
+    ).annotate({
+      title: "SubAgentActivityThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         action: Schema.optionalKey(
           Schema.Union([V2ReviewStartResponse__WebSearchAction, Schema.Null]),
         ),
@@ -54823,17 +57943,61 @@ export const V2ReviewStartResponse__ThreadItem = Schema.Union(
         type: Schema.Literal("webSearch").annotate({ title: "WebSearchThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "WebSearchThreadItem" }),
+    ).annotate({
+      title: "WebSearchThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         path: V2ReviewStartResponse__LegacyAppPathString,
         type: Schema.Literal("imageView").annotate({ title: "ImageViewThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ImageViewThreadItem" }),
+    ).annotate({
+      title: "ImageViewThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         durationMs: Schema.Number.annotate({ format: "uint64" })
           .check(Schema.isInt().annotate({ expected: "an integer" }))
           .check(
@@ -54849,27 +58013,140 @@ export const V2ReviewStartResponse__ThreadItem = Schema.Union(
       title: "SleepThreadItem",
       description: "Display item emitted by the interruptible `clock.sleep` tool.",
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        failure: Schema.optionalKey(
-          Schema.Union([V2ReviewStartResponse__ImageGenerationFailure, Schema.Null]),
-        ),
-        id: Schema.String,
-        result: Schema.String,
-        revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-        savedPath: Schema.optionalKey(
-          Schema.Union([V2ReviewStartResponse__AbsolutePathBuf, Schema.Null]),
-        ),
-        status: Schema.String,
-        transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
-        type: Schema.Literal("imageGeneration").annotate({
-          title: "ImageGenerationThreadItemType",
+    Schema.Union([
+      Schema.StructWithRest(
+        Schema.Struct({
+          completedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          startedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item started, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          failure: Schema.optionalKey(
+            Schema.Union([V2ReviewStartResponse__ImageGenerationFailure, Schema.Null]),
+          ),
+          generationId: Schema.optionalKey(
+            Schema.Union([
+              Schema.String.annotate({
+                description:
+                  "Image generation identifier for the generated image, when provided by the image backend.",
+              }),
+              Schema.Null,
+            ]),
+          ),
+          id: Schema.String,
+          inputImages: Schema.optionalKey(
+            Schema.Array(V2ReviewStartResponse__ImageGenerationInputImage).annotate({
+              description:
+                "Observed local inputs for a completed generation, absent on older items.",
+            }),
+          ),
+          revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+          savedPath: Schema.optionalKey(
+            Schema.Union([V2ReviewStartResponse__AbsolutePathBuf, Schema.Null]),
+          ),
+          status: Schema.String,
+          transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
+          type: Schema.Literal("imageGeneration").annotate({
+            title: "ImageGenerationThreadItemType",
+          }),
+          fileId: Schema.String,
         }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({
+        title: "FileIdThreadItem",
+        description:
+          "Either inline generated-image data or its durable attachment-store identity.\n\n`File` must remain first so rollouts written during the migration, which contain both an empty `result` and a `fileId`, retain the file reference when deserialized.",
       }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ImageGenerationThreadItem" }),
+      Schema.StructWithRest(
+        Schema.Struct({
+          completedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          startedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item started, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          failure: Schema.optionalKey(
+            Schema.Union([V2ReviewStartResponse__ImageGenerationFailure, Schema.Null]),
+          ),
+          generationId: Schema.optionalKey(
+            Schema.Union([
+              Schema.String.annotate({
+                description:
+                  "Image generation identifier for the generated image, when provided by the image backend.",
+              }),
+              Schema.Null,
+            ]),
+          ),
+          id: Schema.String,
+          inputImages: Schema.optionalKey(
+            Schema.Array(V2ReviewStartResponse__ImageGenerationInputImage).annotate({
+              description:
+                "Observed local inputs for a completed generation, absent on older items.",
+            }),
+          ),
+          revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+          savedPath: Schema.optionalKey(
+            Schema.Union([V2ReviewStartResponse__AbsolutePathBuf, Schema.Null]),
+          ),
+          status: Schema.String,
+          transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
+          type: Schema.Literal("imageGeneration").annotate({
+            title: "ImageGenerationThreadItemType",
+          }),
+          result: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({
+        title: "ResultThreadItem",
+        description:
+          "Either inline generated-image data or its durable attachment-store identity.\n\n`File` must remain first so rollouts written during the migration, which contain both an empty `result` and a `fileId`, retain the file reference when deserialized.",
+      }),
+    ]),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         review: Schema.String,
         type: Schema.Literal("enteredReviewMode").annotate({
@@ -54877,9 +58154,31 @@ export const V2ReviewStartResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "EnteredReviewModeThreadItem" }),
+    ).annotate({
+      title: "EnteredReviewModeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         review: Schema.String,
         type: Schema.Literal("exitedReviewMode").annotate({
@@ -54887,16 +58186,42 @@ export const V2ReviewStartResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ExitedReviewModeThreadItem" }),
+    ).annotate({
+      title: "ExitedReviewModeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         type: Schema.Literal("contextCompaction").annotate({
           title: "ContextCompactionThreadItemType",
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ContextCompactionThreadItem" }),
+    ).annotate({
+      title: "ContextCompactionThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
   ],
   { mode: "oneOf" },
 ).annotate({ identifier: "V2ReviewStartResponse__ThreadItem" });
@@ -54917,17 +58242,23 @@ export const V2SkillsListResponse__SkillsListEntry = Schema.StructWithRest(
 
 export type V2ThreadForkResponse__ThreadItem =
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly clientId?: string | null;
       readonly content: ReadonlyArray<V2ThreadForkResponse__UserInput>;
       readonly id: string;
       readonly type: "userMessage";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly fragments: ReadonlyArray<V2ThreadForkResponse__HookPromptFragment>;
       readonly id: string;
       readonly type: "hookPrompt";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly delivery?: V2ThreadForkResponse__AgentMessageDelivery | null;
       readonly id: string;
       readonly memoryCitation?: V2ThreadForkResponse__MemoryCitation | null;
@@ -54937,22 +58268,32 @@ export type V2ThreadForkResponse__ThreadItem =
       readonly type: "agentMessage";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly id: string;
       readonly name: string;
       readonly namespace?: string | null;
       readonly output: V2ThreadForkResponse__FunctionCallOutputBody;
       readonly type: "functionCallOutput";
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly id: string; readonly text: string; readonly type: "plan" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly text: string;
+      readonly type: "plan";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly content?: ReadonlyArray<string>;
       readonly id: string;
       readonly summary?: ReadonlyArray<string>;
       readonly type: "reasoning";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly aggregatedOutput?: string | null;
       readonly command: string;
       readonly commandActions: ReadonlyArray<V2ThreadForkResponse__CommandAction>;
@@ -54968,12 +58309,16 @@ export type V2ThreadForkResponse__ThreadItem =
       readonly type: "commandExecution";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly changes: ReadonlyArray<V2ThreadForkResponse__FileUpdateChange>;
       readonly id: string;
       readonly status: V2ThreadForkResponse__PatchApplyStatus;
       readonly type: "fileChange";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly appContext?: V2ThreadForkResponse__McpToolCallAppContext | null;
       readonly arguments: Schema.Json;
       readonly durationMs?: number | null;
@@ -54990,6 +58335,8 @@ export type V2ThreadForkResponse__ThreadItem =
       readonly type: "mcpToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly arguments: Schema.Json;
       readonly contentItems?: ReadonlyArray<V2ThreadForkResponse__DynamicToolCallOutputContentItem> | null;
       readonly durationMs?: number | null;
@@ -55001,6 +58348,8 @@ export type V2ThreadForkResponse__ThreadItem =
       readonly type: "dynamicToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly agentsStates: { readonly [x: string]: V2ThreadForkResponse__CollabAgentState };
       readonly id: string;
       readonly model?: string | null;
@@ -55013,6 +58362,8 @@ export type V2ThreadForkResponse__ThreadItem =
       readonly type: "collabAgentToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly agentPath: string;
       readonly agentThreadId: string;
       readonly id: string;
@@ -55022,6 +58373,8 @@ export type V2ThreadForkResponse__ThreadItem =
       readonly type: "subAgentActivity";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly action?: V2ThreadForkResponse__WebSearchAction | null;
       readonly id: string;
       readonly query: string;
@@ -55029,53 +58382,150 @@ export type V2ThreadForkResponse__ThreadItem =
       readonly type: "webSearch";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly id: string;
       readonly path: V2ThreadForkResponse__LegacyAppPathString;
       readonly type: "imageView";
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly durationMs: number; readonly id: string; readonly type: "sleep" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
   | ({
-      readonly failure?: V2ThreadForkResponse__ImageGenerationFailure | null;
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly durationMs: number;
       readonly id: string;
-      readonly result: string;
+      readonly type: "sleep";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly failure?: V2ThreadForkResponse__ImageGenerationFailure | null;
+      readonly generationId?: string | null;
+      readonly id: string;
+      readonly inputImages?: ReadonlyArray<V2ThreadForkResponse__ImageGenerationInputImage>;
       readonly revisedPrompt?: string | null;
       readonly savedPath?: V2ThreadForkResponse__AbsolutePathBuf | null;
       readonly status: string;
       readonly transparentBackground?: boolean | null;
       readonly type: "imageGeneration";
+      readonly fileId: string;
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly id: string; readonly review: string; readonly type: "enteredReviewMode" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
-  | ({ readonly id: string; readonly review: string; readonly type: "exitedReviewMode" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
-  | ({ readonly id: string; readonly type: "contextCompaction" } & {
-      readonly [x: string]: CodexJsonExtension;
-    });
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly failure?: V2ThreadForkResponse__ImageGenerationFailure | null;
+      readonly generationId?: string | null;
+      readonly id: string;
+      readonly inputImages?: ReadonlyArray<V2ThreadForkResponse__ImageGenerationInputImage>;
+      readonly revisedPrompt?: string | null;
+      readonly savedPath?: V2ThreadForkResponse__AbsolutePathBuf | null;
+      readonly status: string;
+      readonly transparentBackground?: boolean | null;
+      readonly type: "imageGeneration";
+      readonly result: string;
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly review: string;
+      readonly type: "enteredReviewMode";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly review: string;
+      readonly type: "exitedReviewMode";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly type: "contextCompaction";
+    } & { readonly [x: string]: CodexJsonExtension });
 export const V2ThreadForkResponse__ThreadItem = Schema.Union(
   [
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         clientId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         content: Schema.Array(V2ThreadForkResponse__UserInput),
         id: Schema.String,
         type: Schema.Literal("userMessage").annotate({ title: "UserMessageThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "UserMessageThreadItem" }),
+    ).annotate({
+      title: "UserMessageThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         fragments: Schema.Array(V2ThreadForkResponse__HookPromptFragment),
         id: Schema.String,
         type: Schema.Literal("hookPrompt").annotate({ title: "HookPromptThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "HookPromptThreadItem" }),
+    ).annotate({
+      title: "HookPromptThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         delivery: Schema.optionalKey(
           Schema.Union([V2ThreadForkResponse__AgentMessageDelivery, Schema.Null]),
         ),
@@ -55091,9 +58541,31 @@ export const V2ThreadForkResponse__ThreadItem = Schema.Union(
         type: Schema.Literal("agentMessage").annotate({ title: "AgentMessageThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "AgentMessageThreadItem" }),
+    ).annotate({
+      title: "AgentMessageThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         name: Schema.String,
         namespace: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
@@ -55103,9 +58575,31 @@ export const V2ThreadForkResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "FunctionCallOutputThreadItem" }),
+    ).annotate({
+      title: "FunctionCallOutputThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         text: Schema.String,
         type: Schema.Literal("plan").annotate({ title: "PlanThreadItemType" }),
@@ -55118,15 +58612,55 @@ export const V2ThreadForkResponse__ThreadItem = Schema.Union(
     }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         content: Schema.optionalKey(Schema.Array(Schema.String).annotate({ default: [] })),
         id: Schema.String,
         summary: Schema.optionalKey(Schema.Array(Schema.String).annotate({ default: [] })),
         type: Schema.Literal("reasoning").annotate({ title: "ReasoningThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ReasoningThreadItem" }),
+    ).annotate({
+      title: "ReasoningThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         aggregatedOutput: Schema.optionalKey(
           Schema.Union([
             Schema.String.annotate({
@@ -55201,18 +58735,62 @@ export const V2ThreadForkResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "CommandExecutionThreadItem" }),
+    ).annotate({
+      title: "CommandExecutionThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         changes: Schema.Array(V2ThreadForkResponse__FileUpdateChange),
         id: Schema.String,
         status: V2ThreadForkResponse__PatchApplyStatus,
         type: Schema.Literal("fileChange").annotate({ title: "FileChangeThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "FileChangeThreadItem" }),
+    ).annotate({
+      title: "FileChangeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         appContext: Schema.optionalKey(
           Schema.Union([V2ThreadForkResponse__McpToolCallAppContext, Schema.Null]),
         ),
@@ -55256,9 +58834,31 @@ export const V2ThreadForkResponse__ThreadItem = Schema.Union(
         type: Schema.Literal("mcpToolCall").annotate({ title: "McpToolCallThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "McpToolCallThreadItem" }),
+    ).annotate({
+      title: "McpToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         arguments: Schema.Json.annotate({ expected: "JSON value" }),
         contentItems: Schema.optionalKey(
           Schema.Union([
@@ -55285,9 +58885,31 @@ export const V2ThreadForkResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "DynamicToolCallThreadItem" }),
+    ).annotate({
+      title: "DynamicToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         agentsStates: Schema.Record(Schema.String, V2ThreadForkResponse__CollabAgentState).annotate(
           { description: "Last known status of the target agents, when available." },
         ),
@@ -55333,9 +58955,31 @@ export const V2ThreadForkResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "CollabAgentToolCallThreadItem" }),
+    ).annotate({
+      title: "CollabAgentToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         agentPath: Schema.String,
         agentThreadId: Schema.String,
         id: Schema.String,
@@ -55359,9 +59003,31 @@ export const V2ThreadForkResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "SubAgentActivityThreadItem" }),
+    ).annotate({
+      title: "SubAgentActivityThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         action: Schema.optionalKey(
           Schema.Union([V2ThreadForkResponse__WebSearchAction, Schema.Null]),
         ),
@@ -55379,17 +59045,61 @@ export const V2ThreadForkResponse__ThreadItem = Schema.Union(
         type: Schema.Literal("webSearch").annotate({ title: "WebSearchThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "WebSearchThreadItem" }),
+    ).annotate({
+      title: "WebSearchThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         path: V2ThreadForkResponse__LegacyAppPathString,
         type: Schema.Literal("imageView").annotate({ title: "ImageViewThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ImageViewThreadItem" }),
+    ).annotate({
+      title: "ImageViewThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         durationMs: Schema.Number.annotate({ format: "uint64" })
           .check(Schema.isInt().annotate({ expected: "an integer" }))
           .check(
@@ -55405,27 +59115,140 @@ export const V2ThreadForkResponse__ThreadItem = Schema.Union(
       title: "SleepThreadItem",
       description: "Display item emitted by the interruptible `clock.sleep` tool.",
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        failure: Schema.optionalKey(
-          Schema.Union([V2ThreadForkResponse__ImageGenerationFailure, Schema.Null]),
-        ),
-        id: Schema.String,
-        result: Schema.String,
-        revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-        savedPath: Schema.optionalKey(
-          Schema.Union([V2ThreadForkResponse__AbsolutePathBuf, Schema.Null]),
-        ),
-        status: Schema.String,
-        transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
-        type: Schema.Literal("imageGeneration").annotate({
-          title: "ImageGenerationThreadItemType",
+    Schema.Union([
+      Schema.StructWithRest(
+        Schema.Struct({
+          completedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          startedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item started, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          failure: Schema.optionalKey(
+            Schema.Union([V2ThreadForkResponse__ImageGenerationFailure, Schema.Null]),
+          ),
+          generationId: Schema.optionalKey(
+            Schema.Union([
+              Schema.String.annotate({
+                description:
+                  "Image generation identifier for the generated image, when provided by the image backend.",
+              }),
+              Schema.Null,
+            ]),
+          ),
+          id: Schema.String,
+          inputImages: Schema.optionalKey(
+            Schema.Array(V2ThreadForkResponse__ImageGenerationInputImage).annotate({
+              description:
+                "Observed local inputs for a completed generation, absent on older items.",
+            }),
+          ),
+          revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+          savedPath: Schema.optionalKey(
+            Schema.Union([V2ThreadForkResponse__AbsolutePathBuf, Schema.Null]),
+          ),
+          status: Schema.String,
+          transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
+          type: Schema.Literal("imageGeneration").annotate({
+            title: "ImageGenerationThreadItemType",
+          }),
+          fileId: Schema.String,
         }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({
+        title: "FileIdThreadItem",
+        description:
+          "Either inline generated-image data or its durable attachment-store identity.\n\n`File` must remain first so rollouts written during the migration, which contain both an empty `result` and a `fileId`, retain the file reference when deserialized.",
       }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ImageGenerationThreadItem" }),
+      Schema.StructWithRest(
+        Schema.Struct({
+          completedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          startedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item started, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          failure: Schema.optionalKey(
+            Schema.Union([V2ThreadForkResponse__ImageGenerationFailure, Schema.Null]),
+          ),
+          generationId: Schema.optionalKey(
+            Schema.Union([
+              Schema.String.annotate({
+                description:
+                  "Image generation identifier for the generated image, when provided by the image backend.",
+              }),
+              Schema.Null,
+            ]),
+          ),
+          id: Schema.String,
+          inputImages: Schema.optionalKey(
+            Schema.Array(V2ThreadForkResponse__ImageGenerationInputImage).annotate({
+              description:
+                "Observed local inputs for a completed generation, absent on older items.",
+            }),
+          ),
+          revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+          savedPath: Schema.optionalKey(
+            Schema.Union([V2ThreadForkResponse__AbsolutePathBuf, Schema.Null]),
+          ),
+          status: Schema.String,
+          transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
+          type: Schema.Literal("imageGeneration").annotate({
+            title: "ImageGenerationThreadItemType",
+          }),
+          result: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({
+        title: "ResultThreadItem",
+        description:
+          "Either inline generated-image data or its durable attachment-store identity.\n\n`File` must remain first so rollouts written during the migration, which contain both an empty `result` and a `fileId`, retain the file reference when deserialized.",
+      }),
+    ]),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         review: Schema.String,
         type: Schema.Literal("enteredReviewMode").annotate({
@@ -55433,9 +59256,31 @@ export const V2ThreadForkResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "EnteredReviewModeThreadItem" }),
+    ).annotate({
+      title: "EnteredReviewModeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         review: Schema.String,
         type: Schema.Literal("exitedReviewMode").annotate({
@@ -55443,33 +59288,65 @@ export const V2ThreadForkResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ExitedReviewModeThreadItem" }),
+    ).annotate({
+      title: "ExitedReviewModeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         type: Schema.Literal("contextCompaction").annotate({
           title: "ContextCompactionThreadItemType",
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ContextCompactionThreadItem" }),
+    ).annotate({
+      title: "ContextCompactionThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
   ],
   { mode: "oneOf" },
 ).annotate({ identifier: "V2ThreadForkResponse__ThreadItem" });
 
 export type V2ThreadItemsListResponse__ThreadItem =
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly clientId?: string | null;
       readonly content: ReadonlyArray<V2ThreadItemsListResponse__UserInput>;
       readonly id: string;
       readonly type: "userMessage";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly fragments: ReadonlyArray<V2ThreadItemsListResponse__HookPromptFragment>;
       readonly id: string;
       readonly type: "hookPrompt";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly delivery?: V2ThreadItemsListResponse__AgentMessageDelivery | null;
       readonly id: string;
       readonly memoryCitation?: V2ThreadItemsListResponse__MemoryCitation | null;
@@ -55479,22 +59356,32 @@ export type V2ThreadItemsListResponse__ThreadItem =
       readonly type: "agentMessage";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly id: string;
       readonly name: string;
       readonly namespace?: string | null;
       readonly output: V2ThreadItemsListResponse__FunctionCallOutputBody;
       readonly type: "functionCallOutput";
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly id: string; readonly text: string; readonly type: "plan" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly text: string;
+      readonly type: "plan";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly content?: ReadonlyArray<string>;
       readonly id: string;
       readonly summary?: ReadonlyArray<string>;
       readonly type: "reasoning";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly aggregatedOutput?: string | null;
       readonly command: string;
       readonly commandActions: ReadonlyArray<V2ThreadItemsListResponse__CommandAction>;
@@ -55510,12 +59397,16 @@ export type V2ThreadItemsListResponse__ThreadItem =
       readonly type: "commandExecution";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly changes: ReadonlyArray<V2ThreadItemsListResponse__FileUpdateChange>;
       readonly id: string;
       readonly status: V2ThreadItemsListResponse__PatchApplyStatus;
       readonly type: "fileChange";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly appContext?: V2ThreadItemsListResponse__McpToolCallAppContext | null;
       readonly arguments: Schema.Json;
       readonly durationMs?: number | null;
@@ -55532,6 +59423,8 @@ export type V2ThreadItemsListResponse__ThreadItem =
       readonly type: "mcpToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly arguments: Schema.Json;
       readonly contentItems?: ReadonlyArray<V2ThreadItemsListResponse__DynamicToolCallOutputContentItem> | null;
       readonly durationMs?: number | null;
@@ -55543,6 +59436,8 @@ export type V2ThreadItemsListResponse__ThreadItem =
       readonly type: "dynamicToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly agentsStates: { readonly [x: string]: V2ThreadItemsListResponse__CollabAgentState };
       readonly id: string;
       readonly model?: string | null;
@@ -55555,6 +59450,8 @@ export type V2ThreadItemsListResponse__ThreadItem =
       readonly type: "collabAgentToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly agentPath: string;
       readonly agentThreadId: string;
       readonly id: string;
@@ -55564,6 +59461,8 @@ export type V2ThreadItemsListResponse__ThreadItem =
       readonly type: "subAgentActivity";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly action?: V2ThreadItemsListResponse__WebSearchAction | null;
       readonly id: string;
       readonly query: string;
@@ -55571,53 +59470,150 @@ export type V2ThreadItemsListResponse__ThreadItem =
       readonly type: "webSearch";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly id: string;
       readonly path: V2ThreadItemsListResponse__LegacyAppPathString;
       readonly type: "imageView";
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly durationMs: number; readonly id: string; readonly type: "sleep" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
   | ({
-      readonly failure?: V2ThreadItemsListResponse__ImageGenerationFailure | null;
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly durationMs: number;
       readonly id: string;
-      readonly result: string;
+      readonly type: "sleep";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly failure?: V2ThreadItemsListResponse__ImageGenerationFailure | null;
+      readonly generationId?: string | null;
+      readonly id: string;
+      readonly inputImages?: ReadonlyArray<V2ThreadItemsListResponse__ImageGenerationInputImage>;
       readonly revisedPrompt?: string | null;
       readonly savedPath?: V2ThreadItemsListResponse__AbsolutePathBuf | null;
       readonly status: string;
       readonly transparentBackground?: boolean | null;
       readonly type: "imageGeneration";
+      readonly fileId: string;
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly id: string; readonly review: string; readonly type: "enteredReviewMode" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
-  | ({ readonly id: string; readonly review: string; readonly type: "exitedReviewMode" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
-  | ({ readonly id: string; readonly type: "contextCompaction" } & {
-      readonly [x: string]: CodexJsonExtension;
-    });
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly failure?: V2ThreadItemsListResponse__ImageGenerationFailure | null;
+      readonly generationId?: string | null;
+      readonly id: string;
+      readonly inputImages?: ReadonlyArray<V2ThreadItemsListResponse__ImageGenerationInputImage>;
+      readonly revisedPrompt?: string | null;
+      readonly savedPath?: V2ThreadItemsListResponse__AbsolutePathBuf | null;
+      readonly status: string;
+      readonly transparentBackground?: boolean | null;
+      readonly type: "imageGeneration";
+      readonly result: string;
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly review: string;
+      readonly type: "enteredReviewMode";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly review: string;
+      readonly type: "exitedReviewMode";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly type: "contextCompaction";
+    } & { readonly [x: string]: CodexJsonExtension });
 export const V2ThreadItemsListResponse__ThreadItem = Schema.Union(
   [
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         clientId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         content: Schema.Array(V2ThreadItemsListResponse__UserInput),
         id: Schema.String,
         type: Schema.Literal("userMessage").annotate({ title: "UserMessageThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "UserMessageThreadItem" }),
+    ).annotate({
+      title: "UserMessageThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         fragments: Schema.Array(V2ThreadItemsListResponse__HookPromptFragment),
         id: Schema.String,
         type: Schema.Literal("hookPrompt").annotate({ title: "HookPromptThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "HookPromptThreadItem" }),
+    ).annotate({
+      title: "HookPromptThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         delivery: Schema.optionalKey(
           Schema.Union([V2ThreadItemsListResponse__AgentMessageDelivery, Schema.Null]),
         ),
@@ -55638,9 +59634,31 @@ export const V2ThreadItemsListResponse__ThreadItem = Schema.Union(
         type: Schema.Literal("agentMessage").annotate({ title: "AgentMessageThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "AgentMessageThreadItem" }),
+    ).annotate({
+      title: "AgentMessageThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         name: Schema.String,
         namespace: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
@@ -55650,9 +59668,31 @@ export const V2ThreadItemsListResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "FunctionCallOutputThreadItem" }),
+    ).annotate({
+      title: "FunctionCallOutputThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         text: Schema.String,
         type: Schema.Literal("plan").annotate({ title: "PlanThreadItemType" }),
@@ -55665,15 +59705,55 @@ export const V2ThreadItemsListResponse__ThreadItem = Schema.Union(
     }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         content: Schema.optionalKey(Schema.Array(Schema.String).annotate({ default: [] })),
         id: Schema.String,
         summary: Schema.optionalKey(Schema.Array(Schema.String).annotate({ default: [] })),
         type: Schema.Literal("reasoning").annotate({ title: "ReasoningThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ReasoningThreadItem" }),
+    ).annotate({
+      title: "ReasoningThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         aggregatedOutput: Schema.optionalKey(
           Schema.Union([
             Schema.String.annotate({
@@ -55748,18 +59828,62 @@ export const V2ThreadItemsListResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "CommandExecutionThreadItem" }),
+    ).annotate({
+      title: "CommandExecutionThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         changes: Schema.Array(V2ThreadItemsListResponse__FileUpdateChange),
         id: Schema.String,
         status: V2ThreadItemsListResponse__PatchApplyStatus,
         type: Schema.Literal("fileChange").annotate({ title: "FileChangeThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "FileChangeThreadItem" }),
+    ).annotate({
+      title: "FileChangeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         appContext: Schema.optionalKey(
           Schema.Union([V2ThreadItemsListResponse__McpToolCallAppContext, Schema.Null]),
         ),
@@ -55803,9 +59927,31 @@ export const V2ThreadItemsListResponse__ThreadItem = Schema.Union(
         type: Schema.Literal("mcpToolCall").annotate({ title: "McpToolCallThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "McpToolCallThreadItem" }),
+    ).annotate({
+      title: "McpToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         arguments: Schema.Json.annotate({ expected: "JSON value" }),
         contentItems: Schema.optionalKey(
           Schema.Union([
@@ -55832,9 +59978,31 @@ export const V2ThreadItemsListResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "DynamicToolCallThreadItem" }),
+    ).annotate({
+      title: "DynamicToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         agentsStates: Schema.Record(
           Schema.String,
           V2ThreadItemsListResponse__CollabAgentState,
@@ -55881,9 +60049,31 @@ export const V2ThreadItemsListResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "CollabAgentToolCallThreadItem" }),
+    ).annotate({
+      title: "CollabAgentToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         agentPath: Schema.String,
         agentThreadId: Schema.String,
         id: Schema.String,
@@ -55907,9 +60097,31 @@ export const V2ThreadItemsListResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "SubAgentActivityThreadItem" }),
+    ).annotate({
+      title: "SubAgentActivityThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         action: Schema.optionalKey(
           Schema.Union([V2ThreadItemsListResponse__WebSearchAction, Schema.Null]),
         ),
@@ -55927,17 +60139,61 @@ export const V2ThreadItemsListResponse__ThreadItem = Schema.Union(
         type: Schema.Literal("webSearch").annotate({ title: "WebSearchThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "WebSearchThreadItem" }),
+    ).annotate({
+      title: "WebSearchThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         path: V2ThreadItemsListResponse__LegacyAppPathString,
         type: Schema.Literal("imageView").annotate({ title: "ImageViewThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ImageViewThreadItem" }),
+    ).annotate({
+      title: "ImageViewThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         durationMs: Schema.Number.annotate({ format: "uint64" })
           .check(Schema.isInt().annotate({ expected: "an integer" }))
           .check(
@@ -55953,27 +60209,140 @@ export const V2ThreadItemsListResponse__ThreadItem = Schema.Union(
       title: "SleepThreadItem",
       description: "Display item emitted by the interruptible `clock.sleep` tool.",
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        failure: Schema.optionalKey(
-          Schema.Union([V2ThreadItemsListResponse__ImageGenerationFailure, Schema.Null]),
-        ),
-        id: Schema.String,
-        result: Schema.String,
-        revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-        savedPath: Schema.optionalKey(
-          Schema.Union([V2ThreadItemsListResponse__AbsolutePathBuf, Schema.Null]),
-        ),
-        status: Schema.String,
-        transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
-        type: Schema.Literal("imageGeneration").annotate({
-          title: "ImageGenerationThreadItemType",
+    Schema.Union([
+      Schema.StructWithRest(
+        Schema.Struct({
+          completedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          startedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item started, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          failure: Schema.optionalKey(
+            Schema.Union([V2ThreadItemsListResponse__ImageGenerationFailure, Schema.Null]),
+          ),
+          generationId: Schema.optionalKey(
+            Schema.Union([
+              Schema.String.annotate({
+                description:
+                  "Image generation identifier for the generated image, when provided by the image backend.",
+              }),
+              Schema.Null,
+            ]),
+          ),
+          id: Schema.String,
+          inputImages: Schema.optionalKey(
+            Schema.Array(V2ThreadItemsListResponse__ImageGenerationInputImage).annotate({
+              description:
+                "Observed local inputs for a completed generation, absent on older items.",
+            }),
+          ),
+          revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+          savedPath: Schema.optionalKey(
+            Schema.Union([V2ThreadItemsListResponse__AbsolutePathBuf, Schema.Null]),
+          ),
+          status: Schema.String,
+          transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
+          type: Schema.Literal("imageGeneration").annotate({
+            title: "ImageGenerationThreadItemType",
+          }),
+          fileId: Schema.String,
         }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({
+        title: "FileIdThreadItem",
+        description:
+          "Either inline generated-image data or its durable attachment-store identity.\n\n`File` must remain first so rollouts written during the migration, which contain both an empty `result` and a `fileId`, retain the file reference when deserialized.",
       }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ImageGenerationThreadItem" }),
+      Schema.StructWithRest(
+        Schema.Struct({
+          completedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          startedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item started, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          failure: Schema.optionalKey(
+            Schema.Union([V2ThreadItemsListResponse__ImageGenerationFailure, Schema.Null]),
+          ),
+          generationId: Schema.optionalKey(
+            Schema.Union([
+              Schema.String.annotate({
+                description:
+                  "Image generation identifier for the generated image, when provided by the image backend.",
+              }),
+              Schema.Null,
+            ]),
+          ),
+          id: Schema.String,
+          inputImages: Schema.optionalKey(
+            Schema.Array(V2ThreadItemsListResponse__ImageGenerationInputImage).annotate({
+              description:
+                "Observed local inputs for a completed generation, absent on older items.",
+            }),
+          ),
+          revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+          savedPath: Schema.optionalKey(
+            Schema.Union([V2ThreadItemsListResponse__AbsolutePathBuf, Schema.Null]),
+          ),
+          status: Schema.String,
+          transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
+          type: Schema.Literal("imageGeneration").annotate({
+            title: "ImageGenerationThreadItemType",
+          }),
+          result: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({
+        title: "ResultThreadItem",
+        description:
+          "Either inline generated-image data or its durable attachment-store identity.\n\n`File` must remain first so rollouts written during the migration, which contain both an empty `result` and a `fileId`, retain the file reference when deserialized.",
+      }),
+    ]),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         review: Schema.String,
         type: Schema.Literal("enteredReviewMode").annotate({
@@ -55981,9 +60350,31 @@ export const V2ThreadItemsListResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "EnteredReviewModeThreadItem" }),
+    ).annotate({
+      title: "EnteredReviewModeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         review: Schema.String,
         type: Schema.Literal("exitedReviewMode").annotate({
@@ -55991,33 +60382,65 @@ export const V2ThreadItemsListResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ExitedReviewModeThreadItem" }),
+    ).annotate({
+      title: "ExitedReviewModeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         type: Schema.Literal("contextCompaction").annotate({
           title: "ContextCompactionThreadItemType",
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ContextCompactionThreadItem" }),
+    ).annotate({
+      title: "ContextCompactionThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
   ],
   { mode: "oneOf" },
 ).annotate({ identifier: "V2ThreadItemsListResponse__ThreadItem" });
 
 export type V2ThreadItemsReadResponse__ThreadItem =
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly clientId?: string | null;
       readonly content: ReadonlyArray<V2ThreadItemsReadResponse__UserInput>;
       readonly id: string;
       readonly type: "userMessage";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly fragments: ReadonlyArray<V2ThreadItemsReadResponse__HookPromptFragment>;
       readonly id: string;
       readonly type: "hookPrompt";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly delivery?: V2ThreadItemsReadResponse__AgentMessageDelivery | null;
       readonly id: string;
       readonly memoryCitation?: V2ThreadItemsReadResponse__MemoryCitation | null;
@@ -56027,22 +60450,32 @@ export type V2ThreadItemsReadResponse__ThreadItem =
       readonly type: "agentMessage";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly id: string;
       readonly name: string;
       readonly namespace?: string | null;
       readonly output: V2ThreadItemsReadResponse__FunctionCallOutputBody;
       readonly type: "functionCallOutput";
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly id: string; readonly text: string; readonly type: "plan" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly text: string;
+      readonly type: "plan";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly content?: ReadonlyArray<string>;
       readonly id: string;
       readonly summary?: ReadonlyArray<string>;
       readonly type: "reasoning";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly aggregatedOutput?: string | null;
       readonly command: string;
       readonly commandActions: ReadonlyArray<V2ThreadItemsReadResponse__CommandAction>;
@@ -56058,12 +60491,16 @@ export type V2ThreadItemsReadResponse__ThreadItem =
       readonly type: "commandExecution";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly changes: ReadonlyArray<V2ThreadItemsReadResponse__FileUpdateChange>;
       readonly id: string;
       readonly status: V2ThreadItemsReadResponse__PatchApplyStatus;
       readonly type: "fileChange";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly appContext?: V2ThreadItemsReadResponse__McpToolCallAppContext | null;
       readonly arguments: Schema.Json;
       readonly durationMs?: number | null;
@@ -56080,6 +60517,8 @@ export type V2ThreadItemsReadResponse__ThreadItem =
       readonly type: "mcpToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly arguments: Schema.Json;
       readonly contentItems?: ReadonlyArray<V2ThreadItemsReadResponse__DynamicToolCallOutputContentItem> | null;
       readonly durationMs?: number | null;
@@ -56091,6 +60530,8 @@ export type V2ThreadItemsReadResponse__ThreadItem =
       readonly type: "dynamicToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly agentsStates: { readonly [x: string]: V2ThreadItemsReadResponse__CollabAgentState };
       readonly id: string;
       readonly model?: string | null;
@@ -56103,6 +60544,8 @@ export type V2ThreadItemsReadResponse__ThreadItem =
       readonly type: "collabAgentToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly agentPath: string;
       readonly agentThreadId: string;
       readonly id: string;
@@ -56112,6 +60555,8 @@ export type V2ThreadItemsReadResponse__ThreadItem =
       readonly type: "subAgentActivity";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly action?: V2ThreadItemsReadResponse__WebSearchAction | null;
       readonly id: string;
       readonly query: string;
@@ -56119,53 +60564,150 @@ export type V2ThreadItemsReadResponse__ThreadItem =
       readonly type: "webSearch";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly id: string;
       readonly path: V2ThreadItemsReadResponse__LegacyAppPathString;
       readonly type: "imageView";
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly durationMs: number; readonly id: string; readonly type: "sleep" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
   | ({
-      readonly failure?: V2ThreadItemsReadResponse__ImageGenerationFailure | null;
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly durationMs: number;
       readonly id: string;
-      readonly result: string;
+      readonly type: "sleep";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly failure?: V2ThreadItemsReadResponse__ImageGenerationFailure | null;
+      readonly generationId?: string | null;
+      readonly id: string;
+      readonly inputImages?: ReadonlyArray<V2ThreadItemsReadResponse__ImageGenerationInputImage>;
       readonly revisedPrompt?: string | null;
       readonly savedPath?: V2ThreadItemsReadResponse__AbsolutePathBuf | null;
       readonly status: string;
       readonly transparentBackground?: boolean | null;
       readonly type: "imageGeneration";
+      readonly fileId: string;
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly id: string; readonly review: string; readonly type: "enteredReviewMode" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
-  | ({ readonly id: string; readonly review: string; readonly type: "exitedReviewMode" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
-  | ({ readonly id: string; readonly type: "contextCompaction" } & {
-      readonly [x: string]: CodexJsonExtension;
-    });
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly failure?: V2ThreadItemsReadResponse__ImageGenerationFailure | null;
+      readonly generationId?: string | null;
+      readonly id: string;
+      readonly inputImages?: ReadonlyArray<V2ThreadItemsReadResponse__ImageGenerationInputImage>;
+      readonly revisedPrompt?: string | null;
+      readonly savedPath?: V2ThreadItemsReadResponse__AbsolutePathBuf | null;
+      readonly status: string;
+      readonly transparentBackground?: boolean | null;
+      readonly type: "imageGeneration";
+      readonly result: string;
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly review: string;
+      readonly type: "enteredReviewMode";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly review: string;
+      readonly type: "exitedReviewMode";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly type: "contextCompaction";
+    } & { readonly [x: string]: CodexJsonExtension });
 export const V2ThreadItemsReadResponse__ThreadItem = Schema.Union(
   [
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         clientId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         content: Schema.Array(V2ThreadItemsReadResponse__UserInput),
         id: Schema.String,
         type: Schema.Literal("userMessage").annotate({ title: "UserMessageThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "UserMessageThreadItem" }),
+    ).annotate({
+      title: "UserMessageThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         fragments: Schema.Array(V2ThreadItemsReadResponse__HookPromptFragment),
         id: Schema.String,
         type: Schema.Literal("hookPrompt").annotate({ title: "HookPromptThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "HookPromptThreadItem" }),
+    ).annotate({
+      title: "HookPromptThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         delivery: Schema.optionalKey(
           Schema.Union([V2ThreadItemsReadResponse__AgentMessageDelivery, Schema.Null]),
         ),
@@ -56186,9 +60728,31 @@ export const V2ThreadItemsReadResponse__ThreadItem = Schema.Union(
         type: Schema.Literal("agentMessage").annotate({ title: "AgentMessageThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "AgentMessageThreadItem" }),
+    ).annotate({
+      title: "AgentMessageThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         name: Schema.String,
         namespace: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
@@ -56198,9 +60762,31 @@ export const V2ThreadItemsReadResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "FunctionCallOutputThreadItem" }),
+    ).annotate({
+      title: "FunctionCallOutputThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         text: Schema.String,
         type: Schema.Literal("plan").annotate({ title: "PlanThreadItemType" }),
@@ -56213,15 +60799,55 @@ export const V2ThreadItemsReadResponse__ThreadItem = Schema.Union(
     }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         content: Schema.optionalKey(Schema.Array(Schema.String).annotate({ default: [] })),
         id: Schema.String,
         summary: Schema.optionalKey(Schema.Array(Schema.String).annotate({ default: [] })),
         type: Schema.Literal("reasoning").annotate({ title: "ReasoningThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ReasoningThreadItem" }),
+    ).annotate({
+      title: "ReasoningThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         aggregatedOutput: Schema.optionalKey(
           Schema.Union([
             Schema.String.annotate({
@@ -56296,18 +60922,62 @@ export const V2ThreadItemsReadResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "CommandExecutionThreadItem" }),
+    ).annotate({
+      title: "CommandExecutionThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         changes: Schema.Array(V2ThreadItemsReadResponse__FileUpdateChange),
         id: Schema.String,
         status: V2ThreadItemsReadResponse__PatchApplyStatus,
         type: Schema.Literal("fileChange").annotate({ title: "FileChangeThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "FileChangeThreadItem" }),
+    ).annotate({
+      title: "FileChangeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         appContext: Schema.optionalKey(
           Schema.Union([V2ThreadItemsReadResponse__McpToolCallAppContext, Schema.Null]),
         ),
@@ -56351,9 +61021,31 @@ export const V2ThreadItemsReadResponse__ThreadItem = Schema.Union(
         type: Schema.Literal("mcpToolCall").annotate({ title: "McpToolCallThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "McpToolCallThreadItem" }),
+    ).annotate({
+      title: "McpToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         arguments: Schema.Json.annotate({ expected: "JSON value" }),
         contentItems: Schema.optionalKey(
           Schema.Union([
@@ -56380,9 +61072,31 @@ export const V2ThreadItemsReadResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "DynamicToolCallThreadItem" }),
+    ).annotate({
+      title: "DynamicToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         agentsStates: Schema.Record(
           Schema.String,
           V2ThreadItemsReadResponse__CollabAgentState,
@@ -56429,9 +61143,31 @@ export const V2ThreadItemsReadResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "CollabAgentToolCallThreadItem" }),
+    ).annotate({
+      title: "CollabAgentToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         agentPath: Schema.String,
         agentThreadId: Schema.String,
         id: Schema.String,
@@ -56455,9 +61191,31 @@ export const V2ThreadItemsReadResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "SubAgentActivityThreadItem" }),
+    ).annotate({
+      title: "SubAgentActivityThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         action: Schema.optionalKey(
           Schema.Union([V2ThreadItemsReadResponse__WebSearchAction, Schema.Null]),
         ),
@@ -56475,17 +61233,61 @@ export const V2ThreadItemsReadResponse__ThreadItem = Schema.Union(
         type: Schema.Literal("webSearch").annotate({ title: "WebSearchThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "WebSearchThreadItem" }),
+    ).annotate({
+      title: "WebSearchThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         path: V2ThreadItemsReadResponse__LegacyAppPathString,
         type: Schema.Literal("imageView").annotate({ title: "ImageViewThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ImageViewThreadItem" }),
+    ).annotate({
+      title: "ImageViewThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         durationMs: Schema.Number.annotate({ format: "uint64" })
           .check(Schema.isInt().annotate({ expected: "an integer" }))
           .check(
@@ -56501,27 +61303,140 @@ export const V2ThreadItemsReadResponse__ThreadItem = Schema.Union(
       title: "SleepThreadItem",
       description: "Display item emitted by the interruptible `clock.sleep` tool.",
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        failure: Schema.optionalKey(
-          Schema.Union([V2ThreadItemsReadResponse__ImageGenerationFailure, Schema.Null]),
-        ),
-        id: Schema.String,
-        result: Schema.String,
-        revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-        savedPath: Schema.optionalKey(
-          Schema.Union([V2ThreadItemsReadResponse__AbsolutePathBuf, Schema.Null]),
-        ),
-        status: Schema.String,
-        transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
-        type: Schema.Literal("imageGeneration").annotate({
-          title: "ImageGenerationThreadItemType",
+    Schema.Union([
+      Schema.StructWithRest(
+        Schema.Struct({
+          completedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          startedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item started, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          failure: Schema.optionalKey(
+            Schema.Union([V2ThreadItemsReadResponse__ImageGenerationFailure, Schema.Null]),
+          ),
+          generationId: Schema.optionalKey(
+            Schema.Union([
+              Schema.String.annotate({
+                description:
+                  "Image generation identifier for the generated image, when provided by the image backend.",
+              }),
+              Schema.Null,
+            ]),
+          ),
+          id: Schema.String,
+          inputImages: Schema.optionalKey(
+            Schema.Array(V2ThreadItemsReadResponse__ImageGenerationInputImage).annotate({
+              description:
+                "Observed local inputs for a completed generation, absent on older items.",
+            }),
+          ),
+          revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+          savedPath: Schema.optionalKey(
+            Schema.Union([V2ThreadItemsReadResponse__AbsolutePathBuf, Schema.Null]),
+          ),
+          status: Schema.String,
+          transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
+          type: Schema.Literal("imageGeneration").annotate({
+            title: "ImageGenerationThreadItemType",
+          }),
+          fileId: Schema.String,
         }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({
+        title: "FileIdThreadItem",
+        description:
+          "Either inline generated-image data or its durable attachment-store identity.\n\n`File` must remain first so rollouts written during the migration, which contain both an empty `result` and a `fileId`, retain the file reference when deserialized.",
       }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ImageGenerationThreadItem" }),
+      Schema.StructWithRest(
+        Schema.Struct({
+          completedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          startedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item started, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          failure: Schema.optionalKey(
+            Schema.Union([V2ThreadItemsReadResponse__ImageGenerationFailure, Schema.Null]),
+          ),
+          generationId: Schema.optionalKey(
+            Schema.Union([
+              Schema.String.annotate({
+                description:
+                  "Image generation identifier for the generated image, when provided by the image backend.",
+              }),
+              Schema.Null,
+            ]),
+          ),
+          id: Schema.String,
+          inputImages: Schema.optionalKey(
+            Schema.Array(V2ThreadItemsReadResponse__ImageGenerationInputImage).annotate({
+              description:
+                "Observed local inputs for a completed generation, absent on older items.",
+            }),
+          ),
+          revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+          savedPath: Schema.optionalKey(
+            Schema.Union([V2ThreadItemsReadResponse__AbsolutePathBuf, Schema.Null]),
+          ),
+          status: Schema.String,
+          transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
+          type: Schema.Literal("imageGeneration").annotate({
+            title: "ImageGenerationThreadItemType",
+          }),
+          result: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({
+        title: "ResultThreadItem",
+        description:
+          "Either inline generated-image data or its durable attachment-store identity.\n\n`File` must remain first so rollouts written during the migration, which contain both an empty `result` and a `fileId`, retain the file reference when deserialized.",
+      }),
+    ]),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         review: Schema.String,
         type: Schema.Literal("enteredReviewMode").annotate({
@@ -56529,9 +61444,31 @@ export const V2ThreadItemsReadResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "EnteredReviewModeThreadItem" }),
+    ).annotate({
+      title: "EnteredReviewModeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         review: Schema.String,
         type: Schema.Literal("exitedReviewMode").annotate({
@@ -56539,33 +61476,65 @@ export const V2ThreadItemsReadResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ExitedReviewModeThreadItem" }),
+    ).annotate({
+      title: "ExitedReviewModeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         type: Schema.Literal("contextCompaction").annotate({
           title: "ContextCompactionThreadItemType",
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ContextCompactionThreadItem" }),
+    ).annotate({
+      title: "ContextCompactionThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
   ],
   { mode: "oneOf" },
 ).annotate({ identifier: "V2ThreadItemsReadResponse__ThreadItem" });
 
 export type V2ThreadListResponse__ThreadItem =
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly clientId?: string | null;
       readonly content: ReadonlyArray<V2ThreadListResponse__UserInput>;
       readonly id: string;
       readonly type: "userMessage";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly fragments: ReadonlyArray<V2ThreadListResponse__HookPromptFragment>;
       readonly id: string;
       readonly type: "hookPrompt";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly delivery?: V2ThreadListResponse__AgentMessageDelivery | null;
       readonly id: string;
       readonly memoryCitation?: V2ThreadListResponse__MemoryCitation | null;
@@ -56575,22 +61544,32 @@ export type V2ThreadListResponse__ThreadItem =
       readonly type: "agentMessage";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly id: string;
       readonly name: string;
       readonly namespace?: string | null;
       readonly output: V2ThreadListResponse__FunctionCallOutputBody;
       readonly type: "functionCallOutput";
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly id: string; readonly text: string; readonly type: "plan" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly text: string;
+      readonly type: "plan";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly content?: ReadonlyArray<string>;
       readonly id: string;
       readonly summary?: ReadonlyArray<string>;
       readonly type: "reasoning";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly aggregatedOutput?: string | null;
       readonly command: string;
       readonly commandActions: ReadonlyArray<V2ThreadListResponse__CommandAction>;
@@ -56606,12 +61585,16 @@ export type V2ThreadListResponse__ThreadItem =
       readonly type: "commandExecution";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly changes: ReadonlyArray<V2ThreadListResponse__FileUpdateChange>;
       readonly id: string;
       readonly status: V2ThreadListResponse__PatchApplyStatus;
       readonly type: "fileChange";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly appContext?: V2ThreadListResponse__McpToolCallAppContext | null;
       readonly arguments: Schema.Json;
       readonly durationMs?: number | null;
@@ -56628,6 +61611,8 @@ export type V2ThreadListResponse__ThreadItem =
       readonly type: "mcpToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly arguments: Schema.Json;
       readonly contentItems?: ReadonlyArray<V2ThreadListResponse__DynamicToolCallOutputContentItem> | null;
       readonly durationMs?: number | null;
@@ -56639,6 +61624,8 @@ export type V2ThreadListResponse__ThreadItem =
       readonly type: "dynamicToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly agentsStates: { readonly [x: string]: V2ThreadListResponse__CollabAgentState };
       readonly id: string;
       readonly model?: string | null;
@@ -56651,6 +61638,8 @@ export type V2ThreadListResponse__ThreadItem =
       readonly type: "collabAgentToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly agentPath: string;
       readonly agentThreadId: string;
       readonly id: string;
@@ -56660,6 +61649,8 @@ export type V2ThreadListResponse__ThreadItem =
       readonly type: "subAgentActivity";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly action?: V2ThreadListResponse__WebSearchAction | null;
       readonly id: string;
       readonly query: string;
@@ -56667,53 +61658,150 @@ export type V2ThreadListResponse__ThreadItem =
       readonly type: "webSearch";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly id: string;
       readonly path: V2ThreadListResponse__LegacyAppPathString;
       readonly type: "imageView";
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly durationMs: number; readonly id: string; readonly type: "sleep" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
   | ({
-      readonly failure?: V2ThreadListResponse__ImageGenerationFailure | null;
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly durationMs: number;
       readonly id: string;
-      readonly result: string;
+      readonly type: "sleep";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly failure?: V2ThreadListResponse__ImageGenerationFailure | null;
+      readonly generationId?: string | null;
+      readonly id: string;
+      readonly inputImages?: ReadonlyArray<V2ThreadListResponse__ImageGenerationInputImage>;
       readonly revisedPrompt?: string | null;
       readonly savedPath?: V2ThreadListResponse__AbsolutePathBuf | null;
       readonly status: string;
       readonly transparentBackground?: boolean | null;
       readonly type: "imageGeneration";
+      readonly fileId: string;
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly id: string; readonly review: string; readonly type: "enteredReviewMode" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
-  | ({ readonly id: string; readonly review: string; readonly type: "exitedReviewMode" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
-  | ({ readonly id: string; readonly type: "contextCompaction" } & {
-      readonly [x: string]: CodexJsonExtension;
-    });
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly failure?: V2ThreadListResponse__ImageGenerationFailure | null;
+      readonly generationId?: string | null;
+      readonly id: string;
+      readonly inputImages?: ReadonlyArray<V2ThreadListResponse__ImageGenerationInputImage>;
+      readonly revisedPrompt?: string | null;
+      readonly savedPath?: V2ThreadListResponse__AbsolutePathBuf | null;
+      readonly status: string;
+      readonly transparentBackground?: boolean | null;
+      readonly type: "imageGeneration";
+      readonly result: string;
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly review: string;
+      readonly type: "enteredReviewMode";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly review: string;
+      readonly type: "exitedReviewMode";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly type: "contextCompaction";
+    } & { readonly [x: string]: CodexJsonExtension });
 export const V2ThreadListResponse__ThreadItem = Schema.Union(
   [
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         clientId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         content: Schema.Array(V2ThreadListResponse__UserInput),
         id: Schema.String,
         type: Schema.Literal("userMessage").annotate({ title: "UserMessageThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "UserMessageThreadItem" }),
+    ).annotate({
+      title: "UserMessageThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         fragments: Schema.Array(V2ThreadListResponse__HookPromptFragment),
         id: Schema.String,
         type: Schema.Literal("hookPrompt").annotate({ title: "HookPromptThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "HookPromptThreadItem" }),
+    ).annotate({
+      title: "HookPromptThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         delivery: Schema.optionalKey(
           Schema.Union([V2ThreadListResponse__AgentMessageDelivery, Schema.Null]),
         ),
@@ -56729,9 +61817,31 @@ export const V2ThreadListResponse__ThreadItem = Schema.Union(
         type: Schema.Literal("agentMessage").annotate({ title: "AgentMessageThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "AgentMessageThreadItem" }),
+    ).annotate({
+      title: "AgentMessageThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         name: Schema.String,
         namespace: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
@@ -56741,9 +61851,31 @@ export const V2ThreadListResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "FunctionCallOutputThreadItem" }),
+    ).annotate({
+      title: "FunctionCallOutputThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         text: Schema.String,
         type: Schema.Literal("plan").annotate({ title: "PlanThreadItemType" }),
@@ -56756,15 +61888,55 @@ export const V2ThreadListResponse__ThreadItem = Schema.Union(
     }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         content: Schema.optionalKey(Schema.Array(Schema.String).annotate({ default: [] })),
         id: Schema.String,
         summary: Schema.optionalKey(Schema.Array(Schema.String).annotate({ default: [] })),
         type: Schema.Literal("reasoning").annotate({ title: "ReasoningThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ReasoningThreadItem" }),
+    ).annotate({
+      title: "ReasoningThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         aggregatedOutput: Schema.optionalKey(
           Schema.Union([
             Schema.String.annotate({
@@ -56839,18 +62011,62 @@ export const V2ThreadListResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "CommandExecutionThreadItem" }),
+    ).annotate({
+      title: "CommandExecutionThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         changes: Schema.Array(V2ThreadListResponse__FileUpdateChange),
         id: Schema.String,
         status: V2ThreadListResponse__PatchApplyStatus,
         type: Schema.Literal("fileChange").annotate({ title: "FileChangeThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "FileChangeThreadItem" }),
+    ).annotate({
+      title: "FileChangeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         appContext: Schema.optionalKey(
           Schema.Union([V2ThreadListResponse__McpToolCallAppContext, Schema.Null]),
         ),
@@ -56894,9 +62110,31 @@ export const V2ThreadListResponse__ThreadItem = Schema.Union(
         type: Schema.Literal("mcpToolCall").annotate({ title: "McpToolCallThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "McpToolCallThreadItem" }),
+    ).annotate({
+      title: "McpToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         arguments: Schema.Json.annotate({ expected: "JSON value" }),
         contentItems: Schema.optionalKey(
           Schema.Union([
@@ -56923,9 +62161,31 @@ export const V2ThreadListResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "DynamicToolCallThreadItem" }),
+    ).annotate({
+      title: "DynamicToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         agentsStates: Schema.Record(Schema.String, V2ThreadListResponse__CollabAgentState).annotate(
           { description: "Last known status of the target agents, when available." },
         ),
@@ -56971,9 +62231,31 @@ export const V2ThreadListResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "CollabAgentToolCallThreadItem" }),
+    ).annotate({
+      title: "CollabAgentToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         agentPath: Schema.String,
         agentThreadId: Schema.String,
         id: Schema.String,
@@ -56997,9 +62279,31 @@ export const V2ThreadListResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "SubAgentActivityThreadItem" }),
+    ).annotate({
+      title: "SubAgentActivityThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         action: Schema.optionalKey(
           Schema.Union([V2ThreadListResponse__WebSearchAction, Schema.Null]),
         ),
@@ -57017,17 +62321,61 @@ export const V2ThreadListResponse__ThreadItem = Schema.Union(
         type: Schema.Literal("webSearch").annotate({ title: "WebSearchThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "WebSearchThreadItem" }),
+    ).annotate({
+      title: "WebSearchThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         path: V2ThreadListResponse__LegacyAppPathString,
         type: Schema.Literal("imageView").annotate({ title: "ImageViewThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ImageViewThreadItem" }),
+    ).annotate({
+      title: "ImageViewThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         durationMs: Schema.Number.annotate({ format: "uint64" })
           .check(Schema.isInt().annotate({ expected: "an integer" }))
           .check(
@@ -57043,27 +62391,140 @@ export const V2ThreadListResponse__ThreadItem = Schema.Union(
       title: "SleepThreadItem",
       description: "Display item emitted by the interruptible `clock.sleep` tool.",
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        failure: Schema.optionalKey(
-          Schema.Union([V2ThreadListResponse__ImageGenerationFailure, Schema.Null]),
-        ),
-        id: Schema.String,
-        result: Schema.String,
-        revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-        savedPath: Schema.optionalKey(
-          Schema.Union([V2ThreadListResponse__AbsolutePathBuf, Schema.Null]),
-        ),
-        status: Schema.String,
-        transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
-        type: Schema.Literal("imageGeneration").annotate({
-          title: "ImageGenerationThreadItemType",
+    Schema.Union([
+      Schema.StructWithRest(
+        Schema.Struct({
+          completedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          startedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item started, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          failure: Schema.optionalKey(
+            Schema.Union([V2ThreadListResponse__ImageGenerationFailure, Schema.Null]),
+          ),
+          generationId: Schema.optionalKey(
+            Schema.Union([
+              Schema.String.annotate({
+                description:
+                  "Image generation identifier for the generated image, when provided by the image backend.",
+              }),
+              Schema.Null,
+            ]),
+          ),
+          id: Schema.String,
+          inputImages: Schema.optionalKey(
+            Schema.Array(V2ThreadListResponse__ImageGenerationInputImage).annotate({
+              description:
+                "Observed local inputs for a completed generation, absent on older items.",
+            }),
+          ),
+          revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+          savedPath: Schema.optionalKey(
+            Schema.Union([V2ThreadListResponse__AbsolutePathBuf, Schema.Null]),
+          ),
+          status: Schema.String,
+          transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
+          type: Schema.Literal("imageGeneration").annotate({
+            title: "ImageGenerationThreadItemType",
+          }),
+          fileId: Schema.String,
         }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({
+        title: "FileIdThreadItem",
+        description:
+          "Either inline generated-image data or its durable attachment-store identity.\n\n`File` must remain first so rollouts written during the migration, which contain both an empty `result` and a `fileId`, retain the file reference when deserialized.",
       }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ImageGenerationThreadItem" }),
+      Schema.StructWithRest(
+        Schema.Struct({
+          completedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          startedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item started, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          failure: Schema.optionalKey(
+            Schema.Union([V2ThreadListResponse__ImageGenerationFailure, Schema.Null]),
+          ),
+          generationId: Schema.optionalKey(
+            Schema.Union([
+              Schema.String.annotate({
+                description:
+                  "Image generation identifier for the generated image, when provided by the image backend.",
+              }),
+              Schema.Null,
+            ]),
+          ),
+          id: Schema.String,
+          inputImages: Schema.optionalKey(
+            Schema.Array(V2ThreadListResponse__ImageGenerationInputImage).annotate({
+              description:
+                "Observed local inputs for a completed generation, absent on older items.",
+            }),
+          ),
+          revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+          savedPath: Schema.optionalKey(
+            Schema.Union([V2ThreadListResponse__AbsolutePathBuf, Schema.Null]),
+          ),
+          status: Schema.String,
+          transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
+          type: Schema.Literal("imageGeneration").annotate({
+            title: "ImageGenerationThreadItemType",
+          }),
+          result: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({
+        title: "ResultThreadItem",
+        description:
+          "Either inline generated-image data or its durable attachment-store identity.\n\n`File` must remain first so rollouts written during the migration, which contain both an empty `result` and a `fileId`, retain the file reference when deserialized.",
+      }),
+    ]),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         review: Schema.String,
         type: Schema.Literal("enteredReviewMode").annotate({
@@ -57071,9 +62532,31 @@ export const V2ThreadListResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "EnteredReviewModeThreadItem" }),
+    ).annotate({
+      title: "EnteredReviewModeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         review: Schema.String,
         type: Schema.Literal("exitedReviewMode").annotate({
@@ -57081,33 +62564,65 @@ export const V2ThreadListResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ExitedReviewModeThreadItem" }),
+    ).annotate({
+      title: "ExitedReviewModeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         type: Schema.Literal("contextCompaction").annotate({
           title: "ContextCompactionThreadItemType",
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ContextCompactionThreadItem" }),
+    ).annotate({
+      title: "ContextCompactionThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
   ],
   { mode: "oneOf" },
 ).annotate({ identifier: "V2ThreadListResponse__ThreadItem" });
 
 export type V2ThreadMetadataUpdateResponse__ThreadItem =
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly clientId?: string | null;
       readonly content: ReadonlyArray<V2ThreadMetadataUpdateResponse__UserInput>;
       readonly id: string;
       readonly type: "userMessage";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly fragments: ReadonlyArray<V2ThreadMetadataUpdateResponse__HookPromptFragment>;
       readonly id: string;
       readonly type: "hookPrompt";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly delivery?: V2ThreadMetadataUpdateResponse__AgentMessageDelivery | null;
       readonly id: string;
       readonly memoryCitation?: V2ThreadMetadataUpdateResponse__MemoryCitation | null;
@@ -57117,22 +62632,32 @@ export type V2ThreadMetadataUpdateResponse__ThreadItem =
       readonly type: "agentMessage";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly id: string;
       readonly name: string;
       readonly namespace?: string | null;
       readonly output: V2ThreadMetadataUpdateResponse__FunctionCallOutputBody;
       readonly type: "functionCallOutput";
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly id: string; readonly text: string; readonly type: "plan" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly text: string;
+      readonly type: "plan";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly content?: ReadonlyArray<string>;
       readonly id: string;
       readonly summary?: ReadonlyArray<string>;
       readonly type: "reasoning";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly aggregatedOutput?: string | null;
       readonly command: string;
       readonly commandActions: ReadonlyArray<V2ThreadMetadataUpdateResponse__CommandAction>;
@@ -57148,12 +62673,16 @@ export type V2ThreadMetadataUpdateResponse__ThreadItem =
       readonly type: "commandExecution";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly changes: ReadonlyArray<V2ThreadMetadataUpdateResponse__FileUpdateChange>;
       readonly id: string;
       readonly status: V2ThreadMetadataUpdateResponse__PatchApplyStatus;
       readonly type: "fileChange";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly appContext?: V2ThreadMetadataUpdateResponse__McpToolCallAppContext | null;
       readonly arguments: Schema.Json;
       readonly durationMs?: number | null;
@@ -57170,6 +62699,8 @@ export type V2ThreadMetadataUpdateResponse__ThreadItem =
       readonly type: "mcpToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly arguments: Schema.Json;
       readonly contentItems?: ReadonlyArray<V2ThreadMetadataUpdateResponse__DynamicToolCallOutputContentItem> | null;
       readonly durationMs?: number | null;
@@ -57181,6 +62712,8 @@ export type V2ThreadMetadataUpdateResponse__ThreadItem =
       readonly type: "dynamicToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly agentsStates: {
         readonly [x: string]: V2ThreadMetadataUpdateResponse__CollabAgentState;
       };
@@ -57195,6 +62728,8 @@ export type V2ThreadMetadataUpdateResponse__ThreadItem =
       readonly type: "collabAgentToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly agentPath: string;
       readonly agentThreadId: string;
       readonly id: string;
@@ -57204,6 +62739,8 @@ export type V2ThreadMetadataUpdateResponse__ThreadItem =
       readonly type: "subAgentActivity";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly action?: V2ThreadMetadataUpdateResponse__WebSearchAction | null;
       readonly id: string;
       readonly query: string;
@@ -57211,53 +62748,150 @@ export type V2ThreadMetadataUpdateResponse__ThreadItem =
       readonly type: "webSearch";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly id: string;
       readonly path: V2ThreadMetadataUpdateResponse__LegacyAppPathString;
       readonly type: "imageView";
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly durationMs: number; readonly id: string; readonly type: "sleep" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
   | ({
-      readonly failure?: V2ThreadMetadataUpdateResponse__ImageGenerationFailure | null;
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly durationMs: number;
       readonly id: string;
-      readonly result: string;
+      readonly type: "sleep";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly failure?: V2ThreadMetadataUpdateResponse__ImageGenerationFailure | null;
+      readonly generationId?: string | null;
+      readonly id: string;
+      readonly inputImages?: ReadonlyArray<V2ThreadMetadataUpdateResponse__ImageGenerationInputImage>;
       readonly revisedPrompt?: string | null;
       readonly savedPath?: V2ThreadMetadataUpdateResponse__AbsolutePathBuf | null;
       readonly status: string;
       readonly transparentBackground?: boolean | null;
       readonly type: "imageGeneration";
+      readonly fileId: string;
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly id: string; readonly review: string; readonly type: "enteredReviewMode" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
-  | ({ readonly id: string; readonly review: string; readonly type: "exitedReviewMode" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
-  | ({ readonly id: string; readonly type: "contextCompaction" } & {
-      readonly [x: string]: CodexJsonExtension;
-    });
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly failure?: V2ThreadMetadataUpdateResponse__ImageGenerationFailure | null;
+      readonly generationId?: string | null;
+      readonly id: string;
+      readonly inputImages?: ReadonlyArray<V2ThreadMetadataUpdateResponse__ImageGenerationInputImage>;
+      readonly revisedPrompt?: string | null;
+      readonly savedPath?: V2ThreadMetadataUpdateResponse__AbsolutePathBuf | null;
+      readonly status: string;
+      readonly transparentBackground?: boolean | null;
+      readonly type: "imageGeneration";
+      readonly result: string;
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly review: string;
+      readonly type: "enteredReviewMode";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly review: string;
+      readonly type: "exitedReviewMode";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly type: "contextCompaction";
+    } & { readonly [x: string]: CodexJsonExtension });
 export const V2ThreadMetadataUpdateResponse__ThreadItem = Schema.Union(
   [
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         clientId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         content: Schema.Array(V2ThreadMetadataUpdateResponse__UserInput),
         id: Schema.String,
         type: Schema.Literal("userMessage").annotate({ title: "UserMessageThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "UserMessageThreadItem" }),
+    ).annotate({
+      title: "UserMessageThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         fragments: Schema.Array(V2ThreadMetadataUpdateResponse__HookPromptFragment),
         id: Schema.String,
         type: Schema.Literal("hookPrompt").annotate({ title: "HookPromptThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "HookPromptThreadItem" }),
+    ).annotate({
+      title: "HookPromptThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         delivery: Schema.optionalKey(
           Schema.Union([V2ThreadMetadataUpdateResponse__AgentMessageDelivery, Schema.Null]),
         ),
@@ -57278,9 +62912,31 @@ export const V2ThreadMetadataUpdateResponse__ThreadItem = Schema.Union(
         type: Schema.Literal("agentMessage").annotate({ title: "AgentMessageThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "AgentMessageThreadItem" }),
+    ).annotate({
+      title: "AgentMessageThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         name: Schema.String,
         namespace: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
@@ -57290,9 +62946,31 @@ export const V2ThreadMetadataUpdateResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "FunctionCallOutputThreadItem" }),
+    ).annotate({
+      title: "FunctionCallOutputThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         text: Schema.String,
         type: Schema.Literal("plan").annotate({ title: "PlanThreadItemType" }),
@@ -57305,15 +62983,55 @@ export const V2ThreadMetadataUpdateResponse__ThreadItem = Schema.Union(
     }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         content: Schema.optionalKey(Schema.Array(Schema.String).annotate({ default: [] })),
         id: Schema.String,
         summary: Schema.optionalKey(Schema.Array(Schema.String).annotate({ default: [] })),
         type: Schema.Literal("reasoning").annotate({ title: "ReasoningThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ReasoningThreadItem" }),
+    ).annotate({
+      title: "ReasoningThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         aggregatedOutput: Schema.optionalKey(
           Schema.Union([
             Schema.String.annotate({
@@ -57388,18 +63106,62 @@ export const V2ThreadMetadataUpdateResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "CommandExecutionThreadItem" }),
+    ).annotate({
+      title: "CommandExecutionThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         changes: Schema.Array(V2ThreadMetadataUpdateResponse__FileUpdateChange),
         id: Schema.String,
         status: V2ThreadMetadataUpdateResponse__PatchApplyStatus,
         type: Schema.Literal("fileChange").annotate({ title: "FileChangeThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "FileChangeThreadItem" }),
+    ).annotate({
+      title: "FileChangeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         appContext: Schema.optionalKey(
           Schema.Union([V2ThreadMetadataUpdateResponse__McpToolCallAppContext, Schema.Null]),
         ),
@@ -57443,9 +63205,31 @@ export const V2ThreadMetadataUpdateResponse__ThreadItem = Schema.Union(
         type: Schema.Literal("mcpToolCall").annotate({ title: "McpToolCallThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "McpToolCallThreadItem" }),
+    ).annotate({
+      title: "McpToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         arguments: Schema.Json.annotate({ expected: "JSON value" }),
         contentItems: Schema.optionalKey(
           Schema.Union([
@@ -57472,9 +63256,31 @@ export const V2ThreadMetadataUpdateResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "DynamicToolCallThreadItem" }),
+    ).annotate({
+      title: "DynamicToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         agentsStates: Schema.Record(
           Schema.String,
           V2ThreadMetadataUpdateResponse__CollabAgentState,
@@ -57521,9 +63327,31 @@ export const V2ThreadMetadataUpdateResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "CollabAgentToolCallThreadItem" }),
+    ).annotate({
+      title: "CollabAgentToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         agentPath: Schema.String,
         agentThreadId: Schema.String,
         id: Schema.String,
@@ -57547,9 +63375,31 @@ export const V2ThreadMetadataUpdateResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "SubAgentActivityThreadItem" }),
+    ).annotate({
+      title: "SubAgentActivityThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         action: Schema.optionalKey(
           Schema.Union([V2ThreadMetadataUpdateResponse__WebSearchAction, Schema.Null]),
         ),
@@ -57567,17 +63417,61 @@ export const V2ThreadMetadataUpdateResponse__ThreadItem = Schema.Union(
         type: Schema.Literal("webSearch").annotate({ title: "WebSearchThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "WebSearchThreadItem" }),
+    ).annotate({
+      title: "WebSearchThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         path: V2ThreadMetadataUpdateResponse__LegacyAppPathString,
         type: Schema.Literal("imageView").annotate({ title: "ImageViewThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ImageViewThreadItem" }),
+    ).annotate({
+      title: "ImageViewThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         durationMs: Schema.Number.annotate({ format: "uint64" })
           .check(Schema.isInt().annotate({ expected: "an integer" }))
           .check(
@@ -57593,27 +63487,140 @@ export const V2ThreadMetadataUpdateResponse__ThreadItem = Schema.Union(
       title: "SleepThreadItem",
       description: "Display item emitted by the interruptible `clock.sleep` tool.",
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        failure: Schema.optionalKey(
-          Schema.Union([V2ThreadMetadataUpdateResponse__ImageGenerationFailure, Schema.Null]),
-        ),
-        id: Schema.String,
-        result: Schema.String,
-        revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-        savedPath: Schema.optionalKey(
-          Schema.Union([V2ThreadMetadataUpdateResponse__AbsolutePathBuf, Schema.Null]),
-        ),
-        status: Schema.String,
-        transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
-        type: Schema.Literal("imageGeneration").annotate({
-          title: "ImageGenerationThreadItemType",
+    Schema.Union([
+      Schema.StructWithRest(
+        Schema.Struct({
+          completedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          startedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item started, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          failure: Schema.optionalKey(
+            Schema.Union([V2ThreadMetadataUpdateResponse__ImageGenerationFailure, Schema.Null]),
+          ),
+          generationId: Schema.optionalKey(
+            Schema.Union([
+              Schema.String.annotate({
+                description:
+                  "Image generation identifier for the generated image, when provided by the image backend.",
+              }),
+              Schema.Null,
+            ]),
+          ),
+          id: Schema.String,
+          inputImages: Schema.optionalKey(
+            Schema.Array(V2ThreadMetadataUpdateResponse__ImageGenerationInputImage).annotate({
+              description:
+                "Observed local inputs for a completed generation, absent on older items.",
+            }),
+          ),
+          revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+          savedPath: Schema.optionalKey(
+            Schema.Union([V2ThreadMetadataUpdateResponse__AbsolutePathBuf, Schema.Null]),
+          ),
+          status: Schema.String,
+          transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
+          type: Schema.Literal("imageGeneration").annotate({
+            title: "ImageGenerationThreadItemType",
+          }),
+          fileId: Schema.String,
         }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({
+        title: "FileIdThreadItem",
+        description:
+          "Either inline generated-image data or its durable attachment-store identity.\n\n`File` must remain first so rollouts written during the migration, which contain both an empty `result` and a `fileId`, retain the file reference when deserialized.",
       }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ImageGenerationThreadItem" }),
+      Schema.StructWithRest(
+        Schema.Struct({
+          completedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          startedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item started, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          failure: Schema.optionalKey(
+            Schema.Union([V2ThreadMetadataUpdateResponse__ImageGenerationFailure, Schema.Null]),
+          ),
+          generationId: Schema.optionalKey(
+            Schema.Union([
+              Schema.String.annotate({
+                description:
+                  "Image generation identifier for the generated image, when provided by the image backend.",
+              }),
+              Schema.Null,
+            ]),
+          ),
+          id: Schema.String,
+          inputImages: Schema.optionalKey(
+            Schema.Array(V2ThreadMetadataUpdateResponse__ImageGenerationInputImage).annotate({
+              description:
+                "Observed local inputs for a completed generation, absent on older items.",
+            }),
+          ),
+          revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+          savedPath: Schema.optionalKey(
+            Schema.Union([V2ThreadMetadataUpdateResponse__AbsolutePathBuf, Schema.Null]),
+          ),
+          status: Schema.String,
+          transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
+          type: Schema.Literal("imageGeneration").annotate({
+            title: "ImageGenerationThreadItemType",
+          }),
+          result: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({
+        title: "ResultThreadItem",
+        description:
+          "Either inline generated-image data or its durable attachment-store identity.\n\n`File` must remain first so rollouts written during the migration, which contain both an empty `result` and a `fileId`, retain the file reference when deserialized.",
+      }),
+    ]),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         review: Schema.String,
         type: Schema.Literal("enteredReviewMode").annotate({
@@ -57621,9 +63628,31 @@ export const V2ThreadMetadataUpdateResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "EnteredReviewModeThreadItem" }),
+    ).annotate({
+      title: "EnteredReviewModeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         review: Schema.String,
         type: Schema.Literal("exitedReviewMode").annotate({
@@ -57631,16 +63660,42 @@ export const V2ThreadMetadataUpdateResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ExitedReviewModeThreadItem" }),
+    ).annotate({
+      title: "ExitedReviewModeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         type: Schema.Literal("contextCompaction").annotate({
           title: "ContextCompactionThreadItemType",
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ContextCompactionThreadItem" }),
+    ).annotate({
+      title: "ContextCompactionThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
   ],
   { mode: "oneOf" },
 ).annotate({ identifier: "V2ThreadMetadataUpdateResponse__ThreadItem" });
@@ -57675,17 +63730,23 @@ export const V2ThreadQueueListResponse__QueuedSubmission = Schema.StructWithRest
 
 export type V2ThreadQueueStartResponse__ThreadItem =
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly clientId?: string | null;
       readonly content: ReadonlyArray<V2ThreadQueueStartResponse__UserInput>;
       readonly id: string;
       readonly type: "userMessage";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly fragments: ReadonlyArray<V2ThreadQueueStartResponse__HookPromptFragment>;
       readonly id: string;
       readonly type: "hookPrompt";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly delivery?: V2ThreadQueueStartResponse__AgentMessageDelivery | null;
       readonly id: string;
       readonly memoryCitation?: V2ThreadQueueStartResponse__MemoryCitation | null;
@@ -57695,22 +63756,32 @@ export type V2ThreadQueueStartResponse__ThreadItem =
       readonly type: "agentMessage";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly id: string;
       readonly name: string;
       readonly namespace?: string | null;
       readonly output: V2ThreadQueueStartResponse__FunctionCallOutputBody;
       readonly type: "functionCallOutput";
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly id: string; readonly text: string; readonly type: "plan" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly text: string;
+      readonly type: "plan";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly content?: ReadonlyArray<string>;
       readonly id: string;
       readonly summary?: ReadonlyArray<string>;
       readonly type: "reasoning";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly aggregatedOutput?: string | null;
       readonly command: string;
       readonly commandActions: ReadonlyArray<V2ThreadQueueStartResponse__CommandAction>;
@@ -57726,12 +63797,16 @@ export type V2ThreadQueueStartResponse__ThreadItem =
       readonly type: "commandExecution";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly changes: ReadonlyArray<V2ThreadQueueStartResponse__FileUpdateChange>;
       readonly id: string;
       readonly status: V2ThreadQueueStartResponse__PatchApplyStatus;
       readonly type: "fileChange";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly appContext?: V2ThreadQueueStartResponse__McpToolCallAppContext | null;
       readonly arguments: Schema.Json;
       readonly durationMs?: number | null;
@@ -57748,6 +63823,8 @@ export type V2ThreadQueueStartResponse__ThreadItem =
       readonly type: "mcpToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly arguments: Schema.Json;
       readonly contentItems?: ReadonlyArray<V2ThreadQueueStartResponse__DynamicToolCallOutputContentItem> | null;
       readonly durationMs?: number | null;
@@ -57759,6 +63836,8 @@ export type V2ThreadQueueStartResponse__ThreadItem =
       readonly type: "dynamicToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly agentsStates: { readonly [x: string]: V2ThreadQueueStartResponse__CollabAgentState };
       readonly id: string;
       readonly model?: string | null;
@@ -57771,6 +63850,8 @@ export type V2ThreadQueueStartResponse__ThreadItem =
       readonly type: "collabAgentToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly agentPath: string;
       readonly agentThreadId: string;
       readonly id: string;
@@ -57780,6 +63861,8 @@ export type V2ThreadQueueStartResponse__ThreadItem =
       readonly type: "subAgentActivity";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly action?: V2ThreadQueueStartResponse__WebSearchAction | null;
       readonly id: string;
       readonly query: string;
@@ -57787,53 +63870,150 @@ export type V2ThreadQueueStartResponse__ThreadItem =
       readonly type: "webSearch";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly id: string;
       readonly path: V2ThreadQueueStartResponse__LegacyAppPathString;
       readonly type: "imageView";
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly durationMs: number; readonly id: string; readonly type: "sleep" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
   | ({
-      readonly failure?: V2ThreadQueueStartResponse__ImageGenerationFailure | null;
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly durationMs: number;
       readonly id: string;
-      readonly result: string;
+      readonly type: "sleep";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly failure?: V2ThreadQueueStartResponse__ImageGenerationFailure | null;
+      readonly generationId?: string | null;
+      readonly id: string;
+      readonly inputImages?: ReadonlyArray<V2ThreadQueueStartResponse__ImageGenerationInputImage>;
       readonly revisedPrompt?: string | null;
       readonly savedPath?: V2ThreadQueueStartResponse__AbsolutePathBuf | null;
       readonly status: string;
       readonly transparentBackground?: boolean | null;
       readonly type: "imageGeneration";
+      readonly fileId: string;
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly id: string; readonly review: string; readonly type: "enteredReviewMode" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
-  | ({ readonly id: string; readonly review: string; readonly type: "exitedReviewMode" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
-  | ({ readonly id: string; readonly type: "contextCompaction" } & {
-      readonly [x: string]: CodexJsonExtension;
-    });
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly failure?: V2ThreadQueueStartResponse__ImageGenerationFailure | null;
+      readonly generationId?: string | null;
+      readonly id: string;
+      readonly inputImages?: ReadonlyArray<V2ThreadQueueStartResponse__ImageGenerationInputImage>;
+      readonly revisedPrompt?: string | null;
+      readonly savedPath?: V2ThreadQueueStartResponse__AbsolutePathBuf | null;
+      readonly status: string;
+      readonly transparentBackground?: boolean | null;
+      readonly type: "imageGeneration";
+      readonly result: string;
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly review: string;
+      readonly type: "enteredReviewMode";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly review: string;
+      readonly type: "exitedReviewMode";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly type: "contextCompaction";
+    } & { readonly [x: string]: CodexJsonExtension });
 export const V2ThreadQueueStartResponse__ThreadItem = Schema.Union(
   [
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         clientId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         content: Schema.Array(V2ThreadQueueStartResponse__UserInput),
         id: Schema.String,
         type: Schema.Literal("userMessage").annotate({ title: "UserMessageThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "UserMessageThreadItem" }),
+    ).annotate({
+      title: "UserMessageThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         fragments: Schema.Array(V2ThreadQueueStartResponse__HookPromptFragment),
         id: Schema.String,
         type: Schema.Literal("hookPrompt").annotate({ title: "HookPromptThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "HookPromptThreadItem" }),
+    ).annotate({
+      title: "HookPromptThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         delivery: Schema.optionalKey(
           Schema.Union([V2ThreadQueueStartResponse__AgentMessageDelivery, Schema.Null]),
         ),
@@ -57854,9 +64034,31 @@ export const V2ThreadQueueStartResponse__ThreadItem = Schema.Union(
         type: Schema.Literal("agentMessage").annotate({ title: "AgentMessageThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "AgentMessageThreadItem" }),
+    ).annotate({
+      title: "AgentMessageThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         name: Schema.String,
         namespace: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
@@ -57866,9 +64068,31 @@ export const V2ThreadQueueStartResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "FunctionCallOutputThreadItem" }),
+    ).annotate({
+      title: "FunctionCallOutputThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         text: Schema.String,
         type: Schema.Literal("plan").annotate({ title: "PlanThreadItemType" }),
@@ -57881,15 +64105,55 @@ export const V2ThreadQueueStartResponse__ThreadItem = Schema.Union(
     }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         content: Schema.optionalKey(Schema.Array(Schema.String).annotate({ default: [] })),
         id: Schema.String,
         summary: Schema.optionalKey(Schema.Array(Schema.String).annotate({ default: [] })),
         type: Schema.Literal("reasoning").annotate({ title: "ReasoningThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ReasoningThreadItem" }),
+    ).annotate({
+      title: "ReasoningThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         aggregatedOutput: Schema.optionalKey(
           Schema.Union([
             Schema.String.annotate({
@@ -57964,18 +64228,62 @@ export const V2ThreadQueueStartResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "CommandExecutionThreadItem" }),
+    ).annotate({
+      title: "CommandExecutionThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         changes: Schema.Array(V2ThreadQueueStartResponse__FileUpdateChange),
         id: Schema.String,
         status: V2ThreadQueueStartResponse__PatchApplyStatus,
         type: Schema.Literal("fileChange").annotate({ title: "FileChangeThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "FileChangeThreadItem" }),
+    ).annotate({
+      title: "FileChangeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         appContext: Schema.optionalKey(
           Schema.Union([V2ThreadQueueStartResponse__McpToolCallAppContext, Schema.Null]),
         ),
@@ -58019,9 +64327,31 @@ export const V2ThreadQueueStartResponse__ThreadItem = Schema.Union(
         type: Schema.Literal("mcpToolCall").annotate({ title: "McpToolCallThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "McpToolCallThreadItem" }),
+    ).annotate({
+      title: "McpToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         arguments: Schema.Json.annotate({ expected: "JSON value" }),
         contentItems: Schema.optionalKey(
           Schema.Union([
@@ -58048,9 +64378,31 @@ export const V2ThreadQueueStartResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "DynamicToolCallThreadItem" }),
+    ).annotate({
+      title: "DynamicToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         agentsStates: Schema.Record(
           Schema.String,
           V2ThreadQueueStartResponse__CollabAgentState,
@@ -58097,9 +64449,31 @@ export const V2ThreadQueueStartResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "CollabAgentToolCallThreadItem" }),
+    ).annotate({
+      title: "CollabAgentToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         agentPath: Schema.String,
         agentThreadId: Schema.String,
         id: Schema.String,
@@ -58123,9 +64497,31 @@ export const V2ThreadQueueStartResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "SubAgentActivityThreadItem" }),
+    ).annotate({
+      title: "SubAgentActivityThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         action: Schema.optionalKey(
           Schema.Union([V2ThreadQueueStartResponse__WebSearchAction, Schema.Null]),
         ),
@@ -58143,17 +64539,61 @@ export const V2ThreadQueueStartResponse__ThreadItem = Schema.Union(
         type: Schema.Literal("webSearch").annotate({ title: "WebSearchThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "WebSearchThreadItem" }),
+    ).annotate({
+      title: "WebSearchThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         path: V2ThreadQueueStartResponse__LegacyAppPathString,
         type: Schema.Literal("imageView").annotate({ title: "ImageViewThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ImageViewThreadItem" }),
+    ).annotate({
+      title: "ImageViewThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         durationMs: Schema.Number.annotate({ format: "uint64" })
           .check(Schema.isInt().annotate({ expected: "an integer" }))
           .check(
@@ -58169,27 +64609,140 @@ export const V2ThreadQueueStartResponse__ThreadItem = Schema.Union(
       title: "SleepThreadItem",
       description: "Display item emitted by the interruptible `clock.sleep` tool.",
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        failure: Schema.optionalKey(
-          Schema.Union([V2ThreadQueueStartResponse__ImageGenerationFailure, Schema.Null]),
-        ),
-        id: Schema.String,
-        result: Schema.String,
-        revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-        savedPath: Schema.optionalKey(
-          Schema.Union([V2ThreadQueueStartResponse__AbsolutePathBuf, Schema.Null]),
-        ),
-        status: Schema.String,
-        transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
-        type: Schema.Literal("imageGeneration").annotate({
-          title: "ImageGenerationThreadItemType",
+    Schema.Union([
+      Schema.StructWithRest(
+        Schema.Struct({
+          completedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          startedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item started, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          failure: Schema.optionalKey(
+            Schema.Union([V2ThreadQueueStartResponse__ImageGenerationFailure, Schema.Null]),
+          ),
+          generationId: Schema.optionalKey(
+            Schema.Union([
+              Schema.String.annotate({
+                description:
+                  "Image generation identifier for the generated image, when provided by the image backend.",
+              }),
+              Schema.Null,
+            ]),
+          ),
+          id: Schema.String,
+          inputImages: Schema.optionalKey(
+            Schema.Array(V2ThreadQueueStartResponse__ImageGenerationInputImage).annotate({
+              description:
+                "Observed local inputs for a completed generation, absent on older items.",
+            }),
+          ),
+          revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+          savedPath: Schema.optionalKey(
+            Schema.Union([V2ThreadQueueStartResponse__AbsolutePathBuf, Schema.Null]),
+          ),
+          status: Schema.String,
+          transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
+          type: Schema.Literal("imageGeneration").annotate({
+            title: "ImageGenerationThreadItemType",
+          }),
+          fileId: Schema.String,
         }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({
+        title: "FileIdThreadItem",
+        description:
+          "Either inline generated-image data or its durable attachment-store identity.\n\n`File` must remain first so rollouts written during the migration, which contain both an empty `result` and a `fileId`, retain the file reference when deserialized.",
       }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ImageGenerationThreadItem" }),
+      Schema.StructWithRest(
+        Schema.Struct({
+          completedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          startedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item started, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          failure: Schema.optionalKey(
+            Schema.Union([V2ThreadQueueStartResponse__ImageGenerationFailure, Schema.Null]),
+          ),
+          generationId: Schema.optionalKey(
+            Schema.Union([
+              Schema.String.annotate({
+                description:
+                  "Image generation identifier for the generated image, when provided by the image backend.",
+              }),
+              Schema.Null,
+            ]),
+          ),
+          id: Schema.String,
+          inputImages: Schema.optionalKey(
+            Schema.Array(V2ThreadQueueStartResponse__ImageGenerationInputImage).annotate({
+              description:
+                "Observed local inputs for a completed generation, absent on older items.",
+            }),
+          ),
+          revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+          savedPath: Schema.optionalKey(
+            Schema.Union([V2ThreadQueueStartResponse__AbsolutePathBuf, Schema.Null]),
+          ),
+          status: Schema.String,
+          transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
+          type: Schema.Literal("imageGeneration").annotate({
+            title: "ImageGenerationThreadItemType",
+          }),
+          result: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({
+        title: "ResultThreadItem",
+        description:
+          "Either inline generated-image data or its durable attachment-store identity.\n\n`File` must remain first so rollouts written during the migration, which contain both an empty `result` and a `fileId`, retain the file reference when deserialized.",
+      }),
+    ]),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         review: Schema.String,
         type: Schema.Literal("enteredReviewMode").annotate({
@@ -58197,9 +64750,31 @@ export const V2ThreadQueueStartResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "EnteredReviewModeThreadItem" }),
+    ).annotate({
+      title: "EnteredReviewModeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         review: Schema.String,
         type: Schema.Literal("exitedReviewMode").annotate({
@@ -58207,16 +64782,42 @@ export const V2ThreadQueueStartResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ExitedReviewModeThreadItem" }),
+    ).annotate({
+      title: "ExitedReviewModeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         type: Schema.Literal("contextCompaction").annotate({
           title: "ContextCompactionThreadItemType",
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ContextCompactionThreadItem" }),
+    ).annotate({
+      title: "ContextCompactionThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
   ],
   { mode: "oneOf" },
 ).annotate({ identifier: "V2ThreadQueueStartResponse__ThreadItem" });
@@ -58237,17 +64838,23 @@ export const V2ThreadQueueUpdateResponse__QueuedSubmission = Schema.StructWithRe
 
 export type V2ThreadReadResponse__ThreadItem =
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly clientId?: string | null;
       readonly content: ReadonlyArray<V2ThreadReadResponse__UserInput>;
       readonly id: string;
       readonly type: "userMessage";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly fragments: ReadonlyArray<V2ThreadReadResponse__HookPromptFragment>;
       readonly id: string;
       readonly type: "hookPrompt";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly delivery?: V2ThreadReadResponse__AgentMessageDelivery | null;
       readonly id: string;
       readonly memoryCitation?: V2ThreadReadResponse__MemoryCitation | null;
@@ -58257,22 +64864,32 @@ export type V2ThreadReadResponse__ThreadItem =
       readonly type: "agentMessage";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly id: string;
       readonly name: string;
       readonly namespace?: string | null;
       readonly output: V2ThreadReadResponse__FunctionCallOutputBody;
       readonly type: "functionCallOutput";
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly id: string; readonly text: string; readonly type: "plan" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly text: string;
+      readonly type: "plan";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly content?: ReadonlyArray<string>;
       readonly id: string;
       readonly summary?: ReadonlyArray<string>;
       readonly type: "reasoning";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly aggregatedOutput?: string | null;
       readonly command: string;
       readonly commandActions: ReadonlyArray<V2ThreadReadResponse__CommandAction>;
@@ -58288,12 +64905,16 @@ export type V2ThreadReadResponse__ThreadItem =
       readonly type: "commandExecution";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly changes: ReadonlyArray<V2ThreadReadResponse__FileUpdateChange>;
       readonly id: string;
       readonly status: V2ThreadReadResponse__PatchApplyStatus;
       readonly type: "fileChange";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly appContext?: V2ThreadReadResponse__McpToolCallAppContext | null;
       readonly arguments: Schema.Json;
       readonly durationMs?: number | null;
@@ -58310,6 +64931,8 @@ export type V2ThreadReadResponse__ThreadItem =
       readonly type: "mcpToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly arguments: Schema.Json;
       readonly contentItems?: ReadonlyArray<V2ThreadReadResponse__DynamicToolCallOutputContentItem> | null;
       readonly durationMs?: number | null;
@@ -58321,6 +64944,8 @@ export type V2ThreadReadResponse__ThreadItem =
       readonly type: "dynamicToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly agentsStates: { readonly [x: string]: V2ThreadReadResponse__CollabAgentState };
       readonly id: string;
       readonly model?: string | null;
@@ -58333,6 +64958,8 @@ export type V2ThreadReadResponse__ThreadItem =
       readonly type: "collabAgentToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly agentPath: string;
       readonly agentThreadId: string;
       readonly id: string;
@@ -58342,6 +64969,8 @@ export type V2ThreadReadResponse__ThreadItem =
       readonly type: "subAgentActivity";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly action?: V2ThreadReadResponse__WebSearchAction | null;
       readonly id: string;
       readonly query: string;
@@ -58349,53 +64978,150 @@ export type V2ThreadReadResponse__ThreadItem =
       readonly type: "webSearch";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly id: string;
       readonly path: V2ThreadReadResponse__LegacyAppPathString;
       readonly type: "imageView";
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly durationMs: number; readonly id: string; readonly type: "sleep" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
   | ({
-      readonly failure?: V2ThreadReadResponse__ImageGenerationFailure | null;
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly durationMs: number;
       readonly id: string;
-      readonly result: string;
+      readonly type: "sleep";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly failure?: V2ThreadReadResponse__ImageGenerationFailure | null;
+      readonly generationId?: string | null;
+      readonly id: string;
+      readonly inputImages?: ReadonlyArray<V2ThreadReadResponse__ImageGenerationInputImage>;
       readonly revisedPrompt?: string | null;
       readonly savedPath?: V2ThreadReadResponse__AbsolutePathBuf | null;
       readonly status: string;
       readonly transparentBackground?: boolean | null;
       readonly type: "imageGeneration";
+      readonly fileId: string;
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly id: string; readonly review: string; readonly type: "enteredReviewMode" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
-  | ({ readonly id: string; readonly review: string; readonly type: "exitedReviewMode" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
-  | ({ readonly id: string; readonly type: "contextCompaction" } & {
-      readonly [x: string]: CodexJsonExtension;
-    });
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly failure?: V2ThreadReadResponse__ImageGenerationFailure | null;
+      readonly generationId?: string | null;
+      readonly id: string;
+      readonly inputImages?: ReadonlyArray<V2ThreadReadResponse__ImageGenerationInputImage>;
+      readonly revisedPrompt?: string | null;
+      readonly savedPath?: V2ThreadReadResponse__AbsolutePathBuf | null;
+      readonly status: string;
+      readonly transparentBackground?: boolean | null;
+      readonly type: "imageGeneration";
+      readonly result: string;
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly review: string;
+      readonly type: "enteredReviewMode";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly review: string;
+      readonly type: "exitedReviewMode";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly type: "contextCompaction";
+    } & { readonly [x: string]: CodexJsonExtension });
 export const V2ThreadReadResponse__ThreadItem = Schema.Union(
   [
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         clientId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         content: Schema.Array(V2ThreadReadResponse__UserInput),
         id: Schema.String,
         type: Schema.Literal("userMessage").annotate({ title: "UserMessageThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "UserMessageThreadItem" }),
+    ).annotate({
+      title: "UserMessageThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         fragments: Schema.Array(V2ThreadReadResponse__HookPromptFragment),
         id: Schema.String,
         type: Schema.Literal("hookPrompt").annotate({ title: "HookPromptThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "HookPromptThreadItem" }),
+    ).annotate({
+      title: "HookPromptThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         delivery: Schema.optionalKey(
           Schema.Union([V2ThreadReadResponse__AgentMessageDelivery, Schema.Null]),
         ),
@@ -58411,9 +65137,31 @@ export const V2ThreadReadResponse__ThreadItem = Schema.Union(
         type: Schema.Literal("agentMessage").annotate({ title: "AgentMessageThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "AgentMessageThreadItem" }),
+    ).annotate({
+      title: "AgentMessageThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         name: Schema.String,
         namespace: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
@@ -58423,9 +65171,31 @@ export const V2ThreadReadResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "FunctionCallOutputThreadItem" }),
+    ).annotate({
+      title: "FunctionCallOutputThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         text: Schema.String,
         type: Schema.Literal("plan").annotate({ title: "PlanThreadItemType" }),
@@ -58438,15 +65208,55 @@ export const V2ThreadReadResponse__ThreadItem = Schema.Union(
     }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         content: Schema.optionalKey(Schema.Array(Schema.String).annotate({ default: [] })),
         id: Schema.String,
         summary: Schema.optionalKey(Schema.Array(Schema.String).annotate({ default: [] })),
         type: Schema.Literal("reasoning").annotate({ title: "ReasoningThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ReasoningThreadItem" }),
+    ).annotate({
+      title: "ReasoningThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         aggregatedOutput: Schema.optionalKey(
           Schema.Union([
             Schema.String.annotate({
@@ -58521,18 +65331,62 @@ export const V2ThreadReadResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "CommandExecutionThreadItem" }),
+    ).annotate({
+      title: "CommandExecutionThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         changes: Schema.Array(V2ThreadReadResponse__FileUpdateChange),
         id: Schema.String,
         status: V2ThreadReadResponse__PatchApplyStatus,
         type: Schema.Literal("fileChange").annotate({ title: "FileChangeThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "FileChangeThreadItem" }),
+    ).annotate({
+      title: "FileChangeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         appContext: Schema.optionalKey(
           Schema.Union([V2ThreadReadResponse__McpToolCallAppContext, Schema.Null]),
         ),
@@ -58576,9 +65430,31 @@ export const V2ThreadReadResponse__ThreadItem = Schema.Union(
         type: Schema.Literal("mcpToolCall").annotate({ title: "McpToolCallThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "McpToolCallThreadItem" }),
+    ).annotate({
+      title: "McpToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         arguments: Schema.Json.annotate({ expected: "JSON value" }),
         contentItems: Schema.optionalKey(
           Schema.Union([
@@ -58605,9 +65481,31 @@ export const V2ThreadReadResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "DynamicToolCallThreadItem" }),
+    ).annotate({
+      title: "DynamicToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         agentsStates: Schema.Record(Schema.String, V2ThreadReadResponse__CollabAgentState).annotate(
           { description: "Last known status of the target agents, when available." },
         ),
@@ -58653,9 +65551,31 @@ export const V2ThreadReadResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "CollabAgentToolCallThreadItem" }),
+    ).annotate({
+      title: "CollabAgentToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         agentPath: Schema.String,
         agentThreadId: Schema.String,
         id: Schema.String,
@@ -58679,9 +65599,31 @@ export const V2ThreadReadResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "SubAgentActivityThreadItem" }),
+    ).annotate({
+      title: "SubAgentActivityThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         action: Schema.optionalKey(
           Schema.Union([V2ThreadReadResponse__WebSearchAction, Schema.Null]),
         ),
@@ -58699,17 +65641,61 @@ export const V2ThreadReadResponse__ThreadItem = Schema.Union(
         type: Schema.Literal("webSearch").annotate({ title: "WebSearchThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "WebSearchThreadItem" }),
+    ).annotate({
+      title: "WebSearchThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         path: V2ThreadReadResponse__LegacyAppPathString,
         type: Schema.Literal("imageView").annotate({ title: "ImageViewThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ImageViewThreadItem" }),
+    ).annotate({
+      title: "ImageViewThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         durationMs: Schema.Number.annotate({ format: "uint64" })
           .check(Schema.isInt().annotate({ expected: "an integer" }))
           .check(
@@ -58725,27 +65711,140 @@ export const V2ThreadReadResponse__ThreadItem = Schema.Union(
       title: "SleepThreadItem",
       description: "Display item emitted by the interruptible `clock.sleep` tool.",
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        failure: Schema.optionalKey(
-          Schema.Union([V2ThreadReadResponse__ImageGenerationFailure, Schema.Null]),
-        ),
-        id: Schema.String,
-        result: Schema.String,
-        revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-        savedPath: Schema.optionalKey(
-          Schema.Union([V2ThreadReadResponse__AbsolutePathBuf, Schema.Null]),
-        ),
-        status: Schema.String,
-        transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
-        type: Schema.Literal("imageGeneration").annotate({
-          title: "ImageGenerationThreadItemType",
+    Schema.Union([
+      Schema.StructWithRest(
+        Schema.Struct({
+          completedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          startedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item started, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          failure: Schema.optionalKey(
+            Schema.Union([V2ThreadReadResponse__ImageGenerationFailure, Schema.Null]),
+          ),
+          generationId: Schema.optionalKey(
+            Schema.Union([
+              Schema.String.annotate({
+                description:
+                  "Image generation identifier for the generated image, when provided by the image backend.",
+              }),
+              Schema.Null,
+            ]),
+          ),
+          id: Schema.String,
+          inputImages: Schema.optionalKey(
+            Schema.Array(V2ThreadReadResponse__ImageGenerationInputImage).annotate({
+              description:
+                "Observed local inputs for a completed generation, absent on older items.",
+            }),
+          ),
+          revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+          savedPath: Schema.optionalKey(
+            Schema.Union([V2ThreadReadResponse__AbsolutePathBuf, Schema.Null]),
+          ),
+          status: Schema.String,
+          transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
+          type: Schema.Literal("imageGeneration").annotate({
+            title: "ImageGenerationThreadItemType",
+          }),
+          fileId: Schema.String,
         }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({
+        title: "FileIdThreadItem",
+        description:
+          "Either inline generated-image data or its durable attachment-store identity.\n\n`File` must remain first so rollouts written during the migration, which contain both an empty `result` and a `fileId`, retain the file reference when deserialized.",
       }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ImageGenerationThreadItem" }),
+      Schema.StructWithRest(
+        Schema.Struct({
+          completedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          startedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item started, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          failure: Schema.optionalKey(
+            Schema.Union([V2ThreadReadResponse__ImageGenerationFailure, Schema.Null]),
+          ),
+          generationId: Schema.optionalKey(
+            Schema.Union([
+              Schema.String.annotate({
+                description:
+                  "Image generation identifier for the generated image, when provided by the image backend.",
+              }),
+              Schema.Null,
+            ]),
+          ),
+          id: Schema.String,
+          inputImages: Schema.optionalKey(
+            Schema.Array(V2ThreadReadResponse__ImageGenerationInputImage).annotate({
+              description:
+                "Observed local inputs for a completed generation, absent on older items.",
+            }),
+          ),
+          revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+          savedPath: Schema.optionalKey(
+            Schema.Union([V2ThreadReadResponse__AbsolutePathBuf, Schema.Null]),
+          ),
+          status: Schema.String,
+          transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
+          type: Schema.Literal("imageGeneration").annotate({
+            title: "ImageGenerationThreadItemType",
+          }),
+          result: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({
+        title: "ResultThreadItem",
+        description:
+          "Either inline generated-image data or its durable attachment-store identity.\n\n`File` must remain first so rollouts written during the migration, which contain both an empty `result` and a `fileId`, retain the file reference when deserialized.",
+      }),
+    ]),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         review: Schema.String,
         type: Schema.Literal("enteredReviewMode").annotate({
@@ -58753,9 +65852,31 @@ export const V2ThreadReadResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "EnteredReviewModeThreadItem" }),
+    ).annotate({
+      title: "EnteredReviewModeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         review: Schema.String,
         type: Schema.Literal("exitedReviewMode").annotate({
@@ -58763,16 +65884,42 @@ export const V2ThreadReadResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ExitedReviewModeThreadItem" }),
+    ).annotate({
+      title: "ExitedReviewModeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         type: Schema.Literal("contextCompaction").annotate({
           title: "ContextCompactionThreadItemType",
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ContextCompactionThreadItem" }),
+    ).annotate({
+      title: "ContextCompactionThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
   ],
   { mode: "oneOf" },
 ).annotate({ identifier: "V2ThreadReadResponse__ThreadItem" });
@@ -59185,17 +66332,23 @@ export const V2ThreadResumeParams__ResponseItem = Schema.Union(
 
 export type V2ThreadResumeResponse__ThreadItem =
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly clientId?: string | null;
       readonly content: ReadonlyArray<V2ThreadResumeResponse__UserInput>;
       readonly id: string;
       readonly type: "userMessage";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly fragments: ReadonlyArray<V2ThreadResumeResponse__HookPromptFragment>;
       readonly id: string;
       readonly type: "hookPrompt";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly delivery?: V2ThreadResumeResponse__AgentMessageDelivery | null;
       readonly id: string;
       readonly memoryCitation?: V2ThreadResumeResponse__MemoryCitation | null;
@@ -59205,22 +66358,32 @@ export type V2ThreadResumeResponse__ThreadItem =
       readonly type: "agentMessage";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly id: string;
       readonly name: string;
       readonly namespace?: string | null;
       readonly output: V2ThreadResumeResponse__FunctionCallOutputBody;
       readonly type: "functionCallOutput";
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly id: string; readonly text: string; readonly type: "plan" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly text: string;
+      readonly type: "plan";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly content?: ReadonlyArray<string>;
       readonly id: string;
       readonly summary?: ReadonlyArray<string>;
       readonly type: "reasoning";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly aggregatedOutput?: string | null;
       readonly command: string;
       readonly commandActions: ReadonlyArray<V2ThreadResumeResponse__CommandAction>;
@@ -59236,12 +66399,16 @@ export type V2ThreadResumeResponse__ThreadItem =
       readonly type: "commandExecution";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly changes: ReadonlyArray<V2ThreadResumeResponse__FileUpdateChange>;
       readonly id: string;
       readonly status: V2ThreadResumeResponse__PatchApplyStatus;
       readonly type: "fileChange";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly appContext?: V2ThreadResumeResponse__McpToolCallAppContext | null;
       readonly arguments: Schema.Json;
       readonly durationMs?: number | null;
@@ -59258,6 +66425,8 @@ export type V2ThreadResumeResponse__ThreadItem =
       readonly type: "mcpToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly arguments: Schema.Json;
       readonly contentItems?: ReadonlyArray<V2ThreadResumeResponse__DynamicToolCallOutputContentItem> | null;
       readonly durationMs?: number | null;
@@ -59269,6 +66438,8 @@ export type V2ThreadResumeResponse__ThreadItem =
       readonly type: "dynamicToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly agentsStates: { readonly [x: string]: V2ThreadResumeResponse__CollabAgentState };
       readonly id: string;
       readonly model?: string | null;
@@ -59281,6 +66452,8 @@ export type V2ThreadResumeResponse__ThreadItem =
       readonly type: "collabAgentToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly agentPath: string;
       readonly agentThreadId: string;
       readonly id: string;
@@ -59290,6 +66463,8 @@ export type V2ThreadResumeResponse__ThreadItem =
       readonly type: "subAgentActivity";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly action?: V2ThreadResumeResponse__WebSearchAction | null;
       readonly id: string;
       readonly query: string;
@@ -59297,53 +66472,150 @@ export type V2ThreadResumeResponse__ThreadItem =
       readonly type: "webSearch";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly id: string;
       readonly path: V2ThreadResumeResponse__LegacyAppPathString;
       readonly type: "imageView";
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly durationMs: number; readonly id: string; readonly type: "sleep" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
   | ({
-      readonly failure?: V2ThreadResumeResponse__ImageGenerationFailure | null;
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly durationMs: number;
       readonly id: string;
-      readonly result: string;
+      readonly type: "sleep";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly failure?: V2ThreadResumeResponse__ImageGenerationFailure | null;
+      readonly generationId?: string | null;
+      readonly id: string;
+      readonly inputImages?: ReadonlyArray<V2ThreadResumeResponse__ImageGenerationInputImage>;
       readonly revisedPrompt?: string | null;
       readonly savedPath?: V2ThreadResumeResponse__AbsolutePathBuf | null;
       readonly status: string;
       readonly transparentBackground?: boolean | null;
       readonly type: "imageGeneration";
+      readonly fileId: string;
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly id: string; readonly review: string; readonly type: "enteredReviewMode" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
-  | ({ readonly id: string; readonly review: string; readonly type: "exitedReviewMode" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
-  | ({ readonly id: string; readonly type: "contextCompaction" } & {
-      readonly [x: string]: CodexJsonExtension;
-    });
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly failure?: V2ThreadResumeResponse__ImageGenerationFailure | null;
+      readonly generationId?: string | null;
+      readonly id: string;
+      readonly inputImages?: ReadonlyArray<V2ThreadResumeResponse__ImageGenerationInputImage>;
+      readonly revisedPrompt?: string | null;
+      readonly savedPath?: V2ThreadResumeResponse__AbsolutePathBuf | null;
+      readonly status: string;
+      readonly transparentBackground?: boolean | null;
+      readonly type: "imageGeneration";
+      readonly result: string;
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly review: string;
+      readonly type: "enteredReviewMode";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly review: string;
+      readonly type: "exitedReviewMode";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly type: "contextCompaction";
+    } & { readonly [x: string]: CodexJsonExtension });
 export const V2ThreadResumeResponse__ThreadItem = Schema.Union(
   [
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         clientId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         content: Schema.Array(V2ThreadResumeResponse__UserInput),
         id: Schema.String,
         type: Schema.Literal("userMessage").annotate({ title: "UserMessageThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "UserMessageThreadItem" }),
+    ).annotate({
+      title: "UserMessageThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         fragments: Schema.Array(V2ThreadResumeResponse__HookPromptFragment),
         id: Schema.String,
         type: Schema.Literal("hookPrompt").annotate({ title: "HookPromptThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "HookPromptThreadItem" }),
+    ).annotate({
+      title: "HookPromptThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         delivery: Schema.optionalKey(
           Schema.Union([V2ThreadResumeResponse__AgentMessageDelivery, Schema.Null]),
         ),
@@ -59361,9 +66633,31 @@ export const V2ThreadResumeResponse__ThreadItem = Schema.Union(
         type: Schema.Literal("agentMessage").annotate({ title: "AgentMessageThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "AgentMessageThreadItem" }),
+    ).annotate({
+      title: "AgentMessageThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         name: Schema.String,
         namespace: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
@@ -59373,9 +66667,31 @@ export const V2ThreadResumeResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "FunctionCallOutputThreadItem" }),
+    ).annotate({
+      title: "FunctionCallOutputThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         text: Schema.String,
         type: Schema.Literal("plan").annotate({ title: "PlanThreadItemType" }),
@@ -59388,15 +66704,55 @@ export const V2ThreadResumeResponse__ThreadItem = Schema.Union(
     }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         content: Schema.optionalKey(Schema.Array(Schema.String).annotate({ default: [] })),
         id: Schema.String,
         summary: Schema.optionalKey(Schema.Array(Schema.String).annotate({ default: [] })),
         type: Schema.Literal("reasoning").annotate({ title: "ReasoningThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ReasoningThreadItem" }),
+    ).annotate({
+      title: "ReasoningThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         aggregatedOutput: Schema.optionalKey(
           Schema.Union([
             Schema.String.annotate({
@@ -59471,18 +66827,62 @@ export const V2ThreadResumeResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "CommandExecutionThreadItem" }),
+    ).annotate({
+      title: "CommandExecutionThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         changes: Schema.Array(V2ThreadResumeResponse__FileUpdateChange),
         id: Schema.String,
         status: V2ThreadResumeResponse__PatchApplyStatus,
         type: Schema.Literal("fileChange").annotate({ title: "FileChangeThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "FileChangeThreadItem" }),
+    ).annotate({
+      title: "FileChangeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         appContext: Schema.optionalKey(
           Schema.Union([V2ThreadResumeResponse__McpToolCallAppContext, Schema.Null]),
         ),
@@ -59526,9 +66926,31 @@ export const V2ThreadResumeResponse__ThreadItem = Schema.Union(
         type: Schema.Literal("mcpToolCall").annotate({ title: "McpToolCallThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "McpToolCallThreadItem" }),
+    ).annotate({
+      title: "McpToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         arguments: Schema.Json.annotate({ expected: "JSON value" }),
         contentItems: Schema.optionalKey(
           Schema.Union([
@@ -59555,9 +66977,31 @@ export const V2ThreadResumeResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "DynamicToolCallThreadItem" }),
+    ).annotate({
+      title: "DynamicToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         agentsStates: Schema.Record(
           Schema.String,
           V2ThreadResumeResponse__CollabAgentState,
@@ -59604,9 +67048,31 @@ export const V2ThreadResumeResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "CollabAgentToolCallThreadItem" }),
+    ).annotate({
+      title: "CollabAgentToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         agentPath: Schema.String,
         agentThreadId: Schema.String,
         id: Schema.String,
@@ -59630,9 +67096,31 @@ export const V2ThreadResumeResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "SubAgentActivityThreadItem" }),
+    ).annotate({
+      title: "SubAgentActivityThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         action: Schema.optionalKey(
           Schema.Union([V2ThreadResumeResponse__WebSearchAction, Schema.Null]),
         ),
@@ -59650,17 +67138,61 @@ export const V2ThreadResumeResponse__ThreadItem = Schema.Union(
         type: Schema.Literal("webSearch").annotate({ title: "WebSearchThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "WebSearchThreadItem" }),
+    ).annotate({
+      title: "WebSearchThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         path: V2ThreadResumeResponse__LegacyAppPathString,
         type: Schema.Literal("imageView").annotate({ title: "ImageViewThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ImageViewThreadItem" }),
+    ).annotate({
+      title: "ImageViewThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         durationMs: Schema.Number.annotate({ format: "uint64" })
           .check(Schema.isInt().annotate({ expected: "an integer" }))
           .check(
@@ -59676,27 +67208,140 @@ export const V2ThreadResumeResponse__ThreadItem = Schema.Union(
       title: "SleepThreadItem",
       description: "Display item emitted by the interruptible `clock.sleep` tool.",
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        failure: Schema.optionalKey(
-          Schema.Union([V2ThreadResumeResponse__ImageGenerationFailure, Schema.Null]),
-        ),
-        id: Schema.String,
-        result: Schema.String,
-        revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-        savedPath: Schema.optionalKey(
-          Schema.Union([V2ThreadResumeResponse__AbsolutePathBuf, Schema.Null]),
-        ),
-        status: Schema.String,
-        transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
-        type: Schema.Literal("imageGeneration").annotate({
-          title: "ImageGenerationThreadItemType",
+    Schema.Union([
+      Schema.StructWithRest(
+        Schema.Struct({
+          completedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          startedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item started, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          failure: Schema.optionalKey(
+            Schema.Union([V2ThreadResumeResponse__ImageGenerationFailure, Schema.Null]),
+          ),
+          generationId: Schema.optionalKey(
+            Schema.Union([
+              Schema.String.annotate({
+                description:
+                  "Image generation identifier for the generated image, when provided by the image backend.",
+              }),
+              Schema.Null,
+            ]),
+          ),
+          id: Schema.String,
+          inputImages: Schema.optionalKey(
+            Schema.Array(V2ThreadResumeResponse__ImageGenerationInputImage).annotate({
+              description:
+                "Observed local inputs for a completed generation, absent on older items.",
+            }),
+          ),
+          revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+          savedPath: Schema.optionalKey(
+            Schema.Union([V2ThreadResumeResponse__AbsolutePathBuf, Schema.Null]),
+          ),
+          status: Schema.String,
+          transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
+          type: Schema.Literal("imageGeneration").annotate({
+            title: "ImageGenerationThreadItemType",
+          }),
+          fileId: Schema.String,
         }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({
+        title: "FileIdThreadItem",
+        description:
+          "Either inline generated-image data or its durable attachment-store identity.\n\n`File` must remain first so rollouts written during the migration, which contain both an empty `result` and a `fileId`, retain the file reference when deserialized.",
       }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ImageGenerationThreadItem" }),
+      Schema.StructWithRest(
+        Schema.Struct({
+          completedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          startedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item started, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          failure: Schema.optionalKey(
+            Schema.Union([V2ThreadResumeResponse__ImageGenerationFailure, Schema.Null]),
+          ),
+          generationId: Schema.optionalKey(
+            Schema.Union([
+              Schema.String.annotate({
+                description:
+                  "Image generation identifier for the generated image, when provided by the image backend.",
+              }),
+              Schema.Null,
+            ]),
+          ),
+          id: Schema.String,
+          inputImages: Schema.optionalKey(
+            Schema.Array(V2ThreadResumeResponse__ImageGenerationInputImage).annotate({
+              description:
+                "Observed local inputs for a completed generation, absent on older items.",
+            }),
+          ),
+          revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+          savedPath: Schema.optionalKey(
+            Schema.Union([V2ThreadResumeResponse__AbsolutePathBuf, Schema.Null]),
+          ),
+          status: Schema.String,
+          transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
+          type: Schema.Literal("imageGeneration").annotate({
+            title: "ImageGenerationThreadItemType",
+          }),
+          result: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({
+        title: "ResultThreadItem",
+        description:
+          "Either inline generated-image data or its durable attachment-store identity.\n\n`File` must remain first so rollouts written during the migration, which contain both an empty `result` and a `fileId`, retain the file reference when deserialized.",
+      }),
+    ]),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         review: Schema.String,
         type: Schema.Literal("enteredReviewMode").annotate({
@@ -59704,9 +67349,31 @@ export const V2ThreadResumeResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "EnteredReviewModeThreadItem" }),
+    ).annotate({
+      title: "EnteredReviewModeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         review: Schema.String,
         type: Schema.Literal("exitedReviewMode").annotate({
@@ -59714,33 +67381,65 @@ export const V2ThreadResumeResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ExitedReviewModeThreadItem" }),
+    ).annotate({
+      title: "ExitedReviewModeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         type: Schema.Literal("contextCompaction").annotate({
           title: "ContextCompactionThreadItemType",
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ContextCompactionThreadItem" }),
+    ).annotate({
+      title: "ContextCompactionThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
   ],
   { mode: "oneOf" },
 ).annotate({ identifier: "V2ThreadResumeResponse__ThreadItem" });
 
 export type V2ThreadRevertResponse__ThreadItem =
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly clientId?: string | null;
       readonly content: ReadonlyArray<V2ThreadRevertResponse__UserInput>;
       readonly id: string;
       readonly type: "userMessage";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly fragments: ReadonlyArray<V2ThreadRevertResponse__HookPromptFragment>;
       readonly id: string;
       readonly type: "hookPrompt";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly delivery?: V2ThreadRevertResponse__AgentMessageDelivery | null;
       readonly id: string;
       readonly memoryCitation?: V2ThreadRevertResponse__MemoryCitation | null;
@@ -59750,22 +67449,32 @@ export type V2ThreadRevertResponse__ThreadItem =
       readonly type: "agentMessage";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly id: string;
       readonly name: string;
       readonly namespace?: string | null;
       readonly output: V2ThreadRevertResponse__FunctionCallOutputBody;
       readonly type: "functionCallOutput";
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly id: string; readonly text: string; readonly type: "plan" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly text: string;
+      readonly type: "plan";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly content?: ReadonlyArray<string>;
       readonly id: string;
       readonly summary?: ReadonlyArray<string>;
       readonly type: "reasoning";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly aggregatedOutput?: string | null;
       readonly command: string;
       readonly commandActions: ReadonlyArray<V2ThreadRevertResponse__CommandAction>;
@@ -59781,12 +67490,16 @@ export type V2ThreadRevertResponse__ThreadItem =
       readonly type: "commandExecution";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly changes: ReadonlyArray<V2ThreadRevertResponse__FileUpdateChange>;
       readonly id: string;
       readonly status: V2ThreadRevertResponse__PatchApplyStatus;
       readonly type: "fileChange";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly appContext?: V2ThreadRevertResponse__McpToolCallAppContext | null;
       readonly arguments: Schema.Json;
       readonly durationMs?: number | null;
@@ -59803,6 +67516,8 @@ export type V2ThreadRevertResponse__ThreadItem =
       readonly type: "mcpToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly arguments: Schema.Json;
       readonly contentItems?: ReadonlyArray<V2ThreadRevertResponse__DynamicToolCallOutputContentItem> | null;
       readonly durationMs?: number | null;
@@ -59814,6 +67529,8 @@ export type V2ThreadRevertResponse__ThreadItem =
       readonly type: "dynamicToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly agentsStates: { readonly [x: string]: V2ThreadRevertResponse__CollabAgentState };
       readonly id: string;
       readonly model?: string | null;
@@ -59826,6 +67543,8 @@ export type V2ThreadRevertResponse__ThreadItem =
       readonly type: "collabAgentToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly agentPath: string;
       readonly agentThreadId: string;
       readonly id: string;
@@ -59835,6 +67554,8 @@ export type V2ThreadRevertResponse__ThreadItem =
       readonly type: "subAgentActivity";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly action?: V2ThreadRevertResponse__WebSearchAction | null;
       readonly id: string;
       readonly query: string;
@@ -59842,53 +67563,150 @@ export type V2ThreadRevertResponse__ThreadItem =
       readonly type: "webSearch";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly id: string;
       readonly path: V2ThreadRevertResponse__LegacyAppPathString;
       readonly type: "imageView";
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly durationMs: number; readonly id: string; readonly type: "sleep" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
   | ({
-      readonly failure?: V2ThreadRevertResponse__ImageGenerationFailure | null;
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly durationMs: number;
       readonly id: string;
-      readonly result: string;
+      readonly type: "sleep";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly failure?: V2ThreadRevertResponse__ImageGenerationFailure | null;
+      readonly generationId?: string | null;
+      readonly id: string;
+      readonly inputImages?: ReadonlyArray<V2ThreadRevertResponse__ImageGenerationInputImage>;
       readonly revisedPrompt?: string | null;
       readonly savedPath?: V2ThreadRevertResponse__AbsolutePathBuf | null;
       readonly status: string;
       readonly transparentBackground?: boolean | null;
       readonly type: "imageGeneration";
+      readonly fileId: string;
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly id: string; readonly review: string; readonly type: "enteredReviewMode" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
-  | ({ readonly id: string; readonly review: string; readonly type: "exitedReviewMode" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
-  | ({ readonly id: string; readonly type: "contextCompaction" } & {
-      readonly [x: string]: CodexJsonExtension;
-    });
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly failure?: V2ThreadRevertResponse__ImageGenerationFailure | null;
+      readonly generationId?: string | null;
+      readonly id: string;
+      readonly inputImages?: ReadonlyArray<V2ThreadRevertResponse__ImageGenerationInputImage>;
+      readonly revisedPrompt?: string | null;
+      readonly savedPath?: V2ThreadRevertResponse__AbsolutePathBuf | null;
+      readonly status: string;
+      readonly transparentBackground?: boolean | null;
+      readonly type: "imageGeneration";
+      readonly result: string;
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly review: string;
+      readonly type: "enteredReviewMode";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly review: string;
+      readonly type: "exitedReviewMode";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly type: "contextCompaction";
+    } & { readonly [x: string]: CodexJsonExtension });
 export const V2ThreadRevertResponse__ThreadItem = Schema.Union(
   [
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         clientId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         content: Schema.Array(V2ThreadRevertResponse__UserInput),
         id: Schema.String,
         type: Schema.Literal("userMessage").annotate({ title: "UserMessageThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "UserMessageThreadItem" }),
+    ).annotate({
+      title: "UserMessageThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         fragments: Schema.Array(V2ThreadRevertResponse__HookPromptFragment),
         id: Schema.String,
         type: Schema.Literal("hookPrompt").annotate({ title: "HookPromptThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "HookPromptThreadItem" }),
+    ).annotate({
+      title: "HookPromptThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         delivery: Schema.optionalKey(
           Schema.Union([V2ThreadRevertResponse__AgentMessageDelivery, Schema.Null]),
         ),
@@ -59906,9 +67724,31 @@ export const V2ThreadRevertResponse__ThreadItem = Schema.Union(
         type: Schema.Literal("agentMessage").annotate({ title: "AgentMessageThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "AgentMessageThreadItem" }),
+    ).annotate({
+      title: "AgentMessageThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         name: Schema.String,
         namespace: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
@@ -59918,9 +67758,31 @@ export const V2ThreadRevertResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "FunctionCallOutputThreadItem" }),
+    ).annotate({
+      title: "FunctionCallOutputThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         text: Schema.String,
         type: Schema.Literal("plan").annotate({ title: "PlanThreadItemType" }),
@@ -59933,15 +67795,55 @@ export const V2ThreadRevertResponse__ThreadItem = Schema.Union(
     }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         content: Schema.optionalKey(Schema.Array(Schema.String).annotate({ default: [] })),
         id: Schema.String,
         summary: Schema.optionalKey(Schema.Array(Schema.String).annotate({ default: [] })),
         type: Schema.Literal("reasoning").annotate({ title: "ReasoningThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ReasoningThreadItem" }),
+    ).annotate({
+      title: "ReasoningThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         aggregatedOutput: Schema.optionalKey(
           Schema.Union([
             Schema.String.annotate({
@@ -60016,18 +67918,62 @@ export const V2ThreadRevertResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "CommandExecutionThreadItem" }),
+    ).annotate({
+      title: "CommandExecutionThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         changes: Schema.Array(V2ThreadRevertResponse__FileUpdateChange),
         id: Schema.String,
         status: V2ThreadRevertResponse__PatchApplyStatus,
         type: Schema.Literal("fileChange").annotate({ title: "FileChangeThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "FileChangeThreadItem" }),
+    ).annotate({
+      title: "FileChangeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         appContext: Schema.optionalKey(
           Schema.Union([V2ThreadRevertResponse__McpToolCallAppContext, Schema.Null]),
         ),
@@ -60071,9 +68017,31 @@ export const V2ThreadRevertResponse__ThreadItem = Schema.Union(
         type: Schema.Literal("mcpToolCall").annotate({ title: "McpToolCallThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "McpToolCallThreadItem" }),
+    ).annotate({
+      title: "McpToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         arguments: Schema.Json.annotate({ expected: "JSON value" }),
         contentItems: Schema.optionalKey(
           Schema.Union([
@@ -60100,9 +68068,31 @@ export const V2ThreadRevertResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "DynamicToolCallThreadItem" }),
+    ).annotate({
+      title: "DynamicToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         agentsStates: Schema.Record(
           Schema.String,
           V2ThreadRevertResponse__CollabAgentState,
@@ -60149,9 +68139,31 @@ export const V2ThreadRevertResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "CollabAgentToolCallThreadItem" }),
+    ).annotate({
+      title: "CollabAgentToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         agentPath: Schema.String,
         agentThreadId: Schema.String,
         id: Schema.String,
@@ -60175,9 +68187,31 @@ export const V2ThreadRevertResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "SubAgentActivityThreadItem" }),
+    ).annotate({
+      title: "SubAgentActivityThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         action: Schema.optionalKey(
           Schema.Union([V2ThreadRevertResponse__WebSearchAction, Schema.Null]),
         ),
@@ -60195,17 +68229,61 @@ export const V2ThreadRevertResponse__ThreadItem = Schema.Union(
         type: Schema.Literal("webSearch").annotate({ title: "WebSearchThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "WebSearchThreadItem" }),
+    ).annotate({
+      title: "WebSearchThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         path: V2ThreadRevertResponse__LegacyAppPathString,
         type: Schema.Literal("imageView").annotate({ title: "ImageViewThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ImageViewThreadItem" }),
+    ).annotate({
+      title: "ImageViewThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         durationMs: Schema.Number.annotate({ format: "uint64" })
           .check(Schema.isInt().annotate({ expected: "an integer" }))
           .check(
@@ -60221,27 +68299,140 @@ export const V2ThreadRevertResponse__ThreadItem = Schema.Union(
       title: "SleepThreadItem",
       description: "Display item emitted by the interruptible `clock.sleep` tool.",
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        failure: Schema.optionalKey(
-          Schema.Union([V2ThreadRevertResponse__ImageGenerationFailure, Schema.Null]),
-        ),
-        id: Schema.String,
-        result: Schema.String,
-        revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-        savedPath: Schema.optionalKey(
-          Schema.Union([V2ThreadRevertResponse__AbsolutePathBuf, Schema.Null]),
-        ),
-        status: Schema.String,
-        transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
-        type: Schema.Literal("imageGeneration").annotate({
-          title: "ImageGenerationThreadItemType",
+    Schema.Union([
+      Schema.StructWithRest(
+        Schema.Struct({
+          completedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          startedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item started, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          failure: Schema.optionalKey(
+            Schema.Union([V2ThreadRevertResponse__ImageGenerationFailure, Schema.Null]),
+          ),
+          generationId: Schema.optionalKey(
+            Schema.Union([
+              Schema.String.annotate({
+                description:
+                  "Image generation identifier for the generated image, when provided by the image backend.",
+              }),
+              Schema.Null,
+            ]),
+          ),
+          id: Schema.String,
+          inputImages: Schema.optionalKey(
+            Schema.Array(V2ThreadRevertResponse__ImageGenerationInputImage).annotate({
+              description:
+                "Observed local inputs for a completed generation, absent on older items.",
+            }),
+          ),
+          revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+          savedPath: Schema.optionalKey(
+            Schema.Union([V2ThreadRevertResponse__AbsolutePathBuf, Schema.Null]),
+          ),
+          status: Schema.String,
+          transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
+          type: Schema.Literal("imageGeneration").annotate({
+            title: "ImageGenerationThreadItemType",
+          }),
+          fileId: Schema.String,
         }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({
+        title: "FileIdThreadItem",
+        description:
+          "Either inline generated-image data or its durable attachment-store identity.\n\n`File` must remain first so rollouts written during the migration, which contain both an empty `result` and a `fileId`, retain the file reference when deserialized.",
       }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ImageGenerationThreadItem" }),
+      Schema.StructWithRest(
+        Schema.Struct({
+          completedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          startedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item started, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          failure: Schema.optionalKey(
+            Schema.Union([V2ThreadRevertResponse__ImageGenerationFailure, Schema.Null]),
+          ),
+          generationId: Schema.optionalKey(
+            Schema.Union([
+              Schema.String.annotate({
+                description:
+                  "Image generation identifier for the generated image, when provided by the image backend.",
+              }),
+              Schema.Null,
+            ]),
+          ),
+          id: Schema.String,
+          inputImages: Schema.optionalKey(
+            Schema.Array(V2ThreadRevertResponse__ImageGenerationInputImage).annotate({
+              description:
+                "Observed local inputs for a completed generation, absent on older items.",
+            }),
+          ),
+          revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+          savedPath: Schema.optionalKey(
+            Schema.Union([V2ThreadRevertResponse__AbsolutePathBuf, Schema.Null]),
+          ),
+          status: Schema.String,
+          transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
+          type: Schema.Literal("imageGeneration").annotate({
+            title: "ImageGenerationThreadItemType",
+          }),
+          result: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({
+        title: "ResultThreadItem",
+        description:
+          "Either inline generated-image data or its durable attachment-store identity.\n\n`File` must remain first so rollouts written during the migration, which contain both an empty `result` and a `fileId`, retain the file reference when deserialized.",
+      }),
+    ]),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         review: Schema.String,
         type: Schema.Literal("enteredReviewMode").annotate({
@@ -60249,9 +68440,31 @@ export const V2ThreadRevertResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "EnteredReviewModeThreadItem" }),
+    ).annotate({
+      title: "EnteredReviewModeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         review: Schema.String,
         type: Schema.Literal("exitedReviewMode").annotate({
@@ -60259,33 +68472,65 @@ export const V2ThreadRevertResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ExitedReviewModeThreadItem" }),
+    ).annotate({
+      title: "ExitedReviewModeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         type: Schema.Literal("contextCompaction").annotate({
           title: "ContextCompactionThreadItemType",
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ContextCompactionThreadItem" }),
+    ).annotate({
+      title: "ContextCompactionThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
   ],
   { mode: "oneOf" },
 ).annotate({ identifier: "V2ThreadRevertResponse__ThreadItem" });
 
 export type V2ThreadSearchResponse__ThreadItem =
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly clientId?: string | null;
       readonly content: ReadonlyArray<V2ThreadSearchResponse__UserInput>;
       readonly id: string;
       readonly type: "userMessage";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly fragments: ReadonlyArray<V2ThreadSearchResponse__HookPromptFragment>;
       readonly id: string;
       readonly type: "hookPrompt";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly delivery?: V2ThreadSearchResponse__AgentMessageDelivery | null;
       readonly id: string;
       readonly memoryCitation?: V2ThreadSearchResponse__MemoryCitation | null;
@@ -60295,22 +68540,32 @@ export type V2ThreadSearchResponse__ThreadItem =
       readonly type: "agentMessage";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly id: string;
       readonly name: string;
       readonly namespace?: string | null;
       readonly output: V2ThreadSearchResponse__FunctionCallOutputBody;
       readonly type: "functionCallOutput";
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly id: string; readonly text: string; readonly type: "plan" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly text: string;
+      readonly type: "plan";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly content?: ReadonlyArray<string>;
       readonly id: string;
       readonly summary?: ReadonlyArray<string>;
       readonly type: "reasoning";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly aggregatedOutput?: string | null;
       readonly command: string;
       readonly commandActions: ReadonlyArray<V2ThreadSearchResponse__CommandAction>;
@@ -60326,12 +68581,16 @@ export type V2ThreadSearchResponse__ThreadItem =
       readonly type: "commandExecution";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly changes: ReadonlyArray<V2ThreadSearchResponse__FileUpdateChange>;
       readonly id: string;
       readonly status: V2ThreadSearchResponse__PatchApplyStatus;
       readonly type: "fileChange";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly appContext?: V2ThreadSearchResponse__McpToolCallAppContext | null;
       readonly arguments: Schema.Json;
       readonly durationMs?: number | null;
@@ -60348,6 +68607,8 @@ export type V2ThreadSearchResponse__ThreadItem =
       readonly type: "mcpToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly arguments: Schema.Json;
       readonly contentItems?: ReadonlyArray<V2ThreadSearchResponse__DynamicToolCallOutputContentItem> | null;
       readonly durationMs?: number | null;
@@ -60359,6 +68620,8 @@ export type V2ThreadSearchResponse__ThreadItem =
       readonly type: "dynamicToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly agentsStates: { readonly [x: string]: V2ThreadSearchResponse__CollabAgentState };
       readonly id: string;
       readonly model?: string | null;
@@ -60371,6 +68634,8 @@ export type V2ThreadSearchResponse__ThreadItem =
       readonly type: "collabAgentToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly agentPath: string;
       readonly agentThreadId: string;
       readonly id: string;
@@ -60380,6 +68645,8 @@ export type V2ThreadSearchResponse__ThreadItem =
       readonly type: "subAgentActivity";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly action?: V2ThreadSearchResponse__WebSearchAction | null;
       readonly id: string;
       readonly query: string;
@@ -60387,53 +68654,150 @@ export type V2ThreadSearchResponse__ThreadItem =
       readonly type: "webSearch";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly id: string;
       readonly path: V2ThreadSearchResponse__LegacyAppPathString;
       readonly type: "imageView";
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly durationMs: number; readonly id: string; readonly type: "sleep" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
   | ({
-      readonly failure?: V2ThreadSearchResponse__ImageGenerationFailure | null;
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly durationMs: number;
       readonly id: string;
-      readonly result: string;
+      readonly type: "sleep";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly failure?: V2ThreadSearchResponse__ImageGenerationFailure | null;
+      readonly generationId?: string | null;
+      readonly id: string;
+      readonly inputImages?: ReadonlyArray<V2ThreadSearchResponse__ImageGenerationInputImage>;
       readonly revisedPrompt?: string | null;
       readonly savedPath?: V2ThreadSearchResponse__AbsolutePathBuf | null;
       readonly status: string;
       readonly transparentBackground?: boolean | null;
       readonly type: "imageGeneration";
+      readonly fileId: string;
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly id: string; readonly review: string; readonly type: "enteredReviewMode" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
-  | ({ readonly id: string; readonly review: string; readonly type: "exitedReviewMode" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
-  | ({ readonly id: string; readonly type: "contextCompaction" } & {
-      readonly [x: string]: CodexJsonExtension;
-    });
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly failure?: V2ThreadSearchResponse__ImageGenerationFailure | null;
+      readonly generationId?: string | null;
+      readonly id: string;
+      readonly inputImages?: ReadonlyArray<V2ThreadSearchResponse__ImageGenerationInputImage>;
+      readonly revisedPrompt?: string | null;
+      readonly savedPath?: V2ThreadSearchResponse__AbsolutePathBuf | null;
+      readonly status: string;
+      readonly transparentBackground?: boolean | null;
+      readonly type: "imageGeneration";
+      readonly result: string;
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly review: string;
+      readonly type: "enteredReviewMode";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly review: string;
+      readonly type: "exitedReviewMode";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly type: "contextCompaction";
+    } & { readonly [x: string]: CodexJsonExtension });
 export const V2ThreadSearchResponse__ThreadItem = Schema.Union(
   [
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         clientId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         content: Schema.Array(V2ThreadSearchResponse__UserInput),
         id: Schema.String,
         type: Schema.Literal("userMessage").annotate({ title: "UserMessageThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "UserMessageThreadItem" }),
+    ).annotate({
+      title: "UserMessageThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         fragments: Schema.Array(V2ThreadSearchResponse__HookPromptFragment),
         id: Schema.String,
         type: Schema.Literal("hookPrompt").annotate({ title: "HookPromptThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "HookPromptThreadItem" }),
+    ).annotate({
+      title: "HookPromptThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         delivery: Schema.optionalKey(
           Schema.Union([V2ThreadSearchResponse__AgentMessageDelivery, Schema.Null]),
         ),
@@ -60451,9 +68815,31 @@ export const V2ThreadSearchResponse__ThreadItem = Schema.Union(
         type: Schema.Literal("agentMessage").annotate({ title: "AgentMessageThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "AgentMessageThreadItem" }),
+    ).annotate({
+      title: "AgentMessageThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         name: Schema.String,
         namespace: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
@@ -60463,9 +68849,31 @@ export const V2ThreadSearchResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "FunctionCallOutputThreadItem" }),
+    ).annotate({
+      title: "FunctionCallOutputThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         text: Schema.String,
         type: Schema.Literal("plan").annotate({ title: "PlanThreadItemType" }),
@@ -60478,15 +68886,55 @@ export const V2ThreadSearchResponse__ThreadItem = Schema.Union(
     }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         content: Schema.optionalKey(Schema.Array(Schema.String).annotate({ default: [] })),
         id: Schema.String,
         summary: Schema.optionalKey(Schema.Array(Schema.String).annotate({ default: [] })),
         type: Schema.Literal("reasoning").annotate({ title: "ReasoningThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ReasoningThreadItem" }),
+    ).annotate({
+      title: "ReasoningThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         aggregatedOutput: Schema.optionalKey(
           Schema.Union([
             Schema.String.annotate({
@@ -60561,18 +69009,62 @@ export const V2ThreadSearchResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "CommandExecutionThreadItem" }),
+    ).annotate({
+      title: "CommandExecutionThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         changes: Schema.Array(V2ThreadSearchResponse__FileUpdateChange),
         id: Schema.String,
         status: V2ThreadSearchResponse__PatchApplyStatus,
         type: Schema.Literal("fileChange").annotate({ title: "FileChangeThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "FileChangeThreadItem" }),
+    ).annotate({
+      title: "FileChangeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         appContext: Schema.optionalKey(
           Schema.Union([V2ThreadSearchResponse__McpToolCallAppContext, Schema.Null]),
         ),
@@ -60616,9 +69108,31 @@ export const V2ThreadSearchResponse__ThreadItem = Schema.Union(
         type: Schema.Literal("mcpToolCall").annotate({ title: "McpToolCallThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "McpToolCallThreadItem" }),
+    ).annotate({
+      title: "McpToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         arguments: Schema.Json.annotate({ expected: "JSON value" }),
         contentItems: Schema.optionalKey(
           Schema.Union([
@@ -60645,9 +69159,31 @@ export const V2ThreadSearchResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "DynamicToolCallThreadItem" }),
+    ).annotate({
+      title: "DynamicToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         agentsStates: Schema.Record(
           Schema.String,
           V2ThreadSearchResponse__CollabAgentState,
@@ -60694,9 +69230,31 @@ export const V2ThreadSearchResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "CollabAgentToolCallThreadItem" }),
+    ).annotate({
+      title: "CollabAgentToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         agentPath: Schema.String,
         agentThreadId: Schema.String,
         id: Schema.String,
@@ -60720,9 +69278,31 @@ export const V2ThreadSearchResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "SubAgentActivityThreadItem" }),
+    ).annotate({
+      title: "SubAgentActivityThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         action: Schema.optionalKey(
           Schema.Union([V2ThreadSearchResponse__WebSearchAction, Schema.Null]),
         ),
@@ -60740,17 +69320,61 @@ export const V2ThreadSearchResponse__ThreadItem = Schema.Union(
         type: Schema.Literal("webSearch").annotate({ title: "WebSearchThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "WebSearchThreadItem" }),
+    ).annotate({
+      title: "WebSearchThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         path: V2ThreadSearchResponse__LegacyAppPathString,
         type: Schema.Literal("imageView").annotate({ title: "ImageViewThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ImageViewThreadItem" }),
+    ).annotate({
+      title: "ImageViewThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         durationMs: Schema.Number.annotate({ format: "uint64" })
           .check(Schema.isInt().annotate({ expected: "an integer" }))
           .check(
@@ -60766,27 +69390,140 @@ export const V2ThreadSearchResponse__ThreadItem = Schema.Union(
       title: "SleepThreadItem",
       description: "Display item emitted by the interruptible `clock.sleep` tool.",
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        failure: Schema.optionalKey(
-          Schema.Union([V2ThreadSearchResponse__ImageGenerationFailure, Schema.Null]),
-        ),
-        id: Schema.String,
-        result: Schema.String,
-        revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-        savedPath: Schema.optionalKey(
-          Schema.Union([V2ThreadSearchResponse__AbsolutePathBuf, Schema.Null]),
-        ),
-        status: Schema.String,
-        transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
-        type: Schema.Literal("imageGeneration").annotate({
-          title: "ImageGenerationThreadItemType",
+    Schema.Union([
+      Schema.StructWithRest(
+        Schema.Struct({
+          completedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          startedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item started, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          failure: Schema.optionalKey(
+            Schema.Union([V2ThreadSearchResponse__ImageGenerationFailure, Schema.Null]),
+          ),
+          generationId: Schema.optionalKey(
+            Schema.Union([
+              Schema.String.annotate({
+                description:
+                  "Image generation identifier for the generated image, when provided by the image backend.",
+              }),
+              Schema.Null,
+            ]),
+          ),
+          id: Schema.String,
+          inputImages: Schema.optionalKey(
+            Schema.Array(V2ThreadSearchResponse__ImageGenerationInputImage).annotate({
+              description:
+                "Observed local inputs for a completed generation, absent on older items.",
+            }),
+          ),
+          revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+          savedPath: Schema.optionalKey(
+            Schema.Union([V2ThreadSearchResponse__AbsolutePathBuf, Schema.Null]),
+          ),
+          status: Schema.String,
+          transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
+          type: Schema.Literal("imageGeneration").annotate({
+            title: "ImageGenerationThreadItemType",
+          }),
+          fileId: Schema.String,
         }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({
+        title: "FileIdThreadItem",
+        description:
+          "Either inline generated-image data or its durable attachment-store identity.\n\n`File` must remain first so rollouts written during the migration, which contain both an empty `result` and a `fileId`, retain the file reference when deserialized.",
       }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ImageGenerationThreadItem" }),
+      Schema.StructWithRest(
+        Schema.Struct({
+          completedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          startedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item started, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          failure: Schema.optionalKey(
+            Schema.Union([V2ThreadSearchResponse__ImageGenerationFailure, Schema.Null]),
+          ),
+          generationId: Schema.optionalKey(
+            Schema.Union([
+              Schema.String.annotate({
+                description:
+                  "Image generation identifier for the generated image, when provided by the image backend.",
+              }),
+              Schema.Null,
+            ]),
+          ),
+          id: Schema.String,
+          inputImages: Schema.optionalKey(
+            Schema.Array(V2ThreadSearchResponse__ImageGenerationInputImage).annotate({
+              description:
+                "Observed local inputs for a completed generation, absent on older items.",
+            }),
+          ),
+          revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+          savedPath: Schema.optionalKey(
+            Schema.Union([V2ThreadSearchResponse__AbsolutePathBuf, Schema.Null]),
+          ),
+          status: Schema.String,
+          transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
+          type: Schema.Literal("imageGeneration").annotate({
+            title: "ImageGenerationThreadItemType",
+          }),
+          result: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({
+        title: "ResultThreadItem",
+        description:
+          "Either inline generated-image data or its durable attachment-store identity.\n\n`File` must remain first so rollouts written during the migration, which contain both an empty `result` and a `fileId`, retain the file reference when deserialized.",
+      }),
+    ]),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         review: Schema.String,
         type: Schema.Literal("enteredReviewMode").annotate({
@@ -60794,9 +69531,31 @@ export const V2ThreadSearchResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "EnteredReviewModeThreadItem" }),
+    ).annotate({
+      title: "EnteredReviewModeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         review: Schema.String,
         type: Schema.Literal("exitedReviewMode").annotate({
@@ -60804,16 +69563,42 @@ export const V2ThreadSearchResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ExitedReviewModeThreadItem" }),
+    ).annotate({
+      title: "ExitedReviewModeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         type: Schema.Literal("contextCompaction").annotate({
           title: "ContextCompactionThreadItemType",
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ContextCompactionThreadItem" }),
+    ).annotate({
+      title: "ContextCompactionThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
   ],
   { mode: "oneOf" },
 ).annotate({ identifier: "V2ThreadSearchResponse__ThreadItem" });
@@ -60880,17 +69665,23 @@ export const V2ThreadSettingsUpdatedNotification__ThreadSettings = Schema.Struct
 
 export type V2ThreadStartedNotification__ThreadItem =
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly clientId?: string | null;
       readonly content: ReadonlyArray<V2ThreadStartedNotification__UserInput>;
       readonly id: string;
       readonly type: "userMessage";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly fragments: ReadonlyArray<V2ThreadStartedNotification__HookPromptFragment>;
       readonly id: string;
       readonly type: "hookPrompt";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly delivery?: V2ThreadStartedNotification__AgentMessageDelivery | null;
       readonly id: string;
       readonly memoryCitation?: V2ThreadStartedNotification__MemoryCitation | null;
@@ -60900,22 +69691,32 @@ export type V2ThreadStartedNotification__ThreadItem =
       readonly type: "agentMessage";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly id: string;
       readonly name: string;
       readonly namespace?: string | null;
       readonly output: V2ThreadStartedNotification__FunctionCallOutputBody;
       readonly type: "functionCallOutput";
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly id: string; readonly text: string; readonly type: "plan" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly text: string;
+      readonly type: "plan";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly content?: ReadonlyArray<string>;
       readonly id: string;
       readonly summary?: ReadonlyArray<string>;
       readonly type: "reasoning";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly aggregatedOutput?: string | null;
       readonly command: string;
       readonly commandActions: ReadonlyArray<V2ThreadStartedNotification__CommandAction>;
@@ -60931,12 +69732,16 @@ export type V2ThreadStartedNotification__ThreadItem =
       readonly type: "commandExecution";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly changes: ReadonlyArray<V2ThreadStartedNotification__FileUpdateChange>;
       readonly id: string;
       readonly status: V2ThreadStartedNotification__PatchApplyStatus;
       readonly type: "fileChange";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly appContext?: V2ThreadStartedNotification__McpToolCallAppContext | null;
       readonly arguments: Schema.Json;
       readonly durationMs?: number | null;
@@ -60953,6 +69758,8 @@ export type V2ThreadStartedNotification__ThreadItem =
       readonly type: "mcpToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly arguments: Schema.Json;
       readonly contentItems?: ReadonlyArray<V2ThreadStartedNotification__DynamicToolCallOutputContentItem> | null;
       readonly durationMs?: number | null;
@@ -60964,6 +69771,8 @@ export type V2ThreadStartedNotification__ThreadItem =
       readonly type: "dynamicToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly agentsStates: {
         readonly [x: string]: V2ThreadStartedNotification__CollabAgentState;
       };
@@ -60978,6 +69787,8 @@ export type V2ThreadStartedNotification__ThreadItem =
       readonly type: "collabAgentToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly agentPath: string;
       readonly agentThreadId: string;
       readonly id: string;
@@ -60987,6 +69798,8 @@ export type V2ThreadStartedNotification__ThreadItem =
       readonly type: "subAgentActivity";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly action?: V2ThreadStartedNotification__WebSearchAction | null;
       readonly id: string;
       readonly query: string;
@@ -60994,53 +69807,150 @@ export type V2ThreadStartedNotification__ThreadItem =
       readonly type: "webSearch";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly id: string;
       readonly path: V2ThreadStartedNotification__LegacyAppPathString;
       readonly type: "imageView";
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly durationMs: number; readonly id: string; readonly type: "sleep" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
   | ({
-      readonly failure?: V2ThreadStartedNotification__ImageGenerationFailure | null;
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly durationMs: number;
       readonly id: string;
-      readonly result: string;
+      readonly type: "sleep";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly failure?: V2ThreadStartedNotification__ImageGenerationFailure | null;
+      readonly generationId?: string | null;
+      readonly id: string;
+      readonly inputImages?: ReadonlyArray<V2ThreadStartedNotification__ImageGenerationInputImage>;
       readonly revisedPrompt?: string | null;
       readonly savedPath?: V2ThreadStartedNotification__AbsolutePathBuf | null;
       readonly status: string;
       readonly transparentBackground?: boolean | null;
       readonly type: "imageGeneration";
+      readonly fileId: string;
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly id: string; readonly review: string; readonly type: "enteredReviewMode" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
-  | ({ readonly id: string; readonly review: string; readonly type: "exitedReviewMode" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
-  | ({ readonly id: string; readonly type: "contextCompaction" } & {
-      readonly [x: string]: CodexJsonExtension;
-    });
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly failure?: V2ThreadStartedNotification__ImageGenerationFailure | null;
+      readonly generationId?: string | null;
+      readonly id: string;
+      readonly inputImages?: ReadonlyArray<V2ThreadStartedNotification__ImageGenerationInputImage>;
+      readonly revisedPrompt?: string | null;
+      readonly savedPath?: V2ThreadStartedNotification__AbsolutePathBuf | null;
+      readonly status: string;
+      readonly transparentBackground?: boolean | null;
+      readonly type: "imageGeneration";
+      readonly result: string;
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly review: string;
+      readonly type: "enteredReviewMode";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly review: string;
+      readonly type: "exitedReviewMode";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly type: "contextCompaction";
+    } & { readonly [x: string]: CodexJsonExtension });
 export const V2ThreadStartedNotification__ThreadItem = Schema.Union(
   [
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         clientId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         content: Schema.Array(V2ThreadStartedNotification__UserInput),
         id: Schema.String,
         type: Schema.Literal("userMessage").annotate({ title: "UserMessageThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "UserMessageThreadItem" }),
+    ).annotate({
+      title: "UserMessageThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         fragments: Schema.Array(V2ThreadStartedNotification__HookPromptFragment),
         id: Schema.String,
         type: Schema.Literal("hookPrompt").annotate({ title: "HookPromptThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "HookPromptThreadItem" }),
+    ).annotate({
+      title: "HookPromptThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         delivery: Schema.optionalKey(
           Schema.Union([V2ThreadStartedNotification__AgentMessageDelivery, Schema.Null]),
         ),
@@ -61061,9 +69971,31 @@ export const V2ThreadStartedNotification__ThreadItem = Schema.Union(
         type: Schema.Literal("agentMessage").annotate({ title: "AgentMessageThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "AgentMessageThreadItem" }),
+    ).annotate({
+      title: "AgentMessageThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         name: Schema.String,
         namespace: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
@@ -61073,9 +70005,31 @@ export const V2ThreadStartedNotification__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "FunctionCallOutputThreadItem" }),
+    ).annotate({
+      title: "FunctionCallOutputThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         text: Schema.String,
         type: Schema.Literal("plan").annotate({ title: "PlanThreadItemType" }),
@@ -61088,15 +70042,55 @@ export const V2ThreadStartedNotification__ThreadItem = Schema.Union(
     }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         content: Schema.optionalKey(Schema.Array(Schema.String).annotate({ default: [] })),
         id: Schema.String,
         summary: Schema.optionalKey(Schema.Array(Schema.String).annotate({ default: [] })),
         type: Schema.Literal("reasoning").annotate({ title: "ReasoningThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ReasoningThreadItem" }),
+    ).annotate({
+      title: "ReasoningThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         aggregatedOutput: Schema.optionalKey(
           Schema.Union([
             Schema.String.annotate({
@@ -61171,18 +70165,62 @@ export const V2ThreadStartedNotification__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "CommandExecutionThreadItem" }),
+    ).annotate({
+      title: "CommandExecutionThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         changes: Schema.Array(V2ThreadStartedNotification__FileUpdateChange),
         id: Schema.String,
         status: V2ThreadStartedNotification__PatchApplyStatus,
         type: Schema.Literal("fileChange").annotate({ title: "FileChangeThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "FileChangeThreadItem" }),
+    ).annotate({
+      title: "FileChangeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         appContext: Schema.optionalKey(
           Schema.Union([V2ThreadStartedNotification__McpToolCallAppContext, Schema.Null]),
         ),
@@ -61226,9 +70264,31 @@ export const V2ThreadStartedNotification__ThreadItem = Schema.Union(
         type: Schema.Literal("mcpToolCall").annotate({ title: "McpToolCallThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "McpToolCallThreadItem" }),
+    ).annotate({
+      title: "McpToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         arguments: Schema.Json.annotate({ expected: "JSON value" }),
         contentItems: Schema.optionalKey(
           Schema.Union([
@@ -61255,9 +70315,31 @@ export const V2ThreadStartedNotification__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "DynamicToolCallThreadItem" }),
+    ).annotate({
+      title: "DynamicToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         agentsStates: Schema.Record(
           Schema.String,
           V2ThreadStartedNotification__CollabAgentState,
@@ -61304,9 +70386,31 @@ export const V2ThreadStartedNotification__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "CollabAgentToolCallThreadItem" }),
+    ).annotate({
+      title: "CollabAgentToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         agentPath: Schema.String,
         agentThreadId: Schema.String,
         id: Schema.String,
@@ -61330,9 +70434,31 @@ export const V2ThreadStartedNotification__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "SubAgentActivityThreadItem" }),
+    ).annotate({
+      title: "SubAgentActivityThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         action: Schema.optionalKey(
           Schema.Union([V2ThreadStartedNotification__WebSearchAction, Schema.Null]),
         ),
@@ -61350,17 +70476,61 @@ export const V2ThreadStartedNotification__ThreadItem = Schema.Union(
         type: Schema.Literal("webSearch").annotate({ title: "WebSearchThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "WebSearchThreadItem" }),
+    ).annotate({
+      title: "WebSearchThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         path: V2ThreadStartedNotification__LegacyAppPathString,
         type: Schema.Literal("imageView").annotate({ title: "ImageViewThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ImageViewThreadItem" }),
+    ).annotate({
+      title: "ImageViewThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         durationMs: Schema.Number.annotate({ format: "uint64" })
           .check(Schema.isInt().annotate({ expected: "an integer" }))
           .check(
@@ -61376,27 +70546,140 @@ export const V2ThreadStartedNotification__ThreadItem = Schema.Union(
       title: "SleepThreadItem",
       description: "Display item emitted by the interruptible `clock.sleep` tool.",
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        failure: Schema.optionalKey(
-          Schema.Union([V2ThreadStartedNotification__ImageGenerationFailure, Schema.Null]),
-        ),
-        id: Schema.String,
-        result: Schema.String,
-        revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-        savedPath: Schema.optionalKey(
-          Schema.Union([V2ThreadStartedNotification__AbsolutePathBuf, Schema.Null]),
-        ),
-        status: Schema.String,
-        transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
-        type: Schema.Literal("imageGeneration").annotate({
-          title: "ImageGenerationThreadItemType",
+    Schema.Union([
+      Schema.StructWithRest(
+        Schema.Struct({
+          completedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          startedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item started, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          failure: Schema.optionalKey(
+            Schema.Union([V2ThreadStartedNotification__ImageGenerationFailure, Schema.Null]),
+          ),
+          generationId: Schema.optionalKey(
+            Schema.Union([
+              Schema.String.annotate({
+                description:
+                  "Image generation identifier for the generated image, when provided by the image backend.",
+              }),
+              Schema.Null,
+            ]),
+          ),
+          id: Schema.String,
+          inputImages: Schema.optionalKey(
+            Schema.Array(V2ThreadStartedNotification__ImageGenerationInputImage).annotate({
+              description:
+                "Observed local inputs for a completed generation, absent on older items.",
+            }),
+          ),
+          revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+          savedPath: Schema.optionalKey(
+            Schema.Union([V2ThreadStartedNotification__AbsolutePathBuf, Schema.Null]),
+          ),
+          status: Schema.String,
+          transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
+          type: Schema.Literal("imageGeneration").annotate({
+            title: "ImageGenerationThreadItemType",
+          }),
+          fileId: Schema.String,
         }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({
+        title: "FileIdThreadItem",
+        description:
+          "Either inline generated-image data or its durable attachment-store identity.\n\n`File` must remain first so rollouts written during the migration, which contain both an empty `result` and a `fileId`, retain the file reference when deserialized.",
       }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ImageGenerationThreadItem" }),
+      Schema.StructWithRest(
+        Schema.Struct({
+          completedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          startedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item started, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          failure: Schema.optionalKey(
+            Schema.Union([V2ThreadStartedNotification__ImageGenerationFailure, Schema.Null]),
+          ),
+          generationId: Schema.optionalKey(
+            Schema.Union([
+              Schema.String.annotate({
+                description:
+                  "Image generation identifier for the generated image, when provided by the image backend.",
+              }),
+              Schema.Null,
+            ]),
+          ),
+          id: Schema.String,
+          inputImages: Schema.optionalKey(
+            Schema.Array(V2ThreadStartedNotification__ImageGenerationInputImage).annotate({
+              description:
+                "Observed local inputs for a completed generation, absent on older items.",
+            }),
+          ),
+          revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+          savedPath: Schema.optionalKey(
+            Schema.Union([V2ThreadStartedNotification__AbsolutePathBuf, Schema.Null]),
+          ),
+          status: Schema.String,
+          transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
+          type: Schema.Literal("imageGeneration").annotate({
+            title: "ImageGenerationThreadItemType",
+          }),
+          result: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({
+        title: "ResultThreadItem",
+        description:
+          "Either inline generated-image data or its durable attachment-store identity.\n\n`File` must remain first so rollouts written during the migration, which contain both an empty `result` and a `fileId`, retain the file reference when deserialized.",
+      }),
+    ]),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         review: Schema.String,
         type: Schema.Literal("enteredReviewMode").annotate({
@@ -61404,9 +70687,31 @@ export const V2ThreadStartedNotification__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "EnteredReviewModeThreadItem" }),
+    ).annotate({
+      title: "EnteredReviewModeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         review: Schema.String,
         type: Schema.Literal("exitedReviewMode").annotate({
@@ -61414,33 +70719,65 @@ export const V2ThreadStartedNotification__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ExitedReviewModeThreadItem" }),
+    ).annotate({
+      title: "ExitedReviewModeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         type: Schema.Literal("contextCompaction").annotate({
           title: "ContextCompactionThreadItemType",
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ContextCompactionThreadItem" }),
+    ).annotate({
+      title: "ContextCompactionThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
   ],
   { mode: "oneOf" },
 ).annotate({ identifier: "V2ThreadStartedNotification__ThreadItem" });
 
 export type V2ThreadStartResponse__ThreadItem =
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly clientId?: string | null;
       readonly content: ReadonlyArray<V2ThreadStartResponse__UserInput>;
       readonly id: string;
       readonly type: "userMessage";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly fragments: ReadonlyArray<V2ThreadStartResponse__HookPromptFragment>;
       readonly id: string;
       readonly type: "hookPrompt";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly delivery?: V2ThreadStartResponse__AgentMessageDelivery | null;
       readonly id: string;
       readonly memoryCitation?: V2ThreadStartResponse__MemoryCitation | null;
@@ -61450,22 +70787,32 @@ export type V2ThreadStartResponse__ThreadItem =
       readonly type: "agentMessage";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly id: string;
       readonly name: string;
       readonly namespace?: string | null;
       readonly output: V2ThreadStartResponse__FunctionCallOutputBody;
       readonly type: "functionCallOutput";
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly id: string; readonly text: string; readonly type: "plan" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly text: string;
+      readonly type: "plan";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly content?: ReadonlyArray<string>;
       readonly id: string;
       readonly summary?: ReadonlyArray<string>;
       readonly type: "reasoning";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly aggregatedOutput?: string | null;
       readonly command: string;
       readonly commandActions: ReadonlyArray<V2ThreadStartResponse__CommandAction>;
@@ -61481,12 +70828,16 @@ export type V2ThreadStartResponse__ThreadItem =
       readonly type: "commandExecution";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly changes: ReadonlyArray<V2ThreadStartResponse__FileUpdateChange>;
       readonly id: string;
       readonly status: V2ThreadStartResponse__PatchApplyStatus;
       readonly type: "fileChange";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly appContext?: V2ThreadStartResponse__McpToolCallAppContext | null;
       readonly arguments: Schema.Json;
       readonly durationMs?: number | null;
@@ -61503,6 +70854,8 @@ export type V2ThreadStartResponse__ThreadItem =
       readonly type: "mcpToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly arguments: Schema.Json;
       readonly contentItems?: ReadonlyArray<V2ThreadStartResponse__DynamicToolCallOutputContentItem> | null;
       readonly durationMs?: number | null;
@@ -61514,6 +70867,8 @@ export type V2ThreadStartResponse__ThreadItem =
       readonly type: "dynamicToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly agentsStates: { readonly [x: string]: V2ThreadStartResponse__CollabAgentState };
       readonly id: string;
       readonly model?: string | null;
@@ -61526,6 +70881,8 @@ export type V2ThreadStartResponse__ThreadItem =
       readonly type: "collabAgentToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly agentPath: string;
       readonly agentThreadId: string;
       readonly id: string;
@@ -61535,6 +70892,8 @@ export type V2ThreadStartResponse__ThreadItem =
       readonly type: "subAgentActivity";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly action?: V2ThreadStartResponse__WebSearchAction | null;
       readonly id: string;
       readonly query: string;
@@ -61542,53 +70901,150 @@ export type V2ThreadStartResponse__ThreadItem =
       readonly type: "webSearch";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly id: string;
       readonly path: V2ThreadStartResponse__LegacyAppPathString;
       readonly type: "imageView";
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly durationMs: number; readonly id: string; readonly type: "sleep" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
   | ({
-      readonly failure?: V2ThreadStartResponse__ImageGenerationFailure | null;
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly durationMs: number;
       readonly id: string;
-      readonly result: string;
+      readonly type: "sleep";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly failure?: V2ThreadStartResponse__ImageGenerationFailure | null;
+      readonly generationId?: string | null;
+      readonly id: string;
+      readonly inputImages?: ReadonlyArray<V2ThreadStartResponse__ImageGenerationInputImage>;
       readonly revisedPrompt?: string | null;
       readonly savedPath?: V2ThreadStartResponse__AbsolutePathBuf | null;
       readonly status: string;
       readonly transparentBackground?: boolean | null;
       readonly type: "imageGeneration";
+      readonly fileId: string;
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly id: string; readonly review: string; readonly type: "enteredReviewMode" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
-  | ({ readonly id: string; readonly review: string; readonly type: "exitedReviewMode" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
-  | ({ readonly id: string; readonly type: "contextCompaction" } & {
-      readonly [x: string]: CodexJsonExtension;
-    });
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly failure?: V2ThreadStartResponse__ImageGenerationFailure | null;
+      readonly generationId?: string | null;
+      readonly id: string;
+      readonly inputImages?: ReadonlyArray<V2ThreadStartResponse__ImageGenerationInputImage>;
+      readonly revisedPrompt?: string | null;
+      readonly savedPath?: V2ThreadStartResponse__AbsolutePathBuf | null;
+      readonly status: string;
+      readonly transparentBackground?: boolean | null;
+      readonly type: "imageGeneration";
+      readonly result: string;
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly review: string;
+      readonly type: "enteredReviewMode";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly review: string;
+      readonly type: "exitedReviewMode";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly type: "contextCompaction";
+    } & { readonly [x: string]: CodexJsonExtension });
 export const V2ThreadStartResponse__ThreadItem = Schema.Union(
   [
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         clientId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         content: Schema.Array(V2ThreadStartResponse__UserInput),
         id: Schema.String,
         type: Schema.Literal("userMessage").annotate({ title: "UserMessageThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "UserMessageThreadItem" }),
+    ).annotate({
+      title: "UserMessageThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         fragments: Schema.Array(V2ThreadStartResponse__HookPromptFragment),
         id: Schema.String,
         type: Schema.Literal("hookPrompt").annotate({ title: "HookPromptThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "HookPromptThreadItem" }),
+    ).annotate({
+      title: "HookPromptThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         delivery: Schema.optionalKey(
           Schema.Union([V2ThreadStartResponse__AgentMessageDelivery, Schema.Null]),
         ),
@@ -61604,9 +71060,31 @@ export const V2ThreadStartResponse__ThreadItem = Schema.Union(
         type: Schema.Literal("agentMessage").annotate({ title: "AgentMessageThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "AgentMessageThreadItem" }),
+    ).annotate({
+      title: "AgentMessageThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         name: Schema.String,
         namespace: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
@@ -61616,9 +71094,31 @@ export const V2ThreadStartResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "FunctionCallOutputThreadItem" }),
+    ).annotate({
+      title: "FunctionCallOutputThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         text: Schema.String,
         type: Schema.Literal("plan").annotate({ title: "PlanThreadItemType" }),
@@ -61631,15 +71131,55 @@ export const V2ThreadStartResponse__ThreadItem = Schema.Union(
     }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         content: Schema.optionalKey(Schema.Array(Schema.String).annotate({ default: [] })),
         id: Schema.String,
         summary: Schema.optionalKey(Schema.Array(Schema.String).annotate({ default: [] })),
         type: Schema.Literal("reasoning").annotate({ title: "ReasoningThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ReasoningThreadItem" }),
+    ).annotate({
+      title: "ReasoningThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         aggregatedOutput: Schema.optionalKey(
           Schema.Union([
             Schema.String.annotate({
@@ -61714,18 +71254,62 @@ export const V2ThreadStartResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "CommandExecutionThreadItem" }),
+    ).annotate({
+      title: "CommandExecutionThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         changes: Schema.Array(V2ThreadStartResponse__FileUpdateChange),
         id: Schema.String,
         status: V2ThreadStartResponse__PatchApplyStatus,
         type: Schema.Literal("fileChange").annotate({ title: "FileChangeThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "FileChangeThreadItem" }),
+    ).annotate({
+      title: "FileChangeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         appContext: Schema.optionalKey(
           Schema.Union([V2ThreadStartResponse__McpToolCallAppContext, Schema.Null]),
         ),
@@ -61769,9 +71353,31 @@ export const V2ThreadStartResponse__ThreadItem = Schema.Union(
         type: Schema.Literal("mcpToolCall").annotate({ title: "McpToolCallThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "McpToolCallThreadItem" }),
+    ).annotate({
+      title: "McpToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         arguments: Schema.Json.annotate({ expected: "JSON value" }),
         contentItems: Schema.optionalKey(
           Schema.Union([
@@ -61798,9 +71404,31 @@ export const V2ThreadStartResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "DynamicToolCallThreadItem" }),
+    ).annotate({
+      title: "DynamicToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         agentsStates: Schema.Record(
           Schema.String,
           V2ThreadStartResponse__CollabAgentState,
@@ -61847,9 +71475,31 @@ export const V2ThreadStartResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "CollabAgentToolCallThreadItem" }),
+    ).annotate({
+      title: "CollabAgentToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         agentPath: Schema.String,
         agentThreadId: Schema.String,
         id: Schema.String,
@@ -61873,9 +71523,31 @@ export const V2ThreadStartResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "SubAgentActivityThreadItem" }),
+    ).annotate({
+      title: "SubAgentActivityThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         action: Schema.optionalKey(
           Schema.Union([V2ThreadStartResponse__WebSearchAction, Schema.Null]),
         ),
@@ -61893,17 +71565,61 @@ export const V2ThreadStartResponse__ThreadItem = Schema.Union(
         type: Schema.Literal("webSearch").annotate({ title: "WebSearchThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "WebSearchThreadItem" }),
+    ).annotate({
+      title: "WebSearchThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         path: V2ThreadStartResponse__LegacyAppPathString,
         type: Schema.Literal("imageView").annotate({ title: "ImageViewThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ImageViewThreadItem" }),
+    ).annotate({
+      title: "ImageViewThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         durationMs: Schema.Number.annotate({ format: "uint64" })
           .check(Schema.isInt().annotate({ expected: "an integer" }))
           .check(
@@ -61919,27 +71635,140 @@ export const V2ThreadStartResponse__ThreadItem = Schema.Union(
       title: "SleepThreadItem",
       description: "Display item emitted by the interruptible `clock.sleep` tool.",
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        failure: Schema.optionalKey(
-          Schema.Union([V2ThreadStartResponse__ImageGenerationFailure, Schema.Null]),
-        ),
-        id: Schema.String,
-        result: Schema.String,
-        revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-        savedPath: Schema.optionalKey(
-          Schema.Union([V2ThreadStartResponse__AbsolutePathBuf, Schema.Null]),
-        ),
-        status: Schema.String,
-        transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
-        type: Schema.Literal("imageGeneration").annotate({
-          title: "ImageGenerationThreadItemType",
+    Schema.Union([
+      Schema.StructWithRest(
+        Schema.Struct({
+          completedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          startedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item started, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          failure: Schema.optionalKey(
+            Schema.Union([V2ThreadStartResponse__ImageGenerationFailure, Schema.Null]),
+          ),
+          generationId: Schema.optionalKey(
+            Schema.Union([
+              Schema.String.annotate({
+                description:
+                  "Image generation identifier for the generated image, when provided by the image backend.",
+              }),
+              Schema.Null,
+            ]),
+          ),
+          id: Schema.String,
+          inputImages: Schema.optionalKey(
+            Schema.Array(V2ThreadStartResponse__ImageGenerationInputImage).annotate({
+              description:
+                "Observed local inputs for a completed generation, absent on older items.",
+            }),
+          ),
+          revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+          savedPath: Schema.optionalKey(
+            Schema.Union([V2ThreadStartResponse__AbsolutePathBuf, Schema.Null]),
+          ),
+          status: Schema.String,
+          transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
+          type: Schema.Literal("imageGeneration").annotate({
+            title: "ImageGenerationThreadItemType",
+          }),
+          fileId: Schema.String,
         }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({
+        title: "FileIdThreadItem",
+        description:
+          "Either inline generated-image data or its durable attachment-store identity.\n\n`File` must remain first so rollouts written during the migration, which contain both an empty `result` and a `fileId`, retain the file reference when deserialized.",
       }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ImageGenerationThreadItem" }),
+      Schema.StructWithRest(
+        Schema.Struct({
+          completedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          startedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item started, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          failure: Schema.optionalKey(
+            Schema.Union([V2ThreadStartResponse__ImageGenerationFailure, Schema.Null]),
+          ),
+          generationId: Schema.optionalKey(
+            Schema.Union([
+              Schema.String.annotate({
+                description:
+                  "Image generation identifier for the generated image, when provided by the image backend.",
+              }),
+              Schema.Null,
+            ]),
+          ),
+          id: Schema.String,
+          inputImages: Schema.optionalKey(
+            Schema.Array(V2ThreadStartResponse__ImageGenerationInputImage).annotate({
+              description:
+                "Observed local inputs for a completed generation, absent on older items.",
+            }),
+          ),
+          revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+          savedPath: Schema.optionalKey(
+            Schema.Union([V2ThreadStartResponse__AbsolutePathBuf, Schema.Null]),
+          ),
+          status: Schema.String,
+          transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
+          type: Schema.Literal("imageGeneration").annotate({
+            title: "ImageGenerationThreadItemType",
+          }),
+          result: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({
+        title: "ResultThreadItem",
+        description:
+          "Either inline generated-image data or its durable attachment-store identity.\n\n`File` must remain first so rollouts written during the migration, which contain both an empty `result` and a `fileId`, retain the file reference when deserialized.",
+      }),
+    ]),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         review: Schema.String,
         type: Schema.Literal("enteredReviewMode").annotate({
@@ -61947,9 +71776,31 @@ export const V2ThreadStartResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "EnteredReviewModeThreadItem" }),
+    ).annotate({
+      title: "EnteredReviewModeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         review: Schema.String,
         type: Schema.Literal("exitedReviewMode").annotate({
@@ -61957,33 +71808,65 @@ export const V2ThreadStartResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ExitedReviewModeThreadItem" }),
+    ).annotate({
+      title: "ExitedReviewModeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         type: Schema.Literal("contextCompaction").annotate({
           title: "ContextCompactionThreadItemType",
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ContextCompactionThreadItem" }),
+    ).annotate({
+      title: "ContextCompactionThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
   ],
   { mode: "oneOf" },
 ).annotate({ identifier: "V2ThreadStartResponse__ThreadItem" });
 
 export type V2ThreadTimelineListResponse__ThreadItem =
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly clientId?: string | null;
       readonly content: ReadonlyArray<V2ThreadTimelineListResponse__UserInput>;
       readonly id: string;
       readonly type: "userMessage";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly fragments: ReadonlyArray<V2ThreadTimelineListResponse__HookPromptFragment>;
       readonly id: string;
       readonly type: "hookPrompt";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly delivery?: V2ThreadTimelineListResponse__AgentMessageDelivery | null;
       readonly id: string;
       readonly memoryCitation?: V2ThreadTimelineListResponse__MemoryCitation | null;
@@ -61993,22 +71876,32 @@ export type V2ThreadTimelineListResponse__ThreadItem =
       readonly type: "agentMessage";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly id: string;
       readonly name: string;
       readonly namespace?: string | null;
       readonly output: V2ThreadTimelineListResponse__FunctionCallOutputBody;
       readonly type: "functionCallOutput";
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly id: string; readonly text: string; readonly type: "plan" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly text: string;
+      readonly type: "plan";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly content?: ReadonlyArray<string>;
       readonly id: string;
       readonly summary?: ReadonlyArray<string>;
       readonly type: "reasoning";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly aggregatedOutput?: string | null;
       readonly command: string;
       readonly commandActions: ReadonlyArray<V2ThreadTimelineListResponse__CommandAction>;
@@ -62024,12 +71917,16 @@ export type V2ThreadTimelineListResponse__ThreadItem =
       readonly type: "commandExecution";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly changes: ReadonlyArray<V2ThreadTimelineListResponse__FileUpdateChange>;
       readonly id: string;
       readonly status: V2ThreadTimelineListResponse__PatchApplyStatus;
       readonly type: "fileChange";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly appContext?: V2ThreadTimelineListResponse__McpToolCallAppContext | null;
       readonly arguments: Schema.Json;
       readonly durationMs?: number | null;
@@ -62046,6 +71943,8 @@ export type V2ThreadTimelineListResponse__ThreadItem =
       readonly type: "mcpToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly arguments: Schema.Json;
       readonly contentItems?: ReadonlyArray<V2ThreadTimelineListResponse__DynamicToolCallOutputContentItem> | null;
       readonly durationMs?: number | null;
@@ -62057,6 +71956,8 @@ export type V2ThreadTimelineListResponse__ThreadItem =
       readonly type: "dynamicToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly agentsStates: {
         readonly [x: string]: V2ThreadTimelineListResponse__CollabAgentState;
       };
@@ -62071,6 +71972,8 @@ export type V2ThreadTimelineListResponse__ThreadItem =
       readonly type: "collabAgentToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly agentPath: string;
       readonly agentThreadId: string;
       readonly id: string;
@@ -62080,6 +71983,8 @@ export type V2ThreadTimelineListResponse__ThreadItem =
       readonly type: "subAgentActivity";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly action?: V2ThreadTimelineListResponse__WebSearchAction | null;
       readonly id: string;
       readonly query: string;
@@ -62087,53 +71992,150 @@ export type V2ThreadTimelineListResponse__ThreadItem =
       readonly type: "webSearch";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly id: string;
       readonly path: V2ThreadTimelineListResponse__LegacyAppPathString;
       readonly type: "imageView";
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly durationMs: number; readonly id: string; readonly type: "sleep" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
   | ({
-      readonly failure?: V2ThreadTimelineListResponse__ImageGenerationFailure | null;
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly durationMs: number;
       readonly id: string;
-      readonly result: string;
+      readonly type: "sleep";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly failure?: V2ThreadTimelineListResponse__ImageGenerationFailure | null;
+      readonly generationId?: string | null;
+      readonly id: string;
+      readonly inputImages?: ReadonlyArray<V2ThreadTimelineListResponse__ImageGenerationInputImage>;
       readonly revisedPrompt?: string | null;
       readonly savedPath?: V2ThreadTimelineListResponse__AbsolutePathBuf | null;
       readonly status: string;
       readonly transparentBackground?: boolean | null;
       readonly type: "imageGeneration";
+      readonly fileId: string;
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly id: string; readonly review: string; readonly type: "enteredReviewMode" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
-  | ({ readonly id: string; readonly review: string; readonly type: "exitedReviewMode" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
-  | ({ readonly id: string; readonly type: "contextCompaction" } & {
-      readonly [x: string]: CodexJsonExtension;
-    });
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly failure?: V2ThreadTimelineListResponse__ImageGenerationFailure | null;
+      readonly generationId?: string | null;
+      readonly id: string;
+      readonly inputImages?: ReadonlyArray<V2ThreadTimelineListResponse__ImageGenerationInputImage>;
+      readonly revisedPrompt?: string | null;
+      readonly savedPath?: V2ThreadTimelineListResponse__AbsolutePathBuf | null;
+      readonly status: string;
+      readonly transparentBackground?: boolean | null;
+      readonly type: "imageGeneration";
+      readonly result: string;
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly review: string;
+      readonly type: "enteredReviewMode";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly review: string;
+      readonly type: "exitedReviewMode";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly type: "contextCompaction";
+    } & { readonly [x: string]: CodexJsonExtension });
 export const V2ThreadTimelineListResponse__ThreadItem = Schema.Union(
   [
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         clientId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         content: Schema.Array(V2ThreadTimelineListResponse__UserInput),
         id: Schema.String,
         type: Schema.Literal("userMessage").annotate({ title: "UserMessageThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "UserMessageThreadItem" }),
+    ).annotate({
+      title: "UserMessageThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         fragments: Schema.Array(V2ThreadTimelineListResponse__HookPromptFragment),
         id: Schema.String,
         type: Schema.Literal("hookPrompt").annotate({ title: "HookPromptThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "HookPromptThreadItem" }),
+    ).annotate({
+      title: "HookPromptThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         delivery: Schema.optionalKey(
           Schema.Union([V2ThreadTimelineListResponse__AgentMessageDelivery, Schema.Null]),
         ),
@@ -62154,9 +72156,31 @@ export const V2ThreadTimelineListResponse__ThreadItem = Schema.Union(
         type: Schema.Literal("agentMessage").annotate({ title: "AgentMessageThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "AgentMessageThreadItem" }),
+    ).annotate({
+      title: "AgentMessageThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         name: Schema.String,
         namespace: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
@@ -62166,9 +72190,31 @@ export const V2ThreadTimelineListResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "FunctionCallOutputThreadItem" }),
+    ).annotate({
+      title: "FunctionCallOutputThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         text: Schema.String,
         type: Schema.Literal("plan").annotate({ title: "PlanThreadItemType" }),
@@ -62181,15 +72227,55 @@ export const V2ThreadTimelineListResponse__ThreadItem = Schema.Union(
     }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         content: Schema.optionalKey(Schema.Array(Schema.String).annotate({ default: [] })),
         id: Schema.String,
         summary: Schema.optionalKey(Schema.Array(Schema.String).annotate({ default: [] })),
         type: Schema.Literal("reasoning").annotate({ title: "ReasoningThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ReasoningThreadItem" }),
+    ).annotate({
+      title: "ReasoningThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         aggregatedOutput: Schema.optionalKey(
           Schema.Union([
             Schema.String.annotate({
@@ -62264,18 +72350,62 @@ export const V2ThreadTimelineListResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "CommandExecutionThreadItem" }),
+    ).annotate({
+      title: "CommandExecutionThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         changes: Schema.Array(V2ThreadTimelineListResponse__FileUpdateChange),
         id: Schema.String,
         status: V2ThreadTimelineListResponse__PatchApplyStatus,
         type: Schema.Literal("fileChange").annotate({ title: "FileChangeThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "FileChangeThreadItem" }),
+    ).annotate({
+      title: "FileChangeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         appContext: Schema.optionalKey(
           Schema.Union([V2ThreadTimelineListResponse__McpToolCallAppContext, Schema.Null]),
         ),
@@ -62319,9 +72449,31 @@ export const V2ThreadTimelineListResponse__ThreadItem = Schema.Union(
         type: Schema.Literal("mcpToolCall").annotate({ title: "McpToolCallThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "McpToolCallThreadItem" }),
+    ).annotate({
+      title: "McpToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         arguments: Schema.Json.annotate({ expected: "JSON value" }),
         contentItems: Schema.optionalKey(
           Schema.Union([
@@ -62348,9 +72500,31 @@ export const V2ThreadTimelineListResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "DynamicToolCallThreadItem" }),
+    ).annotate({
+      title: "DynamicToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         agentsStates: Schema.Record(
           Schema.String,
           V2ThreadTimelineListResponse__CollabAgentState,
@@ -62397,9 +72571,31 @@ export const V2ThreadTimelineListResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "CollabAgentToolCallThreadItem" }),
+    ).annotate({
+      title: "CollabAgentToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         agentPath: Schema.String,
         agentThreadId: Schema.String,
         id: Schema.String,
@@ -62423,9 +72619,31 @@ export const V2ThreadTimelineListResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "SubAgentActivityThreadItem" }),
+    ).annotate({
+      title: "SubAgentActivityThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         action: Schema.optionalKey(
           Schema.Union([V2ThreadTimelineListResponse__WebSearchAction, Schema.Null]),
         ),
@@ -62443,17 +72661,61 @@ export const V2ThreadTimelineListResponse__ThreadItem = Schema.Union(
         type: Schema.Literal("webSearch").annotate({ title: "WebSearchThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "WebSearchThreadItem" }),
+    ).annotate({
+      title: "WebSearchThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         path: V2ThreadTimelineListResponse__LegacyAppPathString,
         type: Schema.Literal("imageView").annotate({ title: "ImageViewThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ImageViewThreadItem" }),
+    ).annotate({
+      title: "ImageViewThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         durationMs: Schema.Number.annotate({ format: "uint64" })
           .check(Schema.isInt().annotate({ expected: "an integer" }))
           .check(
@@ -62469,27 +72731,140 @@ export const V2ThreadTimelineListResponse__ThreadItem = Schema.Union(
       title: "SleepThreadItem",
       description: "Display item emitted by the interruptible `clock.sleep` tool.",
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        failure: Schema.optionalKey(
-          Schema.Union([V2ThreadTimelineListResponse__ImageGenerationFailure, Schema.Null]),
-        ),
-        id: Schema.String,
-        result: Schema.String,
-        revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-        savedPath: Schema.optionalKey(
-          Schema.Union([V2ThreadTimelineListResponse__AbsolutePathBuf, Schema.Null]),
-        ),
-        status: Schema.String,
-        transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
-        type: Schema.Literal("imageGeneration").annotate({
-          title: "ImageGenerationThreadItemType",
+    Schema.Union([
+      Schema.StructWithRest(
+        Schema.Struct({
+          completedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          startedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item started, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          failure: Schema.optionalKey(
+            Schema.Union([V2ThreadTimelineListResponse__ImageGenerationFailure, Schema.Null]),
+          ),
+          generationId: Schema.optionalKey(
+            Schema.Union([
+              Schema.String.annotate({
+                description:
+                  "Image generation identifier for the generated image, when provided by the image backend.",
+              }),
+              Schema.Null,
+            ]),
+          ),
+          id: Schema.String,
+          inputImages: Schema.optionalKey(
+            Schema.Array(V2ThreadTimelineListResponse__ImageGenerationInputImage).annotate({
+              description:
+                "Observed local inputs for a completed generation, absent on older items.",
+            }),
+          ),
+          revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+          savedPath: Schema.optionalKey(
+            Schema.Union([V2ThreadTimelineListResponse__AbsolutePathBuf, Schema.Null]),
+          ),
+          status: Schema.String,
+          transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
+          type: Schema.Literal("imageGeneration").annotate({
+            title: "ImageGenerationThreadItemType",
+          }),
+          fileId: Schema.String,
         }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({
+        title: "FileIdThreadItem",
+        description:
+          "Either inline generated-image data or its durable attachment-store identity.\n\n`File` must remain first so rollouts written during the migration, which contain both an empty `result` and a `fileId`, retain the file reference when deserialized.",
       }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ImageGenerationThreadItem" }),
+      Schema.StructWithRest(
+        Schema.Struct({
+          completedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          startedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item started, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          failure: Schema.optionalKey(
+            Schema.Union([V2ThreadTimelineListResponse__ImageGenerationFailure, Schema.Null]),
+          ),
+          generationId: Schema.optionalKey(
+            Schema.Union([
+              Schema.String.annotate({
+                description:
+                  "Image generation identifier for the generated image, when provided by the image backend.",
+              }),
+              Schema.Null,
+            ]),
+          ),
+          id: Schema.String,
+          inputImages: Schema.optionalKey(
+            Schema.Array(V2ThreadTimelineListResponse__ImageGenerationInputImage).annotate({
+              description:
+                "Observed local inputs for a completed generation, absent on older items.",
+            }),
+          ),
+          revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+          savedPath: Schema.optionalKey(
+            Schema.Union([V2ThreadTimelineListResponse__AbsolutePathBuf, Schema.Null]),
+          ),
+          status: Schema.String,
+          transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
+          type: Schema.Literal("imageGeneration").annotate({
+            title: "ImageGenerationThreadItemType",
+          }),
+          result: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({
+        title: "ResultThreadItem",
+        description:
+          "Either inline generated-image data or its durable attachment-store identity.\n\n`File` must remain first so rollouts written during the migration, which contain both an empty `result` and a `fileId`, retain the file reference when deserialized.",
+      }),
+    ]),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         review: Schema.String,
         type: Schema.Literal("enteredReviewMode").annotate({
@@ -62497,9 +72872,31 @@ export const V2ThreadTimelineListResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "EnteredReviewModeThreadItem" }),
+    ).annotate({
+      title: "EnteredReviewModeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         review: Schema.String,
         type: Schema.Literal("exitedReviewMode").annotate({
@@ -62507,33 +72904,65 @@ export const V2ThreadTimelineListResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ExitedReviewModeThreadItem" }),
+    ).annotate({
+      title: "ExitedReviewModeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         type: Schema.Literal("contextCompaction").annotate({
           title: "ContextCompactionThreadItemType",
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ContextCompactionThreadItem" }),
+    ).annotate({
+      title: "ContextCompactionThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
   ],
   { mode: "oneOf" },
 ).annotate({ identifier: "V2ThreadTimelineListResponse__ThreadItem" });
 
 export type V2ThreadTurnsListResponse__ThreadItem =
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly clientId?: string | null;
       readonly content: ReadonlyArray<V2ThreadTurnsListResponse__UserInput>;
       readonly id: string;
       readonly type: "userMessage";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly fragments: ReadonlyArray<V2ThreadTurnsListResponse__HookPromptFragment>;
       readonly id: string;
       readonly type: "hookPrompt";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly delivery?: V2ThreadTurnsListResponse__AgentMessageDelivery | null;
       readonly id: string;
       readonly memoryCitation?: V2ThreadTurnsListResponse__MemoryCitation | null;
@@ -62543,22 +72972,32 @@ export type V2ThreadTurnsListResponse__ThreadItem =
       readonly type: "agentMessage";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly id: string;
       readonly name: string;
       readonly namespace?: string | null;
       readonly output: V2ThreadTurnsListResponse__FunctionCallOutputBody;
       readonly type: "functionCallOutput";
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly id: string; readonly text: string; readonly type: "plan" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly text: string;
+      readonly type: "plan";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly content?: ReadonlyArray<string>;
       readonly id: string;
       readonly summary?: ReadonlyArray<string>;
       readonly type: "reasoning";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly aggregatedOutput?: string | null;
       readonly command: string;
       readonly commandActions: ReadonlyArray<V2ThreadTurnsListResponse__CommandAction>;
@@ -62574,12 +73013,16 @@ export type V2ThreadTurnsListResponse__ThreadItem =
       readonly type: "commandExecution";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly changes: ReadonlyArray<V2ThreadTurnsListResponse__FileUpdateChange>;
       readonly id: string;
       readonly status: V2ThreadTurnsListResponse__PatchApplyStatus;
       readonly type: "fileChange";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly appContext?: V2ThreadTurnsListResponse__McpToolCallAppContext | null;
       readonly arguments: Schema.Json;
       readonly durationMs?: number | null;
@@ -62596,6 +73039,8 @@ export type V2ThreadTurnsListResponse__ThreadItem =
       readonly type: "mcpToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly arguments: Schema.Json;
       readonly contentItems?: ReadonlyArray<V2ThreadTurnsListResponse__DynamicToolCallOutputContentItem> | null;
       readonly durationMs?: number | null;
@@ -62607,6 +73052,8 @@ export type V2ThreadTurnsListResponse__ThreadItem =
       readonly type: "dynamicToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly agentsStates: { readonly [x: string]: V2ThreadTurnsListResponse__CollabAgentState };
       readonly id: string;
       readonly model?: string | null;
@@ -62619,6 +73066,8 @@ export type V2ThreadTurnsListResponse__ThreadItem =
       readonly type: "collabAgentToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly agentPath: string;
       readonly agentThreadId: string;
       readonly id: string;
@@ -62628,6 +73077,8 @@ export type V2ThreadTurnsListResponse__ThreadItem =
       readonly type: "subAgentActivity";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly action?: V2ThreadTurnsListResponse__WebSearchAction | null;
       readonly id: string;
       readonly query: string;
@@ -62635,53 +73086,150 @@ export type V2ThreadTurnsListResponse__ThreadItem =
       readonly type: "webSearch";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly id: string;
       readonly path: V2ThreadTurnsListResponse__LegacyAppPathString;
       readonly type: "imageView";
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly durationMs: number; readonly id: string; readonly type: "sleep" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
   | ({
-      readonly failure?: V2ThreadTurnsListResponse__ImageGenerationFailure | null;
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly durationMs: number;
       readonly id: string;
-      readonly result: string;
+      readonly type: "sleep";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly failure?: V2ThreadTurnsListResponse__ImageGenerationFailure | null;
+      readonly generationId?: string | null;
+      readonly id: string;
+      readonly inputImages?: ReadonlyArray<V2ThreadTurnsListResponse__ImageGenerationInputImage>;
       readonly revisedPrompt?: string | null;
       readonly savedPath?: V2ThreadTurnsListResponse__AbsolutePathBuf | null;
       readonly status: string;
       readonly transparentBackground?: boolean | null;
       readonly type: "imageGeneration";
+      readonly fileId: string;
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly id: string; readonly review: string; readonly type: "enteredReviewMode" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
-  | ({ readonly id: string; readonly review: string; readonly type: "exitedReviewMode" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
-  | ({ readonly id: string; readonly type: "contextCompaction" } & {
-      readonly [x: string]: CodexJsonExtension;
-    });
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly failure?: V2ThreadTurnsListResponse__ImageGenerationFailure | null;
+      readonly generationId?: string | null;
+      readonly id: string;
+      readonly inputImages?: ReadonlyArray<V2ThreadTurnsListResponse__ImageGenerationInputImage>;
+      readonly revisedPrompt?: string | null;
+      readonly savedPath?: V2ThreadTurnsListResponse__AbsolutePathBuf | null;
+      readonly status: string;
+      readonly transparentBackground?: boolean | null;
+      readonly type: "imageGeneration";
+      readonly result: string;
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly review: string;
+      readonly type: "enteredReviewMode";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly review: string;
+      readonly type: "exitedReviewMode";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly type: "contextCompaction";
+    } & { readonly [x: string]: CodexJsonExtension });
 export const V2ThreadTurnsListResponse__ThreadItem = Schema.Union(
   [
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         clientId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         content: Schema.Array(V2ThreadTurnsListResponse__UserInput),
         id: Schema.String,
         type: Schema.Literal("userMessage").annotate({ title: "UserMessageThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "UserMessageThreadItem" }),
+    ).annotate({
+      title: "UserMessageThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         fragments: Schema.Array(V2ThreadTurnsListResponse__HookPromptFragment),
         id: Schema.String,
         type: Schema.Literal("hookPrompt").annotate({ title: "HookPromptThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "HookPromptThreadItem" }),
+    ).annotate({
+      title: "HookPromptThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         delivery: Schema.optionalKey(
           Schema.Union([V2ThreadTurnsListResponse__AgentMessageDelivery, Schema.Null]),
         ),
@@ -62702,9 +73250,31 @@ export const V2ThreadTurnsListResponse__ThreadItem = Schema.Union(
         type: Schema.Literal("agentMessage").annotate({ title: "AgentMessageThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "AgentMessageThreadItem" }),
+    ).annotate({
+      title: "AgentMessageThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         name: Schema.String,
         namespace: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
@@ -62714,9 +73284,31 @@ export const V2ThreadTurnsListResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "FunctionCallOutputThreadItem" }),
+    ).annotate({
+      title: "FunctionCallOutputThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         text: Schema.String,
         type: Schema.Literal("plan").annotate({ title: "PlanThreadItemType" }),
@@ -62729,15 +73321,55 @@ export const V2ThreadTurnsListResponse__ThreadItem = Schema.Union(
     }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         content: Schema.optionalKey(Schema.Array(Schema.String).annotate({ default: [] })),
         id: Schema.String,
         summary: Schema.optionalKey(Schema.Array(Schema.String).annotate({ default: [] })),
         type: Schema.Literal("reasoning").annotate({ title: "ReasoningThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ReasoningThreadItem" }),
+    ).annotate({
+      title: "ReasoningThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         aggregatedOutput: Schema.optionalKey(
           Schema.Union([
             Schema.String.annotate({
@@ -62812,18 +73444,62 @@ export const V2ThreadTurnsListResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "CommandExecutionThreadItem" }),
+    ).annotate({
+      title: "CommandExecutionThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         changes: Schema.Array(V2ThreadTurnsListResponse__FileUpdateChange),
         id: Schema.String,
         status: V2ThreadTurnsListResponse__PatchApplyStatus,
         type: Schema.Literal("fileChange").annotate({ title: "FileChangeThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "FileChangeThreadItem" }),
+    ).annotate({
+      title: "FileChangeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         appContext: Schema.optionalKey(
           Schema.Union([V2ThreadTurnsListResponse__McpToolCallAppContext, Schema.Null]),
         ),
@@ -62867,9 +73543,31 @@ export const V2ThreadTurnsListResponse__ThreadItem = Schema.Union(
         type: Schema.Literal("mcpToolCall").annotate({ title: "McpToolCallThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "McpToolCallThreadItem" }),
+    ).annotate({
+      title: "McpToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         arguments: Schema.Json.annotate({ expected: "JSON value" }),
         contentItems: Schema.optionalKey(
           Schema.Union([
@@ -62896,9 +73594,31 @@ export const V2ThreadTurnsListResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "DynamicToolCallThreadItem" }),
+    ).annotate({
+      title: "DynamicToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         agentsStates: Schema.Record(
           Schema.String,
           V2ThreadTurnsListResponse__CollabAgentState,
@@ -62945,9 +73665,31 @@ export const V2ThreadTurnsListResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "CollabAgentToolCallThreadItem" }),
+    ).annotate({
+      title: "CollabAgentToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         agentPath: Schema.String,
         agentThreadId: Schema.String,
         id: Schema.String,
@@ -62971,9 +73713,31 @@ export const V2ThreadTurnsListResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "SubAgentActivityThreadItem" }),
+    ).annotate({
+      title: "SubAgentActivityThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         action: Schema.optionalKey(
           Schema.Union([V2ThreadTurnsListResponse__WebSearchAction, Schema.Null]),
         ),
@@ -62991,17 +73755,61 @@ export const V2ThreadTurnsListResponse__ThreadItem = Schema.Union(
         type: Schema.Literal("webSearch").annotate({ title: "WebSearchThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "WebSearchThreadItem" }),
+    ).annotate({
+      title: "WebSearchThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         path: V2ThreadTurnsListResponse__LegacyAppPathString,
         type: Schema.Literal("imageView").annotate({ title: "ImageViewThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ImageViewThreadItem" }),
+    ).annotate({
+      title: "ImageViewThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         durationMs: Schema.Number.annotate({ format: "uint64" })
           .check(Schema.isInt().annotate({ expected: "an integer" }))
           .check(
@@ -63017,27 +73825,140 @@ export const V2ThreadTurnsListResponse__ThreadItem = Schema.Union(
       title: "SleepThreadItem",
       description: "Display item emitted by the interruptible `clock.sleep` tool.",
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        failure: Schema.optionalKey(
-          Schema.Union([V2ThreadTurnsListResponse__ImageGenerationFailure, Schema.Null]),
-        ),
-        id: Schema.String,
-        result: Schema.String,
-        revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-        savedPath: Schema.optionalKey(
-          Schema.Union([V2ThreadTurnsListResponse__AbsolutePathBuf, Schema.Null]),
-        ),
-        status: Schema.String,
-        transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
-        type: Schema.Literal("imageGeneration").annotate({
-          title: "ImageGenerationThreadItemType",
+    Schema.Union([
+      Schema.StructWithRest(
+        Schema.Struct({
+          completedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          startedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item started, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          failure: Schema.optionalKey(
+            Schema.Union([V2ThreadTurnsListResponse__ImageGenerationFailure, Schema.Null]),
+          ),
+          generationId: Schema.optionalKey(
+            Schema.Union([
+              Schema.String.annotate({
+                description:
+                  "Image generation identifier for the generated image, when provided by the image backend.",
+              }),
+              Schema.Null,
+            ]),
+          ),
+          id: Schema.String,
+          inputImages: Schema.optionalKey(
+            Schema.Array(V2ThreadTurnsListResponse__ImageGenerationInputImage).annotate({
+              description:
+                "Observed local inputs for a completed generation, absent on older items.",
+            }),
+          ),
+          revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+          savedPath: Schema.optionalKey(
+            Schema.Union([V2ThreadTurnsListResponse__AbsolutePathBuf, Schema.Null]),
+          ),
+          status: Schema.String,
+          transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
+          type: Schema.Literal("imageGeneration").annotate({
+            title: "ImageGenerationThreadItemType",
+          }),
+          fileId: Schema.String,
         }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({
+        title: "FileIdThreadItem",
+        description:
+          "Either inline generated-image data or its durable attachment-store identity.\n\n`File` must remain first so rollouts written during the migration, which contain both an empty `result` and a `fileId`, retain the file reference when deserialized.",
       }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ImageGenerationThreadItem" }),
+      Schema.StructWithRest(
+        Schema.Struct({
+          completedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          startedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item started, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          failure: Schema.optionalKey(
+            Schema.Union([V2ThreadTurnsListResponse__ImageGenerationFailure, Schema.Null]),
+          ),
+          generationId: Schema.optionalKey(
+            Schema.Union([
+              Schema.String.annotate({
+                description:
+                  "Image generation identifier for the generated image, when provided by the image backend.",
+              }),
+              Schema.Null,
+            ]),
+          ),
+          id: Schema.String,
+          inputImages: Schema.optionalKey(
+            Schema.Array(V2ThreadTurnsListResponse__ImageGenerationInputImage).annotate({
+              description:
+                "Observed local inputs for a completed generation, absent on older items.",
+            }),
+          ),
+          revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+          savedPath: Schema.optionalKey(
+            Schema.Union([V2ThreadTurnsListResponse__AbsolutePathBuf, Schema.Null]),
+          ),
+          status: Schema.String,
+          transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
+          type: Schema.Literal("imageGeneration").annotate({
+            title: "ImageGenerationThreadItemType",
+          }),
+          result: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({
+        title: "ResultThreadItem",
+        description:
+          "Either inline generated-image data or its durable attachment-store identity.\n\n`File` must remain first so rollouts written during the migration, which contain both an empty `result` and a `fileId`, retain the file reference when deserialized.",
+      }),
+    ]),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         review: Schema.String,
         type: Schema.Literal("enteredReviewMode").annotate({
@@ -63045,9 +73966,31 @@ export const V2ThreadTurnsListResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "EnteredReviewModeThreadItem" }),
+    ).annotate({
+      title: "EnteredReviewModeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         review: Schema.String,
         type: Schema.Literal("exitedReviewMode").annotate({
@@ -63055,33 +73998,65 @@ export const V2ThreadTurnsListResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ExitedReviewModeThreadItem" }),
+    ).annotate({
+      title: "ExitedReviewModeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         type: Schema.Literal("contextCompaction").annotate({
           title: "ContextCompactionThreadItemType",
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ContextCompactionThreadItem" }),
+    ).annotate({
+      title: "ContextCompactionThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
   ],
   { mode: "oneOf" },
 ).annotate({ identifier: "V2ThreadTurnsListResponse__ThreadItem" });
 
 export type V2ThreadUnarchiveResponse__ThreadItem =
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly clientId?: string | null;
       readonly content: ReadonlyArray<V2ThreadUnarchiveResponse__UserInput>;
       readonly id: string;
       readonly type: "userMessage";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly fragments: ReadonlyArray<V2ThreadUnarchiveResponse__HookPromptFragment>;
       readonly id: string;
       readonly type: "hookPrompt";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly delivery?: V2ThreadUnarchiveResponse__AgentMessageDelivery | null;
       readonly id: string;
       readonly memoryCitation?: V2ThreadUnarchiveResponse__MemoryCitation | null;
@@ -63091,22 +74066,32 @@ export type V2ThreadUnarchiveResponse__ThreadItem =
       readonly type: "agentMessage";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly id: string;
       readonly name: string;
       readonly namespace?: string | null;
       readonly output: V2ThreadUnarchiveResponse__FunctionCallOutputBody;
       readonly type: "functionCallOutput";
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly id: string; readonly text: string; readonly type: "plan" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly text: string;
+      readonly type: "plan";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly content?: ReadonlyArray<string>;
       readonly id: string;
       readonly summary?: ReadonlyArray<string>;
       readonly type: "reasoning";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly aggregatedOutput?: string | null;
       readonly command: string;
       readonly commandActions: ReadonlyArray<V2ThreadUnarchiveResponse__CommandAction>;
@@ -63122,12 +74107,16 @@ export type V2ThreadUnarchiveResponse__ThreadItem =
       readonly type: "commandExecution";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly changes: ReadonlyArray<V2ThreadUnarchiveResponse__FileUpdateChange>;
       readonly id: string;
       readonly status: V2ThreadUnarchiveResponse__PatchApplyStatus;
       readonly type: "fileChange";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly appContext?: V2ThreadUnarchiveResponse__McpToolCallAppContext | null;
       readonly arguments: Schema.Json;
       readonly durationMs?: number | null;
@@ -63144,6 +74133,8 @@ export type V2ThreadUnarchiveResponse__ThreadItem =
       readonly type: "mcpToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly arguments: Schema.Json;
       readonly contentItems?: ReadonlyArray<V2ThreadUnarchiveResponse__DynamicToolCallOutputContentItem> | null;
       readonly durationMs?: number | null;
@@ -63155,6 +74146,8 @@ export type V2ThreadUnarchiveResponse__ThreadItem =
       readonly type: "dynamicToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly agentsStates: { readonly [x: string]: V2ThreadUnarchiveResponse__CollabAgentState };
       readonly id: string;
       readonly model?: string | null;
@@ -63167,6 +74160,8 @@ export type V2ThreadUnarchiveResponse__ThreadItem =
       readonly type: "collabAgentToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly agentPath: string;
       readonly agentThreadId: string;
       readonly id: string;
@@ -63176,6 +74171,8 @@ export type V2ThreadUnarchiveResponse__ThreadItem =
       readonly type: "subAgentActivity";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly action?: V2ThreadUnarchiveResponse__WebSearchAction | null;
       readonly id: string;
       readonly query: string;
@@ -63183,53 +74180,150 @@ export type V2ThreadUnarchiveResponse__ThreadItem =
       readonly type: "webSearch";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly id: string;
       readonly path: V2ThreadUnarchiveResponse__LegacyAppPathString;
       readonly type: "imageView";
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly durationMs: number; readonly id: string; readonly type: "sleep" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
   | ({
-      readonly failure?: V2ThreadUnarchiveResponse__ImageGenerationFailure | null;
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly durationMs: number;
       readonly id: string;
-      readonly result: string;
+      readonly type: "sleep";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly failure?: V2ThreadUnarchiveResponse__ImageGenerationFailure | null;
+      readonly generationId?: string | null;
+      readonly id: string;
+      readonly inputImages?: ReadonlyArray<V2ThreadUnarchiveResponse__ImageGenerationInputImage>;
       readonly revisedPrompt?: string | null;
       readonly savedPath?: V2ThreadUnarchiveResponse__AbsolutePathBuf | null;
       readonly status: string;
       readonly transparentBackground?: boolean | null;
       readonly type: "imageGeneration";
+      readonly fileId: string;
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly id: string; readonly review: string; readonly type: "enteredReviewMode" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
-  | ({ readonly id: string; readonly review: string; readonly type: "exitedReviewMode" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
-  | ({ readonly id: string; readonly type: "contextCompaction" } & {
-      readonly [x: string]: CodexJsonExtension;
-    });
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly failure?: V2ThreadUnarchiveResponse__ImageGenerationFailure | null;
+      readonly generationId?: string | null;
+      readonly id: string;
+      readonly inputImages?: ReadonlyArray<V2ThreadUnarchiveResponse__ImageGenerationInputImage>;
+      readonly revisedPrompt?: string | null;
+      readonly savedPath?: V2ThreadUnarchiveResponse__AbsolutePathBuf | null;
+      readonly status: string;
+      readonly transparentBackground?: boolean | null;
+      readonly type: "imageGeneration";
+      readonly result: string;
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly review: string;
+      readonly type: "enteredReviewMode";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly review: string;
+      readonly type: "exitedReviewMode";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly type: "contextCompaction";
+    } & { readonly [x: string]: CodexJsonExtension });
 export const V2ThreadUnarchiveResponse__ThreadItem = Schema.Union(
   [
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         clientId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         content: Schema.Array(V2ThreadUnarchiveResponse__UserInput),
         id: Schema.String,
         type: Schema.Literal("userMessage").annotate({ title: "UserMessageThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "UserMessageThreadItem" }),
+    ).annotate({
+      title: "UserMessageThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         fragments: Schema.Array(V2ThreadUnarchiveResponse__HookPromptFragment),
         id: Schema.String,
         type: Schema.Literal("hookPrompt").annotate({ title: "HookPromptThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "HookPromptThreadItem" }),
+    ).annotate({
+      title: "HookPromptThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         delivery: Schema.optionalKey(
           Schema.Union([V2ThreadUnarchiveResponse__AgentMessageDelivery, Schema.Null]),
         ),
@@ -63250,9 +74344,31 @@ export const V2ThreadUnarchiveResponse__ThreadItem = Schema.Union(
         type: Schema.Literal("agentMessage").annotate({ title: "AgentMessageThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "AgentMessageThreadItem" }),
+    ).annotate({
+      title: "AgentMessageThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         name: Schema.String,
         namespace: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
@@ -63262,9 +74378,31 @@ export const V2ThreadUnarchiveResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "FunctionCallOutputThreadItem" }),
+    ).annotate({
+      title: "FunctionCallOutputThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         text: Schema.String,
         type: Schema.Literal("plan").annotate({ title: "PlanThreadItemType" }),
@@ -63277,15 +74415,55 @@ export const V2ThreadUnarchiveResponse__ThreadItem = Schema.Union(
     }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         content: Schema.optionalKey(Schema.Array(Schema.String).annotate({ default: [] })),
         id: Schema.String,
         summary: Schema.optionalKey(Schema.Array(Schema.String).annotate({ default: [] })),
         type: Schema.Literal("reasoning").annotate({ title: "ReasoningThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ReasoningThreadItem" }),
+    ).annotate({
+      title: "ReasoningThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         aggregatedOutput: Schema.optionalKey(
           Schema.Union([
             Schema.String.annotate({
@@ -63360,18 +74538,62 @@ export const V2ThreadUnarchiveResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "CommandExecutionThreadItem" }),
+    ).annotate({
+      title: "CommandExecutionThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         changes: Schema.Array(V2ThreadUnarchiveResponse__FileUpdateChange),
         id: Schema.String,
         status: V2ThreadUnarchiveResponse__PatchApplyStatus,
         type: Schema.Literal("fileChange").annotate({ title: "FileChangeThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "FileChangeThreadItem" }),
+    ).annotate({
+      title: "FileChangeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         appContext: Schema.optionalKey(
           Schema.Union([V2ThreadUnarchiveResponse__McpToolCallAppContext, Schema.Null]),
         ),
@@ -63415,9 +74637,31 @@ export const V2ThreadUnarchiveResponse__ThreadItem = Schema.Union(
         type: Schema.Literal("mcpToolCall").annotate({ title: "McpToolCallThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "McpToolCallThreadItem" }),
+    ).annotate({
+      title: "McpToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         arguments: Schema.Json.annotate({ expected: "JSON value" }),
         contentItems: Schema.optionalKey(
           Schema.Union([
@@ -63444,9 +74688,31 @@ export const V2ThreadUnarchiveResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "DynamicToolCallThreadItem" }),
+    ).annotate({
+      title: "DynamicToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         agentsStates: Schema.Record(
           Schema.String,
           V2ThreadUnarchiveResponse__CollabAgentState,
@@ -63493,9 +74759,31 @@ export const V2ThreadUnarchiveResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "CollabAgentToolCallThreadItem" }),
+    ).annotate({
+      title: "CollabAgentToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         agentPath: Schema.String,
         agentThreadId: Schema.String,
         id: Schema.String,
@@ -63519,9 +74807,31 @@ export const V2ThreadUnarchiveResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "SubAgentActivityThreadItem" }),
+    ).annotate({
+      title: "SubAgentActivityThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         action: Schema.optionalKey(
           Schema.Union([V2ThreadUnarchiveResponse__WebSearchAction, Schema.Null]),
         ),
@@ -63539,17 +74849,61 @@ export const V2ThreadUnarchiveResponse__ThreadItem = Schema.Union(
         type: Schema.Literal("webSearch").annotate({ title: "WebSearchThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "WebSearchThreadItem" }),
+    ).annotate({
+      title: "WebSearchThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         path: V2ThreadUnarchiveResponse__LegacyAppPathString,
         type: Schema.Literal("imageView").annotate({ title: "ImageViewThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ImageViewThreadItem" }),
+    ).annotate({
+      title: "ImageViewThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         durationMs: Schema.Number.annotate({ format: "uint64" })
           .check(Schema.isInt().annotate({ expected: "an integer" }))
           .check(
@@ -63565,27 +74919,140 @@ export const V2ThreadUnarchiveResponse__ThreadItem = Schema.Union(
       title: "SleepThreadItem",
       description: "Display item emitted by the interruptible `clock.sleep` tool.",
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        failure: Schema.optionalKey(
-          Schema.Union([V2ThreadUnarchiveResponse__ImageGenerationFailure, Schema.Null]),
-        ),
-        id: Schema.String,
-        result: Schema.String,
-        revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-        savedPath: Schema.optionalKey(
-          Schema.Union([V2ThreadUnarchiveResponse__AbsolutePathBuf, Schema.Null]),
-        ),
-        status: Schema.String,
-        transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
-        type: Schema.Literal("imageGeneration").annotate({
-          title: "ImageGenerationThreadItemType",
+    Schema.Union([
+      Schema.StructWithRest(
+        Schema.Struct({
+          completedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          startedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item started, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          failure: Schema.optionalKey(
+            Schema.Union([V2ThreadUnarchiveResponse__ImageGenerationFailure, Schema.Null]),
+          ),
+          generationId: Schema.optionalKey(
+            Schema.Union([
+              Schema.String.annotate({
+                description:
+                  "Image generation identifier for the generated image, when provided by the image backend.",
+              }),
+              Schema.Null,
+            ]),
+          ),
+          id: Schema.String,
+          inputImages: Schema.optionalKey(
+            Schema.Array(V2ThreadUnarchiveResponse__ImageGenerationInputImage).annotate({
+              description:
+                "Observed local inputs for a completed generation, absent on older items.",
+            }),
+          ),
+          revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+          savedPath: Schema.optionalKey(
+            Schema.Union([V2ThreadUnarchiveResponse__AbsolutePathBuf, Schema.Null]),
+          ),
+          status: Schema.String,
+          transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
+          type: Schema.Literal("imageGeneration").annotate({
+            title: "ImageGenerationThreadItemType",
+          }),
+          fileId: Schema.String,
         }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({
+        title: "FileIdThreadItem",
+        description:
+          "Either inline generated-image data or its durable attachment-store identity.\n\n`File` must remain first so rollouts written during the migration, which contain both an empty `result` and a `fileId`, retain the file reference when deserialized.",
       }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ImageGenerationThreadItem" }),
+      Schema.StructWithRest(
+        Schema.Struct({
+          completedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          startedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item started, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          failure: Schema.optionalKey(
+            Schema.Union([V2ThreadUnarchiveResponse__ImageGenerationFailure, Schema.Null]),
+          ),
+          generationId: Schema.optionalKey(
+            Schema.Union([
+              Schema.String.annotate({
+                description:
+                  "Image generation identifier for the generated image, when provided by the image backend.",
+              }),
+              Schema.Null,
+            ]),
+          ),
+          id: Schema.String,
+          inputImages: Schema.optionalKey(
+            Schema.Array(V2ThreadUnarchiveResponse__ImageGenerationInputImage).annotate({
+              description:
+                "Observed local inputs for a completed generation, absent on older items.",
+            }),
+          ),
+          revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+          savedPath: Schema.optionalKey(
+            Schema.Union([V2ThreadUnarchiveResponse__AbsolutePathBuf, Schema.Null]),
+          ),
+          status: Schema.String,
+          transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
+          type: Schema.Literal("imageGeneration").annotate({
+            title: "ImageGenerationThreadItemType",
+          }),
+          result: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({
+        title: "ResultThreadItem",
+        description:
+          "Either inline generated-image data or its durable attachment-store identity.\n\n`File` must remain first so rollouts written during the migration, which contain both an empty `result` and a `fileId`, retain the file reference when deserialized.",
+      }),
+    ]),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         review: Schema.String,
         type: Schema.Literal("enteredReviewMode").annotate({
@@ -63593,9 +75060,31 @@ export const V2ThreadUnarchiveResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "EnteredReviewModeThreadItem" }),
+    ).annotate({
+      title: "EnteredReviewModeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         review: Schema.String,
         type: Schema.Literal("exitedReviewMode").annotate({
@@ -63603,33 +75092,65 @@ export const V2ThreadUnarchiveResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ExitedReviewModeThreadItem" }),
+    ).annotate({
+      title: "ExitedReviewModeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         type: Schema.Literal("contextCompaction").annotate({
           title: "ContextCompactionThreadItemType",
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ContextCompactionThreadItem" }),
+    ).annotate({
+      title: "ContextCompactionThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
   ],
   { mode: "oneOf" },
 ).annotate({ identifier: "V2ThreadUnarchiveResponse__ThreadItem" });
 
 export type V2TurnCompletedNotification__ThreadItem =
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly clientId?: string | null;
       readonly content: ReadonlyArray<V2TurnCompletedNotification__UserInput>;
       readonly id: string;
       readonly type: "userMessage";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly fragments: ReadonlyArray<V2TurnCompletedNotification__HookPromptFragment>;
       readonly id: string;
       readonly type: "hookPrompt";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly delivery?: V2TurnCompletedNotification__AgentMessageDelivery | null;
       readonly id: string;
       readonly memoryCitation?: V2TurnCompletedNotification__MemoryCitation | null;
@@ -63639,22 +75160,32 @@ export type V2TurnCompletedNotification__ThreadItem =
       readonly type: "agentMessage";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly id: string;
       readonly name: string;
       readonly namespace?: string | null;
       readonly output: V2TurnCompletedNotification__FunctionCallOutputBody;
       readonly type: "functionCallOutput";
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly id: string; readonly text: string; readonly type: "plan" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly text: string;
+      readonly type: "plan";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly content?: ReadonlyArray<string>;
       readonly id: string;
       readonly summary?: ReadonlyArray<string>;
       readonly type: "reasoning";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly aggregatedOutput?: string | null;
       readonly command: string;
       readonly commandActions: ReadonlyArray<V2TurnCompletedNotification__CommandAction>;
@@ -63670,12 +75201,16 @@ export type V2TurnCompletedNotification__ThreadItem =
       readonly type: "commandExecution";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly changes: ReadonlyArray<V2TurnCompletedNotification__FileUpdateChange>;
       readonly id: string;
       readonly status: V2TurnCompletedNotification__PatchApplyStatus;
       readonly type: "fileChange";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly appContext?: V2TurnCompletedNotification__McpToolCallAppContext | null;
       readonly arguments: Schema.Json;
       readonly durationMs?: number | null;
@@ -63692,6 +75227,8 @@ export type V2TurnCompletedNotification__ThreadItem =
       readonly type: "mcpToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly arguments: Schema.Json;
       readonly contentItems?: ReadonlyArray<V2TurnCompletedNotification__DynamicToolCallOutputContentItem> | null;
       readonly durationMs?: number | null;
@@ -63703,6 +75240,8 @@ export type V2TurnCompletedNotification__ThreadItem =
       readonly type: "dynamicToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly agentsStates: {
         readonly [x: string]: V2TurnCompletedNotification__CollabAgentState;
       };
@@ -63717,6 +75256,8 @@ export type V2TurnCompletedNotification__ThreadItem =
       readonly type: "collabAgentToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly agentPath: string;
       readonly agentThreadId: string;
       readonly id: string;
@@ -63726,6 +75267,8 @@ export type V2TurnCompletedNotification__ThreadItem =
       readonly type: "subAgentActivity";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly action?: V2TurnCompletedNotification__WebSearchAction | null;
       readonly id: string;
       readonly query: string;
@@ -63733,53 +75276,150 @@ export type V2TurnCompletedNotification__ThreadItem =
       readonly type: "webSearch";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly id: string;
       readonly path: V2TurnCompletedNotification__LegacyAppPathString;
       readonly type: "imageView";
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly durationMs: number; readonly id: string; readonly type: "sleep" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
   | ({
-      readonly failure?: V2TurnCompletedNotification__ImageGenerationFailure | null;
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly durationMs: number;
       readonly id: string;
-      readonly result: string;
+      readonly type: "sleep";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly failure?: V2TurnCompletedNotification__ImageGenerationFailure | null;
+      readonly generationId?: string | null;
+      readonly id: string;
+      readonly inputImages?: ReadonlyArray<V2TurnCompletedNotification__ImageGenerationInputImage>;
       readonly revisedPrompt?: string | null;
       readonly savedPath?: V2TurnCompletedNotification__AbsolutePathBuf | null;
       readonly status: string;
       readonly transparentBackground?: boolean | null;
       readonly type: "imageGeneration";
+      readonly fileId: string;
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly id: string; readonly review: string; readonly type: "enteredReviewMode" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
-  | ({ readonly id: string; readonly review: string; readonly type: "exitedReviewMode" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
-  | ({ readonly id: string; readonly type: "contextCompaction" } & {
-      readonly [x: string]: CodexJsonExtension;
-    });
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly failure?: V2TurnCompletedNotification__ImageGenerationFailure | null;
+      readonly generationId?: string | null;
+      readonly id: string;
+      readonly inputImages?: ReadonlyArray<V2TurnCompletedNotification__ImageGenerationInputImage>;
+      readonly revisedPrompt?: string | null;
+      readonly savedPath?: V2TurnCompletedNotification__AbsolutePathBuf | null;
+      readonly status: string;
+      readonly transparentBackground?: boolean | null;
+      readonly type: "imageGeneration";
+      readonly result: string;
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly review: string;
+      readonly type: "enteredReviewMode";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly review: string;
+      readonly type: "exitedReviewMode";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly type: "contextCompaction";
+    } & { readonly [x: string]: CodexJsonExtension });
 export const V2TurnCompletedNotification__ThreadItem = Schema.Union(
   [
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         clientId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         content: Schema.Array(V2TurnCompletedNotification__UserInput),
         id: Schema.String,
         type: Schema.Literal("userMessage").annotate({ title: "UserMessageThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "UserMessageThreadItem" }),
+    ).annotate({
+      title: "UserMessageThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         fragments: Schema.Array(V2TurnCompletedNotification__HookPromptFragment),
         id: Schema.String,
         type: Schema.Literal("hookPrompt").annotate({ title: "HookPromptThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "HookPromptThreadItem" }),
+    ).annotate({
+      title: "HookPromptThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         delivery: Schema.optionalKey(
           Schema.Union([V2TurnCompletedNotification__AgentMessageDelivery, Schema.Null]),
         ),
@@ -63800,9 +75440,31 @@ export const V2TurnCompletedNotification__ThreadItem = Schema.Union(
         type: Schema.Literal("agentMessage").annotate({ title: "AgentMessageThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "AgentMessageThreadItem" }),
+    ).annotate({
+      title: "AgentMessageThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         name: Schema.String,
         namespace: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
@@ -63812,9 +75474,31 @@ export const V2TurnCompletedNotification__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "FunctionCallOutputThreadItem" }),
+    ).annotate({
+      title: "FunctionCallOutputThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         text: Schema.String,
         type: Schema.Literal("plan").annotate({ title: "PlanThreadItemType" }),
@@ -63827,15 +75511,55 @@ export const V2TurnCompletedNotification__ThreadItem = Schema.Union(
     }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         content: Schema.optionalKey(Schema.Array(Schema.String).annotate({ default: [] })),
         id: Schema.String,
         summary: Schema.optionalKey(Schema.Array(Schema.String).annotate({ default: [] })),
         type: Schema.Literal("reasoning").annotate({ title: "ReasoningThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ReasoningThreadItem" }),
+    ).annotate({
+      title: "ReasoningThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         aggregatedOutput: Schema.optionalKey(
           Schema.Union([
             Schema.String.annotate({
@@ -63910,18 +75634,62 @@ export const V2TurnCompletedNotification__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "CommandExecutionThreadItem" }),
+    ).annotate({
+      title: "CommandExecutionThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         changes: Schema.Array(V2TurnCompletedNotification__FileUpdateChange),
         id: Schema.String,
         status: V2TurnCompletedNotification__PatchApplyStatus,
         type: Schema.Literal("fileChange").annotate({ title: "FileChangeThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "FileChangeThreadItem" }),
+    ).annotate({
+      title: "FileChangeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         appContext: Schema.optionalKey(
           Schema.Union([V2TurnCompletedNotification__McpToolCallAppContext, Schema.Null]),
         ),
@@ -63965,9 +75733,31 @@ export const V2TurnCompletedNotification__ThreadItem = Schema.Union(
         type: Schema.Literal("mcpToolCall").annotate({ title: "McpToolCallThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "McpToolCallThreadItem" }),
+    ).annotate({
+      title: "McpToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         arguments: Schema.Json.annotate({ expected: "JSON value" }),
         contentItems: Schema.optionalKey(
           Schema.Union([
@@ -63994,9 +75784,31 @@ export const V2TurnCompletedNotification__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "DynamicToolCallThreadItem" }),
+    ).annotate({
+      title: "DynamicToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         agentsStates: Schema.Record(
           Schema.String,
           V2TurnCompletedNotification__CollabAgentState,
@@ -64043,9 +75855,31 @@ export const V2TurnCompletedNotification__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "CollabAgentToolCallThreadItem" }),
+    ).annotate({
+      title: "CollabAgentToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         agentPath: Schema.String,
         agentThreadId: Schema.String,
         id: Schema.String,
@@ -64069,9 +75903,31 @@ export const V2TurnCompletedNotification__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "SubAgentActivityThreadItem" }),
+    ).annotate({
+      title: "SubAgentActivityThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         action: Schema.optionalKey(
           Schema.Union([V2TurnCompletedNotification__WebSearchAction, Schema.Null]),
         ),
@@ -64089,17 +75945,61 @@ export const V2TurnCompletedNotification__ThreadItem = Schema.Union(
         type: Schema.Literal("webSearch").annotate({ title: "WebSearchThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "WebSearchThreadItem" }),
+    ).annotate({
+      title: "WebSearchThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         path: V2TurnCompletedNotification__LegacyAppPathString,
         type: Schema.Literal("imageView").annotate({ title: "ImageViewThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ImageViewThreadItem" }),
+    ).annotate({
+      title: "ImageViewThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         durationMs: Schema.Number.annotate({ format: "uint64" })
           .check(Schema.isInt().annotate({ expected: "an integer" }))
           .check(
@@ -64115,27 +76015,140 @@ export const V2TurnCompletedNotification__ThreadItem = Schema.Union(
       title: "SleepThreadItem",
       description: "Display item emitted by the interruptible `clock.sleep` tool.",
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        failure: Schema.optionalKey(
-          Schema.Union([V2TurnCompletedNotification__ImageGenerationFailure, Schema.Null]),
-        ),
-        id: Schema.String,
-        result: Schema.String,
-        revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-        savedPath: Schema.optionalKey(
-          Schema.Union([V2TurnCompletedNotification__AbsolutePathBuf, Schema.Null]),
-        ),
-        status: Schema.String,
-        transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
-        type: Schema.Literal("imageGeneration").annotate({
-          title: "ImageGenerationThreadItemType",
+    Schema.Union([
+      Schema.StructWithRest(
+        Schema.Struct({
+          completedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          startedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item started, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          failure: Schema.optionalKey(
+            Schema.Union([V2TurnCompletedNotification__ImageGenerationFailure, Schema.Null]),
+          ),
+          generationId: Schema.optionalKey(
+            Schema.Union([
+              Schema.String.annotate({
+                description:
+                  "Image generation identifier for the generated image, when provided by the image backend.",
+              }),
+              Schema.Null,
+            ]),
+          ),
+          id: Schema.String,
+          inputImages: Schema.optionalKey(
+            Schema.Array(V2TurnCompletedNotification__ImageGenerationInputImage).annotate({
+              description:
+                "Observed local inputs for a completed generation, absent on older items.",
+            }),
+          ),
+          revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+          savedPath: Schema.optionalKey(
+            Schema.Union([V2TurnCompletedNotification__AbsolutePathBuf, Schema.Null]),
+          ),
+          status: Schema.String,
+          transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
+          type: Schema.Literal("imageGeneration").annotate({
+            title: "ImageGenerationThreadItemType",
+          }),
+          fileId: Schema.String,
         }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({
+        title: "FileIdThreadItem",
+        description:
+          "Either inline generated-image data or its durable attachment-store identity.\n\n`File` must remain first so rollouts written during the migration, which contain both an empty `result` and a `fileId`, retain the file reference when deserialized.",
       }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ImageGenerationThreadItem" }),
+      Schema.StructWithRest(
+        Schema.Struct({
+          completedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          startedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item started, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          failure: Schema.optionalKey(
+            Schema.Union([V2TurnCompletedNotification__ImageGenerationFailure, Schema.Null]),
+          ),
+          generationId: Schema.optionalKey(
+            Schema.Union([
+              Schema.String.annotate({
+                description:
+                  "Image generation identifier for the generated image, when provided by the image backend.",
+              }),
+              Schema.Null,
+            ]),
+          ),
+          id: Schema.String,
+          inputImages: Schema.optionalKey(
+            Schema.Array(V2TurnCompletedNotification__ImageGenerationInputImage).annotate({
+              description:
+                "Observed local inputs for a completed generation, absent on older items.",
+            }),
+          ),
+          revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+          savedPath: Schema.optionalKey(
+            Schema.Union([V2TurnCompletedNotification__AbsolutePathBuf, Schema.Null]),
+          ),
+          status: Schema.String,
+          transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
+          type: Schema.Literal("imageGeneration").annotate({
+            title: "ImageGenerationThreadItemType",
+          }),
+          result: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({
+        title: "ResultThreadItem",
+        description:
+          "Either inline generated-image data or its durable attachment-store identity.\n\n`File` must remain first so rollouts written during the migration, which contain both an empty `result` and a `fileId`, retain the file reference when deserialized.",
+      }),
+    ]),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         review: Schema.String,
         type: Schema.Literal("enteredReviewMode").annotate({
@@ -64143,9 +76156,31 @@ export const V2TurnCompletedNotification__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "EnteredReviewModeThreadItem" }),
+    ).annotate({
+      title: "EnteredReviewModeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         review: Schema.String,
         type: Schema.Literal("exitedReviewMode").annotate({
@@ -64153,33 +76188,65 @@ export const V2TurnCompletedNotification__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ExitedReviewModeThreadItem" }),
+    ).annotate({
+      title: "ExitedReviewModeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         type: Schema.Literal("contextCompaction").annotate({
           title: "ContextCompactionThreadItemType",
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ContextCompactionThreadItem" }),
+    ).annotate({
+      title: "ContextCompactionThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
   ],
   { mode: "oneOf" },
 ).annotate({ identifier: "V2TurnCompletedNotification__ThreadItem" });
 
 export type V2TurnStartedNotification__ThreadItem =
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly clientId?: string | null;
       readonly content: ReadonlyArray<V2TurnStartedNotification__UserInput>;
       readonly id: string;
       readonly type: "userMessage";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly fragments: ReadonlyArray<V2TurnStartedNotification__HookPromptFragment>;
       readonly id: string;
       readonly type: "hookPrompt";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly delivery?: V2TurnStartedNotification__AgentMessageDelivery | null;
       readonly id: string;
       readonly memoryCitation?: V2TurnStartedNotification__MemoryCitation | null;
@@ -64189,22 +76256,32 @@ export type V2TurnStartedNotification__ThreadItem =
       readonly type: "agentMessage";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly id: string;
       readonly name: string;
       readonly namespace?: string | null;
       readonly output: V2TurnStartedNotification__FunctionCallOutputBody;
       readonly type: "functionCallOutput";
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly id: string; readonly text: string; readonly type: "plan" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly text: string;
+      readonly type: "plan";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly content?: ReadonlyArray<string>;
       readonly id: string;
       readonly summary?: ReadonlyArray<string>;
       readonly type: "reasoning";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly aggregatedOutput?: string | null;
       readonly command: string;
       readonly commandActions: ReadonlyArray<V2TurnStartedNotification__CommandAction>;
@@ -64220,12 +76297,16 @@ export type V2TurnStartedNotification__ThreadItem =
       readonly type: "commandExecution";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly changes: ReadonlyArray<V2TurnStartedNotification__FileUpdateChange>;
       readonly id: string;
       readonly status: V2TurnStartedNotification__PatchApplyStatus;
       readonly type: "fileChange";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly appContext?: V2TurnStartedNotification__McpToolCallAppContext | null;
       readonly arguments: Schema.Json;
       readonly durationMs?: number | null;
@@ -64242,6 +76323,8 @@ export type V2TurnStartedNotification__ThreadItem =
       readonly type: "mcpToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly arguments: Schema.Json;
       readonly contentItems?: ReadonlyArray<V2TurnStartedNotification__DynamicToolCallOutputContentItem> | null;
       readonly durationMs?: number | null;
@@ -64253,6 +76336,8 @@ export type V2TurnStartedNotification__ThreadItem =
       readonly type: "dynamicToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly agentsStates: { readonly [x: string]: V2TurnStartedNotification__CollabAgentState };
       readonly id: string;
       readonly model?: string | null;
@@ -64265,6 +76350,8 @@ export type V2TurnStartedNotification__ThreadItem =
       readonly type: "collabAgentToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly agentPath: string;
       readonly agentThreadId: string;
       readonly id: string;
@@ -64274,6 +76361,8 @@ export type V2TurnStartedNotification__ThreadItem =
       readonly type: "subAgentActivity";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly action?: V2TurnStartedNotification__WebSearchAction | null;
       readonly id: string;
       readonly query: string;
@@ -64281,53 +76370,150 @@ export type V2TurnStartedNotification__ThreadItem =
       readonly type: "webSearch";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly id: string;
       readonly path: V2TurnStartedNotification__LegacyAppPathString;
       readonly type: "imageView";
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly durationMs: number; readonly id: string; readonly type: "sleep" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
   | ({
-      readonly failure?: V2TurnStartedNotification__ImageGenerationFailure | null;
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly durationMs: number;
       readonly id: string;
-      readonly result: string;
+      readonly type: "sleep";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly failure?: V2TurnStartedNotification__ImageGenerationFailure | null;
+      readonly generationId?: string | null;
+      readonly id: string;
+      readonly inputImages?: ReadonlyArray<V2TurnStartedNotification__ImageGenerationInputImage>;
       readonly revisedPrompt?: string | null;
       readonly savedPath?: V2TurnStartedNotification__AbsolutePathBuf | null;
       readonly status: string;
       readonly transparentBackground?: boolean | null;
       readonly type: "imageGeneration";
+      readonly fileId: string;
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly id: string; readonly review: string; readonly type: "enteredReviewMode" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
-  | ({ readonly id: string; readonly review: string; readonly type: "exitedReviewMode" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
-  | ({ readonly id: string; readonly type: "contextCompaction" } & {
-      readonly [x: string]: CodexJsonExtension;
-    });
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly failure?: V2TurnStartedNotification__ImageGenerationFailure | null;
+      readonly generationId?: string | null;
+      readonly id: string;
+      readonly inputImages?: ReadonlyArray<V2TurnStartedNotification__ImageGenerationInputImage>;
+      readonly revisedPrompt?: string | null;
+      readonly savedPath?: V2TurnStartedNotification__AbsolutePathBuf | null;
+      readonly status: string;
+      readonly transparentBackground?: boolean | null;
+      readonly type: "imageGeneration";
+      readonly result: string;
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly review: string;
+      readonly type: "enteredReviewMode";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly review: string;
+      readonly type: "exitedReviewMode";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly type: "contextCompaction";
+    } & { readonly [x: string]: CodexJsonExtension });
 export const V2TurnStartedNotification__ThreadItem = Schema.Union(
   [
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         clientId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         content: Schema.Array(V2TurnStartedNotification__UserInput),
         id: Schema.String,
         type: Schema.Literal("userMessage").annotate({ title: "UserMessageThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "UserMessageThreadItem" }),
+    ).annotate({
+      title: "UserMessageThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         fragments: Schema.Array(V2TurnStartedNotification__HookPromptFragment),
         id: Schema.String,
         type: Schema.Literal("hookPrompt").annotate({ title: "HookPromptThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "HookPromptThreadItem" }),
+    ).annotate({
+      title: "HookPromptThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         delivery: Schema.optionalKey(
           Schema.Union([V2TurnStartedNotification__AgentMessageDelivery, Schema.Null]),
         ),
@@ -64348,9 +76534,31 @@ export const V2TurnStartedNotification__ThreadItem = Schema.Union(
         type: Schema.Literal("agentMessage").annotate({ title: "AgentMessageThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "AgentMessageThreadItem" }),
+    ).annotate({
+      title: "AgentMessageThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         name: Schema.String,
         namespace: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
@@ -64360,9 +76568,31 @@ export const V2TurnStartedNotification__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "FunctionCallOutputThreadItem" }),
+    ).annotate({
+      title: "FunctionCallOutputThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         text: Schema.String,
         type: Schema.Literal("plan").annotate({ title: "PlanThreadItemType" }),
@@ -64375,15 +76605,55 @@ export const V2TurnStartedNotification__ThreadItem = Schema.Union(
     }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         content: Schema.optionalKey(Schema.Array(Schema.String).annotate({ default: [] })),
         id: Schema.String,
         summary: Schema.optionalKey(Schema.Array(Schema.String).annotate({ default: [] })),
         type: Schema.Literal("reasoning").annotate({ title: "ReasoningThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ReasoningThreadItem" }),
+    ).annotate({
+      title: "ReasoningThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         aggregatedOutput: Schema.optionalKey(
           Schema.Union([
             Schema.String.annotate({
@@ -64458,18 +76728,62 @@ export const V2TurnStartedNotification__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "CommandExecutionThreadItem" }),
+    ).annotate({
+      title: "CommandExecutionThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         changes: Schema.Array(V2TurnStartedNotification__FileUpdateChange),
         id: Schema.String,
         status: V2TurnStartedNotification__PatchApplyStatus,
         type: Schema.Literal("fileChange").annotate({ title: "FileChangeThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "FileChangeThreadItem" }),
+    ).annotate({
+      title: "FileChangeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         appContext: Schema.optionalKey(
           Schema.Union([V2TurnStartedNotification__McpToolCallAppContext, Schema.Null]),
         ),
@@ -64513,9 +76827,31 @@ export const V2TurnStartedNotification__ThreadItem = Schema.Union(
         type: Schema.Literal("mcpToolCall").annotate({ title: "McpToolCallThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "McpToolCallThreadItem" }),
+    ).annotate({
+      title: "McpToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         arguments: Schema.Json.annotate({ expected: "JSON value" }),
         contentItems: Schema.optionalKey(
           Schema.Union([
@@ -64542,9 +76878,31 @@ export const V2TurnStartedNotification__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "DynamicToolCallThreadItem" }),
+    ).annotate({
+      title: "DynamicToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         agentsStates: Schema.Record(
           Schema.String,
           V2TurnStartedNotification__CollabAgentState,
@@ -64591,9 +76949,31 @@ export const V2TurnStartedNotification__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "CollabAgentToolCallThreadItem" }),
+    ).annotate({
+      title: "CollabAgentToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         agentPath: Schema.String,
         agentThreadId: Schema.String,
         id: Schema.String,
@@ -64617,9 +76997,31 @@ export const V2TurnStartedNotification__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "SubAgentActivityThreadItem" }),
+    ).annotate({
+      title: "SubAgentActivityThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         action: Schema.optionalKey(
           Schema.Union([V2TurnStartedNotification__WebSearchAction, Schema.Null]),
         ),
@@ -64637,17 +77039,61 @@ export const V2TurnStartedNotification__ThreadItem = Schema.Union(
         type: Schema.Literal("webSearch").annotate({ title: "WebSearchThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "WebSearchThreadItem" }),
+    ).annotate({
+      title: "WebSearchThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         path: V2TurnStartedNotification__LegacyAppPathString,
         type: Schema.Literal("imageView").annotate({ title: "ImageViewThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ImageViewThreadItem" }),
+    ).annotate({
+      title: "ImageViewThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         durationMs: Schema.Number.annotate({ format: "uint64" })
           .check(Schema.isInt().annotate({ expected: "an integer" }))
           .check(
@@ -64663,27 +77109,140 @@ export const V2TurnStartedNotification__ThreadItem = Schema.Union(
       title: "SleepThreadItem",
       description: "Display item emitted by the interruptible `clock.sleep` tool.",
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        failure: Schema.optionalKey(
-          Schema.Union([V2TurnStartedNotification__ImageGenerationFailure, Schema.Null]),
-        ),
-        id: Schema.String,
-        result: Schema.String,
-        revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-        savedPath: Schema.optionalKey(
-          Schema.Union([V2TurnStartedNotification__AbsolutePathBuf, Schema.Null]),
-        ),
-        status: Schema.String,
-        transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
-        type: Schema.Literal("imageGeneration").annotate({
-          title: "ImageGenerationThreadItemType",
+    Schema.Union([
+      Schema.StructWithRest(
+        Schema.Struct({
+          completedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          startedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item started, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          failure: Schema.optionalKey(
+            Schema.Union([V2TurnStartedNotification__ImageGenerationFailure, Schema.Null]),
+          ),
+          generationId: Schema.optionalKey(
+            Schema.Union([
+              Schema.String.annotate({
+                description:
+                  "Image generation identifier for the generated image, when provided by the image backend.",
+              }),
+              Schema.Null,
+            ]),
+          ),
+          id: Schema.String,
+          inputImages: Schema.optionalKey(
+            Schema.Array(V2TurnStartedNotification__ImageGenerationInputImage).annotate({
+              description:
+                "Observed local inputs for a completed generation, absent on older items.",
+            }),
+          ),
+          revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+          savedPath: Schema.optionalKey(
+            Schema.Union([V2TurnStartedNotification__AbsolutePathBuf, Schema.Null]),
+          ),
+          status: Schema.String,
+          transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
+          type: Schema.Literal("imageGeneration").annotate({
+            title: "ImageGenerationThreadItemType",
+          }),
+          fileId: Schema.String,
         }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({
+        title: "FileIdThreadItem",
+        description:
+          "Either inline generated-image data or its durable attachment-store identity.\n\n`File` must remain first so rollouts written during the migration, which contain both an empty `result` and a `fileId`, retain the file reference when deserialized.",
       }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ImageGenerationThreadItem" }),
+      Schema.StructWithRest(
+        Schema.Struct({
+          completedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          startedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item started, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          failure: Schema.optionalKey(
+            Schema.Union([V2TurnStartedNotification__ImageGenerationFailure, Schema.Null]),
+          ),
+          generationId: Schema.optionalKey(
+            Schema.Union([
+              Schema.String.annotate({
+                description:
+                  "Image generation identifier for the generated image, when provided by the image backend.",
+              }),
+              Schema.Null,
+            ]),
+          ),
+          id: Schema.String,
+          inputImages: Schema.optionalKey(
+            Schema.Array(V2TurnStartedNotification__ImageGenerationInputImage).annotate({
+              description:
+                "Observed local inputs for a completed generation, absent on older items.",
+            }),
+          ),
+          revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+          savedPath: Schema.optionalKey(
+            Schema.Union([V2TurnStartedNotification__AbsolutePathBuf, Schema.Null]),
+          ),
+          status: Schema.String,
+          transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
+          type: Schema.Literal("imageGeneration").annotate({
+            title: "ImageGenerationThreadItemType",
+          }),
+          result: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({
+        title: "ResultThreadItem",
+        description:
+          "Either inline generated-image data or its durable attachment-store identity.\n\n`File` must remain first so rollouts written during the migration, which contain both an empty `result` and a `fileId`, retain the file reference when deserialized.",
+      }),
+    ]),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         review: Schema.String,
         type: Schema.Literal("enteredReviewMode").annotate({
@@ -64691,9 +77250,31 @@ export const V2TurnStartedNotification__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "EnteredReviewModeThreadItem" }),
+    ).annotate({
+      title: "EnteredReviewModeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         review: Schema.String,
         type: Schema.Literal("exitedReviewMode").annotate({
@@ -64701,16 +77282,42 @@ export const V2TurnStartedNotification__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ExitedReviewModeThreadItem" }),
+    ).annotate({
+      title: "ExitedReviewModeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         type: Schema.Literal("contextCompaction").annotate({
           title: "ContextCompactionThreadItemType",
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ContextCompactionThreadItem" }),
+    ).annotate({
+      title: "ContextCompactionThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
   ],
   { mode: "oneOf" },
 ).annotate({ identifier: "V2TurnStartedNotification__ThreadItem" });
@@ -64737,17 +77344,23 @@ export const V2TurnStartParams__TurnToolOutput = Schema.StructWithRest(
 
 export type V2TurnStartResponse__ThreadItem =
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly clientId?: string | null;
       readonly content: ReadonlyArray<V2TurnStartResponse__UserInput>;
       readonly id: string;
       readonly type: "userMessage";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly fragments: ReadonlyArray<V2TurnStartResponse__HookPromptFragment>;
       readonly id: string;
       readonly type: "hookPrompt";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly delivery?: V2TurnStartResponse__AgentMessageDelivery | null;
       readonly id: string;
       readonly memoryCitation?: V2TurnStartResponse__MemoryCitation | null;
@@ -64757,22 +77370,32 @@ export type V2TurnStartResponse__ThreadItem =
       readonly type: "agentMessage";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly id: string;
       readonly name: string;
       readonly namespace?: string | null;
       readonly output: V2TurnStartResponse__FunctionCallOutputBody;
       readonly type: "functionCallOutput";
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly id: string; readonly text: string; readonly type: "plan" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly text: string;
+      readonly type: "plan";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly content?: ReadonlyArray<string>;
       readonly id: string;
       readonly summary?: ReadonlyArray<string>;
       readonly type: "reasoning";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly aggregatedOutput?: string | null;
       readonly command: string;
       readonly commandActions: ReadonlyArray<V2TurnStartResponse__CommandAction>;
@@ -64788,12 +77411,16 @@ export type V2TurnStartResponse__ThreadItem =
       readonly type: "commandExecution";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly changes: ReadonlyArray<V2TurnStartResponse__FileUpdateChange>;
       readonly id: string;
       readonly status: V2TurnStartResponse__PatchApplyStatus;
       readonly type: "fileChange";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly appContext?: V2TurnStartResponse__McpToolCallAppContext | null;
       readonly arguments: Schema.Json;
       readonly durationMs?: number | null;
@@ -64810,6 +77437,8 @@ export type V2TurnStartResponse__ThreadItem =
       readonly type: "mcpToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly arguments: Schema.Json;
       readonly contentItems?: ReadonlyArray<V2TurnStartResponse__DynamicToolCallOutputContentItem> | null;
       readonly durationMs?: number | null;
@@ -64821,6 +77450,8 @@ export type V2TurnStartResponse__ThreadItem =
       readonly type: "dynamicToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly agentsStates: { readonly [x: string]: V2TurnStartResponse__CollabAgentState };
       readonly id: string;
       readonly model?: string | null;
@@ -64833,6 +77464,8 @@ export type V2TurnStartResponse__ThreadItem =
       readonly type: "collabAgentToolCall";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly agentPath: string;
       readonly agentThreadId: string;
       readonly id: string;
@@ -64842,6 +77475,8 @@ export type V2TurnStartResponse__ThreadItem =
       readonly type: "subAgentActivity";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly action?: V2TurnStartResponse__WebSearchAction | null;
       readonly id: string;
       readonly query: string;
@@ -64849,53 +77484,150 @@ export type V2TurnStartResponse__ThreadItem =
       readonly type: "webSearch";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
       readonly id: string;
       readonly path: V2TurnStartResponse__LegacyAppPathString;
       readonly type: "imageView";
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly durationMs: number; readonly id: string; readonly type: "sleep" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
   | ({
-      readonly failure?: V2TurnStartResponse__ImageGenerationFailure | null;
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly durationMs: number;
       readonly id: string;
-      readonly result: string;
+      readonly type: "sleep";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly failure?: V2TurnStartResponse__ImageGenerationFailure | null;
+      readonly generationId?: string | null;
+      readonly id: string;
+      readonly inputImages?: ReadonlyArray<V2TurnStartResponse__ImageGenerationInputImage>;
       readonly revisedPrompt?: string | null;
       readonly savedPath?: V2TurnStartResponse__AbsolutePathBuf | null;
       readonly status: string;
       readonly transparentBackground?: boolean | null;
       readonly type: "imageGeneration";
+      readonly fileId: string;
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly id: string; readonly review: string; readonly type: "enteredReviewMode" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
-  | ({ readonly id: string; readonly review: string; readonly type: "exitedReviewMode" } & {
-      readonly [x: string]: CodexJsonExtension;
-    })
-  | ({ readonly id: string; readonly type: "contextCompaction" } & {
-      readonly [x: string]: CodexJsonExtension;
-    });
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly failure?: V2TurnStartResponse__ImageGenerationFailure | null;
+      readonly generationId?: string | null;
+      readonly id: string;
+      readonly inputImages?: ReadonlyArray<V2TurnStartResponse__ImageGenerationInputImage>;
+      readonly revisedPrompt?: string | null;
+      readonly savedPath?: V2TurnStartResponse__AbsolutePathBuf | null;
+      readonly status: string;
+      readonly transparentBackground?: boolean | null;
+      readonly type: "imageGeneration";
+      readonly result: string;
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly review: string;
+      readonly type: "enteredReviewMode";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly review: string;
+      readonly type: "exitedReviewMode";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly completedAtMs?: number | null;
+      readonly startedAtMs?: number | null;
+      readonly id: string;
+      readonly type: "contextCompaction";
+    } & { readonly [x: string]: CodexJsonExtension });
 export const V2TurnStartResponse__ThreadItem = Schema.Union(
   [
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         clientId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         content: Schema.Array(V2TurnStartResponse__UserInput),
         id: Schema.String,
         type: Schema.Literal("userMessage").annotate({ title: "UserMessageThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "UserMessageThreadItem" }),
+    ).annotate({
+      title: "UserMessageThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         fragments: Schema.Array(V2TurnStartResponse__HookPromptFragment),
         id: Schema.String,
         type: Schema.Literal("hookPrompt").annotate({ title: "HookPromptThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "HookPromptThreadItem" }),
+    ).annotate({
+      title: "HookPromptThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         delivery: Schema.optionalKey(
           Schema.Union([V2TurnStartResponse__AgentMessageDelivery, Schema.Null]),
         ),
@@ -64911,9 +77643,31 @@ export const V2TurnStartResponse__ThreadItem = Schema.Union(
         type: Schema.Literal("agentMessage").annotate({ title: "AgentMessageThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "AgentMessageThreadItem" }),
+    ).annotate({
+      title: "AgentMessageThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         name: Schema.String,
         namespace: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
@@ -64923,9 +77677,31 @@ export const V2TurnStartResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "FunctionCallOutputThreadItem" }),
+    ).annotate({
+      title: "FunctionCallOutputThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         text: Schema.String,
         type: Schema.Literal("plan").annotate({ title: "PlanThreadItemType" }),
@@ -64938,15 +77714,55 @@ export const V2TurnStartResponse__ThreadItem = Schema.Union(
     }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         content: Schema.optionalKey(Schema.Array(Schema.String).annotate({ default: [] })),
         id: Schema.String,
         summary: Schema.optionalKey(Schema.Array(Schema.String).annotate({ default: [] })),
         type: Schema.Literal("reasoning").annotate({ title: "ReasoningThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ReasoningThreadItem" }),
+    ).annotate({
+      title: "ReasoningThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         aggregatedOutput: Schema.optionalKey(
           Schema.Union([
             Schema.String.annotate({
@@ -65021,18 +77837,62 @@ export const V2TurnStartResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "CommandExecutionThreadItem" }),
+    ).annotate({
+      title: "CommandExecutionThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         changes: Schema.Array(V2TurnStartResponse__FileUpdateChange),
         id: Schema.String,
         status: V2TurnStartResponse__PatchApplyStatus,
         type: Schema.Literal("fileChange").annotate({ title: "FileChangeThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "FileChangeThreadItem" }),
+    ).annotate({
+      title: "FileChangeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         appContext: Schema.optionalKey(
           Schema.Union([V2TurnStartResponse__McpToolCallAppContext, Schema.Null]),
         ),
@@ -65076,9 +77936,31 @@ export const V2TurnStartResponse__ThreadItem = Schema.Union(
         type: Schema.Literal("mcpToolCall").annotate({ title: "McpToolCallThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "McpToolCallThreadItem" }),
+    ).annotate({
+      title: "McpToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         arguments: Schema.Json.annotate({ expected: "JSON value" }),
         contentItems: Schema.optionalKey(
           Schema.Union([
@@ -65105,9 +77987,31 @@ export const V2TurnStartResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "DynamicToolCallThreadItem" }),
+    ).annotate({
+      title: "DynamicToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         agentsStates: Schema.Record(Schema.String, V2TurnStartResponse__CollabAgentState).annotate({
           description: "Last known status of the target agents, when available.",
         }),
@@ -65153,9 +78057,31 @@ export const V2TurnStartResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "CollabAgentToolCallThreadItem" }),
+    ).annotate({
+      title: "CollabAgentToolCallThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         agentPath: Schema.String,
         agentThreadId: Schema.String,
         id: Schema.String,
@@ -65179,9 +78105,31 @@ export const V2TurnStartResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "SubAgentActivityThreadItem" }),
+    ).annotate({
+      title: "SubAgentActivityThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         action: Schema.optionalKey(
           Schema.Union([V2TurnStartResponse__WebSearchAction, Schema.Null]),
         ),
@@ -65199,17 +78147,61 @@ export const V2TurnStartResponse__ThreadItem = Schema.Union(
         type: Schema.Literal("webSearch").annotate({ title: "WebSearchThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "WebSearchThreadItem" }),
+    ).annotate({
+      title: "WebSearchThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         path: V2TurnStartResponse__LegacyAppPathString,
         type: Schema.Literal("imageView").annotate({ title: "ImageViewThreadItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ImageViewThreadItem" }),
+    ).annotate({
+      title: "ImageViewThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         durationMs: Schema.Number.annotate({ format: "uint64" })
           .check(Schema.isInt().annotate({ expected: "an integer" }))
           .check(
@@ -65225,27 +78217,140 @@ export const V2TurnStartResponse__ThreadItem = Schema.Union(
       title: "SleepThreadItem",
       description: "Display item emitted by the interruptible `clock.sleep` tool.",
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        failure: Schema.optionalKey(
-          Schema.Union([V2TurnStartResponse__ImageGenerationFailure, Schema.Null]),
-        ),
-        id: Schema.String,
-        result: Schema.String,
-        revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-        savedPath: Schema.optionalKey(
-          Schema.Union([V2TurnStartResponse__AbsolutePathBuf, Schema.Null]),
-        ),
-        status: Schema.String,
-        transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
-        type: Schema.Literal("imageGeneration").annotate({
-          title: "ImageGenerationThreadItemType",
+    Schema.Union([
+      Schema.StructWithRest(
+        Schema.Struct({
+          completedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          startedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item started, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          failure: Schema.optionalKey(
+            Schema.Union([V2TurnStartResponse__ImageGenerationFailure, Schema.Null]),
+          ),
+          generationId: Schema.optionalKey(
+            Schema.Union([
+              Schema.String.annotate({
+                description:
+                  "Image generation identifier for the generated image, when provided by the image backend.",
+              }),
+              Schema.Null,
+            ]),
+          ),
+          id: Schema.String,
+          inputImages: Schema.optionalKey(
+            Schema.Array(V2TurnStartResponse__ImageGenerationInputImage).annotate({
+              description:
+                "Observed local inputs for a completed generation, absent on older items.",
+            }),
+          ),
+          revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+          savedPath: Schema.optionalKey(
+            Schema.Union([V2TurnStartResponse__AbsolutePathBuf, Schema.Null]),
+          ),
+          status: Schema.String,
+          transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
+          type: Schema.Literal("imageGeneration").annotate({
+            title: "ImageGenerationThreadItemType",
+          }),
+          fileId: Schema.String,
         }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({
+        title: "FileIdThreadItem",
+        description:
+          "Either inline generated-image data or its durable attachment-store identity.\n\n`File` must remain first so rollouts written during the migration, which contain both an empty `result` and a `fileId`, retain the file reference when deserialized.",
       }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ImageGenerationThreadItem" }),
+      Schema.StructWithRest(
+        Schema.Struct({
+          completedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          startedAtMs: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({
+                description: "Unix timestamp in milliseconds when the item started, if recorded.",
+                format: "int64",
+              }).check(Schema.isInt().annotate({ expected: "an integer" })),
+              Schema.Null,
+            ]),
+          ),
+          failure: Schema.optionalKey(
+            Schema.Union([V2TurnStartResponse__ImageGenerationFailure, Schema.Null]),
+          ),
+          generationId: Schema.optionalKey(
+            Schema.Union([
+              Schema.String.annotate({
+                description:
+                  "Image generation identifier for the generated image, when provided by the image backend.",
+              }),
+              Schema.Null,
+            ]),
+          ),
+          id: Schema.String,
+          inputImages: Schema.optionalKey(
+            Schema.Array(V2TurnStartResponse__ImageGenerationInputImage).annotate({
+              description:
+                "Observed local inputs for a completed generation, absent on older items.",
+            }),
+          ),
+          revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+          savedPath: Schema.optionalKey(
+            Schema.Union([V2TurnStartResponse__AbsolutePathBuf, Schema.Null]),
+          ),
+          status: Schema.String,
+          transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
+          type: Schema.Literal("imageGeneration").annotate({
+            title: "ImageGenerationThreadItemType",
+          }),
+          result: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({
+        title: "ResultThreadItem",
+        description:
+          "Either inline generated-image data or its durable attachment-store identity.\n\n`File` must remain first so rollouts written during the migration, which contain both an empty `result` and a `fileId`, retain the file reference when deserialized.",
+      }),
+    ]),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         review: Schema.String,
         type: Schema.Literal("enteredReviewMode").annotate({
@@ -65253,9 +78358,31 @@ export const V2TurnStartResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "EnteredReviewModeThreadItem" }),
+    ).annotate({
+      title: "EnteredReviewModeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         review: Schema.String,
         type: Schema.Literal("exitedReviewMode").annotate({
@@ -65263,16 +78390,42 @@ export const V2TurnStartResponse__ThreadItem = Schema.Union(
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ExitedReviewModeThreadItem" }),
+    ).annotate({
+      title: "ExitedReviewModeThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
+        completedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item completed, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        startedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "Unix timestamp in milliseconds when the item started, if recorded.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
         id: Schema.String,
         type: Schema.Literal("contextCompaction").annotate({
           title: "ContextCompactionThreadItemType",
         }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ContextCompactionThreadItem" }),
+    ).annotate({
+      title: "ContextCompactionThreadItem",
+      description:
+        "A thread item and its recorded lifecycle times. The payload stays flat on the wire.",
+    }),
   ],
   { mode: "oneOf" },
 ).annotate({ identifier: "V2TurnStartResponse__ThreadItem" });
@@ -65409,6 +78562,7 @@ export type ClientRequest__TurnStartParams = {
   readonly permissions?: string | null;
   readonly personality?: ClientRequest__Personality | null;
   readonly responsesapiClientMetadata?: { readonly [x: string]: string } | null;
+  readonly responsesapiClientMetadataPatch?: { readonly [x: string]: string } | null;
   readonly rootTurnId?: string | null;
   readonly runtimeWorkspaceRoots?: ReadonlyArray<ClientRequest__AbsolutePathBuf> | null;
   readonly sandboxPolicy?: ClientRequest__SandboxPolicy | null;
@@ -65535,7 +78689,16 @@ export const ClientRequest__TurnStartParams = Schema.StructWithRest(
       Schema.Union([
         Schema.Record(Schema.String, Schema.String).annotate({
           description:
-            'Optional metadata to enrich Codex\'s ResponsesAPI turn metadata.\n\nEntries are flattened into the JSON string sent as `client_metadata["x-codex-turn-metadata"]` on ResponsesAPI HTTP and websocket requests.\n\nThey are not sent as top-level ResponsesAPI `client_metadata` keys, and reserved keys such as `session_id`, `thread_id`, `turn_id`, and `window_id` cannot be overridden.',
+            'Optional metadata to enrich Codex\'s ResponsesAPI turn metadata. Replaces unprotected client-provided entries when supplied; an empty map clears them.\n\nEntries are flattened into the JSON string sent as `client_metadata["x-codex-turn-metadata"]` on ResponsesAPI HTTP and websocket requests.\n\nThey are not sent as top-level ResponsesAPI `client_metadata` keys, and reserved keys such as `session_id`, `thread_id`, `turn_id`, and `window_id` cannot be overridden.',
+        }),
+        Schema.Null,
+      ]),
+    ),
+    responsesapiClientMetadataPatch: Schema.optionalKey(
+      Schema.Union([
+        Schema.Record(Schema.String, Schema.String).annotate({
+          description:
+            "Merge entries into the ResponsesAPI turn metadata without removing existing entries. Applied after `responsesapiClientMetadata` if both are provided; reserved keys remain protected.",
         }),
         Schema.Null,
       ]),
@@ -66112,6 +79275,7 @@ export type V2ConfigRequirementsReadResponse__ConfigRequirements = {
   readonly modelProviders?: { readonly [x: string]: Schema.Json } | null;
   readonly models?: V2ConfigRequirementsReadResponse__ModelsRequirements | null;
   readonly network?: V2ConfigRequirementsReadResponse__NetworkRequirements | null;
+  readonly otel?: V2ConfigRequirementsReadResponse__OtelRequirements | null;
   readonly sqliteHome?: string | null;
 } & { readonly [x: string]: CodexJsonExtension };
 export const V2ConfigRequirementsReadResponse__ConfigRequirements = Schema.StructWithRest(
@@ -66211,6 +79375,9 @@ export const V2ConfigRequirementsReadResponse__ConfigRequirements = Schema.Struc
     ),
     network: Schema.optionalKey(
       Schema.Union([V2ConfigRequirementsReadResponse__NetworkRequirements, Schema.Null]),
+    ),
+    otel: Schema.optionalKey(
+      Schema.Union([V2ConfigRequirementsReadResponse__OtelRequirements, Schema.Null]),
     ),
     sqliteHome: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
   }),
@@ -71630,6 +84797,16 @@ export type ClientRequest =
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
       readonly id: ClientRequest__RequestId;
+      readonly method: "thread/sample";
+      readonly params: ClientRequest__ThreadSampleParams;
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly id: ClientRequest__RequestId;
+      readonly method: "thread/sample/cancel";
+      readonly params: ClientRequest__ThreadSampleCancelParams;
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly id: ClientRequest__RequestId;
       readonly method: "thread/archive";
       readonly params: ClientRequest__ThreadArchiveParams;
     } & { readonly [x: string]: CodexJsonExtension })
@@ -71747,6 +84924,11 @@ export type ClientRequest =
       readonly id: ClientRequest__RequestId;
       readonly method: "thread/memoryMode/set";
       readonly params: ClientRequest__ThreadMemoryModeSetParams;
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly id: ClientRequest__RequestId;
+      readonly method: "thread/memory/read";
+      readonly params: ClientRequest__ThreadMemoryReadParams;
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
       readonly id: ClientRequest__RequestId;
@@ -72290,6 +85472,11 @@ export type ClientRequest =
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
       readonly id: ClientRequest__RequestId;
+      readonly method: "account/gcp/setup";
+      readonly params: ClientRequest__GcpSetupParams;
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly id: ClientRequest__RequestId;
       readonly method: "account/bedrock/checkGovCloudRequirements";
       readonly params: ClientRequest__BedrockCheckGovCloudRequirementsParams;
     } & { readonly [x: string]: CodexJsonExtension })
@@ -72297,6 +85484,16 @@ export type ClientRequest =
       readonly id: ClientRequest__RequestId;
       readonly method: "account/login/cancel";
       readonly params: ClientRequest__CancelLoginAccountParams;
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly id: ClientRequest__RequestId;
+      readonly method: "accountSession/list";
+      readonly params: ClientRequest__AccountSessionsListParams;
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly id: ClientRequest__RequestId;
+      readonly method: "accountSession/switch";
+      readonly params: ClientRequest__AccountSessionsSwitchParams;
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
       readonly id: ClientRequest__RequestId;
@@ -72332,6 +85529,11 @@ export type ClientRequest =
       readonly id: ClientRequest__RequestId;
       readonly method: "feedback/upload";
       readonly params: ClientRequest__FeedbackUploadParams;
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly id: ClientRequest__RequestId;
+      readonly method: "feedback/save";
+      readonly params: ClientRequest__FeedbackSaveParams;
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
       readonly id: ClientRequest__RequestId;
@@ -72535,6 +85737,24 @@ export const ClientRequest = Schema.Union(
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
     ).annotate({ title: "Thread/forkRequest" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        id: ClientRequest__RequestId,
+        method: Schema.Literal("thread/sample").annotate({ title: "Thread/sampleRequestMethod" }),
+        params: ClientRequest__ThreadSampleParams,
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "Thread/sampleRequest" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        id: ClientRequest__RequestId,
+        method: Schema.Literal("thread/sample/cancel").annotate({
+          title: "Thread/sample/cancelRequestMethod",
+        }),
+        params: ClientRequest__ThreadSampleCancelParams,
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "Thread/sample/cancelRequest" }),
     Schema.StructWithRest(
       Schema.Struct({
         id: ClientRequest__RequestId,
@@ -72779,6 +85999,16 @@ export const ClientRequest = Schema.Union(
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
     ).annotate({ title: "Thread/memoryMode/setRequest" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        id: ClientRequest__RequestId,
+        method: Schema.Literal("thread/memory/read").annotate({
+          title: "Thread/memory/readRequestMethod",
+        }),
+        params: ClientRequest__ThreadMemoryReadParams,
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "Thread/memory/readRequest" }),
     Schema.StructWithRest(
       Schema.Struct({
         id: ClientRequest__RequestId,
@@ -73820,6 +87050,16 @@ export const ClientRequest = Schema.Union(
     Schema.StructWithRest(
       Schema.Struct({
         id: ClientRequest__RequestId,
+        method: Schema.Literal("account/gcp/setup").annotate({
+          title: "Account/gcp/setupRequestMethod",
+        }),
+        params: ClientRequest__GcpSetupParams,
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "Account/gcp/setupRequest" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        id: ClientRequest__RequestId,
         method: Schema.Literal("account/bedrock/checkGovCloudRequirements").annotate({
           title: "Account/bedrock/checkGovCloudRequirementsRequestMethod",
         }),
@@ -73837,6 +87077,26 @@ export const ClientRequest = Schema.Union(
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
     ).annotate({ title: "Account/login/cancelRequest" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        id: ClientRequest__RequestId,
+        method: Schema.Literal("accountSession/list").annotate({
+          title: "AccountSession/listRequestMethod",
+        }),
+        params: ClientRequest__AccountSessionsListParams,
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "AccountSession/listRequest" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        id: ClientRequest__RequestId,
+        method: Schema.Literal("accountSession/switch").annotate({
+          title: "AccountSession/switchRequestMethod",
+        }),
+        params: ClientRequest__AccountSessionsSwitchParams,
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "AccountSession/switchRequest" }),
     Schema.StructWithRest(
       Schema.Struct({
         id: ClientRequest__RequestId,
@@ -73909,6 +87169,14 @@ export const ClientRequest = Schema.Union(
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
     ).annotate({ title: "Feedback/uploadRequest" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        id: ClientRequest__RequestId,
+        method: Schema.Literal("feedback/save").annotate({ title: "Feedback/saveRequestMethod" }),
+        params: ClientRequest__FeedbackSaveParams,
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "Feedback/saveRequest" }),
     Schema.StructWithRest(
       Schema.Struct({
         id: ClientRequest__RequestId,
@@ -77043,6 +90311,70 @@ export const V2AccountRateLimitsUpdatedNotification = Schema.StructWithRest(
     "Sparse rolling rate-limit update.\n\nClients should merge available values into the most recent `account/rateLimits/read` response or refetch that snapshot. Nullable account metadata may be unavailable in a rolling update and does not clear a previously observed value.",
 });
 
+export type V2AccountSessionsListParams = { readonly refreshWorkspaceMetadata?: boolean } & {
+  readonly [x: string]: CodexJsonExtension;
+};
+export const V2AccountSessionsListParams = Schema.StructWithRest(
+  Schema.Struct({ refreshWorkspaceMetadata: Schema.optionalKey(Schema.Boolean) }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ title: "AccountSessionsListParams" });
+
+export type V2AccountSessionsResponse = {
+  readonly activeSessionId?: string | null;
+  readonly sessions: ReadonlyArray<V2AccountSessionsResponse__AccountSession>;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2AccountSessionsResponse = Schema.StructWithRest(
+  Schema.Struct({
+    activeSessionId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+    sessions: Schema.Array(V2AccountSessionsResponse__AccountSession),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ title: "AccountSessionsResponse" });
+
+export type V2AccountSessionsSwitchParams = {
+  readonly accountId: string;
+  readonly allowBrowserLogin?: boolean;
+  readonly sessionId: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2AccountSessionsSwitchParams = Schema.StructWithRest(
+  Schema.Struct({
+    accountId: Schema.String.annotate({
+      description: "Workspace to select within that login; this is not a user identifier.",
+    }),
+    allowBrowserLogin: Schema.optionalKey(
+      Schema.Boolean.annotate({
+        description:
+          "Allow Core to start browser sign-in if this session needs SSO for the workspace.",
+      }),
+    ),
+    sessionId: Schema.String.annotate({
+      description: "Opaque active-login identifier returned by accountSession/list.",
+    }),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ title: "AccountSessionsSwitchParams" });
+
+export type V2AccountSessionsSwitchResponse =
+  | ({
+      readonly activeSessionId?: string | null;
+      readonly sessions: ReadonlyArray<V2AccountSessionsSwitchResponse__AccountSession>;
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({ readonly auth_url: string; readonly login_id: string } & {
+      readonly [x: string]: CodexJsonExtension;
+    });
+export const V2AccountSessionsSwitchResponse = Schema.Union([
+  Schema.StructWithRest(
+    Schema.Struct({
+      activeSessionId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+      sessions: Schema.Array(V2AccountSessionsSwitchResponse__AccountSession),
+    }),
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({ title: "Sessionsv2::AccountSessionsSwitchResponse" }),
+  Schema.StructWithRest(Schema.Struct({ auth_url: Schema.String, login_id: Schema.String }), [
+    Schema.Record(Schema.String, CodexJsonExtension),
+  ]).annotate({ description: "Open the URL and await account/login/completed for this login ID." }),
+]).annotate({ title: "AccountSessionsSwitchResponse" });
+
 export type V2AccountUpdatedNotification = {
   readonly authMode?: V2AccountUpdatedNotification__AuthMode | null;
   readonly planType?: V2AccountUpdatedNotification__PlanType | null;
@@ -78421,6 +91753,57 @@ export const V2ExternalAgentConfigImportResponse = Schema.StructWithRest(
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ title: "ExternalAgentConfigImportResponse" });
 
+export type V2FeedbackSaveParams = {
+  readonly classification: string;
+  readonly extraLogFiles?: ReadonlyArray<string> | null;
+  readonly includeLogs?: boolean;
+  readonly reason?: string | null;
+  readonly savePath: V2FeedbackSaveParams__LegacyAppPathString;
+  readonly tags?: { readonly [x: string]: string } | null;
+  readonly threadId?: string | null;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2FeedbackSaveParams = Schema.StructWithRest(
+  Schema.Struct({
+    classification: Schema.String,
+    extraLogFiles: Schema.optionalKey(Schema.Union([Schema.Array(Schema.String), Schema.Null])),
+    includeLogs: Schema.optionalKey(Schema.Boolean),
+    reason: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+    savePath: Schema.suspend(
+      (): Schema.Codec<V2FeedbackSaveParams__LegacyAppPathString> =>
+        V2FeedbackSaveParams__LegacyAppPathString,
+    ).annotate({
+      description:
+        "Absolute, previously unused ZIP path on the app-server host. The caller owns this file, including after a disconnected RPC.",
+    }),
+    tags: Schema.optionalKey(
+      Schema.Union([Schema.Record(Schema.String, Schema.String), Schema.Null]),
+    ),
+    threadId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ title: "FeedbackSaveParams" });
+
+export type V2FeedbackSaveResponse = {
+  readonly promptHash?: string | null;
+  readonly savedPath: V2FeedbackSaveResponse__LegacyAppPathString;
+  readonly threadId: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2FeedbackSaveResponse = Schema.StructWithRest(
+  Schema.Struct({
+    promptHash: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description: "Same prompt hash as feedback/upload; null when prompt metadata is absent.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    savedPath: V2FeedbackSaveResponse__LegacyAppPathString,
+    threadId: Schema.String,
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ title: "FeedbackSaveResponse" });
+
 export type V2FeedbackUploadParams = {
   readonly classification: string;
   readonly extraLogFiles?: ReadonlyArray<string> | null;
@@ -78863,6 +92246,41 @@ export const V2GatewayOAuthReadResponse = Schema.StructWithRest(
     "Current effective gateway policy and credential readiness; never contains credentials.",
 });
 
+export type V2GcpSetupParams = {
+  readonly credentialFile?: string | null;
+  readonly location?: string | null;
+  readonly projectId: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2GcpSetupParams = Schema.StructWithRest(
+  Schema.Struct({
+    credentialFile: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "Absolute path to a credential file on the app-server host. Omit or pass `null` to clear the active user configuration's override and use ADC. If another configuration layer would still supply a credential file, setup fails without saving changes.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    location: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description: "Vertex AI location. Omission or null selects `global`.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    projectId: Schema.String,
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ title: "GcpSetupParams" });
+
+export type V2GcpSetupResponse = { readonly [x: string]: Schema.Json };
+export const V2GcpSetupResponse = Schema.Record(
+  Schema.String,
+  Schema.Json.annotate({ expected: "JSON value" }),
+).annotate({ title: "GcpSetupResponse" });
+
 export type V2GetAccountParams = { readonly refreshToken?: boolean } & {
   readonly [x: string]: CodexJsonExtension;
 };
@@ -79019,15 +92437,26 @@ export const V2HookCompletedNotification = Schema.StructWithRest(
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ title: "HookCompletedNotification" });
 
-export type V2HooksListParams = { readonly cwds?: ReadonlyArray<string> } & {
-  readonly [x: string]: CodexJsonExtension;
-};
+export type V2HooksListParams = {
+  readonly cwds?: ReadonlyArray<string>;
+  readonly threadId?: string | null;
+} & { readonly [x: string]: CodexJsonExtension };
 export const V2HooksListParams = Schema.StructWithRest(
   Schema.Struct({
     cwds: Schema.optionalKey(
       Schema.Array(Schema.String).annotate({
-        description: "When empty, defaults to the current session working directory.",
+        description:
+          "Working directories to inspect when no thread is specified. An empty list uses the session cwd.",
       }),
+    ),
+    threadId: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "List a loaded thread's hooks, including its selected environments. Omit `cwds` in this mode.",
+        }),
+        Schema.Null,
+      ]),
     ),
   }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
@@ -79923,6 +93352,59 @@ export const V2ModelProviderCapabilitiesReadResponse = Schema.StructWithRest(
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ title: "ModelProviderCapabilitiesReadResponse" });
 
+export type V2ModelProviderError =
+  | ({
+      readonly currentModelProvider: string;
+      readonly modelProvider: string;
+      readonly type: "modelProviderMismatch";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({ readonly modelProvider: string; readonly type: "modelProviderNotConfigured" } & {
+      readonly [x: string]: CodexJsonExtension;
+    })
+  | ({
+      readonly modelProvider: string;
+      readonly requiredModelProvider: string;
+      readonly type: "modelProviderPolicyConflict";
+    } & { readonly [x: string]: CodexJsonExtension });
+export const V2ModelProviderError = Schema.Union(
+  [
+    Schema.StructWithRest(
+      Schema.Struct({
+        currentModelProvider: Schema.String,
+        modelProvider: Schema.String,
+        type: Schema.Literal("modelProviderMismatch").annotate({
+          title: "ModelProviderMismatchv2::ModelProviderErrorType",
+        }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "ModelProviderMismatchv2::ModelProviderError" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        modelProvider: Schema.String,
+        type: Schema.Literal("modelProviderNotConfigured").annotate({
+          title: "ModelProviderNotConfiguredv2::ModelProviderErrorType",
+        }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "ModelProviderNotConfiguredv2::ModelProviderError" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        modelProvider: Schema.String,
+        requiredModelProvider: Schema.String,
+        type: Schema.Literal("modelProviderPolicyConflict").annotate({
+          title: "ModelProviderPolicyConflictv2::ModelProviderErrorType",
+        }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "ModelProviderPolicyConflictv2::ModelProviderError" }),
+  ],
+  { mode: "oneOf" },
+).annotate({
+  title: "ModelProviderError",
+  description:
+    "Structured JSON-RPC error data. Unknown errors must retain the client's normal fallback.",
+});
+
 export type V2ModelReroutedNotification = {
   readonly fromModel: string;
   readonly reason: V2ModelReroutedNotification__ModelRerouteReason;
@@ -80477,6 +93959,7 @@ export const V2PluginUninstallResponse = Schema.Record(
 
 export type V2ProcessExitedNotification = {
   readonly exitCode: number;
+  readonly outputDrainTimedOut?: boolean | null;
   readonly processHandle: string;
   readonly stderr: string;
   readonly stderrCapReached: boolean;
@@ -80487,6 +93970,15 @@ export const V2ProcessExitedNotification = Schema.StructWithRest(
   Schema.Struct({
     exitCode: Schema.Number.annotate({ description: "Process exit code.", format: "int32" }).check(
       Schema.isInt().annotate({ expected: "an integer" }),
+    ),
+    outputDrainTimedOut: Schema.optionalKey(
+      Schema.Union([
+        Schema.Boolean.annotate({
+          description:
+            "Whether output collection hit its post-exit deadline before seeing EOF or reaching the requested byte cap on either stream. Older servers omit this field.",
+        }),
+        Schema.Null,
+      ]),
     ),
     processHandle: Schema.String.annotate({
       description: "Client-supplied, connection-scoped `processHandle` from `process/spawn`.",
@@ -81195,7 +94687,7 @@ export const V2ReviewStartParams = Schema.StructWithRest(
     delivery: Schema.optionalKey(
       Schema.Union([V2ReviewStartParams__ReviewDelivery, Schema.Null]).annotate({
         description:
-          "Where to run the review: inline (default) on the current thread or detached on a new thread (returned in `reviewThreadId`). Detached delivery is deprecated and emits `deprecationNotice`. Use `thread/start` followed by an inline review for a separate review thread.",
+          "Reviews run inline on the supplied thread. Omit this field or pass `inline`. To review on a separate thread, start a thread first and use its id.",
       }),
     ),
     target: V2ReviewStartParams__ReviewTarget,
@@ -81211,8 +94703,7 @@ export type V2ReviewStartResponse = {
 export const V2ReviewStartResponse = Schema.StructWithRest(
   Schema.Struct({
     reviewThreadId: Schema.String.annotate({
-      description:
-        "Identifies the thread where the review runs.\n\nFor inline reviews, this is the original thread id. For detached reviews, this is the id of the new review thread.",
+      description: "The thread id supplied to `review/start`.",
     }),
     turn: V2ReviewStartResponse__Turn,
   }),
@@ -81777,6 +95268,7 @@ export const V2ThreadDeleteResponse = Schema.Record(
 export type V2ThreadForkParams = {
   readonly approvalPolicy?: V2ThreadForkParams__AskForApproval | null;
   readonly approvalsReviewer?: V2ThreadForkParams__ApprovalsReviewer | null;
+  readonly attachToSource?: boolean;
   readonly baseInstructions?: string | null;
   readonly beforeTurnId?: string | null;
   readonly config?: { readonly [x: string]: Schema.Json } | null;
@@ -81785,6 +95277,7 @@ export type V2ThreadForkParams = {
   readonly developerInstructions?: string | null;
   readonly ephemeral?: boolean;
   readonly excludeTurns?: boolean;
+  readonly experimentalDisablePredictionMcp?: boolean;
   readonly experimentalPredictionMode?: boolean;
   readonly lastTurnId?: string | null;
   readonly model?: string | null;
@@ -81806,6 +95299,12 @@ export const V2ThreadForkParams = Schema.StructWithRest(
       Schema.Union([V2ThreadForkParams__ApprovalsReviewer, Schema.Null]).annotate({
         description:
           "Override where approval requests are routed for review on this thread and subsequent turns.",
+      }),
+    ),
+    attachToSource: Schema.optionalKey(
+      Schema.Boolean.annotate({
+        description:
+          "Persist the fork as an attached thread of its resolved source, hidden from ordinary lists. The source cannot be deleted while attached threads exist. Requires a paginated source and local storage; incompatible with ephemeral and deferGoalContinuation. Omitted or false creates an ordinary fork.",
       }),
     ),
     baseInstructions: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
@@ -81839,10 +95338,16 @@ export const V2ThreadForkParams = Schema.StructWithRest(
           "When true, return only thread metadata and live fork state without populating `thread.turns`. This is useful when the client plans to call `thread/turns/list` immediately after forking. Full-history hydration is deprecated for paginated threads; use this with `thread/turns/list` and `thread/items/list` instead.",
       }),
     ),
+    experimentalDisablePredictionMcp: Schema.optionalKey(
+      Schema.Boolean.annotate({
+        description:
+          "Disable MCP servers in prediction mode when the inherited window uses incremental tools on Responses Lite. Requires `experimentalPredictionMode: true`.",
+      }),
+    ),
     experimentalPredictionMode: Schema.optionalKey(
       Schema.Boolean.annotate({
         description:
-          "Start from the loaded parent's effective config, tools, environments, and persisted history to maximize prompt-cache reuse. Requires a loaded, persisted parent and `ephemeral: true`. Enables `features.reasoning_effort_override` on the fork. Cannot be combined with configuration overrides, `path`, `lastTurnId`, or `beforeTurnId`.",
+          "Start from the loaded parent's effective config, tools, environments, and persisted history to maximize prompt-cache reuse. Requires a loaded, persisted parent and `ephemeral: true`. Enables `features.reasoning_effort_override` on the fork. Only `config.thread_unload_delay_secs` may override the inherited config. Cannot be combined with `path`, `lastTurnId`, or `beforeTurnId`.",
       }),
     ),
     lastTurnId: Schema.optionalKey(
@@ -82249,6 +95754,7 @@ export const V2ThreadItemsReadResponse = Schema.StructWithRest(
 export type V2ThreadListParams = {
   readonly ancestorThreadId?: string | null;
   readonly archived?: boolean | null;
+  readonly attachedToThreadId?: string | null;
   readonly cursor?: string | null;
   readonly cwd?: V2ThreadListParams__ThreadListCwdFilter | null;
   readonly excludedThreadIds?: ReadonlyArray<string> | null;
@@ -82280,6 +95786,15 @@ export const V2ThreadListParams = Schema.StructWithRest(
         Schema.Boolean.annotate({
           description:
             "Optional archived filter; when set to true, only archived threads are returned. If false or null, only non-archived threads are returned.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    attachedToThreadId: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "Return only persistent threads attached to this thread, including empty threads. Mutually exclusive with parentThreadId and ancestorThreadId. Omitting this filter keeps attached threads hidden from ordinary listings.",
         }),
         Schema.Null,
       ]),
@@ -82513,6 +96028,36 @@ export const V2ThreadMemoryModeSetResponse = Schema.Record(
   Schema.String,
   Schema.Json.annotate({ expected: "JSON value" }),
 ).annotate({ title: "ThreadMemoryModeSetResponse" });
+
+export type V2ThreadMemoryReadParams = { readonly threadId: string } & {
+  readonly [x: string]: CodexJsonExtension;
+};
+export const V2ThreadMemoryReadParams = Schema.StructWithRest(
+  Schema.Struct({
+    threadId: Schema.String.annotate({
+      description: "The thread must already be started or resumed.",
+    }),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ title: "ThreadMemoryReadParams" });
+
+export type V2ThreadMemoryReadResponse = { readonly summary?: string | null } & {
+  readonly [x: string]: CodexJsonExtension;
+};
+export const V2ThreadMemoryReadResponse = Schema.StructWithRest(
+  Schema.Struct({
+    summary: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "Summary from the thread's selected memory version. Null when memory use is disabled or the selected summary is missing, unreadable, or blank.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ title: "ThreadMemoryReadResponse" });
 
 export type V2ThreadMetadataUpdateParams = {
   readonly daybreakEnabled?: boolean | null;
@@ -83087,6 +96632,7 @@ export type V2ThreadRealtimeStartParams = {
   readonly transport?: V2ThreadRealtimeStartParams__ThreadRealtimeStartTransport | null;
   readonly version?: V2ThreadRealtimeStartParams__RealtimeConversationVersion | null;
   readonly voice?: V2ThreadRealtimeStartParams__RealtimeVoice | null;
+  readonly voiceSessionId?: string | null;
 } & { readonly [x: string]: CodexJsonExtension };
 export const V2ThreadRealtimeStartParams = Schema.StructWithRest(
   Schema.Struct({
@@ -83223,6 +96769,15 @@ export const V2ThreadRealtimeStartParams = Schema.StructWithRest(
     ),
     voice: Schema.optionalKey(
       Schema.Union([V2ThreadRealtimeStartParams__RealtimeVoice, Schema.Null]),
+    ),
+    voiceSessionId: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "Client-generated identifier for the product voice session. This is distinct from `realtimeSessionId`.",
+        }),
+        Schema.Null,
+      ]),
     ),
   }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
@@ -83583,6 +97138,115 @@ export const V2ThreadRevertResponse = Schema.StructWithRest(
   }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ title: "ThreadRevertResponse" });
+
+export type V2ThreadSampleCancelParams = {
+  readonly requestId: V2ThreadSampleCancelParams__RequestId;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ThreadSampleCancelParams = Schema.StructWithRest(
+  Schema.Struct({ requestId: V2ThreadSampleCancelParams__RequestId }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ title: "ThreadSampleCancelParams" });
+
+export type V2ThreadSampleCancelResponse = { readonly [x: string]: Schema.Json };
+export const V2ThreadSampleCancelResponse = Schema.Record(
+  Schema.String,
+  Schema.Json.annotate({ expected: "JSON value" }),
+).annotate({ title: "ThreadSampleCancelResponse" });
+
+export type V2ThreadSampleParams = {
+  readonly disableMcp?: boolean;
+  readonly effort?: V2ThreadSampleParams__ReasoningEffort | null;
+  readonly expectedTurnId: string;
+  readonly prompt: string;
+  readonly responsesapiClientMetadata?: { readonly [x: string]: string } | null;
+  readonly threadId: string;
+  readonly threadSource?: V2ThreadSampleParams__ThreadSource | null;
+  readonly turnTrigger?: string | null;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ThreadSampleParams = Schema.StructWithRest(
+  Schema.Struct({
+    disableMcp: Schema.optionalKey(
+      Schema.Boolean.annotate({
+        description:
+          "Disable MCP servers when the inherited window uses incremental tools on Responses Lite.",
+      }),
+    ),
+    effort: Schema.optionalKey(
+      Schema.Union([V2ThreadSampleParams__ReasoningEffort, Schema.Null]).annotate({
+        description:
+          "Applied only when the provider and model support cache-preserving reasoning-effort updates.",
+      }),
+    ),
+    expectedTurnId: Schema.String.annotate({
+      description:
+        "The loaded source's latest completed, failed, or interrupted turn. Stale or active sources are rejected.",
+    }),
+    prompt: Schema.String,
+    responsesapiClientMetadata: Schema.optionalKey(
+      Schema.Union([
+        Schema.Record(Schema.String, Schema.String).annotate({
+          description: "Optional metadata to enrich Codex's ResponsesAPI turn metadata.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    threadId: Schema.String,
+    threadSource: Schema.optionalKey(
+      Schema.Union([V2ThreadSampleParams__ThreadSource, Schema.Null]),
+    ),
+    turnTrigger: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ title: "ThreadSampleParams" });
+
+export type V2ThreadSampleResponse = {
+  readonly cachedInputTokens?: number | null;
+  readonly inputTokens?: number | null;
+  readonly outputTokens?: number | null;
+  readonly responseId: string;
+  readonly sourceTurnId: string;
+  readonly text?: string | null;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ThreadSampleResponse = Schema.StructWithRest(
+  Schema.Struct({
+    cachedInputTokens: Schema.optionalKey(
+      Schema.Union([
+        Schema.Number.annotate({ format: "int64" }).check(
+          Schema.isInt().annotate({ expected: "an integer" }),
+        ),
+        Schema.Null,
+      ]),
+    ),
+    inputTokens: Schema.optionalKey(
+      Schema.Union([
+        Schema.Number.annotate({ format: "int64" }).check(
+          Schema.isInt().annotate({ expected: "an integer" }),
+        ),
+        Schema.Null,
+      ]),
+    ),
+    outputTokens: Schema.optionalKey(
+      Schema.Union([
+        Schema.Number.annotate({ format: "int64" }).check(
+          Schema.isInt().annotate({ expected: "an integer" }),
+        ),
+        Schema.Null,
+      ]),
+    ),
+    responseId: Schema.String,
+    sourceTurnId: Schema.String,
+    text: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "Assistant text from the response, or null if it attempted a tool call or completed without text.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ title: "ThreadSampleResponse" });
 
 export type V2ThreadSearchOccurrencesParams = {
   readonly cursor?: string | null;
@@ -84685,6 +98349,7 @@ export type V2TurnStartParams = {
   readonly permissions?: string | null;
   readonly personality?: V2TurnStartParams__Personality | null;
   readonly responsesapiClientMetadata?: { readonly [x: string]: string } | null;
+  readonly responsesapiClientMetadataPatch?: { readonly [x: string]: string } | null;
   readonly rootTurnId?: string | null;
   readonly runtimeWorkspaceRoots?: ReadonlyArray<V2TurnStartParams__AbsolutePathBuf> | null;
   readonly sandboxPolicy?: V2TurnStartParams__SandboxPolicy | null;
@@ -84811,7 +98476,16 @@ export const V2TurnStartParams = Schema.StructWithRest(
       Schema.Union([
         Schema.Record(Schema.String, Schema.String).annotate({
           description:
-            'Optional metadata to enrich Codex\'s ResponsesAPI turn metadata.\n\nEntries are flattened into the JSON string sent as `client_metadata["x-codex-turn-metadata"]` on ResponsesAPI HTTP and websocket requests.\n\nThey are not sent as top-level ResponsesAPI `client_metadata` keys, and reserved keys such as `session_id`, `thread_id`, `turn_id`, and `window_id` cannot be overridden.',
+            'Optional metadata to enrich Codex\'s ResponsesAPI turn metadata. Replaces unprotected client-provided entries when supplied; an empty map clears them.\n\nEntries are flattened into the JSON string sent as `client_metadata["x-codex-turn-metadata"]` on ResponsesAPI HTTP and websocket requests.\n\nThey are not sent as top-level ResponsesAPI `client_metadata` keys, and reserved keys such as `session_id`, `thread_id`, `turn_id`, and `window_id` cannot be overridden.',
+        }),
+        Schema.Null,
+      ]),
+    ),
+    responsesapiClientMetadataPatch: Schema.optionalKey(
+      Schema.Union([
+        Schema.Record(Schema.String, Schema.String).annotate({
+          description:
+            "Merge entries into the ResponsesAPI turn metadata without removing existing entries. Applied after `responsesapiClientMetadata` if both are provided; reserved keys remain protected.",
         }),
         Schema.Null,
       ]),
@@ -84892,6 +98566,7 @@ export type V2TurnSteerParams = {
   readonly expectedTurnId: string;
   readonly input: ReadonlyArray<V2TurnSteerParams__UserInput>;
   readonly responsesapiClientMetadata?: { readonly [x: string]: string } | null;
+  readonly responsesapiClientMetadataPatch?: { readonly [x: string]: string } | null;
   readonly threadId: string;
 } & { readonly [x: string]: CodexJsonExtension };
 export const V2TurnSteerParams = Schema.StructWithRest(
@@ -84915,7 +98590,16 @@ export const V2TurnSteerParams = Schema.StructWithRest(
       Schema.Union([
         Schema.Record(Schema.String, Schema.String).annotate({
           description:
-            'Optional metadata to enrich Codex\'s ResponsesAPI turn metadata.\n\nEntries are flattened into the JSON string sent as `client_metadata["x-codex-turn-metadata"]` on ResponsesAPI HTTP and websocket requests.\n\nThey are not sent as top-level ResponsesAPI `client_metadata` keys, and reserved keys such as `session_id`, `thread_id`, `turn_id`, and `window_id` cannot be overridden.',
+            'Optional metadata to enrich Codex\'s ResponsesAPI turn metadata. Replaces unprotected client-provided entries when supplied; an empty map clears them.\n\nEntries are flattened into the JSON string sent as `client_metadata["x-codex-turn-metadata"]` on ResponsesAPI HTTP and websocket requests.\n\nThey are not sent as top-level ResponsesAPI `client_metadata` keys, and reserved keys such as `session_id`, `thread_id`, `turn_id`, and `window_id` cannot be overridden.',
+        }),
+        Schema.Null,
+      ]),
+    ),
+    responsesapiClientMetadataPatch: Schema.optionalKey(
+      Schema.Union([
+        Schema.Record(Schema.String, Schema.String).annotate({
+          description:
+            "Merge entries into the ResponsesAPI turn metadata without removing existing entries. Applied after `responsesapiClientMetadata` if both are provided; reserved keys remain protected.",
         }),
         Schema.Null,
       ]),

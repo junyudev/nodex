@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import { FileReadBoundary } from "@/components/board/editor/file-runtime";
 import { NfmDocument, markdownImageAlt } from "@/components/board/nfm-renderer";
 import { useMarkdownImage } from "@/components/board/markdown-image";
+import { FileReferenceIntentProvider } from "@/lib/file-reference-intent";
 import { FileLinkWorkspaceProvider } from "@/lib/file-link-workspace";
 import {
   ImageErrorTile,
@@ -40,26 +41,28 @@ export function MessageDocument({
   const { text, attachments, attachmentsAt } = splitMessageContent(blocks);
   const images = attachments.length > 0 ? <MessageImages images={attachments} /> : null;
   return (
-    <FileReadBoundary authority={fileAuthority}>
-      <div className="flex min-w-0 flex-col gap-2">
-        {/* With no text, the lead opens the message on a line of its own. */}
-        {lead != null && text.length === 0 ? (
-          <span className="flex h-lh items-center">{lead}</span>
-        ) : null}
-        {attachmentsAt === "start" ? images : null}
-        {text.length > 0 ? (
-          <UserMessageCollapse contentKey={contentKey} collapsedLineCount={collapsedLineCount}>
-            <NfmDocument
-              lead={lead}
-              blocks={[...text]}
-              density="message"
-              className="codex-markdown codex-markdown-user text-size-chat"
-            />
-          </UserMessageCollapse>
-        ) : null}
-        {attachmentsAt === "end" ? images : null}
-      </div>
-    </FileReadBoundary>
+    <FileReferenceIntentProvider sidePanel={false} markdownContext>
+      <FileReadBoundary authority={fileAuthority}>
+        <div className="flex min-w-0 flex-col gap-2">
+          {/* With no text, the lead opens the message on a line of its own. */}
+          {lead != null && text.length === 0 ? (
+            <span className="flex h-lh items-center">{lead}</span>
+          ) : null}
+          {attachmentsAt === "start" ? images : null}
+          {text.length > 0 ? (
+            <UserMessageCollapse contentKey={contentKey} collapsedLineCount={collapsedLineCount}>
+              <NfmDocument
+                lead={lead}
+                blocks={[...text]}
+                density="message"
+                className="codex-markdown codex-markdown-user text-size-chat"
+              />
+            </UserMessageCollapse>
+          ) : null}
+          {attachmentsAt === "end" ? images : null}
+        </div>
+      </FileReadBoundary>
+    </FileReferenceIntentProvider>
   );
 }
 

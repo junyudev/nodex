@@ -1117,6 +1117,8 @@ export const OrchestrationV2ProviderThread = Schema.Struct({
   ownerNodeId: Schema.NullOr(NodeId),
   nativeThreadRef: Schema.NullOr(OrchestrationV2ProviderRef),
   nativeConversationHeadRef: Schema.NullOr(OrchestrationV2ProviderRef),
+  /** Detached native history must be rebuilt from the portable conversation before sending. */
+  contextHandoffRequired: Schema.optional(Schema.Literal(true)),
   status: Schema.Literals(["not_loaded", "idle", "active", "archived", "closed", "error"]),
   firstRunOrdinal: Schema.NullOr(PositiveInt),
   lastRunOrdinal: Schema.NullOr(PositiveInt),

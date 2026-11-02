@@ -7,10 +7,10 @@ import type { IncomingHttpHeaders } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { build } from "esbuild";
-import { _electron as electron, type ElectronApplication } from "playwright";
+import type { ElectronApplication } from "playwright";
 import { WebSocketServer } from "ws";
 import { expect, test } from "vitest";
-import { isolatedElectronArguments } from "../../../scripts/isolated-run/electron-arguments";
+import { launchTestElectron } from "../../../scripts/testing/launch-electron";
 
 test.each(["complete", "incomplete", "segmented-recovery", "edge-challenge"] as const)(
   "streams real AudioWorklet PCM and accepts only complete transcripts (%s)",
@@ -200,8 +200,8 @@ async function verifyStreamingCompletion(
           entry[1] !== undefined && entry[0] !== "ELECTRON_RUN_AS_NODE",
       ),
     );
-    application = await electron.launch({
-      args: [path.join(directory, "main.js"), ...isolatedElectronArguments()],
+    application = await launchTestElectron({
+      args: [path.join(directory, "main.js")],
       env: {
         ...environment,
         NODEX_TEST_DICTATION_SOCKET_URL: `wss://127.0.0.1:${address.port}/dictation/stream?dictation_surface=global`,

@@ -96,7 +96,7 @@ function claudeProvider(overrides: { readonly readAt?: number | null } = {}): Cl
     driver: "claudeAgent",
     enabled: true,
     installed: true,
-    version: "2.1.310",
+    version: "2.1.316",
     status: "ready",
     auth: { status: "authenticated", email: "dev@example.com", label: "Claude Max" },
     checkedAt: new Date().toISOString(),
