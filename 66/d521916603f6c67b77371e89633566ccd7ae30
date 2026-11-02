@@ -1,0 +1,26 @@
+docs/product-specs/windows-host-behavior.md
+  s_f8f93aacc1805d::t_6bf158d8948978 77-79
+src/renderer/components/ui/application-menubar.browser.test.tsx
+  s_f8f93aacc1805d::t_1d2839f7d98374 3,5-9,15-62
+  s_f8f93aacc1805d::t_5d0429391f2638 63-93
+src/renderer/components/ui/application-menubar.test.tsx
+  s_f8f93aacc1805d::t_21e8c268e38018 17-23,111-116
+src/renderer/components/ui/application-menubar.tsx
+  s_f8f93aacc1805d::t_edf855ba4219d6 3-11,56,99-128,142,187-189,260-266,284,295,297
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "66d521916603f6c67b77371e89633566ccd7ae30",
+  "prompts": {},
+  "sessions": {
+    "s_f8f93aacc1805d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19b4b-b89b-74b2-a4da-0926951bf228",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
