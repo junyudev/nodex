@@ -12,7 +12,7 @@ describe("initial Project welcome Page", () => {
     "/tmp/Nodex/My Project `draft` [one] *two*",
     "/用户/文档/Nodex/默认",
   ])("round-trips the visible source root through valid NFM: %s", (sourceRoot) => {
-    const page = renderInitialProjectWelcomePage({ sourceRoot });
+    const page = renderInitialProjectWelcomePage({ sourceRoot, platform: "darwin" });
     const blocks = readMarkdown(page.markdown);
     const text = extractMarkdownText(page.markdown);
 
@@ -31,9 +31,20 @@ describe("initial Project welcome Page", () => {
   });
 
   test("rejects paths that cannot be represented by the Project source contract", () => {
-    expect(() => renderInitialProjectWelcomePage({ sourceRoot: "" })).toThrow("bounded path");
-    expect(() => renderInitialProjectWelcomePage({ sourceRoot: "/tmp/a\nb" })).toThrow(
+    expect(() => renderInitialProjectWelcomePage({ sourceRoot: "", platform: "darwin" })).toThrow(
       "bounded path",
     );
+    expect(() =>
+      renderInitialProjectWelcomePage({ sourceRoot: "/tmp/a\nb", platform: "darwin" }),
+    ).toThrow("bounded path");
+  });
+
+  test.each([
+    ["darwin", "⌘⏎"],
+    ["win32", "Ctrl+Enter"],
+    ["linux", "Ctrl+Enter"],
+  ])("uses the host's Prompt send shortcut on %s", (platform, shortcut) => {
+    const page = renderInitialProjectWelcomePage({ sourceRoot: "/workspace", platform });
+    expect(extractMarkdownText(page.markdown)).toContain(`press ${shortcut} `);
   });
 });

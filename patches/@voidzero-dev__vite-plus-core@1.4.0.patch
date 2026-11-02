@@ -1,0 +1,15 @@
+diff --git a/dist/vite/node/chunks/node.js b/dist/vite/node/chunks/node.js
+index a611a45dff0550c34342de8f68072a63ffdb7572..d0e12957042402f53bb6a6a48766c06238f889d3 100644
+--- a/dist/vite/node/chunks/node.js
++++ b/dist/vite/node/chunks/node.js
+@@ -19530,7 +19530,9 @@ async function httpServerStart(httpServer, serverOptions) {
+ 		throw new Error(`Port ${port} is already in use`);
+ 	}
+ 	for (let port = startPort; port <= MAX_PORT; port++) {
+-		const portAvailableOnWildcard = await isPortAvailable(port);
++		// Strict binding is itself the availability check. Wildcard probes can
++		// trigger Windows Firewall even when the server only uses loopback.
++		const portAvailableOnWildcard = strictPort ? true : await isPortAvailable(port);
+ 		if (strictPort) {
+ 			const result = await tryBindServer(httpServer, port, host);
+ 			if (result.success) {

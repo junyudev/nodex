@@ -9,13 +9,35 @@ import {
 } from "../../shared/library-module-transport";
 import type { LibraryFileOperation, LibraryFileRead } from "../../shared/library-files";
 import { createUuidV7 } from "../../shared/uuid-v7";
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { chmodSync, existsSync, mkdtempSync, rmSync } from "node:fs";
+import { execFileSync, spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import {
+  chmodSync,
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createInterface } from "node:readline";
 import { describe, expect, test } from "vite-plus/test";
+import { it } from "@effect/vitest";
 import { CORE_CLIENT_REQUIREMENTS, type components } from "@nodex/core-protocol";
+import * as Context from "effect/Context";
+import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
+import * as Layer from "effect/Layer";
+import * as Scope from "effect/Scope";
+import * as SubscriptionRef from "effect/SubscriptionRef";
+import { layer as shutdownLayer } from "../app/MainShutdown";
+import {
+  CoreAuthority,
+  CoreSessionAccess,
+  live as authorityLive,
+} from "../core-runtime/CoreAuthority";
+import { live as transportLive } from "../core-runtime/CoreTransport";
 
 import { CoreClient, CoreModuleResponseError } from "./core-client";
 import { readCoreRuntimeConnection } from "./runtime-descriptor";
@@ -37,8 +59,8 @@ const coreSelections = new WeakMap<
 >();
 const coreStderr = new WeakMap<ChildProcessWithoutNullStreams, string>();
 
-const spawnCore = (nodexHome: string): ChildProcessWithoutNullStreams => {
-  const child = spawn(CORE_BINARY, ["--home", nodexHome], {
+const spawnCore = (nodexHome: string, executable = CORE_BINARY): ChildProcessWithoutNullStreams => {
+  const child = spawn(executable, ["--home", nodexHome], {
     stdio: ["pipe", "pipe", "pipe"],
   });
   child.stderr.setEncoding("utf8");
@@ -142,6 +164,145 @@ async function createInitialProject(client: CoreClient, nodexHome: string): Prom
 }
 
 describe("CoreClient over a private local endpoint", () => {
+  test.skipIf(process.platform !== "win32")(
+    "Windows maintenance gracefully drains installed Core and preserves its Profile",
+    async () => {
+      const fixture = mkdtempSync(path.join(tmpdir(), "nodex-core-maintenance-"));
+      const installation = path.join(fixture, "Nodex 用户's app");
+      const nodexHome = path.join(fixture, "Profile 用户's");
+      mkdirSync(installation);
+      mkdirSync(nodexHome);
+      const installedCore = path.join(installation, "nodex-core.exe");
+      copyFileSync(CORE_BINARY, installedCore);
+      const child = spawnCore(nodexHome, installedCore);
+      try {
+        const descriptor = await readDescriptor(child);
+        execFileSync(
+          "powershell.exe",
+          [
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            path.resolve("resources/windows/stop-installation.ps1"),
+            "-InstallationDirectory",
+            installation,
+            "-CoreHelper",
+            CORE_BINARY,
+            "-InstallerPid",
+            String(process.pid),
+          ],
+          { stdio: "pipe", timeout: 25_000 },
+        );
+        await expect(waitForExit(child)).resolves.toBe(0);
+        expect(existsSync(path.join(nodexHome, "nodex.db"))).toBe(true);
+        const lifecycle: unknown = JSON.parse(
+          readFileSync(path.join(nodexHome, "run/core/lifecycle.json"), "utf8"),
+        );
+        expect(lifecycle).toMatchObject({
+          current: {
+            generation: { pid: descriptor.pid, start_nonce: descriptor.start_nonce },
+            phase: "stopped",
+            drain_reason: "explicit_shutdown",
+            stop_outcome: "success",
+          },
+        });
+      } finally {
+        terminateSelectedCore(child);
+        await waitForExit(child);
+        rmSync(fixture, { recursive: true, force: true });
+      }
+    },
+    45_000,
+  );
+
+  test("installer shutdown authenticates an existing Core and fences the expected process", async () => {
+    const home = mkdtempSync(path.join(tmpdir(), "nodex-maintenance-"));
+    const child = spawnCore(home);
+    try {
+      const descriptor = await readDescriptor(child);
+      const args = ["--shutdown", "--home", home, "--expected-pid"];
+      expect(() =>
+        execFileSync(CORE_BINARY, [...args, String(process.pid)], {
+          stdio: "pipe",
+          timeout: 5_000,
+        }),
+      ).toThrow();
+      const client = await CoreClient.connect({
+        nodexHome: home,
+        clientKind: "native_cli",
+        buildId: "maintenance-test",
+      });
+      await expect(client.health()).resolves.toBeDefined();
+      execFileSync(CORE_BINARY, [...args, String(descriptor.pid)], {
+        stdio: "pipe",
+        timeout: 5_000,
+      });
+      await waitForExit(child);
+      expect(existsSync(path.join(home, "nodex.db"))).toBe(true);
+      // The maintenance mode never starts an authority when none is running.
+      expect(() =>
+        execFileSync(CORE_BINARY, [...args, String(descriptor.pid)], {
+          stdio: "pipe",
+          timeout: 5_000,
+        }),
+      ).toThrow();
+    } finally {
+      terminateSelectedCore(child);
+      await waitForExit(child);
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+  it.live("closing Desktop admission preserves the shared Core generation", () =>
+    Effect.gen(function* () {
+      const nodexHome = mkdtempSync(path.join(tmpdir(), "nodex-desktop-core-lifetime-"));
+      const child = spawnCore(nodexHome);
+      const scope = yield* Scope.make();
+      try {
+        const descriptor = yield* Effect.promise(() => readDescriptor(child));
+        const context = yield* Layer.buildWithScope(
+          authorityLive().pipe(
+            Layer.provide(
+              Layer.merge(
+                shutdownLayer,
+                transportLive({
+                  nodexHome,
+                  buildId: "desktop-lifetime-test",
+                  isPackaged: false,
+                  environment: { NODEX_CORE_EXECUTABLE: CORE_BINARY },
+                }),
+              ),
+            ),
+          ),
+          scope,
+        );
+        const authority = Context.get(context, CoreAuthority);
+        const sessions = Context.get(context, CoreSessionAccess);
+        yield* Scope.close(scope, Exit.void);
+        expect(yield* SubscriptionRef.get(authority.state)).toEqual({ kind: "stopped" });
+        expect(yield* Effect.flip(sessions.handshake)).toMatchObject({ reason: "closed" });
+
+        const cli = yield* Effect.promise(() =>
+          CoreClient.connect({
+            nodexHome,
+            clientKind: "native_cli",
+            buildId: "cli-after-desktop-quit-test",
+          }),
+        );
+        expect(cli.handshake.generation.start_nonce).toBe(descriptor.start_nonce);
+        expect(yield* Effect.promise(() => cli.health())).toMatchObject({ status: "ready" });
+        yield* Effect.promise(() => cli.shutdown());
+        yield* Effect.promise(() => waitForExit(child));
+      } finally {
+        yield* Scope.close(scope, Exit.void);
+        terminateSelectedCore(child);
+        yield* Effect.promise(() => waitForExit(child));
+        rmSync(nodexHome, { recursive: true, force: true });
+      }
+    }),
+  );
+
   test("keeps shared File identity across desktop relations and streams exact authorized versions", async () => {
     const nodexHome = mkdtempSync(path.join(tmpdir(), "nodex-library-file-client-"));
     const child = spawnCore(nodexHome);

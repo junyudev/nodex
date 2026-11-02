@@ -1055,7 +1055,7 @@ function command<const Id extends string>(
   };
 }
 
-export function resolveRuntimePlatform(nodePlatform = process.platform): RuntimePlatform {
+export function resolveRuntimePlatform(nodePlatform: string = process.platform): RuntimePlatform {
   if (nodePlatform === "darwin") return "macOS";
   if (nodePlatform === "win32") return "windows";
   return "linux";
