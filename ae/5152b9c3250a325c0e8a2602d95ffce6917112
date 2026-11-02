@@ -1,0 +1,19 @@
+src/main/process-tree.ts
+  s_58e03f312c8a71::t_377acf957acbb7 16-21,30,39,41,59-63,114
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ae5152b9c3250a325c0e8a2602d95ffce6917112",
+  "prompts": {},
+  "sessions": {
+    "s_58e03f312c8a71": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19a08-50d5-7072-b205-494488654333",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
