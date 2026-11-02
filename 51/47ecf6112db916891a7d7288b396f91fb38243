@@ -1,0 +1,21 @@
+src/main/browser-platform.integration.ts
+  s_6c9891f66c664a::t_dfe101604c85b9 104-122
+tests/fixtures/browser-platform/index.html
+  s_6c9891f66c664a::t_b30e2ca0c7c5e0 14-88,99-100,112
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5147ecf6112db916891a7d7288b396f91fb38243",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
