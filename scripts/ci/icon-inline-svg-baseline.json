@@ -10,6 +10,10 @@
       "reason": "Browser test fixture intentionally embeds inert SVG markup to verify Mermaid preview readiness and expanded rendering; it is not reusable product artwork."
     },
     "src/renderer/components/board/nfm-renderer.tsx": 2,
+    "src/renderer/components/message/message-document.browser.test.tsx": {
+      "count": 1,
+      "reason": "Browser test fixture uses SVG image bytes with fixed dimensions to verify message image sizing between paragraphs; it is not reusable product artwork."
+    },
     "src/renderer/components/ui/nodex-home-mark.tsx": 1,
     "src/renderer/components/ui/settings.tsx": 1,
     "src/renderer/components/ui/theme-mode-selector.tsx": {
