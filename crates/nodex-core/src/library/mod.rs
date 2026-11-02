@@ -94,6 +94,7 @@ pub struct LibraryModule {
     prepared_agent_operations: PreparedAgentOperationRegistry,
     document_runtime_cache: Option<Arc<Mutex<crate::document::DocumentRuntimeCache>>>,
     editor_history_reap_cursor: Arc<Mutex<u32>>,
+    block_transfer_metrics: Arc<block_transfer::BlockTransferMetricSet>,
 }
 
 impl LibraryModule {
@@ -114,6 +115,7 @@ impl LibraryModule {
             prepared_agent_operations: PreparedAgentOperationRegistry::new(),
             document_runtime_cache: None,
             editor_history_reap_cursor: Arc::default(),
+            block_transfer_metrics: Arc::default(),
         }
     }
 
@@ -146,11 +148,12 @@ impl LibraryModule {
             prepared_agent_operations: PreparedAgentOperationRegistry::new(),
             document_runtime_cache: Some(kernel.document_runtime_cache()),
             editor_history_reap_cursor: Arc::default(),
+            block_transfer_metrics: Arc::default(),
         }
     }
 
     pub fn block_transfer_metrics(&self) -> BlockTransferMetrics {
-        block_transfer::metric_snapshot()
+        self.block_transfer_metrics.snapshot()
     }
 
     pub fn read(
@@ -599,6 +602,7 @@ impl LibraryModule {
                     let store_epoch = request.store_epoch.0.clone();
                     let intent = intent.clone();
                     let cache = Arc::clone(cache);
+                    let metrics = Arc::clone(&self.block_transfer_metrics);
                     readers
                         .read_default(move |connection| {
                             let transaction = connection.unchecked_transaction()?;
@@ -613,6 +617,7 @@ impl LibraryModule {
                                 return Ok(None);
                             }
                             let prepared = block_transfer::prepare_for_apply(
+                                &metrics,
                                 &transaction,
                                 Some(&cache),
                                 &context,
@@ -4565,6 +4570,11 @@ mod tests {
             )
             .expect("shape move-wrapper source");
 
+        let idle_library = LibraryModule::tracer(
+            "other-profile".to_owned(),
+            "other-library".to_owned(),
+            StoreEpoch("other-epoch".to_owned()),
+        );
         let promote_intent = LibraryBlockTransferLogicalIntent {
             actor: serde_json::json!({ "kind": "test" }),
             mode: LibraryBlockTransferMode::Move,
@@ -4592,6 +4602,16 @@ mod tests {
                 },
             )
             .expect("promote root");
+        let prepare_count = library.block_transfer_metrics().page_parent_prepare.count;
+        assert_eq!(prepare_count, 1, "this Library prepared one promotion");
+        assert_eq!(
+            idle_library
+                .block_transfer_metrics()
+                .page_parent_prepare
+                .count,
+            0,
+            "another Library must not observe this Library's preparation"
+        );
         let promoted_result = promoted
             .committed
             .value
@@ -4633,6 +4653,11 @@ mod tests {
             )
             .expect("replay promotion");
         assert!(replayed.committed.receipt.mutation.duplicate);
+        assert_eq!(
+            library.block_transfer_metrics().page_parent_prepare.count,
+            prepare_count,
+            "replaying a promotion must not repeat heavy Yrs preparation"
+        );
         assert_eq!(replayed.committed.commit_seq, promoted.committed.commit_seq);
         assert_eq!(
             replayed.committed.value.block_transfer.as_ref(),
