@@ -1,0 +1,19 @@
+resources/windows/stop-installation.ps1
+  s_3609d9db04b3f2::t_3dcfebd134f5bb 83
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5e497a1348fd60ed160ccf65ec67a1d074eccdca",
+  "prompts": {},
+  "sessions": {
+    "s_3609d9db04b3f2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19bd4-bc82-7710-93aa-a3b0b80b63c0",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
