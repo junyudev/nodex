@@ -1,3 +1,4 @@
+import path from "node:path";
 import * as Effect from "effect/Effect";
 import { it } from "@effect/vitest";
 import { describe, expect, vi } from "vite-plus/test";
@@ -11,7 +12,7 @@ import {
   type AgentSkillCliRunner,
 } from "./agent-skill-setup";
 
-const CLI_PATH = "/Applications/Nodex.app/Contents/Resources/bin/nodex";
+const CLI_PATH = path.resolve("/Applications/Nodex.app/Contents/Resources/bin/nodex");
 
 const target = (agent: string, state: string, outcome = "inspected") => ({
   agent,

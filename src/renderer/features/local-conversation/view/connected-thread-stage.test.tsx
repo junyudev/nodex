@@ -1138,6 +1138,9 @@ describe("ConnectedThreadStage archived resume behavior", () => {
       rightPanelComposerOverlayTarget: document.body,
     });
     const manager = coordination.getManager!("local");
+    await waitFor(() =>
+      expect(manager.readConversation("thread_active")?.resumeState).toBe("resumed"),
+    );
     const nativeThread = {
       ...buildAgentActivityV2CorpusThread([]),
       id: "thread_active",
@@ -2486,9 +2489,10 @@ describe("ConnectedThreadStage read-state control plane", () => {
     readStateWrites = [];
     hostMessageListener = null;
     const hasFocusDescriptor = Object.getOwnPropertyDescriptor(document, "hasFocus");
+    const hasFocus = vi.fn(() => true);
     Object.defineProperty(document, "hasFocus", {
       configurable: true,
-      value: () => true,
+      value: hasFocus,
     });
     const view = await renderStage(buildThreadSummary(false));
     const { dispatchCodexAppServerMessage } = await import("../app-server-message-bus");
@@ -2510,6 +2514,14 @@ describe("ConnectedThreadStage read-state control plane", () => {
         });
         await settleAsyncRender();
       });
+      await waitFor(() => {
+        expect(hasFocus).toHaveBeenCalled();
+        expect(
+          coordination.getManager?.("local").readConversation("thread_active")?.turns.at(-1)
+            ?.turnId,
+        ).toBe("turn_ready");
+      });
+      await settleAsyncRender();
       invokeCalls = [];
       readStateWrites = [];
 

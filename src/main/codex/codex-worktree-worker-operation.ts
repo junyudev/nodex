@@ -1,3 +1,4 @@
+import path from "node:path";
 import { stat } from "node:fs/promises";
 import {
   createManagedWorktree,
@@ -171,7 +172,7 @@ async function resolveGitRoot(
       },
     );
     const root = result.stdout.trim();
-    if (root) return { root };
+    if (root) return { root: input.hostId === "local" ? path.normalize(root) : root };
     if (isCodexNonGitRepositoryMessage(result.stderr)) return { root: null };
     throw new Error(`Failed to resolve git root: ${result.stderr.trim() || "Unknown error"}`);
   } catch (cause) {

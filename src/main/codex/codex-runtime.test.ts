@@ -289,7 +289,7 @@ describe("codex-runtime", () => {
       expect(runtime.version).toBe("0.152.0");
       expect(runtime.metadataPath).toBe(path.join(runtimeRoot, "agent-runtime.json"));
       expect(runtime.missingBinaryMessage).toBe(
-        "Pinned agent runtime is missing or incomplete. Run `pnpm run stage:codex-runtime:mac`.",
+        "Pinned agent runtime is missing or incomplete. Prepare the Agent runtime for this host.",
       );
     } finally {
       fixture.cleanup();
@@ -337,4 +337,36 @@ describe("codex-runtime", () => {
       fs.rmSync(fixture, { recursive: true, force: true });
     }
   });
+});
+
+test("validates Windows artifact integrity without POSIX executable bits", async () => {
+  const fixture = makeBundledRuntimeFixture();
+  try {
+    const metadataPath = path.join(fixture.resourcesPath, "agent-runtime.json");
+    const metadata = JSON.parse(fs.readFileSync(metadataPath, "utf8"));
+    metadata.targetPlatform = "win32";
+    metadata.targetArch = "x64";
+    metadata.targetTriple = "x86_64-pc-windows-msvc";
+    metadata.packageManifest.target = metadata.targetTriple;
+    fs.writeFileSync(metadataPath, JSON.stringify(metadata));
+    for (const artifact of metadata.artifacts)
+      fs.chmodSync(path.join(fixture.resourcesPath, artifact.path), 0o644);
+    const runtime = await resolveCodexRuntime({
+      isPackaged: true,
+      resourcesPath: fixture.resourcesPath,
+      platform: "win32",
+      architecture: "x64",
+    });
+    expect(runtime.binaryPath).toBe(path.join(fixture.resourcesPath, "bin/codex"));
+    await expect(
+      resolveCodexRuntime({
+        isPackaged: true,
+        resourcesPath: fixture.resourcesPath,
+        platform: "darwin",
+        architecture: "arm64",
+      }),
+    ).rejects.toThrow("target does not match");
+  } finally {
+    fixture.cleanup();
+  }
 });

@@ -1,3 +1,4 @@
+import path from "node:path";
 import { it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -17,7 +18,7 @@ test("projects only the packaged runtime Node module root into the native-host r
       "runtime/lib/node_modules",
       "marketplace/plugins/browser/node_modules",
     ]),
-  ).toEqual(["/runtime/runtime/lib/node_modules"]);
+  ).toEqual([path.join("/runtime", "runtime", "lib", "node_modules")]);
 });
 
 const extensionId = "hehggadaopoacecdllhhajmbjkdcmajg";

@@ -1,3 +1,5 @@
+import { posix, win32 } from "node:path";
+import { profilePathSource, relocateProfilePath } from "./ImportedExecutionPaths.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
 import {
@@ -26,7 +28,8 @@ import * as ProjectionMaintenance from "../orchestration-v2/ProjectionMaintenanc
 import { CodexProviderCapabilitiesV2 } from "../orchestration-v2/Adapters/CodexAdapterV2.ts";
 import * as Sqlite from "../persistence/Sqlite.ts";
 import * as StoreCoordinate from "./StoreCoordinate.ts";
-import { consume } from "./ImportedExecution.ts";
+import { consume, relocatePaths } from "./ImportedExecution.ts";
+import * as NodePath from "@effect/platform-node/NodePath";
 
 const stores = Layer.mergeAll(ProjectionStore.layer, EventStore.layer, EffectOutbox.layer).pipe(
   Layer.provideMerge(Sqlite.layerMemory),
@@ -280,4 +283,94 @@ it.live(
       expect(replayed.providerSessions).toHaveLength(0);
       expect(replayed.messages).toEqual(read.messages);
     }).pipe(Effect.provide(layer)),
+);
+
+it.each([
+  [posix, "/source/profile", "/clone", "/source/profile/tasks/work", "/clone/tasks/work"],
+  [
+    posix,
+    "/source/profile",
+    "/clone",
+    "/source/profile-other/tasks",
+    "/source/profile-other/tasks",
+  ],
+  [posix, "/source/profile", "/clone", "/source/profile/../outside", "/source/profile/../outside"],
+  [
+    win32,
+    String.raw`\\?\C:\Source\Profile`,
+    String.raw`D:\Clone`,
+    String.raw`c:\source\profile\tasks\work`,
+    String.raw`D:\Clone\tasks\work`,
+  ],
+  [
+    win32,
+    String.raw`C:\Source\Profile`,
+    String.raw`D:\Clone`,
+    String.raw`\\?\C:\Source\Profile`,
+    String.raw`D:\Clone`,
+  ],
+  [
+    win32,
+    String.raw`\\?\UNC\server\share\profile`,
+    String.raw`D:\Clone`,
+    String.raw`\\server\share\profile\tasks`,
+    String.raw`D:\Clone\tasks`,
+  ],
+  [
+    win32,
+    String.raw`C:\Source\Profile`,
+    String.raw`D:\Clone`,
+    String.raw`C:\Source\Profile-other\tasks`,
+    String.raw`C:\Source\Profile-other\tasks`,
+  ],
+  [
+    win32,
+    String.raw`C:\Source\Profile`,
+    String.raw`D:\Clone`,
+    String.raw`C:\Source\Profile\..\outside`,
+    String.raw`C:\Source\Profile\..\outside`,
+  ],
+])(
+  "relocates a contained canonical Profile path (%s, %s, %s, %s)",
+  (path, source, target, value, expected) => {
+    expect(relocateProfilePath(path, source, target, value)).toBe(expected);
+    expect(profilePathSource(path, source)).not.toMatch(/^\\\\\?\\/u);
+  },
+);
+
+it.effect("relocates Windows scalar and event paths through the SQL candidate filter", () =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    for (const source of [
+      String.raw`\\?\C:\Source\Profile`,
+      String.raw`\\?\UNC\server\share\profile`,
+    ]) {
+      const ordinary = profilePathSource(win32, source).toLowerCase();
+      const stored = win32.join(ordinary, "tasks", "work");
+      const target = String.raw`D:\clone`;
+      yield* sql`DELETE FROM projection_projects`;
+      yield* sql`DELETE FROM orchestration_events`;
+      yield* sql`INSERT INTO projection_projects(project_id,title,workspace_root,scripts_json,created_at,updated_at,favicon_path)
+        VALUES ('project','Project',${stored},'[]','now','now',${ordinary + "-other"})`;
+      const payload = JSON.stringify({ workspaceRoot: stored, text: stored });
+      yield* sql`INSERT INTO orchestration_events(event_id,aggregate_kind,stream_id,stream_version,event_type,occurred_at,actor_kind,payload_json,metadata_json)
+        VALUES ('event','project','project',1,'project.created','now','user',${payload},'{}')`;
+      yield* relocatePaths(source, target);
+      const [project] = yield* sql<{
+        workspace_root: string;
+        favicon_path: string;
+      }>`SELECT workspace_root,favicon_path FROM projection_projects`;
+      expect(project).toEqual({
+        workspace_root: win32.join(target, "tasks", "work"),
+        favicon_path: ordinary + "-other",
+      });
+      const [event] = yield* sql<{
+        payload_json: string;
+      }>`SELECT payload_json FROM orchestration_events`;
+      expect(JSON.parse(event!.payload_json)).toEqual({
+        workspaceRoot: win32.join(target, "tasks", "work"),
+        text: stored,
+      });
+    }
+  }).pipe(Effect.provide(Layer.mergeAll(Sqlite.layerMemory, NodePath.layerWin32))),
 );

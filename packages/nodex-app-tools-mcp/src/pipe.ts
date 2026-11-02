@@ -1,4 +1,5 @@
-import { timingSafeEqual } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
+import { join } from "node:path";
 import { createConnection, createServer, type Socket } from "node:net";
 import {
   CallToolResultSchema,
@@ -15,6 +16,12 @@ import {
 import type { AppToolsHost } from "./server";
 
 export { APP_TOOLS_CALL_TIMEOUT_MS } from "./manifest";
+
+/** Random named pipes on Windows; bounded filesystem sockets on Unix. */
+export const appToolsPipePath = (directory: string, platform: string): string =>
+  platform === "win32"
+    ? `\\\\.\\pipe\\nodex-app-tools-${randomUUID()}`
+    : join(directory, "host.sock");
 
 const MAX_FRAME_BYTES = 1024 * 1024;
 const MAX_PENDING = 32;

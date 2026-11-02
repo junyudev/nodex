@@ -23,12 +23,12 @@ test("Windows launch resolution accepts native environment casing and npm entryp
     USERPROFILE: "C:\\users\\dev",
   };
   expect(claudeExecutableCandidates("claude", environment, "win32", "C:\\workspace")).toEqual([
-    "C:\\workspace\\bin\\claude",
     "C:\\workspace\\bin\\claude.exe",
     "C:\\workspace\\bin\\claude.cmd",
-    "C:\\tools\\claude",
+    "C:\\workspace\\bin\\claude",
     "C:\\tools\\claude.exe",
     "C:\\tools\\claude.cmd",
+    "C:\\tools\\claude",
   ]);
   expect(claudeExecutableCandidates("~/bin/claude.exe", environment, "win32")).toEqual([
     "C:\\users\\dev\\bin\\claude.exe",
@@ -54,7 +54,8 @@ const temporaryHome = Effect.acquireRelease(
   (root) => Effect.promise(() => rm(root, { recursive: true, force: true })),
 );
 
-it.effect(
+// Login-shell discovery is a POSIX contract; native Windows/npm resolution is covered below.
+it.effect.skipIf(process.platform === "win32")(
   "discovers a shell-installed Claude and retains its runtime PATH without importing shell secrets",
   () =>
     Effect.gen(function* () {
@@ -92,7 +93,7 @@ it.effect(
     }).pipe(Effect.scoped),
 );
 
-it.effect(
+it.effect.skipIf(process.platform === "win32")(
   "finds the native Claude installation when desktop and login PATH omit its directory",
   () =>
     Effect.gen(function* () {
@@ -115,7 +116,7 @@ it.effect(
     }).pipe(Effect.scoped),
 );
 
-it.effect(
+it.effect.skipIf(process.platform === "win32")(
   "keeps an already available executable ahead of login-shell and native installations",
   () =>
     Effect.gen(function* () {
@@ -135,7 +136,7 @@ it.effect(
     }).pipe(Effect.scoped),
 );
 
-it.effect(
+it.effect.skipIf(process.platform === "win32")(
   "does not replace explicit executable paths or an instance/worktree PATH with a discovered install",
   () =>
     Effect.gen(function* () {
@@ -161,24 +162,57 @@ it.effect(
     }).pipe(Effect.scoped),
 );
 
-test("relative PATH entries belong to the explicit Claude workspace", async () => {
-  const root = await mkdtemp(join(tmpdir(), "nodex-claude-executable-"));
-  try {
-    await mkdir(join(root, "bin"));
-    const executable = join(root, "bin", "claude");
-    await writeFile(executable, "#!/bin/sh\nexit 0\n");
-    await chmod(executable, 0o700);
-    const resolved = await resolveClaudeExecutable(
-      "claude",
-      { PATH: "missing:bin" },
-      "darwin",
-      root,
-    );
-    expect(resolved.endsWith("/bin/claude")).toBe(true);
-    await expect(
-      resolveClaudeExecutable("claude", { PATH: "bin" }, "darwin", join(root, "missing")),
-    ).rejects.toThrow("was not found");
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
+test.skipIf(process.platform === "win32")(
+  "relative PATH entries belong to the explicit Claude workspace",
+  async () => {
+    const root = await mkdtemp(join(tmpdir(), "nodex-claude-executable-"));
+    try {
+      await mkdir(join(root, "bin"));
+      const executable = join(root, "bin", "claude");
+      await writeFile(executable, "#!/bin/sh\nexit 0\n");
+      await chmod(executable, 0o700);
+      const resolved = await resolveClaudeExecutable(
+        "claude",
+        { PATH: "missing:bin" },
+        "darwin",
+        root,
+      );
+      expect(resolved.endsWith("/bin/claude")).toBe(true);
+      await expect(
+        resolveClaudeExecutable("claude", { PATH: "bin" }, "darwin", join(root, "missing")),
+      ).rejects.toThrow("was not found");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);
+
+test("explicit relative Windows commands resolve against the execution workspace", () => {
+  expect(
+    claudeExecutableCandidates(
+      ".\\tools\\claude.exe",
+      { Path: "D:\\another" },
+      "win32",
+      "C:\\工作 workspace",
+    ),
+  ).toEqual(["C:\\工作 workspace\\tools\\claude.exe"]);
 });
+
+// Windows resolves the JavaScript entry behind npm's .cmd launcher without evaluating a shell.
+it.effect.skipIf(process.platform !== "win32")(
+  "resolves an installed Windows npm launcher from the workspace PATH",
+  () =>
+    Effect.gen(function* () {
+      const root = yield* temporaryHome;
+      const bin = join(root, "bin");
+      const packageRoot = join(bin, "node_modules", "@anthropic-ai", "claude-code");
+      yield* Effect.promise(() => mkdir(packageRoot, { recursive: true }));
+      yield* Effect.promise(() => writeFile(join(bin, "claude.cmd"), "npm launcher fixture"));
+      const entry = join(packageRoot, "cli.js");
+      yield* Effect.promise(() => writeFile(entry, "process.exit(0)"));
+      const resolved = yield* Effect.promise(() =>
+        resolveClaudeExecutable("claude", { Path: "missing;bin" }, "win32", root),
+      );
+      expect(resolved).toBe(yield* Effect.promise(() => realpath(entry)));
+    }).pipe(Effect.scoped),
+);

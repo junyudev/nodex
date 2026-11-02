@@ -1,3 +1,4 @@
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { nativeImportSources } from "./AgentRuntimeNativeImportSources";
 
@@ -32,7 +33,7 @@ describe("native conversation import sources", () => {
     });
     expect(sources).toEqual([
       { providerInstanceId: "codex", driver: "codex", homePath: "/physical/shared-home" },
-      { providerInstanceId: "claude", driver: "claudeAgent", homePath: "/user/work" },
+      { providerInstanceId: "claude", driver: "claudeAgent", homePath: path.resolve("/user/work") },
       { providerInstanceId: "acp", driver: "acpRegistry", homePath: null },
       { providerInstanceId: "remote", driver: "opencode", homePath: null },
     ]);
@@ -63,9 +64,11 @@ describe("native conversation import sources", () => {
         homeDirectory: "/fallback",
         codexHome: "/codex",
       })[0]?.homePath;
-    expect(read("/instance", "/inherited")).toBe("/instance");
-    expect(read(undefined, "/inherited")).toBe("/inherited");
-    expect(read()).toBe("/fallback/.claude");
+    expect(read(path.resolve("/instance"), path.resolve("/inherited"))).toBe(
+      path.resolve("/instance"),
+    );
+    expect(read(undefined, path.resolve("/inherited"))).toBe(path.resolve("/inherited"));
+    expect(read()).toBe(path.resolve("/fallback/.claude"));
   });
 });
 

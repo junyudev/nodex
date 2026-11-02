@@ -16,6 +16,8 @@ import * as SqlClient from "effect/sql/SqlClient";
 import { EventSinkV2 } from "../orchestration-v2/EventSink.ts";
 import { detachNativeConversation } from "../orchestration-v2/NativeConversation.ts";
 import * as ImportedExecutionSettlement from "./ImportedExecutionSettlement.ts";
+import { profilePathSource, relocateProfilePath } from "./ImportedExecutionPaths.ts";
+import { syncDirectory } from "../platform/node/filesystem-durability.ts";
 
 const utcTimestamp = Schema.String.check(
   Schema.isPattern(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|\+00:00)$/u),
@@ -114,10 +116,14 @@ const relocateJsonTable = Effect.fnUntraced(function* (
   selectors: readonly string[],
   relocate: (value: string) => string,
   source: string,
+  caseInsensitive: boolean,
 ) {
   const sql = yield* SqlClient.SqlClient;
   let after = 0;
   const jsonText = JSON.stringify(source).slice(1, -1);
+  const containsSource = caseInsensitive
+    ? `instr(lower(${field}), lower(?)) > 0`
+    : `instr(${field}, ?) > 0`;
   const isEvents = table === "orchestration_events" || table === "orchestration_v2_events";
   const types = [
     ...threadEvents,
@@ -132,7 +138,7 @@ const relocateJsonTable = Effect.fnUntraced(function* (
     const rows = yield* sql.unsafe<{ row_id: number; value: string; event_type?: string }>(
       // Only a row whose JSON text contains the source home can change, so a production-size
       // event log is filtered in SQLite instead of decoding every payload before readiness.
-      `SELECT rowid AS row_id, ${field} AS value ${isEvents ? ", event_type" : ""} FROM ${table} WHERE rowid > ? AND instr(${field}, ?) > 0 ${isEvents ? `AND event_type IN (${types.map(() => "?").join(",")})` : ""} ORDER BY rowid LIMIT 200`,
+      `SELECT rowid AS row_id, ${field} AS value ${isEvents ? ", event_type" : ""} FROM ${table} WHERE rowid > ? AND ${containsSource} ${isEvents ? `AND event_type IN (${types.map(() => "?").join(",")})` : ""} ORDER BY rowid LIMIT 200`,
       isEvents ? [after, jsonText, ...types] : [after, jsonText],
     );
     if (rows.length === 0) break;
@@ -156,24 +162,23 @@ const relocateJsonTable = Effect.fnUntraced(function* (
   }
 });
 
-const relocatePaths = Effect.fnUntraced(function* (source: string, target: string) {
+export const relocatePaths = Effect.fnUntraced(function* (source: string, target: string) {
   const sql = yield* SqlClient.SqlClient;
   const path = yield* Path.Path;
   if (source === target) return;
-  const prefix = source.endsWith(path.sep) ? source : `${source}${path.sep}`;
-  const relocate = (value: string) => {
-    if (!path.isAbsolute(value) || path.normalize(value) !== value) return value;
-    if (value === source) return target;
-    return value.startsWith(prefix) ? path.join(target, value.slice(prefix.length)) : value;
-  };
+  const selectedSource = profilePathSource(path, source);
+  const caseInsensitive = path.sep === "\\";
+  // Match both ordinary UNC paths and their canonical namespace representation.
+  const searchSource = caseInsensitive ? selectedSource.replace(/^\\\\/u, "") : selectedSource;
+  const relocate = (value: string) => relocateProfilePath(path, selectedSource, target, value);
   for (const [table, field] of [
     ["projection_projects", "workspace_root"],
     ["projection_projects", "favicon_path"],
     ["orchestration_v2_thread_launch_workflows", "worktree_path"],
   ]) {
     const rows = yield* sql.unsafe<{ row_id: number; value: string }>(
-      `SELECT rowid AS row_id, ${field} AS value FROM ${table} WHERE ${field} = ? OR substr(${field}, 1, length(?)) = ?`,
-      [source, prefix, prefix],
+      `SELECT rowid AS row_id, ${field} AS value FROM ${table} WHERE ${caseInsensitive ? `instr(lower(${field}), lower(?))` : `instr(${field}, ?)`} > 0`,
+      [searchSource],
     );
     for (const row of rows) {
       const value = relocate(row.value);
@@ -190,7 +195,7 @@ const relocatePaths = Effect.fnUntraced(function* (source: string, target: strin
     ["orchestration_events", "payload_json", []],
     ["orchestration_v2_events", "payload_json", []],
   ] as const) {
-    yield* relocateJsonTable(table, field, selectors, relocate, source);
+    yield* relocateJsonTable(table, field, selectors, relocate, searchSource, caseInsensitive);
   }
 });
 
@@ -288,12 +293,7 @@ export const consume = Effect.fn("ImportedExecution.consume")(function* (runtime
       }),
     );
     yield* fs.remove(markerPath);
-    yield* Effect.scoped(
-      Effect.gen(function* () {
-        const directory = yield* fs.open(runtimeHome, { flag: "r" });
-        yield* directory.sync;
-      }),
-    );
+    yield* syncDirectory(fs, runtimeHome);
   }).pipe(
     Effect.mapError((cause) =>
       Schema.is(ImportedExecutionError)(cause)

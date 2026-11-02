@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -45,6 +46,18 @@ describe("ApplicationHostRuntime", () => {
     ),
   );
 
+  it.effect("leaves packaged Windows protocol registration with the installer", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const native = makeNative();
+        yield* build(native, { platform: "win32", isPackaged: true });
+
+        expect(native.setAppUserModelId).toHaveBeenCalledWith("app.jyu.nodex");
+        expect(native.setDefaultProtocolClient).not.toHaveBeenCalled();
+      }),
+    ),
+  );
+
   it.effect("requests macOS microphone access through the scoped host capability", () =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -57,7 +70,7 @@ describe("ApplicationHostRuntime", () => {
         yield* host.requestMicrophonePermission;
 
         expect(native.setDevelopmentDockIcon).toHaveBeenCalledWith(
-          "/workspace/nodex/resources/icon.png",
+          join("/workspace/nodex", "resources", "icon.png"),
         );
         expect(native.askForMicrophoneAccess).toHaveBeenCalledOnce();
       }),

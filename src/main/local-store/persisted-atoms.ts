@@ -1,3 +1,4 @@
+import { syncDirectorySync } from "../platform/node/filesystem-durability";
 import {
   closeSync,
   existsSync,
@@ -49,12 +50,7 @@ function writePersistedAtomsFile(atomsPath: string, state: PersistedAtomState): 
   }
   try {
     renameSync(temporaryPath, atomsPath);
-    const directory = openSync(parent, "r");
-    try {
-      fsyncSync(directory);
-    } finally {
-      closeSync(directory);
-    }
+    syncDirectorySync(parent);
   } finally {
     rmSync(temporaryPath, { force: true });
   }

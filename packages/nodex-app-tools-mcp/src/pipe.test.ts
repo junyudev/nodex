@@ -6,7 +6,12 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { connectAppToolsPipe, listenAppToolsPipe, type AppToolsPipeDescriptor } from "./pipe";
+import {
+  appToolsPipePath,
+  connectAppToolsPipe,
+  listenAppToolsPipe,
+  type AppToolsPipeDescriptor,
+} from "./pipe";
 import type { AppToolsHost } from "./server";
 
 const barrier = () => {
@@ -22,7 +27,7 @@ const withPipe = async (
 ) => {
   const directory = await mkdtemp(join(tmpdir(), "nx-mcp-"));
   const descriptor = {
-    path: join(directory, "host.sock"),
+    path: appToolsPipePath(directory, process.platform),
     token: randomUUID(),
     instanceId: randomUUID(),
   };

@@ -74,7 +74,7 @@ it("migrates local package settings without changing identity or requiring the o
     source: {
       kind: "local",
       executable: "/missing/node",
-      args: ["/missing/package/dist/index.js"],
+      args: [path.normalize("/missing/package/dist/index.js")],
     },
     credentials: { kind: "isolated-home", home: "/old/home" },
     proxy: "inherit-host",

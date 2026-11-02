@@ -75,17 +75,35 @@ describe("managed worktree data-safety effects", () => {
   });
 
   test("finds the allocation that contains a working directory", () => {
-    expect(managedWorktreeGitRootContaining("/managed", "/managed/260829-1430-a1b2c3d4/app")).toBe(
-      "/managed/260829-1430-a1b2c3d4",
-    );
-    expect(managedWorktreeGitRootContaining("/managed", "/managed/a1b2/repository/app")).toBe(
-      "/managed/a1b2/repository",
-    );
-    expect(managedWorktreeGitRootContaining("/managed", "/managed")).toBeNull();
-    expect(managedWorktreeGitRootContaining("/managed", "/managed/a1b2")).toBeNull();
-    expect(managedWorktreeGitRootContaining("/managed", "/managed/notes/app")).toBeNull();
     expect(
-      managedWorktreeGitRootContaining("/managed", "/elsewhere/260829-1430-a1b2c3d4"),
+      managedWorktreeGitRootContaining(
+        path.resolve("/managed"),
+        path.resolve("/managed/260829-1430-a1b2c3d4/app"),
+      ),
+    ).toBe(path.resolve("/managed/260829-1430-a1b2c3d4"));
+    expect(
+      managedWorktreeGitRootContaining(
+        path.resolve("/managed"),
+        path.resolve("/managed/a1b2/repository/app"),
+      ),
+    ).toBe(path.resolve("/managed/a1b2/repository"));
+    expect(
+      managedWorktreeGitRootContaining(path.resolve("/managed"), path.resolve("/managed")),
+    ).toBeNull();
+    expect(
+      managedWorktreeGitRootContaining(path.resolve("/managed"), path.resolve("/managed/a1b2")),
+    ).toBeNull();
+    expect(
+      managedWorktreeGitRootContaining(
+        path.resolve("/managed"),
+        path.resolve("/managed/notes/app"),
+      ),
+    ).toBeNull();
+    expect(
+      managedWorktreeGitRootContaining(
+        path.resolve("/managed"),
+        path.resolve("/elsewhere/260829-1430-a1b2c3d4"),
+      ),
     ).toBeNull();
   });
 

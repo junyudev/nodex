@@ -1,9 +1,18 @@
+import path from "node:path";
 import { expect, it } from "vite-plus/test";
 import {
   agentRuntimeEntrypoint,
   agentRuntimeNodeExecutable,
   scenarioAgentRuntimeProjectRoot,
 } from "./AgentRuntimeEntrypoint";
+
+const verifiedNode = (executable: string) => ({
+  status: "available" as const,
+  source: "standalone" as const,
+  version: "24.22.1",
+  executable,
+});
+const unavailableNode = { status: "unavailable" as const, message: "Not staged" };
 
 it("keeps packaged execution outside ASAR and ignores every test executable override", () => {
   expect(
@@ -12,11 +21,11 @@ it("keeps packaged execution outside ASAR and ignores every test executable over
       resourcesPath: "/resources",
       projectRootPath: "/repo",
     }),
-  ).toBe("/resources/app.asar.unpacked/out/agent-runtime/entry.mjs");
+  ).toBe(path.join("/resources", "app.asar.unpacked", "out/agent-runtime/entry.mjs"));
   expect(
     agentRuntimeNodeExecutable({
       isPackaged: true,
-      bundledExecutable: "/verified/node",
+      nodeRuntime: verifiedNode("/verified/node"),
       environment: {
         NODE_ENV: "test",
         NODEX_TEST_AGENT_RUNTIME_PROJECT_ROOT: ".",
@@ -36,13 +45,13 @@ it("admits a scripted development home and keeps packaged and ordinary execution
     "/scenario/scripted-agent-runtime",
   );
   expect(
-    agentRuntimeNodeExecutable({ isPackaged: false, bundledExecutable: null, environment }),
+    agentRuntimeNodeExecutable({ isPackaged: false, nodeRuntime: unavailableNode, environment }),
   ).toBe(process.execPath);
   expect(scenarioAgentRuntimeProjectRoot({ isPackaged: true, environment })).toBeUndefined();
   expect(
     agentRuntimeNodeExecutable({
       isPackaged: true,
-      bundledExecutable: "/verified/node",
+      nodeRuntime: verifiedNode("/verified/node"),
       environment,
     }),
   ).toBe("/verified/node");
@@ -55,7 +64,7 @@ it("admits a scripted development home and keeps packaged and ordinary execution
   expect(() =>
     agentRuntimeNodeExecutable({
       isPackaged: false,
-      bundledExecutable: null,
+      nodeRuntime: unavailableNode,
       environment: { ...environment, NODEX_DEV_AGENT_RUNTIME_PROJECT_ROOT: "" },
     }),
   ).toThrow("verified Node");
@@ -68,7 +77,7 @@ it("admits an explicit absolute Node only inside an identified disposable test r
     NODEX_TEST_AGENT_RUNTIME_NODE_EXECUTABLE: process.execPath,
   };
   expect(
-    agentRuntimeNodeExecutable({ isPackaged: false, bundledExecutable: null, environment }),
+    agentRuntimeNodeExecutable({ isPackaged: false, nodeRuntime: unavailableNode, environment }),
   ).toBe(process.execPath);
   for (const changed of [
     { ...environment, NODE_ENV: "development" },
@@ -77,14 +86,14 @@ it("admits an explicit absolute Node only inside an identified disposable test r
     expect(() =>
       agentRuntimeNodeExecutable({
         isPackaged: false,
-        bundledExecutable: null,
+        nodeRuntime: unavailableNode,
         environment: changed,
       }),
     ).toThrow("verified Node");
   expect(() =>
     agentRuntimeNodeExecutable({
       isPackaged: false,
-      bundledExecutable: null,
+      nodeRuntime: unavailableNode,
       environment: { ...environment, NODEX_TEST_AGENT_RUNTIME_NODE_EXECUTABLE: "node" },
     }),
   ).toThrow("absolute executable");

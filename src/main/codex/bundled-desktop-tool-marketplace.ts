@@ -139,7 +139,7 @@ async function isCurrentChromeClosure(
       !stats.isFile() ||
       stats.isSymbolicLink() ||
       stats.size !== artifact.size ||
-      (artifact.executable && (stats.mode & 0o111) === 0)
+      (process.platform !== "win32" && artifact.executable && (stats.mode & 0o111) === 0)
     ) {
       return false;
     }

@@ -75,7 +75,10 @@ describe("app request path resolution", () => {
 
   test("accepts absolute image, audio, video, SVG, encoded separators, and query text", () => {
     const { rendererRoot } = createFixture();
-    const imagePath = createTemporaryFile("image #1?.png", "image");
+    const imagePath = createTemporaryFile(
+      process.platform === "win32" ? "image #1%.png" : "image #1?.png",
+      "image",
+    );
     const audioPath = createTemporaryFile("sound.mp3", "audio");
     const videoPath = createTemporaryFile("movie.mp4", "video");
     const svgPath = createTemporaryFile("shape.svg", "<svg></svg>");
@@ -263,8 +266,10 @@ describe("app protocol dispatch and origin gate", () => {
     const response = await handler(new Request(buildAppFilesystemUrl(imagePath)));
     const staticResponse = await handler(new Request("app://-/assets/main.js"));
     expect(calls).toEqual([
-      pathToFileURL(imagePath).toString(),
-      pathToFileURL(path.join(rendererRoot, "assets", "main.js")).toString(),
+      pathToFileURL(fs.realpathSync.native(imagePath)).toString(),
+      pathToFileURL(
+        fs.realpathSync.native(path.join(rendererRoot, "assets", "main.js")),
+      ).toString(),
     ]);
     await expect(response.text()).resolves.toBe("windows");
     await expect(staticResponse.text()).resolves.toBe("windows");
@@ -351,7 +356,7 @@ describe("app protocol dispatch and origin gate", () => {
     const calls: string[] = [];
     let handlerInstalled = true;
     type GateListener = (
-      details: { frame?: { url: string } | null },
+      details: { frame?: { url: string } | null; initiatorOrigin?: string },
       callback: (result: { cancel: boolean }) => void,
     ) => void;
     let listener: GateListener | null = null;
@@ -397,6 +402,19 @@ describe("app protocol dispatch and origin gate", () => {
       },
     );
     expect(cancellation).toBe(false);
+    for (const [details, expected] of [
+      [{ initiatorOrigin: "http://localhost:51284", frame: null }, false],
+      [{ initiatorOrigin: "http://localhost:51284", frame: { url: "about:blank" } }, false],
+      [{ initiatorOrigin: "app://-", frame: { url: "https://untrusted.invalid" } }, false],
+      [{ initiatorOrigin: "https://untrusted.invalid", frame: { url: "app://-" } }, true],
+      [{ initiatorOrigin: "null", frame: { url: "app://-" } }, true],
+      [{ frame: null }, true],
+    ] as const) {
+      invokeListener?.(details, (result) => {
+        cancellation = result.cancel;
+      });
+      expect(cancellation).toBe(expected);
+    }
     developmentRendererUrl = "http://localhost:51285";
     invokeListener?.(
       { frame: { url: "http://localhost:51284/thread" } },
@@ -435,4 +453,26 @@ test("host assets require an opaque Main-issued capability", async () => {
   const nonImage = await handler(new Request(buildAppHostAssetUrl("authorized-text")));
   expect(nonImage.status).toBe(404);
   expect(calls).toEqual(["authorized-image", "forged", "authorized-text"]);
+});
+
+test("Windows file responses resolve a static symlink before native fetch and retain its addressed MIME", async () => {
+  const { rendererRoot } = createFixture();
+  const target = createTemporaryFile("bytes.bin", "image bytes");
+  const alias = path.join(rendererRoot, "alias.png");
+  fs.symlinkSync(target, alias);
+  const calls: string[] = [];
+  const handler = createAppProtocolHandler({
+    rendererRoot,
+    platform: "win32",
+    netFetch: async (url) => {
+      calls.push(url);
+      return new Response("image bytes", {
+        headers: { "Content-Type": "application/octet-stream" },
+      });
+    },
+  });
+  const response = await handler(new Request("app://-/alias.png"));
+  expect(calls).toEqual([pathToFileURL(fs.realpathSync.native(target)).href]);
+  expect(response.headers.get("Content-Type")).toBe("image/png");
+  expect(await response.text()).toBe("image bytes");
 });

@@ -1,3 +1,4 @@
+import { pathToFileURL } from "node:url";
 import { mkdtemp, mkdir, writeFile, symlink, utimes, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { describe, expect, test } from "vite-plus/test";
@@ -54,7 +55,7 @@ describe("file link opener", () => {
     });
 
     expect(buildTextMateUrl(parserPath, position)).toBe(
-      `txmt://open/?url=${encodeURIComponent(`file://${parserPath}`)}&line=71&column=1`,
+      `txmt://open/?url=${encodeURIComponent(pathToFileURL(parserPath).href)}&line=71&column=1`,
     );
   });
 

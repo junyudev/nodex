@@ -1,3 +1,4 @@
+import { hostCapabilities } from "../../platform/host-capabilities";
 import type { IpcMainInvokeEvent } from "electron";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -63,6 +64,7 @@ it.effect("scope-owns Chrome settings IPC and rejects an untrusted sender before
             Layer.succeed(
               MainConfig,
               MainConfig.of({
+                capabilities: hostCapabilities("darwin", "arm64"),
                 assistantStreamingDebug: false,
                 appVersion: "test",
                 arch: "arm64",
@@ -73,6 +75,7 @@ it.effect("scope-owns Chrome settings IPC and rejects an untrusted sender before
                 environmentPath: null,
                 homeDirectory: "/tmp",
                 initialProjectsDirectory: null,
+                isolatedRunId: null,
                 isDefaultApp: false,
                 isPackaged: false,
                 nodexHome: "/tmp/nodex-test",

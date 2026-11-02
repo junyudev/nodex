@@ -1,6 +1,17 @@
 import { expect, test } from "@playwright/test";
 import { execFileSync } from "node:child_process";
-import { ElectronScenarioHarness } from "../../scripts/scenarios/harness/electron-e2e-harness";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import {
+  AGENT_RUNTIME_STARTUP_PROBE_ENV,
+  AGENT_RUNTIME_STARTUP_EVIDENCE_FILE,
+  parseAgentRuntimeStartupEvidence,
+} from "../../src/shared/agent-runtime-startup-evidence";
+import { ISOLATED_RUN_ID_ENV } from "../../src/main/core-client/isolated-run-ownership";
+import {
+  ElectronScenarioHarness,
+  withElectronScenario,
+} from "../../scripts/scenarios/harness/electron-e2e-harness";
 
 function readMacApplicationType(processId: number): string | null {
   if (process.platform !== "darwin") return null;
@@ -100,4 +111,37 @@ test("keeps the packaged window identity through startup", async () => {
     windows: "foreground",
   });
   await expectCanonicalStartup(harness);
+});
+
+test("publishes execution readiness for its isolated host after scrubbing the run token", async () => {
+  test.setTimeout(120_000);
+  await withElectronScenario(
+    {
+      scenarioId: null,
+      label: "execution-startup-evidence",
+      prepareAgentRuntime: false,
+      environment: {
+        [AGENT_RUNTIME_STARTUP_PROBE_ENV]: "1",
+        NODEX_LOG_CONSOLE: "true",
+        NODEX_LOG_FILE: "true",
+      },
+      onFailure: async ({ readRuntimeLogs }) => {
+        console.error(await readRuntimeLogs());
+      },
+    },
+    async ({ harness }) => {
+      const file = join(harness.profile.nodexHome, "run", AGENT_RUNTIME_STARTUP_EVIDENCE_FILE);
+      await expect.poll(() => existsSync(file), { timeout: 30_000 }).toBe(true);
+      const hostPid = harness.application.process().pid!;
+      expect(
+        parseAgentRuntimeStartupEvidence(JSON.parse(readFileSync(file, "utf8")), {
+          runId: harness.profile.runId,
+          hostPid,
+        }),
+      ).toMatchObject({ hostPid, runId: harness.profile.runId });
+      expect(
+        await harness.application.evaluate((_, key) => process.env[key], ISOLATED_RUN_ID_ENV),
+      ).toBeUndefined();
+    },
+  );
 });

@@ -181,10 +181,8 @@ describe("Codex projectless workspace repair", () => {
         writableRoots: [],
       });
       expect(repaired?.cwd).toBe(repaired?.outputDirectory);
-      expect(repaired?.cwd).toMatch(
-        new RegExp(
-          `${path.join("Documents", "Nodex").replaceAll("\\", "\\\\")}${path.sep}\\d{4}-\\d{2}-\\d{2}${path.sep}repair-this-missing-workspace$`,
-        ),
+      expect(path.relative(homeDirectory, repaired!.cwd).split(path.sep).join("/")).toMatch(
+        /^Documents\/Nodex\/\d{4}-\d{2}-\d{2}\/repair-this-missing-workspace$/,
       );
     } finally {
       await rm(homeDirectory, { recursive: true, force: true });

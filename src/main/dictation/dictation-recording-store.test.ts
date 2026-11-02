@@ -102,10 +102,12 @@ describe("FileDictationRecordingStore", () => {
     expect((await restarted.readAudio(recording.id)).recording.transcript).toBe(
       "Imported interview",
     );
-    expect(fileMode(recordingDirectory(profileRoot, recording.id))).toBe(0o700);
-    expect(
-      fileMode(path.join(recordingDirectory(profileRoot, recording.id), "0000000000.chunk")),
-    ).toBe(0o600);
+    if (process.platform !== "win32") {
+      expect(fileMode(recordingDirectory(profileRoot, recording.id))).toBe(0o700);
+      expect(
+        fileMode(path.join(recordingDirectory(profileRoot, recording.id), "0000000000.chunk")),
+      ).toBe(0o600);
+    }
   });
 
   test("discards failed and abandoned imports without exposing partial recordings", async () => {
@@ -194,10 +196,12 @@ describe("FileDictationRecordingStore", () => {
       "0000000001.chunk",
       "metadata.json",
     ]);
-    expect(fileMode(historyRoot)).toBe(0o700);
-    expect(fileMode(recordRoot)).toBe(0o700);
-    expect(fileMode(path.join(recordRoot, "metadata.json"))).toBe(0o600);
-    expect(fileMode(path.join(recordRoot, "0000000000.chunk"))).toBe(0o600);
+    if (process.platform !== "win32") {
+      expect(fileMode(historyRoot)).toBe(0o700);
+      expect(fileMode(recordRoot)).toBe(0o700);
+      expect(fileMode(path.join(recordRoot, "metadata.json"))).toBe(0o600);
+      expect(fileMode(path.join(recordRoot, "0000000000.chunk"))).toBe(0o600);
+    }
   });
 
   test("recovers durable orphan chunks, removes temporary files, and interrupts a crashed session", async () => {

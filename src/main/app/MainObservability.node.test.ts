@@ -1,3 +1,4 @@
+import { requiredNativeExecutable } from "../../../scripts/testing/native-artifacts";
 /* @effect-diagnostics nodeBuiltinImport:off preferSchemaOverJson:off -- Verifies the Node filesystem and raw incident wire format. */
 import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import path from "node:path";
@@ -99,11 +100,17 @@ it.live(
                   ),
               }),
             )
-          : layerForHome(home);
+          : layerForHome(home, requiredNativeExecutable("core-server"));
         const scope = yield* Scope.make();
         const context = yield* Layer.buildWithScope(
           layer.pipe(
-            Layer.provide(Layer.mergeAll(configLayer({ nodexHome: home }), cleanupLayer, store)),
+            Layer.provide(
+              Layer.mergeAll(
+                configLayer({ nodexHome: home, platform: process.platform }),
+                cleanupLayer,
+                store,
+              ),
+            ),
           ),
           scope,
         );

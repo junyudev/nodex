@@ -25,10 +25,12 @@ export interface MainAppOptions<R, E = MainApplicationError> {
 const runApplication = <R, E>(
   options: MainAppOptions<R, E>,
   onAcquired: (application: MainApplication["Service"] | null) => void,
+  onClosing: () => void,
 ) =>
   Effect.scoped(
     Effect.gen(function* () {
       const shutdown = yield* MainShutdown;
+      const awaitShutdown = shutdown.awaitRequest.pipe(Effect.tap(() => Effect.sync(onClosing)));
       const acquireApplication = Effect.gen(function* () {
         const application = yield* MainApplication;
         onAcquired(application);
@@ -39,7 +41,7 @@ const runApplication = <R, E>(
           for (const event of options.initialEvents) yield* application.handleBootstrapEvent(event);
           if (options.onApplicationReady) yield* options.onApplicationReady(application);
         }
-        return yield* shutdown.awaitRequest;
+        return yield* awaitShutdown;
       }).pipe(
         // Renderer flushes still need the application's IPC and persistence services.
         Effect.scoped,
@@ -56,7 +58,7 @@ const runApplication = <R, E>(
         ),
       );
 
-      return yield* Effect.raceFirst(acquireApplication, shutdown.awaitRequest);
+      return yield* Effect.raceFirst(acquireApplication, awaitShutdown);
     }),
   );
 
@@ -68,6 +70,7 @@ export const program = <R, E>(options: MainAppOptions<R, E>) =>
     const shutdown = yield* MainShutdown;
     let quitAllowed = false;
     let activeApplication: MainApplication["Service"] | null = null;
+    let failurePhase: "startup" | "closing" = "startup";
     yield* electron.onActivate(
       Effect.suspend(() => activeApplication?.activate ?? Effect.void).pipe(Effect.orDie),
     );
@@ -102,16 +105,22 @@ export const program = <R, E>(options: MainAppOptions<R, E>) =>
     }
 
     const applicationExit = yield* Effect.exit(
-      runApplication(options, (application) => {
-        activeApplication = application;
-      }),
+      runApplication(
+        options,
+        (application) => {
+          activeApplication = application;
+        },
+        () => {
+          failurePhase = "closing";
+        },
+      ),
     );
     yield* shutdown.markRuntimeClosed(Exit.asVoid(applicationExit));
     if (Exit.isFailure(applicationExit)) {
       const typedFailure = Cause.findErrorOption(applicationExit.cause);
       return {
         _tag: "Failure",
-        phase: typedFailure._tag === "Some" ? typedFailure.value.phase : "closing",
+        phase: typedFailure._tag === "Some" ? typedFailure.value.phase : failurePhase,
         cause: applicationExit.cause,
       } satisfies MainExit;
     }

@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { expect, it } from "vite-plus/test";
 import { claudeEnvironment, claudeDiscoveryOptions } from "./ClaudeSdk";
 const instance = {
@@ -46,7 +47,7 @@ it("expands explicit native account paths and rejects relative account drift", (
   expect(
     claudeEnvironment({ HOME: "/users/me" }, { ...instance, configDirectory: "~/work-claude" })
       .CLAUDE_CONFIG_DIR,
-  ).toBe("/users/me/work-claude");
+  ).toBe(join("/users/me", "work-claude"));
   expect(() =>
     claudeEnvironment({ HOME: "/users/me" }, { ...instance, configDirectory: "relative" }),
   ).toThrow("must be absolute");

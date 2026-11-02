@@ -1,5 +1,14 @@
 import { assert, it } from "@effect/vitest";
-import { mkdtemp, mkdir, rm, writeFile, chmod, symlink, realpath } from "node:fs/promises";
+import {
+  mkdtemp,
+  mkdir,
+  rm,
+  writeFile,
+  chmod,
+  symlink,
+  realpath,
+  copyFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { rgPath } from "@vscode/ripgrep";
@@ -38,17 +47,35 @@ const temp = Effect.acquireRelease(
   Effect.promise(() => mkdtemp(path.join(tmpdir(), "nodex-text-search-"))),
   (directory) => Effect.promise(() => rm(directory, { recursive: true, force: true })),
 );
-const runtimeLayer = (directory = rgDirectory, environmentPath = process.env.PATH) =>
+const runtimeLayer = (
+  directory = rgDirectory,
+  environmentPath = process.env.PATH,
+  environment: Record<string, string> = {},
+) =>
   platformLive.pipe(
     Layer.provide(
       Layer.mergeAll(
-        mainConfigLayer({ platform: process.platform, environmentPath: environmentPath ?? null }),
+        mainConfigLayer({
+          platform: process.platform,
+          environmentPath: environmentPath ?? null,
+          environment,
+        }),
         Layer.succeed(CodexPlatform, {
           runtime: { additionalSearchPaths: [directory] },
         } as unknown as CodexPlatform["Service"]),
       ),
     ),
   );
+
+async function nativeSearchFixture(root: string, code: string): Promise<Record<string, string>> {
+  const executable = path.join(root, process.platform === "win32" ? "rg.exe" : "rg");
+  const script = path.join(root, "fixture.cjs");
+  await copyFile(process.execPath, executable);
+  await chmod(executable, 0o700);
+  await writeFile(script, code);
+  return { NODE_OPTIONS: `--require ${JSON.stringify(script)}`, ELECTRON_RUN_AS_NODE: "1" };
+}
+
 const collect = Effect.fnUntraced(function* (
   host: WorkspaceTextSearchHost,
   input: WorkspaceTextSearchRequest,
@@ -182,14 +209,9 @@ it.effect("interrupting a live search terminates its process without a terminal 
   Effect.gen(function* () {
     const root = yield* temp;
     const started = yield* Deferred.make<number>();
-    yield* Effect.promise(async () => {
-      const executable = path.join(root, "rg");
-      await writeFile(
-        executable,
-        `#!${process.execPath}\nconsole.log(process.pid);setInterval(()=>{},1000);\n`,
-      );
-      await chmod(executable, 0o700);
-    });
+    const environment = yield* Effect.promise(() =>
+      nativeSearchFixture(root, "console.log(process.pid);setInterval(()=>{},1000);"),
+    );
     yield* Effect.gen(function* () {
       const platform = yield* WorkspaceTextSearchPlatform;
       const host = yield* platform.open({ kind: "local", roots: [root] });
@@ -199,7 +221,11 @@ it.effect("interrupting a live search terminates its process without a terminal 
       const pid = yield* Deferred.await(started);
       yield* Fiber.interrupt(fiber);
       assert.throws(() => process.kill(pid, 0), /ESRCH/u);
-    }).pipe(Effect.provide(runtimeLayer(root)));
+      // Exit observation alone can precede Windows releasing the executable image.
+      yield* Effect.promise(() =>
+        rm(path.join(root, process.platform === "win32" ? "rg.exe" : "rg")),
+      );
+    }).pipe(Effect.provide(runtimeLayer(root, process.env.PATH, environment)));
   }).pipe(Effect.scoped),
 );
 
@@ -207,14 +233,9 @@ it.effect("times out a stalled search and terminates its child process", () =>
   Effect.gen(function* () {
     const root = yield* temp;
     const started = yield* Deferred.make<number>();
-    yield* Effect.promise(async () => {
-      const executable = path.join(root, "rg");
-      await writeFile(
-        executable,
-        `#!${process.execPath}\nconsole.log(process.pid);setInterval(()=>{},1000);\n`,
-      );
-      await chmod(executable, 0o700);
-    });
+    const environment = yield* Effect.promise(() =>
+      nativeSearchFixture(root, "console.log(process.pid);setInterval(()=>{},1000);"),
+    );
     yield* Effect.gen(function* () {
       const platform = yield* WorkspaceTextSearchPlatform;
       const host = yield* platform.open({ kind: "local", roots: [root] });
@@ -227,7 +248,10 @@ it.effect("times out a stalled search and terminates its child process", () =>
       assert.isTrue(Result.isFailure(result));
       if (Result.isFailure(result)) assert.equal(result.failure.message, "File search timed out");
       assert.throws(() => process.kill(pid, 0), /ESRCH/u);
-    }).pipe(Effect.provide(runtimeLayer(root)));
+      yield* Effect.promise(() =>
+        rm(path.join(root, process.platform === "win32" ? "rg.exe" : "rg")),
+      );
+    }).pipe(Effect.provide(runtimeLayer(root, process.env.PATH, environment)));
   }).pipe(Effect.scoped),
 );
 
@@ -235,14 +259,12 @@ it.effect("bounds complete stderr output even after its retained diagnostic prev
   Effect.gen(function* () {
     const root = yield* temp;
     const started = yield* Deferred.make<number>();
-    yield* Effect.promise(async () => {
-      const executable = path.join(root, "rg");
-      await writeFile(
-        executable,
-        `#!${process.execPath}\nconsole.log(process.pid); const chunk=Buffer.alloc(1024*1024,65); let count=0; function pump(){ while(count++<129){ if(!process.stderr.write(chunk)) return process.stderr.once('drain',pump); } } pump(); setInterval(()=>{},1000);\n`,
-      );
-      await chmod(executable, 0o700);
-    });
+    const environment = yield* Effect.promise(() =>
+      nativeSearchFixture(
+        root,
+        "console.log(process.pid); const chunk=Buffer.alloc(1024*1024,65); let count=0; function pump(){ while(count++<129){ if(!process.stderr.write(chunk)) return process.stderr.once('drain',pump); } } pump(); setInterval(()=>{},1000);",
+      ),
+    );
     yield* Effect.gen(function* () {
       const platform = yield* WorkspaceTextSearchPlatform;
       const host = yield* platform.open({ kind: "local", roots: [root] });
@@ -255,11 +277,12 @@ it.effect("bounds complete stderr output even after its retained diagnostic prev
       if (Result.isFailure(result))
         assert.equal(result.failure.message, "File search exceeded its output limit");
       assert.throws(() => process.kill(pid, 0), /ESRCH/u);
-    }).pipe(Effect.provide(runtimeLayer(root)));
+    }).pipe(Effect.provide(runtimeLayer(root, process.env.PATH, environment)));
   }).pipe(Effect.scoped),
 );
 
-it.effect(
+// The loopback SSH fixture executes a remote POSIX shell locally; native local search runs above on every host.
+it.effect.skipIf(process.platform === "win32")(
   "connected search excludes a project-controlled PATH executable and follows the trusted executable",
   () =>
     Effect.gen(function* () {

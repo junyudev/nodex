@@ -48,9 +48,9 @@ const isManagedNodexCliSource = (candidate: string): boolean => {
   const appDirectory = dirname(contentsDirectory);
   return (
     candidate === join(binDirectory, "nodex") &&
-    binDirectory.endsWith("/Contents/Resources/bin") &&
-    resourcesDirectory.endsWith("/Contents/Resources") &&
-    contentsDirectory.endsWith("/Contents") &&
+    binDirectory === join(appDirectory, "Contents", "Resources", "bin") &&
+    resourcesDirectory === join(appDirectory, "Contents", "Resources") &&
+    contentsDirectory === join(appDirectory, "Contents") &&
     basename(appDirectory).startsWith("Nodex") &&
     basename(appDirectory).endsWith(".app")
   );

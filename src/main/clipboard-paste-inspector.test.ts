@@ -1,3 +1,4 @@
+import { pathToFileURL } from "node:url";
 import { describe, expect, test } from "vite-plus/test";
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -46,7 +47,7 @@ describe("clipboard paste inspector", () => {
     fs.mkdirSync(folderPath, { recursive: true });
 
     const result = inspectClipboardPasteItemsFromStrings([
-      `file://${filePath}\n${folderPath}`,
+      `${pathToFileURL(filePath).href}\n${folderPath}`,
       `${filePath}\n${filePath}`,
       "# comment\nmissing.txt",
     ]);
@@ -135,4 +136,21 @@ describe("clipboard paste inspector", () => {
     expect(payload.structuralWriteClaim).toBe(writeClaim);
     expect(payload.structuralEnvelope).toBeUndefined();
   });
+});
+
+test("recovers a structural private MIME claim without an HTML fallback", () => {
+  const payload = readClipboardPastePayload({
+    generation: 1,
+    fileUrls: [],
+    text: "Portable",
+    structuralDescriptor: JSON.stringify({
+      version: 1,
+      phase: "preparing",
+      writeClaim,
+      actionHint: "copy",
+    }),
+  });
+  expect(payload.structuralWriteClaim).toBe(writeClaim);
+  expect(payload.text).toBe("Portable");
+  expect(payload.structuralEnvelope).toBeUndefined();
 });

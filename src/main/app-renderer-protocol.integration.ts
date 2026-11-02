@@ -6,11 +6,19 @@ import type { ElectronApplication, Page } from "playwright";
 import { createServer, type ViteDevServer } from "vite";
 import { afterEach, describe, expect, test } from "vite-plus/test";
 import { APP_RENDERER_URL, buildTopLevelRendererCsp } from "../shared/app-renderer-policy";
-import { buildAppFilesystemPath, buildAppFilesystemUrl } from "../shared/app-protocol";
+import {
+  buildAppFilesystemPath,
+  buildAppFilesystemUrl,
+  buildEnvironmentAwareFilesystemUrl,
+} from "../shared/app-protocol";
 import { launchTestElectron } from "../../scripts/testing/launch-electron";
 import type { ProtocolImageFixtureControl } from "../../tests/fixtures/app-renderer-protocol/electron-main";
 
 const temporaryDirectories: string[] = [];
+const IMAGE_BYTES = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+  "base64",
+);
 
 function createSilentWaveBuffer(): Buffer {
   const sampleCount = 800;
@@ -63,7 +71,11 @@ async function readLoadedImageDimensions(page: Page, ids: readonly string[]) {
       imageIds.map(async (id) => {
         const image = document.getElementById(id);
         if (!(image instanceof HTMLImageElement)) throw new Error(`Missing fixture image ${id}`);
-        await image.decode();
+        try {
+          await image.decode();
+        } catch (cause) {
+          throw new Error(`Image ${id} (${image.currentSrc}) could not decode`, { cause });
+        }
         return image.naturalWidth;
       }),
     );
@@ -93,16 +105,15 @@ describe("production app renderer origin", () => {
     });
     const rendererDirectory = path.join(outputDirectory, "renderer");
     mkdirSync(rendererDirectory);
-    const imagePath = path.join(outputDirectory, "image 空格 #?.png");
-    const imageBytes = Buffer.from(
-      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
-      "base64",
+    const imagePath = path.join(
+      outputDirectory,
+      process.platform === "win32" ? "image 空格 #%.png" : "image 空格 #?.png",
     );
-    writeFileSync(imagePath, imageBytes);
+    writeFileSync(imagePath, IMAGE_BYTES);
     const audioPath = path.join(outputDirectory, "sample.wav");
     writeFileSync(audioPath, createSilentWaveBuffer());
     const outsideStaticPath = path.join(outputDirectory, "outside.png");
-    writeFileSync(outsideStaticPath, imageBytes);
+    writeFileSync(outsideStaticPath, IMAGE_BYTES);
     symlinkSync(outsideStaticPath, path.join(rendererDirectory, "outside.png"));
     const imageUrl = buildAppFilesystemUrl(imagePath);
     const audioUrl = buildAppFilesystemUrl(audioPath);
@@ -197,13 +208,9 @@ describe("production app renderer origin", () => {
       });
       const rendererDirectory = path.join(outputDirectory, "renderer");
       mkdirSync(rendererDirectory);
-      const imageBytes = Buffer.from(
-        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
-        "base64",
-      );
-      const localImagePath = path.join(outputDirectory, "Windows image 空格 #?.png");
-      writeFileSync(localImagePath, imageBytes);
-      writeFileSync(path.join(rendererDirectory, "static.png"), imageBytes);
+      const localImagePath = path.join(outputDirectory, "Windows image 空格 #%.png");
+      writeFileSync(localImagePath, IMAGE_BYTES);
+      writeFileSync(path.join(rendererDirectory, "static.png"), IMAGE_BYTES);
       writeFileSync(
         path.join(rendererDirectory, "index.html"),
         `<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="${buildTopLevelRendererCsp({ mode: "production" })}"></head><body><img id="filesystem-image" src="${buildAppFilesystemUrl(localImagePath)}" alt="filesystem"><img id="static-image" src="app://-/static.png" alt="static"></body></html>`,
@@ -250,18 +257,22 @@ describe("development HTTP renderer origin", () => {
     const rendererDirectory = path.join(outputDirectory, "renderer");
     mkdirSync(rendererDirectory);
     const imagePath = path.join(outputDirectory, "development image.png");
-    writeFileSync(
-      imagePath,
-      Buffer.from(
-        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
-        "base64",
-      ),
-    );
+    writeFileSync(imagePath, IMAGE_BYTES);
+    // Vite serves /@fs on its process drive; native Windows resources use app://fs across drives.
+    let viteImagePath = imagePath;
+    if (process.platform === "win32") {
+      const generated = path.resolve(".generated");
+      mkdirSync(generated, { recursive: true });
+      const viteFiles = mkdtempSync(path.join(generated, "app-origin-vite-"));
+      temporaryDirectories.push(viteFiles);
+      viteImagePath = path.join(viteFiles, "vite image.png");
+      writeFileSync(viteImagePath, IMAGE_BYTES);
+    }
     const brokenImagePath = path.join(outputDirectory, "broken.png");
     writeFileSync(brokenImagePath, "not image data");
     writeFileSync(
       path.join(rendererDirectory, "index.html"),
-      `<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="${buildTopLevelRendererCsp({ mode: "development" })}"></head><body><img id="app-source" src="${buildAppFilesystemUrl(imagePath)}" alt="app"><img id="vite-source" src="${buildAppFilesystemPath(imagePath)}" alt="vite"></body></html>`,
+      `<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="${buildTopLevelRendererCsp({ mode: "development" })}"></head><body><img id="app-source" src="${buildAppFilesystemUrl(imagePath)}" alt="app"><img id="vite-source" src="${buildAppFilesystemPath(viteImagePath)}" alt="vite"><img id="native-source" src="${buildEnvironmentAwareFilesystemUrl(imagePath, "http:")}" alt="native"></body></html>`,
     );
 
     let developmentServer: ViteDevServer | null = null;
@@ -293,7 +304,11 @@ describe("development HTTP renderer origin", () => {
       });
       const page = await application.firstWindow();
       await expect.poll(() => page.url()).toBe(developmentRendererUrl);
-      const imagesReady = readLoadedImageDimensions(page, ["app-source", "vite-source"]);
+      const imagesReady = readLoadedImageDimensions(page, [
+        "app-source",
+        "vite-source",
+        "native-source",
+      ]);
       let readiness = "pending";
       void imagesReady.then(
         () => {
@@ -331,7 +346,7 @@ describe("development HTTP renderer origin", () => {
         ) as ProtocolImageFixtureControl;
         control.release();
       });
-      await expect(imagesReady).resolves.toEqual([1, 1]);
+      await expect(imagesReady).resolves.toEqual([1, 1, 1]);
       await expect(readImageInRenderer(page, buildAppFilesystemUrl(imagePath))).resolves.toEqual({
         status: 200,
         mimeType: "image/png",
@@ -345,6 +360,20 @@ describe("development HTTP renderer origin", () => {
         document.body.append(image);
       }, buildAppFilesystemUrl(brokenImagePath));
       await expect(readLoadedImageDimensions(page, ["broken-source"])).rejects.toThrow();
+    } catch (cause) {
+      const failures = await application?.evaluate(() => {
+        const control = Reflect.get(
+          globalThis,
+          "nodexProtocolImages",
+        ) as ProtocolImageFixtureControl;
+        return control.failures;
+      });
+      throw new Error(
+        `Development media failed; native request failures: ${JSON.stringify(failures)}`,
+        {
+          cause,
+        },
+      );
     } finally {
       if (application) await application.close();
       if (developmentServer) await developmentServer.close();

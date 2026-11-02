@@ -1,4 +1,5 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn } from "node:child_process";
+import { killChildProcessTree, terminateWindowsProcessTree } from "../process-tree";
 
 export interface CodexGitCommandResult {
   readonly stdout: string;
@@ -29,19 +30,6 @@ export function createCodexRequestCanceledError(): Error {
 
 export function throwIfCodexRequestAborted(signal?: AbortSignal): void {
   if (signal?.aborted) throw createCodexRequestCanceledError();
-}
-
-function killProcessGroup(child: ChildProcess, signal: NodeJS.Signals): void {
-  const pid = child.pid;
-  if (process.platform !== "win32" && pid != null) {
-    try {
-      process.kill(-pid, signal);
-      return;
-    } catch {
-      // The process group may already have exited or may not have been created.
-    }
-  }
-  child.kill(signal);
 }
 
 /** Runs Git without a shell and reaps its entire process group after cancel/timeout. */
@@ -82,6 +70,7 @@ export function runCodexGitCommand(
     let settled = false;
     let killEscalationId: ReturnType<typeof setTimeout> | null = null;
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    let windowsTermination: Promise<void> | null = null;
 
     const cleanup = () => {
       if (killEscalationId) clearTimeout(killEscalationId);
@@ -94,13 +83,28 @@ export function runCodexGitCommand(
       cleanup();
       reject(error);
     };
+    const rejectTermination = (cause: unknown) =>
+      rejectOnce(cause instanceof Error ? cause : new Error(String(cause)));
+    const settleAfterTermination = (complete: () => void) => {
+      if (!windowsTermination) {
+        complete();
+        return;
+      }
+      void windowsTermination.then(complete, rejectTermination);
+    };
     const terminate = () => {
-      if (child.exitCode !== null || child.signalCode !== null) return;
-      killProcessGroup(child, "SIGTERM");
+      if (windowsTermination || child.exitCode !== null || child.signalCode !== null) return;
+      if (process.platform === "win32" && child.pid !== undefined) {
+        // Keep draining Git's pipes while native handles settle, then publish its outcome.
+        windowsTermination = terminateWindowsProcessTree(child.pid);
+        void windowsTermination.catch(rejectTermination);
+        return;
+      }
+      killChildProcessTree(child, "SIGTERM");
       if (killEscalationId) return;
       killEscalationId = setTimeout(() => {
         if (child.exitCode === null && child.signalCode === null) {
-          killProcessGroup(child, "SIGKILL");
+          killChildProcessTree(child, "SIGKILL");
         }
       }, KILL_ESCALATION_MS);
       killEscalationId.unref();
@@ -135,7 +139,7 @@ export function runCodexGitCommand(
 
     child.stdout?.on("data", (chunk: Buffer) => appendOutput("stdout", chunk));
     child.stderr?.on("data", (chunk: Buffer) => appendOutput("stderr", chunk));
-    child.on("error", (error) => {
+    const finishError = (error: Error) => {
       if (aborted || signal?.aborted) {
         rejectOnce(createCodexRequestCanceledError());
         return;
@@ -145,8 +149,8 @@ export function runCodexGitCommand(
         return;
       }
       rejectOnce(error);
-    });
-    child.on("close", (code) => {
+    };
+    const finishClose = (code: number | null) => {
       if (settled) return;
       if (aborted || signal?.aborted) {
         rejectOnce(createCodexRequestCanceledError());
@@ -168,6 +172,8 @@ export function runCodexGitCommand(
       }
       const message = stderr.trim() || stdout.trim() || `git exited with code ${String(code)}`;
       rejectOnce(new Error(message));
-    });
+    };
+    child.on("error", (error) => settleAfterTermination(() => finishError(error)));
+    child.on("close", (code) => settleAfterTermination(() => finishClose(code)));
   });
 }

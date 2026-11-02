@@ -86,7 +86,7 @@ describe("GitCommandRunner", () => {
     withRunner(async (runner) => {
       const repository = await createRepository();
       const result = await runner.run(repository, ["nodex-sleep"], {
-        configOverrides: ["alias.nodex-sleep=!sleep 1"],
+        configOverrides: ["alias.nodex-sleep=!sleep 30"],
         timeoutMs: 20,
       });
 
@@ -97,6 +97,8 @@ describe("GitCommandRunner", () => {
         timedOut: true,
         aborted: false,
       });
+      // Settlement releases the working directory, even before the runner's Scope closes.
+      await rm(repository.root, { recursive: true });
     }),
   );
 

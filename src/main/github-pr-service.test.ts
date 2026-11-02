@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, test } from "vite-plus/test";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { afterEach, describe, expect, test, vi } from "vite-plus/test";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
@@ -8,6 +8,34 @@ import {
   readGhPrComments,
   readGhPrStatus,
 } from "./github-pr-service";
+
+const commandFixtures = vi.hoisted(() => new Map<string, string>());
+vi.mock("node:child_process", async (importOriginal) => {
+  const original = await importOriginal<typeof import("node:child_process")>();
+  return {
+    ...original,
+    execFile: (
+      command: string,
+      args: readonly string[],
+      options: import("node:child_process").ExecFileOptions,
+      callback: (
+        error: import("node:child_process").ExecFileException | null,
+        stdout: string,
+        stderr: string,
+      ) => void,
+    ) => {
+      const script = commandFixtures.get(command);
+      return script
+        ? original.execFile(
+            process.execPath,
+            [script, ...args],
+            { ...options, encoding: "utf8" },
+            callback,
+          )
+        : original.execFile(command, args, { ...options, encoding: "utf8" }, callback);
+    },
+  };
+});
 
 const tempDirs: string[] = [];
 const originalPath = process.env.PATH;
@@ -45,13 +73,14 @@ function installFakeGhEnvironment(cwd: string, scriptBody: string): string {
       scriptBody,
     ].join("\n"),
   );
-  chmodSync(path.join(binDir, "git"), 0o755);
-  chmodSync(path.join(binDir, "gh"), 0o755);
+  commandFixtures.set("git", path.join(binDir, "git"));
+  commandFixtures.set("gh", path.join(binDir, "gh"));
   process.env.PATH = `${binDir}${path.delimiter}${originalPath ?? ""}`;
   return logPath;
 }
 
 afterEach(() => {
+  commandFixtures.clear();
   process.env.PATH = originalPath;
   while (tempDirs.length > 0) {
     const dir = tempDirs.pop();

@@ -28,11 +28,47 @@ async function writeExecutable(file: string, source: string): Promise<void> {
 }
 
 /** One Profile-local dispatcher; each command resolves its own runtime-provided task ID. */
-export async function prepareNodexCliShell(nodexHome: string): Promise<void> {
+export async function prepareNodexCliShell(
+  nodexHome: string,
+  platform: string = process.platform,
+): Promise<void> {
   const paths = nodexCliShellPaths(nodexHome);
   await mkdir(paths.bin, { recursive: true, mode: 0o700 });
   await rm(paths.bindings, { recursive: true, force: true });
   await mkdir(paths.bindings, { recursive: true, mode: 0o700 });
+  if (platform === "win32") {
+    await writeExecutable(
+      join(paths.bin, "nodex-dispatch.ps1"),
+      [
+        "$ErrorActionPreference = 'Stop'",
+        "[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)",
+        "$id = $env:CODEX_THREAD_ID",
+        "if ($id -notmatch '^[a-zA-Z0-9_-]+$') { throw 'Nodex CLI unavailable: no valid task binding.' }",
+        "$bindings = Join-Path (Split-Path $PSScriptRoot -Parent) 'bindings'",
+        "$file = Join-Path $bindings $id",
+        "if (!(Test-Path -LiteralPath $file) -and $env:CODEX_SESSION_ID -match '^[a-zA-Z0-9_-]+$') { $file = Join-Path $bindings $env:CODEX_SESSION_ID }",
+        "if (!(Test-Path -LiteralPath $file -PathType Leaf)) { throw 'Nodex CLI unavailable for this task. Refresh the task context in Nodex.' }",
+        "$binding = Get-Content -Raw -LiteralPath $file -Encoding UTF8 | ConvertFrom-Json",
+        "if (!$binding.executable) { throw 'Nodex CLI unavailable for this task. Refresh the task context in Nodex.' }",
+        "$env:NODEX_HOME = $binding.nodexHome",
+        "$env:NODEX_AGENT_ATTRIBUTION = $binding.agentAttribution",
+        "$routing = @('--expect-profile', $binding.profileId)",
+        "if ($binding.projectId) { $routing += @('--project', $binding.projectId) }",
+        "& $binding.executable @routing @args",
+        "exit $LASTEXITCODE",
+        "",
+      ].join("\r\n"),
+    );
+    await writeExecutable(
+      join(paths.bin, "nodex.cmd"),
+      '@echo off\r\npowershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0nodex-dispatch.ps1" %*\r\nexit /b %errorlevel%\r\n',
+    );
+    await writeExecutable(
+      join(paths.bin, "nodex"),
+      '#!/bin/sh\nexec powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "$(cygpath -w "$(dirname "$0")/nodex-dispatch.ps1")" "$@"\n',
+    );
+    return;
+  }
   await writeExecutable(
     join(paths.bin, "nodex"),
     [
@@ -63,6 +99,7 @@ type ShellEnvironment = Readonly<Record<string, string | undefined>>;
 
 interface NodexCliShellEnvironmentInput {
   nodexHome: string;
+  platform?: string;
   searchPaths: readonly string[];
   homeDirectory: string;
   inheritedEnvironment: ShellEnvironment;
@@ -90,9 +127,14 @@ export async function composeNodexCliShellEnvironment(
   const inherited = input.inheritedEnvironment;
   const configured = input.configuredEnvironment ?? {};
   const paths = nodexCliShellPaths(input.nodexHome);
-  const path = [paths.bin, ...input.searchPaths, configured.PATH ?? inherited.PATH ?? ""]
+  const windows = (input.platform ?? process.platform) === "win32";
+  const inheritedPath = Object.entries(inherited).find(([key]) =>
+    windows ? key.toUpperCase() === "PATH" : key === "PATH",
+  )?.[1];
+  const path = [paths.bin, ...input.searchPaths, configured.PATH ?? inheritedPath ?? ""]
     .filter(Boolean)
-    .join(":");
+    .join(windows ? ";" : ":");
+  if (windows) return { NODEX_HOME: input.nodexHome, PATH: path };
   const zshHome = join(paths.root, "zsh");
   const bashEnv = join(paths.root, "bash-env");
   const userZdotdir = userStartupPath(
@@ -191,6 +233,7 @@ export const NODEX_AGENT_ATTRIBUTION_ENV = "NODEX_AGENT_ATTRIBUTION";
 export async function bindNodexCliShell(input: {
   nodexHome: string;
   threadId: string;
+  platform?: string;
   executable: string;
   profileId: string;
   projectId: string | null;
@@ -199,6 +242,19 @@ export async function bindNodexCliShell(input: {
 }): Promise<void> {
   const file = bindingPath(input.nodexHome, input.threadId);
   await mkdir(nodexCliShellPaths(input.nodexHome).bindings, { recursive: true, mode: 0o700 });
+  if ((input.platform ?? process.platform) === "win32") {
+    await writeExecutable(
+      file,
+      JSON.stringify({
+        nodexHome: input.nodexHome,
+        executable: input.executable,
+        profileId: input.profileId,
+        projectId: input.projectId,
+        agentAttribution: input.agentAttribution,
+      }),
+    );
+    return;
+  }
   await writeExecutable(
     file,
     [
@@ -213,9 +269,17 @@ export async function bindNodexCliShell(input: {
   );
 }
 
-export async function unbindNodexCliShell(nodexHome: string, threadId: string): Promise<void> {
+export async function unbindNodexCliShell(
+  nodexHome: string,
+  threadId: string,
+  platform: string = process.platform,
+): Promise<void> {
   const file = bindingPath(nodexHome, threadId);
   await mkdir(nodexCliShellPaths(nodexHome).bindings, { recursive: true, mode: 0o700 });
+  if (platform === "win32") {
+    await writeExecutable(file, "{}");
+    return;
+  }
   await writeExecutable(
     file,
     [

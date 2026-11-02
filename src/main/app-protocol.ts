@@ -1,5 +1,5 @@
 import { createReadStream } from "node:fs";
-import { stat } from "node:fs/promises";
+import { realpath, stat } from "node:fs/promises";
 import * as path from "node:path";
 import { Readable } from "node:stream";
 import { pathToFileURL } from "node:url";
@@ -321,7 +321,18 @@ export function createAppProtocolHandler(
     if (isAudioOrVideoPath(filePath, mimeLookup)) {
       return await createRangeFileResponse(request, filePath, fileDependencies);
     }
-    if (platform === "win32") return await netFetch(pathToFileURL(filePath).toString());
+    if (platform === "win32") {
+      // Chromium's Windows file loader does not follow a symlink like Node's stream reader.
+      const response = await netFetch(pathToFileURL(await realpath(filePath)).toString());
+      const headers = new Headers(response.headers);
+      const mimeType = mimeLookup(filePath);
+      if (typeof mimeType === "string") headers.set("Content-Type", mimeType);
+      return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers,
+      });
+    }
     return await createOrdinaryFileResponse(filePath, fileDependencies);
   };
 
@@ -394,8 +405,12 @@ export function registerAppProtocol(
   electronSession.webRequest.onBeforeRequest(
     { urls: [`${APP_FILESYSTEM_ORIGIN}/*`] },
     (details, callback) => {
+      // A frame's URL can lag its initial navigation or change after the request starts.
+      // Chromium's initiator is bound to the request and survives redirects.
+      const source =
+        details.initiatorOrigin === undefined ? details.frame : { url: details.initiatorOrigin };
       callback({
-        cancel: !isAllowedAppFilesystemFrame(details.frame, options.getDevelopmentRendererUrl()),
+        cancel: !isAllowedAppFilesystemFrame(source, options.getDevelopmentRendererUrl()),
       });
     },
   );

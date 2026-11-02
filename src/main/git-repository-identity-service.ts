@@ -1,3 +1,4 @@
+import path from "node:path";
 import { execFile } from "node:child_process";
 import { stat } from "node:fs/promises";
 import type { GitRepositoryIdentity } from "../shared/git-repository-identity";
@@ -102,7 +103,7 @@ export async function readGitRepositoryIdentity(
       ["rev-parse", "--show-toplevel"],
       normalizedCwd,
       signal,
-    ).then(({ stdout }) => stdout.trim());
+    ).then(({ stdout }) => (stdout.trim() ? path.normalize(stdout.trim()) : ""));
     if (!repositoryRoot) return null;
 
     const originUrl = await readRemoteUrl(repositoryRoot, signal);

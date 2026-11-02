@@ -1,4 +1,4 @@
-import { isAbsolute, relative } from "node:path";
+import { isAbsolute, relative, sep } from "node:path";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import type { z } from "zod";
@@ -135,7 +135,7 @@ export const make = Effect.gen(function* () {
     }
     const path =
       target.path && isAbsolute(target.path) && reviewRoot
-        ? relative(reviewRoot, target.path)
+        ? relative(reviewRoot, target.path).split(sep).join("/")
         : target.path;
     if (path && (path === ".." || path.startsWith("../") || isAbsolute(path))) return null;
     return {

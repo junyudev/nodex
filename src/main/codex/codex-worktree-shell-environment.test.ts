@@ -269,12 +269,14 @@ describe("Codex worktree shell environment", () => {
         await runCodexWorktreeSetupScript({
           cwd,
           script: [
-            "bash -c 'trap \"\" TERM; while :; do sleep 1; done' &",
-            'printf "%s" "$!" > "$NODEX_DESCENDANT_PID_PATH"',
-            'printf "setup-ready\\n"',
+            `"$NODEX_TEST_NODE_EXECUTABLE" -e 'const fs = require("node:fs"); fs.writeFileSync(process.env.NODEX_DESCENDANT_PID_PATH, String(process.pid)); process.on("SIGTERM", () => {}); console.log(["setup", "ready"].join("-")); setInterval(() => {}, 1000)' &`,
             "wait",
           ].join("\n"),
-          environment: { NODEX_DESCENDANT_PID_PATH: descendantPidPath },
+          environment: {
+            NODEX_DESCENDANT_PID_PATH: descendantPidPath,
+            NODEX_TEST_NODE_EXECUTABLE: process.execPath,
+            ELECTRON_RUN_AS_NODE: "1",
+          },
           signal: controller.signal,
           onOutput: (output) => {
             if (output.data.includes("setup-ready")) controller.abort();

@@ -1,3 +1,4 @@
+import { hostCapabilities } from "../host-capabilities";
 import { randomUUID } from "node:crypto";
 import { app, screen } from "electron";
 import * as Layer from "effect/Layer";
@@ -20,18 +21,18 @@ export const live = (options: {
   readonly resourcesPath: string;
 }): Layer.Layer<CodexAttestation> => {
   let deviceCheck: ReturnType<typeof loadNativeDeviceCheckBridge> | undefined;
-  const generateDeviceCheckToken =
-    options.platform === "darwin" && options.architecture === "arm64"
-      ? () => {
-          deviceCheck ??= loadNativeDeviceCheckBridge({
-            packaged: options.isPackaged,
-            resourcesPath: options.resourcesPath,
-            appPath: options.projectRootPath,
-            architecture: options.architecture,
-          });
-          return deviceCheck.generateToken();
-        }
-      : undefined;
+  const generateDeviceCheckToken = hostCapabilities(options.platform, options.architecture)
+    .deviceCheck
+    ? () => {
+        deviceCheck ??= loadNativeDeviceCheckBridge({
+          packaged: options.isPackaged,
+          resourcesPath: options.resourcesPath,
+          appPath: options.projectRootPath,
+          architecture: options.architecture,
+        });
+        return deviceCheck.generateToken();
+      }
+    : undefined;
 
   return Layer.succeed(
     CodexAttestation,

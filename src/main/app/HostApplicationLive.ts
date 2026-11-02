@@ -232,6 +232,7 @@ const desktopTools = Layer.unwrap(
     const codex = yield* CodexPlatform;
     return desktopToolRuntimeLive({
       browserRuntime: codex.runtime.browserRuntime,
+      nodeRuntime: codex.runtime.nodeRuntime,
       isPackaged: config.isPackaged,
       projectRootPath: config.projectRootPath,
       resourcesPath: config.resourcesPath,

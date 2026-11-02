@@ -1,3 +1,4 @@
+import { syncDirectorySync } from "../platform/node/filesystem-durability";
 import { randomUUID } from "node:crypto";
 import {
   closeSync,
@@ -86,12 +87,7 @@ function saveSecret(
   // Flush directory entries before a durable settings document can refer to them.
   for (const directory of [secretDirectory(source), path.dirname(secretDirectory(source))]) {
     try {
-      const directoryDescriptor = openSync(directory, "r");
-      try {
-        fsyncSync(directoryDescriptor);
-      } finally {
-        closeSync(directoryDescriptor);
-      }
+      syncDirectorySync(directory);
     } catch {
       /* Directory fsync is unavailable on some host filesystems. */
     }

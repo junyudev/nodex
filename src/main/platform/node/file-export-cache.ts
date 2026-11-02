@@ -1,8 +1,8 @@
 /* @effect-diagnostics asyncFunction:off -- File streaming and atomic cache publication are Node filesystem boundaries. */
 import { createHash, randomUUID } from "node:crypto";
-import { constants } from "node:fs";
 import * as fs from "node:fs/promises";
 import path from "node:path";
+import { openRegularFile } from "./open-regular-file";
 
 const isMissing = (error: unknown): boolean =>
   error instanceof Error && "code" in error && error.code === "ENOENT";
@@ -24,10 +24,7 @@ export const verifyFileExport = async (
   signal.throwIfAborted();
   let file;
   try {
-    file = await fs.open(
-      filePath,
-      constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
-    );
+    file = await openRegularFile(filePath);
   } catch (error) {
     if (isMissing(error)) return false;
     throw error;

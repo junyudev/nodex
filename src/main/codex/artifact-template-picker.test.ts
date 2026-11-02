@@ -92,7 +92,7 @@ describe("artifact template picker", () => {
     writeFileSync(path.join(resources, "artifact-template-picker", "server.mjs"), "export {};\n");
     expect(
       resolveArtifactTemplatePickerRuntime({
-        browserNodePath: "/runtime/node",
+        nodePath: "/runtime/node",
         isPackaged: false,
         projectRootPath: root,
         resourcesPath: "/unused",

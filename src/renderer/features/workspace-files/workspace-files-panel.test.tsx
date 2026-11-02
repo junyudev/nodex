@@ -457,7 +457,10 @@ describe("WorkspaceFilesPanel", () => {
     );
     open.mockClear();
     await act(async () => {
-      fireEvent.click(source, { metaKey: true });
+      fireEvent.click(
+        source,
+        /^(mac|darwin)/iu.test(navigator.platform) ? { metaKey: true } : { ctrlKey: true },
+      );
       await Promise.resolve();
     });
     expect(open).not.toHaveBeenCalled();

@@ -14,6 +14,7 @@ import {
   type BrowserPluginReconcileResult,
 } from "../codex/browser-plugin-reconciler";
 import type { BrowserRuntimeAvailability } from "../codex/browser-runtime-bundle";
+import type { NodeExecutionRuntime } from "../platform/node/NodeExecutionRuntime";
 import {
   BrowserUseThreadConfigBuilder,
   buildDesktopToolPluginOverrides,
@@ -59,6 +60,7 @@ export class DesktopToolRuntime extends Context.Service<
 
 interface DesktopToolRuntimeOptions {
   readonly browserRuntime: BrowserRuntimeAvailability;
+  readonly nodeRuntime: NodeExecutionRuntime;
   readonly codexHome: string;
   readonly isPackaged: boolean;
   readonly projectRootPath: string;
@@ -209,10 +211,8 @@ export const live = (
       const browserUse = yield* BrowserUseRuntime;
       const gateway = yield* CodexGateway;
       const artifactTemplatePickerRuntime = resolveArtifactTemplatePickerRuntime({
-        browserNodePath:
-          options.browserRuntime.status === "available"
-            ? options.browserRuntime.bundle.paths.node
-            : null,
+        nodePath:
+          options.nodeRuntime.status === "available" ? options.nodeRuntime.executable : null,
         isPackaged: options.isPackaged,
         projectRootPath: options.projectRootPath,
         resourcesPath: options.resourcesPath,

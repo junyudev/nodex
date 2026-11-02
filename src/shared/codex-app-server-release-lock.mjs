@@ -50,6 +50,22 @@ const relativePath = (value, label) => {
   throw new Error(`Invalid Codex app-server release lock ${label}`);
 };
 
+const windowsArtifactPaths = (value, label) => {
+  if (!Array.isArray(value)) throw new Error(`Invalid ${label}.requiredArtifacts`);
+  const paths = value.map((entry) => relativePath(entry, `${label}.requiredArtifacts`));
+  const required = [
+    "codex-package.json",
+    "bin/codex.exe",
+    "bin/codex-code-mode-host.exe",
+    "codex-path/rg.exe",
+    "codex-resources/codex-command-runner.exe",
+    "codex-resources/codex-windows-sandbox-setup.exe",
+  ];
+  if (new Set(paths).size !== paths.length || required.some((file) => !paths.includes(file)))
+    throw new Error(`Invalid ${label} Windows artifact closure`);
+  return paths;
+};
+
 const targetMap = (value, label, parse) => {
   if (!isObject(value) || !hasExactKeys(value, TARGETS)) {
     throw new Error(`${label} must contain exactly darwin-arm64`);
@@ -159,7 +175,8 @@ export function parseCodexAppServerReleaseLock(value) {
     releaseTargets.map((key) => {
       const entry = value.builds[key];
       const label = `builds.${key}`;
-      const isDesktopBuild = TARGETS.includes(key);
+      const isWindowsBuild = key.startsWith("win32-");
+      const isDesktopBuild = TARGETS.includes(key) || isWindowsBuild;
       if (
         !isObject(entry) ||
         !hasExactKeys(entry, [
@@ -167,6 +184,7 @@ export function parseCodexAppServerReleaseLock(value) {
           "archiveSize",
           "assetName",
           ...(isDesktopBuild ? ["entrypointSha256", "runtimeMetadataSha256"] : []),
+          ...(isWindowsBuild ? ["requiredArtifacts"] : []),
           "targetTriple",
           "url",
         ])
@@ -198,6 +216,9 @@ export function parseCodexAppServerReleaseLock(value) {
                   `${label}.runtimeMetadataSha256`,
                 ),
               }
+            : {}),
+          ...(isWindowsBuild
+            ? { requiredArtifacts: windowsArtifactPaths(entry.requiredArtifacts, label) }
             : {}),
           targetTriple,
         },

@@ -1,4 +1,7 @@
 /* @effect-diagnostics asyncFunction:off -- Private atomic filesystem publication is a Node Adapter. */
+import { syncDirectory } from "../../durable-json-file";
+import { resolveCoreExecutable } from "../../core-client/core-launcher";
+import { makePrivatePaths } from "./private-filesystem";
 import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import { lstat, mkdir, open, readdir, rename, rm } from "node:fs/promises";
@@ -38,14 +41,18 @@ const requirePrivateDirectory = async (directory: string): Promise<void> => {
   if (
     !stats.isDirectory() ||
     stats.isSymbolicLink() ||
-    (stats.mode & 0o777) !== 0o700 ||
+    (process.platform !== "win32" && (stats.mode & 0o777) !== 0o700) ||
     (process.getuid && stats.uid !== process.getuid())
   ) {
     throw new Error("Fatal incident directory must be private and owned");
   }
 };
 
-const writeIncident = async (nodexHome: string, incident: MainFatalIncident): Promise<string> => {
+const writeIncident = async (
+  nodexHome: string,
+  coreExecutable: string,
+  incident: MainFatalIncident,
+): Promise<string> => {
   if (!path.isAbsolute(nodexHome) || !UUID.test(incident.id)) {
     throw new Error("Invalid fatal incident identity");
   }
@@ -63,9 +70,6 @@ const writeIncident = async (nodexHome: string, incident: MainFatalIncident): Pr
   await requirePrivateDirectory(directory);
   // The Profile's single Main process publishes one final exit. Recover unpublished
   // files left by a previous process so interrupted publication cannot grow retention.
-  for (const name of (await readdir(directory)).filter((name) => TEMPORARY_NAME.test(name))) {
-    await rm(path.join(directory, name), { force: true });
-  }
   const publishedName = `${timestamp}-${incident.id}.json`;
   const destination = path.join(directory, publishedName);
   const temporary = path.join(directory, `${randomUUID()}.tmp`);
@@ -75,6 +79,22 @@ const writeIncident = async (nodexHome: string, incident: MainFatalIncident): Pr
     0o600,
   );
   try {
+    // Secure the empty file and its parents in one native call, before writing private bytes.
+    if (process.platform === "win32")
+      await makePrivatePaths(
+        [
+          { path: nodexHome, directory: true },
+          { path: diagnostics, directory: true },
+          { path: directory, directory: true },
+          { path: temporary, directory: false },
+        ],
+        coreExecutable,
+      );
+    for (const name of (await readdir(directory)).filter(
+      (name) => TEMPORARY_NAME.test(name) && name !== path.basename(temporary),
+    )) {
+      await rm(path.join(directory, name), { force: true });
+    }
     await file.writeFile(bytes);
     await file.sync();
     await file.close();
@@ -89,12 +109,7 @@ const writeIncident = async (nodexHome: string, incident: MainFatalIncident): Pr
     )) {
       await rm(path.join(directory, name), { force: true });
     }
-    const handle = await open(directory, constants.O_RDONLY | constants.O_NOFOLLOW);
-    try {
-      await handle.sync();
-    } finally {
-      await handle.close();
-    }
+    await syncDirectory(directory);
     return destination;
   } finally {
     await file.close();
@@ -102,18 +117,31 @@ const writeIncident = async (nodexHome: string, incident: MainFatalIncident): Pr
   }
 };
 
-export const layerForHome = (nodexHome: string): Layer.Layer<MainFatalIncidentStore> =>
+export const layerForHome = (
+  nodexHome: string,
+  coreExecutable: string,
+): Layer.Layer<MainFatalIncidentStore> =>
   Layer.succeed(
     MainFatalIncidentStore,
     MainFatalIncidentStore.of({
       write: (incident) =>
         Effect.tryPromise({
-          try: () => writeIncident(nodexHome, incident),
+          try: () => writeIncident(nodexHome, coreExecutable, incident),
           catch: (cause) => new MainFatalIncidentStoreError({ cause }),
         }),
     }),
   );
 
 export const live: Layer.Layer<MainFatalIncidentStore, never, MainConfig> = Layer.unwrap(
-  Effect.map(MainConfig, (config) => layerForHome(config.nodexHome)),
+  Effect.map(MainConfig, (config) =>
+    layerForHome(
+      config.nodexHome,
+      resolveCoreExecutable({
+        environment: config.environment,
+        isPackaged: config.isPackaged,
+        appResourcesPath: config.resourcesPath,
+        repositoryRoot: config.projectRootPath,
+      }),
+    ),
+  ),
 );

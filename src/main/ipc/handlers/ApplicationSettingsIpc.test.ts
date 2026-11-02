@@ -342,10 +342,18 @@ it.effect("owns the complete application settings ingress with the Main Scope", 
       readonly reason?: { readonly kind: string; readonly message: string };
     };
     assert.strictEqual(rejectedShortcut.type, "rejected");
-    assert.deepEqual(rejectedShortcut.reason, {
-      kind: "modifier-required",
-      message: "Shortcut must include Cmd/Ctrl or Alt.",
-    });
+    assert.deepEqual(
+      rejectedShortcut.reason,
+      process.platform === "win32"
+        ? {
+            kind: "unsupported-key",
+            message: "This shortcut key is not supported.",
+          }
+        : {
+            kind: "modifier-required",
+            message: "Shortcut must include Cmd/Ctrl or Alt.",
+          },
+    );
     const keybindingResults = yield* Effect.all(
       [
         handlers.get("set-codex-command-keybinding")!(event, "settings", {

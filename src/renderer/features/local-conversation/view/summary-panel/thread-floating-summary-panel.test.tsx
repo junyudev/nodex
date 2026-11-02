@@ -1,3 +1,8 @@
+// Collect the fixed component graph before a test owns its render and cleanup lifetime.
+import {
+  ThreadFloatingSummaryPanel,
+  ThreadSummaryPanelPopover,
+} from "./thread-floating-summary-panel";
 import {
   afterAll,
   beforeAll,
@@ -435,8 +440,6 @@ describe("ThreadFloatingSummaryPanel", () => {
   });
 
   test("renders the pinned summary without authenticated quota content", async () => {
-    const { ThreadFloatingSummaryPanel } = await import("./thread-floating-summary-panel");
-
     const view = renderSummary(
       <ThreadFloatingSummaryPanel
         mounted
@@ -457,8 +460,6 @@ describe("ThreadFloatingSummaryPanel", () => {
   });
 
   test("keeps the hidden Codex shell without running panel side effects", async () => {
-    const { ThreadFloatingSummaryPanel } = await import("./thread-floating-summary-panel");
-
     const view = renderSummary(
       <ThreadFloatingSummaryPanel
         mounted
@@ -482,8 +483,6 @@ describe("ThreadFloatingSummaryPanel", () => {
   });
 
   test("uses the Codex instant invisible branch while overlay popover is open", async () => {
-    const { ThreadFloatingSummaryPanel } = await import("./thread-floating-summary-panel");
-
     const view = renderSummary(
       <ThreadFloatingSummaryPanel
         hideImmediately
@@ -505,7 +504,6 @@ describe("ThreadFloatingSummaryPanel", () => {
   });
 
   test("renders the right-panel summary as a dismissible popover", async () => {
-    const { ThreadSummaryPanelPopover } = await import("./thread-floating-summary-panel");
     const view = renderSummary(
       <ThreadSummaryPanelPopover
         activeThreadId="thread-1"
@@ -545,7 +543,6 @@ describe("ThreadFloatingSummaryPanel", () => {
   });
 
   test("renders git branch with one non-duplicated branch diff total", async () => {
-    const { ThreadFloatingSummaryPanel } = await import("./thread-floating-summary-panel");
     mockInvokeImpl = async (channel: string, input?: unknown) => {
       if (channel === "branch-metadata") {
         return {
@@ -610,7 +607,6 @@ describe("ThreadFloatingSummaryPanel", () => {
   });
 
   test("opens the Review surface from the Changes row using the primary git source", async () => {
-    const { ThreadFloatingSummaryPanel } = await import("./thread-floating-summary-panel");
     const openedSources: GitReviewSource[] = [];
     mockInvokeImpl = async (channel: string, input?: unknown) => {
       if (channel === "branch-metadata") {
@@ -662,7 +658,6 @@ describe("ThreadFloatingSummaryPanel", () => {
   });
 
   test("opens the native commit workflow from the Environment git action row", async () => {
-    const { ThreadFloatingSummaryPanel } = await import("./thread-floating-summary-panel");
     const openedSources: GitReviewSource[] = [];
     const commitInputs: unknown[] = [];
     const actionStatus: GitActionStatusResult = {
@@ -796,7 +791,6 @@ describe("ThreadFloatingSummaryPanel", () => {
   });
 
   test("renders a create-branch row for detached Git checkouts", async () => {
-    const { ThreadFloatingSummaryPanel } = await import("./thread-floating-summary-panel");
     const actionStatus: GitActionStatusResult = {
       cwd: "/repo/project",
       isGitRepository: true,
@@ -864,7 +858,6 @@ describe("ThreadFloatingSummaryPanel", () => {
   });
 
   test("creates a branch before opening the detached commit workflow", async () => {
-    const { ThreadFloatingSummaryPanel } = await import("./thread-floating-summary-panel");
     const branchCreateInputs: unknown[] = [];
     let branchCreated = false;
     const readStatus = (): GitActionStatusResult => ({
@@ -975,7 +968,6 @@ describe("ThreadFloatingSummaryPanel", () => {
   });
 
   test("renders a create-branch action for managed worktrees on the default branch", async () => {
-    const { ThreadFloatingSummaryPanel } = await import("./thread-floating-summary-panel");
     const actionStatus: GitActionStatusResult = {
       cwd: "/repo/project",
       isGitRepository: true,
@@ -1055,7 +1047,6 @@ describe("ThreadFloatingSummaryPanel", () => {
   });
 
   test("creates a branch before opening the managed default-branch push workflow", async () => {
-    const { ThreadFloatingSummaryPanel } = await import("./thread-floating-summary-panel");
     const branchCreateInputs: unknown[] = [];
     let branchCreated = false;
     const readStatus = (): GitActionStatusResult => ({
@@ -1171,7 +1162,6 @@ describe("ThreadFloatingSummaryPanel", () => {
   });
 
   test("shows the reference no-changes blocker on the Environment git action row", async () => {
-    const { ThreadFloatingSummaryPanel } = await import("./thread-floating-summary-panel");
     const actionStatus: GitActionStatusResult = {
       cwd: "/repo/project",
       isGitRepository: true,
@@ -1231,7 +1221,6 @@ describe("ThreadFloatingSummaryPanel", () => {
   });
 
   test("shows the reference nothing-to-push blocker on the Environment git action row", async () => {
-    const { ThreadFloatingSummaryPanel } = await import("./thread-floating-summary-panel");
     const actionStatus: GitActionStatusResult = {
       cwd: "/repo/project",
       isGitRepository: true,
@@ -1292,7 +1281,6 @@ describe("ThreadFloatingSummaryPanel", () => {
   });
 
   test("allows blank commit messages so the native workflow can generate one", async () => {
-    const { ThreadFloatingSummaryPanel } = await import("./thread-floating-summary-panel");
     const generateInputs: unknown[] = [];
     const commitInputs: unknown[] = [];
     const actionStatus: GitActionStatusResult = {
@@ -1441,7 +1429,6 @@ describe("ThreadFloatingSummaryPanel", () => {
   });
 
   test("offers push as a commit modal action when branch commits are ready", async () => {
-    const { ThreadFloatingSummaryPanel } = await import("./thread-floating-summary-panel");
     const pushInputs: unknown[] = [];
     const actionStatus: GitActionStatusResult = {
       cwd: "/repo/project",
@@ -1541,7 +1528,6 @@ describe("ThreadFloatingSummaryPanel", () => {
   });
 
   test("shows generated-message and commit phases for blank commit messages", async () => {
-    const { ThreadFloatingSummaryPanel } = await import("./thread-floating-summary-panel");
     const commitInputs: unknown[] = [];
     let resolveGeneration: (value: unknown) => void = () => undefined;
     let resolveCommit: (value: unknown) => void = () => undefined;
@@ -1662,7 +1648,6 @@ describe("ThreadFloatingSummaryPanel", () => {
   });
 
   test("shows the git workflow phase and cancels the active operation from the summary row", async () => {
-    const { ThreadFloatingSummaryPanel } = await import("./thread-floating-summary-panel");
     const commitInputs: unknown[] = [];
     const cancelInputs: unknown[] = [];
     let resolveCommit: (value: unknown) => void = () => undefined;
@@ -1789,7 +1774,6 @@ describe("ThreadFloatingSummaryPanel", () => {
   });
 
   test("opens the native create-pull-request workflow from the Environment PR row", async () => {
-    const { ThreadFloatingSummaryPanel } = await import("./thread-floating-summary-panel");
     const openedSources: GitReviewSource[] = [];
     const messageGenerateInputs: unknown[] = [];
     const createPullRequestInputs: unknown[] = [];
@@ -1944,7 +1928,6 @@ describe("ThreadFloatingSummaryPanel", () => {
   });
 
   test("creates a branch before opening the managed default-branch create-pr workflow", async () => {
-    const { ThreadFloatingSummaryPanel } = await import("./thread-floating-summary-panel");
     const branchCreateInputs: unknown[] = [];
     let branchCreated = false;
     const readStatus = (): GitActionStatusResult => ({
@@ -2063,7 +2046,6 @@ describe("ThreadFloatingSummaryPanel", () => {
   });
 
   test("renders available Codex summary sections in source order", async () => {
-    const { ThreadFloatingSummaryPanel } = await import("./thread-floating-summary-panel");
     const turns = [
       {
         turnId: "turn-plan",
@@ -2254,7 +2236,6 @@ describe("ThreadFloatingSummaryPanel", () => {
   });
 
   test("opens the scheduled automation row with the reference action payload", async () => {
-    const { ThreadFloatingSummaryPanel } = await import("./thread-floating-summary-panel");
     const openedAutomations: unknown[] = [];
     const actions = {
       onOpenSummaryScheduledAutomation: (input) => {
@@ -2295,7 +2276,6 @@ describe("ThreadFloatingSummaryPanel", () => {
   });
 
   test("opens auxiliary rows and exposes the process manager action", async () => {
-    const { ThreadFloatingSummaryPanel } = await import("./thread-floating-summary-panel");
     const openedSideChats: unknown[] = [];
     const openedBrowsers: unknown[] = [];
     const openedTerminals: unknown[] = [];
@@ -2404,7 +2384,6 @@ describe("ThreadFloatingSummaryPanel", () => {
   });
 
   test("uses the response-in-progress icon for active side chat rows", async () => {
-    const { ThreadFloatingSummaryPanel } = await import("./thread-floating-summary-panel");
     const actions = {
       onOpenSummarySideChatRow: () => undefined,
     } as Partial<ThreadStageActions> as ThreadStageActions;
@@ -2443,7 +2422,6 @@ describe("ThreadFloatingSummaryPanel", () => {
   });
 
   test("renders the Computer Use PiP as a headerless toggle row when state and action exist", async () => {
-    const { ThreadFloatingSummaryPanel } = await import("./thread-floating-summary-panel");
     const toggles: boolean[] = [];
     const actions = {
       onOpenSummaryBrowserRow: () => undefined,
@@ -2514,8 +2492,6 @@ describe("ThreadFloatingSummaryPanel", () => {
   });
 
   test("does not render the Computer Use PiP row without a toggle action", async () => {
-    const { ThreadFloatingSummaryPanel } = await import("./thread-floating-summary-panel");
-
     const view = renderSummary(
       <ThreadFloatingSummaryPanel
         mounted
@@ -2533,7 +2509,6 @@ describe("ThreadFloatingSummaryPanel", () => {
   });
 
   test("renders browser rows with Codex-style URL, favicon, and working metadata", async () => {
-    const { ThreadFloatingSummaryPanel } = await import("./thread-floating-summary-panel");
     const view = renderSummary(
       <ThreadFloatingSummaryPanel
         mounted
@@ -2583,7 +2558,6 @@ describe("ThreadFloatingSummaryPanel", () => {
 
   test("opens a runtime-only Browser row by logical Browser identity", async () => {
     const opened: string[] = [];
-    const { ThreadFloatingSummaryPanel } = await import("./thread-floating-summary-panel");
     const view = renderSummary(
       <ThreadFloatingSummaryPanel
         mounted
@@ -2625,7 +2599,6 @@ describe("ThreadFloatingSummaryPanel", () => {
 
   for (const kind of ["local", "worktree"] as const) {
     test(`moves the attached ${kind} chat through its execution owner`, async () => {
-      const { ThreadFloatingSummaryPanel } = await import("./thread-floating-summary-panel");
       mockInvokeImpl = async (channel: string, input?: unknown) => {
         if (channel === "codex:thread-handoffs:list") return { revision: 0, operations: [] };
         if (channel === "branch-metadata")
@@ -2704,8 +2677,6 @@ describe("ThreadFloatingSummaryPanel", () => {
   }
 
   test("renders the Sources section with the reference empty state", async () => {
-    const { ThreadFloatingSummaryPanel } = await import("./thread-floating-summary-panel");
-
     const view = renderSummary(
       <ThreadFloatingSummaryPanel
         mounted
@@ -2726,7 +2697,6 @@ describe("ThreadFloatingSummaryPanel", () => {
   });
 
   test("renders search-only sources as a non-openable icon", async () => {
-    const { ThreadFloatingSummaryPanel } = await import("./thread-floating-summary-panel");
     const turns = [
       {
         items: [
@@ -2764,7 +2734,6 @@ describe("ThreadFloatingSummaryPanel", () => {
   });
 
   test("opens page sources externally", async () => {
-    const { ThreadFloatingSummaryPanel } = await import("./thread-floating-summary-panel");
     const windowOpenCalls: unknown[][] = [];
     const originalWindowOpen = window.open;
     window.open = ((...args: unknown[]) => {
@@ -2821,7 +2790,6 @@ describe("ThreadFloatingSummaryPanel", () => {
   });
 
   test("opens MCP app sources in the side panel when a renderable resource is already available", async () => {
-    const { ThreadFloatingSummaryPanel } = await import("./thread-floating-summary-panel");
     const openCalls: unknown[] = [];
     const actions = {
       onOpenMcpAppSidePanel: async (input: unknown) => {
@@ -2922,7 +2890,6 @@ describe("ThreadFloatingSummaryPanel", () => {
   });
 
   test("resolves MCP app source resources before opening the side panel", async () => {
-    const { ThreadFloatingSummaryPanel } = await import("./thread-floating-summary-panel");
     const openCalls: unknown[] = [];
     mockInvokeImpl = async (channel) => {
       if (channel === "codex:mcp-server-statuses:list") return { data: [], nextCursor: null };
@@ -3024,7 +2991,6 @@ describe("ThreadFloatingSummaryPanel", () => {
   });
 
   test("opens the summary panel plan row in the plan side panel", async () => {
-    const { ThreadFloatingSummaryPanel } = await import("./thread-floating-summary-panel");
     const openCalls: unknown[] = [];
     const actions = {
       onOpenPlanInSidePanel: (input: ThreadPlanSidePanelTarget) => {
@@ -3094,7 +3060,6 @@ describe("ThreadFloatingSummaryPanel", () => {
   });
 
   test("shows deliverable outputs alongside the Git environment", async () => {
-    const { ThreadFloatingSummaryPanel } = await import("./thread-floating-summary-panel");
     mockInvokeImpl = async (channel: string, input?: unknown) => {
       if (channel !== "review-summary") return null;
       return makeSnapshot((input as { source: GitReviewSource }).source, 0, 0);
@@ -3149,7 +3114,6 @@ describe("ThreadFloatingSummaryPanel", () => {
   });
 
   test("keeps outputs visible for projectless threads with a git cwd", async () => {
-    const { ThreadFloatingSummaryPanel } = await import("./thread-floating-summary-panel");
     mockInvokeImpl = async (channel: string, input?: unknown) => {
       if (channel !== "review-summary") return null;
       return makeSnapshot((input as { source: GitReviewSource }).source, 0, 0);
@@ -3207,7 +3171,6 @@ describe("ThreadFloatingSummaryPanel", () => {
   });
 
   test("opens generated image output rows in the file preview", async () => {
-    const { ThreadFloatingSummaryPanel } = await import("./thread-floating-summary-panel");
     const turns = [
       {
         items: [
@@ -3258,7 +3221,6 @@ describe("ThreadFloatingSummaryPanel", () => {
 
   for (const extension of ["md", "pdf"]) {
     test(`opens ${extension} summary outputs through the file router on the Chat's host`, async () => {
-      const { ThreadFloatingSummaryPanel } = await import("./thread-floating-summary-panel");
       const path = `/repo/project/dist/report.${extension}`;
       const view = renderSummary(
         <ThreadFloatingSummaryPanel
@@ -3293,7 +3255,6 @@ describe("ThreadFloatingSummaryPanel", () => {
   }
 
   test("hands a local HTML summary output to the file router, never the default application", async () => {
-    const { ThreadFloatingSummaryPanel } = await import("./thread-floating-summary-panel");
     const path = "/repo/project/dist/report.html";
     const view = renderSummary(
       <ThreadFloatingSummaryPanel
@@ -3320,7 +3281,6 @@ describe("ThreadFloatingSummaryPanel", () => {
   });
 
   test("reports when a summary output cannot be opened", async () => {
-    const { ThreadFloatingSummaryPanel } = await import("./thread-floating-summary-panel");
     outputOpeners.openFile.mockResolvedValue(false);
     const onErrorMessage = vi.fn();
     const view = renderSummary(
@@ -3342,7 +3302,6 @@ describe("ThreadFloatingSummaryPanel", () => {
   });
 
   test("opens URL summary panel output rows through link routing", async () => {
-    const { ThreadFloatingSummaryPanel } = await import("./thread-floating-summary-panel");
     const driveUrl = "https://docs.google.com/document/d/doc-123/edit";
     const turns = [
       {
@@ -3423,7 +3382,6 @@ describe("ThreadFloatingSummaryPanel", () => {
 
   for (const projectless of [false, true]) {
     test(`native task rows select observations without Thread navigation (projectless=${projectless})`, async () => {
-      const { ThreadFloatingSummaryPanel } = await import("./thread-floating-summary-panel");
       const membership = makeSubagentMembership({
         threadId: "agent-task:thread-1:review",
         displayName: "Review changes",
@@ -3462,7 +3420,6 @@ describe("ThreadFloatingSummaryPanel", () => {
   }
 
   test("opens background subagent rows with subagent opener context", async () => {
-    const { ThreadFloatingSummaryPanel } = await import("./thread-floating-summary-panel");
     const turns = [
       {
         turnId: "turn-parent",
@@ -3572,7 +3529,6 @@ describe("ThreadFloatingSummaryPanel", () => {
   });
 
   test("renders inline subagents as compact strip and lists only non-inline rows", async () => {
-    const { ThreadFloatingSummaryPanel } = await import("./thread-floating-summary-panel");
     const openCalls: unknown[] = [];
     const openPanelCalls: string[] = [];
     const view = renderSummary(
@@ -3707,7 +3663,6 @@ describe("ThreadFloatingSummaryPanel", () => {
   });
 
   test("uses the first four done inline subagents when no inline subagent is working", async () => {
-    const { ThreadFloatingSummaryPanel } = await import("./thread-floating-summary-panel");
     const memberships = [1, 2, 3, 4, 5].map((index) =>
       makeSubagentMembership({
         threadId: `done-inline-${index}`,

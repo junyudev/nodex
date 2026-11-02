@@ -10,7 +10,7 @@ import { projectCodexConversationThreadSettings } from "../codex-application/Cod
 import { codexVisualizationPassiveParts } from "../../shared/codex-visualization-passive-context";
 import { createHash } from "node:crypto";
 import { join, resolve } from "node:path";
-import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeServices from "../platform/node/NodeServices";
 import type {
   AgentRuntimeConfiguration,
   AgentRuntimeOperations,
@@ -99,6 +99,11 @@ import { CodexLocalLaunch, CodexPlatform } from "./CodexApplicationLive";
 import { CodexTurnPresentation } from "../codex-application/CodexTurnPresentation";
 import { MainApplicationError } from "./MainApplication";
 import { MainConfig } from "./MainConfig";
+import {
+  AGENT_RUNTIME_STARTUP_PROBE_ENV,
+  AGENT_RUNTIME_STARTUP_EVIDENCE_FILE,
+  type AgentRuntimeStartupEvidence,
+} from "../../shared/agent-runtime-startup-evidence";
 
 /** A quiet execution process with no live or pending work stops after this period. */
 const AGENT_RUNTIME_IDLE_AFTER = "3 minutes";
@@ -407,10 +412,7 @@ const supervisor = Layer.effectContext(
           agentRuntimeNodeExecutable({
             isPackaged: config.isPackaged,
             environment: config.environment,
-            bundledExecutable:
-              platform.runtime.browserRuntime.status === "available"
-                ? platform.runtime.browserRuntime.bundle.paths.node
-                : null,
+            nodeRuntime: platform.runtime.nodeRuntime,
           }),
         catch: (cause) => cause,
       });
@@ -766,11 +768,46 @@ export const hostTools = Layer.effectDiscard(
     const activation = yield* HostActivation;
     const execute = yield* makeHostTools;
     yield* activation.activate(execute);
+    const config = yield* MainConfig;
+    const runId = config.isolatedRunId;
+    if (config.environment[AGENT_RUNTIME_STARTUP_PROBE_ENV] === "1" && runId) {
+      // Only an explicitly supervised disposable launch forces the otherwise lazy runtime.
+      const runtime = yield* AgentRuntimeSupervisor;
+      const connection = yield* runtime.get();
+      const platform = yield* CodexPlatform;
+      const node = platform.runtime.nodeRuntime;
+      if (node.status !== "available") return yield* Effect.fail(new Error(node.message));
+      const fs = yield* FileSystem.FileSystem;
+      const directory = join(config.nodexHome, "run");
+      const file = join(directory, AGENT_RUNTIME_STARTUP_EVIDENCE_FILE);
+      const evidence: AgentRuntimeStartupEvidence = {
+        schemaVersion: 1,
+        runId,
+        hostPid: process.pid,
+        runtimeId: connection.identity.runtimeId,
+        runtimeGeneration: connection.identity.runtimeGeneration,
+        nodeSource: node.source,
+        nodeVersion: node.version,
+      };
+      yield* fs.makeDirectory(directory, { recursive: true });
+      yield* fs.writeFileString(`${file}.tmp`, JSON.stringify(evidence), { mode: 0o600 });
+      yield* fs.rename(`${file}.tmp`, file);
+      return;
+    }
     yield* activation.resume.pipe(
       Effect.catchCause(() =>
         Effect.logWarning("Agent execution will resume on the next operation"),
       ),
       Effect.forkScoped,
     );
-  }),
+  }).pipe(
+    Effect.mapError(
+      (cause) =>
+        new MainApplicationError({
+          phase: "startup",
+          operation: "agent-runtime-startup-probe",
+          cause,
+        }),
+    ),
+  ),
 );

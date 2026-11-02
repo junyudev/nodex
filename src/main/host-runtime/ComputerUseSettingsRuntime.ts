@@ -1,3 +1,4 @@
+import { hostCapabilities } from "../platform/host-capabilities";
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
@@ -228,24 +229,24 @@ const make = (
             ),
         ),
       );
-    const readSoundMode: Effect.Effect<ComputerUseSoundMode> =
-      ports.platform !== "darwin"
-        ? Effect.succeed(DEFAULT_SOUND_MODE)
-        : ports
-            .exec("/usr/bin/defaults", [
-              "read",
-              COMPUTER_USE_DEFAULTS_DOMAIN,
-              COMPUTER_USE_SOUND_MODE_KEY,
-            ])
-            .pipe(
-              Effect.map(({ stdout }) => {
-                const value = stdout.trim();
-                return isComputerUseSoundMode(value) ? value : DEFAULT_SOUND_MODE;
-              }),
-              Effect.orElseSucceed(() => DEFAULT_SOUND_MODE),
-            );
+    const readSoundMode: Effect.Effect<ComputerUseSoundMode> = !hostCapabilities(ports.platform)
+      .computerControl
+      ? Effect.succeed(DEFAULT_SOUND_MODE)
+      : ports
+          .exec("/usr/bin/defaults", [
+            "read",
+            COMPUTER_USE_DEFAULTS_DOMAIN,
+            COMPUTER_USE_SOUND_MODE_KEY,
+          ])
+          .pipe(
+            Effect.map(({ stdout }) => {
+              const value = stdout.trim();
+              return isComputerUseSoundMode(value) ? value : DEFAULT_SOUND_MODE;
+            }),
+            Effect.orElseSucceed(() => DEFAULT_SOUND_MODE),
+          );
     const readLockedUseEnabled = (appPath: string): Effect.Effect<boolean> =>
-      ports.platform !== "darwin"
+      !hostCapabilities(ports.platform).computerControl
         ? Effect.succeed(false)
         : ports.exec(resolveLockedUseInstallerPath(appPath), ["status"], { timeout: 120_000 }).pipe(
             Effect.map(({ stdout }) => stdout.trim() === "OK: installed"),
@@ -349,7 +350,7 @@ const make = (
                 new Error("Computer Use sound mode is invalid"),
               );
             }
-            if (ports.platform === "darwin") {
+            if (hostCapabilities(ports.platform).computerControl) {
               yield* ports.exec("/usr/bin/defaults", [
                 "write",
                 COMPUTER_USE_DEFAULTS_DOMAIN,

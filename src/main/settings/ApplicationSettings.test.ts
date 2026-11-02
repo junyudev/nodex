@@ -230,20 +230,20 @@ describe("ApplicationSettings", () => {
     () =>
       Effect.gen(function* () {
         const { settingsPath } = fixture('[plugin]\nname = "keep"\n');
-        const environment = { CODEX_HOME: "/host/native-codex" };
+        const environment = { CODEX_HOME: path.resolve("/host/native-codex") };
         const settings = yield* makeApplicationSettings({
           environment,
-          hostHomeDirectory: "/host/user",
+          hostHomeDirectory: path.resolve("/host/user"),
           settingsPath,
         });
         const before = yield* settings.snapshot();
         assert.deepEqual(before.codexHome, {
           homePath: "",
-          resolvedHomePath: "/host/native-codex",
+          resolvedHomePath: path.resolve("/host/native-codex"),
           source: "environment",
           accountHomePath: "",
           resolvedAccountHomePath: null,
-          activeHomePath: "/host/native-codex",
+          activeHomePath: path.resolve("/host/native-codex"),
           activeAccountHomePath: null,
           restartRequired: false,
         });
@@ -253,12 +253,12 @@ describe("ApplicationSettings", () => {
           input: { homePath: " ~/work-codex " },
         });
         assert.deepEqual(staged.codexHome, {
-          homePath: "/host/user/work-codex",
-          resolvedHomePath: "/host/user/work-codex",
+          homePath: path.resolve("/host/user/work-codex"),
+          resolvedHomePath: path.resolve("/host/user/work-codex"),
           source: "settings",
           accountHomePath: "",
           resolvedAccountHomePath: null,
-          activeHomePath: "/host/native-codex",
+          activeHomePath: path.resolve("/host/native-codex"),
           activeAccountHomePath: null,
           restartRequired: true,
         });
@@ -266,15 +266,18 @@ describe("ApplicationSettings", () => {
           server: { codex_home?: string };
           plugin: { name: string };
         };
-        assert.strictEqual(document.server.codex_home, "/host/user/work-codex");
+        assert.strictEqual(document.server.codex_home, path.resolve("/host/user/work-codex"));
         assert.strictEqual(document.plugin.name, "keep");
         const reopened = yield* makeApplicationSettings({
           environment: {},
-          hostHomeDirectory: "/host/user",
+          hostHomeDirectory: path.resolve("/host/user"),
           settingsPath,
         });
         const reopenedSnapshot = yield* reopened.snapshot();
-        assert.strictEqual(reopenedSnapshot.codexHome.activeHomePath, "/host/user/work-codex");
+        assert.strictEqual(
+          reopenedSnapshot.codexHome.activeHomePath,
+          path.resolve("/host/user/work-codex"),
+        );
         assert.isFalse(reopenedSnapshot.codexHome.restartRequired);
         const reset = yield* settings.update({
           type: "update-codex-home",
@@ -293,7 +296,11 @@ describe("ApplicationSettings", () => {
     () =>
       Effect.gen(function* () {
         const { settingsPath } = fixture('[plugin]\nname = "keep"\n');
-        const input = { environment: {}, hostHomeDirectory: "/host/user", settingsPath };
+        const input = {
+          environment: {},
+          hostHomeDirectory: path.resolve("/host/user"),
+          settingsPath,
+        };
         const settings = yield* makeApplicationSettings(input);
         const initial = yield* settings.snapshot();
         const staged = yield* settings.update({
@@ -305,7 +312,10 @@ describe("ApplicationSettings", () => {
         });
         assert.strictEqual(staged.codexHome.activeHomePath, initial.codexHome.activeHomePath);
         assert.isNull(staged.codexHome.activeAccountHomePath);
-        assert.strictEqual(staged.codexHome.resolvedAccountHomePath, "/host/user/codex-personal");
+        assert.strictEqual(
+          staged.codexHome.resolvedAccountHomePath,
+          path.resolve("/host/user/codex-personal"),
+        );
         assert.isTrue(staged.codexHome.restartRequired);
         const homeOnly = yield* settings.update({
           type: "update-codex-home",
@@ -319,11 +329,17 @@ describe("ApplicationSettings", () => {
           server: { codex_account_home: string };
           plugin: { name: string };
         };
-        assert.strictEqual(document.server.codex_account_home, "/host/user/codex-personal");
+        assert.strictEqual(
+          document.server.codex_account_home,
+          path.resolve("/host/user/codex-personal"),
+        );
         assert.strictEqual(document.plugin.name, "keep");
         const reopened = yield* makeApplicationSettings(input);
         const active = yield* reopened.snapshot();
-        assert.strictEqual(active.codexHome.activeAccountHomePath, "/host/user/codex-personal");
+        assert.strictEqual(
+          active.codexHome.activeAccountHomePath,
+          path.resolve("/host/user/codex-personal"),
+        );
         assert.isFalse(active.codexHome.restartRequired);
         const reset = yield* settings.update({
           type: "update-codex-home",
@@ -338,11 +354,11 @@ describe("ApplicationSettings", () => {
       const { settingsPath } = fixture("[server]\nhistory_retention = 41\n");
       const settings = yield* makeApplicationSettings({
         environment: {},
-        hostHomeDirectory: "/host/user",
+        hostHomeDirectory: path.resolve("/host/user"),
         settingsPath,
       });
       const initial = yield* settings.snapshot();
-      assert.strictEqual(initial.codexHome.resolvedHomePath, "/host/user/.codex");
+      assert.strictEqual(initial.codexHome.resolvedHomePath, path.resolve("/host/user/.codex"));
       assert.strictEqual(initial.codexHome.source, "default");
       const before = readFileSync(settingsPath);
       for (const homePath of ["relative/codex", "/invalid\0path", "x".repeat(4_097)]) {
@@ -543,7 +559,7 @@ describe("ApplicationSettings", () => {
       const { settingsPath } = fixture(
         [
           "[server]",
-          'worktree_root = "/current/root"',
+          `worktree_root = ${JSON.stringify(path.resolve("/current/root"))}`,
           'worktree_known_roots = ["/old/one", "/old/two"]',
           'git_branch_prefix = "team/"',
           "",
@@ -556,7 +572,7 @@ describe("ApplicationSettings", () => {
       });
       const before = readFileSync(settingsPath);
       const snapshot = yield* settings.snapshot();
-      assert.strictEqual(snapshot.managedWorktrees.worktreeRoot, "/current/root");
+      assert.strictEqual(snapshot.managedWorktrees.worktreeRoot, path.resolve("/current/root"));
       assert.deepEqual(readFileSync(settingsPath), before);
 
       yield* settings.update({
@@ -567,7 +583,7 @@ describe("ApplicationSettings", () => {
         readonly server?: Record<string, unknown>;
       };
       assert.isUndefined(document.server?.worktree_known_roots);
-      assert.strictEqual(document.server?.worktree_root, "/current/root");
+      assert.strictEqual(document.server?.worktree_root, path.resolve("/current/root"));
       assert.strictEqual(document.server?.git_branch_prefix, "team/");
     }),
   );

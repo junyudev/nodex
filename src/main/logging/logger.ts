@@ -554,7 +554,7 @@ class RotatingJsonlLogWriter {
   private async closeActiveStream(): Promise<void> {
     const stream = this.stream;
     this.stream = null;
-    if (!stream) return;
+    if (!stream || stream.closed) return;
 
     await new Promise<void>((resolve) => {
       let settled = false;
@@ -562,20 +562,17 @@ class RotatingJsonlLogWriter {
         if (settled) return;
         settled = true;
         clearTimeout(timeout);
-        stream.off("finish", finish);
         stream.off("close", finish);
-        stream.off("error", finish);
+        stream.off("error", destroy);
         stream.off("error", this.handleStreamError);
         resolve();
       };
-      const timeout = setTimeout(() => {
-        stream.destroy();
-        finish();
-      }, this.config.flushTimeoutMs);
+      const destroy = () => stream.destroy();
+      const timeout = setTimeout(destroy, this.config.flushTimeoutMs);
 
-      stream.once("finish", finish);
+      // Finish flushes writes; close acknowledges release of the native file handle.
       stream.once("close", finish);
-      stream.once("error", finish);
+      stream.once("error", destroy);
       stream.end();
     });
   }

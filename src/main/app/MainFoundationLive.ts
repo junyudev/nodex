@@ -1,4 +1,4 @@
-import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeServices from "../platform/node/NodeServices";
 import * as Layer from "effect/Layer";
 import { BrowserProfileHelperPlatform } from "../browser/browser-profile-helper-client";
 import * as ElectronApp from "../platform/electron/ElectronApp";

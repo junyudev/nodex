@@ -1,3 +1,4 @@
+import { syncDirectorySync } from "../platform/node/filesystem-durability";
 import {
   LinkOpeningSettingsSchema,
   DEFAULT_LINK_OPENING_SETTINGS,
@@ -267,12 +268,7 @@ function writeTomlConfig(configPath: string, nextToml: RootTomlConfig): void {
     descriptor = null;
     renameSync(temporaryPath, configPath);
     try {
-      const directoryDescriptor = openSync(configDirectory, "r");
-      try {
-        fsyncSync(directoryDescriptor);
-      } finally {
-        closeSync(directoryDescriptor);
-      }
+      syncDirectorySync(configDirectory);
     } catch {
       // Directory fsync is unavailable on some host filesystems. The complete
       // staged document has already replaced the canonical file atomically.

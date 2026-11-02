@@ -1,8 +1,11 @@
 import { assert, it } from "@effect/vitest";
-import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeServices from "./NodeServices";
 import nodeChildProcess, { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { copyFile, mkdtemp, rm } from "node:fs/promises";
 import { syncBuiltinESMExports } from "node:module";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { vi } from "vite-plus/test";
 import * as Duration from "effect/Duration";
@@ -16,6 +19,55 @@ import { ChildProcess, ChildProcessSpawner } from "effect/process";
 const processTreeFixture = fileURLToPath(
   new URL("../../../../tests/fixtures/scoped-process-tree.mjs", import.meta.url),
 );
+
+for (const release of ["scope", "kill", "pipeline"] as const) {
+  it.live.skipIf(process.platform !== "win32")(
+    `${release} release waits for Windows descendants and unlocks their executable and cwd`,
+    () =>
+      Effect.gen(function* () {
+        const directory = yield* Effect.acquireRelease(
+          Effect.promise(() => mkdtemp(path.join(tmpdir(), "nodex-process-tree-"))),
+          (root) => Effect.promise(() => rm(root, { recursive: true, force: true })),
+        );
+        const executable = path.join(directory, "child.exe");
+        yield* Effect.promise(() => copyFile(process.execPath, executable));
+        const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+        const scope = yield* Scope.make();
+        try {
+          const command = ChildProcess.make(executable, [processTreeFixture], {
+            cwd: directory,
+            forceKillAfter: Duration.millis(10),
+            windowsHide: true,
+            stdin: "ignore",
+            stdout: "pipe",
+          });
+          const handle = yield* spawner
+            .spawn(release === "pipeline" ? ChildProcess.pipeTo(command, command) : command)
+            .pipe(Effect.provideService(Scope.Scope, scope));
+          const ready = yield* handle.stdout.pipe(
+            Stream.decodeText(),
+            Stream.splitLines,
+            Stream.runHead,
+            Effect.timeout("5 seconds"),
+          );
+          const pids = Option.getOrThrow(ready).split(" ").map(Number);
+          assert.strictEqual(pids[0], Number(handle.pid));
+          assert.strictEqual(pids.length, 2);
+          for (const pid of pids) process.kill(pid, 0);
+
+          if (release === "scope") yield* Scope.close(scope, Exit.void);
+          else yield* handle.kill();
+
+          for (const pid of pids) assert.throws(() => process.kill(pid, 0), /ESRCH/u);
+          // No poll, delay, or EBUSY retry: release is the permission to reuse these files.
+          yield* Effect.promise(() => rm(directory, { recursive: true }));
+        } finally {
+          yield* Scope.close(scope, Exit.void);
+        }
+      }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    { timeout: 20_000 },
+  );
+}
 
 it.live.each([false, true])("Windows cleanup skips an exited child's PID (signal: %s)", (signal) =>
   Effect.gen(function* () {
@@ -39,7 +91,7 @@ it.live.each([false, true])("Windows cleanup skips an exited child's PID (signal
           // Spawn natively, then exercise the Windows exit and release paths.
           Object.defineProperty(process, "platform", { value: "win32" });
           const exit = yield* Effect.exit(handle.exitCode);
-          if (signal) assert.isTrue(Exit.isFailure(exit));
+          if (signal && platform.value !== "win32") assert.isTrue(Exit.isFailure(exit));
           else assert.strictEqual(Exit.isSuccess(exit) ? Number(exit.value) : undefined, 1);
           yield* handle.kill();
         }),

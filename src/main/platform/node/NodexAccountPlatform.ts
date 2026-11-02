@@ -1,6 +1,5 @@
 /* @effect-diagnostics asyncFunction:off -- HTTP and encrypted filesystem access are Node platform boundaries. */
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { constants } from "node:fs";
 import { chmod, lstat, mkdir, open, rename, rm } from "node:fs/promises";
 import { createServer } from "node:http";
 import { join, resolve } from "node:path";
@@ -28,6 +27,7 @@ import { SecretEncryption } from "../SecretEncryption";
 import { resolveNodexAccountConfiguration } from "../../nodex-account/configuration";
 
 import { modelAccessSchema } from "./NodexModelAccessPlatform";
+import { openRegularFile } from "./open-regular-file";
 
 const failure = (code: NodexAccountErrorCode) => new NodexAccountPlatformError({ code });
 const MAX_RESPONSE_BYTES = 64 * 1024;
@@ -296,7 +296,7 @@ export const make = Effect.fn("NodexAccountPlatform.make")(function* (host: Node
             (process.getuid && info.uid !== process.getuid())
           )
             throw failure("secure-storage");
-          file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+          file = await openRegularFile(path);
         } catch (cause) {
           if (cause && typeof cause === "object" && "code" in cause && cause.code === "ENOENT")
             return null;
@@ -307,7 +307,7 @@ export const make = Effect.fn("NodexAccountPlatform.make")(function* (host: Node
           if (
             !info.isFile() ||
             info.size > MAX_RESPONSE_BYTES ||
-            (info.mode & 0o077) !== 0 ||
+            (process.platform !== "win32" && (info.mode & 0o077) !== 0) ||
             (process.getuid && info.uid !== process.getuid()) ||
             !encryption.isAvailable()
           )

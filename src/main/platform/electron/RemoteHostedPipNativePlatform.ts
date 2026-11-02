@@ -1,3 +1,4 @@
+import { hostCapabilities } from "../host-capabilities";
 import * as Context from "effect/Context";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
@@ -552,7 +553,8 @@ export function makeRemoteHostedPipNativePlatform(options: {
   never,
   Scope.Scope | ScopedCallbackRuntime
 > {
-  if (options.platform !== "darwin") return Effect.succeed(makeUnavailable("platform-unsupported"));
+  if (!hostCapabilities(options.platform).computerControl)
+    return Effect.succeed(makeUnavailable("platform-unsupported"));
   if (!options.verifiedAddonPath) return Effect.succeed(makeUnavailable("addon-missing"));
   const addon = loadSkyNativeAddon(options.verifiedAddonPath, options.expectedExports);
   if (!addon) return Effect.succeed(makeUnavailable("addon-invalid"));

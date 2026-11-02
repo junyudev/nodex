@@ -1,3 +1,4 @@
+import { MainConfig } from "../app/MainConfig";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { layer as callbackRuntimeLayer } from "../app/ScopedCallbackRuntime";
@@ -14,6 +15,7 @@ import { selectAppToolCatalog } from "../../shared/nodex-app-tools/catalog-selec
 
 /** Acquire a private bridge in the physical session Scope, never in a Thread's saved config. */
 export const make = Effect.gen(function* () {
+  const config = yield* MainConfig;
   const calls = yield* CodexApplicationRequestInbox;
   const invocations = yield* AppToolInvocationInbox;
   return (
@@ -23,19 +25,22 @@ export const make = Effect.gen(function* () {
     Layer.unwrap(
       Effect.gen(function* () {
         const source = { hostId: options.hostId, generation: options.generation };
-        const pipe = yield* acquireAppToolPipe({
-          listTools: Effect.sync(() =>
-            structuredClone([...selectAppToolCatalog({ nativeMcp: true, purpose: "session" })]),
-          ),
-          callTool: (input) =>
-            calls.runAppCall(source, input, (claim) =>
-              invocations.invoke({
-                caller: { ...claim, ...source },
-                name: input.name,
-                arguments: input.arguments,
-              }),
+        const pipe = yield* acquireAppToolPipe(
+          {
+            listTools: Effect.sync(() =>
+              structuredClone([...selectAppToolCatalog({ nativeMcp: true, purpose: "session" })]),
             ),
-        }).pipe(
+            callTool: (input) =>
+              calls.runAppCall(source, input, (claim) =>
+                invocations.invoke({
+                  caller: { ...claim, ...source },
+                  name: input.name,
+                  arguments: input.arguments,
+                }),
+              ),
+          },
+          config.platform,
+        ).pipe(
           Effect.mapError((cause) =>
             codexRuntimeError({
               ...source,

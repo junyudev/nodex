@@ -5,7 +5,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
-import { listenAppToolsPipe, type AppToolsPipeDescriptor } from "@nodex/app-tools-mcp/pipe";
+import {
+  appToolsPipePath,
+  listenAppToolsPipe,
+  type AppToolsPipeDescriptor,
+} from "@nodex/app-tools-mcp/pipe";
 import type { AppToolsHost } from "@nodex/app-tools-mcp/server";
 import type { CallToolResult, Tool } from "@modelcontextprotocol/sdk/types.js";
 import { ScopedCallbackRuntime } from "../../app/ScopedCallbackRuntime";
@@ -24,6 +28,7 @@ export interface AppToolPipeHandler<E> {
 /** A short private directory avoids Unix socket path limits for deeply nested Profiles. */
 export const acquireAppToolPipe = Effect.fn("NodexAppToolPipe.acquire")(function* <E>(
   handler: AppToolPipeHandler<E>,
+  platform: string,
 ) {
   const callbacks = yield* ScopedCallbackRuntime;
   const lease = yield* Effect.acquireRelease(
@@ -31,9 +36,9 @@ export const acquireAppToolPipe = Effect.fn("NodexAppToolPipe.acquire")(function
       try: async () => {
         const directory = await mkdtemp(join(tmpdir(), "nx-mcp-"));
         try {
-          await chmod(directory, 0o700);
+          if (platform !== "win32") await chmod(directory, 0o700);
           const descriptor: AppToolsPipeDescriptor = {
-            path: join(directory, "host.sock"),
+            path: appToolsPipePath(directory, platform),
             instanceId: randomUUID(),
             token: randomBytes(32).toString("hex"),
           };

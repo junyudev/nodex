@@ -71,3 +71,5 @@
 | library-move-destination-picker-behavior.md                                              | Active | 2026-08-31   | Compact searchable Database-resource ownership picker, destination authority, tree browsing, and immediate move semantics                                                 |
 | nfm-page-prompt-image-inputs.md                                                          | Active | 2026-10-28   | Detailed send-time behavior for Page prompt image inputs, including placeholders, app-server image inputs, and source mapping                                             |
 | workbench-shell.md                                                                       | Active | 2026-08-30   | Workbench stage shell layout, PageTab viewport continuity, thread rendering model, and navigation behavior                                                                |
+
+- [Windows host behavior](windows-host-behavior.md): native feature availability, shell routing and local Agent execution.

@@ -33,7 +33,7 @@ const makeServer = (
       makeBrowserUseNativePipeServer({
         events,
         handler,
-        nativePipeDirectory,
+        nativePipeDirectory: process.platform === "win32" ? undefined : nativePipeDirectory,
         platform: process.platform,
         socketPeerAuthorizer: () => ({
           authorized,
@@ -74,7 +74,6 @@ const readOne = (socket: net.Socket): Promise<Record<string, unknown>> => {
 it.effect("authorizes before reading and returns isolated JSON-RPC responses", () =>
   Effect.scoped(
     Effect.gen(function* () {
-      if (process.platform === "win32") return;
       const server = yield* makeServer(true, (request, context) => ({
         connectionId: context.connectionId,
         method: request.method,
@@ -113,7 +112,6 @@ it.effect("authorizes before reading and returns isolated JSON-RPC responses", (
 it.effect("rejects unauthorized peers without dispatching a request", () =>
   Effect.scoped(
     Effect.gen(function* () {
-      if (process.platform === "win32") return;
       let calls = 0;
       const server = yield* makeServer(false, () => {
         calls += 1;
@@ -130,26 +128,31 @@ it.effect("rejects unauthorized peers without dispatching a request", () =>
   ),
 );
 
-it.effect("uses restrictive directory and socket permissions", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      if (process.platform === "win32") return;
-      const server = yield* makeServer(true, () => "pong");
-      const directoryMode =
-        (yield* Effect.promise(() => fs.stat(path.dirname(server.pipePath)))).mode & 0o777;
-      const socketMode = (yield* Effect.promise(() => fs.stat(server.pipePath))).mode & 0o777;
-      expect(directoryMode).toBe(0o700);
-      expect(socketMode).toBe(0o600);
-    }),
-  ),
+// Named pipes do not expose POSIX directory or socket permission bits.
+it.effect.skipIf(process.platform === "win32")(
+  "uses restrictive directory and socket permissions",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const server = yield* makeServer(true, () => "pong");
+        const directoryMode =
+          (yield* Effect.promise(() => fs.stat(path.dirname(server.pipePath)))).mode & 0o777;
+        const socketMode = (yield* Effect.promise(() => fs.stat(server.pipePath))).mode & 0o777;
+        expect(directoryMode).toBe(0o700);
+        expect(socketMode).toBe(0o600);
+      }),
+    ),
 );
 
 it.effect("closes accepted sockets and removes the exact pipe with its Scope", () =>
   Effect.scoped(
     Effect.gen(function* () {
-      if (process.platform === "win32") return;
       const directory = yield* Effect.acquireRelease(
-        Effect.promise(() => fs.mkdtemp(path.join("/tmp", "nxbu-release-"))),
+        Effect.promise(() =>
+          fs.mkdtemp(
+            path.join(process.platform === "win32" ? os.tmpdir() : "/tmp", "nxbu-release-"),
+          ),
+        ),
         (ownedDirectory) =>
           Effect.promise(() => fs.rm(ownedDirectory, { recursive: true, force: true })),
       );
@@ -157,7 +160,7 @@ it.effect("closes accepted sockets and removes the exact pipe with its Scope", (
       const serverScope = yield* Scope.fork(parentScope);
       const server = yield* makeBrowserUseNativePipeServer({
         handler: () => "pong",
-        nativePipeDirectory: directory,
+        nativePipeDirectory: process.platform === "win32" ? undefined : directory,
         platform: process.platform,
         socketPeerAuthorizer: () => ({ authorized: true }),
       }).pipe(Scope.provide(serverScope));
@@ -167,8 +170,9 @@ it.effect("closes accepted sockets and removes the exact pipe with its Scope", (
       yield* Scope.close(serverScope, Exit.void);
       yield* Effect.promise(() => socketClosed);
 
-      const pipeEntry = yield* Effect.promise(() => fs.lstat(server.pipePath).catch(() => null));
-      expect(pipeEntry).toBeNull();
+      yield* Effect.promise(() =>
+        expect(connect(server.pipePath)).rejects.toMatchObject({ code: "ENOENT" }),
+      );
       expect(socket.destroyed).toBe(true);
     }),
   ),
@@ -177,7 +181,6 @@ it.effect("closes accepted sockets and removes the exact pipe with its Scope", (
 it.effect("reports bounded request lifecycle metadata without request parameters", () =>
   Effect.scoped(
     Effect.gen(function* () {
-      if (process.platform === "win32") return;
       const started: unknown[] = [];
       const completed: unknown[] = [];
       const server = yield* makeServer(true, () => "ok", {
@@ -220,7 +223,6 @@ it.effect("reports bounded request lifecycle metadata without request parameters
 it.effect("surfaces the actionable cause of a wrapped Browser request failure", () =>
   Effect.scoped(
     Effect.gen(function* () {
-      if (process.platform === "win32") return;
       const server = yield* makeServer(true, () => {
         throw Object.assign(new Error(), {
           _tag: "BrowserUseSessionRuntimeError",

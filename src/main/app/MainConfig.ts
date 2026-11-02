@@ -1,3 +1,4 @@
+import { hostCapabilities, type HostCapabilities } from "../platform/host-capabilities";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -14,6 +15,7 @@ export const MainConfigValue = Schema.Struct({
   environmentPath: Schema.NullOr(Schema.String),
   homeDirectory: Schema.String,
   initialProjectsDirectory: Schema.NullOr(Schema.String),
+  isolatedRunId: Schema.NullOr(Schema.String),
   isDefaultApp: Schema.Boolean,
   isPackaged: Schema.Boolean,
   nodexHome: Schema.String,
@@ -27,9 +29,10 @@ export const MainConfigValue = Schema.Struct({
 
 export type MainConfigValue = typeof MainConfigValue.Type;
 
-export class MainConfig extends Context.Service<MainConfig, MainConfigValue>()(
-  "nodex/main/app/MainConfig",
-) {}
+export class MainConfig extends Context.Service<
+  MainConfig,
+  MainConfigValue & { readonly capabilities: HostCapabilities }
+>()("nodex/main/app/MainConfig") {}
 
 export class MainConfigError extends Schema.TaggedError<MainConfigError>()("MainConfigError", {
   cause: Schema.Defect(),
@@ -40,13 +43,20 @@ const decode = Schema.decodeUnknownEffect(MainConfigValue);
 export const layer = (input: unknown): Layer.Layer<MainConfig, MainConfigError> =>
   Layer.effect(
     MainConfig,
-    decode(input).pipe(Effect.mapError((cause) => new MainConfigError({ cause }))),
+    decode(input).pipe(
+      Effect.map((config) => ({
+        ...config,
+        capabilities: hostCapabilities(config.platform, config.arch),
+      })),
+      Effect.mapError((cause) => new MainConfigError({ cause })),
+    ),
   );
 
 export const testLayer = (overrides: Partial<MainConfigValue> = {}): Layer.Layer<MainConfig> =>
   Layer.succeed(
     MainConfig,
     MainConfig.of({
+      capabilities: hostCapabilities(overrides.platform ?? "darwin", overrides.arch ?? "arm64"),
       assistantStreamingDebug: false,
       appVersion: "0.0.0-test",
       arch: "arm64",
@@ -57,6 +67,7 @@ export const testLayer = (overrides: Partial<MainConfigValue> = {}): Layer.Layer
       environmentPath: null,
       homeDirectory: "/tmp",
       initialProjectsDirectory: null,
+      isolatedRunId: null,
       isDefaultApp: false,
       isPackaged: false,
       nodexHome: "/tmp/nodex-test",

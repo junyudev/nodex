@@ -341,6 +341,12 @@ independent per-subsystem disposer list. Layer dependencies determine release or
 Scopes release their own resources, and Effect combines finalizer failures into the closing Cause
 while continuing the remaining finalizers. Any physical release that can hang owns its bounded
 deadline or escalation policy at the platform adapter rather than in a global shutdown coordinator.
+Main's Node process capability uses the shared process-tree release boundary on Windows. Cancellation,
+timeout, and explicit termination capture the live tree's native process handles, request termination,
+and force remaining members after a bounded grace period. Release waits for every captured member to
+exit before settling, so its executable and working directory can be removed immediately. A release
+deadline failure remains observable; cleanup must not hide it with filesystem retries. POSIX process
+group behavior remains owned by the native spawner.
 The same first-wins decision races application acquisition and readiness, so a signal or first
 `before-quit` during startup interrupts in-flight work and rolls back everything already acquired.
 `before-quit` never consults a partially published runtime or performs window cleanup itself; it
@@ -393,6 +399,12 @@ Browser guests, PTYs, worker sessions, file watchers, and renderer request fiber
 released by their semantic owner. Supervised isolated runs, including development and packaged-release
 verification, release their environment lease only after exact child/Core cleanup is proven. Uncertain
 external cleanup fails closed and preserves recoverable state rather than claiming success.
+
+Isolated-run metadata retains exact file types, directory layout, generation and live-process
+fences on every host. Windows uses inherited directory ACLs instead of POSIX mode bits;
+metadata files are flushed before atomic publication without an unsupported directory fsync.
+The same publication rule applies to Window Sessions, persisted preferences, startup journals and
+fatal diagnostics, so desktop state creation cannot block Windows startup on directory flushing.
 
 ## Runtime-specific recovery
 

@@ -63,9 +63,9 @@ export const live = (
           if (config.platform === "win32") native.setAppUserModelId("app.jyu.nodex");
 
           const entry = config.argv[1];
-          if (config.isDefaultApp && entry) {
+          if (!config.isPackaged && config.isDefaultApp && entry) {
             native.setDefaultProtocolClient("nodex", config.runtimeBinaryPath, [resolve(entry)]);
-          } else {
+          } else if (config.platform !== "win32" || !config.isPackaged) {
             native.setDefaultProtocolClient("nodex");
           }
 

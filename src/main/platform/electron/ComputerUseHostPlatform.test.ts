@@ -171,12 +171,15 @@ it.effect("restores the prior canonical helper when post-swap verification fails
 );
 
 /* @effect-diagnostics asyncFunction:off processEnv:off -- This boundary test launches real child processes and verifies ambient environment isolation. */
-test("launches native helpers with isolated Profile and locked runtime environments", async () => {
-  const root = makeTemporaryRoot();
-  const addonPath = path.join(root, "addon.cjs");
-  fs.writeFileSync(
-    addonPath,
-    `
+// This native macOS service is launched through a POSIX shell; Windows exposes no Computer Use capability.
+test.skipIf(process.platform === "win32")(
+  "launches native helpers with isolated Profile and locked runtime environments",
+  async () => {
+    const root = makeTemporaryRoot();
+    const addonPath = path.join(root, "addon.cjs");
+    fs.writeFileSync(
+      addonPath,
+      `
 const fs = require("node:fs");
 const path = require("node:path");
 module.exports.spawnComputerUseService = async (executable) => {
@@ -187,35 +190,36 @@ module.exports.spawnComputerUseService = async (executable) => {
   return 8123;
 };
 `,
-  );
-  const inheritedHome = process.env.CODEX_HOME;
-  const inheritedCli = process.env.CODEX_CLI_PATH;
-  const inheritedNativePipe = process.env.SKY_CUA_SERVICE_NATIVE_PIPE_PATH;
-  await Promise.all(
-    ["first", "second"].map(async (name) => {
-      const home = path.join(root, name);
-      fs.mkdirSync(home);
-      const context = {
-        runtimeStateHome: home,
-        codexCliPath: path.join(home, "locked-codex"),
-        nodePath: process.execPath,
-      };
-      assert.strictEqual(
-        await spawnComputerUseServiceInContext(addonPath, "/canonical/helper", context),
-        8123,
-      );
-      assert.deepEqual(JSON.parse(fs.readFileSync(path.join(home, "observed.json"), "utf8")), {
-        home,
-        codex: context.codexCliPath,
-        executable: "/canonical/helper",
-        nativePipe: computerUseNativePipePath(home),
-      });
-      assert.deepEqual(fs.readdirSync(home), ["observed.json"]);
-    }),
-  );
-  assert.strictEqual(process.env.CODEX_HOME, inheritedHome);
-  assert.strictEqual(process.env.CODEX_CLI_PATH, inheritedCli);
-  assert.strictEqual(process.env.SKY_CUA_SERVICE_NATIVE_PIPE_PATH, inheritedNativePipe);
-});
+    );
+    const inheritedHome = process.env.CODEX_HOME;
+    const inheritedCli = process.env.CODEX_CLI_PATH;
+    const inheritedNativePipe = process.env.SKY_CUA_SERVICE_NATIVE_PIPE_PATH;
+    await Promise.all(
+      ["first", "second"].map(async (name) => {
+        const home = path.join(root, name);
+        fs.mkdirSync(home);
+        const context = {
+          runtimeStateHome: home,
+          codexCliPath: path.join(home, "locked-codex"),
+          nodePath: process.execPath,
+        };
+        assert.strictEqual(
+          await spawnComputerUseServiceInContext(addonPath, "/canonical/helper", context),
+          8123,
+        );
+        assert.deepEqual(JSON.parse(fs.readFileSync(path.join(home, "observed.json"), "utf8")), {
+          home,
+          codex: context.codexCliPath,
+          executable: "/canonical/helper",
+          nativePipe: computerUseNativePipePath(home),
+        });
+        assert.deepEqual(fs.readdirSync(home), ["observed.json"]);
+      }),
+    );
+    assert.strictEqual(process.env.CODEX_HOME, inheritedHome);
+    assert.strictEqual(process.env.CODEX_CLI_PATH, inheritedCli);
+    assert.strictEqual(process.env.SKY_CUA_SERVICE_NATIVE_PIPE_PATH, inheritedNativePipe);
+  },
+);
 
 /* @effect-diagnostics asyncFunction:warning processEnv:warning */

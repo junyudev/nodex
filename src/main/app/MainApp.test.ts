@@ -133,6 +133,42 @@ it.effect("rolls back an acquired runtime and publishes the startup failure exit
   }),
 );
 
+it.effect("reports an acquisition defect as startup and a release defect as closing", () =>
+  Effect.gen(function* () {
+    for (const phase of ["startup", "closing"] as const) {
+      const events: string[] = [];
+      const foundation = Layer.mergeAll(
+        shutdownLayer,
+        cleanupLayer,
+        fakeElectronLayer(events),
+        configLayer(),
+      );
+      const foundationScope = yield* Scope.make();
+      const context = yield* Layer.buildWithScope(foundation, foundationScope);
+      const shutdown = Context.get(context, MainShutdown);
+      const defect = new Error("filesystem publication failed");
+      const result = yield* program({
+        initialEvents: [],
+        applicationLayer: mainApplicationTestLayer({
+          acquire: phase === "startup" ? Effect.die(defect) : Effect.void,
+          handleBootstrapEvent: () => Effect.void,
+          release: phase === "closing" ? Effect.die(defect) : Effect.void,
+        }),
+        runStartupGate: Effect.succeed("continue" as const),
+        onApplicationReady: () => shutdown.request({ _tag: "UserQuit" }).pipe(Effect.asVoid),
+      }).pipe(Effect.provide(context));
+
+      assert.strictEqual(result._tag, "Failure");
+      if (result._tag === "Failure") {
+        assert.strictEqual(result.phase, phase);
+        assert.strictEqual(Cause.squash(result.cause), defect);
+      }
+      assert.notInclude(events, "quit");
+      yield* Scope.close(foundationScope, Exit.void);
+    }
+  }),
+);
+
 it.effect("keeps a startup-failure presentation active without publishing readiness", () =>
   Effect.gen(function* () {
     const events: string[] = [];

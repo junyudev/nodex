@@ -41,9 +41,11 @@ describe("BrowserCredentialVault", () => {
       "utf8",
     );
     expect(raw).not.toContain("correct horse battery staple");
-    expect(
-      fs.statSync(path.join(roots[0]!, "secrets", "browser-credentials.v1.json")).mode & 0o077,
-    ).toBe(0);
+    if (process.platform !== "win32") {
+      expect(
+        fs.statSync(path.join(roots[0]!, "secrets", "browser-credentials.v1.json")).mode & 0o077,
+      ).toBe(0);
+    }
     expect((await vault.get(summary.id))?.password).toBe("correct horse battery staple");
   });
 
