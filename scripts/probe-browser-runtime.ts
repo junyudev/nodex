@@ -33,7 +33,11 @@ import {
 } from "../src/shared/browser-app-server-compatibility";
 import { parseBundledAgentRuntimeMetadata } from "../src/shared/codex-runtime-metadata";
 import { resolveCodexRuntime } from "../src/main/codex/codex-runtime";
-import { withoutDesktopToolHostBindings } from "../src/main/codex/desktop-tool-environment";
+import type { VerifiedBrowserRuntimeBundle } from "../src/main/codex/browser-runtime-bundle";
+import {
+  nodeReplServerDefinition,
+  withoutDesktopToolHostBindings,
+} from "../src/main/codex/desktop-tool-environment";
 import { makeBrowserUseNativePipeServer } from "../src/main/browser-use/browser-use-native-pipe-server";
 import { createBrowserUsePeerAuthorizer } from "../src/main/browser-use/browser-use-peer-authorizer";
 import {
@@ -364,6 +368,38 @@ function textFromToolResponse(response: McpServerToolCallResponse): string {
     .join("\n");
 }
 
+/** Restricts this probe's Browser discovery to its own mock backend. */
+export function buildBrowserProbeNodeReplServer(
+  definition: unknown,
+  runtimePaths: Pick<VerifiedBrowserRuntimeBundle["paths"], "codexCli" | "node" | "nodeRepl">,
+  backendPipePath: string,
+) {
+  if (
+    typeof definition !== "object" ||
+    definition === null ||
+    !("env" in definition) ||
+    typeof definition.env !== "object" ||
+    definition.env === null ||
+    Array.isArray(definition.env)
+  ) {
+    throw new Error("Browser runtime thread config is missing Node REPL environment");
+  }
+  const environment = Object.fromEntries(
+    Object.entries(definition.env).map(([name, value]) => {
+      if (typeof value !== "string") {
+        throw new Error("Browser runtime Node REPL environment must contain only strings");
+      }
+      return [name, value] as const;
+    }),
+  );
+  return nodeReplServerDefinition({
+    codexCliPath: runtimePaths.codexCli,
+    nodePath: runtimePaths.node,
+    nodeReplPath: runtimePaths.nodeRepl,
+    env: { ...environment, BROWSER_USE_BACKEND_PATHS: backendPipePath },
+  });
+}
+
 function makeBrowserClientProbeCode(browserClientPath: string): string {
   return `
 if (globalThis.agent?.browsers == null) {
@@ -419,7 +455,7 @@ async function probeBrowserRuntimePromise(
   const nativePipeMethods: string[] = [];
   const nativePipeDiagnostics: string[] = [];
   const nativePipeScope = await callbacks.runPromise(Scope.make());
-  await callbacks.runPromise(
+  const nativePipeServer = await callbacks.runPromise(
     makeBrowserUseNativePipeServer({
       events: {
         onAuthorizationError: (error) => {
@@ -554,19 +590,16 @@ async function probeBrowserRuntimePromise(
           }).build();
           if (!browserConfig)
             throw new Error("Verified Browser runtime did not build thread config");
-          const nodeReplConfig = browserConfig["mcp_servers.node_repl"];
-          if (
-            typeof nodeReplConfig !== "object" ||
-            nodeReplConfig === null ||
-            !("env" in nodeReplConfig) ||
-            typeof nodeReplConfig.env !== "object" ||
-            nodeReplConfig.env === null ||
-            Array.isArray(nodeReplConfig.env)
-          ) {
-            throw new Error("Browser runtime thread config is missing Node REPL environment");
-          }
+          const probeConfig = {
+            ...browserConfig,
+            "mcp_servers.node_repl": buildBrowserProbeNodeReplServer(
+              browserConfig["mcp_servers.node_repl"],
+              bundle.paths,
+              nativePipeServer.pipePath,
+            ),
+          };
           const threadResponse = await client.request<ThreadStartResponse>("thread/start", {
-            config: browserConfig,
+            config: probeConfig,
             cwd: projectRoot,
             ephemeral: true,
           });

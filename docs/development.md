@@ -1188,6 +1188,15 @@ For a probe against an already built Runtime without rebuilding, run
 Manual `--home` and `--report` paths must be absolute and unused; `--pty-only`
 is a narrower dependency check and cannot satisfy the release gate.
 
+For local Browser artifact checks, `vp run browser-runtime:probe` performs only
+static inspection. Run `vp exec tsx scripts/probe-browser-runtime.ts --conformance --browser-only`
+for the live Browser client against the probe's owned mock socket; its closed
+Node REPL environment pins that socket and excludes Computer Use. Unqualified
+Browser conformance includes desktop application discovery and must run on a
+disposable CI host or under the current task's explicit Computer Use permission.
+The Browser-only result is narrower evidence and does not replace the complete
+`verify:runtime:mac` release gate.
+
 `vp run test:all` remains a compatibility alias for `verify:source`; neither
 command proves Apple signing or notarization. Use the
 production-like `Distribution Rehearsal` described in `release-macos.md` for
