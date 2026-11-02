@@ -74,6 +74,9 @@ Alt alone reveals mnemonics and focuses the first menu on release. F10 toggles m
 focus; Alt plus a menu mnemonic opens it, and a focused bar accepts mnemonics without
 Alt. Arrows navigate menus and items. Escape closes the menu and restores prior focus.
 Pointer input toggles a menu or moves between open menus; window blur exits menu mode.
+Keyboard opening and switching focus the first enabled item. Focused menu triggers
+remain highlighted in light, dark and forced-colors appearances; popups have no
+container focus outline.
 Popups scroll within the viewport with a 6 pixel margin and a 220 pixel preferred
 minimum width. Menu accelerators use Win, Alt, Ctrl, Shift order with `+` separators.
 

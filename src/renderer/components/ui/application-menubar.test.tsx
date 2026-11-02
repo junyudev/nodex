@@ -16,6 +16,13 @@ function fixture() {
         items: [
           {
             type: "item" as const,
+            id: `${label}.disabled`,
+            label: "Unavailable",
+            enabled: false,
+            checked: false,
+          },
+          {
+            type: "item" as const,
             id: `${label}.action`,
             label: `${label} action`,
             enabled: true,
@@ -101,7 +108,12 @@ test("arrows move between triggers and open the first enabled menu item", async 
   const action = await screen.findByRole("menuitem", { name: "Edit action" });
   await waitFor(() => expect(document.activeElement).toBe(action));
   await press("ArrowRight");
-  await screen.findByRole("menuitem", { name: "View action" });
+  const viewAction = await screen.findByRole("menuitem", { name: "View action" });
+  await waitFor(() => expect(document.activeElement).toBe(viewAction));
+  await press("ArrowLeft");
+  await waitFor(() =>
+    expect(document.activeElement).toBe(screen.getByRole("menuitem", { name: "Edit action" })),
+  );
   await press("Escape");
   await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
 });

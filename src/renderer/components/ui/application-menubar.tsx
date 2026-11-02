@@ -1,6 +1,14 @@
 import { Menubar } from "@base-ui/react/menubar";
 import { Menu } from "@base-ui/react/menu";
-import { useEffect, useEffectEvent, useRef, useState, type CSSProperties } from "react";
+import {
+  useEffect,
+  useEffectEvent,
+  useRef,
+  useState,
+  type CSSProperties,
+  type RefObject,
+  type ReactNode,
+} from "react";
 import type {
   ApplicationMenuEntry,
   ApplicationMenuSnapshot,
@@ -45,7 +53,7 @@ function MenuEntries({
           <NodexDropdownPortal>
             <NodexDropdownSubmenuContent
               motion="none"
-              className="m-0"
+              className="m-0 outline-none focus:outline-none focus-visible:outline-none"
               style={applicationMenuPopupStyle(180)}
             >
               <MenuEntries items={item.items} invoke={invoke} />
@@ -88,6 +96,36 @@ function applicationMenuPopupStyle(minWidth: number): CSSProperties {
   };
 }
 
+/** Explicit focus survives the asynchronous refresh of Main's menu snapshot. */
+function ApplicationMenuContent({
+  keyboardOpen,
+  children,
+}: {
+  readonly keyboardOpen: RefObject<boolean>;
+  readonly children: ReactNode;
+}) {
+  return (
+    <NodexDropdownContent
+      motion="none"
+      collisionPadding={6}
+      sideOffset={2}
+      finalFocus={false}
+      onFocusCapture={(event) => {
+        if (!keyboardOpen.current || event.target.getAttribute("role") !== "menu") return;
+        event.currentTarget
+          .querySelector<HTMLElement>(
+            '[role^="menuitem"]:not([aria-disabled="true"]):not([disabled])',
+          )
+          ?.focus();
+      }}
+      className="m-0 outline-none focus:outline-none focus-visible:outline-none"
+      style={applicationMenuPopupStyle(220)}
+    >
+      {children}
+    </NodexDropdownContent>
+  );
+}
+
 /** Windows native menu presentation. Main remains the only command/state authority. */
 export function NodexApplicationMenubar({
   adapter = applicationMenu,
@@ -101,6 +139,7 @@ export function NodexApplicationMenubar({
   const previousFocus = useRef<HTMLElement | null>(null);
   const altPending = useRef(false);
   const focusMode = useRef(false);
+  const keyboardOpen = useRef(false);
   const request = useRef({ generation: 0 });
 
   useEffect(() => {
@@ -145,6 +184,9 @@ export function NodexApplicationMenubar({
     setOpenId(next.menus[index]?.id ?? null);
   };
   const onKey = useEffectEvent((event: KeyboardEvent, phase: "down" | "up") => {
+    if (phase === "down" && (focusMode.current || openId !== null || event.altKey)) {
+      keyboardOpen.current = true;
+    }
     const action = resolveApplicationMenubarKey(
       event,
       { altPending: altPending.current, focused: focusMode.current, open: openId !== null },
@@ -215,7 +257,13 @@ export function NodexApplicationMenubar({
       onBlurCapture={(event) => {
         if (openId === null && !event.currentTarget.contains(event.relatedTarget)) close(false);
       }}
-      onPointerDownCapture={rememberFocus}
+      onPointerDownCapture={() => {
+        keyboardOpen.current = false;
+        rememberFocus();
+      }}
+      onPointerMoveCapture={() => {
+        keyboardOpen.current = false;
+      }}
     >
       {snapshot.menus.map((menu, index) => (
         <Menu.Root
@@ -233,7 +281,7 @@ export function NodexApplicationMenubar({
           <Menu.Trigger
             disabled={!menu.enabled}
             className={cn(
-              "no-drag h-7 shrink-0 rounded-md px-2 text-sm text-token-text-primary outline-hidden hover:bg-token-list-hover-background data-popup-open:bg-token-list-active-selection-background focus-visible:bg-token-list-hover-background forced-colors:focus-visible:bg-[Highlight] forced-colors:focus-visible:text-[HighlightText] forced-colors:focus-visible:forced-color-adjust-none",
+              "no-drag h-7 shrink-0 rounded-md px-2 text-sm text-token-text-primary outline-hidden hover:bg-token-list-hover-background data-popup-open:bg-token-list-active-selection-background focus:bg-token-list-hover-background forced-colors:focus:bg-[Highlight] forced-colors:focus:text-[HighlightText] forced-colors:focus:forced-color-adjust-none",
             )}
           >
             <NodexMenuRowContent>
@@ -244,16 +292,9 @@ export function NodexApplicationMenubar({
             </NodexMenuRowContent>
           </Menu.Trigger>
           <NodexDropdownPortal>
-            <NodexDropdownContent
-              motion="none"
-              collisionPadding={6}
-              sideOffset={2}
-              finalFocus={false}
-              className="m-0"
-              style={applicationMenuPopupStyle(220)}
-            >
+            <ApplicationMenuContent keyboardOpen={keyboardOpen}>
               <MenuEntries items={menu.items} invoke={invoke} />
-            </NodexDropdownContent>
+            </ApplicationMenuContent>
           </NodexDropdownPortal>
         </Menu.Root>
       ))}
