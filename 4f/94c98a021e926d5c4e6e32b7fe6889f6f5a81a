@@ -1,0 +1,39 @@
+docs/landing-site.md
+  s_58e03f312c8a71::t_8df33f4d563c44 186-189,220-224
+packages/landing/src/demos/AgentsDemo.tsx
+  s_58e03f312c8a71::t_ff61d9d03919fc 10,32,38-39,42-49,60-61,64-65,69
+packages/landing/src/demos/FanOutDemo.tsx
+  s_58e03f312c8a71::t_344142783c6b7e 7,22-25,52,56-57,62,66,68,71,240
+packages/landing/src/demos/HeroDemo.tsx
+  s_58e03f312c8a71::t_5541d04febc46c 39,58-59,83-86,100,109,113,146-149,151-152,160-161,167-168,180,190-192,207,225-226,228,231,259,262,264-268,270,273,307,318,762
+packages/landing/src/demos/PagesDemo.tsx
+  s_58e03f312c8a71::t_aff079e749552a 32,97-100,102-116,121
+packages/landing/src/demos/TidyDemo.tsx
+  s_58e03f312c8a71::t_7f09ec503f8864 26,75-78,80-81,103,106,115,118-119,131
+packages/landing/src/demos/inbox-burst-timeline.test.ts
+  s_58e03f312c8a71::t_f69d5ae36adcaa 1-46
+packages/landing/src/demos/inbox-burst-timeline.ts
+  s_58e03f312c8a71::t_e30006c386d737 1-63
+packages/landing/src/demos/lumen.ts
+  s_58e03f312c8a71::t_f8e1b0a11aa78a 103,162-181
+packages/landing/src/demos/pacing.test.ts
+  s_58e03f312c8a71::t_cbe86ec297da77 1-40
+packages/landing/src/demos/timeline.ts
+  s_58e03f312c8a71::t_89b76a0a62b383 54-75
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4f94c98a021e926d5c4e6e32b7fe6889f6f5a81a",
+  "prompts": {},
+  "sessions": {
+    "s_58e03f312c8a71": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19a08-50d5-7072-b205-494488654333",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
