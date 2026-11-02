@@ -49,6 +49,7 @@ try {
       $killer.Kill()
       throw 'Process tree termination command timed out'
     }
+    $taskkillExitCode = $killer.ExitCode
   } finally { $killer.Dispose() }
   $clock = [System.Diagnostics.Stopwatch]::StartNew()
   foreach ($member in $owned) {
@@ -65,7 +66,9 @@ try {
   $clock.Restart()
   foreach ($member in $owned) {
     if (!$member.WaitForExit([int][Math]::Max(0, ${WINDOWS_FORCE_WAIT_MS} - $clock.ElapsedMilliseconds))) {
-      throw 'Process tree did not exit after forced termination'
+      $exited = 'unknown'
+      try { $exited = [string]$member.HasExited } catch {}
+      throw "Process tree did not exit after forced termination (root=${pid}; member=$($member.Id); hasExited=$exited; taskkillExit=$taskkillExitCode)"
     }
   }
 } finally {
