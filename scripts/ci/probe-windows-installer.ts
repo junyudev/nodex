@@ -1,11 +1,11 @@
-import { execFile, execFileSync, spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
 import { desktopBuildTarget } from "../desktop-build-target";
+import { terminateWindowsProcessTree } from "../../src/main/process-tree";
 import { verifyWindowsArchitectureClosure } from "../windows-pe.mjs";
 import {
   acquireIsolatedRunLease,
@@ -22,7 +22,6 @@ import {
   parseAgentRuntimeStartupEvidence,
 } from "../../src/shared/agent-runtime-startup-evidence";
 
-const execute = promisify(execFile);
 const delay = (ms: number) => new Promise<void>((resolveDelay) => setTimeout(resolveDelay, ms));
 const protocolKey = "HKCU\\Software\\Classes\\nodex";
 const queryProtocol = (): string | null => {
@@ -94,14 +93,12 @@ async function main(): Promise<void> {
     } catch (error) {
       failures.push(error);
     }
-    if (child?.pid && child.exitCode === null) {
+    if (child?.pid && child.exitCode === null && child.signalCode === null) {
       try {
+        // Native handles verify settlement even when a descendant exits during termination.
         await Promise.all([
           once(child, "close", { signal: AbortSignal.timeout(10_000) }),
-          execute("taskkill.exe", ["/PID", String(child.pid), "/T", "/F"], {
-            windowsHide: true,
-            timeout: 10_000,
-          }),
+          terminateWindowsProcessTree(child.pid, "SIGKILL"),
         ]);
       } catch (error) {
         failures.push(error);
