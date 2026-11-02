@@ -1,0 +1,26 @@
+scripts/ci/probe-windows-installer.ts
+  s_3609d9db04b3f2::t_e03afda5dfc99a 51,57-58,73
+scripts/windows-installation-processes.test.ts
+  s_3609d9db04b3f2::t_e03afda5dfc99a 8,30-35,55-56
+docs/release-windows.md
+  s_3609d9db04b3f2::t_0ca4689a741bb8 117-118
+  s_3609d9db04b3f2::t_e03afda5dfc99a 119-120,123-124
+.github/workflows/windows.yml
+  s_3609d9db04b3f2::t_e03afda5dfc99a 161-163
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e97e44579a59191c68f4b0951d28f517063124c9",
+  "prompts": {},
+  "sessions": {
+    "s_3609d9db04b3f2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19bd4-bc82-7710-93aa-a3b0b80b63c0",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
