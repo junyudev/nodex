@@ -32,6 +32,8 @@ import {
 } from "../../src/shared/agent-runtime-startup-evidence";
 
 const delay = (ms: number) => new Promise<void>((resolveDelay) => setTimeout(resolveDelay, ms));
+const failureDetails = (error: unknown): string =>
+  error instanceof Error ? (error.stack ?? error.message) : String(error);
 const protocolKey = "HKCU\\Software\\Classes\\nodex";
 const assertProcessStopped = (pid: number): void => {
   try {
@@ -46,6 +48,7 @@ const assertProcessStopped = (pid: number): void => {
 const installationListenerAddresses = (installation: string): string[] => {
   const command = `
 $ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
 $root = $env:NODEX_PROBE_INSTALL_ROOT.TrimEnd('\\') + '\\'
 $images = @(Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($root, [StringComparison]::OrdinalIgnoreCase) }).ProcessId
 $addresses = @(Get-NetTCPConnection -State Listen | Where-Object { $images -contains $_.OwningProcess } | Select-Object -ExpandProperty LocalAddress -Unique)
@@ -63,7 +66,9 @@ ConvertTo-Json -InputObject $addresses -Compress
       {
         env: { ...process.env, NODEX_PROBE_INSTALL_ROOT: installation },
         encoding: "utf8",
-        timeout: 10_000,
+        // NetTCPIP's first-use CIM provider import is cold on clean Windows hosts.
+        // This audit is independent of the 30-second uninstall acceptance budget.
+        timeout: 30_000,
       },
     ),
   );
@@ -227,7 +232,7 @@ exit $uninstaller.ExitCode
         writeFileSync(join(artifacts, name), readFileSync(join(logRoot, name)));
     writeFileSync(
       join(artifacts, "result.json"),
-      `${JSON.stringify({ evidence, upgrade: upgradeEvidence, uninstall: uninstallEvidence, failures: failures.map(String) }, null, 2)}\n`,
+      `${JSON.stringify({ evidence, upgrade: upgradeEvidence, uninstall: uninstallEvidence, failures: failures.map(failureDetails) }, null, 2)}\n`,
     );
   };
   try {
@@ -386,7 +391,7 @@ exit $uninstaller.ExitCode
   } finally {
     await cleanup();
   }
-  if (failures.length) throw new AggregateError(failures, failures.map(String).join("\n"));
+  if (failures.length) throw new AggregateError(failures, failures.map(failureDetails).join("\n"));
   process.stdout.write(
     `Installed ${target.key} Nodex, verified authenticated Core and Agent Runtime readiness, and removed the installation.\n`,
   );

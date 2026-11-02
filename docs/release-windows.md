@@ -113,6 +113,8 @@ shortcut and protocol cleanup, and Profile preservation. Its finally path attemp
 uninstall before fallback Core cleanup, including after startup failure. It waits
 for the entire NSIS process tree through PowerShell `Start-Process -Wait`, including
 the relocated TEMP uninstaller; directory removal alone is not uninstall completion.
+The separate TCP-listener audit allows 30 seconds for the networking CIM provider's
+first-use import on a clean host; this does not extend the uninstall budget.
 The probe retains its disposable Profile locally for diagnosis; CI uploads only
 the fresh probe's logs and result. It never uses credentials or a real Profile.
 
