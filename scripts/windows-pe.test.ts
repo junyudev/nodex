@@ -184,3 +184,19 @@ test.each([
     expect(files).toContain("conpty/OpenConsole.exe");
   },
 );
+
+test.skipIf(process.platform !== "win32")(
+  "closes the installed native Claude SDK payload before packaging",
+  () => {
+    const arch = process.arch;
+    if (arch !== "x64" && arch !== "arm64") throw new Error(`Unsupported Windows CPU ${arch}`);
+    const require = createRequire(import.meta.url);
+    const sdkRequire = createRequire(
+      require.resolve("@anthropic-ai/claude-agent-sdk/package.json"),
+    );
+    const root = dirname(
+      sdkRequire.resolve(`@anthropic-ai/claude-agent-sdk-win32-${arch}/package.json`),
+    );
+    expect(verifyWindowsArchitectureClosure(root, arch)).toContain("claude.exe");
+  },
+);

@@ -94,6 +94,8 @@ runner is insufficient. OpenConsole's inbox dependencies include IME/Uniscribe,
 Direct2D and `d3dcompiler_47.dll`, and [Windows ICU](https://learn.microsoft.com/en-us/windows/win32/intl/international-components-for-unicode--icu-)
 (`icu.dll`, present since Windows 10 1903). The pinned terminal payload is scanned
 recursively for both CPUs in unit tests, including its nested OpenConsole helper.
+The installed native Claude SDK is also checked before packaging; its `WSOCK32.dll`
+delay import uses the inbox [Winsock compatibility layer](https://learn.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-wsaisblocking).
 The only non-DLL host binding is node-gyp's `node.exe`
 delay import in `.node` addons: its delay-load hook binds the already-loaded
 Node/Electron process. Callers must supply and verify the matching-CPU host;

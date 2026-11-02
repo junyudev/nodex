@@ -66,6 +66,7 @@ const systemDlls = new Set([
   "wintrust.dll",
   "winusb.dll",
   "ws2_32.dll",
+  "wsock32.dll",
   "wtsapi32.dll",
 ]);
 
