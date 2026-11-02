@@ -1,0 +1,19 @@
+scripts/windows-pe.test.ts
+  s_0fab09190592d4::t_99bcfc0ebddb2e 194
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f741dbe89bdffdbb126c60b2dd4c72f5e0f767c2",
+  "prompts": {},
+  "sessions": {
+    "s_0fab09190592d4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19b2c-6d48-7d11-b1a3-9c7313084d27",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
