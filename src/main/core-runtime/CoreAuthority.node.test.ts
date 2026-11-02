@@ -83,6 +83,7 @@ const session = (client: CoreGenerationClient): CoreTransportSession => ({
       totalMs: 0,
     },
   },
+  release: Effect.void,
 });
 
 const buildAuthority = (
@@ -200,6 +201,31 @@ it.effect("interrupts an owned recovery backoff when the authority scope closes"
     const launchesAtClose = launches;
     yield* TestClock.adjust("1 hour");
     assert.strictEqual(launches, launchesAtClose);
+  }),
+);
+
+it.effect("releases the current authority generation when its Scope closes", () =>
+  Effect.gen(function* () {
+    let releases = 0;
+    const client = generationClient({
+      generation: 1,
+      read: () => Promise.resolve(snapshot(1)),
+    });
+    const scope = yield* Scope.make();
+    yield* Layer.buildWithScope(
+      buildAuthority(() =>
+        Promise.resolve({
+          ...session(client),
+          release: Effect.sync(() => {
+            releases += 1;
+          }),
+        }),
+      ),
+      scope,
+    );
+
+    yield* Scope.close(scope, Exit.void);
+    assert.strictEqual(releases, 1);
   }),
 );
 

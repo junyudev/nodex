@@ -271,7 +271,12 @@ export const live = (
       });
 
       yield* Effect.addFinalizer(() =>
-        Ref.set(closed, true).pipe(Effect.andThen(SubscriptionRef.set(state, { kind: "stopped" }))),
+        Ref.set(closed, true).pipe(
+          Effect.andThen(SubscriptionRef.set(state, { kind: "stopped" })),
+          Effect.andThen(Ref.get(session)),
+          Effect.flatMap((current) => current.release),
+          Effect.orDie,
+        ),
       );
 
       return Context.make(
