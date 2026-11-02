@@ -4,14 +4,71 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, test } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, test } from "vite-plus/test";
 import {
-  prepareLocalThreadHandoff,
-  rollbackLocalThreadHandoff,
+  prepareLocalThreadHandoff as prepareHandoff,
+  rollbackLocalThreadHandoff as rollbackHandoff,
   LocalThreadHandoffPreparationError,
 } from "./codex-local-thread-handoff-git";
 
 const fixtureRoots: string[] = [];
+
+type HandoffOptions = Parameters<typeof prepareHandoff>[1];
+interface HandoffCase {
+  readonly controller: AbortController;
+  readonly signal: AbortSignal;
+  readonly pending: Map<Promise<unknown>, string>;
+  phase: string;
+  cleanupSnapshot?: { readonly phase: string; readonly pending: readonly string[] };
+}
+
+let handoffCase: HandoffCase | undefined;
+
+beforeEach((context) => {
+  const owner: HandoffCase = {
+    controller: new AbortController(),
+    signal: context.signal,
+    pending: new Map(),
+    phase: "fixture setup",
+  };
+  handoffCase = owner;
+  context.onTestFailed(() => {
+    console.error("Handoff Git transaction failure", {
+      test: context.task.name,
+      cancelled: context.signal.aborted,
+      ...(owner.cleanupSnapshot ?? { phase: owner.phase, pending: [...owner.pending.values()] }),
+    });
+  });
+});
+
+/** Join every real Git transaction before its temporary repositories can be deleted. */
+function ownHandoff<T>(
+  operation: string,
+  options: HandoffOptions,
+  run: (observed: HandoffOptions) => Promise<T>,
+): Promise<T> {
+  const owner = handoffCase;
+  if (!owner) throw new Error("Handoff test resources are unavailable");
+  owner.phase = `${operation}: started`;
+  const pending = run({
+    ...options,
+    signal: AbortSignal.any([owner.signal, owner.controller.signal, options.signal]),
+    onProgress: (step, status, branches) => {
+      owner.phase = `${operation}: ${step}: ${status}`;
+      options.onProgress(step, status, branches);
+    },
+  });
+  owner.pending.set(pending, operation);
+  const settled = () => owner.pending.delete(pending);
+  void pending.then(settled, settled);
+  return pending;
+}
+
+const prepareLocalThreadHandoff: typeof prepareHandoff = (input, options) =>
+  ownHandoff("prepare", options, (observed) => prepareHandoff(input, observed));
+
+const rollbackLocalThreadHandoff: typeof rollbackHandoff = (input, options) =>
+  ownHandoff("rollback", options, (observed) => rollbackHandoff(input, observed));
 
 function git(cwd: string, ...args: string[]): string {
   return execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
@@ -50,9 +107,16 @@ function options() {
 }
 
 afterEach(async () => {
+  const owner = handoffCase;
+  if (owner) {
+    owner.cleanupSnapshot = { phase: owner.phase, pending: [...owner.pending.values()] };
+    owner.controller.abort();
+    await Promise.allSettled([...owner.pending.keys()]);
+  }
   for (const root of fixtureRoots.splice(0)) {
     await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
+  handoffCase = undefined;
 });
 
 describe("local thread handoff Git transaction", () => {
