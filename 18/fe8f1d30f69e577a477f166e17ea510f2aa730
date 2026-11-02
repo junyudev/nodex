@@ -1,0 +1,28 @@
+scripts/testing/windows-process-release-probe.mjs
+  s_6c9891f66c664a::t_d3d0439a62c063 81
+  s_6c9891f66c664a::t_1923b7114447a2 70-76,114,116-120,129-139,150-151
+  s_6c9891f66c664a::t_a142a429540ad4 1-69,77-80,82-113,115,121-128,140-149,152-178
+.github/workflows/windows.yml
+  s_6c9891f66c664a::t_356dea970cee30 1,10-11,14-16,34-37,41-43
+src/main/process-tree.ts
+  s_6c9891f66c664a::t_09ca2a1a56da30 13-54,87,89,97,101-102,106-107,114-119,127-134
+scripts/fixtures/windows-process-release.mjs
+  s_6c9891f66c664a::t_b0968289fd8041 1-19,21-36
+  s_6c9891f66c664a::t_d3d0439a62c063 20
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "18fe8f1d30f69e577a477f166e17ea510f2aa730",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
