@@ -39,6 +39,16 @@ to this installation. The installed Profile defaults to `%USERPROFILE%\.nodex`;
 uninstall preserves it. `vp run sync:icons` derives `resources/icon.ico` from
 the committed PNG icon through the pinned packager's icon tooling.
 
+NSIS runs installation-scoped process shutdown before replacing or removing any
+payload files, including when the incoming installer invokes an older uninstaller.
+It extracts its own maintenance Core and PowerShell script outside the installation.
+The desktop gets a short ordinary-close window, then each detached Core receives
+an authenticated shutdown for the PID discovered under that installation. Core
+gets eight seconds to drain; a bounded forced pass rechecks each remaining image
+path using the same native handle used for termination. No process-name-wide or
+descendant-tree termination is used. A sibling directory with the same prefix is
+outside the installation. Failure aborts maintenance before file replacement.
+
 ## Runtime closure
 
 The Windows payload contains native Core and CLI executables, the locked official
@@ -93,9 +103,13 @@ registration. It installs with `/S /currentuser`, verifies the installed payload
 launches with a fresh isolated Profile, and requires the exact host's ready claim
 plus a matching, authenticated named-pipe Core generation. A missing descriptor,
 Unix-only Core transport, stale digest, or startup exit fails with diagnostic
-logs. Its finally path shuts down the authenticated Core generation before stopping
-the owned desktop processes, silently uninstalls, and checks
-installation, shortcut and protocol cleanup even after a startup failure. It waits
+logs. It quits Electron normally, proves detached Core still answers authenticated
+health requests, installs over that running generation within 60 seconds, and
+relaunches the installed app. It quits again and silently uninstalls with Core
+still running, with a 30-second budget. Core's idle window is ten minutes so the
+probe cannot pass by waiting for idle shutdown. The probe checks installation,
+shortcut and protocol cleanup, and Profile preservation. Its finally path attempts
+uninstall before fallback Core cleanup, including after startup failure. It waits
 for the entire NSIS process tree through PowerShell `Start-Process -Wait`, including
 the relocated TEMP uninstaller; directory removal alone is not uninstall completion.
 The probe retains its disposable Profile locally for diagnosis; CI uploads only

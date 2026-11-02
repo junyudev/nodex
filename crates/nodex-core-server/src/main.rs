@@ -4,6 +4,30 @@ use std::{env, path::PathBuf};
 
 use nodex_core_protocol::{CoreSelectionPolicy, LauncherKind};
 
+/// Installer maintenance connects only to an existing, authenticated generation.
+/// It must never launch a Core or stop another installation's selected authority.
+fn shutdown_existing(arguments: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    let [shutdown, home_flag, home, pid_flag, pid] = arguments else {
+        return Err(
+            "usage: nodex-core --shutdown --home <absolute-home> --expected-pid <pid>".into(),
+        );
+    };
+    if shutdown != "--shutdown" || home_flag != "--home" || pid_flag != "--expected-pid" {
+        return Err("invalid Core shutdown arguments".into());
+    }
+    let home = PathBuf::from(home);
+    let pid = pid.parse::<u32>()?;
+    if !home.is_absolute() || pid == 0 {
+        return Err("Core shutdown requires an absolute home and nonzero PID".into());
+    }
+    let client = nodex_core_protocol::client::CoreClient::connect(&home, "installer-maintenance")?;
+    if client.descriptor.pid != pid {
+        return Err("Core generation no longer belongs to the expected process".into());
+    }
+    client.shutdown()?;
+    Ok(())
+}
+
 fn parse_arguments() -> Result<(PathBuf, CoreSelectionPolicy, LauncherKind), String> {
     let args = env::args().collect::<Vec<_>>();
     match args.as_slice() {
@@ -54,6 +78,13 @@ async fn run(
 }
 
 fn main() {
+    if env::args().nth(1).as_deref() == Some("--shutdown") {
+        if let Err(error) = shutdown_existing(&env::args().skip(1).collect::<Vec<_>>()) {
+            eprintln!("nodex-core shutdown failed: {error}");
+            std::process::exit(1);
+        }
+        return;
+    }
     if env::args().nth(1).as_deref() == Some("--private-filesystem") {
         if env::args().count() != 2 {
             eprintln!("usage: nodex-core --private-filesystem < bounded-request.json");

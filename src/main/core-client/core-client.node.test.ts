@@ -9,7 +9,7 @@ import {
 } from "../../shared/library-module-transport";
 import type { LibraryFileOperation, LibraryFileRead } from "../../shared/library-files";
 import { createUuidV7 } from "../../shared/uuid-v7";
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { execFileSync, spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { chmodSync, existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -142,6 +142,43 @@ async function createInitialProject(client: CoreClient, nodexHome: string): Prom
 }
 
 describe("CoreClient over a private local endpoint", () => {
+  test("installer shutdown authenticates an existing Core and fences the expected process", async () => {
+    const home = mkdtempSync(path.join(tmpdir(), "nodex-maintenance-"));
+    const child = spawnCore(home);
+    try {
+      const descriptor = await readDescriptor(child);
+      const args = ["--shutdown", "--home", home, "--expected-pid"];
+      expect(() =>
+        execFileSync(CORE_BINARY, [...args, String(process.pid)], {
+          stdio: "pipe",
+          timeout: 5_000,
+        }),
+      ).toThrow();
+      const client = await CoreClient.connect({
+        nodexHome: home,
+        clientKind: "native_cli",
+        buildId: "maintenance-test",
+      });
+      await expect(client.health()).resolves.toBeDefined();
+      execFileSync(CORE_BINARY, [...args, String(descriptor.pid)], {
+        stdio: "pipe",
+        timeout: 5_000,
+      });
+      await waitForExit(child);
+      expect(existsSync(path.join(home, "nodex.db"))).toBe(true);
+      // The maintenance mode never starts an authority when none is running.
+      expect(() =>
+        execFileSync(CORE_BINARY, [...args, String(descriptor.pid)], {
+          stdio: "pipe",
+          timeout: 5_000,
+        }),
+      ).toThrow();
+    } finally {
+      terminateSelectedCore(child);
+      await waitForExit(child);
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
   test("keeps shared File identity across desktop relations and streams exact authorized versions", async () => {
     const nodexHome = mkdtempSync(path.join(tmpdir(), "nodex-library-file-client-"));
     const child = spawnCore(nodexHome);
