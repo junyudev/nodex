@@ -340,6 +340,9 @@ function hasDefaultCargoConfiguration(
           JSON.stringify(value) ===
           JSON.stringify({
             "aarch64-apple-darwin": { rustflags: ["-C", "link-arg=-mmacosx-version-min=15.0"] },
+            'cfg(all(target_os = "windows", target_env = "msvc"))': {
+              rustflags: ["-C", "target-feature=+crt-static"],
+            },
           })
         );
       return false;

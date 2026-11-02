@@ -1,0 +1,22 @@
+Microsoft Visual C++ Runtime (Windows)
+Copyright Microsoft Corporation. All rights reserved.
+
+Nodex distributes unmodified retail Microsoft Visual C++ runtime DLLs app-locally
+when required by a bundled third-party binary. These files are copied from the
+matching architecture's Visual Studio MSVC redistributable directory on the
+Windows build host. Microsoft signatures are retained. They are licensed
+separately from Nodex and its open-source dependencies under Microsoft's
+applicable software license and developer redistribution terms. The runtime
+license alone does not grant redistribution rights.
+
+Runtime terms:
+https://visualstudio.microsoft.com/license-terms/vs2022-cruntime/
+https://visualstudio.microsoft.com/license-terms/vs2026-ga-visualcpp-v14-redist-runtime/
+Redistribution terms and permitted files:
+https://learn.microsoft.com/en-us/visualstudio/releases/2022/redistribution
+https://learn.microsoft.com/en-us/visualstudio/releases/2026/redistribution
+Deployment guidance:
+https://learn.microsoft.com/en-us/cpp/windows/redistributing-visual-cpp-files
+
+Only retail redistributables are included, never debug runtimes. Nodex delivers
+security updates for these app-local components through application updates.

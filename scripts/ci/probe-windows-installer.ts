@@ -176,7 +176,10 @@ exit $uninstaller.ExitCode
     const executable = join(installRoot, "Nodex.exe");
     if (!existsSync(executable))
       throw new Error(`NSIS did not install Nodex per-user: ${executable}`);
-    const images = verifyWindowsArchitectureClosure(installRoot, target.arch, { installed: true });
+    const images = verifyWindowsArchitectureClosure(installRoot, target.arch, {
+      installed: true,
+      nodeHost: join(installRoot, "Nodex.exe"),
+    });
     const registration = queryProtocol();
     if (!registration?.includes(`"${executable}" "%1"`) || !registration.includes("URL Protocol"))
       throw new Error("NSIS did not register nodex:// for the current user");

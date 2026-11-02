@@ -216,6 +216,15 @@ async function collectBundledRuntimeEntries(
     ...(targetPlatform === "win32"
       ? [
           {
+            homepage:
+              "https://learn.microsoft.com/en-us/cpp/windows/redistributing-visual-cpp-files",
+            identity: "Microsoft Visual C++ Runtime",
+            license: "Microsoft Software License Terms",
+            legalText: await readCombinedLegalFiles([
+              join(repositoryRoot, "resources/third-party/microsoft-vc-runtime/NOTICE.txt"),
+            ]),
+          },
+          {
             homepage: "https://nodejs.org/",
             identity: "Node.js standalone runtime",
             license: "MIT and bundled third-party notices",
