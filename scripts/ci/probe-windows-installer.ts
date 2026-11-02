@@ -1,9 +1,19 @@
-import { execFileSync, spawn } from "node:child_process";
+import { execFile, execFileSync, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
+import { _electron, type ElectronApplication } from "playwright";
 import { desktopBuildTarget } from "../desktop-build-target";
 import { terminateWindowsProcessTree } from "../../src/main/process-tree";
 import { verifyWindowsArchitectureClosure } from "../windows-pe.mjs";
@@ -23,7 +33,67 @@ import {
 } from "../../src/shared/agent-runtime-startup-evidence";
 
 const delay = (ms: number) => new Promise<void>((resolveDelay) => setTimeout(resolveDelay, ms));
+// Maintenance must let the host drain owned pipes and release exited process handles.
+const runMaintenance = promisify(execFile);
+const failureDetails = (error: unknown): string =>
+  error instanceof Error ? (error.stack ?? error.message) : String(error);
 const protocolKey = "HKCU\\Software\\Classes\\nodex";
+const isProcessRunning = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ESRCH") return false;
+    throw error;
+  }
+};
+const assertProcessStopped = (pid: number): void => {
+  if (isProcessRunning(pid)) throw new Error(`Maintenance left process ${pid} running`);
+};
+const waitForProcessStopped = async (pid: number, timeoutMs: number): Promise<void> => {
+  const deadline = Date.now() + timeoutMs;
+  while (isProcessRunning(pid)) {
+    if (Date.now() >= deadline)
+      throw new Error(`Process ${pid} did not exit within ${timeoutMs}ms`);
+    await delay(25);
+  }
+};
+
+export const installationListenerAddresses = (installation: string): string[] => {
+  const command = `
+$ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
+$root = $env:NODEX_PROBE_INSTALL_ROOT.TrimEnd('\\') + '\\'
+$images = @(Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($root, [StringComparison]::OrdinalIgnoreCase) }).ProcessId
+# MSFT_NetTCPConnection State=2 is Listen. Avoid NetTCPIP module auto-loading.
+$addresses = @(Get-CimInstance -Namespace 'root\\StandardCimv2' -ClassName MSFT_NetTCPConnection -Filter 'State = 2' -OperationTimeoutSec 15 | Where-Object { $images -contains $_.OwningProcess } | Select-Object -ExpandProperty LocalAddress -Unique)
+ConvertTo-Json -InputObject $addresses -Compress
+`;
+  const addresses: unknown = JSON.parse(
+    execFileSync(
+      "powershell.exe",
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-EncodedCommand",
+        Buffer.from(command, "utf16le").toString("base64"),
+      ],
+      {
+        env: { ...process.env, NODEX_PROBE_INSTALL_ROOT: installation },
+        encoding: "utf8",
+        // The bounded local CIM audit is separate from uninstall acceptance.
+        timeout: 30_000,
+      },
+    ),
+  );
+  if (
+    !Array.isArray(addresses) ||
+    !addresses.length ||
+    addresses.some((address: unknown) => address !== "127.0.0.1" && address !== "::1")
+  )
+    throw new Error("Installed Nodex listeners must all use loopback");
+  return addresses as string[];
+};
 const queryProtocol = (): string | null => {
   try {
     return execFileSync("reg.exe", ["query", protocolKey, "/s"], {
@@ -69,31 +139,37 @@ async function main(): Promise<void> {
     throw new Error(
       "Installer probe refuses to replace an existing Nodex installation or protocol registration",
     );
-  const profile = join(root, "profile");
+  const profile = join(root, "Profile 用户");
   mkdirSync(profile);
-  const runId = randomUUID();
-  const lease = acquireIsolatedRunLease({ nodexHome: profile, runId, supervisorPid: process.pid });
+  const profileMarker = join(profile, "installer-probe.txt");
+  const profileContent = randomUUID();
+  writeFileSync(profileMarker, profileContent);
+  const isProfilePreserved = (): boolean =>
+    existsSync(join(profile, "nodex.db")) &&
+    existsSync(profileMarker) &&
+    readFileSync(profileMarker, "utf8") === profileContent;
+  let runId = randomUUID();
+  let lease = acquireIsolatedRunLease({ nodexHome: profile, runId, supervisorPid: process.pid });
   const failures: unknown[] = [];
   let installed = false;
-  let child: ReturnType<typeof spawn> | undefined;
+  let child: ChildProcess | undefined;
+  let application: ElectronApplication | undefined;
+  let desktopPid: number | undefined;
+  const desktopCloses: Promise<void>[] = [];
+  let normalQuitEvidence: unknown;
+  let upgradeEvidence: unknown;
+  let detachedCoreBeforeUninstall: number | undefined;
   let output = "";
   let evidence: unknown;
   let uninstallEvidence: unknown;
   const cleanup = async (): Promise<void> => {
-    try {
-      // Shut down the authenticated authority before terminating Electron's process tree.
-      const cleanup = await cleanupIsolatedCore({
-        lease,
-        nodexHome: profile,
-        runId,
-        releaseLeaseOnSuccess: false,
-      });
-      if (!cleanup.safeToDeleteRunRoot)
-        failures.push(new Error(`Core cleanup failed: ${cleanup.reason ?? cleanup.status}`));
-    } catch (error) {
-      failures.push(error);
-    }
-    if (child?.pid && child.exitCode === null && child.signalCode === null) {
+    let uninstallCompleted = false;
+    if (
+      child?.pid &&
+      child.exitCode === null &&
+      child.signalCode === null &&
+      (desktopPid === undefined || isProcessRunning(desktopPid))
+    ) {
       try {
         // Native handles verify settlement even when a descendant exits during termination.
         await Promise.all([
@@ -103,11 +179,6 @@ async function main(): Promise<void> {
       } catch (error) {
         failures.push(error);
       }
-    }
-    try {
-      lease.release();
-    } catch (error) {
-      failures.push(error);
     }
     if (installed || existsSync(installRoot)) {
       try {
@@ -122,7 +193,8 @@ $ErrorActionPreference = 'Stop'
 $uninstaller = Start-Process -FilePath $env:NODEX_PROBE_UNINSTALLER -ArgumentList '/S', '/currentuser' -Wait -PassThru
 exit $uninstaller.ExitCode
 `;
-        execFileSync(
+        const uninstallStarted = Date.now();
+        await runMaintenance(
           "powershell.exe",
           [
             "-NoProfile",
@@ -132,30 +204,75 @@ exit $uninstaller.ExitCode
           ],
           {
             env: { ...process.env, NODEX_PROBE_UNINSTALLER: join(installRoot, uninstallers[0]!) },
-            stdio: "inherit",
-            timeout: 180_000,
+            timeout: 30_000,
           },
         );
+        if (detachedCoreBeforeUninstall !== undefined)
+          assertProcessStopped(detachedCoreBeforeUninstall);
         const shortcuts = [
           join(appData, "Microsoft/Windows/Start Menu/Programs/Nodex.lnk"),
           join(process.env.USERPROFILE!, "Desktop/Nodex.lnk"),
         ].filter(existsSync);
         const remainingProtocol = queryProtocol();
+        const filesRemoved = !existsSync(installRoot);
+        const protocolRemoved = remainingProtocol === null;
+        const shortcutsRemoved = shortcuts.length === 0;
+        const profilePreserved = isProfilePreserved();
         uninstallEvidence = {
-          completed: true,
-          filesRemoved: !existsSync(installRoot),
-          protocolRemoved: remainingProtocol === null,
-          shortcutsRemoved: shortcuts.length === 0,
-          profilePreserved: existsSync(profile),
+          completed: filesRemoved && protocolRemoved && shortcutsRemoved && profilePreserved,
+          elapsedMs: Date.now() - uninstallStarted,
+          detachedCoreBeforeUninstall,
+          desktopExit: detachedCoreBeforeUninstall === undefined ? undefined : "forced",
+          filesRemoved,
+          protocolRemoved,
+          shortcutsRemoved,
+          profilePreserved,
         };
-        if (existsSync(installRoot))
+        if (!filesRemoved)
           throw new Error(`Uninstall left files: ${readdirSync(installRoot).join(", ")}`);
-        if (remainingProtocol) throw new Error("Uninstall left the nodex:// protocol registration");
-        if (shortcuts.length) throw new Error(`Uninstall left shortcuts: ${shortcuts.join(", ")}`);
-        if (!existsSync(profile)) throw new Error("Uninstall removed the Profile");
+        if (!protocolRemoved) throw new Error("Uninstall left the nodex:// protocol registration");
+        if (!shortcutsRemoved) throw new Error(`Uninstall left shortcuts: ${shortcuts.join(", ")}`);
+        if (!profilePreserved) throw new Error("Uninstall removed the Profile");
+        uninstallCompleted = true;
       } catch (error) {
         failures.push(error);
       }
+    }
+    if (!uninstallCompleted) {
+      try {
+        // Only a failed uninstall needs the supervisor's fallback Core cleanup.
+        const cleanup = await cleanupIsolatedCore({
+          lease,
+          nodexHome: profile,
+          runId,
+          releaseLeaseOnSuccess: false,
+        });
+        if (!cleanup.safeToDeleteRunRoot)
+          failures.push(new Error(`Core cleanup failed: ${cleanup.reason ?? cleanup.status}`));
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+    let closeTimeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        Promise.all(desktopCloses),
+        new Promise<never>((_, reject) => {
+          closeTimeout = setTimeout(
+            () => reject(new Error("Playwright cleanup did not settle after Core maintenance")),
+            5_000,
+          );
+        }),
+      ]);
+    } catch (error) {
+      failures.push(error);
+    } finally {
+      clearTimeout(closeTimeout);
+    }
+    try {
+      lease.release();
+    } catch (error) {
+      failures.push(error);
     }
     writeFileSync(join(artifacts, "startup.log"), output);
     const logRoot = join(profile, "logs");
@@ -164,12 +281,11 @@ exit $uninstaller.ExitCode
         writeFileSync(join(artifacts, name), readFileSync(join(logRoot, name)));
     writeFileSync(
       join(artifacts, "result.json"),
-      `${JSON.stringify({ evidence, uninstall: uninstallEvidence, failures: failures.map(String) }, null, 2)}\n`,
+      `${JSON.stringify({ evidence, normalQuit: normalQuitEvidence, upgrade: upgradeEvidence, uninstall: uninstallEvidence, failures: failures.map(failureDetails) }, null, 2)}\n`,
     );
   };
   try {
-    execFileSync(resolve("dist", installers[0]!), ["/S", "/currentuser"], {
-      stdio: "inherit",
+    await runMaintenance(resolve("dist", installers[0]!), ["/S", "/currentuser"], {
       timeout: 180_000,
     });
     installed = true;
@@ -198,97 +314,176 @@ exit $uninstaller.ExitCode
       protocolRegistered: true,
       coreSha256: expectedCoreSha256,
     };
-    child = spawn(executable, [`--user-data-dir=${join(root, "electron-user-data")}`], {
-      cwd: root,
-      windowsHide: true,
-      stdio: ["ignore", "pipe", "pipe"],
-      env: {
-        ...launchEnvironment,
-        NODEX_LOG_CONSOLE: "true",
-        NODEX_LOG_FILE: "true",
-        NODEX_LOG_LEVEL: "debug",
-        NODEX_HOME: profile,
-        CODEX_HOME: join(profile, "agent"),
-        NODEX_INITIAL_PROJECTS_DIR: join(root, "workspace"),
-        NODEX_SENTRY_ENABLED: "false",
-        NODEX_TELEMETRY_ENABLED: "false",
-        NODEX_CORE_IDLE_TIMEOUT_MS: "30000",
-        [ISOLATED_RUN_ID_ENV]: runId,
-        [AGENT_RUNTIME_STARTUP_PROBE_ENV]: "1",
-      },
-    });
-    child.stdout?.on("data", (chunk: Buffer) => {
-      output = `${output}${chunk.toString()}`.slice(-64_000);
-    });
-    child.stderr?.on("data", (chunk: Buffer) => {
-      output = `${output}${chunk.toString()}`.slice(-64_000);
-    });
-    child.on("error", (error) => {
-      output += `\n${error.message}`;
-    });
-    const deadline = Date.now() + 60_000;
-    while (true) {
-      const claim = readIsolatedRunClaim(profile);
-      if (child.exitCode !== null || child.signalCode !== null)
-        throw new Error(
-          `Installed Nodex exited before Core and Agent readiness (exit ${child.exitCode}, host phase: ${claim?.phase ?? "unclaimed"})`,
-        );
-      const agentFile = join(profile, "run", AGENT_RUNTIME_STARTUP_EVIDENCE_FILE);
-      if (existsSync(agentFile) && statSync(agentFile).size > 4_096)
-        throw new Error("Agent Runtime startup diagnostic exceeds its bounded size");
-      const agent = existsSync(agentFile)
-        ? parseAgentRuntimeStartupEvidence(JSON.parse(readFileSync(agentFile, "utf8")), {
-            runId,
-            hostPid: child.pid!,
-          })
-        : null;
-      if (agent && agent.nodeSource !== "standalone")
-        throw new Error("Windows Agent Runtime did not use the verified standalone Node runtime");
-      if (claim?.phase === "ready" && agent) {
-        if (claim.runId !== runId || claim.hostPid !== child.pid)
-          throw new Error("Installed Nodex readiness belongs to another host generation");
-        const { descriptor } = readCoreRuntimeConnection(profile);
-        if (!descriptor.endpoint.startsWith("\\\\.\\pipe\\nodex-core-"))
+    const launchInstalled = async (): Promise<void> => {
+      application = await _electron.launch({
+        executablePath: executable,
+        args: [`--user-data-dir=${join(root, "electron-user-data")}`],
+        timeout: 60_000,
+        cwd: root,
+        env: {
+          ...launchEnvironment,
+          NODEX_LOG_CONSOLE: "true",
+          NODEX_LOG_FILE: "true",
+          NODEX_LOG_LEVEL: "debug",
+          NODEX_HOME: profile,
+          CODEX_HOME: join(profile, "agent"),
+          NODEX_INITIAL_PROJECTS_DIR: join(root, "workspace"),
+          NODEX_SENTRY_ENABLED: "false",
+          NODEX_TELEMETRY_ENABLED: "false",
+          NODEX_CORE_IDLE_TIMEOUT_MS: "600000",
+          [ISOLATED_RUN_ID_ENV]: runId,
+          [AGENT_RUNTIME_STARTUP_PROBE_ENV]: "1",
+        },
+      });
+      child = application.process();
+      // Playwright wraps Electron in cmd.exe on Windows; claims identify Main.
+      const hostPid = await application.evaluate(() => process.pid);
+      desktopPid = hostPid;
+      child.stdout?.on("data", (chunk: Buffer) => {
+        output = `${output}${chunk.toString()}`.slice(-64_000);
+      });
+      child.stderr?.on("data", (chunk: Buffer) => {
+        output = `${output}${chunk.toString()}`.slice(-64_000);
+      });
+      child.on("error", (error) => {
+        output += `\n${error.message}`;
+      });
+      const deadline = Date.now() + 60_000;
+      while (true) {
+        const claim = readIsolatedRunClaim(profile);
+        if (child.exitCode !== null || child.signalCode !== null)
           throw new Error(
-            "Windows Core must publish a named-pipe endpoint in its runtime descriptor",
+            `Installed Nodex exited before Core and Agent readiness (exit ${child.exitCode}, host phase: ${claim?.phase ?? "unclaimed"})`,
           );
-        if (descriptor.artifact.sha256 !== expectedCoreSha256)
-          throw new Error("Running Core identity differs from the installed executable");
-        const client = await CoreClient.connect({
-          nodexHome: profile,
-          clientKind: "native_cli",
-          buildId: "windows-installer-probe",
-          requestTimeoutMs: 10_000,
-        });
-        if (queryProtocol() !== registration)
-          throw new Error("Launching Nodex changed the installer's protocol registration");
-        evidence = {
-          protocolRegistered: true,
-          protocolPreservedAfterLaunch: true,
-          namedPipe: true,
-          target: target.key,
-          installer: installers[0],
-          images: images.length,
-          hostPid: child.pid,
-          corePid: descriptor.pid,
-          coreSha256: expectedCoreSha256,
-          authenticated: Boolean(client.handshake),
-          agent,
-        };
-        break;
+        const agentFile = join(profile, "run", AGENT_RUNTIME_STARTUP_EVIDENCE_FILE);
+        if (existsSync(agentFile) && statSync(agentFile).size > 4_096)
+          throw new Error("Agent Runtime startup diagnostic exceeds its bounded size");
+        const agent = existsSync(agentFile)
+          ? parseAgentRuntimeStartupEvidence(JSON.parse(readFileSync(agentFile, "utf8")), {
+              runId,
+              hostPid,
+            })
+          : null;
+        if (agent && agent.nodeSource !== "standalone")
+          throw new Error("Windows Agent Runtime did not use the verified standalone Node runtime");
+        if (claim?.phase === "ready" && agent) {
+          if (claim.runId !== runId || claim.hostPid !== hostPid)
+            throw new Error("Installed Nodex readiness belongs to another host generation");
+          const { descriptor } = readCoreRuntimeConnection(profile);
+          if (!descriptor.endpoint.startsWith("\\\\.\\pipe\\nodex-core-"))
+            throw new Error(
+              "Windows Core must publish a named-pipe endpoint in its runtime descriptor",
+            );
+          if (descriptor.artifact.sha256 !== expectedCoreSha256)
+            throw new Error("Running Core identity differs from the installed executable");
+          const client = await CoreClient.connect({
+            nodexHome: profile,
+            clientKind: "native_cli",
+            buildId: "windows-installer-probe",
+            requestTimeoutMs: 10_000,
+          });
+          if (queryProtocol() !== registration)
+            throw new Error("Launching Nodex changed the installer's protocol registration");
+          evidence = {
+            protocolRegistered: true,
+            protocolPreservedAfterLaunch: true,
+            namedPipe: true,
+            target: target.key,
+            installer: installers[0],
+            images: images.length,
+            hostPid,
+            corePid: descriptor.pid,
+            coreSha256: expectedCoreSha256,
+            authenticated: Boolean(client.handshake),
+            agent,
+            listenerAddresses: installationListenerAddresses(installRoot),
+          };
+          break;
+        }
+        if (Date.now() >= deadline)
+          throw new Error(
+            `Installed Nodex did not reach Core and Agent Runtime readiness within 60s (host phase: ${claim?.phase ?? "unclaimed"}, Agent Runtime: ${agent ? "ready" : "pending"}). Core must publish its named-pipe descriptor and the supervised Agent Runtime must complete its execution handshake.`,
+          );
+        await delay(100);
       }
-      if (Date.now() >= deadline)
-        throw new Error(
-          `Installed Nodex did not reach Core and Agent Runtime readiness within 60s (host phase: ${claim?.phase ?? "unclaimed"}, Agent Runtime: ${agent ? "ready" : "pending"}). Core must publish its named-pipe descriptor and the supervised Agent Runtime must complete its execution handshake.`,
-        );
-      await delay(100);
-    }
+    };
+    const quitNormally = async (): Promise<void> => {
+      if (!application || desktopPid === undefined) throw new Error("Installed desktop is missing");
+      const { descriptor } = readCoreRuntimeConnection(profile);
+      const quitStarted = Date.now();
+      // Playwright requests app.quit() and detaches its debugger, but waits for
+      // cmd.exe's stream closure too. Observe the exact Main and Core PIDs.
+      const close = application.close();
+      desktopCloses.push(close);
+      void close.catch(() => undefined);
+      const coreExited = waitForProcessStopped(descriptor.pid, 5_000).then(
+        () => Date.now() - quitStarted,
+      );
+      const [coreExitMs] = await Promise.all([
+        coreExited,
+        waitForProcessStopped(desktopPid, 15_000),
+      ]);
+      normalQuitEvidence = {
+        completed: true,
+        hostPid: desktopPid,
+        corePid: descriptor.pid,
+        coreExitMs,
+        elapsedMs: Date.now() - quitStarted,
+      };
+    };
+    const forceDesktopLeavingCore = async (): Promise<number> => {
+      if (!application || desktopPid === undefined) throw new Error("Installed desktop is missing");
+      const { descriptor } = readCoreRuntimeConnection(profile);
+      // Kill only Main, as Stop-Process -Force would. Tree termination would
+      // hide the maintenance case by killing detached Core before the installer.
+      process.kill(desktopPid, "SIGKILL");
+      await waitForProcessStopped(desktopPid, 5_000);
+      const client = await CoreClient.connect({
+        nodexHome: profile,
+        clientKind: "native_cli",
+        buildId: "windows-installer-detached-core-probe",
+        requestTimeoutMs: 5_000,
+      });
+      await client.health();
+      if (client.handshake.generation.start_nonce !== descriptor.start_nonce)
+        throw new Error("Force-killing Desktop replaced the selected Core generation");
+      process.kill(descriptor.pid, 0);
+      return descriptor.pid;
+    };
+    const renewHostClaim = (): void => {
+      // Each launch needs a fresh host claim, while retaining the same Profile.
+      lease.release();
+      runId = randomUUID();
+      lease = acquireIsolatedRunLease({ nodexHome: profile, runId, supervisorPid: process.pid });
+      rmSync(join(profile, "run", AGENT_RUNTIME_STARTUP_EVIDENCE_FILE), { force: true });
+    };
+    await launchInstalled();
+    await quitNormally();
+    renewHostClaim();
+    await launchInstalled();
+    const oldCorePid = await forceDesktopLeavingCore();
+    const upgradeStarted = Date.now();
+    await runMaintenance(resolve("dist", installers[0]!), ["/S", "/currentuser"], {
+      timeout: 180_000,
+    });
+    assertProcessStopped(oldCorePid);
+    if (!isProfilePreserved()) throw new Error("Upgrade removed Profile content");
+    upgradeEvidence = {
+      completed: true,
+      elapsedMs: Date.now() - upgradeStarted,
+      oldCorePid,
+      desktopExit: "forced",
+      profilePreserved: true,
+    };
+    renewHostClaim();
+    await launchInstalled();
+    detachedCoreBeforeUninstall = await forceDesktopLeavingCore();
   } catch (error) {
     failures.push(error);
   } finally {
     await cleanup();
   }
-  if (failures.length) throw new AggregateError(failures, failures.map(String).join("\n"));
+  if (failures.length) throw new AggregateError(failures, failures.map(failureDetails).join("\n"));
   process.stdout.write(
     `Installed ${target.key} Nodex, verified authenticated Core and Agent Runtime readiness, and removed the installation.\n`,
   );

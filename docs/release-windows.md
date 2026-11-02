@@ -39,6 +39,17 @@ to this installation. The installed Profile defaults to `%USERPROFILE%\.nodex`;
 uninstall preserves it. `vp run sync:icons` derives `resources/icon.ico` from
 the committed PNG icon through the pinned packager's icon tooling.
 
+NSIS runs installation-scoped process shutdown before replacing or removing any
+payload files. Before install-over, it refreshes the installed maintenance
+uninstaller from the incoming installer, so older process checks cannot run.
+It extracts its own maintenance Core and PowerShell script outside the installation.
+The desktop gets a short ordinary-close window, then each detached Core receives
+an authenticated shutdown for the PID discovered under that installation. Core
+gets eight seconds to drain; a bounded forced pass rechecks each remaining image
+path using the same native handle used for termination. No process-name-wide or
+descendant-tree termination is used. A sibling directory with the same prefix is
+outside the installation. Failure aborts maintenance before file replacement.
+
 ## Runtime closure
 
 The Windows payload contains native Core and CLI executables, the locked official
@@ -164,11 +175,28 @@ registration. It installs with `/S /currentuser`, verifies the installed payload
 launches with a fresh isolated Profile, and requires the exact host's ready claim
 plus a matching, authenticated named-pipe Core generation. A missing descriptor,
 Unix-only Core transport, stale digest, or startup exit fails with diagnostic
-logs. Its finally path shuts down the authenticated Core generation before stopping
-the owned desktop processes, silently uninstalls, and checks
-installation, shortcut and protocol cleanup even after a startup failure. It waits
+logs. It first requests normal Electron quit and requires the selected Core to
+exit within five seconds and the exact Main PID within 15 seconds. It then
+relaunches Desktop and force-terminates only Main, proving the same detached Core
+still answers authenticated health requests without Desktop. It installs over
+that running generation within three minutes, relaunches the installed app, and
+force-terminates Main again before silently uninstalling with Core still running,
+with a 30-second budget. Core's idle window is ten minutes so the probe cannot
+pass by waiting for idle shutdown. It checks the stopped Core PIDs, installation,
+shortcut and protocol cleanup, and preservation of the Profile database and a
+content marker through both maintenance operations. Its finally path attempts
+uninstall before fallback Core cleanup, including after startup failure. It waits
 for the entire NSIS process tree through PowerShell `Start-Process -Wait`, including
 the relocated TEMP uninstaller; directory removal alone is not uninstall completion.
+The separate TCP-listener audit queries the local
+[CIM provider](https://learn.microsoft.com/en-us/windows/win32/fwp/wmi/nettcpipprov/msft-nettcpconnection) directly, without
+networking-module auto-loading. Its provider operation is bounded to 15 seconds
+and the whole query to 30 seconds; neither extends the uninstall budget.
+Playwright's wrapper/stream cleanup settles after maintenance stops Core; it is
+not the Desktop-exit signal and must not stop Core before the uninstall check.
+Diagnostic reprobes run the focused real-Core shutdown and process/listener
+fixtures before the installed application. They prepare the native test Core
+with the pinned Rust toolchain while reusing the existing installer payloads.
 The probe retains its disposable Profile locally for diagnosis; CI uploads only
 the fresh probe's logs and result. It never uses credentials or a real Profile.
 

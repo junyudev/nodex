@@ -16,6 +16,18 @@ unchanged. Uninstall removes application files and Start Menu/Desktop shortcuts,
 and removes the protocol key only if its command still points to that installation.
 The Profile is preserved.
 
+Ordinary Desktop quit gracefully shuts down its selected Core generation within
+a five-second Scope-release bound. A crash or force-termination can leave detached
+Core running; the CLI and other clients can also start Core without Desktop.
+
+Install-over and uninstall first close processes whose executable image is inside
+that installation directory. Detached Core receives an authenticated shutdown
+request for its exact process and has eight seconds to drain. Remaining Core,
+CLI, Agent, standalone Node and search processes are forcibly stopped with a
+bounded wait after their image path is checked again. Other installations,
+system runtimes and the Profile are left intact. If those files cannot be
+released, maintenance fails before replacing or removing them.
+
 Background service installation, automatic app updates, Browser control,
 Computer control, Appshot and Apple DeviceCheck are unavailable on Windows.
 Main's host capability policy gates native acquisition. Existing typed feature
