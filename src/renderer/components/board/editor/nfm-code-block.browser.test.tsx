@@ -1,7 +1,7 @@
 import { BlockNoteEditor } from "@blocknote/core";
 import { BlockNoteViewRaw } from "@blocknote/react";
 import { AllSelection } from "@tiptap/pm/state";
-import { act, fireEvent, render, screen, waitFor, type RenderResult } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, type RenderResult } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 import { codeBlockViewState } from "@/lib/editor-model/code-block-view-state";
 import { NodexModalHost } from "@/lib/modal-registry";
@@ -30,8 +30,11 @@ import {
 import { NfmSideMenuOpenProvider } from "./nfm-side-menu";
 import { selectCurrentBlockContent } from "./select-block-shortcut";
 import "../../../globals.css";
+import { renderWithQuery as render } from "@/test/query";
+import { installCommandKeymapFixture } from "@/test/command-keymap";
 
 installRendererThemeFixture();
+installCommandKeymapFixture();
 
 const mountedEditors: BlockNoteEditor<any, any, any>[] = [];
 const mountedViews: RenderResult[] = [];

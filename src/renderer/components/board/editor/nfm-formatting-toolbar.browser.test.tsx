@@ -1,14 +1,18 @@
 import { BlockNoteEditor } from "@blocknote/core";
 import { FormattingToolbarExtension } from "@blocknote/core/extensions";
 import { BlockNoteView } from "@blocknote/shadcn";
-import { act, fireEvent, render, waitFor } from "@testing-library/react";
+import { act, fireEvent, waitFor } from "@testing-library/react";
 import { describe, expect, test, vi } from "vite-plus/test";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import "../../../globals.css";
+import { renderWithQuery as render } from "@/test/query";
+import { installCommandKeymapFixture } from "@/test/command-keymap";
 import { NfmFormattingToolbar } from "./nfm-formatting-toolbar";
 import { NfmFormattingToolbarController } from "./nfm-formatting-toolbar-controller";
 import { NfmSideMenuOpenProvider } from "./nfm-side-menu";
 import { nfmSchema } from "./nfm-schema";
+
+installCommandKeymapFixture();
 
 const settleEditor = async (): Promise<void> => {
   await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
