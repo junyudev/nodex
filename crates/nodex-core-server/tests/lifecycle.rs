@@ -1365,12 +1365,156 @@ fn workspace_contract_mismatch_is_replaced_before_a_projectless_session_request(
     assert!(current.wait().expect("wait for selected Core").success());
 }
 
+/// The disposable installation owns its Profile authority and every selector it starts.
+struct CoreInstallationGuard {
+    directory: Option<nodex_platform::test_support::TempDir>,
+    home: std::path::PathBuf,
+    selectors: Vec<Child>,
+}
+
+impl CoreInstallationGuard {
+    fn own(&mut self, child: Child) -> usize {
+        let index = self.selectors.len();
+        self.selectors.push(child);
+        index
+    }
+
+    fn cleanup(&mut self) -> Result<(), String> {
+        let runtime = self.home.join("run/core");
+        let mut authority_pid = None;
+        let mut deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            if authority_pid.is_none() && runtime.join("core.json").exists() {
+                // The native client validates the descriptor, bearer capability and handshake
+                // generation. Cleanup never sends a termination signal to an observed PID.
+                let client = nodex_core_protocol::client::CoreClient::connect(
+                    &self.home,
+                    "installation-fixture-cleanup",
+                )
+                .map_err(|error| format!("authenticate fixture Core: {error}"))?;
+                let response = client
+                    .shutdown()
+                    .map_err(|error| format!("drain fixture Core: {error}"))?;
+                if response.status != ShutdownStatus::Draining {
+                    return Err(format!(
+                        "unexpected fixture shutdown: {:?}",
+                        response.status
+                    ));
+                }
+                authority_pid = Some(client.handshake.generation.pid);
+                deadline = Instant::now() + Duration::from_secs(5);
+            }
+            let selectors_exited = self
+                .selectors
+                .iter_mut()
+                .try_fold(true, |all, child| {
+                    child.try_wait().map(|status| all && status.is_some())
+                })
+                .map_err(|error| format!("observe fixture selector exit: {error}"))?;
+            // Liveness is observation only. A recycled PID can delay cleanup, never select
+            // another process for termination; uncertain cleanup preserves the installation.
+            let authority_exited =
+                authority_pid.is_none_or(|pid| !nodex_platform::process::process_is_alive(pid));
+            let runtime_removed = ["core.json", "core.auth", "core.sock"]
+                .iter()
+                .all(|entry| !runtime.join(entry).exists());
+            if selectors_exited && authority_exited && runtime_removed {
+                return Ok(());
+            }
+            if Instant::now() >= deadline {
+                return Err("fixture authority or selector did not finish draining".to_owned());
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+}
+
+impl Drop for CoreInstallationGuard {
+    fn drop(&mut self) {
+        if let Err(error) = self.cleanup()
+            && let Some(directory) = self.directory.take()
+        {
+            eprintln!(
+                "Preserved Core installation {}: {error}",
+                directory.path().display()
+            );
+            // Never delete a Profile or installation while exit remains unproven.
+            std::mem::forget(directory);
+        }
+    }
+}
+
+#[test]
+fn installation_fixture_panic_drains_authority_and_reaps_selectors_before_removal() {
+    let directory = tempdir().expect("disposable panic installation");
+    let installation_root = directory.path().to_path_buf();
+    let container = installation_root
+        .parent()
+        .expect("fixture container")
+        .to_path_buf();
+    let home = installation_root.join("profile");
+    nodex_platform::private_fs::create_dir(&home).expect("Profile home");
+    let bin = installation_root.join("bin");
+    nodex_platform::private_fs::create_dir(&bin).expect("fixture binary directory");
+    let executable = bin.join(nodex_platform::process::executable_name("nodex-core"));
+    nodex_platform::private_fs::copy(env!("CARGO_BIN_EXE_nodex-core"), &executable)
+        .expect("copy fixture Core");
+    nodex_platform::private_fs::set_mode(&executable, 0o755).expect("fixture Core is executable");
+
+    let mut owned_processes = None;
+    let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let mut installation = CoreInstallationGuard {
+            directory: Some(directory),
+            home: home.clone(),
+            selectors: Vec::new(),
+        };
+        let selector = installation.own(
+            Command::new(&executable)
+                .args(["--home", home.to_str().expect("UTF-8 home")])
+                .env("NODEX_CORE_IDLE_TIMEOUT_MS", "0")
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .expect("start fixture Core"),
+        );
+        let selected = read_selection_result(&mut installation.selectors[selector]);
+        assert_eq!(selected.disposition, CoreSelectionDisposition::Started);
+        owned_processes = Some((
+            installation.selectors[selector].id(),
+            selected.descriptor.pid,
+        ));
+        assert!(home.join("run/core/core.json").exists());
+        assert!(home.join("run/core/core.auth").exists());
+        panic!("simulate an assertion after fixture Core readiness");
+    }))
+    .expect_err("fixture assertion must unwind through its owner");
+    assert_eq!(
+        panic.downcast_ref::<&str>().copied(),
+        Some("simulate an assertion after fixture Core readiness")
+    );
+    let (selector_pid, authority_pid) =
+        owned_processes.expect("Started fixture process identities");
+    assert!(!nodex_platform::process::process_is_alive(authority_pid));
+    assert!(!nodex_platform::process::process_is_alive(selector_pid));
+    for entry in ["core.json", "core.auth", "core.sock"] {
+        assert!(!home.join("run/core").join(entry).exists());
+    }
+    assert!(!installation_root.exists());
+    assert!(!container.exists());
+}
+
 #[test]
 fn compatibility_policy_reuses_while_electron_artifact_policy_replaces_without_a_second_writer() {
     let directory = tempdir().expect("disposable update installation");
-    let home = directory.path().join("profile");
+    let installation_root = directory.path().to_path_buf();
+    let home = installation_root.join("profile");
     nodex_platform::private_fs::create_dir(&home).expect("Profile home");
-    let old_bundle = directory.path().join("Old Nodex.app");
+    let mut installation = CoreInstallationGuard {
+        directory: Some(directory),
+        home: home.clone(),
+        selectors: Vec::new(),
+    };
+    let old_bundle = installation_root.join("Old Nodex.app");
     let old_bin = old_bundle.join("Contents/Resources/bin");
     nodex_platform::private_fs::create_dir_all(&old_bin).expect("old app runtime directory");
     let old_executable = old_bin.join(nodex_platform::process::executable_name("nodex-core"));
@@ -1379,14 +1523,16 @@ fn compatibility_policy_reuses_while_electron_artifact_policy_replaces_without_a
     nodex_platform::private_fs::set_mode(&old_executable, 0o755)
         .expect("old packaged Core is executable");
 
-    let mut incumbent = Command::new(&old_executable)
-        .args(["--home", home.to_str().expect("UTF-8 home")])
-        .env("NODEX_CORE_IDLE_TIMEOUT_MS", "0")
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("start Core from old app bundle");
-    let incumbent_descriptor = read_ready_descriptor(&mut incumbent);
+    let incumbent = installation.own(
+        Command::new(&old_executable)
+            .args(["--home", home.to_str().expect("UTF-8 home")])
+            .env("NODEX_CORE_IDLE_TIMEOUT_MS", "0")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("start Core from old app bundle"),
+    );
+    let incumbent_descriptor = read_ready_descriptor(&mut installation.selectors[incumbent]);
 
     if cfg!(windows) {
         // Windows refuses to move a directory while a running image inside it is open, but
@@ -1398,24 +1544,26 @@ fn compatibility_policy_reuses_while_electron_artifact_policy_replaces_without_a
     }
     assert!(!old_executable.exists());
 
-    let mut compatible_new_app = Command::new(env!("CARGO_BIN_EXE_nodex-core"))
-        .args(["--home", home.to_str().expect("UTF-8 home")])
-        .env("NODEX_CORE_IDLE_TIMEOUT_MS", "0")
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("start compatible Core from new app bundle");
-    let reused = read_ready_descriptor(&mut compatible_new_app);
+    let compatible_new_app = installation.own(
+        Command::new(env!("CARGO_BIN_EXE_nodex-core"))
+            .args(["--home", home.to_str().expect("UTF-8 home")])
+            .env("NODEX_CORE_IDLE_TIMEOUT_MS", "0")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("start compatible Core from new app bundle"),
+    );
+    let reused = read_ready_descriptor(&mut installation.selectors[compatible_new_app]);
     assert_eq!(reused.pid, incumbent_descriptor.pid);
     assert_eq!(reused.start_nonce, incumbent_descriptor.start_nonce);
     assert!(
-        compatible_new_app
+        installation.selectors[compatible_new_app]
             .wait()
             .expect("wait for compatible new app launcher")
             .success()
     );
 
-    let new_bundle = directory.path().join("New Nodex.app");
+    let new_bundle = installation_root.join("New Nodex.app");
     let new_bin = new_bundle.join("Contents/Resources/bin");
     nodex_platform::private_fs::create_dir_all(&new_bin).expect("new app runtime directory");
     let new_executable = new_bin.join(nodex_platform::process::executable_name("nodex-core"));
@@ -1429,21 +1577,23 @@ fn compatibility_policy_reuses_while_electron_artifact_policy_replaces_without_a
         .expect("different artifact digest");
     nodex_platform::private_fs::set_mode(&new_executable, 0o755)
         .expect("new packaged Core is executable");
-    let mut current_app = Command::new(&new_executable)
-        .args([
-            "--home",
-            home.to_str().expect("UTF-8 home"),
-            "--selection-policy",
-            "prefer-current-artifact",
-            "--launcher",
-            "electron-host",
-        ])
-        .env("NODEX_CORE_IDLE_TIMEOUT_MS", "0")
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("start current Electron Core selector");
-    let selected = read_selection_result(&mut current_app);
+    let current_app = installation.own(
+        Command::new(&new_executable)
+            .args([
+                "--home",
+                home.to_str().expect("UTF-8 home"),
+                "--selection-policy",
+                "prefer-current-artifact",
+                "--launcher",
+                "electron-host",
+            ])
+            .env("NODEX_CORE_IDLE_TIMEOUT_MS", "0")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("start current Electron Core selector"),
+    );
+    let selected = read_selection_result(&mut installation.selectors[current_app]);
     assert_eq!(selected.disposition, CoreSelectionDisposition::Started);
     assert_eq!(selected.reason, CoreSelectionReason::ReplacedArtifact);
     let current_descriptor = selected.descriptor;
@@ -1453,7 +1603,16 @@ fn compatibility_policy_reuses_while_electron_artifact_policy_replaces_without_a
         current_descriptor.store_epoch,
         incumbent_descriptor.store_epoch
     );
-    assert!(incumbent.wait().expect("wait for old Core drain").success());
+    assert!(
+        installation.selectors[incumbent]
+            .wait()
+            .expect("wait for old Core drain")
+            .success()
+    );
+    if cfg!(windows) {
+        fs::remove_dir_all(&old_bundle).expect("retire the drained Windows installation");
+        assert!(!old_executable.exists());
+    }
 
     let runtime = home.join("run/core");
     let auth = fs::read_to_string(runtime.join("core.auth"))
@@ -1462,7 +1621,7 @@ fn compatibility_policy_reuses_while_electron_artifact_policy_replaces_without_a
         .to_owned();
     drain_idle_core(&current_descriptor, &auth);
     assert!(
-        current_app
+        installation.selectors[current_app]
             .wait()
             .expect("wait for current Core drain")
             .success()
