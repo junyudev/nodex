@@ -1,0 +1,31 @@
+docs/release-windows.md
+  s_91195c277e2f02::t_bc112a981d1f24 97-98
+scripts/windows-pe.test.ts
+  s_6c9891f66c664a::t_603e2e515d5e3b 187-202
+scripts/windows-system-dlls.mjs
+  s_91195c277e2f02::t_90526499353160 69
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "068b022ffa8cea0a970d138f673a6e02acb03106",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_91195c277e2f02": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19b4e-62d5-7072-8755-d7f8003f2266",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
