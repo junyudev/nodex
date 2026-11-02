@@ -104,7 +104,8 @@ registration. It installs with `/S /currentuser`, verifies the installed payload
 launches with a fresh isolated Profile, and requires the exact host's ready claim
 plus a matching, authenticated named-pipe Core generation. A missing descriptor,
 Unix-only Core transport, stale digest, or startup exit fails with diagnostic
-logs. It quits Electron normally, proves detached Core still answers authenticated
+logs. It requests normal Electron quit, waits up to 15 seconds for the exact Main
+PID to exit, and proves detached Core still answers authenticated
 health requests, installs over that running generation within three minutes, and
 relaunches the installed app. It quits again and silently uninstalls with Core
 still running, with a 30-second budget. Core's idle window is ten minutes so the
@@ -115,6 +116,8 @@ for the entire NSIS process tree through PowerShell `Start-Process -Wait`, inclu
 the relocated TEMP uninstaller; directory removal alone is not uninstall completion.
 The separate TCP-listener audit allows 30 seconds for the networking CIM provider's
 first-use import on a clean host; this does not extend the uninstall budget.
+Playwright's wrapper/stream cleanup settles after maintenance stops Core; it is
+not the Desktop-exit signal and must not stop Core before the uninstall check.
 The probe retains its disposable Profile locally for diagnosis; CI uploads only
 the fresh probe's logs and result. It never uses credentials or a real Profile.
 

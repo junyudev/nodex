@@ -35,14 +35,17 @@ const delay = (ms: number) => new Promise<void>((resolveDelay) => setTimeout(res
 const failureDetails = (error: unknown): string =>
   error instanceof Error ? (error.stack ?? error.message) : String(error);
 const protocolKey = "HKCU\\Software\\Classes\\nodex";
-const assertProcessStopped = (pid: number): void => {
+const isProcessRunning = (pid: number): boolean => {
   try {
     process.kill(pid, 0);
+    return true;
   } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ESRCH") return;
+    if (error instanceof Error && "code" in error && error.code === "ESRCH") return false;
     throw error;
   }
-  throw new Error(`Maintenance left process ${pid} running`);
+};
+const assertProcessStopped = (pid: number): void => {
+  if (isProcessRunning(pid)) throw new Error(`Maintenance left process ${pid} running`);
 };
 
 const installationListenerAddresses = (installation: string): string[] => {
@@ -133,6 +136,8 @@ async function main(): Promise<void> {
   let installed = false;
   let child: ChildProcess | undefined;
   let application: ElectronApplication | undefined;
+  let desktopPid: number | undefined;
+  const desktopCloses: Promise<void>[] = [];
   let upgradeEvidence: unknown;
   let detachedCoreBeforeUninstall: number | undefined;
   let output = "";
@@ -140,7 +145,12 @@ async function main(): Promise<void> {
   let uninstallEvidence: unknown;
   const cleanup = async (): Promise<void> => {
     let uninstallCompleted = false;
-    if (child?.pid && child.exitCode === null && child.signalCode === null) {
+    if (
+      child?.pid &&
+      child.exitCode === null &&
+      child.signalCode === null &&
+      (desktopPid === undefined || isProcessRunning(desktopPid))
+    ) {
       try {
         // Native handles verify settlement even when a descendant exits during termination.
         await Promise.all([
@@ -220,6 +230,22 @@ exit $uninstaller.ExitCode
         failures.push(error);
       }
     }
+    let closeTimeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        Promise.all(desktopCloses),
+        new Promise<never>((_, reject) => {
+          closeTimeout = setTimeout(
+            () => reject(new Error("Playwright cleanup did not settle after Core maintenance")),
+            5_000,
+          );
+        }),
+      ]);
+    } catch (error) {
+      failures.push(error);
+    } finally {
+      clearTimeout(closeTimeout);
+    }
     try {
       lease.release();
     } catch (error) {
@@ -287,6 +313,7 @@ exit $uninstaller.ExitCode
       child = application.process();
       // Playwright wraps Electron in cmd.exe on Windows; claims identify Main.
       const hostPid = await application.evaluate(() => process.pid);
+      desktopPid = hostPid;
       child.stdout?.on("data", (chunk: Buffer) => {
         output = `${output}${chunk.toString()}`.slice(-64_000);
       });
@@ -356,9 +383,18 @@ exit $uninstaller.ExitCode
       }
     };
     const quitWithDetachedCore = async (): Promise<number> => {
-      if (!application) throw new Error("Installed desktop is missing");
-      // Playwright calls Electron app.quit(), exercising ordinary desktop shutdown.
-      await application.close();
+      if (!application || desktopPid === undefined) throw new Error("Installed desktop is missing");
+      // Playwright requests app.quit() and detaches its debugger, but waits for
+      // cmd.exe's stream closure too. Observe Main exit before detached Core stops.
+      const close = application.close();
+      desktopCloses.push(close);
+      void close.catch(() => undefined);
+      const quitDeadline = Date.now() + 15_000;
+      while (isProcessRunning(desktopPid)) {
+        if (Date.now() >= quitDeadline)
+          throw new Error(`Desktop process ${desktopPid} did not quit within 15s`);
+        await delay(50);
+      }
       const client = await CoreClient.connect({
         nodexHome: profile,
         clientKind: "native_cli",
