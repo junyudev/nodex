@@ -1,0 +1,19 @@
+scripts/ci/probe-windows-installer.ts
+  s_58e03f312c8a71::t_eb01d4ada7fe32 1,8,96,98,101
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8dbe3020d16c54222975a0560f0e12842e4b6ec1",
+  "prompts": {},
+  "sessions": {
+    "s_58e03f312c8a71": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19a08-50d5-7072-b205-494488654333",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
