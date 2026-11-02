@@ -1,0 +1,19 @@
+scripts/dependency-glob-runtime.test.ts
+  s_6c9891f66c664a::t_b26e5734b73bc7 54-56,60,65-68
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5f5d9d17cfe876247c8a7e120fe6a993b17b52a6",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
