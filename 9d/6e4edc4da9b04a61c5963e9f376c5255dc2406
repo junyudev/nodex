@@ -1,0 +1,19 @@
+src/main/codex/codex-git-command.ts
+  s_58e03f312c8a71::t_e8da5d5b052578 2,73,86-94,96-102,142,152-153,175-177
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9d6e4edc4da9b04a61c5963e9f376c5255dc2406",
+  "prompts": {},
+  "sessions": {
+    "s_58e03f312c8a71": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19a08-50d5-7072-b205-494488654333",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
