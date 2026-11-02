@@ -1,0 +1,53 @@
+docs/SECURITY.md
+  s_3022e59a160914::t_d0e858a6915dba 644-650
+docs/product-specs/desktop-startup-behavior.md
+  s_3022e59a160914::t_3087ad471f1a7c 79-85
+src/main/app/ApplicationStateLive.ts
+  s_3022e59a160914::t_299b09b0f5464a 21,78
+src/main/app/MainApplicationLive.ts
+  s_3022e59a160914::t_ee18f5c93452c3 67-68,421,437-442
+src/main/app/MainFatalIncident.test.ts
+  s_3022e59a160914::t_541a3eea3e5ab8 4,143-165
+src/main/app/MainFatalIncident.ts
+  s_3022e59a160914::t_659f7fa3fc9176 3,34-37,90-100
+src/main/app/MainObservability.ts
+  s_3022e59a160914::t_cd78735d8be40f 1,27,73,75,101,109-115
+src/main/core-client/core-launcher.ts
+  s_3022e59a160914::t_800d448d265a7f 21-45,435-441,581-585
+src/main/ipc/handlers/ApplicationBootstrapIpc.test.ts
+  s_3022e59a160914::t_29ef3d9ee0c42f 9,60-62,74,124-126
+src/main/ipc/handlers/ApplicationBootstrapIpc.ts
+  s_3022e59a160914::t_9ca6c89936764f 16,65,72,95-99
+src/main/platform/node/MainFatalIncidentStore.node.test.ts
+  s_3022e59a160914::t_8ee2ff74dbe886 11,130-179
+src/main/platform/node/MainFatalIncidentStore.ts
+  s_3022e59a160914::t_5753cba32dbf7d 51-76,81,90-93,99,113-129,166-178
+src/preload/index.ts
+  s_3022e59a160914::t_061f93217a1072 205
+src/renderer/env.d.ts
+  s_3022e59a160914::t_95edde09f13bcc 56-58
+src/shared/app-startup.ts
+  s_3022e59a160914::t_6630962bb43669 32-37
+src/shared/ipc-api.ts
+  s_3022e59a160914::t_d890e564b24c4b 753-756
+src/shared/ipc-endpoint-policy.ts
+  s_3022e59a160914::t_1fa74162dc7c56 138
+tests/e2e/electron-startup-failure.spec.ts
+  s_3022e59a160914::t_810ac074a4a69f 1-62
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1e966c4dbe0cbcf553cead9f92084643ba5fb4b9",
+  "prompts": {},
+  "sessions": {
+    "s_3022e59a160914": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1def126e-fd62-476f-9393-67b0835f01b6",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
