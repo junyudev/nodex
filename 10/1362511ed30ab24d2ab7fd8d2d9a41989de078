@@ -1,0 +1,29 @@
+config/electron-development-network.test.ts
+  s_3022e59a160914::t_9418bce627d30f 1-53
+docs/development.md
+  s_3022e59a160914::t_761b33dfdc4479 138-146
+electron.vite.config.ts
+  s_3022e59a160914::t_cdb4d7ae064a0f 163
+patches/@voidzero-dev__vite-plus-core@1.4.0.patch
+  s_3022e59a160914::t_56ff0f30827b93 1-15
+pnpm-lock.yaml
+  s_3022e59a160914::t_cadbeddef62e8b 233,433,520,523,580,676,712,718,1425,1441,1456,9931,9936,9941,10332,11835,11842,12297,12302,12893,12896,12898,12901,12903-12904,12907,12914,12918-12919,12926,12929,12936,12944,12951,12974,12982,13373-13374,14145,14153,16782,16786,16788,16790,16794,17648-17650,17658-17659,17661,17706,17708,17710,17713,17724,17729-17730
+pnpm-workspace.yaml
+  s_3022e59a160914::t_a987738c5434e2 16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "101362511ed30ab24d2ab7fd8d2d9a41989de078",
+  "prompts": {},
+  "sessions": {
+    "s_3022e59a160914": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1def126e-fd62-476f-9393-67b0835f01b6",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
