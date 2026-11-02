@@ -202,6 +202,7 @@ contextBridge.exposeInMainWorld("api", {
       ipcRenderer.removeListener(event, listener);
     };
   },
+  getStartupFailureEvidence: () => ipcRenderer.invoke("app:startup-failure-evidence"),
   awaitInitialization: () => ipcRenderer.invoke("app:await-initialization"),
   restartApplication: () => ipcRenderer.invoke(APP_RESTART_CHANNEL),
   getCoreAuthorityStatus: () =>

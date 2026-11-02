@@ -1,3 +1,4 @@
+import type { AppStartupFailureEvidence } from "../../shared/app-startup";
 import * as DateTime from "effect/DateTime";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -23,6 +24,7 @@ export class MainObservability extends Context.Service<
     readonly captureDefect: (cause: unknown, operation: string) => Effect.Effect<void>;
     readonly reportExit: (exit: MainExit) => Effect.Effect<MainFailurePresentation | null>;
     readonly runId: string;
+    readonly startupFailureEvidence: Effect.Effect<AppStartupFailureEvidence | null>;
   }
 >()("nodex/main/app/MainObservability") {}
 
@@ -68,7 +70,9 @@ export const layer: Layer.Layer<
             Promise.all([shutdownBackendLogger(), shutdownMainSentry()]),
           ).pipe(Effect.asVoid, Effect.orDie),
         );
+        let startupFailureEvidence: AppStartupFailureEvidence | null = null;
         return MainObservability.of({
+          startupFailureEvidence: Effect.sync(() => startupFailureEvidence),
           backend,
           runId,
           captureDefect: Effect.fn("MainObservability.captureDefect")(
@@ -94,7 +98,7 @@ export const layer: Layer.Layer<
             // Backend logs also feed Sentry breadcrumbs, including with file logging off.
             backend.error("Main application failed", { incident });
             const storedPath = yield* incidents.write(incident).pipe(
-              Effect.timeout("2 seconds"),
+              Effect.timeout("5 seconds"),
               Effect.catch(() =>
                 Effect.sync(() => {
                   backend.warn("Could not save fatal incident", { incidentId: incident.id });
@@ -102,6 +106,13 @@ export const layer: Layer.Layer<
                 }),
               ),
             );
+            if (exit.phase === "startup")
+              startupFailureEvidence = { incidentId: incident.id, recordPath: storedPath };
+            if (storedPath)
+              backend.error("Failure diagnostic saved", {
+                incidentId: incident.id,
+                recordPath: storedPath,
+              });
             // Capture typed fatal exits as well as defects. Submit the same content-free
             // evidence kept locally rather than arbitrary nested exception payloads.
             captureMainException(new Error(incident.summary), {

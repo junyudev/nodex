@@ -51,9 +51,10 @@ metadata digests are pinned separately for both Windows CPUs. Node's executable
 hash/size and license hash are pinned in `node-runtime.lock.json`. node-pty's
 matching N-API prebuild is copied to a private output and loaded by staged Node;
 the root dependency remains Electron's own rebuild. The after-pack hook compares
-the copied standalone dependency byte-for-byte and scans the complete unpacked
-payload's PE Machine fields. A package containing a foreign CPU executable, DLL
-or addon fails before an installer is emitted.
+the copied standalone dependency byte-for-byte and scans every PE image in the complete unpacked payload, including renamed images,
+for CPU identity and ordinary/delay-load dependency closure. A foreign CPU or
+unresolved dependency fails before an installer is emitted. The installed-app
+probe repeats the same static inspection.
 
 Manual architecture checks are available independently:
 
@@ -68,6 +69,70 @@ NSIS's bootstrap is an installer launcher; its own machine type is distinct from
 the verified installed payload CPU. The installed probe also recognizes only
 the exact NSIS maintenance uninstaller as a bootstrap; an application binary
 with a different CPU still fails, regardless of its extension.
+
+## Clean-machine dependency policy
+
+Nodex-built MSVC targets use static CRT through the repository Cargo configuration;
+Core and CLI staging additionally require OS-only imports. Do not fix a first-party
+CRT dependency by copying a runtime beside it. This policy also applies to future
+Nodex-built Windows executables and addons.
+
+`scripts/windows-pe.mjs` reads PE32/PE32+ headers, file-backed section RVAs, import
+and delay-import descriptors. Every DLL must be an inbox Windows 11 component in
+`scripts/windows-system-dlls.mjs`, an `api-ms-win-*`/`ext-ms-*` API set, or a regular,
+matching-CPU file in the importing image's own directory. Every app-local dependency
+is itself inspected. Neither PATH, the build host's System32, nor a DLL in a sibling
+directory satisfies an import. Unknown DLLs fail with the consumer, DLL name and
+table kind. Malformed tables fail closed.
+
+The allowlist is a reviewed list of Windows OS facilities: base process/security,
+COM, shell/UI, network, graphics/audio, and tracing APIs. `ucrtbase.dll` and the
+UCRT API sets ship with Windows; `vcruntime*`, `msvcp*`, debug CRT, provider DLLs,
+and toolchain DLLs do not. Add a name only after checking Microsoft's Windows API
+requirements for the supported Windows edition; a successful load on a build
+runner is insufficient. The only non-DLL host binding is node-gyp's `node.exe`
+delay import in `.node` addons: its delay-load hook binds the already-loaded
+Node/Electron process. Callers must supply and verify the matching-CPU host;
+this does not excuse ordinary imports or DLL dependencies.
+
+For third-party binaries, `scripts/windows-vc-runtime.mjs` locates Visual Studio
+with `vswhere`, selects the newest retail `VC/Redist/MSVC/<version>/<arch>/Microsoft.VC*.CRT`,
+and copies only missing reviewed VC runtime imports beside their consumers,
+including transitive runtime dependencies. It never copies from System32 or PATH,
+rewrites vendor images, installs a machine-wide prerequisite, or includes debug
+runtimes. Architecture is checked before copying. Codex staging supplements its
+locked upstream inventory after computing the canonical metadata, so upstream
+hashes remain unchanged; supplemental files are regenerated on restaging. The
+after-pack hook also closes Electron's third-party payload before the final scan.
+Microsoft's license notice is included in `THIRD_PARTY_NOTICES.txt`. App-local
+runtime security updates are delivered through new Nodex builds.
+
+This follows Microsoft's [app-local deployment guidance](https://learn.microsoft.com/en-us/cpp/windows/choosing-a-deployment-method)
+and [redistributable locations and terms](https://learn.microsoft.com/en-us/cpp/windows/redistributing-visual-cpp-files).
+PE layout follows the [Microsoft PE specification](https://learn.microsoft.com/en-us/windows/win32/debug/pe-format);
+static CRT selection follows the [Rust linkage reference](https://doc.rust-lang.org/reference/linkage.html#static-and-dynamic-c-runtimes).
+
+Hosted runners already have VC++ runtimes installed. Executing the app there
+cannot prove clean-machine DLL availability: the static dependency policy is the
+deterministic gate, supplemented by the native startup probe and clean VM checks.
+
+### Startup failure evidence
+
+Desktop records startup failure when initialization fails, before waiting for a
+restart or quit. Normal incidents remain private under `diagnostics/fatal`. If
+Windows cannot execute Core's native private-filesystem helper, Desktop instead
+atomically publishes a closed, non-secret record under `diagnostics/startup`,
+using inherited Windows permissions. It contains incident ID/time, a categorical
+reason, fixed executable name, numeric exit status/hex Windows status, and a
+bounded spawn error code where available. It contains no executable path, stderr,
+environment, credentials, stack, or content. At most eight records of at most
+16 KiB are retained; symlinked directories are rejected. Private incident bytes
+are never written with weaker permissions, and macOS private publication remains
+unchanged.
+
+The diagnostic path is logged as `recordPath` and is available before Core is ready
+through the trusted bootstrap query `app:startup-failure-evidence` (preload
+`getStartupFailureEvidence`). The failure window's appearance and actions are unchanged.
 
 ## Native CI evidence
 

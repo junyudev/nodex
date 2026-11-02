@@ -15,18 +15,13 @@ import { afterEach, expect, test } from "vite-plus/test";
 import { stageCodexRuntime, stageCodexRuntimeCandidate } from "./stage-codex-runtime";
 import { createAgentRuntimeRelockCandidate } from "./relock-agent-runtime";
 
+import { windowsPeFixture } from "./testing/windows-pe-fixture";
+
 const roots: string[] = [];
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { force: true, recursive: true });
 });
-function nativeImage(arch: "x64" | "arm64"): Buffer {
-  const buffer = Buffer.alloc(256);
-  buffer.writeUInt16LE(0x5a4d);
-  buffer.writeUInt32LE(128, 0x3c);
-  buffer.writeUInt32LE(0x4550, 128);
-  buffer.writeUInt16LE(arch === "x64" ? 0x8664 : 0xaa64, 132);
-  return buffer;
-}
+const nativeImage = (arch: "x64" | "arm64") => windowsPeFixture(arch === "x64" ? 0x8664 : 0xaa64);
 function fixture(arch: "x64" | "arm64") {
   const root = mkdtempSync(join(tmpdir(), "nodex-windows-stage-"));
   roots.push(root);

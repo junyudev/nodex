@@ -44,6 +44,7 @@ import { replaceOwnedDirectory } from "./replace-owned-directory";
 import { stageBrowserRuntime } from "./stage-browser-runtime";
 import { BROWSER_RUNTIME_BUNDLE_DIRECTORY } from "../src/shared/browser-runtime-metadata";
 import { desktopBuildTarget, type DesktopArchitecture } from "./desktop-build-target";
+import { stageWindowsVcRuntime } from "./windows-vc-runtime.mjs";
 import { verifyWindowsArchitectureClosure } from "./windows-pe.mjs";
 import type { BrowserRuntimePlatformArtifactVerifier } from "../src/main/codex/browser-runtime-bundle";
 import { projectBundledAppServerRuntimeIdentity } from "../src/shared/browser-app-server-compatibility";
@@ -753,6 +754,10 @@ async function stageCodexRuntimeClosure(
         `Staged agent runtime entrypoint does not match the release lock for ${target.targetKey}: ${entrypoint.sha256}`,
       );
     }
+    // The canonical inventory binds the upstream release; Windows CRT supplements
+    // are regenerated from the build toolchain after that immutable inventory.
+    if (target.targetPlatform === "win32")
+      stageWindowsVcRuntime(tempRuntimeRoot, target.targetArch);
     verifyPlatformRuntime(
       target,
       tempRuntimeRoot,

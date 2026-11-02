@@ -48,10 +48,37 @@ const requirePrivateDirectory = async (directory: string): Promise<void> => {
   }
 };
 
+class PrivateIncidentPermissionsError extends Error {}
+
+/** This fallback is public-safe even when Windows cannot establish a private DACL.
+ * Reconstruct a closed record; never downgrade the full incident's permissions.
+ */
+const startupFailureRecord = (incident: MainFatalIncident) => {
+  const core = incident.causes.find((cause) => cause.executable === "nodex-core.exe");
+  const exitCode = core?.exitCode;
+  return {
+    version: 1,
+    id: incident.id,
+    occurredAt: incident.occurredAt,
+    reason: core ? "core-startup-failed" : "desktop-startup-failed",
+    ...(core ? { executable: "nodex-core.exe" } : {}),
+    ...(typeof exitCode === "number" && Number.isInteger(exitCode)
+      ? {
+          exitCode,
+          windowsStatus: `0x${(exitCode >>> 0).toString(16).padStart(8, "0").toUpperCase()}`,
+        }
+      : {}),
+    ...(core?.spawnCode && /^E[A-Z0-9_]{1,30}$/u.test(core.spawnCode)
+      ? { spawnCode: core.spawnCode }
+      : {}),
+  };
+};
+
 const writeIncident = async (
   nodexHome: string,
   coreExecutable: string,
   incident: MainFatalIncident,
+  publication: "private" | "startup" = "private",
 ): Promise<string> => {
   if (!path.isAbsolute(nodexHome) || !UUID.test(incident.id)) {
     throw new Error("Invalid fatal incident identity");
@@ -60,13 +87,16 @@ const writeIncident = async (
   if (timestamp.length !== 17 || !Number.isFinite(Date.parse(incident.occurredAt))) {
     throw new Error("Invalid fatal incident time");
   }
-  const bytes = Buffer.from(`${JSON.stringify(incident)}\n`, "utf8");
+  const bytes = Buffer.from(
+    `${JSON.stringify(publication === "startup" ? startupFailureRecord(incident) : incident)}\n`,
+    "utf8",
+  );
   if (bytes.byteLength > MAX_FATAL_INCIDENT_BYTES) throw new Error("Fatal incident exceeds budget");
 
   await requirePrivateDirectory(nodexHome);
   const diagnostics = path.join(nodexHome, "diagnostics");
   await requirePrivateDirectory(diagnostics);
-  const directory = path.join(diagnostics, "fatal");
+  const directory = path.join(diagnostics, publication === "startup" ? "startup" : "fatal");
   await requirePrivateDirectory(directory);
   // The Profile's single Main process publishes one final exit. Recover unpublished
   // files left by a previous process so interrupted publication cannot grow retention.
@@ -80,16 +110,23 @@ const writeIncident = async (
   );
   try {
     // Secure the empty file and its parents in one native call, before writing private bytes.
-    if (process.platform === "win32")
-      await makePrivatePaths(
-        [
-          { path: nodexHome, directory: true },
-          { path: diagnostics, directory: true },
-          { path: directory, directory: true },
-          { path: temporary, directory: false },
-        ],
-        coreExecutable,
-      );
+    if (process.platform === "win32" && publication === "private") {
+      try {
+        await makePrivatePaths(
+          [
+            { path: nodexHome, directory: true },
+            { path: diagnostics, directory: true },
+            { path: directory, directory: true },
+            { path: temporary, directory: false },
+          ],
+          coreExecutable,
+        );
+      } catch (cause) {
+        throw new PrivateIncidentPermissionsError("Native private filesystem is unavailable", {
+          cause,
+        });
+      }
+    }
     for (const name of (await readdir(directory)).filter(
       (name) => TEMPORARY_NAME.test(name) && name !== path.basename(temporary),
     )) {
@@ -126,7 +163,19 @@ export const layerForHome = (
     MainFatalIncidentStore.of({
       write: (incident) =>
         Effect.tryPromise({
-          try: () => writeIncident(nodexHome, coreExecutable, incident),
+          try: async () => {
+            try {
+              return await writeIncident(nodexHome, coreExecutable, incident);
+            } catch (error) {
+              if (
+                process.platform !== "win32" ||
+                incident.phase !== "startup" ||
+                !(error instanceof PrivateIncidentPermissionsError)
+              )
+                throw error;
+              return writeIncident(nodexHome, coreExecutable, incident, "startup");
+            }
+          },
           catch: (cause) => new MainFatalIncidentStoreError({ cause }),
         }),
     }),

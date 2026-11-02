@@ -135,6 +135,7 @@ type QueryEndpointPolicy =
   | "agent-import:scan-picked-home"
   | "native-sessions:list"
   | "native-sessions:preview-import"
+  | "app:startup-failure-evidence"
   | "app:await-initialization"
   | "app:get-core-authority-status"
   | "app:runtime-capabilities:get"

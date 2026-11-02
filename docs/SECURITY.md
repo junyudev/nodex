@@ -641,6 +641,13 @@ has.
   prompts, attachments, request bodies and credentials. Fatal log breadcrumbs retain only
   the bounded projection and incident identity. Remote fatal reporting submits the same projection only
   when diagnostics are enabled. Unsafe storage disables only incident publication.
+  On Windows startup only, an unavailable native permissions helper permits a
+  separate `diagnostics/startup` record with inherited permissions. Its closed
+  projection contains only ID/time, categorical reason, a fixed component executable
+  name and numeric/allowlisted loader codes; no full incident, paths, messages,
+  frames, environment or content may enter this fallback. Real-directory checks,
+  atomic publication and bounded retention still apply. Private publication on
+  other platforms and all secret-bearing files remain fail-closed.
 - Optional background registration uses a signed nested application and its bundled `SMAppService` LaunchAgent; it never installs a root helper or writes a launchd plist outside the signed bundle. The selected absolute Profile path is the only persisted input, stored as a private regular file below the current user's Application Support directory. The controller rejects symlinked configuration and executable entries, bounds configuration and control output, and executes the fixed sibling Core without a shell.
 - Every native-Core HTTP request is authenticated by a fresh per-start
   capability and verified local peer identity. Handshake registers the

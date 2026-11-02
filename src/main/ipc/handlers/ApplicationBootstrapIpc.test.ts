@@ -6,6 +6,7 @@ import { assert, it } from "@effect/vitest";
 import type { IpcMainEvent } from "electron";
 import { vi } from "vite-plus/test";
 import type { RendererInitializationReport } from "../../../shared/app-startup";
+import { MainObservability } from "../../app/MainObservability";
 import { testLayer as mainConfigLayer } from "../../app/MainConfig";
 import { layer as mainShutdownLayer } from "../../app/MainShutdown";
 import { ApplicationInitializationRuntime } from "../../host-runtime/ApplicationInitializationRuntime";
@@ -56,6 +57,9 @@ it.effect("owns only the trusted bootstrap handlers before Core is ready", () =>
             Layer.succeed(ElectronIpc, ipc),
             mainShutdownLayer,
             mainConfigLayer(),
+            Layer.succeed(MainObservability, {
+              startupFailureEvidence: Effect.succeed(null),
+            } as MainObservability["Service"]),
             Layer.succeed(WindowRuntime, windows),
           ),
         ),
@@ -67,6 +71,7 @@ it.effect("owns only the trusted bootstrap handlers before Core is ready", () =>
       "app:flush-before-close:done",
       "app:renderer-initialization-finished",
       "app:restart",
+      "app:startup-failure-evidence",
       "window-sessions:bootstrap",
       "window-sessions:save-layout",
       "window-sessions:update-bounds",
@@ -116,6 +121,9 @@ it.effect(
               Layer.succeed(ElectronIpc, ipc),
               mainShutdownLayer,
               mainConfigLayer(),
+              Layer.succeed(MainObservability, {
+                startupFailureEvidence: Effect.succeed(null),
+              } as MainObservability["Service"]),
               Layer.succeed(WindowRuntime, windows),
             ),
           ),

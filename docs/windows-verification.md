@@ -19,14 +19,19 @@ Node; Main and integration use Electron's ABI. It is described in [CI](CI.md); p
 Main's private files use the bundled Core's one-shot native filesystem command.
 Content backups and online execution clones use the native platform filesystem
 boundary, including private destination files and reparse-point rejection. The suites verify the actual owner and protected permissions,
-without depending on a PowerShell runtime. The typed suite owners prepare that Core
+without depending on a PowerShell runtime. Desktop's bounded non-secret startup
+fallback remains writable when that executable cannot load; normal private data
+still requires the native permission boundary. The typed suite owners prepare that Core
 executable before either host Node or Electron starts the tests.
 
 ## What each layer cannot prove
 
 - **Hosted runners** run as an administrator with UAC disabled and Defender real-time
   protection off, have no GPU, and the x64 image is a Server edition. Permission,
-  antivirus, and client-shell behavior must be checked interactively.
+  antivirus, and client-shell behavior must be checked interactively. They also have
+  the VC++ Redistributable installed globally. Clean-machine DLL availability is
+  therefore checked statically, including delay imports and transitive app-local
+  dependencies, by the [runtime closure policy](release-windows.md#clean-machine-dependency-policy).
 - **An arm64 virtual machine** runs x64 builds through emulation. It cannot reveal an
   arm64 executable accidentally packaged into an x64 build, and its timing is not
   representative. The x64 package is therefore always proven on a native x64 runner.
@@ -47,6 +52,7 @@ Use Windows 11 Pro or Enterprise for arm64 in a hypervisor with snapshot support
   virtual display.
 - Use a PC keyboard layout in the guest; host modifier remapping makes shortcut
   results unreliable.
+- Keep the clean snapshot free of Visual C++ Redistributables and development tools.
 - Keep snapshots for a clean system, an installed toolchain, and an installed
   previous Nodex build.
 - Clone the repository onto the guest's NTFS volume. Never build or run from a host
@@ -62,7 +68,10 @@ Run the checklist with both the arm64 and the x64 installer.
 
 1. **Install and first launch**: per-user install without elevation, SmartScreen
    prompt for an unsigned build, Start menu entry, `nodex://` link opens the running
-   instance, a second launch focuses the existing window.
+   instance, a second launch focuses the existing window. First launch must work
+   without a globally installed Visual C++ runtime. Verify Core, CLI, and bundled
+   search; a loader failure must leave bounded evidence under the isolated
+   Profile's `diagnostics/startup` even with logging disabled.
 2. **Core lifecycle**: Core starts, survives closing the window when work is active,
    restarts after being terminated, and leaves no orphaned `nodex-core.exe`, provider,
    `node.exe`, or terminal processes after quit.

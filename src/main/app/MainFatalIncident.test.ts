@@ -1,6 +1,7 @@
 import { expect, test } from "vite-plus/test";
 import * as Cause from "effect/Cause";
 import { coreRuntimeError } from "../core-runtime/CoreRuntimeError";
+import { CoreStartupError } from "../core-client/core-launcher";
 import { CoreTransportError } from "../core-client/local-http";
 import { MainApplicationError, type MainExit } from "./MainExit";
 import { makeMainFatalIncident, fatalIncidentPresentation } from "./MainFatalIncident";
@@ -138,4 +139,27 @@ test("bounds traversal through deeply nested Cause containers", () => {
   expect(incident.truncated).toBe(true);
   expect(incident.causes.length).toBeLessThanOrEqual(12);
   expect(fatalIncidentPresentation(incident, null).incidentId).toBe(context.id);
+});
+
+test("retains native loader status while excluding stderr, executable paths, and credentials", () => {
+  const launch = new CoreStartupError(
+    new Error("private stderr /Users/person/secret Bearer credential"),
+    { code: -1073741515, error: null },
+  );
+  const incident = makeMainFatalIncident(
+    exitFor(
+      Cause.fail(new MainApplicationError({ phase: "startup", operation: "core", cause: launch })),
+    ),
+    { failures: [] },
+    context,
+  );
+  expect(incident.causes[1]).toMatchObject({
+    name: "CoreStartupError",
+    reason: "exit",
+    exitCode: -1073741515,
+    executable: launch.executable,
+  });
+  expect(launch.windowsStatus).toBe(process.platform === "win32" ? "0xC0000135" : null);
+  for (const value of ["private stderr", "/Users/person", "credential"])
+    expect(JSON.stringify(incident)).not.toContain(value);
 });

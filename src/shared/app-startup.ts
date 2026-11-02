@@ -29,3 +29,9 @@ export type AppInitializationStep =
   | { phase: "opening_workspace" }
   | { phase: "done" }
   | { phase: "failed" };
+
+/** Profile-local diagnostic locator; available before Core initialization. */
+export interface AppStartupFailureEvidence {
+  readonly incidentId: string;
+  readonly recordPath: string | null;
+}

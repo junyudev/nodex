@@ -12,7 +12,7 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { desktopBuildTarget, type DesktopBuildTarget } from "./desktop-build-target";
-import { assertPeArchitecture } from "./windows-pe.mjs";
+import { assertPeArchitecture, assertPeDependencies } from "./windows-pe.mjs";
 
 import {
   NATIVE_RUNTIME_BINARY_PATHS,
@@ -122,6 +122,7 @@ const stage = ({ target: buildTarget, outputRoot, signIdentity }: Arguments): vo
       const binaries = ["nodex-core", "nodex"].map((name) => {
         const source = path.join(repositoryRoot, "target", target, "release", `${name}.exe`);
         assertPeArchitecture(source, buildTarget.arch);
+        assertPeDependencies(source, buildTarget.arch, { systemOnly: true });
         const destination = path.join(binDirectory, `${name}.exe`);
         copyFileSync(source, destination);
         return {

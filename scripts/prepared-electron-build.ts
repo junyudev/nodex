@@ -79,6 +79,7 @@ const PREREQUISITE_SOURCE_PATHS = [
   "resources/icon.icon",
   "resources/nodex-icon.svg",
   "resources/third-party/codex",
+  "resources/third-party/microsoft-vc-runtime",
   "scripts/build-resources.ts",
   "scripts/generate-third-party-notices.ts",
   "scripts/official-agent-skills-artifact.d.mts",

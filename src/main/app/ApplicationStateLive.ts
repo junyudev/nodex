@@ -18,6 +18,7 @@ import {
   configuredLive as applicationWindowShellRuntimeLive,
 } from "../window-runtime/ApplicationWindowShellRuntime";
 import { WindowRuntime, live as windowRuntimeLive } from "../window-runtime/WindowRuntime";
+import { MainObservability } from "./MainObservability";
 import { MainConfig } from "./MainConfig";
 import { MainShutdown } from "./MainShutdown";
 import { ScopedCallbackRuntime } from "./ScopedCallbackRuntime";
@@ -74,6 +75,7 @@ export const live: Layer.Layer<
   | ElectronIpc
   | ElectronSessionHost
   | MainConfig
+  | MainObservability
   | ApplicationSettings
   | MainShutdown
   | ScopedCallbackRuntime
