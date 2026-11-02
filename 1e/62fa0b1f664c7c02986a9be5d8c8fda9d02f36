@@ -19,6 +19,7 @@ docs/agent-runtime-testing.md
   s_97545addecfb91::t_658369fcfe0472 53-56
 docs/ARCHITECTURE.md
   s_97545addecfb91::t_c80cc244bf7bff 601-602
+  s_97545addecfb91::t_0cd2b0e3880c2c 603-604
 scripts/probe-browser-runtime.ts
   s_ef70f5b0c93155::t_23ed0e400dbccd 6-9,36,60,211,227,250-298,502,505-506,527-528,601,608-612,675,691-693,719
   s_97545addecfb91::t_a4145a2784171c 244-248
