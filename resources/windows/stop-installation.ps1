@@ -4,8 +4,6 @@ param(
     [Parameter(Mandatory = $true)][int]$InstallerPid
 )
 $ErrorActionPreference = 'Stop'
-$root = [IO.Path]::GetFullPath($InstallationDirectory).TrimEnd('\') + '\'
-if ([IO.Path]::GetPathRoot($root) -eq $root) { throw 'Refusing a drive root as an installation' }
 if (!(Test-Path -LiteralPath $InstallationDirectory -PathType Container)) { exit 0 }
 
 # Native argument parsing handles quoted spaces, Unicode and trailing backslashes.
@@ -82,6 +80,7 @@ public static class NodexMaintenance {
 }
 '@
 $root = [NodexMaintenance]::InstallationRoot($InstallationDirectory)
+if ([IO.Path]::GetPathRoot($root) -eq $root) { throw 'Refusing a drive root as an installation' }
 
 function Get-InstallationProcesses {
     @(Get-CimInstance Win32_Process | Where-Object {
