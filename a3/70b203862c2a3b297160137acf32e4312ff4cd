@@ -1,0 +1,22 @@
+scripts/windows-installation-processes.test.ts
+  s_3609d9db04b3f2::t_b42a78eedab54a 3,17,34-39,43-46,49,61,70-71
+  s_3609d9db04b3f2::t_7598b8511cce67 20,33,40-42,47,50,69,76-77,80-81,88
+resources/windows/stop-installation.ps1
+  s_3609d9db04b3f2::t_7598b8511cce67 9,29-55,77,84,89
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a370b203862c2a3b297160137acf32e4312ff4cd",
+  "prompts": {},
+  "sessions": {
+    "s_3609d9db04b3f2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19bd4-bc82-7710-93aa-a3b0b80b63c0",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
