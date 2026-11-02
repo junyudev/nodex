@@ -17,7 +17,7 @@ import { EventSinkV2 } from "../orchestration-v2/EventSink.ts";
 import { detachNativeConversation } from "../orchestration-v2/NativeConversation.ts";
 import * as ImportedExecutionSettlement from "./ImportedExecutionSettlement.ts";
 import { profilePathSource, relocateProfilePath } from "./ImportedExecutionPaths.ts";
-import { syncDirectory } from "./NodeFilesystemDurability.ts";
+import { syncDirectory } from "../platform/node/filesystem-durability.ts";
 
 const utcTimestamp = Schema.String.check(
   Schema.isPattern(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|\+00:00)$/u),

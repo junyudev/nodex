@@ -401,11 +401,7 @@ export class BrowserState {
           if (this.tabs.has(key)) this.updateTab(key, { permissionPrompts });
         },
         systemStatus: (permission) => {
-          if (
-            process.platform !== "darwin" ||
-            (permission !== "camera" && permission !== "microphone")
-          )
-            return "unknown";
+          if (permission !== "camera" && permission !== "microphone") return "unknown";
           return this.electron.getMediaAccessStatus?.(permission) ?? "unknown";
         },
         openSystemSettings: async (permission) => {

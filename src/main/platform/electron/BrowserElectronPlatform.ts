@@ -84,7 +84,8 @@ export interface BrowserElectronPlatform {
 }
 
 export const browserElectronPlatform: BrowserElectronPlatform = {
-  getMediaAccessStatus: (mediaType) => systemPreferences.getMediaAccessStatus(mediaType),
+  getMediaAccessStatus: (mediaType) =>
+    process.platform === "darwin" ? systemPreferences.getMediaAccessStatus(mediaType) : "unknown",
   sessionFromPartition: (partition) => session.fromPartition(partition),
   openExternal: (url, options) => shell.openExternal(url, options),
   presentContextMenu: (template, ownerWebContentsId) => {
