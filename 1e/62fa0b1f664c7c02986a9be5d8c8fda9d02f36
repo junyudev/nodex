@@ -1,0 +1,70 @@
+tests/e2e/scripted-agent-runtime.spec.ts
+  s_97545addecfb91::t_a4145a2784171c 1206
+  s_95f73f99c72e59::t_1c7568ff8c63eb 1,6,8,894-901,1028,1033,1133-1137,1154-1205,1207-1231
+  s_97545addecfb91::t_1fac989f6948b5 1232
+src/main/codex/browser-use-thread-config.ts
+  s_97545addecfb91::t_4123c0a6340338 13,118-119,121-123
+docs/SECURITY.md
+  s_97545addecfb91::t_dd761d6654b007 560-568,570-573
+  s_97545addecfb91::t_ef18aa71fa314c 569
+src/main/codex/browser-use-thread-config.test.ts
+  s_97545addecfb91::t_305b0d2c8e1f11 11,15,80-81,90-91,120-125,201-202
+src/main/bootstrap.ts
+  s_97545addecfb91::t_34ff67a16c474e 35,42-44
+  s_97545addecfb91::t_cdbdabc6b01f66 345-349
+src/main/codex/codex-worktree-shell-environment.ts
+  s_97545addecfb91::t_34ff67a16c474e 13,114-118,254,261
+  s_97545addecfb91::t_0172d768f40a58 247
+docs/agent-runtime-testing.md
+  s_97545addecfb91::t_658369fcfe0472 53-56
+docs/ARCHITECTURE.md
+  s_97545addecfb91::t_c80cc244bf7bff 601-602
+scripts/probe-browser-runtime.ts
+  s_ef70f5b0c93155::t_23ed0e400dbccd 6-9,36,60,211,227,250-298,502,505-506,527-528,601,608-612,675,691-693,719
+  s_97545addecfb91::t_a4145a2784171c 244-248
+  s_97545addecfb91::t_658369fcfe0472 249
+src/main/codex/desktop-tool-environment.ts
+  s_97545addecfb91::t_1cf50bf153e85a 1-163
+CHANGELOG.md
+  s_97545addecfb91::t_fe18ff519dd311 64
+src/main/codex/desktop-tool-environment.test.ts
+  s_97545addecfb91::t_2a33e03da05acb 45-46
+  s_97545addecfb91::t_9722b30f5d9453 40,42-44,47-51,53-54,66-73
+  s_97545addecfb91::t_d51d9671e31e3a 1-39,41,52,55-65,74-167
+scripts/probe-browser-runtime.test.ts
+  s_ef70f5b0c93155::t_23ed0e400dbccd 11-13,31-37
+src/main/codex/codex-worktree-shell-environment.test.ts
+  s_97545addecfb91::t_5780509019da7a 68-81
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1e62fa0b1f664c7c02986a9be5d8c8fda9d02f36",
+  "prompts": {},
+  "sessions": {
+    "s_95f73f99c72e59": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19a75-81a2-7e60-9acc-93911fbc398b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_97545addecfb91": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b51eba00-66c0-4d97-9174-d93e2b21e684",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_ef70f5b0c93155": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19a75-da3f-77a3-8441-29264e2a1be6",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
