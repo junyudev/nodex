@@ -51,6 +51,28 @@ function useReducedMotion(): boolean {
 const captureMode = () =>
   typeof window !== "undefined" && new URLSearchParams(window.location.search).has("capture");
 
+/**
+ * How long a demo may go without a new beat. A visitor gives a demo a few seconds: its first beat
+ * lands right after it starts playing, no beat waits long for the next, and the final frame
+ * holds only long enough to register before the story plays again.
+ */
+export const PACING = { firstBeatMs: 800, holdMs: 2000, tailMs: 2500 } as const;
+
+/** Where a script leaves the viewer waiting, in words; empty when it keeps moving. */
+export function pacingIssues(script: TimelineScript): string[] {
+  const cues = [...script.cues].sort((a, b) => a.at - b.at);
+  const issues: string[] = [];
+  const firstAt = cues[0]?.at ?? script.durationMs;
+  if (firstAt > PACING.firstBeatMs) issues.push(`first beat at ${firstAt} ms`);
+  for (let index = 1; index < cues.length; index += 1) {
+    const hold = cues[index]!.at - cues[index - 1]!.at;
+    if (hold > PACING.holdMs) issues.push(`waits ${hold} ms after ${cues[index - 1]!.id}`);
+  }
+  const tail = script.durationMs - (cues.at(-1)?.at ?? 0);
+  if (tail > PACING.tailMs) issues.push(`holds its last frame for ${tail} ms`);
+  return issues;
+}
+
 /** The index of the last cue at or before `ms`; cues are sorted by time. */
 export function cueIndexAt(cues: readonly Cue[], ms: number): number {
   let index = -1;

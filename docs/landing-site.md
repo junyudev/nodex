@@ -183,6 +183,10 @@ Sections then cover cross-provider delegation, every provider's models and plans
 work landing in Pages on a Board, and one plain request that has an agent file a whole backlog,
 followed by a feature grid and a final download call.
 
+The hero reaches something worth watching within about a second. Its opening burst sweeps each
+message through the composer in a fraction of a second, and the Inbox plans each one while the
+rest are still arriving, so every route shows while its card is still in view.
+
 Product demos are scripted re-enactments built from replicas of the interface, not recordings:
 
 - Demos show each flow as it is best designed, not only as today's interface draws it. Where a
@@ -213,6 +217,11 @@ Product demos are scripted re-enactments built from replicas of the interface, n
 - A demo's script is a list of named cues on one clock (`src/demos/timeline.ts`). It plays while
   on screen, shows its final frame under reduced motion, and plays once from the start under
   `?capture` for the recorder.
+- A visitor gives a demo a few seconds, so every demo keeps moving: its first beat lands within
+  0.8 s, no beat waits more than 2 s for the next, and its final frame holds at most 2.5 s before
+  it plays again. Typing is a quick sweep; text a reader needs stays on screen after it is sent.
+  A hold that needs longer is too much to read, so cut the text or split it into beats.
+  `PACING` in `src/demos/timeline.ts` sets these limits, and a test checks every demo's script.
 
 The README embeds media recorded from the same demos under `.github/assets/readme/`. Record
 again with `vp run capture:landing` after changing a demo the README shows.

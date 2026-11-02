@@ -36,6 +36,7 @@ import {
 } from "../replica/icons";
 import { ColdStartFindings } from "./ColdStartFindings";
 import { Cursor } from "./Cursor";
+import { buildInboxBurstTimeline, composerTextAt, composingAt } from "./inbox-burst-timeline";
 import { buildInboxDecisionTimeline, INBOX_CARD_EXIT_MS } from "./inbox-decision-timeline";
 import {
   AGENTS,
@@ -50,15 +51,12 @@ import {
 } from "./lumen";
 import { useTimeline, type Cue, type Timeline } from "./timeline";
 
-/** Newest last: the planned fan-out lands right above the composer, where it reads first. */
-const ORDER = ["webhooks", "coldstart", "darkmode", "digest", "changelog", "passkeys"];
-const MESSAGES = ORDER.map((id) => INBOX_BURST.find((message) => message.id === id)!);
 const PASSKEYS = INBOX_BURST.find((message) => message.id === "passkeys")!;
 const COLD_START = INBOX_BURST.find((message) => message.id === "coldstart")!;
 const REPORT = COLD_START_FILES[0].files[0];
 
-const TYPE_MS = 13;
-const SEND_GAP = 220;
+/** The story opens on the burst: the first keystroke lands a beat after the demo appears. */
+const BURST = buildInboxBurstTimeline(INBOX_BURST, 200);
 /** What the reader types into the model menu, and the lead the Inbox first suggested. */
 const MODEL_QUERY = "opus";
 const QUERY_MS = 90;
@@ -73,11 +71,6 @@ export interface Chapter {
 }
 
 interface Schedule {
-  readonly typing: readonly {
-    readonly text: string;
-    readonly start: number;
-    readonly sent: number;
-  }[];
   readonly cues: readonly Cue[];
   readonly chapters: readonly Chapter[];
   readonly findingsAt: readonly number[];
@@ -87,20 +80,10 @@ interface Schedule {
 }
 
 function buildSchedule(): Schedule {
-  const cues: Cue[] = [];
-  const typing: { text: string; start: number; sent: number }[] = [];
-  let clock = 700;
-  for (const message of MESSAGES) {
-    const sent = clock + message.text.length * TYPE_MS + 140;
-    typing.push({ text: message.text, start: clock, sent });
-    cues.push({ id: `sent:${message.id}`, at: sent });
-    clock = sent + SEND_GAP;
-  }
-  const suggested = clock + 1500;
-  cues.push({ id: "suggested", at: suggested });
-  // The reader takes the passkey plan's lead off GPT-6.1 Sol and gives it to Claude Opus before
-  // starting it: open the model menu, search, pick.
-  const menu = suggested + 2600;
+  const cues: Cue[] = [...BURST.cues];
+  // Once the passkey fan-out has landed and been read, the reader takes its lead off GPT-6.1 Sol
+  // and gives it to Claude Opus before starting it: open the model menu, search, pick.
+  const menu = BURST.plannedAt + 1900;
   const modelQueryAt = menu + 300;
   const filtered = modelQueryAt + MODEL_QUERY.length * QUERY_MS;
   const pick = filtered + 650;
@@ -114,7 +97,7 @@ function buildSchedule(): Schedule {
     { id: "pick", at: pick },
   );
   const decisions = buildInboxDecisionTimeline(
-    [...MESSAGES].reverse().map((message) => message.id),
+    [...INBOX_BURST].reverse().map((message) => message.id),
     pick + 180,
   );
   cues.push(...decisions.cues);
@@ -123,11 +106,11 @@ function buildSchedule(): Schedule {
   // The cleared Inbox shows how it planned; then every agent: the passkey chat, whose Claude lead
   // the reader points at before opening one of its GPT-6.1 Sol subagents to watch it work in
   // Codex, beside the chat that sent it.
-  const chat = clear + 3100;
+  const chat = clear + 2500;
   const subagent = chat + 3300;
   cues.push(
     { id: "clear", at: clear },
-    { id: "aim:chat", at: clear + 2300 },
+    { id: "aim:chat", at: chat - 700 },
     { id: "press:chat", at: chat - 150 },
     { id: "chat", at: chat },
     { id: "aim:lead", at: chat + 700 },
@@ -160,28 +143,29 @@ function buildSchedule(): Schedule {
     { id: "cold:attach", at: cold + 3200 },
     { id: "cold:review", at: cold + 3600 },
     { id: "cold:answer", at: cold + 4100 },
-    { id: "aim:report", at: cold + 6500 },
-    { id: "press:report", at: cold + 7050 },
-    { id: "report", at: cold + 7200 },
-    { id: "rest", at: cold + 7800 },
+    { id: "aim:report", at: cold + 5600 },
+    { id: "press:report", at: cold + 6150 },
+    { id: "report", at: cold + 6300 },
+    { id: "rest", at: cold + 6900 },
   );
-  const durationMs = cold + 12400;
+  // The opened report holds just long enough to register before the story plays again.
+  const durationMs = cold + 9400;
   return {
-    typing,
     cues,
     findingsAt,
     modelQueryAt,
     durationMs,
     chapters: [
       // The cleared Inbox, with how it plans, closes the first chapter.
-      { from: 0, to: clear + 2300, seekTo: 0 },
-      { from: clear + 2300, to: cold - 900, seekTo: chat - 120 },
+      { from: 0, to: chat - 700, seekTo: 0 },
+      { from: chat - 700, to: cold - 900, seekTo: chat - 120 },
       { from: cold - 900, to: durationMs, seekTo: cold - 120 },
     ],
   };
 }
 
-const SCHEDULE = buildSchedule();
+/** The hero's script, exported so its pacing is checked with every other demo's. */
+export const SCRIPT = buildSchedule();
 
 /** Presses that open something: each ends at the cue of the same name. */
 const OPENING_PRESSES: readonly string[] = ["chat", "subagent", "cold", "report"];
@@ -193,7 +177,7 @@ const OPENING_PRESSES: readonly string[] = ["chat", "subagent", "cold", "report"
  */
 export default function HeroDemo({ controls = true }: { readonly controls?: boolean }) {
   const root = useRef<HTMLDivElement | null>(null);
-  const timeline = useTimeline(SCHEDULE, root);
+  const timeline = useTimeline(SCRIPT, root);
   const { reached, elapsed, seek, still } = timeline;
 
   useEffect(() => {
@@ -203,9 +187,9 @@ export default function HeroDemo({ controls = true }: { readonly controls?: bool
     const buttons = [...headline.querySelectorAll<HTMLElement>("[data-hero-chapter]")];
     // The headline stays fully lit until the demo plays or a chapter is chosen.
     const sync = (t: number) => {
-      const found = SCHEDULE.chapters.findIndex((chapter) => t >= chapter.from && t < chapter.to);
-      const index = found === -1 ? SCHEDULE.chapters.length - 1 : found;
-      const chapter = SCHEDULE.chapters[index]!;
+      const found = SCRIPT.chapters.findIndex((chapter) => t >= chapter.from && t < chapter.to);
+      const index = found === -1 ? SCRIPT.chapters.length - 1 : found;
+      const chapter = SCRIPT.chapters[index]!;
       const progress = Math.min(1, Math.max(0, (t - chapter.from) / (chapter.to - chapter.from)));
       if (hero.dataset.chapter !== String(index)) {
         hero.dataset.chapter = String(index);
@@ -220,7 +204,7 @@ export default function HeroDemo({ controls = true }: { readonly controls?: bool
     };
     const choose = (event: MouseEvent) => {
       const button = (event.target as Element | null)?.closest<HTMLElement>("[data-hero-chapter]");
-      const chapter = button ? SCHEDULE.chapters[Number(button.dataset.heroChapter)] : undefined;
+      const chapter = button ? SCRIPT.chapters[Number(button.dataset.heroChapter)] : undefined;
       if (!chapter) return;
       // Under reduced motion a chapter is shown by its finished frame.
       seek(still ? chapter.to - 1 : chapter.seekTo);
@@ -238,19 +222,13 @@ export default function HeroDemo({ controls = true }: { readonly controls?: bool
     };
   }, [elapsed, seek, still]);
 
-  const composerText = useTransform(elapsed, (t) => {
-    const current = SCHEDULE.typing.find((entry) => t >= entry.start && t < entry.sent);
-    if (!current) return "";
-    return current.text.slice(0, Math.floor((t - current.start) / TYPE_MS));
-  });
-  const placeholderOpacity = useTransform(elapsed, (t): number =>
-    SCHEDULE.typing.some((entry) => t >= entry.start && t < entry.sent) ? 0 : 1,
-  );
+  const composerText = useTransform(elapsed, (t) => composerTextAt(BURST, t));
+  const placeholderOpacity = useTransform(elapsed, (t): number => (composingAt(BURST, t) ? 0 : 1));
   const modelQuery = useTransform(elapsed, (t) =>
-    MODEL_QUERY.slice(0, Math.max(0, Math.floor((t - SCHEDULE.modelQueryAt) / QUERY_MS) + 1)),
+    MODEL_QUERY.slice(0, Math.max(0, Math.floor((t - SCRIPT.modelQueryAt) / QUERY_MS) + 1)),
   );
   const modelQueryPlaceholder = useTransform(elapsed, (t): number =>
-    t >= SCHEDULE.modelQueryAt ? 0 : 1,
+    t >= SCRIPT.modelQueryAt ? 0 : 1,
   );
   const searched = reached("filtered");
   const leadChoice = {
@@ -278,17 +256,21 @@ export default function HeroDemo({ controls = true }: { readonly controls?: bool
     ),
   };
 
-  const visible = MESSAGES.filter(
+  const visible = INBOX_BURST.filter(
     (message) => reached(`sent:${message.id}`) && !reached(`folded:${message.id}`),
   );
-  // Every message waits for advice from the moment it is sent until the suggestions land.
+  // Each message waits for advice from the moment it is sent until its own plan lands.
   const phaseOf = (message: InboxMessage): CardPhase =>
-    reached(`decided:${message.id}`) ? "decided" : reached("suggested") ? "suggested" : "waiting";
+    reached(`decided:${message.id}`)
+      ? "decided"
+      : reached(`planned:${message.id}`)
+        ? "suggested"
+        : "waiting";
 
-  const pressing = [...MESSAGES.map((message) => message.id), ...OPENING_PRESSES].find(
+  const pressing = [...INBOX_BURST.map((message) => message.id), ...OPENING_PRESSES].find(
     (id) => reached(`press:${id}`) && !reached(OPENING_PRESSES.includes(id) ? id : `decided:${id}`),
   );
-  const aiming = [...MESSAGES]
+  const aiming = [...INBOX_BURST]
     .reverse()
     .find((message) => reached(`aim:${message.id}`) && !reached(`decided:${message.id}`));
   const cursorTarget = reached("rest")
@@ -322,7 +304,7 @@ export default function HeroDemo({ controls = true }: { readonly controls?: bool
     },
     { title: "Rate limiter", project: "lumen-api", provider: "codex", working: false },
   ];
-  for (const message of [...MESSAGES].reverse()) {
+  for (const message of [...INBOX_BURST].reverse()) {
     const dispatch = message.dispatch;
     if (dispatch.kind === "new_chat" && reached(`folded:${message.id}`)) {
       chats.push({
@@ -333,7 +315,7 @@ export default function HeroDemo({ controls = true }: { readonly controls?: bool
       });
     }
   }
-  const inboxCount = MESSAGES.filter(
+  const inboxCount = INBOX_BURST.filter(
     (message) => reached(`sent:${message.id}`) && !reached(`decided:${message.id}`),
   ).length;
 
@@ -777,7 +759,7 @@ function ColdStartPage({ timeline }: { readonly timeline: Timeline }) {
       }
     >
       <p className="px-0.5">{COLD_START.text}</p>
-      <ColdStartFindings timeline={timeline} startAt={SCHEDULE.findingsAt} />
+      <ColdStartFindings timeline={timeline} startAt={SCRIPT.findingsAt} />
     </PagePanel>
   );
 }

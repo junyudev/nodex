@@ -100,27 +100,8 @@ export interface InboxMessage {
   readonly dispatch: Dispatch;
 }
 
+/** In the order the hero sends them, newest last: the passkey fan-out lands right above the composer. */
 export const INBOX_BURST: readonly InboxMessage[] = [
-  {
-    id: "passkeys",
-    key: "LUM-41",
-    text: "Migrate sign-in to passkeys. Keep passwords as a fallback for one release.",
-    dispatch: {
-      kind: "new_chat",
-      project: "lumen-web",
-      chat: "Passkey sign-in",
-      agent: AGENTS.opus,
-      prompt:
-        "Replace password sign-in with passkeys across web and API, keeping passwords as a fallback for one release.",
-      delegates: [
-        { work: "WebAuthn routes and challenge store", agent: AGENTS.sol },
-        { work: "Credentials table migration and backfill", agent: AGENTS.solHigh },
-        { work: "End-to-end tests for both sign-in paths", agent: AGENTS.solHigh },
-        { work: "Docs for passkeys and the password fallback", agent: AGENTS.glm },
-      ],
-      plan: "Lead the UI and session flow yourself; merge the delegated parts behind one flag.",
-    },
-  },
   {
     id: "webhooks",
     key: "LUM-42",
@@ -176,6 +157,26 @@ export const INBOX_BURST: readonly InboxMessage[] = [
       agent: AGENTS.glm,
       prompt:
         "Draft the v2.4 changelog from PRs merged since v2.3, grouped by Added, Changed and Fixed.",
+    },
+  },
+  {
+    id: "passkeys",
+    key: "LUM-41",
+    text: "Migrate sign-in to passkeys. Keep passwords as a fallback for one release.",
+    dispatch: {
+      kind: "new_chat",
+      project: "lumen-web",
+      chat: "Passkey sign-in",
+      agent: AGENTS.opus,
+      prompt:
+        "Replace password sign-in with passkeys across web and API, keeping passwords as a fallback for one release.",
+      delegates: [
+        { work: "WebAuthn routes and challenge store", agent: AGENTS.sol },
+        { work: "Credentials table migration and backfill", agent: AGENTS.solHigh },
+        { work: "End-to-end tests for both sign-in paths", agent: AGENTS.solHigh },
+        { work: "Docs for passkeys and the password fallback", agent: AGENTS.glm },
+      ],
+      plan: "Lead the UI and session flow yourself; merge the delegated parts behind one flag.",
     },
   },
 ];
