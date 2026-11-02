@@ -36,6 +36,7 @@ import {
 } from "../replica/icons";
 import { ColdStartFindings } from "./ColdStartFindings";
 import { Cursor } from "./Cursor";
+import { buildInboxBurstTimeline, composerTextAt, composingAt } from "./inbox-burst-timeline";
 import { buildInboxDecisionTimeline, INBOX_CARD_EXIT_MS } from "./inbox-decision-timeline";
 import {
   AGENTS,
@@ -50,15 +51,12 @@ import {
 } from "./lumen";
 import { useTimeline, type Cue, type Timeline } from "./timeline";
 
-/** Newest last: the planned fan-out lands right above the composer, where it reads first. */
-const ORDER = ["webhooks", "coldstart", "darkmode", "digest", "changelog", "passkeys"];
-const MESSAGES = ORDER.map((id) => INBOX_BURST.find((message) => message.id === id)!);
 const PASSKEYS = INBOX_BURST.find((message) => message.id === "passkeys")!;
 const COLD_START = INBOX_BURST.find((message) => message.id === "coldstart")!;
 const REPORT = COLD_START_FILES[0].files[0];
 
-const TYPE_MS = 13;
-const SEND_GAP = 220;
+/** The story opens on the burst: the first keystroke lands a beat after the demo appears. */
+const BURST = buildInboxBurstTimeline(INBOX_BURST, 200);
 /** What the reader types into the model menu, and the lead the Inbox first suggested. */
 const MODEL_QUERY = "opus";
 const QUERY_MS = 90;
@@ -73,11 +71,6 @@ export interface Chapter {
 }
 
 interface Schedule {
-  readonly typing: readonly {
-    readonly text: string;
-    readonly start: number;
-    readonly sent: number;
-  }[];
   readonly cues: readonly Cue[];
   readonly chapters: readonly Chapter[];
   readonly findingsAt: readonly number[];
@@ -87,20 +80,10 @@ interface Schedule {
 }
 
 function buildSchedule(): Schedule {
-  const cues: Cue[] = [];
-  const typing: { text: string; start: number; sent: number }[] = [];
-  let clock = 700;
-  for (const message of MESSAGES) {
-    const sent = clock + message.text.length * TYPE_MS + 140;
-    typing.push({ text: message.text, start: clock, sent });
-    cues.push({ id: `sent:${message.id}`, at: sent });
-    clock = sent + SEND_GAP;
-  }
-  const suggested = clock + 1500;
-  cues.push({ id: "suggested", at: suggested });
-  // The reader takes the passkey plan's lead off GPT-6.1 Sol and gives it to Claude Opus before
-  // starting it: open the model menu, search, pick.
-  const menu = suggested + 2600;
+  const cues: Cue[] = [...BURST.cues];
+  // Once the passkey fan-out has landed and been read, the reader takes its lead off GPT-6.1 Sol
+  // and gives it to Claude Opus before starting it: open the model menu, search, pick.
+  const menu = BURST.plannedAt + 1900;
   const modelQueryAt = menu + 300;
   const filtered = modelQueryAt + MODEL_QUERY.length * QUERY_MS;
   const pick = filtered + 650;
@@ -114,7 +97,7 @@ function buildSchedule(): Schedule {
     { id: "pick", at: pick },
   );
   const decisions = buildInboxDecisionTimeline(
-    [...MESSAGES].reverse().map((message) => message.id),
+    [...INBOX_BURST].reverse().map((message) => message.id),
     pick + 180,
   );
   cues.push(...decisions.cues);
@@ -167,7 +150,6 @@ function buildSchedule(): Schedule {
   );
   const durationMs = cold + 12400;
   return {
-    typing,
     cues,
     findingsAt,
     modelQueryAt,
@@ -238,14 +220,8 @@ export default function HeroDemo({ controls = true }: { readonly controls?: bool
     };
   }, [elapsed, seek, still]);
 
-  const composerText = useTransform(elapsed, (t) => {
-    const current = SCHEDULE.typing.find((entry) => t >= entry.start && t < entry.sent);
-    if (!current) return "";
-    return current.text.slice(0, Math.floor((t - current.start) / TYPE_MS));
-  });
-  const placeholderOpacity = useTransform(elapsed, (t): number =>
-    SCHEDULE.typing.some((entry) => t >= entry.start && t < entry.sent) ? 0 : 1,
-  );
+  const composerText = useTransform(elapsed, (t) => composerTextAt(BURST, t));
+  const placeholderOpacity = useTransform(elapsed, (t): number => (composingAt(BURST, t) ? 0 : 1));
   const modelQuery = useTransform(elapsed, (t) =>
     MODEL_QUERY.slice(0, Math.max(0, Math.floor((t - SCHEDULE.modelQueryAt) / QUERY_MS) + 1)),
   );
@@ -278,17 +254,21 @@ export default function HeroDemo({ controls = true }: { readonly controls?: bool
     ),
   };
 
-  const visible = MESSAGES.filter(
+  const visible = INBOX_BURST.filter(
     (message) => reached(`sent:${message.id}`) && !reached(`folded:${message.id}`),
   );
-  // Every message waits for advice from the moment it is sent until the suggestions land.
+  // Each message waits for advice from the moment it is sent until its own plan lands.
   const phaseOf = (message: InboxMessage): CardPhase =>
-    reached(`decided:${message.id}`) ? "decided" : reached("suggested") ? "suggested" : "waiting";
+    reached(`decided:${message.id}`)
+      ? "decided"
+      : reached(`planned:${message.id}`)
+        ? "suggested"
+        : "waiting";
 
-  const pressing = [...MESSAGES.map((message) => message.id), ...OPENING_PRESSES].find(
+  const pressing = [...INBOX_BURST.map((message) => message.id), ...OPENING_PRESSES].find(
     (id) => reached(`press:${id}`) && !reached(OPENING_PRESSES.includes(id) ? id : `decided:${id}`),
   );
-  const aiming = [...MESSAGES]
+  const aiming = [...INBOX_BURST]
     .reverse()
     .find((message) => reached(`aim:${message.id}`) && !reached(`decided:${message.id}`));
   const cursorTarget = reached("rest")
@@ -322,7 +302,7 @@ export default function HeroDemo({ controls = true }: { readonly controls?: bool
     },
     { title: "Rate limiter", project: "lumen-api", provider: "codex", working: false },
   ];
-  for (const message of [...MESSAGES].reverse()) {
+  for (const message of [...INBOX_BURST].reverse()) {
     const dispatch = message.dispatch;
     if (dispatch.kind === "new_chat" && reached(`folded:${message.id}`)) {
       chats.push({
@@ -333,7 +313,7 @@ export default function HeroDemo({ controls = true }: { readonly controls?: bool
       });
     }
   }
-  const inboxCount = MESSAGES.filter(
+  const inboxCount = INBOX_BURST.filter(
     (message) => reached(`sent:${message.id}`) && !reached(`decided:${message.id}`),
   ).length;
 

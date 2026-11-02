@@ -183,6 +183,10 @@ Sections then cover cross-provider delegation, every provider's models and plans
 work landing in Pages on a Board, and one plain request that has an agent file a whole backlog,
 followed by a feature grid and a final download call.
 
+The hero reaches something worth watching within about a second. Its opening burst sweeps each
+message through the composer in a fraction of a second, and the Inbox plans each one while the
+rest are still arriving, so every route shows while its card is still in view.
+
 Product demos are scripted re-enactments built from replicas of the interface, not recordings:
 
 - Demos show each flow as it is best designed, not only as today's interface draws it. Where a
