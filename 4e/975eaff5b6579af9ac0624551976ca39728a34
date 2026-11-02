@@ -1,0 +1,83 @@
+docs/product-specs/settings-route-behavior.md
+  s_3022e59a160914::t_b98fb6e6add72b 52-58
+docs/product-specs/windows-host-behavior.md
+  s_3022e59a160914::t_28434704437f44 50-101
+src/main/app/MainConfig.ts
+  s_3022e59a160914::t_0087a8ea88403e 1
+src/main/browser/browser-profile-importer.ts
+  s_3022e59a160914::t_04361a3d127f54 1,118
+src/main/composer-appshot-platform.ts
+  s_3022e59a160914::t_bad818b14c273d 1
+src/main/host-runtime/AppProtocolRuntime.test.ts
+  s_3022e59a160914::t_8dc07ac289b1a8 1
+src/main/host-runtime/AppUpdatePolicy.ts
+  s_3022e59a160914::t_d43ab9db3d404c 1
+src/main/host-runtime/AppUpdateRuntime.ts
+  s_3022e59a160914::t_f0054dd5e44656 1
+src/main/host-runtime/ChromeControlRuntime.ts
+  s_3022e59a160914::t_583d667bc1f79d 1
+src/main/host-runtime/ComposerAppshotRuntime.ts
+  s_3022e59a160914::t_529a52ce11299a 1
+src/main/host-runtime/ComputerUseRuntime.ts
+  s_3022e59a160914::t_ea05aed0313464 1
+src/main/host-runtime/ComputerUseSettingsRuntime.ts
+  s_3022e59a160914::t_e94e8fe956b4ac 1
+src/main/ipc/handlers/AppUpdateIpc.node.test.ts
+  s_3022e59a160914::t_87c0a9b7fe3a90 1
+src/main/ipc/handlers/BrowserProfileIpc.node.test.ts
+  s_3022e59a160914::t_70a185deb24f10 1
+src/main/ipc/handlers/BrowserSidebarIpc.node.test.ts
+  s_3022e59a160914::t_5f927e408711f3 1
+src/main/ipc/handlers/ChromeControlSettingsIpc.node.test.ts
+  s_3022e59a160914::t_e7b1a907dc4ceb 1
+src/main/ipc/handlers/CodexApplicationIpc.node.test.ts
+  s_3022e59a160914::t_8fc9944148e42d 1
+src/main/ipc/handlers/ComputerUseSettingsIpc.node.test.ts
+  s_3022e59a160914::t_7e23165685a91f 1
+src/main/ipc/handlers/GitWorkerIpc.node.test.ts
+  s_3022e59a160914::t_3c516d2e1f6e88 1
+src/main/ipc/handlers/RemoteHostedPipIpc.node.test.ts
+  s_3022e59a160914::t_ddf11e998be96b 1
+src/main/platform/electron/ElectronCodexAttestation.ts
+  s_3022e59a160914::t_603e1636acc22f 1
+src/main/platform/electron/NativeNotificationAuthorization.ts
+  s_3022e59a160914::t_f96aecbd0853d7 1
+src/main/platform/electron/RemoteHostedPipNativePlatform.ts
+  s_3022e59a160914::t_cf318a7cfc55b3 1
+src/main/platform/host-capabilities.test.ts
+  s_3022e59a160914::t_11dac004186e58 5,13
+src/main/platform/node/OpenCodeInstallPlatform.ts
+  s_3022e59a160914::t_40cd4a2657fa80 8
+src/renderer/components/workbench/app-update-settings-control.test.tsx
+  s_3022e59a160914::t_647373cc4cc37c 1-2,5-8,107-110,120-123,153-156,161-178
+src/renderer/components/workbench/app-update-settings-control.tsx
+  s_3022e59a160914::t_927d9284e3ae93 1,122,135-145,148,152,163
+src/renderer/components/workbench/workbench-settings-sections.ts
+  s_3022e59a160914::t_fd6d3a31cfa174 1,171
+src/renderer/features/browser-sidebar/browser-settings-pages.test.tsx
+  s_3022e59a160914::t_15ff7703b614d0 2,9-12,163-187
+src/renderer/features/browser-sidebar/browser-settings-pages.tsx
+  s_3022e59a160914::t_4dfc1a89956275 1,156,172,177,180,184,208-226,304,346-348
+src/renderer/lib/settings-host-presentation.test.ts
+  s_3022e59a160914::t_800ea45c54a610 1-20
+src/renderer/lib/settings-host-presentation.ts
+  s_3022e59a160914::t_3d1fa90f1f5704 1-21
+src/shared/host-capabilities.ts
+  s_3022e59a160914::t_0191513583d175 1-18
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4e975eaff5b6579af9ac0624551976ca39728a34",
+  "prompts": {},
+  "sessions": {
+    "s_3022e59a160914": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1def126e-fd62-476f-9393-67b0835f01b6",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
