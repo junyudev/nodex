@@ -1,0 +1,32 @@
+packages/landing/src/demos/inbox-burst-timeline.ts
+  s_777166bcf3bb6d::t_96e515fcac0fb0 1-63
+packages/landing/src/demos/inbox-burst-timeline.test.ts
+  s_777166bcf3bb6d::t_42c337ba451d65 10-11
+  s_777166bcf3bb6d::t_b70ec33720f83e 1-9,12-25,29-46
+  s_777166bcf3bb6d::t_131aa5223a26e4 26-28
+packages/landing/src/demos/lumen.ts
+  s_777166bcf3bb6d::t_3752a805372be9 103,162-179
+  s_777166bcf3bb6d::t_bb5df03359b7e4 180-181
+docs/landing-site.md
+  s_777166bcf3bb6d::t_021b2ec3315d2f 186-189
+  s_777166bcf3bb6d::t_3f40e829df5a94 190
+packages/landing/src/demos/HeroDemo.tsx
+  s_777166bcf3bb6d::t_77b698e3a6fda1 39,58,83-86,223-224,260,262-266
+  s_777166bcf3bb6d::t_bf9f0de4ae3089 59,100,257,268,271,305,316
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1ae984e340dc624cce6c5733fbf7c05963f088e1",
+  "prompts": {},
+  "sessions": {
+    "s_777166bcf3bb6d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3c9cc3d5-2b9e-4920-9109-af7b95e0ea00",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
