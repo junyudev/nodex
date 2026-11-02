@@ -4,7 +4,7 @@ import { ProviderMark, cx } from "../replica/Window";
 import { Stage } from "../replica/Stage";
 import { CAPTURE_DEMOS } from "./capture-demos";
 import { PASSKEY_SUBAGENTS, PROVIDER_NAMES, type AgentChoice } from "./lumen";
-import { useTimeline, type Cue } from "./timeline";
+import { useTimeline, type Cue, type TimelineScript } from "./timeline";
 
 const { width: WIDTH, height: HEIGHT } = CAPTURE_DEMOS.fanout;
 
@@ -19,10 +19,10 @@ interface Child {
 
 /** How each of the passkey chat's subagents is called and how its run plays out here. */
 const RUNS = [
-  { call: "gpt-6.1-sol · xhigh", diff: "+412 −38", start: 1500, done: 6600 },
-  { call: "gpt-6.1-sol · high", diff: "+186 −4", start: 1950, done: 7600 },
-  { call: "gpt-6.1-sol · high", diff: "+298", start: 2400, done: 8500 },
-  { call: "glm-5.3-flash-free", diff: "+64 −12", start: 2850, done: 5400 },
+  { call: "gpt-6.1-sol · xhigh", diff: "+412 −38", start: 900, done: 4700 },
+  { call: "gpt-6.1-sol · high", diff: "+186 −4", start: 1250, done: 5400 },
+  { call: "gpt-6.1-sol · high", diff: "+298", start: 1600, done: 6100 },
+  { call: "glm-5.3-flash-free", diff: "+64 −12", start: 1950, done: 3900 },
 ] as const;
 
 const CHILDREN: readonly Child[] = PASSKEY_SUBAGENTS.map((subagent, index) => ({
@@ -49,26 +49,26 @@ const edgePath = (index: number) => {
   return `M${fromX},${fromY} C${fromX + 64},${fromY} ${CHILD_X - 64},${toY} ${CHILD_X},${toY}`;
 };
 
-const MERGED = 9300;
+const MERGED = 6800;
 
 function buildCues(): Cue[] {
   const cues: Cue[] = [
-    { id: "lead", at: 250 },
-    { id: "list", at: 800 },
+    { id: "lead", at: 150 },
+    { id: "list", at: 500 },
   ];
   CHILDREN.forEach((child, index) => {
     cues.push({ id: `start:${index}`, at: child.start }, { id: `done:${index}`, at: child.done });
   });
-  cues.push({ id: "wait", at: 3300 }, { id: "merged", at: MERGED });
+  cues.push({ id: "wait", at: 2300 }, { id: "merged", at: MERGED });
   return cues;
 }
 
-/** Claude Code leading a fan-out to Codex and OpenCode subagents, drawn as the work flows. */
-const CUES = buildCues();
+export const SCRIPT: TimelineScript = { cues: buildCues(), durationMs: MERGED + 2500 };
 
+/** Claude Code leading a fan-out to Codex and OpenCode subagents, drawn as the work flows. */
 export default function FanOutDemo() {
   const root = useRef<HTMLDivElement | null>(null);
-  const timeline = useTimeline({ cues: CUES, durationMs: 13000 }, root);
+  const timeline = useTimeline(SCRIPT, root);
   const { reached, elapsed } = timeline;
   const finished = CHILDREN.filter((_, index) => reached(`done:${index}`)).length;
 
@@ -237,7 +237,7 @@ function ChildCard({
 }) {
   // A time-lapse: a few real seconds stand for the minutes a subagent works.
   const clock = useTransform(elapsed, (t) => {
-    const seconds = Math.max(0, Math.round(((Math.min(t, child.done) - child.start) / 1000) * 26));
+    const seconds = Math.max(0, Math.round(((Math.min(t, child.done) - child.start) / 1000) * 34));
     return `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, "0")}s`;
   });
   return (

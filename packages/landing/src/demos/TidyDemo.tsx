@@ -23,7 +23,7 @@ import {
   TerminalActivityIcon,
 } from "../replica/icons";
 import { AGENTS } from "./lumen";
-import { useTimeline, useTyped, type Cue, type Timeline } from "./timeline";
+import { useTimeline, useTyped, type Timeline, type TimelineScript } from "./timeline";
 
 type Priority = "high" | "medium" | "low";
 
@@ -72,12 +72,13 @@ const MOVED = TASKS.filter((task) => task.to);
 const REQUEST =
   "Tidy up the backlog: finished work to Done, auth to Doing at P1, the rest where it belongs.";
 
-const TYPE_AT = 500;
-const TYPE_MS = 17;
-const SENT = TYPE_AT + REQUEST.length * TYPE_MS + 250;
+/** The request types in quickly; it stays readable at the head of the dock's activity. */
+const TYPE_AT = 300;
+const TYPE_MS = 11;
+const SENT = TYPE_AT + REQUEST.length * TYPE_MS + 200;
 const READ = SENT + 300;
-const QUERY = READ + 1300;
-const APPLY = QUERY + 900;
+const QUERY = READ + 1100;
+const APPLY = QUERY + 800;
 const MOVE_MS = 70;
 
 /** The window leaves a margin on wide screens for the note on what the agent runs. */
@@ -99,10 +100,10 @@ const QUERY_CODE = `nodex sql query
   WHERE "Status" = :triage`;
 const APPLY_CODE = `nodex page properties apply
   --input tidy.json`;
-const CODE_MS = 14;
+const CODE_MS = 10;
 const APPLIED = APPLY + MOVED.length * MOVE_MS + 350;
 
-const CUES: readonly Cue[] = [
+const CUES = [
   { id: "typing", at: TYPE_AT },
   { id: "sent", at: SENT },
   { id: "read", at: READ },
@@ -111,8 +112,10 @@ const CUES: readonly Cue[] = [
   ...MOVED.map((task, index) => ({ id: `moved:${task.key}`, at: APPLY + index * MOVE_MS })),
   { id: "applied", at: APPLIED },
   { id: "summary", at: APPLIED + 250 },
-  { id: "dock", at: APPLIED + 3800 },
+  { id: "dock", at: APPLIED + 2250 },
 ];
+
+export const SCRIPT: TimelineScript = { cues: CUES, durationMs: APPLIED + 4250 };
 
 const CHATS: readonly SidebarChat[] = [
   { title: "Passkey sign-in", project: "lumen-web", provider: "claude", working: true },
@@ -125,7 +128,7 @@ const CHATS: readonly SidebarChat[] = [
  */
 export default function TidyDemo() {
   const root = useRef<HTMLDivElement | null>(null);
-  const timeline = useTimeline({ cues: CUES, durationMs: APPLIED + 6800 }, root);
+  const timeline = useTimeline(SCRIPT, root);
   const { reached, elapsed } = timeline;
   const typed = useTyped(elapsed, REQUEST, TYPE_AT, TYPE_MS);
   const placeholderOpacity = useTransform(elapsed, (t): number => (t >= TYPE_AT ? 0 : 1));

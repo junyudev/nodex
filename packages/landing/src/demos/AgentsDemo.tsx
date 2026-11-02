@@ -7,7 +7,7 @@ import { Stage } from "../replica/Stage";
 import { CAPTURE_DEMOS } from "./capture-demos";
 import { Cursor } from "./Cursor";
 import { AGENTS, MODEL_CATALOG, type ProviderKind } from "./lumen";
-import { useTimeline, useTyped, type Cue } from "./timeline";
+import { useTimeline, useTyped, type TimelineScript } from "./timeline";
 
 const USAGE = {
   claude: {
@@ -29,24 +29,24 @@ const USAGE = {
 } as const;
 
 const SEARCH = "free";
-const TYPE_START = 6200;
+const TYPE_START = 5300;
 const TYPE_MS = 110;
 const PICK = TYPE_START + SEARCH.length * TYPE_MS + 1300;
 
 /** The follow-up sent on the newly chosen model, which hands it the conversation so far. */
 const FOLLOW_UP = "Now write the fix plan, smallest change first.";
-const FOLLOW_UP_AT = PICK + 900;
-const FOLLOW_UP_MS = 28;
+const FOLLOW_UP_AT = PICK + 700;
+const FOLLOW_UP_MS = 16;
 const SEND = FOLLOW_UP_AT + FOLLOW_UP.length * FOLLOW_UP_MS + 250;
 
-const CUES: readonly Cue[] = [
-  { id: "aim:claude", at: 500 },
-  { id: "card:claude", at: 1100 },
-  { id: "aim:codex", at: 2900 },
-  { id: "card:codex", at: 3400 },
-  { id: "aim:model", at: 4900 },
-  { id: "press:model", at: 5350 },
-  { id: "menu", at: 5500 },
+const CUES = [
+  { id: "aim:claude", at: 300 },
+  { id: "card:claude", at: 800 },
+  { id: "aim:codex", at: 2400 },
+  { id: "card:codex", at: 2900 },
+  { id: "aim:model", at: 4300 },
+  { id: "press:model", at: 4750 },
+  { id: "menu", at: 4900 },
   { id: "filtered", at: TYPE_START + SEARCH.length * TYPE_MS },
   { id: "aim:pick", at: TYPE_START + SEARCH.length * TYPE_MS + 500 },
   { id: "press:pick", at: TYPE_START + SEARCH.length * TYPE_MS + 1150 },
@@ -57,14 +57,16 @@ const CUES: readonly Cue[] = [
   { id: "aim:handoff", at: SEND + 700 },
   { id: "explain", at: SEND + 1250 },
   { id: "reply", at: SEND + 1500 },
-  { id: "answer", at: SEND + 3000 },
-  { id: "unexplain", at: SEND + 3900 },
+  { id: "answer", at: SEND + 2700 },
+  { id: "unexplain", at: SEND + 3600 },
 ];
+
+export const SCRIPT: TimelineScript = { cues: CUES, durationMs: SEND + 5900 };
 
 /** Every plan's remaining usage on the rail, and every provider's models in one menu. */
 export default function AgentsDemo() {
   const root = useRef<HTMLDivElement | null>(null);
-  const timeline = useTimeline({ cues: CUES, durationMs: SEND + 7000 }, root);
+  const timeline = useTimeline(SCRIPT, root);
   const { reached, elapsed } = timeline;
   const typed = useTransform(elapsed, (t) =>
     SEARCH.slice(

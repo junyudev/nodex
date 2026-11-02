@@ -106,11 +106,11 @@ function buildSchedule(): Schedule {
   // The cleared Inbox shows how it planned; then every agent: the passkey chat, whose Claude lead
   // the reader points at before opening one of its GPT-6.1 Sol subagents to watch it work in
   // Codex, beside the chat that sent it.
-  const chat = clear + 3100;
+  const chat = clear + 2500;
   const subagent = chat + 3300;
   cues.push(
     { id: "clear", at: clear },
-    { id: "aim:chat", at: clear + 2300 },
+    { id: "aim:chat", at: chat - 700 },
     { id: "press:chat", at: chat - 150 },
     { id: "chat", at: chat },
     { id: "aim:lead", at: chat + 700 },
@@ -143,12 +143,13 @@ function buildSchedule(): Schedule {
     { id: "cold:attach", at: cold + 3200 },
     { id: "cold:review", at: cold + 3600 },
     { id: "cold:answer", at: cold + 4100 },
-    { id: "aim:report", at: cold + 6500 },
-    { id: "press:report", at: cold + 7050 },
-    { id: "report", at: cold + 7200 },
-    { id: "rest", at: cold + 7800 },
+    { id: "aim:report", at: cold + 5600 },
+    { id: "press:report", at: cold + 6150 },
+    { id: "report", at: cold + 6300 },
+    { id: "rest", at: cold + 6900 },
   );
-  const durationMs = cold + 12400;
+  // The opened report holds just long enough to register before the story plays again.
+  const durationMs = cold + 9400;
   return {
     cues,
     findingsAt,
@@ -156,14 +157,15 @@ function buildSchedule(): Schedule {
     durationMs,
     chapters: [
       // The cleared Inbox, with how it plans, closes the first chapter.
-      { from: 0, to: clear + 2300, seekTo: 0 },
-      { from: clear + 2300, to: cold - 900, seekTo: chat - 120 },
+      { from: 0, to: chat - 700, seekTo: 0 },
+      { from: chat - 700, to: cold - 900, seekTo: chat - 120 },
       { from: cold - 900, to: durationMs, seekTo: cold - 120 },
     ],
   };
 }
 
-const SCHEDULE = buildSchedule();
+/** The hero's script, exported so its pacing is checked with every other demo's. */
+export const SCRIPT = buildSchedule();
 
 /** Presses that open something: each ends at the cue of the same name. */
 const OPENING_PRESSES: readonly string[] = ["chat", "subagent", "cold", "report"];
@@ -175,7 +177,7 @@ const OPENING_PRESSES: readonly string[] = ["chat", "subagent", "cold", "report"
  */
 export default function HeroDemo({ controls = true }: { readonly controls?: boolean }) {
   const root = useRef<HTMLDivElement | null>(null);
-  const timeline = useTimeline(SCHEDULE, root);
+  const timeline = useTimeline(SCRIPT, root);
   const { reached, elapsed, seek, still } = timeline;
 
   useEffect(() => {
@@ -185,9 +187,9 @@ export default function HeroDemo({ controls = true }: { readonly controls?: bool
     const buttons = [...headline.querySelectorAll<HTMLElement>("[data-hero-chapter]")];
     // The headline stays fully lit until the demo plays or a chapter is chosen.
     const sync = (t: number) => {
-      const found = SCHEDULE.chapters.findIndex((chapter) => t >= chapter.from && t < chapter.to);
-      const index = found === -1 ? SCHEDULE.chapters.length - 1 : found;
-      const chapter = SCHEDULE.chapters[index]!;
+      const found = SCRIPT.chapters.findIndex((chapter) => t >= chapter.from && t < chapter.to);
+      const index = found === -1 ? SCRIPT.chapters.length - 1 : found;
+      const chapter = SCRIPT.chapters[index]!;
       const progress = Math.min(1, Math.max(0, (t - chapter.from) / (chapter.to - chapter.from)));
       if (hero.dataset.chapter !== String(index)) {
         hero.dataset.chapter = String(index);
@@ -202,7 +204,7 @@ export default function HeroDemo({ controls = true }: { readonly controls?: bool
     };
     const choose = (event: MouseEvent) => {
       const button = (event.target as Element | null)?.closest<HTMLElement>("[data-hero-chapter]");
-      const chapter = button ? SCHEDULE.chapters[Number(button.dataset.heroChapter)] : undefined;
+      const chapter = button ? SCRIPT.chapters[Number(button.dataset.heroChapter)] : undefined;
       if (!chapter) return;
       // Under reduced motion a chapter is shown by its finished frame.
       seek(still ? chapter.to - 1 : chapter.seekTo);
@@ -223,10 +225,10 @@ export default function HeroDemo({ controls = true }: { readonly controls?: bool
   const composerText = useTransform(elapsed, (t) => composerTextAt(BURST, t));
   const placeholderOpacity = useTransform(elapsed, (t): number => (composingAt(BURST, t) ? 0 : 1));
   const modelQuery = useTransform(elapsed, (t) =>
-    MODEL_QUERY.slice(0, Math.max(0, Math.floor((t - SCHEDULE.modelQueryAt) / QUERY_MS) + 1)),
+    MODEL_QUERY.slice(0, Math.max(0, Math.floor((t - SCRIPT.modelQueryAt) / QUERY_MS) + 1)),
   );
   const modelQueryPlaceholder = useTransform(elapsed, (t): number =>
-    t >= SCHEDULE.modelQueryAt ? 0 : 1,
+    t >= SCRIPT.modelQueryAt ? 0 : 1,
   );
   const searched = reached("filtered");
   const leadChoice = {
@@ -757,7 +759,7 @@ function ColdStartPage({ timeline }: { readonly timeline: Timeline }) {
       }
     >
       <p className="px-0.5">{COLD_START.text}</p>
-      <ColdStartFindings timeline={timeline} startAt={SCHEDULE.findingsAt} />
+      <ColdStartFindings timeline={timeline} startAt={SCRIPT.findingsAt} />
     </PagePanel>
   );
 }

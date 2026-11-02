@@ -29,7 +29,7 @@ import { CAPTURE_DEMOS } from "./capture-demos";
 import { Cursor } from "./Cursor";
 import { ColdStartFindings } from "./ColdStartFindings";
 import { AGENTS, COLD_START_FILES, COLD_START_FINDINGS, INBOX_BURST } from "./lumen";
-import { useTimeline, type Cue, type Timeline } from "./timeline";
+import { useTimeline, type Timeline, type TimelineScript } from "./timeline";
 
 const COLD_START_MESSAGE = INBOX_BURST.find((message) => message.id === "coldstart")!.text;
 const FLAMEGRAPH = COLD_START_FILES[0].files[1];
@@ -94,25 +94,31 @@ const PROJECT_CHATS: readonly SidebarChat[] = [
   { title: "Settings redesign", project: "lumen-web", provider: "claude", working: false },
 ];
 
-const FINDINGS_AT = COLD_START_FINDINGS.map((_, index) => 3500 + index * 550);
+const OPEN = 2000;
+/** The agent starts writing as soon as the Page opens. */
+const FINDINGS_AT = COLD_START_FINDINGS.map((_, index) => OPEN + 500 + index * 550);
+const ATTACH = FINDINGS_AT.at(-1)! + 900;
 
-const CUES: readonly Cue[] = [
-  { id: "move", at: 700 },
-  { id: "aim:card", at: 1500 },
-  { id: "press:card", at: 2150 },
-  { id: "open", at: 2300 },
-  ...FINDINGS_AT.map((at, index) => ({ id: `finding:${index}`, at })),
-  { id: "attach", at: 5600 },
-  { id: "aim:image", at: 8000 },
-  { id: "press:image", at: 8550 },
-  { id: "preview", at: 8700 },
-  { id: "rest", at: 9300 },
-];
+export const SCRIPT: TimelineScript = {
+  cues: [
+    { id: "move", at: 500 },
+    { id: "aim:card", at: OPEN - 800 },
+    { id: "press:card", at: OPEN - 150 },
+    { id: "open", at: OPEN },
+    ...FINDINGS_AT.map((at, index) => ({ id: `finding:${index}`, at })),
+    { id: "attach", at: ATTACH },
+    { id: "aim:image", at: ATTACH + 1200 },
+    { id: "press:image", at: ATTACH + 1750 },
+    { id: "preview", at: ATTACH + 1900 },
+    { id: "rest", at: ATTACH + 2500 },
+  ],
+  durationMs: ATTACH + 5000,
+};
 
 /** The Board moving on its own while agents work, and a Page an agent is writing into. */
 export default function PagesDemo() {
   const root = useRef<HTMLDivElement | null>(null);
-  const timeline = useTimeline({ cues: CUES, durationMs: 12800 }, root);
+  const timeline = useTimeline(SCRIPT, root);
   const { reached } = timeline;
   const statusOf = (card: BoardCard) =>
     card.id === "coldstart" && reached("move") ? "Review" : card.status;
