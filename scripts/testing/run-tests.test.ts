@@ -1,7 +1,8 @@
 import path from "node:path";
 import { describe, expect, test } from "vite-plus/test";
 import { parseTestSelection, runTests } from "./run-tests";
-import { CODEX_SCALE_TEST, YJS_YRS_TEST } from "../../config/test-suites";
+import { CODEX_SCALE_TEST, YJS_YRS_TEST, type SuiteId } from "../../config/test-suites";
+import type { Command } from "../tooling/process";
 
 const result = (exitCode = 0) => ({ exitCode, signal: null, durationMs: 1 });
 const root = path.resolve(".");
@@ -185,4 +186,81 @@ test("stages the locked Agent runtime before a discovered real-history pressure 
   });
   expect(exit).toBe(0);
   expect(events).toEqual(["agent", "native", "test"]);
+});
+
+describe("Browser process environment", () => {
+  test.each([
+    { name: "full", args: ["browser"], tier: "default" },
+    {
+      name: "focused",
+      args: ["browser", "src/renderer/example.browser.test.tsx"],
+      tier: "default",
+    },
+    {
+      name: "related",
+      args: ["browser", "--related", "src/renderer/example.tsx"],
+      tier: "default",
+    },
+    { name: "stress", args: ["browser"], tier: "stress" },
+  ] as const)(
+    "retires isolated realms in the $name runner before Vitest starts",
+    async ({ args, tier }) => {
+      const environment = {
+        TMPDIR: "/task temporary directory",
+        NODE_OPTIONS: "--enable-source-maps",
+        VITEST_CHROMIUM_GC_FORCE: "0",
+      };
+      let command: Command | undefined;
+      const exit = await runTests(parseTestSelection(args, tier), {
+        repositoryRoot: root,
+        env: environment,
+        signal: new AbortController().signal,
+        prepare: async () => ({ executables: {} }),
+        execute: async (selected) => {
+          command = selected;
+          return result();
+        },
+      });
+      expect(exit).toBe(0);
+      expect(command?.command).toBe(process.execPath);
+      expect(command?.args.at(-1)).toBe("vitest.browser.config.ts");
+      expect(command?.env).toEqual({
+        ...environment,
+        NODEX_TEST_TIER: tier,
+        VITEST_CHROMIUM_GC_FORCE: "1",
+        NODE_ENV: "test",
+      });
+      expect(environment.VITEST_CHROMIUM_GC_FORCE).toBe("0");
+    },
+  );
+
+  test.each(["unit", "main"] satisfies SuiteId[])(
+    "preserves inherited environment values for the %s runtime",
+    async (suite) => {
+      const environment = {
+        TMPDIR: "/task temporary directory",
+        NODE_OPTIONS: "--enable-source-maps",
+        VITEST_CHROMIUM_GC_FORCE: "0",
+      };
+      let command: Command | undefined;
+      await runTests(parseTestSelection([suite]), {
+        repositoryRoot: root,
+        env: environment,
+        signal: new AbortController().signal,
+        prepareElectron: async () => "/task/electron",
+        prepare: async () => ({ executables: {} }),
+        execute: async (selected) => {
+          command = selected;
+          return result();
+        },
+      });
+      expect(command?.env).toEqual({
+        ...environment,
+        NODEX_TEST_TIER: "default",
+        ...(suite === "main" ? { ELECTRON_RUN_AS_NODE: "1" } : {}),
+        NODE_ENV: "test",
+      });
+      expect(environment.VITEST_CHROMIUM_GC_FORCE).toBe("0");
+    },
+  );
 });

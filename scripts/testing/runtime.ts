@@ -18,7 +18,13 @@ export function runtimeCommand(
     ...context,
     command: electron ? (require("electron") as string) : process.execPath,
     args,
-    env: { ...context.env, ...(electron ? { ELECTRON_RUN_AS_NODE: "1" } : {}), NODE_ENV: "test" },
+    env: {
+      ...context.env,
+      ...(electron ? { ELECTRON_RUN_AS_NODE: "1" } : {}),
+      // Retire detached Chromium realms between isolated Browser files on every platform.
+      ...(suite === "browser" ? { VITEST_CHROMIUM_GC_FORCE: "1" } : {}),
+      NODE_ENV: "test",
+    },
   };
 }
 
