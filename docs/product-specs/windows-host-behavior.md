@@ -58,6 +58,11 @@ Workspace tabs, Page and chat headers, right and bottom panels, and content full
 remain below it, with ordinary content padding. Content full view and OS fullscreen
 are distinct; OS fullscreen clears native-control exclusions.
 
+The rail and pinned or floating sidebar begin immediately below the application row.
+The workspace header spans the content column only. Full pages without workspace
+header content, including Settings, use an 8 pixel page-surface gutter instead of
+reserving a blank workspace header.
+
 Main's application menu owns commands and their current enabled state. Windows
 presents a window-scoped snapshot through the renderer menubar and removes the
 per-window native menu surface after that presentation connects. Invocation rechecks

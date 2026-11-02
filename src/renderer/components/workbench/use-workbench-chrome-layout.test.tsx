@@ -4,31 +4,35 @@ import { useMotionValue } from "motion/react";
 import { expect, test, vi } from "vite-plus/test";
 import { useWorkbenchChromeLayout } from "./use-workbench-chrome-layout";
 
-function ChromeGeometryFixture() {
+function ChromeGeometryFixture({ applicationMenu = false }: { applicationMenu?: boolean }) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const animatedWidth = useMotionValue(300);
   const targetWidth = useMotionValue(300);
-  const { safeHeaderLeftWidth } = useWorkbenchChromeLayout({
-    activeSessionId: null,
-    destinationRouteOpen: false,
-    bottomPanelOpen: false,
-    bottomPanelRequestedHeight: null,
-    headerLeftWidth: 0,
-    isMacPlatform: true,
-    reducedMotion: true,
-    rightPanelFullWidth: false,
-    rightPanelFullView: false,
-    rightPanelSide: "right",
-    rightPanelOpen: false,
-    rightPanelRequestedWidth: null,
-    rootRef,
-    sidebarLogicalCollapsed: false,
-    sidebarMotion: { animatedWidth, mounted: true, targetWidth },
-    sidebarOpen: true,
-  });
+  const { safeHeaderLeftWidth, workspaceHeaderLeft, effectiveHeaderLeftWidth } =
+    useWorkbenchChromeLayout({
+      activeSessionId: null,
+      destinationRouteOpen: false,
+      bottomPanelOpen: false,
+      bottomPanelRequestedHeight: null,
+      headerLeftWidth: 0,
+      isMacPlatform: !applicationMenu,
+      applicationMenuBarEnabled: applicationMenu,
+      reducedMotion: true,
+      rightPanelFullWidth: false,
+      rightPanelFullView: false,
+      rightPanelSide: "right",
+      rightPanelOpen: false,
+      rightPanelRequestedWidth: null,
+      rootRef,
+      sidebarLogicalCollapsed: false,
+      sidebarMotion: { animatedWidth, mounted: true, targetWidth },
+      sidebarOpen: true,
+    });
   return (
     <div ref={rootRef} style={{ "--codex-window-zoom": 1 } as CSSProperties}>
       <output aria-label="Native controls inset">{safeHeaderLeftWidth}</output>
+      <output aria-label="Workspace header start">{workspaceHeaderLeft.get()}</output>
+      <output aria-label="Workspace header padding">{effectiveHeaderLeftWidth}</output>
     </div>
   );
 }
@@ -67,4 +71,13 @@ test("native controls retain their physical reservation when page zoom changes",
     window.api = originalApi;
     userAgent.mockRestore();
   }
+});
+
+test("Windows starts the header at the content column with ordinary padding", async () => {
+  const view = render(<ChromeGeometryFixture applicationMenu />);
+  await act(async () => {
+    await Promise.resolve();
+  });
+  expect(view.getByRole("status", { name: "Workspace header start" }).textContent).toBe("352");
+  expect(view.getByRole("status", { name: "Workspace header padding" }).textContent).toBe("8");
 });

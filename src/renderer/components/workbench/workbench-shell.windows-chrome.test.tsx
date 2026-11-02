@@ -1,6 +1,7 @@
+import { settleLazyRender } from "@/test/dom";
 import "./workbench-testkit/workbench-shell-harness";
 import { expect, test } from "vite-plus/test";
-import { waitFor, within } from "@testing-library/react";
+import { act, fireEvent, waitFor, within } from "@testing-library/react";
 import { renderWorkbench } from "./workbench-testkit/workbench-shell-harness";
 
 test("Windows mounts one navigation group in the application row above workspace actions", async () => {
@@ -22,6 +23,19 @@ test("Windows mounts one navigation group in the application row above workspace
     const header = view.getByTestId("workbench-global-header");
     expect(header.contains(menu)).toBe(false);
     expect(within(header).queryByRole("button", { name: "Back" })).toBeNull();
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Account and settings" }));
+      await Promise.resolve();
+    });
+    const settings = await view.findByRole("menuitem", { name: /Settings/ });
+    await act(async () => {
+      fireEvent.click(settings);
+      await Promise.resolve();
+    });
+    await settleLazyRender();
+    await view.findByRole("button", { name: "Back to app" });
+    expect(header.hidden).toBe(true);
+    expect(view.queryByRole("link", { name: "Computer use", hidden: true })).toBeNull();
   } finally {
     view.unmount();
     if (previousOs === undefined) delete root.dataset.codexOs;

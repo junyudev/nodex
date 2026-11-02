@@ -145,8 +145,9 @@ export function useWorkbenchChromeLayout({
       height: Math.max(
         0,
         window.innerHeight / windowZoom -
-          WORKBENCH_TITLEBAR_HEIGHT_PX -
-          (applicationMenuBarEnabled ? WORKBENCH_APPLICATION_MENU_HEIGHT_PX : 0) -
+          (applicationMenuBarEnabled
+            ? WORKBENCH_APPLICATION_MENU_HEIGHT_PX
+            : WORKBENCH_TITLEBAR_HEIGHT_PX) -
           WORKBENCH_SURFACE_GUTTER_PX,
       ),
       width: Math.max(
@@ -158,11 +159,16 @@ export function useWorkbenchChromeLayout({
     };
   }, [applicationMenuBarEnabled, rootRef]);
   const initialShellBodySize = readShellBodyFallbackSize();
-  const shellBodySize = useElementSizeMotionValues({
+  const measuredBodySize = useElementSizeMotionValues({
     initialHeight: initialShellBodySize.height,
     initialWidth: initialShellBodySize.width,
     readFallbackSize: readShellBodyFallbackSize,
   });
+  // Windows measures the full-height sidebar row; panel sizing uses the content below its header.
+  const contentBodyHeight = useTransform(measuredBodySize.height, (height) =>
+    Math.max(0, height - (applicationMenuBarEnabled ? WORKBENCH_TITLEBAR_HEIGHT_PX : 0)),
+  );
+  const shellBodySize = { ...measuredBodySize, height: contentBodyHeight };
   const rootFontSize = useMotionValue(readRootFontSize());
   useLayoutEffect(() => {
     if (!applicationMenuBarEnabled) return;
@@ -404,9 +410,11 @@ export function useWorkbenchChromeLayout({
   const collapsedHeaderLeftFallbackWidth =
     workspaceSafeLeft +
     (applicationMenuBarEnabled ? 0 : LEFT_HEADER_COLLAPSED_RAIL_FALLBACK_WIDTH_PX);
-  const effectiveHeaderLeftWidth = sidebarLogicalCollapsed
-    ? Math.max(headerLeftWidth, collapsedHeaderLeftFallbackWidth)
-    : Math.max(headerLeftWidth, workspaceSafeLeft + 24);
+  const effectiveHeaderLeftWidth = applicationMenuBarEnabled
+    ? Math.max(headerLeftWidth, workspaceSafeLeft)
+    : sidebarLogicalCollapsed
+      ? Math.max(headerLeftWidth, collapsedHeaderLeftFallbackWidth)
+      : Math.max(headerLeftWidth, workspaceSafeLeft + 24);
   const sidebarHeaderWidth = useTransform(
     [sidebarMotion.animatedWidth, leftHeaderContentWidth],
     ([width, contentWidth]) =>
@@ -418,19 +426,29 @@ export function useWorkbenchChromeLayout({
     leftHeaderContentWidth,
     (contentWidth) => WORKBENCH_NAVIGATION_RAIL_WIDTH_PX + contentWidth,
   );
+  const workspaceHeaderLeft = useTransform(sidebarMotion.animatedWidth, (width) =>
+    applicationMenuBarEnabled ? WORKBENCH_NAVIGATION_RAIL_WIDTH_PX + width : 0,
+  );
+  const applicationMenuLeftSlotWidth = useTransform(leftHeaderContentWidth, (width) =>
+    Math.max(width, effectiveHeaderLeftWidth),
+  );
   const headerLeftShellSlotWidth =
     sidebarLogicalCollapsed && rightPanelFullView
       ? 0
-      : sidebarMotion.mounted
-        ? sidebarHeaderWidth
-        : rightPanelSide === "left"
-          ? collapsedSidebarHeaderWidth
-          : effectiveHeaderLeftWidth;
-  const headerLeftShellSlotMinWidth = sidebarMotion.mounted
-    ? sidebarLogicalCollapsed
-      ? effectiveHeaderLeftWidth
-      : Math.max(headerLeftWidth, workspaceSafeLeft + 24)
-    : effectiveHeaderLeftWidth;
+      : applicationMenuBarEnabled
+        ? applicationMenuLeftSlotWidth
+        : sidebarMotion.mounted
+          ? sidebarHeaderWidth
+          : rightPanelSide === "left"
+            ? collapsedSidebarHeaderWidth
+            : effectiveHeaderLeftWidth;
+  const headerLeftShellSlotMinWidth = applicationMenuBarEnabled
+    ? 0
+    : sidebarMotion.mounted
+      ? sidebarLogicalCollapsed
+        ? effectiveHeaderLeftWidth
+        : Math.max(headerLeftWidth, workspaceSafeLeft + 24)
+      : effectiveHeaderLeftWidth;
 
   return {
     appShellHeaderEdgeScroll,
@@ -442,6 +460,7 @@ export function useWorkbenchChromeLayout({
     effectiveHeaderLeftWidth,
     headerLeftShellSlotMinWidth,
     headerLeftShellSlotWidth,
+    workspaceHeaderLeft,
     headerLeftFallbackRailWidth: applicationMenuBarEnabled
       ? 0
       : LEFT_HEADER_COLLAPSED_RAIL_FALLBACK_WIDTH_PX,
