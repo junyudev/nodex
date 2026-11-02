@@ -1,5 +1,6 @@
 import { writeInlineMarkdown } from "./nodex-markdown";
 import { DEFAULT_PROJECT_APPEARANCE } from "./project-appearance";
+import { formatAcceleratorLabel, resolveRuntimePlatform } from "./command-keybindings";
 
 export const INITIAL_PROJECT_NAME = "My Project";
 export const INITIAL_PROJECT_DESCRIPTION = "";
@@ -23,6 +24,7 @@ export interface InitialProjectPresentation {
 
 export function renderInitialProjectWelcomePage(input: {
   readonly sourceRoot: string;
+  readonly platform: string;
 }): InitialProjectWelcomePage {
   if (
     input.sourceRoot.length === 0 ||
@@ -46,6 +48,10 @@ export function renderInitialProjectWelcomePage(input: {
       styles: { bold: true },
     },
   ]);
+  const sendShortcut = formatAcceleratorLabel(
+    "CmdOrCtrl+Enter",
+    resolveRuntimePlatform(input.platform),
+  );
 
   return {
     titleMarkdown: INITIAL_PROJECT_WELCOME_TITLE,
@@ -57,7 +63,7 @@ export function renderInitialProjectWelcomePage(input: {
       "## Connect your model",
       "Use **Sign in** at the bottom of the sidebar to connect ChatGPT. Available Codex models then appear in the chat composer.",
       "## Try your first task",
-      "Put your cursor in the Prompt below and press **⌘↵**, or use its send button. It starts a new chat in this Project; select any text and choose **Send to chat** to pick another chat.",
+      `Put your cursor in the Prompt below and press **${sendShortcut}**, or use its send button. It starts a new chat in this Project; select any text and choose **Send to chat** to pick another chat.`,
       ":::prompt[Create a file named `hello-nodex.md` in this Project’s source folder with a short welcome note. Then tell me exactly what you changed.]",
       ":::",
       "## A quick tour",

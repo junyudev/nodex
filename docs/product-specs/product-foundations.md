@@ -30,6 +30,8 @@ separate setup-wizard product mode. Its source is a collision-free directory
 under the user's Documents/Nodex directory. Core creates the Project, primary
 Database, default View, primary Canvas, and one editable `Welcome to Nodex`
 Page as one idempotent bootstrap intent. It creates no Chat.
+The Welcome Page's Prompt send shortcut uses the host platform: `⌘⏎` on macOS
+and `Ctrl+Enter` on Windows and Linux.
 
 The first Window Session opens that Project Scene, retains the default Database
 View as its protected root, and opens the Welcome Page beside it. The starter

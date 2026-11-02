@@ -781,6 +781,7 @@ const bootstrapPackagedCliProject = (
     const workspace = yield* ProjectWorkspace;
     const bootstrapContext = yield* Layer.build(
       initialProjectBootstrapLive({
+        platform: process.platform,
         projectsDirectory: join(temporaryRoot, "projects"),
         journalPath: resolveInitialProjectJournalPath(join(temporaryRoot, "profile")),
       }).pipe(Layer.provide(Layer.succeed(ProjectWorkspace, workspace))),

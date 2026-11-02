@@ -143,9 +143,11 @@ function makeProject(input: { id: string; sourceRoot: string }): Project {
 const runtimeLayer = (input: {
   readonly root: string;
   readonly workspace: FakeProjectWorkspace;
+  readonly platform?: string;
   readonly createId?: () => string;
 }) =>
   live({
+    platform: input.platform ?? "darwin",
     projectsDirectory: join(input.root, "workspace"),
     journalPath: resolveInitialProjectJournalPath(join(input.root, ".nodex")),
     createId: input.createId,
@@ -156,6 +158,7 @@ const runtimeLayer = (input: {
 const getRuntime = (input: {
   readonly root: string;
   readonly workspace: FakeProjectWorkspace;
+  readonly platform?: string;
   readonly createId?: () => string;
 }) =>
   Layer.build(runtimeLayer(input)).pipe(
@@ -181,6 +184,7 @@ describe("InitialProjectBootstrapRuntime", () => {
         assert.deepEqual(input?.sources, [sourceRoot]);
         assert.strictEqual(input?.starterPage.titleMarkdown, "Welcome to Nodex");
         assert.include(extractMarkdownText(input?.starterPage.markdown ?? ""), sourceRoot);
+        assert.include(extractMarkdownText(input?.starterPage.markdown ?? ""), "press ⌘⏎ ");
         assert.deepEqual(presentations, [
           {
             projectId: input?.projectId,
@@ -287,7 +291,12 @@ describe("InitialProjectBootstrapRuntime", () => {
         const projectsDirectory = join(root, "workspace");
         mkdirSync(join(projectsDirectory, "My Project"), { recursive: true });
         const workspace = new FakeProjectWorkspace();
-        const runtime = yield* getRuntime({ root, workspace, createId: createIdFactory() });
+        const runtime = yield* getRuntime({
+          root,
+          workspace,
+          platform: "win32",
+          createId: createIdFactory(),
+        });
 
         yield* runtime.ensure(() => Effect.void);
 
@@ -295,6 +304,10 @@ describe("InitialProjectBootstrapRuntime", () => {
           join(projectsDirectory, "My Project 2"),
         ]);
         assert.deepEqual(readdirSync(join(projectsDirectory, "My Project")), []);
+        assert.include(
+          extractMarkdownText(workspace.createInputs[0]?.starterPage.markdown ?? ""),
+          "press Ctrl+Enter ",
+        );
       }),
     ),
   );

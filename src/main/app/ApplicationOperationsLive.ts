@@ -84,6 +84,7 @@ const initialProjectBootstrap = Layer.unwrap(
   Effect.gen(function* () {
     const config = yield* MainConfig;
     return initialProjectBootstrapLive({
+      platform: config.platform,
       projectsDirectory: resolveInitialProjectProjectsDirectory({
         configuredDirectory: config.initialProjectsDirectory ?? undefined,
         documentsDirectory: config.documentsPath,
