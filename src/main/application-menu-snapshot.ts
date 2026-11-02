@@ -72,7 +72,8 @@ export function findNativeMenuAccelerator(
       continue;
     }
     const isNative =
-      Boolean(item.role) || ["view.resetZoom", "view.zoomIn", "view.zoomOut"].includes(item.id);
+      Boolean(item.role) ||
+      ["file.closeWindow", "view.resetZoom", "view.zoomIn", "view.zoomOut"].includes(item.id);
     if (isNative && item.accelerator && matches(item.accelerator)) return item;
   }
   return null;

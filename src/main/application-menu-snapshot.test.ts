@@ -59,9 +59,17 @@ test("only Main-owned enabled accelerators cross native input after menu removal
     visible: true,
     accelerator: "Ctrl+N",
   } as MenuItem;
-  parent.submenu!.items.push(reload, workspaceAction);
+  const closeWindow = {
+    label: "Close Window",
+    id: "file.closeWindow",
+    enabled: true,
+    visible: true,
+    accelerator: "Ctrl+Shift+W",
+  } as MenuItem;
+  parent.submenu!.items.push(reload, workspaceAction, closeWindow);
   expect(findNativeMenuAccelerator(menu, (key) => key === "Ctrl+R")).toBe(reload);
   expect(findNativeMenuAccelerator(menu, (key) => key === "Ctrl+N")).toBeNull();
+  expect(findNativeMenuAccelerator(menu, (key) => key === "Ctrl+Shift+W")).toBe(closeWindow);
   parent.enabled = false;
   expect(findNativeMenuAccelerator(menu, () => true)).toBeNull();
 });
