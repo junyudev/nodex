@@ -30,31 +30,25 @@ interface ObservedSandboxLaunch {
   readonly env: Readonly<Record<string, string>>;
 }
 
-/** Runs the launcher exactly as Codex starts the `node_repl` server, with a recording `codex`. */
+/** Runs the launcher with native Node as a recording CLI, including on Windows. */
 function launchNodeRepl(input: {
   readonly declared: Readonly<Record<string, string>>;
   readonly persisted: Readonly<Record<string, string>>;
 }): ObservedSandboxLaunch {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-node-repl-launcher-"));
   temporaryRoots.push(root);
-  const recorder = path.join(root, "record.cjs");
+  // Node resolves the sandbox subcommand as a script in the fixture directory. Using its
+  // native executable avoids a shell-script stand-in that Windows cannot spawn.
   fs.writeFileSync(
-    recorder,
+    path.join(root, "sandbox"),
     [
-      "const env = { ...process.env };",
-      // Only the recording shell adds these; the launcher hands codex none of them.
-      'for (const name of ["OLDPWD", "PWD", "SHLVL", "_"]) delete env[name];',
-      "process.stdout.write(JSON.stringify({ argv: process.argv.slice(2), env }));",
+      'const path = require("node:path");',
+      "const argv = [path.basename(process.argv[1]), ...process.argv.slice(2)];",
+      "process.stdout.write(JSON.stringify({ argv, env: process.env }));",
     ].join("\n"),
   );
-  const codex = path.join(root, "codex");
-  fs.writeFileSync(
-    codex,
-    `#!/bin/sh\nELECTRON_RUN_AS_NODE=1 exec ${JSON.stringify(process.execPath)} ${JSON.stringify(recorder)} "$@"\n`,
-    { mode: 0o755 },
-  );
   const definition = nodeReplServerDefinition({
-    codexCliPath: codex,
+    codexCliPath: process.execPath,
     env: input.declared,
     nodePath: process.execPath,
     nodeReplPath: "/runtime/bin/node_repl",
@@ -62,6 +56,7 @@ function launchNodeRepl(input: {
   // Codex starts MCP servers from its base variables plus the merged server environment, in which
   // Nodex's declared values win over the shared Codex home's persisted ones.
   const result = spawnSync(definition.command, definition.args, {
+    cwd: root,
     encoding: "utf8",
     // The Main suite runs on Electron, which acts as the vendor Node only in Node mode.
     env: {
