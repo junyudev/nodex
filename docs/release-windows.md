@@ -166,7 +166,11 @@ through the trusted bootstrap query `app:startup-failure-evidence` (preload
 
 ## Native CI evidence
 
-The `Windows` workflow runs both native runner types. Its packaging cells upload:
+The `Windows` workflow runs both native runner types. Application suites retain
+command and test timings in `timings-windows-app-<suite>-<arch>-<attempt>`.
+Failed suites also retain available test attachments in
+`windows-app-<suite>-<arch>-failure-<attempt>`; these uploads exclude Profiles and
+databases. Its packaging cells upload:
 
 - `nodex-windows-<arch>-<source-sha>`: the architecture-qualified installer.
 - `nodex-windows-probe-<arch>-<source-sha>`: startup logs, probe result JSON, and
