@@ -93,6 +93,25 @@ Node version, [Rustup](https://rustup.rs/), and the
 [Vite+ CLI](https://viteplus.dev/guide/install). Install Visual Studio 2022
 Build Tools with **Desktop development with C++**, the Windows SDK, and the
 MSVC x64/x86 tools; arm64 development also needs the MSVC ARM64/ARM64EC tools.
+Install the matching **Spectre-mitigated libraries**, which are separate optional
+components. `vp install` runs `electron-builder install-app-deps`; rebuilding
+node-pty's winpty/conpty projects fails with **MSB8040** when these are missing.
+Select these Visual Studio 2022 component IDs (all three for an arm64 host):
+
+| Component ID                                                   | Required libraries |
+| -------------------------------------------------------------- | ------------------ |
+| `Microsoft.VisualStudio.Component.VC.Runtimes.x86.x64.Spectre` | x64/x86            |
+| `Microsoft.VisualStudio.Component.VC.Runtimes.ARM64.Spectre`   | ARM64              |
+| `Microsoft.VisualStudio.Component.VC.Runtimes.ARM64EC.Spectre` | ARM64EC            |
+
+For an existing Build Tools installation, run the VS 2022 bootstrapper from an
+administrator PowerShell, adjusting `--installPath` if needed:
+
+```powershell
+.\vs_BuildTools.exe modify --installPath "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\BuildTools" --add Microsoft.VisualStudio.Component.VC.Runtimes.x86.x64.Spectre --add Microsoft.VisualStudio.Component.VC.Runtimes.ARM64.Spectre --add Microsoft.VisualStudio.Component.VC.Runtimes.ARM64EC.Spectre --passive --wait --norestart
+```
+
+These IDs come from the [VS 2022 release component catalog](https://aka.ms/vs/17/release/channel).
 Install Python 3 for node-gyp. Use a Developer PowerShell with these tools on
 PATH when a native dependency needs rebuilding. Avoid an x64 Node installation
 when building the arm64 app. `node -p process.arch` and `rustc -vV` must report
