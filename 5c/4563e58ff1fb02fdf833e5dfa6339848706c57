@@ -1,0 +1,45 @@
+src/renderer/components/workbench/workbench-workspace-frame.browser.test.tsx
+  s_f8f93aacc1805d::t_07b1de9113d12a 1-102
+  s_f8f93aacc1805d::t_1b47426f389d63 103-129
+docs/product-specs/windows-host-behavior.md
+  s_f8f93aacc1805d::t_6bf158d8948978 61-65
+src/renderer/components/workbench/workbench-workspace-frame.tsx
+  s_f8f93aacc1805d::t_576028be98af3d 1-40
+src/renderer/lib/workbench-shell-geometry.ts
+  s_f8f93aacc1805d::t_576028be98af3d 7-15
+  s_f8f93aacc1805d::t_6002b839d7c5c3 1,16-18
+src/renderer/lib/workbench-shell-geometry.test.ts
+  s_f8f93aacc1805d::t_857325bc4ded96 1-26
+  s_f8f93aacc1805d::t_64977bea55867b 27-29
+src/renderer/components/workbench/workbench-runtime.tsx
+  s_f8f93aacc1805d::t_d32d7a1c0ea178 1,47,1799,4286-4291,5775-5777,5828,5830,5834,5836,5897,5899-5903,5932-5948,5950-5959,5962-6012
+  s_f8f93aacc1805d::t_86e6d119354c7f 6013-6038
+src/renderer/components/workbench/use-workbench-chrome-layout.test.tsx
+  s_f8f93aacc1805d::t_4587807e6a8f52 7,11-30,34-35,75-83
+src/renderer/components/workbench/use-workbench-chrome-layout.ts
+  s_f8f93aacc1805d::t_7f876e372956e0 148-150,162,167-171,413-417,429-434,438-451,463
+src/renderer/components/workbench/workbench-route-host.tsx
+  s_f8f93aacc1805d::t_c8bbdee88e25e3 35-38
+src/renderer/components/workbench/workbench-settings-route-shell.tsx
+  s_f8f93aacc1805d::t_e8bfd34a65ff0f 228
+src/renderer/components/workbench/workbench-shell.windows-chrome.test.tsx
+  s_f8f93aacc1805d::t_5037ee3a418a83 1,4,26-38
+src/renderer/lib/codex-sidebar-auto-reveal.ts
+  s_f8f93aacc1805d::t_0d9238c1c8cad0 29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5c4563e58ff1fb02fdf833e5dfa6339848706c57",
+  "prompts": {},
+  "sessions": {
+    "s_f8f93aacc1805d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19b4b-b89b-74b2-a4da-0926951bf228",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
