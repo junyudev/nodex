@@ -62,6 +62,9 @@ function entry(index: number, pending = false): VisibleConversationTurnEntry {
     threadId: "viewport-thread",
     turnId,
     itemId: `${turnId}:input`,
+    // Native opening identity makes these messages eligible as reading anchors.
+    rawItemId: `${turnId}:input`,
+    rawItemType: "userMessage",
     type: "user_message",
     kind: "userMessage",
     semanticKind: "userMessage",
@@ -430,6 +433,101 @@ describe("transcript viewport motion in Chromium", () => {
       });
     } finally {
       historyView.dispose();
+    }
+  });
+  test("releasing the reading anchor retains a fallback moved by intervening content growth", async (context) => {
+    const turns = Array.from({ length: 12 }, (_, index) => entry(index));
+    const view = renderThread(turns, true);
+    try {
+      await act(async () => {
+        await settleFrames(6);
+        view.readController().holdViewport();
+        view.readController().scrollToDistanceFromBottomPx(610, "instant");
+        await settleFrames(6);
+      });
+      const primary = view.container.querySelector<HTMLElement>(
+        '[data-content-search-unit-key="viewport-turn-8:user:0"]',
+      )!;
+      const backup = () =>
+        view.container.querySelector<HTMLElement>(
+          '[data-content-search-unit-key="viewport-turn-9:user:0"]',
+        )!;
+      const primaryBefore = primary.getBoundingClientRect().top;
+      const backupBefore = backup().getBoundingClientRect().top;
+      const grown = turns.map((value) =>
+        value.turnKey !== "viewport-turn-8"
+          ? value
+          : {
+              ...value,
+              turn: {
+                ...value.turn,
+                items: value.turn.items.map((item) =>
+                  item.kind !== "assistantMessage"
+                    ? item
+                    : {
+                        ...item,
+                        markdownText: `${item.markdownText}\n\nAnother measured paragraph.`,
+                      },
+                ),
+              },
+            },
+      );
+      await act(async () => {
+        view.update(grown);
+        await settleFrames(6);
+      });
+      const primaryError = Math.abs(primary.getBoundingClientRect().top - primaryBefore);
+      const backupAfterGrowth = backup().getBoundingClientRect().top;
+      expect(primaryError).toBeLessThanOrEqual(1);
+      expect(backupAfterGrowth - backupBefore).toBeGreaterThan(20);
+      await act(async () => {
+        view.update(grown.filter((value) => value.turnKey !== "viewport-turn-8"));
+        await settleFrames(6);
+      });
+      const backupError = Math.abs(backup().getBoundingClientRect().top - backupAfterGrowth);
+      expect(backupError).toBeLessThanOrEqual(1);
+      await recordGeometry(context, "reading anchor release after content growth", {
+        primaryError,
+        fallbackGrowth: backupAfterGrowth - backupBefore,
+        fallbackError: backupError,
+      });
+    } finally {
+      view.dispose();
+    }
+  });
+  test("a clamped history anchor uses its reachable position when earlier content returns", async (context) => {
+    const turns = Array.from({ length: 12 }, (_, index) => entry(index));
+    const view = renderThread(turns, true);
+    try {
+      await act(async () => {
+        await settleFrames(6);
+        view.readController().holdViewport();
+        view.readController().scrollToDistanceFromBottomPx(650, "instant");
+        await settleFrames(6);
+      });
+      const anchor = () =>
+        view.container.querySelector<HTMLElement>(
+          '[data-content-search-unit-key="viewport-turn-8:user:0"]',
+        )!;
+      await act(async () => {
+        view.update(turns.slice(8));
+        await settleFrames(6);
+      });
+      const clampedTop = anchor().getBoundingClientRect().top;
+      const nativeTop = view.readController().getScrollElement()!.scrollTop;
+      expect(nativeTop).toBe(0);
+      await act(async () => {
+        view.update(turns.slice(7));
+        await settleFrames(6);
+      });
+      const anchorError = Math.abs(anchor().getBoundingClientRect().top - clampedTop);
+      expect(anchorError).toBeLessThanOrEqual(1);
+      await recordGeometry(context, "history anchor at the native scroll boundary", {
+        clampedTop,
+        anchorError,
+      });
+    } finally {
+      view.dispose();
     }
   });
   test("animates real viewport placement while both bubbles stay in the document flow", async (context) => {
