@@ -106,7 +106,9 @@ function fixture(name: "clipboard" | "devicecheck" | "notifications" = "clipboar
   };
 }
 
-test.each(["clipboard", "devicecheck", "notifications"] as const)(
+test
+  .skipIf(process.platform === "win32")
+  .each(["clipboard", "devicecheck", "notifications"] as const)(
   "reuses verified %s output without rebuilding or changing its bytes",
   (name) => {
     const instance = fixture(name);
@@ -120,7 +122,9 @@ test.each(["clipboard", "devicecheck", "notifications"] as const)(
   },
 );
 
-test.each(["source", "binding", "builder", "lock", "electron", "toolchain", "environment"])(
+test
+  .skipIf(process.platform === "win32")
+  .each(["source", "binding", "builder", "lock", "electron", "toolchain", "environment"])(
   "rebuilds after the %s input changes",
   (change) => {
     const instance = fixture();
@@ -147,7 +151,9 @@ test.each(["source", "binding", "builder", "lock", "electron", "toolchain", "env
   },
 );
 
-test.each(["missing", "tampered", "non-executable", "symlink", "bad-receipt", "minimum-macos"])(
+test
+  .skipIf(process.platform === "win32")
+  .each(["missing", "tampered", "non-executable", "symlink", "bad-receipt", "minimum-macos"])(
   "rebuilds %s cached output instead of trusting the receipt",
   (damage) => {
     const instance = fixture();
@@ -168,7 +174,7 @@ test.each(["missing", "tampered", "non-executable", "symlink", "bad-receipt", "m
   },
 );
 
-test.each(["13.0", "26.0"])(
+test.skipIf(process.platform === "win32").each(["13.0", "26.0"])(
   "rejects newly compiled macOS %s output before publication",
   (minimum) => {
     const instance = fixture();
@@ -182,20 +188,23 @@ test.each(["13.0", "26.0"])(
   },
 );
 
-test.each(["compiler", "architecture"])("does not publish failed %s output", (failure) => {
-  const instance = fixture();
-  failBuild = failure === "compiler";
-  architecture = failure === "architecture" ? "x86_64" : "arm64";
-  expect(() => instance.build()).toThrow();
-  expect(existsSync(instance.output)).toBe(false);
-  expect(existsSync(`${instance.output}.build.json`)).toBe(false);
-  failBuild = false;
-  architecture = "arm64";
-  expect(instance.build()).toBe("built");
-  expect(instance.build()).toBe("reused");
-});
+test.skipIf(process.platform === "win32").each(["compiler", "architecture"])(
+  "does not publish failed %s output",
+  (failure) => {
+    const instance = fixture();
+    failBuild = failure === "compiler";
+    architecture = failure === "architecture" ? "x86_64" : "arm64";
+    expect(() => instance.build()).toThrow();
+    expect(existsSync(instance.output)).toBe(false);
+    expect(existsSync(`${instance.output}.build.json`)).toBe(false);
+    failBuild = false;
+    architecture = "arm64";
+    expect(instance.build()).toBe("built");
+    expect(instance.build()).toBe("reused");
+  },
+);
 
-test.each(["CXX", "MAKEFLAGS", "MFLAGS", "MAKEFILES"])(
+test.skipIf(process.platform === "win32").each(["CXX", "MAKEFLAGS", "MFLAGS", "MAKEFILES"])(
   "does not reuse external %s overrides with untracked dependencies",
   (key) => {
     const instance = fixture();
@@ -207,47 +216,59 @@ test.each(["CXX", "MAKEFLAGS", "MFLAGS", "MAKEFILES"])(
   },
 );
 
-test("does not reuse an implicit home Gyp include with external dependencies", () => {
-  const instance = fixture();
-  instance.build();
-  mkdirSync(path.join(instance.root, ".gyp"));
-  writeFileSync(path.join(instance.root, ".gyp/include.gypi"), "external include");
-  expect(instance.build()).toBe("built");
-  expect(instance.build()).toBe("built");
-  expect(existsSync(`${instance.output}.build.json`)).toBe(false);
-});
+test.skipIf(process.platform === "win32")(
+  "does not reuse an implicit home Gyp include with external dependencies",
+  () => {
+    const instance = fixture();
+    instance.build();
+    mkdirSync(path.join(instance.root, ".gyp"));
+    writeFileSync(path.join(instance.root, ".gyp/include.gypi"), "external include");
+    expect(instance.build()).toBe("built");
+    expect(instance.build()).toBe("built");
+    expect(existsSync(`${instance.output}.build.json`)).toBe(false);
+  },
+);
 
-test("reuses Vite+ system CA configuration but rebuilds for injected Node modules", () => {
-  const instance = fixture();
-  vi.stubEnv("NODE_OPTIONS", "--use-system-ca");
-  expect(instance.build()).toBe("built");
-  expect(instance.build()).toBe("reused");
-  vi.stubEnv("NODE_OPTIONS", "--require /external/build-hook.cjs");
-  expect(instance.build()).toBe("built");
-  expect(instance.build()).toBe("built");
-});
+test.skipIf(process.platform === "win32")(
+  "reuses Vite+ system CA configuration but rebuilds for injected Node modules",
+  () => {
+    const instance = fixture();
+    vi.stubEnv("NODE_OPTIONS", "--use-system-ca");
+    expect(instance.build()).toBe("built");
+    expect(instance.build()).toBe("reused");
+    vi.stubEnv("NODE_OPTIONS", "--require /external/build-hook.cjs");
+    expect(instance.build()).toBe("built");
+    expect(instance.build()).toBe("built");
+  },
+);
 
-test("reuses the selected Xcode SDK when an Apple launcher exports its SDKROOT alias", () => {
-  const instance = fixture();
-  selectedSdk = path.join(instance.root, "MacOSX27.0.sdk");
-  mkdirSync(selectedSdk);
-  const alias = path.join(instance.root, "MacOSX.sdk");
-  symlinkSync(selectedSdk, alias);
-  expect(instance.build()).toBe("built");
-  vi.stubEnv("SDKROOT", alias);
-  expect(instance.build()).toBe("reused");
-  expect(builds).toBe(1);
-});
+test.skipIf(process.platform === "win32")(
+  "reuses the selected Xcode SDK when an Apple launcher exports its SDKROOT alias",
+  () => {
+    const instance = fixture();
+    selectedSdk = path.join(instance.root, "MacOSX27.0.sdk");
+    mkdirSync(selectedSdk);
+    const alias = path.join(instance.root, "MacOSX.sdk");
+    symlinkSync(selectedSdk, alias);
+    expect(instance.build()).toBe("built");
+    vi.stubEnv("SDKROOT", alias);
+    expect(instance.build()).toBe("reused");
+    expect(builds).toBe(1);
+  },
+);
 
-test("does not reuse a custom SDK with untracked headers", () => {
-  const instance = fixture();
-  selectedSdk = path.join(instance.root, "MacOSX.sdk");
-  mkdirSync(selectedSdk);
-  const externalSdk = path.join(instance.root, "custom.sdk");
-  mkdirSync(externalSdk);
-  expect(instance.build()).toBe("built");
-  vi.stubEnv("SDKROOT", externalSdk);
-  expect(instance.build()).toBe("built");
-  expect(instance.build()).toBe("built");
-  expect(existsSync(`${instance.output}.build.json`)).toBe(false);
-});
+test.skipIf(process.platform === "win32")(
+  "does not reuse a custom SDK with untracked headers",
+  () => {
+    const instance = fixture();
+    selectedSdk = path.join(instance.root, "MacOSX.sdk");
+    mkdirSync(selectedSdk);
+    const externalSdk = path.join(instance.root, "custom.sdk");
+    mkdirSync(externalSdk);
+    expect(instance.build()).toBe("built");
+    vi.stubEnv("SDKROOT", externalSdk);
+    expect(instance.build()).toBe("built");
+    expect(instance.build()).toBe("built");
+    expect(existsSync(`${instance.output}.build.json`)).toBe(false);
+  },
+);

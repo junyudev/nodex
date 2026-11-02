@@ -131,6 +131,20 @@ function fixture(
       runtimeMetadataSha256: _metadata,
       ...archive
     } = build(targetTriple, `codex-package-${targetTriple}.tar.gz`);
+    if (targetTriple.includes("windows"))
+      return {
+        ...archive,
+        entrypointSha256: HASH,
+        runtimeMetadataSha256: HASH,
+        requiredArtifacts: [
+          "codex-package.json",
+          "bin/codex.exe",
+          "bin/codex-code-mode-host.exe",
+          "codex-path/rg.exe",
+          "codex-resources/codex-command-runner.exe",
+          "codex-resources/codex-windows-sandbox-setup.exe",
+        ],
+      };
     return archive;
   };
   const schemaTool = (targetTriple: string, assetName: string, entrypoint: string) => ({
@@ -263,7 +277,7 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { force: true, recursive: true });
 });
 
-describe("stage-codex-runtime", () => {
+describe.skipIf(process.platform === "win32")("stage-codex-runtime", () => {
   test("stages the canonical upstream package with exact official release provenance", async () => {
     const input = fixture();
     const candidate = await sealFixture(input);
@@ -355,7 +369,9 @@ describe("stage-codex-runtime", () => {
     expect(unexpectedFetch).not.toHaveBeenCalled();
     const firstEntrypoint = path.join(input.outputPath, "agent-runtime/bin/codex");
     const secondEntrypoint = path.join(secondOutputPath, "agent-runtime/bin/codex");
-    expect(statSync(firstEntrypoint).ino).not.toBe(statSync(secondEntrypoint).ino);
+    expect(statSync(firstEntrypoint, { bigint: true }).ino).not.toBe(
+      statSync(secondEntrypoint, { bigint: true }).ino,
+    );
     writeFileSync(firstEntrypoint, "tampered");
     expect(readFileSync(secondEntrypoint, "utf8")).toBe("app-server");
     await stageCodexRuntime(

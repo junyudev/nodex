@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { afterEach, beforeEach, expect, test, vi } from "vite-plus/test";
+import { afterEach, beforeEach, expect, test as platformTest, vi } from "vite-plus/test";
 import {
   agentRuntimeNativeBuildEnvironment,
   materializeAgentRuntimeNative,
@@ -14,6 +14,7 @@ vi.mock("./stage-browser-runtime", () => ({
   readBrowserRuntimeSourceManifest: vi.fn(),
   assertBrowserRuntimeSourceClosure: vi.fn(),
 }));
+const test = platformTest.skipIf(process.platform === "win32");
 const roots: string[] = [];
 let builds = 0;
 let failLoad = false;
@@ -136,6 +137,6 @@ test("Node native builds cannot inherit Electron target or external loader overr
   });
   expect(env.HOME).toBe("/private");
   expect(env.HTTPS_PROXY).toBe("https://proxy.invalid");
-  expect(env.PATH).toContain("browser-runtime/bin");
+  expect(env.PATH).toContain(join("browser-runtime", "bin"));
   expect(Object.keys(env).sort()).toEqual(["HOME", "HTTPS_PROXY", "PATH"]);
 });

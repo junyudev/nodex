@@ -82,73 +82,86 @@ function createWorkspaceFixture(root: string) {
   return { assets, license, lockPath };
 }
 
-test("rejects archive members that can escape or ambiguously address the staging root", () => {
-  expect(() =>
-    validateWorkspaceArchiveEntries(["python/bin/python3.13", "python/lib/"]),
-  ).not.toThrow();
-  for (const member of [
-    "/etc/file",
-    "../file",
-    "python/../../file",
-    "python\\file",
-    "python//file",
-    "python/./file",
-  ]) {
-    expect(() => validateWorkspaceArchiveEntries([member])).toThrow(
-      "Invalid workspace archive path",
-    );
-  }
-});
+test.skipIf(process.platform === "win32")(
+  "rejects archive members that can escape or ambiguously address the staging root",
+  () => {
+    expect(() =>
+      validateWorkspaceArchiveEntries(["python/bin/python3.13", "python/lib/"]),
+    ).not.toThrow();
+    for (const member of [
+      "/etc/file",
+      "../file",
+      "python/../../file",
+      "python\\file",
+      "python//file",
+      "python/./file",
+    ]) {
+      expect(() => validateWorkspaceArchiveEntries([member])).toThrow(
+        "Invalid workspace archive path",
+      );
+    }
+  },
+);
 
-test("reuses verified extraction without archives and keeps worktree outputs independent", async () => {
-  const root = mkdtempSync(path.join(os.tmpdir(), "nodex-workspace-cache-"));
-  try {
-    const fixture = createWorkspaceFixture(root);
-    const options = { projectRoot: root, lockPath: fixture.lockPath, targetArch: "arm64" as const };
-    const first = path.join(root, "first");
-    const second = path.join(root, "second");
-    await materializeWorkspaceRuntime({ ...options, outputPath: first });
-    for (const { cache } of fixture.assets) rmSync(cache);
-    await materializeWorkspaceRuntime({ ...options, outputPath: second });
-    const executable = "python/bin/python3.13";
-    expect(readFileSync(path.join(second, executable), "utf8")).toBe("python executable\n");
-    expect(lstatSync(path.join(second, "python/bin/python3")).isSymbolicLink()).toBe(false);
-    expect(lstatSync(path.join(first, executable)).ino).not.toBe(
-      lstatSync(path.join(second, executable)).ino,
-    );
-    writeFileSync(path.join(first, executable), "changed by signing\n");
-    expect(readFileSync(path.join(second, executable), "utf8")).toBe("python executable\n");
-    await materializeWorkspaceRuntime({ ...options, outputPath: first });
-    expect(readFileSync(path.join(first, executable), "utf8")).toBe("python executable\n");
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
+test.skipIf(process.platform === "win32")(
+  "reuses verified extraction without archives and keeps worktree outputs independent",
+  async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "nodex-workspace-cache-"));
+    try {
+      const fixture = createWorkspaceFixture(root);
+      const options = {
+        projectRoot: root,
+        lockPath: fixture.lockPath,
+        targetArch: "arm64" as const,
+      };
+      const first = path.join(root, "first");
+      const second = path.join(root, "second");
+      await materializeWorkspaceRuntime({ ...options, outputPath: first });
+      for (const { cache } of fixture.assets) rmSync(cache);
+      await materializeWorkspaceRuntime({ ...options, outputPath: second });
+      const executable = "python/bin/python3.13";
+      expect(readFileSync(path.join(second, executable), "utf8")).toBe("python executable\n");
+      expect(lstatSync(path.join(second, "python/bin/python3")).isSymbolicLink()).toBe(false);
+      expect(lstatSync(path.join(first, executable), { bigint: true }).ino).not.toBe(
+        lstatSync(path.join(second, executable), { bigint: true }).ino,
+      );
+      writeFileSync(path.join(first, executable), "changed by signing\n");
+      expect(readFileSync(path.join(second, executable), "utf8")).toBe("python executable\n");
+      await materializeWorkspaceRuntime({ ...options, outputPath: first });
+      expect(readFileSync(path.join(first, executable), "utf8")).toBe("python executable\n");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  },
+);
 
-test("includes committed Python notices in extraction identity and local reuse validation", async () => {
-  const root = mkdtempSync(path.join(os.tmpdir(), "nodex-workspace-licenses-"));
-  try {
-    const fixture = createWorkspaceFixture(root);
-    const options = {
-      projectRoot: root,
-      lockPath: fixture.lockPath,
-      targetArch: "arm64" as const,
-      outputPath: path.join(root, "output"),
-    };
-    await materializeWorkspaceRuntime(options);
-    writeFileSync(fixture.license, "Updated Python license\n");
-    await materializeWorkspaceRuntime(options);
-    expect(readFileSync(path.join(options.outputPath, "licenses/python/LICENSE"), "utf8")).toBe(
-      "Updated Python license\n",
-    );
-    for (const { cache } of fixture.assets) rmSync(cache);
-    writeFileSync(fixture.license, "Python license\n");
-    const previousNoticeOutput = path.join(root, "previous-notice");
-    await materializeWorkspaceRuntime({ ...options, outputPath: previousNoticeOutput });
-    expect(readFileSync(path.join(previousNoticeOutput, "licenses/python/LICENSE"), "utf8")).toBe(
-      "Python license\n",
-    );
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
+test.skipIf(process.platform === "win32")(
+  "includes committed Python notices in extraction identity and local reuse validation",
+  async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "nodex-workspace-licenses-"));
+    try {
+      const fixture = createWorkspaceFixture(root);
+      const options = {
+        projectRoot: root,
+        lockPath: fixture.lockPath,
+        targetArch: "arm64" as const,
+        outputPath: path.join(root, "output"),
+      };
+      await materializeWorkspaceRuntime(options);
+      writeFileSync(fixture.license, "Updated Python license\n");
+      await materializeWorkspaceRuntime(options);
+      expect(readFileSync(path.join(options.outputPath, "licenses/python/LICENSE"), "utf8")).toBe(
+        "Updated Python license\n",
+      );
+      for (const { cache } of fixture.assets) rmSync(cache);
+      writeFileSync(fixture.license, "Python license\n");
+      const previousNoticeOutput = path.join(root, "previous-notice");
+      await materializeWorkspaceRuntime({ ...options, outputPath: previousNoticeOutput });
+      expect(readFileSync(path.join(previousNoticeOutput, "licenses/python/LICENSE"), "utf8")).toBe(
+        "Python license\n",
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  },
+);

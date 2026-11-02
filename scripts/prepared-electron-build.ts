@@ -1,4 +1,4 @@
-import { execFileSync, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import {
   closeSync,
@@ -16,6 +16,7 @@ import {
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { runVitePlus } from "./vite-plus-command";
 import { inspectOfficialAgentSkillsArtifact } from "./official-agent-skills-artifact.mjs";
 import { BUNDLED_ELECTRON_MAIN_DEPENDENCIES } from "../config/electron-main-runtime-closure";
 import { NODEX_ACCOUNT_BUILD_VARIABLES } from "../config/nodex-account-build";
@@ -388,7 +389,12 @@ const outputInventory = (root: string): FileDigest[] => {
     ...(process.platform === "darwin"
       ? ["out/agent-runtime/node_modules/node-pty/build/Release/spawn-helper"]
       : []),
-    "out/agent-runtime/node_modules/node-pty/build/Release/pty.node",
+    ...(process.platform === "win32"
+      ? [
+          "out/agent-runtime/node_modules/node-pty/build/Release/conpty.node",
+          "out/agent-runtime/node_modules/node-pty/build/Release/conpty_console_list.node",
+        ]
+      : ["out/agent-runtime/node_modules/node-pty/build/Release/pty.node"]),
     "out/agent-runtime/LICENSE.t3code",
     "out/agent-runtime/node_modules/@anthropic-ai/claude-agent-sdk/package.json",
     "out/agent-runtime/node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs",
@@ -539,17 +545,15 @@ function runProductionBuild(): void {
     process.env.NODEX_AGENT_SKILLS_REQUIRE_PREGENERATED === "1"
       ? "agent-skills:verify"
       : "agent-skills:generate";
-  const runtimePreparation =
-    process.platform === "darwin" ? ["stage:codex-runtime:mac:cached"] : [];
+  const runtimePreparation = ["stage:codex-runtime:cached"];
   for (const script of [
     ...runtimePreparation,
     agentSkillsCommand,
     "build-resources:prepare",
     "sync:icons",
   ]) {
-    execFileSync("pnpm", ["--silent", "run", script], {
+    runVitePlus(["run", script], {
       cwd: repositoryRoot,
-      stdio: "inherit",
     });
   }
   if (beforePrerequisites !== currentPrerequisiteSourceDigest(repositoryRoot)) {
@@ -557,15 +561,13 @@ function runProductionBuild(): void {
   }
   const beforeBuild = currentInputDigest(repositoryRoot);
   const agentSkills = currentAgentSkills(repositoryRoot);
-  execFileSync("pnpm", ["exec", "electron-vite", "build", "--logLevel", "warn"], {
+  runVitePlus(["exec", "electron-vite", "build", "--logLevel", "warn"], {
     cwd: repositoryRoot,
-    stdio: "inherit",
   });
   // SSH hosts cannot load Electron's split Main chunks or its local
   // node_modules tree. Ship one content-addressable, dependency-contained Node
   // worker that can be copied to a trusted remote login over stdin.
-  execFileSync(
-    "pnpm",
+  runVitePlus(
     [
       "exec",
       "esbuild",
@@ -577,12 +579,11 @@ function runProductionBuild(): void {
       ...nodeBuildOptimizationArguments("production"),
       "--outfile=out/main/remote-worktree-worker.cjs",
     ],
-    { cwd: repositoryRoot, stdio: "inherit" },
+    { cwd: repositoryRoot },
   );
   // The application MCP process uses bundled Node outside Electron, so its
   // entrypoint must contain its complete JavaScript dependency closure.
-  execFileSync(
-    "pnpm",
+  runVitePlus(
     [
       "exec",
       "esbuild",
@@ -594,7 +595,7 @@ function runProductionBuild(): void {
       ...nodeBuildOptimizationArguments("production"),
       "--outfile=out/main/app-tools/server.mjs",
     ],
-    { cwd: repositoryRoot, stdio: "inherit" },
+    { cwd: repositoryRoot },
   );
   buildAgentRuntime(repositoryRoot);
   recordPreparedElectronBuild(

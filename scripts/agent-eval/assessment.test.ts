@@ -1,9 +1,11 @@
+import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { expect, test } from "vitest";
 import { assessEvaluation, inspectRoute, type RouteEvidence, type RouteReview } from "./assessment";
 import type { CaseVerification } from "./contracts";
 
 const prompt = "Create a filtered View.";
-const repository = "/repo/nodex";
+const repository = path.resolve("/repo/nodex");
 const sha256 = "a".repeat(64);
 const verification: CaseVerification = {
   passed: true,
@@ -46,7 +48,7 @@ test("ordinary shell success needs route review; a checksum-bound review can qua
     completed({
       type: "CommandExecution",
       id: "cmd",
-      cwd: "file:///workspace",
+      cwd: pathToFileURL(path.resolve("/workspace")).href,
       command: [
         "/bin/sh",
         "-c",
@@ -58,7 +60,7 @@ test("ordinary shell success needs route review; a checksum-bound review can qua
     {
       line: 2,
       ordinal: 1,
-      cwd: "/workspace",
+      cwd: path.resolve("/workspace"),
       command: [
         "/bin/sh",
         "-c",
@@ -153,7 +155,7 @@ test("executed repository reads differ from reading the published Skill or quote
     completed({
       type: "CommandExecution",
       id,
-      cwd: "file:///repo/nodex",
+      cwd: pathToFileURL(repository).href,
       command: ["cat", path],
       parsed_cmd: [{ type: "read", path }],
     });
@@ -173,7 +175,7 @@ test("executed repository reads differ from reading the published Skill or quote
       line: 3,
       ordinal: 2,
       kind: "repository_access",
-      detail: "/repo/nodex/crates/nodex-core/src/database.rs",
+      detail: path.join(repository, "crates/nodex-core/src/database.rs"),
     },
   ]);
   expect(assess(evidence).passed).toBe(false);
@@ -234,7 +236,7 @@ test("a reviewer can reject a private-endpoint shell workaround that static inde
     completed({
       type: "CommandExecution",
       id: "cmd",
-      cwd: "/workspace",
+      cwd: path.resolve("/workspace"),
       command: ["python3", "workaround.py"],
     }),
   );

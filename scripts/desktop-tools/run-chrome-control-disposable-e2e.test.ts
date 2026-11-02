@@ -70,10 +70,10 @@ describe("disposable Chrome control evidence gate", () => {
       }),
     ).toEqual({
       config: {
-        browserExecutable: "/fixtures/cft",
+        browserExecutable: path.resolve("/fixtures/cft"),
         evidencePath: path.resolve("runs.local/chrome-evidence.json"),
-        extensionCrx: "/fixtures/extension.crx",
-        runtimeRoot: "/fixtures/runtime",
+        extensionCrx: path.resolve("/fixtures/extension.crx"),
+        runtimeRoot: path.resolve("/fixtures/runtime"),
       },
       status: "ready",
     });

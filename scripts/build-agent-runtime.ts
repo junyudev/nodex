@@ -25,6 +25,7 @@ import {
   withAgentRuntimeBuildLock,
 } from "./agent-runtime-build-cache";
 import { materializeAgentRuntimeNative } from "./agent-runtime-native";
+import { vitePlusCommand } from "./vite-plus-command";
 import { immutableDirectoryDigest } from "./immutable-artifact-cache";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -105,8 +106,9 @@ function buildLockedAgentRuntime(root: string, mode: NodeBuildMode): "built" | "
       metafile: temporaryMetafile,
       bundle: () =>
         execFileSync(
-          binary,
+          vitePlusCommand([]).command,
           [
+            ...vitePlusCommand(["exec", "esbuild"]).args,
             "packages/agent-runtime/src/nodex/entry.ts",
             "--bundle",
             "--splitting",

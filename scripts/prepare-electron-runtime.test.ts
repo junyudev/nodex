@@ -145,7 +145,9 @@ test("concurrent worktrees extract once and own independent verified distributio
     prepareElectronRuntime(second),
   ]);
   expect(setup.counters()).toEqual({ downloads: 1, extractions: 1 });
-  expect(statSync(firstExecutable).ino).not.toBe(statSync(secondExecutable).ino);
+  expect(statSync(firstExecutable, { bigint: true }).ino).not.toBe(
+    statSync(secondExecutable, { bigint: true }).ino,
+  );
   const before = statSync(firstExecutable).mtimeMs;
   await prepareElectronRuntime(first);
   expect(statSync(firstExecutable).mtimeMs).toBe(before);

@@ -99,6 +99,12 @@ Upgrade runtime provenance separately from protocol or product changes:
      --out /path/to/candidate-lock.json
    ```
 
+   Add `--windows-arm64 /path/to/windows-arm64.tar.gz` and
+   `--windows-x64 /path/to/windows-x64.tar.gz` to derive both Windows pins.
+   Each archive is checked against the reviewed checksum manifest, exact file
+   inventory and native architecture before its metadata is recorded. These
+   options may also be used without `--arm64` to retain the current macOS pin.
+
 6. Review the derived entrypoint and staged metadata hashes, then install the
    candidate deliberately.
 7. Regenerate the app-server protocol from the pinned official Codex CLI schema

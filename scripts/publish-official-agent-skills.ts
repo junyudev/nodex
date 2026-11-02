@@ -199,7 +199,7 @@ const materializeManagedRef = (
   ).stdout;
   const entries = tree
     .trim()
-    .split("\n")
+    .split(/\r?\n/u)
     .filter(Boolean)
     .map((line) => {
       const match = /^(\d{6}) blob [a-f0-9]+\t(.+)$/u.exec(line);
@@ -375,9 +375,17 @@ export function publishOfficialAgentSkills(options: PublishOptions): PublishResu
     }
 
     replaceManagedPaths(worktree, path.resolve(options.artifactDirectory));
+    // Replaced same-size files can retain a matching timestamp on Windows. Discard only
+    // the managed index entries so staging always reads the artifact bytes afresh.
+    git(worktree, ["rm", "-r", "--cached", "--ignore-unmatch", "--", ...MANAGED_ROOTS], token);
     git(worktree, ["add", "--all", "--", ...MANAGED_ROOTS], token);
     const message = commitMessage(artifact);
     git(worktree, ["commit", "-m", message], token);
+    assertSameArtifact(
+      inspectRef(worktree, "HEAD", temporaryRoot, token),
+      artifact,
+      "Committed Skill artifact",
+    );
     git(worktree, ["tag", "-a", tag, "-m", message], token);
     options.beforePush?.(worktree);
     git(

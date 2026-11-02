@@ -35,7 +35,7 @@ export async function measureDirectory(directory: string): Promise<DirectoryUsag
   };
   const visit = async (entryPath: string): Promise<void> => {
     try {
-      const stat = await lstat(entryPath);
+      const stat = await lstat(entryPath, { bigint: true });
       result.exists = true;
       if (stat.isDirectory() && profileDirectories.has(path.basename(entryPath))) {
         result.excludedDirectories += 1;
@@ -44,13 +44,13 @@ export async function measureDirectory(directory: string): Promise<DirectoryUsag
       const identity = `${stat.dev}:${stat.ino}`;
       if (seen.has(identity)) return;
       seen.add(identity);
-      result.allocatedBytes += stat.blocks * 512;
+      result.allocatedBytes += Number(stat.blocks) * 512;
       if (stat.isSymbolicLink()) {
         result.links += 1;
         return;
       }
       if (stat.isFile()) {
-        result.logicalBytes += stat.size;
+        result.logicalBytes += Number(stat.size);
         result.files += 1;
         return;
       }

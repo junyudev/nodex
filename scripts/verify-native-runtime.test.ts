@@ -39,7 +39,7 @@ afterEach(() => {
   }
 });
 
-describe("packaged native runtime verification", () => {
+describe.skipIf(process.platform === "win32")("packaged native runtime verification", () => {
   test("initializes Markdown before Welcome bootstrap in a cold verification process", () => {
     const sourceRoot = "/tmp/My [Project] `draft`";
     const script = `

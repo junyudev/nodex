@@ -270,7 +270,7 @@ function parseCliOptions(argv: readonly string[]): BuildSparkleBridgeOptions {
     values.set(key, value);
   }
   const architecture = values.get("--arch");
-  const channel = values.get("--channel") ?? "disabled";
+  const channel = values.get("--channel") ?? process.env.NODEX_SPARKLE_CHANNEL ?? "disabled";
   const outputPath = values.get("--out");
   const toolchainPath =
     values.get("--toolchain") ??

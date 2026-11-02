@@ -50,10 +50,12 @@ test("skips Babel outside the compiler boundary while retaining native React tra
     !(oxc.jsxRefreshExclude instanceof RegExp)
   )
     throw new Error("Expected native React refresh filters");
-  const workspaceComponent = resolve("third_party/blocknote/Component.tsx");
+  const workspaceComponent = resolve("third_party/blocknote/Component.tsx").replaceAll("\\", "/");
   expect(oxc.jsxRefreshInclude.test(workspaceComponent)).toBe(true);
   expect(oxc.jsxRefreshExclude.test(workspaceComponent)).toBe(false);
-  expect(oxc.jsxRefreshExclude.test(resolve("node_modules/package/Component.tsx"))).toBe(true);
+  expect(
+    oxc.jsxRefreshExclude.test(resolve("node_modules/package/Component.tsx").replaceAll("\\", "/")),
+  ).toBe(true);
 });
 
 test("compiles components and hooks through the real Babel hook and preserves coverage", async () => {

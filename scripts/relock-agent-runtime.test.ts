@@ -104,60 +104,66 @@ function fixture() {
   };
 }
 
-test("relocks the official archive and produces stageable metadata", async () => {
-  const input = fixture();
-  const candidate = await createAgentRuntimeRelockCandidate({
-    ...input,
-    agentRuntimePlatformContractVerifier: skipPlatformInspection,
-    outputPath: path.join(input.projectRoot, "candidate.json"),
-    projectRootPath: input.projectRoot,
-  });
-
-  expect(candidate.schemaVersion).toBe(1);
-  expect(candidate.upstream).toEqual(input.lock.upstream);
-  expect(candidate.builds["darwin-arm64"].archiveSha256).toBe(
-    sha256(readFileSync(input.arm64ArchivePath)),
-  );
-  expect(candidate.builds["darwin-arm64"].entrypointSha256).toBe(sha256("#!/bin/sh\nexit 0\n"));
-  expect(candidate.builds["darwin-arm64"].runtimeMetadataSha256).not.toBe("0".repeat(64));
-
-  const immutableCandidatePath = path.join(input.projectRoot, "review/candidate.lock.json");
-  writeAgentRuntimeRelockCandidate(immutableCandidatePath, candidate);
-  expect(() => writeAgentRuntimeRelockCandidate(immutableCandidatePath, candidate)).toThrow();
-
-  const candidatePath = path.join(input.projectRoot, "candidate.lock.json");
-  writeFileSync(candidatePath, `${JSON.stringify(candidate, null, 2)}\n`);
-  await expect(
-    stageCodexRuntime({
+test.skipIf(process.platform === "win32")(
+  "relocks the official archive and produces stageable metadata",
+  async () => {
+    const input = fixture();
+    const candidate = await createAgentRuntimeRelockCandidate({
+      ...input,
       agentRuntimePlatformContractVerifier: skipPlatformInspection,
-      archivePath: input.arm64ArchivePath,
-      lockPath: candidatePath,
-      outputPath: path.join(input.projectRoot, "verified"),
+      outputPath: path.join(input.projectRoot, "candidate.json"),
       projectRootPath: input.projectRoot,
-      targetArch: "arm64",
-      targetPlatform: "darwin",
-    }),
-  ).resolves.toMatchObject({
-    appServerRuntimeVersion: input.lock.appServerRuntimeVersion,
-    targetArch: "arm64",
-  });
-});
+    });
 
-test("requires explicit archives, base lock, and non-canonical output", () => {
-  expect(() => parseAgentRuntimeRelockCli(["--out", "/tmp/candidate.json"])).toThrow(
-    "official Codex release archive",
-  );
-  expect(() =>
-    parseAgentRuntimeRelockCli(["--arm64", "/tmp/arm64.tar.gz", "--out", "/tmp/candidate.json"]),
-  ).toThrow("--base-lock is required");
-  expect(() =>
-    parseAgentRuntimeRelockCli([
-      "--arm64",
-      "/tmp/arm64.tar.gz",
-      "--base-lock",
-      "/tmp/base.json",
-      "--out",
-      path.resolve("resources/agent-runtime/codex-app-server.lock.json"),
-    ]),
-  ).toThrow("must not overwrite the canonical");
-});
+    expect(candidate.schemaVersion).toBe(1);
+    expect(candidate.upstream).toEqual(input.lock.upstream);
+    expect(candidate.builds["darwin-arm64"].archiveSha256).toBe(
+      sha256(readFileSync(input.arm64ArchivePath)),
+    );
+    expect(candidate.builds["darwin-arm64"].entrypointSha256).toBe(sha256("#!/bin/sh\nexit 0\n"));
+    expect(candidate.builds["darwin-arm64"].runtimeMetadataSha256).not.toBe("0".repeat(64));
+
+    const immutableCandidatePath = path.join(input.projectRoot, "review/candidate.lock.json");
+    writeAgentRuntimeRelockCandidate(immutableCandidatePath, candidate);
+    expect(() => writeAgentRuntimeRelockCandidate(immutableCandidatePath, candidate)).toThrow();
+
+    const candidatePath = path.join(input.projectRoot, "candidate.lock.json");
+    writeFileSync(candidatePath, `${JSON.stringify(candidate, null, 2)}\n`);
+    await expect(
+      stageCodexRuntime({
+        agentRuntimePlatformContractVerifier: skipPlatformInspection,
+        archivePath: input.arm64ArchivePath,
+        lockPath: candidatePath,
+        outputPath: path.join(input.projectRoot, "verified"),
+        projectRootPath: input.projectRoot,
+        targetArch: "arm64",
+        targetPlatform: "darwin",
+      }),
+    ).resolves.toMatchObject({
+      appServerRuntimeVersion: input.lock.appServerRuntimeVersion,
+      targetArch: "arm64",
+    });
+  },
+);
+
+test.skipIf(process.platform === "win32")(
+  "requires explicit archives, base lock, and non-canonical output",
+  () => {
+    expect(() => parseAgentRuntimeRelockCli(["--out", "/tmp/candidate.json"])).toThrow(
+      "official Codex release archive",
+    );
+    expect(() =>
+      parseAgentRuntimeRelockCli(["--arm64", "/tmp/arm64.tar.gz", "--out", "/tmp/candidate.json"]),
+    ).toThrow("--base-lock is required");
+    expect(() =>
+      parseAgentRuntimeRelockCli([
+        "--arm64",
+        "/tmp/arm64.tar.gz",
+        "--base-lock",
+        "/tmp/base.json",
+        "--out",
+        path.resolve("resources/agent-runtime/codex-app-server.lock.json"),
+      ]),
+    ).toThrow("must not overwrite the canonical");
+  },
+);

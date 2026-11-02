@@ -24,6 +24,7 @@ import {
   immutableDirectoryDigest,
   resolveImmutableDirectoryPath,
 } from "./immutable-artifact-cache";
+import { nativeExecutableName } from "./desktop-build-target";
 import { replaceOwnedDirectory } from "./replace-owned-directory";
 
 const RECIPE = "rust-dev-runtime-v1";
@@ -95,7 +96,7 @@ export const rustDevRuntimeDirectory = (projectRoot: string): string =>
 export const rustDevRuntimeExecutable = (
   projectRoot: string,
   binary: (typeof BINARIES)[number],
-): string => path.join(rustDevRuntimeDirectory(projectRoot), "bin", binary);
+): string => path.join(rustDevRuntimeDirectory(projectRoot), "bin", nativeExecutableName(binary));
 
 function visitFiles(root: string, relative: string, files: Map<string, string>): void {
   const absolute = path.join(root, relative);
@@ -421,7 +422,14 @@ export async function prepareRustDevRuntime(input: {
       projectRoot,
     })
   ) {
-    run("cargo", CARGO_ARGUMENTS, { ...options, inheritOutput: true });
+    const packages =
+      (input.platform ?? process.platform) === "win32"
+        ? ["nodex-core-server", "nodex-cli"]
+        : ["nodex-core-server", "nodex-cli", "nodex-browser-profile-helper"];
+    run("cargo", ["build", "--locked", ...packages.flatMap((name) => ["-p", name])], {
+      ...options,
+      inheritOutput: true,
+    });
     return {
       cached: false,
       outputRoot: rustDevCargoOutputDirectory(projectRoot, environment, run),

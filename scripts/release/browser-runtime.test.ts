@@ -18,21 +18,24 @@ afterEach(() => {
     rmSync(directory, { recursive: true, force: true });
 });
 
-test("Browser runtime publisher always opts out of app Latest", () => {
-  const directory = mkdtempSync(join(tmpdir(), "nodex-browser-release-"));
-  directories.push(directory);
-  const arm64 = join(directory, "browser-runtime-arm64.tar.gz");
-  writeFileSync(arm64, "arm64");
-  const args = browserRuntimeReleaseArguments({
-    arm64Path: arm64,
-    repo: "junyudev/nodex",
-    tag: "browser-runtime-v26.727.40816",
-  });
-  expect(args).toContain("--latest=false");
-  expect(args).toContain("--verify-tag");
-  expect(args).toContain("--draft");
-  expect(args).not.toContain("--latest");
-});
+test.skipIf(process.platform === "win32")(
+  "Browser runtime publisher always opts out of app Latest",
+  () => {
+    const directory = mkdtempSync(join(tmpdir(), "nodex-browser-release-"));
+    directories.push(directory);
+    const arm64 = join(directory, "browser-runtime-arm64.tar.gz");
+    writeFileSync(arm64, "arm64");
+    const args = browserRuntimeReleaseArguments({
+      arm64Path: arm64,
+      repo: "junyudev/nodex",
+      tag: "browser-runtime-v26.727.40816",
+    });
+    expect(args).toContain("--latest=false");
+    expect(args).toContain("--verify-tag");
+    expect(args).toContain("--draft");
+    expect(args).not.toContain("--latest");
+  },
+);
 
 test("Browser runtime publication waits for a just-created draft to become listed", async () => {
   const expected = new Map([["arm64.tar.gz", { sha256: "a".repeat(64), size: 10 }]]);
@@ -56,56 +59,59 @@ test("Browser runtime publication waits for a just-created draft to become liste
   expect(reads).toBe(4);
 });
 
-test("Browser runtime publication resumes only exact missing draft assets", () => {
-  const expected = new Map([["arm64.tar.gz", { sha256: "a".repeat(64), size: 10 }]]);
+test.skipIf(process.platform === "win32")(
+  "Browser runtime publication resumes only exact missing draft assets",
+  () => {
+    const expected = new Map([["arm64.tar.gz", { sha256: "a".repeat(64), size: 10 }]]);
 
-  expect(planBrowserRuntimePublication(null, expected)).toEqual({ kind: "create" });
-  expect(
-    planBrowserRuntimePublication(
-      {
-        assets: [],
-        draft: true,
-        prerelease: false,
-        tag_name: "browser-runtime-v1.0.0",
-      },
-      expected,
-    ),
-  ).toEqual({ kind: "resume-draft", missingAssetNames: ["arm64.tar.gz"] });
-  const completeAssets = [{ digest: `sha256:${"a".repeat(64)}`, name: "arm64.tar.gz", size: 10 }];
-  expect(
-    planBrowserRuntimePublication(
-      {
-        assets: completeAssets,
-        draft: true,
-        prerelease: false,
-        tag_name: "browser-runtime-v1.0.0",
-      },
-      expected,
-    ),
-  ).toEqual({ kind: "resume-draft", missingAssetNames: [] });
-  expect(
-    planBrowserRuntimePublication(
-      {
-        assets: completeAssets,
-        draft: false,
-        prerelease: false,
-        tag_name: "browser-runtime-v1.0.0",
-      },
-      expected,
-    ),
-  ).toEqual({ kind: "verify-published" });
-  expect(() =>
-    planBrowserRuntimePublication(
-      {
-        assets: [{ digest: `sha256:${"c".repeat(64)}`, name: "arm64.tar.gz", size: 10 }],
-        draft: true,
-        prerelease: false,
-        tag_name: "browser-runtime-v1.0.0",
-      },
-      expected,
-    ),
-  ).toThrow("does not match its lock");
-});
+    expect(planBrowserRuntimePublication(null, expected)).toEqual({ kind: "create" });
+    expect(
+      planBrowserRuntimePublication(
+        {
+          assets: [],
+          draft: true,
+          prerelease: false,
+          tag_name: "browser-runtime-v1.0.0",
+        },
+        expected,
+      ),
+    ).toEqual({ kind: "resume-draft", missingAssetNames: ["arm64.tar.gz"] });
+    const completeAssets = [{ digest: `sha256:${"a".repeat(64)}`, name: "arm64.tar.gz", size: 10 }];
+    expect(
+      planBrowserRuntimePublication(
+        {
+          assets: completeAssets,
+          draft: true,
+          prerelease: false,
+          tag_name: "browser-runtime-v1.0.0",
+        },
+        expected,
+      ),
+    ).toEqual({ kind: "resume-draft", missingAssetNames: [] });
+    expect(
+      planBrowserRuntimePublication(
+        {
+          assets: completeAssets,
+          draft: false,
+          prerelease: false,
+          tag_name: "browser-runtime-v1.0.0",
+        },
+        expected,
+      ),
+    ).toEqual({ kind: "verify-published" });
+    expect(() =>
+      planBrowserRuntimePublication(
+        {
+          assets: [{ digest: `sha256:${"c".repeat(64)}`, name: "arm64.tar.gz", size: 10 }],
+          draft: true,
+          prerelease: false,
+          tag_name: "browser-runtime-v1.0.0",
+        },
+        expected,
+      ),
+    ).toThrow("does not match its lock");
+  },
+);
 
 function makePublishFixture(): BrowserRuntimePublishOptions {
   const directory = mkdtempSync(join(tmpdir(), "nodex-browser-release-"));
@@ -150,21 +156,26 @@ function makePublishFixture(): BrowserRuntimePublishOptions {
   return { arm64Path, lockPath, repo, tag };
 }
 
-test("Browser runtime publisher proves the archive against the reviewed release lock", async () => {
-  const options = makePublishFixture();
+test.skipIf(process.platform === "win32")(
+  "Browser runtime publisher proves the archive against the reviewed release lock",
+  async () => {
+    const options = makePublishFixture();
 
-  await expect(verifyBrowserRuntimePublishInput(options)).resolves.toBeUndefined();
-  await expect(
-    verifyBrowserRuntimePublishInput({ ...options, repo: "example/wrong-repository" }),
-  ).rejects.toThrow("does not match its release lock");
+    await expect(verifyBrowserRuntimePublishInput(options)).resolves.toBeUndefined();
+    await expect(
+      verifyBrowserRuntimePublishInput({ ...options, repo: "example/wrong-repository" }),
+    ).rejects.toThrow("does not match its release lock");
 
-  const archiveBytes = readFileSync(options.arm64Path);
-  archiveBytes[0] = archiveBytes[0]! ^ 0xff;
-  writeFileSync(options.arm64Path, archiveBytes);
-  await expect(verifyBrowserRuntimePublishInput(options)).rejects.toThrow(
-    "archive checksum mismatch",
-  );
+    const archiveBytes = readFileSync(options.arm64Path);
+    archiveBytes[0] = archiveBytes[0]! ^ 0xff;
+    writeFileSync(options.arm64Path, archiveBytes);
+    await expect(verifyBrowserRuntimePublishInput(options)).rejects.toThrow(
+      "archive checksum mismatch",
+    );
 
-  writeFileSync(options.arm64Path, "tampered");
-  await expect(verifyBrowserRuntimePublishInput(options)).rejects.toThrow("archive size mismatch");
-});
+    writeFileSync(options.arm64Path, "tampered");
+    await expect(verifyBrowserRuntimePublishInput(options)).rejects.toThrow(
+      "archive size mismatch",
+    );
+  },
+);

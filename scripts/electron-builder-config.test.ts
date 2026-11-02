@@ -4,32 +4,7 @@ import path from "node:path";
 import { load } from "js-yaml";
 import { describe, expect, test } from "vite-plus/test";
 
-interface ElectronBuilderFileSet {
-  readonly filter?: readonly string[];
-  readonly from?: string;
-  readonly to?: string;
-}
-
-interface ElectronBuilderConfig {
-  readonly afterPack?: string;
-  readonly dmg?: {
-    readonly sign?: boolean;
-    readonly writeUpdateInfo?: boolean;
-  };
-  readonly extraFiles?: readonly ElectronBuilderFileSet[];
-  readonly extraResources?: readonly ElectronBuilderFileSet[];
-  readonly mac?: {
-    readonly binaries?: readonly string[];
-    readonly entitlements?: string;
-    readonly entitlementsInherit?: string;
-    readonly extendInfo?: Record<string, unknown>;
-    readonly hardenedRuntime?: boolean;
-    readonly minimumSystemVersion?: string;
-    readonly sign?: string;
-    readonly target?: readonly string[];
-  };
-  readonly publish?: unknown;
-}
+type ElectronBuilderConfig = import("electron-builder").Configuration;
 
 function readBooleanPlist(filePath: string): Readonly<Record<string, boolean>> {
   const source = fs.readFileSync(filePath, "utf8");
@@ -75,7 +50,7 @@ describe("electron-builder runtime resources", () => {
       to: "agent-skills",
       filter: ["**/*"],
     });
-    expect(config.extraResources).toContainEqual({
+    expect(config.mac?.extraResources).toContainEqual({
       from: ".generated/sparkle-runtime/${arch}/nodex-sparkle.node",
       to: "native/nodex-sparkle.node",
     });
@@ -87,7 +62,7 @@ describe("electron-builder runtime resources", () => {
         },
       ]),
     );
-    expect(config.extraFiles).toContainEqual({
+    expect(config.mac?.extraFiles).toContainEqual({
       from: ".generated/sparkle-runtime/${arch}/Sparkle.framework",
       to: "Frameworks/Sparkle.framework",
       filter: ["**/*"],
@@ -111,6 +86,30 @@ describe("electron-builder runtime resources", () => {
     });
     expect(config.dmg).toMatchObject({ sign: true, writeUpdateInfo: false });
     expect(config.publish).toBeUndefined();
+  });
+
+  test("installs Windows per user without adding an elevation runtime", () => {
+    const config = load(
+      fs.readFileSync(path.resolve("electron-builder.yml"), "utf8"),
+    ) as ElectronBuilderConfig;
+    expect(config.appId).toBe("app.jyu.nodex");
+    expect(config.win).toMatchObject({
+      icon: "icon.ico",
+      requestedExecutionLevel: "asInvoker",
+      signExecutable: false,
+      target: [{ target: "nsis", arch: ["x64", "arm64"] }],
+    });
+    expect(config.nsis).toMatchObject({
+      oneClick: true,
+      perMachine: false,
+      allowElevation: false,
+      packElevateHelper: false,
+      buildUniversalInstaller: false,
+      runAfterFinish: false,
+      deleteAppDataOnUninstall: false,
+      artifactName: "${productName}-${version}-win-${arch}-setup.${ext}",
+    });
+    expect(config.protocols).toContainEqual({ name: "Nodex Deep Link", schemes: ["nodex"] });
   });
 
   test("grants microphone capture only to the hardened top-level app", () => {

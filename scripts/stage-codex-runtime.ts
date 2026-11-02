@@ -30,8 +30,6 @@ import {
   readCodexAppServerReleaseLock,
   resolveCodexAppServerReleaseLockPath,
   type AgentRuntimeBuild,
-  type AgentRuntimeTargetArch,
-  type AgentRuntimeTargetPlatform,
   type CodexAppServerReleaseLock,
 } from "./agent-runtime-release-lock";
 import {
@@ -45,6 +43,8 @@ import {
 import { replaceOwnedDirectory } from "./replace-owned-directory";
 import { stageBrowserRuntime } from "./stage-browser-runtime";
 import { BROWSER_RUNTIME_BUNDLE_DIRECTORY } from "../src/shared/browser-runtime-metadata";
+import { desktopBuildTarget, type DesktopArchitecture } from "./desktop-build-target";
+import { verifyWindowsArchitectureClosure } from "./windows-pe.mjs";
 import type { BrowserRuntimePlatformArtifactVerifier } from "../src/main/codex/browser-runtime-bundle";
 import { projectBundledAppServerRuntimeIdentity } from "../src/shared/browser-app-server-compatibility";
 import {
@@ -57,7 +57,10 @@ const scriptDir = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(scriptDir, "..");
 const EXECUTABLE_RUNTIME_MODE = 0o755;
 const REGULAR_RUNTIME_MODE = 0o644;
-const SYSTEM_TAR_PATH = "/usr/bin/tar";
+const SYSTEM_TAR_PATH =
+  process.platform === "win32"
+    ? join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe")
+    : "/usr/bin/tar";
 const canonicalRuntimeMode = (executable: boolean): number =>
   executable ? EXECUTABLE_RUNTIME_MODE : REGULAR_RUNTIME_MODE;
 
@@ -74,33 +77,70 @@ export type StageAgentRuntimeOptions = {
   projectRootPath?: string;
   reuseExisting?: boolean;
   sourceRoot?: string;
-  targetArch: AgentRuntimeTargetArch;
-  targetPlatform: AgentRuntimeTargetPlatform;
+  targetArch: DesktopArchitecture;
+  targetPlatform: "darwin" | "win32";
 };
 
 type CliOptions = StageAgentRuntimeOptions;
 
 export type AgentRuntimeTarget = {
-  targetArch: AgentRuntimeTargetArch;
-  targetKey: `darwin-${AgentRuntimeTargetArch}`;
-  targetPlatform: AgentRuntimeTargetPlatform;
+  targetArch: DesktopArchitecture;
+  targetKey: "darwin-arm64" | `win32-${DesktopArchitecture}`;
+  targetPlatform: "darwin" | "win32";
   targetTriple: string;
 };
 
 export function resolveCodexRuntimeTarget(
-  targetPlatform: AgentRuntimeTargetPlatform,
-  targetArch: AgentRuntimeTargetArch,
+  targetPlatform: string,
+  targetArch: string,
 ): AgentRuntimeTarget {
-  if (targetPlatform !== "darwin" || targetArch !== "arm64") {
-    throw new Error(`Unsupported agent runtime target: ${targetPlatform}/${targetArch}`);
-  }
+  const target = desktopBuildTarget(targetPlatform, targetArch);
   return {
-    targetPlatform,
-    targetArch,
-    targetKey: `darwin-${targetArch}`,
-    targetTriple: "aarch64-apple-darwin",
+    targetPlatform: target.platform,
+    targetArch: target.arch,
+    targetKey: target.key,
+    targetTriple: target.rustTarget,
   };
 }
+
+/** Project the target-specific release package without changing the canonical lock. */
+function targetReleaseLock(
+  lock: CodexAppServerReleaseLock,
+  target: AgentRuntimeTarget,
+): CodexAppServerReleaseLock {
+  if (target.targetPlatform !== "win32") return lock;
+  const build = lock.builds[target.targetKey as `win32-${DesktopArchitecture}`];
+  return {
+    ...lock,
+    requiredArtifacts: build.requiredArtifacts,
+    packageManifest: {
+      ...lock.packageManifest,
+      entrypoint: "bin/codex.exe",
+      execServer: "bin/codex-exec-server.exe",
+    },
+  };
+}
+
+function verifyPlatformRuntime(
+  target: AgentRuntimeTarget,
+  runtimeRoot: string,
+  requiredArtifacts: readonly string[],
+  verifier: AgentRuntimeMacosPlatformContractVerifier,
+): void {
+  if (target.targetPlatform === "win32") {
+    verifyWindowsArchitectureClosure(runtimeRoot, target.targetArch);
+    return;
+  }
+  verifier({
+    productMinimumMacos: AGENT_RUNTIME_PRODUCT_MINIMUM_MACOS,
+    requiredArtifacts,
+    runtimeRoot,
+    targetArch: "arm64",
+  });
+}
+
+const executableArtifact = (file: string, mode: number): boolean =>
+  /\.(?:exe|dll)$/iu.test(file) || (process.platform !== "win32" && (mode & 0o111) !== 0);
 
 function readSha256(filePath: string): string {
   const hash = createHash("sha256");
@@ -211,7 +251,7 @@ function listRuntimeArtifacts(
       path: relative(runtimeRoot, artifactPath).split(sep).join("/"),
       sha256: readSha256(artifactPath),
       size: stats.size,
-      executable: (stats.mode & 0o111) !== 0,
+      executable: executableArtifact(artifactPath, stats.mode),
     });
   }
   return artifacts.sort((left, right) => left.path.localeCompare(right.path));
@@ -270,7 +310,7 @@ function readReusableRuntime(input: {
     if (!runtimeRootStats.isDirectory() || runtimeRootStats.isSymbolicLink()) return null;
     const stats = lstatSync(metadataPath);
     if (!stats.isFile() || stats.isSymbolicLink()) return null;
-    if ((stats.mode & 0o777) !== REGULAR_RUNTIME_MODE) return null;
+    if (process.platform !== "win32" && (stats.mode & 0o777) !== REGULAR_RUNTIME_MODE) return null;
     metadata = parseBundledAgentRuntimeMetadata(
       JSON.parse(readFileSync(metadataPath, "utf8")) as unknown,
     );
@@ -308,7 +348,7 @@ function readReusableRuntime(input: {
   if (JSON.stringify(actualArtifacts) !== JSON.stringify(metadata.artifacts)) return null;
   for (const artifact of metadata.artifacts) {
     const mode = lstatSync(join(runtimeRoot, ...artifact.path.split("/"))).mode & 0o777;
-    if (mode !== (artifact.executable ? 0o755 : 0o644)) return null;
+    if (process.platform !== "win32" && mode !== (artifact.executable ? 0o755 : 0o644)) return null;
   }
 
   const licensePath = join(input.repositoryRoot, ...input.lock.notices.licensePath.split("/"));
@@ -591,8 +631,10 @@ async function stageCodexRuntimeClosure(
   const lockPath = resolve(
     options.lockPath ?? resolveCodexAppServerReleaseLockPath(repositoryRoot),
   );
-  const lock = readCodexAppServerReleaseLock(lockPath);
   const target = resolveCodexRuntimeTarget(options.targetPlatform, options.targetArch);
+  const lock = targetReleaseLock(readCodexAppServerReleaseLock(lockPath), target);
+  if (target.targetPlatform === "win32" && options.browserRuntimeSourceRoot)
+    throw new Error("Browser runtime is unavailable on Windows");
   const platformContractVerifier =
     options.agentRuntimePlatformContractVerifier ?? verifyAgentRuntimeMacosPlatformContract;
   const build = lock.builds[target.targetKey];
@@ -616,20 +658,20 @@ async function stageCodexRuntimeClosure(
       target,
     });
     if (reusable) {
-      platformContractVerifier({
-        productMinimumMacos: AGENT_RUNTIME_PRODUCT_MINIMUM_MACOS,
-        requiredArtifacts: lock.requiredArtifacts,
-        runtimeRoot: join(outputPath, "agent-runtime"),
-        targetArch: target.targetArch,
-      });
-      if (options.browserRuntimeSourceRoot) {
+      verifyPlatformRuntime(
+        target,
+        join(outputPath, "agent-runtime"),
+        lock.requiredArtifacts,
+        platformContractVerifier,
+      );
+      if (options.browserRuntimeSourceRoot && target.targetPlatform === "darwin") {
         await stageBrowserRuntime({
           appServerIdentity: projectBundledAppServerRuntimeIdentity(reusable),
           platformArtifactVerifier: options.browserRuntimePlatformArtifactVerifier,
           runtimeRoot: join(outputPath, "agent-runtime"),
           sourceRoot: options.browserRuntimeSourceRoot,
-          targetArch: target.targetArch,
-          targetPlatform: target.targetPlatform,
+          targetArch: "arm64",
+          targetPlatform: "darwin",
         });
       }
       process.stderr.write("Reused verified staged agent runtime.\n");
@@ -667,7 +709,10 @@ async function stageCodexRuntimeClosure(
     for (const artifactPath of lock.requiredArtifacts) {
       const sourcePath = join(resolvedSource.sourceRoot, ...artifactPath.split("/"));
       const destinationPath = join(tempRuntimeRoot, ...artifactPath.split("/"));
-      chmodSync(destinationPath, canonicalRuntimeMode((statSync(sourcePath).mode & 0o111) !== 0));
+      chmodSync(
+        destinationPath,
+        canonicalRuntimeMode(executableArtifact(sourcePath, statSync(sourcePath).mode)),
+      );
     }
 
     const noticesRoot = join(tempRuntimeRoot, "third-party", "codex");
@@ -687,7 +732,7 @@ async function stageCodexRuntimeClosure(
     for (const artifact of artifacts) {
       const expectedMode = canonicalRuntimeMode(artifact.executable);
       const artifactPath = join(tempRuntimeRoot, ...artifact.path.split("/"));
-      if ((lstatSync(artifactPath).mode & 0o777) !== expectedMode) {
+      if (process.platform !== "win32" && (lstatSync(artifactPath).mode & 0o777) !== expectedMode) {
         throw new Error(`Staged agent runtime artifact has an unsafe mode: ${artifact.path}`);
       }
     }
@@ -708,12 +753,12 @@ async function stageCodexRuntimeClosure(
         `Staged agent runtime entrypoint does not match the release lock for ${target.targetKey}: ${entrypoint.sha256}`,
       );
     }
-    platformContractVerifier({
-      productMinimumMacos: AGENT_RUNTIME_PRODUCT_MINIMUM_MACOS,
-      requiredArtifacts: lock.requiredArtifacts,
-      runtimeRoot: tempRuntimeRoot,
-      targetArch: target.targetArch,
-    });
+    verifyPlatformRuntime(
+      target,
+      tempRuntimeRoot,
+      lock.requiredArtifacts,
+      platformContractVerifier,
+    );
 
     const metadata: BundledAgentRuntimeMetadata = {
       releaseAsset: {
@@ -752,14 +797,14 @@ async function stageCodexRuntimeClosure(
     const metadataPath = join(tempRuntimeRoot, AGENT_RUNTIME_METADATA_FILENAME);
     writeFileSync(metadataPath, `${JSON.stringify(metadata, null, 2)}\n`, "utf8");
     chmodSync(metadataPath, REGULAR_RUNTIME_MODE);
-    if (options.browserRuntimeSourceRoot) {
+    if (options.browserRuntimeSourceRoot && target.targetPlatform === "darwin") {
       await stageBrowserRuntime({
         appServerIdentity: projectBundledAppServerRuntimeIdentity(metadata),
         platformArtifactVerifier: options.browserRuntimePlatformArtifactVerifier,
         runtimeRoot: tempRuntimeRoot,
         sourceRoot: options.browserRuntimeSourceRoot,
-        targetArch: target.targetArch,
-        targetPlatform: target.targetPlatform,
+        targetArch: "arm64",
+        targetPlatform: "darwin",
       });
     }
     replaceOwnedDirectory(tempRuntimeRoot, join(outputPath, "agent-runtime"));
@@ -789,8 +834,8 @@ export function stageCodexRuntimeCandidate(
 
 function parseCliOptions(argv: string[]): CliOptions {
   const args = argv.filter((value) => value !== "--");
-  let targetPlatform: AgentRuntimeTargetPlatform | null = null;
-  let targetArch: AgentRuntimeTargetArch | null = null;
+  let targetPlatform: "darwin" | "win32" | null = null;
+  let targetArch: DesktopArchitecture | null = null;
   let outputPath: string | null = null;
   let archivePath: string | undefined;
   let browserRuntimeSourceRoot: string | undefined;
@@ -801,7 +846,7 @@ function parseCliOptions(argv: string[]): CliOptions {
     const nextValue = args[index + 1];
 
     if (arg === "--target-platform") {
-      if (nextValue !== "darwin") {
+      if (nextValue !== "darwin" && nextValue !== "win32") {
         throw new Error(`Unsupported --target-platform value: ${nextValue ?? "<missing>"}`);
       }
       targetPlatform = nextValue;
@@ -809,7 +854,7 @@ function parseCliOptions(argv: string[]): CliOptions {
       continue;
     }
     if (arg === "--target-arch") {
-      if (nextValue !== "arm64") {
+      if (nextValue !== "arm64" && nextValue !== "x64") {
         throw new Error(`Unsupported --target-arch value: ${nextValue ?? "<missing>"}`);
       }
       targetArch = nextValue;
