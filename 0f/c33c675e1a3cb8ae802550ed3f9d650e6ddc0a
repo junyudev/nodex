@@ -1,0 +1,27 @@
+docs/ARCHITECTURE.md
+  s_3609d9db04b3f2::t_7b22b27c439ac5 292
+docs/reliability/core-lifecycle-and-store.md
+  s_3609d9db04b3f2::t_1b9415115f8e61 25-31
+src/main/core-runtime/CoreAuthority.node.test.ts
+  s_3609d9db04b3f2::t_9c025cc1798515 86,207-231
+src/main/core-runtime/CoreAuthority.ts
+  s_3609d9db04b3f2::t_0f65d4eb96ecac 274-279
+src/main/core-runtime/CoreTransport.ts
+  s_3609d9db04b3f2::t_649411e774e911 2,5,14-15,27-92,131
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0fc33c675e1a3cb8ae802550ed3f9d650e6ddc0a",
+  "prompts": {},
+  "sessions": {
+    "s_3609d9db04b3f2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19bd4-bc82-7710-93aa-a3b0b80b63c0",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
