@@ -158,6 +158,9 @@ jobs:
           pattern: nodex-windows-${{ matrix.arch }}-*
           path: dist
           merge-multiple: true
+      - name: Verify installer process and listener boundaries
+        if: inputs.installer_run_id != ''
+        run: vp test run --config vitest.node.config.ts scripts/windows-installation-processes.test.ts
       - name: Install, probe Core and Agent startup, and uninstall
         run: vp exec tsx scripts/ci/probe-windows-installer.ts --arch ${{ matrix.arch }} --artifacts .generated/windows-probe
       - name: Upload startup diagnostics

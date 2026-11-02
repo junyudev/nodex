@@ -48,13 +48,14 @@ const assertProcessStopped = (pid: number): void => {
   if (isProcessRunning(pid)) throw new Error(`Maintenance left process ${pid} running`);
 };
 
-const installationListenerAddresses = (installation: string): string[] => {
+export const installationListenerAddresses = (installation: string): string[] => {
   const command = `
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 $root = $env:NODEX_PROBE_INSTALL_ROOT.TrimEnd('\\') + '\\'
 $images = @(Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($root, [StringComparison]::OrdinalIgnoreCase) }).ProcessId
-$addresses = @(Get-NetTCPConnection -State Listen | Where-Object { $images -contains $_.OwningProcess } | Select-Object -ExpandProperty LocalAddress -Unique)
+# MSFT_NetTCPConnection State=2 is Listen. Avoid NetTCPIP module auto-loading.
+$addresses = @(Get-CimInstance -Namespace 'root\\StandardCimv2' -ClassName MSFT_NetTCPConnection -Filter 'State = 2' -OperationTimeoutSec 15 | Where-Object { $images -contains $_.OwningProcess } | Select-Object -ExpandProperty LocalAddress -Unique)
 ConvertTo-Json -InputObject $addresses -Compress
 `;
   const addresses: unknown = JSON.parse(
@@ -69,8 +70,7 @@ ConvertTo-Json -InputObject $addresses -Compress
       {
         env: { ...process.env, NODEX_PROBE_INSTALL_ROOT: installation },
         encoding: "utf8",
-        // NetTCPIP's first-use CIM provider import is cold on clean Windows hosts.
-        // This audit is independent of the 30-second uninstall acceptance budget.
+        // The bounded local CIM audit is separate from uninstall acceptance.
         timeout: 30_000,
       },
     ),

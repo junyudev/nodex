@@ -114,10 +114,14 @@ shortcut and protocol cleanup, and Profile preservation. Its finally path attemp
 uninstall before fallback Core cleanup, including after startup failure. It waits
 for the entire NSIS process tree through PowerShell `Start-Process -Wait`, including
 the relocated TEMP uninstaller; directory removal alone is not uninstall completion.
-The separate TCP-listener audit allows 30 seconds for the networking CIM provider's
-first-use import on a clean host; this does not extend the uninstall budget.
+The separate TCP-listener audit queries the local
+[CIM provider](https://learn.microsoft.com/en-us/windows/win32/fwp/wmi/nettcpipprov/msft-nettcpconnection) directly, without
+networking-module auto-loading. Its provider operation is bounded to 15 seconds
+and the whole query to 30 seconds; neither extends the uninstall budget.
 Playwright's wrapper/stream cleanup settles after maintenance stops Core; it is
 not the Desktop-exit signal and must not stop Core before the uninstall check.
+Diagnostic reprobes run the focused process/listener fixture before the installed
+application, so the same native audit boundary is checked without rebuilding.
 The probe retains its disposable Profile locally for diagnosis; CI uploads only
 the fresh probe's logs and result. It never uses credentials or a real Profile.
 

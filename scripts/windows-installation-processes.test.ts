@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { expect, test } from "vite-plus/test";
+import { installationListenerAddresses } from "./ci/probe-windows-installer";
 
 const execute = promisify(execFile);
 
@@ -26,7 +27,12 @@ test.skipIf(process.platform !== "win32")(
         await copyFile(process.execPath, executable);
         const child = spawn(
           executable,
-          ["-e", "console.log('ready'); setInterval(() => {}, 1000)"],
+          [
+            "-e",
+            directory === installation
+              ? "require('node:net').createServer().listen(0, '127.0.0.1', () => console.log('ready'))"
+              : "console.log('ready'); setInterval(() => {}, 1000)",
+          ],
           { stdio: ["ignore", "pipe", "pipe"] },
         );
         children.push(child);
@@ -46,6 +52,8 @@ test.skipIf(process.platform !== "win32")(
           );
         }
       }
+      phase = "listener audit";
+      expect(installationListenerAddresses(installation)).toEqual(["127.0.0.1"]);
       await symlink(installation, installationAlias, "junction");
       phase = "maintenance";
       await execute(
