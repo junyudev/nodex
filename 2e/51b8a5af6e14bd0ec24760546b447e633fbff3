@@ -1,0 +1,21 @@
+docs/release-windows.md
+  s_6c9891f66c664a::t_0415162ae3da05 74-78
+.github/workflows/windows.yml
+  s_6c9891f66c664a::t_b30e2ca0c7c5e0 89-92,105-127
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2e51b8a5af6e14bd0ec24760546b447e633fbff3",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
