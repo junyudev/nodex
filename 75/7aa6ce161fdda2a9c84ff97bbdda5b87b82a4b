@@ -1,0 +1,37 @@
+crates/nodex-core-server/src/main.rs
+  s_3609d9db04b3f2::t_099aacc0edf0fc 7-30,81-85
+  s_3609d9db04b3f2::t_55f1da672efb78 86-87
+src/main/core-client/core-client.node.test.ts
+  s_3609d9db04b3f2::t_84474630bf6e2b 12,145-164,168
+  s_3609d9db04b3f2::t_cddfe5cc0393af 165-167,169-181
+docs/release-windows.md
+  s_3609d9db04b3f2::t_23592045c070d6 42-51,106-112
+docs/product-specs/windows-host-behavior.md
+  s_3609d9db04b3f2::t_23592045c070d6 19-26
+resources/windows/installer.nsh
+  s_3609d9db04b3f2::t_099aacc0edf0fc 3-21
+scripts/ci/probe-windows-installer.ts
+  s_3609d9db04b3f2::t_1dc211ed90fa3f 1,7-12,15,36-45,67-77,123,125-126,129-132,161,173,176-177,185-186,201-218,226,257-291,293,295-327,329-344,346-362,368-369
+  s_3609d9db04b3f2::t_29b4a70d225294 4,46-66,328,363-367
+  s_3609d9db04b3f2::t_361ce485d1eccc 5-6,370-377
+resources/windows/stop-installation.ps1
+  s_3609d9db04b3f2::t_099aacc0edf0fc 1-112
+scripts/windows-installation-processes.test.ts
+  s_3609d9db04b3f2::t_3ba476feb68099 1-67
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "757aa6ce161fdda2a9c84ff97bbdda5b87b82a4b",
+  "prompts": {},
+  "sessions": {
+    "s_3609d9db04b3f2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19bd4-bc82-7710-93aa-a3b0b80b63c0",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
