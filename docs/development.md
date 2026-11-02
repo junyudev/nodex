@@ -135,6 +135,15 @@ to `%USERPROFILE%\.nodex`; development continues to use the launcher's isolated
 `<home>/.nodex`. Build and staging commands select the host CPU by default;
 `package:win` packages the host architecture. Cross-packaging is rejected.
 
+Development HTTP, HMR and renderer port checks use loopback only; no Windows
+Firewall network-access permission is needed. The pinned Vite+ patch skips its
+wildcard availability probes for strict ports: the requested loopback bind itself
+is the availability check. Keep `strictPort` enabled and verify transient binds
+with `config/electron-development-network.test.ts` when upgrading Vite+.
+Packaged Agent Runtime and OAuth HTTP listeners also bind `127.0.0.1`; Core,
+app-tools and conversation peers use local named pipes on Windows. The template
+picker uses stdio, with no network listener.
+
 The install lifecycle prepares Electron and runs `electron-builder install-app-deps`
 for the native architecture. This owns Electron's `node-pty` dependency. The
 standalone Agent Runtime uses separately pinned Node `24.22.1` and the matching
