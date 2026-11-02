@@ -1,6 +1,6 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
-import { copyFile, mkdtemp, mkdir, rm, writeFile, readFile } from "node:fs/promises";
+import { copyFile, mkdtemp, mkdir, rm, writeFile, readFile, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -14,8 +14,10 @@ test.skipIf(process.platform !== "win32")(
     const root = await mkdtemp(join(tmpdir(), "nodex-maintenance-"));
     const installation = join(root, "Nodex 用户's app");
     const sibling = `${installation}-other`;
+    const installationAlias = join(root, "installation-junction");
     const profileMarker = join(root, "profile.txt");
     const children: ChildProcess[] = [];
+    let phase = "fixture startup";
     try {
       await writeFile(profileMarker, "preserved");
       for (const directory of [installation, sibling]) {
@@ -28,9 +30,24 @@ test.skipIf(process.platform !== "win32")(
           { stdio: ["ignore", "pipe", "pipe"] },
         );
         children.push(child);
-        await once(child.stdout!, "data");
+        let stderr = "";
+        child.stderr?.on("data", (chunk: Buffer) => {
+          stderr += chunk.toString();
+        });
+        child.on("error", (error) => {
+          stderr += error.message;
+        });
+        try {
+          await once(child.stdout!, "data", { signal: AbortSignal.timeout(5_000) });
+        } catch (cause) {
+          throw new Error(
+            `Fixture did not start: ${executable} (exit ${child.exitCode}, ${stderr})`,
+            { cause },
+          );
+        }
       }
-      const stopped = once(children[0]!, "exit");
+      await symlink(installation, installationAlias, "junction");
+      phase = "maintenance";
       await execute(
         "powershell.exe",
         [
@@ -41,7 +58,7 @@ test.skipIf(process.platform !== "win32")(
           "-File",
           resolve("resources/windows/stop-installation.ps1"),
           "-InstallationDirectory",
-          installation,
+          installationAlias,
           "-CoreHelper",
           process.execPath,
           "-InstallerPid",
@@ -49,19 +66,24 @@ test.skipIf(process.platform !== "win32")(
         ],
         { timeout: 25_000 },
       );
-      await stopped;
+      phase = "installed process exit";
+      if (children[0]!.exitCode === null)
+        await once(children[0]!, "exit", { signal: AbortSignal.timeout(5_000) });
       expect(children[0]!.exitCode).toBe(0);
       expect(children[1]!.exitCode).toBeNull();
       process.kill(children[1]!.pid!, 0);
       expect(await readFile(profileMarker, "utf8")).toBe("preserved");
+    } catch (cause) {
+      throw new Error(`Installation isolation failed during ${phase}`, { cause });
     } finally {
       for (const child of children) {
-        if (child.exitCode !== null) continue;
-        const exited = once(child, "exit");
+        if (child.exitCode !== null || child.signalCode !== null) continue;
+        const exited = once(child, "exit", { signal: AbortSignal.timeout(5_000) });
         child.kill();
         await exited;
       }
       await rm(root, { force: true, recursive: true });
     }
   },
+  45_000,
 );

@@ -6,6 +6,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath($InstallationDirectory).TrimEnd('\') + '\'
 if ([IO.Path]::GetPathRoot($root) -eq $root) { throw 'Refusing a drive root as an installation' }
+if (!(Test-Path -LiteralPath $InstallationDirectory -PathType Container)) { exit 0 }
 
 # Native argument parsing handles quoted spaces, Unicode and trailing backslashes.
 # Forced termination holds one process handle across the image check and kill,
@@ -25,6 +26,33 @@ public static class NodexMaintenance {
     [DllImport("kernel32.dll", SetLastError = true)] static extern bool TerminateProcess(IntPtr process, uint code);
     [DllImport("kernel32.dll")] static extern uint WaitForSingleObject(IntPtr process, uint timeout);
     [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr handle);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    static extern IntPtr CreateFileW(string path, uint access, uint share, IntPtr security, uint creation, uint flags, IntPtr template);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    static extern uint GetFinalPathNameByHandleW(IntPtr file, StringBuilder path, uint size, uint flags);
+    static string CanonicalPath(string path) {
+        var file = CreateFileW(path, 0, 7, IntPtr.Zero, 3, 0x02000000, IntPtr.Zero);
+        if (file == new IntPtr(-1)) return null;
+        try {
+            var result = new StringBuilder(32768);
+            uint size = GetFinalPathNameByHandleW(file, result, (uint)result.Capacity, 0);
+            if (size == 0 || size >= result.Capacity) return null;
+            var value = result.ToString();
+            if (value.StartsWith(@"\\?\UNC\")) return @"\\" + value.Substring(8);
+            return value.StartsWith(@"\\?\") ? value.Substring(4) : value;
+        } finally { CloseHandle(file); }
+    }
+    public static string InstallationRoot(string path) {
+        var canonical = CanonicalPath(path);
+        if (canonical == null) throw new Win32Exception();
+        return canonical.TrimEnd('\\') + @"\";
+    }
+    public static bool Contains(string root, string path) {
+        var canonical = CanonicalPath(path);
+        if (canonical != null) return canonical.StartsWith(root, StringComparison.OrdinalIgnoreCase);
+        if (path.StartsWith(root, StringComparison.OrdinalIgnoreCase)) throw new Win32Exception();
+        return false;
+    }
     public static string[] Arguments(string commandLine) {
         int count;
         var memory = CommandLineToArgvW(commandLine, out count);
@@ -46,18 +74,19 @@ public static class NodexMaintenance {
             var path = new StringBuilder(32768);
             int size = path.Capacity;
             if (!QueryFullProcessImageNameW(process, 0, path, ref size)) throw new Win32Exception();
-            if (!path.ToString().StartsWith(root, StringComparison.OrdinalIgnoreCase)) return;
+            if (!Contains(root, path.ToString())) return;
             if (!TerminateProcess(process, 0)) throw new Win32Exception();
             if (WaitForSingleObject(process, 2000) != 0) throw new TimeoutException("Installation process did not stop");
         } finally { CloseHandle(process); }
     }
 }
 '@
+$root = [NodexMaintenance]::InstallationRoot($InstallationDirectory)
 
 function Get-InstallationProcesses {
     @(Get-CimInstance Win32_Process | Where-Object {
         $_.ProcessId -ne $InstallerPid -and $_.ExecutablePath -and
-        $_.ExecutablePath.StartsWith($root, [StringComparison]::OrdinalIgnoreCase)
+        [NodexMaintenance]::Contains($root, $_.ExecutablePath)
     })
 }
 
