@@ -1,0 +1,83 @@
+src/renderer/lib/settings-host-presentation.ts
+  s_f8f93aacc1805d::t_9a558e1182bd43 1-21
+src/renderer/lib/settings-host-presentation.test.ts
+  s_f8f93aacc1805d::t_857325bc4ded96 1-20
+docs/product-specs/windows-host-behavior.md
+  s_f8f93aacc1805d::t_6bf158d8948978 84-93
+docs/product-specs/settings-route-behavior.md
+  s_f8f93aacc1805d::t_6bf158d8948978 52-58
+src/main/app/MainConfig.ts
+  s_f8f93aacc1805d::t_6ba3118ece9173 1
+src/main/browser/browser-profile-importer.ts
+  s_f8f93aacc1805d::t_b8ca797eb9bead 1,118
+src/main/composer-appshot-platform.ts
+  s_f8f93aacc1805d::t_4ccf05a6f7bf6a 1
+src/main/host-runtime/AppProtocolRuntime.test.ts
+  s_f8f93aacc1805d::t_34393e1e8fe07e 1
+src/main/host-runtime/AppUpdatePolicy.ts
+  s_f8f93aacc1805d::t_15f4c65adf11cc 1
+src/main/host-runtime/AppUpdateRuntime.ts
+  s_f8f93aacc1805d::t_cfb856309eb03b 1
+src/main/host-runtime/ChromeControlRuntime.ts
+  s_f8f93aacc1805d::t_35e27e0d002f18 1
+src/main/host-runtime/ComposerAppshotRuntime.ts
+  s_f8f93aacc1805d::t_a460032561f048 1
+src/main/host-runtime/ComputerUseRuntime.ts
+  s_f8f93aacc1805d::t_533c4788844cc8 1
+src/main/host-runtime/ComputerUseSettingsRuntime.ts
+  s_f8f93aacc1805d::t_1434b8faa66596 1
+src/main/ipc/handlers/AppUpdateIpc.node.test.ts
+  s_f8f93aacc1805d::t_9a59c480ccdcb8 1
+src/main/ipc/handlers/BrowserProfileIpc.node.test.ts
+  s_f8f93aacc1805d::t_e7850fc8d3ea96 1
+src/main/ipc/handlers/BrowserSidebarIpc.node.test.ts
+  s_f8f93aacc1805d::t_e4f9305796bca8 1
+src/main/ipc/handlers/ChromeControlSettingsIpc.node.test.ts
+  s_f8f93aacc1805d::t_93538dde2716e9 1
+src/main/ipc/handlers/CodexApplicationIpc.node.test.ts
+  s_f8f93aacc1805d::t_5156ad2fd38e6a 1
+src/main/ipc/handlers/ComputerUseSettingsIpc.node.test.ts
+  s_f8f93aacc1805d::t_ddbf4e50ddda3b 1
+src/main/ipc/handlers/GitWorkerIpc.node.test.ts
+  s_f8f93aacc1805d::t_d3ca75f0265b6c 1
+src/main/ipc/handlers/RemoteHostedPipIpc.node.test.ts
+  s_f8f93aacc1805d::t_663b623673d147 1
+src/main/platform/electron/ElectronCodexAttestation.ts
+  s_f8f93aacc1805d::t_4257e0cb6542c5 1
+src/main/platform/electron/NativeNotificationAuthorization.ts
+  s_f8f93aacc1805d::t_c31f698b2fdc47 1
+src/main/platform/electron/RemoteHostedPipNativePlatform.ts
+  s_f8f93aacc1805d::t_958184be2b290b 1
+src/main/platform/host-capabilities.test.ts
+  s_f8f93aacc1805d::t_66d2c92e650d64 5,13
+src/main/platform/node/OpenCodeInstallPlatform.ts
+  s_f8f93aacc1805d::t_e759386fd0a413 8
+src/renderer/components/workbench/app-update-settings-control.test.tsx
+  s_f8f93aacc1805d::t_2e9d7176e5c1fb 1-2,5-8,107-110,120-123,153-156,161-178
+src/renderer/components/workbench/app-update-settings-control.tsx
+  s_f8f93aacc1805d::t_2e53a34b6c7803 1,122,135-145,148,152,163
+src/renderer/components/workbench/workbench-settings-sections.ts
+  s_f8f93aacc1805d::t_5b5944590cc521 1,171
+src/renderer/features/browser-sidebar/browser-settings-pages.test.tsx
+  s_f8f93aacc1805d::t_259ff97a545f5b 2,9-12,163-187
+src/renderer/features/browser-sidebar/browser-settings-pages.tsx
+  s_f8f93aacc1805d::t_7158c0450ea30c 1,156,172,177,180,184,208-226,304,346-348
+src/shared/host-capabilities.ts
+  s_f8f93aacc1805d::t_c9b6f0041cc3d0 8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e58163402a635140a36493a24120c12eae6cfb96",
+  "prompts": {},
+  "sessions": {
+    "s_f8f93aacc1805d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19b4b-b89b-74b2-a4da-0926951bf228",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
