@@ -1,0 +1,21 @@
+crates/nodex-core/src/library/mod.rs
+  s_3022e59a160914::t_b411fa8202cc48 97,118,151,156,605,620,4573-4577,4605-4614,4656-4660
+crates/nodex-core/src/library/block_transfer.rs
+  s_3022e59a160914::t_b411fa8202cc48 3,94,103-112,115-128,200,879,881,920,3261,3560,3568,4531-4532
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "908f85c8b83d7540861e56a51d0f413d4c4e6afe",
+  "prompts": {},
+  "sessions": {
+    "s_3022e59a160914": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1def126e-fd62-476f-9393-67b0835f01b6",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
