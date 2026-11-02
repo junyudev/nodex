@@ -90,7 +90,11 @@ COM, shell/UI, network, graphics/audio, and tracing APIs. `ucrtbase.dll` and the
 UCRT API sets ship with Windows; `vcruntime*`, `msvcp*`, debug CRT, provider DLLs,
 and toolchain DLLs do not. Add a name only after checking Microsoft's Windows API
 requirements for the supported Windows edition; a successful load on a build
-runner is insufficient. The only non-DLL host binding is node-gyp's `node.exe`
+runner is insufficient. OpenConsole's inbox dependencies include IME/Uniscribe,
+Direct2D and `d3dcompiler_47.dll`, and [Windows ICU](https://learn.microsoft.com/en-us/windows/win32/intl/international-components-for-unicode--icu-)
+(`icu.dll`, present since Windows 10 1903). The pinned terminal payload is scanned
+recursively for both CPUs in unit tests, including its nested OpenConsole helper.
+The only non-DLL host binding is node-gyp's `node.exe`
 delay import in `.node` addons: its delay-load hook binds the already-loaded
 Node/Electron process. Callers must supply and verify the matching-CPU host;
 this does not excuse ordinary imports or DLL dependencies.

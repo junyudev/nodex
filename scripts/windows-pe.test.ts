@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
+import { createRequire } from "node:module";
 import { afterEach, expect, test } from "vite-plus/test";
 import {
   assertPeArchitecture,
@@ -168,3 +169,18 @@ test("fails closed on malformed tables and DLL names", () => {
   writeFileSync(file, image(0x8664, ["../outside.dll"]));
   expect(() => readPeImports(file)).toThrow("DLL basename");
 });
+
+test.each([
+  ["x64", 0x8664],
+  ["arm64", 0xaa64],
+] as const)(
+  "closes the complete pinned %s terminal payload, including nested helpers",
+  (arch, machine) => {
+    const require = createRequire(import.meta.url);
+    const root = join(dirname(require.resolve("node-pty/package.json")), `prebuilds/win32-${arch}`);
+    const host = join(fixture(), "node.exe");
+    writeFileSync(host, image(machine));
+    const files = verifyWindowsArchitectureClosure(root, arch, { nodeHost: host });
+    expect(files).toContain("conpty/OpenConsole.exe");
+  },
+);
