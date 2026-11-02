@@ -163,6 +163,8 @@ for (const entry of readdirSync(path.join(repositoryRoot, "src/main/local-store"
 
 const expectedRoutes = new Set([
   "/core/v1/admin/shutdown",
+  // Core issues Agent attribution credentials only to the verified Desktop Host.
+  "/core/v1/agent-attributions",
   "/core/v1/events",
   "/core/v1/handshake",
   "/core/v1/health",
@@ -176,6 +178,8 @@ const expectedRoutes = new Set([
   // immutable package bytes stay off the generic JSON Module apply/read path.
   "/core/v1/modules/document/recovery/capture",
   "/core/v1/modules/document/recovery/export",
+  // Workspace durably admits application-tool retry identities outside intent batches.
+  "/core/v1/modules/workspace/tool-operations/admit",
   "/core/v1/requests/cancel",
   "/core/v1/modules/query/read",
   "/core/v1/threads/{thread_id}/blobs/{content_hash}",
