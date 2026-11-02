@@ -1,9 +1,11 @@
 import { BlockNoteEditor } from "@blocknote/core";
 import { BlockNoteViewRaw } from "@blocknote/react";
-import { act, fireEvent, render, waitFor } from "@testing-library/react";
+import { act, fireEvent, waitFor } from "@testing-library/react";
 import { describe, expect, test, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser";
 import "../../../globals.css";
+import { renderWithQuery as render } from "@/test/query";
+import { installCommandKeymapFixture } from "@/test/command-keymap";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import { ACTIVE_EDITOR_SELECTION_SURFACE_ATTRIBUTE } from "@/lib/editor-selection-presentation";
 import { NfmSideMenuOpenProvider, useNfmSideMenuOpenController } from "./nfm-side-menu";
@@ -12,6 +14,8 @@ import {
   BLOCK_ACTION_SELECTION_PRESENTATION_ATTRIBUTE,
   selectedBlockDecorationsExtension,
 } from "./selected-block-decorations";
+
+installCommandKeymapFixture();
 
 const settleFloatingSurface = async (): Promise<void> => {
   await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));

@@ -10,13 +10,15 @@ import { ShowSelectionExtension } from "@blocknote/core/extensions";
 import type { Node } from "@tiptap/pm/model";
 import { NodeSelection, TextSelection } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
-import { act, fireEvent, render, waitFor } from "@testing-library/react";
+import { act, fireEvent, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { describe, expect, test } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser";
 
 import "@blocknote/shadcn/style.css";
 import "../../../globals.css";
+import { renderWithQuery as render } from "@/test/query";
+import { installCommandKeymapFixture } from "@/test/command-keymap";
 import { PageOutlinerFrame } from "@/components/block-documents/page-outliner-surface";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import { createMaitaiStore, MaitaiProvider } from "@/lib/maitai";
@@ -48,6 +50,7 @@ import {
 } from "@/test/renderer-theme";
 
 installRendererThemeFixture();
+installCommandKeymapFixture();
 
 const testPageBlockConfig = {
   type: "testPage",
