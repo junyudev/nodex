@@ -48,6 +48,13 @@ Do not add release-age exclusions to resolve peer conflicts. Run `vp install`,
   Load the rules through `@nodex/query-lint-runtime` and keep the root TypeScript 7
   checker and editor runtime independent; revisit the pin when updating the plugin
   or typescript-eslint.
+- `minimatch` 11 and modern `glob` 14 carry the matching and cancellation fixes.
+  ASAR 3, directory comparison and Redocly retain their public APIs through direct
+  named-export callsite patches. Glob 7 retains callback/synchronous traversal but
+  consumes the matcher's documented `pattern` and `testUnchecked` API instead of
+  RegExp internals. Keep the archive, traversal, filter and schema-header
+  regressions in `scripts/dependency-glob-runtime.test.ts` when upgrading these
+  packages or removing their patches.
 - OpenCode's client declares an exact Effect peer. The workspace deliberately
   shares one Effect version with its protocol and schema packages; only that
   client version accepts it through `peerDependencyRules.allowedVersions`.
