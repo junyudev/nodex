@@ -10,9 +10,11 @@ import {
 import { BlockNoteViewRaw, TableHandlesController } from "@blocknote/react";
 import { TextSelection } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
-import { act, fireEvent, render } from "@testing-library/react";
+import { act, fireEvent } from "@testing-library/react";
 import { describe, expect, test, vi } from "vite-plus/test";
 import "../../../globals.css";
+import { renderWithQuery as render } from "@/test/query";
+import { installCommandKeymapFixture } from "@/test/command-keymap";
 import {
   NodexDropdownContent,
   NodexDropdownItem,
@@ -23,6 +25,8 @@ import {
 import { NodexPopover, NodexPopoverAnchor, NodexPopoverContent } from "@/components/ui/popover";
 import { NfmFormattingToolbarController } from "./nfm-formatting-toolbar-controller";
 import { NfmSideMenuOpenProvider } from "./nfm-side-menu";
+
+installCommandKeymapFixture();
 
 const settleEditor = async (): Promise<void> => {
   await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));

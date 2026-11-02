@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useState, type ReactNode } from "react";
+import { render, type RenderOptions } from "@testing-library/react";
+import { useState, type ReactElement, type ReactNode } from "react";
 import { NODEX_QUERY_DEFAULT_OPTIONS } from "@/lib/query-client";
 import { ProjectionInvalidationProvider } from "@/lib/projection-invalidation-context";
 import { ProjectionInvalidationRegistry } from "@/lib/projection-invalidation-registry";
@@ -42,4 +43,18 @@ export function TestQueryProvider({
       </ProjectionInvalidationProvider>
     </QueryClientProvider>
   );
+}
+
+/** One isolated query cache for this render and all of its rerenders. */
+export function renderWithQuery(ui: ReactElement, options?: RenderOptions) {
+  const client = createTestQueryClient();
+  const { wrapper: NestedWrapper, ...renderOptions } = options ?? {};
+  return render(ui, {
+    ...renderOptions,
+    wrapper: ({ children }) => (
+      <TestQueryProvider client={client}>
+        {NestedWrapper ? <NestedWrapper>{children}</NestedWrapper> : children}
+      </TestQueryProvider>
+    ),
+  });
 }
