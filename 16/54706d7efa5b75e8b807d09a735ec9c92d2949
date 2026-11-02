@@ -1,0 +1,21 @@
+src/renderer/features/local-conversation/view/shared/tools/file-change-tool-call.test.tsx
+  s_58e03f312c8a71::t_6969ec90571ad6 142-143,360-363,369,387-393,396-399
+src/renderer/features/workspace-files/workspace-files-panel.test.tsx
+  s_58e03f312c8a71::t_cd5ab52510a948 460-463
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1654706d7efa5b75e8b807d09a735ec9c92d2949",
+  "prompts": {},
+  "sessions": {
+    "s_58e03f312c8a71": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19a08-50d5-7072-b205-494488654333",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
