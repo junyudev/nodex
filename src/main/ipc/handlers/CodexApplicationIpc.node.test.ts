@@ -1,4 +1,4 @@
-import { hostCapabilities } from "../../platform/host-capabilities";
+import { hostCapabilities } from "../../../shared/host-capabilities";
 import { EMPTY_REALTIME_VOICE_PRODUCT_POLICY } from "../../dictation/RealtimeVoicePolicyState";
 import { dictationTextResult } from "../../../../tests/fixtures/dictation-diagnostics";
 import * as Effect from "effect/Effect";

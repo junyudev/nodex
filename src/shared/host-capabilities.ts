@@ -5,6 +5,7 @@ export const hostCapabilities = (platform: string, architecture?: string) => {
     backgroundService: mac,
     autoUpdate: mac && (architecture === undefined || architecture === "arm64"),
     browserControl: mac,
+    browserProfileImport: mac,
     computerControl: mac,
     appshot: mac,
     deviceCheck: mac && architecture === "arm64",

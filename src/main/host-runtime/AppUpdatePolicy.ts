@@ -1,4 +1,4 @@
-import { hostCapabilities } from "../platform/host-capabilities";
+import { hostCapabilities } from "../../shared/host-capabilities";
 import type { AppUpdateSettings, AppUpdateStatus } from "../../shared/types";
 import type { MacAppUpdaterEvent } from "../mac-app-updater";
 

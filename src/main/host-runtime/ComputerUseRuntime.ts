@@ -1,4 +1,4 @@
-import { hostCapabilities } from "../platform/host-capabilities";
+import { hostCapabilities } from "../../shared/host-capabilities";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";

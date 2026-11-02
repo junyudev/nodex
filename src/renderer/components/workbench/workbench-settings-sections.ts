@@ -1,3 +1,4 @@
+import { readSettingsHostPresentation } from "@/lib/settings-host-presentation";
 import type { ComponentType } from "react";
 import type { SettingsSearchContext } from "@/lib/settings-search";
 import {
@@ -167,6 +168,7 @@ export const SETTINGS_SECTIONS: SettingsSectionDefinition[] = [
     id: "computer-use",
     label: "Computer use",
     pageKey: "computer-use",
+    visibleWhen: () => readSettingsHostPresentation().computerUse,
     icon: SettingsComputerUseIcon,
     groupKey: "integrations",
     searchMessages: SETTINGS_SEARCH_CATALOG["computer-use"].messages,

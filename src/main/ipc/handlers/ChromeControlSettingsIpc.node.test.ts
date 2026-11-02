@@ -1,4 +1,4 @@
-import { hostCapabilities } from "../../platform/host-capabilities";
+import { hostCapabilities } from "../../../shared/host-capabilities";
 import type { IpcMainInvokeEvent } from "electron";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";

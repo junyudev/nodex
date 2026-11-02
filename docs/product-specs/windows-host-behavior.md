@@ -81,3 +81,13 @@ Windows keeps Mica while unfocused. Windows versions without supported Mica, or
 without GPU compositing, use an opaque themed surface. Full-window image previews
 clear native captions vertically for their content and top-right actions. Ordinary
 dialogs do not acquire caption padding.
+
+## Settings
+
+Settings navigation and search omit Computer use on Windows, including direct links.
+Browser keeps the built-in Browser's history, downloads, credentials, extensions,
+permissions and link preferences. Profile import and control of external browsers
+are absent because their host integrations are unavailable. General retains the
+running Nodex version without automatic-update controls or an unsupported-runtime
+message. Host capability policy determines this presentation; temporary readiness
+of a supported feature remains visible within its owning page.

@@ -1,3 +1,4 @@
+import { readSettingsHostPresentation } from "@/lib/settings-host-presentation";
 import { useCallback, useEffect, useState } from "react";
 import { NodexButton, NodexSwitch } from "@/components/ui/button";
 import type { AppUpdateSettings, AppUpdateStatus } from "../../lib/types";
@@ -118,6 +119,7 @@ export function AppUpdateSettingsControlView({
   settings: AppUpdateSettings;
   status: AppUpdateStatus;
 }) {
+  const updatesAvailable = readSettingsHostPresentation().appUpdates;
   const checkedAtLabel = formatCheckedAtLabel(status.checkedAt);
   const updateAlreadyActive =
     status.status === "checking" ||
@@ -130,22 +132,24 @@ export function AppUpdateSettingsControlView({
       <SettingRow
         label={`Nodex ${status.currentVersion}`}
         description={
-          <>
-            {formatStatusSummary(status)}
-            {checkedAtLabel ? ` ${checkedAtLabel}.` : null}
-            {error ? (
-              <span role="alert" className="block text-danger">
-                {error}
-              </span>
-            ) : null}
-          </>
+          updatesAvailable ? (
+            <>
+              {formatStatusSummary(status)}
+              {checkedAtLabel ? ` ${checkedAtLabel}.` : null}
+              {error ? (
+                <span role="alert" className="block text-danger">
+                  {error}
+                </span>
+              ) : null}
+            </>
+          ) : undefined
         }
       >
-        {status.status === "downloaded" ? (
+        {updatesAvailable && status.status === "downloaded" ? (
           <NodexButton variant="primary" size="xs" disabled={busy} onClick={onInstall}>
             Restart to update
           </NodexButton>
-        ) : status.supported ? (
+        ) : updatesAvailable && status.supported ? (
           <NodexButton
             variant="secondary"
             size="xs"
@@ -156,7 +160,7 @@ export function AppUpdateSettingsControlView({
           </NodexButton>
         ) : null}
       </SettingRow>
-      {status.supported ? (
+      {updatesAvailable && status.supported ? (
         <>
           <SettingRow
             label="Check automatically"
