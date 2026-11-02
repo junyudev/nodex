@@ -1,17 +1,24 @@
-name: Windows native release probe
+name: Windows boundary probes
 
 on:
   workflow_dispatch:
+    inputs:
+      probe:
+        description: Native release or independent Core I/O comparison
+        type: choice
+        options: [native-release, core-io]
+        default: native-release
 
 permissions:
   contents: read
 
 concurrency:
-  group: native-release-probe-${{ github.ref }}
+  group: native-release-probe-${{ github.ref }}-${{ inputs.probe || 'native-release' }}
   cancel-in-progress: false
 
 jobs:
   native-release:
+    if: inputs.probe != 'core-io'
     name: native release ${{ matrix.arch }}
     timeout-minutes: 30
     strategy:
@@ -40,6 +47,53 @@ jobs:
         with:
           name: native-release-probe-${{ matrix.arch }}-${{ github.sha }}
           path: .generated/native-release-probe/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
+
+  core-io:
+    if: inputs.probe == 'core-io'
+    name: Core I/O x64
+    runs-on: windows-latest
+    timeout-minutes: 90
+    env:
+      CI_SOURCE_SHA: ${{ github.sha }}
+      CI_TIMING_JOB: windows-core-io-x64
+      CARGO_INCREMENTAL: "0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Parse the diagnostic PowerShell scripts
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path .generated/core-io-probe -Force | Out-Null
+          $results = @()
+          foreach ($file in @('scripts/ci/windows-core-abba.ps1', 'scripts/ci/windows-core-resource-sampler.ps1')) {
+            $parseTokens = $null
+            $parseErrors = $null
+            $null = [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD $file), [ref]$parseTokens, [ref]$parseErrors)
+            $results += @{ file = $file; errors = @($parseErrors | ForEach-Object { @{ id = $_.ErrorId; line = $_.Extent.StartLineNumber; column = $_.Extent.StartColumnNumber } }) }
+          }
+          $results | ConvertTo-Json -Depth 5 | Set-Content .generated/core-io-probe/powershell-parse.json
+          if (@($results | Where-Object { $_.errors.Count -ne 0 }).Count -ne 0) { throw 'Diagnostic script parse failed.' }
+      - uses: ./.github/actions/setup-vite-plus
+      - uses: ./.github/actions/setup-windows-rust
+      - run: vp install --frozen-lockfile
+      - name: Validate the probe interfaces
+        shell: pwsh
+        run: |
+          & vp run typecheck 2>&1 | Tee-Object -FilePath .generated/core-io-probe/semantic.log
+          exit $LASTEXITCODE
+      - name: Compare the unchanged Core cases on one VM
+        shell: pwsh
+        run: ./scripts/ci/windows-core-abba.ps1 -OutputDirectory .generated/core-io-probe
+      - name: Upload the complete paired observations
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: core-io-probe-x64-${{ github.sha }}
+          path: .generated/core-io-probe/
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 14

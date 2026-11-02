@@ -1,3 +1,4 @@
+import { coreProbeScenarioInput } from "../../../scripts/testing/core-worker-observation";
 import {
   createCustomPropertyId,
   parseDatabaseViewId,
@@ -71,7 +72,7 @@ async function patch(
 }
 
 test("exact-edit oracle accepts a semantic patch and rejects false completion, collateral edits, and extra Pages", async () => {
-  await withCoreScenario({ scenarioId: "agent/cli-workflow" }, async (context) => {
+  await withCoreScenario(coreProbeScenarioInput({ scenarioId: "agent/cli-workflow" }), async (context) => {
     const prepared = await CASES.find((item) => item.id === "exact-edit")!.prepare(context, 0);
     expect((await prepared.verify("Done")).passed).toBe(false);
     const target = (await rows(context)).find((item) => item.title === "Cedar release plan");
@@ -94,7 +95,7 @@ test("exact-edit oracle accepts a semantic patch and rejects false completion, c
 });
 
 test("exact-edit oracle rejects a body-equivalent wholesale replacement that recreates Blocks", async () => {
-  await withCoreScenario({ scenarioId: "agent/cli-workflow" }, async (context) => {
+  await withCoreScenario(coreProbeScenarioInput({ scenarioId: "agent/cli-workflow" }), async (context) => {
     const prepared = await CASES.find((item) => item.id === "exact-edit")!.prepare(context, 1);
     const target = (await rows(context)).find((item) => item.title === "Harbor release plan");
     if (!target) throw new Error("Missing release Page");
@@ -114,7 +115,7 @@ test("exact-edit oracle rejects a body-equivalent wholesale replacement that rec
 });
 
 test("append oracle accepts a new paragraph and rejects replacing the original Blocks", async () => {
-  await withCoreScenario({ scenarioId: "agent/cli-workflow" }, async (context) => {
+  await withCoreScenario(coreProbeScenarioInput({ scenarioId: "agent/cli-workflow" }), async (context) => {
     const prepared = await CASES.find((item) => item.id === "append-section")!.prepare(context, 2);
     const target = (await rows(context)).find((item) => item.title === "Juniper release plan");
     if (!target) throw new Error("Missing release Page");
@@ -143,7 +144,7 @@ test("append oracle accepts a new paragraph and rejects replacing the original B
 });
 
 test("concurrency oracle injects only after an observed body and preserves the writer value", async () => {
-  await withCoreScenario({ scenarioId: "agent/cli-workflow" }, async (context) => {
+  await withCoreScenario(coreProbeScenarioInput({ scenarioId: "agent/cli-workflow" }), async (context) => {
     const prepared = await CASES.find((item) => item.id === "concurrent-edit")!.prepare(context, 0);
     const target = (await rows(context)).find((item) => item.title === "Cedar release plan");
     if (!target) throw new Error("Missing release Page");
@@ -167,7 +168,7 @@ test("concurrency oracle injects only after an observed body and preserves the w
 });
 
 test("empty-result oracle rejects extra Pages even when the answer claims none", async () => {
-  await withCoreScenario({ scenarioId: "agent/cli-workflow" }, async (context) => {
+  await withCoreScenario(coreProbeScenarioInput({ scenarioId: "agent/cli-workflow" }), async (context) => {
     const prepared = await CASES.find((item) => item.id === "empty-search")!.prepare(context, 1);
     expect(await prepared.verify("No matching Pages.")).toMatchObject({ passed: true });
     await context.seed.createPage({
@@ -194,7 +195,7 @@ async function descriptor(context: CoreScenarioContext) {
 }
 
 test("bulk oracle accepts exact public mutation and rejects an extra target", async () => {
-  await withCoreScenario({ scenarioId: "agent/cli-workflow" }, async (context) => {
+  await withCoreScenario(coreProbeScenarioInput({ scenarioId: "agent/cli-workflow" }), async (context) => {
     const prepared = await CASES.find((item) => item.id === "bulk-priority")!.prepare(context, 2);
     const allRows = await rows(context);
     const db = await descriptor(context);
@@ -255,7 +256,7 @@ test("bulk oracle accepts exact public mutation and rejects an extra target", as
 });
 
 test("schema oracle accepts an added Property without treating derived View order as damage", async () => {
-  await withCoreScenario({ scenarioId: "agent/cli-workflow" }, async (context) => {
+  await withCoreScenario(coreProbeScenarioInput({ scenarioId: "agent/cli-workflow" }), async (context) => {
     const prepared = await CASES.find((item) => item.id === "create-risk-property")!.prepare(
       context,
       0,
@@ -285,7 +286,7 @@ test("schema oracle accepts an added Property without treating derived View orde
 });
 
 test("View oracle queries real membership and rejects an unfiltered View", async () => {
-  await withCoreScenario({ scenarioId: "agent/cli-workflow" }, async (context) => {
+  await withCoreScenario(coreProbeScenarioInput({ scenarioId: "agent/cli-workflow" }), async (context) => {
     const prepared = await CASES.find((item) => item.id === "create-review-view")!.prepare(
       context,
       0,
@@ -374,7 +375,7 @@ const rawReadArguments = [
 ];
 for (const form of rawReadArguments)
   test(`concurrency injection recognizes ${form.name} identity when raw body omits it`, async () => {
-    await withCoreScenario({ scenarioId: "agent/cli-workflow" }, async (context) => {
+    await withCoreScenario(coreProbeScenarioInput({ scenarioId: "agent/cli-workflow" }), async (context) => {
       const prepared = await CASES.find((item) => item.id === "concurrent-edit")!.prepare(
         context,
         0,
@@ -404,7 +405,7 @@ for (const form of rawReadArguments)
   });
 
 test("empty-result oracle rejects an extra standalone Library Page", async () => {
-  await withCoreScenario({ scenarioId: "agent/cli-workflow" }, async (context) => {
+  await withCoreScenario(coreProbeScenarioInput({ scenarioId: "agent/cli-workflow" }), async (context) => {
     const prepared = await CASES.find((item) => item.id === "empty-search")!.prepare(context, 0);
     expect(await prepared.verify("No matching Pages.")).toMatchObject({ passed: true });
     await context.seed.createStandalonePage({

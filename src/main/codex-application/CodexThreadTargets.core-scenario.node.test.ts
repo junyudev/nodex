@@ -1,3 +1,4 @@
+import { coreProbeScenarioInput } from "../../../scripts/testing/core-worker-observation";
 import { expect, it } from "@effect/vitest";
 import type { IpcMainInvokeEvent } from "electron";
 import * as Context from "effect/Context";
@@ -61,7 +62,7 @@ const acquireScenario = Effect.acquireRelease(
       release = resolve;
     });
     const completed = withCoreScenario(
-      { scenarioId: DOCUMENT_SYNC_RECOVERY_SCENARIO_ID },
+      coreProbeScenarioInput({ scenarioId: DOCUMENT_SYNC_RECOVERY_SCENARIO_ID }),
       async ({ client }) => {
         resume(Effect.succeed({ client, release, completed }));
         await released;

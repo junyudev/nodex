@@ -1,4 +1,5 @@
 import { requiredNativeExecutable } from "../../../scripts/testing/native-artifacts";
+import { captureCoreProbePhase } from "../../../scripts/testing/core-worker-observation";
 import {
   accessSync,
   chmodSync,
@@ -127,7 +128,10 @@ describe("native Core launcher", () => {
   });
 
   test("starts packaged Core using its logical manifest identity", async () => {
+    const phase = captureCoreProbePhase();
+    phase("packaged.directory.begin");
     const root = mkdtempSync(path.join(tmpdir(), "nodex-pkg-"));
+    phase("packaged.directory.end");
     const resources = path.join(root, "resources");
     const nodexHome = path.join(root, "profile");
     mkdirSync(nodexHome, { mode: 0o700 });
@@ -138,41 +142,59 @@ describe("native Core launcher", () => {
       isPackaged: true,
     });
     mkdirSync(path.dirname(executable), { recursive: true });
+    phase("packaged.copy.begin");
     copyFileSync(CORE_BINARY, executable);
+    phase("packaged.copy.end");
+    phase("packaged.digest.begin");
     const digest = createHash("sha256").update(readFileSync(executable)).digest("hex");
+    phase("packaged.digest.end");
+    phase("packaged.manifest.begin");
     writeFileSync(
       path.join(resources, "bin/rust-core-runtime.json"),
       JSON.stringify({ binaries: [{ name: "nodex-core", sourceSha256: digest }] }),
     );
+    phase("packaged.manifest.end");
     let launched: Awaited<ReturnType<typeof connectOrStartCore>> | undefined;
     let authorityExit: CoreAuthorityProcessExit | undefined;
     try {
+      phase("packaged.connect.begin");
       launched = await connectOrStartCore({
         appResourcesPath: resources,
         buildId: "packaged-core-launcher-test",
         environment: {},
         isPackaged: true,
         nodexHome,
+        onStartupEvent: (event) => phase("packaged.startup", event.kind),
         onAuthorityProcessExit: (event) => {
+          phase("packaged.authority-closed");
           authorityExit = event;
         },
       });
+      phase("packaged.connect.end");
       expect(launched.executablePath).toBe(executable);
       expect(launched.client.handshake.generation.artifact_sha256).toBe(digest);
+      phase("packaged.health.begin");
       await expect(launched.client.health()).resolves.toMatchObject({ status: "ready" });
+      phase("packaged.health.end");
     } finally {
       if (launched) {
+        phase("packaged.shutdown.begin");
         await launched.client.shutdown();
+        phase("packaged.shutdown.end");
         const pid = launched.client.handshake.generation.pid;
         // Windows retains the copied executable until the child and its pipes close.
+        phase("packaged.close-wait.begin");
         await waitUntil(
           () => authorityExit !== undefined,
           "Packaged Core did not close after shutdown",
         );
+        phase("packaged.close-wait.end");
         expect(authorityExit).toMatchObject({ processId: pid, code: 0, signal: null });
         expect(processExists(pid)).toBe(false);
       }
+      phase("packaged.remove.begin");
       rmSync(root, { recursive: true, force: true });
+      phase("packaged.remove.end");
     }
   });
 

@@ -1,5 +1,6 @@
 /* oxlint-disable nodex/no-manual-effect-runtime-in-tests -- This Node integration test bridges the existing Promise-based isolated Core scenario harness and real shell subprocesses. */
 /* @effect-diagnostics asyncFunction:off -- This Node integration test bridges the existing Promise-based isolated Core scenario harness and real shell subprocesses. */
+import { captureCoreProbePhase, coreProbeScenarioInput } from "../../../../scripts/testing/core-worker-observation";
 import { execFile, type ExecFileOptions } from "node:child_process";
 import { copyFile, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -71,8 +72,12 @@ const config = Effect.runSync(
 
 describe("Nodex per-Turn CLI connection", () => {
   test("routes Agent shell work through the exact build, Profile and Project", async () => {
+    const phase = captureCoreProbePhase();
+    phase("cli.fixture-directory.begin");
     const root = await mkdtemp(join(tmpdir(), "nodex runtime ' "));
+    phase("cli.fixture-directory.end");
     try {
+      phase("cli.fixture-copy.begin");
       const bin = join(root, "bin");
       const skill = join(root, ".generated/official-agent-skills/skills/nodex");
       await mkdir(bin, { recursive: true });
@@ -83,7 +88,8 @@ describe("Nodex per-Turn CLI connection", () => {
         join(bin, process.platform === "win32" ? "nodex-core.exe" : "nodex-core"),
       );
       await copyFile(resolve("agent-skills/nodex/SKILL.md"), join(skill, "SKILL.md"));
-      await withCoreScenario({ scenarioId: "library/files" }, async (current) => {
+      phase("cli.fixture-copy.end");
+      await withCoreScenario(coreProbeScenarioInput({ scenarioId: "library/files" }), async (current) => {
         const selected = {
           ...config,
           projectRootPath: root,
@@ -161,12 +167,18 @@ describe("Nodex per-Turn CLI connection", () => {
         expect(routed.project.id).toBe(current.manifest.projectId);
       });
     } finally {
+      phase("cli.fixture-remove.begin");
       await rm(root, { recursive: true, force: true });
+      phase("cli.fixture-remove.end");
     }
   }, 60_000);
   test("names the chat whose Agent attached a Page File through the CLI", async () => {
+    const phase = captureCoreProbePhase();
+    phase("cli.fixture-directory.begin");
     const root = await mkdtemp(join(tmpdir(), "nodex attribution ' "));
+    phase("cli.fixture-directory.end");
     try {
+      phase("cli.fixture-copy.begin");
       const bin = join(root, "bin");
       const skill = join(root, ".generated/official-agent-skills/skills/nodex");
       await mkdir(bin, { recursive: true });
@@ -178,7 +190,8 @@ describe("Nodex per-Turn CLI connection", () => {
       );
       await copyFile(resolve("agent-skills/nodex/SKILL.md"), join(skill, "SKILL.md"));
       await writeFile(join(root, "report.html"), "<h1>Cold start</h1>");
-      await withCoreScenario({ scenarioId: "library/files" }, async (current) => {
+      phase("cli.fixture-copy.end");
+      await withCoreScenario(coreProbeScenarioInput({ scenarioId: "library/files" }), async (current) => {
         const selected = {
           ...config,
           projectRootPath: root,
@@ -240,7 +253,9 @@ describe("Nodex per-Turn CLI connection", () => {
         ).rejects.toThrow();
       });
     } finally {
+      phase("cli.fixture-remove.begin");
       await rm(root, { recursive: true, force: true });
+      phase("cli.fixture-remove.end");
     }
   }, 60_000);
 
@@ -259,8 +274,12 @@ describe("Nodex per-Turn CLI connection", () => {
   });
 
   test("plain nodex refreshes task routing and checks Profile identity from unrelated directories", async () => {
+    const phase = captureCoreProbePhase();
+    phase("cli.fixture-directory.begin");
     const root = await mkdtemp(join(tmpdir(), "nodex bootstrap ' "));
+    phase("cli.fixture-directory.end");
     try {
+      phase("cli.fixture-copy.begin");
       const bin = join(root, "bin");
       const skillRoot = join(root, ".generated/official-agent-skills/skills/nodex");
       await mkdir(bin, { recursive: true });
@@ -271,8 +290,9 @@ describe("Nodex per-Turn CLI connection", () => {
         join(bin, process.platform === "win32" ? "nodex-core.exe" : "nodex-core"),
       );
       await copyFile(resolve("agent-skills/nodex/SKILL.md"), join(skillRoot, "SKILL.md"));
-      await withCoreScenario({ scenarioId: "library/files" }, async (first) => {
-        await withCoreScenario({ scenarioId: "library/files" }, async (second) => {
+      phase("cli.fixture-copy.end");
+      await withCoreScenario(coreProbeScenarioInput({ scenarioId: "library/files" }), async (first) => {
+        await withCoreScenario(coreProbeScenarioInput({ scenarioId: "library/files" }), async (second) => {
           await prepareNodexCliShell(first.profile.nodexHome);
           await prepareNodexCliShell(second.profile.nodexHome);
           const otherProject = await first.seed.createProject({
@@ -486,7 +506,9 @@ describe("Nodex per-Turn CLI connection", () => {
         });
       });
     } finally {
+      phase("cli.fixture-remove.begin");
       await rm(root, { recursive: true, force: true });
+      phase("cli.fixture-remove.end");
     }
   }, 60_000);
 });

@@ -1,4 +1,5 @@
 /* oxlint-disable effecttsgo/strict-effect-provide -- Isolated tests provide the complete Profile repository graph. */
+import { captureCoreProbePhase } from "../../../scripts/testing/core-worker-observation";
 import { mkdtempSync, rmSync, mkdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -22,19 +23,34 @@ import { CodexVisualizationState, live } from "./CodexVisualizationState";
 
 const identity = { hostId: "local", threadId: "display", path: "/plot.html" };
 const withStore = <E extends Error>(
-  run: (store: PersistedAtomStore, file: string) => Effect.Effect<void, E, CodexVisualizationState>,
-) =>
-  Effect.acquireUseRelease(
-    Effect.sync(() => mkdtempSync(join(tmpdir(), "nodex-widget-state-"))),
+  run: (store: PersistedAtomStore, file: string, phase: ReturnType<typeof captureCoreProbePhase>) => Effect.Effect<void, E, CodexVisualizationState>,
+) => {
+  const phase = captureCoreProbePhase();
+  return Effect.acquireUseRelease(
+    Effect.sync(() => {
+      phase("store.directory.begin");
+      const directory = mkdtempSync(join(tmpdir(), "nodex-widget-state-"));
+      phase("store.directory.end");
+      return directory;
+    }),
     (directory) => {
       const file = join(directory, "atoms.json");
+      phase("store.construct.begin");
       const store = new PersistedAtomStore(file);
-      return run(store, file).pipe(
+      phase("store.construct.end");
+      phase("store.use.begin");
+      return run(store, file, phase).pipe(
         Effect.provide(live.pipe(Layer.provide(Layer.succeed(ProfilePersistedAtoms, store)))),
+        Effect.ensuring(Effect.sync(() => phase("store.use.end"))),
       );
     },
-    (directory) => Effect.sync(() => rmSync(directory, { recursive: true, force: true })),
+    (directory) => Effect.sync(() => {
+      phase("store.remove.begin");
+      rmSync(directory, { recursive: true, force: true });
+      phase("store.remove.end");
+    }),
   );
+};
 const write = (
   owner: CodexVisualizationState["Service"],
   target: CodexVisualizationStateIdentity,
@@ -130,7 +146,7 @@ it.effect(
 it.effect(
   "isolates display host/Thread/file and reloads confirmed state with a fresh Main owner",
   () =>
-    withStore((_store, file) =>
+    withStore((_store, file, phase) =>
       Effect.gen(function* () {
         const owner = yield* CodexVisualizationState;
         assert.strictEqual(yield* owner.read(identity), null);
@@ -140,16 +156,22 @@ it.effect(
           { ...identity, threadId: "other" },
           { ...identity, path: "/second.html" },
         ];
-        for (const [index, target] of targets.entries()) yield* write(owner, target, index);
+        for (const [index, target] of targets.entries()) {
+          phase("store.write.begin", String(index));
+          yield* write(owner, target, index);
+          phase("store.write.end", String(index));
+        }
         for (const [index, target] of targets.entries())
           assert.deepEqual(yield* owner.read(target), {
             modelContent: null,
             privateContent: null,
             count: index,
           });
+        phase("store.replacement.begin");
         const replacement = live.pipe(
           Layer.provide(Layer.succeed(ProfilePersistedAtoms, new PersistedAtomStore(file))),
         );
+        phase("store.replacement.end");
         assert.deepEqual(
           yield* Effect.flatMap(CodexVisualizationState, (next) => next.read(identity)).pipe(
             Effect.provide(replacement),
@@ -163,20 +185,30 @@ it.effect(
 it.effect(
   "merges interleaved widget, client identity, and renderer atom writes in one cache and revision",
   () =>
-    withStore((store) =>
+    withStore((store, _file, phase) =>
       Effect.gen(function* () {
         const owner = yield* CodexVisualizationState;
+        phase("store.write.begin", "1");
         yield* write(owner, identity, 1);
+        phase("store.write.end", "1");
+        phase("store.identity-update.begin");
         store.update({
           key: codexClientThreadIdentityAtomKey("local", "native"),
           value: "client-alias",
         });
+        phase("store.identity-update.end");
+        phase("store.description.begin");
         yield* makeDescriptions(store).set({ threadId: "native", description: "Readable title" });
+        phase("store.description.end");
+        phase("store.commit.begin");
         store.commitMutation(
           { key: "draft", value: "Authored draft", mutationId: "renderer-draft" },
           "renderer-two",
         );
+        phase("store.commit.end");
+        phase("store.write.begin", "2");
         const last = yield* write(owner, { ...identity, path: "/second.html" }, 2);
+        phase("store.write.end", "2");
         assert.isTrue(last.result.ok);
         assert.strictEqual(store.readSnapshot().revision, 5);
         assert.strictEqual(store.readState().draft, "Authored draft");

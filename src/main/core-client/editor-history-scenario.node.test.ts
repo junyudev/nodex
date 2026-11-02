@@ -1,3 +1,4 @@
+import { coreProbeScenarioInput } from "../../../scripts/testing/core-worker-observation";
 import { expect, test } from "vite-plus/test";
 import * as Y from "yjs";
 
@@ -48,7 +49,7 @@ test.each([
   },
   { name: "non-default", props: { textColor: "red", textAlignment: "right" } },
 ])("guarded creation history preserves $name stored props", async ({ props }) => {
-  await withCoreScenario({ scenarioId: DOCUMENT_SYNC_RECOVERY_SCENARIO_ID }, async (ctx) => {
+  await withCoreScenario(coreProbeScenarioInput({ scenarioId: DOCUMENT_SYNC_RECOVERY_SCENARIO_ID }), async (ctx) => {
     const client = ctx.runtime.rootClient;
     const documents = createCoreDocumentSyncAdapter(client);
     const library = createCoreLibraryModuleAdapter({
@@ -166,7 +167,7 @@ const cases = [
 test.each(cases.flatMap((entry) => ["project", "library"].map((access) => ({ ...entry, access }))))(
   "$access $edit history survives real Core $structure and restoration",
   async ({ edit, structure, access }) => {
-    await withCoreScenario({ scenarioId: DOCUMENT_SYNC_RECOVERY_SCENARIO_ID }, async (ctx) => {
+    await withCoreScenario(coreProbeScenarioInput({ scenarioId: DOCUMENT_SYNC_RECOVERY_SCENARIO_ID }), async (ctx) => {
       const client =
         access === "library"
           ? ctx.runtime.rootClient

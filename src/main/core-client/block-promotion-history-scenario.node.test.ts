@@ -1,3 +1,4 @@
+import { coreProbeScenarioInput } from "../../../scripts/testing/core-worker-observation";
 import {
   STRUCTURAL_INTERACTIONS_SCENARIO_ID,
   requireStructuralInteractionsFacts,
@@ -111,7 +112,7 @@ test.each([
 ] as const)(
   "%s promotion into %s preserves shared File identity through changing heads and history",
   async (mode, destination) => {
-    await withCoreScenario({ scenarioId: LIBRARY_FILES_SCENARIO_ID }, async (ctx) => {
+    await withCoreScenario(coreProbeScenarioInput({ scenarioId: LIBRARY_FILES_SCENARIO_ID }), async (ctx) => {
       const client =
         destination === "library"
           ? ctx.runtime.rootClient
@@ -223,7 +224,7 @@ test.each([
 test.each(["copy", "move"] as const)(
   "%s promotion Undo and Redo preserve the Page, Document and body identities",
   async (mode) => {
-    await withCoreScenario({ scenarioId: DOCUMENT_SYNC_RECOVERY_SCENARIO_ID }, async (ctx) => {
+    await withCoreScenario(coreProbeScenarioInput({ scenarioId: DOCUMENT_SYNC_RECOVERY_SCENARIO_ID }), async (ctx) => {
       const client = ctx.runtime.clientForProject(ctx.manifest.projectId);
       const documentId = ctx.manifest.entityIdsByKey!.sourceDocument!;
       const source = await readDocument(client, documentId);
@@ -307,7 +308,7 @@ test.each([
 ] as const)(
   "$mode promotion into $destination round-trips a whole rich forest with a wrapped root",
   async ({ mode, destination }) => {
-    await withCoreScenario({ scenarioId: DOCUMENT_SYNC_RECOVERY_SCENARIO_ID }, async (ctx) => {
+    await withCoreScenario(coreProbeScenarioInput({ scenarioId: DOCUMENT_SYNC_RECOVERY_SCENARIO_ID }), async (ctx) => {
       const client = ctx.runtime.clientForProject(ctx.manifest.projectId);
       const documentId = ctx.manifest.entityIdsByKey!.otherDocument!;
       await ctx.seed.replaceOwnedDocument({
@@ -480,7 +481,7 @@ test.each([
 );
 
 test("clipboard File export crosses the byte transport after Cut and keeps exact capture retries", async () => {
-  await withCoreScenario({ scenarioId: LIBRARY_FILES_SCENARIO_ID }, async (ctx) => {
+  await withCoreScenario(coreProbeScenarioInput({ scenarioId: LIBRARY_FILES_SCENARIO_ID }), async (ctx) => {
     const client = ctx.runtime.clientForProject(ctx.manifest.projectId);
     const facts = requireLibraryFilesScenarioFacts(ctx.facts);
     const descriptor = await createCoreDocumentSyncAdapter(client).readDescriptor({
@@ -552,7 +553,7 @@ test("clipboard File export crosses the byte transport after Cut and keeps exact
 });
 
 test("nested body-only File promotion can be undone after removing its Page", async () => {
-  await withCoreScenario({ scenarioId: STRUCTURAL_INTERACTIONS_SCENARIO_ID }, async (ctx) => {
+  await withCoreScenario(coreProbeScenarioInput({ scenarioId: STRUCTURAL_INTERACTIONS_SCENARIO_ID }), async (ctx) => {
     const facts = requireStructuralInteractionsFacts(ctx.facts);
     const client = ctx.runtime.clientForProject(ctx.manifest.projectId);
     const source = await readDocument(client, facts.sourceDocumentId);
