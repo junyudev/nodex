@@ -6,6 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+nodex-platform.workspace = true
 nodex-core.workspace = true
 chrono.workspace = true
 rusqlite.workspace = true
@@ -15,5 +16,6 @@ thiserror.workspace = true
 utoipa.workspace = true
 
 [dev-dependencies]
+nodex-platform = { workspace = true, features = ["test-support"] }
 nodex-core-contracts.workspace = true
 tempfile = "3.27.0"

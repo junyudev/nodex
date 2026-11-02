@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
-use std::os::unix::fs::MetadataExt;
+
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
@@ -100,7 +100,7 @@ pub fn verify_stable_for_executable(
 ) -> Result<VerifiedSkillBundle, CliError> {
     let bundle = verify_for_executable(executable)?.ok_or_else(|| {
         unavailable(
-            "the current Nodex CLI is not inside a packaged Nodex.app Skill bundle; install Nodex in /Applications or use npx skills@latest add NodexApp/skills",
+            "the current Nodex CLI is not inside a packaged Nodex Skill bundle; install Nodex or use npx skills@latest add NodexApp/skills",
         )
     })?;
     let canonical_executable = executable.canonicalize().map_err(|error| {
@@ -110,7 +110,7 @@ pub fn verify_stable_for_executable(
         ))
     })?;
     let app = packaged_app_from_executable(&canonical_executable).ok_or_else(|| {
-        unavailable("the current Nodex CLI is not inside a canonical Nodex.app layout")
+        unavailable("the current Nodex CLI is not inside a packaged application layout")
     })?;
     let canonical_home = home.canonicalize().map_err(|error| {
         unavailable(format!(
@@ -118,14 +118,12 @@ pub fn verify_stable_for_executable(
             home.display()
         ))
     })?;
-    let system_applications = Path::new("/Applications");
-    let user_applications = canonical_home.join("Applications");
-    let stable = app
-        .parent()
-        .is_some_and(|parent| parent == system_applications || parent == user_applications);
+    let stable = nodex_platform::process::application_install_roots(&canonical_home)
+        .iter()
+        .any(|root| app.starts_with(root));
     if !stable {
         return Err(unavailable(format!(
-            "{} is not a stable /Applications or ~/Applications install; move Nodex.app before installing managed Agent Skills, or use npx skills@latest add NodexApp/skills",
+            "{} is outside the application install directories; install Nodex before setting up managed Agent Skills, or use npx skills@latest add NodexApp/skills",
             app.display()
         )));
     }
@@ -136,10 +134,13 @@ pub fn verify_for_executable(executable: &Path) -> Result<Option<VerifiedSkillBu
     let Ok(canonical_executable) = executable.canonicalize() else {
         return Ok(None);
     };
-    let Some(app) = packaged_app_from_executable(&canonical_executable) else {
+    let Some(_) = packaged_app_from_executable(&canonical_executable) else {
         return Ok(None);
     };
-    let resources = app.join("Contents/Resources");
+    let resources = canonical_executable
+        .parent()
+        .and_then(Path::parent)
+        .ok_or_else(|| unavailable("Packaged CLI has no resources directory"))?;
     let bundle_root = resources.join("agent-skills");
     let manifest_path = bundle_root.join("release-manifest.json");
     let manifest_metadata = match fs::symlink_metadata(&manifest_path) {
@@ -215,6 +216,9 @@ fn packaged_app_from_executable(executable: &Path) -> Option<PathBuf> {
         return None;
     }
     let resources = bin.parent()?;
+    if resources.file_name()?.to_str()? == "resources" {
+        return resources.parent().map(Path::to_path_buf);
+    }
     if resources.file_name()?.to_str()? != "Resources" {
         return None;
     }
@@ -335,7 +339,9 @@ fn validate_tree_entries(
 ) -> Result<(), CliError> {
     let root_metadata = fs::symlink_metadata(root)
         .map_err(|error| invalid(format!("could not inspect {}: {error}", root.display())))?;
-    if !root_metadata.file_type().is_dir() || root_metadata.file_type().is_symlink() {
+    if !root_metadata.file_type().is_dir()
+        || nodex_platform::private_fs::is_reparse_point(&root_metadata)
+    {
         return Err(invalid(format!(
             "{} must be a real directory",
             root.display()
@@ -356,7 +362,7 @@ fn validate_tree_entries(
         let relative = portable_relative_path(relative)?;
         let metadata = fs::symlink_metadata(&path)
             .map_err(|error| invalid(format!("could not inspect {}: {error}", path.display())))?;
-        if metadata.file_type().is_symlink() {
+        if nodex_platform::private_fs::is_reparse_point(&metadata) {
             return Err(invalid(format!(
                 "official Skill tree contains a symlink: {relative}"
             )));
@@ -437,7 +443,9 @@ fn require_regular_single_link(
     if !metadata.file_type().is_file() {
         return Err(invalid(format!("{} is not a regular file", path.display())));
     }
-    if metadata.nlink() != 1 {
+    if nodex_platform::private_fs::link_count(path).map_err(|error| invalid(error.to_string()))?
+        != 1
+    {
         return Err(invalid(format!(
             "{} must not be hard-linked",
             path.display()

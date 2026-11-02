@@ -91,15 +91,13 @@ pub(crate) fn collect(
         }
     }
     if !candidates.is_empty() {
-        fs::File::open(root)
-            .and_then(|directory| directory.sync_all())
-            .map_err(|error| {
-                StoreError::new(
-                    StoreErrorCode::Internal,
-                    format!("Blob directory sync failed: {error}"),
-                    true,
-                )
-            })?;
+        nodex_platform::private_fs::sync_directory(root).map_err(|error| {
+            StoreError::new(
+                StoreErrorCode::Internal,
+                format!("Blob directory sync failed: {error}"),
+                true,
+            )
+        })?;
     }
     u64::try_from(candidates.len())
         .map_err(|_| StoreError::new(StoreErrorCode::Internal, "Blob GC count overflowed", false))

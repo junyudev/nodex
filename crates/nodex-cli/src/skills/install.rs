@@ -1,6 +1,5 @@
-use std::fs;
+use nodex_platform::private_fs::directory_link;
 use std::io;
-use std::os::unix::fs::symlink;
 
 use serde::Serialize;
 
@@ -151,7 +150,7 @@ pub fn install(
             ),
             SkillTargetState::Missing => {
                 ensure_parent(&target.target)?;
-                match symlink(&bundle.skill_source, &target.target.path) {
+                match directory_link(&bundle.skill_source, &target.target.path) {
                     Ok(()) => {
                         mutations += 1;
                         maybe_inject_failure(environment, mutations)?;
@@ -236,7 +235,7 @@ pub fn remove(
                         "target changed after remove preflight",
                     ));
                 }
-                match fs::remove_file(&current.target.path) {
+                match nodex_platform::private_fs::remove_directory_link(&current.target.path) {
                     Ok(()) => {
                         mutations += 1;
                         maybe_inject_failure(environment, mutations)?;

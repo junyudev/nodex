@@ -1,7 +1,12 @@
-use std::fs::{self, File, OpenOptions};
+use nodex_platform::private_fs::OpenOptions;
+use std::fs::{self, File};
 use std::io::{self, Read, Write};
-use std::os::unix::fs::{DirBuilderExt, FileTypeExt, MetadataExt, OpenOptionsExt, PermissionsExt};
-use std::os::unix::net::UnixStream;
+
+use nodex_platform::{
+    local_endpoint,
+    private_fs::{self, EntryKind},
+    process::{self, UserIdentity},
+};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -74,7 +79,7 @@ pub(crate) struct LegacyRuntimeDescriptor {
     build_id: String,
     pid: u32,
     start_nonce: String,
-    socket_path: String,
+    endpoint: String,
     profile_id: String,
     store_epoch: String,
     readiness_generation: u64,
@@ -148,7 +153,9 @@ impl RuntimePaths {
     pub(crate) fn prepare(home: &Path) -> io::Result<Self> {
         validate_home(home)?;
         let run = home.join("run");
-        prepare_owned_directory(&run, None)?;
+        // Desktop and isolated-run supervisors can create this shared directory first.
+        private_fs::create_dir_all(&run)?;
+        private_fs::prepare_private_path(&run, EntryKind::Directory)?;
         let directory = run.join("core");
         prepare_owned_directory(&directory, Some(RUNTIME_DIRECTORY_MODE))?;
         Ok(Self {
@@ -161,13 +168,13 @@ impl RuntimePaths {
         })
     }
 
-    pub(crate) fn owner_uid(&self) -> io::Result<u32> {
-        Ok(checked_metadata(
+    pub(crate) fn owner_user(&self) -> io::Result<UserIdentity> {
+        private_fs::checked_metadata(
             &self.directory,
             EntryKind::Directory,
             Some(RUNTIME_DIRECTORY_MODE),
-        )?
-        .uid())
+        )?;
+        process::current_user()
     }
 
     pub(crate) fn open_lock(&self) -> io::Result<File> {
@@ -179,16 +186,11 @@ impl RuntimePaths {
             .open(&self.lock)
         {
             Ok(lock) => {
-                fs::set_permissions(&self.lock, fs::Permissions::from_mode(PRIVATE_FILE_MODE))?;
+                nodex_platform::private_fs::set_mode(&self.lock, PRIVATE_FILE_MODE)?;
                 Ok(lock)
             }
             Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
-                checked_owned_entry(
-                    &self.lock,
-                    self.owner_uid()?,
-                    EntryKind::File,
-                    Some(PRIVATE_FILE_MODE),
-                )?;
+                private_fs::checked_metadata(&self.lock, EntryKind::File, Some(PRIVATE_FILE_MODE))?;
                 OpenOptions::new().read(true).write(true).open(&self.lock)
             }
             Err(error) => Err(error),
@@ -196,26 +198,21 @@ impl RuntimePaths {
     }
 
     pub(crate) fn remove_stale_socket(&self) -> io::Result<()> {
+        if cfg!(windows) {
+            return Ok(());
+        }
         let Ok(_) = fs::symlink_metadata(&self.socket) else {
             return Ok(());
         };
-        checked_owned_entry(
-            &self.socket,
-            self.owner_uid()?,
-            EntryKind::Socket,
-            Some(PRIVATE_FILE_MODE),
-        )?;
+        if cfg!(unix) {
+            private_fs::checked_metadata(&self.socket, EntryKind::Socket, Some(PRIVATE_FILE_MODE))?;
+        }
         fs::remove_file(&self.socket)
     }
 
     pub(crate) fn atomic_write_private(&self, path: &Path, bytes: &[u8]) -> io::Result<()> {
         if fs::symlink_metadata(path).is_ok() {
-            checked_owned_entry(
-                path,
-                self.owner_uid()?,
-                EntryKind::File,
-                Some(PRIVATE_FILE_MODE),
-            )?;
+            private_fs::checked_metadata(path, EntryKind::File, Some(PRIVATE_FILE_MODE))?;
         }
         let file_name = path
             .file_name()
@@ -235,8 +232,8 @@ impl RuntimePaths {
             file.write_all(bytes)?;
             file.sync_all()?;
             drop(file);
-            fs::rename(&temporary, path)?;
-            File::open(&self.directory)?.sync_all()
+            nodex_platform::private_fs::atomic_replace(&temporary, path)?;
+            private_fs::sync_directory(&self.directory)
         })();
         if write_result.is_err() {
             let _ = fs::remove_file(&temporary);
@@ -250,12 +247,8 @@ impl RuntimePaths {
         maximum_bytes: u64,
         label: &str,
     ) -> io::Result<Vec<u8>> {
-        let metadata = checked_owned_entry(
-            path,
-            self.owner_uid()?,
-            EntryKind::File,
-            Some(PRIVATE_FILE_MODE),
-        )?;
+        let metadata =
+            private_fs::checked_metadata(path, EntryKind::File, Some(PRIVATE_FILE_MODE))?;
         if metadata.len() > maximum_bytes {
             return Err(invalid_data(&format!("{label} is oversized")));
         }
@@ -272,9 +265,8 @@ impl RuntimePaths {
     }
 
     fn read_incumbent_descriptor(&self) -> io::Result<IncumbentDescriptor> {
-        let metadata = checked_owned_entry(
+        let metadata = private_fs::checked_metadata(
             &self.descriptor,
-            self.owner_uid()?,
             EntryKind::File,
             Some(PRIVATE_FILE_MODE),
         )?;
@@ -293,12 +285,8 @@ impl RuntimePaths {
     }
 
     fn read_auth(&self) -> io::Result<String> {
-        let metadata = checked_owned_entry(
-            &self.auth,
-            self.owner_uid()?,
-            EntryKind::File,
-            Some(PRIVATE_FILE_MODE),
-        )?;
+        let metadata =
+            private_fs::checked_metadata(&self.auth, EntryKind::File, Some(PRIVATE_FILE_MODE))?;
         if metadata.len() > MAX_AUTH_BYTES {
             return Err(invalid_data("Core auth capability is oversized"));
         }
@@ -319,7 +307,7 @@ impl RuntimePaths {
         loop {
             match fs2::FileExt::try_lock_exclusive(lock) {
                 Ok(()) => return Ok(ExistingCore::LockAcquired),
-                Err(error) if error.kind() == io::ErrorKind::WouldBlock => {}
+                Err(error) if nodex_platform::private_fs::lock_is_contended(&error) => {}
                 Err(error) => return Err(error),
             }
             let error = match self
@@ -374,12 +362,9 @@ impl RuntimePaths {
             };
             return self.request_replacement(*descriptor, candidate, reason);
         }
-        checked_owned_entry(
-            &self.socket,
-            self.owner_uid()?,
-            EntryKind::Socket,
-            Some(PRIVATE_FILE_MODE),
-        )?;
+        if cfg!(unix) {
+            private_fs::checked_metadata(&self.socket, EntryKind::Socket, Some(PRIVATE_FILE_MODE))?;
+        }
         let auth = self.read_auth()?;
         let connection_id = format!("startup-probe:{}", random_hex(16)?);
         let request = HandshakeRequest {
@@ -394,7 +379,7 @@ impl RuntimePaths {
             expected_generation: RuntimeGenerationIdentity::from(descriptor.as_ref()),
         };
         let response = request_json::<_, HandshakeResponse>(
-            &self.socket,
+            Path::new(&descriptor.endpoint),
             &auth,
             "/core/v1/handshake",
             &request,
@@ -423,16 +408,13 @@ impl RuntimePaths {
         candidate: &CandidateRuntime,
         reason: CoreSelectionReason,
     ) -> io::Result<ExistingCore> {
-        checked_owned_entry(
-            &self.socket,
-            self.owner_uid()?,
-            EntryKind::Socket,
-            Some(PRIVATE_FILE_MODE),
-        )?;
+        if cfg!(unix) {
+            private_fs::checked_metadata(&self.socket, EntryKind::Socket, Some(PRIVATE_FILE_MODE))?;
+        }
         let auth = self.read_auth()?;
         let expected = RuntimeGenerationIdentity::from(&descriptor);
         let response = request_json::<_, ShutdownResponse>(
-            &self.socket,
+            Path::new(&descriptor.endpoint),
             &auth,
             "/core/v1/admin/shutdown",
             &ShutdownRequest::Replacement(Box::new(CoreReplacementRequest {
@@ -486,16 +468,13 @@ impl RuntimePaths {
                 "legacy descriptor claims the current transport without a compatibility manifest",
             ));
         }
-        checked_owned_entry(
-            &self.socket,
-            self.owner_uid()?,
-            EntryKind::Socket,
-            Some(PRIVATE_FILE_MODE),
-        )?;
+        if cfg!(unix) {
+            private_fs::checked_metadata(&self.socket, EntryKind::Socket, Some(PRIVATE_FILE_MODE))?;
+        }
         let auth = self.read_auth()?;
         let expected = LegacyRuntimeGenerationIdentity::from(&descriptor);
         let response = request_json::<_, LegacyShutdownResponse>(
-            &self.socket,
+            Path::new(&descriptor.endpoint),
             &auth,
             "/core/v1/admin/shutdown",
             &LegacyShutdownRequest {
@@ -537,7 +516,7 @@ impl RuntimePaths {
         loop {
             match fs2::FileExt::try_lock_exclusive(lock) {
                 Ok(()) => return Ok(ExistingCore::LockAcquired),
-                Err(error) if error.kind() == io::ErrorKind::WouldBlock => {}
+                Err(error) if nodex_platform::private_fs::lock_is_contended(&error) => {}
                 Err(error) => return Err(error),
             }
             match self.read_incumbent_descriptor() {
@@ -568,16 +547,19 @@ impl RuntimePaths {
         if descriptor.start_nonce != start_nonce {
             return;
         }
-        let Ok(owner_uid) = self.owner_uid() else {
+        let Ok(_) = self.owner_user() else {
             return;
         };
         let entries = [
             (&self.socket, EntryKind::Socket),
             (&self.auth, EntryKind::File),
             (&self.descriptor, EntryKind::File),
-        ];
+        ]
+        .into_iter()
+        .filter(|(_, kind)| cfg!(unix) || !matches!(kind, EntryKind::Socket))
+        .collect::<Vec<_>>();
         if entries.iter().any(|(path, kind)| {
-            checked_owned_entry(path, owner_uid, *kind, Some(PRIVATE_FILE_MODE)).is_err()
+            private_fs::checked_metadata(path, *kind, Some(PRIVATE_FILE_MODE)).is_err()
         }) {
             return;
         }
@@ -587,13 +569,6 @@ impl RuntimePaths {
     }
 }
 
-#[derive(Clone, Copy)]
-enum EntryKind {
-    Directory,
-    File,
-    Socket,
-}
-
 fn validate_home(home: &Path) -> io::Result<()> {
     if !home.is_absolute() {
         return Err(io::Error::new(
@@ -601,76 +576,16 @@ fn validate_home(home: &Path) -> io::Result<()> {
             "Core home must be absolute",
         ));
     }
-    let metadata = checked_metadata(home, EntryKind::Directory, None)?;
-    if metadata.uid() != rustix::process::geteuid().as_raw() {
-        return Err(io::Error::new(
-            io::ErrorKind::PermissionDenied,
-            "Core home is not owned by the current user",
-        ));
-    }
-    Ok(())
+    private_fs::prepare_profile_root(home)
 }
 
 fn prepare_owned_directory(path: &Path, expected_mode: Option<u32>) -> io::Result<()> {
-    let creation_mode = expected_mode.unwrap_or(RUNTIME_DIRECTORY_MODE);
-    let mut builder = fs::DirBuilder::new();
-    builder.mode(creation_mode);
-    match builder.create(path) {
-        Ok(()) => fs::set_permissions(path, fs::Permissions::from_mode(creation_mode))?,
+    match private_fs::create_dir(path) {
+        Ok(()) => {}
         Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
         Err(error) => return Err(error),
     }
-    checked_owned_entry(
-        path,
-        rustix::process::geteuid().as_raw(),
-        EntryKind::Directory,
-        expected_mode,
-    )?;
-    Ok(())
-}
-
-fn checked_metadata(path: &Path, kind: EntryKind, mode: Option<u32>) -> io::Result<fs::Metadata> {
-    let metadata = fs::symlink_metadata(path)?;
-    let valid_kind = match kind {
-        EntryKind::Directory => metadata.is_dir(),
-        EntryKind::File => metadata.is_file(),
-        EntryKind::Socket => metadata.file_type().is_socket(),
-    };
-    if metadata.file_type().is_symlink() || !valid_kind {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            format!("{} has an invalid filesystem type", path.display()),
-        ));
-    }
-    if let Some(expected) = mode {
-        let actual = metadata.permissions().mode() & 0o777;
-        if actual != expected {
-            return Err(io::Error::new(
-                io::ErrorKind::PermissionDenied,
-                format!(
-                    "{} has mode {actual:o}; expected {expected:o}",
-                    path.display()
-                ),
-            ));
-        }
-    }
-    Ok(metadata)
-}
-
-fn checked_owned_entry(
-    path: &Path,
-    owner_uid: u32,
-    kind: EntryKind,
-    mode: Option<u32>,
-) -> io::Result<fs::Metadata> {
-    let metadata = checked_metadata(path, kind, mode)?;
-    if metadata.uid() != owner_uid || owner_uid != rustix::process::geteuid().as_raw() {
-        return Err(io::Error::new(
-            io::ErrorKind::PermissionDenied,
-            format!("{} is not owned by the current user", path.display()),
-        ));
-    }
-    Ok(metadata)
+    private_fs::checked_metadata(path, EntryKind::Directory, expected_mode).map(|_| ())
 }
 
 fn validate_descriptor(descriptor: &RuntimeDescriptor, expected_socket: &Path) -> io::Result<()> {
@@ -686,7 +601,7 @@ fn validate_descriptor(descriptor: &RuntimeDescriptor, expected_socket: &Path) -
         && descriptor.pid > 0
         && descriptor.start_nonce.len() == 32
         && descriptor.start_nonce.bytes().all(is_lower_hex)
-        && Path::new(&descriptor.socket_path) == expected_socket
+        && local_endpoint::validate_endpoint(&descriptor.endpoint, expected_socket)
         && !descriptor.profile_id.is_empty()
         && descriptor.profile_id.len() <= 512
         && !descriptor.store_epoch.is_empty()
@@ -709,7 +624,7 @@ fn validate_legacy_descriptor(
         && descriptor.pid > 0
         && descriptor.start_nonce.len() == 32
         && descriptor.start_nonce.bytes().all(is_lower_hex)
-        && Path::new(&descriptor.socket_path) == expected_socket
+        && local_endpoint::validate_endpoint(&descriptor.endpoint, expected_socket)
         && !descriptor.profile_id.is_empty()
         && descriptor.profile_id.len() <= 512
         && !descriptor.store_epoch.is_empty()
@@ -730,7 +645,7 @@ fn request_json<Request: serde::Serialize, Response: serde::de::DeserializeOwned
     body: &Request,
 ) -> io::Result<Response> {
     let body = serde_json::to_vec(body).map_err(io::Error::other)?;
-    let mut stream = UnixStream::connect(socket)?;
+    let mut stream = local_endpoint::connect(socket, None)?;
     stream.set_read_timeout(Some(PROBE_TIMEOUT))?;
     stream.set_write_timeout(Some(PROBE_TIMEOUT))?;
     write!(
@@ -794,16 +709,11 @@ pub(crate) fn current_artifact_identity() -> io::Result<CoreArtifactIdentity> {
     if !executable.is_absolute() {
         return Err(invalid_data("Core executable path is not absolute"));
     }
-    let metadata = checked_owned_entry(
-        &executable,
-        rustix::process::geteuid().as_raw(),
-        EntryKind::File,
-        None,
-    )?;
+    let metadata = private_fs::entry_metadata(&executable, EntryKind::File)?;
     if metadata.len() == 0 || metadata.len() > MAX_CORE_EXECUTABLE_BYTES {
         return Err(invalid_data("Core executable size is invalid"));
     }
-    let mut file = File::open(executable)?;
+    let mut file = private_fs::open_read(&executable)?;
     let mut digest = Sha256::new();
     let mut buffer = [0_u8; 64 * 1024];
     loop {
@@ -823,10 +733,10 @@ pub(crate) fn current_artifact_identity() -> io::Result<CoreArtifactIdentity> {
 
 #[cfg(test)]
 mod tests {
+    use nodex_platform::private_fs::symlink;
     use std::io::BufRead;
-    use std::os::unix::fs::symlink;
 
-    use tempfile::tempdir;
+    use nodex_platform::test_support::tempdir;
 
     use super::*;
 
@@ -868,12 +778,37 @@ mod tests {
     }
 
     #[test]
+    fn runtime_directory_admits_a_supervisor_created_run_directory() {
+        let directory = tempdir().expect("temporary Profile");
+        let home = directory.path().canonicalize().expect("absolute Profile");
+        let run = home.join("run");
+        // Match Node mkdir: elevated Windows tokens can use their default group owner.
+        fs::create_dir(&run).expect("supervisor run directory");
+        let marker = run.join("supervisor.json");
+        fs::write(&marker, b"supervisor evidence").expect("supervisor marker");
+
+        let paths = RuntimePaths::prepare(&home).expect("admit shared run directory");
+
+        private_fs::checked_metadata(&run, EntryKind::Directory, Some(RUNTIME_DIRECTORY_MODE))
+            .expect("shared directory has current-user private access");
+        private_fs::checked_metadata(
+            &paths.directory,
+            EntryKind::Directory,
+            Some(RUNTIME_DIRECTORY_MODE),
+        )
+        .expect("Core directory stays private");
+        assert_eq!(fs::read(marker).unwrap(), b"supervisor evidence");
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn stale_socket_cleanup_refuses_non_socket_and_symlink_targets() {
         let directory = tempdir().expect("temporary Profile");
         let home = directory.path().canonicalize().expect("absolute Profile");
         let paths = RuntimePaths::prepare(&home).expect("runtime paths");
-        fs::write(&paths.socket, b"not a socket").expect("regular stale entry");
-        fs::set_permissions(&paths.socket, fs::Permissions::from_mode(PRIVATE_FILE_MODE))
+        nodex_platform::private_fs::write(&paths.socket, b"not a socket")
+            .expect("regular stale entry");
+        nodex_platform::private_fs::set_mode(&paths.socket, PRIVATE_FILE_MODE)
             .expect("private mode");
         assert!(paths.remove_stale_socket().is_err());
         fs::remove_file(&paths.socket).expect("remove regular entry");
@@ -903,7 +838,7 @@ mod tests {
             .expect("Store format"),
             pid: std::process::id(),
             start_nonce: "a".repeat(32),
-            socket_path: paths.socket.to_string_lossy().into_owned(),
+            endpoint: local_endpoint::new_core_endpoint(&paths.socket).unwrap(),
             profile_id: "profile:test".to_owned(),
             store_epoch: "epoch:test".to_owned(),
             readiness_generation: 1,
@@ -944,10 +879,12 @@ mod tests {
         let directory = tempdir().expect("temporary legacy Profile");
         let home = directory.path().canonicalize().expect("absolute Profile");
         let paths = RuntimePaths::prepare(&home).expect("runtime paths");
+        let endpoint = local_endpoint::new_core_endpoint(&paths.socket).unwrap();
         let listener =
-            std::os::unix::net::UnixListener::bind(&paths.socket).expect("legacy fixture socket");
-        fs::set_permissions(&paths.socket, fs::Permissions::from_mode(PRIVATE_FILE_MODE))
-            .expect("private legacy fixture socket");
+            local_endpoint::BlockingListener::bind(&endpoint).expect("legacy fixture endpoint");
+        if cfg!(unix) {
+            private_fs::set_mode(&paths.socket, PRIVATE_FILE_MODE).unwrap();
+        }
         let auth = "a".repeat(64);
         paths
             .atomic_write_private(&paths.auth, format!("{auth}\n").as_bytes())
@@ -958,7 +895,7 @@ mod tests {
             build_id: "legacy-core-test".to_owned(),
             pid: std::process::id(),
             start_nonce: "b".repeat(32),
-            socket_path: paths.socket.to_string_lossy().into_owned(),
+            endpoint,
             profile_id: "profile:legacy".to_owned(),
             store_epoch: "epoch:legacy".to_owned(),
             readiness_generation: 1,

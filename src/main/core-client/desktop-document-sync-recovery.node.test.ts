@@ -11,7 +11,7 @@ import type {
 import type { ContentRoutingContext } from "../../shared/content-routing-context";
 import { NodexYProvider } from "../../renderer/lib/nodex-y-provider";
 import { CoreModuleResponseError } from "./core-client";
-import { CoreEventCompatibilityError } from "./uds-http";
+import { CoreEventCompatibilityError } from "./local-http";
 import { FakeCoreClient, createFakeCoreHandshake } from "./testing/fake-core-client";
 import { makeDesktopDocumentSessionHarness } from "./testing/desktop-document-session-harness.test-support";
 import type { CoreGenerationClient } from "./core-generation-client";

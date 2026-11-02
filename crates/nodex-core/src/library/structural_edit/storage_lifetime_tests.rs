@@ -56,7 +56,7 @@ fn request(id: &str, intent: LibraryIntent) -> ModuleApplyRequest<LibraryIntent>
 
 #[test]
 fn history_payload_storage_lifetime_preserves_replay_and_page_history() {
-    let home = tempfile::tempdir().expect("disposable Profile");
+    let home = nodex_platform::test_support::tempdir().expect("disposable Profile");
     let kernel = SqliteStoreKernel::open_test(home.path()).expect("Store");
     kernel.writer().call(|connection| {
         with_immediate_transaction(connection, |transaction| {

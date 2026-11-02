@@ -597,7 +597,7 @@ mod tests {
 
     #[test]
     fn missing_receipts_have_typed_finite_window_semantics_after_the_floor_advances() {
-        let directory = tempfile::tempdir().expect("Profile");
+        let directory = nodex_platform::test_support::tempdir().expect("Profile");
         let mut connection = open_writer(&directory.path().join("nodex.db")).expect("writer");
         prepare_test_current_store(&mut connection, Path::new("/__receipt_window_test__"))
             .expect("current Store");

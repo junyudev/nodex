@@ -3734,8 +3734,8 @@ mod tests {
         ModuleApplyRequest, ModuleReadRequest, PROJECT_WORKSPACE_CONTRACT_VERSION, ProfileId,
         StoreEpoch,
     };
+    use nodex_platform::test_support::tempdir;
     use serde_json::json;
-    use tempfile::tempdir;
 
     use crate::infrastructure::sqlite::with_immediate_transaction;
     use crate::infrastructure::store::SqliteStoreKernel;
@@ -3761,7 +3761,7 @@ mod tests {
         const CANVAS: &str = "canvas:primary:project:library-roots";
         let directory = tempdir().expect("Profile");
         let home = directory.path().canonicalize().expect("absolute Profile");
-        std::fs::create_dir(home.join("assets")).expect("assets root");
+        nodex_platform::private_fs::create_dir(home.join("assets")).expect("assets root");
         let kernel = SqliteStoreKernel::open_test(&home).expect("fresh store");
         kernel
             .writer()
@@ -3805,7 +3805,9 @@ mod tests {
                     name: "Research".to_owned(),
                     description: String::new(),
                     appearance: None,
-                    source_roots: vec!["/workspace/research".to_owned()],
+                    source_roots: vec![
+                        nodex_platform::fixture_path!("/workspace/research").to_owned(),
+                    ],
                     page_key_prefix: None,
                     starter_page: ProjectWorkspaceStarterPage {
                         page_id: "page:starter".to_owned(),

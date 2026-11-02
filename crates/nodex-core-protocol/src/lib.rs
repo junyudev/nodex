@@ -431,7 +431,6 @@ fn format_store_formats(formats: &[StoreFormatIdentity]) -> String {
         .join(",")
 }
 
-#[cfg(unix)]
 pub mod client;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -549,7 +548,7 @@ pub struct RuntimeDescriptor {
     pub actual_store_format: StoreFormatIdentity,
     pub pid: u32,
     pub start_nonce: String,
-    pub socket_path: String,
+    pub endpoint: String,
     pub profile_id: String,
     pub store_epoch: String,
     pub readiness_generation: u64,

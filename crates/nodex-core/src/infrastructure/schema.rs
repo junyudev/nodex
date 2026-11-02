@@ -150,7 +150,7 @@ fn normalize_sql(sql: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use tempfile::tempdir;
+    use nodex_platform::test_support::tempdir;
 
     use crate::infrastructure::sqlite::open_writer;
 

@@ -14,7 +14,7 @@ interactive stdin before starting runtime threads. This guarantee belongs to
 Core itself, including when a CLI starts it before Desktop connects. Exiting or
 cancelling that client, closing its terminal, or cleaning its process group
 cannot terminate the shared Core. The bounded startup selection response and
-authenticated explicit shutdown remain separate from caller lifetime.
+authenticated explicit shutdown remain separate from caller lifetime. A native client that reuses an existing authority waits for its short-lived selection launcher to exit before returning the connection; that launcher never becomes a second daemon.
 
 Core is a detached per-Profile process. An active authenticated Host connection,
 event stream, CLI client, Document subscription, Store operation, or due
@@ -29,6 +29,70 @@ five seconds for its OS process to exit. The generation identity captured at
 acquisition fences this finalizer from targeting a later or foreign process;
 failure remains in the Scope-closing Cause instead of being hidden by a global
 shutdown checklist.
+
+## Local endpoints and private storage
+
+The runtime descriptor records an `endpoint`: the fixed Profile-private
+`run/core/core.sock` on Unix, or a fresh
+`\\.\pipe\nodex-core-<32 lowercase hexadecimal digits>` on Windows.
+Windows names contain 128 random bits per Core start. Descriptor readers reject
+foreign Unix paths, remote pipe names, alternate prefixes, and malformed names.
+HTTP/1.1 and SSE use the same authenticated byte-stream contract on both systems.
+Windows response shutdown drains buffered bytes before closing, with a five-second
+bound and native cancellation for stalled readers.
+
+Unix authenticates the socket's peer credentials. Windows creates the first pipe
+instance exclusively, rejects remote clients, and grants access only to the current
+user SID. Core checks the client PID and its process-token user SID before admitting
+the connection. The next pipe instance exists before the connected instance enters
+HTTP. Native clients check the pipe server PID against the private descriptor and
+verify its user SID; the generation-bound authenticated handshake also fences reuse.
+
+Core's native platform boundary owns private file creation, ownership validation,
+no-follow opens, process identity, free space, and atomic replacement. Unix uses
+0700 directories, 0600 files and effective-user ownership. Windows uses protected
+DACLs granting only the current user, verifies owner SID, and refuses every reparse
+point, including directory junctions. Profile and shared `run` directory initialization
+convert the current token’s default directory owner to its user SID before reading
+content; this handles elevated Windows accounts without accepting another user’s owner SID.
+Immutable search snapshots use read-only
+access, restored only by the cleanup owner. Unix shares sealed files by hard link;
+Windows creates independently sealed copies. The read-only DACL denies content
+and namespace mutations while retaining the metadata access required for atomic
+sealed-file replacement. Files are flushed before publication.
+Directory synchronization is a no-op on Windows. Ordinary replacement requests
+write-through; sealed-file replacement uses native rename flags that preserve the
+old file’s read-only access. Both retry sharing/access/lock violations for at most
+one second to tolerate
+transient antivirus and indexer handles.
+
+On Windows, Core re-executes once through its native bootstrap, retaining the
+readiness pipes while the authority requests a detached process, a new process
+group, hidden console operation, and job breakaway. Desktop identifies the
+authority by its selected descriptor PID. The bootstrap waits for that authority
+and relays its exit; Desktop observes bootstrap completion before releasing the
+launched process. If the parent job forbids breakaway, creation
+retries without that flag; a restrictive non-breakaway job can still constrain the
+Core lifetime. Direct invocation disconnects its console before runtime threads
+start. Ctrl-C, Ctrl-Break, console close, and system shutdown enter the same drain
+path when delivered. Unix establishes its own session and disconnects stdin.
+
+Profile snapshot coordination publishes a bounded private `ipc/clone.json`
+rendezvous containing the endpoint, server PID and random capability. Unix uses
+`ipc/clone.sock`; Windows uses a separate random `nodex-clone` pipe. Acquisition
+requires the capability before either capture owner pauses. Release or disconnect
+ends the connection-bound lease. Windows Node pipes cannot install an explicit
+DACL, so this endpoint relies on its unguessable name, private rendezvous, server
+identity verification by the native client and authenticated protocol. Main protects
+the rendezvous owner and DACL through the bundled Core's bounded one-shot native
+filesystem command, without starting a daemon or invoking a shell.
+
+Windows CLI defaults to `%USERPROFILE%\.nodex`, independently of `HOME`.
+Desktop links use the registered URI handler on Windows and macOS; launcher
+diagnostics stay inside the structured CLI error envelope.
+Managed Skill directories use junctions, which need no Developer Mode or symlink
+privilege. Only completed junctions are published, atomically and without replacing
+an existing target. Browser-profile import reports `unsupported_platform` outside macOS.
 
 ## Generation recovery
 

@@ -1,11 +1,11 @@
 import { spawn } from "node:child_process";
-import { createHash } from "node:crypto";
-import { accessSync, constants, lstatSync, readFileSync } from "node:fs";
+import { accessSync, constants, lstatSync } from "node:fs";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 
 import type { components } from "@nodex/core-protocol";
 import { NODEX_CORE_EXECUTABLE_ENV } from "../../shared/native-runtime-environment";
+import { readCoreArtifactDigest } from "./core-artifact";
 import { CoreClient } from "./core-client";
 import { parseCoreRuntimeDescriptor } from "./runtime-descriptor";
 
@@ -197,13 +197,6 @@ export function parseCoreStartupEventFrame(value: unknown): CoreStartupEvent | n
   throw new Error("Native Rust Core startup event kind is unsupported");
 }
 
-interface NativeCoreManifest {
-  readonly binaries?: readonly {
-    readonly name?: unknown;
-    readonly sourceSha256?: unknown;
-  }[];
-}
-
 const abortError = (signal: AbortSignal): Error => {
   const reason = signal.reason;
   if (reason instanceof Error) return reason;
@@ -358,13 +351,13 @@ export function resolveCoreExecutable(input: ResolveCoreExecutableInput): string
     }
     return path.join(
       requireAbsolutePath(input.appResourcesPath, "App resources path"),
-      "bin/nodex-core",
+      `bin/nodex-core${process.platform === "win32" ? ".exe" : ""}`,
     );
   }
 
   return path.join(
     requireAbsolutePath(input.repositoryRoot ?? process.cwd(), "Core repository root"),
-    "target/debug/nodex-core",
+    `target/debug/nodex-core${process.platform === "win32" ? ".exe" : ""}`,
   );
 }
 
@@ -375,33 +368,22 @@ function validateCoreExecutable(executablePath: string): void {
   accessSync(executablePath, constants.X_OK);
 }
 
-const sha256File = (filePath: string): string =>
-  createHash("sha256").update(readFileSync(filePath)).digest("hex");
-
 const expectedCoreArtifactDigest = (
   input: ResolveCoreExecutableInput,
   executablePath: string,
 ): string => {
-  const actual = sha256File(executablePath);
   const override = (input.environment ?? process.env)[NODEX_CORE_EXECUTABLE_ENV]?.trim();
-  if (override) return actual;
-  if (!input.isPackaged) return actual;
+  if (override || !input.isPackaged) return readCoreArtifactDigest(executablePath);
   if (!input.appResourcesPath) {
     throw new Error("Packaged Core startup requires an app resources path");
   }
-  const manifestPath = path.join(
-    requireAbsolutePath(input.appResourcesPath, "App resources path"),
-    "bin/rust-core-runtime.json",
+  return readCoreArtifactDigest(
+    executablePath,
+    path.join(
+      requireAbsolutePath(input.appResourcesPath, "App resources path"),
+      "bin/rust-core-runtime.json",
+    ),
   );
-  const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as NativeCoreManifest;
-  const expected = manifest.binaries?.find((binary) => binary.name === "nodex-core")?.sourceSha256;
-  if (typeof expected !== "string" || !/^[a-f0-9]{64}$/u.test(expected)) {
-    throw new Error("Packaged native runtime manifest omits the Core artifact digest");
-  }
-  if (actual !== expected) {
-    throw new Error("Packaged Core executable does not match its signed runtime manifest");
-  }
-  return actual;
 };
 
 const appendBoundedStderr = (current: string, chunk: string): string =>
@@ -441,6 +423,7 @@ export async function connectOrStartCore(
     ],
     {
       detached: true,
+      windowsHide: true,
       env: {
         ...process.env,
         ...input.environment,
@@ -457,7 +440,7 @@ export async function connectOrStartCore(
     signal: null,
     stderr: "",
   };
-  let selectedAsAuthority = false;
+  let authorityProcessId: number | null = null;
   const stderr = child.stderr as
     | (NonNullable<typeof child.stderr> & {
         unref?: () => void;
@@ -475,12 +458,11 @@ export async function connectOrStartCore(
     exit.code = code;
     exit.exited = true;
     exit.signal = signal;
-    const processId = child.pid;
-    if (!selectedAsAuthority || processId === undefined) return;
+    if (authorityProcessId === null) return;
     try {
       input.onAuthorityProcessExit?.({
         code,
-        processId,
+        processId: authorityProcessId,
         signal,
         stderr: exit.stderr.trim(),
       });
@@ -503,11 +485,12 @@ export async function connectOrStartCore(
       input.signal,
     );
     const selectionMs = performance.now() - selectionStartedAt;
-    selectedAsAuthority = selection.disposition === "started";
+    // Windows' bootstrap waits for the detached authority and relays its exit.
+    authorityProcessId = selection.disposition === "started" ? selection.descriptor.pid : null;
     if (selection.descriptor.artifact.sha256 !== expectedArtifactDigest) {
       throw new Error("Selected Core artifact does not match the launched candidate");
     }
-    const startedProcessId = selection.disposition === "started" ? (child.pid ?? null) : null;
+    const startedProcessId = selection.disposition === "started" ? selection.descriptor.pid : null;
     let lastConnectionError: unknown;
     const connectStartedAt = performance.now();
     const connectionDeadline = Date.now() + startupTimeoutMs;
@@ -517,7 +500,7 @@ export async function connectOrStartCore(
       if (exit.error) {
         throw new Error("Could not start native Rust Core", { cause: exit.error });
       }
-      if (exit.exited && !(selection.disposition === "reused" && exit.code === 0)) {
+      if (exit.exited && authorityProcessId !== null) {
         const status = exit.code === null ? "without an exit code" : `with code ${exit.code}`;
         const diagnostic = exit.stderr.trim();
         const suffix = diagnostic ? `: ${diagnostic}` : "";

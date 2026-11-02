@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, toNamespacedPath } from "node:path";
 import { setTimeout } from "node:timers/promises";
 import { promisify } from "node:util";
 import { expect, test } from "vite-plus/test";
@@ -10,6 +10,7 @@ import { requiredNativeExecutable } from "../../../scripts/testing/native-artifa
 import { parseProfileExecutionSnapshot } from "../../../scripts/profile-execution-snapshot";
 
 const exec = promisify(execFile);
+const python = process.platform === "win32" ? "python" : "python3";
 
 // Execution schema and pressure are the subject here; Core content uses public operations.
 const writerProgram = `
@@ -26,7 +27,7 @@ while not (home / 'stop').exists():
 db.close()
 `;
 const readDatabase = async (path: string) => {
-  const { stdout } = await exec("python3", [
+  const { stdout } = await exec(python, [
     "-c",
     `
 import json, sqlite3, sys
@@ -65,8 +66,12 @@ test("clones online execution while its owner keeps writing, without reading pro
     await writeFile(join(execution, "userdata/attachments/images/a.png"), "immutable image");
     await writeFile(join(execution, "provider-catalog.json"), "unreadable provider catalog");
     await rm(profile.codexHome, { recursive: true, force: true });
-    await symlink("/does/not/exist/native-provider-home", profile.codexHome);
-    const writing = exec("python3", ["-u", "-c", writerProgram, execution], { timeout: 45_000 });
+    await symlink(
+      join(profile.runRoot, "missing-native-provider-home"),
+      profile.codexHome,
+      process.platform === "win32" ? "junction" : "dir",
+    );
+    const writing = exec(python, ["-u", "-c", writerProgram, execution], { timeout: 45_000 });
     try {
       for (let attempt = 0; attempt < 200; attempt += 1) {
         if (
@@ -106,7 +111,7 @@ test("clones online execution while its owner keeps writing, without reading pro
       );
       expect(marker).toEqual({
         version: 1,
-        sourceProfileHome: profile.nodexHome,
+        sourceProfileHome: toNamespacedPath(profile.nodexHome),
         importedAt: expect.any(String),
       });
       expect(Number.isFinite(Date.parse(marker.importedAt))).toBe(true);

@@ -574,7 +574,7 @@ mod tests {
     use std::thread;
 
     use nodex_core::infrastructure::writer::StoreWriterRuntime;
-    use tempfile::tempdir;
+    use nodex_platform::test_support::tempdir;
 
     use super::*;
 

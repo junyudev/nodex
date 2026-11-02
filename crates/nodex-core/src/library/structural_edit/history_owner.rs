@@ -718,7 +718,7 @@ mod tests {
 
     #[test]
     fn cleanup_commits_bounded_slices_and_resumes_after_rollback_and_reopen() {
-        let profile = tempfile::tempdir().expect("Profile");
+        let profile = nodex_platform::test_support::tempdir().expect("Profile");
         drop(SqliteStoreKernel::open_test(profile.path()).expect("Store runtime metadata"));
         let path = profile.path().join("nodex.db");
         let mut connection = Connection::open(&path).expect("Store");
@@ -1003,7 +1003,7 @@ mod tests {
 
     #[test]
     fn only_proven_host_death_reaps_a_disconnected_history_lifetime() {
-        let profile = tempfile::tempdir().expect("Profile");
+        let profile = nodex_platform::test_support::tempdir().expect("Profile");
         let kernel = SqliteStoreKernel::open_test(profile.path()).expect("Store");
         kernel.writer().call(|connection| with_immediate_transaction(connection, |transaction| {
             transaction.execute_batch("INSERT INTO profiles(id, created_at, updated_at) VALUES ('profile', 'now', 'now');
@@ -1065,7 +1065,7 @@ mod tests {
 
     #[test]
     fn cleanup_rotates_past_live_hosts_and_bounds_each_release_batch() {
-        let profile = tempfile::tempdir().expect("Profile");
+        let profile = nodex_platform::test_support::tempdir().expect("Profile");
         let kernel = SqliteStoreKernel::open_test(profile.path()).expect("Store");
         kernel.writer().call(|connection| with_immediate_transaction(connection, |transaction| {
             transaction.execute_batch("INSERT INTO profiles(id, created_at, updated_at) VALUES ('profile', 'now', 'now');

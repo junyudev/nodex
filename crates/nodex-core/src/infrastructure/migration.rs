@@ -3350,7 +3350,7 @@ fn create_migration_backup(
         ".v{source_revision}-to-v{target_revision}.pending.db"
     ));
     if let Ok(metadata) = fs::symlink_metadata(&pending_path) {
-        if metadata.file_type().is_symlink() || !metadata.is_file() {
+        if nodex_platform::private_fs::is_reparse_point(&metadata) || !metadata.is_file() {
             return Err(invalid_profile(
                 "Core migration pending backup must be a regular file",
             ));
@@ -3364,17 +3364,14 @@ fn create_migration_backup(
         None::<fn(rusqlite::backup::Progress)>,
     )?;
     drop(snapshot);
-    File::open(&pending_path)
-        .map_err(io_error)?
-        .sync_all()
-        .map_err(io_error)?;
+    nodex_platform::private_fs::sync_file(&pending_path).map_err(io_error)?;
     validate_migration_backup(&pending_path, source_revision)?;
     let digest = file_sha256(&pending_path)?;
     let backup_path = directory.join(format!(
         "v{source_revision}-to-v{target_revision}-{digest}.db"
     ));
     if let Ok(metadata) = fs::symlink_metadata(&backup_path) {
-        if metadata.file_type().is_symlink() || !metadata.is_file() {
+        if nodex_platform::private_fs::is_reparse_point(&metadata) || !metadata.is_file() {
             return Err(invalid_profile(
                 "Core migration backup must be a regular file",
             ));
@@ -3387,12 +3384,10 @@ fn create_migration_backup(
         }
         fs::remove_file(&pending_path).map_err(io_error)?;
     } else {
-        fs::rename(&pending_path, &backup_path).map_err(io_error)?;
+        nodex_platform::private_fs::atomic_replace(&pending_path, &backup_path)
+            .map_err(io_error)?;
     }
-    File::open(&directory)
-        .map_err(io_error)?
-        .sync_all()
-        .map_err(io_error)?;
+    nodex_platform::private_fs::sync_directory(&directory).map_err(io_error)?;
     Ok(backup_path)
 }
 
@@ -3401,14 +3396,17 @@ fn prepare_migration_backup_directory(profile_home: &Path) -> Result<PathBuf, St
     for component in ["backups", "core-migrations"] {
         directory.push(component);
         match fs::symlink_metadata(&directory) {
-            Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_dir() => {
+            Ok(metadata)
+                if nodex_platform::private_fs::is_reparse_point(&metadata)
+                    || !metadata.is_dir() =>
+            {
                 return Err(invalid_profile(
                     "Core migration backup ancestry must contain only real directories",
                 ));
             }
             Ok(_) => {}
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                fs::create_dir(&directory).map_err(io_error)?;
+                nodex_platform::private_fs::create_dir(&directory).map_err(io_error)?;
             }
             Err(error) => return Err(io_error(error)),
         }
@@ -3590,13 +3588,13 @@ mod workflow_status_tests;
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
     #[cfg(unix)]
-    use std::os::unix::fs::symlink;
+    use nodex_platform::private_fs::symlink;
+    use std::fs;
 
+    use nodex_platform::test_support::tempdir;
     use rusqlite::OptionalExtension;
     use serde_json::{Value, json};
-    use tempfile::tempdir;
 
     use super::super::sqlite::open_writer;
     use super::*;
@@ -4729,7 +4727,7 @@ mod tests {
     }
 
     fn install_baseline_fixture(home: &Path) {
-        fs::write(
+        nodex_platform::private_fs::write(
             home.join("nodex.db"),
             include_bytes!("../../tests/fixtures/store-v130.db"),
         )
@@ -4761,7 +4759,7 @@ mod tests {
     }
 
     fn install_v132_fixture(home: &Path) {
-        fs::write(
+        nodex_platform::private_fs::write(
             home.join("nodex.db"),
             include_bytes!("../../tests/fixtures/store-v132.db"),
         )
@@ -4769,7 +4767,7 @@ mod tests {
     }
 
     fn install_v133_fixture(home: &Path) {
-        fs::write(
+        nodex_platform::private_fs::write(
             home.join("nodex.db"),
             include_bytes!("../../tests/fixtures/store-v133.db"),
         )
@@ -4777,7 +4775,7 @@ mod tests {
     }
 
     fn install_v136_fixture(home: &Path) {
-        fs::write(
+        nodex_platform::private_fs::write(
             home.join("nodex.db"),
             include_bytes!("../../tests/fixtures/store-v136.db"),
         )
@@ -6302,20 +6300,23 @@ mod tests {
             "01890f44-7f00-7000-8000-000000000010",
         )
         .expect("Page genesis");
-        fs::create_dir_all(directory.path().join("assets")).expect("asset directory");
-        fs::write(directory.path().join("assets/legacy-alpha.txt"), alpha).expect("alpha bytes");
-        fs::write(directory.path().join("assets/legacy-beta.txt"), beta).expect("beta bytes");
-        fs::write(
+        nodex_platform::private_fs::create_dir_all(directory.path().join("assets"))
+            .expect("asset directory");
+        nodex_platform::private_fs::write(directory.path().join("assets/legacy-alpha.txt"), alpha)
+            .expect("alpha bytes");
+        nodex_platform::private_fs::write(directory.path().join("assets/legacy-beta.txt"), beta)
+            .expect("beta bytes");
+        nodex_platform::private_fs::write(
             directory.path().join("assets").join(canvas_name),
             canvas_bytes,
         )
         .expect("Canvas bytes");
-        fs::write(
+        nodex_platform::private_fs::write(
             directory.path().join("assets/legacy-queued.txt"),
             queued_asset,
         )
         .expect("queued attachment bytes");
-        fs::write(
+        nodex_platform::private_fs::write(
             directory.path().join("assets").join(queued_manifest_name),
             &queued_manifest,
         )
@@ -7428,8 +7429,8 @@ mod tests {
         let non_file = tempdir().expect("Profile");
         install_baseline_fixture(non_file.path());
         let backup_directory = non_file.path().join("backups/core-migrations");
-        fs::create_dir_all(&backup_directory).expect("backup directory");
-        fs::create_dir(
+        nodex_platform::private_fs::create_dir_all(&backup_directory).expect("backup directory");
+        nodex_platform::private_fs::create_dir(
             backup_directory.join(format!(".v130-to-v{CURRENT_STORE_REVISION}.pending.db")),
         )
         .expect("non-file pending candidate");
@@ -7595,10 +7596,13 @@ mod tests {
 
     #[test]
     fn native_claude_migration_preserves_existing_backend_sessions() {
-        let directory = tempfile::tempdir().expect("fixture directory");
+        let directory = nodex_platform::test_support::tempdir().expect("fixture directory");
         let path = directory.path().join("nodex.db");
-        fs::write(&path, include_bytes!("../../tests/fixtures/store-v171.db"))
-            .expect("frozen Store");
+        nodex_platform::private_fs::write(
+            &path,
+            include_bytes!("../../tests/fixtures/store-v171.db"),
+        )
+        .expect("frozen Store");
         let mut connection = open_writer(&path).expect("fixture writer");
         connection.execute_batch("INSERT INTO codex_threads(thread_id,created_at,updated_at,linked_at,agent_backend_kind,agent_backend_definition_id,agent_backend_instance_config_id) VALUES ('acp',1,1,'today','acp','claude-agent-acp','work'),('codex',1,1,'today','codex',NULL,NULL); INSERT INTO thread_backend_sessions VALUES ('acp','acp','claude-agent-acp','work','session-1',1);").expect("existing sessions");
         with_schema_rebuild_transaction(&mut connection, |transaction| {
@@ -7694,8 +7698,11 @@ mod tests {
     fn agent_runtime_binding_migration_preserves_session_identity_and_existing_execution_links() {
         let directory = tempdir().expect("Profile");
         let path = directory.path().join("nodex.db");
-        fs::write(&path, include_bytes!("../../tests/fixtures/store-v174.db"))
-            .expect("published predecessor");
+        nodex_platform::private_fs::write(
+            &path,
+            include_bytes!("../../tests/fixtures/store-v174.db"),
+        )
+        .expect("published predecessor");
         let mut connection = open_writer(&path).expect("writer");
         with_schema_rebuild_transaction(&mut connection, |transaction| {
             let steps = resolve_migration_path(174, 177, MIGRATION_STEPS)
@@ -7761,8 +7768,11 @@ mod tests {
     fn derived_runtime_authority_migration_keeps_native_turns_and_drops_runtime_mirrors() {
         let directory = tempdir().expect("Profile");
         let path = directory.path().join("nodex.db");
-        fs::write(&path, include_bytes!("../../tests/fixtures/store-v174.db"))
-            .expect("published predecessor");
+        nodex_platform::private_fs::write(
+            &path,
+            include_bytes!("../../tests/fixtures/store-v174.db"),
+        )
+        .expect("published predecessor");
         let mut connection = open_writer(&path).expect("writer");
         with_schema_rebuild_transaction(&mut connection, |transaction| {
             for step in resolve_migration_path(174, 181, MIGRATION_STEPS).expect("v181 path") {
@@ -7821,8 +7831,11 @@ mod tests {
     fn opencode_migration_preserves_sessions_and_reopens_once() {
         let directory = tempdir().expect("Profile");
         let path = directory.path().join("nodex.db");
-        fs::write(&path, include_bytes!("../../tests/fixtures/store-v174.db"))
-            .expect("frozen v174 Store");
+        nodex_platform::private_fs::write(
+            &path,
+            include_bytes!("../../tests/fixtures/store-v174.db"),
+        )
+        .expect("frozen v174 Store");
         let mut connection = open_writer(&path).expect("writer");
         validate_schema_identity(&connection, 174).expect("exact predecessor");
         let prior: Vec<(String, String, Option<String>, Option<String>)> = connection
@@ -8888,7 +8901,7 @@ mod tests {
     #[test]
     fn v195_entries_migrate_to_unknown_origins_without_borrowing_file_or_manifest_time() {
         let profile = tempdir().unwrap();
-        fs::write(
+        nodex_platform::private_fs::write(
             profile.path().join("nodex.db"),
             include_bytes!("../../tests/fixtures/store-v191.db"),
         )
@@ -8930,8 +8943,8 @@ mod tests {
             })
             .unwrap();
         let hash = crate::document::sha256(b"historical output");
-        fs::create_dir_all(profile.path().join("assets")).unwrap();
-        fs::write(
+        nodex_platform::private_fs::create_dir_all(profile.path().join("assets")).unwrap();
+        nodex_platform::private_fs::write(
             profile.path().join("assets").join(format!("{hash}.blob")),
             b"historical output",
         )
@@ -9152,7 +9165,7 @@ mod tests {
     fn frozen_v191_migrates_markdown_heads_history_and_projections_once() {
         use crate::infrastructure::document_repository::DocumentReadRepository;
         let profile = tempdir().unwrap();
-        fs::write(
+        nodex_platform::private_fs::write(
             profile.path().join("nodex.db"),
             include_bytes!("../../tests/fixtures/store-v191.db"),
         )
@@ -9309,7 +9322,7 @@ mod tests {
     #[test]
     fn sidebar_activity_migration_backfills_creation_and_native_recency_and_preserves_bindings() {
         let profile = tempdir().unwrap();
-        fs::write(
+        nodex_platform::private_fs::write(
             profile.path().join("nodex.db"),
             include_bytes!("../../tests/fixtures/store-v191.db"),
         )

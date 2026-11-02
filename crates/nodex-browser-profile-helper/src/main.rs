@@ -91,6 +91,8 @@ struct ImportedCredential {
 
 #[derive(Debug, Error)]
 enum HelperError {
+    #[error("browser profile import is supported only on macOS")]
+    UnsupportedPlatform,
     #[error("the helper request is invalid")]
     InvalidRequest,
     #[error("the requested profile path is unsafe")]
@@ -128,6 +130,9 @@ fn main() {
 }
 
 fn run() -> Result<ProfileReadResponse, HelperError> {
+    if !cfg!(target_os = "macos") {
+        return Err(HelperError::UnsupportedPlatform);
+    }
     let request = read_request()?;
     if request.schema_version != SCHEMA_VERSION
         || request.operation != "read-profile"
@@ -179,7 +184,7 @@ fn validate_profile_path(value: &str) -> Result<PathBuf, HelperError> {
         return Err(HelperError::UnsafeProfilePath);
     }
     let metadata = fs::symlink_metadata(requested).map_err(|_| HelperError::DataUnavailable)?;
-    if !metadata.is_dir() || metadata.file_type().is_symlink() {
+    if !metadata.is_dir() || nodex_platform::private_fs::is_reparse_point(&metadata) {
         return Err(HelperError::UnsafeProfilePath);
     }
     fs::canonicalize(requested).map_err(|_| HelperError::UnsafeProfilePath)
@@ -189,7 +194,7 @@ fn open_profile_database(profile_path: &Path, name: &str) -> Result<Connection, 
     let database_path = profile_path.join(name);
     let metadata =
         fs::symlink_metadata(&database_path).map_err(|_| HelperError::DataUnavailable)?;
-    if !metadata.is_file() || metadata.file_type().is_symlink() {
+    if !metadata.is_file() || nodex_platform::private_fs::is_reparse_point(&metadata) {
         return Err(HelperError::UnsafeProfilePath);
     }
     let connection = Connection::open_with_flags(
@@ -424,6 +429,7 @@ fn domain_allowed(domain: &str, allowlist: &[String]) -> bool {
 
 fn error_code(error: &HelperError) -> &'static str {
     match error {
+        HelperError::UnsupportedPlatform => "unsupported_platform",
         HelperError::InvalidRequest => "invalid_request",
         HelperError::UnsafeProfilePath => "unsafe_profile_path",
         HelperError::KeyUnavailable => "key_unavailable",

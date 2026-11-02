@@ -8,10 +8,11 @@ use crate::infrastructure::sqlite::open_writer;
 const NOW: &str = "2026-10-31T08:30:00.000Z";
 const STALE: &str = r"Hello\, a (b) c\. (add it\, they) agree\!";
 
-fn predecessor() -> (tempfile::TempDir, Connection) {
-    let home = tempfile::tempdir().unwrap();
+fn predecessor() -> (nodex_platform::test_support::TempDir, Connection) {
+    let home = nodex_platform::test_support::tempdir().unwrap();
     let path = home.path().join("nodex.db");
-    fs::write(&path, include_bytes!("../../tests/fixtures/store-v199.db")).unwrap();
+    nodex_platform::private_fs::write(&path, include_bytes!("../../tests/fixtures/store-v199.db"))
+        .unwrap();
     let connection = open_writer(&path).unwrap();
     (home, connection)
 }

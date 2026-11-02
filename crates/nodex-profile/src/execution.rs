@@ -53,6 +53,7 @@ pub(crate) fn capture(
     )?;
     connection.busy_timeout(Duration::from_secs(5))?;
     let captured_at = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    files::write_synced(&target_database, &[])?;
     connection.execute(
         "VACUUM INTO ?1",
         [target_database
@@ -60,6 +61,7 @@ pub(crate) fn capture(
             .ok_or_else(|| files::invalid("Execution snapshot path must be UTF-8"))?],
     )?;
     drop(connection);
+    nodex_platform::private_fs::sync_file(&target_database)?;
     let database_bytes = fs::metadata(&target_database)?.len();
     let userdata = target.join("userdata");
     files::private_directory(&userdata)?;
@@ -94,7 +96,7 @@ pub(crate) fn capture(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::os::unix::fs::symlink;
+    use nodex_platform::private_fs::symlink;
     use std::sync::{
         Arc,
         atomic::{AtomicBool, AtomicU64, Ordering},
@@ -102,17 +104,23 @@ mod tests {
 
     fn fixture(profile: &Path) -> Connection {
         let home = profile.join("agent-runtime");
-        fs::create_dir_all(home.join("userdata/attachments/images")).unwrap();
-        fs::write(home.join("userdata/environment-id"), b"engine:test\n").unwrap();
-        fs::write(
+        nodex_platform::private_fs::create_dir_all(home.join("userdata/attachments/images"))
+            .unwrap();
+        nodex_platform::private_fs::write(home.join("userdata/environment-id"), b"engine:test\n")
+            .unwrap();
+        nodex_platform::private_fs::write(
             home.join("userdata/attachments/images/a.png"),
             b"immutable attachment",
         )
         .unwrap();
         // A live lease and an unusable provider catalog must not participate in capture.
-        fs::create_dir(home.join(".writer.lock")).unwrap();
-        fs::write(home.join("provider-catalog.json"), b"not a catalog").unwrap();
-        symlink("/does/not/exist", profile.join("agent")).unwrap();
+        nodex_platform::private_fs::create_dir(home.join(".writer.lock")).unwrap();
+        nodex_platform::private_fs::write(home.join("provider-catalog.json"), b"not a catalog")
+            .unwrap();
+        let provider = profile.join("missing-provider");
+        nodex_platform::private_fs::create_dir(&provider).unwrap();
+        nodex_platform::private_fs::directory_link(&provider, &profile.join("agent")).unwrap();
+        fs::remove_dir(&provider).unwrap();
         let connection = Connection::open(home.join("agent-runtime.sqlite")).unwrap();
         connection.execute_batch("PRAGMA journal_mode=WAL; CREATE TABLE history(id INTEGER PRIMARY KEY, value INTEGER, body BLOB); CREATE TABLE watermark(value INTEGER); INSERT INTO watermark VALUES(0); INSERT INTO history VALUES(1,0,zeroblob(4096));").unwrap();
         connection
@@ -172,8 +180,8 @@ mod tests {
 
     #[test]
     fn clone_publishes_a_consistent_snapshot_while_core_and_execution_are_open() {
-        let source = tempfile::tempdir().unwrap();
-        let target = tempfile::tempdir().unwrap();
+        let source = nodex_platform::test_support::tempdir().unwrap();
+        let target = nodex_platform::test_support::tempdir().unwrap();
         let mut writer = fixture(source.path());
         let _core = publish_content_backup(source.path());
         let clone_home = target.path().join("clone");
@@ -224,6 +232,19 @@ mod tests {
             let receipt = clone_receipt.execution.unwrap();
             assert!(after > before, "source commits continue during capture");
             let database = clone_home.join("agent-runtime/agent-runtime.sqlite");
+            for relative in [
+                "agent-runtime/agent-runtime.sqlite",
+                "agent-runtime/userdata/environment-id",
+                "agent-runtime/userdata/attachments/images/a.png",
+                "agent-runtime/imported-execution.json",
+            ] {
+                nodex_platform::private_fs::checked_metadata(
+                    &clone_home.join(relative),
+                    nodex_platform::private_fs::EntryKind::File,
+                    Some(0o600),
+                )
+                .unwrap();
+            }
             let snapshot =
                 Connection::open_with_flags(&database, OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap();
             assert_eq!(
@@ -276,8 +297,8 @@ mod tests {
     #[test]
     fn rejects_attachment_file_directory_and_root_symlinks() {
         for relative in ["images/a.png", "images", ""] {
-            let source = tempfile::tempdir().unwrap();
-            let target = tempfile::tempdir().unwrap();
+            let source = nodex_platform::test_support::tempdir().unwrap();
+            let target = nodex_platform::test_support::tempdir().unwrap();
             let _connection = fixture(source.path());
             let attachments = source.path().join("agent-runtime/userdata/attachments");
             let path = if relative.is_empty() {
@@ -290,7 +311,14 @@ mod tests {
             } else {
                 fs::remove_file(&path).unwrap();
             }
-            symlink(source.path().join("agent"), path).unwrap();
+            let outside = source.path().join("outside");
+            if relative == "images/a.png" {
+                nodex_platform::private_fs::write(&outside, b"outside").unwrap();
+                symlink(&outside, &path).unwrap();
+            } else {
+                nodex_platform::private_fs::create_dir(&outside).unwrap();
+                nodex_platform::private_fs::directory_link(&outside, &path).unwrap();
+            }
             let error = capture(
                 &source.path().canonicalize().unwrap(),
                 &target.path().canonicalize().unwrap(),
@@ -312,10 +340,10 @@ mod tests {
 
     #[test]
     fn absent_execution_database_needs_no_runtime_or_provider_data() {
-        let source = tempfile::tempdir().unwrap();
-        let target = tempfile::tempdir().unwrap();
+        let source = nodex_platform::test_support::tempdir().unwrap();
+        let target = nodex_platform::test_support::tempdir().unwrap();
         assert!(capture(source.path(), target.path()).unwrap().is_none());
-        fs::create_dir(source.path().join("agent-runtime")).unwrap();
+        nodex_platform::private_fs::create_dir(source.path().join("agent-runtime")).unwrap();
         assert!(capture(source.path(), target.path()).unwrap().is_none());
         assert!(!target.path().join("agent-runtime").exists());
     }

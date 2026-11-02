@@ -3880,7 +3880,6 @@ pub(super) fn record_recovery_creation(
 
 #[cfg(test)]
 mod tests {
-    use std::os::unix::fs::{MetadataExt, PermissionsExt};
 
     use nodex_core_contracts::document::{DocumentSemanticCommand, OwnedDocumentIntent};
     use nodex_core_contracts::library::{
@@ -3893,7 +3892,7 @@ mod tests {
         AdapterKind, CoreErrorCode, LibraryId, LocalProjectionScope, ModuleReadRequest,
         OWNED_DOCUMENT_CONTRACT_VERSION, ProfileId, ProjectId,
     };
-    use tempfile::tempdir;
+    use nodex_platform::test_support::tempdir;
 
     use crate::document::OwnedDocumentModule;
     use crate::infrastructure::store::SqliteStoreKernel;
@@ -4259,7 +4258,11 @@ mod tests {
             .expect("Page View authority state")
     }
 
-    fn seeded_library() -> (tempfile::TempDir, SqliteStoreKernel, LibraryModule) {
+    fn seeded_library() -> (
+        nodex_platform::test_support::TempDir,
+        SqliteStoreKernel,
+        LibraryModule,
+    ) {
         let directory = tempdir().expect("Profile");
         let home = directory.path().canonicalize().expect("absolute Profile");
         let kernel = SqliteStoreKernel::open_test(&home).expect("fresh store");
@@ -6719,20 +6722,13 @@ mod tests {
         for file in [&page.meta, &page.body] {
             let path = root.join(&file.physical_relative_path);
             assert_eq!(
-                std::fs::metadata(&path)
-                    .expect("snapshot file")
-                    .permissions()
-                    .mode()
-                    & 0o777,
+                nodex_platform::private_fs::effective_mode(&path).expect("filesystem access"),
                 0o400
             );
         }
         assert_eq!(
-            std::fs::metadata(root.join("manifest.json"))
-                .expect("manifest commit marker")
-                .permissions()
-                .mode()
-                & 0o777,
+            nodex_platform::private_fs::effective_mode(root.join("manifest.json"))
+                .expect("filesystem access"),
             0o400
         );
         let body_cache = directory
@@ -6740,15 +6736,24 @@ mod tests {
             .join("search-snapshots/cache/v1/body")
             .join(&page.body.sha256);
         assert!(body_cache.is_file());
-        assert_eq!(
-            std::fs::metadata(root.join(&page.body.physical_relative_path))
-                .expect("leased body metadata")
-                .ino(),
-            std::fs::metadata(&body_cache)
-                .expect("cached body metadata")
-                .ino(),
-            "unchanged projections must use immutable hard links",
-        );
+        let leased_inode =
+            nodex_platform::private_fs::file_identity(root.join(&page.body.physical_relative_path))
+                .expect("leased file identity")
+                .inode;
+        let cached_inode = nodex_platform::private_fs::file_identity(&body_cache)
+            .expect("cached file identity")
+            .inode;
+        if cfg!(unix) {
+            assert_eq!(
+                leased_inode, cached_inode,
+                "Unix snapshots share immutable hard links"
+            );
+        } else {
+            assert_ne!(
+                leased_inode, cached_inode,
+                "Windows snapshots have independently sealed copies"
+            );
+        }
 
         kernel
             .writer()
@@ -6835,9 +6840,10 @@ mod tests {
             .invalidate_prepared();
         let partial_lease_id = partial_lease.lease_id.clone();
 
-        std::fs::set_permissions(&body_cache, std::fs::Permissions::from_mode(0o600))
+        nodex_platform::private_fs::set_mode(&body_cache, 0o600)
             .expect("make cache fixture writable");
-        std::fs::write(&body_cache, b"corrupt cache fixture").expect("corrupt cache fixture");
+        nodex_platform::private_fs::write(&body_cache, b"corrupt cache fixture")
+            .expect("corrupt cache fixture");
 
         let prepared_title = module
             .read(
@@ -6908,11 +6914,7 @@ mod tests {
             b"## Runtime\n\nCore starts on demand.\n"
         );
         assert_eq!(
-            std::fs::metadata(&body_cache)
-                .expect("rebuilt body cache metadata")
-                .permissions()
-                .mode()
-                & 0o777,
+            nodex_platform::private_fs::effective_mode(&body_cache).expect("filesystem access"),
             0o400
         );
         assert_eq!(

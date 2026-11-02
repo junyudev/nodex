@@ -2087,7 +2087,7 @@ mod tests {
     use std::thread;
     use std::time::{Duration, Instant};
 
-    use tempfile::TempDir;
+    use nodex_platform::test_support::TempDir;
 
     use crate::database::page_key::{
         UniquePageKeyResolution, create_page_key_namespace, ensure_database_page_key,
@@ -2116,7 +2116,7 @@ mod tests {
 
     impl Fixture {
         fn new() -> Self {
-            let home = tempfile::tempdir().expect("Profile home");
+            let home = nodex_platform::test_support::tempdir().expect("Profile home");
             let kernel = SqliteStoreKernel::open_test(home.path()).expect("fresh store");
             kernel
                 .writer()
@@ -2241,61 +2241,64 @@ mod tests {
                     Duration::from_secs(30),
                     QueryCancellation::new(),
                     move |connection| {
-                        let now = "2026-01-01T00:00:00.000Z";
-                        for index in 0..count {
-                            let page_id = format!("page:retention-pressure:{index:04}");
-                            let document_id = format!("document:retention-pressure:{index:04}");
-                            connection.execute(
-                                "INSERT INTO blocks( \
+                        with_immediate_transaction(connection, |connection| {
+                            let now = "2026-01-01T00:00:00.000Z";
+                            for index in 0..count {
+                                let page_id = format!("page:retention-pressure:{index:04}");
+                                let document_id = format!("document:retention-pressure:{index:04}");
+                                connection.execute(
+                                    "INSERT INTO blocks( \
                                id, library_id, type, lifecycle, created_at, updated_at \
                              ) VALUES (?1, ?2, 'page', 'active', ?3, ?3)",
-                                params![page_id, LIBRARY_ID, now],
-                            )?;
-                            connection.execute(
-                                "INSERT INTO documents( \
+                                    params![page_id, LIBRARY_ID, now],
+                                )?;
+                                connection.execute(
+                                    "INSERT INTO documents( \
                                id, library_id, schema_key, schema_version, created_at, updated_at \
                              ) VALUES (?1, ?2, 'nodex.page', 4, ?3, ?3)",
-                                params![document_id, LIBRARY_ID, now],
-                            )?;
-                            connection.execute(
-                                "INSERT INTO block_documents( \
+                                    params![document_id, LIBRARY_ID, now],
+                                )?;
+                                connection.execute(
+                                    "INSERT INTO block_documents( \
                                block_id, document_id, library_id, created_at \
                              ) VALUES (?1, ?2, ?3, ?4)",
-                                params![page_id, document_id, LIBRARY_ID, now],
-                            )?;
-                            connection.execute(
-                                "INSERT INTO pages( \
+                                    params![page_id, document_id, LIBRARY_ID, now],
+                                )?;
+                                connection.execute(
+                                    "INSERT INTO pages( \
                                block_id, library_id, document_id, parent_kind, parent_id, \
                                created_at, updated_at \
                              ) VALUES (?1, ?2, ?3, 'library', ?2, ?4, ?4)",
-                                params![page_id, LIBRARY_ID, document_id, now],
-                            )?;
-                            let authority = read_document_authority(connection, &document_id)?
-                                .expect("pending pressure Page authority");
-                            let root_block_id = format!("019c0000-0000-7000-8001-{index:012x}");
-                            let genesis =
-                                prepare_page_yjs_genesis(&document_id, "", &root_block_id)?;
-                            let update_id = format!("genesis:retention-pressure:{index:04}");
-                            let operation_id = format!("operation:retention-pressure:{index:04}");
-                            persist_yjs_genesis(
-                                connection,
-                                PersistYjsGenesis {
-                                    authority: &authority,
-                                    actor_project_id: Some(PROJECT_ID),
-                                    materialization: &genesis.materialization,
-                                    update_id: &update_id,
-                                    client_session_id: "client:retention-pressure",
-                                    update: &genesis.update_v1,
-                                    state_vector: &genesis.state_vector_v1,
-                                    full_state: &genesis.engine.full_state_v1(),
-                                    store_epoch: "epoch:test",
-                                    operation_id: &operation_id,
-                                    placement: DocumentPlacementEvidence::STRUCTURAL,
-                                    emit_event: false,
-                                },
-                            )?;
-                        }
-                        Ok(())
+                                    params![page_id, LIBRARY_ID, document_id, now],
+                                )?;
+                                let authority = read_document_authority(connection, &document_id)?
+                                    .expect("pending pressure Page authority");
+                                let root_block_id = format!("019c0000-0000-7000-8001-{index:012x}");
+                                let genesis =
+                                    prepare_page_yjs_genesis(&document_id, "", &root_block_id)?;
+                                let update_id = format!("genesis:retention-pressure:{index:04}");
+                                let operation_id =
+                                    format!("operation:retention-pressure:{index:04}");
+                                persist_yjs_genesis(
+                                    connection,
+                                    PersistYjsGenesis {
+                                        authority: &authority,
+                                        actor_project_id: Some(PROJECT_ID),
+                                        materialization: &genesis.materialization,
+                                        update_id: &update_id,
+                                        client_session_id: "client:retention-pressure",
+                                        update: &genesis.update_v1,
+                                        state_vector: &genesis.state_vector_v1,
+                                        full_state: &genesis.engine.full_state_v1(),
+                                        store_epoch: "epoch:test",
+                                        operation_id: &operation_id,
+                                        placement: DocumentPlacementEvidence::STRUCTURAL,
+                                        emit_event: false,
+                                    },
+                                )?;
+                            }
+                            Ok(())
+                        })
                     },
                 )
                 .expect("active pressure Documents");

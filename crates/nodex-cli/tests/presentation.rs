@@ -3,7 +3,7 @@ use std::process::{Command, Output, Stdio};
 use serde_json::Value;
 
 fn invoke(arguments: &[&str]) -> Output {
-    let home = tempfile::tempdir().unwrap();
+    let home = nodex_platform::test_support::tempdir().unwrap();
     Command::new(env!("CARGO_BIN_EXE_nodex"))
         .args(arguments)
         .env("NODEX_HOME", home.path().join("unavailable"))

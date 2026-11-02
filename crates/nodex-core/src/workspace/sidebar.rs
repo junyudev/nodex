@@ -385,9 +385,13 @@ mod tests {
             100,
         );
         let accepted = ProjectWorkspaceThreadWorkspace {
-            project_sources: vec!["/workspace/project:target".to_owned()],
-            cwd: "/workspace/project:target".to_owned(),
-            runtime_workspace_roots: vec!["/workspace/project:target".to_owned()],
+            project_sources: vec![
+                nodex_platform::fixture_path!("/workspace/project:target").to_owned(),
+            ],
+            cwd: nodex_platform::fixture_path!("/workspace/project:target").to_owned(),
+            runtime_workspace_roots: vec![
+                nodex_platform::fixture_path!("/workspace/project:target").to_owned(),
+            ],
         };
         apply(
             &workspace.module,
@@ -410,9 +414,13 @@ mod tests {
             },
         );
         let newer = ProjectWorkspaceThreadWorkspace {
-            project_sources: vec!["/workspace/project:target".to_owned()],
-            cwd: "/workspace/project:target/newer".to_owned(),
-            runtime_workspace_roots: vec!["/workspace/project:target/newer".to_owned()],
+            project_sources: vec![
+                nodex_platform::fixture_path!("/workspace/project:target").to_owned(),
+            ],
+            cwd: nodex_platform::fixture_path!("/workspace/project:target/newer").to_owned(),
+            runtime_workspace_roots: vec![
+                nodex_platform::fixture_path!("/workspace/project:target/newer").to_owned(),
+            ],
         };
         apply(
             &workspace.module,

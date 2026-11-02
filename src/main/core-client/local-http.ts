@@ -46,7 +46,7 @@ const DEFAULT_REQUEST_DEADLINES_MS: Readonly<Record<CoreRequestClass, number>> =
   maintenance: CORE_TRANSPORT_BUDGETS.maintenance_request_deadline_ms,
 };
 
-export interface UdsHttpTransportOptions {
+export interface LocalHttpTransportOptions {
   readonly maximumJsonResponseBytes?: number;
   readonly requestTimeoutMs?: number;
 }
@@ -229,15 +229,15 @@ interface ProjectionLiveStreamOptions {
   readonly onRepair: (repair: ProjectionLiveRepair) => void;
 }
 
-export class UdsHttpTransport {
+export class LocalHttpTransport {
   readonly #maximumJsonResponseBytes: number;
   readonly #transportLivenessTimeoutMs: number;
   #eventContract: CoreEventContract | null = null;
 
   constructor(
-    readonly socketPath: string,
+    readonly endpoint: string,
     readonly authCapability: string,
-    options: UdsHttpTransportOptions = {},
+    options: LocalHttpTransportOptions = {},
   ) {
     this.#maximumJsonResponseBytes = boundedPositiveInteger(
       options.maximumJsonResponseBytes ?? MAX_JSON_RESPONSE_BYTES,
@@ -302,7 +302,7 @@ export class UdsHttpTransport {
       };
       const request = httpRequest(
         {
-          socketPath: this.socketPath,
+          socketPath: this.endpoint,
           path: requestPath,
           method,
           agent: false,
@@ -389,7 +389,7 @@ export class UdsHttpTransport {
       };
       const request = httpRequest(
         {
-          socketPath: this.socketPath,
+          socketPath: this.endpoint,
           path: requestPath,
           method: "POST",
           agent: false,
@@ -479,7 +479,7 @@ export class UdsHttpTransport {
       };
       const request = httpRequest(
         {
-          socketPath: this.socketPath,
+          socketPath: this.endpoint,
           path: requestPath,
           method,
           agent: false,
@@ -591,7 +591,7 @@ export class UdsHttpTransport {
       });
       const request = httpRequest(
         {
-          socketPath: this.socketPath,
+          socketPath: this.endpoint,
           path: documentLive?.path ?? projectionLive?.path ?? `/core/v1/events?after=${after}`,
           method: "GET",
           agent: false,

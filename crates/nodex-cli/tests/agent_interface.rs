@@ -5,7 +5,7 @@ use serde_json::Value;
 
 #[test]
 fn capabilities_succeeds_without_resolving_a_profile_or_starting_core() {
-    let temp = tempfile::tempdir().expect("temporary HOME");
+    let temp = nodex_platform::test_support::tempdir().expect("temporary HOME");
     let unavailable_home = temp.path().join("must-not-be-created");
     let output = Command::new(env!("CARGO_BIN_EXE_nodex"))
         .args([
@@ -90,7 +90,7 @@ fn every_leaf_exposes_machine_readable_help_without_core() {
 
 #[test]
 fn actual_offline_results_and_errors_obey_the_published_schemas() {
-    let directory = tempfile::tempdir().expect("isolated directory");
+    let directory = nodex_platform::test_support::tempdir().expect("isolated directory");
     let nonexistent_home = directory.path().join("must-not-exist");
     let invoke = |args: &[&str]| {
         Command::new(env!("CARGO_BIN_EXE_nodex"))
@@ -150,7 +150,7 @@ fn actual_offline_results_and_errors_obey_the_published_schemas() {
 
 #[test]
 fn query_help_is_progressive_and_schema_selection_is_offline() {
-    let home = tempfile::tempdir().unwrap();
+    let home = nodex_platform::test_support::tempdir().unwrap();
     let nonexistent = home.path().join("no-core");
     let invoke = |args: &[&str]| {
         Command::new(env!("CARGO_BIN_EXE_nodex"))

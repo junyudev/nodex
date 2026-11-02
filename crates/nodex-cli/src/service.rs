@@ -72,7 +72,10 @@ fn execute_with_adapter(
         );
     };
     let metadata = match fs::symlink_metadata(adapter) {
-        Ok(metadata) if metadata.file_type().is_file() && !metadata.file_type().is_symlink() => {
+        Ok(metadata)
+            if metadata.file_type().is_file()
+                && !nodex_platform::private_fs::is_reparse_point(&metadata) =>
+        {
             metadata
         }
         Ok(_) => {
@@ -261,9 +264,8 @@ fn unavailable(selected_home: String, message: impl Into<String>) -> ServiceRepo
 
 #[cfg(test)]
 mod tests {
-    use std::os::unix::fs::PermissionsExt;
 
-    use tempfile::tempdir;
+    use nodex_platform::test_support::tempdir;
 
     use super::*;
 
@@ -284,16 +286,17 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[test]
     fn adapter_protocol_is_bounded_and_passes_the_selected_profile() {
         let directory = tempdir().expect("adapter");
         let adapter = directory.path().join("nodex-service");
-        fs::write(
+        nodex_platform::private_fs::write(
             &adapter,
             "#!/bin/sh\nprintf '{\"version\":1,\"adapter\":\"sm_app_service\",\"supported\":true,\"status\":\"enabled\",\"configured_home\":\"%s\",\"message\":null}' \"$3\"\n",
         )
         .expect("adapter fixture");
-        fs::set_permissions(&adapter, fs::Permissions::from_mode(0o700)).expect("executable");
+        nodex_platform::private_fs::set_mode(&adapter, 0o700).expect("executable");
         let profile = directory.path().join("profile");
         let report = execute_with_adapter(ServiceCommand::Status, &profile, Some(&adapter));
         assert!(report.supported);
@@ -304,16 +307,17 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[test]
     fn unknown_adapter_status_fails_closed() {
         let directory = tempdir().expect("adapter");
         let adapter = directory.path().join("nodex-service");
-        fs::write(
+        nodex_platform::private_fs::write(
             &adapter,
             "#!/bin/sh\nprintf '%s' '{\"version\":1,\"adapter\":\"sm_app_service\",\"supported\":true,\"status\":\"maybe\",\"configured_home\":null,\"message\":null}'\n",
         )
         .expect("adapter fixture");
-        fs::set_permissions(&adapter, fs::Permissions::from_mode(0o700)).expect("executable");
+        nodex_platform::private_fs::set_mode(&adapter, 0o700).expect("executable");
         let report = execute_with_adapter(ServiceCommand::Status, directory.path(), Some(&adapter));
         assert_eq!(report.status, "unavailable");
         assert!(!report.supported);

@@ -851,9 +851,8 @@ fn corrupt(message: impl Into<String>) -> StoreError {
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
 
-    use tempfile::{TempDir, tempdir};
+    use nodex_platform::test_support::{TempDir, tempdir};
 
     use crate::infrastructure::migration::prepare_profile_store;
     use crate::infrastructure::sqlite::{open_writer, with_immediate_transaction};
@@ -870,7 +869,7 @@ mod tests {
     fn fixture() -> Fixture {
         let directory = tempdir().expect("Page-key Profile");
         let home = directory.path().canonicalize().expect("absolute Profile");
-        fs::create_dir_all(home.join("assets")).expect("assets");
+        nodex_platform::private_fs::create_dir_all(home.join("assets")).expect("assets");
         let mut connection = open_writer(&home.join("nodex.db")).expect("writer");
         prepare_profile_store(&mut connection, &home).expect("fresh store");
         with_immediate_transaction(&mut connection, |transaction| {

@@ -2003,8 +2003,8 @@ mod tests {
         LibraryPageWorkflowStatusValue, LibraryProjectPageSearchFilters,
     };
     use nodex_page_search_kernel::MetadataSearchIndex;
+    use nodex_platform::test_support::tempdir;
     use rusqlite::{Connection, params};
-    use tempfile::tempdir;
 
     use crate::infrastructure::store::SqliteStoreKernel;
 

@@ -1,5 +1,5 @@
 import { WebContentsDestructionSubscriptions } from "../../platform/electron/WebContentsDestructionSubscriptions";
-import { CoreHttpError, CoreResponseTooLargeError } from "../../core-client/uds-http";
+import { CoreHttpError, CoreResponseTooLargeError } from "../../core-client/local-http";
 import { createHash } from "node:crypto";
 import { contentRoutingIdentityKey } from "../../../shared/content-routing-context";
 import {

@@ -204,7 +204,7 @@ mod tests {
     fn rejects_traversal_absolute_and_windows_unsafe_paths() {
         for path in [
             "../secret",
-            "/absolute",
+            nodex_platform::fixture_path!("/absolute"),
             "folder//file",
             "folder\\file",
             "CON.txt",

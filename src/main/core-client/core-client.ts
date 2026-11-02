@@ -103,7 +103,7 @@ import type {
   StoreAdministrationReadResponse,
   StoreAdministrationReadSnapshot,
 } from "./types";
-import { CoreEventCompatibilityError, CoreHttpError, UdsHttpTransport } from "./uds-http";
+import { CoreEventCompatibilityError, CoreHttpError, LocalHttpTransport } from "./local-http";
 
 const DOCUMENT_FRAME_OVERHEAD_BYTES = MAX_DOCUMENT_HTTP_METADATA_BYTES + 8;
 
@@ -148,13 +148,13 @@ export class CoreModuleResponseError extends Error {
 }
 
 export class CoreClient implements CoreClientPort {
-  readonly #transport: UdsHttpTransport;
+  readonly #transport: LocalHttpTransport;
   readonly #projectId: string | undefined;
   readonly #connectionId: string;
   readonly handshake: CoreHandshakeResponse;
 
   private constructor(
-    transport: UdsHttpTransport,
+    transport: LocalHttpTransport,
     handshake: CoreHandshakeResponse,
     projectId: string | undefined,
     connectionId: string,
@@ -171,7 +171,7 @@ export class CoreClient implements CoreClientPort {
       throw new Error("Core connection identity is invalid");
     }
     const runtime = readCoreRuntimeConnection(input.nodexHome);
-    const transport = new UdsHttpTransport(runtime.descriptor.socket_path, runtime.authCapability, {
+    const transport = new LocalHttpTransport(runtime.descriptor.endpoint, runtime.authCapability, {
       maximumJsonResponseBytes: input.maximumJsonResponseBytes,
       requestTimeoutMs: input.requestTimeoutMs,
     });

@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-use std::{env, fs::File, path::PathBuf};
+use std::{env, path::PathBuf};
 
 use nodex_core_protocol::{CoreSelectionPolicy, LauncherKind};
 
@@ -40,10 +40,7 @@ fn parse_arguments() -> Result<(PathBuf, CoreSelectionPolicy, LauncherKind), Str
 // Every launcher gets the same lifetime guarantee before any runtime threads start.
 // Desktop may already have detached us; a native CLI normally has not.
 fn isolate_process() -> Result<(), Box<dyn std::error::Error>> {
-    if rustix::process::getsid(None)? != rustix::process::getpid() {
-        rustix::process::setsid()?;
-    }
-    rustix::stdio::dup2_stdin(File::open("/dev/null")?)?;
+    nodex_platform::process::isolate_process()?;
     Ok(())
 }
 
@@ -57,6 +54,17 @@ async fn run(
 }
 
 fn main() {
+    if env::args().nth(1).as_deref() == Some("--private-filesystem") {
+        if env::args().count() != 2 {
+            eprintln!("usage: nodex-core --private-filesystem < bounded-request.json");
+            std::process::exit(2);
+        }
+        if let Err(error) = nodex_core_server::private_filesystem::run(std::io::stdin().lock()) {
+            eprintln!("nodex-core private filesystem failed: {error}");
+            std::process::exit(1);
+        }
+        return;
+    }
     let (home, policy, launcher) = match parse_arguments() {
         Ok(arguments) => arguments,
         Err(message) => {
@@ -64,6 +72,14 @@ fn main() {
             std::process::exit(2);
         }
     };
+    match nodex_platform::process::bootstrap_detached() {
+        Ok(Some(code)) => std::process::exit(code),
+        Ok(None) => {}
+        Err(error) => {
+            eprintln!("nodex-core isolation failed: {error}");
+            std::process::exit(1);
+        }
+    }
     if let Err(error) = isolate_process().and_then(|()| run(home, policy, launcher)) {
         eprintln!("nodex-core startup failed: {error}");
         std::process::exit(1);

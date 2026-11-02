@@ -10,6 +10,7 @@ mod lifecycle;
 mod lifecycle_summary;
 mod logging;
 mod metrics;
+pub mod private_filesystem;
 mod request_execution;
 mod runtime_files;
 mod transport_bounds;
@@ -18,7 +19,7 @@ use std::collections::HashSet;
 use std::convert::Infallible;
 use std::fs;
 use std::io::{self, Write};
-use std::os::unix::fs::PermissionsExt;
+
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
@@ -92,10 +93,13 @@ use nodex_core_protocol::{
     TRANSPORT_PROTOCOL_MIN, canonical_manifest_digest, core_client_requirements,
     core_compatibility_manifest, evaluate_compatibility, replacement_is_forward_safe, store_format,
 };
+use nodex_platform::{
+    local_endpoint::{self, LocalListener},
+    process::UserIdentity,
+};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tokio::io::AsyncReadExt;
-use tokio::net::UnixListener;
 use tokio::sync::{Notify, broadcast};
 use tracing::Instrument;
 
@@ -113,8 +117,7 @@ use lifecycle_summary::LifecycleSummaryWriter;
 use metrics::ServerMetrics;
 use request_execution::RequestExecutor;
 use runtime_files::{
-    CandidateRuntime, ExistingCore, PRIVATE_FILE_MODE, RuntimePaths, current_artifact_identity,
-    random_hex,
+    CandidateRuntime, ExistingCore, RuntimePaths, current_artifact_identity, random_hex,
 };
 use transport_bounds::{MAX_DOCUMENT_REQUEST_BYTES, MAX_JSON_REQUEST_BYTES};
 
@@ -207,7 +210,7 @@ fn duration_millis(duration: std::time::Duration) -> u64 {
 struct ServerState {
     auth_header: String,
     agent_attribution: agent_attribution::AgentAttributionKey,
-    owner_uid: u32,
+    owner_user: UserIdentity,
     connections: ConnectionRegistry,
     lifecycle: LifecycleCoordinator,
     descriptor: Arc<Mutex<RuntimeDescriptor>>,
@@ -474,7 +477,7 @@ async fn authenticate(
         .get(AUTHORIZATION)
         .and_then(|value| value.to_str().ok())
         .unwrap_or_default();
-    if !peer.is_authenticated_owner(state.owner_uid)
+    if !peer.is_authenticated_owner(&state.owner_user)
         || !constant_time_equal(supplied.as_bytes(), state.auth_header.as_bytes())
     {
         return ApiError::new(StatusCode::UNAUTHORIZED, "unauthorized").into_response();
@@ -3535,8 +3538,14 @@ fn connection_binding(
     digest.update(b"\0");
     digest.update(adapter.as_bytes());
     digest.update(b"\0");
-    digest.update(peer.uid.unwrap_or_default().to_be_bytes());
-    digest.update(peer.gid.unwrap_or_default().to_be_bytes());
+    digest.update(
+        peer.user
+            .as_ref()
+            .map(ToString::to_string)
+            .unwrap_or_default()
+            .as_bytes(),
+    );
+    digest.update(b"\0");
     digest.update(peer.pid.unwrap_or_default().to_be_bytes());
     digest.update(b"\0");
     digest.update(build_id.as_bytes());
@@ -3864,12 +3873,12 @@ pub async fn run_with_selection(
         launcher,
     };
     let paths = RuntimePaths::prepare(&home)?;
-    let owner_uid = paths.owner_uid()?;
+    let owner_user = paths.owner_user()?;
     let lock = paths.open_lock()?;
     let mut selection_reason = CoreSelectionReason::StartedNoIncumbent;
     match lock.try_lock_exclusive() {
         Ok(()) => {}
-        Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+        Err(error) if nodex_platform::private_fs::lock_is_contended(&error) => {
             match paths.wait_for_running_core(&lock, &candidate)? {
                 ExistingCore::LockAcquired => {}
                 ExistingCore::Reuse(descriptor, reason) => {
@@ -3963,8 +3972,8 @@ pub async fn run_with_selection(
     let workspace = ProjectWorkspaceModule::new(&identity.profile_id, &identity.library_id, &store)
         .map_err(|error| io::Error::other(error.message))?;
     paths.atomic_write_private(&paths.auth, format!("{auth}\n").as_bytes())?;
-    let listener = UnixListener::bind(&paths.socket)?;
-    fs::set_permissions(&paths.socket, fs::Permissions::from_mode(PRIVATE_FILE_MODE))?;
+    let endpoint = local_endpoint::new_core_endpoint(&paths.socket)?;
+    let listener = LocalListener::bind(&endpoint)?;
     let descriptor = RuntimeDescriptor {
         manifest,
         manifest_digest,
@@ -3972,7 +3981,7 @@ pub async fn run_with_selection(
         actual_store_format,
         pid: std::process::id(),
         start_nonce: start_nonce.clone(),
-        socket_path: paths.socket.to_string_lossy().into_owned(),
+        endpoint,
         profile_id: identity.profile_id.clone(),
         store_epoch: store_epoch.clone(),
         readiness_generation: 1,
@@ -4093,7 +4102,7 @@ pub async fn run_with_selection(
         auth_header: format!("Bearer {auth}"),
         agent_attribution: agent_attribution::AgentAttributionKey::generate()
             .map_err(|_| "Agent attribution key is unavailable")?,
-        owner_uid,
+        owner_user,
         connections: ConnectionRegistry::new(),
         lifecycle: lifecycle.clone(),
         profile_id: identity.profile_id,
@@ -4307,24 +4316,7 @@ async fn shutdown_signal(lifecycle: LifecycleCoordinator) {
 }
 
 async fn operating_system_shutdown_signal() {
-    let ctrl_c = async {
-        let _ = tokio::signal::ctrl_c().await;
-    };
-    #[cfg(unix)]
-    let terminate = async {
-        let Ok(mut signal) =
-            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-        else {
-            return;
-        };
-        signal.recv().await;
-    };
-    #[cfg(not(unix))]
-    let terminate = std::future::pending::<()>();
-    tokio::select! {
-        () = ctrl_c => {}
-        () = terminate => {}
-    }
+    nodex_platform::process::shutdown_signal().await
 }
 
 fn unix_time_millis() -> Result<i64, std::time::SystemTimeError> {

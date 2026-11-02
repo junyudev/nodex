@@ -241,11 +241,11 @@ fn now() -> String {
 
 #[cfg(test)]
 mod tests {
+    use nodex_platform::private_fs::symlink;
     use std::fs;
-    use std::os::unix::fs::{PermissionsExt, symlink};
 
     use nodex_core_protocol::{CoreArtifactIdentity, canonical_manifest_digest, store_format};
-    use tempfile::tempdir;
+    use nodex_platform::test_support::tempdir;
 
     use super::*;
 
@@ -262,7 +262,7 @@ mod tests {
             manifest,
             pid: std::process::id(),
             start_nonce: nonce.to_string().repeat(32),
-            socket_path: paths.socket.to_string_lossy().into_owned(),
+            endpoint: nodex_platform::local_endpoint::new_core_endpoint(&paths.socket).unwrap(),
             profile_id: "profile:test".to_owned(),
             store_epoch: "epoch:test".to_owned(),
             readiness_generation: 1,
@@ -316,8 +316,8 @@ mod tests {
         let home = directory.path().canonicalize().expect("absolute Profile");
         let paths = RuntimePaths::prepare(&home).expect("runtime paths");
         let outside = home.join("outside.json");
-        fs::write(&outside, b"{}\n").expect("outside file");
-        fs::set_permissions(&outside, fs::Permissions::from_mode(0o600)).expect("outside mode");
+        nodex_platform::private_fs::write(&outside, b"{}\n").expect("outside file");
+        nodex_platform::private_fs::set_mode(&outside, 0o600).expect("outside mode");
         symlink(&outside, &paths.lifecycle).expect("summary symlink");
 
         let writer = LifecycleSummaryWriter::start(paths.clone(), &descriptor(&paths, 'a'));

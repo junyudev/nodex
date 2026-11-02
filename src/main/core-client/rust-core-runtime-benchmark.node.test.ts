@@ -88,13 +88,13 @@ const stopCore = async (runtime: CoreLaunchResult, nodexHome: string): Promise<v
   const index = runningCores.findIndex((entry) => entry.runtime === runtime);
   if (index >= 0) runningCores.splice(index, 1);
   const pid = runtime.client.handshake.generation.pid;
-  const socketPath = path.join(nodexHome, "run/core/core.sock");
+  const descriptorPath = path.join(nodexHome, "run/core/core.json");
   await runtime.client.shutdown().catch(() => undefined);
   const deadline = Date.now() + 5_000;
-  while (existsSync(socketPath) && Date.now() < deadline) {
+  while (existsSync(descriptorPath) && Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
-  if (!existsSync(socketPath)) {
+  if (!existsSync(descriptorPath)) {
     await new Promise((resolve) => setTimeout(resolve, 100));
     return;
   }
@@ -104,7 +104,7 @@ const stopCore = async (runtime: CoreLaunchResult, nodexHome: string): Promise<v
     return;
   }
   const forcedDeadline = Date.now() + 5_000;
-  while (existsSync(socketPath) && Date.now() < forcedDeadline) {
+  while (existsSync(descriptorPath) && Date.now() < forcedDeadline) {
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
 };

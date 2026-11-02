@@ -1095,7 +1095,7 @@ mod tests {
     use std::sync::mpsc;
     use std::thread;
 
-    use tempfile::tempdir;
+    use nodex_platform::test_support::tempdir;
 
     use crate::infrastructure::request_execution::{
         RequestExecutionContext, within_request_execution,

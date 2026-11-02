@@ -1,7 +1,7 @@
 //! Filesystem boundary for Profile-managed execution artifacts.
-use std::fs::{self, File, OpenOptions};
+use nodex_platform::private_fs::{self, OpenOptions};
+use std::fs;
 use std::io::Write;
-use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
 use std::path::Path;
 
 use crate::{ProfileCloneError, Result};
@@ -23,7 +23,7 @@ pub(crate) fn exists(path: &Path) -> Result<bool> {
 
 pub(crate) fn require_directory(path: &Path) -> Result<()> {
     let metadata = fs::symlink_metadata(path)?;
-    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+    if private_fs::is_reparse_point(&metadata) || !metadata.is_dir() {
         return Err(invalid(format!(
             "Execution directory must be a real directory: {}",
             path.display()
@@ -34,7 +34,7 @@ pub(crate) fn require_directory(path: &Path) -> Result<()> {
 
 pub(crate) fn require_file(path: &Path) -> Result<()> {
     let metadata = fs::symlink_metadata(path)?;
-    if metadata.file_type().is_symlink() || !metadata.is_file() {
+    if private_fs::is_reparse_point(&metadata) || !metadata.is_file() {
         return Err(invalid(format!(
             "Execution artifact must be a regular file: {}",
             path.display()
@@ -44,15 +44,14 @@ pub(crate) fn require_file(path: &Path) -> Result<()> {
 }
 
 pub(crate) fn private_directory(path: &Path) -> Result<()> {
-    fs::DirBuilder::new().mode(0o700).create(path)?;
+    private_fs::create_dir(path)?;
     Ok(())
 }
 
 pub(crate) fn copy_file(source: &Path, target: &Path) -> Result<u64> {
     require_file(source)?;
-    // The pinned Rust toolchain uses fclonefileat on macOS, then fcopyfile
-    // when APFS CoW is unavailable, as for Core's managed assets.
-    Ok(fs::copy(source, target)?)
+    // Use the same private, no-follow copy boundary as Core managed assets.
+    Ok(private_fs::copy(source, target)?)
 }
 
 pub(crate) fn copy_attachments(source: &Path, target: &Path) -> Result<(u64, u64)> {
@@ -80,7 +79,7 @@ pub(crate) fn copy_attachments(source: &Path, target: &Path) -> Result<(u64, u64
             let source = entry.path();
             let target = target.join(entry.file_name());
             let metadata = fs::symlink_metadata(&source)?;
-            if metadata.file_type().is_symlink() {
+            if private_fs::is_reparse_point(&metadata) {
                 return Err(invalid(
                     "Execution attachments must not contain symbolic links",
                 ));
@@ -111,6 +110,6 @@ pub(crate) fn write_synced(path: &Path, bytes: &[u8]) -> Result<()> {
 }
 
 pub(crate) fn sync_directory(path: &Path) -> Result<()> {
-    File::open(path)?.sync_all()?;
+    private_fs::sync_directory(path)?;
     Ok(())
 }

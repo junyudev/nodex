@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { createServer, type Server, type ServerResponse } from "node:http";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -23,9 +24,14 @@ import {
   CoreHttpError,
   CoreResponseTooLargeError,
   CoreTransportError,
-  UdsHttpTransport,
+  LocalHttpTransport,
   isDefinitiveCoreGenerationLoss,
-} from "./uds-http";
+} from "./local-http";
+
+const testEndpoint = (directory: string) =>
+  process.platform === "win32"
+    ? `\\\\.\\pipe\\nodex-core-${randomBytes(16).toString("hex")}`
+    : path.join(directory, "core.sock");
 
 const servers: Server[] = [];
 const directories: string[] = [];
@@ -38,7 +44,7 @@ const replayBoundary: CoreEventReplayRequired = {
   resync_token: "resync:test",
 };
 
-const configureEventContract = (transport: UdsHttpTransport): UdsHttpTransport => {
+const configureEventContract = (transport: LocalHttpTransport): LocalHttpTransport => {
   transport.configureEventContract({
     transportVersion: 8,
     eventVersion: CORE_CLIENT_REQUIREMENTS.event_version,
@@ -52,7 +58,7 @@ const configureEventContract = (transport: UdsHttpTransport): UdsHttpTransport =
 const serveReplayBoundary = async (): Promise<string> => {
   const directory = mkdtempSync(path.join(tmpdir(), "nodex-core-uds-test-"));
   directories.push(directory);
-  const socketPath = path.join(directory, "core.sock");
+  const socketPath = testEndpoint(directory);
   const server = createServer((_request, response) => {
     response.writeHead(200, {
       "content-type": "text/event-stream",
@@ -71,7 +77,7 @@ const serveReplayBoundary = async (): Promise<string> => {
 const serveCommittedEvent = async (event: unknown): Promise<string> => {
   const directory = mkdtempSync(path.join(tmpdir(), "nodex-core-uds-test-"));
   directories.push(directory);
-  const socketPath = path.join(directory, "core.sock");
+  const socketPath = testEndpoint(directory);
   const server = createServer((_request, response) => {
     response.writeHead(200, {
       "content-type": "text/event-stream",
@@ -90,7 +96,7 @@ const serveCommittedEvent = async (event: unknown): Promise<string> => {
 const serveSseFrames = async (frames: string): Promise<string> => {
   const directory = mkdtempSync(path.join(tmpdir(), "nodex-core-uds-test-"));
   directories.push(directory);
-  const socketPath = path.join(directory, "core.sock");
+  const socketPath = testEndpoint(directory);
   const server = createServer((_request, response) => {
     response.writeHead(200, {
       "content-type": "text/event-stream",
@@ -109,7 +115,7 @@ const serveSseFrames = async (frames: string): Promise<string> => {
 const serveLiveEventStream = async () => {
   const directory = mkdtempSync(path.join(tmpdir(), "nodex-core-uds-test-"));
   directories.push(directory);
-  const socketPath = path.join(directory, "core.sock");
+  const socketPath = testEndpoint(directory);
   let activeResponse: ServerResponse | undefined;
   const server = createServer((_request, response) => {
     activeResponse = response;
@@ -127,7 +133,7 @@ const serveLiveEventStream = async () => {
 const servePendingResponse = async (): Promise<string> => {
   const directory = mkdtempSync(path.join(tmpdir(), "nodex-core-uds-test-"));
   directories.push(directory);
-  const socketPath = path.join(directory, "core.sock");
+  const socketPath = testEndpoint(directory);
   const server = createServer(() => {
     // Keep the request pending so the caller owns cancellation.
   });
@@ -146,7 +152,7 @@ const serveManagedRequest = async (): Promise<{
 }> => {
   const directory = mkdtempSync(path.join(tmpdir(), "nodex-core-uds-test-"));
   directories.push(directory);
-  const socketPath = path.join(directory, "core.sock");
+  const socketPath = testEndpoint(directory);
   let resolveHeaders!: (headers: import("node:http").IncomingHttpHeaders) => void;
   let resolveCancellation!: (requestId: string) => void;
   const requestHeaders = new Promise<import("node:http").IncomingHttpHeaders>((resolve) => {
@@ -187,7 +193,7 @@ const serveResponse = async (
 ): Promise<string> => {
   const directory = mkdtempSync(path.join(tmpdir(), "nodex-core-uds-test-"));
   directories.push(directory);
-  const socketPath = path.join(directory, "core.sock");
+  const socketPath = testEndpoint(directory);
   const server = createServer((_request, response) => {
     if (mode === "content-length") {
       response.writeHead(http.status ?? 200, {
@@ -285,7 +291,7 @@ const requestError: components["schemas"]["CoreError"] = {
   recovery: { kind: "none" },
 };
 
-const requestByBoundary = (transport: UdsHttpTransport, boundary: string): Promise<unknown> => {
+const requestByBoundary = (transport: LocalHttpTransport, boundary: string): Promise<unknown> => {
   if (boundary === "document") {
     return transport.requestDocumentFrame(
       "/core/v1/modules/document/read",
@@ -313,7 +319,7 @@ describe("Core HTTP request failures", () => {
   test.each(["json", "document", "blob", "events"])(
     "preserves validation errors at the %s boundary",
     async (boundary) => {
-      const transport = new UdsHttpTransport(
+      const transport = new LocalHttpTransport(
         await serveResponse(
           JSON.stringify({ status: "error", payload: requestError }),
           "content-length",
@@ -344,7 +350,7 @@ describe("Core HTTP request failures", () => {
     "classifies non-JSON HTTP rejections by status at the %s boundary",
     async (boundary) => {
       const message = "Failed to deserialize the JSON body into the target type";
-      const transport = new UdsHttpTransport(
+      const transport = new LocalHttpTransport(
         await serveResponse(message, "content-length", undefined, {
           status: 422,
           contentType: "text/plain",
@@ -364,7 +370,7 @@ describe("Core HTTP request failures", () => {
   test.each([400, 413, 415, 422, 500, 503])(
     "retains HTTP %s when its error body is empty or malformed",
     async (status) => {
-      const transport = new UdsHttpTransport(
+      const transport = new LocalHttpTransport(
         await serveResponse(status === 500 ? "{" : "", "content-length", undefined, { status }),
         "test-capability",
       );
@@ -389,7 +395,7 @@ describe("Core HTTP request failures", () => {
       limit: 64,
     } as const;
     const coreError = { ...requestError, recovery: { kind: "recovery_package", failure } } as const;
-    const transport = new UdsHttpTransport(
+    const transport = new LocalHttpTransport(
       await serveResponse(
         JSON.stringify({ status: "error", payload: coreError }),
         "content-length",
@@ -425,7 +431,7 @@ describe("Core HTTP request failures", () => {
   });
 
   test("keeps malformed successful responses as protocol failures", async () => {
-    const transport = new UdsHttpTransport(
+    const transport = new LocalHttpTransport(
       await serveResponse("Failed to decode"),
       "test-capability",
     );
@@ -440,11 +446,11 @@ describe("Core HTTP request failures", () => {
   });
 });
 
-describe("UDS Core event replay boundaries", () => {
+describe("Local Core event replay boundaries", () => {
   test("classifies a missing Core socket as definitive generation loss", async () => {
     const directory = mkdtempSync(path.join(tmpdir(), "nodex-core-uds-missing-"));
     directories.push(directory);
-    const transport = new UdsHttpTransport(path.join(directory, "core.sock"), "test-capability");
+    const transport = new LocalHttpTransport(testEndpoint(directory), "test-capability");
 
     const error = await transport
       .requestJson("GET", "/core/v1/health")
@@ -460,7 +466,7 @@ describe("UDS Core event replay boundaries", () => {
   });
 
   test("keeps response timeouts distinct from generation loss", async () => {
-    const transport = new UdsHttpTransport(await servePendingResponse(), "test-capability", {
+    const transport = new LocalHttpTransport(await servePendingResponse(), "test-capability", {
       requestTimeoutMs: 10,
     });
 
@@ -475,7 +481,7 @@ describe("UDS Core event replay boundaries", () => {
 
   test("sends execution metadata and propagates aborts to Core cancellation", async () => {
     const managed = await serveManagedRequest();
-    const transport = new UdsHttpTransport(managed.socketPath, "test-capability");
+    const transport = new LocalHttpTransport(managed.socketPath, "test-capability");
     const controller = new AbortController();
     const pending = transport.requestJson(
       "POST",
@@ -500,19 +506,19 @@ describe("UDS Core event replay boundaries", () => {
   test("bounds caller-specific response and timeout budgets", () => {
     expect(
       () =>
-        new UdsHttpTransport("/tmp/core.sock", "capability", {
+        new LocalHttpTransport("/tmp/core.sock", "capability", {
           maximumJsonResponseBytes: CORE_TRANSPORT_BUDGETS.ordinary_json_response_bytes + 1,
         }),
     ).toThrow("Core JSON response limit must be a positive integer");
     expect(
       () =>
-        new UdsHttpTransport("/tmp/core.sock", "capability", {
+        new LocalHttpTransport("/tmp/core.sock", "capability", {
           requestTimeoutMs: 120_001,
         }),
     ).toThrow("Core request timeout must be a positive integer");
     expect(
       () =>
-        new UdsHttpTransport("/tmp/core.sock", "capability", {
+        new LocalHttpTransport("/tmp/core.sock", "capability", {
           maximumJsonResponseBytes: CORE_TRANSPORT_BUDGETS.ordinary_json_response_bytes,
           requestTimeoutMs: 60_000,
         }),
@@ -521,7 +527,7 @@ describe("UDS Core event replay boundaries", () => {
 
   test("reads an ordinary JSON response larger than the legacy 512 KiB limit", async () => {
     const value = "x".repeat(600 * 1024);
-    const transport = new UdsHttpTransport(
+    const transport = new LocalHttpTransport(
       await serveResponse(JSON.stringify({ value })),
       "test-capability",
     );
@@ -533,7 +539,7 @@ describe("UDS Core event replay boundaries", () => {
 
   test("rejects an oversized declared ordinary JSON response before reading it", async () => {
     const maximum = CORE_TRANSPORT_BUDGETS.ordinary_json_response_bytes;
-    const transport = new UdsHttpTransport(
+    const transport = new LocalHttpTransport(
       await serveResponse("{}", "content-length", maximum + 1),
       "test-capability",
     );
@@ -546,7 +552,7 @@ describe("UDS Core event replay boundaries", () => {
   test("rejects an oversized chunked ordinary JSON response while streaming it", async () => {
     const maximum = CORE_TRANSPORT_BUDGETS.ordinary_json_response_bytes;
     const serialized = JSON.stringify({ value: "x".repeat(maximum) });
-    const transport = new UdsHttpTransport(
+    const transport = new LocalHttpTransport(
       await serveResponse(serialized, "chunked"),
       "test-capability",
     );
@@ -559,7 +565,7 @@ describe("UDS Core event replay boundaries", () => {
 
   test("delivers an explicit resync boundary to a registered consumer", async () => {
     const transport = configureEventContract(
-      new UdsHttpTransport(await serveReplayBoundary(), "test-capability"),
+      new LocalHttpTransport(await serveReplayBoundary(), "test-capability"),
     );
     let observed: CoreEventReplayRequired | undefined;
 
@@ -579,7 +585,7 @@ describe("UDS Core event replay boundaries", () => {
 
   test("fails closed when a resync boundary has no consumer", async () => {
     const transport = configureEventContract(
-      new UdsHttpTransport(await serveReplayBoundary(), "test-capability"),
+      new LocalHttpTransport(await serveReplayBoundary(), "test-capability"),
     );
     const subscription = await transport.openEventStream(4, () => undefined);
 
@@ -595,7 +601,7 @@ describe("UDS Core event replay boundaries", () => {
       resync_token: null,
     };
     const transport = configureEventContract(
-      new UdsHttpTransport(
+      new LocalHttpTransport(
         await serveSseFrames(`event: stream-checkpoint\ndata: ${JSON.stringify(checkpoint)}\n\n`),
         "test-capability",
       ),
@@ -623,7 +629,7 @@ describe("UDS Core event replay boundaries", () => {
       resync_token: null,
     };
     const transport = configureEventContract(
-      new UdsHttpTransport(
+      new LocalHttpTransport(
         await serveSseFrames(`event: stream-checkpoint\ndata: ${JSON.stringify(checkpoint)}\n\n`),
         "test-capability",
       ),
@@ -646,7 +652,7 @@ describe("UDS Core event replay boundaries", () => {
 
   test("accepts a legal committed event larger than the old 512 KiB budget", async () => {
     const transport = configureEventContract(
-      new UdsHttpTransport(await serveLargeCommittedEvent(), "test-capability"),
+      new LocalHttpTransport(await serveLargeCommittedEvent(), "test-capability"),
     );
     let sequence: number | undefined;
     const subscription = await transport.openEventStream(0, (envelope) => {
@@ -660,7 +666,7 @@ describe("UDS Core event replay boundaries", () => {
   test("rejects a legacy transport envelope before delivering it", async () => {
     const event = { ...committedEvent(), transport_version: 2 };
     const transport = configureEventContract(
-      new UdsHttpTransport(await serveCommittedEvent(event), "test-capability"),
+      new LocalHttpTransport(await serveCommittedEvent(event), "test-capability"),
     );
     let deliveries = 0;
     const subscription = await transport.openEventStream(0, () => {
@@ -680,7 +686,7 @@ describe("UDS Core event replay boundaries", () => {
     };
     delete event.packet.atoms;
     const transport = configureEventContract(
-      new UdsHttpTransport(await serveCommittedEvent(event), "test-capability"),
+      new LocalHttpTransport(await serveCommittedEvent(event), "test-capability"),
     );
     let deliveries = 0;
     const subscription = await transport.openEventStream(0, () => {
@@ -700,7 +706,7 @@ describe("UDS Core event replay boundaries", () => {
     };
     delete event.packet.delivery_address;
     const transport = configureEventContract(
-      new UdsHttpTransport(await serveCommittedEvent(event), "test-capability"),
+      new LocalHttpTransport(await serveCommittedEvent(event), "test-capability"),
     );
     let deliveries = 0;
     const subscription = await transport.openEventStream(0, () => {
@@ -745,7 +751,7 @@ describe("UDS Core event replay boundaries", () => {
       }),
     };
     const transport = configureEventContract(
-      new UdsHttpTransport(await serveCommittedEvent(event), "test-capability"),
+      new LocalHttpTransport(await serveCommittedEvent(event), "test-capability"),
     );
     let deliveries = 0;
     const subscription = await transport.openEventStream(0, () => {
@@ -776,7 +782,7 @@ describe("UDS Core event replay boundaries", () => {
       `event: projection-live-opened\ndata: ${JSON.stringify(barrier)}\n\n` +
       `event: module\ndata: ${JSON.stringify(committedEvent())}\n\n`;
     const transport = configureEventContract(
-      new UdsHttpTransport(await serveSseFrames(frames), "test-capability"),
+      new LocalHttpTransport(await serveSseFrames(frames), "test-capability"),
     );
     const delivered: CoreEventEnvelope[] = [];
     const subscription = await transport.openProjectionLiveStream(
@@ -808,7 +814,7 @@ describe("UDS Core event replay boundaries", () => {
       ],
     };
     const transport = configureEventContract(
-      new UdsHttpTransport(
+      new LocalHttpTransport(
         await serveSseFrames(`event: projection-live-opened\ndata: ${JSON.stringify(barrier)}\n\n`),
         "test-capability",
       ),
@@ -856,7 +862,7 @@ describe("UDS Core event replay boundaries", () => {
       }),
     };
     const transport = configureEventContract(
-      new UdsHttpTransport(await serveCommittedEvent(event), "test-capability"),
+      new LocalHttpTransport(await serveCommittedEvent(event), "test-capability"),
     );
     let deliveries = 0;
     const subscription = await transport.openEventStream(0, () => {
@@ -871,7 +877,9 @@ describe("UDS Core event replay boundaries", () => {
 
   test("classifies premature live response closure as recoverable connection loss", async () => {
     const server = await serveLiveEventStream();
-    const transport = configureEventContract(new UdsHttpTransport(server.socketPath, "capability"));
+    const transport = configureEventContract(
+      new LocalHttpTransport(server.socketPath, "capability"),
+    );
     const subscription = await transport.openEventStream(0, () => undefined);
     const failure = subscription.done.catch((error: unknown) => error);
     server.disconnect();
@@ -888,7 +896,9 @@ describe("UDS Core event replay boundaries", () => {
 
   test("keeps explicit stream cancellation distinct from remote connection loss", async () => {
     const server = await serveLiveEventStream();
-    const transport = configureEventContract(new UdsHttpTransport(server.socketPath, "capability"));
+    const transport = configureEventContract(
+      new LocalHttpTransport(server.socketPath, "capability"),
+    );
     const controller = new AbortController();
     const subscription = await transport.openEventStream(
       0,
@@ -909,7 +919,9 @@ describe("UDS Core event replay boundaries", () => {
 
   test("closing a live subscription completes normally", async () => {
     const server = await serveLiveEventStream();
-    const transport = configureEventContract(new UdsHttpTransport(server.socketPath, "capability"));
+    const transport = configureEventContract(
+      new LocalHttpTransport(server.socketPath, "capability"),
+    );
     const subscription = await transport.openEventStream(0, () => undefined);
     subscription.close();
     await expect(subscription.done).resolves.toBeUndefined();
@@ -917,7 +929,7 @@ describe("UDS Core event replay boundaries", () => {
 
   test("aborts an event stream that has not received response headers", async () => {
     const transport = configureEventContract(
-      new UdsHttpTransport(await servePendingResponse(), "test-capability"),
+      new LocalHttpTransport(await servePendingResponse(), "test-capability"),
     );
     const controller = new AbortController();
     const opening = transport.openEventStream(

@@ -2188,9 +2188,9 @@ mod tests {
         AUTOMATION_CONTRACT_VERSION, AdapterKind, BoundModuleContext, LibraryId,
         ModuleApplyRequest, ModuleReadRequest, ProfileId, ProjectId, StoreEpoch,
     };
+    use nodex_platform::test_support::{TempDir, tempdir};
     use rusqlite::params;
     use serde_json::{Value, json};
-    use tempfile::{TempDir, tempdir};
 
     use crate::automation::AutomationModule;
     use crate::database::DatabaseModule;
@@ -2256,7 +2256,9 @@ mod tests {
                             name: None,
                             description: None,
                             appearance: None,
-                            source_roots: Some(vec!["/workspace/report".to_owned()]),
+                            source_roots: Some(vec![
+                                nodex_platform::fixture_path!("/workspace/report").to_owned(),
+                            ]),
                         },
                 },
             )
@@ -2294,7 +2296,9 @@ mod tests {
             reasoning_effort: Some("Thinking".to_owned()),
             service_tier: Some("priority".to_owned()),
             backend_binding: AgentBackendBinding::Codex,
-            cwds: Some(vec!["/workspace/report".to_owned()]),
+            cwds: Some(vec![
+                nodex_platform::fixture_path!("/workspace/report").to_owned(),
+            ]),
             execution_environment: None,
             local_environment_config_path: None,
         }
@@ -2685,7 +2689,7 @@ mod tests {
     fn cron_project_identity_bounds_folders_and_is_revalidated_before_execution() {
         let harness = harness();
         let mut foreign = definition();
-        foreign.cwds = Some(vec!["/foreign".to_owned()]);
+        foreign.cwds = Some(vec![nodex_platform::fixture_path!("/foreign").to_owned()]);
         assert!(
             apply(
                 &harness,
@@ -3321,7 +3325,9 @@ mod tests {
                         run_id: "pending:untrusted".to_owned(),
                         automation_id: "daily-report".to_owned(),
                         session_title: None,
-                        source_cwd: Some("/workspace/report".to_owned()),
+                        source_cwd: Some(
+                            nodex_platform::fixture_path!("/workspace/report").to_owned(),
+                        ),
                     },
                 },
             )
@@ -3639,7 +3645,7 @@ mod tests {
                 run_id: "run:review".to_owned(),
                 automation_id: "daily-report".to_owned(),
                 session_title: Some("Daily report run".to_owned()),
-                source_cwd: Some("/workspace/report".to_owned()),
+                source_cwd: Some(nodex_platform::fixture_path!("/workspace/report").to_owned()),
             },
         )
         .expect("begin pending run");
@@ -3657,7 +3663,7 @@ mod tests {
                 run_id: "run:review".to_owned(),
                 automation_id: "daily-report".to_owned(),
                 session_title: Some("Daily report run".to_owned()),
-                source_cwd: Some("/workspace/report".to_owned()),
+                source_cwd: Some(nodex_platform::fixture_path!("/workspace/report").to_owned()),
             },
         )
         .expect("replay pending run");
@@ -4120,7 +4126,7 @@ mod tests {
                     run_id: thread_id.to_owned(),
                     automation_id: "daily-report".to_owned(),
                     session_title: None,
-                    source_cwd: Some("/workspace/report".to_owned()),
+                    source_cwd: Some(nodex_platform::fixture_path!("/workspace/report").to_owned()),
                 },
             )
             .expect("begin interrupted run");

@@ -397,9 +397,8 @@ fn invalid(message: impl Into<String>) -> StoreError {
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
 
-    use tempfile::tempdir;
+    use nodex_platform::test_support::tempdir;
 
     use crate::infrastructure::store::SqliteStoreKernel;
     use crate::library::LibraryModule;
@@ -411,9 +410,9 @@ mod tests {
         let kernel = SqliteStoreKernel::open_test(&home).expect("fresh Store");
         let module = LibraryModule::new("profile-1", "library-1", &kernel);
         let root = module.file_blob_root().expect("Blob root");
-        fs::create_dir_all(&root).expect("assets root");
+        nodex_platform::private_fs::create_dir_all(&root).expect("assets root");
         let hash = "d".repeat(64);
-        fs::write(root.join(&hash), b"orphan").expect("orphan bytes");
+        nodex_platform::private_fs::write(root.join(&hash), b"orphan").expect("orphan bytes");
         kernel
             .writer()
             .call({

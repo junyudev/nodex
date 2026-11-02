@@ -296,9 +296,9 @@ mod tests {
         AdapterKind, CoreModuleEventPayload, LibraryId, LocalProjectionPatch, LocalProjectionScope,
         ModuleApplyRequest, ProfileId, ProjectId, ProjectionImpact, StoreEpoch,
     };
+    use nodex_platform::test_support::tempdir;
     use rusqlite::params;
     use serde_json::{Value, json};
-    use tempfile::tempdir;
 
     use crate::infrastructure::sqlite::with_immediate_transaction;
     use crate::library::LibraryModule;

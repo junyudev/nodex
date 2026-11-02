@@ -333,7 +333,7 @@ fn internal_json(error: serde_json::Error) -> StoreError {
 
 #[cfg(test)]
 mod tests {
-    use tempfile::tempdir;
+    use nodex_platform::test_support::tempdir;
 
     use crate::infrastructure::store::SqliteStoreKernel;
 

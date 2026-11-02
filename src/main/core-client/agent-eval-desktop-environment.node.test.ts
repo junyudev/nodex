@@ -1,5 +1,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { writeFile } from "node:fs/promises";
+import path from "node:path";
 import { expect, test } from "vite-plus/test";
 import { prepareDesktopEnvironment } from "../../../scripts/agent-eval/desktop-environment";
 import { prepareNodexCliShell, bindNodexCliShell } from "../platform/node/NodexCliShell";
@@ -26,12 +28,26 @@ test("ordinary shell pipelines, redirects, jq and Python preserve development CL
         projectId: manifest.projectId,
         agentAttribution: null,
       });
+      // Windows PowerShell's native argument parser strips embedded quotes from Python -c.
+      await writeFile(
+        path.join(profile.initialProjectsDirectory, "read-selected-project.py"),
+        'import pathlib\nprint(pathlib.Path("selected-project.txt").read_text(encoding="utf-8-sig").strip())\n',
+      );
       const result = await promisify(execFile)(
-        "/bin/bash",
-        [
-          "-c",
-          "set -euo pipefail\nnodex context | jq -r '.result.project.id' > selected-project.txt\npython3 -c 'import pathlib; print(pathlib.Path(\"selected-project.txt\").read_text().strip())'",
-        ],
+        process.platform === "win32" ? "powershell.exe" : "/bin/bash",
+        process.platform === "win32"
+          ? [
+              "-NoProfile",
+              "-NonInteractive",
+              "-ExecutionPolicy",
+              "Bypass",
+              "-Command",
+              "$ErrorActionPreference='Stop'; nodex context | ConvertFrom-Json | ForEach-Object { $_.result.project.id } | Set-Content -Encoding utf8 selected-project.txt; python read-selected-project.py",
+            ]
+          : [
+              "-c",
+              "set -euo pipefail\nnodex context | jq -r '.result.project.id' > selected-project.txt\npython3 read-selected-project.py",
+            ],
         {
           cwd: profile.initialProjectsDirectory,
           env: {

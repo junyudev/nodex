@@ -1,5 +1,6 @@
-use std::fs::{self, File, OpenOptions};
-use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+use nodex_platform::private_fs::OpenOptions;
+use std::fs::{self, File};
+
 use std::path::{Path, PathBuf};
 
 use fs2::FileExt;
@@ -31,7 +32,7 @@ impl ProfileStoreLock {
                 false,
             )
         })?;
-        if metadata.file_type().is_symlink() {
+        if nodex_platform::private_fs::is_reparse_point(&metadata) {
             return Err(StoreError::new(
                 StoreErrorCode::InvalidProfile,
                 "Profile home must not be a symlink",
@@ -39,26 +40,24 @@ impl ProfileStoreLock {
             ));
         }
 
+        nodex_platform::private_fs::prepare_profile_root(profile_home).map_err(io_error)?;
         let directory = profile_home.join("run/core");
-        fs::create_dir_all(&directory).map_err(io_error)?;
-        if fs::symlink_metadata(&directory)
-            .map_err(io_error)?
-            .file_type()
-            .is_symlink()
-        {
+        nodex_platform::private_fs::create_dir_all(&directory).map_err(io_error)?;
+        if nodex_platform::private_fs::is_reparse_point(
+            &fs::symlink_metadata(&directory).map_err(io_error)?,
+        ) {
             return Err(StoreError::new(
                 StoreErrorCode::InvalidProfile,
                 "Profile runtime directory must not be a symlink",
                 false,
             ));
         }
-        fs::set_permissions(
-            &directory,
-            fs::Permissions::from_mode(PRIVATE_DIRECTORY_MODE),
-        )
-        .map_err(io_error)?;
+        nodex_platform::private_fs::set_mode(&directory, PRIVATE_DIRECTORY_MODE)
+            .map_err(io_error)?;
         let path = directory.join("store.lock");
-        if fs::symlink_metadata(&path).is_ok_and(|metadata| metadata.file_type().is_symlink()) {
+        if fs::symlink_metadata(&path)
+            .is_ok_and(|metadata| nodex_platform::private_fs::is_reparse_point(&metadata))
+        {
             return Err(StoreError::new(
                 StoreErrorCode::InvalidProfile,
                 "Profile store lock must not be a symlink",
@@ -72,8 +71,7 @@ impl ProfileStoreLock {
             .write(true)
             .mode(PRIVATE_FILE_MODE);
         let file = options.open(&path).map_err(io_error)?;
-        fs::set_permissions(&path, fs::Permissions::from_mode(PRIVATE_FILE_MODE))
-            .map_err(io_error)?;
+        nodex_platform::private_fs::set_mode(&path, PRIVATE_FILE_MODE).map_err(io_error)?;
         file.try_lock_exclusive().map_err(|_| {
             StoreError::new(
                 StoreErrorCode::AlreadyOwned,
@@ -99,9 +97,8 @@ fn io_error(error: std::io::Error) -> StoreError {
 
 #[cfg(test)]
 mod tests {
-    use std::os::unix::fs::PermissionsExt;
 
-    use tempfile::tempdir;
+    use nodex_platform::test_support::tempdir;
 
     use super::*;
 
@@ -111,11 +108,7 @@ mod tests {
         let home = directory.path().canonicalize().expect("absolute profile");
         let first = ProfileStoreLock::acquire(&home).expect("first owner");
         assert_eq!(
-            fs::metadata(first.path())
-                .expect("lock metadata")
-                .permissions()
-                .mode()
-                & 0o777,
+            nodex_platform::private_fs::effective_mode(first.path()).expect("filesystem access"),
             PRIVATE_FILE_MODE
         );
         let second = ProfileStoreLock::acquire(&home).expect_err("second owner rejected");

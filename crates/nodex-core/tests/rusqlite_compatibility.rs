@@ -2,9 +2,9 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
+use nodex_platform::test_support::tempdir;
 use rusqlite::limits::Limit;
 use rusqlite::{Connection, ErrorCode, MAIN_DB, OpenFlags, params};
-use tempfile::tempdir;
 
 const PROBE_SCHEMA: &str = r#"
 CREATE TABLE parents (

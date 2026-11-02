@@ -1,7 +1,7 @@
 import * as Cause from "effect/Cause";
 import * as Schema from "effect/Schema";
 import { CoreRuntimeError } from "../core-runtime/CoreRuntimeError";
-import { CoreHttpError, CoreTransportError } from "../core-client/uds-http";
+import { CoreHttpError, CoreTransportError } from "../core-client/local-http";
 import type { CleanupReport } from "./MainCleanup";
 import { MainApplicationError, type MainApplicationPhase, type MainExit } from "./MainExit";
 

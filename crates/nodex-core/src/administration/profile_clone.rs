@@ -1,7 +1,7 @@
-use std::fs::{self, File, OpenOptions};
+use nodex_platform::private_fs::OpenOptions;
+use std::fs;
 use std::io::Write;
-use std::os::unix::ffi::OsStrExt;
-use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
+
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -16,7 +16,6 @@ use super::{backup, restore};
 
 const PROFILE_SNAPSHOT_FILE_NAME: &str = "profile-snapshot.json";
 const PROFILE_SNAPSHOT_VERSION: u32 = 6;
-const PRIVATE_DIRECTORY_MODE: u32 = 0o700;
 const PRIVATE_FILE_MODE: u32 = 0o600;
 #[derive(Clone, Debug, Deserialize, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case")]
@@ -78,7 +77,8 @@ impl PreparedProfileClone {
         if fs::symlink_metadata(&self.target).is_ok() {
             return Err(invalid_profile("Target Profile home already exists"));
         }
-        fs::rename(&self.staging, &self.target).map_err(io_error)?;
+        nodex_platform::private_fs::atomic_replace(&self.staging, &self.target)
+            .map_err(io_error)?;
         self.published = true;
         sync_directory(self.target.parent().expect("validated target parent"))
     }
@@ -108,7 +108,7 @@ pub fn prepare_profile_clone(
     };
     let backup = backup::resolve_backup_for_profile_clone(&source, backup_id)?;
     let staging = create_staging_directory(&target)?;
-    let fingerprint = hex::encode(Sha256::digest(source.as_os_str().as_bytes()));
+    let fingerprint = hex::encode(Sha256::digest(nodex_platform::process::path_bytes(&source)));
     let result = (|| {
         let receipt = materialize_staging_profile(&staging, &backup, fingerprint)?;
         Ok(PreparedProfileClone {
@@ -239,7 +239,7 @@ fn write_receipt(profile_home: &Path, receipt: &impl Serialize) -> Result<(), St
 fn require_real_directory(path: &Path, label: &str) -> Result<PathBuf, StoreError> {
     let absolute = absolute_path(path)?;
     let metadata = fs::symlink_metadata(&absolute).map_err(io_error)?;
-    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+    if nodex_platform::private_fs::is_reparse_point(&metadata) || !metadata.is_dir() {
         return Err(invalid_profile(format!("{label} must be a real directory")));
     }
     absolute.canonicalize().map_err(io_error)
@@ -285,10 +285,7 @@ fn create_staging_directory(target: &Path) -> Result<PathBuf, StoreError> {
     getrandom::fill(&mut random)
         .map_err(|_| internal("Profile clone identity entropy is unavailable"))?;
     let staging = parent.join(format!(".profile-clone-{}.tmp", hex::encode(random)));
-    fs::DirBuilder::new()
-        .mode(PRIVATE_DIRECTORY_MODE)
-        .create(&staging)
-        .map_err(io_error)?;
+    nodex_platform::private_fs::create_dir(&staging).map_err(io_error)?;
     Ok(staging)
 }
 
@@ -311,7 +308,7 @@ fn remove_owned_staging_directory(target: &Path, staging: &Path) -> Result<(), S
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
         Err(error) => return Err(io_error(error)),
     };
-    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+    if nodex_platform::private_fs::is_reparse_point(&metadata) || !metadata.is_dir() {
         return Err(invalid_profile(
             "Profile clone staging path is not an owned directory",
         ));
@@ -321,10 +318,7 @@ fn remove_owned_staging_directory(target: &Path, staging: &Path) -> Result<(), S
 }
 
 fn sync_directory(path: &Path) -> Result<(), StoreError> {
-    File::open(path)
-        .map_err(io_error)?
-        .sync_all()
-        .map_err(io_error)
+    nodex_platform::private_fs::sync_directory(path).map_err(io_error)
 }
 
 fn corrupt(message: impl Into<String>) -> StoreError {
@@ -351,7 +345,7 @@ fn io_error(error: std::io::Error) -> StoreError {
 mod tests {
     use std::io::{Read, Seek, SeekFrom, Write};
 
-    use tempfile::tempdir;
+    use nodex_platform::test_support::tempdir;
 
     use crate::infrastructure::store::SqliteStoreKernel;
 
@@ -362,7 +356,7 @@ mod tests {
         let directory = tempdir().expect("clone fixture");
         let source = directory.path().join("source");
         let target = directory.path().join("target");
-        fs::create_dir(&source).expect("source Profile");
+        nodex_platform::private_fs::create_dir(&source).expect("source Profile");
         let kernel = SqliteStoreKernel::open_test(&source).expect("source Store");
         kernel
             .writer()
@@ -515,7 +509,8 @@ mod tests {
         assert!(!source.join(PROFILE_SNAPSHOT_FILE_NAME).exists());
 
         let published = source.join("backups").join(&backup_record.backup_id);
-        fs::write(published.join("assets/unexpected.bin"), b"").expect("tampered asset tree");
+        nodex_platform::private_fs::write(published.join("assets/unexpected.bin"), b"")
+            .expect("tampered asset tree");
         let asset_target = directory.path().join("asset-tamper-target");
         let asset_error = materialize_profile_clone(ProfileCloneRequest {
             source_profile_home: source.clone(),
@@ -560,9 +555,10 @@ mod tests {
         let directory = tempdir().expect("clone fixture");
         let source = directory.path().join("source");
         let target = directory.path().join("target");
-        fs::create_dir(&source).expect("source Profile");
-        fs::create_dir(&target).expect("target Profile");
-        fs::write(target.join("sentinel"), b"keep").expect("target sentinel");
+        nodex_platform::private_fs::create_dir(&source).expect("source Profile");
+        nodex_platform::private_fs::create_dir(&target).expect("target Profile");
+        nodex_platform::private_fs::write(target.join("sentinel"), b"keep")
+            .expect("target sentinel");
 
         let error = materialize_profile_clone(ProfileCloneRequest {
             source_profile_home: source,
