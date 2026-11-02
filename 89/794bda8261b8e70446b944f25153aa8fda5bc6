@@ -1,0 +1,19 @@
+src/main/codex/codex-local-thread-handoff-git.test.ts
+  s_6c9891f66c664a::t_b30e2ca0c7c5e0 7,9-10,16-72,110-115,119
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "89794bda8261b8e70446b944f25153aa8fda5bc6",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
