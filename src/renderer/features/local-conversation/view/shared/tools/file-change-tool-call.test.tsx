@@ -139,7 +139,8 @@ describe("FileChangeToolCall", () => {
     installAsyncRequestAnimationFrame();
     installMeasuredResizeObserver({ blockSize: 96, inlineSize: 320 });
     installWindowApi({
-      invoke: async () => true,
+      invoke: async (channel: string) =>
+        channel === "shell:file-link-openers:list-available" ? ["vscode", "fileManager"] : true,
       on: () => () => {},
     });
   });
@@ -356,13 +357,16 @@ describe("FileChangeToolCall", () => {
 
     const filenameLink = container.querySelector("[data-agent-activity-file-link][role='link']");
     expect(Boolean(filenameLink)).toBe(true);
-    fireEvent.click(filenameLink as HTMLElement);
+    await act(async () => {
+      fireEvent.click(filenameLink as HTMLElement);
+      await Promise.resolve();
+    });
     await settleAsyncRender();
 
     expect(Boolean(container.textContent?.includes("Edited file"))).toBe(false);
   });
 
-  test("opens collapsed patch paths in the side panel unless the click is modified", () => {
+  test("opens collapsed patch paths in the side panel unless the click is modified", async () => {
     let sidePanelTarget: { path: string; workspaceRoot?: string | null } | null = null;
     const { container } = render(
       <TooltipProvider>
@@ -380,10 +384,19 @@ describe("FileChangeToolCall", () => {
     );
     expect(Boolean(filenameLink)).toBe(true);
 
-    fireEvent.click(filenameLink as HTMLElement, { metaKey: true });
+    await act(async () => {
+      fireEvent.click(
+        filenameLink as HTMLElement,
+        /^(mac|darwin)/iu.test(navigator.platform) ? { metaKey: true } : { ctrlKey: true },
+      );
+      await Promise.resolve();
+    });
     expect(sidePanelTarget).toBe(null);
 
-    fireEvent.click(filenameLink as HTMLElement);
+    await act(async () => {
+      fireEvent.click(filenameLink as HTMLElement);
+      await Promise.resolve();
+    });
     expect(sidePanelTarget).toMatchObject({
       path: "/tmp/granted/src/renderer/features/local-conversation/view/local-conversation-stage-screen.tsx",
       workspaceRoot: "/tmp/granted",
