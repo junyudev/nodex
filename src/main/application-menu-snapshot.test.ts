@@ -1,6 +1,10 @@
 import { expect, test } from "vite-plus/test";
 import type { Menu, MenuItem } from "electron";
-import { ApplicationMenuSnapshots, findNativeMenuAccelerator } from "./application-menu-snapshot";
+import {
+  ApplicationMenuSnapshots,
+  findNativeMenuAccelerator,
+  matchesNativeMenuAccelerator,
+} from "./application-menu-snapshot";
 function fixture() {
   const action = { label: "Copy", type: "normal", enabled: true, visible: true } as MenuItem;
   const parent = {
@@ -72,4 +76,28 @@ test("only Main-owned enabled accelerators cross native input after menu removal
   expect(findNativeMenuAccelerator(menu, (key) => key === "Ctrl+Shift+W")).toBe(closeWindow);
   parent.enabled = false;
   expect(findNativeMenuAccelerator(menu, () => true)).toBeNull();
+});
+
+test("native Zoom In accepts shifted equals and numeric plus without claiming other keys", () => {
+  const event = {
+    key: "+",
+    code: "Equal",
+    ctrlKey: true,
+    altKey: false,
+    metaKey: false,
+    shiftKey: true,
+  };
+  expect(matchesNativeMenuAccelerator(event, "CommandOrControl+Plus")).toBe(true);
+  expect(
+    matchesNativeMenuAccelerator(
+      { ...event, code: "NumpadAdd", shiftKey: false },
+      "CommandOrControl+Plus",
+    ),
+  ).toBe(true);
+  expect(
+    matchesNativeMenuAccelerator({ ...event, key: "=", shiftKey: false }, "CommandOrControl+Plus"),
+  ).toBe(false);
+  expect(matchesNativeMenuAccelerator({ ...event, ctrlKey: false }, "CommandOrControl+Plus")).toBe(
+    false,
+  );
 });

@@ -1,4 +1,8 @@
-import { ApplicationMenuSnapshots, findNativeMenuAccelerator } from "../application-menu-snapshot";
+import {
+  ApplicationMenuSnapshots,
+  findNativeMenuAccelerator,
+  matchesNativeMenuAccelerator,
+} from "../application-menu-snapshot";
 import type { ApplicationMenuSnapshot } from "../../shared/application-menu";
 import type { BrowserWindow } from "electron";
 import { WebContentsDestructionSubscriptions } from "../platform/electron/WebContentsDestructionSubscriptions";
@@ -25,7 +29,6 @@ import {
 import { join } from "node:path";
 import type { CommandKeymapState } from "../../shared/command-keybindings";
 import {
-  matchesKeyboardEventToAccelerator,
   getPrimaryCommandAccelerator,
   NEXT_PANEL_TAB_COMMAND_ID,
   PREVIOUS_PANEL_TAB_COMMAND_ID,
@@ -336,7 +339,7 @@ export const live = (
               native.subscribeToWindowInput?.(window, (event, input) => {
                 if (input.type !== "keyDown" || input.isAutoRepeat || input.isComposing) return;
                 const item = findNativeMenuAccelerator(applicationMenu, (accelerator) =>
-                  matchesKeyboardEventToAccelerator(
+                  matchesNativeMenuAccelerator(
                     {
                       key: input.key,
                       code: input.code,
@@ -346,7 +349,6 @@ export const live = (
                       metaKey: input.meta,
                     },
                     accelerator,
-                    "windows",
                   ),
                 );
                 if (!item) return;

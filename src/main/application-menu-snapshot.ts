@@ -1,3 +1,7 @@
+import {
+  matchesKeyboardEventToAccelerator,
+  type KeyboardShortcutEventLike,
+} from "../shared/command-keybindings";
 import type { Menu, MenuItem } from "electron";
 import type { ApplicationMenuEntry, ApplicationMenuSnapshot } from "../shared/application-menu";
 
@@ -77,4 +81,18 @@ export function findNativeMenuAccelerator(
     if (isNative && item.accelerator && matches(item.accelerator)) return item;
   }
   return null;
+}
+
+/** Electron's Plus accelerator also names the shifted equals key on Windows keyboards. */
+export function matchesNativeMenuAccelerator(
+  event: KeyboardShortcutEventLike,
+  accelerator: string,
+): boolean {
+  if (matchesKeyboardEventToAccelerator(event, accelerator, "windows")) return true;
+  const parts = accelerator.split("+");
+  if (!parts.some((part) => part.toLowerCase() === "plus")) return false;
+  const shifted = parts
+    .flatMap((part) => (part.toLowerCase() === "plus" ? ["Shift", "="] : [part]))
+    .join("+");
+  return matchesKeyboardEventToAccelerator(event, shifted, "windows");
 }
