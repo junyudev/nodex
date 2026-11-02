@@ -1,0 +1,37 @@
+docs/product-specs/product-foundations.md
+  s_3609d9db04b3f2::t_23592045c070d6 33-34
+src/shared/initial-project-welcome.ts
+  s_3609d9db04b3f2::t_6e86c8f6afa479 3,27,51-54,66
+src/main/initial-project/InitialProjectBootstrapRuntime.node.test.ts
+  s_3609d9db04b3f2::t_5a8509662aa64c 146,150,161,187,294
+  s_3609d9db04b3f2::t_e5c73f7f764d29 295-299,307-310
+src/shared/initial-project-welcome.node.test.ts
+  s_3609d9db04b3f2::t_6e86c8f6afa479 15,34,37-44,47
+  s_3609d9db04b3f2::t_23592045c070d6 45
+  s_3609d9db04b3f2::t_db1a7f3fa2f510 46,48
+src/shared/command-keybindings.ts
+  s_3609d9db04b3f2::t_7b3c46c317b77d 1058
+scripts/verify-native-runtime.ts
+  s_3609d9db04b3f2::t_7b3c46c317b77d 784
+src/main/initial-project/InitialProjectBootstrapRuntime.ts
+  s_3609d9db04b3f2::t_7b3c46c317b77d 135
+  s_3609d9db04b3f2::t_6e86c8f6afa479 51,105
+src/main/app/ApplicationOperationsLive.ts
+  s_3609d9db04b3f2::t_6e86c8f6afa479 87
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b2a5065c81e8c855f939f5dc0b1fd3802f7f52bb",
+  "prompts": {},
+  "sessions": {
+    "s_3609d9db04b3f2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19bd4-bc82-7710-93aa-a3b0b80b63c0",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
