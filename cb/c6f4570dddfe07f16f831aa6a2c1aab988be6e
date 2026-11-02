@@ -1,0 +1,19 @@
+crates/nodex-core-server/tests/lifecycle.rs
+  s_3022e59a160914::t_0f2c79e72859e9 1392-1395
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "cbc6f4570dddfe07f16f831aa6a2c1aab988be6e",
+  "prompts": {},
+  "sessions": {
+    "s_3022e59a160914": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1def126e-fd62-476f-9393-67b0835f01b6",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
