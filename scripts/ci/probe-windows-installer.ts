@@ -47,6 +47,14 @@ const isProcessRunning = (pid: number): boolean => {
 const assertProcessStopped = (pid: number): void => {
   if (isProcessRunning(pid)) throw new Error(`Maintenance left process ${pid} running`);
 };
+const waitForProcessStopped = async (pid: number, timeoutMs: number): Promise<void> => {
+  const deadline = Date.now() + timeoutMs;
+  while (isProcessRunning(pid)) {
+    if (Date.now() >= deadline)
+      throw new Error(`Process ${pid} did not exit within ${timeoutMs}ms`);
+    await delay(25);
+  }
+};
 
 export const installationListenerAddresses = (installation: string): string[] => {
   const command = `
@@ -130,6 +138,13 @@ async function main(): Promise<void> {
     );
   const profile = join(root, "Profile 用户");
   mkdirSync(profile);
+  const profileMarker = join(profile, "installer-probe.txt");
+  const profileContent = randomUUID();
+  writeFileSync(profileMarker, profileContent);
+  const isProfilePreserved = (): boolean =>
+    existsSync(join(profile, "nodex.db")) &&
+    existsSync(profileMarker) &&
+    readFileSync(profileMarker, "utf8") === profileContent;
   let runId = randomUUID();
   let lease = acquireIsolatedRunLease({ nodexHome: profile, runId, supervisorPid: process.pid });
   const failures: unknown[] = [];
@@ -138,6 +153,7 @@ async function main(): Promise<void> {
   let application: ElectronApplication | undefined;
   let desktopPid: number | undefined;
   const desktopCloses: Promise<void>[] = [];
+  let normalQuitEvidence: unknown;
   let upgradeEvidence: unknown;
   let detachedCoreBeforeUninstall: number | undefined;
   let output = "";
@@ -199,11 +215,12 @@ exit $uninstaller.ExitCode
         const filesRemoved = !existsSync(installRoot);
         const protocolRemoved = remainingProtocol === null;
         const shortcutsRemoved = shortcuts.length === 0;
-        const profilePreserved = existsSync(profile);
+        const profilePreserved = isProfilePreserved();
         uninstallEvidence = {
           completed: filesRemoved && protocolRemoved && shortcutsRemoved && profilePreserved,
           elapsedMs: Date.now() - uninstallStarted,
           detachedCoreBeforeUninstall,
+          desktopExit: detachedCoreBeforeUninstall === undefined ? undefined : "forced",
           filesRemoved,
           protocolRemoved,
           shortcutsRemoved,
@@ -262,7 +279,7 @@ exit $uninstaller.ExitCode
         writeFileSync(join(artifacts, name), readFileSync(join(logRoot, name)));
     writeFileSync(
       join(artifacts, "result.json"),
-      `${JSON.stringify({ evidence, upgrade: upgradeEvidence, uninstall: uninstallEvidence, failures: failures.map(failureDetails) }, null, 2)}\n`,
+      `${JSON.stringify({ evidence, normalQuit: normalQuitEvidence, upgrade: upgradeEvidence, uninstall: uninstallEvidence, failures: failures.map(failureDetails) }, null, 2)}\n`,
     );
   };
   try {
@@ -386,19 +403,37 @@ exit $uninstaller.ExitCode
         await delay(100);
       }
     };
-    const quitWithDetachedCore = async (): Promise<number> => {
+    const quitNormally = async (): Promise<void> => {
       if (!application || desktopPid === undefined) throw new Error("Installed desktop is missing");
+      const { descriptor } = readCoreRuntimeConnection(profile);
+      const quitStarted = Date.now();
       // Playwright requests app.quit() and detaches its debugger, but waits for
-      // cmd.exe's stream closure too. Observe Main exit before detached Core stops.
+      // cmd.exe's stream closure too. Observe the exact Main and Core PIDs.
       const close = application.close();
       desktopCloses.push(close);
       void close.catch(() => undefined);
-      const quitDeadline = Date.now() + 15_000;
-      while (isProcessRunning(desktopPid)) {
-        if (Date.now() >= quitDeadline)
-          throw new Error(`Desktop process ${desktopPid} did not quit within 15s`);
-        await delay(50);
-      }
+      const coreExited = waitForProcessStopped(descriptor.pid, 5_000).then(
+        () => Date.now() - quitStarted,
+      );
+      const [coreExitMs] = await Promise.all([
+        coreExited,
+        waitForProcessStopped(desktopPid, 15_000),
+      ]);
+      normalQuitEvidence = {
+        completed: true,
+        hostPid: desktopPid,
+        corePid: descriptor.pid,
+        coreExitMs,
+        elapsedMs: Date.now() - quitStarted,
+      };
+    };
+    const forceDesktopLeavingCore = async (): Promise<number> => {
+      if (!application || desktopPid === undefined) throw new Error("Installed desktop is missing");
+      const { descriptor } = readCoreRuntimeConnection(profile);
+      // Kill only Main, as Stop-Process -Force would. Tree termination would
+      // hide the maintenance case by killing detached Core before the installer.
+      process.kill(desktopPid, "SIGKILL");
+      await waitForProcessStopped(desktopPid, 5_000);
       const client = await CoreClient.connect({
         nodexHome: profile,
         clientKind: "native_cli",
@@ -406,26 +441,40 @@ exit $uninstaller.ExitCode
         requestTimeoutMs: 5_000,
       });
       await client.health();
-      const { descriptor } = readCoreRuntimeConnection(profile);
+      if (client.handshake.generation.start_nonce !== descriptor.start_nonce)
+        throw new Error("Force-killing Desktop replaced the selected Core generation");
       process.kill(descriptor.pid, 0);
       return descriptor.pid;
     };
+    const renewHostClaim = (): void => {
+      // Each launch needs a fresh host claim, while retaining the same Profile.
+      lease.release();
+      runId = randomUUID();
+      lease = acquireIsolatedRunLease({ nodexHome: profile, runId, supervisorPid: process.pid });
+      rmSync(join(profile, "run", AGENT_RUNTIME_STARTUP_EVIDENCE_FILE), { force: true });
+    };
     await launchInstalled();
-    const oldCorePid = await quitWithDetachedCore();
+    await quitNormally();
+    renewHostClaim();
+    await launchInstalled();
+    const oldCorePid = await forceDesktopLeavingCore();
     const upgradeStarted = Date.now();
     execFileSync(resolve("dist", installers[0]!), ["/S", "/currentuser"], {
       stdio: "inherit",
       timeout: 180_000,
     });
-    upgradeEvidence = { completed: true, elapsedMs: Date.now() - upgradeStarted, oldCorePid };
     assertProcessStopped(oldCorePid);
-    // Each launch needs a fresh host claim, while retaining the same Profile.
-    lease.release();
-    runId = randomUUID();
-    lease = acquireIsolatedRunLease({ nodexHome: profile, runId, supervisorPid: process.pid });
-    rmSync(join(profile, "run", AGENT_RUNTIME_STARTUP_EVIDENCE_FILE), { force: true });
+    if (!isProfilePreserved()) throw new Error("Upgrade removed Profile content");
+    upgradeEvidence = {
+      completed: true,
+      elapsedMs: Date.now() - upgradeStarted,
+      oldCorePid,
+      desktopExit: "forced",
+      profilePreserved: true,
+    };
+    renewHostClaim();
     await launchInstalled();
-    detachedCoreBeforeUninstall = await quitWithDetachedCore();
+    detachedCoreBeforeUninstall = await forceDesktopLeavingCore();
   } catch (error) {
     failures.push(error);
   } finally {
