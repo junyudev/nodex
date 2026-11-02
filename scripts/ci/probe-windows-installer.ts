@@ -196,20 +196,24 @@ exit $uninstaller.ExitCode
           join(process.env.USERPROFILE!, "Desktop/Nodex.lnk"),
         ].filter(existsSync);
         const remainingProtocol = queryProtocol();
+        const filesRemoved = !existsSync(installRoot);
+        const protocolRemoved = remainingProtocol === null;
+        const shortcutsRemoved = shortcuts.length === 0;
+        const profilePreserved = existsSync(profile);
         uninstallEvidence = {
-          completed: true,
+          completed: filesRemoved && protocolRemoved && shortcutsRemoved && profilePreserved,
           elapsedMs: Date.now() - uninstallStarted,
           detachedCoreBeforeUninstall,
-          filesRemoved: !existsSync(installRoot),
-          protocolRemoved: remainingProtocol === null,
-          shortcutsRemoved: shortcuts.length === 0,
-          profilePreserved: existsSync(profile),
+          filesRemoved,
+          protocolRemoved,
+          shortcutsRemoved,
+          profilePreserved,
         };
-        if (existsSync(installRoot))
+        if (!filesRemoved)
           throw new Error(`Uninstall left files: ${readdirSync(installRoot).join(", ")}`);
-        if (remainingProtocol) throw new Error("Uninstall left the nodex:// protocol registration");
-        if (shortcuts.length) throw new Error(`Uninstall left shortcuts: ${shortcuts.join(", ")}`);
-        if (!existsSync(profile)) throw new Error("Uninstall removed the Profile");
+        if (!protocolRemoved) throw new Error("Uninstall left the nodex:// protocol registration");
+        if (!shortcutsRemoved) throw new Error(`Uninstall left shortcuts: ${shortcuts.join(", ")}`);
+        if (!profilePreserved) throw new Error("Uninstall removed the Profile");
         uninstallCompleted = true;
       } catch (error) {
         failures.push(error);

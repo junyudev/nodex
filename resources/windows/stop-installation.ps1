@@ -106,9 +106,9 @@ try {
         $arguments = [NodexMaintenance]::Arguments($image.CommandLine)
         $homeIndex = [Array]::IndexOf($arguments, '--home')
         if ($homeIndex -lt 0 -or $homeIndex + 1 -ge $arguments.Count) { continue }
-        $home = $arguments[$homeIndex + 1]
+        $coreHome = $arguments[$homeIndex + 1]
         # Windows paths cannot contain quotes; double trailing slashes before a closing quote.
-        $quotedHome = '"' + [regex]::Replace($home, '(\\+)$', '$1$1') + '"'
+        $quotedHome = '"' + [regex]::Replace($coreHome, '(\\+)$', '$1$1') + '"'
         $start = New-Object Diagnostics.ProcessStartInfo
         $start.FileName = $CoreHelper
         $start.Arguments = '--shutdown --home ' + $quotedHome + ' --expected-pid ' + $image.ProcessId
