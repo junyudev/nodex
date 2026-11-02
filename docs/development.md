@@ -907,6 +907,12 @@ The test commands follow production boundaries:
   performance, and reliability gate. `vp run core:test`
   remains the complete local/source-verification alias.
 - `vp run core:protocol:verify` and `vp run core:module-boundaries` verify generated contracts and the Rust-only production boundary.
+  New specialized Core routes require an ownership review and explicit registration
+  in `scripts/audit-rust-core-boundaries.ts` and the behavioral OpenAPI surface test
+  in `crates/nodex-core-protocol/src/lib.rs`. After regenerating contracts, run
+  both verification commands above and the behavioral test with
+  `cargo test -p nodex-core-protocol --lib openapi_surface_is_limited_to_infrastructure_and_module_pairs`.
+  Protocol verification compares generated artifacts; it does not run that test.
 - Core protocol generation runs `openapi-typescript` inside `packages/core-protocol-codegen`, where its officially supported TypeScript 5 compiler runtime is pinned. TypeScript 7 does not expose the JavaScript `factory` API that this generator uses. That package is a generator implementation detail; tsc-rs remains the repository source checker inside the shared semantic gate.
 - `vp run tooling:verify` also proves that Vite+ can load the complete workspace metadata graph while keeping third-party packages outside root task execution. Keep dependencies imported by workspace-local Vite configs resolvable even when those packages are not selected by `vp run`.
 - `vp run verify:effect-boundaries` keeps Effect inside the Main/script control plane, generated/shared/renderer contracts Effect-free, unstable APIs inside app-owned adapters, and runtime execution at approved composition/facade seams. Lifecycle tests use fake capabilities or `@effect/vitest` TestClock instead of real retry or escalation sleeps.
