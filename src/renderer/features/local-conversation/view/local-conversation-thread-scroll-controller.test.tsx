@@ -813,7 +813,7 @@ describe("LocalConversationThreadScrollLayout", () => {
           await Promise.resolve();
         });
         expect(fixture.controller.getScrollMode()).toBe(mode);
-        expect(positions).toHaveBeenCalledExactlyOnceWith(distance - movement + 300);
+        expect(positions).toHaveBeenCalledExactlyOnceWith(distance - movement + 300, movement);
         expect(gestures).not.toHaveBeenCalled();
         expect(action === "hold" ? holdViewport : resumeFollowing).toHaveBeenCalledTimes(1);
       } finally {
@@ -824,6 +824,38 @@ describe("LocalConversationThreadScrollLayout", () => {
     },
   );
 
+  test("position reports distinguish content overflow from native movement", async () => {
+    const fixture = await renderNativeFindController();
+    const positions: Array<[number, number]> = [];
+    let unsubscribe = () => {};
+    try {
+      await act(async () => {
+        fixture.viewport.dispatchEvent(new Event("scroll"));
+        await Promise.resolve();
+      });
+      unsubscribe = fixture.controller.addScrollListener((distance, movement) =>
+        positions.push([distance, movement]),
+      );
+      expect(positions).toEqual([[100, 0]]);
+      positions.length = 0;
+      await act(async () => {
+        fixture.setScrollHeight(2_047);
+        fixture.viewport.dispatchEvent(new Event("scroll"));
+        fixture.viewport.scrollTop -= 8;
+        fixture.viewport.dispatchEvent(new Event("scroll"));
+        fixture.viewport.dispatchEvent(new Event("scroll"));
+        await Promise.resolve();
+      });
+      expect(positions).toEqual([
+        [147, 0],
+        [155, -8],
+        [155, 0],
+      ]);
+    } finally {
+      unsubscribe();
+      await fixture.dispose();
+    }
+  });
   test("a zero-displacement scroll event preserves the pending upward gesture at the bottom", async () => {
     const fixture = await renderNativeFindController();
     const displacements: Array<[number, number | undefined]> = [];

@@ -48,7 +48,10 @@ export interface ThreadScrollPositionSnapshot {
   scrollDistanceFromBottomPx: number;
 }
 
-export type ThreadScrollListener = (scrollDistanceFromBottomPx: number) => void;
+export type ThreadScrollListener = (
+  scrollDistanceFromBottomPx: number,
+  nativeMovementPx: number,
+) => void;
 export type ThreadUserScrollListener = (
   scrollDistanceFromBottomPx: number,
   previousScrollDistanceFromBottomPx?: number,
@@ -281,9 +284,12 @@ export function LocalConversationThreadScrollControllerProvider({
   const recordScrollDistance = useCallback((scrollDistanceFromBottomPx: number) => {
     if (roundedScrollRequestRef.current?.actual !== scrollDistanceFromBottomPx)
       roundedScrollRequestRef.current = null;
+    const nativeTop = scrollElementRef.current?.scrollTop ?? 0;
+    const nativeMovementPx = nativeTop - lastObservedScrollTopRef.current;
     lastScrollDistanceFromBottomPxRef.current = scrollDistanceFromBottomPx;
-    lastObservedScrollTopRef.current = scrollElementRef.current?.scrollTop ?? 0;
-    for (const listener of scrollListenersRef.current) listener(scrollDistanceFromBottomPx);
+    lastObservedScrollTopRef.current = nativeTop;
+    for (const listener of scrollListenersRef.current)
+      listener(scrollDistanceFromBottomPx, nativeMovementPx);
     setIsScrolledFromBottom(!isThreadScrollNearBottom({ scrollDistanceFromBottomPx }));
   }, []);
 
@@ -439,7 +445,7 @@ export function LocalConversationThreadScrollControllerProvider({
 
   const addScrollListener = useCallback((listener: ThreadScrollListener) => {
     scrollListenersRef.current.add(listener);
-    listener(lastScrollDistanceFromBottomPxRef.current);
+    listener(lastScrollDistanceFromBottomPxRef.current, 0);
     return () => {
       scrollListenersRef.current.delete(listener);
     };
