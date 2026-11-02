@@ -11,6 +11,81 @@
   <body>
     <main id="guests"></main>
     <script>
+      async function waitForGuest(guest, readyEvent, description, start) {
+        const startedAt = performance.now();
+        const lifecycle = [];
+        const eventNames = [
+          "did-attach",
+          "did-start-navigation",
+          "did-start-loading",
+          "load-commit",
+          "dom-ready",
+          "did-finish-load",
+          "did-stop-loading",
+          "did-fail-load",
+          "render-process-gone",
+          "destroyed",
+        ];
+        let timeout;
+        let onEvent;
+        const ready = new Promise((resolve, reject) => {
+          onEvent = (event) => {
+            const entry = {
+              event: event.type,
+              afterMs: Math.round(performance.now() - startedAt),
+            };
+            if (typeof event.url === "string") entry.url = event.url.slice(0, 512);
+            if (typeof event.isMainFrame === "boolean") entry.isMainFrame = event.isMainFrame;
+            if (event.type === "did-fail-load") {
+              entry.errorCode = event.errorCode;
+              entry.errorDescription = event.errorDescription.slice(0, 512);
+              entry.validatedURL = event.validatedURL.slice(0, 512);
+            }
+            if (event.type === "render-process-gone") {
+              entry.reason = event.details.reason;
+              entry.exitCode = event.details.exitCode;
+            }
+            lifecycle.push(entry);
+            if (lifecycle.length > 24) lifecycle.shift();
+            if (event.type === readyEvent) {
+              resolve();
+              return;
+            }
+            if (event.type === "did-fail-load" && event.isMainFrame) {
+              reject(new Error(`Main-frame load failed: ${event.errorCode} ${event.errorDescription}`));
+              return;
+            }
+            if (event.type === "render-process-gone") {
+              reject(new Error(`Guest renderer exited: ${event.details.reason} (${event.details.exitCode})`));
+              return;
+            }
+            if (event.type === "destroyed") reject(new Error("Guest WebContents was destroyed"));
+          };
+          for (const name of eventNames) guest.addEventListener(name, onEvent);
+          timeout = setTimeout(
+            () => reject(new Error(`Timed out waiting for ${readyEvent}`)),
+            10000,
+          );
+        });
+        try {
+          // Observe both promises immediately so native load rejection cannot orphan the waiter.
+          await Promise.all([ready, Promise.resolve().then(start)]);
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : String(error);
+          const diagnostic = JSON.stringify({
+            id: guest.id,
+            readyEvent,
+            connected: guest.isConnected,
+            src: (guest.getAttribute("src") ?? "").slice(0, 512),
+            lifecycle,
+          });
+          throw new Error(`${description}: ${reason}; lifecycle=${diagnostic}`, { cause: error });
+        } finally {
+          clearTimeout(timeout);
+          for (const name of eventNames) guest.removeEventListener(name, onEvent);
+        }
+      }
+
       window.browserPlatformFixture = {
         async createGuest(id, url) {
           const guest = document.createElement("webview");
@@ -21,18 +96,9 @@
             "webpreferences",
             "nodeIntegration=yes,contextIsolation=no,sandbox=no",
           );
-          const ready = new Promise((resolve, reject) => {
-            const timeout = setTimeout(
-              () => reject(new Error(`Timed out attaching ${id}`)),
-              10000,
-            );
-            guest.addEventListener("dom-ready", () => {
-              clearTimeout(timeout);
-              resolve();
-            }, { once: true });
+          await waitForGuest(guest, "dom-ready", `Attaching ${id}`, () => {
+            document.querySelector("#guests").append(guest);
           });
-          document.querySelector("#guests").append(guest);
-          await ready;
           return guest.getWebContentsId();
         },
         async execute(id, expression) {
@@ -43,18 +109,7 @@
         async load(id, url) {
           const guest = document.getElementById(id);
           if (!guest) throw new Error(`Missing guest ${id}`);
-          const ready = new Promise((resolve, reject) => {
-            const timeout = setTimeout(
-              () => reject(new Error(`Timed out loading ${url}`)),
-              10000,
-            );
-            guest.addEventListener("did-finish-load", () => {
-              clearTimeout(timeout);
-              resolve();
-            }, { once: true });
-          });
-          await guest.loadURL(url);
-          await ready;
+          await waitForGuest(guest, "did-finish-load", `Loading ${url}`, () => guest.loadURL(url));
         },
         remove(id) {
           document.getElementById(id)?.remove();

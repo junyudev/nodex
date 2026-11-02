@@ -101,6 +101,25 @@ describe("Browser Platform Electron substrate", () => {
         { url: `${origin}/second` },
       );
 
+      await expect(
+        page.evaluate(
+          async (url) =>
+            await (
+              window as unknown as {
+                browserPlatformFixture: BrowserPlatformFixture;
+              }
+            ).browserPlatformFixture.createGuest("missing", url),
+          pathToFileURL(path.join(userData, "missing-guest.html")).href,
+        ),
+      ).rejects.toThrow("Main-frame load failed: -6 ERR_FILE_NOT_FOUND");
+      await page.evaluate(() => {
+        (
+          window as unknown as {
+            browserPlatformFixture: BrowserPlatformFixture;
+          }
+        ).browserPlatformFixture.remove("missing");
+      });
+
       await page.evaluate(async () => {
         const fixture = (
           window as unknown as {
