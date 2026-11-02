@@ -1389,8 +1389,10 @@ fn compatibility_policy_reuses_while_electron_artifact_policy_replaces_without_a
     let incumbent_descriptor = read_ready_descriptor(&mut incumbent);
 
     if cfg!(windows) {
-        fs::rename(&old_bundle, old_bundle.with_extension("retired"))
-            .expect("retire the running app bundle after update");
+        // Windows refuses to move a directory while a running image inside it is open, but
+        // permits renaming the image itself; an update retires the old executable this way.
+        fs::rename(&old_executable, old_executable.with_extension("retired"))
+            .expect("retire the running Core executable after update");
     } else {
         fs::remove_dir_all(&old_bundle).expect("delete old app bundle after update");
     }
