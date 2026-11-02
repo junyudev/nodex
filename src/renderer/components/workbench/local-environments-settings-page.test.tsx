@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { NodexSettingsPageSurface } from "@/components/ui/settings";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import { installWindowApi } from "@/test/browser-globals";
-import { render } from "@/test/dom";
+import { render, settleAsyncRender } from "@/test/dom";
 import { TestQueryProvider } from "@/test/query";
 import type {
   Project,
@@ -151,6 +151,8 @@ describe("LocalEnvironmentsSettingsPage", () => {
 
   test("renders the environment-name summary with platform fallback and action disclosure", async () => {
     const view = renderPage();
+    // Commit the query notification before the first accessibility-tree lookup.
+    await settleAsyncRender();
     expect(await view.findByRole("heading", { level: 1, name: "Alpha environment" })).toBeTruthy();
     expect(view.getByRole("button", { name: "Edit local environment" })).toBeTruthy();
 
