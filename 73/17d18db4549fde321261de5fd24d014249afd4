@@ -1,0 +1,54 @@
+vitest.core-client.config.ts
+  s_6c9891f66c664a::t_a4de12d981d38b 13
+.github/workflows/windows.yml
+  s_6c9891f66c664a::t_7c3caf7dd06935 67-69,72-75,77,83
+  s_6c9891f66c664a::t_35f799c3a80e82 1,16
+  s_6c9891f66c664a::t_1c3f7114fe2f1b 5-10,21,53-66,80-82,88-96
+  s_6c9891f66c664a::t_16995fbb786c6f 70-71,76,78-79,84-87
+  s_6c9891f66c664a::t_056728005bc721 97-99
+src/main/core-client/agent-eval-cases.node.test.ts
+  s_6c9891f66c664a::t_794f9b1f65f1d3 1,75,98,118,147,171,198,259,289,378,408
+src/main/core-client/block-promotion-history-scenario.node.test.ts
+  s_6c9891f66c664a::t_794f9b1f65f1d3 1,115,227,311,484,556
+src/main/platform/node/NodexCliBootstrap.node.test.ts
+  s_6c9891f66c664a::t_a8cbb245750a19 295
+  s_6c9891f66c664a::t_5c595e6e4d35af 3,75-76,78,80,91,170,172,176-177,179,181,193,256,258,277-278,280,282,293,509,511
+  s_6c9891f66c664a::t_794f9b1f65f1d3 92,194,294
+src/main/codex-application/CodexThreadTargets.core-scenario.node.test.ts
+  s_6c9891f66c664a::t_794f9b1f65f1d3 1,65
+src/main/core-client/core-launcher.node.test.ts
+  s_6c9891f66c664a::t_aa7605076ce692 2,131-132,134,145,147-148,150-151,156,160,167,169,173,176,178,181,183,186,191,195,197
+src/main/codex-application/CodexVisualizationState.node.test.ts
+  s_6c9891f66c664a::t_3c44b70f14272a 26,42,149,159-163,188,191,193,209,211
+  s_6c9891f66c664a::t_a8cbb245750a19 2,27-35,38,40-41,44,47-51,53,170,174,194,199-200,202-203,208
+scripts/ci/windows-core-resource-sampler.ps1
+  s_6c9891f66c664a::t_34a536046cc66a 16,44
+  s_6c9891f66c664a::t_a4de12d981d38b 1-15,17-43,45-67
+scripts/ci/windows-core-abba.ps1
+  s_6c9891f66c664a::t_700ae5b9875fe5 77-90,109,113,123-124
+  s_6c9891f66c664a::t_a4de12d981d38b 1-28,31-32,34-76,91-108,110-111,114-122,125-128
+  s_6c9891f66c664a::t_cd2ee782775b55 29-30,33,112
+scripts/testing/core-worker-observation.ts
+  s_6c9891f66c664a::t_4ddf3a5aaf87b6 38-52,82-91,93-94
+  s_6c9891f66c664a::t_50b4aac67fc57b 15,19-23
+  s_6c9891f66c664a::t_a4de12d981d38b 1-14,16-18,24-37,53-55,59-75,78-81,92,95-96
+  s_6c9891f66c664a::t_16995fbb786c6f 56-58,76-77
+src/main/core-client/editor-history-scenario.node.test.ts
+  s_6c9891f66c664a::t_794f9b1f65f1d3 1,52,170
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7317d18db4549fde321261de5fd24d014249afd4",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
