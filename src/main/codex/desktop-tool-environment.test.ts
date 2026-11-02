@@ -10,6 +10,7 @@ import {
 } from "./desktop-tool-environment";
 
 const temporaryRoots: string[] = [];
+const ambientPath = path.dirname(process.execPath);
 
 afterEach(() => {
   for (const root of temporaryRoots.splice(0)) fs.rmSync(root, { force: true, recursive: true });
@@ -30,31 +31,24 @@ interface ObservedSandboxLaunch {
   readonly env: Readonly<Record<string, string>>;
 }
 
-/** Runs the launcher exactly as Codex starts the `node_repl` server, with a recording `codex`. */
+/** Runs the closed launcher with Node executing an owned recording sandbox entrypoint. */
 function launchNodeRepl(input: {
   readonly declared: Readonly<Record<string, string>>;
   readonly persisted: Readonly<Record<string, string>>;
 }): ObservedSandboxLaunch {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-node-repl-launcher-"));
   temporaryRoots.push(root);
-  const recorder = path.join(root, "record.cjs");
+  const recorder = path.join(root, "sandbox");
   fs.writeFileSync(
     recorder,
     [
-      "const env = { ...process.env };",
-      // Only the recording shell adds these; the launcher hands codex none of them.
-      'for (const name of ["OLDPWD", "PWD", "SHLVL", "_"]) delete env[name];',
-      "process.stdout.write(JSON.stringify({ argv: process.argv.slice(2), env }));",
+      // Node resolves its script argument; its basename retains the launched Codex subcommand.
+      'const subcommand = require("node:path").basename(process.argv[1]);',
+      "process.stdout.write(JSON.stringify({ argv: [subcommand, ...process.argv.slice(2)], env: process.env }));",
     ].join("\n"),
   );
-  const codex = path.join(root, "codex");
-  fs.writeFileSync(
-    codex,
-    `#!/bin/sh\nELECTRON_RUN_AS_NODE=1 exec ${JSON.stringify(process.execPath)} ${JSON.stringify(recorder)} "$@"\n`,
-    { mode: 0o755 },
-  );
   const definition = nodeReplServerDefinition({
-    codexCliPath: codex,
+    codexCliPath: process.execPath,
     env: input.declared,
     nodePath: process.execPath,
     nodeReplPath: "/runtime/bin/node_repl",
@@ -62,16 +56,19 @@ function launchNodeRepl(input: {
   // Codex starts MCP servers from its base variables plus the merged server environment, in which
   // Nodex's declared values win over the shared Codex home's persisted ones.
   const result = spawnSync(definition.command, definition.args, {
+    cwd: root,
     encoding: "utf8",
+    timeout: 10_000,
     // The Main suite runs on Electron, which acts as the vendor Node only in Node mode.
     env: {
       ELECTRON_RUN_AS_NODE: "1",
       HOME: os.homedir(),
-      PATH: "/usr/bin:/bin",
+      PATH: ambientPath,
       ...input.persisted,
       ...definition.env,
     },
   });
+  if (result.error) throw result.error;
   if (result.status !== 0) throw new Error(result.stderr || `launcher exited ${result.status}`);
   return JSON.parse(result.stdout) as ObservedSandboxLaunch;
 }
@@ -133,7 +130,7 @@ describe("node_repl launcher", () => {
       ...declared,
       HOME: os.homedir(),
       NODE_EXTRA_CA_CERTS: "/etc/ca.pem",
-      PATH: "/usr/bin:/bin",
+      PATH: ambientPath,
     });
     for (const name of [...Object.keys(foreignHostEnvironment), "SKY_CUA_SERVICE_PATH"]) {
       expect(env).not.toHaveProperty(name);
