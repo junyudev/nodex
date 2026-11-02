@@ -1,0 +1,26 @@
+scripts/probe-browser-runtime.ts
+  s_6c9891f66c664a::t_0a3dba25569b62 36-40,371-394,396-398,400-402,458,593-600,602
+  s_6c9891f66c664a::t_9d1497e53880f3 395,399
+scripts/probe-browser-runtime.test.ts
+  s_6c9891f66c664a::t_0a3dba25569b62 1-6,9-13,67-137,139-155
+  s_6c9891f66c664a::t_f9c87cc2509206 138
+  s_6c9891f66c664a::t_b82d6c98dda46c 156-157
+docs/development.md
+  s_6c9891f66c664a::t_0a3dba25569b62 1163-1171
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3e5e557180ba001ae6bc1dc13cce5bcb6ba90a93",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

@@ -1,0 +1,42 @@
+patches/@electron__asar@3.4.1.patch
+  s_6c9891f66c664a::t_3774f7137bcd3c 1-31
+patches/glob@7.2.3.patch
+  s_6c9891f66c664a::t_dbd675d5f0d63b 1-50
+scripts/dependency-glob-runtime.test.ts
+  s_6c9891f66c664a::t_375a0481fb8ed0 1,18,78-109
+  s_6c9891f66c664a::t_0f3ffb54af81cf 11-13
+  s_6c9891f66c664a::t_ffb819151c8d84 2-10,14-17,20-53,57-59,61-64,69-77,110-215
+  s_6c9891f66c664a::t_973149b352f464 19
+docs/development.md
+  s_6c9891f66c664a::t_a24adc35c67fa4 51-57
+  s_6c9891f66c664a::t_e6f162c10a19f2 910-915
+pnpm-workspace.yaml
+  s_6c9891f66c664a::t_de1a09a7c38a08 47-48,53-54
+  s_6c9891f66c664a::t_dbd675d5f0d63b 19
+  s_6c9891f66c664a::t_0f3ffb54af81cf 16,18
+  s_6c9891f66c664a::t_4777a19f88a76b 17
+patches/@redocly__openapi-core@1.34.17.patch
+  s_6c9891f66c664a::t_57267d1ca6d505 1-13
+patches/dir-compare@4.2.0.patch
+  s_6c9891f66c664a::t_3ad9d50e9c5c91 1-22
+pnpm-lock.yaml
+  s_6c9891f66c664a::t_60ca99cce0af9d 181,186,233,235,238-239,2831-2833,6965-6966,7889-7890,8204-8205,10317,10320-10321,10397,10400,10402,10541,10841-10842,11759,11767,11923,12781,13239,13271,13993,13995,14129,14303,14462,14608,14610,14612,14614,14619,15816,15818,16017,16206,16208,16704
+scripts/audit-rust-core-boundaries.ts
+  s_6c9891f66c664a::t_e6f162c10a19f2 166-167,181-182
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "63bbf3cd10759fb2de601d66df03402d132d550b",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
