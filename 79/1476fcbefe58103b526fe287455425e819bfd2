@@ -1,0 +1,28 @@
+scripts/scenarios/harness/core-scenario-test-observation.ts
+  s_6c9891f66c664a::t_b30e2ca0c7c5e0 1-27
+scripts/scenarios/harness/core-scenario-harness.ts
+  s_6c9891f66c664a::t_7b88499e36b0d4 22-30,82-86,88-93
+  s_6c9891f66c664a::t_b30e2ca0c7c5e0 9,21,31-42,54,77,80-81,87,94-97,99,110-111,116-117,124-125,131-132,134-135,151,153,158-159,164-165,168,172,175,184,186,193
+src/main/core-client/page-relocation-scenario.node.test.ts
+  s_6c9891f66c664a::t_7b88499e36b0d4 14-21,23-27,29-40,42-81,83-84,86-99,101-111,113-115,117-146,148-165,167-214
+  s_6c9891f66c664a::t_b30e2ca0c7c5e0 4,13
+src/main/core-client/editor-history-lifecycle-scenario.node.test.ts
+  s_6c9891f66c664a::t_b30e2ca0c7c5e0 3,14
+  s_6c9891f66c664a::t_7b88499e36b0d4 15-23,25-29,31-34,36,39-48,50-93,95-143,146-187,189-208,210-211
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "791476fcbefe58103b526fe287455425e819bfd2",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
