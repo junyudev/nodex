@@ -1,0 +1,33 @@
+docs/landing-site.md
+  s_777166bcf3bb6d::t_1dfe2759bea398 220-224
+packages/landing/src/demos/AgentsDemo.tsx
+  s_777166bcf3bb6d::t_ea0d816b5fe010 10,32,38-39,42-49,60-61,64-65,69
+packages/landing/src/demos/FanOutDemo.tsx
+  s_777166bcf3bb6d::t_fb0613bbb68b1f 7,22-25,52,56-57,62,66,68,71,240
+packages/landing/src/demos/HeroDemo.tsx
+  s_777166bcf3bb6d::t_8ddcd7797e0a28 109,113,146-149,151-152,160-161,167-168,180,190-192,207,228,231,762
+packages/landing/src/demos/PagesDemo.tsx
+  s_777166bcf3bb6d::t_c56de318f0f1b1 32,97-100,102-116,121
+packages/landing/src/demos/TidyDemo.tsx
+  s_777166bcf3bb6d::t_50125d418abde4 26,75-78,80-81,103,106,115,118-119,131
+packages/landing/src/demos/pacing.test.ts
+  s_777166bcf3bb6d::t_a1014e28882b89 1-40
+packages/landing/src/demos/timeline.ts
+  s_777166bcf3bb6d::t_c9e9ec10389505 54-75
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c439854f2e7b4f74875e127ea164b9d1441140d2",
+  "prompts": {},
+  "sessions": {
+    "s_777166bcf3bb6d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3c9cc3d5-2b9e-4920-9109-af7b95e0ea00",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
