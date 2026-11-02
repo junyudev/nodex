@@ -2704,6 +2704,8 @@ export function renderWorkbench({
     generatedAt: 1,
   });
   mockInvokeImpl = async (channel, ...args) => {
+    if (channel === "application-menu:snapshot") return { menus: [] };
+    if (channel === "electron-window:fullscreen:get") return false;
     if (channel === "persisted-atom:sync-request") return { revision: 0, values: {} };
     if (channel === "agent-runtime:providers:read")
       return [

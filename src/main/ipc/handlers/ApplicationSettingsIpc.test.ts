@@ -54,6 +54,8 @@ it.effect("owns the complete application settings ingress with the Main Scope", 
       on: () => Effect.void,
     });
     const menus = ApplicationMenuRuntime.of({
+      snapshot: () => Effect.succeed({ menus: [] }),
+      invoke: () => Effect.succeed(true),
       refresh: () => undefined,
       bindHistory: () => Effect.succeed(1),
       publishHistory: () => Effect.void,

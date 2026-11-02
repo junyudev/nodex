@@ -37,6 +37,7 @@ export default defineConfig(async () => ({
       "@base-ui/react/context-menu",
       "@base-ui/react/dialog",
       "@base-ui/react/menu",
+      "@base-ui/react/menubar",
       "@base-ui/react/popover",
       "@base-ui/react/scroll-area",
       "@base-ui/react/slider",

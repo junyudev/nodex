@@ -1,4 +1,5 @@
 /** Named layers for fixed or body-portalled surfaces that share the renderer root. */
+export const APP_SHELL_APPLICATION_MENU_LAYER_CLASS = "z-[44]";
 export const APP_SHELL_GLOBAL_HEADER_LAYER_CLASS = "z-[42]";
 export const APP_SHELL_RIGHT_PANEL_LAYER_CLASS = "z-[41]";
 export const APP_SHELL_RIGHT_PANEL_COMPOSER_OVERLAY_LAYER_CLASS = "z-[42]";

@@ -1940,7 +1940,9 @@ function formatChordLabel(chord: string, platform: RuntimePlatform): string {
       .map(formatMacModifierLabel);
     return `${modifierLabels.join("")}${keyLabel}`;
   }
-  const modifierLabels = parsed.modifiers.map(formatNonMacModifierLabel);
+  const modifierLabels = parsed.modifiers.map((modifier) =>
+    formatNonMacModifierLabel(modifier, platform),
+  );
   return [...modifierLabels, keyLabel].filter(Boolean).join("+");
 }
 
@@ -1952,9 +1954,9 @@ function formatMacModifierLabel(modifier: string): string {
   return modifier;
 }
 
-function formatNonMacModifierLabel(modifier: string): string {
+function formatNonMacModifierLabel(modifier: string, platform: RuntimePlatform): string {
   if (modifier === "CmdOrCtrl" || modifier === "Ctrl") return "Ctrl";
-  if (modifier === "Command") return "Meta";
+  if (modifier === "Command") return platform === "windows" ? "Win" : "Meta";
   if (modifier === "Alt") return "Alt";
   if (modifier === "Shift") return "Shift";
   return modifier;
@@ -1964,11 +1966,15 @@ function formatKeyLabel(key: string, platform: RuntimePlatform): string {
   const macOS = platform === "macOS";
   if (key === "Enter") return macOS ? "⏎" : "Enter";
   if (key === "Escape") return "Esc";
-  if (key === "LeftOption") return macOS ? "Left ⌥" : "Left Option";
-  if (key === "RightOption") return macOS ? "Right ⌥" : "Right Option";
+  if (key === "LeftOption")
+    return macOS ? "Left ⌥" : platform === "windows" ? "Left Alt" : "Left Option";
+  if (key === "RightOption")
+    return macOS ? "Right ⌥" : platform === "windows" ? "Right Alt" : "Right Option";
   if (key === "DoubleOption") return macOS ? "⌥ + ⌥" : "Double Option";
-  if (key === "LeftCommand") return macOS ? "Left ⌘" : "Left Command";
-  if (key === "RightCommand") return macOS ? "Right ⌘" : "Right Command";
+  if (key === "LeftCommand")
+    return macOS ? "Left ⌘" : platform === "windows" ? "Left Win" : "Left Command";
+  if (key === "RightCommand")
+    return macOS ? "Right ⌘" : platform === "windows" ? "Right Win" : "Right Command";
   if (key === "DoubleCommand") return macOS ? "⌘ + ⌘" : "Double Command";
   if (key === "LeftControl") return macOS ? "Left ⌃" : "Left Control";
   if (key === "RightControl") return macOS ? "Right ⌃" : "Right Control";

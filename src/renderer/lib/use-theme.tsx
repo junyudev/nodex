@@ -1,3 +1,4 @@
+import { synchronizeWindowAppearance } from "./application-menu";
 import { useCallback, useEffect, useLayoutEffect, type ReactNode } from "react";
 import { applyCodexThemeVariant, type CodexAccent } from "./codex-theme-variant";
 import {
@@ -109,6 +110,15 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   useLayoutEffect(() => {
     syncDocumentThemeClasses(value.resolved, value.accent);
   }, [value.resolved, value.accent]);
+
+  useEffect(() => {
+    if (document.documentElement.dataset.codexOs !== "win32" || !window.api) return;
+    const shellZoom =
+      Number.parseFloat(
+        getComputedStyle(document.documentElement).getPropertyValue("--codex-window-zoom"),
+      ) || 1;
+    void synchronizeWindowAppearance({ theme: value.theme, shellZoom }).catch(() => {});
+  }, [value.theme]);
 
   useEffect(() => {
     const onStorage = (event: StorageEvent) => {

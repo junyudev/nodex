@@ -245,3 +245,158 @@ it.effect("owns native menus and refreshes commands without replacing the runtim
     assert.isNull(dockMenus.at(-1));
   }),
 );
+
+it.effect("routes renderer menu commands to their requesting window and focused child", () =>
+  Effect.gen(function* () {
+    const reloaded: number[] = [];
+    const inputListeners = new Map<
+      number,
+      (event: Electron.Event, input: Electron.Input) => void
+    >();
+    const buildMenu = (items: MenuItemConstructorOptions[]): Menu => {
+      const nativeItems = items.map((item) => ({
+        ...item,
+        label: item.label ?? (item.role === "editMenu" ? "Edit" : (item.role ?? "")),
+        type: Array.isArray(item.submenu) ? "submenu" : (item.type ?? "normal"),
+        visible: item.visible ?? true,
+        enabled: item.enabled ?? true,
+        submenu: Array.isArray(item.submenu) ? buildMenu(item.submenu) : undefined,
+        click: (event: Electron.KeyboardEvent, window: BrowserWindow) => {
+          if (item.role === "reload") {
+            reloaded.push(window.webContents.id);
+            return;
+          }
+          item.click?.({} as never, window, event);
+        },
+      }));
+      const menu = {
+        items: nativeItems,
+        getMenuItemById: (id: string): unknown => {
+          for (const item of nativeItems) {
+            if (item.id === id) return item;
+            const child = item.submenu?.getMenuItemById(id);
+            if (child) return child;
+          }
+          return null;
+        },
+      };
+      return menu as unknown as Menu;
+    };
+    const sent: Array<{ id: number; channel: string }> = [];
+    const closed: number[] = [];
+    const removed: number[] = [];
+    const windowAt = (id: number) =>
+      ({
+        isDestroyed: () => false,
+        close: () => closed.push(id),
+        removeMenu: () => removed.push(id),
+        setAutoHideMenuBar: () => {},
+        webContents: {
+          id,
+          isDestroyed: () => false,
+          send: (channel: string) => sent.push({ id, channel }),
+        },
+      }) as unknown as BrowserWindow;
+    const first = windowAt(1);
+    const second = windowAt(2);
+    let focused: ReturnType<ApplicationMenuNativePort["getFocusedWebContents"]> = null;
+    const scope = yield* Scope.make();
+    const context = yield* Layer.buildWithScope(
+      live({
+        platform: "win32",
+        initialCommandKeymap: createCommandKeymapState({}, "windows"),
+        checkForUpdates: Effect.void,
+        isPackaged: false,
+        resourcesPath: "/resources",
+        requestNewWindow: () => {},
+        showMessage: () => Effect.succeed({ response: 0, checkboxChecked: false }),
+        windows: {
+          all: () => [first, second],
+          get: (id: number) => (id === 1 ? first : second),
+          getLastFocused: () => second,
+          events: Stream.never,
+        } as unknown as WindowRuntimeService,
+        native: {
+          shouldUseDarkColors: () => false,
+          getFocusedWebContents: () => focused,
+          buildFromTemplate: buildMenu,
+          subscribeToWindowInput: (window, listener) => {
+            inputListeners.set(window.webContents.id, listener);
+            return () => {
+              inputListeners.delete(window.webContents.id);
+            };
+          },
+          homePath: "/tmp",
+          isInApplicationsFolder: true,
+          setApplicationMenu: () => {},
+          setDockMenu: () => {},
+          subscribeToFocus: () => () => {},
+        },
+      }).pipe(Layer.provide(scopedCallbackRuntimeLive)),
+      scope,
+    );
+    const runtime = Context.get(context, ApplicationMenuRuntime);
+    const snapshot = yield* runtime.snapshot(1);
+    assert.deepEqual(
+      snapshot.menus.map((menu) => menu.label),
+      ["File", "Edit", "View", "Help"],
+    );
+    const close = snapshot.menus[0]!.items.find(
+      (item) => item.type !== "separator" && item.label === "Close Window",
+    )!;
+    assert.isFalse(yield* runtime.invoke(2, close.id));
+    assert.isTrue(yield* runtime.invoke(1, close.id));
+    assert.deepEqual(closed, [1]);
+    assert.deepEqual(removed, [1]);
+    let prevented = false;
+    const event = {
+      preventDefault: () => {
+        prevented = true;
+      },
+    } as Electron.Event;
+    const input = {
+      type: "keyDown",
+      key: "r",
+      code: "KeyR",
+      control: true,
+      shift: false,
+      alt: false,
+      meta: false,
+      isAutoRepeat: false,
+      isComposing: false,
+    } as Electron.Input;
+    inputListeners.get(1)?.(event, input);
+    assert.isTrue(prevented);
+    assert.deepEqual(reloaded, [1]);
+    inputListeners.get(1)?.(event, { ...input, isAutoRepeat: true });
+    assert.deepEqual(reloaded, [1]);
+    const generation = yield* runtime.bindHistory(1);
+    yield* runtime.publishHistory(1, { generation, sequence: 1, snapshot: null });
+    let undoCount = 0;
+    focused = {
+      id: 99,
+      hostWebContents: { id: 1 },
+      isDestroyed: () => false,
+      undo: () => {
+        undoCount++;
+      },
+      redo: () => {},
+      getZoomLevel: () => 0,
+      setZoomLevel: () => {},
+    };
+    const guestSnapshot = yield* runtime.snapshot(1);
+    const undo = guestSnapshot.menus[1]!.items.find(
+      (item) => item.type !== "separator" && item.label === "Undo",
+    )!;
+    assert.isTrue(yield* runtime.invoke(1, undo.id));
+    assert.strictEqual(undoCount, 1);
+    focused = { ...focused, hostWebContents: { id: 2 } };
+    assert.isTrue(yield* runtime.invoke(1, undo.id));
+    assert.strictEqual(undoCount, 1);
+    assert.deepEqual(sent, [{ id: 1, channel: "execute-focused-history" }]);
+    yield* runtime.snapshot(1);
+    assert.isFalse(yield* runtime.invoke(1, undo.id));
+    yield* Scope.close(scope, Exit.void);
+    assert.strictEqual(inputListeners.size, 0);
+  }),
+);

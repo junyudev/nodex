@@ -225,7 +225,7 @@ export function SettingsRouteShell({
   return (
     <div
       data-testid="settings-route-shell"
-      className="flex h-full min-h-0 w-full flex-1 text-(--foreground)"
+      className="flex h-full min-h-0 w-full flex-1 pt-[var(--app-shell-content-top-inset,0px)] text-(--foreground)"
       style={CODEX_SETTINGS_SHELL_STYLE}
     >
       <div

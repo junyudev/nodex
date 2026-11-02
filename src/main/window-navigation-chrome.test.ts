@@ -1,5 +1,8 @@
+import type { BrowserWindow } from "electron";
 import { describe, expect, test } from "vite-plus/test";
 import {
+  syncWindowNavigationChrome,
+  setWindowShellZoom,
   CODEX_TITLEBAR_OVERLAY_COLOR,
   resolveCodexTitleBarOptions,
   resolveCodexTitleBarOverlay,
@@ -27,9 +30,9 @@ describe("window navigation chrome", () => {
 
     expect(lightOverlay.color).toBe(CODEX_TITLEBAR_OVERLAY_COLOR);
     expect(lightOverlay.symbolColor).toBe("#1f1f1f");
-    expect(lightOverlay.height).toBe(44);
+    expect(lightOverlay.height).toBe(36);
     expect(darkOverlay.symbolColor).toBe("#ffffff");
-    expect(darkOverlay.height).toBe(66);
+    expect(darkOverlay.height).toBe(54);
   });
 
   test("selects platform-specific titlebar options", () => {
@@ -41,4 +44,25 @@ describe("window navigation chrome", () => {
     expect(windowsOptions.titleBarStyle).toBe("hidden");
     expect(linuxOptions.titleBarStyle).toBe("default");
   });
+});
+
+test("synchronizes native symbols and combined zoom independently for each Windows window", () => {
+  const overlays: unknown[] = [];
+  const makeWindow = (pageZoom: number) =>
+    ({
+      isDestroyed: () => false,
+      webContents: { isDestroyed: () => false, getZoomFactor: () => pageZoom },
+      setTitleBarOverlay: (overlay: unknown) => overlays.push(overlay),
+    }) as unknown as BrowserWindow;
+  const first = makeWindow(1.25);
+  const second = makeWindow(0.8);
+  setWindowShellZoom(first, 1.5);
+  syncWindowNavigationChrome(first, "win32", false);
+  syncWindowNavigationChrome(second, "win32", true);
+  syncWindowNavigationChrome(first, "win32", true);
+  expect(overlays).toEqual([
+    { color: "#00000000", symbolColor: "#1f1f1f", height: 68 },
+    { color: "#00000000", symbolColor: "#ffffff", height: 29 },
+    { color: "#00000000", symbolColor: "#ffffff", height: 68 },
+  ]);
 });

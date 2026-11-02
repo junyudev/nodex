@@ -1,3 +1,7 @@
+import { WorkbenchWorkspaceFrame } from "./workbench-workspace-frame";
+import type { CSSProperties } from "react";
+import { NodexApplicationMenubar } from "@/components/ui/application-menubar";
+import { WORKBENCH_APPLICATION_MENU_HEIGHT_PX } from "../../../shared/workbench-window-chrome";
 import { createLinkRouter, desktopLinkOpeningAdapter } from "@/lib/link-opening";
 import { LinkOpeningProvider } from "@/lib/web-link-navigation";
 import { createWorkbenchLinkPresenter, linkBrowserOwner } from "./workbench-link-opening";
@@ -40,6 +44,7 @@ import { ThreadSummaryToggleDensityContext } from "@/features/local-conversation
 import {
   WORKBENCH_NAVIGATION_RAIL_WIDTH_PX,
   WORKBENCH_TITLEBAR_HEIGHT_PX,
+  resolveWorkbenchWorkspaceInsets,
 } from "@/lib/workbench-shell-geometry";
 import { getWorkbenchPrimaryDestination } from "../../../shared/workbench-layout";
 import { WorkbenchEmptyRoute, WorkbenchRouteHost } from "./workbench-route-host";
@@ -136,7 +141,10 @@ import {
   useLocalConversationAccount,
   useLocalConversationConnection,
 } from "@/features/local-conversation";
-import { APP_SHELL_GLOBAL_HEADER_LAYER_CLASS } from "@/lib/app-shell-layers";
+import {
+  APP_SHELL_APPLICATION_MENU_LAYER_CLASS,
+  APP_SHELL_GLOBAL_HEADER_LAYER_CLASS,
+} from "@/lib/app-shell-layers";
 import { registerUserAttachmentImagePreviewOpener } from "@/lib/content-image";
 import { readDatabaseViewWindow, subscribeCodexPendingWorktreeWarnings } from "@/lib/api";
 import {
@@ -1762,6 +1770,10 @@ export function WorkbenchRuntime({
   const shellCanNavigateForward = workbenchWindow.canNavigateForward;
   const isMacPlatform =
     typeof navigator !== "undefined" && navigator.platform.toUpperCase().includes("MAC");
+  const applicationMenuBarEnabled =
+    typeof document !== "undefined" &&
+    document.documentElement.dataset.codexOs === "win32" &&
+    document.documentElement.dataset.codexWindowType === "electron";
   const {
     appShellHeaderEdgeScroll,
     appShellMainContentLayout,
@@ -1784,6 +1796,7 @@ export function WorkbenchRuntime({
     safeHeaderLeftWidth,
     safeHeaderRightWidth,
     shellBodySize,
+    workspaceHeaderLeft,
     shellMainContentWidth,
     shellWidthClass,
     threadSummaryPanelLayoutMode,
@@ -1794,6 +1807,7 @@ export function WorkbenchRuntime({
     bottomPanelRequestedHeight: bottomPanel?.size.heightPx ?? null,
     headerLeftWidth,
     isMacPlatform,
+    applicationMenuBarEnabled,
     reducedMotion,
     rightPanelFullWidth,
     rightPanelFullView,
@@ -3717,6 +3731,10 @@ export function WorkbenchRuntime({
 
   const executeWorkbenchCommand = useCallback(
     ({ commandId, source }: WorkbenchCommandInvocation): boolean => {
+      if (commandId === "settings") {
+        openSettings();
+        return true;
+      }
       if (commandId === CAPTURE_TO_INBOX_COMMAND_ID) return captureToInbox(source);
       if (commandId === TOGGLE_BOTTOM_PANEL_COMMAND_ID) {
         toggleActiveBottomPanel();
@@ -3728,7 +3746,7 @@ export function WorkbenchRuntime({
       }
       return false;
     },
-    [captureToInbox, toggleActiveBottomPanel, toggleActiveWorkspaceFullView],
+    [captureToInbox, openSettings, toggleActiveBottomPanel, toggleActiveWorkspaceFullView],
   );
 
   const commandPort = useMemo<WorkbenchCommandPort>(
@@ -3755,7 +3773,7 @@ export function WorkbenchRuntime({
         closeFocusedPanelTab(null, { respectActiveElementGuard: true });
       },
       execute: (commandId, source) => {
-        if (commandId === CAPTURE_TO_INBOX_COMMAND_ID) {
+        if (commandId === CAPTURE_TO_INBOX_COMMAND_ID || commandId === "settings") {
           return executeWorkbenchCommand({ commandId, source });
         }
         if (!selectedSessionDetailReady) {
@@ -3839,6 +3857,7 @@ export function WorkbenchRuntime({
   const forwardShortcutLabel = resolveWorkbenchNavigationShortcutLabel("forward", isMacPlatform);
   const windowNavigationChrome = (
     <div className="flex items-center gap-1.5" data-testid="workbench-window-navigation-chrome">
+      {applicationMenuBarEnabled ? sidebarCollapseControlButton : null}
       <WindowNavigationToolbarButton
         label={backCommand.label}
         shortcutLabel={backShortcutLabel}
@@ -3855,7 +3874,7 @@ export function WorkbenchRuntime({
       >
         <BackIcon className="icon-xs -scale-x-100" />
       </WindowNavigationToolbarButton>
-      {sidebarCollapseControlButton}
+      {applicationMenuBarEnabled ? null : sidebarCollapseControlButton}
     </div>
   );
 
@@ -3867,7 +3886,7 @@ export function WorkbenchRuntime({
         align="start"
         order={100}
       >
-        {windowNavigationChrome}
+        {applicationMenuBarEnabled ? null : windowNavigationChrome}
       </HeaderAction>
       {sidebarLogicalCollapsed ? (
         <HeaderAction
@@ -4067,6 +4086,7 @@ export function WorkbenchRuntime({
   // A content strip starting at the window's leading edge clears the collapsed sidebar's controls.
   const rightPanelHeaderStartInsetWidth =
     activePanelOwnerKey &&
+    !applicationMenuBarEnabled &&
     sidebarLogicalCollapsed &&
     (rightPanelFullView || sessionWorkspace?.contentSide === "left")
       ? Math.max(0, effectiveHeaderLeftWidth - WORKBENCH_NAVIGATION_RAIL_WIDTH_PX)
@@ -4106,9 +4126,7 @@ export function WorkbenchRuntime({
     !realSidebarMounted &&
     (peekArea !== null || floatingSidebarResizing);
   const showInlineSidebar = realSidebarMounted;
-  const applicationMenuBarEnabled =
-    typeof document !== "undefined" &&
-    document.documentElement.getAttribute("data-codex-window-chrome") === "application-menu";
+
   const floatingSidebarOuterClassName =
     getCodexSidebarFloatingOuterClassName(applicationMenuBarEnabled);
   const openResourceTargetInProject = useCallback(
@@ -4265,6 +4283,12 @@ export function WorkbenchRuntime({
     (activePanelOwnerKey != null ||
       destinationRouteShell != null ||
       pendingWorktreeRouteShell != null);
+  const workspaceHeaderVisible =
+    appShellHeaderCenterVisible || (!settingsPath && contentIssueCount > 0);
+  const workspaceInsets = resolveWorkbenchWorkspaceInsets(
+    applicationMenuBarEnabled,
+    workspaceHeaderVisible,
+  );
   const appShellHeaderActions = settingsPath
     ? null
     : pendingWorktreeRouteShell
@@ -5741,15 +5765,20 @@ export function WorkbenchRuntime({
                 }
                 tabIndex={-1}
                 data-workbench-shell
+                data-app-shell-application-menu-bar={applicationMenuBarEnabled ? "true" : undefined}
                 data-app-shell-frame
                 data-app-shell-page-surface="true"
                 className="relative flex flex-col text-token-text-primary browser:bg-token-side-bar-background"
                 style={
                   {
+                    "--app-shell-application-menu-height": `${applicationMenuBarEnabled ? WORKBENCH_APPLICATION_MENU_HEIGHT_PX : 0}px`,
+                    "--app-shell-workspace-top-inset": `${workspaceInsets.workspaceTop}px`,
+                    "--app-shell-surface-top-inset": `${workspaceInsets.surfaceTop}px`,
+                    "--app-shell-content-top-inset": `${workspaceInsets.contentTop}px`,
                     "--height-toolbar": `${WORKBENCH_TITLEBAR_HEIGHT_PX}px`,
                     "--height-titlebar": `${WORKBENCH_TITLEBAR_HEIGHT_PX}px`,
                     "--app-shell-navigation-rail-width": `${WORKBENCH_NAVIGATION_RAIL_WIDTH_PX}px`,
-                    "--spacing-token-safe-header-left": `${safeHeaderLeftWidth}px`,
+                    "--spacing-token-safe-header-left": `${applicationMenuBarEnabled ? 8 : safeHeaderLeftWidth}px`,
                     "--spacing-token-safe-header-right": `${safeHeaderRightWidth}px`,
                     "--app-shell-bottom-panel-height": bottomPanelAnimatedHeightCss,
                     width: "calc(100vw / var(--codex-window-zoom, 1))",
@@ -5775,14 +5804,37 @@ export function WorkbenchRuntime({
                     visibleTabIds={visibleProjectBrowserTabIds}
                   />
                 ) : null}
+                {applicationMenuBarEnabled ? (
+                  <div
+                    data-testid="workbench-application-menu-row"
+                    className={cn(
+                      "relative flex h-(--app-shell-application-menu-height) shrink-0 items-center gap-1 select-none",
+                      APP_SHELL_APPLICATION_MENU_LAYER_CLASS,
+                    )}
+                    style={
+                      {
+                        WebkitAppRegion: "drag",
+                        paddingLeft: safeHeaderLeftWidth,
+                        paddingRight: safeHeaderRightWidth,
+                      } as CSSProperties
+                    }
+                  >
+                    {windowNavigationChrome}
+                    <NodexApplicationMenubar />
+                    <div className="h-full min-w-0 flex-1" />
+                  </div>
+                ) : null}
                 <WorkbenchTitlebarProvider host={titlebarHost} active={!settingsPath}>
-                  <header
+                  <motion.header
                     ref={setTitlebarHost}
+                    style={{ left: workspaceHeaderLeft }}
                     data-testid="workbench-global-header"
                     data-workbench-titlebar
                     data-app-shell-header-edge-scroll={appShellHeaderEdgeScroll ? "true" : "false"}
+                    hidden={applicationMenuBarEnabled && !workspaceHeaderVisible}
                     className={cn(
-                      "app-header-tint draggable pointer-events-none fixed inset-x-0 top-0 flex h-toolbar min-w-0 items-center",
+                      applicationMenuBarEnabled && !workspaceHeaderVisible && "hidden",
+                      "app-header-tint draggable pointer-events-none fixed inset-x-0 top-(--app-shell-application-menu-height) flex h-toolbar min-w-0 items-center",
                       APP_SHELL_GLOBAL_HEADER_LAYER_CLASS,
                     )}
                   >
@@ -5842,18 +5894,13 @@ export function WorkbenchRuntime({
                       onMeasuredWidthChange={setHeaderRightWidth}
                       onMeasuredRailWidthChange={setHeaderRightRailWidth}
                     />
-                  </header>
+                  </motion.header>
 
-                  <div
-                    data-workbench-workspace-row
-                    className="relative flex min-h-0 min-w-0 flex-1 pt-(--height-toolbar)"
-                  >
-                    <div
-                      aria-hidden="true"
-                      data-app-shell-page-surface-shadow
-                      className="pointer-events-none absolute top-(--height-toolbar) right-1 bottom-1 left-(--app-shell-navigation-rail-width) rounded-(--app-shell-surface-radius) shadow-[var(--app-shell-page-surface-shadow)]"
-                    />
-                    <div className="shrink-0 pb-1">
+                  <WorkbenchWorkspaceFrame
+                    bodyRef={shellBodySize.ref}
+                    summaryLayout={threadSummaryPanelLayoutMode}
+                    widthClass={shellWidthClass}
+                    rail={
                       <WorkbenchAppRail
                         destination={getWorkbenchPrimaryDestination(workbenchWindow.location)}
                         onHome={workbenchWindow.selectHome}
@@ -5882,121 +5929,113 @@ export function WorkbenchRuntime({
                           />
                         }
                       />
-                    </div>
-                    <div className="relative flex min-h-0 min-w-0 flex-1 pr-1 pb-1">
-                      <div
-                        ref={shellBodySize.ref}
-                        data-app-shell-summary-layout={threadSummaryPanelLayoutMode}
-                        data-app-shell-width-class={shellWidthClass}
-                        className="relative flex max-h-full min-h-0 min-w-0 flex-1"
-                      >
-                        <WorkbenchRouteHost
-                          location={workbenchWindow.location}
-                          sidebarMounted={realSidebarMounted}
-                          settings={settingsRouteShell}
-                          sidebar={
-                            <WorkbenchSidebar
-                              destination={getWorkbenchPrimaryDestination(workbenchWindow.location)}
-                              body={sidebarBody}
-                              scheduled={scheduledSidebarNavigation}
-                              customize={customizeNavigation}
-                              inline={{
-                                visible: showInlineSidebar,
-                                animatedWidth: realSidebarMotion.animatedWidth,
-                                contentOpacity: realSidebarMotion.opacity,
-                                resizeDisabled: sidebarAnimating,
-                              }}
-                              floating={{
-                                visible: showFloatingSidebar,
-                                destination:
-                                  peekDestination ??
-                                  getWorkbenchPrimaryDestination(workbenchWindow.location),
-                                outerClassName: floatingSidebarOuterClassName,
-                                resizing: floatingSidebarResizing,
-                                reducedMotion: Boolean(reducedMotion),
-                                onResizeActiveChange: setFloatingSidebarResizing,
-                                onHoverSurfaceOpenChange: setPeekMenuOpen,
-                              }}
-                            />
-                          }
-                          pendingWorktree={{
-                            content: () => (
-                              <WorkbenchSessionScopePath
-                                thread={resolvePendingThreadScopeDescriptor(
-                                  threadScopeIdentityRegistry,
-                                  pendingWorktreeClientThreadId!,
-                                  resolvePendingProjectSessionId(
-                                    pendingWorktrees,
-                                    pendingWorktreeClientThreadId,
-                                  ),
-                                )}
-                                route={{
-                                  routeKey: `/pending-worktree?clientThreadId=${encodeURIComponent(pendingWorktreeClientThreadId!)}`,
-                                  kind: "pending-worktree",
-                                }}
-                                selected
-                              >
-                                {pendingWorktreeRouteShell}
-                              </WorkbenchSessionScopePath>
-                            ),
+                    }
+                  >
+                    <WorkbenchRouteHost
+                      location={workbenchWindow.location}
+                      sidebarMounted={realSidebarMounted}
+                      settings={settingsRouteShell}
+                      sidebar={
+                        <WorkbenchSidebar
+                          destination={getWorkbenchPrimaryDestination(workbenchWindow.location)}
+                          body={sidebarBody}
+                          scheduled={scheduledSidebarNavigation}
+                          customize={customizeNavigation}
+                          inline={{
+                            visible: showInlineSidebar,
+                            animatedWidth: realSidebarMotion.animatedWidth,
+                            contentOpacity: realSidebarMotion.opacity,
+                            resizeDisabled: sidebarAnimating,
                           }}
-                          automations={{
-                            content: () =>
-                              scheduledRunPresented ? (
-                                activeSessionRoute
-                              ) : (
-                                <WorkbenchSessionScopePath
-                                  thread={APP_SHELL_ROUTE_THREAD_SCOPE_DESCRIPTOR}
-                                  route={{ routeKey: automationsPath!, kind: "automations" }}
-                                  selected
-                                >
-                                  {automationsRouteShell}
-                                </WorkbenchSessionScopePath>
-                              ),
-                          }}
-                          plugins={{
-                            content: () => (
-                              <WorkbenchSessionScopePath
-                                thread={APP_SHELL_ROUTE_THREAD_SCOPE_DESCRIPTOR}
-                                route={{ routeKey: pluginsPath!, kind: "plugins" }}
-                                selected
-                              >
-                                {pluginsRouteShell}
-                              </WorkbenchSessionScopePath>
-                            ),
-                          }}
-                          session={{
-                            content: () =>
-                              projectSceneRoute ??
-                              librarySceneRoute ??
-                              activeSessionRoute ?? (
-                                <WorkbenchEmptyRoute
-                                  activeProjectId={activeProjectId}
-                                  projectCatalogError={projectCatalogError}
-                                  onRetryProjects={onRetryProjects}
-                                  onStartProjectlessChat={() => {
-                                    void startNewChatInProject(null);
-                                  }}
-                                />
-                              ),
-                            afterMain: pageStageHistoryPanelProjectId ? (
-                              <HistoryPanel
-                                projectId={pageStageHistoryPanelProjectId}
-                                pageId={pageStageHistoryModal?.pageId ?? null}
-                                pageTitle={pageStageHistoryModal?.pageTitle}
-                                pageMarkdown={pageStageHistoryModal?.pageMarkdown}
-                                projectWorkspacePath={projectWorkspaceRootOrNull(
-                                  pageStageHistoryModalProject,
-                                )}
-                                open={pageStageHistoryModal !== null}
-                                onClose={closePageStageHistoryModal}
-                              />
-                            ) : null,
+                          floating={{
+                            visible: showFloatingSidebar,
+                            destination:
+                              peekDestination ??
+                              getWorkbenchPrimaryDestination(workbenchWindow.location),
+                            outerClassName: floatingSidebarOuterClassName,
+                            resizing: floatingSidebarResizing,
+                            reducedMotion: Boolean(reducedMotion),
+                            onResizeActiveChange: setFloatingSidebarResizing,
+                            onHoverSurfaceOpenChange: setPeekMenuOpen,
                           }}
                         />
-                      </div>
-                    </div>
-                  </div>
+                      }
+                      pendingWorktree={{
+                        content: () => (
+                          <WorkbenchSessionScopePath
+                            thread={resolvePendingThreadScopeDescriptor(
+                              threadScopeIdentityRegistry,
+                              pendingWorktreeClientThreadId!,
+                              resolvePendingProjectSessionId(
+                                pendingWorktrees,
+                                pendingWorktreeClientThreadId,
+                              ),
+                            )}
+                            route={{
+                              routeKey: `/pending-worktree?clientThreadId=${encodeURIComponent(pendingWorktreeClientThreadId!)}`,
+                              kind: "pending-worktree",
+                            }}
+                            selected
+                          >
+                            {pendingWorktreeRouteShell}
+                          </WorkbenchSessionScopePath>
+                        ),
+                      }}
+                      automations={{
+                        content: () =>
+                          scheduledRunPresented ? (
+                            activeSessionRoute
+                          ) : (
+                            <WorkbenchSessionScopePath
+                              thread={APP_SHELL_ROUTE_THREAD_SCOPE_DESCRIPTOR}
+                              route={{ routeKey: automationsPath!, kind: "automations" }}
+                              selected
+                            >
+                              {automationsRouteShell}
+                            </WorkbenchSessionScopePath>
+                          ),
+                      }}
+                      plugins={{
+                        content: () => (
+                          <WorkbenchSessionScopePath
+                            thread={APP_SHELL_ROUTE_THREAD_SCOPE_DESCRIPTOR}
+                            route={{ routeKey: pluginsPath!, kind: "plugins" }}
+                            selected
+                          >
+                            {pluginsRouteShell}
+                          </WorkbenchSessionScopePath>
+                        ),
+                      }}
+                      session={{
+                        content: () =>
+                          projectSceneRoute ??
+                          librarySceneRoute ??
+                          activeSessionRoute ?? (
+                            <WorkbenchEmptyRoute
+                              activeProjectId={activeProjectId}
+                              projectCatalogError={projectCatalogError}
+                              onRetryProjects={onRetryProjects}
+                              onStartProjectlessChat={() => {
+                                void startNewChatInProject(null);
+                              }}
+                            />
+                          ),
+                        afterMain: pageStageHistoryPanelProjectId ? (
+                          <HistoryPanel
+                            projectId={pageStageHistoryPanelProjectId}
+                            pageId={pageStageHistoryModal?.pageId ?? null}
+                            pageTitle={pageStageHistoryModal?.pageTitle}
+                            pageMarkdown={pageStageHistoryModal?.pageMarkdown}
+                            projectWorkspacePath={projectWorkspaceRootOrNull(
+                              pageStageHistoryModalProject,
+                            )}
+                            open={pageStageHistoryModal !== null}
+                            onClose={closePageStageHistoryModal}
+                          />
+                        ) : null,
+                      }}
+                    />
+                  </WorkbenchWorkspaceFrame>
                 </WorkbenchTitlebarProvider>
               </motion.div>
             </ContentSearchProvider>

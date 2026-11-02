@@ -1512,6 +1512,16 @@ export interface IpcApi
     args: [input: UpdateThreadNotificationSettingsInput];
     result: ThreadNotificationSettings;
   };
+  "application-menu:snapshot": {
+    args: [];
+    result: import("./application-menu").ApplicationMenuSnapshot;
+  };
+  "application-menu:invoke": { args: [itemId: string]; result: boolean };
+  "window:appearance:sync": {
+    args: [input: import("./application-menu").WindowAppearanceInput];
+    result: void;
+  };
+  "electron-window:fullscreen:get": { args: []; result: boolean };
   "electron-window:focus:get": { args: []; result: boolean };
   "surface-history:bind": { args: []; result: number };
   "surface-history:publish": {
@@ -3144,6 +3154,7 @@ export interface IpcEvents {
   "usage-meter-settings-changed": import("./usage-meter-settings").UsageMeterSettings;
   "composer-prediction-settings-changed": import("./composer-prediction-settings").ComposerPredictionSettings;
   "desktop-notification:action": DesktopNotificationActionInvocation;
+  "electron-window:fullscreen-changed": { fullscreen: boolean };
   "electron-window:focus-changed": { isFocused: boolean };
   "electron-window-opaque-surface-changed": {
     opaqueWindowSurfaceEnabled: boolean;
