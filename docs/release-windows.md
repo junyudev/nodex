@@ -40,7 +40,8 @@ uninstall preserves it. `vp run sync:icons` derives `resources/icon.ico` from
 the committed PNG icon through the pinned packager's icon tooling.
 
 NSIS runs installation-scoped process shutdown before replacing or removing any
-payload files, including when the incoming installer invokes an older uninstaller.
+payload files. Before install-over, it refreshes the installed maintenance
+uninstaller from the incoming installer, so older process checks cannot run.
 It extracts its own maintenance Core and PowerShell script outside the installation.
 The desktop gets a short ordinary-close window, then each detached Core receives
 an authenticated shutdown for the PID discovered under that installation. Core

@@ -17,6 +17,19 @@
     SetErrorLevel 2
     Abort "Close Nodex processes from this installation and try again."
   ${EndIf}
+  !ifndef BUILD_UNINSTALLER
+    ; Older uninstallers can use name-wide or prefix-only process checks.
+    ; Keep install-over maintenance under the incoming installer's scoped rules.
+    ${If} ${FileExists} "$INSTDIR\${UNINSTALL_FILENAME}"
+      SetOverwrite on
+      ClearErrors
+      File "/oname=$INSTDIR\${UNINSTALL_FILENAME}" "${UNINSTALLER_OUT_FILE}"
+      ${If} ${Errors}
+        SetErrorLevel 2
+        Abort "Nodex could not prepare installation maintenance."
+      ${EndIf}
+    ${EndIf}
+  !endif
 !macroend
 
 !macro customInstall
