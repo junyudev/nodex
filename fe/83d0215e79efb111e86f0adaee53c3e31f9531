@@ -1,0 +1,21 @@
+src/main/application-menu-snapshot.test.ts
+  s_f8f93aacc1805d::t_2f3afd09a03878 62-69,72
+src/main/application-menu-snapshot.ts
+  s_f8f93aacc1805d::t_a801c425f0327c 75-76
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fe83d0215e79efb111e86f0adaee53c3e31f9531",
+  "prompts": {},
+  "sessions": {
+    "s_f8f93aacc1805d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19b4b-b89b-74b2-a4da-0926951bf228",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
