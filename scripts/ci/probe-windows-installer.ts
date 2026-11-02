@@ -1,4 +1,4 @@
-import { execFileSync, type ChildProcess } from "node:child_process";
+import { execFile, execFileSync, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
 import {
@@ -12,6 +12,7 @@ import {
 } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import { _electron, type ElectronApplication } from "playwright";
 import { desktopBuildTarget } from "../desktop-build-target";
 import { terminateWindowsProcessTree } from "../../src/main/process-tree";
@@ -32,6 +33,8 @@ import {
 } from "../../src/shared/agent-runtime-startup-evidence";
 
 const delay = (ms: number) => new Promise<void>((resolveDelay) => setTimeout(resolveDelay, ms));
+// Maintenance must let the host drain owned pipes and release exited process handles.
+const runMaintenance = promisify(execFile);
 const failureDetails = (error: unknown): string =>
   error instanceof Error ? (error.stack ?? error.message) : String(error);
 const protocolKey = "HKCU\\Software\\Classes\\nodex";
@@ -191,7 +194,7 @@ $uninstaller = Start-Process -FilePath $env:NODEX_PROBE_UNINSTALLER -ArgumentLis
 exit $uninstaller.ExitCode
 `;
         const uninstallStarted = Date.now();
-        execFileSync(
+        await runMaintenance(
           "powershell.exe",
           [
             "-NoProfile",
@@ -201,7 +204,6 @@ exit $uninstaller.ExitCode
           ],
           {
             env: { ...process.env, NODEX_PROBE_UNINSTALLER: join(installRoot, uninstallers[0]!) },
-            stdio: "inherit",
             timeout: 30_000,
           },
         );
@@ -283,8 +285,7 @@ exit $uninstaller.ExitCode
     );
   };
   try {
-    execFileSync(resolve("dist", installers[0]!), ["/S", "/currentuser"], {
-      stdio: "inherit",
+    await runMaintenance(resolve("dist", installers[0]!), ["/S", "/currentuser"], {
       timeout: 180_000,
     });
     installed = true;
@@ -459,8 +460,7 @@ exit $uninstaller.ExitCode
     await launchInstalled();
     const oldCorePid = await forceDesktopLeavingCore();
     const upgradeStarted = Date.now();
-    execFileSync(resolve("dist", installers[0]!), ["/S", "/currentuser"], {
-      stdio: "inherit",
+    await runMaintenance(resolve("dist", installers[0]!), ["/S", "/currentuser"], {
       timeout: 180_000,
     });
     assertProcessStopped(oldCorePid);
