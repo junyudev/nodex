@@ -36,8 +36,9 @@ test.skipIf(process.platform !== "win32")(
       expect(native.node.architecture).toBe(process.arch);
       expect(materializeAgentRuntimeNative(root)).toEqual(native);
       expect(
-        verifyWindowsArchitectureClosure(native.packageRoot, process.arch as "x64" | "arm64")
-          .length,
+        verifyWindowsArchitectureClosure(native.packageRoot, process.arch as "x64" | "arm64", {
+          nodeHost: process.execPath,
+        }).length,
       ).toBeGreaterThan(3);
       execFileSync(process.execPath, ["-e", "require(process.argv[1])", native.packageRoot]);
       const before = readFileSync(require.resolve("node-pty/package.json"));

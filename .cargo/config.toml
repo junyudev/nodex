@@ -4,3 +4,8 @@ RUST_TEST_THREADS = { value = "2", force = false }
 
 [target.aarch64-apple-darwin]
 rustflags = ["-C", "link-arg=-mmacosx-version-min=15.0"]
+
+# Installed Windows binaries must load without a machine-wide VC++ Redistributable.
+# cfg covers every MSVC architecture, including native C/C++ built by cc-rs.
+[target.'cfg(all(target_os = "windows", target_env = "msvc"))']
+rustflags = ["-C", "target-feature=+crt-static"]

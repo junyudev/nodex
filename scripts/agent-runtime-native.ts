@@ -240,7 +240,9 @@ export function materializeAgentRuntimeNative(root: string): AgentRuntimeNative 
       );
       if (node.architecture !== "x64" && node.architecture !== "arm64")
         throw new Error("Unsupported Windows Node architecture");
-      verifyWindowsArchitectureClosure(builtPackage, node.architecture);
+      verifyWindowsArchitectureClosure(builtPackage, node.architecture, {
+        nodeHost: node.executable,
+      });
     } else {
       cpSync(packageRoot, source, {
         recursive: true,

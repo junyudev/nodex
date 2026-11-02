@@ -8,6 +8,7 @@ import { randomUUID } from "node:crypto";
 import * as Effect from "effect/Effect";
 import * as Cause from "effect/Cause";
 import { assert, it } from "@effect/vitest";
+import { CoreStartupError } from "../../core-client/core-launcher";
 import { MainApplicationError } from "../../app/MainExit";
 import { makeMainFatalIncident } from "../../app/MainFatalIncident";
 import {
@@ -124,5 +125,55 @@ it.live("rejects an oversized incident before publishing any record", () =>
     );
     assert.strictEqual(result._tag, "Failure");
     assert.deepEqual(yield* Effect.promise(() => readdir(home)), []);
+  }),
+);
+
+it.live("persists bounded non-secret Windows startup evidence when Core cannot execute", () =>
+  Effect.gen(function* () {
+    if (process.platform !== "win32") return;
+    const home = yield* profile;
+    const value = makeMainFatalIncident(
+      {
+        _tag: "Failure",
+        phase: "startup",
+        cause: Cause.fail(
+          new MainApplicationError({
+            phase: "startup",
+            operation: "core",
+            cause: new CoreStartupError(new Error("private stderr credential"), {
+              code: -1073741515,
+              error: null,
+            }),
+          }),
+        ),
+      },
+      { failures: [] },
+      { id: randomUUID(), occurredAt: "2026-11-02T00:00:00.000Z", appVersion: "0.5.0" },
+    );
+    const store = yield* MainFatalIncidentStore.pipe(
+      Effect.provide(layerForHome(home, path.join(home, "missing-core.exe"))),
+    );
+    let latest = "";
+    for (let index = 0; index < MAX_FATAL_INCIDENT_FILES + 1; index += 1)
+      latest = yield* store.write({ ...value, id: randomUUID() });
+    const record = JSON.parse(yield* Effect.promise(() => readFile(latest, "utf8")));
+    assert.deepEqual(record, {
+      version: 1,
+      id: record.id,
+      occurredAt: value.occurredAt,
+      reason: "core-startup-failed",
+      executable: "nodex-core.exe",
+      exitCode: -1073741515,
+      windowsStatus: "0xC0000135",
+    });
+    assert.strictEqual(path.dirname(latest), path.join(home, "diagnostics/startup"));
+    assert.strictEqual(
+      (yield* Effect.promise(() => readdir(path.dirname(latest)))).length,
+      MAX_FATAL_INCIDENT_FILES,
+    );
+    assert.deepEqual(
+      yield* Effect.promise(() => readdir(path.join(home, "diagnostics/fatal"))),
+      [],
+    );
   }),
 );

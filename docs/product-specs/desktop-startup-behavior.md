@@ -76,6 +76,13 @@ After React takes ownership of the document, a failed surface import or render r
 in-application Nodex mark and `Restart Nodex` action. A failed initial surface reports startup
 failure; a failure in a later optional surface retains the surrounding Workbench.
 
+Desktop retains bounded failure evidence as soon as initialization fails, even if
+Core cannot execute and verbose logging is disabled. A trusted owned renderer can
+query `app:startup-failure-evidence` for the incident ID and local diagnostic path;
+this query requires no Core connection and changes no visible failure presentation.
+Windows storage and loader evidence are specified in the
+[Windows runbook](../release-windows.md#startup-failure-evidence).
+
 ## Invariants
 
 - Normal startup has no temporary BrowserWindow, startup-only preload, or startup renderer route.

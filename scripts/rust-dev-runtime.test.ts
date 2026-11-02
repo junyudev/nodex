@@ -373,6 +373,10 @@ test.skipIf(process.platform === "win32")(
         NODEX_CORE_EXECUTABLE: rustDevRuntimeExecutable(root, "nodex-core"),
       },
     } as const;
+    write(
+      path.join(root, ".cargo/config.toml"),
+      readFileSync(new URL("../.cargo/config.toml", import.meta.url), "utf8"),
+    );
     expect(usesSharedRustDevRuntime(context)).toBe(true);
     expect(usesSharedRustDevRuntime({ ...context, platform: "linux" })).toBe(false);
     expect(usesSharedRustDevRuntime({ ...context, architecture: "x64" })).toBe(false);

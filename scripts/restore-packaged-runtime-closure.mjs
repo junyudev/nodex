@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { constants, copyFileSync, lstatSync, readFileSync } from "node:fs";
 import path from "node:path";
 
+import { stageWindowsVcRuntime } from "./windows-vc-runtime.mjs";
 import { verifyWindowsArchitectureClosure } from "./windows-pe.mjs";
 
 import { assertPackagedAgentRuntimeNative } from "./agent-runtime-native-inventory.mjs";
@@ -140,7 +141,10 @@ export default async function restorePackagedRuntimeClosure(context) {
     // electron-builder Arch: x64=1, arm64=3. Reject every other target.
     const arch = context.arch === 1 ? "x64" : context.arch === 3 ? "arm64" : null;
     if (!arch) throw new Error(`Unsupported Windows package architecture: ${context.arch}`);
-    const files = verifyWindowsArchitectureClosure(appPath, arch);
+    stageWindowsVcRuntime(appPath, arch);
+    const files = verifyWindowsArchitectureClosure(appPath, arch, {
+      nodeHost: path.join(appPath, "Nodex.exe"),
+    });
     console.log(`Verified ${files.length} Windows ${arch} native images.`);
     return;
   }

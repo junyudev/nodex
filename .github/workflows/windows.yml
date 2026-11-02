@@ -132,7 +132,7 @@ jobs:
       - name: Stage Windows native runtime
         if: inputs.installer_run_id == ''
         run: vp run stage:native-runtime:win:${{ matrix.arch }}
-      - name: Verify staged runtime architecture
+      - name: Verify staged CPU and clean-machine dependencies
         if: inputs.installer_run_id == ''
         run: |
           vp run verify:runtime:win .generated/codex-runtime ${{ matrix.arch }}

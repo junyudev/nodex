@@ -13,6 +13,7 @@ import {
   WindowSessionBoundsSchema,
   WindowSessionSaveLayoutInputSchema,
 } from "../../../shared/schemas/window-session";
+import { MainObservability } from "../../app/MainObservability";
 import { MainConfig } from "../../app/MainConfig";
 import { MainShutdown } from "../../app/MainShutdown";
 import { ApplicationInitializationRuntime } from "../../host-runtime/ApplicationInitializationRuntime";
@@ -61,12 +62,14 @@ export const live: Layer.Layer<
   | ApplicationWindowShellRuntime
   | ElectronIpc
   | MainConfig
+  | MainObservability
   | MainShutdown
   | WindowRuntime
 > = Layer.effect(
   ApplicationBootstrapIpc,
   Effect.gen(function* () {
     const config = yield* MainConfig;
+    const observability = yield* MainObservability;
     const initialization = yield* ApplicationInitializationRuntime;
     const ipc = yield* ElectronIpc;
     const shutdown = yield* MainShutdown;
@@ -89,6 +92,11 @@ export const live: Layer.Layer<
         catch: (cause) => new ApplicationBootstrapIpcError({ operation, cause }),
       });
 
+    yield* ipc.handleQuery("app:startup-failure-evidence", (event) =>
+      authorize(event, "Startup failure evidence").pipe(
+        Effect.andThen(observability.startupFailureEvidence),
+      ),
+    );
     yield* ipc.handleQuery("app:await-initialization", (event) =>
       authorize(event, "Application initialization").pipe(
         Effect.andThen(

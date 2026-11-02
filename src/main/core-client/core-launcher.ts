@@ -18,6 +18,31 @@ const MAX_SELECTION_STDOUT_LINE_CHARS = 64 * 1024;
 const MAX_STARTUP_EVENT_COUNT = 512;
 const CANDIDATE_TERMINATION_GRACE_MS = 2_000;
 
+/** Structured loader evidence; raw stderr and executable paths never enter incidents. */
+export class CoreStartupError extends Error {
+  readonly executable = process.platform === "win32" ? "nodex-core.exe" : "nodex-core";
+  readonly reason: "spawn" | "exit" | "startup";
+  readonly exitCode: number | null;
+  readonly windowsStatus: string | null;
+  readonly spawnCode: string | null;
+
+  constructor(
+    cause: unknown,
+    exit: { readonly code: number | null; readonly error: Error | null },
+  ) {
+    super(cause instanceof Error ? cause.message : "Native Rust Core startup failed", { cause });
+    this.name = "CoreStartupError";
+    this.reason = exit.error ? "spawn" : exit.code !== null ? "exit" : "startup";
+    this.exitCode = exit.code;
+    this.windowsStatus =
+      process.platform === "win32" && exit.code !== null
+        ? `0x${(exit.code >>> 0).toString(16).padStart(8, "0").toUpperCase()}`
+        : null;
+    const code = exit.error && "code" in exit.error ? exit.error.code : null;
+    this.spawnCode = typeof code === "string" && /^E[A-Z0-9_]{1,30}$/u.test(code) ? code : null;
+  }
+}
+
 export interface ResolveCoreExecutableInput {
   readonly appResourcesPath?: string;
   readonly environment?: NodeJS.ProcessEnv;
@@ -406,9 +431,14 @@ export async function connectOrStartCore(
   const launchStartedAt = performance.now();
   requireAbsolutePath(input.nodexHome, "Nodex home");
   const executablePath = resolveCoreExecutable(input);
-  validateCoreExecutable(executablePath);
   const artifactValidationStartedAt = performance.now();
-  const expectedArtifactDigest = expectedCoreArtifactDigest(input, executablePath);
+  let expectedArtifactDigest: string;
+  try {
+    validateCoreExecutable(executablePath);
+    expectedArtifactDigest = expectedCoreArtifactDigest(input, executablePath);
+  } catch (cause) {
+    throw new CoreStartupError(cause, { code: null, error: cause instanceof Error ? cause : null });
+  }
   const artifactValidationMs = performance.now() - artifactValidationStartedAt;
   throwIfAborted(input.signal);
   const child = spawn(
@@ -548,7 +578,11 @@ export async function connectOrStartCore(
       cause: lastConnectionError,
     });
   } catch (error) {
-    return terminateAfterStartupFailure(child, exit, error);
+    return terminateAfterStartupFailure(
+      child,
+      exit,
+      input.signal?.aborted ? error : new CoreStartupError(error, exit),
+    );
   }
 }
 
