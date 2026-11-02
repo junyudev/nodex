@@ -191,9 +191,7 @@ test.skipIf(process.platform !== "win32")(
     const arch = process.arch;
     if (arch !== "x64" && arch !== "arm64") throw new Error(`Unsupported Windows CPU ${arch}`);
     const require = createRequire(import.meta.url);
-    const sdkRequire = createRequire(
-      require.resolve("@anthropic-ai/claude-agent-sdk/package.json"),
-    );
+    const sdkRequire = createRequire(require.resolve("@anthropic-ai/claude-agent-sdk"));
     const root = dirname(
       sdkRequire.resolve(`@anthropic-ai/claude-agent-sdk-win32-${arch}/package.json`),
     );
