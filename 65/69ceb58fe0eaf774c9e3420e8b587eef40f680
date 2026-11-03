@@ -1,0 +1,35 @@
+src/renderer/components/board/editor/nfm-code-block.browser.test.tsx
+  s_6c9891f66c664a::t_495e9bfeb41fd2 4,33-34,37
+src/renderer/components/board/editor/nfm-formatting-toolbar.browser.test.tsx
+  s_6c9891f66c664a::t_495e9bfeb41fd2 4,8-9,15
+  s_6c9891f66c664a::t_af86a5af6d86dc 16
+src/renderer/components/board/editor/nfm-side-menu.browser.test.tsx
+  s_6c9891f66c664a::t_495e9bfeb41fd2 3,7-8,18
+  s_6c9891f66c664a::t_793d1c00498921 19
+src/renderer/components/board/editor/selected-block-decorations.browser.test.tsx
+  s_6c9891f66c664a::t_495e9bfeb41fd2 13,20-21,53
+src/renderer/test/query.tsx
+  s_6c9891f66c664a::t_495e9bfeb41fd2 2-3,47-59
+  s_6c9891f66c664a::t_7e99162cd484cb 60
+src/renderer/components/board/editor/blocknote-view-lifecycle.browser.test.tsx
+  s_6c9891f66c664a::t_495e9bfeb41fd2 13,16-17,29
+  s_6c9891f66c664a::t_3d615da3939b7d 30
+src/renderer/test/command-keymap.ts
+  s_6c9891f66c664a::t_a8efcb1918e681 1-36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6569ceb58fe0eaf774c9e3420e8b587eef40f680",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

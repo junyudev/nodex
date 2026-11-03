@@ -1,0 +1,19 @@
+src/main/codex/desktop-tool-environment.test.ts
+  s_6c9891f66c664a::t_585c5fd298fdb5 13,34,43,53,61,63,68,73,135
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a89beb0bd04d66abbb30b3cdd92e072b56344d41",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

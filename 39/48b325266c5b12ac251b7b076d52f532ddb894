@@ -1,0 +1,26 @@
+src/renderer/features/local-conversation/view/local-conversation-virtualized-turn-list.tsx
+  s_6c9891f66c664a::t_132d6b084125f1 1085-1140,1149,1152,1161-1167,1685,1688-1689,1691-1695,1722,1726
+src/renderer/features/local-conversation/view/local-conversation-thread-scroll-controller.test.tsx
+  s_6c9891f66c664a::t_132d6b084125f1 816,827-858
+src/renderer/features/local-conversation/view/local-conversation-viewport-motion.browser.test.tsx
+  s_6c9891f66c664a::t_c4e96b6e46e0a6 531-532
+  s_6c9891f66c664a::t_132d6b084125f1 65-67,438-530
+src/renderer/features/local-conversation/view/local-conversation-thread-scroll-controller.tsx
+  s_6c9891f66c664a::t_132d6b084125f1 51-54,287-288,290-292,448
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3948b325266c5b12ac251b7b076d52f532ddb894",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
