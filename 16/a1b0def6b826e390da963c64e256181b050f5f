@@ -1,0 +1,101 @@
+CHANGELOG.md
+  s_a94b1e66dd2eef::t_2ed267d5dad213 9
+docs/product-specs/settings-route-behavior.md
+  s_a94b1e66dd2eef::t_0d25de6c2b9aae 95,104-111
+docs/product-specs/windows-host-behavior.md
+  s_a94b1e66dd2eef::t_145b5832e6a0eb 48-56,58-62
+src/main/host-runtime/AppUpdateRuntime.test.ts
+  s_a94b1e66dd2eef::t_64f128ba005451 104
+src/main/host-runtime/ApplicationSchedulers.test.ts
+  s_a94b1e66dd2eef::t_d7882d3b1fb2ca 353
+src/main/ipc/handlers/ApplicationSettingsIpc.test.ts
+  s_a94b1e66dd2eef::t_aacf4bb29a4aeb 164-165,179-197
+src/main/ipc/handlers/ApplicationSettingsIpc.ts
+  s_a94b1e66dd2eef::t_3d5092efe754d0 1-4,91,215-224,633-651
+src/main/ipc/handlers/TerminalIpc.ts
+  s_a94b1e66dd2eef::t_2282fced87d64a 234
+src/main/platform/node/TerminalEnvironment.test.ts
+  s_a94b1e66dd2eef::t_14d6c8b66ca035 1-13,16-17,86-94,97-194
+src/main/platform/node/TerminalEnvironment.ts
+  s_93b94841a913cf::t_51f329d59da476 6-15,33,59-60,67-70,80,90-92,100-101,103-109,112-130,144
+src/main/platform/node/TerminalPty.windows.test.ts
+  s_a94b1e66dd2eef::t_c1f21efe59c78a 1-10,56-131
+src/main/platform/node/WindowsTerminalShells.test.ts
+  s_a94b1e66dd2eef::t_1381c32c81148e 1-132
+src/main/platform/node/WindowsTerminalShells.ts
+  s_a94b1e66dd2eef::t_f41e2f400cac02 1-105
+src/main/settings/ApplicationSettings.test-support.ts
+  s_a94b1e66dd2eef::t_82b384bc299d28 14,25
+src/main/settings/ApplicationSettings.test.ts
+  s_a94b1e66dd2eef::t_8d9ba6ea8470b7 42-80
+src/main/settings/ApplicationSettings.ts
+  s_a94b1e66dd2eef::t_59f5dde8e663ae 1-4,92-93,141,151,205,309,372-374,409,438-443,469
+src/main/settings/application-settings-persistence.ts
+  s_a94b1e66dd2eef::t_15dc89825cb6d9 1-5,138,1505-1525
+src/main/terminal-runtime/TerminalRuntime.integration.ts
+  s_a94b1e66dd2eef::t_6d02f050be189d 33
+src/main/terminal-runtime/TerminalRuntimeLive.ts
+  s_a94b1e66dd2eef::t_25cc6918e9b672 1,19
+src/main/terminal-runtime/TerminalSessions.node.test.ts
+  s_a94b1e66dd2eef::t_a4eb840ae58a79 72
+src/main/terminal-runtime/TerminalSessions.ts
+  s_a94b1e66dd2eef::t_6aab782497ddb6 1,102,487
+src/renderer/components/workbench/general-settings-page.tsx
+  s_a94b1e66dd2eef::t_db0de813e0c90a 1,54
+src/renderer/components/workbench/terminal-shell-setting-row.test.tsx
+  s_a94b1e66dd2eef::t_b3c11fc960a43d 1-122
+src/renderer/components/workbench/terminal-shell-setting-row.tsx
+  s_a94b1e66dd2eef::t_0ac61f02a66b9a 1-84
+src/renderer/components/workbench/workbench-settings-search-catalog.ts
+  s_a94b1e66dd2eef::t_0e9c9d30301615 1,28,38,40,75-77,118-123
+src/renderer/features/local-conversation/composer-prediction-settings.ts
+  s_a94b1e66dd2eef::t_7947926c420b55 1,55-57
+src/renderer/lib/electron-renderer-transport.ts
+  s_a94b1e66dd2eef::t_1c06349eb5a0db 369-376
+src/renderer/lib/link-opening-settings.ts
+  s_a94b1e66dd2eef::t_acf431c71138f7 1,54-60
+src/renderer/lib/observe-main-settings.ts
+  s_a94b1e66dd2eef::t_7c9af32a4d1693 1-52
+src/renderer/lib/renderer-transport.ts
+  s_a94b1e66dd2eef::t_02e3f40b2d2052 12-16
+src/renderer/lib/settings-host-presentation.test.ts
+  s_a94b1e66dd2eef::t_ac45011b1a9146 6,16,26
+src/renderer/lib/settings-host-presentation.ts
+  s_a94b1e66dd2eef::t_db470eca8794f1 8
+src/renderer/lib/terminal-shell-settings.test.tsx
+  s_a94b1e66dd2eef::t_ecac8c273c923a 1-76
+src/renderer/lib/terminal-shell-settings.ts
+  s_a94b1e66dd2eef::t_fe0a3eafec2844 1-89
+src/renderer/lib/workbench-settings-runtime.ts
+  s_a94b1e66dd2eef::t_17def9c15fb01c 185-186
+src/shared/ipc-api.ts
+  s_a94b1e66dd2eef::t_a49b8f443f09e1 1581-1592,3164
+src/shared/ipc-endpoint-policy.ts
+  s_a94b1e66dd2eef::t_014f1b15ba9183 294-295,766
+src/shared/terminal-shell-settings.ts
+  s_a94b1e66dd2eef::t_49639e4912e83a 1-16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "16a1b0def6b826e390da963c64e256181b050f5f",
+  "prompts": {},
+  "sessions": {
+    "s_93b94841a913cf": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a12a-757d-76b3-8e36-e7c026a0b42f",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_a94b1e66dd2eef": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a12a-37d8-7f13-abb9-d89e6325f5df",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
