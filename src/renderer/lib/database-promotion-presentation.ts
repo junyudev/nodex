@@ -301,6 +301,7 @@ export class DatabasePromotionPresentationStore {
 }
 
 let nextConsumer = 0;
+const nextPromotionConsumerKey = (): string => `database-promotion:${++nextConsumer}`;
 export const useDatabasePromotionPresentation = (input: {
   readonly model: DatabaseViewRenderModel;
   readonly effective: EffectiveDatabaseView;
@@ -323,7 +324,7 @@ export const useDatabasePromotionPresentation = (input: {
     const model = readModel();
     return getRendererProjectionInvalidationRegistry().register({
       scope: { ...model.routingContext, libraryId: model.libraryId },
-      consumerKey: `database-promotion:${++nextConsumer}`,
+      consumerKey: nextPromotionConsumerKey(),
       projectionEffects: "ignore",
       getCursor: () => {
         const current = readModel();

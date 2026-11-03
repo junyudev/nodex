@@ -1,3 +1,4 @@
+import { runWithCleanup } from "./run-with-cleanup";
 import { useEffect, useRef, useState } from "react";
 
 /**
@@ -25,14 +26,12 @@ export function useCopyFeedback(feedbackMs: number): {
   const copy = async (write: () => Promise<boolean>): Promise<boolean> => {
     if (resetTimerRef.current !== null || copyingRef.current) return false;
     copyingRef.current = true;
-    let didCopy: boolean;
-    try {
-      didCopy = await write();
-    } catch {
-      didCopy = false;
-    } finally {
-      copyingRef.current = false;
-    }
+    const didCopy = await runWithCleanup(write, {
+      onError: () => false,
+      cleanup: () => {
+        copyingRef.current = false;
+      },
+    });
     if (!didCopy || !mountedRef.current) return didCopy;
     setCopied(true);
     resetTimerRef.current = window.setTimeout(() => {

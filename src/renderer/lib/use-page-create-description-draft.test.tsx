@@ -1,11 +1,12 @@
 import { Activity, StrictMode, useLayoutEffect } from "react";
 import { act, fireEvent, render } from "@testing-library/react";
-import { expect, test } from "vite-plus/test";
+import { expect, test, vi } from "vite-plus/test";
 import { populateBlockDocumentBodyFromMarkdown } from "../../shared/block-documents/block-document-codec";
 import {
   materializePageCreateDescription,
   type PageCreateDescriptionDraft,
 } from "./page-create-draft";
+import * as pageCreateDraft from "./page-create-draft";
 import { usePageCreateDescriptionDraft } from "./use-page-create-description-draft";
 
 test("recreates live draft Documents across view replay while preserving edits and resetting only on request", async () => {
@@ -56,4 +57,33 @@ test("recreates live draft Documents across view replay while preserving edits a
   expect(materializePageCreateDescription(read())).toBe("");
   view.unmount();
   expect([...documents].every(({ document }) => document.isDestroyed)).toBe(true);
+});
+
+test("destroys the live draft when its closing snapshot fails", () => {
+  let current: PageCreateDescriptionDraft | null = null;
+  function Draft() {
+    const { draft } = usePageCreateDescriptionDraft("malformed-request");
+    useLayoutEffect(() => {
+      current = draft;
+    }, [draft]);
+    return null;
+  }
+  const view = render(<Draft />);
+  const draft = current as PageCreateDescriptionDraft | null;
+  if (!draft) throw new Error("Draft is not mounted");
+  const failure = new Error("snapshot failed");
+  const snapshot = vi
+    .spyOn(pageCreateDraft, "materializePageCreateDescription")
+    .mockImplementation(() => {
+      throw failure;
+    });
+  const report = vi.spyOn(console, "error").mockImplementation(() => undefined);
+  try {
+    view.unmount();
+    expect(draft.document.isDestroyed).toBe(true);
+    expect(report).toHaveBeenCalledWith("[page-create:view-snapshot]", failure);
+  } finally {
+    snapshot.mockRestore();
+    report.mockRestore();
+  }
 });

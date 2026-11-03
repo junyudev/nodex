@@ -1,3 +1,4 @@
+import { runWithCleanup } from "./run-with-cleanup";
 import { composerDraftIntents } from "./composer-draft-intents";
 import { collectCodexSubagentThreadIds } from "../../shared/codex-subagent-metadata";
 import { conversationTurnsWithOverlay } from "../../shared/codex-conversation-state/codex-conversation-state";
@@ -111,6 +112,28 @@ import { isAgentExecutionThreadId } from "../../shared/agent-runtime-api";
 import { readCodexThreadSummary } from "./codex-thread-summary";
 import { resolveChatSessionForThreadId } from "./chat-session-for-thread";
 
+function requirePresentedPage(
+  result: Awaited<ReturnType<WorkbenchSceneNavigator["presentPanelSurface"]>>,
+): void {
+  if (result.status === "presented") return;
+  throw new Error(result.reason || "Page could not be opened in a new chat");
+}
+
+function requireMatchingSubagentInspection(
+  inspected: Awaited<ReturnType<typeof agentRuntimeRuntime.inspect>>,
+  sessionId: string,
+  threadId: string,
+  rootThreadId: string,
+): void {
+  if (
+    inspected.sessionId === sessionId &&
+    inspected.threadId === threadId &&
+    inspected.rootThreadId === rootThreadId
+  )
+    return;
+  throw new Error("Subagent does not belong to this conversation");
+}
+
 function isResidentSubagentDescendant(
   rootThreadId: string,
   threadId: string,
@@ -209,6 +232,122 @@ interface WorkbenchSessionCommandsInput {
     } | null>
   >;
   readonly setProcessManagerOpen: Dispatch<SetStateAction<boolean>>;
+}
+
+/** Preserve the navigation recovery boundary, including unawaited child-tab handoffs. */
+async function openCreatedThreadSession({
+  createdInput,
+  context,
+  queryClient,
+  sessionCatalog,
+  threadScopeIdentityRegistry,
+  closePendingWorktreeRoute,
+  selectSession,
+  setSettingsPath,
+  setLocalEnvironmentSettingsInitial,
+  setAutomationsPath,
+  setPendingWorktreeClientThreadId,
+  openBackgroundAgentTab,
+  openSubagentsPanelTab,
+}: Pick<
+  WorkbenchSessionCommandsInput,
+  | "threadScopeIdentityRegistry"
+  | "closePendingWorktreeRoute"
+  | "selectSession"
+  | "setSettingsPath"
+  | "setLocalEnvironmentSettingsInitial"
+  | "setAutomationsPath"
+  | "setPendingWorktreeClientThreadId"
+> & {
+  readonly createdInput: Parameters<typeof prepareCreatedThreadNavigation>[0];
+  readonly context: NonNullable<Parameters<NonNullable<ThreadStageActions["onOpenThread"]>>[1]>;
+  readonly queryClient: ReturnType<typeof useQueryClient>;
+  readonly sessionCatalog: WorkbenchSessionCommandsInput["catalog"];
+  readonly openBackgroundAgentTab: (
+    rootThreadId: string,
+    subagent: ThreadOpenSubagentPayload,
+    sourceSession: ProjectSession,
+  ) => Promise<boolean>;
+  readonly openSubagentsPanelTab: (
+    rootThreadId: string,
+    subagent: ThreadOpenSubagentPayload,
+    sourceSession: ProjectSession,
+  ) => Promise<boolean>;
+}): Promise<boolean> {
+  try {
+    const navigation = await prepareCreatedThreadNavigation(createdInput, {
+      resolve: resolveCreatedThreadTarget,
+      ensureOpen: ensureCreatedThreadSession,
+      isCurrent: context.isSourceCurrent,
+    });
+    if (context.isSourceCurrent?.() === false) return false;
+    if (!navigation) return false;
+    if (navigation.type === "pending") {
+      setSettingsPath(null);
+      setLocalEnvironmentSettingsInitial(null);
+      setAutomationsPath(null);
+      setPendingWorktreeClientThreadId(navigation.clientThreadId, navigation.hostId);
+      return true;
+    }
+    if (navigation.type === "child") {
+      const source = context.sourceRoot;
+      if (!source || source.hostId !== navigation.resolution.hostId) return false;
+      const root = await prepareCreatedThreadNavigation(
+        { threadId: source.threadId, expectedHostId: source.hostId },
+        {
+          resolve: resolveCreatedThreadTarget,
+          ensureOpen: ensureCreatedThreadSession,
+          isCurrent: context.isSourceCurrent,
+        },
+      );
+      if (context.isSourceCurrent?.() === false) return false;
+      if (root?.type !== "session") return false;
+      seedProjectSessionDetail(queryClient, root.session);
+      const projected = presentWorkbenchSession({
+        domain: root.session,
+        scene: sessionCatalog.resolveScene(root.session),
+      });
+      const subagent =
+        context.subagent ??
+        ({
+          conversationId: navigation.resolution.threadId!,
+          displayName: "Subagent",
+          agentRole: null,
+          diffStats: null,
+          spawnModel: null,
+          status: "unknown",
+          statusSummary: null,
+        } satisfies ThreadOpenSubagentPayload);
+      closePendingWorktreeRoute();
+      selectSession(projected);
+      return subagent.canInteract
+        ? openBackgroundAgentTab(source.threadId, subagent, projected)
+        : openSubagentsPanelTab(source.threadId, subagent, projected);
+    }
+    const { session, resolution } = navigation;
+    seedProjectSessionDetail(queryClient, session);
+    if (resolution?.clientThreadId) {
+      const stableKey = threadScopeIdentityRegistry.resolve({
+        clientThreadId: resolution.clientThreadId,
+      });
+      threadScopeIdentityRegistry.register(stableKey, {
+        clientThreadId: resolution.clientThreadId,
+        threadId: resolution.threadId,
+      });
+    }
+    closePendingWorktreeRoute();
+    selectSession(
+      presentWorkbenchSession({
+        domain: session,
+        scene: sessionCatalog.resolveScene(session),
+      }),
+    );
+    return true;
+  } catch {
+    if (context.isSourceCurrent?.() === false) return false;
+    toast.danger("Failed to open chat");
+    return false;
+  }
 }
 
 /**
@@ -389,9 +528,7 @@ export function useWorkbenchSessionCommands({
             mode: "durable",
             navigation: "select-owner",
           });
-          if (result.status !== "presented") {
-            throw new Error(result.reason || "Page could not be opened in a new chat");
-          }
+          requirePresentedPage(result);
 
           const projected = presentWorkbenchSession(presentation);
           panelControllerRef.current.durable.patchPanel(projected, "right", {
@@ -875,10 +1012,13 @@ export function useWorkbenchSessionCommands({
             : null,
         }),
       );
-      panelControllerRef.current.updatePanelCollapsedOverrides((current) => ({
-        ...current,
-        [makeWorkbenchSessionPanelSlotKey(sourceSession.id, panelId)]: false,
-      }));
+      panelControllerRef.current.updatePanelCollapsedOverrides((current) => {
+        const slotKey = makeWorkbenchSessionPanelSlotKey(sourceSession.id, panelId);
+        return {
+          ...current,
+          [slotKey]: false,
+        };
+      });
       const panelOpen =
         sourceSession.id === activeSession?.id
           ? ensureActivePanelOpenWithoutRefresh(panelId).catch(() => undefined)
@@ -888,78 +1028,83 @@ export function useWorkbenchSessionCommands({
         return true;
       }
 
-      try {
-        if (sourceSession.executionRef) {
-          const inspected =
-            observed ??
-            (await agentRuntimeRuntime.inspect({
-              sessionId: sourceSession.id,
-              threadId: selectedThreadId,
-            }));
+      return await runWithCleanup(
+        async () => {
+          if (sourceSession.executionRef) {
+            const inspected =
+              observed ??
+              (await agentRuntimeRuntime.inspect({
+                sessionId: sourceSession.id,
+                threadId: selectedThreadId,
+              }));
+            if (requestSequence !== subagentSelectionRequestRef.current) return true;
+            requireMatchingSubagentInspection(
+              inspected,
+              sourceSession.id,
+              selectedThreadId,
+              normalizedRootThreadId,
+            );
+            settlePendingRoute(
+              routeTab({
+                selectedThreadId,
+                selectedDisplayName: subagent?.displayName.trim() || inspected.thread.title,
+                // A child the provider spawned itself is followed, never continued from here.
+                selectedCanInteract:
+                  inspected.thread.archivedAt === null &&
+                  inspected.thread.creationSource !== "provider",
+                selectedHydration: {
+                  status: "ready",
+                  revision: 0,
+                  fidelity: "metadata",
+                  checkpoint: null,
+                },
+              }),
+            );
+            await panelOpen;
+            return true;
+          }
+          const hydrated = await workbenchCodexControl.hydrateSelectedSubagent({
+            rootThreadId: normalizedRootThreadId,
+            threadId: selectedThreadId,
+            expectedHostId: sourceSession.thread?.executionHostId,
+          });
           if (requestSequence !== subagentSelectionRequestRef.current) return true;
           if (
-            inspected.sessionId !== sourceSession.id ||
-            inspected.threadId !== selectedThreadId ||
-            inspected.rootThreadId !== normalizedRootThreadId
-          )
-            throw new Error("Subagent does not belong to this conversation");
+            hydrated.outcome !== "ready" ||
+            hydrated.rootThreadId !== normalizedRootThreadId ||
+            hydrated.threadId !== selectedThreadId
+          ) {
+            settlePendingRoute(overviewTab());
+            toast.info(hydrated.errorMessage ?? "That subagent is not available");
+            await panelOpen;
+            return false;
+          }
           settlePendingRoute(
             routeTab({
               selectedThreadId,
-              selectedDisplayName: subagent?.displayName.trim() || inspected.thread.title,
-              // A child the provider spawned itself is followed, never continued from here.
-              selectedCanInteract:
-                inspected.thread.archivedAt === null &&
-                inspected.thread.creationSource !== "provider",
+              selectedDisplayName: subagent?.displayName.trim() || selectedThreadId,
+              selectedCanInteract: hydrated.canInteract,
               selectedHydration: {
                 status: "ready",
-                revision: 0,
-                fidelity: "metadata",
-                checkpoint: null,
+                revision: hydrated.revision,
+                fidelity: hydrated.fidelity,
+                checkpoint: hydrated.checkpoint,
               },
             }),
           );
           await panelOpen;
           return true;
-        }
-        const hydrated = await workbenchCodexControl.hydrateSelectedSubagent({
-          rootThreadId: normalizedRootThreadId,
-          threadId: selectedThreadId,
-          expectedHostId: sourceSession.thread?.executionHostId,
-        });
-        if (requestSequence !== subagentSelectionRequestRef.current) return true;
-        if (
-          hydrated.outcome !== "ready" ||
-          hydrated.rootThreadId !== normalizedRootThreadId ||
-          hydrated.threadId !== selectedThreadId
-        ) {
-          settlePendingRoute(overviewTab());
-          toast.info(hydrated.errorMessage ?? "That subagent is not available");
-          await panelOpen;
-          return false;
-        }
-        settlePendingRoute(
-          routeTab({
-            selectedThreadId,
-            selectedDisplayName: subagent?.displayName.trim() || selectedThreadId,
-            selectedCanInteract: hydrated.canInteract,
-            selectedHydration: {
-              status: "ready",
-              revision: hydrated.revision,
-              fidelity: hydrated.fidelity,
-              checkpoint: hydrated.checkpoint,
-            },
-          }),
-        );
-        await panelOpen;
-        return true;
-      } catch {
-        if (requestSequence !== subagentSelectionRequestRef.current) return true;
-        settlePendingRoute(overviewTab());
-        toast.danger("Failed to open subagents");
-        await panelOpen;
-        return false;
-      }
+        },
+        {
+          onError: async () => {
+            if (requestSequence !== subagentSelectionRequestRef.current) return true;
+            settlePendingRoute(overviewTab());
+            toast.danger("Failed to open subagents");
+            await panelOpen;
+            return false;
+          },
+        },
+      );
     },
     [activeSession, ensureActivePanelOpenWithoutRefresh, workbenchCodexControl],
   );
@@ -1004,10 +1149,13 @@ export function useWorkbenchSessionCommands({
         subagent: { ...subagent, canInteract: hydrated.canInteract },
       };
       panelControllerRef.current.upsertEphemeralTab(tab);
-      panelControllerRef.current.updatePanelCollapsedOverrides((current) => ({
-        ...current,
-        [makeWorkbenchSessionPanelSlotKey(sourceSession.id, "right")]: false,
-      }));
+      panelControllerRef.current.updatePanelCollapsedOverrides((current) => {
+        const slotKey = makeWorkbenchSessionPanelSlotKey(sourceSession.id, "right");
+        return {
+          ...current,
+          [slotKey]: false,
+        };
+      });
       if (sourceSession.id === activeSession?.id)
         await ensureActivePanelOpenWithoutRefresh("right");
       return true;
@@ -1084,80 +1232,21 @@ export function useWorkbenchSessionCommands({
           : null;
       if (context?.createdTarget || context?.hostId) {
         if (!createdInput) return false;
-        try {
-          const navigation = await prepareCreatedThreadNavigation(createdInput, {
-            resolve: resolveCreatedThreadTarget,
-            ensureOpen: ensureCreatedThreadSession,
-            isCurrent: context.isSourceCurrent,
-          });
-          if (context.isSourceCurrent?.() === false) return false;
-          if (!navigation) return false;
-          if (navigation.type === "pending") {
-            setSettingsPath(null);
-            setLocalEnvironmentSettingsInitial(null);
-            setAutomationsPath(null);
-            setPendingWorktreeClientThreadId(navigation.clientThreadId, navigation.hostId);
-            return true;
-          }
-          if (navigation.type === "child") {
-            const source = context.sourceRoot;
-            if (!source || source.hostId !== navigation.resolution.hostId) return false;
-            const root = await prepareCreatedThreadNavigation(
-              { threadId: source.threadId, expectedHostId: source.hostId },
-              {
-                resolve: resolveCreatedThreadTarget,
-                ensureOpen: ensureCreatedThreadSession,
-                isCurrent: context.isSourceCurrent,
-              },
-            );
-            if (context.isSourceCurrent?.() === false) return false;
-            if (root?.type !== "session") return false;
-            seedProjectSessionDetail(queryClient, root.session);
-            const projected = presentWorkbenchSession({
-              domain: root.session,
-              scene: sessionCatalog.resolveScene(root.session),
-            });
-            const subagent =
-              context.subagent ??
-              ({
-                conversationId: navigation.resolution.threadId!,
-                displayName: "Subagent",
-                agentRole: null,
-                diffStats: null,
-                spawnModel: null,
-                status: "unknown",
-                statusSummary: null,
-              } satisfies ThreadOpenSubagentPayload);
-            closePendingWorktreeRoute();
-            selectSession(projected);
-            return subagent.canInteract
-              ? openBackgroundAgentTab(source.threadId, subagent, projected)
-              : openSubagentsPanelTab(source.threadId, subagent, projected);
-          }
-          const { session, resolution } = navigation;
-          seedProjectSessionDetail(queryClient, session);
-          if (resolution?.clientThreadId) {
-            const stableKey = threadScopeIdentityRegistry.resolve({
-              clientThreadId: resolution.clientThreadId,
-            });
-            threadScopeIdentityRegistry.register(stableKey, {
-              clientThreadId: resolution.clientThreadId,
-              threadId: resolution.threadId,
-            });
-          }
-          closePendingWorktreeRoute();
-          selectSession(
-            presentWorkbenchSession({
-              domain: session,
-              scene: sessionCatalog.resolveScene(session),
-            }),
-          );
-          return true;
-        } catch {
-          if (context.isSourceCurrent?.() === false) return false;
-          toast.danger("Failed to open chat");
-          return false;
-        }
+        return openCreatedThreadSession({
+          createdInput,
+          context,
+          queryClient,
+          sessionCatalog,
+          threadScopeIdentityRegistry,
+          closePendingWorktreeRoute,
+          selectSession,
+          setSettingsPath,
+          setLocalEnvironmentSettingsInitial,
+          setAutomationsPath,
+          setPendingWorktreeClientThreadId,
+          openBackgroundAgentTab,
+          openSubagentsPanelTab,
+        });
       }
       if (threadId.startsWith(CODEX_CLIENT_THREAD_ID_PREFIX)) {
         setSettingsPath(null);
@@ -1325,10 +1414,13 @@ export function useWorkbenchSessionCommands({
       };
 
       panelControllerRef.current.upsertEphemeralTab(tab);
-      panelControllerRef.current.updatePanelCollapsedOverrides((current) => ({
-        ...current,
-        [makeWorkbenchSessionPanelSlotKey(activeSession.id, panelId)]: false,
-      }));
+      panelControllerRef.current.updatePanelCollapsedOverrides((current) => {
+        const slotKey = makeWorkbenchSessionPanelSlotKey(activeSession.id, panelId);
+        return {
+          ...current,
+          [slotKey]: false,
+        };
+      });
       await ensureActivePanelOpenWithoutRefresh(panelId);
       return true;
     },

@@ -100,6 +100,33 @@ describe("useStoreBackupRuntime", () => {
     view.unmount();
   });
 
+  test("releases cancellation pending state after a failed cancellation", async () => {
+    let fail!: (error: Error) => void;
+    const cancel = vi.fn(
+      () =>
+        new Promise<BackupJobStatus>((_resolve, reject) => {
+          fail = reject;
+        }),
+    );
+    const port = portWith({ job: async () => job("active"), cancel });
+    const view = renderHook(() => useStoreBackupRuntime({ open: false, port }));
+    await act(async () => {
+      await view.result.current.refresh();
+    });
+    let pending!: Promise<void>;
+    await act(async () => {
+      pending = view.result.current.cancelJob();
+    });
+    expect(view.result.current.cancelPending).toBe(true);
+    await act(async () => {
+      fail(new Error("cancel unavailable"));
+      await pending;
+    });
+    expect(view.result.current.cancelPending).toBe(false);
+    expect(view.result.current.notice).toEqual({ tone: "error", message: "cancel unavailable" });
+    expect(view.result.current.job?.state).toBe("running");
+  });
+
   test("retries an unresolved submission with the exact operation and normalized label", async () => {
     const commands: CreateBackupCommandInput[] = [];
     const start = vi.fn(async (command: CreateBackupCommandInput) => {

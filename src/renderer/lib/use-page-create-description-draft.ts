@@ -1,3 +1,4 @@
+import { runSyncWithCleanup } from "./run-with-cleanup";
 import { useLayoutEffect, useRef, useState } from "react";
 import {
   createPageCreateDescriptionDraft,
@@ -20,19 +21,22 @@ export function usePageCreateDescriptionDraft(requestId: string, initialNfm = ""
     const current = createPageCreateDescriptionDraft(requestId, generation, markdown);
     setDraft(current);
     return () => {
-      try {
-        snapshot.current = {
-          requestId,
-          generation,
-          markdown: materializePageCreateDescription(current),
-        };
-      } catch (error) {
-        // Closing a malformed draft must still release its live Document. The
-        // form's explicit close action already reports snapshot failures.
-        console.error("[page-create:view-snapshot]", error);
-      } finally {
-        current.document.destroy();
-      }
+      runSyncWithCleanup(
+        () => {
+          try {
+            snapshot.current = {
+              requestId,
+              generation,
+              markdown: materializePageCreateDescription(current),
+            };
+          } catch (error) {
+            // Closing a malformed draft must still release its live Document. The
+            // form's explicit close action already reports snapshot failures.
+            console.error("[page-create:view-snapshot]", error);
+          }
+        },
+        () => current.document.destroy(),
+      );
     };
   }, [generation, requestId]);
 

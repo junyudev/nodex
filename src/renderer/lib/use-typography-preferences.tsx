@@ -28,10 +28,11 @@ export function useTypographyPreferences() {
     );
   };
   const setFontSize = (role: FontSizeRole, value: number) => {
+    const key = `${role}FontSize`;
     setPreferences((current) =>
       writeTypographyPreferences({
         ...readTypographyPreferences(current),
-        [`${role}FontSize`]: normalizeFontSize(role, value),
+        [key]: normalizeFontSize(role, value),
       }),
     );
   };

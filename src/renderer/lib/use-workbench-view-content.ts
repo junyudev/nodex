@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from "react";
+import { useEffectEvent, useLayoutEffect, useRef } from "react";
 import { makeWorkbenchSceneKey } from "../../shared/workbench-scene";
 import { databaseViewPresentationIdentity } from "./workbench-database-view-presentation";
 import {
@@ -19,10 +19,17 @@ export function useWorkbenchViewContent(
   const owner = registration?.owner;
   const sceneKey = registration ? makeWorkbenchSceneKey(registration.sceneOwner) : null;
   const identity = registration ? databaseViewPresentationIdentity(registration.surface) : null;
+  const readRegistration = useEffectEvent(() => registration);
+  // The identity contains every semantic descriptor field; title changes do not retarget this reader.
   useLayoutEffect(() => {
-    if (!registration) return;
-    return registerWorkbenchViewContent(registration, (request) => reader.current(request));
-    // The identity contains every semantic descriptor field; title changes do not retarget this reader.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const current = readRegistration();
+    if (
+      !current ||
+      current.owner !== owner ||
+      makeWorkbenchSceneKey(current.sceneOwner) !== sceneKey ||
+      databaseViewPresentationIdentity(current.surface) !== identity
+    )
+      return;
+    return registerWorkbenchViewContent(current, (request) => reader.current(request));
   }, [owner, sceneKey, identity]);
 }

@@ -274,59 +274,5 @@
   },
   "src/renderer/features/user-attachment-image-editor/view/single-image-editor.tsx": {
     "uncompiled": 2
-  },
-  "src/renderer/lib/database-promotion-presentation.ts": {
-    "uncompiled": 1
-  },
-  "src/renderer/lib/database-view-presentation.ts": {
-    "uncompiled": 1
-  },
-  "src/renderer/lib/keyboard-layout.tsx": {
-    "uncompiled": 1
-  },
-  "src/renderer/lib/use-board.ts": {
-    "uncompiled": 1
-  },
-  "src/renderer/lib/use-copy-feedback.ts": {
-    "uncompiled": 1
-  },
-  "src/renderer/lib/use-page-create-description-draft.ts": {
-    "uncompiled": 1
-  },
-  "src/renderer/lib/use-project-appearance-mutation.ts": {
-    "uncompiled": 1
-  },
-  "src/renderer/lib/use-schedule-state.ts": {
-    "uncompiled": 1
-  },
-  "src/renderer/lib/use-store-backup-runtime.ts": {
-    "uncompiled": 1
-  },
-  "src/renderer/lib/use-terminal.ts": {
-    "uncompiled": 1
-  },
-  "src/renderer/lib/use-thread-execution-location.ts": {
-    "uncompiled": 1
-  },
-  "src/renderer/lib/use-typography-preferences.tsx": {
-    "uncompiled": 1
-  },
-  "src/renderer/lib/use-workbench-chrome-commands.ts": {
-    "uncompiled": 1
-  },
-  "src/renderer/lib/use-workbench-panel-openers.ts": {
-    "uncompiled": 1
-  },
-  "src/renderer/lib/use-workbench-session-catalog.ts": {
-    "uncompiled": 1
-  },
-  "src/renderer/lib/use-workbench-session-commands.ts": {
-    "uncompiled": 1
-  },
-  "src/renderer/lib/use-workbench-view-content.ts": {
-    "uncompiled": 1
-  },
-  "src/renderer/lib/workbench-new-tab-port.tsx": {
-    "uncompiled": 1
   }
 }

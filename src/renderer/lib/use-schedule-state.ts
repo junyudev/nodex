@@ -1,3 +1,4 @@
+import { runWithCleanup } from "./run-with-cleanup";
 import { useState, useCallback, useRef, useEffect } from "react";
 import type {
   DatabasePage,
@@ -586,22 +587,20 @@ export function useScheduleState({
 
   const handleCompleteThisOccurrence = useCallback(async () => {
     if (!page?.scheduledStart || !onCompleteOccurrence) return;
+    const scheduledStart = page.scheduledStart;
     setOccurrenceBusy(true);
-    try {
-      await onCompleteOccurrence(page.id, page.scheduledStart);
-    } finally {
-      setOccurrenceBusy(false);
-    }
+    await runWithCleanup(() => onCompleteOccurrence(page.id, scheduledStart), {
+      cleanup: () => setOccurrenceBusy(false),
+    });
   }, [page, onCompleteOccurrence]);
 
   const handleSkipThisOccurrence = useCallback(async () => {
     if (!page?.scheduledStart || !onSkipOccurrence) return;
+    const scheduledStart = page.scheduledStart;
     setOccurrenceBusy(true);
-    try {
-      await onSkipOccurrence(page.id, page.scheduledStart);
-    } finally {
-      setOccurrenceBusy(false);
-    }
+    await runWithCleanup(() => onSkipOccurrence(page.id, scheduledStart), {
+      cleanup: () => setOccurrenceBusy(false),
+    });
   }, [page, onSkipOccurrence]);
 
   // Derived schedule summary

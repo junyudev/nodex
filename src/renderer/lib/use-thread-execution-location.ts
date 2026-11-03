@@ -1,3 +1,4 @@
+import { runWithCleanup } from "./run-with-cleanup";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import type {
@@ -33,16 +34,17 @@ export function useThreadExecutionLocation(threadId: string) {
   const move = async (destination: ThreadExecutionHandoffInput["destination"]) => {
     if (launching || operation?.status === "running" || operation?.recoveryRequired) return;
     setLaunching(true);
-    try {
-      const result = await moveThreadExecution({
-        threadId,
-        operationId: `thread-execution:${crypto.randomUUID()}`,
-        destination,
-      });
-      setAdmitted(result);
-    } finally {
-      setLaunching(false);
-    }
+    await runWithCleanup(
+      async () => {
+        const result = await moveThreadExecution({
+          threadId,
+          operationId: `thread-execution:${crypto.randomUUID()}`,
+          destination,
+        });
+        setAdmitted(result);
+      },
+      { cleanup: () => setLaunching(false) },
+    );
   };
   return {
     operation,

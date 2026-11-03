@@ -1,3 +1,4 @@
+import { runWithCleanup } from "./run-with-cleanup";
 import { createContext, useContext, useState, type ReactNode } from "react";
 import type { PanelDestination } from "@/components/workbench/panel-destination-picker-model";
 import type { CommandKeymapState } from "../../shared/command-keybindings";
@@ -176,11 +177,11 @@ export function useWorkbenchNewTabPortValue({
     open: async ({ owner, surfaceId, intent }) => {
       if (pendingSurfaceIds.has(surfaceId)) return;
       pendingSurfaceIds.add(surfaceId);
-      try {
-        await run(owner, surfaceId, intent);
-      } finally {
-        pendingSurfaceIds.delete(surfaceId);
-      }
+      await runWithCleanup(() => run(owner, surfaceId, intent), {
+        cleanup: () => {
+          pendingSurfaceIds.delete(surfaceId);
+        },
+      });
     },
     openBottomTerminal: async (owner) => {
       const observation = observe(owner);

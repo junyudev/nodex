@@ -1,3 +1,4 @@
+import { runWithCleanup } from "./run-with-cleanup";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "@/components/ui/toast";
@@ -32,8 +33,8 @@ export function useProjectAppearanceMutation(project: Project) {
 
     // `updateProject()` installs the catalog presentation synchronously.
     const operation = projectCatalog.updateProject(projectId, { appearance });
-    const request = (async () => {
-      try {
+    const request = runWithCleanup(
+      async () => {
         const outcome = await operation;
         if (outcome.kind === "acknowledged") {
           confirmedProjectRef.current = outcome.project;
@@ -43,21 +44,25 @@ export function useProjectAppearanceMutation(project: Project) {
           throw new Error(outcome.failure.message);
         }
         throw new Error("The Project appearance update was superseded by a newer authority");
-      } catch (cause) {
-        const failure = cause instanceof Error ? cause : new Error("Could not update Project");
-        if (sequence === latestSequenceRef.current) {
-          setError(failure);
-          toast.danger("Could not update project marker", { description: failure.message });
-        }
-        throw failure;
-      } finally {
-        pendingCountRef.current = Math.max(0, pendingCountRef.current - 1);
-        setPendingCount(pendingCountRef.current);
-        if (sequence === latestSequenceRef.current) {
-          void queryClient.invalidateQueries({ queryKey: queryKeys.projects.all() });
-        }
-      }
-    })();
+      },
+      {
+        onError: (cause): never => {
+          const failure = cause instanceof Error ? cause : new Error("Could not update Project");
+          if (sequence === latestSequenceRef.current) {
+            setError(failure);
+            toast.danger("Could not update project marker", { description: failure.message });
+          }
+          throw failure;
+        },
+        cleanup: () => {
+          pendingCountRef.current = Math.max(0, pendingCountRef.current - 1);
+          setPendingCount(pendingCountRef.current);
+          if (sequence === latestSequenceRef.current) {
+            void queryClient.invalidateQueries({ queryKey: queryKeys.projects.all() });
+          }
+        },
+      },
+    );
     const settlement = request.catch(() => confirmedProjectRef.current);
     latestSettlementRef.current = settlement;
     return request;

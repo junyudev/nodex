@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useSyncExternalStore } from "react";
+import { useLayoutEffect, useState, useSyncExternalStore } from "react";
 import { contentRoutingContextKey } from "../../shared/content-routing-context";
 import type { DatabaseApplyOperationV2 } from "../../shared/database-module-v2";
 import type { DatabaseViewRenderModel } from "./database-view-render-model";
@@ -258,6 +258,17 @@ export const databaseViewPresentationIdentity = (model: DatabaseViewRenderModel)
     model.query.view.config,
   ]);
 
+/** An addressed journal read consumes its observed revision before projecting a render handoff. */
+function projectDatabaseViewPresentation(
+  owner: DatabaseViewPresentationStore,
+  revision: number,
+  model: DatabaseViewRenderModel,
+  canonicalModel: DatabaseViewRenderModel,
+) {
+  if (revision !== owner.getSnapshot()) return { model, renderToken: null };
+  return owner.project(model, canonicalModel);
+}
+
 export function useDatabaseViewPresentation(
   model: DatabaseViewRenderModel,
   refresh: (() => Promise<void> | void) | undefined,
@@ -267,22 +278,24 @@ export function useDatabaseViewPresentation(
   readIdentity = canonicalModel,
 ) {
   const identity = databaseViewPresentationIdentity(model);
-  const owner = useMemo(
-    () => new DatabaseViewPresentationStore(model),
-    // Each mounted read source owns its render handoff; another host cannot settle it.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [identity],
-  );
+  // The first model seeds this mounted read owner; later reads update that same owner.
+  const [presentation, setPresentation] = useState(() => ({
+    identity,
+    owner: new DatabaseViewPresentationStore(model),
+  }));
+  if (presentation.identity !== identity) {
+    setPresentation({ identity, owner: new DatabaseViewPresentationStore(model) });
+  }
+  const { owner } = presentation;
   const revision = useSyncExternalStore(owner.subscribe, owner.getSnapshot, owner.getSnapshot);
   useLayoutEffect(() => owner.attach(), [owner]);
   useLayoutEffect(() => {
     owner.update(model, refresh, canonicalModel, canonicalReadGeneration, readIdentity);
   }, [owner, model, refresh, canonicalModel, canonicalReadGeneration, readIdentity]);
-  const projected = useMemo(() => {
-    // An external journal change invalidates the memoized projection.
-    void revision;
-    return owner.project(model, canonicalModel);
-  }, [owner, model, canonicalModel, revision]);
+  const projected =
+    presentation.identity === identity
+      ? projectDatabaseViewPresentation(owner, revision, model, canonicalModel)
+      : { model, renderToken: null };
   useLayoutEffect(() => {
     if (projected.renderToken !== null) owner.markRendered(projected.renderToken);
   }, [owner, projected.renderToken]);

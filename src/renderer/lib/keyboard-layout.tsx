@@ -1,3 +1,4 @@
+import { runWithCleanup } from "./run-with-cleanup";
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   createKeyboardLayoutSnapshot,
@@ -52,16 +53,20 @@ export function KeyboardLayoutProvider({ children }: { readonly children: ReactN
     const refresh = async (): Promise<void> => {
       const generation = generationRef.current + 1;
       generationRef.current = generation;
-      try {
-        const next = await readKeyboardLayoutSnapshot(keyboard, generation);
-        if (cancelled || generation !== generationRef.current) return;
-        setSnapshot(next);
-        if (window.api) {
-          await publishKeyboardLayout(next).catch(() => undefined);
-        }
-      } catch {
-        // The static physical-code projection remains a complete deterministic fallback.
-      }
+      await runWithCleanup(
+        async () => {
+          const next = await readKeyboardLayoutSnapshot(keyboard, generation);
+          if (cancelled || generation !== generationRef.current) return;
+          setSnapshot(next);
+          if (window.api) {
+            await publishKeyboardLayout(next).catch(() => undefined);
+          }
+        },
+        {
+          // The static physical-code projection remains a complete deterministic fallback.
+          onError: () => undefined,
+        },
+      );
     };
 
     const handleLayoutChange = (): void => {

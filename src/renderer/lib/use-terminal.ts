@@ -521,7 +521,8 @@ export function useTerminal({
     observer.observe(container);
 
     const applyTypography = (nextTypography: TerminalTypography) => {
-      const generation = ++typographyGeneration;
+      typographyGeneration += 1;
+      const generation = typographyGeneration;
       void ensureTerminalTypographyLoaded(nextTypography).then(() => {
         if (disposed || generation !== typographyGeneration) return;
 

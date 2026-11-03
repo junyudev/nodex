@@ -1,3 +1,4 @@
+import { runWithCleanup } from "./run-with-cleanup";
 import {
   useLayoutEffect,
   useCallback,
@@ -126,8 +127,8 @@ export function useWorkbenchChromeCommands({
         ...current,
         [overrideKey]: false,
       }));
-      void (async () => {
-        try {
+      void runWithCleanup(
+        async () => {
           await updateActivePanel("right", {
             collapsed: false,
             size: {
@@ -135,17 +136,21 @@ export function useWorkbenchChromeCommands({
               fullWidth,
             },
           });
-        } catch (error) {
-          toast.danger(error instanceof Error ? error.message : "Unable to update panel");
-        } finally {
-          panelControllerRef.current.updatePanelCollapsedOverrides((current) => {
-            if (!(overrideKey in current)) return current;
-            const next = { ...current };
-            delete next[overrideKey];
-            return next;
-          });
-        }
-      })();
+        },
+        {
+          onError: (error) => {
+            toast.danger(error instanceof Error ? error.message : "Unable to update panel");
+          },
+          cleanup: () => {
+            panelControllerRef.current.updatePanelCollapsedOverrides((current) => {
+              if (!(overrideKey in current)) return current;
+              const next = { ...current };
+              delete next[overrideKey];
+              return next;
+            });
+          },
+        },
+      );
     },
     [activePanelOwner, updateActivePanel],
   );
@@ -221,21 +226,26 @@ export function useWorkbenchChromeCommands({
         upEvent.preventDefault();
         cleanupPointerResize();
         void (async () => {
-          try {
-            if (!activePanelOwner || closedByResize) {
-              restoreRequestedWidth();
-              return;
-            }
-            await updateActivePanel("right", {
-              size: {
-                ...activePanelOwner.panels.right.size,
-                widthPx: latestWidth,
+          await runWithCleanup(
+            async () => {
+              if (!activePanelOwner || closedByResize) {
+                restoreRequestedWidth();
+                return;
+              }
+              await updateActivePanel("right", {
+                size: {
+                  ...activePanelOwner.panels.right.size,
+                  widthPx: latestWidth,
+                },
+              });
+            },
+            {
+              onError: (error) => {
+                restoreRequestedWidth();
+                toast.danger(error instanceof Error ? error.message : "Unable to resize panel");
               },
-            });
-          } catch (error) {
-            restoreRequestedWidth();
-            toast.danger(error instanceof Error ? error.message : "Unable to resize panel");
-          }
+            },
+          );
         })();
       };
       const onPointerCancel = () => {
@@ -318,21 +328,26 @@ export function useWorkbenchChromeCommands({
         upEvent.preventDefault();
         cleanupPointerResize();
         void (async () => {
-          try {
-            if (!activePanelOwner || closedByResize) {
-              restoreRequestedHeight();
-              return;
-            }
-            await updateActivePanel("bottom", {
-              size: {
-                ...activePanelOwner.panels.bottom.size,
-                heightPx: latestHeight,
+          await runWithCleanup(
+            async () => {
+              if (!activePanelOwner || closedByResize) {
+                restoreRequestedHeight();
+                return;
+              }
+              await updateActivePanel("bottom", {
+                size: {
+                  ...activePanelOwner.panels.bottom.size,
+                  heightPx: latestHeight,
+                },
+              });
+            },
+            {
+              onError: (error) => {
+                restoreRequestedHeight();
+                toast.danger(error instanceof Error ? error.message : "Unable to resize panel");
               },
-            });
-          } catch (error) {
-            restoreRequestedHeight();
-            toast.danger(error instanceof Error ? error.message : "Unable to resize panel");
-          }
+            },
+          );
         })();
       };
       const onPointerCancel = () => {

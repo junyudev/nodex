@@ -260,6 +260,20 @@ describe("useBoard createPage result", () => {
     );
   });
 
+  test("stops a non-advancing calendar continuation and reports its failure", async () => {
+    testState.readCalendarOccurrenceWindow
+      .mockResolvedValueOnce({ occurrences: [], nextCursor: "cursor" })
+      .mockResolvedValueOnce({ occurrences: [], nextCursor: "cursor" });
+    const { result } = renderHook(() => useBoard({ projectId: "project-test" }));
+    await act(async () => {
+      expect(await result.current.listPageOccurrences(new Date(0), new Date(1000))).toEqual([]);
+    });
+    expect(testState.readCalendarOccurrenceWindow).toHaveBeenCalledTimes(2);
+    expect(testState.setError).toHaveBeenCalledWith(
+      "Calendar occurrence continuation did not advance",
+    );
+  });
+
   test("routes a resolved occurrence rejection through optimistic rollback", async () => {
     testState.completePageOccurrence.mockResolvedValue({
       success: false,

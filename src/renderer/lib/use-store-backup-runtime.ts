@@ -1,3 +1,4 @@
+import { runWithCleanup } from "./run-with-cleanup";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   BackupCapacity,
@@ -182,37 +183,42 @@ export function useStoreBackupRuntime({ open, port }: UseStoreBackupRuntimeInput
     let disposed = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const poll = async () => {
-      try {
-        const next = await port.job(polledJobId);
-        if (disposed) return;
-        if (!next) {
-          const pending = pendingStart.current;
-          if (pending?.command.operationId === polledJobId) {
-            await adoptStartResult(await submitPendingStart(pending));
+      await runWithCleanup(
+        async () => {
+          const next = await port.job(polledJobId);
+          if (disposed) return;
+          if (!next) {
+            const pending = pendingStart.current;
+            if (pending?.command.operationId === polledJobId) {
+              await adoptStartResult(await submitPendingStart(pending));
+            }
+            timer = setTimeout(poll, 250);
+            return;
           }
-          timer = setTimeout(poll, 250);
-          return;
-        }
-        if (next.jobId === polledJobId) {
-          setNotice(null);
-        } else {
-          settleCoalescedStart(polledJobId, next.jobId);
-          setPolledJobId(next.jobId);
-        }
-        setJob(next);
-        if (projectBackupJob(next).active) {
-          timer = setTimeout(poll, 250);
-          return;
-        }
-        await settleJob(next);
-      } catch (cause) {
-        if (disposed) return;
-        setNotice({
-          message: resolveFormErrorMessage(cause) ?? "Could not read snapshot progress.",
-          tone: "error",
-        });
-        timer = setTimeout(poll, 1_000);
-      }
+          if (next.jobId === polledJobId) {
+            setNotice(null);
+          } else {
+            settleCoalescedStart(polledJobId, next.jobId);
+            setPolledJobId(next.jobId);
+          }
+          setJob(next);
+          if (projectBackupJob(next).active) {
+            timer = setTimeout(poll, 250);
+            return;
+          }
+          await settleJob(next);
+        },
+        {
+          onError: (cause) => {
+            if (disposed) return;
+            setNotice({
+              message: resolveFormErrorMessage(cause) ?? "Could not read snapshot progress.",
+              tone: "error",
+            });
+            timer = setTimeout(poll, 1_000);
+          },
+        },
+      );
     };
     timer = setTimeout(poll, 250);
     return () => {
@@ -245,18 +251,22 @@ export function useStoreBackupRuntime({ open, port }: UseStoreBackupRuntimeInput
     if (!job || !projectBackupJob(job).cancellable) return;
     setCancelPending(true);
     setNotice(null);
-    try {
-      const cancelled = await port.cancel(job.jobId);
-      setJob(cancelled);
-      if (!projectBackupJob(cancelled).active) await settleJob(cancelled);
-    } catch (cause) {
-      setNotice({
-        message: resolveFormErrorMessage(cause) ?? "Could not cancel snapshot.",
-        tone: "error",
-      });
-    } finally {
-      setCancelPending(false);
-    }
+    await runWithCleanup(
+      async () => {
+        const cancelled = await port.cancel(job.jobId);
+        setJob(cancelled);
+        if (!projectBackupJob(cancelled).active) await settleJob(cancelled);
+      },
+      {
+        onError: (cause) => {
+          setNotice({
+            message: resolveFormErrorMessage(cause) ?? "Could not cancel snapshot.",
+            tone: "error",
+          });
+        },
+        cleanup: () => setCancelPending(false),
+      },
+    );
   }, [job, port, settleJob]);
 
   const startManual = useCallback(

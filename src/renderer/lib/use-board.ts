@@ -145,6 +145,50 @@ function buildCommittedPageDetailFromUpdate(
   };
 }
 
+async function readCalendarOccurrences(
+  projectId: string,
+  windowStart: Date,
+  windowEnd: Date,
+  searchQuery: string | undefined,
+  store: Pick<ReturnType<typeof getBoardProjectStore>, "setError">,
+): Promise<PageOccurrence[]> {
+  try {
+    const occurrences: PageOccurrence[] = [];
+    let after: string | null = null;
+    do {
+      const result = await readCalendarOccurrenceWindow(
+        projectId,
+        windowStart,
+        windowEnd,
+        searchQuery,
+        after,
+      );
+      occurrences.push(...result.occurrences);
+      if (result.nextCursor === after && after !== null) {
+        throw new Error("Calendar occurrence continuation did not advance");
+      }
+      after = occurrences.length < MAX_CALENDAR_OCCURRENCES ? (result.nextCursor ?? null) : null;
+      if (occurrences.length >= MAX_CALENDAR_OCCURRENCES && result.nextCursor) {
+        store.setError(
+          `Calendar is limited to ${MAX_CALENDAR_OCCURRENCES.toLocaleString()} occurrences; narrow the date range or search.`,
+        );
+      }
+    } while (after !== null);
+    return occurrences.slice(0, MAX_CALENDAR_OCCURRENCES).map((occurrence) => ({
+      ...occurrence,
+      created: asDate(occurrence.created),
+      dueDate: occurrence.dueDate ? asDate(occurrence.dueDate) : undefined,
+      scheduledStart: asDate(occurrence.scheduledStart ?? occurrence.occurrenceStart),
+      scheduledEnd: asDate(occurrence.scheduledEnd ?? occurrence.occurrenceEnd),
+      occurrenceStart: asDate(occurrence.occurrenceStart),
+      occurrenceEnd: asDate(occurrence.occurrenceEnd),
+    }));
+  } catch (err) {
+    store.setError(toErrorMessage(err));
+    return [];
+  }
+}
+
 export function useBoard(options: UseBoardOptions) {
   const ownsPresentationOverride = Object.prototype.hasOwnProperty.call(
     options,
@@ -448,42 +492,7 @@ export function useBoard(options: UseBoardOptions) {
 
   const listPageOccurrences = useCallback(
     async (windowStart: Date, windowEnd: Date, searchQuery?: string): Promise<PageOccurrence[]> => {
-      try {
-        const occurrences: PageOccurrence[] = [];
-        let after: string | null = null;
-        do {
-          const result = await readCalendarOccurrenceWindow(
-            projectId,
-            windowStart,
-            windowEnd,
-            searchQuery,
-            after,
-          );
-          occurrences.push(...result.occurrences);
-          if (result.nextCursor === after && after !== null) {
-            throw new Error("Calendar occurrence continuation did not advance");
-          }
-          after =
-            occurrences.length < MAX_CALENDAR_OCCURRENCES ? (result.nextCursor ?? null) : null;
-          if (occurrences.length >= MAX_CALENDAR_OCCURRENCES && result.nextCursor) {
-            store.setError(
-              `Calendar is limited to ${MAX_CALENDAR_OCCURRENCES.toLocaleString()} occurrences; narrow the date range or search.`,
-            );
-          }
-        } while (after !== null);
-        return occurrences.slice(0, MAX_CALENDAR_OCCURRENCES).map((occurrence) => ({
-          ...occurrence,
-          created: asDate(occurrence.created),
-          dueDate: occurrence.dueDate ? asDate(occurrence.dueDate) : undefined,
-          scheduledStart: asDate(occurrence.scheduledStart ?? occurrence.occurrenceStart),
-          scheduledEnd: asDate(occurrence.scheduledEnd ?? occurrence.occurrenceEnd),
-          occurrenceStart: asDate(occurrence.occurrenceStart),
-          occurrenceEnd: asDate(occurrence.occurrenceEnd),
-        }));
-      } catch (err) {
-        store.setError(toErrorMessage(err));
-        return [];
-      }
+      return await readCalendarOccurrences(projectId, windowStart, windowEnd, searchQuery, store);
     },
     [projectId, store],
   );

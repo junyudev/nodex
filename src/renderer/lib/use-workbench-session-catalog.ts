@@ -1,3 +1,4 @@
+import { runWithCleanup } from "./run-with-cleanup";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { dispatchWorkbenchCodexNavigation } from "../features/local-conversation/use-workbench-codex-navigation";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -372,32 +373,37 @@ export function useWorkbenchSessionCollections({
       if (!current?.nextCursor) return;
 
       loadInFlightRef.current.add(key);
-      try {
-        const next = await listWorkbenchSessions(projectId, {
-          after: current.nextCursor,
-          first: 50,
-          placementScope,
-          order,
-        });
-        queryClient.setQueryData<ProjectSessionSummaryWindow>(queryKey, (latest) => {
-          if (!latest || latest.nextCursor !== current.nextCursor) {
-            return latest;
-          }
-          if (
-            latest.projectionRevision !== current.projectionRevision ||
-            next.projectionRevision !== current.projectionRevision
-          ) {
-            return latest;
-          }
-          const knownIds = new Set(latest.items.map((item) => item.id));
-          return {
-            ...next,
-            items: [...latest.items, ...next.items.filter((item) => !knownIds.has(item.id))],
-          };
-        });
-      } finally {
-        loadInFlightRef.current.delete(key);
-      }
+      await runWithCleanup(
+        async () => {
+          const next = await listWorkbenchSessions(projectId, {
+            after: current.nextCursor,
+            first: 50,
+            placementScope,
+            order,
+          });
+          queryClient.setQueryData<ProjectSessionSummaryWindow>(queryKey, (latest) => {
+            if (!latest || latest.nextCursor !== current.nextCursor) {
+              return latest;
+            }
+            if (
+              latest.projectionRevision !== current.projectionRevision ||
+              next.projectionRevision !== current.projectionRevision
+            ) {
+              return latest;
+            }
+            const knownIds = new Set(latest.items.map((item) => item.id));
+            return {
+              ...next,
+              items: [...latest.items, ...next.items.filter((item) => !knownIds.has(item.id))],
+            };
+          });
+        },
+        {
+          cleanup: () => {
+            loadInFlightRef.current.delete(key);
+          },
+        },
+      );
     },
     [order, placementScope, queryClient],
   );
