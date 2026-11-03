@@ -1,0 +1,69 @@
+src/renderer/components/workbench/database-settings/database-settings-rail.test.tsx
+  s_3c78b55e9bba7c::t_cae8f6ea7255fd 1-187
+  s_3c78b55e9bba7c::t_446f925828e352 188-190
+src/renderer/components/workbench/managed-worktrees-settings-control.test.tsx
+  s_3c78b55e9bba7c::t_2543b7e01bf72b 2,224-225,227-254,258
+  s_3c78b55e9bba7c::t_2d050776f43114 1,120-123,127-130,141-145,181,192-193,196-201,205,226,255-257
+  s_147aa999732a9b::t_9128473c873666 259-260
+src/renderer/components/workbench/app-update-settings-control.test.tsx
+  s_3c78b55e9bba7c::t_95e78b3ef67149 17,93,110
+  s_3c78b55e9bba7c::t_ac0749b4e1aa8f 8,14,21-22,92,94-109,111-176
+  s_3c78b55e9bba7c::t_073d730252ca78 1,177-179
+src/renderer/components/workbench/git-settings-page.test.tsx
+  s_3c78b55e9bba7c::t_2543b7e01bf72b 4,14,17,24-29,72-104
+  s_3c78b55e9bba7c::t_a438970f493a90 18-21
+  s_3c78b55e9bba7c::t_961949f466dd05 1
+src/renderer/components/workbench/app-update-settings-control.tsx
+  s_3c78b55e9bba7c::t_04fd09e2cceb53 1,104-108,258-262,264-266,268-275,286-297,306-312
+  s_3c78b55e9bba7c::t_f7fec97f051404 313-318,326
+src/renderer/components/workbench/workbench-settings-overlay.backups.test.tsx
+  s_3c78b55e9bba7c::t_cae8f6ea7255fd 42,54,82-83,146
+src/renderer/components/workbench/app-update-settings-control.browser.test.tsx
+  s_3c78b55e9bba7c::t_a17a63e43f1963 1-2
+src/renderer/components/workbench/backup-settings-control.browser.test.tsx
+  s_3c78b55e9bba7c::t_4cecabb718201d 1-12
+src/renderer/components/workbench/backup-settings-control.tsx
+  s_3c78b55e9bba7c::t_a9559aa0359f1c 1,106-135,156-173,188-202,291-306,326-337
+src/renderer/components/workbench/database-settings/database-settings-rail.browser.test.tsx
+  s_3c78b55e9bba7c::t_daaf35ff9d03da 1-2
+src/renderer/components/workbench/database-settings/database-settings-rail.tsx
+  s_3c78b55e9bba7c::t_4fabc636b2b871 1,1824-1842
+src/renderer/components/workbench/git-settings-page.browser.test.tsx
+  s_3c78b55e9bba7c::t_f15ed27b6b198a 1-2
+src/renderer/components/workbench/git-settings-page.tsx
+  s_3c78b55e9bba7c::t_88f8b9328ebb39 1,44-49
+src/renderer/components/workbench/managed-worktrees-settings-control.browser.test.tsx
+  s_3c78b55e9bba7c::t_07562a1b161d44 1-2
+src/renderer/components/workbench/managed-worktrees-settings-control.tsx
+  s_3c78b55e9bba7c::t_c9178521c5a248 1,251-276
+src/renderer/components/workbench/with-settings-action-cleanup.test.ts
+  s_3c78b55e9bba7c::t_c917a6477bed50 1-83
+src/renderer/components/workbench/with-settings-action-cleanup.ts
+  s_3c78b55e9bba7c::t_f6221d6dd95e4b 1-15
+src/renderer/components/workbench/workbench-settings-controls.tsx
+  s_3c78b55e9bba7c::t_1a674f9d3d41c9 1,534-549,562-577,694-709,722-737
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "46f232dadc89586f112b6264a808fd2ed633152e",
+  "prompts": {},
+  "sessions": {
+    "s_147aa999732a9b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a093-1936-7e30-95f6-0119f4adc60c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_3c78b55e9bba7c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a093-03da-70d3-b195-c06ec5f72ce9",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
