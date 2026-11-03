@@ -45,8 +45,12 @@ export function useChatMessageReveal(
   const sourceIdentity = input.history?.sourceIdentity ?? install;
   const available = Boolean(install);
   const installMessage = useEffectEvent(
-    (messageId: string, signal: AbortSignal) =>
-      input.history?.promptRail?.installMessage?.(messageId, signal) ?? Promise.resolve("stale"),
+    (source: typeof sourceIdentity, messageId: string, signal: AbortSignal) => {
+      const history = input.history;
+      if (source !== (history?.sourceIdentity ?? history?.promptRail?.installMessage))
+        return Promise.resolve("stale");
+      return history?.promptRail?.installMessage?.(messageId, signal) ?? Promise.resolve("stale");
+    },
   );
   useEffect(() => {
     if (!enabled) return;
@@ -58,7 +62,10 @@ export function useChatMessageReveal(
     if (!available) return;
     const controller = new AbortController();
     void (async () => {
-      if ((await installMessage(pending.messageId, controller.signal)) !== "applied") return;
+      if (
+        (await installMessage(sourceIdentity, pending.messageId, controller.signal)) !== "applied"
+      )
+        return;
       for (let attempt = 0; attempt < 60; attempt += 1) {
         if (controller.signal.aborted) return;
         const target = await reveal(pending.messageId);

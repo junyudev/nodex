@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useQuery } from "@tanstack/react-query";
 import { DEFAULT_AGENT_RUNTIME_SETTINGS } from "../../../shared/agent-runtime-settings";
 import { resolveAgentRuntimeMode } from "@/lib/agent-runtime-mode";
@@ -1037,22 +1038,27 @@ export function useAgentRuntimeConversationAdapter(input: {
   useEffect(() => acquired?.retain(), [acquired]);
   // A replacement execution process re-reads what failed while it was unavailable.
   const runtimeConnection = useAgentRuntimeConnectionState();
+  const [catalogConnection, setCatalogConnection] = useState(runtimeConnection.status);
+  if (catalogConnection !== runtimeConnection.status) {
+    setCatalogConnection(runtimeConnection.status);
+    if (runtimeConnection.status === "ready" && catalogState.error) refreshCatalog();
+  }
   const previousConnection = useRef(runtimeConnection.status);
   useEffect(() => {
     const recovered =
       runtimeConnection.status === "ready" && previousConnection.current !== "ready";
     previousConnection.current = runtimeConnection.status;
-    if (!recovered) return;
-    if (owner?.getSnapshot().connection === "failed") void owner.resume();
-    if (catalogState.error) refreshCatalog();
-  }, [runtimeConnection.status, owner, catalogState.error]);
+    if (recovered && owner?.getSnapshot().connection === "failed") void owner.resume();
+  }, [runtimeConnection.status, owner]);
   const projection = state.conversation?.snapshot.projection;
   const nativeSessions = projection?.providerSessions;
   // A native session can negotiate capabilities that its initial catalog did not know.
   // Session lifecycle events invalidate that read without forcing a new provider probe.
-  useEffect(() => {
+  const [catalogSessions, setCatalogSessions] = useState<typeof nativeSessions>(undefined);
+  if (catalogSessions !== nativeSessions) {
+    setCatalogSessions(nativeSessions);
     if (nativeSessions?.length) reloadCatalog();
-  }, [nativeSessions]);
+  }
   const observed = projection?.thread;
   const entriesFor = (
     providers: readonly AgentRuntimeProvider[],
@@ -1365,71 +1371,75 @@ export function useAgentRuntimeConversationAdapter(input: {
         targetProjectId: request.projectId,
         phase: "startingThread",
       });
-      let launched: import("../../../shared/agent-runtime-api").AgentRuntimeLaunchResult;
-      try {
-        const launchSelection = pendingSelection ? await pendingSelection : selection;
-        const modelSelection = modelOf(launchSelection);
-        if (!modelSelection) throw new Error("Choose a configured Agent and model");
-        const launchProviders = catalogState.loading
-          ? await agentRuntimeRuntime.catalog({ instanceIds: [modelSelection.instanceId] })
-          : catalogState.providers;
-        const resolved = requireAgentRuntimeModelSelection(launchProviders, modelSelection);
-        if (launchSelection.binding.kind !== selection.binding.kind)
-          sessionFirstSubmissionOwner.update(submission.launchId, {
-            backend: launchSelection.binding.kind,
-          });
-        const presentationTicket =
-          request.presentationTicket ??
-          (await captureCodexTurnPresentation(
-            workbenchOwner,
-            { kind: "session", sessionId, launchId: submission.launchId },
-            submittedPresentation,
-          ));
-        const prepared = await prepareFor(launchSelection, resolved.provider)(
-          request.prompt,
-          request.promptInput,
-        );
-        const result = await agentRuntimeRuntime.launch({
-          sessionId,
-          projectId: request.projectId,
-          launchId: submission.launchId,
-          acceptedAt: Math.floor(submission.acceptedAt),
-          presentationTicket,
-          title: request.prompt.slice(0, 120) || "New chat",
-          modelSelection,
-          interactionMode: draftMode,
-          runtimeMode: draft.runtimeMode,
-          runInTarget: request.runInTarget === "newWorktree" ? "newWorktree" : "localProject",
-          runInEnvironmentPath: request.runInEnvironmentPath,
-          worktreeStartingState: request.worktreeStartingState,
-          message: {
-            messageId: submission.clientUserMessageId,
-            ...prepared,
-            images: agentRuntimePromptImages(request.promptInput),
-            ...(request.promptInput?.agentConfigs !== undefined
-              ? { agentConfigs: request.promptInput.agentConfigs }
-              : {}),
-          },
-        });
-        if (request.projectDraftId && request.projectId)
-          input.commitDraft?.({
+      const launched = await runWithCleanup(
+        async () => {
+          const launchSelection = pendingSelection ? await pendingSelection : selection;
+          const modelSelection = modelOf(launchSelection);
+          if (!modelSelection) throw new Error("Choose a configured Agent and model");
+          const launchProviders = catalogState.loading
+            ? await agentRuntimeRuntime.catalog({ instanceIds: [modelSelection.instanceId] })
+            : catalogState.providers;
+          const resolved = requireAgentRuntimeModelSelection(launchProviders, modelSelection);
+          if (launchSelection.binding.kind !== selection.binding.kind)
+            sessionFirstSubmissionOwner.update(submission.launchId, {
+              backend: launchSelection.binding.kind,
+            });
+          const presentationTicket =
+            request.presentationTicket ??
+            (await captureCodexTurnPresentation(
+              workbenchOwner,
+              { kind: "session", sessionId, launchId: submission.launchId },
+              submittedPresentation,
+            ));
+          const prepared = await prepareFor(launchSelection, resolved.provider)(
+            request.prompt,
+            request.promptInput,
+          );
+          const result = await agentRuntimeRuntime.launch({
+            sessionId,
             projectId: request.projectId,
-            draftId: request.projectDraftId,
-            sessionId: result.sessionId,
+            launchId: submission.launchId,
+            acceptedAt: Math.floor(submission.acceptedAt),
+            presentationTicket,
+            title: request.prompt.slice(0, 120) || "New chat",
+            modelSelection,
+            interactionMode: draftMode,
+            runtimeMode: draft.runtimeMode,
+            runInTarget: request.runInTarget === "newWorktree" ? "newWorktree" : "localProject",
+            runInEnvironmentPath: request.runInEnvironmentPath,
+            worktreeStartingState: request.worktreeStartingState,
+            message: {
+              messageId: submission.clientUserMessageId,
+              ...prepared,
+              images: agentRuntimePromptImages(request.promptInput),
+              ...(request.promptInput?.agentConfigs !== undefined
+                ? { agentConfigs: request.promptInput.agentConfigs }
+                : {}),
+            },
           });
-        setCreatedTarget({ sessionId: result.sessionId, threadId: result.threadId });
-        sessionFirstSubmissionOwner.update(submission.launchId, {
-          threadId: result.threadId,
-          phase: "startingTurn",
-        });
-        launched = result;
-      } catch (cause) {
-        sessionFirstSubmissionOwner.fail(submission.launchId, {
-          stage: "startingThread",
-          message: cause instanceof Error ? cause.message : String(cause),
-        });
-        throw cause;
-      }
+          if (request.projectDraftId && request.projectId)
+            input.commitDraft?.({
+              projectId: request.projectId,
+              draftId: request.projectDraftId,
+              sessionId: result.sessionId,
+            });
+          setCreatedTarget({ sessionId: result.sessionId, threadId: result.threadId });
+          sessionFirstSubmissionOwner.update(submission.launchId, {
+            threadId: result.threadId,
+            phase: "startingTurn",
+          });
+          return result;
+        },
+        {
+          onError: (cause) => {
+            sessionFirstSubmissionOwner.fail(submission.launchId, {
+              stage: "startingThread",
+              message: cause instanceof Error ? cause.message : String(cause),
+            });
+            throw cause;
+          },
+        },
+      );
       // The chat exists from here. Failing to show it must not restore the draft and invite a
       // second send of the same message.
       try {

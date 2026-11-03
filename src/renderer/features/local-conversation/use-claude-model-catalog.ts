@@ -36,12 +36,13 @@ export function useClaudeModelCatalog(
   const [revision, setRevision] = useState(0);
   const refreshOwner = useRef<{
     readonly key: string;
+    readonly revision: number;
     readonly refresh: () => Promise<void>;
   } | null>(null);
   const refreshCatalog = useCallback(async () => {
     const owner = refreshOwner.current;
-    if (owner?.key === key) await owner.refresh();
-  }, [key]);
+    if (owner?.key === key && owner.revision === revision) await owner.refresh();
+  }, [key, revision]);
   useEffect(() => subscribe(() => setRevision((current) => current + 1)), [subscribe]);
   useEffect(() => {
     const requestScope: ClaudeDiscoveryScope | null = threadId
@@ -98,7 +99,7 @@ export function useClaudeModelCatalog(
     };
     window.addEventListener("focus", refreshWhenDue);
     document.addEventListener("visibilitychange", refreshWhenDue);
-    const owner = { key, refresh: () => refresh(true) };
+    const owner = { key, revision, refresh: () => refresh(true) };
     refreshOwner.current = owner;
     void refresh();
     return () => {

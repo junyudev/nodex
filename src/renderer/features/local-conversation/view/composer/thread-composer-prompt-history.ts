@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, type RefObject } from "react";
 import {
   persistedAtom,
   preloadPersistedAtom,
@@ -144,9 +144,13 @@ export function useThreadComposerPromptHistoryRecall({
   const historyStateRef = useRef<PromptHistoryState>(historyState);
   const selectedIndexRef = useRef<number | null>(null);
 
-  historyStateRef.current = historyState;
-
+  useLayoutEffect(() => {
+    historyStateRef.current = historyState;
+  }, [historyState]);
+  const selectionScopeRef = useRef(scope);
   useEffect(() => {
+    if (selectionScopeRef.current === scope) return;
+    selectionScopeRef.current = scope;
     selectedIndexRef.current = null;
   }, [scope]);
 

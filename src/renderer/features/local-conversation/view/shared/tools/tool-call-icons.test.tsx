@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vite-plus/test";
-import { fireEvent } from "@testing-library/react";
+import { act, fireEvent } from "@testing-library/react";
 import { renderWithMaitai as render } from "../../../../../test/thread-maitai";
 import type {
   CodexConversationItem,
@@ -368,4 +368,21 @@ describe("tool-call icon helpers", () => {
 
     expect(descriptor.kind === "semantic" ? descriptor.icon : "").toBe("web-search");
   });
+});
+
+test("retries a connector logo when its source changes after an image failure", async () => {
+  const logo = (src: string) => (
+    <ConnectorLogo alt="Connector" logoUrl={src} fallback={<ConnectorFallbackIcon />} />
+  );
+  const view = render(logo("https://example.com/first.svg"));
+  await act(async () => {
+    fireEvent.error(view.getByRole("img", { name: "Connector" }));
+  });
+  expect(view.queryByRole("img", { name: "Connector" })).toBeNull();
+  await act(async () => {
+    view.rerender(logo("https://example.com/second.svg"));
+  });
+  expect(view.getByRole("img", { name: "Connector" }).getAttribute("src")).toBe(
+    "https://example.com/second.svg",
+  );
 });

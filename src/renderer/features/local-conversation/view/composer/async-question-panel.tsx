@@ -76,7 +76,8 @@ export function AsyncQuestionPanel({
   const animateQuestions = multiple && !reducedMotion;
   const fade = animateQuestions ? QUESTION_FADE : undefined;
   const questionId = question?.id;
-  const hasQuestionOptions = Boolean(question?.options.length);
+  const optionCount = question?.options.length ?? 0;
+  const hasQuestionOptions = optionCount > 0;
   // Presence transitions keep the outgoing editor mounted until the new question can enter.
   const bindEditor = useCallback(
     (handle: ComposerPromptEditorHandle | null) => {
@@ -91,16 +92,20 @@ export function AsyncQuestionPanel({
     [questionId, hasQuestionOptions, runtime, threadId],
   );
 
-  useLayoutEffect(() => {
+  const [previousQuestion, setPreviousQuestion] = useState({ id: questionId, optionCount });
+  if (previousQuestion.id !== questionId || previousQuestion.optionCount !== optionCount) {
+    setPreviousQuestion({ id: questionId, optionCount });
     setActivating(null);
     setHovered(undefined);
     setSuggestion(inactiveComposerSuggestionState());
-    if (question?.options.length) panel.current?.focus();
+  }
+  useLayoutEffect(() => {
+    if (optionCount > 0 && runtime.read(threadId).selectedId === questionId) panel.current?.focus();
     return () => {
       if (activation.current) clearTimeout(activation.current);
       activation.current = null;
     };
-  }, [question?.id, question?.options.length]);
+  }, [questionId, optionCount, runtime, threadId]);
   useEffect(() => {
     if (!question?.deadlineMs) return;
     const deadline = question.deadlineMs;

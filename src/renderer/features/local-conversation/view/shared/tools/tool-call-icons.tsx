@@ -1,6 +1,6 @@
 import { AppActivityIcon, SettingsGeneralIcon, StopIcon } from "@/components/shared/icons";
 import { Sparkles } from "@/components/shared/icons/generic-icons";
-import { cloneElement, useEffect, useState, type ReactElement, type ReactNode } from "react";
+import { cloneElement, useState, type ReactElement, type ReactNode } from "react";
 import type {
   CodexCommandAction,
   CodexDynamicToolCallView,
@@ -161,9 +161,11 @@ function LogoImageWithFallback({
 }) {
   const [failed, setFailed] = useState(false);
 
-  useEffect(() => {
+  const [previousSrc, setPreviousSrc] = useState(src);
+  if (previousSrc !== src) {
+    setPreviousSrc(src);
     setFailed(false);
-  }, [src]);
+  }
 
   if (failed) return fallback;
 

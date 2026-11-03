@@ -1,5 +1,6 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { motion } from "motion/react";
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent } from "react";
+import { useMemo, useRef, useState, type CSSProperties, type MouseEvent } from "react";
 import {
   ChevronDownIcon,
   ContentSearchDiffIcon,
@@ -651,12 +652,26 @@ export function TurnDiffSurface({
   const [failure, setFailure] = useState<TurnDiffPatchFailure | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
+  const [previousPatch, setPreviousPatch] = useState({
+    entryId: item.entryId,
+    itemId: item.itemId,
+    unifiedDiff: payload?.unifiedDiff,
+  });
+  if (
+    previousPatch.entryId !== item.entryId ||
+    previousPatch.itemId !== item.itemId ||
+    previousPatch.unifiedDiff !== payload?.unifiedDiff
+  ) {
+    setPreviousPatch({
+      entryId: item.entryId,
+      itemId: item.itemId,
+      unifiedDiff: payload?.unifiedDiff,
+    });
     setExpanded(false);
     setLastPatchAction(null);
     setPatchActionInFlight(false);
     setFailure(null);
-  }, [item.entryId, item.itemId, payload?.unifiedDiff]);
+  }
 
   if (!payload || model.kind === "empty" || summary.fileCount === 0) return null;
 
@@ -692,44 +707,50 @@ export function TurnDiffSurface({
 
     const orderedBatches = nextPatchAction === "undo" ? [...applyBatches].reverse() : applyBatches;
     setPatchActionInFlight(true);
-    try {
-      for (const batch of orderedBatches) {
-        const result = await gitWorkerClient.request({
-          method: "apply-patch",
-          params: {
-            cwd: batch.cwd,
-            diff: batch.diff,
-            target: "unstaged",
-            revert: nextPatchAction === "undo",
-            operationSource: "thread_diff",
-          },
-        });
+    return runWithCleanup(
+      async () => {
+        for (const batch of orderedBatches) {
+          const result = await gitWorkerClient.request({
+            method: "apply-patch",
+            params: {
+              cwd: batch.cwd,
+              diff: batch.diff,
+              target: "unstaged",
+              revert: nextPatchAction === "undo",
+              operationSource: "thread_diff",
+            },
+          });
 
-        if (result.status !== "success") {
-          setFailure({ action: nextPatchAction, result });
-          return;
+          if (result.status !== "success") {
+            setFailure({ action: nextPatchAction, result });
+            return;
+          }
         }
-      }
 
-      setLastPatchAction({ action: nextPatchAction, unifiedDiff: payload.unifiedDiff });
-      toast.success(nextPatchAction === "undo" ? "Changes reverted" : "Changes reapplied", {
-        id: "turn-diff-notice",
-      });
-    } catch (error) {
-      setFailure({
-        action: nextPatchAction,
-        result: {
-          status: "error",
-          appliedPaths: [],
-          skippedPaths: [],
-          conflictedPaths: [],
-          errorCode: null,
-          errorMessage: error instanceof Error ? error.message : "Could not apply patch.",
+        setLastPatchAction({ action: nextPatchAction, unifiedDiff: payload.unifiedDiff });
+        toast.success(nextPatchAction === "undo" ? "Changes reverted" : "Changes reapplied", {
+          id: "turn-diff-notice",
+        });
+      },
+      {
+        cleanup: () => {
+          setPatchActionInFlight(false);
         },
-      });
-    } finally {
-      setPatchActionInFlight(false);
-    }
+        onError: (error) => {
+          setFailure({
+            action: nextPatchAction,
+            result: {
+              status: "error",
+              appliedPaths: [],
+              skippedPaths: [],
+              conflictedPaths: [],
+              errorCode: null,
+              errorMessage: error instanceof Error ? error.message : "Could not apply patch.",
+            },
+          });
+        },
+      },
+    );
   };
 
   if (isInProgress) {

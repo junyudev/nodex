@@ -3,6 +3,7 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
+  useEffectEvent,
   useImperativeHandle,
   useState,
 } from "react";
@@ -182,10 +183,15 @@ export const ThreadSummaryPanelSection = forwardRef<
     (persistedExpanded ?? !defaultCollapsed);
   const shouldRenderContent = mode === "headerless" || isExpanded || mode === "dropdown";
 
-  useEffect(() => {
+  const [previousSectionKey, setPreviousSectionKey] = useState(sectionKey);
+  if (previousSectionKey !== sectionKey) {
+    setPreviousSectionKey(sectionKey);
     setPersistedExpanded(readPersistedSectionExpanded(sectionKey));
     setAutoCollapseState("pending");
-  }, [sectionKey]);
+  }
+  if (autoCollapseActive && !autoCollapse && autoCollapseState === "collapsed") {
+    setAutoCollapseState("pending");
+  }
 
   const setExpanded = useCallback(
     (nextExpanded: boolean) => {
@@ -204,16 +210,16 @@ export const ThreadSummaryPanelSection = forwardRef<
     [setExpanded],
   );
 
+  const collapseSection = useEffectEvent((key: string) => {
+    if (key === sectionKey) setAutoCollapseState("collapsed");
+  });
   useEffect(() => {
     if (!autoCollapseActive) return undefined;
-    if (!autoCollapse) {
-      if (autoCollapseState === "collapsed") setAutoCollapseState("pending");
-      return undefined;
-    }
+    if (!autoCollapse) return undefined;
     if (autoCollapseState !== "pending") return undefined;
 
     const timeoutId = window.setTimeout(() => {
-      setAutoCollapseState("collapsed");
+      collapseSection(sectionKey);
     }, THREAD_SUMMARY_PANEL_SECTION_AUTO_COLLAPSE_MS);
     return () => window.clearTimeout(timeoutId);
   }, [autoCollapse, autoCollapseActive, autoCollapseState, sectionKey]);

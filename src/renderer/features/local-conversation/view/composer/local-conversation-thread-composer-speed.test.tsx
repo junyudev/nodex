@@ -2570,6 +2570,11 @@ describe("ThreadComposer speed menu", () => {
 
   test("treats ordinary empty intent text as no-op and clearText as explicit deletion", async () => {
     resetStorage();
+    installComposerWindowApi(async (channel) =>
+      channel === "codex-command-keymap-state"
+        ? createCommandKeymapState({}, "windows")
+        : undefined,
+    );
     const actions = buildActions();
     const renderTree = (intent: NonNullable<ThreadFooterModel["composerIntent"]>) => (
       <AppProviders>
@@ -2647,6 +2652,11 @@ describe("ThreadComposer speed menu", () => {
 
   test("applies explicit attachment append and replace semantics once per nonce", async () => {
     resetStorage();
+    installComposerWindowApi(async (channel) =>
+      channel === "codex-command-keymap-state"
+        ? createCommandKeymapState({}, "windows")
+        : undefined,
+    );
     const actions = buildActions();
     const renderTree = (intent: NonNullable<ThreadFooterModel["composerIntent"]>) => (
       <AppProviders>

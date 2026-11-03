@@ -1,44 +1,65 @@
-import type { ComponentProps } from "react";
-import { act, fireEvent, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { toast } from "@/components/ui/toast";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import { buildComposerShellFixture } from "@/test/composer-shell-fixture";
 import { buildComposerActions } from "@/test/composer-actions-fixture";
+import { act, fireEvent, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { render } from "@/test/dom";
 import { changeComposerBranch } from "../../composer-git-context";
-import type { ConfigureLocalEnvironmentPopover } from "./configure-local-environment-popover";
 import { ComposerContextRailSlot } from "../composer-context-rail";
 import { ThreadComposerStatusStrip } from "./local-conversation-thread-composer-status-strip";
+import type { ConfigureLocalEnvironmentPopover } from "./configure-local-environment-popover";
+import type { ThreadFooterModel, ThreadStageActions } from "../../thread-stage-types";
 
-vi.mock("@/components/ui/toast", () => ({ toast: { danger: vi.fn() } }));
-vi.mock("../../composer-git-context", () => ({ changeComposerBranch: vi.fn() }));
-vi.mock("@/lib/use-git-branch-state", () => {
-  const data = { currentBranch: "main", defaultBranch: "main", branches: ["main", "feature"] };
-  return {
-    useGitBranchState: () => ({
-      data,
-      isError: false,
-      isFetching: false,
-      isLoading: false,
-      refetch: async () => ({ data }),
-    }),
-  };
-});
-vi.mock("./configure-local-environment-popover", () => ({
-  ConfigureLocalEnvironmentPopover: (
-    props: ComponentProps<typeof ConfigureLocalEnvironmentPopover>,
-  ) => (
-    <>
-      <button disabled={props.branchBusy} onClick={() => void props.onCheckoutBranch("feature")}>
-        Switch branch
-      </button>
-      <button disabled={props.branchBusy} onClick={() => void props.onCreateBranch("feature")}>
-        Create branch
-      </button>
-    </>
-  ),
+const branches = vi.hoisted(() => ({
+  first: { currentBranch: "main", defaultBranch: "main", branches: ["main", "topic"] },
+  second: { currentBranch: "other", defaultBranch: "other", branches: ["other"] },
+  change: vi.fn(),
 }));
+vi.mock("@/components/ui/toast", () => ({ toast: { danger: vi.fn() } }));
+vi.mock("@/lib/use-git-branch-state", () => ({
+  useGitBranchState: (cwd: string) => ({
+    data: cwd === "/second" || cwd === "/other-project" ? branches.second : branches.first,
+    isError: false,
+    isFetching: false,
+    isLoading: false,
+    refetch: async () => ({
+      data: cwd === "/second" || cwd === "/other-project" ? branches.second : branches.first,
+    }),
+  }),
+}));
+vi.mock("../../composer-git-context", () => ({ changeComposerBranch: branches.change }));
+vi.mock("./new-chat-location-selector", () => ({ NewChatLocationSelector: () => null }));
+vi.mock("./configure-local-environment-popover", () => ({
+  ConfigureLocalEnvironmentPopover: function BranchPicker({
+    branchState,
+    branchBusy,
+    onCheckoutBranch,
+    onCreateBranch,
+  }: Parameters<typeof ConfigureLocalEnvironmentPopover>[0]) {
+    return (
+      <>
+        <button disabled={branchBusy} onClick={() => void onCreateBranch("feature")}>
+          Create branch
+        </button>
+        <output aria-label="Selected branch">{branchState.currentBranch}</output>
+        <button disabled={branchBusy} onClick={() => void onCheckoutBranch("feature")}>
+          Switch branch
+        </button>
+      </>
+    );
+  },
+}));
+
+function branchModel(cwd: string): ThreadFooterModel {
+  return {
+    isNewThreadTab: true,
+    conversation: null,
+    projectWorkspacePath: cwd,
+    newThreadTarget: { sessionId: "draft" },
+    newThreadStartInSelector: { target: { runInTarget: "localProject" } },
+  } as ThreadFooterModel;
+}
 
 function strip(cwd = "/repo") {
   const model = {
@@ -67,7 +88,10 @@ function strip(cwd = "/repo") {
   );
 }
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  branches.change.mockReset();
+});
 
 describe("new-chat branch action failures", () => {
   test.each([
@@ -130,5 +154,45 @@ describe("ComposerContextRailSlot", () => {
 
     expect(view.queryByTestId("new-task-target-controls")).toBeNull();
     expect(view.container.querySelector('[data-composer-external-footer-slot="true"]')).toBeNull();
+  });
+});
+
+describe("composer branch context", () => {
+  test("shows cached branches on mount and fences a pending checkout when the workspace changes", async () => {
+    let finish!: (result: typeof branches.first) => void;
+    branches.change.mockImplementation(
+      () =>
+        new Promise<typeof branches.first>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const actions = {} as ThreadStageActions;
+    const tree = (cwd: string) => (
+      <ThreadComposerStatusStrip model={branchModel(cwd)} actions={actions} />
+    );
+    const view = render(tree("/first"));
+    expect(view.getByLabelText("Selected branch").textContent).toBe("main");
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Switch branch" }));
+    });
+    expect(
+      (view.getByRole("button", { name: "Switch branch" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    await act(async () => {
+      view.rerender(tree("/second"));
+    });
+    expect(view.getByLabelText("Selected branch").textContent).toBe("other");
+    expect(
+      (view.getByRole("button", { name: "Switch branch" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+    await act(async () => {
+      finish({ ...branches.first, currentBranch: "topic" });
+    });
+    expect(view.getByLabelText("Selected branch").textContent).toBe("other");
+    expect(branches.change).toHaveBeenCalledWith({
+      cwd: "/first",
+      branch: "feature",
+      create: false,
+    });
   });
 });

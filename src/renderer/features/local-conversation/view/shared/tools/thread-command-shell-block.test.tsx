@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vite-plus/test";
-import { render } from "@testing-library/react";
+import { act, fireEvent, render } from "@testing-library/react";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
-import { ThreadExecShellContainer } from "./thread-command-shell-block";
+import { ThreadCommandShellBlock, ThreadExecShellContainer } from "./thread-command-shell-block";
 
 function renderPlainShell({
   output,
@@ -45,4 +45,28 @@ describe("ThreadExecShellContainer plain surface", () => {
     const streaming = renderPlainShell({ output: "", isInProgress: true });
     expect(streaming.queryByText("No output")).toBe(null);
   });
+});
+
+test("preserves command disclosure across output updates and collapses a replacement command", async () => {
+  const shell = (command: string, output: string) => (
+    <NodexTooltipProvider>
+      <ThreadCommandShellBlock variant="embedded" command={command} output={output} />
+    </NodexTooltipProvider>
+  );
+  const view = render(shell("first command", "initial output"));
+  const toggle = () => view.getByRole("button", { name: "$ first command" });
+  await act(async () => {
+    fireEvent.click(toggle());
+  });
+  expect(toggle().getAttribute("aria-expanded")).toBe("true");
+  await act(async () => {
+    view.rerender(shell("first command", "streamed output"));
+  });
+  expect(toggle().getAttribute("aria-expanded")).toBe("true");
+  await act(async () => {
+    view.rerender(shell("replacement command", "new output"));
+  });
+  expect(
+    view.getByRole("button", { name: "$ replacement command" }).getAttribute("aria-expanded"),
+  ).toBe("false");
 });

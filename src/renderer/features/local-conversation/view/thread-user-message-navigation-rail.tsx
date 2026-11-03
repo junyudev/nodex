@@ -126,21 +126,22 @@ export function hasEnoughThreadUserMessageNavigationLeftSpace({
   });
 }
 
-function resolveOutputIcon(
-  type: ThreadUserMessageNavigationOutputType,
-): ComponentType<{ className?: string; "aria-hidden"?: boolean }> {
-  if (type === "app") return PluginsIcon;
-  if (type === "website") return ConnectorGlobeIcon;
-  if (type === "google-drive") return ConnectorFallbackIcon;
-  if (type === "image") return EditFilesIcon;
-  if (type === "commit") return ReviewCommitOrPushIcon;
-  if (type === "pull-request") return ReviewCreatePrIcon;
-  if (type === "review") return SidePanelReviewIcon;
-  return FileIcon;
-}
+const OUTPUT_ICONS: Record<
+  ThreadUserMessageNavigationOutputType,
+  ComponentType<{ className?: string; "aria-hidden"?: boolean }>
+> = {
+  app: PluginsIcon,
+  website: ConnectorGlobeIcon,
+  "google-drive": ConnectorFallbackIcon,
+  image: EditFilesIcon,
+  commit: ReviewCommitOrPushIcon,
+  "pull-request": ReviewCreatePrIcon,
+  review: SidePanelReviewIcon,
+  file: FileIcon,
+};
 
 function NavigationOutputPill({ output }: { output: ThreadUserMessageNavigationOutput }) {
-  const Icon = resolveOutputIcon(output.type);
+  const Icon = OUTPUT_ICONS[output.type];
   return (
     <span className="inline-flex min-w-0 items-center gap-1 rounded-md bg-token-foreground/5 px-1.5 py-0.5 text-xs leading-4 text-token-description-foreground">
       <Icon className="icon-3xs shrink-0" aria-hidden={true} />

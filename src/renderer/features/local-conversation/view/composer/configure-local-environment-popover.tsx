@@ -112,11 +112,6 @@ export function ConfigureLocalEnvironmentPopover({
     setPage("settings");
     returnFocus.current = null;
   };
-  const inlineBranch = {
-    container: pickerContainer,
-    open: open && page === "branch",
-    onOpenChange: onPickerOpenChange,
-  };
 
   return (
     <>
@@ -285,7 +280,11 @@ export function ConfigureLocalEnvironmentPopover({
                 <div ref={setPickerContainer} className="min-w-0" />
               </div>
               <WorktreeStartingStatePopover
-                inline={{ ...inlineBranch, open: inlineBranch.open && isWorktree }}
+                inline={{
+                  container: pickerContainer,
+                  open: open && page === "branch" && isWorktree,
+                  onOpenChange: onPickerOpenChange,
+                }}
                 cwd={cwd}
                 state={branchState}
                 startingState={startingState}

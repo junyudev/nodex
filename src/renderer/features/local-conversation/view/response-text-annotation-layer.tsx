@@ -32,6 +32,12 @@ export function ResponseTextAnnotationLayer({
   const [locations, setLocations] = useState<readonly LocatedAnnotation[]>([]);
   const highlightId = `response-annotation-${useId().replaceAll(":", "")}`;
   const { responseTextAnnotations: annotations, activeAnnotationId } = controller.draft;
+  const hasAnnotations = annotations.length > 0;
+  const [previousHasAnnotations, setPreviousHasAnnotations] = useState(hasAnnotations);
+  if (previousHasAnnotations !== hasAnnotations) {
+    setPreviousHasAnnotations(hasAnnotations);
+    if (!hasAnnotations) setLocations([]);
+  }
   useEffect(() => {
     const annotation = annotations.find((entry) => entry.id === activeAnnotationId);
     if (!annotation) return;
@@ -53,10 +59,7 @@ export function ResponseTextAnnotationLayer({
     element.scrollIntoView({ block: "center", behavior: "instant" });
   }, [activeAnnotationId, annotations, root]);
   useEffect(() => {
-    if (annotations.length === 0) {
-      setLocations((current) => (current.length ? [] : current));
-      return;
-    }
+    if (annotations.length === 0) return;
     let frame: number | null = null;
     const sheet = document.createElement("style");
     sheet.textContent = `::highlight(${highlightId}) { background-color: #128dff66; }`;
@@ -169,6 +172,38 @@ function AnnotationCommentEditor({
   const input = useRef<HTMLTextAreaElement>(null);
   const beforeDictation = useRef("");
   const blurFrame = useRef<number | null>(null);
+  const insertTranscript = (text: string) => {
+    controller.updateAnnotation(
+      annotation.id,
+      [beforeDictation.current, text].filter(Boolean).join(" "),
+    );
+    input.current?.focus();
+  };
+  const dictation = useComposerDictation({
+    enabled: true,
+    globalTarget: {
+      id: `response-annotation:${annotation.id}`,
+      priority: 20,
+      admission: () => (input.current === document.activeElement ? null : "unavailable"),
+    },
+    transcript: {
+      start: () => {
+        beforeDictation.current = controller.draft.annotationDraft;
+      },
+      update: insertTranscript,
+      preserve: () => {},
+      cancel: () => controller.updateAnnotation(annotation.id, beforeDictation.current),
+    },
+    onTranscriptInsert: insertTranscript,
+    onTranscriptAppend: insertTranscript,
+    onTranscriptSend: (text) => {
+      insertTranscript(text);
+      controller.finishAnnotation(true);
+    },
+    onStartError: (error) => toast.danger(dictationErrorMessage(error)),
+    onTranscribeError: (error) => toast.danger(dictationErrorMessage(error)),
+    onUnsupported: () => toast.danger("Dictation is unavailable"),
+  });
   const onDismiss = () => {
     if (
       dictation.isDictating ||
@@ -214,38 +249,6 @@ function AnnotationCommentEditor({
       if (blurFrame.current !== null) cancelAnimationFrame(blurFrame.current);
     };
   }, []);
-  const insertTranscript = (text: string) => {
-    controller.updateAnnotation(
-      annotation.id,
-      [beforeDictation.current, text].filter(Boolean).join(" "),
-    );
-    input.current?.focus();
-  };
-  const dictation = useComposerDictation({
-    enabled: true,
-    globalTarget: {
-      id: `response-annotation:${annotation.id}`,
-      priority: 20,
-      admission: () => (input.current === document.activeElement ? null : "unavailable"),
-    },
-    transcript: {
-      start: () => {
-        beforeDictation.current = controller.draft.annotationDraft;
-      },
-      update: insertTranscript,
-      preserve: () => {},
-      cancel: () => controller.updateAnnotation(annotation.id, beforeDictation.current),
-    },
-    onTranscriptInsert: insertTranscript,
-    onTranscriptAppend: insertTranscript,
-    onTranscriptSend: (text) => {
-      insertTranscript(text);
-      controller.finishAnnotation(true);
-    },
-    onStartError: (error) => toast.danger(dictationErrorMessage(error)),
-    onTranscribeError: (error) => toast.danger(dictationErrorMessage(error)),
-    onUnsupported: () => toast.danger("Dictation is unavailable"),
-  });
   const width = Math.min(294, bounds.width - 16);
   const left = Math.max(
     bounds.left + 8,

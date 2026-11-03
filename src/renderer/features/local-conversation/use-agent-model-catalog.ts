@@ -61,6 +61,11 @@ export function useAgentModelCatalogs(
       subscribe(() => setRefresh((current) => ({ revision: current.revision + 1, force: false }))),
     [subscribe],
   );
+  const [previousRequest, setPreviousRequest] = useState({ key, refresh });
+  if (previousRequest.key !== key || previousRequest.refresh !== refresh) {
+    setPreviousRequest({ key, refresh });
+    setState(null);
+  }
   useEffect(() => {
     const [projectId, threadId, , bindings] = JSON.parse(key) as [
       string | null,
@@ -70,7 +75,6 @@ export function useAgentModelCatalogs(
     ];
     const controller = new AbortController();
     const entries = new Map<string, Omit<AgentCatalogEntry, "instance">>();
-    setState({ key, entries });
     let next = 0;
     const loadNext = async () => {
       while (!controller.signal.aborted) {

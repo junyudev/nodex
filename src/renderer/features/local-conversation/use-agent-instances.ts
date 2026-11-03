@@ -12,15 +12,14 @@ import { usesHostOpenCodeExecutable } from "../opencode-setup/opencode-setup-mod
 export function useAgentInstances() {
   const [state, setState] = useState<{
     readonly instances: readonly AgentCatalogInstance[];
-    readonly loading: boolean;
+    readonly revision: number;
     readonly error: string | null;
-  }>({ instances: [], loading: true, error: null });
+  }>({ instances: [], revision: -1, error: null });
   const [revision, setRevision] = useState(0);
   const refresh = useCallback(() => setRevision((current) => current + 1), []);
   useEffect(() => resolveRendererTransport().subscribeAgentSettingsChanges(refresh), [refresh]);
   useEffect(() => {
     let disposed = false;
-    setState((current) => ({ ...current, loading: true, error: null }));
     void Promise.all([
       readClaudeAgentSettings(),
       readOpenCodeAgentSettings(),
@@ -29,7 +28,7 @@ export function useAgentInstances() {
       .then(([claude, opencode, acp]) => {
         if (disposed) return;
         setState({
-          loading: false,
+          revision,
           error: null,
           instances: [
             ...claude.instances.map((instance) => ({
@@ -59,7 +58,7 @@ export function useAgentInstances() {
         if (disposed) return;
         setState({
           instances: [],
-          loading: false,
+          revision,
           error: error instanceof Error ? error.message : "Could not load Agent profiles",
         });
       });
@@ -67,5 +66,10 @@ export function useAgentInstances() {
       disposed = true;
     };
   }, [revision]);
-  return { ...state, refresh };
+  return {
+    instances: state.instances,
+    loading: state.revision !== revision,
+    error: state.revision === revision ? state.error : null,
+    refresh,
+  };
 }

@@ -1,11 +1,4 @@
-import {
-  useEffect,
-  useMemo,
-  useState,
-  type FormEvent,
-  type KeyboardEvent,
-  type ReactNode,
-} from "react";
+import { useMemo, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import { ChevronDownIcon, CloseIcon } from "@/components/shared/icons";
 import type {
   CodexMcpServerElicitationRequest,
@@ -409,10 +402,15 @@ function McpFormRequestCard({
   );
   const [invalidFieldNames, setInvalidFieldNames] = useState<string[]>([]);
 
-  useEffect(() => {
+  const [previousRequest, setPreviousRequest] = useState({
+    fields: model.fields,
+    id: request.requestId,
+  });
+  if (previousRequest.fields !== model.fields || previousRequest.id !== request.requestId) {
+    setPreviousRequest({ fields: model.fields, id: request.requestId });
     setValues(createInitialCodexMcpElicitationFormValues(model.fields));
     setInvalidFieldNames([]);
-  }, [model.fields, request.requestId]);
+  }
 
   const respond = (response: CodexMcpServerElicitationResponse) => {
     void onRespond(request.requestId, response);

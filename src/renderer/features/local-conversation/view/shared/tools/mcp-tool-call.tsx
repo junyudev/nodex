@@ -1,5 +1,5 @@
 import { motion } from "motion/react";
-import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
+import { useId, useMemo, useState, type ReactNode } from "react";
 import { PanelRightVisibleIcon } from "@/components/shared/icons";
 import { resolveCodexWebMcpActivities } from "../../../../../../shared/codex-webmcp-tool-call";
 import { LoadingPlaceholder } from "@/components/ui/loading-placeholder";
@@ -556,10 +556,11 @@ function useControllableBoolean(
 ): [boolean, (nextValue: boolean) => void] {
   const [internalValue, setInternalValue] = useState(Boolean(value));
 
-  useEffect(() => {
-    if (value === undefined) return;
-    setInternalValue(value);
-  }, [value]);
+  const [previousValue, setPreviousValue] = useState(value);
+  if (previousValue !== value) {
+    setPreviousValue(value);
+    if (value !== undefined) setInternalValue(value);
+  }
 
   const resolvedValue = value ?? internalValue;
 

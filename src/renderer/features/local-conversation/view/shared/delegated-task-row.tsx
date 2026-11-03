@@ -319,10 +319,12 @@ function SubagentReportRow({
  * Execution events with no provider item: reported background work (which also opens an
  * automatic Run), a Run's stop marker, and Runtime information.
  */
+const EMPTY_CHILD_MEMBERSHIPS: readonly CodexConversationChildMembership[] = [];
+
 export function RuntimeNoticeRow({
   message,
   notice,
-  childMemberships = [],
+  childMemberships = EMPTY_CHILD_MEMBERSHIPS,
   onOpenThread,
   onOpenSubagentsPanel,
 }: {

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { act, fireEvent } from "@testing-library/react";
 import { MotionConfig } from "motion/react";
 import { createRef, type ReactElement } from "react";
@@ -241,4 +241,45 @@ describe("ThreadSummaryPanelSection", () => {
       restoreTimerMock();
     }
   });
+});
+
+test("changing section identity restarts auto-collapse and new activity reopens it", async () => {
+  vi.useFakeTimers();
+  clearSectionStorage("first-timer");
+  clearSectionStorage("second-timer");
+  const section = (sectionKey: string, autoCollapse: boolean) => (
+    <MotionConfig reducedMotion="always">
+      <ThreadSummaryPanelSection
+        sectionKey={sectionKey}
+        title="Subagents"
+        autoCollapse={autoCollapse}
+      >
+        <div>Agent work</div>
+      </ThreadSummaryPanelSection>
+    </MotionConfig>
+  );
+  const view = render(section("first-timer", true));
+  try {
+    await act(async () => {
+      vi.advanceTimersByTime(15_000);
+    });
+    await act(async () => {
+      view.rerender(section("second-timer", true));
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(15_000);
+    });
+    expect(view.getByRole("button").getAttribute("aria-expanded")).toBe("true");
+    await act(async () => {
+      vi.advanceTimersByTime(15_000);
+    });
+    expect(view.getByRole("button").getAttribute("aria-expanded")).toBe("false");
+    await act(async () => {
+      view.rerender(section("second-timer", false));
+    });
+    expect(view.getByRole("button").getAttribute("aria-expanded")).toBe("true");
+  } finally {
+    view.unmount();
+    vi.useRealTimers();
+  }
 });

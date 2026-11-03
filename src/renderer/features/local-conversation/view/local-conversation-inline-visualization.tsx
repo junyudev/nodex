@@ -133,8 +133,10 @@ function LoadedVisualization({
     currentInput.current = input;
   });
   useLayoutEffect(() => {
-    if (!anchor || !loaded || !currentInput.current) return;
-    const value = owner.bind(currentInput.current, anchor);
+    const latest = currentInput.current;
+    if (!anchor || !loaded || !latest || inlineVisualizationFrameKey(latest.identity) !== key)
+      return;
+    const value = owner.bind(latest, anchor);
     binding.current = value;
     setFrameId(value.frameId);
     return () => {

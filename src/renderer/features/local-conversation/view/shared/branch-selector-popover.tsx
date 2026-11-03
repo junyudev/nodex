@@ -1,12 +1,5 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type FormEvent,
-  type ReactElement,
-} from "react";
+import { runWithCleanup } from "@/lib/run-with-cleanup";
+import { useCallback, useMemo, useRef, useState, type FormEvent, type ReactElement } from "react";
 import {
   BranchStatusIcon,
   CheckmarkIcon,
@@ -143,9 +136,11 @@ export function BranchSelectorPopover({
   const [search, setSearch] = useState("");
   const appHandle = useScopeHandle(appScope);
   const pendingCreateRef = useRef<Omit<CreateBranchDialogProps, "onClose"> | null>(null);
-  useEffect(() => {
+  const [wasOpen, setWasOpen] = useState(open);
+  if (wasOpen !== open) {
+    setWasOpen(open);
     if (!open) setSearch("");
-  }, [open]);
+  }
 
   const filteredBranches = useMemo(
     () => filterBranches(state.branches, search),
@@ -345,11 +340,12 @@ function CreateBranchDialogContent({
     event.preventDefault();
     if (!createBranchCanSubmit) return;
     setBusy(true);
-    try {
-      if (await onCreate(createBranchValue)) onClose();
-    } finally {
-      setBusy(false);
-    }
+    return runWithCleanup(
+      async () => {
+        if (await onCreate(createBranchValue)) onClose();
+      },
+      { cleanup: () => setBusy(false) },
+    );
   };
   return (
     <NodexDialog

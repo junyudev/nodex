@@ -58,10 +58,7 @@ function useMeasuredElementWidth() {
   }, []);
 
   useLayoutEffect(() => {
-    if (element === null) {
-      setElementWidthPx(null);
-      return;
-    }
+    if (element === null) return;
 
     const updateWidth = () => {
       const nextWidth = Math.ceil(element.getBoundingClientRect().width);
@@ -81,7 +78,7 @@ function useMeasuredElementWidth() {
 
   return {
     elementRef,
-    elementWidthPx,
+    elementWidthPx: element === null ? null : elementWidthPx,
   };
 }
 

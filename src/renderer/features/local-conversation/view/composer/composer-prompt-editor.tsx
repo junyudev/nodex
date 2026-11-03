@@ -1670,7 +1670,6 @@ export const ComposerPromptEditor = forwardRef<
       viewRef.current = null;
     };
   }, [
-    dispatchSuggestionMeta,
     emitSuggestionState,
     handleSuggestionKeyDown,
     predictionOptions,
@@ -1695,7 +1694,7 @@ export const ComposerPromptEditor = forwardRef<
           onLargeTextPasteRef.current,
         ),
     });
-  }, [disabled, dispatchSuggestionMeta, handleSuggestionKeyDown, placeholder, singleLine, compact]);
+  }, [disabled, handleSuggestionKeyDown, placeholder, singleLine, compact]);
 
   useLayoutEffect(() => {
     const view = viewRef.current;

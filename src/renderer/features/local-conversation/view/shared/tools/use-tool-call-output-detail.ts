@@ -13,10 +13,19 @@ export function useToolCallOutputDetail(
   const itemId = item.rawItemId ?? item.itemId;
   const threadId = item.threadId;
   const needsDetail = expanded && outputOmitted === true;
+  const [previousRead, setPreviousRead] = useState({ needsDetail, runtime, threadId, itemId });
+  if (
+    previousRead.needsDetail !== needsDetail ||
+    previousRead.runtime !== runtime ||
+    previousRead.threadId !== threadId ||
+    previousRead.itemId !== itemId
+  ) {
+    setPreviousRead({ needsDetail, runtime, threadId, itemId });
+    setError(null);
+  }
   useEffect(() => {
     if (!needsDetail || !runtime?.readItemDetail) return;
     let current = true;
-    setError(null);
     void runtime.readItemDetail(threadId, itemId).catch(() => {
       if (current) setError("Unable to load tool output");
     });

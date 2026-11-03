@@ -72,7 +72,7 @@ export function ExpandedSlashCommandDialog({
                 <span className="min-w-0 truncate">{nestedCommand.title}</span>
               </div>
               <div className="vertical-scroll-fade-mask flex w-full flex-1 flex-col overflow-y-auto">
-                {nestedCommand.Content({ close: onClose, back: () => setNestedCommand(null) })}
+                <nestedCommand.Content close={onClose} back={() => setNestedCommand(null)} />
               </div>
             </>
           ) : (

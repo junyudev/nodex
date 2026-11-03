@@ -75,6 +75,28 @@ describe("CodexMcpElicitationRequestCard", () => {
     );
   });
 
+  test("discards a previous request's draft and validation when the request changes", async () => {
+    const onRespond = async () => {};
+    const view = render(
+      <CodexMcpElicitationRequestCard request={mcpRequest} onRespond={onRespond} />,
+    );
+    const input = view.getByLabelText("Library") as HTMLInputElement;
+    await act(async () => {
+      fireEvent.input(input, { target: { value: "react" } });
+    });
+    expect(input.value).toBe("react");
+    await act(async () => {
+      view.rerender(
+        <CodexMcpElicitationRequestCard
+          request={{ ...mcpRequest, requestId: "mcp_2" }}
+          onRespond={onRespond}
+        />,
+      );
+    });
+    expect((view.getByLabelText("Library") as HTMLInputElement).value).toBe("");
+    expect(view.queryByText("Complete this field to continue")).toBeNull();
+  });
+
   test("keeps compact URL requests on open/cancel actions", async () => {
     const responses: string[] = [];
     const originalOpen = window.open;

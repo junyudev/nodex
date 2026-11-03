@@ -45,7 +45,7 @@ export function CodexUserInputAutoResolutionCountdown({ deadlineMs }: { deadline
   const [now, setNow] = useState(Date.now);
 
   useEffect(() => {
-    const remainingMs = deadlineMs - Date.now();
+    const remainingMs = deadlineMs - now;
     if (remainingMs <= 0) return;
 
     const timer = setTimeout(

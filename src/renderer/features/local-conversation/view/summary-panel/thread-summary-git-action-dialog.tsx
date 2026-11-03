@@ -1,4 +1,5 @@
 import { toastFailure } from "@/lib/failure-toast";
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import {
   BranchStatusIcon,
   ReviewCommitOrPushIcon,
@@ -136,32 +137,43 @@ export function ThreadSummaryGitActionDialog({
   onWorkflowChange,
 }: ThreadSummaryGitActionDialogProps) {
   const [status, setStatus] = useState<GitActionStatusResult | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(Boolean(open && cwd));
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState(EMPTY_COMMIT_MESSAGE);
   const [includeUnstaged, setIncludeUnstaged] = useState(true);
-  const [inlineError, setInlineError] = useState<string | null>(null);
+  const [inlineError, setInlineError] = useState<string | null>(
+    open && !cwd ? "Working directory is required." : null,
+  );
+  const [previousRead, setPreviousRead] = useState({ open, cwd, busy, onWorkflowChange });
+  if (
+    previousRead.open !== open ||
+    previousRead.cwd !== cwd ||
+    previousRead.busy !== busy ||
+    previousRead.onWorkflowChange !== onWorkflowChange
+  ) {
+    setPreviousRead({ open, cwd, busy, onWorkflowChange });
+    if (!open && !busy) {
+      setInlineError(null);
+      setMessage(EMPTY_COMMIT_MESSAGE);
+      setIncludeUnstaged(true);
+    }
+    if (open) {
+      setLoading(Boolean(cwd));
+      setInlineError(cwd ? null : "Working directory is required.");
+      if (!cwd) setStatus(null);
+    }
+  }
 
   useEffect(() => {
     if (!open) {
       if (busy) return;
-      setBusy(false);
-      setInlineError(null);
-      setMessage(EMPTY_COMMIT_MESSAGE);
-      setIncludeUnstaged(true);
       onWorkflowChange?.(null);
       return;
     }
 
-    if (!cwd) {
-      setStatus(null);
-      setInlineError("Working directory is required.");
-      return;
-    }
+    if (!cwd) return;
 
     let cancelled = false;
-    setLoading(true);
-    setInlineError(null);
     void threadSummaryGitOperations
       .readStatus(cwd)
       .then((result) => {
@@ -225,72 +237,78 @@ export function ThreadSummaryGitActionDialog({
       });
       onOpenChange(false);
       let failureTitle = "Couldn’t commit changes";
-      try {
-        let commitMessage = trimmedMessage;
-        let commitIncludeUnstaged = includeUnstaged;
-        if (!commitMessage) {
-          failureTitle = "Couldn’t generate a commit message";
-          const generatedResult = await threadSummaryGitOperations.generateCommitMessage({
+      return runWithCleanup(
+        async () => {
+          let commitMessage = trimmedMessage;
+          let commitIncludeUnstaged = includeUnstaged;
+          if (!commitMessage) {
+            failureTitle = "Couldn’t generate a commit message";
+            const generatedResult = await threadSummaryGitOperations.generateCommitMessage({
+              cwd,
+              hostId,
+              draftMessage: trimmedMessage,
+              includeUnstaged,
+              operationId,
+            });
+            const generationError = getGenerationResultError(generatedResult);
+            if (generationError) {
+              toastFailure(failureTitle, generationError);
+              return;
+            }
+
+            commitMessage = generatedResult.message ?? "";
+            commitIncludeUnstaged = false;
+            setMessage(commitMessage);
+            onWorkflowChange?.({
+              workflow: "commit",
+              phase: "committing",
+              operationId,
+            });
+          }
+
+          failureTitle = "Couldn’t commit changes";
+          const result = await threadSummaryGitOperations.commit({
             cwd,
             hostId,
-            draftMessage: trimmedMessage,
-            includeUnstaged,
+            message: commitMessage,
+            includeUnstaged: commitIncludeUnstaged,
+            nextStep: "commit",
             operationId,
           });
-          const generationError = getGenerationResultError(generatedResult);
-          if (generationError) {
-            toastFailure(failureTitle, generationError);
+
+          const commitError = getResultError(result);
+          if (commitError) {
+            handleMutationResult(result, failureTitle);
             return;
           }
 
-          commitMessage = generatedResult.message ?? "";
-          commitIncludeUnstaged = false;
-          setMessage(commitMessage);
-          onWorkflowChange?.({
-            workflow: "commit",
-            phase: "committing",
-            operationId,
-          });
-        }
+          if (nextStep === "commit-and-push") {
+            failureTitle = "Couldn’t push changes";
+            onWorkflowChange?.({
+              workflow: "commit",
+              phase: "pushing",
+              operationId,
+            });
+            const pushResult = await threadSummaryGitOperations.push({
+              cwd,
+              operationId,
+            });
+            handleMutationResult(pushResult, failureTitle);
+            return;
+          }
 
-        failureTitle = "Couldn’t commit changes";
-        const result = await threadSummaryGitOperations.commit({
-          cwd,
-          hostId,
-          message: commitMessage,
-          includeUnstaged: commitIncludeUnstaged,
-          nextStep: "commit",
-          operationId,
-        });
-
-        const commitError = getResultError(result);
-        if (commitError) {
           handleMutationResult(result, failureTitle);
-          return;
-        }
-
-        if (nextStep === "commit-and-push") {
-          failureTitle = "Couldn’t push changes";
-          onWorkflowChange?.({
-            workflow: "commit",
-            phase: "pushing",
-            operationId,
-          });
-          const pushResult = await threadSummaryGitOperations.push({
-            cwd,
-            operationId,
-          });
-          handleMutationResult(pushResult, failureTitle);
-          return;
-        }
-
-        handleMutationResult(result, failureTitle);
-      } catch (error) {
-        toastFailure(failureTitle, error);
-      } finally {
-        setBusy(false);
-        onWorkflowChange?.(null);
-      }
+        },
+        {
+          cleanup: () => {
+            setBusy(false);
+            onWorkflowChange?.(null);
+          },
+          onError: (error) => {
+            toastFailure(failureTitle, error);
+          },
+        },
+      );
     },
     [
       busy,
@@ -316,18 +334,24 @@ export function ThreadSummaryGitActionDialog({
       operationId,
     });
     onOpenChange(false);
-    try {
-      const result = await threadSummaryGitOperations.push({
-        cwd,
-        operationId,
-      });
-      handleMutationResult(result, "Couldn’t push changes");
-    } catch (error) {
-      toastFailure("Couldn’t push changes", error);
-    } finally {
-      setBusy(false);
-      onWorkflowChange?.(null);
-    }
+    return runWithCleanup(
+      async () => {
+        const result = await threadSummaryGitOperations.push({
+          cwd,
+          operationId,
+        });
+        handleMutationResult(result, "Couldn’t push changes");
+      },
+      {
+        cleanup: () => {
+          setBusy(false);
+          onWorkflowChange?.(null);
+        },
+        onError: (error) => {
+          toastFailure("Couldn’t push changes", error);
+        },
+      },
+    );
   }, [busy, canPush, cwd, handleMutationResult, onOpenChange, onWorkflowChange]);
 
   return (

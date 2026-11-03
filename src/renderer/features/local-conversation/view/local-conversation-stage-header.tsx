@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { toastFailure } from "@/lib/failure-toast";
 import { memo, useCallback, useRef, useState } from "react";
 import {
@@ -260,12 +261,17 @@ function ThreadStageHeaderComponent({ model, actions, provider }: ThreadStageHea
                 forkInFlight.current = true;
                 setForking(true);
                 void handleAction(async () => {
-                  try {
-                    await actions.onForkThread?.(destination.target);
-                  } finally {
-                    forkInFlight.current = false;
-                    setForking(false);
-                  }
+                  await runWithCleanup(
+                    async () => {
+                      await actions.onForkThread?.(destination.target);
+                    },
+                    {
+                      cleanup: () => {
+                        forkInFlight.current = false;
+                        setForking(false);
+                      },
+                    },
+                  );
                 }, "Couldn’t fork the conversation");
               }}
             >

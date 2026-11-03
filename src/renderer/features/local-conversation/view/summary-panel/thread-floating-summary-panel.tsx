@@ -1,9 +1,11 @@
 import { toastFailure } from "@/lib/failure-toast";
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import type { CodexSubagentRow } from "../../../../../shared/codex-subagent-row-model";
 import { PictureInPicture2, Slash } from "@/components/shared/icons/generic-icons";
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -180,18 +182,6 @@ interface SummaryPullRequestStatusState {
 
 type SummaryCommitBlockerReason = "changes-loading" | "changes-unavailable" | "no-changes";
 type SummaryPushBlockerReason = "branch-missing" | "nothing-to-push" | "push-status-loading";
-
-const EMPTY_GIT_ACTION_STATUS: SummaryGitActionStatusState = {
-  loading: false,
-  cwd: null,
-  status: null,
-};
-
-const EMPTY_PULL_REQUEST_STATUS: SummaryPullRequestStatusState = {
-  loading: false,
-  cwd: null,
-  status: null,
-};
 
 type SummaryCommitOrPushMode = "commit" | "push";
 type SummaryBranchSetupNextAction = SummaryGitActionDialogMode | "create-pull-request";
@@ -685,42 +675,46 @@ function BackgroundSubagentCompactStrip({
   );
 }
 
+function useSummaryReadStatus<T>(
+  cwd: string | null,
+  open: boolean,
+  refreshKey: number,
+  read: (cwd: string) => Promise<T>,
+): { loading: boolean; cwd: string | null; status: T | null } {
+  const [request, setRequest] = useState({ cwd, open, refreshKey });
+  const [result, setResult] = useState<{ request: typeof request; status: T | null } | null>(null);
+  if (request.cwd !== cwd || request.open !== open || request.refreshKey !== refreshKey) {
+    setRequest({ cwd, open, refreshKey });
+  }
+  useEffect(() => {
+    if (!request.open || !request.cwd) return;
+    let cancelled = false;
+    void read(request.cwd).then(
+      (status) => {
+        if (!cancelled) setResult({ request, status });
+      },
+      () => {
+        if (!cancelled) setResult({ request, status: null });
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [request, read]);
+  if (!open || !cwd) return { loading: false, cwd: null, status: null };
+  return {
+    loading: result?.request !== request,
+    cwd,
+    status: result?.request === request ? result.status : null,
+  };
+}
+
 function useSummaryGitActionStatus(
   cwd: string | null,
   open: boolean,
   refreshKey = 0,
 ): SummaryGitActionStatusState {
-  const [state, setState] = useState<SummaryGitActionStatusState>(EMPTY_GIT_ACTION_STATUS);
-  const stateRef = useRef(state);
-  stateRef.current = state;
-
-  useEffect(() => {
-    if (!open || !cwd) {
-      if (stateRef.current !== EMPTY_GIT_ACTION_STATUS) {
-        setState(EMPTY_GIT_ACTION_STATUS);
-      }
-      return;
-    }
-
-    let cancelled = false;
-    setState({ loading: true, cwd, status: null });
-    void threadSummaryGitOperations
-      .readStatus(cwd)
-      .then((result) => {
-        if (cancelled) return;
-        setState({ loading: false, cwd, status: result as GitActionStatusResult });
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setState({ loading: false, cwd, status: null });
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [cwd, open, refreshKey]);
-
-  return state;
+  return useSummaryReadStatus(cwd, open, refreshKey, threadSummaryGitOperations.readStatus);
 }
 
 function useSummaryPullRequestStatus(
@@ -728,43 +722,17 @@ function useSummaryPullRequestStatus(
   open: boolean,
   refreshKey = 0,
 ): SummaryPullRequestStatusState {
-  const [state, setState] = useState<SummaryPullRequestStatusState>(EMPTY_PULL_REQUEST_STATUS);
-  const stateRef = useRef(state);
-  stateRef.current = state;
-
-  useEffect(() => {
-    if (!open || !cwd) {
-      if (stateRef.current !== EMPTY_PULL_REQUEST_STATUS) {
-        setState(EMPTY_PULL_REQUEST_STATUS);
-      }
-      return;
-    }
-
-    let cancelled = false;
-    setState({ loading: true, cwd, status: null });
-    void threadSummaryGitOperations
-      .readPullRequestStatus(cwd)
-      .then((result) => {
-        if (cancelled) return;
-        setState({ loading: false, cwd, status: result as GhPrStatusResult });
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setState({ loading: false, cwd, status: null });
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [cwd, open, refreshKey]);
-
-  return state;
+  return useSummaryReadStatus(
+    cwd,
+    open,
+    refreshKey,
+    threadSummaryGitOperations.readPullRequestStatus,
+  );
 }
 
 function useSummaryPanelBranchState({ cwd, enabled }: { cwd: string | null; enabled: boolean }) {
   const [branchState, setBranchState] = useState<BranchSelectorState>(EMPTY_BRANCH_SELECTOR_STATE);
   const [busy, setBusy] = useState(false);
-  const branchStateRef = useRef(branchState);
   const branchCwdRef = useRef<string | null>(cwd);
   const mutationRequestIdRef = useRef(0);
   const {
@@ -777,11 +745,11 @@ function useSummaryPanelBranchState({ cwd, enabled }: { cwd: string | null; enab
     enabled,
     watch: true,
   });
-  branchStateRef.current = branchState;
-  branchCwdRef.current = cwd;
+  useLayoutEffect(() => {
+    branchCwdRef.current = cwd;
+  }, [cwd]);
 
   const resetBranchState = useCallback(() => {
-    if (branchStateRef.current === EMPTY_BRANCH_SELECTOR_STATE) return;
     setBranchState(EMPTY_BRANCH_SELECTOR_STATE);
   }, []);
 
@@ -799,28 +767,35 @@ function useSummaryPanelBranchState({ cwd, enabled }: { cwd: string | null; enab
     try {
       const result = await refetchBranchState();
       if (branchCwdRef.current !== requestedCwd) return;
-      setBranchState(
-        result.data ? parseBranchSelectorState(result.data) : EMPTY_BRANCH_SELECTOR_STATE,
-      );
+      if (!result.data) {
+        resetBranchState();
+        return;
+      }
+      setBranchState(parseBranchSelectorState(result.data));
     } catch {
       if (branchCwdRef.current !== requestedCwd) return;
       setBranchState(EMPTY_BRANCH_SELECTOR_STATE);
     }
   }, [enabled, refetchBranchState, resetBranchState]);
 
-  useEffect(() => {
-    if (!enabled || !cwd) {
-      resetBranchState();
-      return;
-    }
-
-    if (!branchStateData) {
-      resetBranchState();
-      return;
-    }
-
-    setBranchState(parseBranchSelectorState(branchStateData));
-  }, [branchStateData, cwd, enabled, resetBranchState]);
+  const [previousQuery, setPreviousQuery] = useState<{
+    branchStateData: typeof branchStateData;
+    cwd: typeof cwd;
+    enabled: typeof enabled;
+  } | null>(null);
+  if (
+    previousQuery === null ||
+    previousQuery.branchStateData !== branchStateData ||
+    previousQuery.cwd !== cwd ||
+    previousQuery.enabled !== enabled
+  ) {
+    setPreviousQuery({ branchStateData, cwd, enabled });
+    setBranchState(
+      enabled && cwd && branchStateData
+        ? parseBranchSelectorState(branchStateData)
+        : EMPTY_BRANCH_SELECTOR_STATE,
+    );
+  }
 
   const checkoutBranch = useCallback(
     async (branch: string) => {
@@ -837,20 +812,26 @@ function useSummaryPanelBranchState({ cwd, enabled }: { cwd: string | null; enab
         });
 
       setBusy(true);
-      try {
-        const result = await threadSummaryGitOperations.checkoutBranch(requestedCwd, branch);
-        if (!isCurrentRequest()) return false;
-        if (result.type === "error") throw new Error(result.errorMessage);
-        setBranchState(parseBranchSelectorState(result.value));
-        return true;
-      } catch (error) {
-        if (isCurrentRequest()) {
-          toastFailure("Couldn’t switch branches", error);
-        }
-        return false;
-      } finally {
-        if (isCurrentRequest()) setBusy(false);
-      }
+      return runWithCleanup(
+        async () => {
+          const result = await threadSummaryGitOperations.checkoutBranch(requestedCwd, branch);
+          if (!isCurrentRequest()) return false;
+          if (result.type === "error") throw new Error(result.errorMessage);
+          setBranchState(parseBranchSelectorState(result.value));
+          return true;
+        },
+        {
+          cleanup: () => {
+            if (isCurrentRequest()) setBusy(false);
+          },
+          onError: (error) => {
+            if (isCurrentRequest()) {
+              toastFailure("Couldn’t switch branches", error);
+            }
+            return false;
+          },
+        },
+      );
     },
     [cwd],
   );
@@ -870,18 +851,24 @@ function useSummaryPanelBranchState({ cwd, enabled }: { cwd: string | null; enab
         });
 
       setBusy(true);
-      try {
-        const result = await threadSummaryGitOperations.createBranch(requestedCwd, branch);
-        if (!isCurrentRequest()) return false;
-        if (result.type === "error") throw new Error(result.errorMessage);
-        setBranchState(parseBranchSelectorState(result.value));
-        return true;
-      } catch (cause) {
-        if (!isCurrentRequest()) return false;
-        throw cause;
-      } finally {
-        if (isCurrentRequest()) setBusy(false);
-      }
+      return runWithCleanup(
+        async () => {
+          const result = await threadSummaryGitOperations.createBranch(requestedCwd, branch);
+          if (!isCurrentRequest()) return false;
+          if (result.type === "error") throw new Error(result.errorMessage);
+          setBranchState(parseBranchSelectorState(result.value));
+          return true;
+        },
+        {
+          cleanup: () => {
+            if (isCurrentRequest()) setBusy(false);
+          },
+          onError: (cause) => {
+            if (!isCurrentRequest()) return false;
+            throw cause;
+          },
+        },
+      );
     },
     [cwd],
   );

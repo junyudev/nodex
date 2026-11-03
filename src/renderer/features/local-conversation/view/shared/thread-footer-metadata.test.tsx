@@ -1,5 +1,5 @@
 import { fireEvent } from "@testing-library/react";
-import { act, useState } from "react";
+import { act, useLayoutEffect, useState } from "react";
 import { describe, expect, test, vi } from "vite-plus/test";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import { NodexModalHost } from "@/lib/modal-registry";
@@ -22,7 +22,9 @@ describe("footer automatic review", () => {
     let removeTrigger = () => {};
     function Harness() {
       const [visible, setVisible] = useState(true);
-      removeTrigger = () => setVisible(false);
+      useLayoutEffect(() => {
+        removeTrigger = () => setVisible(false);
+      }, []);
       return (
         <NodexTooltipProvider>
           {visible ? (

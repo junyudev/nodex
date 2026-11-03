@@ -1,3 +1,4 @@
+import { runSyncWithCleanup } from "@/lib/run-with-cleanup";
 import {
   memo,
   useCallback,
@@ -1080,7 +1081,13 @@ function LocalConversationVirtualizedTurnListCore({
       pendingTurnMeasurementsRef.current.set(turnKey, { element: row, heightPx: 0 });
       setContentCommitRevision((revision) => revision + 1);
     },
-    [canPreserveContentAnchor, getIntendedContentAnchorTopPx, getScrollElement, readContentAnchor],
+    [
+      canPreserveContentAnchor,
+      getIntendedContentAnchorTopPx,
+      getScrollElement,
+      readContentAnchor,
+      setContentCommitRevision,
+    ],
   );
   const captureContentAnchors = useCallback(
     (intendedPrimaryTopPx?: number) => {
@@ -1152,11 +1159,12 @@ function LocalConversationVirtualizedTurnListCore({
       intendedPrimaryTopPx -
       currentTopWithinViewportPx;
     applyingContentAnchorRef.current = true;
-    try {
-      compensateScrollToDistanceFromBottomPx(distance);
-    } finally {
-      applyingContentAnchorRef.current = false;
-    }
+    runSyncWithCleanup(
+      () => compensateScrollToDistanceFromBottomPx(distance),
+      () => {
+        applyingContentAnchorRef.current = false;
+      },
+    );
     restoringInitialContentAnchorRef.current = false;
     // A native boundary establishes the reachable coordinate for later layout changes.
     captureContentAnchors(
@@ -1169,7 +1177,6 @@ function LocalConversationVirtualizedTurnListCore({
   }, [
     canPreserveContentAnchor,
     captureContentAnchors,
-    // eslint-disable-next-line react/memo-dependencies -- Keep the command in try/finally current across owner changes.
     compensateScrollToDistanceFromBottomPx,
     getScrollDistanceFromBottomPx,
     getScrollElement,
@@ -1230,7 +1237,6 @@ function LocalConversationVirtualizedTurnListCore({
   );
 
   // Keep native observer callbacks current across both geometry and owner changes.
-  /* eslint-disable react/memo-dependencies */
   const applyTurnMeasurements = useCallback(
     (
       measurements: Map<string, TurnMeasurement>,
@@ -1334,7 +1340,8 @@ function LocalConversationVirtualizedTurnListCore({
           Math.round(nextHeightPx * pixelScaleRef.current) / pixelScaleRef.current;
         const layoutHeightPx = currentLayout.heightsPx[turnIndex] ?? roundedHeightPx;
         const layoutDeltaPx = roundedHeightPx - layoutHeightPx;
-        layoutChanged ||= currentHeights[turnKey] === undefined || layoutDeltaPx !== 0;
+        layoutChanged =
+          layoutChanged || currentHeights[turnKey] === undefined || layoutDeltaPx !== 0;
         if (turnKey === latestTurnKey) {
           latestTurnHeightDeltaPx += currentHeights[turnKey] === undefined ? 0 : layoutDeltaPx;
           latestTurnElement = measurement.element;
@@ -1509,7 +1516,6 @@ function LocalConversationVirtualizedTurnListCore({
       shouldFollowContentGrowth,
     ],
   );
-  /* eslint-enable react/memo-dependencies */
 
   const measurementCallbacksRef = useRef({
     applyTurnMeasurements,
@@ -1781,7 +1787,8 @@ function LocalConversationVirtualizedTurnListCore({
     measurementPassCountRef.current += 1;
     pendingTurnMeasurementsRef.current = new Map();
     const measurements = new Map<string, TurnMeasurement>();
-    for (const [turnKey, { element }] of pending) {
+    for (const [turnKey, measurement] of pending) {
+      const { element } = measurement;
       if (turnElementsByKeyRef.current.get(turnKey) !== element) continue;
       const heightPx = readElementBlockSizePx(element);
       if (heightPx > 0) measurements.set(turnKey, { element, heightPx });

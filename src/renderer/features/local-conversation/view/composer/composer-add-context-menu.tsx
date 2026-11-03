@@ -12,6 +12,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type ForwardedRef,
   type ReactNode,
   type SVGProps,
@@ -275,16 +276,14 @@ function useComposerAppshotTarget(enabled: boolean): {
     readonly target: CodexComposerAppshotTarget | null;
   }>({ loading: enabled, target: null });
 
+  const [previousEnabled, setPreviousEnabled] = useState(enabled);
+  if (previousEnabled !== enabled) {
+    setPreviousEnabled(enabled);
+    setState({ loading: enabled, target: null });
+  }
   useEffect(() => {
+    if (!enabled) return;
     let current = true;
-    if (!enabled) {
-      setState({ loading: false, target: null });
-      return () => {
-        current = false;
-      };
-    }
-
-    setState((previous) => ({ ...previous, loading: true }));
     void composerContextOperations
       .readAppshotTarget()
       .then((result) => {
@@ -304,7 +303,7 @@ function useComposerAppshotTarget(enabled: boolean): {
     };
   }, [enabled]);
 
-  return state;
+  return enabled ? state : { loading: false, target: null };
 }
 
 function ComposerAppshotTargetIcon({ target }: { readonly target: CodexComposerAppshotTarget }) {
@@ -583,13 +582,10 @@ function useComposerMenuNavigation(input: {
   const { items, onSelect, ref, onCompleteQuery } = input;
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
 
-  useEffect(() => {
-    setHighlightedId((current) =>
-      current && items.some((item) => item.candidate.id === current)
-        ? current
-        : (items[0]?.candidate.id ?? null),
-    );
-  }, [items]);
+  const validHighlightedId = items.some((item) => item.candidate.id === highlightedId)
+    ? highlightedId
+    : (items[0]?.candidate.id ?? null);
+  if (highlightedId !== validHighlightedId) setHighlightedId(validHighlightedId);
 
   useImperativeHandle(
     ref,
@@ -643,70 +639,83 @@ function useComposerChatGptConversationSearch(input: {
   readonly conversations: readonly CodexComposerChatGptConversation[];
 } {
   const normalizedQuery = input.query.trim();
-  const [batch, setBatch] = useState<{
+  type SearchBatch = {
     readonly query: string;
     readonly conversations: readonly CodexComposerChatGptConversation[];
     readonly loading: boolean;
-  }>({ query: "", conversations: [], loading: false });
-
-  useEffect(() => {
-    if (!input.enabled || !normalizedQuery) {
-      setBatch((current) =>
-        current.query === "" && !current.loading
-          ? current
-          : { query: "", conversations: [], loading: false },
-      );
-      return;
-    }
-
-    const cached = chatGptConversationSearchCache.get(normalizedQuery);
-    if (cached && cached.expiresAt > Date.now()) {
-      setBatch({
-        query: normalizedQuery,
-        conversations: cached.conversations,
-        loading: false,
-      });
-      return;
-    }
-    if (cached) chatGptConversationSearchCache.delete(normalizedQuery);
-
-    let cancelled = false;
-    setBatch({
-      query: normalizedQuery,
-      conversations: [],
-      loading: true,
-    });
-    const timeout = window.setTimeout(() => {
-      void composerContextOperations
-        .searchChatGptConversations(normalizedQuery)
-        .then((result) => {
-          if (cancelled) return;
-          const conversations = result.available ? result.conversations : [];
-          chatGptConversationSearchCache.set(normalizedQuery, {
-            expiresAt: Date.now() + CHATGPT_CONVERSATION_SEARCH_STALE_MS,
-            conversations,
-          });
-          setBatch({
-            query: normalizedQuery,
-            conversations,
-            loading: false,
-          });
-        })
-        .catch(() => {
-          if (cancelled) return;
-          setBatch({
-            query: normalizedQuery,
-            conversations: [],
-            loading: false,
-          });
-        });
-    }, CHATGPT_CONVERSATION_SEARCH_DEBOUNCE_MS);
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timeout);
+  };
+  const [observation] = useState(() => {
+    let snapshot: SearchBatch = { query: "", conversations: [], loading: false };
+    return {
+      read: () => snapshot,
+      publish: (next: SearchBatch) => {
+        snapshot = next;
+      },
     };
-  }, [input.enabled, normalizedQuery]);
+  });
+
+  const subscribe = useCallback(
+    (notify: () => void) => {
+      const publish = (snapshot: SearchBatch) => {
+        observation.publish(snapshot);
+        notify();
+      };
+      if (!input.enabled || !normalizedQuery) {
+        publish({ query: "", conversations: [], loading: false });
+        return () => {};
+      }
+
+      const cached = chatGptConversationSearchCache.get(normalizedQuery);
+      if (cached && cached.expiresAt > Date.now()) {
+        publish({
+          query: normalizedQuery,
+          conversations: cached.conversations,
+          loading: false,
+        });
+        return () => {};
+      }
+      if (cached) chatGptConversationSearchCache.delete(normalizedQuery);
+
+      let cancelled = false;
+      publish({
+        query: normalizedQuery,
+        conversations: [],
+        loading: true,
+      });
+      const timeout = window.setTimeout(() => {
+        void composerContextOperations
+          .searchChatGptConversations(normalizedQuery)
+          .then((result) => {
+            if (cancelled) return;
+            const conversations = result.available ? result.conversations : [];
+            chatGptConversationSearchCache.set(normalizedQuery, {
+              expiresAt: Date.now() + CHATGPT_CONVERSATION_SEARCH_STALE_MS,
+              conversations,
+            });
+            publish({
+              query: normalizedQuery,
+              conversations,
+              loading: false,
+            });
+          })
+          .catch(() => {
+            if (cancelled) return;
+            publish({
+              query: normalizedQuery,
+              conversations: [],
+              loading: false,
+            });
+          });
+      }, CHATGPT_CONVERSATION_SEARCH_DEBOUNCE_MS);
+
+      return () => {
+        cancelled = true;
+        window.clearTimeout(timeout);
+      };
+    },
+    [input.enabled, normalizedQuery, observation],
+  );
+  const batch = useSyncExternalStore(subscribe, observation.read);
 
   if (!normalizedQuery) {
     return {

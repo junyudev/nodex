@@ -1,5 +1,6 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { GitBranchPlus } from "@/components/shared/icons/generic-icons";
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useMemo, useState, type FormEvent } from "react";
 import {
   NodexDialog,
   NodexDialogAction,
@@ -74,11 +75,14 @@ export function ThreadSummaryBranchSetupDialog({
   const validationMessage = getCreateBranchValidationMessage(validation);
   const canSubmit = validation === null && !busy;
 
-  useEffect(() => {
-    if (!open) return;
-    setBranchName(defaultBranchName);
-    setInlineError(null);
-  }, [defaultBranchName, open]);
+  const [previousInput, setPreviousInput] = useState({ defaultBranchName, open });
+  if (previousInput.defaultBranchName !== defaultBranchName || previousInput.open !== open) {
+    setPreviousInput({ defaultBranchName, open });
+    if (open) {
+      setBranchName(defaultBranchName);
+      setInlineError(null);
+    }
+  }
 
   const handleOpenChange = useCallback(
     (nextOpen: boolean) => {
@@ -101,21 +105,27 @@ export function ThreadSummaryBranchSetupDialog({
       setBusy(true);
       setInlineError(null);
 
-      try {
-        const didCreate = await onCreateBranch(normalizedBranchName);
-        if (!didCreate) {
-          setInlineError("Could not create branch.");
-          return;
-        }
+      return runWithCleanup(
+        async () => {
+          const didCreate = await onCreateBranch(normalizedBranchName);
+          if (!didCreate) {
+            setInlineError("Could not create branch.");
+            return;
+          }
 
-        onCreated(normalizedBranchName);
-        onOpenChange(false);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Could not create branch.";
-        setInlineError(message);
-      } finally {
-        setBusy(false);
-      }
+          onCreated(normalizedBranchName);
+          onOpenChange(false);
+        },
+        {
+          cleanup: () => {
+            setBusy(false);
+          },
+          onError: (error) => {
+            const message = error instanceof Error ? error.message : "Could not create branch.";
+            setInlineError(message);
+          },
+        },
+      );
     },
     [canSubmit, normalizedBranchName, onCreateBranch, onCreated, onOpenChange],
   );

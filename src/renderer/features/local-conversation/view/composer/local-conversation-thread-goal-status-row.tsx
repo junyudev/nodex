@@ -70,10 +70,7 @@ function useThreadGoalNowMs(ticking: boolean): number {
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   useEffect(() => {
-    if (!ticking) {
-      setNowMs(Date.now());
-      return undefined;
-    }
+    if (!ticking) return undefined;
 
     const interval = window.setInterval(() => {
       setNowMs(Date.now());
@@ -92,10 +89,7 @@ function useIsObjectiveTruncated({ disabled }: { disabled: boolean }) {
   const [isTruncated, setIsTruncated] = useState(false);
 
   useLayoutEffect(() => {
-    if (disabled || !element) {
-      setIsTruncated(false);
-      return undefined;
-    }
+    if (disabled || !element) return undefined;
 
     const update = () => {
       const nextIsTruncated = element.scrollWidth > element.clientWidth;
@@ -115,7 +109,7 @@ function useIsObjectiveTruncated({ disabled }: { disabled: boolean }) {
 
   return {
     objectiveRef: setElement,
-    isObjectiveTruncated: isTruncated,
+    isObjectiveTruncated: !disabled && element !== null && isTruncated,
   };
 }
 
@@ -167,11 +161,11 @@ function ThreadGoalEditDialog({
 }) {
   const [objective, setObjective] = useState(initialObjective);
 
-  useEffect(() => {
-    if (open) {
-      setObjective(initialObjective);
-    }
-  }, [initialObjective, open]);
+  const [previousInput, setPreviousInput] = useState({ initialObjective, open });
+  if (previousInput.initialObjective !== initialObjective || previousInput.open !== open) {
+    setPreviousInput({ initialObjective, open });
+    if (open) setObjective(initialObjective);
+  }
 
   const trimmedObjective = objective.trim();
   const canSave =
@@ -255,12 +249,14 @@ export function ThreadGoalStatusRow({
     [goal, nowMs],
   );
 
-  useEffect(() => {
+  const [previousHasGoal, setPreviousHasGoal] = useState(hasGoal);
+  if (previousHasGoal !== hasGoal) {
+    setPreviousHasGoal(hasGoal);
     if (!hasGoal) {
       setExpandedObjective(null);
       setEditOpen(false);
     }
-  }, [hasGoal]);
+  }
 
   if (!hasGoal || !goal) {
     return null;

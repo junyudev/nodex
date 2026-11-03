@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { GitReviewSource } from "@/lib/types";
 import type { BranchDiffStatsResult, GitStatusSummaryResult } from "../../../../shared/git-review";
@@ -91,18 +91,18 @@ export function useSummaryGitState(cwd: string | null, enabled: boolean): Summar
     ...createGitLiveWorkerQuery(statusInput),
     enabled: enabled && repository !== null,
   });
-  const lastSuccessfulStatus = useRef<Extract<GitStatusSummaryResult, { type: "success" }> | null>(
-    null,
-  );
-  useEffect(() => {
-    if (status.data?.type !== "success") return;
-    lastSuccessfulStatus.current = status.data;
-  }, [status.data]);
+  const [lastSuccessfulStatus, setLastSuccessfulStatus] = useState<Extract<
+    GitStatusSummaryResult,
+    { type: "success" }
+  > | null>(null);
+  if (status.data?.type === "success" && status.data !== lastSuccessfulStatus) {
+    setLastSuccessfulStatus(status.data);
+  }
   const statusFallbackEnabled =
     enabled &&
     repository !== null &&
     status.data?.type === "error" &&
-    lastSuccessfulStatus.current === null;
+    lastSuccessfulStatus === null;
   const stagedFallbackInput = useMemo(
     () => ({
       method: "review-summary" as const,
@@ -182,7 +182,7 @@ export function useSummaryGitState(cwd: string | null, enabled: boolean): Summar
     : null;
   const statusData = isSuccessfulStatus(statusResult)
     ? statusResult
-    : (lastSuccessfulStatus.current ?? fallbackStatus);
+    : (lastSuccessfulStatus ?? fallbackStatus);
   const branchResult = branchStats.data;
   const branchData: BranchDiffStatsResult | null =
     branchResult && !isStaleSnapshotResult(branchResult) ? branchResult : null;

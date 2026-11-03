@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import {
   BranchStatusIcon,
   BrowserExternalIcon,
@@ -126,15 +127,25 @@ export function ThreadSummaryCreatePullRequestDialog({
   onCompleted,
   onWorkflowChange,
 }: ThreadSummaryCreatePullRequestDialogProps) {
-  const [readState, setReadState] = useState<CreatePrReadState>(EMPTY_READ_STATE);
+  const [readState, setReadState] = useState<CreatePrReadState>(() => ({
+    ...EMPTY_READ_STATE,
+    loading: Boolean(open && cwd),
+  }));
   const [busy, setBusy] = useState(false);
   const [activeOperationId, setActiveOperationId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [includeLocalChanges, setIncludeLocalChanges] = useState(true);
-  const [inlineError, setInlineError] = useState<string | null>(null);
-
-  useEffect(() => {
+  const [inlineError, setInlineError] = useState<string | null>(
+    open && !cwd ? "Working directory is required." : null,
+  );
+  const [previousRead, setPreviousRead] = useState({ open, cwd, onWorkflowChange });
+  if (
+    previousRead.open !== open ||
+    previousRead.cwd !== cwd ||
+    previousRead.onWorkflowChange !== onWorkflowChange
+  ) {
+    setPreviousRead({ open, cwd, onWorkflowChange });
     if (!open) {
       setBusy(false);
       setActiveOperationId(null);
@@ -143,19 +154,21 @@ export function ThreadSummaryCreatePullRequestDialog({
       setBody("");
       setIncludeLocalChanges(true);
       setReadState(EMPTY_READ_STATE);
+    } else {
+      setInlineError(cwd ? null : "Working directory is required.");
+      setReadState((current) => (cwd ? { ...current, loading: true } : EMPTY_READ_STATE));
+    }
+  }
+
+  useEffect(() => {
+    if (!open) {
       onWorkflowChange?.(null);
       return;
     }
 
-    if (!cwd) {
-      setReadState(EMPTY_READ_STATE);
-      setInlineError("Working directory is required.");
-      return;
-    }
+    if (!cwd) return;
 
     let cancelled = false;
-    setReadState((current) => ({ ...current, loading: true }));
-    setInlineError(null);
 
     void threadSummaryGitOperations
       .readStatus(cwd)
@@ -238,127 +251,136 @@ export function ThreadSummaryCreatePullRequestDialog({
       setActiveOperationId(operationId);
       setInlineError(null);
 
-      try {
-        let latestStatus = initialStatus;
-        let nextTitle = title.trim();
-        let nextBody = body.trim();
+      return runWithCleanup(
+        async () => {
+          let latestStatus = initialStatus;
+          let nextTitle = title.trim();
+          let nextBody = body.trim();
 
-        if (effectiveIncludeLocalChanges) {
-          onWorkflowChange?.({
-            workflow: "create-pull-request",
-            phase: "generating-commit-message",
-            operationId,
-          });
-          const generatedCommit = await threadSummaryGitOperations.generateCommitMessage({
-            cwd,
-            hostId,
-            draftMessage: "",
-            includeUnstaged: true,
-            operationId,
-          });
-          const commitMessageError = getCommitMessageResultError(generatedCommit);
-          if (commitMessageError) {
-            setInlineError(commitMessageError);
-            return;
+          if (effectiveIncludeLocalChanges) {
+            onWorkflowChange?.({
+              workflow: "create-pull-request",
+              phase: "generating-commit-message",
+              operationId,
+            });
+            const generatedCommit = await threadSummaryGitOperations.generateCommitMessage({
+              cwd,
+              hostId,
+              draftMessage: "",
+              includeUnstaged: true,
+              operationId,
+            });
+            const commitMessageError = getCommitMessageResultError(generatedCommit);
+            if (commitMessageError) {
+              setInlineError(commitMessageError);
+              return;
+            }
+
+            onWorkflowChange?.({
+              workflow: "create-pull-request",
+              phase: "committing",
+              operationId,
+            });
+            const commitResult = await threadSummaryGitOperations.commit({
+              cwd,
+              hostId,
+              message: generatedCommit.message ?? "",
+              includeUnstaged: false,
+              nextStep: "commit",
+              operationId,
+            });
+            const commitError = getGitActionResultError(commitResult);
+            if (commitError) {
+              setInlineError(commitError);
+              return;
+            }
+
+            latestStatus = await threadSummaryGitOperations.readStatus(cwd);
+          }
+
+          if (shouldPushBeforePullRequest(latestStatus)) {
+            onWorkflowChange?.({
+              workflow: "create-pull-request",
+              phase: "pushing",
+              operationId,
+            });
+            const pushResult = await threadSummaryGitOperations.push({
+              cwd,
+              operationId,
+            });
+            const pushError = getGitActionResultError(pushResult);
+            if (pushError) {
+              setInlineError(pushError);
+              return;
+            }
+
+            latestStatus = await threadSummaryGitOperations.readStatus(cwd);
+          }
+
+          if (!nextTitle || !nextBody) {
+            onWorkflowChange?.({
+              workflow: "create-pull-request",
+              phase: "generating-pr-message",
+              operationId,
+            });
+            const generatedPullRequest =
+              await threadSummaryGitOperations.generatePullRequestMessage({
+                cwd,
+                hostId,
+                title: nextTitle,
+                body: nextBody,
+                headBranch: latestStatus.currentBranch,
+                baseBranch: latestStatus.defaultBranch,
+                operationId,
+              });
+            const pullRequestMessageError = getPullRequestMessageResultError(generatedPullRequest);
+            if (pullRequestMessageError) {
+              setInlineError(pullRequestMessageError);
+              return;
+            }
+
+            nextTitle = generatedPullRequest.title ?? "";
+            nextBody = generatedPullRequest.body ?? "";
+            setTitle(nextTitle);
+            setBody(nextBody);
           }
 
           onWorkflowChange?.({
             workflow: "create-pull-request",
-            phase: "committing",
+            phase: "creating-pr",
             operationId,
           });
-          const commitResult = await threadSummaryGitOperations.commit({
+          const result = await threadSummaryGitOperations.createPullRequest({
             cwd,
-            hostId,
-            message: generatedCommit.message ?? "",
-            includeUnstaged: false,
-            nextStep: "commit",
-            operationId,
-          });
-          const commitError = getGitActionResultError(commitResult);
-          if (commitError) {
-            setInlineError(commitError);
-            return;
-          }
-
-          latestStatus = await threadSummaryGitOperations.readStatus(cwd);
-        }
-
-        if (shouldPushBeforePullRequest(latestStatus)) {
-          onWorkflowChange?.({
-            workflow: "create-pull-request",
-            phase: "pushing",
-            operationId,
-          });
-          const pushResult = await threadSummaryGitOperations.push({
-            cwd,
-            operationId,
-          });
-          const pushError = getGitActionResultError(pushResult);
-          if (pushError) {
-            setInlineError(pushError);
-            return;
-          }
-
-          latestStatus = await threadSummaryGitOperations.readStatus(cwd);
-        }
-
-        if (!nextTitle || !nextBody) {
-          onWorkflowChange?.({
-            workflow: "create-pull-request",
-            phase: "generating-pr-message",
-            operationId,
-          });
-          const generatedPullRequest = await threadSummaryGitOperations.generatePullRequestMessage({
-            cwd,
-            hostId,
             title: nextTitle,
             body: nextBody,
-            headBranch: latestStatus.currentBranch,
-            baseBranch: latestStatus.defaultBranch,
-            operationId,
+            base: latestStatus.defaultBranch,
+            head: latestStatus.currentBranch,
+            draft,
           });
-          const pullRequestMessageError = getPullRequestMessageResultError(generatedPullRequest);
-          if (pullRequestMessageError) {
-            setInlineError(pullRequestMessageError);
+          const createError = getPullRequestMutationError(result);
+          if (createError) {
+            setInlineError(createError);
             return;
           }
 
-          nextTitle = generatedPullRequest.title ?? "";
-          nextBody = generatedPullRequest.body ?? "";
-          setTitle(nextTitle);
-          setBody(nextBody);
-        }
-
-        onWorkflowChange?.({
-          workflow: "create-pull-request",
-          phase: "creating-pr",
-          operationId,
-        });
-        const result = await threadSummaryGitOperations.createPullRequest({
-          cwd,
-          title: nextTitle,
-          body: nextBody,
-          base: latestStatus.defaultBranch,
-          head: latestStatus.currentBranch,
-          draft,
-        });
-        const createError = getPullRequestMutationError(result);
-        if (createError) {
-          setInlineError(createError);
-          return;
-        }
-
-        if (openInBrowser) openPullRequestUrl(result.url);
-        onCompleted?.();
-        onOpenChange(false);
-      } catch (error) {
-        setInlineError(error instanceof Error ? error.message : "Could not create pull request.");
-      } finally {
-        setBusy(false);
-        setActiveOperationId((current) => (current === operationId ? null : current));
-        onWorkflowChange?.(null);
-      }
+          if (openInBrowser) openPullRequestUrl(result.url);
+          onCompleted?.();
+          onOpenChange(false);
+        },
+        {
+          cleanup: () => {
+            setBusy(false);
+            setActiveOperationId((current) => (current === operationId ? null : current));
+            onWorkflowChange?.(null);
+          },
+          onError: (error) => {
+            setInlineError(
+              error instanceof Error ? error.message : "Could not create pull request.",
+            );
+          },
+        },
+      );
     },
     [
       body,

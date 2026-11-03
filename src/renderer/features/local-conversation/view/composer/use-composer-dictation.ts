@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { resolveCodexRendererCommandPlatform } from "@/lib/codex-window-runtime";
 import {
   createCommandKeymapState,
@@ -36,6 +36,7 @@ import {
   MAXIMUM_DICTATION_DURATION_MS,
   type DictationControllerPorts,
   type DictationRecovery,
+  type DictationSessionSnapshot,
 } from "@/features/dictation/dictation-session-controller";
 import { playDictationSound } from "@/features/dictation/dictation-sounds";
 import { browserDictationWaveformPort } from "@/features/dictation/dictation-waveform";
@@ -124,172 +125,273 @@ const defaultClock: DictationControllerPorts["clock"] = {
 const invokeGlobalDictationEvent = async (event: GlobalDictationRendererEvent): Promise<boolean> =>
   await reportGlobalDictationEvent(event);
 
+/** Owns capture callbacks and completion identity for one mounted composer. */
+function createComposerDictationOwner(
+  initialInput: UseComposerDictationInput,
+  publishRecovery: (recovery: DictationRecovery | null) => void,
+) {
+  let callbacks = initialInput;
+  let transcriptCallbacks = initialInput.transcript;
+  let completionCallbacks: UseComposerDictationInput | null = null;
+  let dismissedRecovery = false;
+  let playRecordingSounds = false;
+  let recordingSettings = DEFAULT_DICTATION_SETTINGS;
+  let reportedError: string | null = null;
+  let globalSessionId: string | null = null;
+  let globalCompletionReported = false;
+  let releaseGlobalRoute: (() => void) | null = null;
+  let lastGlobalState: string | null = null;
+  const appliedCompletionIds = new Set<string>();
+  const controller = new DictationSessionController({
+    recordingDurationLimitMs: MAXIMUM_DICTATION_DURATION_MS,
+    lease: createDictationMicrophoneLeaseClient({
+      acquire: acquireDictationMicrophoneLease,
+      release: async (sessionId) => void (await releaseDictationMicrophoneLease(sessionId)),
+      subscribeRelinquish: subscribeDictationMicrophoneRelinquish,
+    }),
+    permissions: {
+      request: async () => {
+        const soundsEnabled = callbacks.soundsEnabled === true;
+        const settings = await readDictationSettings().catch(() => DEFAULT_DICTATION_SETTINGS);
+        recordingSettings = settings;
+        playRecordingSounds = soundsEnabled && settings.dictationSoundsEnabled;
+        return requestMicrophoneAccess();
+      },
+    },
+    devices: {
+      acquire: async () => {
+        const settings = recordingSettings;
+        const builtInMicrophoneLabelHint = await readBuiltInMicrophoneRouteHint().catch(() => null);
+        return await acquireMicrophone({
+          mediaDevices: navigator.mediaDevices,
+          selectedDeviceId: settings.microphoneInputDeviceId,
+          builtInMicrophoneLabelHint,
+        });
+      },
+    },
+    recorder: browserDictationRecorderFactory,
+    waveform: {
+      start: (stream, onSamples) =>
+        (callbacks.streamingAvailability === "available"
+          ? browserInlineDictationWaveformPort
+          : browserDictationWaveformPort
+        ).start(stream, onSamples),
+    },
+    streaming: createBrowserDictationStreamingPort("composer"),
+    buffered: {
+      transcribe: async (blob, signal, _sessionId, onDiagnostics, language) => {
+        if (signal.aborted) throw new DOMException("Dictation was aborted", "AbortError");
+        const result = await transcribeDictationBlob(blob, { signal, onDiagnostics, language });
+        if (signal.aborted) throw new DOMException("Dictation was aborted", "AbortError");
+        return result;
+      },
+    },
+    // Composer inserts the recognized text without semantic rewriting.
+    cleanup: { enabled: false, transcript: async (transcript) => transcript },
+    history: mainDictationHistoryPort,
+    transcript: {
+      start: (split) => {
+        transcriptCallbacks = callbacks.transcript;
+        transcriptCallbacks.start(split);
+      },
+      update: (text, segment) => transcriptCallbacks.update(text, segment),
+      cancel: () => transcriptCallbacks.cancel(),
+      preserve: () => transcriptCallbacks.preserve?.(),
+    },
+    onRecordingStarted: () => {
+      if (playRecordingSounds) playDictationSound("start");
+    },
+    onRecordingStopped: () => {
+      if (playRecordingSounds) playDictationSound("stop");
+    },
+    onRecoveryChange: (recovery) => {
+      transcriptCallbacks.preserve?.();
+      if (!dismissedRecovery) publishRecovery(recovery);
+    },
+    completion: {
+      apply: async ({ sessionId, action, transcript, append }) => {
+        const completionId = `${sessionId}:${append ? "append" : action}`;
+        if (appliedCompletionIds.has(completionId)) return;
+        const completion = completionCallbacks ?? callbacks;
+        if (append) {
+          await completion.onTranscriptAppend(transcript);
+          appliedCompletionIds.add(completionId);
+          dismissedRecovery = true;
+          publishRecovery(null);
+          return;
+        }
+        const completionSessionId = globalSessionId;
+        if (completionSessionId) {
+          await completion.onTranscriptInsert(transcript);
+          appliedCompletionIds.add(completionId);
+          globalCompletionReported = true;
+          await invokeGlobalDictationEvent({
+            type: "completed",
+            sessionId: completionSessionId,
+            transcript,
+          }).catch(() => false);
+          globalSessionId = null;
+          releaseGlobalRoute?.();
+          releaseGlobalRoute = null;
+          return;
+        }
+        if (action === "send") {
+          await completion.onTranscriptSend(transcript);
+          appliedCompletionIds.add(completionId);
+          return;
+        }
+        await completion.onTranscriptInsert(transcript);
+        appliedCompletionIds.add(completionId);
+      },
+    },
+    clock: defaultClock,
+    createId: () => crypto.randomUUID(),
+  });
+  const globalTarget: Omit<Parameters<typeof useInAppDictationTarget>[0], "id" | "priority"> = {
+    admission: () => {
+      if (!callbacks.enabled) return "unavailable";
+      if (controller.getSnapshot().kind !== "idle") return "busy";
+      return callbacks.globalTarget.admission();
+    },
+    start: async ({ sessionId, gesture, release }) => {
+      globalSessionId = sessionId;
+      releaseGlobalRoute = release;
+      globalCompletionReported = false;
+      lastGlobalState = null;
+      completionCallbacks = null;
+      dismissedRecovery = false;
+      publishRecovery(null);
+      await controller.start({
+        surface: "global",
+        gesture,
+        streamingAvailability: callbacks.streamingAvailability,
+      });
+    },
+    stop: () => {
+      completionCallbacks = callbacks;
+      controller.stop("insert");
+    },
+    cancel: () => controller.cancel(),
+  };
+  const reportError = (snapshot: DictationSessionSnapshot) => {
+    if (snapshot.kind !== "retryable-error") {
+      reportedError = null;
+      return;
+    }
+    const identity = `${snapshot.sessionId}:${snapshot.error.kind}:${snapshot.canRetryRecording}`;
+    if (reportedError === identity) return;
+    reportedError = identity;
+    if (playRecordingSounds) playDictationSound("error");
+    if (!snapshot.canRetryRecording) {
+      callbacks.onStartError(snapshot.error);
+      return;
+    }
+    callbacks.onTranscribeError(snapshot.error);
+  };
+  const reportGlobalState = (snapshot: DictationSessionSnapshot) => {
+    const sessionId = globalSessionId;
+    if (!sessionId) return;
+    const nextState =
+      snapshot.kind === "recording"
+        ? "listening"
+        : snapshot.kind === "transcribing"
+          ? "transcribing"
+          : null;
+    if (nextState && lastGlobalState !== nextState) {
+      lastGlobalState = nextState;
+      void invokeGlobalDictationEvent({ type: "state", sessionId, state: nextState });
+      return;
+    }
+    if (snapshot.kind === "retryable-error") {
+      const identity = `failed:${snapshot.error.kind}`;
+      if (lastGlobalState === identity) return;
+      lastGlobalState = identity;
+      void invokeGlobalDictationEvent({ type: "failed", sessionId, error: snapshot.error });
+      return;
+    }
+    if (snapshot.kind === "idle" && !globalCompletionReported) {
+      globalSessionId = null;
+      releaseGlobalRoute?.();
+      releaseGlobalRoute = null;
+      void invokeGlobalDictationEvent({ type: "cancelled", sessionId });
+    }
+  };
+  const startDictation = async (gesture: DictationGesture = "click"): Promise<void> => {
+    if (
+      !callbacks.enabled ||
+      typeof navigator.mediaDevices?.getUserMedia !== "function" ||
+      typeof MediaRecorder === "undefined"
+    ) {
+      callbacks.onUnsupported();
+      return;
+    }
+    globalSessionId = null;
+    completionCallbacks = null;
+    dismissedRecovery = false;
+    publishRecovery(null);
+    await controller.start({
+      surface: "composer",
+      gesture,
+      streamingAvailability: callbacks.streamingAvailability,
+      getLanguage: callbacks.getLanguage,
+    });
+  };
+  return {
+    controller,
+    globalTarget,
+    update: (input: UseComposerDictationInput) => {
+      callbacks = input;
+    },
+    streamingAvailability: () => callbacks.streamingAvailability,
+    observe: (snapshot: DictationSessionSnapshot) => {
+      reportError(snapshot);
+      reportGlobalState(snapshot);
+    },
+    startDictation,
+    stopDictation: (mode: DictationStopMode) => {
+      completionCallbacks ??= callbacks;
+      controller.stop(mode);
+    },
+    retryDictation: () => {
+      dismissedRecovery = false;
+      return controller.retry();
+    },
+    dismissRecovery: () => {
+      dismissedRecovery = true;
+      publishRecovery(null);
+    },
+    appendRecoveredText: async (recovery: DictationRecovery | null) => {
+      if (recovery?.phase !== "recovered" || !recovery.text) return;
+      await callbacks.onTranscriptAppend(recovery.text);
+      dismissedRecovery = true;
+      publishRecovery(null);
+    },
+  };
+}
+
 export function useComposerDictation(
   input: UseComposerDictationInput,
 ): ComposerDictationController {
   const [recovery, setRecovery] = useState<DictationRecovery | null>(null);
-  const dismissedRecoveryRef = useRef(false);
-  const playRecordingSoundsRef = useRef(false);
-  const recordingSettingsRef = useRef(DEFAULT_DICTATION_SETTINGS);
-  const callbacksRef = useRef(input);
-  callbacksRef.current = input;
-  const transcriptCallbacksRef = useRef(input.transcript);
-  const completionCallbacksRef = useRef<UseComposerDictationInput | null>(null);
+  const [owner] = useState(() => createComposerDictationOwner(input, setRecovery));
+  useLayoutEffect(() => {
+    owner.update(input);
+  }, [owner, input]);
+  const { controller } = owner;
+  const snapshot = useDictationSession(controller);
   const waveformCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const waveformLevelsRef = useRef<readonly number[]>([]);
   const waveformAdvancedAtRef = useRef(0);
-  const reportedErrorRef = useRef<string | null>(null);
-  const globalSessionIdRef = useRef<string | null>(null);
-  const globalCompletionReportedRef = useRef(false);
-  const releaseGlobalRouteRef = useRef<(() => void) | null>(null);
-  const lastGlobalStateRef = useRef<string | null>(null);
-  const appliedCompletionIdsRef = useRef(new Set<string>());
-  const [controller] = useState(
-    () =>
-      new DictationSessionController({
-        recordingDurationLimitMs: MAXIMUM_DICTATION_DURATION_MS,
-        lease: createDictationMicrophoneLeaseClient({
-          acquire: acquireDictationMicrophoneLease,
-          release: async (sessionId) => void (await releaseDictationMicrophoneLease(sessionId)),
-          subscribeRelinquish: subscribeDictationMicrophoneRelinquish,
-        }),
-        permissions: {
-          request: async () => {
-            const soundsEnabled = callbacksRef.current.soundsEnabled === true;
-            const settings = await readDictationSettings().catch(() => DEFAULT_DICTATION_SETTINGS);
-            recordingSettingsRef.current = settings;
-            playRecordingSoundsRef.current = soundsEnabled && settings.dictationSoundsEnabled;
-            return requestMicrophoneAccess();
-          },
-        },
-        devices: {
-          acquire: async () => {
-            const settings = recordingSettingsRef.current;
-            const builtInMicrophoneLabelHint = await readBuiltInMicrophoneRouteHint().catch(
-              () => null,
-            );
-            return await acquireMicrophone({
-              mediaDevices: navigator.mediaDevices,
-              selectedDeviceId: settings.microphoneInputDeviceId,
-              builtInMicrophoneLabelHint,
-            });
-          },
-        },
-        recorder: browserDictationRecorderFactory,
-        waveform: {
-          start: (stream, onSamples) =>
-            (callbacksRef.current.streamingAvailability === "available"
-              ? browserInlineDictationWaveformPort
-              : browserDictationWaveformPort
-            ).start(stream, onSamples),
-        },
-        streaming: createBrowserDictationStreamingPort("composer"),
-        buffered: {
-          transcribe: async (blob, signal, _sessionId, onDiagnostics, language) => {
-            if (signal.aborted) throw new DOMException("Dictation was aborted", "AbortError");
-            const result = await transcribeDictationBlob(blob, { signal, onDiagnostics, language });
-            if (signal.aborted) throw new DOMException("Dictation was aborted", "AbortError");
-            return result;
-          },
-        },
-        // Composer inserts the recognized text without semantic rewriting.
-        cleanup: { enabled: false, transcript: async (transcript) => transcript },
-        history: mainDictationHistoryPort,
-        transcript: {
-          start: (split) => {
-            transcriptCallbacksRef.current = callbacksRef.current.transcript;
-            transcriptCallbacksRef.current.start(split);
-          },
-          update: (text, segment) => transcriptCallbacksRef.current.update(text, segment),
-          cancel: () => transcriptCallbacksRef.current.cancel(),
-          preserve: () => transcriptCallbacksRef.current.preserve?.(),
-        },
-        onRecordingStarted: () => {
-          if (playRecordingSoundsRef.current) playDictationSound("start");
-        },
-        onRecordingStopped: () => {
-          if (playRecordingSoundsRef.current) playDictationSound("stop");
-        },
-        onRecoveryChange: (recovery) => {
-          transcriptCallbacksRef.current.preserve?.();
-          if (!dismissedRecoveryRef.current) setRecovery(recovery);
-        },
-        completion: {
-          apply: async ({ sessionId, action, transcript, append }) => {
-            const completionId = `${sessionId}:${append ? "append" : action}`;
-            if (appliedCompletionIdsRef.current.has(completionId)) return;
-            const callbacks = completionCallbacksRef.current ?? callbacksRef.current;
-            if (append) {
-              await callbacks.onTranscriptAppend(transcript);
-              appliedCompletionIdsRef.current.add(completionId);
-              dismissedRecoveryRef.current = true;
-              setRecovery(null);
-              return;
-            }
-            const globalSessionId = globalSessionIdRef.current;
-            if (globalSessionId) {
-              await callbacks.onTranscriptInsert(transcript);
-              appliedCompletionIdsRef.current.add(completionId);
-              globalCompletionReportedRef.current = true;
-              await invokeGlobalDictationEvent({
-                type: "completed",
-                sessionId: globalSessionId,
-                transcript,
-              }).catch(() => false);
-              globalSessionIdRef.current = null;
-              releaseGlobalRouteRef.current?.();
-              releaseGlobalRouteRef.current = null;
-              return;
-            }
-            if (action === "send") {
-              await callbacks.onTranscriptSend(transcript);
-              appliedCompletionIdsRef.current.add(completionId);
-              return;
-            }
-            await callbacks.onTranscriptInsert(transcript);
-            appliedCompletionIdsRef.current.add(completionId);
-          },
-        },
-        clock: defaultClock,
-        createId: () => crypto.randomUUID(),
-      }),
-  );
-  const snapshot = useDictationSession(controller);
 
   useEffect(() => {
     if (input.enabled) return;
     controller.cancel();
   }, [controller, input.enabled]);
-
   useInAppDictationTarget({
+    ...owner.globalTarget,
     id: input.globalTarget.id,
     priority: input.globalTarget.priority,
-    admission: () => {
-      if (!callbacksRef.current.enabled) return "unavailable";
-      if (controller.getSnapshot().kind !== "idle") return "busy";
-      return callbacksRef.current.globalTarget.admission();
-    },
-    start: async ({ sessionId, gesture, release }) => {
-      globalSessionIdRef.current = sessionId;
-      releaseGlobalRouteRef.current = release;
-      globalCompletionReportedRef.current = false;
-      lastGlobalStateRef.current = null;
-      completionCallbacksRef.current = null;
-      dismissedRecoveryRef.current = false;
-      setRecovery(null);
-      await controller.start({
-        surface: "global",
-        gesture,
-        streamingAvailability: callbacksRef.current.streamingAvailability,
-      });
-    },
-    stop: () => {
-      completionCallbacksRef.current = callbacksRef.current;
-      controller.stop("insert");
-    },
-    cancel: () => controller.cancel(),
   });
-
   useEffect(() => {
     if (snapshot.kind !== "recording") return;
     if (waveformLevelsRef.current === snapshot.waveform) return;
@@ -304,7 +406,7 @@ export function useComposerDictation(
       const canvas = waveformCanvasRef.current;
       if (canvas) {
         const elapsedMs = Math.max(0, performance.now() - waveformAdvancedAtRef.current);
-        if (callbacksRef.current.streamingAvailability === "available") {
+        if (owner.streamingAvailability() === "available") {
           drawInlineDictationWaveform(canvas, waveformLevelsRef.current);
         } else
           drawComposerDictationWaveform(
@@ -320,73 +422,11 @@ export function useComposerDictation(
     return () => {
       if (animationFrame !== null) cancelAnimationFrame(animationFrame);
     };
-  }, [snapshot.kind]);
+  }, [owner, snapshot.kind]);
 
   useEffect(() => {
-    if (snapshot.kind !== "retryable-error") {
-      reportedErrorRef.current = null;
-      return;
-    }
-    const identity = `${snapshot.sessionId}:${snapshot.error.kind}:${snapshot.canRetryRecording}`;
-    if (reportedErrorRef.current === identity) return;
-    reportedErrorRef.current = identity;
-    if (playRecordingSoundsRef.current) playDictationSound("error");
-    if (!snapshot.canRetryRecording) {
-      callbacksRef.current.onStartError(snapshot.error);
-      return;
-    }
-    callbacksRef.current.onTranscribeError(snapshot.error);
-  }, [snapshot]);
-
-  useEffect(() => {
-    const sessionId = globalSessionIdRef.current;
-    if (!sessionId) return;
-    const nextState =
-      snapshot.kind === "recording"
-        ? "listening"
-        : snapshot.kind === "transcribing"
-          ? "transcribing"
-          : null;
-    if (nextState && lastGlobalStateRef.current !== nextState) {
-      lastGlobalStateRef.current = nextState;
-      void invokeGlobalDictationEvent({ type: "state", sessionId, state: nextState });
-      return;
-    }
-    if (snapshot.kind === "retryable-error") {
-      const identity = `failed:${snapshot.error.kind}`;
-      if (lastGlobalStateRef.current === identity) return;
-      lastGlobalStateRef.current = identity;
-      void invokeGlobalDictationEvent({ type: "failed", sessionId, error: snapshot.error });
-      return;
-    }
-    if (snapshot.kind === "idle" && !globalCompletionReportedRef.current) {
-      globalSessionIdRef.current = null;
-      releaseGlobalRouteRef.current?.();
-      releaseGlobalRouteRef.current = null;
-      void invokeGlobalDictationEvent({ type: "cancelled", sessionId });
-    }
-  }, [snapshot]);
-
-  const startDictation = async (gesture: DictationGesture = "click"): Promise<void> => {
-    if (
-      !callbacksRef.current.enabled ||
-      typeof navigator.mediaDevices?.getUserMedia !== "function" ||
-      typeof MediaRecorder === "undefined"
-    ) {
-      callbacksRef.current.onUnsupported();
-      return;
-    }
-    globalSessionIdRef.current = null;
-    completionCallbacksRef.current = null;
-    dismissedRecoveryRef.current = false;
-    setRecovery(null);
-    await controller.start({
-      surface: "composer",
-      gesture,
-      streamingAvailability: callbacksRef.current.streamingAvailability,
-      getLanguage: callbacksRef.current.getLanguage,
-    });
-  };
+    owner.observe(snapshot);
+  }, [owner, snapshot]);
 
   const isStarting =
     snapshot.kind === "requesting-permission" || snapshot.kind === "acquiring-stream";
@@ -407,27 +447,13 @@ export function useComposerDictation(
       snapshot.kind === "stopping" || snapshot.kind === "transcribing" ? snapshot.action : null,
     recordingDurationMs,
     waveformCanvasRef,
-    startDictation,
-    stopDictation: (mode) => {
-      completionCallbacksRef.current ??= callbacksRef.current;
-      controller.stop(mode);
-    },
-    retryDictation: () => {
-      dismissedRecoveryRef.current = false;
-      return controller.retry();
-    },
+    startDictation: owner.startDictation,
+    stopDictation: owner.stopDictation,
+    retryDictation: owner.retryDictation,
     cancelDictation: () => controller.cancel(),
     retryableError: snapshot.kind === "retryable-error" ? snapshot.error : null,
     recovery,
-    dismissRecovery: () => {
-      dismissedRecoveryRef.current = true;
-      setRecovery(null);
-    },
-    appendRecoveredText: async () => {
-      if (recovery?.phase !== "recovered" || !recovery.text) return;
-      await callbacksRef.current.onTranscriptAppend(recovery.text);
-      dismissedRecoveryRef.current = true;
-      setRecovery(null);
-    },
+    dismissRecovery: owner.dismissRecovery,
+    appendRecoveredText: () => owner.appendRecoveredText(recovery),
   };
 }

@@ -58,7 +58,6 @@ function useScrollFadeState(
   scrollRef: React.RefObject<HTMLDivElement | null>,
   enabled: boolean,
   autoScrollToBottom: boolean,
-  output: string,
 ): ScrollFadeState {
   const [state, setState] = useState(INITIAL_SCROLL_FADE_STATE);
 
@@ -83,19 +82,29 @@ function useScrollFadeState(
       );
     };
 
-    const frameId = window.requestAnimationFrame(() => {
-      if (autoScrollToBottom) {
-        element.scrollTop = 0;
-      }
-      update();
-    });
+    let frameId: number | null = null;
+    const schedule = () => {
+      if (frameId !== null) window.cancelAnimationFrame(frameId);
+      frameId = window.requestAnimationFrame(() => {
+        frameId = null;
+        if (autoScrollToBottom) element.scrollTop = 0;
+        update();
+      });
+    };
+    schedule();
+    const mutation = new MutationObserver(schedule);
+    mutation.observe(element, { childList: true, characterData: true, subtree: true });
+    const resize = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(update);
+    resize?.observe(element);
 
     element.addEventListener("scroll", update);
     return () => {
-      window.cancelAnimationFrame(frameId);
+      if (frameId !== null) window.cancelAnimationFrame(frameId);
+      mutation.disconnect();
+      resize?.disconnect();
       element.removeEventListener("scroll", update);
     };
-  }, [autoScrollToBottom, enabled, output, scrollRef]);
+  }, [autoScrollToBottom, enabled, scrollRef]);
 
   return enabled ? state : INITIAL_SCROLL_FADE_STATE;
 }
@@ -199,16 +208,13 @@ export function ThreadCommandShellBlock({
   const renderedOutput = resolveShellOutputText(output, isInProgress);
   const showCommandLine = variant === "embedded" && command.trim().length > 0;
   const isPlainEmbedded = variant === "embedded" && embeddedAppearance === "plain";
-  const scrollFadeState = useScrollFadeState(
-    scrollRef,
-    variant === "default",
-    autoScrollToBottom,
-    output,
-  );
+  const scrollFadeState = useScrollFadeState(scrollRef, variant === "default", autoScrollToBottom);
 
-  useEffect(() => {
+  const [previousCommand, setPreviousCommand] = useState(command);
+  if (previousCommand !== command) {
+    setPreviousCommand(command);
     setIsCommandExpanded(false);
-  }, [command]);
+  }
 
   useEffect(() => {
     return () => {

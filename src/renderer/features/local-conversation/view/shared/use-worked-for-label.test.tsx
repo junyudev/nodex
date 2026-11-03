@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, test } from "vite-plus/test";
-import { act } from "@testing-library/react";
+import { afterEach, describe, expect, test, vi } from "vite-plus/test";
+import { act, renderHook } from "@testing-library/react";
 import { createElement } from "react";
 import { render } from "@/test/dom";
 import { useWorkedForLabelText } from "./use-worked-for-label";
@@ -78,4 +78,32 @@ describe("useWorkedForLabelText", () => {
 
     expect(Boolean(view.container.textContent?.includes("Working for 1m 5s:4"))).toBe(true);
   });
+});
+
+test("resuming work samples the clock immediately and releases its timer when idle", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(1_500);
+  const view = renderHook(
+    ({ working }) =>
+      useWorkedForLabelText({
+        timing: working ? { status: "working", startedAtMs: 1_000, completedAtMs: null } : null,
+        durationMs: null,
+      }),
+    { initialProps: { working: false } },
+  );
+  try {
+    vi.setSystemTime(66_000);
+    await act(async () => {
+      view.rerender({ working: true });
+    });
+    expect(view.result.current).toBe("Working for 1m 5s");
+    expect(vi.getTimerCount()).toBe(1);
+    await act(async () => {
+      view.rerender({ working: false });
+    });
+    expect(vi.getTimerCount()).toBe(0);
+  } finally {
+    view.unmount();
+    vi.useRealTimers();
+  }
 });

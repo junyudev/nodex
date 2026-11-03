@@ -279,7 +279,7 @@ function AgentLabel({
   );
 }
 
-function useElementOverflow(ref: React.RefObject<HTMLElement | null>, key: string): boolean {
+function useElementOverflow(ref: React.RefObject<HTMLElement | null>): boolean {
   const [overflows, setOverflows] = useState(false);
 
   useLayoutEffect(() => {
@@ -291,19 +291,22 @@ function useElementOverflow(ref: React.RefObject<HTMLElement | null>, key: strin
     };
     update();
 
-    if (typeof ResizeObserver === "undefined") return undefined;
-
-    const observer = new ResizeObserver(update);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [key, ref]);
+    const mutation = new MutationObserver(update);
+    mutation.observe(element, { childList: true, characterData: true, subtree: true });
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(update);
+    observer?.observe(element);
+    return () => {
+      mutation.disconnect();
+      observer?.disconnect();
+    };
+  }, [ref]);
 
   return overflows;
 }
 
 function InlinePrompt({ prompt }: { prompt: string }) {
   const promptRef = useRef<HTMLSpanElement | null>(null);
-  const overflows = useElementOverflow(promptRef, prompt);
+  const overflows = useElementOverflow(promptRef);
   const promptNode = (
     <span
       ref={promptRef}

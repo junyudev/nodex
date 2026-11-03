@@ -1,53 +1,24 @@
-import { useCallback, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 
 export function useMeasuredElementHeight() {
-  const [element, setElement] = useState<HTMLDivElement | null>(null);
-  const resizeObserverRef = useRef<ResizeObserver | null>(null);
   const [elementHeightPx, setElementHeightPx] = useState(0);
-
-  const updateHeight = useEffectEvent(() => {
-    if (element === null) {
+  const elementRef = useCallback((node: HTMLDivElement | null) => {
+    if (!node) {
       setElementHeightPx(0);
       return;
     }
-
-    const nextHeight = element.scrollHeight;
-    setElementHeightPx((currentHeight) =>
-      currentHeight === nextHeight ? currentHeight : nextHeight,
-    );
-  });
-
-  const elementRef = useCallback((node: HTMLDivElement | null) => {
-    setElement(node);
-  }, []);
-
-  useLayoutEffect(() => {
-    updateHeight();
-
-    if (resizeObserverRef.current === null && typeof ResizeObserver !== "undefined") {
-      resizeObserverRef.current = new ResizeObserver(() => {
-        updateHeight();
-      });
-    }
-
-    if (element === null) return;
-
-    resizeObserverRef.current?.observe(element);
-    return () => {
-      resizeObserverRef.current?.unobserve(element);
+    const updateHeight = () => {
+      const nextHeight = node.scrollHeight;
+      setElementHeightPx((current) => (current === nextHeight ? current : nextHeight));
     };
-  }, [element]);
-
-  useLayoutEffect(
-    () => () => {
-      resizeObserverRef.current?.disconnect();
-      resizeObserverRef.current = null;
-    },
-    [],
-  );
-
-  return {
-    elementHeightPx,
-    elementRef,
-  };
+    updateHeight();
+    const observer =
+      typeof ResizeObserver === "undefined" ? null : new ResizeObserver(updateHeight);
+    observer?.observe(node);
+    return () => {
+      observer?.disconnect();
+      setElementHeightPx(0);
+    };
+  }, []);
+  return { elementHeightPx, elementRef };
 }

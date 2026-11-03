@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useState, type ReactNode } from "react";
 import { AlertCircle, AlertTriangle } from "@/components/shared/icons/generic-icons";
 import { NodexTooltip } from "@/components/ui/tooltip";
@@ -80,14 +81,18 @@ function ComposerNoticeActions({
   const [pendingLabel, setPendingLabel] = useState<string | null>(null);
   const run = async (action: ComposerNoticeAction) => {
     setPendingLabel(action.label);
-    try {
-      await action.run();
-    } catch (cause) {
-      // The condition still stands, so the toast restates it with the reason the fix failed.
-      toastFailure(notice.title, cause);
-    } finally {
-      setPendingLabel(null);
-    }
+    return runWithCleanup(
+      async () => {
+        await action.run();
+      },
+      {
+        onError: (cause) => {
+          // The condition still stands, so the toast restates it with the reason the fix failed.
+          toastFailure(notice.title, cause);
+        },
+        cleanup: () => setPendingLabel(null),
+      },
+    );
   };
   return (
     <div className="flex shrink-0 items-center gap-0.5">

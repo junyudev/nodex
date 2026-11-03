@@ -312,11 +312,12 @@ test("the registered task dialog survives its trigger unmount and Escape dismiss
     const handle = useScopeHandle(appScope);
     const threadHandle = useScopeHandle(ThreadScope);
     const routeHandle = useScopeHandle(RouteScope);
-    ownerStore = useMaitaiStore();
+    const store = useMaitaiStore();
     return (
       <button
         type="button"
         onClick={() => {
+          ownerStore = store;
           ownerPath = threadHandle.path;
           routePath = routeHandle.path;
           threadHandle.set(ownerState, "parent ownership");

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useState, useSyncExternalStore } from "react";
 import { motion, type Variants } from "motion/react";
 import { ActivitySpinnerIcon, BackIcon, EditIcon } from "@/components/shared/icons";
 import { NodexButton } from "@/components/ui/button";
@@ -122,13 +122,29 @@ export function AsyncQuestionChoices({
 
 /** The deadline remains owned by the question runtime; this clock only renders its final seconds. */
 function useVisibleCountdown(deadlineMs: number | null) {
-  const [now, setNow] = useState(Date.now);
-  useEffect(() => {
-    if (deadlineMs === null) return;
-    setNow(Date.now());
-    const interval = setInterval(() => setNow(Date.now()), 1_000);
-    return () => clearInterval(interval);
-  }, [deadlineMs]);
+  const [clock] = useState(() => {
+    let now = Date.now();
+    return {
+      read: () => now,
+      subscribe: (notify: () => void) => {
+        const tick = () => {
+          now = Date.now();
+          notify();
+        };
+        tick();
+        const interval = setInterval(tick, 1_000);
+        return () => clearInterval(interval);
+      },
+    };
+  });
+  const subscribe = useCallback(
+    (notify: () => void) => {
+      if (deadlineMs === null) return () => {};
+      return clock.subscribe(notify);
+    },
+    [clock, deadlineMs],
+  );
+  const now = useSyncExternalStore(subscribe, clock.read);
   const seconds = deadlineMs === null ? null : Math.max(0, Math.ceil((deadlineMs - now) / 1_000));
   return seconds !== null && seconds <= 20 ? seconds : null;
 }

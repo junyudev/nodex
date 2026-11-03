@@ -135,6 +135,9 @@ function VisualizationFrame({
     INLINE_VISUALIZATION_PAINT_GUTTER;
   useLayoutEffect(() => {
     runtime?.setDisplayMode("inline");
+  }, [runtime]);
+  useLayoutEffect(() => {
+    if (!canExpand) runtime?.setDisplayMode("inline");
   }, [runtime, canExpand]);
   useLayoutEffect(() => {
     if (!active) settleReview(null);

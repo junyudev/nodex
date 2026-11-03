@@ -2624,8 +2624,12 @@ describe("local-conversation-store", () => {
     };
     const defaultControlRef: typeof controlRef = { current: null };
     function Probe() {
-      defaultControlRef.current = useCodexAppServerControl();
-      controlRef.current = useCodexAppServerControl("remote-thread", "remote-host");
+      const defaultControl = useCodexAppServerControl();
+      const control = useCodexAppServerControl("remote-thread", "remote-host");
+      useLayoutEffect(() => {
+        defaultControlRef.current = defaultControl;
+        controlRef.current = control;
+      }, [defaultControl, control]);
       return null;
     }
 
@@ -3294,8 +3298,12 @@ describe("local-conversation-store", () => {
       runtime?: import("./conversation-runtime").ConversationRuntime;
     } = {};
     function Probe() {
-      observed.manager = useDefaultCodexAppServerManager();
-      observed.runtime = useConversationRuntime("thread-history-port");
+      const manager = useDefaultCodexAppServerManager();
+      const runtime = useConversationRuntime("thread-history-port");
+      useLayoutEffect(() => {
+        observed.manager = manager;
+        observed.runtime = runtime;
+      }, [manager, runtime]);
       return null;
     }
     const view = render(createElement(LocalConversationProvider, null, createElement(Probe)));
@@ -3431,13 +3439,17 @@ describe("local-conversation-store", () => {
     let summaryRenderCount = 0;
 
     function ConversationProbe() {
-      conversationRenderCount += 1;
+      useLayoutEffect(() => {
+        conversationRenderCount += 1;
+      });
       const conversation = useConversation("thread-1");
       return createElement("div", { "data-conversation": conversation?.threadId ?? "none" });
     }
 
     function SummaryProbe() {
-      summaryRenderCount += 1;
+      useLayoutEffect(() => {
+        summaryRenderCount += 1;
+      });
       const summaries = useProjectThreadSummaries("project-1");
       return createElement("div", { "data-summary-count": String(summaries.length) });
     }
@@ -3609,7 +3621,10 @@ describe("local-conversation-store", () => {
     const renderStates: string[] = [];
     let managerRef: CodexAppServerManagerInstance | null = null;
     function Probe() {
-      managerRef = useDefaultCodexAppServerManager();
+      const manager = useDefaultCodexAppServerManager();
+      useLayoutEffect(() => {
+        managerRef = manager;
+      }, [manager]);
       const conversation = useConversation("thread-1");
       const item = conversation?.turns[0]?.items[0];
       if (item) {
@@ -11495,7 +11510,10 @@ describe("local-conversation-store", () => {
     let managerRef: CodexAppServerManagerInstance | null = null;
     const renderStates: string[] = [];
     function Probe() {
-      managerRef = useDefaultCodexAppServerManager();
+      const manager = useDefaultCodexAppServerManager();
+      useLayoutEffect(() => {
+        managerRef = manager;
+      }, [manager]);
       const conversation = useConversation("thread-1");
       const item = conversation?.turns[0]?.items[0];
       if (item) {
@@ -14910,7 +14928,6 @@ describe("local-conversation-store", () => {
     resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
 
     const manager = trackNativeTestManager(new CodexAppServerManager("local"));
-    let renderedTurnCount = 0;
     let transportStarted = false;
     let canonicalTurnCountAtTransportStart = -1;
     const startDeferred: {
@@ -14928,11 +14945,11 @@ describe("local-conversation-store", () => {
       });
 
     function FollowUpProbe() {
-      renderedTurnCount = useSyncExternalStore(
+      const turnCount = useSyncExternalStore(
         (listener) => manager.addConversationCallback("thread-1", listener),
         () => manager.readConversation("thread-1")?.turns.length ?? 0,
       );
-      return createElement("div", null, String(renderedTurnCount));
+      return createElement("div", null, String(turnCount));
     }
 
     const probe = render(createElement(FollowUpProbe));
@@ -20059,7 +20076,10 @@ describe("local-conversation-store", () => {
       }) => Promise<{ method: string; result: unknown }>;
     } | null = null;
     function Probe() {
-      manager = useDefaultCodexAppServerManager();
+      const committedManager = useDefaultCodexAppServerManager();
+      useLayoutEffect(() => {
+        manager = committedManager;
+      }, [committedManager]);
       return createElement("div");
     }
 

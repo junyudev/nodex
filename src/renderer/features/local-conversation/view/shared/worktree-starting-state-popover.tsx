@@ -145,12 +145,28 @@ export function WorktreeStartingStatePopover({
 
   const inlineOpen = inline?.open === true;
   useEffect(() => {
-    if (inlineOpen) void refresh();
-  }, [inlineOpen, refresh]);
+    if (!inlineOpen) return;
+    void onRefresh();
+    if (!cwd) return;
+    let current = true;
+    void (loadLocalChanges ?? loadComposerWorkingTreeChanges)(cwd).then(
+      (changed) => {
+        if (current) setHasLocalChanges(changed);
+      },
+      () => {
+        if (current) setHasLocalChanges(false);
+      },
+    );
+    return () => {
+      current = false;
+    };
+  }, [cwd, inlineOpen, loadLocalChanges, onRefresh]);
 
-  useEffect(() => {
+  const [wasOpen, setWasOpen] = useState(open);
+  if (wasOpen !== open) {
+    setWasOpen(open);
     if (!open) setQuery("");
-  }, [open]);
+  }
 
   const choose = useCallback(
     (next: CodexPendingWorktreeStartingState) => {
@@ -180,7 +196,8 @@ export function WorktreeStartingStatePopover({
       />
       {inline ? <NodexDropdownSeparator /> : null}
       <div className="vertical-scroll-fade-mask flex max-h-[200px] flex-col overflow-y-auto">
-        {hasLocalChanges &&
+        {Boolean(cwd) &&
+        hasLocalChanges &&
         currentBranch.toLocaleLowerCase().includes(settledQuery.trim().toLocaleLowerCase()) ? (
           <div className="flex flex-col">
             <NodexDropdownSectionLabel>Local file state</NodexDropdownSectionLabel>

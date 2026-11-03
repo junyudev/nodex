@@ -247,14 +247,14 @@ export function ConnectedReviewDiffPanel({
   recordReviewRuntimeEvent({ type: "connected-render" });
   const reviewRouteState = useScopedAtomValue(reviewRouteStateAtom);
   const prepareOpen = useSetScopedAtom(prepareReviewOpenAtom);
-  const consumeOpen = useEffectEvent(() => {
-    if (!pendingOpen || pendingOpen.intent.threadId !== threadId) return;
-    prepareOpen(workbenchReviewOpenIntent(pendingOpen));
-    onOpenConsumed?.(pendingOpen.operationId);
+  const consumeOpen = useEffectEvent((pending: NonNullable<typeof pendingOpen>) => {
+    prepareOpen(workbenchReviewOpenIntent(pending));
+    onOpenConsumed?.(pending.operationId);
   });
   useEffect(() => {
-    consumeOpen();
-  }, [pendingOpen?.operationId, threadId]);
+    if (!pendingOpen || pendingOpen.intent.threadId !== threadId) return;
+    consumeOpen(pendingOpen);
+  }, [pendingOpen, threadId]);
   const transcriptThreadId = reviewRouteState.transcriptThreadId ?? threadId;
   const targetSessionId = runtimeTarget?.sessionId;
   const targetThreadId = runtimeTarget?.threadId;

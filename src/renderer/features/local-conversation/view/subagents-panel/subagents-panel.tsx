@@ -1,7 +1,14 @@
 import { BackIcon } from "@/components/shared/icons";
 import { IntelligenceModeIndicatorIcon } from "@/components/shared/agent-runtime/intelligence-controls";
 import { subscribeCodexEvents } from "@/lib/api";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ComponentProps,
+} from "react";
 import { cn } from "@/lib/utils";
 import {
   CODEX_SUBAGENT_OVERVIEW_INITIAL_ACTIVE_LIMIT,
@@ -288,7 +295,13 @@ function isSubagentOverviewInvalidationEvent(
   return event.type === "subagentOverviewInvalidated" && event.rootThreadId === rootThreadId;
 }
 
-export function SubagentsPanelOverview({
+export function SubagentsPanelOverview(
+  props: ComponentProps<typeof SubagentsPanelOverviewInstance>,
+) {
+  return <SubagentsPanelOverviewInstance key={props.rootThreadId} {...props} />;
+}
+
+function SubagentsPanelOverviewInstance({
   onError,
   onSelect,
   rootThreadId,
@@ -310,63 +323,78 @@ export function SubagentsPanelOverview({
   const expandedSectionsRef = useRef(expandedSections);
   const onErrorRef = useRef(onError);
   const overviewRef = useRef(overview);
-  expandedSectionsRef.current = expandedSections;
-  onErrorRef.current = onError;
-  overviewRef.current = overview;
+  useLayoutEffect(() => {
+    expandedSectionsRef.current = expandedSections;
+    onErrorRef.current = onError;
+    overviewRef.current = overview;
+  }, [expandedSections, onError, overview]);
 
   const loadOverview = useCallback(
-    async (mode: "initial" | "expanded", showFailure: boolean): Promise<boolean> => {
-      if (overviewLoadInFlightRef.current) {
-        pendingOverviewReloadRef.current = true;
-        return false;
+    (mode: "initial" | "expanded", showFailure: boolean): Promise<boolean> => {
+      function readOverview(mode: "initial" | "expanded", showFailure: boolean): Promise<boolean> {
+        if (overviewLoadInFlightRef.current) {
+          pendingOverviewReloadRef.current = true;
+          return Promise.resolve(false);
+        }
+        overviewLoadInFlightRef.current = true;
+        const requestSequence = ++requestSequenceRef.current;
+        return readSubagentOverview({ rootThreadId, mode })
+          .then((next) => {
+            if (
+              requestSequence !== requestSequenceRef.current ||
+              next.rootThreadId !== rootThreadId
+            ) {
+              return false;
+            }
+            setOverview((current) => {
+              if (
+                next.completeness === "incomplete" &&
+                current?.completeness === "complete" &&
+                current.generation === next.generation
+              ) {
+                return current;
+              }
+              if (
+                current &&
+                current.generation === next.generation &&
+                current.revision > next.revision
+              ) {
+                return current;
+              }
+              return next;
+            });
+            return true;
+          })
+          .catch(() => {
+            if (requestSequence !== requestSequenceRef.current) return false;
+            if (showFailure || overviewRef.current === null) {
+              onErrorRef.current("Unable to load subagents");
+            }
+            return false;
+          })
+          .finally(() => {
+            overviewLoadInFlightRef.current = false;
+            if (pendingOverviewReloadRef.current) {
+              pendingOverviewReloadRef.current = false;
+              void readOverview(
+                expandedSectionsRef.current.size > 0 ? "expanded" : "initial",
+                false,
+              );
+            }
+          });
       }
-      overviewLoadInFlightRef.current = true;
-      const requestSequence = ++requestSequenceRef.current;
-      try {
-        const next = await readSubagentOverview({ rootThreadId, mode });
-        if (requestSequence !== requestSequenceRef.current || next.rootThreadId !== rootThreadId) {
-          return false;
-        }
-        setOverview((current) => {
-          if (
-            next.completeness === "incomplete" &&
-            current?.completeness === "complete" &&
-            current.generation === next.generation
-          ) {
-            return current;
-          }
-          if (
-            current &&
-            current.generation === next.generation &&
-            current.revision > next.revision
-          ) {
-            return current;
-          }
-          return next;
-        });
-        return true;
-      } catch {
-        if (requestSequence !== requestSequenceRef.current) return false;
-        if (showFailure || overviewRef.current === null) {
-          onErrorRef.current("Unable to load subagents");
-        }
-        return false;
-      } finally {
-        overviewLoadInFlightRef.current = false;
-        if (pendingOverviewReloadRef.current) {
-          pendingOverviewReloadRef.current = false;
-          void loadOverview(expandedSectionsRef.current.size > 0 ? "expanded" : "initial", false);
-        }
-      }
+      return readOverview(mode, showFailure);
     },
     [readSubagentOverview, rootThreadId],
   );
 
   useEffect(() => {
-    setExpandedSections(new Set());
-    setOverview(null);
     void loadOverview("initial", true);
-  }, [loadOverview, rootThreadId]);
+    return () => {
+      requestSequenceRef.current += 1;
+      pendingOverviewReloadRef.current = false;
+    };
+  }, [loadOverview]);
 
   useEffect(() => {
     let timer: number | null = null;

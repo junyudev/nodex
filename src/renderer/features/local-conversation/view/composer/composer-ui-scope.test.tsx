@@ -49,6 +49,12 @@ function createStore(): MaitaiStore {
   return store;
 }
 
+function ComposerScopeProbe({ onHandle }: { readonly onHandle: (handle: ScopeHandle) => void }) {
+  const handle = useScopeHandle(ComposerScope);
+  useLayoutEffect(() => onHandle(handle), [handle, onHandle]);
+  return null;
+}
+
 function ScopeTree({
   identity,
   onHandle,
@@ -57,16 +63,11 @@ function ScopeTree({
   readonly onHandle: (handle: ScopeHandle) => void;
 }) {
   const descriptor: ComposerScopeDescriptor = { identity, focusComposerNonce: null };
-  function Probe() {
-    const handle = useScopeHandle(ComposerScope);
-    useLayoutEffect(() => onHandle(handle), [handle]);
-    return null;
-  }
   return (
     <ScopeProvider scope={ThreadScope} descriptor={THREAD}>
       <ScopeProvider scope={RouteScope} descriptor={ROUTE}>
         <ScopeProvider scope={ComposerScope} descriptor={descriptor}>
-          <Probe />
+          <ComposerScopeProbe onHandle={onHandle} />
         </ScopeProvider>
       </ScopeProvider>
     </ScopeProvider>

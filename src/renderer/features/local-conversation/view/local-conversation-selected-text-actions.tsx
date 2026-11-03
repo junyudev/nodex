@@ -1,5 +1,12 @@
 import { getSelectedMessageText } from "./shared/message-clipboard";
-import { useEffect, useRef, useState, type CSSProperties, type Ref } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ComponentProps,
+  type CSSProperties,
+  type Ref,
+} from "react";
 import { createPortal } from "react-dom";
 import { APP_SHELL_FLOATING_UI_LAYER_CLASS } from "@/lib/app-shell-layers";
 import type { ThreadStageActions } from "../thread-stage-types";
@@ -96,7 +103,13 @@ export function SelectedTextActionsToolbar({
   );
 }
 
-export function LocalConversationSelectedTextActions({
+export function LocalConversationSelectedTextActions(
+  props: ComponentProps<typeof LocalConversationSelectedTextActionsInstance>,
+) {
+  return <LocalConversationSelectedTextActionsInstance key={props.threadId} {...props} />;
+}
+
+function LocalConversationSelectedTextActionsInstance({
   enabled,
   hostId,
   threadId,
@@ -159,7 +172,7 @@ export function LocalConversationSelectedTextActions({
       window.removeEventListener("resize", measure);
       window.removeEventListener("scroll", measure, true);
     };
-  }, [enabled, scrollElement, threadId]);
+  }, [enabled, scrollElement]);
 
   const dismiss = () => {
     document.getSelection()?.removeAllRanges();

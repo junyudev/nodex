@@ -1,4 +1,5 @@
 import { toastFailure } from "@/lib/failure-toast";
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useChatMessageReveal } from "./use-chat-message-reveal";
 import { ThreadForkSubmissionContext } from "./shared/thread-fork-state";
 import { CodexThreadNavigationMarker } from "./codex-thread-navigation-marker";
@@ -283,14 +284,6 @@ async function readThreadBodyPersistedSearch({
   }
 }
 
-async function withThreadBodyCleanup(operation: () => Promise<void>, cleanup: () => void) {
-  try {
-    await operation();
-  } finally {
-    cleanup();
-  }
-}
-
 function turnEntryHasMcpApp(entry: LocalConversationVirtualizedTurnListEntry | undefined): boolean {
   if (entry && isCodexRealtimeTimelineEntry(entry)) return false;
   if (entry && isNormalizedConversationTurnEntry(entry)) return entry.hasMcpApp;
@@ -385,6 +378,14 @@ export function ThreadStartProgressPanel({
   outputText: string;
   setupProgressLogRef: React.RefObject<HTMLDivElement | null>;
 }) {
+  useEffect(() => {
+    const element = setupProgressLogRef.current;
+    if (!element) return;
+    const frame = requestAnimationFrame(() => {
+      element.scrollTop = element.scrollHeight;
+    });
+    return () => cancelAnimationFrame(frame);
+  });
   const isWorktreeProgress =
     progress.runInTarget === "newWorktree" ||
     progress.phase === "creatingWorktree" ||
@@ -690,6 +691,11 @@ export function LocalConversationThreadBodyOwner({
     turnId: string;
     message: string;
   } | null>(null);
+  const [previousBodyThreadId, setPreviousBodyThreadId] = useState(body.threadId);
+  if (previousBodyThreadId !== body.threadId) {
+    setPreviousBodyThreadId(body.threadId);
+    setForkDialogState(null);
+  }
   const forkSubmissionInFlightRef = useRef(false);
   const [forkingTurnId, setForkingTurnId] = useState<string | null>(null);
   const isForkSubmitting = forkingTurnId !== null;
@@ -893,10 +899,6 @@ export function LocalConversationThreadBodyOwner({
   const [searchReads] = useState(() =>
     createThreadBodySearchReadPort(timelineProjection.entries, displayedTurnEntries),
   );
-  useInsertionEffect(() => {
-    userMessageNavigationItemsRef.current = userMessageNavigationItems;
-    searchReads.updateCommittedEntries(timelineProjection.entries, displayedTurnEntries);
-  }, [displayedTurnEntries, timelineProjection.entries, userMessageNavigationItems, searchReads]);
   const persistedSearchSessionRef = useRef<{
     threadId: string;
     hostId: string;
@@ -983,33 +985,26 @@ export function LocalConversationThreadBodyOwner({
     ],
   );
 
-  useEffect(() => {
+  useInsertionEffect(() => {
+    userMessageNavigationItemsRef.current = userMessageNavigationItems;
+    searchReads.updateCommittedEntries(timelineProjection.entries, displayedTurnEntries);
     searchSource.pruneCachedData();
-  }, [searchSource, timelineProjection.entries]);
+  }, [
+    displayedTurnEntries,
+    timelineProjection.entries,
+    userMessageNavigationItems,
+    searchReads,
+    searchSource,
+  ]);
 
   useEffect(() => () => searchSource.clearCachedData(), [searchSource]);
 
   useEffect(() => {
     clearContentSearchMarks(searchReads.readRoot());
-    persistedSearchSessionRef.current = null;
+    if (persistedSearchSessionRef.current?.threadId !== body.threadId)
+      persistedSearchSessionRef.current = null;
     persistedSearchTargets.clear();
-    setForkDialogState(null);
   }, [body.threadId, persistedSearchTargets, searchReads]);
-
-  useEffect(() => {
-    if (!body.showThreadStartProgressPanel) return;
-    const element = setupProgressLogRef.current;
-    if (!element) return;
-    requestAnimationFrame(() => {
-      const current = setupProgressLogRef.current;
-      if (!current) return;
-      current.scrollTop = current.scrollHeight;
-    });
-  }, [
-    body.showThreadStartProgressPanel,
-    threadStartProgress?.outputText,
-    threadStartProgress?.updatedAt,
-  ]);
 
   const searchHighlights = useMemo(
     () => createThreadBodySearchHighlights(searchReads, persistedSearchTargets, searchSource),
@@ -1195,7 +1190,7 @@ export function LocalConversationThreadBodyOwner({
 
       forkSubmissionInFlightRef.current = true;
       setForkingTurnId(turnId);
-      await withThreadBodyCleanup(
+      await runWithCleanup(
         async () => {
           try {
             await fork();
@@ -1204,9 +1199,11 @@ export function LocalConversationThreadBodyOwner({
             toastFailure(failureTitle, error);
           }
         },
-        () => {
-          forkSubmissionInFlightRef.current = false;
-          setForkingTurnId(null);
+        {
+          cleanup: () => {
+            forkSubmissionInFlightRef.current = false;
+            setForkingTurnId(null);
+          },
         },
       );
     },
@@ -1261,7 +1258,7 @@ export function LocalConversationThreadBodyOwner({
     if (!threadId || isRestoringArchivedThread) return;
 
     setIsRestoringArchivedThread(true);
-    await withThreadBodyCleanup(
+    await runWithCleanup(
       async () => {
         try {
           await actions.onUnarchiveThread(threadId, projectId);
@@ -1269,7 +1266,7 @@ export function LocalConversationThreadBodyOwner({
           toastFailure("Couldn’t restore the chat", error);
         }
       },
-      () => setIsRestoringArchivedThread(false),
+      { cleanup: () => setIsRestoringArchivedThread(false) },
     );
   }, [actions, isRestoringArchivedThread, projectId, threadId]);
 

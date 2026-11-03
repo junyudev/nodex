@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { UserMessagePageReferences } from "../shared/user-message-page-references";
 import { ThreadTextSelectionAttachments } from "../thread-text-selection-attachments";
 import { ResponseAnnotationContext } from "../response-annotation-context";
@@ -57,7 +58,15 @@ import {
   USER_COPY_FEEDBACK_MS,
 } from "../shared/thread-message-actions";
 import { TodoListSurface } from "../shared/todo-list-surface";
-import { getToolComponent } from "../shared/tools/get-tool-component";
+import { getToolComponent, type ToolComponentProps } from "../shared/tools/get-tool-component";
+import { GenericToolCall } from "../shared/tools/generic-tool-call";
+import { NativeSessionHandoffToolCall } from "../shared/tools/native-session-handoff-tool-call";
+import { NativeAutomationToolCall } from "../shared/tools/native-automation-tool-call";
+import { CommandToolCall } from "../shared/tools/command-tool-call";
+import { FileChangeToolCall } from "../shared/tools/file-change-tool-call";
+import { WebSearchToolCall } from "../shared/tools/web-search-tool-call";
+import { McpToolCall } from "../shared/tools/mcp-tool-call";
+import { DynamicToolCall } from "../shared/tools/dynamic-tool-call";
 import { LazyToolOutput } from "../shared/tools/lazy-tool-output";
 import { DynamicToolCallSummary } from "../shared/tools/dynamic-tool-call";
 import { WorktreeInitActivityList } from "../shared/tools/worktree-init-activity-list";
@@ -553,6 +562,21 @@ export function ThreadAgentActivityGroupBlock({
   );
 }
 
+/** Keep each renderer's component identity static while sharing the tool routing policy. */
+function ToolSurface(props: ToolComponentProps) {
+  const component = getToolComponent(props.item);
+  if (component === GenericToolCall) return <GenericToolCall {...props} />;
+  if (component === NativeSessionHandoffToolCall)
+    return <NativeSessionHandoffToolCall {...props} />;
+  if (component === NativeAutomationToolCall) return <NativeAutomationToolCall {...props} />;
+  if (component === CommandToolCall) return <CommandToolCall {...props} />;
+  if (component === FileChangeToolCall) return <FileChangeToolCall {...props} />;
+  if (component === WebSearchToolCall) return <WebSearchToolCall {...props} />;
+  if (component === McpToolCall) return <McpToolCall {...props} />;
+  if (component === DynamicToolCall) return <DynamicToolCall {...props} />;
+  return null;
+}
+
 export function ThreadToolSurfaceBlock({
   block: inputBlock,
   isStreamingTurn,
@@ -575,12 +599,11 @@ export function ThreadToolSurfaceBlock({
     return null;
   }
 
-  const ToolComponent = getToolComponent(item);
-  if (!ToolComponent) return null;
+  if (!getToolComponent(item)) return null;
 
   return (
     <>
-      <ToolComponent
+      <ToolSurface
         item={item}
         projectWorkspacePath={projectWorkspacePath ?? undefined}
         threadCwd={threadCwd ?? undefined}
@@ -849,13 +872,12 @@ function UserMessageEditForm({
     event.preventDefault();
     if (!canSubmit) return;
     setIsSubmitting(true);
-    try {
-      await onSubmit(draft.trim());
-    } catch {
-      // The conversation surface reports the failure; the draft stays for another try.
-    } finally {
-      setIsSubmitting(false);
-    }
+    return runWithCleanup(() => onSubmit(draft.trim()), {
+      cleanup: () => setIsSubmitting(false),
+      onError: () => {
+        // The conversation surface reports the failure; the draft stays for another try.
+      },
+    });
   };
 
   return (

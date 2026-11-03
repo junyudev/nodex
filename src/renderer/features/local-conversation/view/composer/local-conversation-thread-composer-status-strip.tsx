@@ -1,5 +1,6 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { toastFailure } from "@/lib/failure-toast";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ThreadFooterModel, ThreadStageActions } from "../../thread-stage-types";
 import {
   EMPTY_BRANCH_SELECTOR_STATE,
@@ -55,7 +56,6 @@ function ThreadComposerStatusStripContent({
   projectSelectorDisabled = false,
   className,
 }: ThreadComposerStatusStripProps) {
-  const [branchState, setBranchState] = useState<BranchSelectorState>(EMPTY_BRANCH_SELECTOR_STATE);
   const [isBranchBusy, setIsBranchBusy] = useState(false);
   const branchCwd = useMemo(
     () => resolveBranchSelectorCwd(model.conversation?.cwd, model.projectWorkspacePath),
@@ -70,9 +70,17 @@ function ThreadComposerStatusStripContent({
   } = useGitBranchState(branchCwd, {
     watch: true,
   });
+  const [branchState, setBranchState] = useState<BranchSelectorState>(() =>
+    branchCwd && branchStateData
+      ? parseBranchSelectorState(branchStateData)
+      : EMPTY_BRANCH_SELECTOR_STATE,
+  );
   const branchCwdRef = useRef<string | null>(branchCwd);
   const branchMutationRequestIdRef = useRef(0);
-  branchCwdRef.current = branchCwd;
+  useLayoutEffect(() => {
+    if (branchCwdRef.current !== branchCwd) branchMutationRequestIdRef.current += 1;
+    branchCwdRef.current = branchCwd;
+  }, [branchCwd]);
   const showNewChatProjectSelector = Boolean(
     model.isNewThreadTab &&
     model.conversation === null &&
@@ -103,35 +111,33 @@ function ThreadComposerStatusStripContent({
       setBranchState(EMPTY_BRANCH_SELECTOR_STATE);
       return;
     }
-    try {
-      const result = await refetchBranchState();
-      if (branchCwdRef.current !== requestedCwd) return;
-      setBranchState(
-        result.data ? parseBranchSelectorState(result.data) : EMPTY_BRANCH_SELECTOR_STATE,
-      );
-    } catch {
-      if (branchCwdRef.current !== requestedCwd) return;
-      setBranchState(EMPTY_BRANCH_SELECTOR_STATE);
-    }
+    return runWithCleanup(
+      async () => {
+        const result = await refetchBranchState();
+        if (branchCwdRef.current !== requestedCwd) return;
+        setBranchState(
+          result.data ? parseBranchSelectorState(result.data) : EMPTY_BRANCH_SELECTOR_STATE,
+        );
+      },
+      {
+        onError: () => {
+          if (branchCwdRef.current !== requestedCwd) return;
+          setBranchState(EMPTY_BRANCH_SELECTOR_STATE);
+        },
+      },
+    );
   }, [refetchBranchState]);
 
-  useEffect(() => {
-    branchMutationRequestIdRef.current += 1;
-    setIsBranchBusy(false);
-
-    if (!branchCwd) {
-      setBranchState(EMPTY_BRANCH_SELECTOR_STATE);
-    }
-  }, [branchCwd]);
-
-  useEffect(() => {
-    if (!branchCwd || !branchStateData) {
-      setBranchState(EMPTY_BRANCH_SELECTOR_STATE);
-      return;
-    }
-
-    setBranchState(parseBranchSelectorState(branchStateData));
-  }, [branchCwd, branchStateData]);
+  const [previousBranch, setPreviousBranch] = useState({ cwd: branchCwd, data: branchStateData });
+  if (previousBranch.cwd !== branchCwd || previousBranch.data !== branchStateData) {
+    setPreviousBranch({ cwd: branchCwd, data: branchStateData });
+    if (previousBranch.cwd !== branchCwd) setIsBranchBusy(false);
+    setBranchState(
+      branchCwd && branchStateData
+        ? parseBranchSelectorState(branchStateData)
+        : EMPTY_BRANCH_SELECTOR_STATE,
+    );
+  }
 
   const handleChangeBranch = useCallback(
     async (branch: string, create: boolean) => {
@@ -148,23 +154,29 @@ function ThreadComposerStatusStripContent({
         });
 
       setIsBranchBusy(true);
-      try {
-        const nextState = await changeComposerBranch({
-          cwd: requestedCwd,
-          branch,
-          create,
-        });
-        if (!isCurrentRequest()) return false;
-        setBranchState(parseBranchSelectorState(nextState));
-        return true;
-      } catch (error) {
-        if (isCurrentRequest()) {
-          toastFailure(create ? "Couldn’t create a branch" : "Couldn’t switch branches", error);
-        }
-        return false;
-      } finally {
-        if (isCurrentRequest()) setIsBranchBusy(false);
-      }
+      return runWithCleanup(
+        async () => {
+          const nextState = await changeComposerBranch({
+            cwd: requestedCwd,
+            branch,
+            create,
+          });
+          if (!isCurrentRequest()) return false;
+          setBranchState(parseBranchSelectorState(nextState));
+          return true;
+        },
+        {
+          onError: (error) => {
+            if (isCurrentRequest()) {
+              toastFailure(create ? "Couldn’t create a branch" : "Couldn’t switch branches", error);
+            }
+            return false;
+          },
+          cleanup: () => {
+            if (isCurrentRequest()) setIsBranchBusy(false);
+          },
+        },
+      );
     },
     [branchCwd],
   );

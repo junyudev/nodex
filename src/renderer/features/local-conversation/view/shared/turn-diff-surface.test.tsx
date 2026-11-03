@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from "vite-plus/test";
-import { fireEvent, waitFor } from "@testing-library/react";
+import { act, fireEvent, waitFor } from "@testing-library/react";
 import {
   __resetNodexToastStoreForTests,
   NodexToastProvider,
@@ -603,5 +603,34 @@ describe("TurnDiffSurface", () => {
     expect(Boolean(baseElement.textContent?.includes("Applied cleanly (1)"))).toBe(true);
     expect(Boolean(baseElement.textContent?.includes("Skipped (1)"))).toBe(true);
     expect(Boolean(baseElement.textContent?.includes("Conflicts (1)"))).toBe(true);
+  });
+  test("retains file disclosure for the same patch and resets it when the patch changes", async () => {
+    const surface = (unifiedDiff: string) => (
+      <TooltipProvider>
+        <TurnDiffSurface
+          item={buildTurnDiffEntry({ unifiedDiff })}
+          isInProgress={false}
+          threadCwd="/tmp/project"
+          onOpenReview={() => {}}
+        />
+      </TooltipProvider>
+    );
+    const view = render(surface(multiFileDiff(5)));
+    await act(async () => {
+      fireEvent.click(
+        view.container.querySelector<HTMLButtonElement>('button[aria-expanded="false"]')!,
+      );
+      await settleAsyncRender();
+    });
+    expect(view.getByRole("button", { name: "Collapse files" })).toBeTruthy();
+    await act(async () => {
+      view.rerender(surface(multiFileDiff(5)));
+    });
+    expect(view.getByRole("button", { name: "Collapse files" })).toBeTruthy();
+    await act(async () => {
+      view.rerender(surface(multiFileDiff(6)));
+    });
+    expect(view.queryByRole("button", { name: "Collapse files" })).toBeNull();
+    expect(view.getByRole("button", { name: "Show 3 more files" })).toBeTruthy();
   });
 });

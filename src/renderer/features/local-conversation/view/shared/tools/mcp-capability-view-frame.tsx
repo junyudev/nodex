@@ -103,6 +103,20 @@ export function McpCapabilityViewFrame({
     [capabilityId, runtimeManager],
   );
   const runtime = useSyncExternalStore(subscribeRuntime, readRuntime, readRuntime);
+  const subscribe = useCallback(
+    (listener: () => void) => runtime?.subscribe(listener) ?? (() => undefined),
+    [runtime],
+  );
+  const getSnapshot = useCallback(() => runtime?.getSnapshot() ?? UNAVAILABLE_SNAPSHOT, [runtime]);
+  const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+
+  const [previousMode, setPreviousMode] = useState<typeof snapshot.requestedDisplayMode>();
+  if (previousMode !== snapshot.requestedDisplayMode) {
+    setPreviousMode(snapshot.requestedDisplayMode);
+    if (snapshot.requestedDisplayMode)
+      setIsExpanded(snapshot.requestedDisplayMode === "fullscreen");
+  }
+
   const surfaceMode: McpAppSurfaceMode = isExpanded ? "fullscreen" : mode;
   useLayoutEffect(() => {
     if (!surfaceElement || !runtime) return;
@@ -113,18 +127,6 @@ export function McpCapabilityViewFrame({
       visible: true,
     });
   }, [capabilityId, runtime, runtimeManager, surfaceElement, surfaceMode]);
-
-  const subscribe = useCallback(
-    (listener: () => void) => runtime?.subscribe(listener) ?? (() => undefined),
-    [runtime],
-  );
-  const getSnapshot = useCallback(() => runtime?.getSnapshot() ?? UNAVAILABLE_SNAPSHOT, [runtime]);
-  const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
-
-  useEffect(() => {
-    if (!snapshot.requestedDisplayMode) return;
-    setIsExpanded(snapshot.requestedDisplayMode === "fullscreen");
-  }, [snapshot.requestedDisplayMode]);
 
   return (
     <div

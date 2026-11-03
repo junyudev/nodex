@@ -441,3 +441,40 @@ describe("subagent overview formatting", () => {
     expect(formatSubagentRelativeTime(0, 3 * 3_600_000)).toBe("3h");
   });
 });
+
+test("switching roots discards the previous root’s pending overview", async () => {
+  let finishOld: ((overview: CodexSubagentOverviewWindow) => void) | undefined;
+  const fresh = {
+    ...buildOverview({ active: [], done: [buildRow(2, "done")] }),
+    rootThreadId: "next-root",
+  };
+  overviewMocks.read
+    .mockImplementationOnce(
+      () =>
+        new Promise<CodexSubagentOverviewWindow>((resolve) => {
+          finishOld = resolve;
+        }),
+    )
+    .mockResolvedValue(fresh);
+  const onError = vi.fn();
+  const panel = (rootThreadId: string) => (
+    <SubagentsPanelOverview
+      projectId="project"
+      rootThreadId={rootThreadId}
+      onError={onError}
+      onSelect={() => {}}
+    />
+  );
+  const view = render(panel("root"));
+  await act(async () => {
+    view.rerender(panel("next-root"));
+  });
+  expect(await view.findByText("Done · 1")).toBeTruthy();
+  await act(async () => {
+    finishOld?.(buildOverview({ active: [buildRow(1, "active")], done: [] }));
+  });
+  expect(view.queryByText("active 1")).toBeNull();
+  expect(view.getByText("done 2")).toBeTruthy();
+  expect(overviewMocks.read).toHaveBeenCalledTimes(2);
+  expect(onError).not.toHaveBeenCalled();
+});

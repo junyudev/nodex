@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { QuestionDictationButton } from "../../composer/question-dictation-button";
 import { isQuestionKeyboardOverlaid } from "../question-keyboard-scope";
 import { visibleCodexUserInputAnswerValues as resolveTranscriptAnswers } from "../../../../../../shared/codex-user-input-answer-values";
@@ -305,7 +306,7 @@ function AutoSizingTextarea({
 
   useLayoutEffect(() => {
     resizeTextarea();
-  }, [value]);
+  });
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -673,8 +674,10 @@ function RequestComposerViewInstance({
   const currentQuestionKey = `${currentIndex}:${question.id}`;
   const currentQuestionRef = useRef(question);
   const currentQuestionKeyRef = useRef(currentQuestionKey);
-  currentQuestionRef.current = question;
-  currentQuestionKeyRef.current = currentQuestionKey;
+  useLayoutEffect(() => {
+    currentQuestionRef.current = question;
+    currentQuestionKeyRef.current = currentQuestionKey;
+  }, [question, currentQuestionKey]);
   const isCurrentQuestionPanel = () => stateRef.current.questionIndex === currentIndex;
 
   const commitDraft = (nextDraft: RequestQuestionnaireDraft) => {
@@ -740,7 +743,7 @@ function RequestComposerViewInstance({
 
   useLayoutEffect(() => {
     focusPendingTarget();
-  }, [currentQuestionKey, focusPendingTarget]);
+  });
 
   const navigateQuestion = (
     nextIndex: number,
@@ -792,7 +795,7 @@ function RequestComposerViewInstance({
   };
 
   const canSubmit = isRequestQuestionnaireSubmittable(request, state, policy);
-  const isBusy = busyAction !== null || activationLockRef.current !== null;
+  const isBusy = busyAction !== null || advancingChoiceId !== null;
 
   const submitDraft = async (nextDraft: RequestQuestionnaireDraft, lockToken?: symbol) => {
     const generation = requestGenerationRef.current;
@@ -807,21 +810,27 @@ function RequestComposerViewInstance({
 
     setBusyAction("submit");
     setErrorMessage(null);
-    try {
-      await onSubmit(request, nextDraft);
-    } catch (error) {
-      if (mountedRef.current && requestGenerationRef.current === generation) {
-        setErrorMessage(resolveFormErrorMessage(error) ?? submitErrorMessage);
-      }
-    } finally {
-      if (mountedRef.current && requestGenerationRef.current === generation) {
-        setBusyAction(null);
-        if (!lockToken || activationLockRef.current === lockToken) {
-          activationLockRef.current = null;
-          setAdvancingChoiceId(null);
-        }
-      }
-    }
+    return runWithCleanup(
+      async () => {
+        await onSubmit(request, nextDraft);
+      },
+      {
+        cleanup: () => {
+          if (mountedRef.current && requestGenerationRef.current === generation) {
+            setBusyAction(null);
+            if (!lockToken || activationLockRef.current === lockToken) {
+              activationLockRef.current = null;
+              setAdvancingChoiceId(null);
+            }
+          }
+        },
+        onError: (error) => {
+          if (mountedRef.current && requestGenerationRef.current === generation) {
+            setErrorMessage(resolveFormErrorMessage(error) ?? submitErrorMessage);
+          }
+        },
+      },
+    );
   };
 
   const advanceOrSubmit = (nextDraft: RequestQuestionnaireDraft, lockToken?: symbol) => {
@@ -881,19 +890,25 @@ function RequestComposerViewInstance({
     const generation = requestGenerationRef.current;
     setBusyAction("dismiss");
     setErrorMessage(null);
-    try {
-      await onEscapeDismiss(request);
-    } catch (error) {
-      if (mountedRef.current && requestGenerationRef.current === generation) {
-        setErrorMessage(
-          resolveFormErrorMessage(error) ?? dismissErrorMessage ?? "Could not dismiss request",
-        );
-      }
-    } finally {
-      if (mountedRef.current && requestGenerationRef.current === generation) {
-        setBusyAction(null);
-      }
-    }
+    return runWithCleanup(
+      async () => {
+        await onEscapeDismiss(request);
+      },
+      {
+        cleanup: () => {
+          if (mountedRef.current && requestGenerationRef.current === generation) {
+            setBusyAction(null);
+          }
+        },
+        onError: (error) => {
+          if (mountedRef.current && requestGenerationRef.current === generation) {
+            setErrorMessage(
+              resolveFormErrorMessage(error) ?? dismissErrorMessage ?? "Could not dismiss request",
+            );
+          }
+        },
+      },
+    );
   };
 
   const handleSkip = async () => {
@@ -904,25 +919,32 @@ function RequestComposerViewInstance({
     const generation = requestGenerationRef.current;
     setBusyAction("skip");
     setErrorMessage(null);
-    try {
-      await onSkip(request);
-    } catch (error) {
-      if (mountedRef.current && requestGenerationRef.current === generation) {
-        setErrorMessage(
-          resolveFormErrorMessage(error) ?? skipErrorMessage ?? "Could not skip request",
-        );
-      }
-    } finally {
-      if (mountedRef.current && requestGenerationRef.current === generation) {
-        setBusyAction(null);
-      }
-    }
+    return runWithCleanup(
+      async () => {
+        await onSkip(request);
+      },
+      {
+        cleanup: () => {
+          if (mountedRef.current && requestGenerationRef.current === generation) {
+            setBusyAction(null);
+          }
+        },
+        onError: (error) => {
+          if (mountedRef.current && requestGenerationRef.current === generation) {
+            setErrorMessage(
+              resolveFormErrorMessage(error) ?? skipErrorMessage ?? "Could not skip request",
+            );
+          }
+        },
+      },
+    );
   };
 
   const isLastQuestion = isLastRequestQuestion(request, state);
 
-  const handlePrimaryAction = (nextDraft = stateRef.current) => {
+  const handlePrimaryAction = (draft?: RequestQuestionnaireDraft) => {
     if (busyAction !== null || activationLockRef.current !== null) return;
+    const nextDraft = draft ?? stateRef.current;
     if (isLastQuestion) {
       void submitDraft(nextDraft);
       return;

@@ -5,7 +5,7 @@ import {
   handleComposerPickerSearchKeyDown,
   type InlineComposerPickerPresentation,
 } from "./inline-composer-picker";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Star } from "@/components/shared/icons/generic-icons";
 import { ActivitySpinnerIcon, CheckmarkIcon, ConfigStatusIcon } from "@/components/shared/icons";
 import {
@@ -96,9 +96,11 @@ export function EnvironmentSelectorPopover({
   const open = inline?.open ?? localOpen;
   const setOpen = inline?.onOpenChange ?? setLocalOpen;
   const [search, setSearch] = useState("");
-  useEffect(() => {
+  const [wasOpen, setWasOpen] = useState(open);
+  if (wasOpen !== open) {
+    setWasOpen(open);
     if (!open) setSearch("");
-  }, [open]);
+  }
   const normalizedSelectedPath = selectedPath?.trim() || "";
   const resolvedConfigs = useMemo<WorktreeEnvironmentConfigRecord[]>(
     () =>

@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { memo, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { DownArrowIcon } from "@/components/shared/icons";
 import { AnimatePresence, motion } from "motion/react";
@@ -252,70 +253,36 @@ function DockedLocalConversationFooter({
       return true;
     };
 
+    // Accepted sends retain placement until the transcript commits; queue-only writes release it.
+    const runWithSubmitPlacement = async (
+      operation: () => Promise<unknown>,
+      clearAfter = false,
+    ) => {
+      const prepared = prepareExistingThreadPlacement();
+      await runWithCleanup(operation, {
+        onError: (error) => {
+          if (prepared && !clearAfter) clearPendingLatestTurnSubmitPlacement();
+          throw error;
+        },
+        cleanup: () => {
+          if (prepared && clearAfter) clearPendingLatestTurnSubmitPlacement();
+        },
+      });
+    };
+    const resumeInterruptedTurn = actions.onResumeInterruptedTurn;
     return {
       ...actions,
-      onSendPrompt: async (...args) => {
-        const prepared = prepareExistingThreadPlacement();
-        try {
-          await actions.onSendPrompt(...args);
-        } catch (error) {
-          if (prepared) {
-            clearPendingLatestTurnSubmitPlacement();
-          }
-          throw error;
-        }
-      },
-      onSteerPrompt: async (...args) => {
-        const prepared = prepareExistingThreadPlacement();
-        try {
-          await actions.onSteerPrompt(...args);
-        } catch (error) {
-          if (prepared) {
-            clearPendingLatestTurnSubmitPlacement();
-          }
-          throw error;
-        }
-      },
-      ...(actions.onResumeInterruptedTurn
+      onSendPrompt: (...args) => runWithSubmitPlacement(() => actions.onSendPrompt(...args)),
+      onSteerPrompt: (...args) => runWithSubmitPlacement(() => actions.onSteerPrompt(...args)),
+      ...(resumeInterruptedTurn
         ? {
-            onResumeInterruptedTurn: async () => {
-              const prepared = prepareExistingThreadPlacement();
-              try {
-                await actions.onResumeInterruptedTurn?.();
-              } catch (error) {
-                if (prepared) {
-                  clearPendingLatestTurnSubmitPlacement();
-                }
-                throw error;
-              }
-            },
+            onResumeInterruptedTurn: () => runWithSubmitPlacement(resumeInterruptedTurn),
           }
         : {}),
-      onEnqueueQueuedFollowUp: async (...args) => {
-        const prepared = prepareExistingThreadPlacement();
-        try {
-          await actions.onEnqueueQueuedFollowUp(...args);
-          if (prepared) {
-            clearPendingLatestTurnSubmitPlacement();
-          }
-        } catch (error) {
-          if (prepared) {
-            clearPendingLatestTurnSubmitPlacement();
-          }
-          throw error;
-        }
-      },
-      onSendQueuedFollowUpNow: async (...args) => {
-        const prepared = prepareExistingThreadPlacement();
-        try {
-          await actions.onSendQueuedFollowUpNow(...args);
-        } catch (error) {
-          if (prepared) {
-            clearPendingLatestTurnSubmitPlacement();
-          }
-          throw error;
-        }
-      },
+      onEnqueueQueuedFollowUp: (...args) =>
+        runWithSubmitPlacement(() => actions.onEnqueueQueuedFollowUp(...args), true),
+      onSendQueuedFollowUpNow: (...args) =>
+        runWithSubmitPlacement(() => actions.onSendQueuedFollowUpNow(...args)),
     };
   }, [
     actions,

@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState, type RefCallback } from "react";
+import { runWithCleanup } from "@/lib/run-with-cleanup";
+import { useCallback, useLayoutEffect, useRef, useState, type RefCallback } from "react";
 import { toast } from "@/components/ui/toast";
 import { useCodexServiceTierSettings } from "@/lib/use-codex-service-tier-settings";
 import type { ThreadFooterModel, ThreadStageActions } from "../../thread-stage-types";
@@ -48,17 +49,19 @@ export function useComposerIntelligenceController(
     model,
     serviceTierSettings.serviceTier,
   );
-  const authoritativeRef = useRef(derivedAuthoritativeSelection);
+  const [authoritativeSelection, setAuthoritativeSelection] = useState(
+    derivedAuthoritativeSelection,
+  );
+  const authoritativeRef = useRef(authoritativeSelection);
   // New-task defaults can clone an unchanged Agent profile; preserve its semantic identity for
   // layout and menu consumers that react to a genuinely changed selection.
   if (
-    !areComposerIntelligenceSelectionsEqual(authoritativeRef.current, derivedAuthoritativeSelection)
+    !areComposerIntelligenceSelectionsEqual(authoritativeSelection, derivedAuthoritativeSelection)
   ) {
-    authoritativeRef.current = derivedAuthoritativeSelection;
+    setAuthoritativeSelection(derivedAuthoritativeSelection);
   }
-  const authoritativeSelection = authoritativeRef.current;
   const actionsRef = useRef(actions);
-  actionsRef.current = actions;
+
   const [optimisticSelection, setOptimisticSelection] =
     useState<ComposerIntelligenceSelection | null>(null);
   const [isOpen, setOpen] = useState(false);
@@ -71,76 +74,86 @@ export function useComposerIntelligenceController(
 
   const scopeKey = `${model.hostId}:${model.provider?.selection ?? "codex"}:${model.conversation?.threadId ?? "draft"}`;
   const scopeRef = useRef(scopeKey);
-  scopeRef.current = scopeKey;
-  useEffect(() => {
-    desiredRef.current = null;
-    lastFailureRef.current = null;
+  const [previousScope, setPreviousScope] = useState(scopeKey);
+  if (previousScope !== scopeKey) {
+    setPreviousScope(scopeKey);
     setOptimisticSelection(null);
-  }, [scopeKey]);
+  }
+  useLayoutEffect(() => {
+    if (scopeRef.current !== scopeKey) {
+      desiredRef.current = null;
+      lastFailureRef.current = null;
+    }
+    scopeRef.current = scopeKey;
+    actionsRef.current = actions;
+    authoritativeRef.current = authoritativeSelection;
+  }, [scopeKey, actions, authoritativeSelection]);
 
-  const drain = useCallback((): Promise<void> => {
+  const drain = (): Promise<void> => {
     if (drainRef.current) return drainRef.current;
 
     const scope = scopeRef.current;
     const operation = (async () => {
       setPending(true);
-      try {
-        while (desiredRef.current && scope === scopeRef.current) {
-          const candidate = desiredRef.current;
-          desiredRef.current = null;
-          const commit = actionsRef.current.onIntelligenceSelectionChange;
+      return runWithCleanup(
+        async () => {
+          while (desiredRef.current && scope === scopeRef.current) {
+            const candidate = desiredRef.current;
+            desiredRef.current = null;
+            const commit = actionsRef.current.onIntelligenceSelectionChange;
 
-          try {
-            if (commit) {
-              await commit(candidate);
-            } else {
-              await Promise.all([
-                actionsRef.current.onModelChange(candidate.model),
-                actionsRef.current.onReasoningEffortChange(candidate.reasoningEffort),
-              ]);
-              setServiceTier(candidate.serviceTier, "composer_menu");
+            try {
+              if (commit) {
+                await commit(candidate);
+              } else {
+                await Promise.all([
+                  actionsRef.current.onModelChange(candidate.model),
+                  actionsRef.current.onReasoningEffortChange(candidate.reasoningEffort),
+                ]);
+                setServiceTier(candidate.serviceTier, "composer_menu");
+              }
+              lastFailureRef.current = null;
+            } catch (error) {
+              if (scope !== scopeRef.current) return;
+              if (desiredRef.current) continue;
+              lastFailureRef.current = toError(error);
+              selectedIntentRef.current = authoritativeRef.current;
+              setOptimisticSelection(null);
+              toast.danger(lastFailureRef.current.message);
+              return;
             }
-            lastFailureRef.current = null;
-          } catch (error) {
-            if (scope !== scopeRef.current) return;
-            if (desiredRef.current) continue;
-            lastFailureRef.current = toError(error);
-            selectedIntentRef.current = authoritativeRef.current;
-            setOptimisticSelection(null);
-            toast.danger(lastFailureRef.current.message);
-            return;
           }
-        }
-      } finally {
-        setPending(false);
-        drainRef.current = null;
-        if (desiredRef.current) void drain();
-      }
+        },
+        {
+          cleanup: () => {
+            setPending(false);
+            drainRef.current = null;
+            if (desiredRef.current) void drain();
+          },
+        },
+      );
     })();
     drainRef.current = operation;
     return operation;
-  }, [setServiceTier]);
+  };
 
-  const select = useCallback(
-    (selection: ComposerIntelligenceSelection) => {
-      const current = desiredRef.current ?? optimisticSelection ?? authoritativeRef.current;
-      if (areComposerIntelligenceSelectionsEqual(current, selection)) return;
+  const select = (selection: ComposerIntelligenceSelection) => {
+    const current = desiredRef.current ?? optimisticSelection ?? authoritativeRef.current;
+    if (areComposerIntelligenceSelectionsEqual(current, selection)) return;
 
-      lastFailureRef.current = null;
-      desiredRef.current = selection;
-      selectedIntentRef.current = selection;
-      setOptimisticSelection(selection);
-      void drain();
-    },
-    [drain, optimisticSelection],
-  );
+    lastFailureRef.current = null;
+    desiredRef.current = selection;
+    selectedIntentRef.current = selection;
+    setOptimisticSelection(selection);
+    void drain();
+  };
 
-  const flush = useCallback(async (): Promise<void> => {
+  const flush = async (): Promise<void> => {
     if (desiredRef.current) await drain();
     if (drainRef.current) await drainRef.current;
     if (desiredRef.current) await drain();
     if (lastFailureRef.current) throw lastFailureRef.current;
-  }, [drain]);
+  };
 
   // This ref is composed through Tooltip and Dropdown triggers. Keeping it stable
   // prevents React 19 from detaching the shared DOM node during unrelated composer renders.
@@ -152,17 +165,20 @@ export function useComposerIntelligenceController(
     optimisticSelection?.kind === authoritativeSelection.kind
       ? optimisticSelection
       : authoritativeSelection;
-  selectedIntentRef.current = selectedIntent;
+  useLayoutEffect(() => {
+    selectedIntentRef.current = selectedIntent;
+  }, [selectedIntent]);
   // Native controls and model capabilities arrive with the committed selection. Mixing them
   // with a queued model can move open flyouts when that model's controls arrive later.
   const selection =
     authoritativeSelection.kind === "codex" ? selectedIntent : authoritativeSelection;
-  useEffect(() => {
-    if (!optimisticSelection || isPending) return;
-    if (!areComposerIntelligenceSelectionsEqual(optimisticSelection, authoritativeSelection))
-      return;
+  if (
+    optimisticSelection &&
+    !isPending &&
+    areComposerIntelligenceSelectionsEqual(optimisticSelection, authoritativeSelection)
+  ) {
     setOptimisticSelection(null);
-  }, [authoritativeSelection, isPending, optimisticSelection]);
+  }
   const open = () => {
     const trigger = triggerElementRef.current;
     if (isOpen && trigger) {

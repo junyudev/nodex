@@ -80,7 +80,7 @@ function PromptHistoryHarness({
   const setTextCallsRef = useRef<string[]>([]);
   const editorRef = useRef<ComposerPromptEditorHandle | null>(null);
 
-  if (!editorRef.current) {
+  useEffect(() => {
     const setText = (text: string) => {
       textRef.current = text;
       setTextCallsRef.current.push(text);
@@ -144,7 +144,7 @@ function PromptHistoryHarness({
       isCursorAtEnd: () => cursorAtEndRef.current,
       syncMentionMetadata: () => {},
     };
-  }
+  }, []);
 
   const { handlePromptHistoryKeyDown } = useThreadComposerPromptHistoryRecall({
     editorRef,

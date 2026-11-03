@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, useState } from "react";
+import { useCallback, useState, useSyncExternalStore } from "react";
 import {
   resolveWorkedForLabelText,
   type ThreadWorkedForTiming,
@@ -13,24 +13,29 @@ export function useWorkedForLabelText({
   durationMs: number | null;
   fallbackTimeLabel?: string | null;
 }): string | null {
-  const [nowMs, setNowMs] = useState(() => Date.now());
   const isWorking = timing?.status === "working" && timing.completedAtMs === null;
-  const tick = useEffectEvent(() => {
-    setNowMs(Date.now());
-  });
-
-  useEffect(() => {
-    if (!isWorking) return undefined;
-
-    tick();
-    const intervalId = window.setInterval(() => {
-      tick();
-    }, 1000);
-
-    return () => {
-      window.clearInterval(intervalId);
+  const [clock] = useState(() => {
+    let nowMs = Date.now();
+    return {
+      read: () => nowMs,
+      tick: () => {
+        nowMs = Date.now();
+      },
     };
-  }, [isWorking]);
+  });
+  const subscribe = useCallback(
+    (notify: () => void) => {
+      if (!isWorking) return () => {};
+      clock.tick();
+      const intervalId = window.setInterval(() => {
+        clock.tick();
+        notify();
+      }, 1000);
+      return () => window.clearInterval(intervalId);
+    },
+    [clock, isWorking],
+  );
+  const nowMs = useSyncExternalStore(subscribe, clock.read, clock.read);
 
   return resolveWorkedForLabelText({
     timing,

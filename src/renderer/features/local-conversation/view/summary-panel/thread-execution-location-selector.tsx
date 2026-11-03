@@ -45,9 +45,13 @@ export function ThreadExecutionLocationSelector({
   const label = model.kind === "worktree" ? "Worktree" : "Local";
   const Icon = model.kind === "worktree" ? WorktreeStatusIcon : LocalStatusIcon;
   const title = destination === "local" ? "Move to local" : "Move to worktree";
+  const [previousStatus, setPreviousStatus] = useState(operation?.status);
+  if (previousStatus !== operation?.status) {
+    setPreviousStatus(operation?.status);
+    if (operation?.status === "success" || operation?.status === "warning") setDestination(null);
+  }
   useEffect(() => {
     if (operation?.status === "error") toastFailure("Couldn’t move the chat", operation.message);
-    if (operation?.status === "success" || operation?.status === "warning") setDestination(null);
   }, [operation?.message, operation?.status]);
 
   if (!model.canMove)

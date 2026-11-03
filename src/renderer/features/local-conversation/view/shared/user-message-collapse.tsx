@@ -63,12 +63,12 @@ export function UserMessageCollapse({
     const resize = new ResizeObserver(measure);
     resize.observe(content);
     const mutation = new MutationObserver(measure);
-    mutation.observe(content, { childList: true, subtree: true });
+    mutation.observe(content, { childList: true, characterData: true, subtree: true });
     return () => {
       resize.disconnect();
       mutation.disconnect();
     };
-  }, [collapsed, contentKey, visibleLines]);
+  }, [collapsed, visibleLines]);
   const collapsedStyle =
     collapsed && collapsedHeightPx !== null
       ? {

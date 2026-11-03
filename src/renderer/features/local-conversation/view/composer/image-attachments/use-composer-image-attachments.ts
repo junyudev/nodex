@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ComposerPickedFile } from "../../../../../../shared/ipc-api";
 import { DEFAULT_CODEX_HOST_ID } from "../../../../../../shared/codex-host";
 import { uploadImageAsset } from "@/lib/assets";
@@ -134,12 +134,15 @@ export function useComposerImageAttachments(input: {
   const generationRef = useRef(0);
   const mountedRef = useRef(true);
   const latestRef = useRef(input);
-  latestRef.current = input;
+
   const adaptersRef = useRef<ComposerImageAttachmentAdapters>({
     ...DEFAULT_ADAPTERS,
     ...input.adapters,
   });
-  adaptersRef.current = { ...DEFAULT_ADAPTERS, ...input.adapters };
+  useLayoutEffect(() => {
+    latestRef.current = input;
+    adaptersRef.current = { ...DEFAULT_ADAPTERS, ...input.adapters };
+  }, [input]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -148,7 +151,10 @@ export function useComposerImageAttachments(input: {
       generationRef.current += 1;
     };
   }, []);
-  useEffect(() => {
+  const scopeRef = useRef(input.scopeKey);
+  useLayoutEffect(() => {
+    if (scopeRef.current === input.scopeKey) return;
+    scopeRef.current = input.scopeKey;
     generationRef.current += 1;
   }, [input.scopeKey]);
 
@@ -321,7 +327,7 @@ export function useComposerImageAttachments(input: {
     ]);
   };
 
-  const implementationRef = useRef({
+  const [controller] = useState<ComposerImageAttachmentController>(() => ({
     addFiles,
     addPickedFiles,
     addResolvedImages,
@@ -336,23 +342,6 @@ export function useComposerImageAttachments(input: {
       generationRef.current += 1;
       latestRef.current.setAttachments(() => []);
     },
-  });
-  implementationRef.current = {
-    addFiles,
-    addPickedFiles,
-    addResolvedImages,
-    syncResolvedImages,
-    remove: implementationRef.current.remove,
-    clear: implementationRef.current.clear,
-  };
-  const controllerRef = useRef<ComposerImageAttachmentController | null>(null);
-  controllerRef.current ??= {
-    addFiles: (...args) => implementationRef.current.addFiles(...args),
-    addPickedFiles: (...args) => implementationRef.current.addPickedFiles(...args),
-    addResolvedImages: (...args) => implementationRef.current.addResolvedImages(...args),
-    syncResolvedImages: (...args) => implementationRef.current.syncResolvedImages(...args),
-    remove: (...args) => implementationRef.current.remove(...args),
-    clear: () => implementationRef.current.clear(),
-  };
-  return controllerRef.current;
+  }));
+  return controller;
 }
