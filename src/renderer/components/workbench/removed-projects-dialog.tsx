@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useState } from "react";
 import { ActivitySpinnerIcon } from "@/components/shared/icons";
 import { useRemovedProjects } from "@/lib/use-projects";
@@ -64,27 +65,33 @@ function OpenRemovedProjectsDialog({ onOpenChange }: { onOpenChange: (open: bool
   const restore = async (project: Project) => {
     if (restoringProjectIds.has(project.id)) return;
     setRestoringProjectIds((current) => new Set(current).add(project.id));
-    try {
-      const result = await restoreProject(project.id);
-      if (result.kind !== "updated") {
-        throw new Error(
-          result.kind === "not-found"
-            ? "The project could not be found."
-            : "The project could not be restored while work is active.",
-        );
-      }
-      toast.success(`Restored “${project.name}”`);
-    } catch (restoreError) {
-      toast.danger(`Could not restore ${project.name}`, {
-        description: restoreError instanceof Error ? restoreError.message : "Unknown error",
-      });
-    } finally {
-      setRestoringProjectIds((current) => {
-        const next = new Set(current);
-        next.delete(project.id);
-        return next;
-      });
-    }
+    await runWithCleanup(
+      async () => {
+        const result = await restoreProject(project.id);
+        if (result.kind !== "updated") {
+          throw new Error(
+            result.kind === "not-found"
+              ? "The project could not be found."
+              : "The project could not be restored while work is active.",
+          );
+        }
+        toast.success(`Restored “${project.name}”`);
+      },
+      {
+        onError: (restoreError) => {
+          toast.danger(`Could not restore ${project.name}`, {
+            description: restoreError instanceof Error ? restoreError.message : "Unknown error",
+          });
+        },
+        cleanup: () => {
+          setRestoringProjectIds((current) => {
+            const next = new Set(current);
+            next.delete(project.id);
+            return next;
+          });
+        },
+      },
+    );
   };
 
   return (

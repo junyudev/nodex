@@ -403,6 +403,8 @@ for (const kind of ["codex", "claude"] as const) {
       await page.getByRole("button", { name: "Ask in side chat", exact: true }).click();
       await expect(composers).toHaveCount(2);
       await expect(tab).toBeVisible();
+      // Let the opening focus handoff settle before the revision-fenced close command.
+      await expect(sideComposer).toBeFocused();
       const untouchedId = (await tab.getAttribute("data-panel-tab-id"))?.slice(
         "sidechat-session:".length,
       );

@@ -273,9 +273,13 @@ export function SidebarPagesSection({
   projects = EMPTY_LIBRARY_PROJECT_OPTIONS,
   onOpenInProject,
   dataSource = DEFAULT_PAGES_DATA_SOURCE,
-  mutationsEnabled = dataSource === DEFAULT_PAGES_DATA_SOURCE,
+  mutationsEnabled: suppliedMutationsEnabled,
   onHoverSurfaceOpenChange,
 }: SidebarPagesSectionProps) {
+  const mutationsEnabled =
+    suppliedMutationsEnabled === undefined
+      ? dataSource === DEFAULT_PAGES_DATA_SOURCE
+      : suppliedMutationsEnabled;
   // The listed window is a prefix of Library order whose identity never includes the
   // selection, so opening content can neither reorder rows nor drop loaded windows.
   const query = dataSource.useRoots({ limit: CONTENT_SOURCE_WINDOW_ROWS });

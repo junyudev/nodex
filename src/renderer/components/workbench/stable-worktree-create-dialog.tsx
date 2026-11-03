@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useState } from "react";
 import {
   NodexDialog,
@@ -52,14 +53,20 @@ export function StableWorktreeCreateDialog({
 
     setErrorMessage(null);
     setCreating(true);
-    try {
-      await onCreate(trimmedProjectName);
-      onOpenChange(false);
-    } catch (error) {
-      setErrorMessage(createErrorMessage(error));
-    } finally {
-      setCreating(false);
-    }
+    await runWithCleanup(
+      async () => {
+        await onCreate(trimmedProjectName);
+        onOpenChange(false);
+      },
+      {
+        onError: (error) => {
+          setErrorMessage(createErrorMessage(error));
+        },
+        cleanup: () => {
+          setCreating(false);
+        },
+      },
+    );
   };
 
   return (

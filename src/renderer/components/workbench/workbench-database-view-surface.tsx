@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { hashKey, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -387,30 +388,36 @@ export function WorkbenchDatabaseViewSurface({
         error: null,
       }),
     );
-    try {
-      const next = await readDatabaseWindowForContext(routingContext, readTarget, {
-        after: cursor,
-        ...(base.scope ? { groupScope: base.scope } : {}),
-      });
-      setContinuations((states) =>
-        new Map(states).set(scopeKey, {
-          windows: [...(states.get(scopeKey)?.windows ?? []), next],
-          loading: false,
-          error: null,
-        }),
-      );
-    } catch (error) {
-      console.error("[database-view:continuation]", error);
-      setContinuations((states) =>
-        new Map(states).set(scopeKey, {
-          windows: states.get(scopeKey)?.windows ?? [],
-          loading: false,
-          error: "Couldn’t load more pages",
-        }),
-      );
-    } finally {
-      inFlightScopes.delete(scopeKey);
-    }
+    await runWithCleanup(
+      async () => {
+        const next = await readDatabaseWindowForContext(routingContext, readTarget, {
+          after: cursor,
+          ...(base.scope ? { groupScope: base.scope } : {}),
+        });
+        setContinuations((states) =>
+          new Map(states).set(scopeKey, {
+            windows: [...(states.get(scopeKey)?.windows ?? []), next],
+            loading: false,
+            error: null,
+          }),
+        );
+      },
+      {
+        onError: (error) => {
+          console.error("[database-view:continuation]", error);
+          setContinuations((states) =>
+            new Map(states).set(scopeKey, {
+              windows: states.get(scopeKey)?.windows ?? [],
+              loading: false,
+              error: "Couldn’t load more pages",
+            }),
+          );
+        },
+        cleanup: () => {
+          inFlightScopes.delete(scopeKey);
+        },
+      },
+    );
   };
 
   const openSearch = (selectQuery = false) => {

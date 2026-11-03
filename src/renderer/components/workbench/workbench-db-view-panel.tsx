@@ -138,7 +138,7 @@ function DatabaseViewTabSurfaceContent({
   model,
   canonicalModel,
   canonicalReadGeneration,
-  presentationLayout = model.query.view.layout,
+  presentationLayout: suppliedPresentationLayout,
   effectivePresentation,
   toolbarItems,
   destinationItems,
@@ -223,6 +223,8 @@ function DatabaseViewTabSurfaceContent({
   readonly onRequestCreatePage?: (groupKey: string) => void;
   readonly mutationHistory?: DatabaseViewMutationHistory;
 }) {
+  const presentationLayout =
+    suppliedPresentationLayout === undefined ? model.query.view.layout : suppliedPresentationLayout;
   const pageChatRuntime = useDatabasePageChatActivityRuntime();
   const mutationHistory = useDatabaseViewMutationHistory(model, providedMutationHistory);
   const presentation = effectivePresentation ?? {

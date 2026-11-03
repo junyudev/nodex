@@ -9,8 +9,12 @@ import type {
 import { agentRuntimeRuntime } from "@/lib/agent-runtime-runtime";
 import type { AgentRuntimeSessionEvent } from "../../../shared/agent-runtime-api";
 import type { WorkbenchSessionRenderProjection } from "@/lib/workbench-session-presentation";
+import { makeTestWorkbenchSession } from "./workbench-testkit/panel-fixtures";
+import { composerDraftIntents } from "@/lib/composer-draft-intents";
+import { toast } from "@/components/ui/toast";
 import {
   AgentRuntimeChildPanel,
+  AgentRuntimeSideChatPanel,
   AgentRuntimeSubagentsOverviewPanel,
 } from "./workbench-agent-runtime-panels";
 
@@ -24,6 +28,138 @@ vi.mock("@/features/local-conversation/use-agent-instances", () => ({
   useAgentInstances: () => ({ instances: [] }),
 }));
 vi.mock("@/features/local-conversation", () => ({ ConnectedThreadStage: () => null }));
+
+function sideChatProps(id: string) {
+  return {
+    session: makeTestWorkbenchSession({ id, projectId: null }),
+    parentThreadId: "parent",
+    title: "Side chat",
+    project: null,
+    initialPrompt: { prompt: "Review the patch" },
+    initialSubmission: { launchId: "launch", clientUserMessageId: "message", acceptedAt: 1 },
+    onInitialSubmissionSettled: vi.fn(),
+    onRefresh: async () => {},
+    onOpenThread: () => {},
+    composerEnterBehavior: "enter" as const,
+    hostActions: {},
+    turnDiffHoverPreviewDisabled: false,
+  };
+}
+
+it.each(["accepted", "rejected"] as const)(
+  "sends the opening message without drafting it and settles once (%s)",
+  async (outcome) => {
+    let accept!: () => void;
+    let reject!: (error: Error) => void;
+    const send = vi.fn(
+      () =>
+        new Promise<void>((resolve, rejectPromise) => {
+          accept = resolve;
+          reject = rejectPromise;
+        }),
+    );
+    childAdapter.mockReturnValue({
+      runtime: {},
+      actions: { onSendPrompt: send },
+      summary: { threadId: "side-thread" },
+      provider: { modelCatalog: { loading: false } },
+      models: [{ id: "model" }],
+      selectedModel: "model",
+    });
+    const danger = vi.spyOn(toast, "danger");
+    const props = sideChatProps(`side-chat:${outcome}`);
+    const chat = { kind: "session", sessionId: props.session.id } as const;
+    const followUp = { prompt: "Keep my follow-up", focusNonce: 2 };
+    let view = render(<AgentRuntimeSideChatPanel {...props} />);
+    try {
+      await waitFor(() => expect(send).toHaveBeenCalledOnce());
+      expect(composerDraftIntents.read(chat)).toBeNull();
+      expect(props.onInitialSubmissionSettled).not.toHaveBeenCalled();
+      composerDraftIntents.set(chat, followUp);
+      await act(async () => {
+        if (outcome === "accepted") accept();
+        else reject(new Error("Submission unavailable"));
+        await Promise.resolve();
+      });
+      await waitFor(() => expect(props.onInitialSubmissionSettled).toHaveBeenCalledOnce());
+      if (outcome === "accepted") {
+        expect(composerDraftIntents.read(chat)).toBe(followUp);
+        expect(danger).not.toHaveBeenCalled();
+      } else {
+        expect(composerDraftIntents.read(chat)).toMatchObject({
+          prompt: props.initialPrompt.prompt,
+          attachmentMode: "replace",
+        });
+        expect(danger).toHaveBeenCalledWith("Submission unavailable", {
+          id: `side-chat-submit:${props.session.id}`,
+        });
+      }
+      const settledProps = { ...props, initialSubmission: undefined, initialPrompt: null };
+      view.rerender(<AgentRuntimeSideChatPanel {...settledProps} />);
+      composerDraftIntents.set(chat, followUp);
+      view.unmount();
+      view = render(<AgentRuntimeSideChatPanel {...settledProps} />);
+      expect(send).toHaveBeenCalledExactlyOnceWith(props.initialPrompt.prompt, {
+        promptInput: undefined,
+        submissionIdentity: props.initialSubmission,
+        presentationTicket: undefined,
+      });
+      expect(props.onInitialSubmissionSettled).toHaveBeenCalledOnce();
+      expect(composerDraftIntents.read(chat)).toBe(followUp);
+    } finally {
+      view.unmount();
+      const pending = composerDraftIntents.read(chat);
+      if (pending) composerDraftIntents.consume(chat, pending.focusNonce);
+    }
+  },
+);
+
+it("waits for the model catalog, then returns an unsendable opening message only once", async () => {
+  const send = vi.fn();
+  const adapter = {
+    runtime: {},
+    actions: { onSendPrompt: send },
+    summary: { threadId: "side-thread" },
+    provider: { modelCatalog: { loading: true } },
+    models: [],
+    selectedModel: null,
+  };
+  childAdapter.mockReturnValue(adapter);
+  const danger = vi.spyOn(toast, "danger");
+  const props = sideChatProps("side-chat:no-model");
+  const chat = { kind: "session", sessionId: props.session.id } as const;
+  let view = render(<AgentRuntimeSideChatPanel {...props} />);
+  try {
+    expect(send).not.toHaveBeenCalled();
+    expect(danger).not.toHaveBeenCalled();
+    expect(composerDraftIntents.read(chat)).toBeNull();
+    expect(props.onInitialSubmissionSettled).not.toHaveBeenCalled();
+    childAdapter.mockReturnValue({
+      ...adapter,
+      provider: { modelCatalog: { loading: false } },
+    });
+    view.rerender(<AgentRuntimeSideChatPanel {...props} />);
+    await waitFor(() => expect(props.onInitialSubmissionSettled).toHaveBeenCalledOnce());
+    expect(composerDraftIntents.read(chat)).toMatchObject({
+      prompt: props.initialPrompt.prompt,
+      attachmentMode: "replace",
+    });
+    expect(danger).toHaveBeenCalledOnce();
+    const followUp = { prompt: "My edited opening message", focusNonce: 3 };
+    composerDraftIntents.set(chat, followUp);
+    view.unmount();
+    view = render(
+      <AgentRuntimeSideChatPanel {...props} initialSubmission={undefined} initialPrompt={null} />,
+    );
+    expect(send).not.toHaveBeenCalled();
+    expect(props.onInitialSubmissionSettled).toHaveBeenCalledOnce();
+    expect(composerDraftIntents.read(chat)).toBe(followUp);
+  } finally {
+    view.unmount();
+    const pending = composerDraftIntents.read(chat);
+    if (pending) composerDraftIntents.consume(chat, pending.focusNonce);
+  }
+});
 
 it("keeps a child header unknown until its own settings load, independently of Fast defaults", () => {
   const adapter = {
@@ -199,6 +335,39 @@ it("opens only bounded metadata, loads one explicit continuation and releases it
   );
   view.unmount();
   expect(release).toHaveBeenCalledOnce();
+});
+
+it("releases a failed continuation so the same subagent window can be retried", async () => {
+  const overview = vi
+    .spyOn(agentRuntimeRuntime, "overview")
+    .mockResolvedValueOnce({
+      active: { items: [task("one")], nextCursor: "after-one", hasMore: true, totalCount: 2 },
+      terminal: { items: [], nextCursor: null, hasMore: false, totalCount: 0 },
+    })
+    .mockRejectedValueOnce(new Error("Continuation unavailable"))
+    .mockResolvedValueOnce(overviewOf([task("two")]));
+  observe();
+  const view = render(
+    <AgentRuntimeSubagentsOverviewPanel sessionId="session" threadId="root" onSelect={vi.fn()} />,
+  );
+  await screen.findByRole("button", { name: "Open subagent Review one" });
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Show more" }));
+    await Promise.resolve();
+  });
+  expect((await screen.findByRole("alert")).textContent).toContain("Continuation unavailable");
+  expect(screen.getByRole("button", { name: "Open subagent Review one" })).toBeTruthy();
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Show more" }));
+    await Promise.resolve();
+  });
+  await screen.findByRole("button", { name: "Open subagent Review two" });
+  expect(overview.mock.calls.slice(1).map(([input]) => input)).toEqual([
+    { sessionId: "session", threadId: "root", activeCursor: "after-one" },
+    { sessionId: "session", threadId: "root", activeCursor: "after-one" },
+  ]);
+  expect(screen.queryByRole("alert")).toBeNull();
+  view.unmount();
 });
 
 it("stops a native task through its owning Session and Run without inventing a child conversation", async () => {

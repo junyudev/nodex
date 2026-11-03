@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { startTransition, useDeferredValue, useEffect, useEffectEvent, useState } from "react";
 import { DeleteIcon, SearchIcon } from "@/components/shared/icons";
 import { NodexButton } from "@/components/ui/button";
@@ -216,30 +217,36 @@ export function ArchivedChatsSettingsPage({
 
   const unarchive = async (chat: CodexSidebarThreadItem) => {
     setBusyThreadId(chat.threadId);
-    try {
-      const restored = isCodexAgentBackendBinding(chat.backendBinding)
-        ? await unarchiveChat(chat.threadId)
-        : await workspaceSessionCommands.unarchive(requireSessionId(chat));
-      setChats((current) => current.filter((candidate) => candidate.threadId !== chat.threadId));
-      toast.success("Unarchived chat", {
-        ...(restored && onOpenThread
-          ? {
-              action: {
-                label: "Open",
-                onClick: () => {
-                  void onOpenThread(chat.threadId);
+    return runWithCleanup(
+      async () => {
+        const restored = isCodexAgentBackendBinding(chat.backendBinding)
+          ? await unarchiveChat(chat.threadId)
+          : await workspaceSessionCommands.unarchive(requireSessionId(chat));
+        setChats((current) => current.filter((candidate) => candidate.threadId !== chat.threadId));
+        toast.success("Unarchived chat", {
+          ...(restored && onOpenThread
+            ? {
+                action: {
+                  label: "Open",
+                  onClick: () => {
+                    void onOpenThread(chat.threadId);
+                  },
                 },
-              },
-            }
-          : {}),
-      });
-    } catch (cause) {
-      toast.danger("Failed to unarchive chat", {
-        description: cause instanceof Error ? cause.message : undefined,
-      });
-    } finally {
-      setBusyThreadId(null);
-    }
+              }
+            : {}),
+        });
+      },
+      {
+        onError: (cause) => {
+          toast.danger("Failed to unarchive chat", {
+            description: cause instanceof Error ? cause.message : undefined,
+          });
+        },
+        cleanup: () => {
+          setBusyThreadId(null);
+        },
+      },
+    );
   };
 
   const deleteConfirmed = async () => {
@@ -251,38 +258,44 @@ export function ArchivedChatsSettingsPage({
         (candidate) => !target.chats.some((chat) => chat.threadId === candidate.threadId),
       ),
     );
-    try {
-      for (const chat of target.chats) {
-        if (!isCodexAgentBackendBinding(chat.backendBinding)) {
-          await workspaceSessionCommands.delete(requireSessionId(chat));
-          continue;
+    return runWithCleanup(
+      async () => {
+        for (const chat of target.chats) {
+          if (!isCodexAgentBackendBinding(chat.backendBinding)) {
+            await workspaceSessionCommands.delete(requireSessionId(chat));
+            continue;
+          }
+          if (!(await deleteArchivedChat(chat.threadId))) {
+            throw new Error(`Could not delete ${chatTitle(chat)}`);
+          }
         }
-        if (!(await deleteArchivedChat(chat.threadId))) {
-          throw new Error(`Could not delete ${chatTitle(chat)}`);
-        }
-      }
-      setConfirmation(null);
-      toast.success(
-        target.chats.length === 1
-          ? "Deleted archived chat"
-          : `Deleted ${target.chats.length} archived chats`,
-      );
-    } catch (cause) {
-      await load(true).catch(() => undefined);
-      // The original confirmation snapshot may now contain successfully deleted
-      // Threads. Close it so a retry is always formed from the refreshed authority.
-      setConfirmation(null);
-      toast.danger(
-        target.chats.length === 1
-          ? "Failed to delete archived chat"
-          : "Failed to delete archived chats",
-        {
-          description: cause instanceof Error ? cause.message : undefined,
+        setConfirmation(null);
+        toast.success(
+          target.chats.length === 1
+            ? "Deleted archived chat"
+            : `Deleted ${target.chats.length} archived chats`,
+        );
+      },
+      {
+        onError: async (cause) => {
+          await load(true).catch(() => undefined);
+          // The original confirmation snapshot may now contain successfully deleted
+          // Threads. Close it so a retry is always formed from the refreshed authority.
+          setConfirmation(null);
+          toast.danger(
+            target.chats.length === 1
+              ? "Failed to delete archived chat"
+              : "Failed to delete archived chats",
+            {
+              description: cause instanceof Error ? cause.message : undefined,
+            },
+          );
         },
-      );
-    } finally {
-      setDeleting(false);
-    }
+        cleanup: () => {
+          setDeleting(false);
+        },
+      },
+    );
   };
 
   return (

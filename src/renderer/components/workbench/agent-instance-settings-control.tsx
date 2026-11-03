@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useState, type ReactNode } from "react";
 import type {
   AgentEnvironmentInput,
@@ -273,15 +274,21 @@ function AgentProfiles<Instance extends AgentInstanceFields>({
     }));
     setBusy(profileId);
     setError(profileId, null);
-    try {
-      const result = await serialize(() => runtime.update({ instances }));
-      accept(result.instances);
-      return "saved";
-    } catch (cause) {
-      return { failure: failureMessage(cause) };
-    } finally {
-      setBusy(null);
-    }
+    return runWithCleanup<PersistOutcome>(
+      async () => {
+        const result = await serialize(() => runtime.update({ instances }));
+        accept(result.instances);
+        return "saved";
+      },
+      {
+        onError: (cause) => {
+          return { failure: failureMessage(cause) };
+        },
+        cleanup: () => {
+          setBusy(null);
+        },
+      },
+    );
   };
 
   const setEnabled = (profileId: string, enabled: boolean) => {

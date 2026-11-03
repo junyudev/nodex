@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useState, type FormEvent } from "react";
 import type { Project, ProjectArchiveBlocker, ProjectLifecycleMutationResult } from "@/lib/types";
 import {
@@ -68,26 +69,32 @@ export function ProjectRemoveDialog({
 
     setPending(true);
     setBlockers([]);
-    try {
-      const result = await onArchiveProject(project.id);
-      if (result.kind === "blocked") {
-        setBlockers(result.blockers);
-        return;
-      }
-      if (result.kind === "not-found") {
-        toast.danger(`Could not remove ${project.name}`, {
-          description: "The project could not be found.",
-        });
-        return;
-      }
-      onOpenChange(false);
-    } catch (error) {
-      toast.danger(`Could not remove ${project.name}`, {
-        description: error instanceof Error ? error.message : "Unknown error",
-      });
-    } finally {
-      setPending(false);
-    }
+    await runWithCleanup(
+      async () => {
+        const result = await onArchiveProject(project.id);
+        if (result.kind === "blocked") {
+          setBlockers(result.blockers);
+          return;
+        }
+        if (result.kind === "not-found") {
+          toast.danger(`Could not remove ${project.name}`, {
+            description: "The project could not be found.",
+          });
+          return;
+        }
+        onOpenChange(false);
+      },
+      {
+        onError: (error) => {
+          toast.danger(`Could not remove ${project.name}`, {
+            description: error instanceof Error ? error.message : "Unknown error",
+          });
+        },
+        cleanup: () => {
+          setPending(false);
+        },
+      },
+    );
   };
 
   return (

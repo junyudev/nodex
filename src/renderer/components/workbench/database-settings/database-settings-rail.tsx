@@ -1172,6 +1172,8 @@ function ViewGroupingRoute({
             disabled={disabled}
             onValueChange={(propertyId) => {
               const next = propertyId ? { propertyId } : null;
+              let subgroup = presentation.subgroup;
+              if (next?.propertyId === subgroup?.propertyId) subgroup = null;
               onChange({
                 ...effective,
                 presentation: {
@@ -1179,10 +1181,7 @@ function ViewGroupingRoute({
                   ...(kind === "group"
                     ? {
                         group: next,
-                        subgroup:
-                          next?.propertyId === presentation.subgroup?.propertyId
-                            ? null
-                            : presentation.subgroup,
+                        subgroup,
                       }
                     : { subgroup: next }),
                 },

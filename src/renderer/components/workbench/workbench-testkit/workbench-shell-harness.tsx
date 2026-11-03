@@ -4557,11 +4557,14 @@ export function renderWorkbench({
     const [pendingViewOpen, setPendingViewOpen] = useState(pendingViewDeepLinkOpen);
     const initialWorkbenchCommandConsumedRef = useRef(false);
     useLayoutEffect(() => {
-      requestWorkbenchNavigation = (
-        direction,
-        source = direction === "back" ? "sidebar_back" : "sidebar_forward",
-      ) => {
-        commandPortRef.current?.navigate(direction, source);
+      requestWorkbenchNavigation = (direction, source) => {
+        const resolvedSource =
+          source === undefined
+            ? direction === "back"
+              ? "sidebar_back"
+              : "sidebar_forward"
+            : source;
+        commandPortRef.current?.navigate(direction, resolvedSource);
       };
       requestPanelTabCycle = (direction) => {
         commandPortRef.current?.cyclePanelTab(direction);
@@ -4621,11 +4624,14 @@ export function renderWorkbench({
     useLayoutEffect(() => {
       let previous = owner.read().windowState.scenesByOwnerKey;
       let revision = 0;
-      const releaseCommit = owner.registerPersistenceCommit(async (snapshot) => ({
-        ...snapshot,
-        sessionId: "window-session:test",
-        layoutRevision: ++revision,
-      }));
+      const releaseCommit = owner.registerPersistenceCommit(async (snapshot) => {
+        revision += 1;
+        return {
+          ...snapshot,
+          sessionId: "window-session:test",
+          layoutRevision: revision,
+        };
+      });
       const unsubscribe = owner.subscribe(() => {
         const next = owner.read().windowState.scenesByOwnerKey;
         for (const [key, scene] of Object.entries(next)) {

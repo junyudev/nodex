@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import {
   dropTargetForElements,
   draggable,
@@ -1370,16 +1371,21 @@ function AppShellTabContextMenu({
   if (canShowNativeContextMenu()) {
     const openNativeMenu = async () => {
       onOpen();
-      try {
-        const selectedId = await showNativeContextMenu(items.map(toNativeContextMenuItem));
-        for (const item of items) {
-          if (item.type !== "separator" && item.id === selectedId && item.disabled !== true) {
-            item.onSelect();
+      return runWithCleanup(
+        async () => {
+          const selectedId = await showNativeContextMenu(items.map(toNativeContextMenuItem));
+          for (const item of items) {
+            if (item.type !== "separator" && item.id === selectedId && item.disabled !== true) {
+              item.onSelect();
+            }
           }
-        }
-      } catch {
-        // The menu could not open; nothing changes.
-      }
+        },
+        {
+          onError: () => {
+            // The menu could not open; nothing changes.
+          },
+        },
+      );
     };
     return (
       <div

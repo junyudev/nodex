@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { agentRuntimeSubagentApprovalsQueryOptions } from "@/features/local-conversation/agent-runtime-subagent-overview";
 import { composerDraftIntents } from "@/lib/composer-draft-intents";
 import { ConnectedThreadStage, type ThreadStageActions } from "@/features/local-conversation";
@@ -29,6 +30,7 @@ import {
 } from "@/features/local-conversation/agent-runtime-subagent-overview";
 import {
   agentRuntimeDelegatedTasks,
+  isAgentRuntimeTaskStopping,
   requestAgentRuntimeTaskStop,
 } from "@/features/local-conversation/agent-runtime-delegated-tasks";
 import { useAgentRuntimeConnectionState } from "@/lib/agent-runtime-session-activity";
@@ -216,19 +218,24 @@ export function AgentRuntimeSideChatPanel(input: {
     input.onInitialSubmissionSettled?.();
   });
   const submitInitialPrompt = useEffectEvent(async () => {
-    try {
-      await agent.actions.onSendPrompt?.(input.initialPrompt?.prompt ?? "", {
-        promptInput: input.initialPrompt?.promptInput,
-        submissionIdentity: input.initialSubmission,
-        presentationTicket: input.initialSubmission?.presentationTicket,
-      });
-      settleInitialSubmission(true);
-    } catch (cause) {
-      settleInitialSubmission(false);
-      toast.danger(cause instanceof Error ? cause.message : "The side chat could not start.", {
-        id: `side-chat-submit:${session.id}`,
-      });
-    }
+    await runWithCleanup(
+      async () => {
+        await agent.actions.onSendPrompt?.(input.initialPrompt?.prompt ?? "", {
+          promptInput: input.initialPrompt?.promptInput,
+          submissionIdentity: input.initialSubmission,
+          presentationTicket: input.initialSubmission?.presentationTicket,
+        });
+        settleInitialSubmission(true);
+      },
+      {
+        onError: (cause) => {
+          settleInitialSubmission(false);
+          toast.danger(cause instanceof Error ? cause.message : "The side chat could not start.", {
+            id: `side-chat-submit:${session.id}`,
+          });
+        },
+      },
+    );
   });
   const catalog = agent.provider.modelCatalog;
   useEffect(() => {
@@ -332,8 +339,7 @@ export function AgentRuntimeSubagentsOverviewPanel(input: {
   const loadingMore = useRef(new Set<"active" | "terminal">());
   const connection = useAgentRuntimeConnectionState();
   const readyGeneration = connection.status === "ready" ? connection.generation : null;
-  // Subscribing re-renders rows when a Stop request is made or settles.
-  useSyncExternalStore(
+  const stopping = useSyncExternalStore(
     agentRuntimeDelegatedTasks.subscribe,
     agentRuntimeDelegatedTasks.readStopping,
   );
@@ -400,7 +406,7 @@ export function AgentRuntimeSubagentsOverviewPanel(input: {
         let source = read;
         let recount = false;
         for (const task of pending ?? []) {
-          recount ||= agentRuntimeOverviewTotalsUnknown(source, task);
+          recount = recount || agentRuntimeOverviewTotalsUnknown(source, task);
           source = applyAgentRuntimeOverviewTask(source, task);
         }
         pending = null;
@@ -447,29 +453,35 @@ export function AgentRuntimeSubagentsOverviewPanel(input: {
     const cursor = state.source?.[key].nextCursor;
     if (!cursor || loadingMore.current.has(key)) return;
     loadingMore.current.add(key);
-    try {
-      const page = await agentRuntimeRuntime.overview({
-        sessionId: input.sessionId,
-        threadId: input.threadId,
-        ...(key === "active" ? { activeCursor: cursor } : { terminalCursor: cursor }),
-      });
-      setState((current) =>
-        current.source
-          ? {
-              ...current,
-              source: appendAgentRuntimeOverviewPage(current.source, page, key),
-              error: null,
-            }
-          : current,
-      );
-    } catch (cause) {
-      setState((current) => ({
-        ...current,
-        error: cause instanceof Error ? cause.message : String(cause),
-      }));
-    } finally {
-      loadingMore.current.delete(key);
-    }
+    await runWithCleanup(
+      async () => {
+        const page = await agentRuntimeRuntime.overview({
+          sessionId: input.sessionId,
+          threadId: input.threadId,
+          ...(key === "active" ? { activeCursor: cursor } : { terminalCursor: cursor }),
+        });
+        setState((current) =>
+          current.source
+            ? {
+                ...current,
+                source: appendAgentRuntimeOverviewPage(current.source, page, key),
+                error: null,
+              }
+            : current,
+        );
+      },
+      {
+        onError: (cause) => {
+          setState((current) => ({
+            ...current,
+            error: cause instanceof Error ? cause.message : String(cause),
+          }));
+        },
+        cleanup: () => {
+          loadingMore.current.delete(key);
+        },
+      },
+    );
   };
   const shownWindow = useRef<AgentRuntimeOverviewWindow>({ active: 0, terminal: 0 });
   const refill = useEffectEvent((source: AgentSubagentOverview | null) => {
@@ -522,7 +534,7 @@ export function AgentRuntimeSubagentsOverviewPanel(input: {
           isStopping={(row) => {
             const task = taskForRow(row);
             return (
-              task !== undefined && agentRuntimeDelegatedTasks.isStopping(input.sessionId, task.id)
+              task !== undefined && isAgentRuntimeTaskStopping(stopping, input.sessionId, task.id)
             );
           }}
           onStop={(row) => {

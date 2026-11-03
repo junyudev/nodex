@@ -1,5 +1,5 @@
 import type { FileSearchScope, FileSearchMatch } from "../../../shared/file-search";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   NodexDialog as Dialog,
   NodexDialogContent as DialogContent,
@@ -125,7 +125,9 @@ export function CommandPalette({
   const openingRequestRef = useRef<{ tick: number; query: string | undefined } | null>(null);
   useLayoutEffect(() => {
     if (open) {
-      focusSnapshot.current ??= captureCommandPaletteFocus();
+      if (focusSnapshot.current === null) {
+        focusSnapshot.current = captureCommandPaletteFocus();
+      }
       if (
         openingRequestRef.current?.tick === openTriggerTick &&
         openingRequestRef.current.query === initialQuery
@@ -145,42 +147,36 @@ export function CommandPalette({
     flushSync(() => onOpenChange(false));
     snapshot?.restore();
   };
-  const recentPageIds = useMemo(
-    () => recentPageSessions.map((session) => session.pageId),
-    [recentPageSessions],
-  );
+  const recentPageIds = recentPageSessions.map((session) => session.pageId);
   useEffect(() => {
     return configureInteractivePageSearch(
       projects.map((project) => project.id),
       "replace",
     );
   }, [projects]);
-  const commands = useMemo(
-    () => [
-      ...buildCommandPaletteCommands({
-        ...commandContext,
-        isMac,
-      }),
-      ...(onOpenSettingsSection
-        ? resolveVisibleSettingsSections()
-            .filter((section) => !section.disabled)
-            .map((section): CommandPaletteCommand => ({
-              kind: "command",
-              id: settingsCommandId(section.id),
-              title: section.label,
-              subtitle: "",
-              keywords: ["settings", ...section.searchMessages],
-              group: "Settings",
-              priority: 700,
-            }))
-        : []),
-    ],
-    [commandContext, isMac, onOpenSettingsSection],
-  );
+  const commands = [
+    ...buildCommandPaletteCommands({
+      ...commandContext,
+      isMac,
+    }),
+    ...(onOpenSettingsSection
+      ? resolveVisibleSettingsSections()
+          .filter((section) => !section.disabled)
+          .map((section): CommandPaletteCommand => ({
+            kind: "command",
+            id: settingsCommandId(section.id),
+            title: section.label,
+            subtitle: "",
+            keywords: ["settings", ...section.searchMessages],
+            group: "Settings",
+            priority: 700,
+          }))
+      : []),
+  ];
 
-  const handleChangeMode = useCallback((nextMode: CommandMenuMode) => {
+  const handleChangeMode = (nextMode: CommandMenuMode) => {
     setMode(nextMode);
-  }, []);
+  };
 
   const handleExecute = (item: PaletteItem, query: string) => {
     if (item.kind === "file") {

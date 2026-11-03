@@ -57,7 +57,7 @@ const ignoreLibraryPageClose = (): void => undefined;
 export function WorkbenchLibraryPageSurface({
   pageId,
   surfaceId = pageId,
-  editorSessionKey = `library-page:${surfaceId}`,
+  editorSessionKey: suppliedEditorSessionKey,
   isActivePanelTab = true,
   onClose = ignoreLibraryPageClose,
   onOpenDatabase,
@@ -83,6 +83,8 @@ export function WorkbenchLibraryPageSurface({
   /** Present in a chat's Scene that can take this Page's content. */
   readonly besideChat?: WorkbenchBesideChat | null;
 }) {
+  const editorSessionKey =
+    suppliedEditorSessionKey === undefined ? `library-page:${surfaceId}` : suppliedEditorSessionKey;
   const chatSendPort = usePageChatSendPort({
     routingContext: libraryContentRoute,
     pageId,

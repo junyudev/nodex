@@ -1,5 +1,5 @@
 import { runWithCleanup } from "@/lib/run-with-cleanup";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { NodexButton } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import { isCodexGitSettings } from "../../../shared/codex-git-settings";
@@ -112,44 +112,49 @@ export function GitSettingsPage({
     };
   }, [open]);
 
-  const saveBranchPrefix = useCallback(
-    async (branchPrefix: string) => {
-      if (branchSaving) return;
-      setBranchSaving(true);
-      try {
+  const saveBranchPrefix = async (branchPrefix: string) => {
+    if (branchSaving) return;
+    setBranchSaving(true);
+    return runWithCleanup(
+      async () => {
         const next = await updateGitSettings({ branchPrefix });
         if (!isCodexGitSettings(next)) throw new Error("Git settings are unavailable");
         setSettings(next);
         onWorktreeAutoBranchPrefixChange(next.branchPrefix);
         toast.success("Saved branch prefix");
-      } catch {
-        toast.danger("Failed to save branch prefix");
-      } finally {
-        setBranchSaving(false);
-      }
-    },
-    [branchSaving, onWorktreeAutoBranchPrefixChange],
-  );
+      },
+      {
+        onError: () => {
+          toast.danger("Failed to save branch prefix");
+        },
+        cleanup: () => {
+          setBranchSaving(false);
+        },
+      },
+    );
+  };
 
-  const saveInstructions = useCallback(
-    async (
-      patch:
-        | Pick<CodexGitSettings, "commitInstructions">
-        | Pick<CodexGitSettings, "pullRequestInstructions">,
-      successMessage: string,
-      errorMessage: string,
-    ) => {
-      try {
+  const saveInstructions = async (
+    patch:
+      | Pick<CodexGitSettings, "commitInstructions">
+      | Pick<CodexGitSettings, "pullRequestInstructions">,
+    successMessage: string,
+    errorMessage: string,
+  ) => {
+    return runWithCleanup(
+      async () => {
         const next = await updateGitSettings(patch);
         if (!isCodexGitSettings(next)) throw new Error("Git settings are unavailable");
         setSettings(next);
         toast.success(successMessage);
-      } catch {
-        toast.danger(errorMessage);
-      }
-    },
-    [],
-  );
+      },
+      {
+        onError: () => {
+          toast.danger(errorMessage);
+        },
+      },
+    );
+  };
 
   return (
     <SettingsPageSurface

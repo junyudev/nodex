@@ -1,5 +1,7 @@
+import { deferred } from "./agent-instance-settings.test-fixtures";
+import { useDatabaseListWindow } from "./database-list/use-database-list-window";
 import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
-import { createEvent, fireEvent, waitFor, within } from "@testing-library/react";
+import { createEvent, fireEvent, renderHook, waitFor, within } from "@testing-library/react";
 import { act, useRef, useState, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
@@ -736,6 +738,33 @@ const databaseViewPageDataTransfer = (): DataTransfer => {
     setDragImage: () => undefined,
   } as unknown as DataTransfer;
 };
+
+test("observes journal revisions even while the List rows retain their identity", async () => {
+  const viewModel = listModel();
+  const effective = {
+    layout: "list" as const,
+    rules: viewModel.query.view.config.rules,
+    presentation: viewModel.query.view.config.presentation,
+  };
+  const { result } = renderHook(() => useDatabaseListWindow({ model: viewModel, effective }));
+  const initial = result.current;
+  const remote = deferred<DatabaseViewMutationReceipt | null>();
+  let submitted!: Promise<DatabaseViewMutationReceipt | null>;
+  await act(async () => {
+    submitted = initial.presentationOwner.submitMutation(
+      { model: viewModel, operations: [], operationId: "observe-list-journal" },
+      () => remote.promise,
+    );
+    await Promise.resolve();
+  });
+  expect(result.current.rows).toBe(initial.rows);
+  expect(result.current.presentationOwner).toBe(initial.presentationOwner);
+  expect(result.current.presentationRevision).toBeGreaterThan(initial.presentationRevision);
+  await act(async () => {
+    remote.resolve(null);
+    await submitted;
+  });
+});
 
 describe("DatabaseViewSurface", () => {
   beforeEach(() => {

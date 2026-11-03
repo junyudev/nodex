@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import {
   useId,
   useState,
@@ -348,58 +349,65 @@ function ProjectEditorForm({
     setSaving(true);
     setSaveFailure(null);
     let detailsWereCommitted = metadataCommitted;
-    try {
-      if (!metadataCommitted) {
-        await onSubmit({
-          appearance,
-          name,
-          sources,
-        });
-        detailsWereCommitted = true;
-        setMetadataCommitted(true);
-      }
-      const shouldRename =
-        pageKeyModel !== null && pageKeyExpanded && pageKeyModel.prefix !== authorityCurrentPrefix;
-      if (shouldRename) {
-        if (!projectId || !databaseId || !settingsQuery.data) {
-          throw new Error("Page-key namespace authority is not ready");
+    await runWithCleanup(
+      async () => {
+        if (!metadataCommitted) {
+          await onSubmit({
+            appearance,
+            name,
+            sources,
+          });
+          detailsWereCommitted = true;
+          setMetadataCommitted(true);
         }
-        await pageKeyAuthority.renamePrefix({
-          projectId,
-          databaseId,
-          storeEpoch: settingsQuery.data.storeEpoch,
-          expectedRevision: settingsQuery.data.namespace.revision,
-          prefix: pageKeyModel.prefix,
-        });
-      }
-      onClose();
-    } catch (error) {
-      setSaving(false);
-      const failure =
-        error instanceof CoreApiError || error instanceof DatabasePageKeyRuntimeError
-          ? {
-              code: error.code,
-              message: error.message,
-              retryable: error.retryable,
-              detailsSaved: detailsWereCommitted,
-            }
-          : {
-              code: "core_unavailable",
-              message: error instanceof Error ? error.message : saveErrorMessage,
-              retryable: true,
-              detailsSaved: detailsWereCommitted,
-            };
-      setSaveFailure(failure);
-      if (
-        mode === "edit" &&
-        (failure.code === "identity_conflict" || failure.code === "revision_conflict")
-      ) {
-        await queryClient.invalidateQueries({
-          queryKey: queryKeys.pageKeys.namespace(databaseId ?? "create"),
-        });
-        if (mode === "edit") await settingsQuery.refetch();
-      }
-    }
+        const shouldRename =
+          pageKeyModel !== null &&
+          pageKeyExpanded &&
+          pageKeyModel.prefix !== authorityCurrentPrefix;
+        if (shouldRename) {
+          if (!projectId || !databaseId || !settingsQuery.data) {
+            throw new Error("Page-key namespace authority is not ready");
+          }
+          await pageKeyAuthority.renamePrefix({
+            projectId,
+            databaseId,
+            storeEpoch: settingsQuery.data.storeEpoch,
+            expectedRevision: settingsQuery.data.namespace.revision,
+            prefix: pageKeyModel.prefix,
+          });
+        }
+        onClose();
+      },
+      {
+        onError: async (error) => {
+          setSaving(false);
+          const failure =
+            error instanceof CoreApiError || error instanceof DatabasePageKeyRuntimeError
+              ? {
+                  code: error.code,
+                  message: error.message,
+                  retryable: error.retryable,
+                  detailsSaved: detailsWereCommitted,
+                }
+              : {
+                  code: "core_unavailable",
+                  message: error instanceof Error ? error.message : saveErrorMessage,
+                  retryable: true,
+                  detailsSaved: detailsWereCommitted,
+                };
+          setSaveFailure(failure);
+          if (
+            mode === "edit" &&
+            (failure.code === "identity_conflict" || failure.code === "revision_conflict")
+          ) {
+            await queryClient.invalidateQueries({
+              queryKey: queryKeys.pageKeys.namespace(databaseId ?? "create"),
+            });
+            if (mode === "edit") await settingsQuery.refetch();
+          }
+        },
+      },
+    );
   };
 
   return (

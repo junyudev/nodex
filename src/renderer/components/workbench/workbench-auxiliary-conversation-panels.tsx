@@ -330,7 +330,8 @@ function NativeSubagentsPanelSessionTab({
     let timer: number | null = null;
     let sequence = 0;
     const refreshAuthority = (): void => {
-      const requestSequence = ++sequence;
+      sequence += 1;
+      const requestSequence = sequence;
       void refreshSelectedSubagentAuthority({
         rootThreadId: tab.rootThreadId,
         threadId: selectedThreadId,

@@ -339,15 +339,21 @@ export function ThreadNotificationSettingControl({ open }: { open: boolean }) {
       setBusy(true);
       setError(null);
 
-      try {
-        await updateSettings(nextSettings);
-      } catch (err) {
-        setError(
-          err instanceof Error ? err.message : "Could not save thread notification settings.",
-        );
-      } finally {
-        setBusy(false);
-      }
+      await runWithCleanup(
+        async () => {
+          await updateSettings(nextSettings);
+        },
+        {
+          onError: (err) => {
+            setError(
+              err instanceof Error ? err.message : "Could not save thread notification settings.",
+            );
+          },
+          cleanup: () => {
+            setBusy(false);
+          },
+        },
+      );
     },
     [updateSettings],
   );

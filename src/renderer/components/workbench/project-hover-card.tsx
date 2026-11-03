@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import {
   useEffect,
   useRef,
@@ -111,7 +112,7 @@ export function ProjectHoverCard({
   activity,
   repositoryIdentity,
   pathContext,
-  appearance = project.appearance,
+  appearance: suppliedAppearance,
   appearancePending = false,
   pinPending = false,
   markerPickerOpen,
@@ -122,6 +123,7 @@ export function ProjectHoverCard({
   onOpenSource,
   onEdit,
 }: ProjectHoverCardProps) {
+  const appearance = suppliedAppearance === undefined ? project.appearance : suppliedAppearance;
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(project.name);
   const [renaming, setRenaming] = useState(false);
@@ -162,16 +164,22 @@ export function ProjectHoverCard({
     }
 
     setRenaming(true);
-    try {
-      await onRename(name);
-    } catch (error) {
-      setNameDraft(project.name);
-      toast.danger("Could not rename project", {
-        description: error instanceof Error ? error.message : undefined,
-      });
-    } finally {
-      setRenaming(false);
-    }
+    await runWithCleanup(
+      async () => {
+        await onRename(name);
+      },
+      {
+        onError: (error) => {
+          setNameDraft(project.name);
+          toast.danger("Could not rename project", {
+            description: error instanceof Error ? error.message : undefined,
+          });
+        },
+        cleanup: () => {
+          setRenaming(false);
+        },
+      },
+    );
   };
 
   const handleNameKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {

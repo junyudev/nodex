@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import {
   type ComponentPropsWithoutRef,
   useCallback,
@@ -484,16 +485,16 @@ export function PendingWorktreeRoute({
     openResolvedThread(snapshot.resolution.threadId);
   }, [openResolvedThread, snapshot.resolution]);
 
-  const runAction = useCallback(
-    async (action: PendingWorktreeRouteAction) => {
-      const entry = snapshot.entry;
-      const pendingWorktreeId = entry?.id;
-      const hostId = entry?.hostId;
-      if (!entry || !pendingWorktreeId || !hostId || busyAction !== null) return;
-      setActionError(null);
-      if (action === "work-locally") setWorkLocallyHidden(true);
-      setBusyAction(action);
-      try {
+  const runAction = async (action: PendingWorktreeRouteAction) => {
+    const entry = snapshot.entry;
+    const pendingWorktreeId = entry?.id;
+    const hostId = entry?.hostId;
+    if (!entry || !pendingWorktreeId || !hostId || busyAction !== null) return;
+    setActionError(null);
+    if (action === "work-locally") setWorkLocallyHidden(true);
+    setBusyAction(action);
+    return runWithCleanup(
+      async () => {
         if (action === "cancel") {
           await transport.cancel(hostId, pendingWorktreeId);
           await transport.discardForkSidePanelTransfer(pendingWorktreeId);
@@ -520,28 +521,22 @@ export function PendingWorktreeRoute({
           await transport.retry(hostId, pendingWorktreeId);
         }
         await load();
-      } catch (error) {
-        if (action === "work-locally") setWorkLocallyHidden(false);
-        const message = errorMessage(error);
-        if (action === "auto-fix") {
-          toast.danger("Error starting task", { description: message });
-        }
-        setActionError(message);
-      } finally {
-        setBusyAction(null);
-      }
-    },
-    [
-      busyAction,
-      load,
-      onCancelToSource,
-      onClose,
-      onOpenPendingWorktree,
-      openResolvedThread,
-      snapshot.entry,
-      transport,
-    ],
-  );
+      },
+      {
+        onError: (error) => {
+          if (action === "work-locally") setWorkLocallyHidden(false);
+          const message = errorMessage(error);
+          if (action === "auto-fix") {
+            toast.danger("Error starting task", { description: message });
+          }
+          setActionError(message);
+        },
+        cleanup: () => {
+          setBusyAction(null);
+        },
+      },
+    );
+  };
 
   if (workLocallyHidden && actionError === null) return null;
   if (snapshot.status === "loading") {

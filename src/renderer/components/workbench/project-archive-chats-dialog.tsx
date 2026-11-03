@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useState, type FormEvent } from "react";
 import {
   NodexDialog,
@@ -57,30 +58,35 @@ export function ProjectArchiveChatsDialog({
     if (archiving || items.length === 0) return;
 
     setArchiving(true);
-    try {
-      const results = await runProjectThreadBatches(items, async (item) => {
-        try {
-          return await onArchiveItem(item);
-        } catch {
-          return false;
+    return runWithCleanup(
+      async () => {
+        const results = await runProjectThreadBatches(items, async (item) => {
+          try {
+            return await onArchiveItem(item);
+          } catch {
+            return false;
+          }
+        });
+        await onArchived?.();
+        const succeededCount = results.filter(Boolean).length;
+        const failedCount = results.length - succeededCount;
+        if (succeededCount > 0 && failedCount === 0) {
+          toast.success(`Archived ${chatCountLabel(succeededCount)}`);
+        } else if (succeededCount > 0) {
+          toast.danger(
+            `Archived ${chatCountLabel(succeededCount)} in ${projectName}; ${failedCount} failed`,
+          );
+        } else {
+          toast.danger(`Failed to archive active chats in ${projectName}`);
         }
-      });
-      await onArchived?.();
-      const succeededCount = results.filter(Boolean).length;
-      const failedCount = results.length - succeededCount;
-      if (succeededCount > 0 && failedCount === 0) {
-        toast.success(`Archived ${chatCountLabel(succeededCount)}`);
-      } else if (succeededCount > 0) {
-        toast.danger(
-          `Archived ${chatCountLabel(succeededCount)} in ${projectName}; ${failedCount} failed`,
-        );
-      } else {
-        toast.danger(`Failed to archive active chats in ${projectName}`);
-      }
-      onOpenChange(false);
-    } finally {
-      setArchiving(false);
-    }
+        onOpenChange(false);
+      },
+      {
+        cleanup: () => {
+          setArchiving(false);
+        },
+      },
+    );
   };
 
   return (

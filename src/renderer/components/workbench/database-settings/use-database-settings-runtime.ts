@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type {
@@ -66,27 +67,34 @@ export function useDatabaseSettingsRuntime(input: {
   }, []);
 
   const refresh = useCallback(async (): Promise<DatabaseSettingsAuthority | null> => {
-    if (!input.databaseId) return null;
+    const databaseId = input.databaseId;
+    if (!databaseId) return null;
     const sequence = ++readSequence.current;
     setLoading(authorityRef.current === null);
-    try {
-      const next = await readDatabaseSettingsAuthority({
-        projectId: input.projectId,
-        databaseId: input.databaseId,
-        preferredViewId: input.activeViewId,
-      });
-      if (sequence !== readSequence.current) return null;
-      applyAuthority(next);
-      setError(null);
-      return next;
-    } catch (nextError) {
-      if (sequence !== readSequence.current) return null;
-      console.error("[database-settings:read]", nextError);
-      setError(settingsErrorMessage(nextError));
-      return null;
-    } finally {
-      if (sequence === readSequence.current) setLoading(false);
-    }
+    return runWithCleanup<DatabaseSettingsAuthority | null>(
+      async () => {
+        const next = await readDatabaseSettingsAuthority({
+          projectId: input.projectId,
+          databaseId,
+          preferredViewId: input.activeViewId,
+        });
+        if (sequence !== readSequence.current) return null;
+        applyAuthority(next);
+        setError(null);
+        return next;
+      },
+      {
+        onError: (nextError) => {
+          if (sequence !== readSequence.current) return null;
+          console.error("[database-settings:read]", nextError);
+          setError(settingsErrorMessage(nextError));
+          return null;
+        },
+        cleanup: () => {
+          if (sequence === readSequence.current) setLoading(false);
+        },
+      },
+    );
   }, [applyAuthority, input.activeViewId, input.databaseId, input.projectId]);
 
   const refreshIdentity = JSON.stringify([input.projectId, input.databaseId, input.activeViewId]);
@@ -101,10 +109,10 @@ export function useDatabaseSettingsRuntime(input: {
     void refresh();
   }, [refresh]);
 
-  const loadPageLayout = useCallback(
-    async (dataSourceId: string): Promise<DatabasePageLayoutV2 | null> => {
-      setPageLayoutLoading(true);
-      try {
+  const loadPageLayout = async (dataSourceId: string): Promise<DatabasePageLayoutV2 | null> => {
+    setPageLayoutLoading(true);
+    return runWithCleanup<DatabasePageLayoutV2 | null>(
+      async () => {
         const next = await readDatabasePageLayout({
           projectId: input.projectId,
           dataSourceId,
@@ -112,16 +120,19 @@ export function useDatabaseSettingsRuntime(input: {
         });
         setPageLayout(next);
         return next;
-      } catch (nextError) {
-        console.error("[database-settings:page-layout]", nextError);
-        setError(settingsErrorMessage(nextError));
-        return null;
-      } finally {
-        setPageLayoutLoading(false);
-      }
-    },
-    [input.projectId],
-  );
+      },
+      {
+        onError: (nextError) => {
+          console.error("[database-settings:page-layout]", nextError);
+          setError(settingsErrorMessage(nextError));
+          return null;
+        },
+        cleanup: () => {
+          setPageLayoutLoading(false);
+        },
+      },
+    );
+  };
 
   const projectionRegistration: ProjectionRegistration | null = authority
     ? {
@@ -154,38 +165,42 @@ export function useDatabaseSettingsRuntime(input: {
     : null;
   useProjectionRegistration(projectionRegistration);
 
-  const mutate = useCallback(
-    async (request: {
-      readonly pendingKey: string;
-      readonly preferredViewId?: string | null;
-      readonly buildOperations: (
-        authority: DatabaseSettingsAuthority,
-      ) => readonly DatabaseApplyOperationV2[];
-    }): Promise<DatabaseSettingsAuthority | null> => {
-      if (!input.databaseId || pendingKey !== null) return null;
-      setPendingKey(request.pendingKey);
-      setError(null);
-      try {
+  const mutate = async (request: {
+    readonly pendingKey: string;
+    readonly preferredViewId?: string | null;
+    readonly buildOperations: (
+      authority: DatabaseSettingsAuthority,
+    ) => readonly DatabaseApplyOperationV2[];
+  }): Promise<DatabaseSettingsAuthority | null> => {
+    const databaseId = input.databaseId;
+    if (!databaseId || pendingKey !== null) return null;
+    setPendingKey(request.pendingKey);
+    setError(null);
+    return runWithCleanup<DatabaseSettingsAuthority | null>(
+      async () => {
         const next = await commitDatabaseSettingsOperations({
           projectId: input.projectId,
-          databaseId: input.databaseId,
+          databaseId,
           preferredViewId: request.preferredViewId ?? input.activeViewId,
           operationId: createUuidV7(),
           buildOperations: request.buildOperations,
         });
         applyAuthority(next);
         return next;
-      } catch (nextError) {
-        console.error("[database-settings:mutation]", nextError);
-        setError(settingsErrorMessage(nextError));
-        void refresh();
-        return null;
-      } finally {
-        setPendingKey(null);
-      }
-    },
-    [applyAuthority, input.activeViewId, input.databaseId, input.projectId, pendingKey, refresh],
-  );
+      },
+      {
+        onError: (nextError) => {
+          console.error("[database-settings:mutation]", nextError);
+          setError(settingsErrorMessage(nextError));
+          void refresh();
+          return null;
+        },
+        cleanup: () => {
+          setPendingKey(null);
+        },
+      },
+    );
+  };
 
   return {
     authority,

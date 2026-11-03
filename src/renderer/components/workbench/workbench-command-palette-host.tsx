@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useFileReferenceRouter } from "@/lib/file-reference-router";
 import { toast } from "@/components/ui/toast";
 import {
@@ -140,13 +141,19 @@ export function WorkbenchCommandPaletteHost({
   const openFolder = async () => {
     if (openingFolder.current) return;
     openingFolder.current = true;
-    try {
-      await openProjectFolder();
-    } catch (cause) {
-      toast.danger(cause instanceof Error ? cause.message : "Couldn’t open folder");
-    } finally {
-      openingFolder.current = false;
-    }
+    await runWithCleanup(
+      async () => {
+        await openProjectFolder();
+      },
+      {
+        onError: (cause) => {
+          toast.danger(cause instanceof Error ? cause.message : "Couldn’t open folder");
+        },
+        cleanup: () => {
+          openingFolder.current = false;
+        },
+      },
+    );
   };
   const handleFolderShortcut = useEffectEvent((event: KeyboardEvent) => {
     if (

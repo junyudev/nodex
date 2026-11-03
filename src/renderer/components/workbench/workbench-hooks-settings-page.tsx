@@ -717,7 +717,9 @@ export function WorkbenchHooksSettingsPage({
     const roots = normalizeCodexHooksCwds(
       projects.flatMap((project) =>
         project.sources.map((source) => {
-          labels[source.root] ??= project.name;
+          if (labels[source.root] === undefined || labels[source.root] === null) {
+            labels[source.root] = project.name;
+          }
           return source.root;
         }),
       ),

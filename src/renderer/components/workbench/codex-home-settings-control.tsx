@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useState } from "react";
 import type {
   CodexHomeSettingsSnapshot,
@@ -90,15 +91,21 @@ export function CodexAgentSettingsSection({
     if (!editable || !changed) return;
     setSaving(true);
     setError(null);
-    try {
-      accept(
-        await serialize(() => runtime.update({ homePath: draft, accountHomePath: accountDraft })),
-      );
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-    } finally {
-      setSaving(false);
-    }
+    return runWithCleanup(
+      async () => {
+        accept(
+          await serialize(() => runtime.update({ homePath: draft, accountHomePath: accountDraft })),
+        );
+      },
+      {
+        onError: (cause) => {
+          setError(cause instanceof Error ? cause.message : String(cause));
+        },
+        cleanup: () => {
+          setSaving(false);
+        },
+      },
+    );
   };
   const saveOnEnter = (event: { key: string; preventDefault: () => void }) => {
     if (event.key !== "Enter") return;

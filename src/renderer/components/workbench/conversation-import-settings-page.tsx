@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useEffect, useEffectEvent, useId, useRef, useState, useSyncExternalStore } from "react";
 import { parseCodexThreadImportReference } from "../../../shared/codex-thread-import-reference";
 import type {
@@ -405,40 +406,45 @@ function ConversationImportSection({
     const ownGeneration = ++lookupGeneration.current;
     setLookup({ kind: "loading" });
     const observedAt = ledger.now();
-    try {
-      const { matches } = await runtime.preview({ reference: value.trim() });
-      if (lookupGeneration.current !== ownGeneration) return;
-      const candidates = latestNativeConversationCandidates(
-        matches.map((match) =>
-          nativeConversationCandidate(
-            {
-              backendKind: match.backendKind,
-              ...(match.instanceConfigId ? { instanceConfigId: match.instanceConfigId } : {}),
-            },
-            match.nativeHome,
-            match,
-            observedAt,
+    return runWithCleanup(
+      async () => {
+        const { matches } = await runtime.preview({ reference: value.trim() });
+        if (lookupGeneration.current !== ownGeneration) return;
+        const candidates = latestNativeConversationCandidates(
+          matches.map((match) =>
+            nativeConversationCandidate(
+              {
+                backendKind: match.backendKind,
+                ...(match.instanceConfigId ? { instanceConfigId: match.instanceConfigId } : {}),
+              },
+              match.nativeHome,
+              match,
+              observedAt,
+            ),
           ),
-        ),
-      );
-      if (candidates.length === 0) {
-        setLookup({ kind: "none" });
-        return;
-      }
-      setFound((current) => latestNativeConversationCandidates([...candidates, ...current]));
-      setReference("");
-      const [only] = candidates;
-      if (candidates.length > 1) setLookup({ kind: "several", count: candidates.length });
-      else if (nativeConversationImportedCopy(only!, entries.get(only!.key)))
-        setLookup({ kind: "imported" });
-      else {
-        setLookup({ kind: "idle" });
-        changeSelection((next) => next.set(only!.key, only!));
-      }
-    } catch (cause) {
-      if (lookupGeneration.current === ownGeneration)
-        setLookup({ kind: "failed", message: errorMessage(cause) });
-    }
+        );
+        if (candidates.length === 0) {
+          setLookup({ kind: "none" });
+          return;
+        }
+        setFound((current) => latestNativeConversationCandidates([...candidates, ...current]));
+        setReference("");
+        const [only] = candidates;
+        if (candidates.length > 1) setLookup({ kind: "several", count: candidates.length });
+        else if (nativeConversationImportedCopy(only!, entries.get(only!.key)))
+          setLookup({ kind: "imported" });
+        else {
+          setLookup({ kind: "idle" });
+          changeSelection((next) => next.set(only!.key, only!));
+        }
+      },
+      {
+        onError: (cause) => {
+          if (lookupGeneration.current === ownGeneration)
+            setLookup({ kind: "failed", message: errorMessage(cause) });
+        },
+      },
+    );
   };
 
   const changeReference = (value: string) => {
@@ -482,52 +488,58 @@ function ConversationImportSection({
         },
     );
     const observedAt = ledger.now();
-    try {
-      let page = await read(cursor);
-      for (
-        let drained = 0;
-        page.entries.length === 0 && page.nextCursor && drained < EMPTY_PAGE_DRAIN_LIMIT;
-        drained += 1
-      ) {
+    return runWithCleanup(
+      async () => {
+        let page = await read(cursor);
+        for (
+          let drained = 0;
+          page.entries.length === 0 && page.nextCursor && drained < EMPTY_PAGE_DRAIN_LIMIT;
+          drained += 1
+        ) {
+          if (browseGeneration.current !== generation) return;
+          page = await read(page.nextCursor);
+        }
         if (browseGeneration.current !== generation) return;
-        page = await read(page.nextCursor);
-      }
-      if (browseGeneration.current !== generation) return;
-      const candidates = page.entries.map((entry) =>
-        nativeConversationCandidate(source, page.nativeHome, entry, observedAt),
-      );
-      setBrowse((current) => {
-        if (!current) return current;
-        const previous = cursor ? current.catalogs.get(key) : undefined;
-        const loading = new Set(current.loading);
-        loading.delete(key);
-        return {
-          ...current,
-          loading,
-          catalogs: withEntry(current.catalogs, key, {
-            source,
-            nativeHome: page.nativeHome,
-            nextCursor: page.nextCursor,
-            candidates:
-              previous?.nativeHome === page.nativeHome
-                ? [...previous.candidates, ...candidates]
-                : candidates,
-          }),
-        };
-      });
-    } catch (cause) {
-      if (browseGeneration.current !== generation) return;
-      setBrowse((current) => {
-        if (!current) return current;
-        const loading = new Set(current.loading);
-        loading.delete(key);
-        return {
-          ...current,
-          loading,
-          errors: withEntry(current.errors, key, { source, message: errorMessage(cause) }),
-        };
-      });
-    }
+        const candidates = page.entries.map((entry) =>
+          nativeConversationCandidate(source, page.nativeHome, entry, observedAt),
+        );
+        setBrowse((current) => {
+          if (!current) return current;
+          const previous = cursor ? current.catalogs.get(key) : undefined;
+          const loading = new Set(current.loading);
+          loading.delete(key);
+          return {
+            ...current,
+            loading,
+            catalogs: withEntry(current.catalogs, key, {
+              source,
+              nativeHome: page.nativeHome,
+              nextCursor: page.nextCursor,
+              candidates:
+                previous?.nativeHome === page.nativeHome
+                  ? [...previous.candidates, ...candidates]
+                  : candidates,
+            }),
+          };
+        });
+      },
+      {
+        onError: (cause) => {
+          if (browseGeneration.current !== generation) return;
+          const message = errorMessage(cause);
+          setBrowse((current) => {
+            if (!current) return current;
+            const loading = new Set(current.loading);
+            loading.delete(key);
+            return {
+              ...current,
+              loading,
+              errors: withEntry(current.errors, key, { source, message }),
+            };
+          });
+        },
+      },
+    );
   };
 
   const requestSources = () => {
@@ -562,32 +574,42 @@ function ConversationImportSection({
   const chooseFolder = async (row: NativeConversationCandidate) => {
     if (locked) return;
     setChoosingFolder(true);
-    try {
-      const picked = await runtime.pickDirectory();
-      if (!picked) return;
-      setReplacements((current) => withEntry(current, row.cwd, picked));
-      setRowStates((current) => withoutEntry(current, row.key));
-      setSummary(null);
-    } catch (cause) {
-      setRowStates((current) =>
-        withEntry(current, row.key, { kind: "failed", message: errorMessage(cause) }),
-      );
-    } finally {
-      setChoosingFolder(false);
-    }
+    return runWithCleanup(
+      async () => {
+        const picked = await runtime.pickDirectory();
+        if (!picked) return;
+        setReplacements((current) => withEntry(current, row.cwd, picked));
+        setRowStates((current) => withoutEntry(current, row.key));
+        setSummary(null);
+      },
+      {
+        onError: (cause) => {
+          setRowStates((current) =>
+            withEntry(current, row.key, { kind: "failed", message: errorMessage(cause) }),
+          );
+        },
+        cleanup: () => {
+          setChoosingFolder(false);
+        },
+      },
+    );
   };
 
   const openCopy = async (key: string, copy: NativeConversationCopy) => {
     if (!onOpenThread) return;
     setRowStates((current) => withEntry(current, key, { kind: "opening" }));
-    try {
-      await onOpenThread(copy.threadId, { runtimeSessionId: copy.sessionId });
-      setRowStates((current) => withoutEntry(current, key));
-    } catch (cause) {
-      setRowStates((current) =>
-        withEntry(current, key, { kind: "failed", message: errorMessage(cause) }),
-      );
-    }
+    return runWithCleanup(
+      async () => {
+        await onOpenThread(copy.threadId, { runtimeSessionId: copy.sessionId });
+        setRowStates((current) => withoutEntry(current, key));
+      },
+      {
+        onError: (cause) => {
+          const message = errorMessage(cause);
+          setRowStates((current) => withEntry(current, key, { kind: "failed", message }));
+        },
+      },
+    );
   };
 
   const importSelected = async () => {
@@ -606,7 +628,8 @@ function ConversationImportSection({
     setProgress({ done: 0, total: targets.length });
     let lastCopy: { key: string; copy: NativeConversationCopy } | null = null;
     let imported = 0;
-    for (const [index, { row, selection: target }] of targets.entries()) {
+    for (const entry of targets.entries()) {
+      const [index, { row, selection: target }] = entry;
       setRowStates((current) => withoutEntry(current, row.key));
       const settlement = await ledger.submit(row, target, runtime.importConversation);
       if (settlement.kind === "imported") {

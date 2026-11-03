@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useDatabasePromotionPresentation } from "@/lib/database-promotion-presentation";
 import {
   localStructuralTransactionPresentation,
@@ -795,45 +796,51 @@ function BoardDatabaseViewSurface({
       for (const key of mutationKeys) next.delete(key);
       return next;
     });
-    try {
-      const receipt = await mutationHistory.executeOperations({
-        model: mutationModel,
-        operations,
-        commitOperations: (request) => {
-          forwardOperationId ??= request.operationId;
-          return presentationOwner.submit(
-            request,
-            dropPlan && request.operationId === forwardOperationId ? dropPlan : undefined,
-          );
-        },
-        discardPresentation: presentationOwner.owner.discard,
-      });
-      return receipt;
-    } catch (nextError) {
-      console.error("[database-view:mutation]", nextError);
-      const pageMutation = mutationKeys.some((key) => key.startsWith("page:"));
-      const message = databaseViewMutationErrorMessage(nextError, pageMutation);
-      if (!propagateError) {
-        setMutationErrors((current) => {
-          const next = new Map(current);
-          for (const key of mutationKeys) next.set(key, message);
-          return next;
+    return runWithCleanup(
+      async () => {
+        const receipt = await mutationHistory.executeOperations({
+          model: mutationModel,
+          operations,
+          commitOperations: (request) => {
+            if (forwardOperationId === undefined) forwardOperationId = request.operationId;
+            return presentationOwner.submit(
+              request,
+              dropPlan && request.operationId === forwardOperationId ? dropPlan : undefined,
+            );
+          },
+          discardPresentation: presentationOwner.owner.discard,
         });
-      }
-      await onCommitted?.();
-      if (propagateError) throw nextError;
-      return null;
-    } finally {
-      setPendingMutationKeys((current) => {
-        const next = new Map(current);
-        for (const key of mutationKeys) {
-          const count = next.get(key) ?? 0;
-          if (count <= 1) next.delete(key);
-          else next.set(key, count - 1);
-        }
-        return next;
-      });
-    }
+        return receipt;
+      },
+      {
+        onError: async (nextError) => {
+          console.error("[database-view:mutation]", nextError);
+          const pageMutation = mutationKeys.some((key) => key.startsWith("page:"));
+          const message = databaseViewMutationErrorMessage(nextError, pageMutation);
+          if (!propagateError) {
+            setMutationErrors((current) => {
+              const next = new Map(current);
+              for (const key of mutationKeys) next.set(key, message);
+              return next;
+            });
+          }
+          await onCommitted?.();
+          if (propagateError) throw nextError;
+          return null;
+        },
+        cleanup: () => {
+          setPendingMutationKeys((current) => {
+            const next = new Map(current);
+            for (const key of mutationKeys) {
+              const count = next.get(key) ?? 0;
+              if (count <= 1) next.delete(key);
+              else next.set(key, count - 1);
+            }
+            return next;
+          });
+        },
+      },
+    );
   };
 
   const setValue = (pageId: string, propertyId: string, value: DatabaseJsonValue) =>

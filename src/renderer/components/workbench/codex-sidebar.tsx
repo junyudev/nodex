@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import type {
   ComponentPropsWithoutRef,
   CSSProperties,
@@ -511,7 +512,7 @@ export const CodexProjectActionsMenu = forwardRef<
 ) {
   const appHandle = useScopeHandle(appScope);
   const queryClient = useQueryClient();
-  const projectCatalog = useMemo(() => projectCatalogStoreFor(queryClient), [queryClient]);
+  const projectCatalog = projectCatalogStoreFor(queryClient);
   const [open, setOpen] = useState(false);
   const [archiveChatsOpen, setArchiveChatsOpen] = useState(false);
   const [createStableWorktreeOpen, setCreateStableWorktreeOpen] = useState(false);
@@ -670,19 +671,25 @@ export const CodexProjectActionsMenu = forwardRef<
 
     nativeMenuOpenRef.current = true;
     setMenuOpen(true);
-    try {
-      const actionId = await showNativeContextMenu(items, options);
-      if (actionId) await handleNativeMenuAction(actionId);
-      return true;
-    } catch (error) {
-      toast.danger("Native context menu is unavailable", {
-        description: error instanceof Error ? error.message : undefined,
-      });
-      return false;
-    } finally {
-      nativeMenuOpenRef.current = false;
-      setMenuOpen(false);
-    }
+    return runWithCleanup<boolean>(
+      async () => {
+        const actionId = await showNativeContextMenu(items, options);
+        if (actionId) await handleNativeMenuAction(actionId);
+        return true;
+      },
+      {
+        onError: (error) => {
+          toast.danger("Native context menu is unavailable", {
+            description: error instanceof Error ? error.message : undefined,
+          });
+          return false;
+        },
+        cleanup: () => {
+          nativeMenuOpenRef.current = false;
+          setMenuOpen(false);
+        },
+      },
+    );
   };
 
   useImperativeHandle(ref, () => ({ openNativeMenu }));
@@ -916,16 +923,22 @@ function CodexProjectHoverCardContent({
         if (pinPending) return;
 
         setPinPending(true);
-        try {
-          const updated = await onSetProjectPinned(project.id, { pinned });
-          if (!updated) throw new Error("The project is no longer available");
-        } catch (error) {
-          toast.danger("Could not update project pin", {
-            description: error instanceof Error ? error.message : undefined,
-          });
-        } finally {
-          setPinPending(false);
-        }
+        return runWithCleanup(
+          async () => {
+            const updated = await onSetProjectPinned(project.id, { pinned });
+            if (!updated) throw new Error("The project is no longer available");
+          },
+          {
+            onError: (error) => {
+              toast.danger("Could not update project pin", {
+                description: error instanceof Error ? error.message : undefined,
+              });
+            },
+            cleanup: () => {
+              setPinPending(false);
+            },
+          },
+        );
       }
     : undefined;
 
@@ -1896,20 +1909,20 @@ function CodexSidebarThreadRowView({
   // Otherwise a settled chat rests on its linked Page's status.
   const pageStatus = status ? null : (linkedPage?.status ?? null);
   // The trailing slot shows one status; the description keeps every fact it can hide.
-  const statusDescription =
-    [
-      needsAttention
-        ? live.needsApproval
-          ? SESSION_LIVE_INDICATOR_LABELS.approval
-          : SESSION_LIVE_INDICATOR_LABELS.waiting
-        : null,
-      !needsAttention && item.unread ? "Unread" : null,
-      draftExcerpt !== null ? "Unsent draft" : null,
-      item.remindAt ? describeChatReminderAbsolute(item.remindAt) : null,
-      pageStatus ? `Page status: ${pageStatus.label}` : null,
-    ]
-      .filter((part): part is string => part !== null)
-      .join(", ") || null;
+  const statusDescriptionText = [
+    needsAttention
+      ? live.needsApproval
+        ? SESSION_LIVE_INDICATOR_LABELS.approval
+        : SESSION_LIVE_INDICATOR_LABELS.waiting
+      : null,
+    !needsAttention && item.unread ? "Unread" : null,
+    draftExcerpt !== null ? "Unsent draft" : null,
+    item.remindAt ? describeChatReminderAbsolute(item.remindAt) : null,
+    pageStatus ? `Page status: ${pageStatus.label}` : null,
+  ]
+    .filter((part): part is string => part !== null)
+    .join(", ");
+  const statusDescription = statusDescriptionText || null;
   const statusDescriptionId = useId();
   const titleId = useId();
   const showRestingPinnedButton = showPinSlot && item.pinned;

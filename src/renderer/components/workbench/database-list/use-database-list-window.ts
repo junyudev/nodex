@@ -3,7 +3,7 @@ import {
   databasePromotionReadIdentity,
   type DatabasePromotionReadEvidence,
 } from "@/lib/database-promotion-read-evidence";
-import { useEffect, useMemo, useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { ReceiptFencedOptimisticJournal } from "@/lib/receipt-fenced-optimistic-journal";
 import {
   classifyDatabasePresentationFailure,
@@ -750,23 +750,11 @@ export interface UseDatabaseListWindowResult extends DatabaseListWindowState {
   readonly refresh: (minimum?: ProjectionCursor) => Promise<DatabaseListWindowState>;
 }
 
-export const useDatabaseListWindow = (input: {
-  readonly model: DatabaseViewRenderModel;
-  readonly effective: EffectiveDatabaseView;
-}): UseDatabaseListWindowResult => {
-  const { model, effective } = input;
-  const storeIdentity = storeIdentityFor(model);
-  const store = useMemo(
-    () => sharedListWindowRegistry.getStore(model),
-    // The identity captures the stable resource coordinate; commit and
-    // presentation changes update the same store through setRequest below.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [storeIdentity],
-  );
-  useEffect(() => {
-    store.setRequest(model, effective);
-  }, [effective, model, store]);
-  const state = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
+/** Keep the journal revision in the same observation as the subscribed window state. */
+const observeListWindow = (
+  store: DatabaseListWindowStore,
+  state: DatabaseListWindowState,
+): UseDatabaseListWindowResult => {
   return {
     ...state,
     presentationOwner: store,
@@ -775,6 +763,20 @@ export const useDatabaseListWindow = (input: {
     retry: store.retry,
     refresh: store.refresh,
   };
+};
+
+export const useDatabaseListWindow = (input: {
+  readonly model: DatabaseViewRenderModel;
+  readonly effective: EffectiveDatabaseView;
+}): UseDatabaseListWindowResult => {
+  const { model, effective } = input;
+  // The registry owns stable resource identity; request revisions update that same store.
+  const store = sharedListWindowRegistry.getStore(model);
+  useEffect(() => {
+    store.setRequest(model, effective);
+  }, [effective, model, store]);
+  const state = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
+  return observeListWindow(store, state);
 };
 
 export const resetDatabaseListWindowStoresForTests = (): void => {

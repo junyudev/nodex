@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/query-keys";
@@ -160,16 +161,21 @@ export function KeyboardShortcutsSettingsPage() {
 
   const commitUpdate = async (commandId: string, update: CommandKeybindingUpdate) => {
     setRowErrors((current) => ({ ...current, [commandId]: "" }));
-    try {
-      const result = await updateMutation.mutateAsync({ commandId, update });
-      if (result.type === "rejected") {
-        setRowErrors((current) => ({ ...current, [commandId]: result.reason.message }));
-        return;
-      }
-      setCapture(null);
-    } catch (error) {
-      setRowErrors((current) => ({ ...current, [commandId]: mutationErrorMessage(error) }));
-    }
+    return runWithCleanup(
+      async () => {
+        const result = await updateMutation.mutateAsync({ commandId, update });
+        if (result.type === "rejected") {
+          setRowErrors((current) => ({ ...current, [commandId]: result.reason.message }));
+          return;
+        }
+        setCapture(null);
+      },
+      {
+        onError: (error) => {
+          setRowErrors((current) => ({ ...current, [commandId]: mutationErrorMessage(error) }));
+        },
+      },
+    );
   };
 
   const beginCapture = (

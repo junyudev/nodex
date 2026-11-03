@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useEffect, useState } from "react";
 import type {
   AgentImportResult,
@@ -75,36 +76,48 @@ export function CodexSetupImportControl({
     setPending(sourceKind);
     setError(null);
     setResult(null);
-    try {
-      const next =
-        sourceKind === "codex"
-          ? await runtime.scanPickedHome(sourceKind)
-          : await runtime.scan(sourceKind);
-      if (!next) return;
-      setScan(next);
-      setSelected(
-        new Set(next.items.filter((item) => item.defaultSelected).map((item) => item.id)),
-      );
-    } catch (cause) {
-      setScan(null);
-      setError(errorMessage(cause));
-    } finally {
-      setPending(null);
-    }
+    return runWithCleanup(
+      async () => {
+        const next =
+          sourceKind === "codex"
+            ? await runtime.scanPickedHome(sourceKind)
+            : await runtime.scan(sourceKind);
+        if (!next) return;
+        setScan(next);
+        setSelected(
+          new Set(next.items.filter((item) => item.defaultSelected).map((item) => item.id)),
+        );
+      },
+      {
+        onError: (cause) => {
+          setScan(null);
+          setError(errorMessage(cause));
+        },
+        cleanup: () => {
+          setPending(null);
+        },
+      },
+    );
   };
 
   const copy = async () => {
     if (!scan || selected.size === 0 || pending) return;
     setPending("apply");
     setError(null);
-    try {
-      setResult(await runtime.apply(scan.scanId, [...selected]));
-      setScan(null);
-    } catch (cause) {
-      setError(errorMessage(cause));
-    } finally {
-      setPending(null);
-    }
+    return runWithCleanup(
+      async () => {
+        setResult(await runtime.apply(scan.scanId, [...selected]));
+        setScan(null);
+      },
+      {
+        onError: (cause) => {
+          setError(errorMessage(cause));
+        },
+        cleanup: () => {
+          setPending(null);
+        },
+      },
+    );
   };
 
   const busy = pending !== null;

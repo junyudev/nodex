@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import {
   useLayoutEffect,
   useRef,
@@ -98,16 +99,22 @@ export function CommandPaletteWorkspaceToolbar({
     }
     setChoosing(true);
     setError(null);
-    try {
-      const next = await onChooseFolder();
-      if (next) onSelectionChange({ kind: "directory", scope: next });
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Unable to choose a folder");
-    } finally {
-      // Restore only after React commits the enabled trigger to the DOM.
-      restoreAfterChoosing.current = true;
-      setChoosing(false);
-    }
+    return runWithCleanup(
+      async () => {
+        const next = await onChooseFolder();
+        if (next) onSelectionChange({ kind: "directory", scope: next });
+      },
+      {
+        onError: (cause) => {
+          setError(cause instanceof Error ? cause.message : "Unable to choose a folder");
+        },
+        cleanup: () => {
+          // Restore only after React commits the enabled trigger to the DOM.
+          restoreAfterChoosing.current = true;
+          setChoosing(false);
+        },
+      },
+    );
   };
   return (
     <>

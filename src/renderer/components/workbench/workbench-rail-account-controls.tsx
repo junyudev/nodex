@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useUsageMeterSettings } from "@/features/usage-meters/usage-meter-settings";
 import { useRef, useState } from "react";
 import { NodexAccountMenu } from "@/features/nodex-account/nodex-account-menu";
@@ -149,13 +150,19 @@ function UsageSignOutButton({
   const signOut = async () => {
     setSigningOut(true);
     onErrorMessage?.(null);
-    try {
-      await onSignOut();
-    } catch (error) {
-      onErrorMessage?.(error instanceof Error ? error.message : "Logout failed");
-    } finally {
-      setSigningOut(false);
-    }
+    await runWithCleanup(
+      async () => {
+        await onSignOut();
+      },
+      {
+        onError: (error) => {
+          onErrorMessage?.(error instanceof Error ? error.message : "Logout failed");
+        },
+        cleanup: () => {
+          setSigningOut(false);
+        },
+      },
+    );
   };
   return (
     <button
@@ -281,16 +288,22 @@ export function WorkbenchRailAccountControls({
     setLoginBusy(true);
     onErrorMessage?.(null);
 
-    try {
-      const result = await onStartChatGptLogin();
-      if (result.type === "chatgpt" && result.authUrl) {
-        window.open(result.authUrl, "_blank");
-      }
-    } catch (error) {
-      onErrorMessage?.(error instanceof Error ? error.message : "Login failed");
-    } finally {
-      setLoginBusy(false);
-    }
+    await runWithCleanup(
+      async () => {
+        const result = await onStartChatGptLogin();
+        if (result.type === "chatgpt" && result.authUrl) {
+          window.open(result.authUrl, "_blank");
+        }
+      },
+      {
+        onError: (error) => {
+          onErrorMessage?.(error instanceof Error ? error.message : "Login failed");
+        },
+        cleanup: () => {
+          setLoginBusy(false);
+        },
+      },
+    );
   };
 
   const handleApiKeyLogin = async (apiKey: string) => {
@@ -299,13 +312,19 @@ export function WorkbenchRailAccountControls({
     setLoginBusy(true);
     onErrorMessage?.(null);
 
-    try {
-      await onStartApiKeyLogin(apiKey);
-    } catch (error) {
-      onErrorMessage?.(error instanceof Error ? error.message : "Login failed");
-    } finally {
-      setLoginBusy(false);
-    }
+    await runWithCleanup(
+      async () => {
+        await onStartApiKeyLogin(apiKey);
+      },
+      {
+        onError: (error) => {
+          onErrorMessage?.(error instanceof Error ? error.message : "Login failed");
+        },
+        cleanup: () => {
+          setLoginBusy(false);
+        },
+      },
+    );
   };
 
   const handleCancelLogin = async (loginId: string) => {

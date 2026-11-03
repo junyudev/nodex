@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import {
   ActivitySpinnerIcon,
   CloseIcon,
@@ -384,35 +385,41 @@ export function WorkbenchProcessManagerDialog({
       }
 
       setActionStates((current) => ({ ...current, [row.id]: "starting" }));
-      try {
-        if (row.status === "running" && row.processId !== null) {
-          await control.stopBackgroundProcess({
-            threadId: row.threadId,
-            processId: row.processId,
-            terminalSessionId: null,
-          });
-        }
+      await runWithCleanup(
+        async () => {
+          if (row.status === "running" && row.processId !== null) {
+            await control.stopBackgroundProcess({
+              threadId: row.threadId,
+              processId: row.processId,
+              terminalSessionId: null,
+            });
+          }
 
-        await control.runBackgroundProcess({
-          threadId: row.threadId,
-          threadTitle: row.threadTitle,
-          itemId: row.itemId,
-          turnId: row.turnId,
-          command,
-          cwd,
-          terminalSessionId: row.terminalSessionId ?? makeBackgroundProcessTerminalSessionId(row),
-        });
-        toast.success(row.status === "not-found" ? "Process started" : "Process restarted");
-        await queryClient.invalidateQueries({ queryKey });
-      } catch (error) {
-        toast.danger(error instanceof Error ? error.message : "Failed to start process");
-      } finally {
-        setActionStates((current) => {
-          const next = { ...current };
-          delete next[row.id];
-          return next;
-        });
-      }
+          await control.runBackgroundProcess({
+            threadId: row.threadId,
+            threadTitle: row.threadTitle,
+            itemId: row.itemId,
+            turnId: row.turnId,
+            command,
+            cwd,
+            terminalSessionId: row.terminalSessionId ?? makeBackgroundProcessTerminalSessionId(row),
+          });
+          toast.success(row.status === "not-found" ? "Process started" : "Process restarted");
+          await queryClient.invalidateQueries({ queryKey });
+        },
+        {
+          onError: (error) => {
+            toast.danger(error instanceof Error ? error.message : "Failed to start process");
+          },
+          cleanup: () => {
+            setActionStates((current) => {
+              const next = { ...current };
+              delete next[row.id];
+              return next;
+            });
+          },
+        },
+      );
     },
     [control, queryClient, queryKey],
   );
@@ -424,27 +431,33 @@ export function WorkbenchProcessManagerDialog({
       }
 
       setActionStates((current) => ({ ...current, [row.id]: "stopping" }));
-      try {
-        const stopped = await control.stopBackgroundProcess({
-          threadId: row.threadId,
-          processId: row.processId,
-          terminalSessionId: row.terminalSessionId,
-        });
-        if (stopped) {
-          toast.success("Process stopped");
-        } else {
-          toast.warning("Process was already stopped");
-        }
-        await queryClient.invalidateQueries({ queryKey });
-      } catch (error) {
-        toast.danger(error instanceof Error ? error.message : "Failed to stop process");
-      } finally {
-        setActionStates((current) => {
-          const next = { ...current };
-          delete next[row.id];
-          return next;
-        });
-      }
+      await runWithCleanup(
+        async () => {
+          const stopped = await control.stopBackgroundProcess({
+            threadId: row.threadId,
+            processId: row.processId,
+            terminalSessionId: row.terminalSessionId,
+          });
+          if (stopped) {
+            toast.success("Process stopped");
+          } else {
+            toast.warning("Process was already stopped");
+          }
+          await queryClient.invalidateQueries({ queryKey });
+        },
+        {
+          onError: (error) => {
+            toast.danger(error instanceof Error ? error.message : "Failed to stop process");
+          },
+          cleanup: () => {
+            setActionStates((current) => {
+              const next = { ...current };
+              delete next[row.id];
+              return next;
+            });
+          },
+        },
+      );
     },
     [control, queryClient, queryKey],
   );

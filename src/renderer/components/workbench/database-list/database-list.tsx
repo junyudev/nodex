@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useDatabasePromotionPresentation } from "@/lib/database-promotion-presentation";
 import {
   localStructuralTransactionPresentation,
@@ -8,6 +9,7 @@ import { databaseListPromotionDisplay } from "./database-list-promotion-display"
 import {
   useDeferredValue,
   useEffect,
+  useEffectEvent,
   useLayoutEffect,
   useMemo,
   useReducer,
@@ -147,6 +149,7 @@ import {
   databaseListPreferencesOverride,
   useDatabaseListWindow,
   type DatabaseListMovePresentation,
+  type UseDatabaseListWindowResult,
 } from "./use-database-list-window";
 import {
   databaseViewHistoryScopeKey,
@@ -392,6 +395,43 @@ const idleCallback = (callback: () => void): (() => void) => {
 const samePageIds = (left: ReadonlySet<string>, right: ReadonlySet<string>): boolean =>
   left.size === right.size && [...left].every((pageId) => right.has(pageId));
 
+/** Restore the saved List anchor without letting unavailable session storage block rendering. */
+const readSavedListScrollTop = (
+  scrollStateKey: string,
+  displayProjection: Parameters<typeof restoreDatabaseListScrollTop>[0],
+): number | null => {
+  let restoredTop: number | null = null;
+  try {
+    const rawAnchor = window.sessionStorage.getItem(`${scrollStateKey}:anchor`);
+    if (rawAnchor) {
+      const value = JSON.parse(rawAnchor) as {
+        rowKey?: unknown;
+        intraRowOffset?: unknown;
+      };
+      if (typeof value.rowKey === "string" && typeof value.intraRowOffset === "number") {
+        restoredTop = restoreDatabaseListScrollTop(displayProjection, {
+          rowKey: value.rowKey,
+          intraRowOffset: value.intraRowOffset,
+        });
+      }
+    }
+    if (restoredTop === null) {
+      const legacyTop = Number(window.sessionStorage.getItem(`${scrollStateKey}:top`));
+      if (Number.isFinite(legacyTop) && legacyTop > 0) restoredTop = legacyTop;
+    }
+  } catch {
+    // Session restoration is best effort; Core data remains authoritative.
+  }
+  return restoredTop;
+};
+
+/** Project from the complete subscribed observation, including journal-only revisions. */
+const projectListPresentation = (
+  window: UseDatabaseListWindowResult,
+  rows: readonly DatabaseListProjectionRow[],
+  authorityRows: readonly DatabaseListProjectionRow[],
+) => window.presentationOwner.projectRows(rows, authorityRows, window.rows);
+
 export function DatabaseList({
   workbenchContent,
   model,
@@ -408,7 +448,7 @@ export function DatabaseList({
   onSelectedPageIdsChange,
   collapsedOccurrenceKeys: controlledCollapsedOccurrenceKeys,
   onOccurrenceDisclosureChange,
-  scrollStateKey = `database-view:${model.databaseViewId}:list`,
+  scrollStateKey: providedScrollStateKey,
   forcedDisplayField = null,
   pageCreateSurfaceId,
   onRequestCreatePage,
@@ -416,6 +456,7 @@ export function DatabaseList({
   pageChatActivityByPageId,
   onRemovePageChatRelation,
 }: DatabaseListProps) {
+  const scrollStateKey = providedScrollStateKey ?? `database-view:${model.databaseViewId}:list`;
   const mutationHistory = useDatabaseViewMutationHistory(model, providedMutationHistory);
   const hiddenStructuralPageIds = useHiddenDatabasePageIds({
     storeEpoch: model.storeEpoch,
@@ -637,25 +678,11 @@ export function DatabaseList({
   );
   // Recompute the optimistic hierarchy over each fresh authoritative row set,
   // so concurrent title/Property updates keep flowing during a pending move.
-  const presented = useMemo(() => {
-    // Reproject only when authority or the retained journal changes, not on selection renders.
-    void coreWindow.presentationRevision;
-    void coreWindow.commitSeq;
-    void coreWindow.loading;
-    return coreWindow.presentationOwner.projectRows(
-      authoritativeProjection,
-      proofProjection,
-      coreWindow.rows,
-    );
-  }, [
-    coreWindow.presentationOwner,
-    coreWindow.presentationRevision,
-    coreWindow.commitSeq,
-    coreWindow.loading,
-    coreWindow.rows,
-    authoritativeProjection,
-    proofProjection,
-  ]);
+  // Projection identities are retained by the window journal and drag scopes across renders.
+  const presented = useMemo(
+    () => projectListPresentation(coreWindow, authoritativeProjection, proofProjection),
+    [coreWindow, authoritativeProjection, proofProjection],
+  );
   const projection = useMemo(
     () =>
       presented.model.filter(
@@ -685,7 +712,7 @@ export function DatabaseList({
       commitSeq: evidence.commitSeq,
       pageIds: new Set(evidence.pageIds),
     });
-  }, [coreWindow.boundedRead, model.routingContext, model.dataSourceId]);
+  }, [coreWindow.boundedRead, model.dataSourceId]);
   const promotions = useDatabasePromotionPresentation({
     model,
     effective,
@@ -742,11 +769,13 @@ export function DatabaseList({
     };
   }, [coreWindow.active, coreWindow.rows, effective.layout, model, presentation]);
   const mutationModelRef = useRef(mutationModel);
-  mutationModelRef.current = mutationModel;
   const effectiveRef = useRef(effective);
-  effectiveRef.current = effective;
   const coreWindowRef = useRef(coreWindow);
-  coreWindowRef.current = coreWindow;
+  useLayoutEffect(() => {
+    mutationModelRef.current = mutationModel;
+    effectiveRef.current = effective;
+    coreWindowRef.current = coreWindow;
+  });
   const [interaction, dispatchInteraction] = useReducer(reduceDatabaseListInteraction, {
     selection: initialSelection(projection, initialSelectedPageIds),
     focusRequest: null,
@@ -1003,7 +1032,7 @@ export function DatabaseList({
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
     observer?.observe(scroller);
     return () => observer?.disconnect();
-  }, [scrollStateKey]);
+  }, [scrollerRef]);
 
   useEffect(() => {
     if (projection.length === 0 || restoredScrollStateKeyRef.current === scrollStateKey) {
@@ -1011,34 +1040,13 @@ export function DatabaseList({
     }
     const scroller = scrollerRef.current;
     if (!scroller) return;
-    let restoredTop: number | null = null;
-    try {
-      const rawAnchor = window.sessionStorage.getItem(`${scrollStateKey}:anchor`);
-      if (rawAnchor) {
-        const value = JSON.parse(rawAnchor) as {
-          rowKey?: unknown;
-          intraRowOffset?: unknown;
-        };
-        if (typeof value.rowKey === "string" && typeof value.intraRowOffset === "number") {
-          restoredTop = restoreDatabaseListScrollTop(displayProjection, {
-            rowKey: value.rowKey,
-            intraRowOffset: value.intraRowOffset,
-          });
-        }
-      }
-      if (restoredTop === null) {
-        const legacyTop = Number(window.sessionStorage.getItem(`${scrollStateKey}:top`));
-        if (Number.isFinite(legacyTop) && legacyTop > 0) restoredTop = legacyTop;
-      }
-    } catch {
-      // Session restoration is best effort; Core data remains authoritative.
-    }
+    const restoredTop = readSavedListScrollTop(scrollStateKey, displayProjection);
     if (restoredTop !== null) {
       scroller.scrollTop = restoredTop;
-      setScrollTop(restoredTop);
+      setScrollTop(scroller.scrollTop);
     }
     restoredScrollStateKeyRef.current = scrollStateKey;
-  }, [displayProjection, projection.length, scrollStateKey]);
+  }, [displayProjection, projection.length, scrollStateKey, scrollerRef]);
 
   useEffect(() => {
     let pass = 0;
@@ -1052,15 +1060,18 @@ export function DatabaseList({
     };
     schedule();
     return () => cancel();
-  }, [model.databaseViewId]);
+  }, []);
 
   useEffect(() => {
     if (!focusRequest) return;
     const scroller = scrollerRef.current;
     if (!scroller) return;
-    const target = [
-      ...(hostRef.current?.querySelectorAll<HTMLElement>("[data-list-key]") ?? []),
-    ].find((candidate) => candidate.dataset.listKey === focusRequest.occurrenceKey);
+    const targetMounted = renderedRows.some((row) => row.key === focusRequest.occurrenceKey);
+    const target = targetMounted
+      ? [...(hostRef.current?.querySelectorAll<HTMLElement>("[data-list-key]") ?? [])].find(
+          (candidate) => candidate.dataset.listKey === focusRequest.occurrenceKey,
+        )
+      : undefined;
     if (target) {
       target.focus({ preventScroll: true });
       target.scrollIntoView({ block: "nearest" });
@@ -1085,7 +1096,7 @@ export function DatabaseList({
     }
     scroller.scrollTop = nextTop;
     setScrollTop(nextTop);
-  }, [focusRequest, displayProjection, virtualWindow.endIndex, virtualWindow.startIndex]);
+  }, [focusRequest, displayProjection, renderedRows, scrollerRef]);
 
   useEffect(
     () => () => {
@@ -1100,30 +1111,44 @@ export function DatabaseList({
     if (!onLoadMoreGroup || inFlightScopesRef.current.has(scopeKey)) return;
     inFlightScopesRef.current.add(scopeKey);
     setContinuationError(null);
-    try {
-      await onLoadMoreGroup(scopeKey);
-    } catch {
-      setContinuationError("Couldn’t load the next List window.");
-    } finally {
-      inFlightScopesRef.current.delete(scopeKey);
-    }
+    return runWithCleanup<void>(
+      async () => {
+        await onLoadMoreGroup(scopeKey);
+      },
+      {
+        onError: () => {
+          setContinuationError("Couldn’t load the next List window.");
+        },
+        cleanup: () => {
+          inFlightScopesRef.current.delete(scopeKey);
+        },
+      },
+    );
   };
 
+  const requestMoreWindow = useEffectEvent(() => coreWindow.loadMore());
+  const requestMoreGroup = useEffectEvent((scopeKey: string) => {
+    void loadMoreGroup(scopeKey);
+  });
   useEffect(() => {
     if (viewportHeight <= 0) return;
     const nearEnd = scrollTop + viewportHeight >= virtualWindow.totalHeight - 640;
     if (!nearEnd) return;
     if (usesWindow) {
-      coreWindow.loadMore();
+      if (
+        coreWindow.active &&
+        !coreWindow.isComplete &&
+        !coreWindow.loadingMore &&
+        coreWindow.nextCursor
+      )
+        requestMoreWindow();
       return;
     }
     if (!onLoadMoreGroup) return;
     for (const pagination of groupPagination?.values() ?? []) {
       if (!pagination.hasMore || pagination.loadingMore) continue;
-      void loadMoreGroup(pagination.scopeKey);
+      requestMoreGroup(pagination.scopeKey);
     }
-    // Pagination functions intentionally read their latest in-flight refs.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     coreWindow.active,
     coreWindow.isComplete,
@@ -1158,41 +1183,48 @@ export function DatabaseList({
         return next;
       });
     }
-    try {
-      let forwardOperationId: string | undefined;
-      const receipt = await mutationHistory.executeOperations({
-        model: options.modelOverride ?? mutationModel,
-        operations,
-        commitOperations: (request) => {
-          forwardOperationId ??= request.operationId;
-          return coreWindow.presentationOwner.submitMutation(
-            request,
-            commitOperations,
-            request.operationId === forwardOperationId ? options.movePresentation : undefined,
-          );
-        },
-        discardPresentation: coreWindow.presentationOwner.discard,
-      });
-      void Promise.resolve(onCommitted?.()).catch(() => undefined);
-      return receipt;
-    } catch (cause) {
-      const message = options.errorMessage ?? "Couldn’t update these pages. Refresh and try again.";
-      if (options.inlineError && mutationKeys.length > 0) {
-        setInlineMutationErrors((current) => {
-          const next = new Map(current);
-          for (const key of mutationKeys) next.set(key, message);
-          return next;
+    return runWithCleanup<DatabaseViewMutationReceipt | null>(
+      async () => {
+        let forwardOperationId: string | undefined;
+        const receipt = await mutationHistory.executeOperations({
+          model: options.modelOverride ?? mutationModel,
+          operations,
+          commitOperations: (request) => {
+            if (forwardOperationId === undefined) forwardOperationId = request.operationId;
+            return coreWindow.presentationOwner.submitMutation(
+              request,
+              commitOperations,
+              request.operationId === forwardOperationId ? options.movePresentation : undefined,
+            );
+          },
+          discardPresentation: coreWindow.presentationOwner.discard,
         });
-      } else {
-        setMutationError(message);
-      }
-      await onCommitted?.();
-      if (options.propagateError) throw cause;
-      return null;
-    } finally {
-      setPendingMutationCount((current) => Math.max(0, current - 1));
-      setPendingMutationKeys((current) => updateMutationCounts(current, mutationKeys, -1));
-    }
+        void Promise.resolve(onCommitted?.()).catch(() => undefined);
+        return receipt;
+      },
+      {
+        onError: async (cause) => {
+          const message =
+            options.errorMessage ?? "Couldn’t update these pages. Refresh and try again.";
+          if (options.inlineError && mutationKeys.length > 0) {
+            setInlineMutationErrors((current) => {
+              const next = new Map(current);
+              for (const key of mutationKeys) next.set(key, message);
+              return next;
+            });
+          } else {
+            setMutationError(message);
+          }
+          await onCommitted?.();
+          if (options.propagateError) throw cause;
+          return null;
+        },
+        cleanup: () => {
+          setPendingMutationCount((current) => Math.max(0, current - 1));
+          setPendingMutationKeys((current) => updateMutationCounts(current, mutationKeys, -1));
+        },
+      },
+    );
   };
 
   const isGroupComplete = (pageIds: readonly string[]): boolean => {
@@ -1623,10 +1655,18 @@ export function DatabaseList({
     });
   };
 
-  useEffect(() => {
+  const [dropAuthority, setDropAuthority] = useState({
+    windowProjection: coreWindow.projection,
+    projection,
+  });
+  if (
+    dropAuthority.windowProjection !== coreWindow.projection ||
+    dropAuthority.projection !== projection
+  ) {
+    setDropAuthority({ windowProjection: coreWindow.projection, projection });
     setBlockDropPreview(null);
     setBlockDropMessage(null);
-  }, [coreWindow.projection, projection]);
+  }
 
   useEffect(() => {
     if (!blockDropPreview && !blockDropMessage) return;
