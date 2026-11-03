@@ -1,7 +1,7 @@
 /*
- * Generated semantic theme contract (refVersion 26.1021.31345).
+ * Generated semantic theme contract (refVersion 26.1027.61615).
  * Do not edit by hand. Run:
- *   vp run semantic-theme:sync -- --source /temporary/reference.css --ref-version 26.1021.31345
+ *   vp run semantic-theme:sync -- --source /temporary/reference.css --ref-version 26.1027.61615
  */
 
 @theme reference {
@@ -251,6 +251,47 @@
   --color-codex-terminal-selection-inactive: var(--app-color-simple-scrim);
   --color-control-thumb-foreground: var(--lightningcss-light, var(--color-text))var(--lightningcss-dark, var(--black));
   --color-control-thumb-on-accent: var(--white);
+  --color-ring: var(--app-color-border-focus);
+  --color-ring-caution: var(--color-ring);
+  --color-ring-caution-ghost: var(--color-ring-caution);
+  --color-ring-caution-outline: var(--color-ring-caution);
+  --color-ring-caution-soft: var(--color-ring-caution);
+  --color-ring-caution-solid: var(--color-ring-caution);
+  --color-ring-danger: var(--red-200);
+  --color-ring-danger-ghost: var(--color-ring-danger);
+  --color-ring-danger-outline: var(--color-ring-danger);
+  --color-ring-danger-soft: var(--color-ring-danger);
+  --color-ring-danger-solid: var(--color-ring-danger);
+  --color-ring-discovery: var(--color-ring);
+  --color-ring-discovery-ghost: var(--color-ring);
+  --color-ring-discovery-outline: var(--color-ring);
+  --color-ring-discovery-soft: var(--color-ring);
+  --color-ring-discovery-solid: var(--color-ring);
+  --color-ring-info: var(--color-ring);
+  --color-ring-info-ghost: var(--color-ring-info);
+  --color-ring-info-outline: var(--color-ring-info);
+  --color-ring-info-soft: var(--color-ring-info);
+  --color-ring-info-solid: var(--color-ring-info);
+  --color-ring-primary: var(--color-ring);
+  --color-ring-primary-ghost: var(--color-ring-primary);
+  --color-ring-primary-outline: var(--color-ring-primary);
+  --color-ring-primary-soft: var(--color-ring-primary);
+  --color-ring-primary-solid: var(--color-ring-primary);
+  --color-ring-secondary: var(--color-ring);
+  --color-ring-secondary-ghost: var(--color-ring-secondary);
+  --color-ring-secondary-outline: var(--color-ring-secondary);
+  --color-ring-secondary-soft: var(--color-ring-secondary);
+  --color-ring-secondary-solid: var(--color-ring-secondary);
+  --color-ring-success: var(--color-ring);
+  --color-ring-success-ghost: var(--color-ring-info);
+  --color-ring-success-outline: var(--color-ring-info);
+  --color-ring-success-soft: var(--color-ring-info);
+  --color-ring-success-solid: var(--color-ring-info);
+  --color-ring-warning: var(--color-ring);
+  --color-ring-warning-ghost: var(--color-ring-warning);
+  --color-ring-warning-outline: var(--color-ring-warning);
+  --color-ring-warning-soft: var(--color-ring-warning);
+  --color-ring-warning-solid: var(--color-ring-warning);
   --color-surface: var(--app-color-background-surface);
   --color-surface-canvas: var(--color-surface);
   --color-surface-card: var(--app-color-background-card, var(--color-surface));
@@ -385,7 +426,7 @@
   --color-token-border-default: var(--color-border, var(--app-color-text-foreground));
   --color-token-border-heavy: var(--color-border-strong);
   --color-token-border-light: var(--app-color-border-light, var(--app-color-text-foreground));
-  --color-token-charts-blue: var(--app-color-accent-blue);
+  --color-token-charts-blue: var(--data-color-series-1);
   --color-token-conversation-body: color-mix(in oklab, var(--color-token-foreground) 60%, transparent);
   --color-token-conversation-header: color-mix(in oklab, var(--color-token-foreground) 30%, transparent);
   --color-token-conversation-summary-leading: color-mix(in oklab, var(--color-token-description-foreground) 90%, transparent);
@@ -394,9 +435,9 @@
   --color-token-diff-surface: var(--color-token-main-surface-primary);
   --color-token-dropdown-background: var(--color-background-control-opaque, var(--app-color-background-surface));
   --color-token-dropdown-foreground: var(--app-color-text-foreground);
-  --color-token-editor-find-match-background: var(--app-color-background-accent-hover);
+  --color-token-editor-find-match-background: var(--codex-theme-accent-background-hover);
   --color-token-editor-warning-foreground: var(--app-color-text-warning);
-  --color-token-focus-border: var(--app-color-border-focus);
+  --color-token-focus-border: var(--focus-outline-color);
   --color-token-foreground: var(--app-color-text-foreground);
   --color-token-input-border: var(--app-color-border-heavy, transparent);
   --color-token-interactive-bg-secondary-hover: var(--color-background-secondary-solid-hover);
@@ -410,7 +451,7 @@
   --color-token-scrollbar-slider-hover-background: var(--app-color-border-heavy);
   --color-token-side-bar-background: var(--app-color-background-surface-under);
   --color-token-text-code-block-background: var(--app-color-background-button-secondary);
-  --color-token-text-link-foreground: var(--app-color-text-accent);
+  --color-token-text-link-foreground: var(--codex-theme-accent-text);
   --color-token-text-primary: var(--color-token-foreground);
   --color-token-text-secondary: var(--color-token-foreground);
   --color-token-text-tertiary: var(--color-token-description-foreground);
@@ -447,19 +488,19 @@
     --color-token-text-primary: var(--color-token-foreground);
     --color-token-text-secondary: var(--color-token-foreground);
     --color-token-text-tertiary: var(--color-token-description-foreground);
-    --color-token-focus-border: var(--app-color-border-focus);
-    --color-token-text-link-foreground: var(--app-color-text-accent);
+    --color-token-focus-border: var(--focus-outline-color);
+    --color-token-text-link-foreground: var(--codex-theme-accent-text);
     --color-token-text-code-block-background: var(--app-color-background-button-secondary);
     --color-token-scrollbar-slider-background: var(--app-color-border);
     --color-token-scrollbar-slider-hover-background: var(--app-color-border-heavy);
     --color-token-scrollbar-slider-active-background: var(--app-color-border-heavy);
     --color-token-editor-warning-foreground: var(--app-color-text-warning);
-    --color-token-editor-find-match-background: var(--app-color-background-accent-hover);
+    --color-token-editor-find-match-background: var(--codex-theme-accent-background-hover);
     --color-token-input-border: var(--app-color-border-heavy, transparent);
     --color-token-dropdown-background: var(--color-background-control-opaque, var(--app-color-background-surface));
     --color-token-dropdown-foreground: var(--app-color-text-foreground);
     --color-token-list-hover-background: var(--app-color-background-button-secondary-hover);
-    --color-token-charts-blue: var(--app-color-accent-blue);
+    --color-token-charts-blue: var(--data-color-series-1);
     --color-token-side-bar-background: var(--app-color-background-surface-under);
     --color-token-diff-surface: var(--color-token-main-surface-primary);
     --color-token-main-surface-primary: var(--app-color-background-surface);
@@ -697,6 +738,7 @@
     --color-text-tertiary: var(--lightningcss-light, var(--gray-400))var(--lightningcss-dark, var(--gray-600));
     --color-text-inverse: var(--gray-0);
     --color-avatar-foreground: var(--white);
+    --color-ring: var(--lightningcss-light, var(--blue-500))var(--lightningcss-dark, var(--blue-400));
     --color-text-primary: var(--color-text-emphasis);
     --color-background-primary-soft: var(--lightningcss-light, var(--gray-100))var(--lightningcss-dark, var(--gray-300));
     --color-background-primary-soft-hover: var(--lightningcss-light, var(--gray-150))var(--lightningcss-dark, var(--gray-350));
@@ -725,6 +767,11 @@
     --color-background-primary-ghost-active: var(--lightningcss-light, var(--alpha-12))var(--lightningcss-dark, var(--alpha-16));
     --color-text-primary-ghost: var(--color-text);
     --color-text-primary-ghost-hover: var(--color-text);
+    --color-ring-primary: var(--color-ring);
+    --color-ring-primary-soft: var(--color-ring-primary);
+    --color-ring-primary-solid: var(--color-ring-primary);
+    --color-ring-primary-outline: var(--color-ring-primary);
+    --color-ring-primary-ghost: var(--color-ring-primary);
     --color-background-secondary-soft: var(--lightningcss-light, var(--gray-100))var(--lightningcss-dark, var(--gray-300));
     --color-background-secondary-soft-hover: var(--lightningcss-light, var(--gray-150))var(--lightningcss-dark, var(--gray-350));
     --color-background-secondary-soft-active: var(--lightningcss-light, var(--gray-200))var(--lightningcss-dark, var(--gray-400));
@@ -749,6 +796,11 @@
     --color-background-secondary-ghost-active: var(--lightningcss-light, var(--alpha-12))var(--lightningcss-dark, var(--alpha-16));
     --color-text-secondary-ghost: var(--color-text-tertiary);
     --color-text-secondary-ghost-hover: var(--color-text);
+    --color-ring-secondary: var(--color-ring);
+    --color-ring-secondary-soft: var(--color-ring-secondary);
+    --color-ring-secondary-solid: var(--color-ring-secondary);
+    --color-ring-secondary-outline: var(--color-ring-secondary);
+    --color-ring-secondary-ghost: var(--color-ring-secondary);
     --color-text-info: var(--lightningcss-light, var(--blue-500))var(--lightningcss-dark, var(--blue-200));
     --color-background-info-soft: var(--blue-50);
     --color-background-info-soft-hover: var(--blue-75);
@@ -774,6 +826,11 @@
     --color-background-info-ghost-active: var(--blue-a50);
     --color-text-info-ghost: var(--lightningcss-light, var(--blue-500))var(--lightningcss-dark, var(--blue-200));
     --color-text-info-ghost-hover: var(--lightningcss-light, var(--blue-500))var(--lightningcss-dark, var(--blue-200));
+    --color-ring-info: var(--color-ring);
+    --color-ring-info-soft: var(--color-ring-info);
+    --color-ring-info-solid: var(--color-ring-info);
+    --color-ring-info-outline: var(--color-ring-info);
+    --color-ring-info-ghost: var(--color-ring-info);
     --color-text-warning: var(--lightningcss-light, var(--orange-700))var(--lightningcss-dark, var(--orange-500));
     --color-background-warning-soft: var(--orange-50);
     --color-background-warning-soft-hover: var(--orange-75);
@@ -799,6 +856,11 @@
     --color-background-warning-ghost-active: var(--orange-a50);
     --color-text-warning-ghost: var(--orange-500);
     --color-text-warning-ghost-hover: var(--orange-500);
+    --color-ring-warning: var(--color-ring);
+    --color-ring-warning-soft: var(--color-ring-warning);
+    --color-ring-warning-solid: var(--color-ring-warning);
+    --color-ring-warning-outline: var(--color-ring-warning);
+    --color-ring-warning-ghost: var(--color-ring-warning);
     --color-text-caution: var(--lightningcss-light, var(--yellow-700))var(--lightningcss-dark, var(--yellow-500));
     --color-text-caution-hover: var(--yellow-800);
     --color-background-caution-soft: var(--yellow-50);
@@ -825,6 +887,11 @@
     --color-background-caution-ghost-active: var(--yellow-a50);
     --color-text-caution-ghost: var(--yellow-700);
     --color-text-caution-ghost-hover: var(--yellow-700);
+    --color-ring-caution: var(--color-ring);
+    --color-ring-caution-soft: var(--color-ring-caution);
+    --color-ring-caution-solid: var(--color-ring-caution);
+    --color-ring-caution-outline: var(--color-ring-caution);
+    --color-ring-caution-ghost: var(--color-ring-caution);
     --color-text-danger: var(--lightningcss-light, var(--red-700))var(--lightningcss-dark, var(--red-500));
     --color-background-danger-soft: var(--red-50);
     --color-background-danger-soft-hover: var(--red-75);
@@ -850,6 +917,11 @@
     --color-background-danger-ghost-active: var(--red-a50);
     --color-text-danger-ghost: var(--red-500);
     --color-text-danger-ghost-hover: var(--red-500);
+    --color-ring-danger: var(--red-200);
+    --color-ring-danger-soft: var(--color-ring-danger);
+    --color-ring-danger-solid: var(--color-ring-danger);
+    --color-ring-danger-outline: var(--color-ring-danger);
+    --color-ring-danger-ghost: var(--color-ring-danger);
     --color-text-success: var(--lightningcss-light, var(--green-700))var(--lightningcss-dark, var(--green-400));
     --color-background-success-soft: var(--green-50);
     --color-background-success-soft-hover: var(--green-75);
@@ -875,6 +947,11 @@
     --color-background-success-ghost-active: var(--green-a50);
     --color-text-success-ghost: var(--green-500);
     --color-text-success-ghost-hover: var(--green-500);
+    --color-ring-success: var(--color-ring);
+    --color-ring-success-soft: var(--color-ring-info);
+    --color-ring-success-solid: var(--color-ring-info);
+    --color-ring-success-outline: var(--color-ring-info);
+    --color-ring-success-ghost: var(--color-ring-info);
     --color-text-discovery: var(--lightningcss-light, var(--purple-700))var(--lightningcss-dark, var(--purple-500));
     --color-background-discovery-soft: var(--purple-50);
     --color-background-discovery-soft-hover: var(--purple-75);
@@ -900,6 +977,11 @@
     --color-background-discovery-ghost-active: var(--purple-a50);
     --color-text-discovery-ghost: var(--purple-500);
     --color-text-discovery-ghost-hover: var(--purple-500);
+    --color-ring-discovery: var(--color-ring);
+    --color-ring-discovery-soft: var(--color-ring);
+    --color-ring-discovery-solid: var(--color-ring);
+    --color-ring-discovery-outline: var(--color-ring);
+    --color-ring-discovery-ghost: var(--color-ring);
     --color-background-disabled: var(--alpha-05);
     --color-border-disabled: var(--alpha-06);
     --color-text-disabled: var(--lightningcss-light, var(--gray-400))var(--lightningcss-dark, var(--gray-500));
@@ -1248,6 +1330,7 @@
     --color-border-subtle: var(--app-color-border-light, var(--app-color-text-foreground));
     --color-border-strong: var(--app-color-border-heavy, var(--app-color-text-foreground));
     --color-border-primary-outline: var(--app-color-border-heavy, var(--color-border-strong));
+    --color-ring: var(--app-color-border-focus);
     --color-border-danger-outline: var(--app-color-border-error);
     --color-border-warning-outline: var(--app-color-border-warning);
     --color-codex-description: var(--app-color-text-foreground-tertiary);
@@ -1471,7 +1554,7 @@
     --color-token-dropdown-background: var(--vscode-dropdown-background);
     --color-token-dropdown-foreground: var(--vscode-dropdown-foreground);
     --color-token-dropdown-border: var(--vscode-dropdown-border);
-    --color-token-on-accent: var(--app-color-text-on-accent, var(--vscode-button-foreground));
+    --color-token-on-accent: var(--color-text-info-solid);
     --color-token-button-foreground: var(--vscode-button-foreground);
     --color-token-button-separator: var(--vscode-button-separator);
     --color-token-button-background: var(--vscode-button-background);
@@ -1742,6 +1825,7 @@
 
   :root[data-codex-window-type="extension"], :root[data-codex-window-type="extension"] :where([data-theme]) {
     --color-border-primary-outline: var(--vscode-input-border, var(--color-border-strong));
+    --color-ring: var(--vscode-focusBorder);
     --color-border-danger-outline: var(--vscode-inputValidation-errorBorder);
     --color-border-warning-outline: var(--vscode-inputValidation-warningBorder);
     --color-codex-description: var(--vscode-descriptionForeground);
@@ -1785,6 +1869,13 @@
     --color-background-primary-soft-hover: var(--vscode-list-hoverBackground);
     --color-background-secondary-solid: var(--vscode-badge-background);
     --color-surface: var(--color-surface-tertiary);
+  }
+
+  :where(:root), :where([data-theme]) {
+    --codex-theme-accent-text: var(--app-color-text-accent);
+    --codex-theme-accent-background-hover: var(--app-color-background-accent-hover);
+    --focus-outline-color: var(--color-ring);
+    --data-color-series-1: var(--color-chart-blue);
   }
 }
 

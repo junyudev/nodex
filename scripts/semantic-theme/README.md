@@ -6,7 +6,7 @@ This module owns the build-time contract between extracted theme facts and Nodex
 
 Use a temporary, read-only stylesheet from any location. The module does not copy, cache, modify, or identify that input. Only a neutral `refVersion`, the profile identity, and output hashes are committed.
 
-For Codex Electron references, follow the startup document's stylesheet links and verify where the global theme is defined before selecting the source. The current global contract is in `app-shared-*.css`; a chunk name is not a stable contract. The startup JavaScript also loads `app-initial-*.css`, but that chunk now contains component styles. Do not merge lazy component chunks into the theme source merely because they contain additional theme-like variables.
+Start with the stylesheet linked from the reference application's startup `index.html` and confirm it contains the global theme declarations. Asset filenames may be hashed. Use the global stylesheet on its own, since component chunks can also contain theme-like variables.
 
 The extractor recognizes global `:root`/`:host` and `:where` theme scopes, preserves window and appearance overrides, and includes the transitive palette and typography providers needed by exported roles. `data-theme="light"` or `data-theme="dark"` selects the stylesheet's appearance variables, including inherited theme containers. Negated window selectors must retain their original coverage; an extension-only declaration cannot provide an Electron role.
 
@@ -45,7 +45,7 @@ This checks provenance, artifact hashes, required semantic utilities, and the sc
 ## Ownership
 
 - `profile.ts` defines supported semantic families, utilities, scopes, and explicit collision resolutions.
-- Generated files are outputs, never hand-edited.
+- Generated files are outputs, never hand-edited. The generated contract owns and registers `--color-ring` for Tailwind focus utilities. Product aliases may consume the shared focus role.
 - `theme-token-bridge.css` owns product compatibility aliases while consumers migrate.
 - `theme-source.css` owns product foundation values such as radius scale and feature-specific aliases. Shared elevation tiers come from the generated foundation; legacy shadow names alias those tiers. Generated values may consume product foundations but must not silently replace them.
 - `--app-color-*` values feed the shared semantic roles. Extension `--vscode-*` inputs remain scoped to the extension; product aliases needed by Electron must resolve through its semantic providers.

@@ -6,7 +6,7 @@ import type {
 } from "./types";
 
 export const SEMANTIC_THEME_GENERATOR_VERSION = 4;
-export const SEMANTIC_THEME_REF_VERSION = "26.1021.31345";
+export const SEMANTIC_THEME_REF_VERSION = "26.1027.61615";
 
 export const SEMANTIC_THEME_TARGETS = [
   "electron-light",
@@ -41,6 +41,7 @@ export const SEMANTIC_DECLARATION_PREFIXES = [
 
 export const CONTRACT_DECLARATION_PREFIXES = [
   "--color-token-",
+  "--color-ring",
   "--app-color-",
   ...SEMANTIC_DECLARATION_PREFIXES,
 ] as const;

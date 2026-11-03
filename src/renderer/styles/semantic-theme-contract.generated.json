@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "refVersion": "26.1021.31345",
+  "refVersion": "26.1027.61615",
   "families": [
     {
       "prefix": "--vscode-",
@@ -9,6 +9,10 @@
     {
       "prefix": "--color-token-",
       "declarationCount": 320
+    },
+    {
+      "prefix": "--color-ring",
+      "declarationCount": 41
     },
     {
       "prefix": "--app-color-",
@@ -2067,6 +2071,40 @@
       ],
       "dependencies": [
         "--font-ui-size"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--codex-theme-accent-background-hover",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--app-color-background-accent-hover"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--codex-theme-accent-text",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--app-color-text-accent"
       ],
       "owners": [
         "src/renderer/styles/theme-semantic-contract.generated.css"
@@ -6711,6 +6749,708 @@
       ]
     },
     {
+      "name": "--color-ring",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--app-color-border-focus",
+        "--blue-400",
+        "--blue-500",
+        "--lightningcss-dark",
+        "--lightningcss-light",
+        "--vscode-focusBorder"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-ring-caution",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-ring"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-ring-caution-ghost",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-ring-caution"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-ring-caution-outline",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-ring-caution"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-ring-caution-soft",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-ring-caution"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-ring-caution-solid",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-ring-caution"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-ring-danger",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--red-200"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-ring-danger-ghost",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-ring-danger"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-ring-danger-outline",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-ring-danger"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-ring-danger-soft",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-ring-danger"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-ring-danger-solid",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-ring-danger"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-ring-discovery",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-ring"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-ring-discovery-ghost",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-ring"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-ring-discovery-outline",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-ring"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-ring-discovery-soft",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-ring"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-ring-discovery-solid",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-ring"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-ring-info",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-ring"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-ring-info-ghost",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-ring-info"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-ring-info-outline",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-ring-info"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-ring-info-soft",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-ring-info"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-ring-info-solid",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-ring-info"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-ring-primary",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-ring"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-ring-primary-ghost",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-ring-primary"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-ring-primary-outline",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-ring-primary"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-ring-primary-soft",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-ring-primary"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-ring-primary-solid",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-ring-primary"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-ring-secondary",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-ring"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-ring-secondary-ghost",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-ring-secondary"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-ring-secondary-outline",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-ring-secondary"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-ring-secondary-soft",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-ring-secondary"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-ring-secondary-solid",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-ring-secondary"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-ring-success",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-ring"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-ring-success-ghost",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-ring-info"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-ring-success-outline",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-ring-info"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-ring-success-soft",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-ring-info"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-ring-success-solid",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-ring-info"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-ring-warning",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-ring"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-ring-warning-ghost",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-ring-warning"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-ring-warning-outline",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-ring-warning"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-ring-warning-soft",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-ring-warning"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-ring-warning-solid",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-ring-warning"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
       "name": "--color-surface",
       "scopes": [
         "browser-dark",
@@ -9708,7 +10448,7 @@
         "extension-light"
       ],
       "dependencies": [
-        "--app-color-accent-blue",
+        "--data-color-series-1",
         "--vscode-charts-blue"
       ],
       "owners": [
@@ -10309,7 +11049,7 @@
         "extension-light"
       ],
       "dependencies": [
-        "--app-color-background-accent-hover",
+        "--codex-theme-accent-background-hover",
         "--vscode-editor-findMatchBackground"
       ],
       "owners": [
@@ -10852,7 +11592,7 @@
         "extension-light"
       ],
       "dependencies": [
-        "--app-color-border-focus",
+        "--focus-outline-color",
         "--vscode-focusBorder"
       ],
       "owners": [
@@ -11655,8 +12395,7 @@
         "extension-light"
       ],
       "dependencies": [
-        "--app-color-text-on-accent",
-        "--vscode-button-foreground"
+        "--color-text-info-solid"
       ],
       "owners": [
         "src/renderer/styles/theme-semantic-contract.generated.css"
@@ -13245,7 +13984,7 @@
         "extension-light"
       ],
       "dependencies": [
-        "--app-color-text-accent",
+        "--codex-theme-accent-text",
         "--vscode-textLink-foreground"
       ],
       "owners": [
@@ -13495,6 +14234,23 @@
       ]
     },
     {
+      "name": "--data-color-series-1",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-chart-blue"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
       "name": "--diffs-font-size",
       "scopes": [
         "browser-dark",
@@ -13540,6 +14296,23 @@
       "dependencies": [],
       "owners": [
         "src/renderer/styles/theme-semantic-utilities.generated.css"
+      ]
+    },
+    {
+      "name": "--focus-outline-color",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-ring"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
       ]
     },
     {

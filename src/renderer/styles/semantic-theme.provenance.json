@@ -1,28 +1,28 @@
 {
   "schemaVersion": 1,
-  "refVersion": "26.1021.31345",
-  "profileSha256": "8a2ac0e39c11cd56f3c7f8604282f44b55bbf2cdfc45bafefd6bee2bd871d62e",
+  "refVersion": "26.1027.61615",
+  "profileSha256": "52ec103a2ee7df2f111907637edf73f88bbaeb2eb315dde0d13da0f3bc1e234f",
   "generatorVersion": 4,
   "artifacts": [
     {
       "path": "src/renderer/styles/semantic-theme-contract.generated.json",
-      "sha256": "9c4477a4397b81b30f5c82fecab95f6cbb27d8324ce40117111cd60dfe58422b"
+      "sha256": "adfa8f37cf8e98c3d5d57985ac2debc2cc112ad6e1262988edc9cf1b2114d709"
     },
     {
       "path": "src/renderer/styles/theme-extracted-foundation.generated.css",
-      "sha256": "b0d5cc51c387482679ac79f2eaf6fc9967aba5627e8f500cc839d5f408d074d2"
+      "sha256": "0a9021185a5596bc6f13f31efb292fddb87c7b998f9a8334c4da510f056b9eef"
     },
     {
       "path": "src/renderer/styles/theme-extracted-surfaces.generated.css",
-      "sha256": "7c918fe2d0985d371707e656e88d827e06ae19ecc3e2c27bbc8addc58e3f0a8e"
+      "sha256": "7249c4c4ade0db4b4e9d47a092dc0ebd4b37a482a7dd4d109eb11e25e03e3d8e"
     },
     {
       "path": "src/renderer/styles/theme-semantic-contract.generated.css",
-      "sha256": "f03a7d1f343781c90e82cc1e778994dc072c0d920fc8c4702c4f1784cbfd15cb"
+      "sha256": "1ae7ea5c72ba6aa46e898832dfdad678b53b98cf7d3736cc9d5664cb5a67bc50"
     },
     {
       "path": "src/renderer/styles/theme-semantic-utilities.generated.css",
-      "sha256": "6de1c1ec9b1a1af9c3bd9594a96f1d83de29b96d25526fc2871090fc9ddd7669"
+      "sha256": "6729d752347eb035b111ef4a9e2d2a09bb694d7bf0a587c38036c1080423da08"
     }
   ]
 }
