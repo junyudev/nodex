@@ -1,0 +1,19 @@
+tests/e2e/side-chat-context.spec.ts
+  s_767dcbdbc5af9a::t_df66dbc80d4e6e 406-407
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a19316e866ed28151dd15a5e45d0a314974ac053",
+  "prompts": {},
+  "sessions": {
+    "s_767dcbdbc5af9a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a1c2-b5f5-7100-8bc8-f9f313aba49c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
