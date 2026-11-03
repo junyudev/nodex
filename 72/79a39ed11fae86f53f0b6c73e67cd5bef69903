@@ -1,0 +1,30 @@
+patches/vitest@5.0.5.patch
+  s_6c9891f66c664a::t_49763323087b5f 2,5-13
+scripts/tooling/vitest-cached-reporter.test.ts
+  s_6c9891f66c664a::t_a550e81f92bec7 1,3-14,16-20,26,28,37-38,40,42-50,52-57,60-64,66,75-76,82-85
+  s_6c9891f66c664a::t_322d3e23d93999 67-73
+pnpm-lock.yaml
+  s_6c9891f66c664a::t_f38a9ad4e637c2 242
+src/main/core-client/editor-history-lifecycle-scenario.node.test.ts
+  s_6c9891f66c664a::t_7b88499e36b0d4 78,109
+src/renderer/components/conversation-media/conversation-media.browser.test.tsx
+  s_6c9891f66c664a::t_7fcabe7022ebf4 213,216
+crates/nodex-core-server/tests/lifecycle.rs
+  s_6c9891f66c664a::t_22e8874b0105b0 1368-1505,1509-1510,1512-1517,1526-1535,1547-1556,1560,1566,1580-1596,1606-1615,1624
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7279a39ed11fae86f53f0b6c73e67cd5bef69903",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
