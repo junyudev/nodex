@@ -13,14 +13,8 @@ it.live.runIf(process.platform === "win32")(
     Effect.gen(function* () {
       const terminal = yield* TerminalPty;
       const handle = yield* terminal.spawn({
-        command: "powershell.exe",
-        args: [
-          "-NoLogo",
-          "-NoProfile",
-          "-NoExit",
-          "-Command",
-          "[Console]::WriteLine('NODEX_PTY_READY')",
-        ],
+        command: "cmd.exe",
+        args: ["/d", "/q"],
         cwd: homedir(),
         env: Object.fromEntries(
           Object.entries(process.env).filter(
@@ -31,7 +25,12 @@ it.live.runIf(process.platform === "win32")(
         rows: 24,
       });
       expect(handle.pid).toBeGreaterThan(0);
+      yield* handle.write("echo NODEX_PTY_READY\r");
       yield* handle.output.pipe(
+        Stream.scan(
+          () => "",
+          (output, chunk) => (output + chunk).slice(-4096),
+        ),
         Stream.filter((data) => data.includes("NODEX_PTY_READY")),
         Stream.runHead,
         Effect.timeout("15 seconds"),
