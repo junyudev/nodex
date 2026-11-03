@@ -68,6 +68,8 @@ import {
   makeProviderSettingsRefresh,
 } from "../agent-runtime/AgentRuntimeProviderConfiguration";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
+import { CoreApplicationAgent } from "../core-runtime/CoreApplicationAgent";
+import { CoreModules } from "../core-runtime/CoreModules";
 import { BrowserUseRuntime } from "../host-runtime/BrowserUseRuntime";
 import { DatabaseNotifierRuntime } from "../host-runtime/DatabaseNotifierRuntime";
 import { DesktopToolRuntime } from "../host-runtime/DesktopToolRuntime";
@@ -344,21 +346,39 @@ const supervisor = Layer.effectContext(
     const presented = yield* CodexRendererPresentationRegistry;
     const applicationEvents = yield* CodexApplicationEventHub;
     const projects = yield* ProjectWorkspace;
+    const modules = yield* CoreModules;
+    const readSessionBinding = (sessionId: string) =>
+      modules.workspace.read({ kind: "agent_runtime_session_binding", session_id: sessionId }).pipe(
+        Effect.provideService(CoreApplicationAgent, null),
+        Effect.map((snapshot) =>
+          snapshot.value.kind === "agent_runtime_session_binding" ? snapshot.value.binding : null,
+        ),
+      );
     yield* runSessionNotifications({
       transitions: activity.transitions,
       isPresentedInForeground: presented.isPresentedInForeground,
-      readSession: (sessionId) =>
-        projects.getProjectSession(sessionId).pipe(
-          Effect.map((session) =>
-            session
-              ? {
-                  title: session.displayTitle,
-                  archived: session.archived,
-                  unread: session.unread,
-                }
-              : null,
-          ),
-        ),
+      readSession: Effect.fn("AgentRuntimeSessionNotifications.readSession")(function* (
+        sessionId: string,
+      ) {
+        const session = yield* projects.getProjectSession(sessionId);
+        if (!session) return null;
+        const binding = yield* readSessionBinding(sessionId);
+        const sourceSessionId = binding?.side_chat_source_session_id;
+        const source = sourceSessionId ? yield* projects.getProjectSession(sourceSessionId) : null;
+        const sideChatSource = sourceSessionId
+          ? {
+              sessionId: sourceSessionId,
+              // An archived Session cannot be opened, so its side chats have nowhere to return.
+              rootThreadId: (source && !source.archived && source.executionRef?.threadId) || null,
+            }
+          : null;
+        return {
+          title: session.displayTitle,
+          archived: session.archived,
+          unread: session.unread,
+          sideChatSource,
+        };
+      }),
       markUnread: (sessionId) =>
         projects.markProjectSessionUnread({
           operationId: createOperationId("agent-runtime.session.unread"),

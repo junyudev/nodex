@@ -15,6 +15,7 @@ import { useLayoutEffect, useCallback, useEffect, useRef } from "react";
 import { recordWorkspaceSearchFile } from "./workspace-search-recent-files";
 import { createUuidV7 } from "../../shared/uuid-v7";
 import { sideChatRequestTitle } from "../../shared/side-chat-title";
+import { nativeSideChatTabId, runtimeSideChatTabId } from "../../shared/side-chat-tab";
 import {
   captureCodexTurnPresentation,
   readCodexSubmissionPresentation,
@@ -62,6 +63,7 @@ import { getRenderablePanelPreviewTab } from "./workbench-panel-projection";
 import { makeWorkbenchSessionPanelSlotKey } from "./workbench-panel-slot-key";
 import { agentRuntimeRuntime } from "./agent-runtime-runtime";
 import { readCurrentProjectSessionDetail } from "./project-session-query-cache";
+import { sessionExecutionThreadId } from "./session-execution";
 import { listWorkbenchPanelLeaves } from "../../shared/workbench-panel-layout";
 import type { WorkbenchPanelController } from "./use-workbench-panel-controller";
 import type { WorkbenchSessionRenderProjection } from "./workbench-session-presentation";
@@ -90,6 +92,16 @@ import {
 import type { useWorkbenchPanelLifecycle } from "./use-workbench-panel-lifecycle";
 
 type ProjectSession = WorkbenchSessionRenderProjection;
+
+/** A side chat of the active Session, named by its native Thread or temporary Runtime Session. */
+export type ExistingSideChatTarget =
+  | {
+      readonly kind: "native";
+      readonly threadId: string;
+      readonly parentThreadId: string;
+      readonly parentNavigationPath: string;
+    }
+  | { readonly kind: "runtime"; readonly sessionId: string; readonly parentThreadId: string };
 export const IMAGE_SIDE_PANEL_AUTO_EXPANDED_STORAGE_KEY = "image-side-panel-auto-expanded-v1";
 
 function resolvePreviewSurfaceSlot(
@@ -561,7 +573,7 @@ export function useWorkbenchPanelOpeners({
             });
             return;
           }
-          const readyId = `sidechat-session:${session.id}`;
+          const readyId = runtimeSideChatTabId(session.id);
           const pendingTab = workbenchOwner
             .read()
             .ephemeralPanels.sideChatTabsBySession[activeSession.id]?.find(
@@ -669,7 +681,7 @@ export function useWorkbenchPanelOpeners({
           },
           submittedPresentation,
         );
-        const readyTabId = `sidechat:${result.threadId}`;
+        const readyTabId = nativeSideChatTabId(result.threadId);
         panelControllerRef.current.updateSideChatTabsBySession((current) => {
           const tabs = current[activeSession.id] ?? [];
           return {
@@ -736,60 +748,81 @@ export function useWorkbenchPanelOpeners({
     ],
   );
 
+  /**
+   * Selects a side chat of `sourceSession`, rebuilding its tab when it is not mounted. The source is
+   * named explicitly because callers reach it across navigation, after this render's Session.
+   */
   const openExistingSideChat = useCallback(
-    async (input: {
-      threadId: string;
-      parentThreadId: string;
-      parentNavigationPath: string;
-    }): Promise<boolean> => {
-      if (!activeSession?.thread) return false;
-      if (activeSession.thread.threadId !== input.parentThreadId) return false;
-
-      const tabId = `sidechat:${input.threadId}`;
-      const existingTab = (sideChatTabsBySession[activeSession.id] ?? []).find(
-        (tab) => tab.id === tabId,
-      );
-      if (existingTab) {
-        panelControllerRef.current.updateSideChatActiveTabByPanel((current) => ({
+    async (target: ExistingSideChatTarget, sourceSession: ProjectSession): Promise<boolean> => {
+      if (sessionExecutionThreadId(sourceSession) !== target.parentThreadId) return false;
+      const tabId =
+        target.kind === "runtime"
+          ? runtimeSideChatTabId(target.sessionId)
+          : nativeSideChatTabId(target.threadId);
+      const findTab = () =>
+        panelControllerRef.current.sideChatTabsBySession[sourceSession.id]?.find(
+          (tab) => tab.id === tabId,
+        );
+      const revealPanel = (panelId: PanelId) =>
+        panelControllerRef.current.updatePanelCollapsedOverrides((current) => ({
           ...current,
-          [makeWorkbenchSessionPanelSlotKey(
-            activeSession.id,
-            existingTab.panelId,
-            existingTab.leafId,
-          )]: tabId,
+          [makeWorkbenchSessionPanelSlotKey(sourceSession.id, panelId)]: false,
         }));
-        await ensureActivePanelOpenWithoutRefresh(existingTab.panelId);
+      const select = (tab: SideChatPanelTab) => {
+        const leafId = tab.leafId ?? resolveSessionPanelActiveLeafId(sourceSession, tab.panelId);
+        const leaf = listWorkbenchPanelLeaves(sourceSession.panels[tab.panelId].layout).find(
+          (candidate) => candidate.id === leafId,
+        );
+        panelControllerRef.current.selectRenderableTab({
+          sessionId: sourceSession.id,
+          panelId: tab.panelId,
+          leafId,
+          tabId,
+          durableTabIds: new Set(leaf?.tabIds ?? []),
+        });
+        revealPanel(tab.panelId);
         return true;
+      };
+
+      const existingTab = findTab();
+      if (existingTab) return select(existingTab);
+
+      let runtimeSession: SideChatPanelTab["runtimeSession"];
+      if (target.kind === "runtime") {
+        // A discarded side chat has nothing to reopen; its source Session stays selected.
+        const session = await readCurrentProjectSessionDetail(target.sessionId);
+        if (!session?.executionRef || session.archived) return false;
+        runtimeSession = session;
+        const mountedMeanwhile = findTab();
+        if (mountedMeanwhile) return select(mountedMeanwhile);
       }
 
       const panelId = "right" as const;
-      const leafId = resolveSessionPanelActiveLeafId(activeSession, panelId);
-      const panelSideChats = (sideChatTabsBySession[activeSession.id] ?? []).filter(
-        (tab) => tab.panelId === panelId,
-      );
-      const tab: SideChatPanelTab = {
+      const panelSideChats = (
+        panelControllerRef.current.sideChatTabsBySession[sourceSession.id] ?? []
+      ).filter((tab) => tab.panelId === panelId);
+      // Upserting selects the rebuilt tab in its slot.
+      panelControllerRef.current.upsertEphemeralTab({
         sideChat: true,
         id: tabId,
-        sessionId: activeSession.id,
+        sessionId: sourceSession.id,
         panelId,
-        leafId,
-        parentThreadId: input.parentThreadId,
-        parentNavigationPath: input.parentNavigationPath,
-        threadId: input.threadId,
-        title: getSideChatTabTitle(panelSideChats.length + 1),
+        leafId: resolveSessionPanelActiveLeafId(sourceSession, panelId),
+        parentThreadId: target.parentThreadId,
+        parentNavigationPath: target.kind === "native" ? target.parentNavigationPath : "",
+        threadId:
+          runtimeSession?.executionRef?.threadId ??
+          (target.kind === "native" ? target.threadId : null),
+        title:
+          runtimeSession?.displayTitle.trim() || getSideChatTabTitle(panelSideChats.length + 1),
         status: "ready",
         stateKey: Date.now(),
-      };
-
-      panelControllerRef.current.upsertEphemeralTab(tab);
-      panelControllerRef.current.updateSideChatActiveTabByPanel((current) => ({
-        ...current,
-        [makeWorkbenchSessionPanelSlotKey(activeSession.id, panelId, leafId)]: tabId,
-      }));
-      await ensureActivePanelOpenWithoutRefresh(panelId);
+        ...(runtimeSession ? { runtimeSession } : {}),
+      });
+      revealPanel(panelId);
       return true;
     },
-    [activeSession, ensureActivePanelOpenWithoutRefresh, sideChatTabsBySession],
+    [],
   );
 
   const openMcpAppSidePanel = useCallback(
@@ -954,7 +987,7 @@ export function useWorkbenchPanelOpeners({
           parentThreadId: existingTab.parentThreadId,
           parentNavigationPath: existingTab.parentNavigationPath,
         });
-        const readyTabId = `sidechat:${result.threadId}`;
+        const readyTabId = nativeSideChatTabId(result.threadId);
         panelControllerRef.current.updateSideChatTabsBySession((current) => {
           const tabs = current[activeSession.id] ?? [];
           return {

@@ -305,6 +305,43 @@ describe("Codex thread notification handler", () => {
       requestId: "q-side",
     });
   });
+
+  test("opens a Runtime side-chat completion in its source Session tab", () => {
+    const runtime = setup();
+    runtime.source.eventListener?.({
+      type: "turn-completed",
+      hostId: "local",
+      conversation: conversation({
+        conversationId: "thread:side",
+        runtimeSessionId: "session:side",
+        sideConversationParentNavigationPath: "session:session%3Asource/thread:thread%3Asource",
+      }),
+      turnId: "run-side",
+      status: "completed",
+      lastAgentMessage: "Side chat finished",
+      heartbeatAssistantMessage: null,
+      automationNotificationDecision: null,
+      hasPendingContinuation: false,
+    });
+    expect(runtime.shown).toHaveLength(1);
+    expect(runtime.shown[0]).toMatchObject({
+      conversationId: "thread:side",
+      navigationPath: "session:session%3Asource/thread:thread%3Asource",
+      activateTabId: "sidechat-session:session:side",
+    });
+    runtime.actions[0]?.({
+      notificationId: runtime.shown[0]!.id,
+      actionId: null,
+      actionType: "open",
+    });
+    expect(runtime.dispatched[0]).toMatchObject({
+      conversationId: "thread:side",
+      navigationPath: "session:session%3Asource/thread:thread%3Asource",
+      activateTabId: "sidechat-session:session:side",
+    });
+    expect(runtime.focusTargetClient).toHaveBeenCalledWith("renderer-1");
+  });
+
   test("opens an async question without a blocking request or reply action, then dismisses the same occurrence", () => {
     const runtime = setup();
     runtime.source.eventListener?.({

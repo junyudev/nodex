@@ -6,6 +6,7 @@ import type {
   ThreadNotificationSettings,
 } from "../../shared/types";
 import { DEFAULT_CODEX_HOST_ID } from "../../shared/codex-host";
+import { nativeSideChatTabId, runtimeSideChatTabId } from "../../shared/side-chat-tab";
 import {
   buildCodexApprovalNotificationId,
   buildCodexAsyncQuestionNotificationId,
@@ -50,13 +51,15 @@ function resolveNavigation(
   activateTabId: string | null;
 } {
   const parentPath = event.conversation.sideConversationParentNavigationPath?.trim() ?? "";
+  const sessionId = event.conversation.runtimeSessionId?.trim() ?? "";
   if (parentPath.length > 0) {
     return {
       navigationPath: parentPath,
-      activateTabId: `sidechat:${event.conversation.conversationId}`,
+      activateTabId: sessionId
+        ? runtimeSideChatTabId(sessionId)
+        : nativeSideChatTabId(event.conversation.conversationId),
     };
   }
-  const sessionId = event.conversation.runtimeSessionId?.trim() ?? "";
   if (sessionId && event.conversation.conversationId === `session:${sessionId}`)
     return { navigationPath: `session:${encodeURIComponent(sessionId)}`, activateTabId: null };
   const threadPath = `thread:${encodeURIComponent(event.conversation.conversationId)}`;

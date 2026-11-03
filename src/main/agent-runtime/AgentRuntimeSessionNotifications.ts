@@ -15,6 +15,14 @@ export interface AgentRuntimeNotificationSession {
   readonly title: string | null;
   readonly archived: boolean;
   readonly unread: boolean;
+  /**
+   * The Session a temporary side chat was opened from, per Core's binding. A source that is gone,
+   * archived or unbound has no root, so the side chat has nowhere to open.
+   */
+  readonly sideChatSource: {
+    readonly sessionId: string;
+    readonly rootThreadId: string | null;
+  } | null;
 }
 
 export interface AgentRuntimeSessionNotificationOptions {
@@ -50,7 +58,9 @@ const waitingFamily = (activity: AgentRuntimeSessionActivity | null) => {
  * Run ending (including automatic wake Runs) or a new attention request marks an unpresented
  * Session unread and raises the shared notification owner with native conversation copy.
  * User attention replaces completion while the Session waits, including questions revealed at
- * turn end. Temporary side chats surface their questions through their visible source Session.
+ * turn end. A temporary side chat's attention surfaces through its source Session; its completion
+ * keeps the side chat's own conversation and copy but opens its tab inside the source Session, and
+ * does not notify when that source cannot be opened.
  */
 export const run = Effect.fn("AgentRuntimeSessionNotifications.run")(function* (
   options: AgentRuntimeSessionNotificationOptions,
@@ -102,18 +112,25 @@ export const run = Effect.fn("AgentRuntimeSessionNotifications.run")(function* (
         });
       const turnCompleted = status && endedRun && after?.status !== "waiting";
       if (!turnCompleted && !attentionStarted) return;
-      if (after?.sideChatSourceThreadId) return;
       const session = yield* options.readSession(sessionId);
       if (!session) return;
+      const sideChatSource = session.sideChatSource;
+      // A side chat's attention already waits on its source Session; only its replies notify.
+      if (sideChatSource && !turnCompleted) return;
       if (!session.archived && !session.unread && !options.isPresentedInForeground(rootThreadId))
         yield* options.markUnread(sessionId);
+      // A side chat opens as a tab of its source Session, never as a Scene of its own.
+      const parentNavigationPath = sideChatSource?.rootThreadId
+        ? `session:${encodeURIComponent(sideChatSource.sessionId)}/thread:${encodeURIComponent(sideChatSource.rootThreadId)}`
+        : null;
+      if (sideChatSource && !parentNavigationPath) return;
       const conversation: CodexNotificationConversationFacts = {
         conversationId: rootThreadId,
         title: session.title,
         threadSource: null,
         parentThreadId: null,
         source: null,
-        sideConversationParentNavigationPath: null,
+        sideConversationParentNavigationPath: parentNavigationPath,
         runtimeSessionId: sessionId,
       };
       if (turnCompleted) {

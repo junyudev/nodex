@@ -12,9 +12,10 @@ import type {
   ThreadNotificationSettings,
 } from "../../shared/types";
 import { makeCodexThreadNotificationHandler } from "../codex/codex-thread-notification-handler";
+import { CoreRuntimeError } from "../core-runtime/CoreRuntimeError";
 import type { AgentRuntimeProcessConnection } from "../platform/node/AgentRuntimeProcess";
 import type { AgentRuntimeActivityTransition } from "./AgentRuntimeSessionActivity";
-import { run } from "./AgentRuntimeSessionNotifications";
+import { run, type AgentRuntimeNotificationSession } from "./AgentRuntimeSessionNotifications";
 
 const activity = (
   status: Activity["status"],
@@ -39,6 +40,8 @@ const harness = (options: {
   readonly runStatus?: string;
   readonly reply?: string | null;
   readonly outcomeUnavailable?: boolean;
+  readonly sideChatSource?: AgentRuntimeNotificationSession["sideChatSource"];
+  readonly unreadableSessionId?: string;
 }) => {
   const requests: string[] = [];
   const outcomeInputs: unknown[] = [];
@@ -88,8 +91,22 @@ const harness = (options: {
         transitions.map((transition) => ({ ...transition, connection })),
       ),
       isPresentedInForeground: () => options.presented ?? false,
-      readSession: () =>
-        Effect.succeed({ title: "Refine the board", archived: false, unread: false }),
+      readSession: (sessionId) =>
+        sessionId === options.unreadableSessionId
+          ? Effect.fail(
+              new CoreRuntimeError({
+                message: "Session binding is unavailable",
+                operation: "workspace.read",
+                reason: "request",
+                retryable: false,
+              }),
+            )
+          : Effect.succeed({
+              title: sessionId === "session:source" ? "Source Session" : "Refine the board",
+              archived: false,
+              unread: false,
+              sideChatSource: sessionId === "session:a" ? (options.sideChatSource ?? null) : null,
+            }),
       markUnread: (sessionId) => Effect.sync(() => unread.push(sessionId)),
       turnMayShow: Effect.succeed(options.turnMayShow ?? true),
       publish: (event) => {
@@ -372,17 +389,100 @@ it.effect("delegated approvals notify their root while child questions leave it 
   }),
 );
 
-it.effect("a temporary side chat notifies once through its visible source", () =>
+it.effect("an idle side chat's completion opens its tab in the source Session", () =>
   Effect.gen(function* () {
-    const h = harness({});
+    const h = harness({
+      sideChatSource: { sessionId: "session:source/a", rootThreadId: "thread:source/b" },
+    });
     yield* h.deliver([
-      transition(
-        activity("running"),
-        activity("waiting", { activeRunId: null, sideChatSourceThreadId: "thread:source" }),
-        { runId: "run:1", status: "completed" },
-      ),
+      transition(activity("running", { sideChatSourceThreadId: "thread:source/b" }), null, {
+        runId: "run:1",
+        status: "completed",
+      }),
+    ]);
+    assert.strictEqual(h.shown.length, 1);
+    assert.include(h.shown[0]!, {
+      conversationId: "thread:a",
+      navigationPath: "session:session%3Asource%2Fa/thread:thread%3Asource%2Fb",
+      activateTabId: "sidechat-session:session:a",
+      title: "Refine the board",
+      body: "Done. The board is updated.",
+    });
+    assert.deepEqual(h.unreadAtCompletion, [["session:a"]]);
+    assert.deepEqual(h.outcomeInputs, [{ threadId: "thread:a", runId: "run:1" }]);
+    const event = h.events[0];
+    assert.isTrue(event?.type === "turn-completed");
+    if (event?.type !== "turn-completed") return;
+    assert.strictEqual(event.conversation.runtimeSessionId, "session:a");
+  }),
+);
+
+it.effect.each(["running", "waiting"] as const)(
+  "a %s side chat without a resolvable source never opens its own Scene",
+  (status) =>
+    Effect.gen(function* () {
+      const h = harness({
+        sideChatSource: { sessionId: "session:source", rootThreadId: null },
+      });
+      yield* h.deliver([
+        transition(activity(status), null, { runId: "run:1", status: "completed" }),
+      ]);
+      assert.deepEqual(h.shown, []);
+      // Ending a wait still withdraws its question, whoever owned the notification.
+      assert.deepEqual(
+        h.events.map((event) => event.type),
+        status === "waiting" ? ["request-resolved"] : [],
+      );
+      assert.deepEqual(h.unread, ["session:a"]);
+      assert.deepEqual(h.requests, []);
+    }),
+);
+
+it.effect.each(["question", "approval"] as const)(
+  "a temporary side chat notifies once through its visible source (%s)",
+  (family) =>
+    Effect.gen(function* () {
+      const h = harness({
+        sideChatSource: { sessionId: "session:source", rootThreadId: "thread:source" },
+      });
+      const waiting = activity("waiting", {
+        activeRunId: null,
+        activeFlags: [family === "approval" ? "waitingOnApproval" : "waitingOnUserInput"],
+      });
+      yield* h.deliver([
+        transition(activity("running"), waiting, { runId: "run:1", status: "completed" }),
+        {
+          ...transition(null, waiting),
+          sessionId: "session:source",
+          rootThreadId: "thread:source",
+        },
+        transition(waiting, null),
+      ]);
+      assert.deepEqual(
+        h.shown.map((notification) => notification.conversationId),
+        ["thread:source"],
+      );
+      assert.deepEqual(h.unread, ["session:source"]);
+      assert.deepEqual(
+        h.events.map((event) => [
+          event.type,
+          "conversation" in event ? event.conversation.conversationId : event.conversationId,
+        ]),
+        [
+          [family === "approval" ? "approval-requested" : "user-input-requested", "thread:source"],
+          ["request-resolved", "thread:a"],
+        ],
+      );
+    }),
+);
+
+it.effect("a failed Session binding read leaves later notifications deliverable", () =>
+  Effect.gen(function* () {
+    const h = harness({ unreadableSessionId: "session:a" });
+    yield* h.deliver([
+      transition(activity("running"), null, { runId: "run:1", status: "completed" }),
       {
-        ...transition(null, activity("waiting", { activeRunId: null })),
+        ...transition(activity("running"), null, { runId: "run:source", status: "completed" }),
         sessionId: "session:source",
         rootThreadId: "thread:source",
       },
@@ -392,10 +492,7 @@ it.effect("a temporary side chat notifies once through its visible source", () =
       ["thread:source"],
     );
     assert.deepEqual(h.unread, ["session:source"]);
-    assert.deepEqual(
-      h.events.map((event) => event.type),
-      ["user-input-requested"],
-    );
+    assert.strictEqual(h.events.length, 1);
   }),
 );
 

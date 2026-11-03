@@ -3,9 +3,7 @@ import type { DesktopNotificationActionInvocation } from "../../shared/types";
 import {
   executeDesktopNotificationAction,
   executeRuntimeDesktopNotificationAction,
-  resolveDesktopNotificationParentThreadId,
-  resolveDesktopNotificationRuntimeSessionId,
-  resolveDesktopNotificationSideChatThreadId,
+  resolveDesktopNotificationTarget,
   type DesktopNotificationActionManager,
 } from "./desktop-notification-action";
 
@@ -30,16 +28,44 @@ function makeManager(): DesktopNotificationActionManager & { startTurn: ReturnTy
 }
 
 describe("desktop notification action boundary", () => {
-  it("resolves parent and side-chat navigation without confusing child ownership", () => {
+  it("opens a native side chat inside its parent even when the parent path names a Session", () => {
     const invocation = makeInvocation();
-    expect(resolveDesktopNotificationParentThreadId(invocation)).toBe("parent-thread");
-    expect(resolveDesktopNotificationSideChatThreadId(invocation)).toBe("child-thread");
+    expect(resolveDesktopNotificationTarget(invocation)).toEqual({
+      kind: "native",
+      threadId: "parent-thread",
+      sideChatThreadId: "child-thread",
+    });
     expect(
-      resolveDesktopNotificationSideChatThreadId({
-        ...invocation,
-        activateTabId: "sidechat:another-thread",
-      }),
-    ).toBeNull();
+      resolveDesktopNotificationTarget({ ...invocation, activateTabId: "sidechat:another-thread" }),
+    ).toEqual({
+      kind: "runtime",
+      sessionId: "session-1",
+      threadId: "parent-thread",
+      sideChatSessionId: null,
+    });
+    expect(
+      resolveDesktopNotificationTarget(
+        makeInvocation({ navigationPath: "thread:root", activateTabId: null }),
+      ),
+    ).toEqual({ kind: "native", threadId: "root", sideChatThreadId: null });
+  });
+
+  it("opens a Runtime side chat as a tab of its source Session, never as its own Scene", () => {
+    expect(
+      resolveDesktopNotificationTarget(
+        makeInvocation({
+          conversationId: "nodex:thread:side",
+          navigationPath: "session:source/thread:nodex%3Athread%3Aroot",
+          activateTabId: "sidechat-session:side",
+          requestId: null,
+        }),
+      ),
+    ).toEqual({
+      kind: "runtime",
+      sessionId: "source",
+      threadId: "nodex:thread:root",
+      sideChatSessionId: "side",
+    });
   });
 
   it("preserves native reply code while trimming surrounding whitespace", async () => {
@@ -92,12 +118,12 @@ describe("desktop notification action boundary", () => {
       activateTabId: null,
       requestId: null,
     });
-    expect(resolveDesktopNotificationRuntimeSessionId(invocation)).toBe("session:a/b");
-    expect(resolveDesktopNotificationParentThreadId(invocation)).toBe("nodex:thread:root");
-    expect(resolveDesktopNotificationRuntimeSessionId(makeInvocation())).toBe("session-1");
-    expect(
-      resolveDesktopNotificationRuntimeSessionId(makeInvocation({ navigationPath: "thread:a" })),
-    ).toBeNull();
+    expect(resolveDesktopNotificationTarget(invocation)).toEqual({
+      kind: "runtime",
+      sessionId: "session:a/b",
+      threadId: "nodex:thread:root",
+      sideChatSessionId: null,
+    });
 
     const sendMessage = vi.fn(async () => undefined);
     await expect(

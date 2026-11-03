@@ -183,9 +183,7 @@ import type { WorkbenchCommandPort } from "@/lib/use-workbench-command-ingress";
 import {
   executeDesktopNotificationAction,
   executeRuntimeDesktopNotificationAction,
-  resolveDesktopNotificationParentThreadId,
-  resolveDesktopNotificationRuntimeSessionId,
-  resolveDesktopNotificationSideChatThreadId,
+  resolveDesktopNotificationTarget,
 } from "@/lib/desktop-notification-action";
 import { agentRuntimeRuntime } from "@/lib/agent-runtime-runtime";
 import { createUuidV7 } from "../../../shared/uuid-v7";
@@ -1064,11 +1062,11 @@ export function WorkbenchRuntime({
     bottom: { itemsByLeafId: {}, activeTabIdsByLeafId: {} },
   });
   const pendingWorkbenchCommandInvocationsRef = useRef<WorkbenchCommandInvocation[]>([]);
-  const activeThreadIdRef = useRef<string | null>(null);
+  const presentedSessionRef = useRef<ProjectSession | null>(null);
   const activeThreadWaitersRef = useRef(
     new Set<{
       threadId: string;
-      resolve: (presented: boolean) => void;
+      resolve: (session: ProjectSession | null) => void;
     }>(),
   );
   const desktopNotificationActionChainRef = useRef<Promise<unknown>>(Promise.resolve());
@@ -1349,39 +1347,43 @@ export function WorkbenchRuntime({
   // Runtime-bound Sessions name their root through execution, not a native Thread link.
   const activeThreadId = sessionExecutionThreadId(activeSession);
   useLayoutEffect(() => {
-    activeThreadIdRef.current = activeThreadId;
-  }, [activeThreadId]);
+    presentedSessionRef.current = activeSession;
+  }, [activeSession]);
   useEffect(() => {
-    if (!activeThreadId) return;
+    const session = presentedSessionRef.current;
+    if (!activeThreadId || !session) return;
     for (const waiter of [...activeThreadWaitersRef.current]) {
       if (waiter.threadId !== activeThreadId) continue;
       activeThreadWaitersRef.current.delete(waiter);
-      waiter.resolve(true);
+      waiter.resolve(session);
     }
   }, [activeThreadId]);
   useEffect(
     () => () => {
-      for (const waiter of activeThreadWaitersRef.current) waiter.resolve(false);
+      for (const waiter of activeThreadWaitersRef.current) waiter.resolve(null);
       activeThreadWaitersRef.current.clear();
     },
     [],
   );
-  const waitForActiveThread = useCallback((threadId: string): Promise<boolean> => {
-    if (activeThreadIdRef.current === threadId) return Promise.resolve(true);
+  /** The Session presenting `threadId` once navigation commits, or null if it never does. */
+  const waitForThreadSession = useCallback((threadId: string): Promise<ProjectSession | null> => {
+    const presented = presentedSessionRef.current;
+    if (presented && sessionExecutionThreadId(presented) === threadId)
+      return Promise.resolve(presented);
     return new Promise((resolve) => {
       let settled = false;
       const waiter = {
         threadId,
-        resolve: (presented: boolean) => {
+        resolve: (session: ProjectSession | null) => {
           if (settled) return;
           settled = true;
           window.clearTimeout(timeoutId);
-          resolve(presented);
+          resolve(session);
         },
       };
       const timeoutId = window.setTimeout(() => {
         activeThreadWaitersRef.current.delete(waiter);
-        waiter.resolve(false);
+        waiter.resolve(null);
       }, 10_000);
       activeThreadWaitersRef.current.add(waiter);
     });
@@ -3550,36 +3552,52 @@ export function WorkbenchRuntime({
   const handleDesktopNotificationAction = async (
     invocation: DesktopNotificationActionInvocation,
   ): Promise<void> => {
-    const parentThreadId = resolveDesktopNotificationParentThreadId(invocation);
-    if (!parentThreadId) return;
-    const runtimeSessionId = resolveDesktopNotificationRuntimeSessionId(invocation);
+    const target = resolveDesktopNotificationTarget(invocation);
+    if (!target) return;
 
     const opened = await openAttachedThreadSessionById(
-      parentThreadId,
-      runtimeSessionId ? { runtimeSessionId } : undefined,
+      target.threadId,
+      target.kind === "runtime" ? { runtimeSessionId: target.sessionId } : undefined,
     );
     if (!opened) return;
-    const presented = await waitForActiveThread(parentThreadId);
+    // Side chats open in the Session navigation presented, not the one this action started in.
+    const presented = await waitForThreadSession(target.threadId);
     if (!presented) return;
-    if (runtimeSessionId) {
-      await executeRuntimeDesktopNotificationAction(invocation, runtimeSessionId, (input) =>
-        agentRuntimeRuntime.message({
-          sessionId: input.sessionId,
-          message: { messageId: createUuidV7(), text: input.text },
-        }),
+
+    if (target.kind === "runtime") {
+      if (
+        target.sideChatSessionId &&
+        !(await openExistingSideChat(
+          { kind: "runtime", sessionId: target.sideChatSessionId, parentThreadId: target.threadId },
+          presented,
+        ))
+      )
+        return;
+      await executeRuntimeDesktopNotificationAction(
+        invocation,
+        target.sideChatSessionId ?? target.sessionId,
+        (input) =>
+          agentRuntimeRuntime.message({
+            sessionId: input.sessionId,
+            message: { messageId: createUuidV7(), text: input.text },
+          }),
       );
       return;
     }
 
-    const sideChatThreadId = resolveDesktopNotificationSideChatThreadId(invocation);
-    if (sideChatThreadId) {
-      const sideChatOpened = await openExistingSideChat({
-        threadId: sideChatThreadId,
-        parentThreadId,
-        parentNavigationPath: invocation.navigationPath ?? `thread:${parentThreadId}`,
-      });
-      if (!sideChatOpened) return;
-    }
+    if (
+      target.sideChatThreadId &&
+      !(await openExistingSideChat(
+        {
+          kind: "native",
+          threadId: target.sideChatThreadId,
+          parentThreadId: target.threadId,
+          parentNavigationPath: invocation.navigationPath ?? `thread:${target.threadId}`,
+        },
+        presented,
+      ))
+    )
+      return;
 
     const manager = codexAppServerRegistry.getForHostId(invocation.hostId);
     await executeDesktopNotificationAction(invocation, manager);

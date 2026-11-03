@@ -1,4 +1,5 @@
 import type { DesktopNotificationActionInvocation } from "../../shared/types";
+import { nativeSideChatTabId, runtimeSideChatSessionIdFromTabId } from "../../shared/side-chat-tab";
 
 export interface DesktopNotificationActionManager {
   asyncQuestions?: {
@@ -18,9 +19,7 @@ function decodeNavigationSegment(value: string): string {
   }
 }
 
-export function resolveDesktopNotificationParentThreadId(
-  invocation: DesktopNotificationActionInvocation,
-): string | null {
+function resolveNavigationThreadId(invocation: DesktopNotificationActionInvocation): string | null {
   const path = invocation.navigationPath?.trim() ?? "";
   if (path.length > 0) {
     const threadSegment = path.split("/").findLast((segment) => segment.startsWith("thread:"));
@@ -30,8 +29,7 @@ export function resolveDesktopNotificationParentThreadId(
   return invocation.conversationId;
 }
 
-/** The product Session of a Runtime-bound conversation named by `session:<id>`, if any. */
-export function resolveDesktopNotificationRuntimeSessionId(
+function resolveNavigationSessionId(
   invocation: DesktopNotificationActionInvocation,
 ): string | null {
   const segment = (invocation.navigationPath ?? "")
@@ -41,13 +39,43 @@ export function resolveDesktopNotificationRuntimeSessionId(
   return encoded.length > 0 ? decodeNavigationSegment(encoded) : null;
 }
 
-export function resolveDesktopNotificationSideChatThreadId(
+/**
+ * Where a notification opens. A side chat never opens as its own Scene: it opens its source
+ * conversation, then the side-chat tab inside it.
+ */
+export type DesktopNotificationTarget =
+  | {
+      /** A Runtime-bound Session, opened by its product Session rather than a native Thread. */
+      readonly kind: "runtime";
+      readonly sessionId: string;
+      readonly threadId: string;
+      /** The temporary side-chat Session to select inside `sessionId`, which also takes replies. */
+      readonly sideChatSessionId: string | null;
+    }
+  | {
+      readonly kind: "native";
+      readonly threadId: string;
+      /** The temporary native side-chat Thread to select inside `threadId`'s Session. */
+      readonly sideChatThreadId: string | null;
+    };
+
+export function resolveDesktopNotificationTarget(
   invocation: DesktopNotificationActionInvocation,
-): string | null {
+): DesktopNotificationTarget | null {
+  const threadId = resolveNavigationThreadId(invocation);
+  if (!threadId) return null;
+  // A native side chat's parent path names its Session too; the tab identity decides ownership.
   const conversationId = invocation.conversationId;
-  if (!conversationId) return null;
-  if (invocation.activateTabId !== `sidechat:${conversationId}`) return null;
-  return conversationId;
+  if (conversationId && invocation.activateTabId === nativeSideChatTabId(conversationId))
+    return { kind: "native", threadId, sideChatThreadId: conversationId };
+  const sessionId = resolveNavigationSessionId(invocation);
+  if (!sessionId) return { kind: "native", threadId, sideChatThreadId: null };
+  return {
+    kind: "runtime",
+    sessionId,
+    threadId,
+    sideChatSessionId: runtimeSideChatSessionIdFromTabId(invocation.activateTabId),
+  };
 }
 
 /** Execute a native notification action after Workbench navigation settles. */

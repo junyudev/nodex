@@ -1,10 +1,11 @@
-import { expect, test, type ElectronApplication, type Page } from "@playwright/test";
+import { expect, test, type ElectronApplication, type Page, type TestInfo } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
 import {
   ElectronScenarioHarness,
   readBoundedElectronRuntimeLogs,
 } from "../../scripts/scenarios/harness/electron-e2e-harness";
+import { prepareScenarioCodexAppServerRuntimeSync } from "../../scripts/scenarios/runtime/agent-runtime-fixture";
 import { invokeIpc } from "./support/editor-scenario";
 import { openNewChatDraft } from "./support/new-chat-draft";
 import {
@@ -69,6 +70,19 @@ const readNotifications = (application: ElectronApplication) =>
     (globalThis as NotificationObserver).__notificationEvidence.map((entry) => entry.payload),
   );
 
+function prepareNotificationWireObserver(testInfo: TestInfo) {
+  const wireLog = testInfo.outputPath("notification-wire.jsonl");
+  const nodeLauncher = testInfo.outputPath("notification-node");
+  const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
+  fs.mkdirSync(path.dirname(nodeLauncher), { recursive: true });
+  fs.writeFileSync(
+    nodeLauncher,
+    `#!/bin/sh\nexec ${quote(process.execPath)} --require ${quote(path.join(process.cwd(), "tests/e2e/fixtures/agent-runtime-wire-observer.cjs"))} "$@"\n`,
+    { mode: 0o755 },
+  );
+  return { wireLog, nodeLauncher };
+}
+
 async function showObservedPayload(page: Page, payload: ObservedNotification): Promise<void> {
   await page.evaluate((notification) => {
     document.querySelector("#notification-evidence")?.remove();
@@ -117,17 +131,9 @@ test("completion notifications show the ended Run's reply and open its Session",
     claims.push({ name, expected, actual });
     expect(actual, name).toEqual(expected);
   };
-  const wireLog = testInfo.outputPath("notification-wire.jsonl");
-  const nodeLauncher = testInfo.outputPath("notification-node");
+  const { wireLog, nodeLauncher } = prepareNotificationWireObserver(testInfo);
   const replyPath = testInfo.outputPath("notification-reply.md");
-  const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
-  fs.mkdirSync(path.dirname(nodeLauncher), { recursive: true });
   fs.writeFileSync(replyPath, reply);
-  fs.writeFileSync(
-    nodeLauncher,
-    `#!/bin/sh\nexec ${quote(process.execPath)} --require ${quote(path.join(process.cwd(), "tests/e2e/fixtures/agent-runtime-wire-observer.cjs"))} "$@"\n`,
-    { mode: 0o755 },
-  );
   const harness = await ElectronScenarioHarness.create({
     label: "desktop-notification-content",
     isolateHostDirectories: true,
@@ -267,6 +273,207 @@ test("completion notifications show the ended Run's reply and open its Session",
     });
     if (fs.existsSync(wireLog))
       fs.copyFileSync(wireLog, path.join(artifacts, "runtime-wire.jsonl"));
+    await harness.close();
+  }
+});
+
+test("side chat notifications reopen its tab in the source Session and reply to the side chat", async ({}, testInfo) => {
+  test.setTimeout(150_000);
+  const artifacts =
+    process.env.NODEX_SIDE_CHAT_NOTIFICATION_ARTIFACT_DIR ??
+    testInfo.outputPath("side-chat-notification-review");
+  fs.mkdirSync(artifacts, { recursive: true });
+  const { wireLog, nodeLauncher } = prepareNotificationWireObserver(testInfo);
+  const fixture = testInfo.outputPath("side-chat-peer");
+  fs.mkdirSync(fixture, { recursive: true });
+  fs.writeFileSync(path.join(fixture, "plan.json"), "{}");
+  const codex = path.join(fixture, "codex");
+  const peer = fs
+    .readFileSync("scripts/scenarios/runtime/cross-provider-peer.mjs", "utf8")
+    .replace(/^#![^\n]*\n/u, "");
+  fs.writeFileSync(codex, `#!${process.execPath}\n${peer}`, { mode: 0o755 });
+  const releaseFile = path.join(fixture, "release-side-reply");
+  const sidePrompt = "Verify side-chat notification navigation";
+  const reply = "Codex child report";
+  const harness = await ElectronScenarioHarness.create({
+    label: "side-chat-notification-navigation",
+    isolateHostDirectories: true,
+    prepareAgentRuntime: false,
+    environment: {
+      NODEX_LOG_FILE: "1",
+      NODEX_LOG_FILE_LEVEL: "debug",
+      NODEX_TEST_AGENT_RUNTIME_PROJECT_ROOT: ".",
+      NODEX_TEST_AGENT_RUNTIME_NODE_EXECUTABLE: nodeLauncher,
+      NODEX_TEST_AGENT_RUNTIME_WIRE_LOG: wireLog,
+      NODEX_TEST_CROSS_PROVIDER_HOME: fixture,
+      NODEX_TEST_NATIVE_HOLD_PROMPT: sidePrompt,
+      NODEX_TEST_NATIVE_RELEASE_FILE: releaseFile,
+    },
+  });
+  // This peer supports native forks and holds replies until the renderer has left the source.
+  prepareScenarioCodexAppServerRuntimeSync(harness.profile.runRoot, codex);
+  let page: Page | undefined;
+  try {
+    page = await harness.launch();
+    await observeNotifications(harness.application);
+    await page.setViewportSize({ width: 1440, height: 960 });
+    await invokeIpc(page, "settings:thread-notifications:update", {
+      turnMode: "always",
+      questionsEnabled: true,
+    });
+    await invokeIpc(page, "agent-runtime:providers:read", { refresh: true });
+    const sourceScene = await openNewChatDraft(page);
+    const owner = await sourceScene.getAttribute("data-workbench-scene-owner");
+    if (!owner?.startsWith("session:")) throw new Error("The source chat has no Session");
+    const sourceId = owner.slice("session:".length);
+    const sourceComposer = sourceScene.locator('[data-codex-composer="true"]:visible').first();
+    await sourceComposer.fill("Prepare a source chat for notification navigation");
+    await sourceComposer.press("Enter");
+    await expect
+      .poll(async () => (await invokeIpc(page!, "project-sessions:get", sourceId))?.executionRef)
+      .toBeTruthy();
+    const source = await invokeIpc(page, "project-sessions:get", sourceId);
+    if (!source?.executionRef) throw new Error("The source chat has no execution binding");
+    await waitForRuntimeCompletedAgentTurn(page, {
+      sessionId: sourceId,
+      threadId: source.executionRef.threadId,
+    });
+    await expect(sourceScene.getByText(reply, { exact: true })).toBeVisible();
+    await expect.poll(() => readNotifications(harness.application)).toHaveLength(1);
+    expect((await readNotifications(harness.application))[0]?.title).toBe(source.displayTitle);
+
+    await sourceComposer.fill(`/side ${sidePrompt}`);
+    await sourceComposer.press("Enter");
+    // Panel tab headers live in the shell banner, outside the source Scene.
+    const initialTab = page.locator('[data-panel-tab-id^="sidechat-session:"]');
+    await expect(initialTab).toBeVisible();
+    const tabId = await initialTab.getAttribute("data-panel-tab-id");
+    const sideId = tabId?.slice("sidechat-session:".length);
+    if (!sideId) throw new Error("The side chat has no bound Session");
+    const side = await invokeIpc(page, "project-sessions:get", sideId);
+    if (!side?.executionRef) throw new Error("The side chat has no execution binding");
+    expect(sideId).not.toBe(sourceId);
+    const sideTab = page.locator(`[data-panel-tab-id="${tabId}"]`).getByRole("tab");
+    const sidePanel = page.locator(`[role="tabpanel"][data-tab-id="${tabId}"]`);
+    const readSideRuns = async () =>
+      (await invokeIpc(page!, "agent-runtime:session:read", { sessionId: sideId })).snapshot
+        .projection.runs;
+    await expect.poll(async () => (await readSideRuns()).at(-1)?.status).toBe("running");
+    const sideTitle = (await invokeIpc(page, "project-sessions:get", sideId))?.displayTitle;
+    expect(sideTitle).toBe(sidePrompt);
+    expect(sideTitle).not.toBe(source.displayTitle);
+    // Leave another tab selected so the first click must also change panel selection.
+    await page.getByRole("button", { name: "New tab", exact: true }).click();
+    await expect(sideTab).toHaveAttribute("aria-selected", "false");
+
+    const readSourceRuns = async () =>
+      (await invokeIpc(page!, "agent-runtime:session:read", { sessionId: sourceId })).snapshot
+        .projection.runs;
+    const sourceRunCount = (await readSourceRuns()).length;
+    const openCompletion = async (
+      sideRunCount: number,
+      screenshot: string,
+      inlineReply: string | null,
+    ) => {
+      await openNewChatDraft(page!);
+      await expect(sourceScene).toBeHidden();
+      expect((await readSideRuns()).at(-1)?.status).toBe("running");
+      fs.writeFileSync(releaseFile, "release");
+      await waitForRuntimeCompletedAgentTurn(page!, {
+        sessionId: sideId,
+        threadId: side.executionRef!.threadId,
+      });
+      await expect
+        .poll(async () =>
+          (await readNotifications(harness.application)).filter(
+            (entry) => entry.title === sideTitle,
+          ),
+        )
+        .toHaveLength(sideRunCount);
+      const notifications = await readNotifications(harness.application);
+      expect(notifications).toHaveLength(1 + sideRunCount);
+      const notificationIndex = notifications.findLastIndex((entry) => entry.title === sideTitle);
+      expect(notificationIndex).toBe(sideRunCount);
+      expect(notifications[notificationIndex]).toMatchObject({
+        title: sideTitle,
+        body: reply,
+        hasReply: true,
+      });
+      await harness.application.evaluate(
+        (_electron, { index, text }) => {
+          const entry = (globalThis as NotificationObserver).__notificationEvidence[index];
+          if (!entry) throw new Error("The side chat has no captured completion notification");
+          if (text === null) entry.instance.emit("click", {});
+          else entry.instance.emit("reply", {}, text);
+        },
+        { index: notificationIndex, text: inlineReply },
+      );
+      await expect(sourceScene).toBeVisible();
+      await expect(page!.locator(`[data-workbench-scene-owner="session:${sideId}"]`)).toHaveCount(
+        0,
+      );
+      await expect(sideTab).toBeVisible();
+      await expect(sideTab).toHaveAttribute("aria-selected", "true");
+      await expect(sidePanel).toBeVisible();
+      if (inlineReply !== null) {
+        // The reply is a follow-up in the side chat; its source conversation is untouched.
+        await expect(sidePanel.getByText(inlineReply, { exact: true })).toBeVisible();
+        await expect
+          .poll(async () => (await readSideRuns()).map((run) => run.status))
+          .toEqual(Array.from({ length: sideRunCount + 1 }, () => "completed"));
+        expect(await readSourceRuns()).toHaveLength(sourceRunCount);
+      }
+      const replies = sideRunCount + (inlineReply === null ? 0 : 1);
+      await expect(sidePanel.getByText(reply, { exact: true })).toHaveCount(replies);
+      await expect(sidePanel.getByText(reply, { exact: true }).last()).toBeVisible();
+      await page!.mouse.move(720, 700);
+      await page!.screenshot({ path: path.join(artifacts, screenshot), animations: "disabled" });
+      await testInfo.attach(screenshot, {
+        path: path.join(artifacts, screenshot),
+        contentType: "image/png",
+      });
+    };
+
+    await openCompletion(1, "existing-side-chat-tab.png", null);
+    fs.rmSync(releaseFile);
+    const sideComposer = sidePanel.locator('[data-codex-composer="true"]');
+    await sideComposer.fill(sidePrompt);
+    await sideComposer.press("Enter");
+    await expect
+      .poll(async () => (await readSideRuns()).map((run) => run.status))
+      .toEqual(["completed", "running"]);
+    await page.reload();
+    await harness.waitForApplicationReady();
+    await expect(page.locator(`[data-panel-tab-id="${tabId}"]`)).toHaveCount(0);
+    expect((await invokeIpc(page, "project-sessions:get", sideId))?.executionRef).toEqual(
+      side.executionRef,
+    );
+    await openCompletion(2, "rebuilt-side-chat-tab-after-reply.png", "Reply from the notification");
+    fs.writeFileSync(
+      path.join(artifacts, "side-chat-result.json"),
+      JSON.stringify(
+        { sourceId, sideId, notifications: await readNotifications(harness.application) },
+        null,
+        2,
+      ),
+    );
+  } catch (error) {
+    if (page && !page.isClosed()) {
+      await testInfo.attach("side-chat-failure-state", {
+        body: await page.locator("body").ariaSnapshot(),
+        contentType: "text/plain",
+      });
+      await page.screenshot({ path: path.join(artifacts, "side-chat-failure.png") });
+    }
+    throw error;
+  } finally {
+    fs.writeFileSync(releaseFile, "release");
+    await testInfo.attach("side-chat-notification-runtime.log", {
+      body: Buffer.from(await readBoundedElectronRuntimeLogs(harness.profile, 100_000)),
+      contentType: "text/plain",
+    });
+    if (fs.existsSync(wireLog))
+      fs.copyFileSync(wireLog, path.join(artifacts, "side-chat-runtime-wire.jsonl"));
     await harness.close();
   }
 });

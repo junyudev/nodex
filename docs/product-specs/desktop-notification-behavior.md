@@ -208,9 +208,13 @@ Every native callback carries `hostId`, actual `conversationId`,
 `navigationPath`, optional `activateTabId`, and strict `requestId`.
 
 - A root notification navigates to its attached task session.
-- A side-conversation notification navigates to the saved parent path and
-  activates `sidechat:${conversationId}`. If the ready side tab is not mounted,
-  Workbench materializes it without starting a new side conversation.
+- A side chat never opens as a Scene of its own. Its notification navigates to
+  the conversation it was opened from and selects its side-chat tab there:
+  `sidechat:${conversationId}` for a native side Thread, and
+  `sidechat-session:${sessionId}` for a Runtime side chat's temporary Session.
+  If the tab is not mounted, Workbench rebuilds it without starting a new side
+  conversation; a side chat that no longer exists leaves the source selected.
+  A reply goes to the side chat, not to its source.
 - Navigation must complete before reply or question execution.
 - Reply trims only surrounding whitespace, preserves the user's Markdown and
   type-like text, and starts a turn through the manager for the payload's exact
@@ -310,6 +314,13 @@ Its navigation path names the Session (`session:<id>/thread:<root>`), so opening
 the notification selects that Session directly rather than resolving a native
 Thread, and a reply is an ordinary follow-up through the Session's execution
 owner.
+
+A temporary side chat's completion uses its own conversation, title and reply,
+but its navigation path names the source Session it was opened from and it
+selects the side chat's tab there, so the reply is read beside the source
+conversation. Whether a Session is a side chat and which Session it came from
+are read from Core's execution binding, not from live activity. A side chat
+whose source cannot be resolved does not notify.
 
 ## Chat reminders
 
