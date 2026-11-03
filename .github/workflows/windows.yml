@@ -111,10 +111,23 @@ jobs:
       - uses: ./.github/actions/setup-windows-rust
         if: steps.suite.outputs.needs_rust == 'true'
       - name: Run application suite
+        if: matrix.suite != 'core-client'
         run: >-
           vp exec tsx scripts/ci/run-timed.ts
           --name app-${{ matrix.suite }}
           -- vp run test:${{ matrix.suite }}
+      - name: Run ordinary Core-client suite
+        if: matrix.suite == 'core-client'
+        run: >-
+          vp exec tsx scripts/ci/run-timed.ts
+          --name app-core-client
+          -- vp run test:core-client --exclude src/main/core-client/canvas-recovery-bytes.node.test.ts
+      - name: Test large Canvas binary recovery
+        if: matrix.suite == 'core-client'
+        run: >-
+          vp exec tsx scripts/ci/run-timed.ts
+          --name app-core-client-canvas-recovery
+          -- vp run test:core-client src/main/core-client/canvas-recovery-bytes.node.test.ts --maxWorkers=1
       - name: Upload application diagnostics
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
