@@ -65,6 +65,22 @@ const {
         preference.addEventListener("change", applyTheme);
       })();
     </script>
+    <script is:inline>
+      (() => {
+        // Download actions follow the visitor's OS; macOS stays the default without a match.
+        const agent = navigator.userAgentData;
+        const platform = agent?.platform || navigator.platform || navigator.userAgent;
+        if (!/^win|windows/iu.test(platform)) return;
+        const root = document.documentElement;
+        root.dataset.os = "windows";
+        agent
+          ?.getHighEntropyValues?.(["architecture"])
+          .then(({ architecture }) => {
+            if (architecture === "arm") root.dataset.arch = "arm64";
+          })
+          .catch(() => {});
+      })();
+    </script>
   </head>
   <body class="min-h-screen bg-page font-sans text-ink antialiased">
     <slot />

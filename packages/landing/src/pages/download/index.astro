@@ -1,0 +1,103 @@
+---
+import BrewCommand from "../../components/BrewCommand.astro";
+import PlatformIcon from "../../components/PlatformIcon.astro";
+import SiteFooter from "../../components/SiteFooter.astro";
+import SiteNav from "../../components/SiteNav.astro";
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import { CHANGELOG_URL, DOWNLOADS, RELEASES_URL, VERSION_LABEL, WINDOWS_AVAILABLE } from "../../lib/site";
+
+const button =
+  "inline-flex h-11 items-center justify-center gap-2 rounded-full px-5 text-[15px] font-medium transition-transform hover:scale-[1.02] active:scale-[0.98]";
+const filled = "bg-ink text-page";
+const outlined = "border border-line bg-raised/60 text-ink";
+const card = "flex min-w-0 flex-col gap-6 rounded-2xl border border-line bg-raised/40 p-6 sm:p-8";
+const note = "text-[13px] leading-relaxed text-pretty text-ink-3";
+const link = "underline decoration-ink-3/40 underline-offset-[3px] hover:text-ink";
+---
+
+<BaseLayout
+  title="Download | Nodex"
+  ogTitle="Download Nodex"
+  description="Download Nodex for macOS on Apple silicon or Windows 11 on x64 and Arm."
+>
+  <SiteNav />
+  <main class="mx-auto max-w-[1000px] px-6 py-16 sm:py-24">
+    <header class="flex flex-col gap-4">
+      <h1 class="text-[40px] leading-[1.04] font-semibold tracking-[-0.045em] sm:text-[52px]">Download Nodex</h1>
+      <p class="max-w-[560px] text-[17px] leading-relaxed text-ink-2">
+        Free and open source. Nodex keeps itself up to date after you install it.
+      </p>
+      <p class="font-mono text-[12px] tracking-wide text-ink-3">
+        <span class="landing-version-label">{VERSION_LABEL}</span> beta ·{" "}
+        <a href={CHANGELOG_URL} class={link}>What's new</a>
+      </p>
+    </header>
+
+    <div class="mt-12 grid gap-4 md:grid-cols-2">
+      <section class={card} aria-labelledby="download-macos">
+        <div class="flex items-center gap-3">
+          <PlatformIcon platform="macos" class="size-6" />
+          <div>
+            <h2 id="download-macos" class="text-[19px] font-semibold tracking-[-0.02em]">macOS</h2>
+            <p class="font-mono text-[12px] tracking-wide text-ink-3">macOS 15+ · Apple silicon</p>
+          </div>
+        </div>
+        <div class="flex flex-col items-start gap-3">
+          <a href={DOWNLOADS.macos} data-download="macos" class:list={[button, filled]}>Download for Apple silicon</a>
+          <BrewCommand />
+        </div>
+        <p class:list={[note, "mt-auto"]}>Open the disk image and drag Nodex to Applications.</p>
+      </section>
+
+      <section class={card} aria-labelledby="download-windows">
+        <div class="flex items-center gap-3">
+          <PlatformIcon platform="windows" class="size-[22px]" />
+          <div>
+            <h2 id="download-windows" class="text-[19px] font-semibold tracking-[-0.02em]">Windows</h2>
+            <p class="font-mono text-[12px] tracking-wide text-ink-3">Windows 11 · x64 & Arm</p>
+          </div>
+        </div>
+        {
+          WINDOWS_AVAILABLE ? (
+            <>
+              <div class="flex flex-wrap gap-3">
+                <a
+                  href={DOWNLOADS["windows-x64"]}
+                  data-download="windows-x64"
+                  class:list={[button, filled, "arm:border arm:border-line arm:bg-raised/60 arm:text-ink"]}
+                >
+                  Download for x64
+                </a>
+                <a
+                  href={DOWNLOADS["windows-arm64"]}
+                  data-download="windows-arm64"
+                  class:list={[button, outlined, "arm:border-transparent arm:bg-ink arm:text-page"]}
+                >
+                  Download for Arm
+                </a>
+              </div>
+              <p class:list={[note, "mt-auto"]}>
+                Installs for your account without administrator rights. Nodex isn't code-signed yet: if
+                SmartScreen appears, choose More info, then Run anyway.
+              </p>
+            </>
+          ) : (
+            <p class:list={[note, "mt-auto"]}>
+              Arrives with the next release. Until then, nightly builds for x64 and Arm are on{" "}
+              <a href={RELEASES_URL} class={link}>GitHub Releases</a>.
+            </p>
+          )
+        }
+      </section>
+    </div>
+
+    <p class="mt-8 text-[14px] text-ink-3">
+      Nightly builds and every earlier release are on <a href={RELEASES_URL} class={link}>GitHub Releases</a>.
+    </p>
+  </main>
+  <SiteFooter />
+</BaseLayout>
+
+<script>
+  import "../../download-cta";
+</script>

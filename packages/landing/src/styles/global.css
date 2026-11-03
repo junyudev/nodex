@@ -2,6 +2,8 @@
 @import "./theme.css";
 
 @custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+@custom-variant windows (&:where([data-os=windows], [data-os=windows] *));
+@custom-variant arm (&:where([data-arch=arm64], [data-arch=arm64] *));
 
 @font-face {
   font-family: "Geist";

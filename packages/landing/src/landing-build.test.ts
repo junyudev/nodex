@@ -5,6 +5,7 @@ import { promisify } from "node:util";
 import { parse } from "node-html-parser";
 import { vitePlusCommand } from "../../../scripts/vite-plus-command";
 import { afterAll, beforeAll, expect, test } from "vite-plus/test";
+import { windowsDownloadsAvailable } from "./lib/site";
 
 const landingRoot = resolve(import.meta.dirname, "..");
 const generated = resolve(landingRoot, "../../.generated");
@@ -43,6 +44,7 @@ test("the static build emits each public page with its canonical URL", () => {
   for (const [route, heading] of [
     ["", "One inbox. Every agent. All local."],
     ["changelog", "Changelog"],
+    ["download", "Download Nodex"],
     ["privacy", "Privacy"],
     ["terms", "Terms"],
   ]) {
@@ -66,25 +68,46 @@ test("the release stamp equals the root app version", () => {
   );
 });
 
+const RELEASE_ALIASES = {
+  macos: "https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-arm64.dmg",
+  "windows-x64":
+    "https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-windows-x64.exe",
+  "windows-arm64":
+    "https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-windows-arm64.exe",
+} as const;
+
 test("downloads and the copy control use the public install contracts", () => {
-  const page = readPage("");
+  const { version } = JSON.parse(
+    readFileSync(resolve(landingRoot, "../../package.json"), "utf8"),
+  ) as { version: string };
+  const offered = windowsDownloadsAvailable(version) ? Object.keys(RELEASE_ALIASES) : ["macos"];
 
-  const downloads = page.querySelectorAll("a[data-download]");
-  const copies = page.querySelectorAll(".landing-brew-copy");
+  for (const route of ["", "download"]) {
+    const page = readPage(route);
+    const downloads = page.querySelectorAll("a[data-download]");
+    const targets = new Set(downloads.map((link) => link.getAttribute("data-download")));
 
-  expect(downloads.length).toBeGreaterThan(0);
-  for (const link of downloads) {
-    expect(link.getAttribute("href")).toBe(
-      "https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-arm64.dmg",
-    );
+    expect(targets).toEqual(new Set(offered));
+    for (const link of downloads) {
+      const target = link.getAttribute("data-download") as keyof typeof RELEASE_ALIASES;
+      expect(link.getAttribute("href")).toBe(RELEASE_ALIASES[target]);
+    }
+    const copies = page.querySelectorAll(".landing-brew-copy");
+    expect(copies.length).toBeGreaterThan(0);
+    for (const copy of copies) {
+      expect(copy.getAttribute("data-command")).toBe("brew install --cask junyudev/tap/nodex");
+      expect(copy.parentNode?.querySelector("code")?.textContent).toBe(
+        "brew install --cask junyudev/tap/nodex",
+      );
+    }
   }
-  expect(copies.length).toBeGreaterThan(0);
-  for (const copy of copies) {
-    expect(copy.getAttribute("data-command")).toBe("brew install --cask junyudev/tap/nodex");
-    expect(copy.parentNode?.querySelector("code")?.textContent).toBe(
-      "brew install --cask junyudev/tap/nodex",
-    );
-  }
+  const navigation = readPage("").querySelector('nav[aria-label="Primary"]');
+  expect(
+    navigation
+      ?.querySelectorAll("a")
+      .find((link) => link.textContent.trim() === "Download")
+      ?.getAttribute("href"),
+  ).toBe("/download/");
 });
 
 test("demo capture pages stay out of search results", () => {
