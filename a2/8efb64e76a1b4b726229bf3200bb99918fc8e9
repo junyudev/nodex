@@ -1,0 +1,31 @@
+crates/nodex-core/src/workspace/coordinator.rs
+  s_29907368595897::t_e9481063f77861 220,390-439
+crates/nodex-core/src/workspace/coordinator_tests.rs
+  s_29907368595897::t_255f77301687ff 294-372
+src/shared/nodex-app-tools/work-schema.ts
+  s_3c78b55e9bba7c::t_ce43fbf76794ec 19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a28efb64e76a1b4b726229bf3200bb99918fc8e9",
+  "prompts": {},
+  "sessions": {
+    "s_29907368595897": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a093-2f87-73c0-996f-f0ba5643e76c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_3c78b55e9bba7c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a093-03da-70d3-b195-c06ec5f72ce9",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
