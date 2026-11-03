@@ -61,6 +61,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Core no longer reports an already completed write as timed out after a scheduling delay. Completed results also keep their original outcome if cancellation arrives before the caller resumes.
 - Agents can use the in-app Browser when you start Nodex from inside another desktop app, such as from its terminal, or when that app shares your Codex settings. Browser actions used to fail with "native pipe path unavailable" because they tried to reach the other app's private services; Nodex now ignores what that app leaves behind and keeps its Browser on its own.
 - Hovering an Agent's reply now shows when it arrived. Claude Code, Codex, OpenCode and ACP chats keep each reply's time, and it stays the same after you reopen a chat or restart Nodex.
 - Automatic snapshots now keep their schedule when you restart Nodex often. The next one is due one interval after your newest snapshot, Nodex takes an overdue one shortly after it starts, and a failed attempt is retried sooner instead of waiting a full interval.
