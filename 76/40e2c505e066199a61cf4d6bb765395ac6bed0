@@ -42,6 +42,7 @@ src/renderer/lib/use-workbench-chrome-commands.ts
   s_948a11dee36c5f::t_289c81df414307 1,130-131,139-153,229-245,247-248,331-347,349-350
 src/renderer/lib/use-workbench-panel-openers.ts
   s_948a11dee36c5f::t_3e7a2c3bb7bf02 1,123-131,365-371,475-485,563-593,595,597-598,600-601,612-653,655-656,696-699,701-709,711,714-776,818,857,916-922,1015-1016,1020-1021,1023-1032,1034-1098,1329-1333,1342-1343,1437-1445,1450-1451,1563-1564
+  s_5cec66ce245092::t_2adf8bd665014e 594,602-610,654,713,803-806,1033
 src/renderer/lib/use-workbench-session-catalog.ts
   s_948a11dee36c5f::t_4146f22ee1cf19 1,376-406
 src/renderer/lib/use-workbench-session-commands.ts
@@ -59,6 +60,14 @@ src/renderer/lib/workbench-new-tab-port.tsx
   "base_commit_sha": "7640e2c505e066199a61cf4d6bb765395ac6bed0",
   "prompts": {},
   "sessions": {
+    "s_5cec66ce245092": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d35af60e-664c-450c-a6fb-09ff7e66af9e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
     "s_7713c656a14496": {
       "agent_id": {
         "tool": "codex",
