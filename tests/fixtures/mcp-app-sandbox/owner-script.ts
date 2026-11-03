@@ -9,13 +9,17 @@ interface PingReply {
 }
 
 interface FixtureOwnerWindow extends Window {
+  fixtureState: { handshake: boolean; portCount: number };
   pingFixturePorts(): Promise<PingReply[]>;
+  whenFixturePortsReady(): Promise<void>;
   moveFixtureFrame(target: string): void;
   removeFixtureFrame(): void;
 }
 
 const owner = window as unknown as FixtureOwnerWindow;
 const ports: MessagePort[] = [];
+const { promise: portsReady, resolve: markPortsReady } = Promise.withResolvers<void>();
+owner.whenFixturePortsReady = () => portsReady;
 const pending = new Map<
   number,
   { resolve(reply: PingReply): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> }
@@ -39,6 +43,10 @@ window.addEventListener("message", (event: MessageEvent<unknown>) => {
     };
     port.start();
   }
+  owner.fixtureState.handshake = true;
+  owner.fixtureState.portCount = ports.length;
+  document.getElementById("status")?.replaceChildren("ready");
+  markPortsReady();
 });
 owner.pingFixturePorts = () =>
   Promise.all(

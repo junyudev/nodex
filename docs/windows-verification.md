@@ -41,6 +41,8 @@ pagination must retain every Session exactly once even when timestamps tie. Rend
 recovery tests await the mount-triggered IndexedDB refresh inside `act` before checking
 preview state. Native ConPTY tests send input after PID publication, accumulate output
 across arbitrary chunks, and use the built-in command shell without profile startup.
+The MCP sandbox integration fixture reports native attachment and validated port readiness
+explicitly; its assertions await those events within the existing test deadline.
 
 Windows temporary executable cleanup follows asserted child close and process absence.
 The cleanup operation permits bounded filesystem backoff for pending NTFS handle release;
