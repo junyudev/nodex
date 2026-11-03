@@ -1,0 +1,24 @@
+src/main/windows-app-updater.ts
+  s_3022e59a160914::t_e0abc195c36cfc 6-7,193
+src/main/electron-update-fetch.ts
+  s_3022e59a160914::t_e0abc195c36cfc 1-53
+src/main/electron-update-fetch.integration.ts
+  s_3022e59a160914::t_1480f45f209dbf 1-60,62-70
+  s_3022e59a160914::t_a420ae8f00dfa8 61
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1c4b28e7a49b4dd1d27bce90d116afe3e0b552c9",
+  "prompts": {},
+  "sessions": {
+    "s_3022e59a160914": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1def126e-fd62-476f-9393-67b0835f01b6",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
