@@ -1,0 +1,35 @@
+src/main/host-runtime/DictationRuntime.test.ts
+  s_6c9891f66c664a::t_ab3eb8c5166501 1-231
+src/main/host-runtime/DictationRuntime.ts
+  s_6c9891f66c664a::t_ab3eb8c5166501 237-240
+src/main/dictation/windows-dictation-native-helper-client.test.ts
+  s_6c9891f66c664a::t_ab3eb8c5166501 1,41-43,67-68,72-76,85-86,119-121,177,216,229-235,247,252-439
+  s_6c9891f66c664a::t_4d7621b5e7859f 440
+src/main/dictation/windows-dictation-native-helper-client.ts
+  s_6c9891f66c664a::t_32ab0f0256490e 286
+  s_6c9891f66c664a::t_ab3eb8c5166501 121,142-143,175-181,193-199,230-248,265-266,275-285,289-306,308-313,318,416-444,446-448,450,453-477,483,485-486,489-536,544
+docs/product-specs/dictation-behavior.md
+  s_6c9891f66c664a::t_ab3eb8c5166501 111
+src/main/platform/electron/WindowsDictationNative.test.ts
+  s_6c9891f66c664a::t_ab3eb8c5166501 2,6-7,16-19,42,122,131,135-136,139,145-146,148-223
+src/main/platform/electron/WindowsDictationNative.ts
+  s_6c9891f66c664a::t_ab3eb8c5166501 1,133-134,136-140,146-150,159-172,178,180-189
+src/main/dictation/dictation-release.test-fixtures.ts
+  s_6c9891f66c664a::t_ab3eb8c5166501 1-10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "144e40ab506f75e00820c87184408cbec58f8536",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
