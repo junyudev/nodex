@@ -1,0 +1,72 @@
+packages/agent-runtime/src/orchestration-v2/Orchestrator.ts
+  s_212ba7e4b2c3e8::t_f5c806a2e127a0 637-648,650-652,1132,1138-1144,2271,2297,5718,5720-5732,8033-8037,11557-11562,11894-11917,11919-11936,11938-11999,12163,12165-12174,12189-12193,12268-12292,12527-12532,12536,12541-12542,12544-12545,12558-12560,12619,12636,12658,12792,12998-12999,13039-13041,13266-13268
+  s_212ba7e4b2c3e8::t_8f7eee668b83ee 12557
+  s_212ba7e4b2c3e8::t_e0c3786fe5f04b 629-636,649,653
+  s_212ba7e4b2c3e8::t_12e00ad37119a8 2275,2285,2290,5673-5675,5717,5733-5736,11494,11587,11592
+  s_212ba7e4b2c3e8::t_1200243ca5729d 13525-13526
+  s_212ba7e4b2c3e8::t_9ef030d841140b 12132,12136-12137,12164,12458,12488,12490-12491,12509,12543
+  s_212ba7e4b2c3e8::t_0e0107a8b2c1a7 12194,12487,12518-12526,12533-12535,12537-12540,12546,12582,12585,12603
+  s_212ba7e4b2c3e8::t_ead2f6a0a3fc51 12133-12135,12476-12479,12492-12493,12510-12517
+  s_212ba7e4b2c3e8::t_57ddaedbe17614 12547
+packages/agent-runtime/src/orchestration-v2/DelegatedResultReceipt.ts
+  s_212ba7e4b2c3e8::t_3de32fa5979cd9 10,45-46,52,67,77,82,84,94
+  s_212ba7e4b2c3e8::t_c1dd79ae4a1185 95,106-135
+  s_212ba7e4b2c3e8::t_30f434d9a3a91b 39-41,85-93,97-99,103-105,137,140-163
+packages/agent-runtime/src/orchestration-v2/ProviderContinuationService.ts
+  s_212ba7e4b2c3e8::t_e0c3786fe5f04b 128-129
+packages/agent-runtime/src/orchestration-v2/ProviderEventIngestor.ts
+  s_212ba7e4b2c3e8::t_3de32fa5979cd9 710,721
+packages/agent-runtime/src/orchestration-v2/SteeringCompletion.integration.test.ts
+  s_212ba7e4b2c3e8::t_0b7f7f5caf70b3 267-274,386-429,431-432
+  s_212ba7e4b2c3e8::t_3ddd900947a3db 357-358
+  s_212ba7e4b2c3e8::t_6cead155a5fe07 275-283,352,430
+packages/agent-runtime/src/orchestration-v2/DelegatedCompletionDelivery.test.ts
+  s_212ba7e4b2c3e8::t_0b7f7f5caf70b3 363,470,671-674,678-956,960-985,987-1044,1047-1097,2471,2530-2532,2539-2541,2543,2548-2549,2559-2560,2562-2572,2577-2584,2596,2609-2637,2680,2684,2695-2697,2702,2704-2737,2746,2795,2804,2806-2819,2937-2951,2979-2980,2993,2998-3002,3005-3006,3051,3078
+  s_212ba7e4b2c3e8::t_0e2db48cb4d973 20,957-959,986,1045-1046,2856,2861,2876,2936,2952-2956,2958-2978,2981-2992,2994-2997,3003-3004,3007-3009,3016-3021,3028
+docs/product-specs/agent-runtime-behavior.md
+  s_212ba7e4b2c3e8::t_c4620031977eba 890-897,899-914
+packages/agent-runtime/src/mcp/toolkits/task/tools.ts
+  s_212ba7e4b2c3e8::t_6b0b6ba274999b 260,274
+packages/agent-runtime/src/nodex/Instructions.ts
+  s_212ba7e4b2c3e8::t_a37838b2a5d96a 13
+packages/agent-runtime/src/orchestration-v2/EventSink.ts
+  s_212ba7e4b2c3e8::t_4b896091dadcbe 87,136,475-497,521-524,527-528,698-703
+packages/agent-runtime/src/orchestration-v2/ProviderContinuationService.test.ts
+  s_212ba7e4b2c3e8::t_fc99ddc020b2dd 286
+packages/agent-runtime/vendor/contracts/src/orchestrationV2.ts
+  s_cb3e022ee09d1e::t_56e0fa430526c1 1397-1400
+CHANGELOG.md
+  s_5cec66ce245092::t_5994fe06fdc38f 58,94
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2c1cad53ff90bf7738b54b5a7eb8dbfbdae8f426",
+  "prompts": {},
+  "sessions": {
+    "s_212ba7e4b2c3e8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19f10-c66f-79f3-90e4-19490217b65d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_5cec66ce245092": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d35af60e-664c-450c-a6fb-09ff7e66af9e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_cb3e022ee09d1e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19f10-83da-79e1-8002-21edccb7e7aa",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
