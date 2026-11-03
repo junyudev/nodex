@@ -1,0 +1,74 @@
+{
+  "source": "2e51b8a5af6e14bd0ec24760546b447e633fbff3",
+  "run": 41443679203,
+  "job": 125271453213,
+  "collectedFiles": 464,
+  "collectedCases": 3410,
+  "skippedCases": 40,
+  "failedCases": [
+    {
+      "file": "src/main/core-client/agent-eval-cases.node.test.ts",
+      "name": "exact-edit oracle accepts a semantic patch and rejects false completion, collateral edits, and extra Pages"
+    },
+    {
+      "file": "src/main/core-client/agent-eval-cases.node.test.ts",
+      "name": "exact-edit oracle rejects a body-equivalent wholesale replacement that recreates Blocks"
+    },
+    {
+      "file": "src/main/core-client/block-promotion-history-scenario.node.test.ts",
+      "name": "move promotion into data_source round-trips a whole rich forest with a wrapped root"
+    },
+    {
+      "file": "src/main/core-client/block-promotion-history-scenario.node.test.ts",
+      "name": "clipboard File export crosses the byte transport after Cut and keeps exact capture retries"
+    },
+    {
+      "file": "src/main/core-client/block-promotion-history-scenario.node.test.ts",
+      "name": "nested body-only File promotion can be undone after removing its Page"
+    },
+    {
+      "file": "src/main/core-client/core-launcher.node.test.ts",
+      "name": "native Core launcher > starts packaged Core using its logical manifest identity"
+    },
+    {
+      "file": "src/main/core-client/editor-history-scenario.node.test.ts",
+      "name": "project text history survives real Core cut and restoration"
+    },
+    {
+      "file": "src/main/core-client/editor-history-scenario.node.test.ts",
+      "name": "library text history survives real Core cut and restoration"
+    },
+    {
+      "file": "src/main/core-client/editor-history-scenario.node.test.ts",
+      "name": "project format history survives real Core cut and restoration"
+    },
+    {
+      "file": "src/main/core-client/editor-history-scenario.node.test.ts",
+      "name": "library format history survives real Core cut and restoration"
+    },
+    {
+      "file": "src/main/core-client/editor-history-scenario.node.test.ts",
+      "name": "project property history survives real Core cut and restoration"
+    },
+    {
+      "file": "src/main/core-client/editor-history-scenario.node.test.ts",
+      "name": "library property history survives real Core cut and restoration"
+    },
+    {
+      "file": "src/main/codex-application/CodexThreadTargets.core-scenario.node.test.ts",
+      "name": "explicit target IPC crosses the real Main/Core transaction with readonly and race guarantees"
+    },
+    {
+      "file": "src/main/codex-application/CodexVisualizationState.node.test.ts",
+      "name": "isolates display host/Thread/file and reloads confirmed state with a fresh Main owner"
+    },
+    {
+      "file": "src/main/codex-application/CodexVisualizationState.node.test.ts",
+      "name": "merges interleaved widget, client identity, and renderer atom writes in one cache and revision"
+    },
+    {
+      "file": "src/main/platform/node/NodexCliBootstrap.node.test.ts",
+      "name": "Nodex per-Turn CLI connection > plain nodex refreshes task routing and checks Profile identity from unrelated directories"
+    }
+  ]
+}

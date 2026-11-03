@@ -1,5 +1,6 @@
 param(
-  [Parameter(Mandatory)][string]$OutputDirectory
+  [Parameter(Mandatory)][string]$OutputDirectory,
+  [ValidateSet('core-io', 'core-full')][string]$Mode = 'core-io'
 )
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
@@ -15,6 +16,11 @@ $files = @(
   'src/main/codex-application/CodexVisualizationState.node.test.ts'
   'src/main/platform/node/NodexCliBootstrap.node.test.ts'
 )
+$fullSuite = $Mode -eq 'core-full'
+$baseline = Get-Content -LiteralPath (Join-Path $PSScriptRoot '../fixtures/windows-core-baseline-2e51.json') -Raw | ConvertFrom-Json
+$expectedFiles = $(if ($fullSuite) { $baseline.collectedFiles } else { 7 })
+$expectedCases = $(if ($fullSuite) { $baseline.collectedCases } else { 79 })
+$expectedSkipped = $(if ($fullSuite) { $baseline.skippedCases } else { 4 })
 # Both worker configurations receive a discarded warmup before the symmetric measurement block.
 $rounds = @(
   @{ Name = 'warmup-4'; Workers = 4; Measured = $false }
@@ -24,6 +30,10 @@ $rounds = @(
   @{ Name = 'B2-1'; Workers = 1; Measured = $true }
   @{ Name = 'A2-4'; Workers = 4; Measured = $true }
 )
+if ($fullSuite) {
+  # One complete cold selection, with the existing four-worker config and no CLI override.
+  $rounds = @(@{ Name = 'full'; Workers = 4; Measured = $true })
+}
 $head = (& git rev-parse HEAD).Trim()
 if ($LASTEXITCODE -ne 0) { throw 'Cannot identify probe source.' }
 $tree = (& git rev-parse 'HEAD^{tree}').Trim()
@@ -31,12 +41,15 @@ if ($LASTEXITCODE -ne 0) { throw 'Cannot identify probe source tree.' }
 $manifest = [ordered]@{
   source = $head
   tree = $tree
-  files = $files
-  expectedCollectedFiles = 7
-  expectedCollectedCases = 79
-  existingWindowsSkippedCases = 4
-  measuredOrder = @(4, 1, 1, 4)
-  warmupOrder = @(4, 1)
+  mode = $Mode
+  baseline = $baseline
+  focusedFiles = $(if ($fullSuite) { @() } else { $files })
+  expectedCollectedFiles = $expectedFiles
+  expectedCollectedCases = $expectedCases
+  existingWindowsSkippedCases = $expectedSkipped
+  measuredOrder = @($rounds | Where-Object { $_.Measured } | ForEach-Object { $_.Workers })
+  warmupOrder = @($rounds | Where-Object { -not $_.Measured } | ForEach-Object { $_.Workers })
+  diagnosticOnly = $true
   timeLimitsChanged = $false
   assertionsRemoved = $false
 }
@@ -70,7 +83,8 @@ try {
     $started = [DateTime]::UtcNow
     $clock = [Diagnostics.Stopwatch]::StartNew()
     # No standalone --, no test/hook timeout flags, no skipped assertions, no task-cache replay.
-    & vp run --no-cache test:core-client @files "--maxWorkers=$($round.Workers)" 2>&1 | Tee-Object -FilePath (Join-Path $roundDirectory 'tests.log')
+    $selection = $(if ($fullSuite) { @() } else { @($files) + "--maxWorkers=$($round.Workers)" })
+    & vp run --no-cache test:core-client @selection 2>&1 | Tee-Object -FilePath (Join-Path $roundDirectory 'tests.log')
     $actualExit = $LASTEXITCODE
     $clock.Stop()
     $exitCodes += $actualExit
@@ -84,7 +98,15 @@ try {
       $inventory.collectedCases = $report.summary.passed + $report.summary.failed + $report.summary.skipped + $report.summary.pending
       $inventory.skippedCases = $report.summary.skipped
       $inventory.runtime = $report.runtime
-      $inventory.valid = $inventory.collectedFiles -eq 7 -and $inventory.collectedCases -eq 79 -and $inventory.skippedCases -eq 4 -and $report.runtime -eq 'node' -and @(Compare-Object $files $actualFiles).Count -eq 0
+      $inventory.unhandledErrors = $report.unhandledErrors
+      $inventory.reactActWarnings = @($report.reactActWarnings).Count
+      $inventory.originalFailedCases = @($baseline.failedCases | ForEach-Object {
+        $original = $_
+        $caseMatches = @($report.files | Where-Object { $_.path.Replace('\', '/') -eq $original.file } | ForEach-Object { $_.tests } | Where-Object { $_.name -eq $original.name })
+        [ordered]@{ file = $original.file; name = $original.name; occurrences = $caseMatches.Count; state = $(if ($caseMatches.Count -eq 1) { $caseMatches[0].state } else { 'missing-or-duplicate' }) }
+      })
+      $selectionValid = $(if ($fullSuite) { @($inventory.originalFailedCases | Where-Object { $_.occurrences -ne 1 }).Count -eq 0 } else { @(Compare-Object $files $actualFiles).Count -eq 0 })
+      $inventory.valid = $inventory.collectedFiles -eq $expectedFiles -and $inventory.collectedCases -eq $expectedCases -and $inventory.skippedCases -eq $expectedSkipped -and $report.runtime -eq 'node' -and $selectionValid
     } catch {
       $inventory.errorType = $_.Exception.GetType().Name
     }

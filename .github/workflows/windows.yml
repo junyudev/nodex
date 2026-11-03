@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       probe:
-        description: Native release or independent Core I/O comparison
+        description: Native release, paired Core I/O, or one complete Core suite
         type: choice
-        options: [native-release, core-io]
+        options: [native-release, core-io, core-full]
         default: native-release
 
 permissions:
@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   native-release:
-    if: inputs.probe != 'core-io'
+    if: inputs.probe == 'native-release'
     name: native release ${{ matrix.arch }}
     timeout-minutes: 30
     strategy:
@@ -52,14 +52,15 @@ jobs:
           retention-days: 14
 
   core-io:
-    if: inputs.probe == 'core-io'
-    name: Core I/O x64
+    if: inputs.probe == 'core-io' || inputs.probe == 'core-full'
+    name: ${{ inputs.probe == 'core-full' && 'Complete Core I/O x64' || 'Core I/O x64' }}
     runs-on: windows-latest
     timeout-minutes: 90
     env:
       CI_SOURCE_SHA: ${{ github.sha }}
       CI_TIMING_JOB: windows-core-io-x64
       CARGO_INCREMENTAL: "0"
+      NODEX_CORE_PROBE_MODE: ${{ inputs.probe }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -85,14 +86,14 @@ jobs:
         run: |
           & vp run typecheck 2>&1 | Tee-Object -FilePath .generated/core-io-probe/semantic.log
           exit $LASTEXITCODE
-      - name: Compare the unchanged Core cases on one VM
+      - name: Observe the unchanged Core selection on one VM
         shell: pwsh
-        run: ./scripts/ci/windows-core-abba.ps1 -OutputDirectory .generated/core-io-probe
+        run: ./scripts/ci/windows-core-abba.ps1 -OutputDirectory .generated/core-io-probe -Mode $env:NODEX_CORE_PROBE_MODE
       - name: Upload the complete paired observations
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: core-io-probe-x64-${{ github.sha }}
+          name: ${{ inputs.probe }}-probe-x64-${{ github.sha }}
           path: .generated/core-io-probe/
           include-hidden-files: true
           if-no-files-found: error
