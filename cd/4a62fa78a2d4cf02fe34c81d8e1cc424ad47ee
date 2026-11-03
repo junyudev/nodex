@@ -1,0 +1,30 @@
+tests/e2e/support/page-files.ts
+  s_b82fd08045bf0d::t_a869f674ef924b 1-9,11-27
+  s_b82fd08045bf0d::t_755ebc0e4f8a15 10
+tests/e2e/page-files.spec.ts
+  s_b82fd08045bf0d::t_1659e7e56d0fb4 2,95-96,124,324,327-336,340-341,343-346,349-351
+  s_b82fd08045bf0d::t_c7bba04c610eca 97
+  s_b82fd08045bf0d::t_5c38f3e0f40467 326,337-339,347-348
+tests/e2e/library-files.spec.ts
+  s_b82fd08045bf0d::t_a869f674ef924b 2,77-78
+tests/e2e/workbench-shell-navigation.spec.ts
+  s_b82fd08045bf0d::t_a869f674ef924b 650-652
+tests/e2e/electron-smoke.spec.ts
+  s_b82fd08045bf0d::t_599fd55f39dd26 1,3864,3906,3937,4158-4160
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "cd4a62fa78a2d4cf02fe34c81d8e1cc424ad47ee",
+  "prompts": {},
+  "sessions": {
+    "s_b82fd08045bf0d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a158-15e1-7112-b108-836fc4a3e5b1",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
