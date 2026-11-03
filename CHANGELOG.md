@@ -6,6 +6,14 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+### Changed
+
+### Fixed
+
+## [0.5.1] - 2026-11-04
+
+### Added
+
 - Nodex runs on Windows 11, on both x64 and Arm PCs. Download the installer from nodex.jyu.app: it installs for your account without administrator rights, and Nodex keeps itself up to date from Stable or Nightly as it does on macOS. Choose PowerShell, Command Prompt or Git Bash for new terminals in General settings.
 - Nodex stays available in the Windows notification area when you close its last window, so chats and scheduled tasks keep running. Open Nodex, start a new chat or return to a recent chat from the tray. Nodex starts quietly at login; manage this in Windows Startup Apps from General settings.
 - Codex sets up its Windows sandbox once before working in Ask for approval or Approve for me. The notice beside the composer offers Set up, which asks for administrator approval, and setup without it if that doesn't work; Full access needs no setup.
@@ -149,6 +157,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Dark mode uses darker surfaces and brighter text for clearer contrast. Code blocks and tool output use the same dark palette when the rest of the app is in light mode.
 - Model menus set effort on one slider and offer Fast and Ultracode controls when the selected Agent supports them. Tooltips explain each mode, the model button shows active modes, and scheduled tasks choose their Agent and model separately.
 - New Pages, Databases, Canvases and copies appear at the top of Space Content instead of after everything else, so they stay visible without Show more.
 - Finished Claude Code, OpenCode and other Agent replies read like Codex ones: each Turn's work folds under `Worked for <time>`, leaving your prompt and the complete reply in view.
@@ -171,6 +180,8 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Workbench windows on Windows group under the Nodex taskbar icon.
+- Windows can download updates when GitHub redirects the installer download.
 - Stop now ends the background shells and monitors a Claude Code chat leaves running, instead of doing nothing, and Codex chats can stop a single background terminal. Every chat's summary lists its background work by name, with how long each task has run and its latest output, and stops one or all of them, in place of the composer's "Waiting for background tasks" line and terminal card. Stopping a delegated task also works when it is between replies, and restarting Nodex no longer adds an empty "Background activity updated" turn to chats whose background work it ended.
 - Finishing or cancelling a CLI command no longer closes Nodex and interrupts active chats. Desktop recovers interrupted Core connections without repeating chat dispatches, and fatal errors retain private diagnostic records with a readable incident reference.
 - Claude Code chats can keep their working directory while switching between a Project's Sources. Source changes and moves to another Project apply before the next message without interrupting background work.
