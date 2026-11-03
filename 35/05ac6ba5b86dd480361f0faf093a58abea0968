@@ -1,0 +1,19 @@
+src/renderer/features/document-recovery/recovery-review.test.tsx
+  s_098df3235fa721::t_cde65502808436 102,104-106,209,213-215
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3505ac6ba5b86dd480361f0faf093a58abea0968",
+  "prompts": {},
+  "sessions": {
+    "s_098df3235fa721": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19eb9-df69-7222-adba-8eb488f30462",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
