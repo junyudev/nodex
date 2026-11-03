@@ -1,0 +1,21 @@
+CHANGELOG.md
+  s_bbde30ff38ad85::t_7932c20fd5325c 87
+src/renderer/components/workbench/workbench-runtime.tsx
+  s_bbde30ff38ad85::t_7932c20fd5325c 1349-1350
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "284ab3c150890859f5e7258ea93eb10582174ce8",
+  "prompts": {},
+  "sessions": {
+    "s_bbde30ff38ad85": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "42d55929-18c0-485c-bbf7-9b9babc597d4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
