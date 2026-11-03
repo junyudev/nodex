@@ -7,6 +7,7 @@ docs/product-specs/workbench-shell.md
   s_bbde30ff38ad85::t_009072689d7aba 271
 src/renderer/components/workbench/use-workbench-panel-projection.tsx
   s_bbde30ff38ad85::t_0c91814d0ce512 58
+  s_bbde30ff38ad85::t_330000057766a5 461-467,475-478
 src/renderer/lib/workbench-panel-tab-model.node.test.ts
   s_bbde30ff38ad85::t_415f044173be99 19,57-75
   s_bbde30ff38ad85::t_ab5a27cb2245b5 76
