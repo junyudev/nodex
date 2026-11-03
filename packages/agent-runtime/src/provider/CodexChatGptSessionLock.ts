@@ -23,7 +23,7 @@ export const withChatGptSessionLock = <A, E, R>(
   return Effect.scoped(
     Effect.gen(function* () {
       const compromised = yield* Deferred.make<never, ProviderSetupError>();
-      const services = yield* Effect.context<never>();
+      const services = yield* Effect.context();
       yield* Effect.acquireRelease(
         Effect.tryPromise({
           try: () =>

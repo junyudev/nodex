@@ -1132,7 +1132,7 @@ function ControlledThreadComposer(
     readonly intelligenceController: ComposerIntelligenceController;
   },
 ) {
-  const { model, actions } = props;
+  const { model } = props;
   const { intelligenceController } = props;
   const { floating: isFloatingComposer, visible: composerVisible } =
     useRightPanelComposerPresentation();

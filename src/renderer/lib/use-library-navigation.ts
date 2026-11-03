@@ -353,7 +353,7 @@ export const useInfiniteLibraryChildren = (
   });
 
 export const useInfiniteLibraryStandaloneRoots = (
-  input: Omit<Parameters<typeof libraryStandaloneRootsQueryOptions>[0], "cursor"> = {},
+  input: Omit<NonNullable<Parameters<typeof libraryStandaloneRootsQueryOptions>[0]>, "cursor"> = {},
   enabled = true,
 ) =>
   useInfiniteQuery({
@@ -462,7 +462,7 @@ export const useLibraryPageRelocationChildren = (
   });
 
 export const useInfiniteLibraryCatalog = (
-  input: Omit<Parameters<typeof libraryCatalogQueryOptions>[0], "cursor"> = {},
+  input: Omit<NonNullable<Parameters<typeof libraryCatalogQueryOptions>[0]>, "cursor"> = {},
   options: { readonly enabled?: boolean } = {},
 ) =>
   useInfiniteQuery({

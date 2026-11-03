@@ -285,7 +285,6 @@ export function useReviewPathDiffs(
   // The comparison and file revisions in the key are the semantic identity.
   // Callback identity is deliberately excluded so parent rerenders cannot
   // restart an otherwise identical initial group.
-  // eslint-disable-next-line @tanstack/query/exhaustive-deps
   const trackedInitialQuery = useQuery<ReviewInitialDiffGroup>({
     queryKey: buildReviewInitialDiffQueryKey({
       comparisonKey,
@@ -303,7 +302,6 @@ export function useReviewPathDiffs(
   });
   // See the tracked group above: the key, not the callback object, owns cache
   // identity for this immutable comparison.
-  // eslint-disable-next-line @tanstack/query/exhaustive-deps
   const untrackedInitialQuery = useQuery<ReviewInitialDiffGroup>({
     queryKey: buildReviewInitialDiffQueryKey({
       comparisonKey,
@@ -344,7 +342,6 @@ export function useReviewPathDiffs(
 
       // Runtime callbacks are read through refs so handler identity does not
       // replace an otherwise identical comparison query.
-      // eslint-disable-next-line @tanstack/query/exhaustive-deps
       return {
         queryKey: snapshot
           ? buildReviewPathDiffQueryKey({ comparisonKey, file })

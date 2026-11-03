@@ -7,10 +7,7 @@ import * as Layer from "effect/Layer";
 import type { ToolFailure } from "../../shared/nodex-agent-tools/base-schemas";
 import { NODEX_APP_TOOL_NAMESPACE } from "../../shared/nodex-agent-tools/identity";
 import type { NodexAgentTurnContext } from "../../shared/nodex-agent-authority";
-import {
-  NodexAgentDynamicToolFailure,
-  type NodexAgentDynamicExecutionContext,
-} from "./NodexAgentDynamicExecutionContext";
+import { NodexAgentDynamicToolFailure } from "./NodexAgentDynamicExecutionContext";
 import { executeNodexAgentV3Tool } from "./NodexAgentDynamicExecution";
 import { NodexAgentApplication } from "./NodexAgentApplication";
 import { DynamicToolRegistryError } from "../codex/dynamic-tool-registry";

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
-import { createCommandKeymapState, resolveRuntimePlatform } from "../../shared/command-keybindings";
+import { createCommandKeymapState } from "../../shared/command-keybindings";
 import { formatToggleFullViewShortcutLabel } from "./workbench-command-shortcuts";
 
 afterEach(() => vi.restoreAllMocks());

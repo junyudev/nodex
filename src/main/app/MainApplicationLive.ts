@@ -1,4 +1,3 @@
-import { resolveCoreExecutable } from "../core-client/core-launcher";
 import { SessionReminderRuntime } from "../host-runtime/SessionReminderRuntime";
 import { live as chatSearchLive } from "../chat-search/ChatSearch";
 import * as Effect from "effect/Effect";

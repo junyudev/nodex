@@ -32,7 +32,6 @@ export function DictationDictionaryDialog({ onClose }: { readonly onClose: () =>
     return () => session.dispose();
   }, [session]);
   // The opaque ID identifies the immutable account-bound session.
-  // eslint-disable-next-line @tanstack/query/exhaustive-deps
   const query = useQuery({
     queryKey: ["dictation-custom-dictionary", session.id],
     queryFn: ({ signal }) => session.read(signal),

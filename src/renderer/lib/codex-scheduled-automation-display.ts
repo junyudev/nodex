@@ -1,4 +1,3 @@
-import type { CodexScheduledAutomation } from "./types";
 import { parseCodexScheduledAutomationRruleFields } from "./codex-scheduled-automation-rrule";
 
 const WEEKDAY_CODES = ["MO", "TU", "WE", "TH", "FR"];

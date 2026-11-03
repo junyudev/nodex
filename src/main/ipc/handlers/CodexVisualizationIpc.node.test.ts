@@ -1,4 +1,3 @@
-/* oxlint-disable effecttsgo/strict-effect-provide -- Each test is the managed entry point for its complete isolated IPC dependency graph. */
 import { it, assert } from "@effect/vitest";
 import { vi } from "vitest";
 import type { IpcMainInvokeEvent, NativeImage, WebContents } from "electron";

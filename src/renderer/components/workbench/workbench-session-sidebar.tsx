@@ -88,8 +88,6 @@ import {
   type SidebarProjectGroupCollapseAction,
 } from "@/lib/sidebar-project-group-collapse-action";
 import type {
-  CodexAccountSnapshot,
-  CodexConnectionState,
   CodexSidebarThreadItem,
   Project,
   ProjectCreateInput,
@@ -103,7 +101,6 @@ import type {
 } from "@/lib/types";
 import type { SessionLinkedPage } from "@/lib/session-linked-page";
 import { CODEX_AGENT_BACKEND_BINDING } from "../../../shared/agent-backend";
-import { useCodexAccountActions } from "@/lib/use-codex-account-actions";
 import { useApplyLibraryOperation } from "@/lib/use-library-navigation";
 import { cn } from "@/lib/utils";
 import {

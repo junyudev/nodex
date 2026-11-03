@@ -1,123 +1,4 @@
 {
-  "packages/agent-runtime/src/config.ts": {
-    "typescript(no-unnecessary-type-arguments)": 1
-  },
-  "packages/agent-runtime/src/git/GitManager.ts": {
-    "typescript(no-unnecessary-type-arguments)": 5
-  },
-  "packages/agent-runtime/src/git/GitWorkflow.ts": {
-    "typescript(no-unnecessary-type-arguments)": 3
-  },
-  "packages/agent-runtime/src/git/GitWorkflowService.ts": {
-    "eslint(no-unused-vars)": 17
-  },
-  "packages/agent-runtime/src/mcp/McpSessionRegistry.ts": {
-    "eslint(no-unused-vars)": 2
-  },
-  "packages/agent-runtime/src/orchestration-v2/RunFinalizationService.ts": {
-    "eslint(no-unused-vars)": 6
-  },
-  "packages/agent-runtime/src/orchestration-v2/WireProjection.ts": {
-    "eslint(no-useless-rename)": 1
-  },
-  "packages/agent-runtime/src/orchestration-v2/legacy/LegacyV1ThreadImporter.ts": {
-    "typescript(no-unnecessary-type-arguments)": 1
-  },
-  "packages/agent-runtime/src/processRunner.ts": {
-    "typescript(no-unnecessary-type-arguments)": 2
-  },
-  "packages/agent-runtime/src/project/ProjectSetupScriptRunner.ts": {
-    "oxlint/unused-disable-directive": 2
-  },
-  "packages/agent-runtime/src/provider/CodexChatGptSessionLock.ts": {
-    "typescript(no-unnecessary-type-arguments)": 1
-  },
-  "packages/agent-runtime/src/pullRequest/PullRequestService.ts": {
-    "typescript(no-unnecessary-type-arguments)": 2
-  },
-  "packages/agent-runtime/src/sourceControl/SourceControlProviderRegistry.ts": {
-    "unicorn(require-module-specifiers)": 1
-  },
-  "packages/agent-runtime/src/terminal/Manager.ts": {
-    "oxlint/unused-disable-directive": 1,
-    "typescript(no-unnecessary-type-arguments)": 7
-  },
-  "packages/agent-runtime/src/vcs/GitVcsDriver.ts": {
-    "typescript(no-unnecessary-type-arguments)": 13
-  },
-  "packages/agent-runtime/src/vcs/GitVcsDriverCore.ts": {
-    "typescript(no-unnecessary-type-arguments)": 2,
-    "unicorn(prefer-string-starts-ends-with)": 1
-  },
-  "packages/agent-runtime/src/vcs/VcsStatusBroadcaster.ts": {
-    "typescript(no-unnecessary-type-arguments)": 5
-  },
-  "src/main/agent-backend/NativeSessionState.node.test.ts": {
-    "typescript(no-non-null-asserted-optional-chain)": 1
-  },
-  "src/main/agent-runtime/AgentRuntimeSessionOrdering.node.test.ts": {
-    "eslint(require-yield)": 1
-  },
-  "src/main/app-tools/AppToolInterpreter.node.test.ts": {
-    "eslint(no-unused-vars)": 2
-  },
-  "src/main/app/MainApplicationLive.ts": {
-    "eslint(no-unused-vars)": 1
-  },
-  "src/main/codex-application/CodexConversationArchive.ts": {
-    "eslint(no-unused-vars)": 1
-  },
-  "src/main/codex-application/CodexHistoryPageAdapter.node.test.ts": {
-    "oxlint/unused-disable-directive": 1
-  },
-  "src/main/codex-application/CodexHistoryTimelineAdapter.node.test.ts": {
-    "oxlint/unused-disable-directive": 1
-  },
-  "src/main/codex-application/CodexVisualizationState.node.test.ts": {
-    "oxlint/unused-disable-directive": 1
-  },
-  "src/main/codex-application/CodexVisualizations.node.test.ts": {
-    "oxlint/unused-disable-directive": 1
-  },
-  "src/main/ipc/handlers/ApplicationBootstrapIpc.ts": {
-    "typescript(no-generated-empty-object-type)": 1
-  },
-  "src/main/ipc/handlers/CodexApplicationIpc.ts": {
-    "eslint(no-unused-vars)": 1
-  },
-  "src/main/ipc/handlers/CodexVisualizationIpc.node.test.ts": {
-    "oxlint/unused-disable-directive": 1
-  },
-  "src/main/ipc/handlers/CodexVisualizationStateIpc.node.test.ts": {
-    "oxlint/unused-disable-directive": 1
-  },
-  "src/main/local-store/ProfilePersistedAtoms.node.test.ts": {
-    "oxlint/unused-disable-directive": 1
-  },
-  "src/main/nodex-agent-application/NodexAgentDynamicExecution.ts": {
-    "eslint(no-unused-vars)": 1
-  },
-  "src/main/nodex-agent-application/NodexAgentDynamicTools.node.test.ts": {
-    "eslint(no-unused-vars)": 1
-  },
-  "src/main/nodex-agent-application/NodexAgentDynamicTools.ts": {
-    "eslint(no-unused-vars)": 1
-  },
-  "src/main/platform/node/NodeVisualizationFiles.node.test.ts": {
-    "oxlint/unused-disable-directive": 1
-  },
-  "src/main/platform/node/NodeVisualizationFiles.ts": {
-    "oxlint/unused-disable-directive": 1
-  },
-  "src/main/platform/node/NodexModelAccessPlatform.node.test.ts": {
-    "eslint(no-unused-vars)": 1
-  },
-  "src/main/platform/node/NodexModelAccessPlatform.ts": {
-    "eslint(no-unmodified-loop-condition)": 1
-  },
-  "src/main/platform/node/TerminalEnvironment.ts": {
-    "eslint(require-yield)": 1
-  },
   "src/renderer/app-providers.test.tsx": {
     "react(exhaustive-effect-dependencies)": 1
   },
@@ -157,9 +38,6 @@
     "react(purity)": 1,
     "react(set-state-in-effect)": 2
   },
-  "src/renderer/components/board/editor/agent-config-chip.tsx": {
-    "eslint(no-unused-vars)": 1
-  },
   "src/renderer/components/board/editor/attachment-preview.ts": {
     "react(exhaustive-effect-dependencies)": 1
   },
@@ -181,15 +59,11 @@
   "src/renderer/components/board/editor/nfm-edit-link-menu-items.tsx": {
     "react(set-state-in-effect)": 1
   },
-  "src/renderer/components/board/editor/nfm-editor-extensions.test.ts": {
-    "eslint(no-unused-vars)": 1
-  },
   "src/renderer/components/board/editor/nfm-editor-owner.tsx": {
     "react(exhaustive-effect-dependencies)": 1,
     "react(refs)": 1
   },
   "src/renderer/components/board/editor/nfm-editor.tsx": {
-    "eslint(no-unused-vars)": 1,
     "react(exhaustive-effect-dependencies)": 3,
     "react(immutability)": 1,
     "react(preserve-manual-memoization)": 11,
@@ -242,7 +116,6 @@
     "react(set-state-in-effect)": 4
   },
   "src/renderer/components/board/editor/nfm-text-action-menu.tsx": {
-    "eslint(no-unused-vars)": 1,
     "react(refs)": 1
   },
   "src/renderer/components/board/editor/page-outliner-block.tsx": {
@@ -390,7 +263,6 @@
     "react(set-state-in-effect)": 1
   },
   "src/renderer/components/workbench/backup-settings-control.tsx": {
-    "eslint(no-unused-vars)": 1,
     "react(exhaustive-effect-dependencies)": 1,
     "react(set-state-in-effect)": 2
   },
@@ -400,7 +272,6 @@
     "react(set-state-in-effect)": 3
   },
   "src/renderer/components/workbench/command-palette-surface.tsx": {
-    "eslint(no-unused-vars)": 1,
     "react(exhaustive-effect-dependencies)": 2,
     "react(preserve-manual-memoization)": 2,
     "react(set-state-in-effect)": 6,
@@ -527,7 +398,6 @@
     "react(refs)": 2
   },
   "src/renderer/components/workbench/use-workbench-sidebar-controller.ts": {
-    "eslint(no-unused-vars)": 1,
     "react(memo-dependencies)": 5
   },
   "src/renderer/components/workbench/workbench-agent-runtime-panels.tsx": {
@@ -557,7 +427,6 @@
     "react(set-state-in-effect)": 1
   },
   "src/renderer/components/workbench/workbench-runtime.tsx": {
-    "eslint(no-unused-vars)": 1,
     "react(exhaustive-effect-dependencies)": 5,
     "react(memo-dependencies)": 8,
     "react(preserve-manual-memoization)": 15,
@@ -568,7 +437,6 @@
     "react(refs)": 1
   },
   "src/renderer/components/workbench/workbench-session-sidebar.tsx": {
-    "eslint(no-unused-vars)": 3,
     "react(refs)": 1
   },
   "src/renderer/components/workbench/workbench-session-thread-route.tsx": {
@@ -584,23 +452,10 @@
   "src/renderer/components/workbench/workbench-settings-route-shell.tsx": {
     "react(exhaustive-effect-dependencies)": 1
   },
-  "src/renderer/components/workbench/workbench-shell.layout-panel-actions.test.tsx": {
-    "eslint(no-unused-vars)": 1
-  },
-  "src/renderer/components/workbench/workbench-shell.panel-commands.test.tsx": {
-    "eslint(no-unused-vars)": 1
-  },
-  "src/renderer/components/workbench/workbench-shell.routes-threads.test.tsx": {
-    "eslint(no-unused-vars)": 3
-  },
-  "src/renderer/components/workbench/workbench-shell.sidebar-core.test.tsx": {
-    "eslint(no-unused-vars)": 3
-  },
   "src/renderer/components/workbench/workbench-shell.tsx": {
     "react(set-state-in-effect)": 1
   },
   "src/renderer/components/workbench/workbench-testkit/workbench-shell-harness.tsx": {
-    "eslint(no-unused-vars)": 1,
     "react(globals)": 8,
     "react(refs)": 9,
     "react(set-state-in-effect)": 1
@@ -612,7 +467,6 @@
     "react(set-state-in-effect)": 2
   },
   "src/renderer/features/browser-sidebar/browser-settings-pages.tsx": {
-    "eslint(no-unused-vars)": 1,
     "react(set-state-in-effect)": 4
   },
   "src/renderer/features/browser-sidebar/browser-sidebar-hidden-webview-hosts.tsx": {
@@ -638,9 +492,6 @@
   },
   "src/renderer/features/content-search/content-search-surface.tsx": {
     "react(set-state-in-effect)": 1
-  },
-  "src/renderer/features/dictation/dictation-dictionary-dialog.tsx": {
-    "oxlint/unused-disable-directive": 1
   },
   "src/renderer/features/dictation/global-dictation-page.tsx": {
     "react(exhaustive-effect-dependencies)": 2,
@@ -691,9 +542,6 @@
     "react(exhaustive-effect-dependencies)": 2,
     "react(set-state-in-effect)": 2
   },
-  "src/renderer/features/local-conversation/composer-context-operations.ts": {
-    "unicorn(require-module-specifiers)": 1
-  },
   "src/renderer/features/local-conversation/data/use-summary-git-state.ts": {
     "react(refs)": 20
   },
@@ -712,7 +560,6 @@
     "react(exhaustive-effect-dependencies)": 1
   },
   "src/renderer/features/local-conversation/view/blocks/local-conversation-block-leaves.tsx": {
-    "eslint(no-unused-vars)": 1,
     "react(static-components)": 1
   },
   "src/renderer/features/local-conversation/view/composer/async-question-controls.tsx": {
@@ -744,7 +591,6 @@
     "react(set-state-in-effect)": 2
   },
   "src/renderer/features/local-conversation/view/composer/local-conversation-thread-composer.tsx": {
-    "eslint(no-unused-vars)": 1,
     "react(memo-dependencies)": 2,
     "react(preserve-manual-memoization)": 1,
     "react(refs)": 4,
@@ -864,7 +710,6 @@
     "react(set-state-in-effect)": 2
   },
   "src/renderer/features/local-conversation/view/subagents-panel/subagents-panel.tsx": {
-    "eslint(no-unused-vars)": 1,
     "react(exhaustive-effect-dependencies)": 1,
     "react(preserve-manual-memoization)": 1,
     "react(refs)": 3,
@@ -897,11 +742,7 @@
   "src/renderer/features/local-conversation/view/use-chat-message-reveal.ts": {
     "react(exhaustive-effect-dependencies)": 1
   },
-  "src/renderer/features/review/data/git-query.ts": {
-    "oxlint/unused-disable-directive": 1
-  },
   "src/renderer/features/review/data/use-review-path-diffs.ts": {
-    "oxlint/unused-disable-directive": 3,
     "react(refs)": 6
   },
   "src/renderer/features/user-attachment-image-editor/view/generated-image-dot-field.tsx": {
@@ -949,9 +790,6 @@
     "react(exhaustive-effect-dependencies)": 1,
     "react(set-state-in-effect)": 1
   },
-  "src/renderer/lib/codex-scheduled-automation-display.ts": {
-    "eslint(no-unused-vars)": 1
-  },
   "src/renderer/lib/command-palette-page-results.ts": {
     "react(set-state-in-effect)": 1
   },
@@ -960,12 +798,6 @@
   },
   "src/renderer/lib/database-row-detail-store.test.tsx": {
     "react(globals)": 4
-  },
-  "src/renderer/lib/db-view-prefs.ts": {
-    "eslint(no-unused-vars)": 1
-  },
-  "src/renderer/lib/editor-model/equation-security.jsdom.test.ts": {
-    "eslint(no-extend-native)": 2
   },
   "src/renderer/lib/file-markdown-media/file-markdown-media.tsx": {
     "react(exhaustive-effect-dependencies)": 1
@@ -992,9 +824,6 @@
   "src/renderer/lib/retained-scroll-position.ts": {
     "react(refs)": 1
   },
-  "src/renderer/lib/source-highlight-cache.node.test.ts": {
-    "typescript(no-unnecessary-template-expression)": 1
-  },
   "src/renderer/lib/use-canonical-order-handoff.ts": {
     "react(set-state-in-effect)": 1
   },
@@ -1012,8 +841,7 @@
     "react(set-state-in-effect)": 1
   },
   "src/renderer/lib/use-library-navigation.ts": {
-    "react(refs)": 2,
-    "typescript(no-generated-empty-object-type)": 2
+    "react(refs)": 2
   },
   "src/renderer/lib/use-mermaid-preview.ts": {
     "react(set-state-in-effect)": 1
@@ -1022,7 +850,6 @@
     "react(globals)": 1
   },
   "src/renderer/lib/use-page-key-prefix-preview.ts": {
-    "oxlint/unused-disable-directive": 1,
     "react(refs)": 1
   },
   "src/renderer/lib/use-project-board-windows.ts": {
@@ -1073,19 +900,9 @@
     "react(refs)": 2
   },
   "src/renderer/lib/use-workbench-session-commands.ts": {
-    "eslint(no-unused-vars)": 1,
     "react(refs)": 1
   },
   "src/renderer/lib/use-workbench-thread-summary.ts": {
     "react(set-state-in-effect)": 1
-  },
-  "src/renderer/lib/workbench-command-shortcuts.jsdom.test.ts": {
-    "eslint(no-unused-vars)": 1
-  },
-  "src/shared/block-documents/page-reference-derived-records.test.ts": {
-    "eslint(no-unused-vars)": 1
-  },
-  "src/shared/nodex-agent-tools/write-runtime.ts": {
-    "eslint(no-unused-vars)": 3
   }
 }

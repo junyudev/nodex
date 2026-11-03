@@ -30,7 +30,7 @@ export class ApplicationBootstrapIpcError extends Schema.TaggedError<Application
 
 export class ApplicationBootstrapIpc extends Context.Service<
   ApplicationBootstrapIpc,
-  Record<never, never>
+  Record<string, never>
 >()("nodex/main/ipc/ApplicationBootstrapIpc") {}
 
 const RendererInitializationReport = z

@@ -87,7 +87,7 @@ import * as SourceControlProviderRegistry from "../sourceControl/SourceControlPr
 import type { ChangeRequest } from "@t3tools/contracts";
 
 export interface GitActionProgressReporter {
-  readonly publish: (event: GitActionProgressEvent) => Effect.Effect<void, never>;
+  readonly publish: (event: GitActionProgressEvent) => Effect.Effect<void>;
 }
 
 export interface GitRunStackedActionOptions {
@@ -136,9 +136,9 @@ export class GitManager extends Context.Service<
       input: { readonly cwd: string; readonly branch: string },
       options?: { readonly refresh?: boolean },
     ) => Effect.Effect<GitBranchPullRequest | null, GitManagerServiceError>;
-    readonly invalidateLocalStatus: (cwd: string) => Effect.Effect<void, never>;
-    readonly invalidateRemoteStatus: (cwd: string) => Effect.Effect<void, never>;
-    readonly invalidateStatus: (cwd: string) => Effect.Effect<void, never>;
+    readonly invalidateLocalStatus: (cwd: string) => Effect.Effect<void>;
+    readonly invalidateRemoteStatus: (cwd: string) => Effect.Effect<void>;
+    readonly invalidateStatus: (cwd: string) => Effect.Effect<void>;
     readonly resolvePullRequest: (
       input: GitPullRequestRefInput,
     ) => Effect.Effect<GitResolvePullRequestResult, GitManagerServiceError>;
@@ -202,7 +202,7 @@ export function prLookupFailureTtl(consecutiveFailures: number): Duration.Durati
 }
 type StripProgressContext<T> = T extends any ? Omit<T, "actionId" | "cwd" | "action"> : never;
 type GitActionProgressPayload = StripProgressContext<GitActionProgressEvent>;
-type GitActionProgressEmitter = (event: GitActionProgressPayload) => Effect.Effect<void, never>;
+type GitActionProgressEmitter = (event: GitActionProgressPayload) => Effect.Effect<void>;
 
 function isNotGitRepositoryError(error: GitCommandError): boolean {
   return error.message.toLowerCase().includes("not a git repository");

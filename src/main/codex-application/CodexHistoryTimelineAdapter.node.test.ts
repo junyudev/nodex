@@ -1,4 +1,3 @@
-/* oxlint-disable effecttsgo/strict-effect-provide -- Each managed test provides the complete isolated capability graph. */
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";

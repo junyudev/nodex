@@ -89,7 +89,7 @@ export class ServerConfig extends Context.Service<
     readonly baseDir: string;
     readonly staticDir: string | undefined;
     readonly devUrl: URL | undefined;
-    readonly devAuthToken?: Redacted.Redacted<string> | undefined;
+    readonly devAuthToken?: Redacted.Redacted | undefined;
     readonly devAllowedOrigins: ReadonlyArray<string>;
     readonly noBrowser: boolean;
     readonly startupPresentation: StartupPresentation;

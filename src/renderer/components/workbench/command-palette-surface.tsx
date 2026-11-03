@@ -49,7 +49,6 @@ import {
   SidePanelSideChatIcon,
   SidebarVisibleIcon,
 } from "@/components/shared/icons";
-import { NodexTooltip } from "@/components/ui/tooltip";
 import { hasOpenNodexFloatingEscapeLayer } from "@/components/ui/floating-surface";
 import {
   areCommandPalettePageFiltersEqual,

@@ -204,11 +204,16 @@ export default defineConfig({
       // Stable correctness contracts and app-owned invariants are errors. Category
       // warnings retain their severity; the semantic gate ratchets per-file/rule
       // counts so existing warnings can be fixed without admitting new ones.
+      "eslint/no-extend-native": "error",
       "eslint/no-extra-boolean-cast": "error",
       "eslint/preserve-caught-error": "error",
+      "eslint/no-unmodified-loop-condition": "error",
       "eslint/no-unreachable": "error",
       "eslint/no-unsafe-finally": "error",
       "eslint/no-unsafe-optional-chaining": "error",
+      "eslint/no-unused-vars": "error",
+      "eslint/no-useless-rename": "error",
+      "eslint/require-yield": "error",
       "nodex/no-manual-effect-runtime-in-tests": "error",
       "nodex/no-ambient-profile-authority": "error",
       "nodex/no-direct-webcontents-destruction-listener": "error",
@@ -222,9 +227,15 @@ export default defineConfig({
       // call site owns invocation; component-valued props remain prohibited.
       "react/no-unstable-nested-components": ["error", { allowAsProps: true }],
       "typescript/no-floating-promises": "error",
+      "typescript/no-generated-empty-object-type": "error",
       "typescript/no-misused-spread": "error",
+      "typescript/no-non-null-asserted-optional-chain": "error",
+      "typescript/no-unnecessary-template-expression": "error",
+      "typescript/no-unnecessary-type-arguments": "error",
       "typescript/no-unsafe-enum-comparison": "error",
       "typescript/require-array-sort-compare": "error",
+      "unicorn/prefer-string-starts-ends-with": "error",
+      "unicorn/require-module-specifiers": "error",
       ...tanstackQueryRules,
       ...betterTailwindRules,
     },

@@ -187,10 +187,10 @@ const collectText = Effect.fnUntraced(function* (input: {
   return yield* stream.pipe(
     Stream.runFoldEffect<
       {
-        readonly chunks: Uint8Array<ArrayBufferLike>[];
+        readonly chunks: Uint8Array[];
         readonly bytes: number;
       },
-      Uint8Array<ArrayBufferLike>,
+      Uint8Array,
       ProcessOutputLimitError | ProcessReadError,
       never
     >(

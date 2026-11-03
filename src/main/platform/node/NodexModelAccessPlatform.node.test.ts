@@ -2,7 +2,7 @@ import { it } from "@effect/vitest";
 import { afterEach, expect, vi } from "vite-plus/test";
 import * as Effect from "effect/Effect";
 import * as Redacted from "effect/Redacted";
-import { modelAccessFixture, modelStatusFixture } from "../../nodex-account/model-access-fixture";
+import { modelAccessFixture } from "../../nodex-account/model-access-fixture";
 import { make } from "./NodexModelAccessPlatform";
 
 afterEach(() => vi.unstubAllGlobals());

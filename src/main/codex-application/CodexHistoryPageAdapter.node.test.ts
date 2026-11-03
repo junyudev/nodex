@@ -182,7 +182,6 @@ it.effect("Main timeline history uses the shared reader and keeps its source-bou
       .pipe(Effect.result);
     assert.strictEqual(unqualified._tag, "Failure");
     assert.strictEqual(calls.length, before);
-    // oxlint-disable-next-line effecttsgo/strict-effect-provide -- This test entry point owns and releases the callback Scope.
   }).pipe(Effect.provide(scopedCallbackRuntimeLayer), Effect.scoped),
 );
 

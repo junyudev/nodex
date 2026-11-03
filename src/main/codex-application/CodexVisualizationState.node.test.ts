@@ -1,4 +1,3 @@
-/* oxlint-disable effecttsgo/strict-effect-provide -- Isolated tests provide the complete Profile repository graph. */
 import { mkdtempSync, rmSync, mkdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

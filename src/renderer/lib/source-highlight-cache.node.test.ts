@@ -16,7 +16,7 @@ describe("source highlight cache identity", () => {
   it("names unchanged content the same way across viewers and mounts", () => {
     const text = "<p>hello</p>\n";
     expect(sourceHighlightCacheKey("local\0/repo/a.html", "html", text)).toBe(
-      sourceHighlightCacheKey("local\0/repo/a.html", "html", `${text}`),
+      sourceHighlightCacheKey("local\0/repo/a.html", "html", "<p>hello</p>\n"),
     );
   });
 

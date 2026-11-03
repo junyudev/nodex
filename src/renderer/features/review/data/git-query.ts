@@ -66,7 +66,6 @@ export function createGitWorkerQuery<Method extends GitWorkerMethod>(
 ) {
   // The transport client does not change repository data identity; including
   // its object identity would split otherwise shareable worker queries.
-  // eslint-disable-next-line @tanstack/query/exhaustive-deps
   return {
     queryKey: buildGitWorkerQueryKey(input),
     queryFn: async ({ signal }: { signal: AbortSignal }) =>

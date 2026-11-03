@@ -8,7 +8,6 @@ import {
   NODEX_APP_TOOLSET_REVISION,
   type NodexAgentCreatePagesCommand,
 } from "../../shared/nodex-agent-tools";
-import type { NodexAgentDynamicExecutionContext } from "./NodexAgentDynamicExecutionContext";
 import { NodexAgentApplication } from "./NodexAgentApplication";
 import { executeNodexAgentV3Tool } from "./NodexAgentDynamicExecution";
 import {

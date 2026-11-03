@@ -8,18 +8,23 @@ describe("Equation rendering security", () => {
       const original = Object.getOwnPropertyDescriptor(Object.prototype, "processor");
       let htmlString: string;
       try {
-        Object.defineProperty(Object.prototype, "processor", {
-          configurable: true,
-          value: () => true,
-        });
+        expect(
+          Reflect.defineProperty(Object.prototype, "processor", {
+            configurable: true,
+            value: () => true,
+          }),
+        ).toBe(true);
         ({ htmlString } = latexToHTMLString(
           String.raw`\href{javascript:alert(1)}{x} + \includegraphics{https://example.com/image.png}`,
           false,
           external,
         ));
       } finally {
-        if (original) Object.defineProperty(Object.prototype, "processor", original);
-        else Reflect.deleteProperty(Object.prototype, "processor");
+        expect(
+          original
+            ? Reflect.defineProperty(Object.prototype, "processor", original)
+            : Reflect.deleteProperty(Object.prototype, "processor"),
+        ).toBe(true);
       }
 
       const rendered = new DOMParser().parseFromString(htmlString, "text/html");

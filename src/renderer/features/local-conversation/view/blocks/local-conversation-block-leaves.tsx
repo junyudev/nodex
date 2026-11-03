@@ -20,7 +20,6 @@ import { motion } from "motion/react";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { SendIcon } from "@/components/shared/icons/generic-icons";
 import {
-  ChevronRightIcon,
   ForkIcon,
   GoalTargetIcon,
   HooksIcon,

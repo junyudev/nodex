@@ -135,17 +135,17 @@ interface CachedVcsStatus {
 }
 
 interface ActiveRemotePoller {
-  readonly fiber: Fiber.Fiber<void, never>;
+  readonly fiber: Fiber.Fiber<void>;
   readonly subscriberCount: number;
   readonly demandCwds: Ref.Ref<ReadonlyMap<string, number>>;
 }
 
 interface StreamStatusOptions {
-  readonly automaticRemoteRefreshInterval?: Effect.Effect<Duration.Duration, never>;
+  readonly automaticRemoteRefreshInterval?: Effect.Effect<Duration.Duration>;
 }
 
 export class VcsAutoPullPolicy extends Context.Reference<{
-  readonly isEnabled: (cwd: string) => Effect.Effect<boolean, never>;
+  readonly isEnabled: (cwd: string) => Effect.Effect<boolean>;
 }>("t3/vcs/VcsAutoPullPolicy", {
   defaultValue: () => ({ isEnabled: () => Effect.succeed(false) }),
 }) {}
@@ -529,7 +529,7 @@ export const make = Effect.gen(function* () {
   const makeRemoteRefreshLoop = (
     cwd: string,
     demandCwdsRef: Ref.Ref<ReadonlyMap<string, number>>,
-    automaticRemoteRefreshInterval: Effect.Effect<Duration.Duration, never>,
+    automaticRemoteRefreshInterval: Effect.Effect<Duration.Duration>,
     refreshImmediately: boolean,
   ) => {
     return Effect.gen(function* () {
@@ -613,7 +613,7 @@ export const make = Effect.gen(function* () {
   const retainRemotePoller = Effect.fn("VcsStatusBroadcaster.retainRemotePoller")(function* (
     cwd: string,
     demandCwd: string,
-    automaticRemoteRefreshInterval: Effect.Effect<Duration.Duration, never>,
+    automaticRemoteRefreshInterval: Effect.Effect<Duration.Duration>,
     refreshImmediately: boolean,
   ) {
     yield* SynchronizedRef.modifyEffect(pollersRef, (activePollers) => {

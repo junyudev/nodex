@@ -108,14 +108,14 @@ export interface GitPreparedCommitContext {
 }
 
 export interface ExecuteGitProgress {
-  readonly onStdoutLine?: (line: string) => Effect.Effect<void, never>;
-  readonly onStderrLine?: (line: string) => Effect.Effect<void, never>;
-  readonly onHookStarted?: (hookName: string) => Effect.Effect<void, never>;
+  readonly onStdoutLine?: (line: string) => Effect.Effect<void>;
+  readonly onStderrLine?: (line: string) => Effect.Effect<void>;
+  readonly onHookStarted?: (hookName: string) => Effect.Effect<void>;
   readonly onHookFinished?: (input: {
     hookName: string;
     exitCode: number | null;
     durationMs: number | null;
-  }) => Effect.Effect<void, never>;
+  }) => Effect.Effect<void>;
 }
 
 /**
@@ -130,22 +130,22 @@ export interface CreateWorktreeProgress {
    * so a path reported here belongs to this call and is safe to remove on
    * cancel.
    */
-  readonly onWorktreeClaimed?: (path: string) => Effect.Effect<void, never>;
+  readonly onWorktreeClaimed?: (path: string) => Effect.Effect<void>;
   readonly onCheckoutProgress?: (input: {
     percent: number;
     completed: number;
     total: number;
-  }) => Effect.Effect<void, never>;
-  readonly onSubmodulesStarted?: () => Effect.Effect<void, never>;
+  }) => Effect.Effect<void>;
+  readonly onSubmodulesStarted?: () => Effect.Effect<void>;
   /** Fires when `.gitmodules` exists but the resolved submodule mode is `"none"`. */
   readonly onSubmodulesDisabled?: (input: {
     source: "settings" | "t3.json";
-  }) => Effect.Effect<void, never>;
-  readonly onSubmoduleLine?: (line: string) => Effect.Effect<void, never>;
+  }) => Effect.Effect<void>;
+  readonly onSubmoduleLine?: (line: string) => Effect.Effect<void>;
   readonly onSubmodulesFinished?: (input: {
     ok: boolean;
     detail: string | null;
-  }) => Effect.Effect<void, never>;
+  }) => Effect.Effect<void>;
 }
 
 export interface CreateWorktreeOptions {
@@ -164,13 +164,13 @@ export interface GitCommitProgress {
   readonly onOutputLine?: (input: {
     stream: "stdout" | "stderr";
     text: string;
-  }) => Effect.Effect<void, never>;
-  readonly onHookStarted?: (hookName: string) => Effect.Effect<void, never>;
+  }) => Effect.Effect<void>;
+  readonly onHookStarted?: (hookName: string) => Effect.Effect<void>;
   readonly onHookFinished?: (input: {
     hookName: string;
     exitCode: number | null;
     durationMs: number | null;
-  }) => Effect.Effect<void, never>;
+  }) => Effect.Effect<void>;
 }
 
 export interface GitCommitOptions {

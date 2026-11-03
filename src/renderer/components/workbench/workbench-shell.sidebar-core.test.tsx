@@ -21,7 +21,6 @@ import {
 } from "./workbench-testkit/workbench-shell-fixtures";
 import {
   getConnectedThreadStagePropsByThreadId,
-  getLastThreadStageActions,
   waitForLastThreadStageActions,
   getMountedSessionIds,
   getMountedSessionRoot,
@@ -35,12 +34,10 @@ import {
   invokeCalls,
   mockInvokeImpl,
   renderWorkbench,
-  requestThreadStreamSnapshotCalls,
   rendererCommandPayload,
   selectSidebarSession,
   setInvokeCalls,
   setMockInvokeImpl,
-  setRequestThreadStreamSnapshotImpl,
 } from "./workbench-testkit/workbench-shell-harness";
 describe("workbench session shell / sidebar-core", () => {
   test.each(["claude", "opencode"] as const)(

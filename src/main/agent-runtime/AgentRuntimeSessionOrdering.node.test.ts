@@ -27,7 +27,7 @@ const fixture = (options: { failRelay?: boolean } = {}) => {
       lastSequence: 0,
     },
     request: (method, input) =>
-      Effect.gen(function* () {
+      Effect.sync(() => {
         calls.push(method);
         if (method === "sessions.catalog") {
           const query = input as AgentRuntimeOperations["sessions.catalog"]["input"];

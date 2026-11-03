@@ -3,7 +3,6 @@ import type {
   CodexComposerAppshotContext,
 } from "../../../shared/types";
 import type { ComposerPickedFile } from "../../../shared/ipc-api";
-import type {} from "@/lib/types";
 import {
   defineRendererCommand,
   invokePlainCommand,

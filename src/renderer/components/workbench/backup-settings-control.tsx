@@ -15,7 +15,7 @@ import {
 } from "./workbench-settings-overlay-deps";
 import { handleFormSubmit, resolveFormErrorMessage, resolveZodErrorMessage } from "../../lib/forms";
 import { useStoreBackupRuntime } from "../../lib/use-store-backup-runtime";
-import type { BackupRecord, BackupSettings, HistorySettings, Project } from "../../lib/types";
+import type { BackupRecord, BackupSettings, HistorySettings } from "../../lib/types";
 import { cn } from "../../lib/utils";
 import {
   BACKUP_SCHEDULE_FORM_DEFAULTS,

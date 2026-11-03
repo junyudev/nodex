@@ -1,4 +1,3 @@
-/* oxlint-disable effecttsgo/strict-effect-provide -- Test owns the complete temporary Profile layer. */
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

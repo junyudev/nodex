@@ -1978,7 +1978,7 @@ export const make = Effect.gen(function* () {
       }),
     );
 
-  const context = yield* Effect.context<never>();
+  const context = yield* Effect.context();
   const scope = yield* Effect.scope;
   /** Runs a refresh as its own fiber, for the reads that answer from a held value first. */
   const runFork = Effect.runForkWith(context);
@@ -2678,7 +2678,7 @@ export const make = Effect.gen(function* () {
     });
 
   const revalidate = <A, E>(read: Effect.Effect<A, E>) =>
-    Effect.context<never>().pipe(
+    Effect.context().pipe(
       Effect.flatMap((caller) =>
         Effect.sync(() => runFork(Effect.ignore(read).pipe(Effect.provideContext(caller)))),
       ),

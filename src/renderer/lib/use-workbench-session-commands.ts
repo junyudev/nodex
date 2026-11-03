@@ -215,7 +215,6 @@ interface WorkbenchSessionCommandsInput {
  * route, and command-menu owner ports without copying their state.
  */
 export function useWorkbenchSessionCommands({
-  activeProject,
   activeProjectId,
   activeSession,
   projects,

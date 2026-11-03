@@ -111,7 +111,7 @@ export interface LegacyV1ThreadImporterShape {
   readonly ensureTranscript: (
     threadId: ThreadId,
   ) => Effect.Effect<LegacyV1ImportSummary, LegacyV1ThreadImportError>;
-  readonly importPendingTranscripts: Effect.Effect<LegacyV1ImportSummary, never>;
+  readonly importPendingTranscripts: Effect.Effect<LegacyV1ImportSummary>;
 }
 
 export class LegacyV1ThreadImporter extends Context.Service<

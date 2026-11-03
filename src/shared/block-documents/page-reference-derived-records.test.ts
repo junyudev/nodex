@@ -11,7 +11,9 @@ describe("Block references and asset occurrences", () => {
     });
     try {
       expect(
-        page.materialization.references.map(({ sourceBlockId: _, ...reference }) => reference),
+        page.materialization.references.map(
+          ({ sourceBlockId: _sourceBlockId, ...reference }) => reference,
+        ),
       ).toEqual([
         { kind: "page", targetPageId: "page-1", presentation: "mention", occurrenceCount: 2 },
         { kind: "page", targetPageId: "page-1", presentation: "link", occurrenceCount: 1 },

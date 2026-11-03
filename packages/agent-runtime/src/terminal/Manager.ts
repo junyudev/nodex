@@ -341,7 +341,7 @@ type DrainProcessEventAction =
 
 interface TerminalManagerState {
   sessions: Map<string, TerminalSessionState>;
-  killFibers: Map<PtyAdapter.PtyProcess, Fiber.Fiber<void, never>>;
+  killFibers: Map<PtyAdapter.PtyProcess, Fiber.Fiber<void>>;
 }
 
 function truncateTerminalWireLabel(value: string): string {
@@ -1115,7 +1115,6 @@ function findEscapeSequenceEndIndex(input: string, start: number): number | null
   return isEscapeFinalByte(input.charCodeAt(cursor)) ? cursor + 1 : start + 1;
 }
 
-// eslint-disable-next-line no-control-regex -- Terminal sequence introducers must reach the parser.
 const HISTORY_SEQUENCE_START = /[\u001b\u0090\u009b\u009d\u009e\u009f]/;
 
 function sanitizeTerminalHistoryChunk(
@@ -1482,7 +1481,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
 ) {
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const context = yield* Effect.context<never>();
+  const context = yield* Effect.context();
   const runFork = Effect.runForkWith(context);
 
   const logsDir = options.logsDir;
@@ -1626,14 +1625,14 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     process: PtyAdapter.PtyProcess | null,
   ) {
     if (!process) return;
-    const fiber: Option.Option<Fiber.Fiber<void, never>> = yield* modifyManagerState<
-      Option.Option<Fiber.Fiber<void, never>>
+    const fiber: Option.Option<Fiber.Fiber<void>> = yield* modifyManagerState<
+      Option.Option<Fiber.Fiber<void>>
     >((state) => {
-      const existing: Option.Option<Fiber.Fiber<void, never>> = Option.fromNullishOr(
+      const existing: Option.Option<Fiber.Fiber<void>> = Option.fromNullishOr(
         state.killFibers.get(process),
       );
       if (Option.isNone(existing)) {
-        return [Option.none<Fiber.Fiber<void, never>>(), state] as const;
+        return [Option.none<Fiber.Fiber<void>>(), state] as const;
       }
       const killFibers = new Map(state.killFibers);
       killFibers.delete(process);
@@ -1646,7 +1645,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
 
   const registerKillFiber = Effect.fn("terminal.registerKillFiber")(function* (
     process: PtyAdapter.PtyProcess,
-    fiber: Fiber.Fiber<void, never>,
+    fiber: Fiber.Fiber<void>,
   ) {
     yield* modifyManagerState((state) => {
       const killFibers = new Map(state.killFibers);

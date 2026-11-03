@@ -32,7 +32,6 @@ import {
   openPanelMenu,
   pointerDownAndSettle,
   renderWorkbench,
-  rendererCommandPayload,
   sideChatConversations,
   startSideChatCalls,
   setInvokeCalls,

@@ -1,4 +1,3 @@
-/* oxlint-disable effecttsgo/strict-effect-provide -- Test owns the complete temporary Profile IPC graph. */
 import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";

@@ -122,7 +122,7 @@ export const live = Layer.effect(
     const config = yield* MainConfig;
     return TerminalEnvironment.of({
       resolve: (input) =>
-        Effect.gen(function* () {
+        Effect.sync(() => {
           const environment = buildTerminalEnvironment(config.environment, config.platform);
           const shell = resolveShell(config.platform, environment, config.homeDirectory);
           const [command, ...args] = resolveTerminalCommand(

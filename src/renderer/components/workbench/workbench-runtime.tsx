@@ -133,7 +133,6 @@ import {
   type InboxQuickCaptureRequest,
 } from "@/features/inbox/inbox-quick-capture";
 import { resolveInboxCaptureScope } from "@/features/inbox/inbox-capture-scope";
-import { useMutationAuditSessionId } from "@/lib/mutation-audit-session";
 import {
   useCodexAppServerControl,
   useCodexAppServerRegistry,
@@ -590,7 +589,6 @@ export function WorkbenchRuntime({
         .length,
   );
   const appHandle = useScopeHandle(appScope);
-  const mutationAuditSessionId = useMutationAuditSessionId();
   const workbenchWindow = useWorkbenchWindowState(initialWindowLayoutSnapshot);
   const sceneLocation = getWorkbenchSceneReturnLocation(workbenchWindow.location);
   const activeProjectId =

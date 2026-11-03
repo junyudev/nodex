@@ -9,7 +9,7 @@ import {
   inspectNodexClipboardHtml,
   NODEX_STRUCTURAL_CLIPBOARD_MIME,
 } from "../../../../shared/clipboard-paste";
-import { createNfmEditorExtensions, createNfmPasteHandler } from "./nfm-editor-extensions";
+import { createNfmPasteHandler } from "./nfm-editor-extensions";
 import { readMarkdown, writeMarkdown, type MarkdownBlock } from "../../../../shared/nodex-markdown";
 
 describe("markdown editor extensions", () => {

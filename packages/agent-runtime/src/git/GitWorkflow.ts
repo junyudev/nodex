@@ -56,9 +56,9 @@ export class GitWorkflowService extends Context.Service<
       input: VcsStatusInput,
       options?: GitManager.GitRemoteStatusOptions,
     ) => Effect.Effect<VcsStatusRemoteResult | null, GitManagerServiceError>;
-    readonly invalidateLocalStatus: (cwd: string) => Effect.Effect<void, never>;
-    readonly invalidateRemoteStatus: (cwd: string) => Effect.Effect<void, never>;
-    readonly invalidateStatus: (cwd: string) => Effect.Effect<void, never>;
+    readonly invalidateLocalStatus: (cwd: string) => Effect.Effect<void>;
+    readonly invalidateRemoteStatus: (cwd: string) => Effect.Effect<void>;
+    readonly invalidateStatus: (cwd: string) => Effect.Effect<void>;
     readonly pullCurrentBranch: (cwd: string) => Effect.Effect<VcsPullResult, GitCommandError>;
     readonly runStackedAction: (
       input: GitRunStackedActionInput,

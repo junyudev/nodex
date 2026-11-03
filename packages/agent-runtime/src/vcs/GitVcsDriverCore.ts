@@ -485,7 +485,7 @@ function classifyGitFailure(stderr: string): GitCommandFailureReason | null {
       (line) =>
         GIT_DIAGNOSTIC_LINE_PATTERN.test(line) ||
         // A remote hook can echo ssh's wording; only the local ssh's line counts.
-        (!/^remote:/.test(line) && SSH_TRANSPORT_REFUSAL_PATTERN.test(line)),
+        (!line.startsWith("remote:") && SSH_TRANSPORT_REFUSAL_PATTERN.test(line)),
     )
     .join("\n");
   if (diagnostics.length === 0) return null;
@@ -593,7 +593,7 @@ function fetchFailureDetail(stderr: string): string | undefined {
 
 interface Trace2Monitor {
   readonly env: NodeJS.ProcessEnv;
-  readonly flush: Effect.Effect<void, never>;
+  readonly flush: Effect.Effect<void>;
 }
 
 const nowUnixNano = DateTime.now.pipe(
@@ -810,7 +810,7 @@ const collectOutput = Effect.fnUntraced(function* (
   stream: Stream.Stream<Uint8Array, PlatformError.PlatformError>,
   maxOutputBytes: number,
   appendTruncationMarker: boolean,
-  onLine: ((line: string) => Effect.Effect<void, never>) | undefined,
+  onLine: ((line: string) => Effect.Effect<void>) | undefined,
   keepLineCallbacksAfterTruncation = false,
 ): Effect.fn.Return<{ readonly text: string; readonly truncated: boolean }, GitCommandError> {
   const decoder = new TextDecoder();

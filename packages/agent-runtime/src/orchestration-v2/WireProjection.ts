@@ -173,7 +173,7 @@ function projectMcpCallForDetail(call: McpToolCall): McpToolCall {
       ...(result === undefined ? {} : { result }),
     };
   const content = boundIndexedToolContent(result.content);
-  const { content: _content, structuredContent: _structured, _meta: _meta, ...extensions } = result;
+  const { content: _content, structuredContent: _structured, _meta, ...extensions } = result;
   return {
     ...mcpCallMetadata(call),
     arguments: boundDynamicValue(call.arguments) as McpJson,

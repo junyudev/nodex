@@ -41,10 +41,11 @@ const request = (url: string, init: RequestInit) =>
     try: async (signal) => {
       const response = await fetch(url, { ...init, signal, redirect: "error" });
       const reader = response.body?.getReader();
+      if (!reader) throw unavailable();
       const chunks: Uint8Array[] = [];
       let length = 0;
       try {
-        while (reader) {
+        while (true) {
           const part = await reader.read();
           if (part.done) break;
           length += part.value.byteLength;
@@ -52,7 +53,7 @@ const request = (url: string, init: RequestInit) =>
           chunks.push(part.value);
         }
       } finally {
-        await reader?.cancel().catch(() => undefined);
+        await reader.cancel().catch(() => undefined);
       }
       const body: unknown = JSON.parse(Buffer.concat(chunks).toString("utf8"));
       if (response.ok) return body;

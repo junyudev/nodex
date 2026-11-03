@@ -160,7 +160,6 @@ export const executeNodexAgentV3Tool = (
         const parsed = input as
           | NodexAgentV3ToolInput<"query_database_view">
           | NodexAgentV3ToolInput<"query_data_source">;
-        const isView = tool === "query_database_view";
         const result = (yield* application.read({
           tool,
           callId: context.callId,

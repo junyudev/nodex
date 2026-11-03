@@ -291,7 +291,6 @@ function isSubagentOverviewInvalidationEvent(
 export function SubagentsPanelOverview({
   onError,
   onSelect,
-  projectId,
   rootThreadId,
 }: {
   onError: (message: string) => void;

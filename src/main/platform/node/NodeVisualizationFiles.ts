@@ -1,4 +1,3 @@
-/* oxlint-disable effecttsgo/async-function -- Promise-based descriptor and bounded filesystem reads stay at this Node Adapter. */
 import { constants } from "node:fs";
 import { lstat, open, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";

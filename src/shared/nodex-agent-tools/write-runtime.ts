@@ -1,11 +1,6 @@
-import type {
-  DocumentMutationRequest,
-  DocumentOperationResult,
-} from "../block-documents/document-operations";
 import type { DocumentCommitRef } from "../block-documents/contracts";
 import type { BlockTransferRequest } from "../block-transfer";
 import type { ToolFailure } from "./base-schemas";
-import type { AgentDocumentEditEffects } from "./document-edit-compiler";
 import type {
   CreateInput,
   CreateOutput,

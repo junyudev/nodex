@@ -685,7 +685,6 @@ export function summarizeFilterClauses(
 
 export function summarizeSorts(
   rules: DbViewRules,
-  statusOptions: readonly { readonly id: string; readonly name: string }[],
 ): Array<{ key: string; label: string; value: string }> {
   return rules.sort.map((entry, index) => ({
     key: `${entry.field}:${index}`,

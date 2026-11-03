@@ -1,4 +1,3 @@
-import { CheckpointScopeId, ProjectId, RunId, ThreadId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
@@ -7,12 +6,7 @@ import * as VcsStatusBroadcaster from "../vcs/VcsStatusBroadcaster.ts";
 import * as WorkspaceEntries from "../workspace/WorkspaceEntries.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 
-import {
-  RunFinalizationError,
-  RunFinalizationRefreshError,
-  RunFinalizationObserver,
-  RunFinalizationService,
-} from "./RunFinalization.ts";
+import { RunFinalizationRefreshError, RunFinalizationObserver } from "./RunFinalization.ts";
 export {
   RunFinalizationError,
   RunFinalizationRefreshError,

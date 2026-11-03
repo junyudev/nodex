@@ -154,7 +154,6 @@ import {
 import {
   type DragSessionBlock,
   type EditorForExternalBlockDrop,
-  runInEditorTransaction,
 } from "./external-block-drag-session";
 import {
   ThreadMentionRuntimeProvider,

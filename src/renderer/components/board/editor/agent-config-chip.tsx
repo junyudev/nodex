@@ -325,7 +325,6 @@ function UnavailableSettingsTrigger({ label }: { label: string }) {
 function AgentConfigPopoverBody({
   props,
   chip,
-  runtime,
   models,
   defaultSelection,
   loading,
@@ -334,7 +333,6 @@ function AgentConfigPopoverBody({
 }: {
   props: AgentConfigProps;
   chip: ReturnType<typeof resolveAgentConfigChip>;
-  runtime: AgentConfigRuntimeValue | null;
   models: readonly CodexModelOption[];
   defaultSelection: AgentIntelligenceSelection | null;
   loading: boolean;
@@ -501,7 +499,6 @@ export function AgentConfigInlineContentView({
         <AgentConfigPopoverBody
           props={props}
           chip={chip}
-          runtime={runtime}
           models={models}
           defaultSelection={defaultSelection}
           loading={runtime?.availableModelsLoading ?? false}

@@ -287,7 +287,7 @@ export const make: Effect.Effect<
           );
         }
 
-        const rootThreadId = yield* resolveRootThreadId(thread);
+        yield* resolveRootThreadId(thread);
         yield* prepareManagedWorktreeArchive(thread, "archive");
         const threadMissing = yield* gateway
           .requestForThread(normalizedThreadId, "thread/archive", {

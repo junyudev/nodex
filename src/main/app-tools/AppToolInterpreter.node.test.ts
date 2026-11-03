@@ -1,8 +1,6 @@
 import { CodexThreadReadState } from "../codex-application/CodexThreadReadState";
 import { CodexMainConversationInterrupt } from "../codex-application/CodexMainConversationInterrupt";
-import { CodexMainConversationManagers } from "../codex-application/CodexMainConversationManagers";
 import { CodexQueuedFollowUps } from "../codex-application/CodexQueuedFollowUps";
-import { CodexTurnCommands } from "../codex-application/CodexTurnCommands";
 import { CodexNativeThreadLookup } from "../codex-application/CodexNativeThreadLookup";
 import { TemporaryAssets } from "../local-store/TemporaryAssets";
 import { CodexGateway } from "../codex-runtime/CodexGateway";

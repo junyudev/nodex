@@ -18,7 +18,6 @@ import {
 } from "@/lib/workbench-shell-operations";
 import { buildSessionDeepLink } from "@/lib/page-deeplink";
 import { documentSessionRegistry } from "@/lib/document-session-registry";
-import { queryKeys } from "@/lib/query-keys";
 import {
   loadLocalEnvironmentConfigSelection,
   readLocalEnvironmentSelections,

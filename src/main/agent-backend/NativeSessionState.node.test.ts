@@ -1,4 +1,4 @@
-import { expect, it } from "vite-plus/test";
+import { assert, expect, it } from "vite-plus/test";
 import { emptyAgentConversationSnapshot } from "./AgentConversationProjection";
 import {
   nativeHistoryFacts,
@@ -116,7 +116,8 @@ it("keeps native error facts inside Core's UTF-8 byte budget", () => {
     },
     null,
   );
-  const error = state.turns?.[0]!.error!;
+  const error = state.turns?.[0]?.error;
+  assert.exists(error);
   expect(Buffer.byteLength(error, "utf8")).toBeLessThanOrEqual(4096);
   expect(error).not.toContain("�");
 });

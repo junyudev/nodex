@@ -91,7 +91,7 @@ import type {
   SidebarDisclosureSectionId,
   SidebarCollapsibleSectionsState,
 } from "@/lib/use-workbench-profile-preferences";
-import { openNodexMenu, render, settleAsyncRender, settleLazyRender } from "../../../test/dom";
+import { render, settleAsyncRender, settleLazyRender } from "../../../test/dom";
 import { TestQueryProvider } from "../../../test/query";
 import { RendererStateProvider } from "../../../app-providers";
 import { useThreadStageHeaderSlot } from "@/features/local-conversation/view/thread-stage-header-slot";

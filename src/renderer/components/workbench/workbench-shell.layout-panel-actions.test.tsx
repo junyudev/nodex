@@ -49,7 +49,6 @@ import {
   installTerminalEventApiMock,
   invokeCalls,
   agentRuntimeLaunchCalls,
-  rendererCommandPayload,
   mockInvokeImpl,
   setMockInvokeImpl,
   moveSidebarPointer,

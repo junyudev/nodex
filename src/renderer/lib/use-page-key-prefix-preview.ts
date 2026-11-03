@@ -83,7 +83,6 @@ export function usePageKeyPrefixPreview({
   const debouncedRequestedPrefix = debouncedRequest.requestedPrefix;
 
   // The reader is an injectable transport, not part of the server-state identity.
-  // eslint-disable-next-line @tanstack/query/exhaustive-deps
   const query = useQuery({
     queryKey: queryKeys.pageKeys.prefixPreview(
       debouncedProjectId,

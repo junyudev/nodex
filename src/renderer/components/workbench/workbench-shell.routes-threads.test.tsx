@@ -26,11 +26,8 @@ import {
   installTerminalEventApiMock,
   invokeCalls,
   mockInvokeImpl,
-  mockThreadStartProgress,
   renderWorkbench,
-  setMockConversationHasVisibleTurn,
   setMockInvokeImpl,
-  setMockThreadStartProgress,
 } from "./workbench-testkit/workbench-shell-harness";
 
 const standaloneTasksDatabase: LibraryDatabaseNavigationNode = {
