@@ -60,6 +60,7 @@ docs/release-windows.md
   s_3022e59a160914::t_358cacc33214a1 216-218
   s_3022e59a160914::t_61f086ff6ad8ab 47-49
   s_31333ce1edfc28::t_feb571796c279f 304-323,325-394
+  s_3022e59a160914::t_574c5ddbe2faa5 25,303,324
 src/main/windows-app-updater.test.ts
   s_fe237c1ed6d99b::t_33faef5ff7db3a 1-376
 src/shared/host-capabilities.ts
