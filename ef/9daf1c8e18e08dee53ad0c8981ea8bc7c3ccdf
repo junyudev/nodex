@@ -1,0 +1,33 @@
+crates/nodex-core/src/infrastructure/request_execution.rs
+  s_098df3235fa721::t_aac23f7d066e27 212,215-217,275-296
+crates/nodex-core/src/workspace/page_create.rs
+  s_098df3235fa721::t_f1b5a3072cc532 566-568
+crates/nodex-core/src/workspace/project_activity_summary.rs
+  s_098df3235fa721::t_d6b345c4a3fe2b 147-156
+docs/windows-verification.md
+  s_54f698eea1a2c7::t_5eed08fde6e84d 31,33-38
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ef9daf1c8e18e08dee53ad0c8981ea8bc7c3ccdf",
+  "prompts": {},
+  "sessions": {
+    "s_098df3235fa721": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19eb9-df69-7222-adba-8eb488f30462",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_54f698eea1a2c7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19f25-25d1-7bc0-a490-1881062fc6bc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
