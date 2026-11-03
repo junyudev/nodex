@@ -1,8 +1,10 @@
 # Windows packaging runbook
 
 Nodex builds Windows 11 installers natively for x64 and arm64. The Windows
-workflow produces unsigned validation artifacts. Windows artifacts do not yet
-participate in the protected macOS Release Bundle or public release promotion.
+workflow and official release pipeline share one native distribution implementation.
+Stable releases and Nightly prereleases include both CPUs in the same verified
+Release Bundle as macOS arm64. [Application releases](release.md) owns identity,
+certification, protected finalization, promotion, Rehearsal, and Recovery.
 
 ## Build an installer
 
@@ -18,8 +20,8 @@ vp run package:win:arm64
 
 `package:win` selects the host CPU. Packaging builds the application, stages the
 native runtime, verifies the prepared output, then invokes electron-builder NSIS.
-CI exposes build, staging, architecture verification and packaging as separate
-steps. Its `package:win:prepared <arch>` entrypoint verifies the existing prepared
+The reusable Windows distribution runs build, staging, architecture verification,
+packaging, and the installed-app probe through one repository-owned Release Module. Its `package:win:prepared <arch>` entrypoint verifies the existing prepared
 build before packaging; it does not rebuild or restage source.
 A target CPU different from the build host is rejected. The artifacts are:
 
@@ -172,7 +174,9 @@ Failed suites also retain available test attachments in
 `windows-app-<suite>-<arch>-failure-<attempt>`; these uploads exclude Profiles and
 databases. Its packaging cells upload:
 
-- `nodex-windows-<arch>-<source-sha>`: the architecture-qualified installer.
+- `nodex-windows-<arch>-<source-sha>`: the versioned installer,
+  `architecture-build.json`, `windows-build-provenance.json`, and installed-app
+  probe receipt. It is emitted only after the installed-app probe passes.
 - `nodex-windows-probe-<arch>-<source-sha>`: startup logs, probe result JSON, and
   `installed-payload.json` with total installed bytes, physical file count and
   a per-file inventory measured from the clean installation before first launch.
@@ -231,23 +235,64 @@ This is diagnostic evidence for those existing artifacts, not proof of a new bui
 
 For branch feedback, push only the intended Windows development branch and read
 its run. A failing Rust build or missing named-pipe Core is a dependency failure,
-not evidence that the packaged app starts. Installer artifacts are uploaded before
-the startup probe so failed startup evidence can be investigated with the exact
-installer.
+not evidence that the packaged app starts. Only verified installers enter an architecture bundle. A failed build still
+uploads available startup diagnostics.
 
 ## Signing, updates, and release promotion
 
-`WindowsSigningPolicy` in `scripts/windows-signing.ts` is the typed distribution
-policy boundary. Its current `unsigned` variant explicitly disables Authenticode
-while retaining icon and executable metadata editing. There are no signing
-secrets in this workflow. A future Azure Artifact Signing implementation belongs
-behind this policy and a protected distribution job; it must sign and verify all
-first-party executables and the final installer without rewriting locked vendor
-runtime identities. The source certificate and Release Bundle also need a
-Windows architecture owner before public promotion is enabled.
+`WindowsSigningPolicy` in `scripts/windows-signing.ts` explicitly disables
+Authenticode while retaining icon and executable metadata editing. Native Windows
+builds use no signing credentials. A future Authenticode implementation belongs
+behind this policy and a protected distribution job; it must preserve locked vendor
+runtime identities. Windows SmartScreen may warn on first download.
 
-Windows update discovery, signed update metadata, rollback/recovery, release
-publication and a Windows download surface remain separate work. Sparkle is
-macOS-only and is not a Windows update implementation. Until these seams are
-completed, download the CI installer explicitly; no automatic Windows update
-channel is advertised.
+Official assets use the Release Identity's display version:
+
+| Asset                  | Name                                                             |
+| ---------------------- | ---------------------------------------------------------------- |
+| x64 installer          | `Nodex-<displayVersion>-windows-x64.exe`                         |
+| arm64 installer        | `Nodex-<displayVersion>-windows-arm64.exe`                       |
+| Stable aliases         | `Nodex-latest-windows-x64.exe`, `Nodex-latest-windows-arm64.exe` |
+| Signed appcast         | `Nodex-<displayVersion>-appcast-windows-<arch>.xml`              |
+| Closed update manifest | `Nodex-<displayVersion>-update-windows-<arch>.json`              |
+
+Stable aliases have exactly the same bytes as their versioned installer. Nightly
+prereleases contain versioned assets only and never change GitHub Latest. The
+internal local packager names in the build table above are renamed only after
+verification; they are not public asset names.
+
+The source certificate binds the exact Git commit/tree before an official build.
+The architecture manifest binds that Release Identity, clean prepared generation,
+packaged app version, official Skills identity, runtime lock digests, native runner
+versions, installer hash and package provenance. The Windows provenance includes
+all unpacked payload file hashes and the successful installed-app probe receipt.
+A missing CPU or failed probe blocks the complete release.
+
+A direct job bound to `sparkle-feed-finalization` signs each installer with the
+existing Sparkle `sign_update` tool and `SPARKLE_ED25519_PRIVATE_KEY`. It produces
+a signed single-item appcast with the monotonic build version, display version,
+publication date, release notes, exact byte length and `sparkle:os="windows"`.
+The enclosure URL points at the immutable GitHub tag's versioned installer.
+There are no Windows deltas. The Release Bundle assembler verifies installer and
+final XML signatures against the pinned public key independently before adding
+their hashes and stable aliases to `SHA256SUMS` and `release-bundle.json`.
+
+The feeds are:
+
+- `https://nodex.jyu.app/updates/stable/windows-x64/appcast.xml`
+- `https://nodex.jyu.app/updates/stable/windows-arm64/appcast.xml`
+- `https://nodex.jyu.app/updates/nightly/windows-x64/appcast.xml`
+- `https://nodex.jyu.app/updates/nightly/windows-arm64/appcast.xml`
+
+Pages stores only feed snapshots; installer bytes remain GitHub Release assets.
+Projection preflights every architecture, rejects lower build versions and
+same-build byte drift, and verifies public feed bytes and enclosure availability
+after push. Stable and Nightly change only their own subtree. Recovery replays
+the verified Bundle's exact bytes without re-signing or rebuilding published assets.
+
+Official package builds pass the same identity/channel environment as macOS:
+`NODEX_RELEASE_IDENTITY_PATH`, `NODEX_RELEASE_VERSION`, `NODEX_BUILD_VERSION`, and
+`NODEX_SPARKLE_CHANNEL`. The prepared manifest and executable package metadata
+carry the Release Identity. Windows CI validation forces the channel to `disabled`;
+local packages also default to disabled. The Windows updater owns its packaged
+runtime manifest and installer handoff; it does not use the macOS Sparkle bridge.

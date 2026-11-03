@@ -135,8 +135,8 @@ There is no separate landing-only validation workflow or second required check.
     publishes only its update feed
   - commits only when there is a diff
   - is also called by release promotion after the immutable app Release is
-    verified; that mode projects the Release Bundle's exact signed arm64
-    appcast snapshot into `/updates/stable/arm64/appcast.xml`, rejects feed
+    verified; that mode projects the Release Bundle's exact signed macOS arm64,
+    Windows x64 and Windows arm64 appcast snapshots into their stable feed paths, rejects feed
     rollback or same-version byte drift, and verifies the public bytes and
     immutable enclosures after push
 
@@ -155,14 +155,22 @@ the reusable deployment workflow:
 
 In `NodexApp/NodexApp.github.io`, configure GitHub Pages to publish from the default branch root.
 
-The stable application-update endpoints are:
+Each channel has one macOS arm64 feed and one feed per Windows CPU:
 
 - `https://nodex.jyu.app/updates/stable/arm64/appcast.xml`
+- `https://nodex.jyu.app/updates/stable/windows-x64/appcast.xml`
+- `https://nodex.jyu.app/updates/stable/windows-arm64/appcast.xml`
+- `https://nodex.jyu.app/updates/nightly/arm64/appcast.xml`
+- `https://nodex.jyu.app/updates/nightly/windows-x64/appcast.xml`
+- `https://nodex.jyu.app/updates/nightly/windows-arm64/appcast.xml`
 
-The Pages repository stores only the signed feed control plane. Full ZIPs and
-deltas remain immutable assets of the corresponding `junyudev/nodex` GitHub
+The Pages repository stores only the signed feed control plane. Full ZIPs,
+Windows installers and deltas remain immutable assets of the corresponding `junyudev/nodex` GitHub
 Release. Feed recovery replays a verified release snapshot; it does not
-regenerate or re-sign an existing release.
+regenerate or re-sign an existing release. Projection preflights all feeds before
+writing, refuses rollback and same-build byte drift, and verifies canonical public
+feed bytes plus immutable enclosure availability after push. Nightly promotion
+changes only `updates/nightly/`; ordinary landing deploys preserve all feeds.
 
 No SPA fallback is needed. `packages/landing/public/CNAME` is part of the
 production custom-domain contract and must remain in the generated Pages tree;

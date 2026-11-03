@@ -61,7 +61,7 @@ It ships as an Electron desktop app plus a CLI/HTTP API backed by SQLite.
 - Standard tests: `vp run test`
 - Source gate: `vp run verify:source` (`vp run test:all` is an alias)
 - macOS runtime gate: `vp run verify:runtime:mac`
-- Signed macOS arm64 gate: GitHub `Distribution Rehearsal`
+- Native application distribution gate: GitHub `Distribution Rehearsal`
 
 ## Runtime and Tooling
 
@@ -128,6 +128,7 @@ Use these docs as the source of truth:
 - Cross-cutting engineering principles and knowledge routing: `docs/ENGINEERING_LEARNINGS.md`
 - User-visible feature behavior and public contracts: `docs/product-specs/`
 - Native CLI overview: `docs/CLI.md`
+- Application releases, signing, feeds, promotion, Rehearsal and Recovery: `docs/release.md`
 - Windows packaging and verification layers (CI, interactive VM checklist, hardware acceptance): `docs/release-windows.md`, `docs/windows-verification.md`
 - Profile and Desktop configuration: `docs/CONFIGURATION.md`
 - External/reference specs (Nodex Markdown and clipboard behavior): `docs/references/`

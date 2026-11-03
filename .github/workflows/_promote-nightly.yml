@@ -70,6 +70,7 @@ jobs:
           gh auth setup-git
           target="${RUNNER_TEMP}/target-site"
           git clone https://github.com/NodexApp/NodexApp.github.io.git "${target}"
+          test "$(node -p "require('${RUNNER_TEMP}/release-bundle/release-bundle.json').releaseIdentity.channel")" = nightly
           vp run release:project:pages -- --bundle "${RUNNER_TEMP}/release-bundle/release-bundle.json" --existing-site-dir "${target}" --site-dir "${target}"
           git -C "${target}" add updates/nightly
           if git -C "${target}" diff --cached --quiet; then exit 0; fi
@@ -77,4 +78,5 @@ jobs:
           git -C "${target}" config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git -C "${target}" commit -m "deploy: publish Nodex ${VERSION} nightly feed"
           git -C "${target}" push origin HEAD
-          vp run release:verify:pages -- --bundle "${RUNNER_TEMP}/release-bundle/release-bundle.json"
+      - name: Verify published nightly appcasts and enclosures
+        run: vp run release:verify:pages -- --bundle "${{ runner.temp }}/release-bundle/release-bundle.json"

@@ -26,7 +26,10 @@ import {
   type SparkleArchitectureUpdateManifest,
 } from "./sparkle-manifest";
 
+import { makeWindowsReleaseFixture } from "./windows-release.fixture";
+
 let fixture = "";
+let windows: ReturnType<typeof makeWindowsReleaseFixture>;
 const VERSION = "0.2.2";
 const PREVIOUS_VERSION = "0.2.1";
 const BUILD_VERSION = "1.0.1";
@@ -181,16 +184,18 @@ const makeUpdate = (
 
 beforeEach(() => {
   fixture = mkdtempSync(join(tmpdir(), "nodex-release-bundle-"));
+  windows = makeWindowsReleaseFixture(fixture);
 });
 
 afterEach(() => {
   rmSync(fixture, { recursive: true, force: true });
 });
 
-test("assembles the exact Apple silicon Sparkle asset closure", () => {
+test("assembles the complete macOS and Windows signed release closure", () => {
   const arm64 = makeArchitecture("arm64");
   const output = join(fixture, "output");
   const bundle = assembleReleaseBundle({
+    ...windows,
     arm64Directory: arm64,
     arm64UpdateDirectory: makeUpdate("arm64", arm64),
     outputDirectory: output,
@@ -198,7 +203,7 @@ test("assembles the exact Apple silicon Sparkle asset closure", () => {
     version: VERSION,
   });
 
-  expect(bundle.schemaVersion).toBe(3);
+  expect(bundle.schemaVersion).toBe(4);
   expect(bundle.assets.map(({ name }) => name).sort()).toEqual(
     [
       `Nodex-${VERSION}-appcast-arm64.xml`,
@@ -207,13 +212,19 @@ test("assembles the exact Apple silicon Sparkle asset closure", () => {
       `Nodex-${PREVIOUS_VERSION}-to-${VERSION}-arm64.delta`,
       "Nodex-latest-arm64.dmg",
       "release-identity.json",
+      ...["x64", "arm64"].flatMap((architecture) => [
+        `Nodex-${VERSION}-windows-${architecture}.exe`,
+        `Nodex-latest-windows-${architecture}.exe`,
+        `Nodex-${VERSION}-appcast-windows-${architecture}.xml`,
+        `Nodex-${VERSION}-update-windows-${architecture}.json`,
+      ]),
     ].sort(),
   );
   expect(bundle.assets.some(({ name }) => name.endsWith(".blockmap"))).toBe(false);
   expect(bundle.assets.some(({ name }) => name === "latest-mac.yml")).toBe(false);
-  expect(releaseAssetPaths(join(output, "release-bundle.json"))).toHaveLength(
-    bundle.assets.length + 2,
-  );
+  expect(
+    releaseAssetPaths(join(output, "release-bundle.json"), windows.windowsPublicKey),
+  ).toHaveLength(bundle.assets.length + 2);
   const site = join(fixture, "site");
   const currentSite = join(fixture, "current-site");
   for (const architecture of ["arm64"] as const) {
@@ -222,6 +233,7 @@ test("assembles the exact Apple silicon Sparkle asset closure", () => {
     writeFileSync(feed, appcastFor("0.2.0"));
   }
   projectReleaseAppcasts({
+    windowsPublicKey: windows.windowsPublicKey,
     bundlePath: join(output, "release-bundle.json"),
     existingSiteDirectory: currentSite,
     siteDirectory: site,
@@ -232,19 +244,23 @@ test("assembles the exact Apple silicon Sparkle asset closure", () => {
   writeFileSync(join(currentSite, "updates/stable/arm64/appcast.xml"), appcastFor("2.0.0"));
   expect(() =>
     projectReleaseAppcasts({
+      windowsPublicKey: windows.windowsPublicKey,
       bundlePath: join(output, "release-bundle.json"),
       existingSiteDirectory: currentSite,
       siteDirectory: join(fixture, "rollback-site"),
     }),
   ).toThrow("cannot move");
   appendFileSync(join(output, "Nodex-latest-arm64.dmg"), "tampered");
-  expect(() => releaseAssetPaths(join(output, "release-bundle.json"))).toThrow("does not match");
+  expect(() =>
+    releaseAssetPaths(join(output, "release-bundle.json"), windows.windowsPublicKey),
+  ).toThrow("does not match");
 });
 
 test("derives remote release identities without local copies of the full assets", () => {
   const arm64 = makeArchitecture("arm64");
   const output = join(fixture, "output");
   const bundle = assembleReleaseBundle({
+    ...windows,
     arm64Directory: arm64,
     arm64UpdateDirectory: makeUpdate("arm64", arm64),
     outputDirectory: output,
@@ -274,6 +290,7 @@ test("rejects a Sparkle full update that does not match the architecture ZIP", (
 
   expect(() =>
     assembleReleaseBundle({
+      ...windows,
       arm64Directory: arm64,
       arm64UpdateDirectory: armUpdate,
       outputDirectory: join(fixture, "output"),
@@ -290,6 +307,7 @@ test("rejects a missing or tampered Sparkle delta from the dynamic asset closure
   rmSync(deltaPath);
   expect(() =>
     assembleReleaseBundle({
+      ...windows,
       arm64Directory: arm64,
       arm64UpdateDirectory: armUpdate,
       outputDirectory: join(fixture, "missing-output"),
@@ -305,6 +323,7 @@ test("rejects a missing or tampered Sparkle delta from the dynamic asset closure
   );
   expect(() =>
     assembleReleaseBundle({
+      ...windows,
       arm64Directory: arm64,
       arm64UpdateDirectory: replacementUpdate,
       outputDirectory: join(fixture, "tampered-output"),
@@ -346,6 +365,7 @@ test("rejects appcast enclosure metadata that diverges from the update manifest"
 
   expect(() =>
     assembleReleaseBundle({
+      ...windows,
       arm64Directory: arm64,
       arm64UpdateDirectory: armUpdate,
       outputDirectory: join(fixture, "mismatched-appcast-output"),
@@ -388,6 +408,7 @@ test("rejects a Sparkle appcast below the product macOS baseline", () => {
 
   expect(() =>
     assembleReleaseBundle({
+      ...windows,
       arm64Directory: arm64,
       arm64UpdateDirectory: armUpdate,
       outputDirectory: join(fixture, "old-macos-appcast-output"),
@@ -402,6 +423,7 @@ test("rejects architecture and update manifests from different source commits", 
 
   expect(() =>
     assembleReleaseBundle({
+      ...windows,
       arm64Directory: arm64,
       arm64UpdateDirectory: makeUpdate("arm64", arm64, "f".repeat(40)),
       outputDirectory: join(fixture, "output"),
@@ -426,6 +448,7 @@ test("rejects top-level source identity fields that diverge from the embedded id
 
   const output = join(fixture, "output");
   assembleReleaseBundle({
+    ...windows,
     arm64Directory: arm64,
     arm64UpdateDirectory: makeUpdate("arm64", arm64),
     outputDirectory: output,
@@ -462,6 +485,7 @@ test("rejects unlisted architecture artifacts", () => {
 
   expect(() =>
     assembleReleaseBundle({
+      ...windows,
       arm64Directory: arm64,
       arm64UpdateDirectory: makeUpdate("arm64", arm64),
       outputDirectory: join(fixture, "output"),

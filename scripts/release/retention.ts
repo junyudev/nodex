@@ -22,7 +22,9 @@ interface RemoteRelease {
 }
 
 const NIGHTLY_TAG = /^v\d+\.\d+\.\d+-nightly\.\d{8}\.[1-9]\d*$/u;
-const NIGHTLY_FEEDS = ["https://nodex.jyu.app/updates/nightly/arm64/appcast.xml"] as const;
+const NIGHTLY_FEEDS = ["arm64", "windows-x64", "windows-arm64"].map(
+  (architecture) => `https://nodex.jyu.app/updates/nightly/${architecture}/appcast.xml`,
+);
 
 const gh = (args: readonly string[]): string =>
   execFileSync("gh", [...args], {

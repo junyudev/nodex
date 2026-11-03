@@ -377,4 +377,4 @@ as runtime compatibility, durable format, or algorithm identity with an owner
 and a coexistence, migration, invalidation, or rejection strategy. Same-build
 DTO contract versions are forbidden.
 Release packaging and supported-baseline acceptance are documented operationally in
-[the macOS Release Runbook](../release-macos.md).
+[the Application Release Runbook](../release.md).

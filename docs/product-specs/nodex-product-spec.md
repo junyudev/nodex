@@ -221,7 +221,7 @@ Use the narrowest owner:
 | Exact CLI flags and command schema                          | Generated `nodex --help` / `--json ... --help`, summarized in [CLI Reference](../CLI.md) |
 | Configuration keys and overrides                            | Typed config parser/tests, summarized in [Configuration](../CONFIGURATION.md)            |
 | Store schema and migration versions                         | Core schema/migration code and tests                                                     |
-| Build, validation, packaging, and release                   | [Development](../development.md) and [macOS Release Runbook](../release-macos.md)        |
+| Build, validation, packaging, and release                   | [Development](../development.md) and [Application Release Runbook](../release.md)        |
 
 Replace stale statements at their owner. Do not append feature chronology,
 schema inventories, directory trees, or implementation values to this map.

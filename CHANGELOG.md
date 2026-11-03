@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Windows 11 installers for x64 and arm64 now ship with stable releases and Nightly builds. Each architecture has its own signed update feed, and stable downloads keep a permanent installer link.
+
 - Sites in the built-in Browser can ask for your camera, microphone, location, notifications and other permissions. The request appears under the address bar, where you allow it while visiting, allow it this time or never allow it; Site information lists what each site may do and resets it, and a permission your system blocks offers to open System Settings.
 - Sort chats by Last updated or Manual order from the options menu in the sidebar's Projects header. Manual order keeps the chats you arrange where you put them, with new and never-arranged chats above them by activity, and switching between the two keeps your arrangement.
 - A Page's Files read as a file tree, and each File opens in a tab beside its Page. Folders, kinds and sizes sit across the Page's full width, with which chat or person attached each File and when. HTML reports render as the pages they are, with their images and data from the same Page, in an offline preview that cannot reach the network or your files; images, PDFs, Markdown and code open in their own viewers. A report an Agent attaches again updates the open tab.

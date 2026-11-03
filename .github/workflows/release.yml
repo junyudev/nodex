@@ -141,10 +141,27 @@ jobs:
       sentry_org: ${{ secrets.SENTRY_ORG }}
       sentry_project: ${{ secrets.SENTRY_PROJECT }}
 
-  finalize-sparkle:
-    name: finalize arm64 Sparkle updates
+  windows-distribution:
+    name: build native Windows distributions
     if: needs.detect.outputs.should_release == 'true'
-    needs: [detect, distribution]
+    needs: [detect, certification]
+    permissions:
+      actions: read
+      contents: read
+    uses: ./.github/workflows/_windows-distribution.yml
+    with:
+      source_sha: ${{ needs.detect.outputs.source_sha }}
+      source_tree: ${{ needs.certification.outputs.source_tree }}
+      retention_days: 30
+
+  finalize-sparkle:
+    name: finalize signed application updates
+    if: needs.detect.outputs.should_release == 'true'
+    needs: [detect, distribution, windows-distribution]
+    strategy:
+      fail-fast: false
+      matrix:
+        architecture: [arm64, windows-x64, windows-arm64]
     runs-on: macos-26
     environment: sparkle-feed-finalization
     permissions:
@@ -156,7 +173,7 @@ jobs:
           ref: ${{ needs.detect.outputs.source_sha }}
       - uses: ./.github/actions/finalize-sparkle
         with:
-          architecture: arm64
+          architecture: ${{ matrix.architecture }}
           channel: stable
           private_key: ${{ secrets.SPARKLE_ED25519_PRIVATE_KEY }}
           retention_days: 30
@@ -166,7 +183,7 @@ jobs:
   assemble:
     name: assemble verified Release Bundle
     if: needs.detect.outputs.should_release == 'true'
-    needs: [detect, distribution, finalize-sparkle]
+    needs: [detect, distribution, windows-distribution, finalize-sparkle]
     permissions:
       actions: read
       contents: read

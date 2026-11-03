@@ -3,6 +3,7 @@ import { existsSync, lstatSync, mkdtempSync, readFileSync, rmSync } from "node:f
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
+import { verifyWindowsReleaseAssets } from "./windows-updates";
 import { parseReleaseBundleManifest } from "./bundle";
 import {
   compareStableVersions,
@@ -192,7 +193,10 @@ export async function verifyReleaseAttestation(repo: string, tag: string): Promi
   }
 }
 
-export const releaseAssetPaths = (bundlePath: string): readonly string[] => {
+export const releaseAssetPaths = (
+  bundlePath: string,
+  windowsPublicKey?: string,
+): readonly string[] => {
   const { bundle, resolvedBundle, root } = readBundle(bundlePath);
   const checksumPath = join(root, "SHA256SUMS");
   const paths = [
@@ -208,6 +212,7 @@ export const releaseAssetPaths = (bundlePath: string): readonly string[] => {
     }
   }
   verifyChecksumAllowlist(resolvedBundle, bundle);
+  verifyWindowsReleaseAssets(bundle, root, windowsPublicKey);
   return paths;
 };
 

@@ -1,6 +1,7 @@
 import { type Element, DOMParser } from "@xmldom/xmldom";
 
 import type { SparkleArchitectureUpdateManifest, SparkleFileIdentity } from "./sparkle-manifest";
+import type { ReleaseArchitecture } from "./targets";
 
 const SPARKLE_NAMESPACE = "http://www.andymatuschak.org/xml-namespaces/sparkle";
 const PRODUCT_MINIMUM_MACOS = /^15(?:\.0){0,2}$/u;
@@ -15,7 +16,10 @@ const enclosureMatches = (enclosure: Element, identity: SparkleFileIdentity): bo
 
 export function verifySparkleAppcastContract(
   xml: string,
-  manifest: SparkleArchitectureUpdateManifest,
+  manifest: Pick<SparkleArchitectureUpdateManifest, "full" | "deltas"> & {
+    readonly architecture: ReleaseArchitecture;
+    readonly target: { readonly version: string; readonly buildVersion: string };
+  },
 ): void {
   const document = new DOMParser().parseFromString(xml, "application/xml");
   if (document.getElementsByTagName("parsererror").length > 0) {
@@ -37,9 +41,21 @@ export function verifySparkleAppcastContract(
     throw new Error("Sparkle appcast must contain exactly one target release item.");
   }
   const minimumSystemVersion = sparkleText(matchingItems[0], "minimumSystemVersion");
-  if (!minimumSystemVersion || !PRODUCT_MINIMUM_MACOS.test(minimumSystemVersion)) {
+  if (
+    manifest.architecture === "arm64" &&
+    (!minimumSystemVersion || !PRODUCT_MINIMUM_MACOS.test(minimumSystemVersion))
+  ) {
     throw new Error("Sparkle appcast target must require macOS 15.0.");
   }
+
+  if (
+    manifest.architecture !== "arm64" &&
+    (items.length !== 1 ||
+      matchingItems[0].getElementsByTagName("pubDate").length !== 1 ||
+      matchingItems[0].getElementsByTagName("description").length !== 1 ||
+      matchingItems[0].getElementsByTagName("enclosure").length !== 1)
+  )
+    throw new Error("Windows appcast must contain one dated release with notes and one enclosure.");
 
   const fullEnclosures: Element[] = [];
   const deltaEnclosures = new Map<string, Element>();
@@ -60,6 +76,12 @@ export function verifySparkleAppcastContract(
   if (fullEnclosures.length !== 1 || !enclosureMatches(fullEnclosures[0], manifest.full)) {
     throw new Error("Sparkle appcast full enclosure does not match its update manifest.");
   }
+  if (
+    manifest.architecture !== "arm64" &&
+    (fullEnclosures[0].getAttribute("type") !== "application/octet-stream" ||
+      fullEnclosures[0].getAttributeNS(SPARKLE_NAMESPACE, "os") !== "windows")
+  )
+    throw new Error("Windows appcast enclosure must target Windows installer bytes.");
   if (deltaEnclosures.size !== manifest.deltas.length) {
     throw new Error("Sparkle appcast delta enclosure set does not match its update manifest.");
   }

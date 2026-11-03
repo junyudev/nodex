@@ -1,5 +1,4 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { createPublicKey, verify as verifySignature } from "node:crypto";
 import {
   copyFileSync,
   existsSync,
@@ -38,8 +37,15 @@ import {
   type SparkleFileIdentity,
 } from "./sparkle-manifest";
 import type { MacArchitecture } from "./bundle";
-import { parseReleaseBundleManifest, RELEASE_BUNDLE_SCHEMA_VERSION } from "./bundle";
+import { parseReleaseHistoryBundle, RELEASE_BUNDLE_SCHEMA_VERSION } from "./bundle";
 import { verifySparkleAppcastContract } from "./sparkle-appcast-contract";
+
+import {
+  readConfiguredPublicKey,
+  signFile,
+  runWithPrivateKey,
+  assertPrivateKeyMatchesPublicKey,
+} from "./signing";
 
 const SPARKLE_NAMESPACE = "http://www.andymatuschak.org/xml-namespaces/sparkle";
 const PRODUCT_BUNDLE_ID = "app.jyu.nodex";
@@ -82,26 +88,6 @@ const run = (command: string, args: readonly string[], cwd?: string): string =>
     encoding: "utf8",
     stdio: ["ignore", "pipe", "inherit"],
   }).trim();
-
-const runWithPrivateKey = (
-  executable: string,
-  args: readonly string[],
-  privateKey: string,
-  cwd?: string,
-): string => {
-  const result = spawnSync(executable, [...args], {
-    cwd,
-    encoding: "utf8",
-    input: privateKey.endsWith("\n") ? privateKey : `${privateKey}\n`,
-    maxBuffer: 64 * 1024 * 1024,
-  });
-  if (result.error || result.status !== 0) {
-    throw new Error(
-      `Sparkle tool ${path.basename(executable)} failed: ${result.error?.message ?? result.stderr ?? result.stdout}`,
-    );
-  }
-  return result.stdout.trim();
-};
 
 const appAtRoot = (root: string): string => {
   const apps = readdirSync(root, { withFileTypes: true }).filter(
@@ -148,19 +134,6 @@ const readAppIdentity = (appPath: string): AppIdentity => {
   };
 };
 
-const repositoryRoot = path.resolve(import.meta.dirname, "../..");
-
-const readConfiguredPublicKey = (): string => {
-  const publicKey = readFileSync(
-    path.join(repositoryRoot, "resources/sparkle/public-key.txt"),
-    "utf8",
-  ).trim();
-  if (!/^[A-Za-z0-9+/]{43}=$/u.test(publicKey) || Buffer.from(publicKey, "base64").length !== 32) {
-    throw new Error("Configured Sparkle public key is invalid.");
-  }
-  return publicKey;
-};
-
 const extractZip = (zipPath: string, outputDirectory: string): string => {
   mkdirSync(outputDirectory, { recursive: true });
   run("/usr/bin/ditto", ["-x", "-k", zipPath, outputDirectory]);
@@ -186,44 +159,6 @@ const fileIdentity = (filePath: string, url: string, edSignature: string): Spark
   sha256: sha256File(filePath),
   url,
 });
-
-const signFile = (signUpdate: string, filePath: string, privateKey: string): string => {
-  const signature = runWithPrivateKey(
-    signUpdate,
-    ["--ed-key-file", "-", "-p", filePath],
-    privateKey,
-  );
-  if (!/^[A-Za-z0-9+/]{86}==$/u.test(signature)) {
-    throw new Error(
-      `Sparkle returned an invalid Ed25519 signature for ${path.basename(filePath)}.`,
-    );
-  }
-  return signature;
-};
-
-const assertPrivateKeyMatchesPublicKey = (
-  signUpdate: string,
-  privateKey: string,
-  publicKey: string,
-): void => {
-  const verificationRoot = mkdtempSync(path.join(tmpdir(), "nodex-sparkle-key-verify-"));
-  try {
-    const sentinelPath = path.join(verificationRoot, "sentinel.txt");
-    writeFileSync(sentinelPath, "Nodex Sparkle signing-key verification\n", "utf8");
-    const signature = Buffer.from(signFile(signUpdate, sentinelPath, privateKey), "base64");
-    const rawPublicKey = Buffer.from(publicKey, "base64");
-    const key = createPublicKey({
-      format: "der",
-      key: Buffer.concat([Buffer.from("302a300506032b6570032100", "hex"), rawPublicKey]),
-      type: "spki",
-    });
-    if (!verifySignature(null, readFileSync(sentinelPath), key, signature)) {
-      throw new Error("Sparkle private key does not match the configured public key.");
-    }
-  } finally {
-    rmSync(verificationRoot, { force: true, recursive: true });
-  }
-};
 
 const textFor = (item: Element, localName: string): string | null => {
   const elements = item.getElementsByTagNameNS(SPARKLE_NAMESPACE, localName);
@@ -715,11 +650,14 @@ export function fetchSparkleHistory(options: {
     const rawBundle = JSON.parse(readFileSync(bundlePath, "utf8")) as {
       readonly schemaVersion?: unknown;
     };
-    if (rawBundle.schemaVersion !== RELEASE_BUNDLE_SCHEMA_VERSION) {
+    if (
+      rawBundle.schemaVersion !== 3 &&
+      rawBundle.schemaVersion !== RELEASE_BUNDLE_SCHEMA_VERSION
+    ) {
       rmSync(releaseRoot, { force: true, recursive: true });
       continue;
     }
-    const bundle = parseReleaseBundleManifest(rawBundle);
+    const bundle = parseReleaseHistoryBundle(rawBundle);
     if (
       bundle.releaseIdentity.channel !== channel ||
       compareBuildVersions(bundle.releaseIdentity.buildVersion, currentBuildVersion) >= 0

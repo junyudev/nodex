@@ -12,6 +12,7 @@ import {
   type MacArchitecture,
 } from "./bundle";
 import { parseReleaseIdentity, type ReleaseIdentity } from "./model";
+import { releaseBuildEnvironment } from "./targets";
 import { inspectReleaseSource } from "./source";
 
 const run = (
@@ -79,7 +80,7 @@ const requireNativeMac = (architecture: MacArchitecture): void => {
   }
 };
 
-const assertSourceIdentity = (cwd: string, identity: ReleaseIdentity): void => {
+export const assertSourceIdentity = (cwd: string, identity: ReleaseIdentity): void => {
   const { sourceSha, sourceTree } = identity;
   if (!/^[a-f0-9]{40}$/u.test(sourceSha)) throw new Error("Source SHA must be a full commit SHA.");
   if (!/^[a-f0-9]{40}$/u.test(sourceTree)) throw new Error("Source tree must be a full tree SHA.");
@@ -229,13 +230,7 @@ export async function buildMacDistribution(options: {
   requireNativeMac(options.architecture);
   assertSourceIdentity(cwd, identity);
 
-  const releaseEnvironment = {
-    ...process.env,
-    NODEX_BUILD_VERSION: identity.buildVersion,
-    NODEX_RELEASE_IDENTITY_PATH: resolve(options.identityPath),
-    NODEX_RELEASE_VERSION: identity.version,
-    NODEX_SPARKLE_CHANNEL: identity.channel,
-  };
+  const releaseEnvironment = releaseBuildEnvironment(identity, resolve(options.identityPath));
 
   const prerequisiteScripts = [
     "build-resources:verify",

@@ -1,6 +1,8 @@
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseReleaseIdentity } from "./release/model";
 import { desktopBuildTarget, type DesktopBuildTarget } from "./desktop-build-target";
 import { runVitePlus } from "./vite-plus-command";
 import { stageStandaloneNodeRuntime } from "./standalone-node-runtime";
@@ -115,6 +117,10 @@ async function main(): Promise<void> {
       await stageNative(target);
     }
     tsx("prepared-electron-build", "verify");
+    const identityPath = process.env.NODEX_RELEASE_IDENTITY_PATH;
+    const identity = identityPath
+      ? parseReleaseIdentity(JSON.parse(readFileSync(identityPath, "utf8")))
+      : null;
     const signing =
       target.platform === "win32" ? windowsSigningConfiguration({ kind: "unsigned" }) : {};
     runVitePlus(
@@ -126,6 +132,12 @@ async function main(): Promise<void> {
         `--${target.arch}`,
         "--publish",
         "never",
+        ...(identity
+          ? [
+              `--config.extraMetadata.version=${identity.version}`,
+              `--config.buildVersion=${identity.buildVersion}`,
+            ]
+          : []),
         ...Object.entries(signing).map(([key, value]) => `--config.win.${key}=${String(value)}`),
       ],
       { cwd: root },

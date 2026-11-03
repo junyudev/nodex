@@ -7,6 +7,9 @@ import { parseReleaseBundleManifest } from "./bundle";
 import { releaseAssetPaths } from "./github-release";
 import { compareBuildVersions, normalizeAppleBuildVersion, sha256File } from "./model";
 import { verifySparkleAppcastContract } from "./sparkle-appcast-contract";
+import { RELEASE_ARCHITECTURES, type ReleaseArchitecture } from "./targets";
+import { parseWindowsArchitectureUpdateManifest } from "./windows-updates";
+import { readConfiguredPublicKey } from "./signing";
 import { parseSparkleArchitectureUpdateManifest } from "./sparkle-manifest";
 
 const wait = async (milliseconds: number): Promise<void> => {
@@ -58,19 +61,21 @@ const assertProjectionDoesNotMoveFeedBackwards = (options: {
   }
 };
 
-const readBundleInputs = (bundlePath: string) => {
+const readBundleInputs = (bundlePath: string, windowsPublicKey = readConfiguredPublicKey()) => {
   const resolvedBundle = path.resolve(bundlePath);
   const root = path.dirname(resolvedBundle);
-  releaseAssetPaths(resolvedBundle);
+  releaseAssetPaths(resolvedBundle, windowsPublicKey);
   const bundle = parseReleaseBundleManifest(
     JSON.parse(readFileSync(resolvedBundle, "utf8")) as unknown,
   );
-  const updates = (["arm64"] as const).map((architecture) => {
+  const updates = RELEASE_ARCHITECTURES.map((architecture) => {
     const name = `Nodex-${bundle.version}-update-${architecture}.json`;
     const updatePath = path.join(root, name);
-    const update = parseSparkleArchitectureUpdateManifest(
-      JSON.parse(readFileSync(updatePath, "utf8")) as unknown,
-    );
+    const value: unknown = JSON.parse(readFileSync(updatePath, "utf8"));
+    const update =
+      architecture === "arm64"
+        ? parseSparkleArchitectureUpdateManifest(value)
+        : parseWindowsArchitectureUpdateManifest(value);
     const asset = bundle.assets.find((candidate) => candidate.name === name);
     const appcastAsset = bundle.assets.find((candidate) => candidate.name === update.appcast.name);
     const fullAsset = bundle.assets.find((candidate) => candidate.name === update.full.name);
@@ -89,6 +94,8 @@ const readBundleInputs = (bundlePath: string) => {
       sha256File(updatePath) !== asset.sha256 ||
       update.architecture !== architecture ||
       update.sourceSha !== bundle.sourceSha ||
+      update.channel !== bundle.releaseIdentity.channel ||
+      update.target.buildVersion !== bundle.releaseIdentity.buildVersion ||
       update.tag !== bundle.tag ||
       update.target.version !== bundle.version ||
       !appcastAsset ||
@@ -98,7 +105,7 @@ const readBundleInputs = (bundlePath: string) => {
       appcastAsset.sha256 !== update.appcast.sha256 ||
       !fullAsset ||
       fullAsset.architecture !== architecture ||
-      fullAsset.role !== "sparkle-full" ||
+      fullAsset.role !== (architecture === "arm64" ? "sparkle-full" : "windows-installer") ||
       fullAsset.bytes !== update.full.bytes ||
       fullAsset.sha256 !== update.full.sha256 ||
       update.deltas.some((delta) => {
@@ -116,6 +123,7 @@ const readBundleInputs = (bundlePath: string) => {
       throw new Error(`${architecture} appcast snapshot does not match its update manifest.`);
     }
     verifySparkleAppcastContract(readFileSync(appcastPath, "utf8"), update);
+
     return { appcastPath, architecture, update };
   });
   return { bundle, updates };
@@ -124,20 +132,20 @@ const readBundleInputs = (bundlePath: string) => {
 export function projectReleaseAppcasts(options: {
   readonly bundlePath: string;
   readonly existingSiteDirectory?: string;
+  readonly windowsPublicKey?: string;
   readonly siteDirectory: string;
 }): {
   readonly bundleSha256: string;
   readonly feeds: readonly {
-    readonly architecture: "arm64";
+    readonly architecture: ReleaseArchitecture;
     readonly path: string;
     readonly sha256: string;
   }[];
   readonly tag: string;
 } {
-  const { bundle, updates } = readBundleInputs(options.bundlePath);
+  const { bundle, updates } = readBundleInputs(options.bundlePath, options.windowsPublicKey);
   const site = path.resolve(options.siteDirectory);
-  for (const { appcastPath, update } of updates) {
-    const destination = path.join(site, ...update.appcast.feedPath.split("/"));
+  for (const { update } of updates) {
     if (options.existingSiteDirectory) {
       assertProjectionDoesNotMoveFeedBackwards({
         candidateSha256: update.appcast.sha256,
@@ -148,6 +156,9 @@ export function projectReleaseAppcasts(options: {
         ),
       });
     }
+  }
+  for (const { appcastPath, update } of updates) {
+    const destination = path.join(site, ...update.appcast.feedPath.split("/"));
     mkdirSync(path.dirname(destination), { recursive: true });
     copyFileSync(appcastPath, destination);
     if (sha256File(destination) !== update.appcast.sha256) {
@@ -186,8 +197,9 @@ export async function verifyPublishedAppcasts(options: {
   readonly attempts?: number;
   readonly bundlePath: string;
   readonly delayMs?: number;
+  readonly windowsPublicKey?: string;
 }): Promise<void> {
-  const { bundle, updates } = readBundleInputs(options.bundlePath);
+  const { bundle, updates } = readBundleInputs(options.bundlePath, options.windowsPublicKey);
   const attempts = options.attempts ?? 12;
   const delayMs = options.delayMs ?? 10_000;
   let lastError: unknown = null;

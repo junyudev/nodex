@@ -719,7 +719,7 @@ permission or signing failure must not be diagnosed through browser permissions.
 
 Native bridge preparation verifies the actual Mach-O architecture and deployment
 target before publishing or reusing an output. See the
-[macOS release contract](release-macos.md) for the build configuration and
+[application release contract](release.md) for the build configuration and
 packaged verification requirements.
 
 ## Validation
@@ -1201,7 +1201,7 @@ The Browser-only result is narrower evidence and does not replace the complete
 
 `vp run test:all` remains a compatibility alias for `verify:source`; neither
 command proves Apple signing or notarization. Use the
-production-like `Distribution Rehearsal` described in `release-macos.md` for
+production-like `Distribution Rehearsal` described in `release.md` for
 that boundary.
 
 ## Native Addon ABI Errors
@@ -1245,6 +1245,6 @@ paths; the execution runtime builds its independent copy as described above. Rus
 - [Cross-feature frontend engineering conventions](FRONTEND.md)
 - [Reliability model](RELIABILITY.md)
 - [Security model](SECURITY.md)
-- [macOS release CI](release-macos.md)
+- [Application release CI](release.md)
 - [Landing site operations](landing-site.md)
 - [CI architecture and tier ownership](CI.md)
