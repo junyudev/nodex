@@ -208,6 +208,20 @@ pub(crate) fn query_control(
     })
 }
 
+/// Behavioral/pressure tests may budget debug-build work independently of production latency.
+/// Deadline and cancellation tests must use their own explicit execution context instead.
+#[cfg(test)]
+pub(crate) fn with_test_request_budget<T>(operation: impl FnOnce() -> T) -> T {
+    within_request_execution(
+        RequestExecutionContext::new(
+            RequestExecutionClass::Interactive,
+            QueryCancellation::new(),
+            Instant::now() + Duration::from_secs(60),
+        ),
+        operation,
+    )
+}
+
 struct RequestExecutionGuard;
 
 impl Drop for RequestExecutionGuard {

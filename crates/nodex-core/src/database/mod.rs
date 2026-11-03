@@ -2529,15 +2529,17 @@ mod tests {
                 })
                 .unwrap();
             let started = std::time::Instant::now();
-            let result = module.apply(
-                &context(),
-                ModuleApplyRequest {
-                    contract_version: DATABASE_CONTRACT_VERSION,
-                    operation_id,
-                    store_epoch: StoreEpoch("epoch-1".to_owned()),
-                    intent: vec![intent],
-                },
-            );
+            let result = crate::infrastructure::request_execution::with_test_request_budget(|| {
+                module.apply(
+                    &context(),
+                    ModuleApplyRequest {
+                        contract_version: DATABASE_CONTRACT_VERSION,
+                        operation_id,
+                        store_epoch: StoreEpoch("epoch-1".to_owned()),
+                        intent: vec![intent],
+                    },
+                )
+            });
             let elapsed = started.elapsed();
             kernel
                 .writer()
@@ -2577,7 +2579,8 @@ mod tests {
                 }],
             );
             kernel.writer().call_with_budget(
-                std::time::Duration::from_secs(60), crate::infrastructure::sqlite::QueryCancellation::new(),
+                // This 100,000-row storage fixture is setup, not a public request latency check.
+                std::time::Duration::from_secs(180), crate::infrastructure::sqlite::QueryCancellation::new(),
                 move |connection| with_immediate_transaction(connection, |transaction| {
                     // Storage pressure supplements the authoritative moved Page.
                     // These rows only enlarge its canonical unfiltered order.

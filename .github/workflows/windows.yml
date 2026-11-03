@@ -69,7 +69,16 @@ jobs:
       - name: Build workspace
         run: cargo build --locked --workspace --all-features --all-targets
       - name: Test workspace
-        run: cargo test --locked --workspace --all-features --no-fail-fast -- --test-threads=2
+        # Large storage fixtures otherwise compete with unrelated request-deadline tests.
+        # Run every test, but give the two 100,000-row work-bound fixtures their own phase.
+        run: >-
+          cargo test --locked --workspace --all-features --no-fail-fast -- --test-threads=2
+          --skip database::tests::large_source_commit_projection_has_bounded_writer_work
+          --skip database::tests::manual_position_commands_keep_writer_work_bounded_as_source_grows
+      - name: Test bounded projection writer work
+        run: cargo test --locked -p nodex-core --all-features --lib database::tests::large_source_commit_projection_has_bounded_writer_work -- --exact --nocapture --test-threads=1
+      - name: Test bounded manual-position writer work
+        run: cargo test --locked -p nodex-core --all-features --lib database::tests::manual_position_commands_keep_writer_work_bounded_as_source_grows -- --exact --nocapture --test-threads=1
 
   app:
     if: inputs.installer_run_id == ''

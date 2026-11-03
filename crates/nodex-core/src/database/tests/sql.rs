@@ -9,36 +9,38 @@ use nodex_core_contracts::sql::{SqlBinding, SqlQuery, SqlScope};
 
 fn create_rows(library: &LibraryModule, source: &str, count: usize, key: &str) {
     for start in (0..count).step_by(16) {
-        library
-            .apply(
-                &context(),
-                ModuleApplyRequest {
-                    contract_version: LIBRARY_CONTRACT_VERSION,
-                    operation_id: format!("sql:{key}:{start}"),
-                    store_epoch: StoreEpoch("epoch-1".into()),
-                    intent: LibraryIntent::CreatePagesFromText {
-                        request: LibraryAgentCreatePagesRequest {
-                            destination: LibraryAgentPageDestination::DataSource {
-                                data_source_id: source.into(),
-                                values: vec![],
-                                view_id: None,
-                                group_key: None,
-                                at: None,
-                            },
-                            pages: (start..(start + 16).min(count))
-                                .map(|index| LibraryAgentCreatePageDraft {
-                                    title_markdown: format!("Item {index:03}"),
-                                    markdown: String::new(),
+        crate::infrastructure::request_execution::with_test_request_budget(|| {
+            library
+                .apply(
+                    &context(),
+                    ModuleApplyRequest {
+                        contract_version: LIBRARY_CONTRACT_VERSION,
+                        operation_id: format!("sql:{key}:{start}"),
+                        store_epoch: StoreEpoch("epoch-1".into()),
+                        intent: LibraryIntent::CreatePagesFromText {
+                            request: LibraryAgentCreatePagesRequest {
+                                destination: LibraryAgentPageDestination::DataSource {
+                                    data_source_id: source.into(),
                                     values: vec![],
-                                })
-                                .collect(),
-                            include_block_ids: false,
-                            include_etags: false,
+                                    view_id: None,
+                                    group_key: None,
+                                    at: None,
+                                },
+                                pages: (start..(start + 16).min(count))
+                                    .map(|index| LibraryAgentCreatePageDraft {
+                                        title_markdown: format!("Item {index:03}"),
+                                        markdown: String::new(),
+                                        values: vec![],
+                                    })
+                                    .collect(),
+                                include_block_ids: false,
+                                include_etags: false,
+                            },
                         },
                     },
-                },
-            )
-            .unwrap();
+                )
+                .unwrap()
+        });
     }
 }
 fn sql(
