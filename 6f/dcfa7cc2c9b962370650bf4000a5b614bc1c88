@@ -1,0 +1,74 @@
+packages/agent-runtime/src/orchestration-v2/ProjectionStore.ts
+  s_5cec66ce245092::t_a4e51fc57cf280 2-6,1263-1270,2631-2633,2636,2639,7259-7266
+  s_5cec66ce245092::t_b2c3be5bf09a89 1,7267-7274,7317-7320,7364-7365,9203,9210-9216,9977,10062,11449-11454,11478-11483,11539
+packages/agent-runtime/src/orchestration-v2/Orchestrator.ts
+  s_5cec66ce245092::t_bdb50c9fb90625 145-146,530,1401-1402,2830,2880,8776,8780,8872,8876,8881-8883,8888,8891,8909-8912,8919,8941-8944,8968-8974,9083,9087,12798-12811,12813-12815,12852
+packages/agent-runtime/src/nodex/SessionQueue.test.ts
+  s_5cec66ce245092::t_bdb50c9fb90625 7-8,19,35,118-142,151,194,219-225,409-533
+  s_cb3e022ee09d1e::t_0237731f1c5884 534
+packages/agent-runtime/src/orchestration-v2/QueuedRunKind.ts
+  s_5cec66ce245092::t_da298c6f76a649 28-31
+  s_cb3e022ee09d1e::t_5ddb1894d9ca4e 1-22,27
+  s_212ba7e4b2c3e8::t_1d6f454c3ee500 23-26
+packages/agent-runtime/src/nodex/SessionQueue.ts
+  s_5cec66ce245092::t_a4e51fc57cf280 12-17,34,97
+  s_5cec66ce245092::t_5b28884e283e20 100,156-157,174-178
+packages/agent-runtime/src/orchestration-v2/QueuedRunOrder.ts
+  s_5cec66ce245092::t_72dd34e7f6b52f 3-6,10,19
+docs/product-specs/agent-runtime-behavior.md
+  s_5cec66ce245092::t_852a78827d2986 364-378
+docs/product-specs/agent-interface-behavior.md
+  s_cb3e022ee09d1e::t_5378cdeec60f69 497,500,505,510-512
+packages/agent-runtime/src/nodex/Service.ts
+  s_cb3e022ee09d1e::t_8cf3ac32a48534 979
+packages/agent-runtime/src/orchestration-v2/DelegatedCompletionDelivery.test.ts
+  s_cb3e022ee09d1e::t_3330c4c336b428 509-620
+packages/agent-runtime/src/orchestration-v2/DelegatedTaskQuestionReactor.ts
+  s_cb3e022ee09d1e::t_cc06339c65d93b 121
+packages/agent-runtime/src/orchestration-v2/ProviderTurnControlService.test.ts
+  s_cb3e022ee09d1e::t_85c0045e9759c8 291
+packages/agent-runtime/src/orchestration-v2/QueueWindow.test.ts
+  s_cb3e022ee09d1e::t_f1d403d0ad930e 5-6,17,48,69-71,95-143,155-160,213-217,253-273
+packages/agent-runtime/src/orchestration-v2/QueuedRunOrder.test.ts
+  s_cb3e022ee09d1e::t_b652047649584e 3,19,22-28,57-64
+packages/agent-runtime/vendor/contracts/src/orchestrationV2.ts
+  s_cb3e022ee09d1e::t_5dbe87b41d78c4 3707-3713
+src/renderer/features/local-conversation/agent-runtime-conversation-owner.node.test.ts
+  s_cb3e022ee09d1e::t_e7918fc85a081e 976-995,1563-1621
+src/renderer/features/local-conversation/agent-runtime-conversation-owner.ts
+  s_cb3e022ee09d1e::t_2ee9d5dc3f9979 933,940-945,1025-1026,1035,1711,1749,1791
+src/shared/nodex-app-tools/session-control-schemas.ts
+  s_cb3e022ee09d1e::t_9943ff2b429125 83
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6fdcfa7cc2c9b962370650bf4000a5b614bc1c88",
+  "prompts": {},
+  "sessions": {
+    "s_212ba7e4b2c3e8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19f10-c66f-79f3-90e4-19490217b65d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_5cec66ce245092": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d35af60e-664c-450c-a6fb-09ff7e66af9e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_cb3e022ee09d1e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19f10-83da-79e1-8002-21edccb7e7aa",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
