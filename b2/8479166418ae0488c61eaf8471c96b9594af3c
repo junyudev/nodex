@@ -1,0 +1,19 @@
+crates/nodex-core/src/workspace/page_chat.rs
+  s_535d5b23ff299c::t_aef77e720154ac 1219-1228,1271-1290
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b28479166418ae0488c61eaf8471c96b9594af3c",
+  "prompts": {},
+  "sessions": {
+    "s_535d5b23ff299c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a01c-ab7e-76e0-9bef-b28aeff6777b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
