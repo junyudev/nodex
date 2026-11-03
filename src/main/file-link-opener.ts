@@ -4,6 +4,7 @@ import { dirname, extname, isAbsolute, join, resolve } from "node:path";
 import { spawn, execFile } from "node:child_process";
 import { opendir, stat, access } from "node:fs/promises";
 import { promisify } from "node:util";
+import type { Shell } from "electron";
 import {
   FILE_LINK_OPENER_OPTIONS,
   normalizeFileLinkOpenerId,
@@ -664,8 +665,21 @@ async function discoverAvailableFileLinkOpeners(): Promise<FileLinkOpenerId[]> {
 export async function openFileLinkTarget(
   target: FileLinkTarget,
   openerId: FileLinkOpenerId,
+  options: {
+    readonly platform?: string;
+    readonly shell?: Pick<Shell, "openPath" | "showItemInFolder">;
+  } = {},
 ): Promise<boolean> {
-  if (process.platform !== "darwin") return false;
+  const platform = options.platform ?? process.platform;
+  if (platform === "win32" && openerId === "fileManager") {
+    if (!options.shell) return false;
+    await assertExistingFileOpenPath(target.path);
+    if ((await stat(target.path)).isDirectory())
+      return (await options.shell.openPath(target.path)) === "";
+    options.shell.showItemInFolder(target.path);
+    return true;
+  }
+  if (platform !== "darwin") return false;
 
   const normalizedTarget = normalizeFileLinkOpenerId(openerId);
   const position = normalizeFileLinkPosition(target);

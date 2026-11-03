@@ -9,6 +9,11 @@ Desktop notifications, clipboard, `nodex://` links, single-instance routing,
 menus, dictation, Terminals and local Agents use Windows host integrations.
 Notifications use the application identity `app.jyu.nodex`.
 
+Existing file-manager commands open directories in Explorer and reveal files in
+their containing directory. They require an existing absolute local path and
+preserve paths with spaces and non-ASCII characters. External editor discovery
+and application-specific file opening remain unavailable on Windows.
+
 The per-user installer registers `nodex://` before first launch under
 `HKCU\Software\Classes\nodex`, with a URL Protocol marker and the installed
 `"Nodex.exe" "%1"` command. Packaged launches leave this installer-owned handler
