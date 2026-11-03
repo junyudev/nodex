@@ -1,0 +1,139 @@
+src/renderer/components/workbench/agent-instance-settings-control.tsx
+  s_b0eb8aff8b9fab::t_18112382cb7482 1,277-291
+src/renderer/components/workbench/app-shell-tabs.tsx
+  s_b0eb8aff8b9fab::t_67a2586d1bbd79 1,1374-1380,1382-1388
+src/renderer/components/workbench/archived-chats-settings-page.tsx
+  s_b0eb8aff8b9fab::t_1f5392bb2d51c3 1,220-233,235-249,261-270,272-292,294-298
+src/renderer/components/workbench/codex-home-settings-control.tsx
+  s_b0eb8aff8b9fab::t_e5808829cc8cfb 1,94-108
+src/renderer/components/workbench/codex-setup-import-control.tsx
+  s_b0eb8aff8b9fab::t_975a0f54a558b8 1,79-100,107-120
+src/renderer/components/workbench/codex-sidebar.tsx
+  s_b0eb8aff8b9fab::t_cda65aaeacc52b 1,515,674-692,926-941,1912-1925
+src/renderer/components/workbench/command-palette-workspace-toolbar.tsx
+  s_b0eb8aff8b9fab::t_16dd91f987dd6c 1,102-117
+src/renderer/components/workbench/command-palette.tsx
+  s_b0eb8aff8b9fab::t_7005df504d3828 2,128-130,150,157-175,177,179
+src/renderer/components/workbench/conversation-import-settings-page.tsx
+  s_7da3da250f2a3e::t_909cf53438ee28 1,409-423,425-447,491-501,503-542,577-595,601-612,631-632
+src/renderer/components/workbench/database-list/database-list.tsx
+  s_b0eb8aff8b9fab::t_71c641ac605a51 1,12,152,398-434,451,459,681-685,715,774-778,1035,1043,1046,1049,1063,1069-1074,1099,1114-1126,1129-1132,1138-1144,1150,1186-1200,1202-1227,1658-1666,1669
+src/renderer/components/workbench/database-list/use-database-list-window.ts
+  s_948a11dee36c5f::t_c0827be2c86f4a 6,753-767,773-774,779
+src/renderer/components/workbench/database-settings/database-settings-rail.tsx
+  s_7b1e939d6b8f42::t_b395ab52752231 1175-1176,1184
+src/renderer/components/workbench/database-settings/use-database-settings-runtime.test.tsx
+  s_7b1e939d6b8f42::t_df89eb36e07492 1-66
+src/renderer/components/workbench/database-settings/use-database-settings-runtime.ts
+  s_b0eb8aff8b9fab::t_1803761a2add43 1,70-71,74-97,112-115,123-135,168-180,183,190-203
+src/renderer/components/workbench/database-view-surface.test.tsx
+  s_948a11dee36c5f::t_4ddd5d0fe6692e 1-2,4,742-768
+src/renderer/components/workbench/database-view-surface.tsx
+  s_948a11dee36c5f::t_dfb59e412eced9 1,799-811,813-843
+src/renderer/components/workbench/git-settings-page.tsx
+  s_b0eb8aff8b9fab::t_25cea6a14ab85e 2,115-119,125-135,137-145,150-157
+src/renderer/components/workbench/keyboard-shortcuts-settings-page.browser.test.tsx
+  s_948a11dee36c5f::t_a7f7c6a8716bad 1-2
+src/renderer/components/workbench/keyboard-shortcuts-settings-page.test.tsx
+  s_948a11dee36c5f::t_2fb1b9cc24e006 1-56
+src/renderer/components/workbench/keyboard-shortcuts-settings-page.tsx
+  s_b0eb8aff8b9fab::t_ed6d7351009cba 1,164-178
+src/renderer/components/workbench/pending-worktree-route.tsx
+  s_b0eb8aff8b9fab::t_a4085e15282a46 1,488-497,524-539
+src/renderer/components/workbench/project-archive-chats-dialog.browser.test.tsx
+  s_948a11dee36c5f::t_42faa61ff48487 1-2
+src/renderer/components/workbench/project-archive-chats-dialog.test.tsx
+  s_b0eb8aff8b9fab::t_59829871b97552 1-94
+src/renderer/components/workbench/project-archive-chats-dialog.tsx
+  s_b0eb8aff8b9fab::t_f10b0c759f75b5 1,61-80,82-89
+src/renderer/components/workbench/workbench-agent-runtime-panels.tsx
+  s_a6909e3f94dcd9::t_4948db10d9ffcd 1,33,221-227,229-231,233-238,342,409,456-484,537
+src/renderer/components/workbench/workbench-process-manager-dialog.test.tsx
+  s_a6909e3f94dcd9::t_7c91f690c5991b 73
+  s_a6909e3f94dcd9::t_9be8a405ca7b92 1-72,74-119
+src/renderer/components/workbench/workbench-agent-runtime-panels.test.tsx
+  s_a6909e3f94dcd9::t_905a936848a47c 340-357,359-372
+  s_a6909e3f94dcd9::t_dd9c206fee766c 358
+  s_a6909e3f94dcd9::t_1540d0257593d6 13-14,17,49,51,52-69,74-75,79-83,103-106,109-110,113-115
+  s_948a11dee36c5f::t_7879cd8511ecd3 116
+src/renderer/components/workbench/project-edit-dialog.tsx
+  s_a6909e3f94dcd9::t_15a45ee204a80f 1,352-361,363-410
+src/renderer/components/workbench/project-hover-card.tsx
+  s_a6909e3f94dcd9::t_4e854baeb2281a 1,115,126,167-182
+src/renderer/components/workbench/project-remove-dialog.tsx
+  s_a6909e3f94dcd9::t_bc35b64ecf6a67 1,72-97
+src/renderer/components/workbench/removed-projects-dialog.tsx
+  s_a6909e3f94dcd9::t_5fcdbfe22e1b1c 1,68-94
+src/renderer/components/workbench/sidebar-pages-section.tsx
+  s_a6909e3f94dcd9::t_6742f6c7afb9a4 276,279-282
+src/renderer/components/workbench/stable-worktree-create-dialog.tsx
+  s_a6909e3f94dcd9::t_c9e52af9f16d20 1,56-69
+src/renderer/components/workbench/workbench-auxiliary-conversation-panels.tsx
+  s_a6909e3f94dcd9::t_388311fff084e0 333-334
+src/renderer/components/workbench/workbench-command-palette-host.tsx
+  s_a6909e3f94dcd9::t_f87db335f5c07f 1,144-156
+src/renderer/components/workbench/workbench-database-view-surface.tsx
+  s_a6909e3f94dcd9::t_30c586c0516ba4 1,391-420
+src/renderer/components/workbench/workbench-db-view-panel.tsx
+  s_a6909e3f94dcd9::t_b2d0b1bb7069b3 141,226-227
+src/renderer/components/workbench/workbench-hooks-settings-page.tsx
+  s_a6909e3f94dcd9::t_1b72b501a116e6 720-722
+src/renderer/components/workbench/workbench-library-page-surface.tsx
+  s_a6909e3f94dcd9::t_7a1d3f9eed19fc 60,86-87
+src/renderer/components/workbench/workbench-process-manager-dialog.tsx
+  s_a6909e3f94dcd9::t_0a7a8fd27ffa04 1,388-398,400-405,407-422,434-460
+src/renderer/components/workbench/workbench-rail-account-controls.tsx
+  s_a6909e3f94dcd9::t_bcb68194ab6703 1,153-165,291-306,315-327
+src/renderer/components/workbench/workbench-settings-controls.tsx
+  s_a6909e3f94dcd9::t_e24d0d71081281 342-356
+src/renderer/components/workbench/workbench-testkit/workbench-shell-harness.tsx
+  s_a6909e3f94dcd9::t_d6e04696b134c1 4560-4567,4627-4634
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2d01d55c0e3a1392c5ea5167226be8093469f044",
+  "prompts": {},
+  "sessions": {
+    "s_7b1e939d6b8f42": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a12a-b6f3-7242-bad0-977a2195411e",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_7da3da250f2a3e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a17c-16a0-74b3-8f6a-6c6afc49c2f9",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_948a11dee36c5f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a17c-233a-7ac2-9cbf-6bdf66557783",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_a6909e3f94dcd9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a17b-f97e-7f93-9075-8c47150dfcf5",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_b0eb8aff8b9fab": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a17b-ee4d-77e1-a74c-7eed9a2e97f7",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
