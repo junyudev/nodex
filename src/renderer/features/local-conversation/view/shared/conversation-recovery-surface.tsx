@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useEffect, useRef, useState } from "react";
 import type { ConversationRecoveryState } from "../../../../../shared/conversation-recovery";
 import type { CodexTranscriptEntry } from "../../../../../shared/types";
@@ -62,15 +63,21 @@ function RecoveryActionButton({
     inFlight.current = true;
     setPending(true);
     setError(null);
-    try {
-      await onAction();
-    } catch (cause) {
-      if (mounted.current)
-        setError(cause instanceof Error ? cause.message : "Could not complete this action.");
-    } finally {
-      inFlight.current = false;
-      if (mounted.current) setPending(false);
-    }
+    return runWithCleanup(
+      async () => {
+        await onAction();
+      },
+      {
+        onError: (cause) => {
+          if (mounted.current)
+            setError(cause instanceof Error ? cause.message : "Could not complete this action.");
+        },
+        cleanup: () => {
+          inFlight.current = false;
+          if (mounted.current) setPending(false);
+        },
+      },
+    );
   };
 
   // A submitted optimistic turn can temporarily make this failed turn historical.

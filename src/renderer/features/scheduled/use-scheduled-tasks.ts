@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { runWithCleanup } from "@/lib/run-with-cleanup";
+import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/components/ui/toast";
 import {
@@ -42,10 +43,7 @@ export function useScheduledTasks() {
   const [pendingTaskId, setPendingTaskId] = useState<string | null>(null);
   const tasks = tasksQuery.data ?? EMPTY_TASKS;
   const runItems = runsQuery.data?.items ?? [];
-  const unreadTaskIds = useMemo(
-    () => new Set(runsQuery.data?.unreadRunCounts.automationIds ?? []),
-    [runsQuery.data?.unreadRunCounts.automationIds],
-  );
+  const unreadTaskIds = new Set(runsQuery.data?.unreadRunCounts.automationIds ?? []);
   const listKey = queryKeys.codexScheduledAutomations.list();
 
   const refresh = async () => {
@@ -64,39 +62,51 @@ export function useScheduledTasks() {
     queryClient.setQueryData<CodexScheduledAutomation[]>(listKey, (current) =>
       applyOptimisticScheduledTaskUpdate(current, update),
     );
-    try {
-      const { item } = await updateCodexScheduledAutomation(update);
-      queryClient.setQueryData<CodexScheduledAutomation[]>(listKey, (current) =>
-        upsertScheduledTask(current, item),
-      );
-      await refresh();
-      return item;
-    } catch (error) {
-      if (previous) queryClient.setQueryData(listKey, previous);
-      showMutationError(errorTitle, error);
-      return null;
-    } finally {
-      setPendingTaskId(null);
-    }
+    return runWithCleanup(
+      async () => {
+        const { item } = await updateCodexScheduledAutomation(update);
+        queryClient.setQueryData<CodexScheduledAutomation[]>(listKey, (current) =>
+          upsertScheduledTask(current, item),
+        );
+        await refresh();
+        return item;
+      },
+      {
+        onError: (error) => {
+          if (previous) queryClient.setQueryData(listKey, previous);
+          showMutationError(errorTitle, error);
+          return null;
+        },
+        cleanup: () => {
+          setPendingTaskId(null);
+        },
+      },
+    );
   };
 
   const createTask = async (
     input: CodexScheduledAutomationCreateInput,
   ): Promise<CodexScheduledAutomation | null> => {
     setPendingTaskId("new");
-    try {
-      const { item } = await createCodexScheduledAutomation(input);
-      queryClient.setQueryData<CodexScheduledAutomation[]>(listKey, (current) =>
-        upsertScheduledTask(current, item),
-      );
-      await refresh();
-      return item;
-    } catch (error) {
-      showMutationError("Could not create scheduled task", error);
-      return null;
-    } finally {
-      setPendingTaskId(null);
-    }
+    return runWithCleanup(
+      async () => {
+        const { item } = await createCodexScheduledAutomation(input);
+        queryClient.setQueryData<CodexScheduledAutomation[]>(listKey, (current) =>
+          upsertScheduledTask(current, item),
+        );
+        await refresh();
+        return item;
+      },
+      {
+        onError: (error) => {
+          showMutationError("Could not create scheduled task", error);
+          return null;
+        },
+        cleanup: () => {
+          setPendingTaskId(null);
+        },
+      },
+    );
   };
 
   const setTaskStatus = (task: CodexScheduledAutomation, status: "ACTIVE" | "PAUSED") =>
@@ -104,37 +114,49 @@ export function useScheduledTasks() {
 
   const runTaskNow = async (task: CodexScheduledAutomation): Promise<void> => {
     setPendingTaskId(task.id);
-    try {
-      await runCodexScheduledAutomationNow({ id: task.id });
-      await refresh();
-      toast.info("Scheduled task started");
-    } catch (error) {
-      showMutationError("Could not start scheduled task", error);
-    } finally {
-      setPendingTaskId(null);
-    }
+    return runWithCleanup(
+      async () => {
+        await runCodexScheduledAutomationNow({ id: task.id });
+        await refresh();
+        toast.info("Scheduled task started");
+      },
+      {
+        onError: (error) => {
+          showMutationError("Could not start scheduled task", error);
+        },
+        cleanup: () => {
+          setPendingTaskId(null);
+        },
+      },
+    );
   };
 
   const deleteTask = async (task: CodexScheduledAutomation): Promise<boolean> => {
     setPendingTaskId(task.id);
-    try {
-      const response = await deleteCodexScheduledAutomation({ id: task.id });
-      if (!response.success) {
-        toast.danger("Could not delete scheduled task", { description: "Try again." });
+    return runWithCleanup(
+      async () => {
+        const response = await deleteCodexScheduledAutomation({ id: task.id });
+        if (!response.success) {
+          toast.danger("Could not delete scheduled task", { description: "Try again." });
+          await refresh();
+          return false;
+        }
+        queryClient.setQueryData<CodexScheduledAutomation[]>(listKey, (current) =>
+          removeScheduledTask(current, task.id),
+        );
         await refresh();
-        return false;
-      }
-      queryClient.setQueryData<CodexScheduledAutomation[]>(listKey, (current) =>
-        removeScheduledTask(current, task.id),
-      );
-      await refresh();
-      return true;
-    } catch (error) {
-      showMutationError("Could not delete scheduled task", error);
-      return false;
-    } finally {
-      setPendingTaskId(null);
-    }
+        return true;
+      },
+      {
+        onError: (error) => {
+          showMutationError("Could not delete scheduled task", error);
+          return false;
+        },
+        cleanup: () => {
+          setPendingTaskId(null);
+        },
+      },
+    );
   };
 
   const markRunRead = async (runId: string): Promise<void> => {

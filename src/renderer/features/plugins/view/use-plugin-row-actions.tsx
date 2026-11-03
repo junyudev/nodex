@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { toast } from "@/components/ui/toast";
 import type { CustomizeNavigation } from "../customize-navigation";
 import { pluginMutationSucceeded } from "../model/mutation-result";
@@ -37,84 +38,101 @@ export function usePluginRowActions(
   const install = async (row: PluginRow, prompt?: string | null) => {
     const name = pluginDisplayName(row);
     const end = beginPluginAction(row.stableIdentity, "installing");
-    try {
-      const result = await management.install({
-        ...row.selector,
-        installAttemptId: crypto.randomUUID(),
-      });
-      if (pluginMutationSucceeded(result)) {
-        if (result.refreshFailures.includes("skills")) {
-          toast.warning(
-            `Installed ${name}, but its skills couldn't refresh. Reload skills before starting a new chat`,
-          );
-        } else if (result.refreshFailures.includes("plugins")) {
-          toast.warning(`Installed ${name}, but failed to refresh the plugin list`);
-        } else if (
-          result.value.authPolicy !== "ON_USE" &&
-          result.value.appsNeedingAuth.length > 0
-        ) {
-          showPluginAppsOnboarding({ row, apps: result.value.appsNeedingAuth, prompt });
-          return false;
-        } else {
-          toast.success(`${name} plugin installed`, {
-            action: { label: "Try now", onClick: () => tryNow(row) },
-          });
+    return runWithCleanup(
+      async () => {
+        const result = await management.install({
+          ...row.selector,
+          installAttemptId: crypto.randomUUID(),
+        });
+        if (pluginMutationSucceeded(result)) {
+          if (result.refreshFailures.includes("skills")) {
+            toast.warning(
+              `Installed ${name}, but its skills couldn't refresh. Reload skills before starting a new chat`,
+            );
+          } else if (result.refreshFailures.includes("plugins")) {
+            toast.warning(`Installed ${name}, but failed to refresh the plugin list`);
+          } else if (
+            result.value.authPolicy !== "ON_USE" &&
+            result.value.appsNeedingAuth.length > 0
+          ) {
+            showPluginAppsOnboarding({ row, apps: result.value.appsNeedingAuth, prompt });
+            return false;
+          } else {
+            toast.success(`${name} plugin installed`, {
+              action: { label: "Try now", onClick: () => tryNow(row) },
+            });
+          }
+          return true;
         }
-        return true;
-      }
-      toast.danger("Failed to install plugin", { description: result.error.message });
-      return false;
-    } catch {
-      toast.danger("Failed to install plugin");
-      return false;
-    } finally {
-      end();
-    }
+        toast.danger("Failed to install plugin", { description: result.error.message });
+        return false;
+      },
+      {
+        onError: () => {
+          toast.danger("Failed to install plugin");
+          return false;
+        },
+        cleanup: () => {
+          end();
+        },
+      },
+    );
   };
 
   const uninstall = async (row: PluginRow) => {
     const name = pluginDisplayName(row);
     const end = beginPluginAction(row.stableIdentity, "uninstalling");
-    try {
-      const result = await management.uninstall({ pluginId: row.nativeId });
-      if (pluginMutationSucceeded(result)) {
-        if (result.refreshFailures.includes("skills")) {
-          toast.warning(
-            "Plugin changed, but skills couldn't refresh. Reload skills before starting a new chat",
-          );
-        } else {
-          toast.success(`${name} plugin uninstalled`);
+    return runWithCleanup(
+      async () => {
+        const result = await management.uninstall({ pluginId: row.nativeId });
+        if (pluginMutationSucceeded(result)) {
+          if (result.refreshFailures.includes("skills")) {
+            toast.warning(
+              "Plugin changed, but skills couldn't refresh. Reload skills before starting a new chat",
+            );
+          } else {
+            toast.success(`${name} plugin uninstalled`);
+          }
+          return;
         }
-        return;
-      }
-      toast.danger("Failed to uninstall plugin");
-    } catch {
-      toast.danger("Failed to uninstall plugin");
-    } finally {
-      end();
-    }
+        toast.danger("Failed to uninstall plugin");
+      },
+      {
+        onError: () => {
+          toast.danger("Failed to uninstall plugin");
+        },
+        cleanup: () => {
+          end();
+        },
+      },
+    );
   };
 
   const setEnabled = async (row: PluginRow, enabled: boolean) => {
     const name = pluginDisplayName(row);
-    try {
-      const result = await management.setPluginEnabled({ pluginId: row.nativeId, enabled });
-      if (pluginMutationSucceeded(result)) {
-        if (result.refreshFailures.includes("skills")) {
-          toast.warning(
-            "Plugin changed, but skills couldn't refresh. Reload skills before starting a new chat",
-          );
-        } else {
-          toast.success(enabled ? `${name} plugin enabled` : `${name} plugin disabled`);
+    return runWithCleanup(
+      async () => {
+        const result = await management.setPluginEnabled({ pluginId: row.nativeId, enabled });
+        if (pluginMutationSucceeded(result)) {
+          if (result.refreshFailures.includes("skills")) {
+            toast.warning(
+              "Plugin changed, but skills couldn't refresh. Reload skills before starting a new chat",
+            );
+          } else {
+            toast.success(enabled ? `${name} plugin enabled` : `${name} plugin disabled`);
+          }
+          return true;
         }
-        return true;
-      }
-      toast.danger("Failed to update plugin");
-      return false;
-    } catch {
-      toast.danger("Failed to update plugin");
-      return false;
-    }
+        toast.danger("Failed to update plugin");
+        return false;
+      },
+      {
+        onError: () => {
+          toast.danger("Failed to update plugin");
+          return false;
+        },
+      },
+    );
   };
 
   return { install, uninstall, setEnabled, tryNow };

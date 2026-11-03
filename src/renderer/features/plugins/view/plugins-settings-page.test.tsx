@@ -172,3 +172,23 @@ it("edits an MCP server in place and saves its changed command", async () => {
   });
   expect(await screen.findByText("docs")).toBeTruthy();
 });
+
+it("retains an MCP edit and releases Save after a rejected write", async () => {
+  saveMcpServer.mockRejectedValueOnce(new Error("Server unavailable"));
+  saveMcpServer.mockResolvedValueOnce({ status: "success", value: undefined, refreshFailures: [] });
+  renderPage();
+  await click(screen.getByRole("button", { name: /MCPs/ }));
+  await click(screen.getByRole("button", { name: "Settings" }));
+  await act(async () => {
+    fireEvent.change(screen.getByDisplayValue("docs-mcp"), {
+      target: { value: "docs-mcp --stdio" },
+    });
+    await Promise.resolve();
+  });
+  await click(screen.getByRole("button", { name: "Save" }));
+  expect(await screen.findByText("Server unavailable")).toBeTruthy();
+  expect(screen.getByDisplayValue("docs-mcp --stdio")).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Save" }).hasAttribute("disabled")).toBe(false);
+  await click(screen.getByRole("button", { name: "Save" }));
+  expect(screen.queryByRole("heading", { name: "Update Docs MCP" })).toBeNull();
+});

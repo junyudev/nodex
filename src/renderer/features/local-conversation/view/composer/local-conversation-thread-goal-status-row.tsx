@@ -1,11 +1,5 @@
-import {
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useState,
-  type FormEvent,
-  type ReactNode,
-} from "react";
+import { runWithCleanup } from "@/lib/run-with-cleanup";
+import { useEffect, useLayoutEffect, useState, type FormEvent, type ReactNode } from "react";
 import type { ThreadGoal } from "@nodex/codex-app-server-protocol/v2";
 import {
   GoalChevronRightIcon,
@@ -244,10 +238,7 @@ export function ThreadGoalStatusRow({
   });
   const nowMs = useThreadGoalNowMs(goal?.status === "active");
   const toggleTarget = goal ? resolveThreadGoalToggleTarget(goal.status) : null;
-  const metaText = useMemo(
-    () => (goal ? resolveThreadGoalMetaText(goal, nowMs) : ""),
-    [goal, nowMs],
-  );
+  const metaText = goal ? resolveThreadGoalMetaText(goal, nowMs) : "";
 
   const [previousHasGoal, setPreviousHasGoal] = useState(hasGoal);
   if (previousHasGoal !== hasGoal) {
@@ -265,72 +256,99 @@ export function ThreadGoalStatusRow({
   const isBusy = pendingAction !== null;
 
   const handleSetStatus = async () => {
-    if (!toggleTarget || !actions.onSetThreadGoal) return;
+    const setGoal = actions.onSetThreadGoal;
+    if (!toggleTarget || !setGoal) return;
 
     setPendingAction("status");
-    try {
-      await actions.onSetThreadGoal({
-        threadId: goal.threadId,
-        status: toggleTarget,
-      });
-    } catch {
-      toast.danger(getThreadGoalMessage("composer.threadGoal.statusUpdateError"));
-    } finally {
-      setPendingAction(null);
-    }
+    return runWithCleanup(
+      async () => {
+        await setGoal({
+          threadId: goal.threadId,
+          status: toggleTarget,
+        });
+      },
+      {
+        onError: () => {
+          toast.danger(getThreadGoalMessage("composer.threadGoal.statusUpdateError"));
+        },
+        cleanup: () => {
+          setPendingAction(null);
+        },
+      },
+    );
   };
 
   const handleClear = async () => {
-    if (!actions.onClearThreadGoal) return;
+    const clearGoal = actions.onClearThreadGoal;
+    if (!clearGoal) return;
 
     setPendingAction("clear");
-    try {
-      await actions.onClearThreadGoal(goal.threadId);
-    } catch {
-      toast.danger(getThreadGoalMessage("composer.threadGoal.clearError"));
-    } finally {
-      setPendingAction(null);
-    }
+    return runWithCleanup(
+      async () => {
+        await clearGoal(goal.threadId);
+      },
+      {
+        onError: () => {
+          toast.danger(getThreadGoalMessage("composer.threadGoal.clearError"));
+        },
+        cleanup: () => {
+          setPendingAction(null);
+        },
+      },
+    );
   };
 
   const handleOpenEdit = async () => {
     setPendingAction("edit");
-    try {
-      setEditInitialObjective(await readThreadGoalEditableObjective(hostId, goal.objective));
-      setEditOpen(true);
-    } catch {
-      setEditInitialObjective(goal.objective);
-      setEditOpen(true);
-    } finally {
-      setPendingAction(null);
-    }
+    return runWithCleanup(
+      async () => {
+        setEditInitialObjective(await readThreadGoalEditableObjective(hostId, goal.objective));
+        setEditOpen(true);
+      },
+      {
+        onError: () => {
+          setEditInitialObjective(goal.objective);
+          setEditOpen(true);
+        },
+        cleanup: () => {
+          setPendingAction(null);
+        },
+      },
+    );
   };
 
   const handleSaveEdit = async (objective: string) => {
-    if (!actions.onSetThreadGoal) return;
+    const setGoal = actions.onSetThreadGoal;
+    if (!setGoal) return;
 
     setPendingAction("edit");
     let materialized: Awaited<ReturnType<typeof materializeThreadGoalDraft>> | null = null;
-    try {
-      materialized = await materializeThreadGoalDraft(hostId, {
-        objective,
-        pastedTextAttachments: [],
-        imageAttachments: [],
-      });
-      await actions.onSetThreadGoal({
-        threadId: goal.threadId,
-        objective: materialized.objective,
-        status: "active",
-        appendTranscriptItem: false,
-      });
-      materialized = null;
-      setEditOpen(false);
-    } catch {
-      await cleanupMaterializedThreadGoalDraft(hostId, materialized);
-      toast.danger(getThreadGoalMessage("composer.threadGoal.editSaveError"));
-    } finally {
-      setPendingAction(null);
-    }
+    return runWithCleanup(
+      async () => {
+        materialized = await materializeThreadGoalDraft(hostId, {
+          objective,
+          pastedTextAttachments: [],
+          imageAttachments: [],
+        });
+        await setGoal({
+          threadId: goal.threadId,
+          objective: materialized.objective,
+          status: "active",
+          appendTranscriptItem: false,
+        });
+        materialized = null;
+        setEditOpen(false);
+      },
+      {
+        onError: async () => {
+          await cleanupMaterializedThreadGoalDraft(hostId, materialized);
+          toast.danger(getThreadGoalMessage("composer.threadGoal.editSaveError"));
+        },
+        cleanup: () => {
+          setPendingAction(null);
+        },
+      },
+    );
   };
 
   const toggleTooltip =

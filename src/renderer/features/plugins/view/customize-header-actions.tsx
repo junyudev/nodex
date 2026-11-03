@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useState, type ReactNode } from "react";
 import { ActivitySpinnerIcon } from "@/components/shared/icons";
 import {
@@ -101,14 +102,20 @@ export function CustomizeHeaderActions({
 
   const refresh = async () => {
     setRefreshing(true);
-    try {
-      const result = await management.refresh();
-      if (!pluginMutationSucceeded(result)) toast.danger("Failed to refresh skills and apps");
-    } catch {
-      toast.danger("Failed to refresh skills and apps");
-    } finally {
-      setRefreshing(false);
-    }
+    return runWithCleanup(
+      async () => {
+        const result = await management.refresh();
+        if (!pluginMutationSucceeded(result)) toast.danger("Failed to refresh skills and apps");
+      },
+      {
+        onError: () => {
+          toast.danger("Failed to refresh skills and apps");
+        },
+        cleanup: () => {
+          setRefreshing(false);
+        },
+      },
+    );
   };
 
   return (

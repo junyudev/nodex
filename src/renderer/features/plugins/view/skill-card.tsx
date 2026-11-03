@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { createElement, useState, type ReactNode } from "react";
 import { TrashIcon } from "@/components/shared/icons/customize-action-icons";
 import {
@@ -115,32 +116,44 @@ export function SkillCard({
   const setEnabled = async (next: boolean) => {
     setOptimistic(next);
     setUpdating(true);
-    try {
-      const result = await management.setSkillEnabled(
-        skill.name.includes(":")
-          ? { name: skill.name, enabled: next }
-          : { path: skill.path, enabled: next },
-      );
-      if (!pluginMutationSucceeded(result)) throw new Error(result.error.message);
-      toast.success(next ? `${name} skill enabled` : `${name} skill disabled`);
-    } catch {
-      setOptimistic(null);
-      toast.danger("Failed to update skill");
-    } finally {
-      setUpdating(false);
-    }
+    return runWithCleanup(
+      async () => {
+        const result = await management.setSkillEnabled(
+          skill.name.includes(":")
+            ? { name: skill.name, enabled: next }
+            : { path: skill.path, enabled: next },
+        );
+        if (!pluginMutationSucceeded(result)) throw new Error(result.error.message);
+        toast.success(next ? `${name} skill enabled` : `${name} skill disabled`);
+      },
+      {
+        onError: () => {
+          setOptimistic(null);
+          toast.danger("Failed to update skill");
+        },
+        cleanup: () => {
+          setUpdating(false);
+        },
+      },
+    );
   };
   const uninstall = async () => {
     setUninstalling(true);
-    try {
-      const result = await management.uninstallSkill({ path: skill.path });
-      if (!pluginMutationSucceeded(result)) throw new Error(result.error.message);
-      toast.success(`${name} skill uninstalled`);
-    } catch {
-      toast.danger("Failed to uninstall skill");
-    } finally {
-      setUninstalling(false);
-    }
+    return runWithCleanup(
+      async () => {
+        const result = await management.uninstallSkill({ path: skill.path });
+        if (!pluginMutationSucceeded(result)) throw new Error(result.error.message);
+        toast.success(`${name} skill uninstalled`);
+      },
+      {
+        onError: () => {
+          toast.danger("Failed to uninstall skill");
+        },
+        cleanup: () => {
+          setUninstalling(false);
+        },
+      },
+    );
   };
 
   let actions: ReactNode;

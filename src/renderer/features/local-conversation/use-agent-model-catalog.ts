@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import type {
   AgentModelCatalog,
   AgentModelCatalogInput,
@@ -78,32 +79,39 @@ export function useAgentModelCatalogs(
     let next = 0;
     const loadNext = async () => {
       while (!controller.signal.aborted) {
-        const binding = bindings[next++];
+        const binding = bindings[next];
+        next += 1;
         if (!binding) return;
         const scope: AgentModelCatalogInput["scope"] = threadId
           ? { kind: "thread", threadId }
           : { kind: "project", projectId, binding };
-        try {
-          const catalog = await read(
-            { scope, ...(refresh.force ? { forceReload: true } : {}) },
-            controller.signal,
-          );
-          if (controller.signal.aborted) return;
-          if (agentBindingKey(catalog.binding) !== agentBindingKey(binding))
-            throw new Error("This model catalog belongs to another Agent instance");
-          entries.set(agentBindingKey(binding), {
-            catalog,
-            loading: false,
-            error: catalog.health.error,
-          });
-        } catch (error: unknown) {
-          if (controller.signal.aborted) return;
-          entries.set(agentBindingKey(binding), {
-            catalog: null,
-            loading: false,
-            error: error instanceof Error ? error.message : "Could not load models",
-          });
-        }
+        await runWithCleanup(
+          async () => {
+            const catalog = await read(
+              { scope, ...(refresh.force ? { forceReload: true } : {}) },
+              controller.signal,
+            );
+            if (controller.signal.aborted) return;
+            if (agentBindingKey(catalog.binding) !== agentBindingKey(binding))
+              throw new Error("This model catalog belongs to another Agent instance");
+            entries.set(agentBindingKey(binding), {
+              catalog,
+              loading: false,
+              error: catalog.health.error,
+            });
+          },
+          {
+            onError: (error) => {
+              if (controller.signal.aborted) return;
+              entries.set(agentBindingKey(binding), {
+                catalog: null,
+                loading: false,
+                error: error instanceof Error ? error.message : "Could not load models",
+              });
+            },
+          },
+        );
+        if (controller.signal.aborted) return;
         setState({ key, entries: new Map(entries) });
       }
     };

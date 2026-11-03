@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState, type PointerEvent, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import { runSyncWithCleanup } from "@/lib/run-with-cleanup";
 
 interface ScrollGesture {
   pointerId: number;
@@ -95,16 +96,19 @@ export function ComposerContextControls({ children }: { children: ReactNode }) {
       shiftKey: event.shiftKey,
     };
     replayingPressRef.current = true;
-    try {
-      trigger.dispatchEvent(new window.PointerEvent("pointerdown", pointerInit));
-      trigger.dispatchEvent(new MouseEvent("mousedown", pointerInit));
-      trigger.dispatchEvent(
-        new window.PointerEvent("pointerup", { ...pointerInit, buttons: 0, pressure: 0 }),
-      );
-      trigger.dispatchEvent(new MouseEvent("mouseup", { ...pointerInit, buttons: 0 }));
-    } finally {
-      replayingPressRef.current = false;
-    }
+    runSyncWithCleanup(
+      () => {
+        trigger.dispatchEvent(new window.PointerEvent("pointerdown", pointerInit));
+        trigger.dispatchEvent(new MouseEvent("mousedown", pointerInit));
+        trigger.dispatchEvent(
+          new window.PointerEvent("pointerup", { ...pointerInit, buttons: 0, pressure: 0 }),
+        );
+        trigger.dispatchEvent(new MouseEvent("mouseup", { ...pointerInit, buttons: 0 }));
+      },
+      () => {
+        replayingPressRef.current = false;
+      },
+    );
   }
 
   return (

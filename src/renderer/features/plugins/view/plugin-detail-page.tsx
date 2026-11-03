@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useRef, useState, type ReactNode } from "react";
 import starterPromptsBackdropUrl from "@/assets/plugins/starter-prompts-backdrop.png";
 import {
@@ -242,11 +243,16 @@ function PluginDetailReady({
 
   const enable = async () => {
     setBusy(true);
-    try {
-      return await actions.setEnabled(row, true);
-    } finally {
-      setBusy(false);
-    }
+    return runWithCleanup(
+      async () => {
+        return await actions.setEnabled(row, true);
+      },
+      {
+        cleanup: () => {
+          setBusy(false);
+        },
+      },
+    );
   };
   /** Starts a chat with the prompt, installing or enabling the plugin first when needed. */
   const activate = async (prompt: string | null) => {

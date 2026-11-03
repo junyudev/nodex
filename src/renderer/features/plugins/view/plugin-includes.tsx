@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { Children, createElement, useState, type ReactNode } from "react";
 import { ActivitySpinnerIcon } from "@/components/shared/icons";
 import { RefreshArrowsIcon } from "@/components/shared/icons/customize-action-icons";
@@ -143,17 +144,23 @@ function AppConnectedMenu({
   const [disconnecting, setDisconnecting] = useState(false);
   const disconnect = async () => {
     setDisconnecting(true);
-    try {
-      const result = await management.disconnectApp({ appId: app.id });
-      if (!pluginMutationSucceeded(result)) throw new Error(result.error.message);
-      if (result.refreshFailures.length > 0)
-        toast.warning("App disconnected, but couldn't refresh apps");
-      else toast.success("App disconnected");
-    } catch {
-      toast.danger("Couldn't disconnect app");
-    } finally {
-      setDisconnecting(false);
-    }
+    return runWithCleanup(
+      async () => {
+        const result = await management.disconnectApp({ appId: app.id });
+        if (!pluginMutationSucceeded(result)) throw new Error(result.error.message);
+        if (result.refreshFailures.length > 0)
+          toast.warning("App disconnected, but couldn't refresh apps");
+        else toast.success("App disconnected");
+      },
+      {
+        onError: () => {
+          toast.danger("Couldn't disconnect app");
+        },
+        cleanup: () => {
+          setDisconnecting(false);
+        },
+      },
+    );
   };
   return (
     <div role="presentation" onClick={stopPropagation} onKeyDown={stopPropagation}>
@@ -387,19 +394,25 @@ function McpServerRow({
   const setEnabled = async (next: boolean) => {
     setOptimistic(next);
     setUpdating(true);
-    try {
-      const result = await management.setPluginMcpServerEnabled({
-        ...view.row.selector,
-        name: server.name,
-        enabled: next,
-      });
-      if (!pluginMutationSucceeded(result)) throw new Error(result.error.message);
-    } catch {
-      setOptimistic(null);
-      toast.danger("Failed to update MCP server");
-    } finally {
-      setUpdating(false);
-    }
+    return runWithCleanup(
+      async () => {
+        const result = await management.setPluginMcpServerEnabled({
+          ...view.row.selector,
+          name: server.name,
+          enabled: next,
+        });
+        if (!pluginMutationSucceeded(result)) throw new Error(result.error.message);
+      },
+      {
+        onError: () => {
+          setOptimistic(null);
+          toast.danger("Failed to update MCP server");
+        },
+        cleanup: () => {
+          setUpdating(false);
+        },
+      },
+    );
   };
   return (
     <CardTile
@@ -688,14 +701,20 @@ function HooksSection({
   const needsReview = view.hooksNeedingReviewCount;
   const trustAll = async () => {
     setTrusting(true);
-    try {
-      const result = await management.trustAllPluginHooks(view.row.selector);
-      if (!pluginMutationSucceeded(result)) throw new Error(result.error.message);
-    } catch {
-      toast.danger("Failed to trust hooks");
-    } finally {
-      setTrusting(false);
-    }
+    return runWithCleanup(
+      async () => {
+        const result = await management.trustAllPluginHooks(view.row.selector);
+        if (!pluginMutationSucceeded(result)) throw new Error(result.error.message);
+      },
+      {
+        onError: () => {
+          toast.danger("Failed to trust hooks");
+        },
+        cleanup: () => {
+          setTrusting(false);
+        },
+      },
+    );
   };
   let actions: ReactNode = null;
   if (installed && needsReview > 0) {

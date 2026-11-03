@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AutomationTemplateColorIcon } from "@/components/shared/icons";
@@ -156,23 +157,28 @@ export function ScheduledTaskSidePanel({
   const save = async () => {
     if (!canSave) return;
     setSaving(true);
-    try {
-      const saved = creates
-        ? await (async () => {
-            const input = buildCodexScheduledAutomationCreateInput({ draft });
-            return input ? await tasks.createTask(input) : null;
-          })()
-        : await (async () => {
-            const update = buildCodexScheduledAutomationUpdateInput({
-              draft,
-              id: task?.id ?? updateInput?.id ?? draft.id,
-            });
-            return update ? await tasks.updateTask(update) : null;
-          })();
-      if (saved) onSaved?.(saved);
-    } finally {
-      setSaving(false);
-    }
+    return runWithCleanup(
+      async () => {
+        const saved = creates
+          ? await (async () => {
+              const input = buildCodexScheduledAutomationCreateInput({ draft });
+              return input ? await tasks.createTask(input) : null;
+            })()
+          : await (async () => {
+              const update = buildCodexScheduledAutomationUpdateInput({
+                draft,
+                id: task?.id ?? updateInput?.id ?? draft.id,
+              });
+              return update ? await tasks.updateTask(update) : null;
+            })();
+        if (saved) onSaved?.(saved);
+      },
+      {
+        cleanup: () => {
+          setSaving(false);
+        },
+      },
+    );
   };
   const acceptLabel = creates ? "Create" : mode === "suggested-update" ? "Apply changes" : "Save";
   const savedId = task?.id ?? (mode === "open" ? (automationId ?? null) : null);

@@ -40,7 +40,7 @@ export function useInboxMessagesInView(
       );
     };
     const schedule = () => {
-      frame ??= requestAnimationFrame(measure);
+      if (frame === null) frame = requestAnimationFrame(measure);
     };
     schedule();
     scroller.addEventListener("scroll", schedule, { passive: true });

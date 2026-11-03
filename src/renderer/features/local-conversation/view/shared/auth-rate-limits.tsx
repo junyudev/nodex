@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { ChevronRightIcon } from "@/components/shared/icons";
 import { RotateCcw } from "@/components/shared/icons/generic-icons";
 import { cn } from "@/lib/utils";
@@ -83,18 +84,24 @@ export function QuotaResetTooltipSection({
     setPending(true);
     setMessage(null);
 
-    try {
-      const result = await onReset({
-        idempotencyKey: attempt.idempotencyKey,
-        ...(attempt.creditId ? { creditId: attempt.creditId } : {}),
-      });
-      attemptRef.current = null;
-      setMessage({ kind: "status", text: quotaResetOutcomeMessage(result) });
-    } catch {
-      setMessage({ kind: "error", text: "Couldn’t reset quota. Try again." });
-    } finally {
-      setPending(false);
-    }
+    return runWithCleanup(
+      async () => {
+        const result = await onReset({
+          idempotencyKey: attempt.idempotencyKey,
+          ...(attempt.creditId ? { creditId: attempt.creditId } : {}),
+        });
+        attemptRef.current = null;
+        setMessage({ kind: "status", text: quotaResetOutcomeMessage(result) });
+      },
+      {
+        onError: () => {
+          setMessage({ kind: "error", text: "Couldn’t reset quota. Try again." });
+        },
+        cleanup: () => {
+          setPending(false);
+        },
+      },
+    );
   };
 
   return (

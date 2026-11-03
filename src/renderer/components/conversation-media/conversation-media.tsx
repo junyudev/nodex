@@ -320,7 +320,7 @@ function ConversationFileMedia({
 export function ConversationMediaParagraph({
   children,
   mediaSources,
-  containsMedia = (mediaSources?.length ?? 0) > 0,
+  containsMedia: containsMediaOverride,
   className,
 }: {
   readonly children: ReactNode;
@@ -329,6 +329,7 @@ export function ConversationMediaParagraph({
   readonly className?: string;
 }) {
   const count = mediaSources?.length ?? 0;
+  const containsMedia = containsMediaOverride ?? count > 0;
   const allImages =
     count > 0 && mediaSources?.every((source) => classifyConversationMedia(source) === "image");
   const grid = Boolean(allImages && count > 1);

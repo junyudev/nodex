@@ -851,25 +851,22 @@ const ComposerAddContextRootMenuContent = forwardRef<
     projectId,
   );
   const pluginHostId = fileSearchScope?.hostId ?? DEFAULT_CODEX_HOST_ID;
-  const activatePlugin = useCallback(
-    async (plugin: CodexComposerPlugin): Promise<boolean> => {
-      if (plugin.installed && plugin.enabled) return true;
-      try {
-        await composerContextOperations.activatePlugin(plugin.id, pluginHostId, pluginCwds);
-        await onCapabilitiesChanged?.();
-        return true;
-      } catch (error) {
-        toast.danger("Could not activate plugin", {
-          description:
-            error instanceof Error ? error.message : `Failed to activate ${plugin.displayName}`,
-        });
-        return false;
-      }
-    },
-    [onCapabilitiesChanged, pluginCwds, pluginHostId],
-  );
+  const activatePlugin = async (plugin: CodexComposerPlugin): Promise<boolean> => {
+    if (plugin.installed && plugin.enabled) return true;
+    try {
+      await composerContextOperations.activatePlugin(plugin.id, pluginHostId, pluginCwds);
+      if (onCapabilitiesChanged) await onCapabilitiesChanged();
+      return true;
+    } catch (error) {
+      toast.danger("Could not activate plugin", {
+        description:
+          error instanceof Error ? error.message : `Failed to activate ${plugin.displayName}`,
+      });
+      return false;
+    }
+  };
 
-  const inventoryItems = useMemo(() => {
+  const inventoryItems = (() => {
     const pluginItems = plugins
       .filter((plugin) => plugin.name !== "record-and-replay")
       .map((plugin): ComposerContextItemView => ({
@@ -917,9 +914,9 @@ const ComposerAddContextRootMenuContent = forwardRef<
     const siteItems = sitesAvailable ? sites.map(buildComposerSiteItem) : [];
     const skillItems = skills.map((skill) => buildComposerSkillItem(skill, workspaceRoot));
     return { pluginItems, appItems, siteItems, skillItems };
-  }, [plugins, apps, sites, sitesAvailable, skills, workspaceRoot]);
+  })();
 
-  const items = useMemo<ComposerContextItemView[]>(() => {
+  const items = ((): ComposerContextItemView[] => {
     const recordSkillPlugin = plugins.find((plugin) => plugin.name === "record-and-replay") ?? null;
     const addItems: ComposerContextItemView[] = [
       {
@@ -1126,81 +1123,40 @@ const ComposerAddContextRootMenuContent = forwardRef<
       ...threadSuggestions,
       ...fileSuggestions,
     ];
-  }, [
-    activeConversationId,
-    pages.items,
-    backgroundAgentRows,
-    activatePlugin,
-    inventoryItems,
-    chatGptConversationSearch.conversations,
-    chatGptConversationsAvailable,
-    fileSearch.matches,
-    fileSearchQuery,
+  })();
+  const sections = buildComposerContextSuggestionSections({
+    candidates: items.map((item) => item.candidate),
     query,
-    goalAvailable,
-    appshotTarget,
-    onActivateGoal,
-    onCaptureAppshot,
-    onPickFiles,
-    onPrefillPrompt,
-    onOpenProject,
-    onStartNewChatWithPrompt,
-    onTogglePlanMode,
-    planModeActive,
-    planModeAvailable,
-    plugins,
-    projectId,
-    projectSelector,
-    normalizedQuery,
-    chatMatches,
-  ]);
-  const sections = useMemo(
-    () =>
-      buildComposerContextSuggestionSections({
-        candidates: items.map((item) => item.candidate),
-        query,
-        loadingSectionMessages: {
-          ...(pages.loading ? { Pages: "Searching Pages…" } : {}),
-          ...(sitesLoading ? { Sites: "Loading sites…" } : {}),
-          ...(chatGptConversationSearch.loading
-            ? {
-                "ChatGPT conversations": "Loading ChatGPT conversations…",
-              }
-            : {}),
-        },
-      }),
-    [chatGptConversationSearch.loading, items, pages.loading, query, sitesLoading],
-  );
-  const itemById = useMemo(
-    () => new Map(items.map((item) => [item.candidate.id, item] as const)),
-    [items],
-  );
-  const visibleItems = useMemo(
-    () =>
-      sections.flatMap((section) =>
-        section.items
-          .map((candidate) => itemById.get(candidate.id))
-          .filter((item): item is ComposerContextItemView => Boolean(item)),
-      ),
-    [itemById, sections],
-  );
-  const selectItem = useCallback(
-    (item: ComposerContextItemView): void => {
-      const selection = item.candidate.value;
-      if (selection.kind === "mention") {
-        if (item.plugin) {
-          void activatePlugin(item.plugin);
-        }
-        onInsertMention(selection.mention);
-        return;
-      }
-      if (selection.closeMenu !== false) {
-        onClose();
-      }
-      void selection.run();
+    loadingSectionMessages: {
+      ...(pages.loading ? { Pages: "Searching Pages…" } : {}),
+      ...(sitesLoading ? { Sites: "Loading sites…" } : {}),
+      ...(chatGptConversationSearch.loading
+        ? {
+            "ChatGPT conversations": "Loading ChatGPT conversations…",
+          }
+        : {}),
     },
-    [activatePlugin, onClose, onInsertMention],
+  });
+  const itemById = new Map(items.map((item) => [item.candidate.id, item] as const));
+  const visibleItems = sections.flatMap((section) =>
+    section.items
+      .map((candidate) => itemById.get(candidate.id))
+      .filter((item): item is ComposerContextItemView => Boolean(item)),
   );
+  const selectItem = (item: ComposerContextItemView): void => {
+    const selection = item.candidate.value;
+    if (selection.kind === "mention") {
+      if (item.plugin) {
+        void activatePlugin(item.plugin);
+      }
+      onInsertMention(selection.mention);
+      return;
+    }
+    if (selection.closeMenu !== false) {
+      onClose();
+    }
+    void selection.run();
+  };
   const { highlightedId, setHighlightedId } = useComposerMenuNavigation({
     items: visibleItems,
     onSelect: selectItem,

@@ -1,4 +1,5 @@
-import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { runWithCleanup } from "@/lib/run-with-cleanup";
+import { startTransition, useCallback, useEffect, useRef, useState } from "react";
 import type { CodexPromptRailPreview } from "../../../../shared/codex-prompt-rail-history";
 import type { ConversationPromptRailPort, ConversationPromptTurn } from "../conversation-runtime";
 import type { ThreadUserMessageNavigationItem } from "../thread-stage-types";
@@ -149,25 +150,28 @@ export function useLocalConversationPromptRail(
       navigationRef.current?.controller.abort();
       const controller = new AbortController();
       navigationRef.current = { threadId, controller };
-      try {
-        if ((await port.install(turnId, controller.signal)) !== "applied") return null;
-        if (controller.signal.aborted) return null;
-        return (await revealInstalledTurn?.(turnId, mode, controller.signal)) ?? null;
-      } catch {
-        return null;
-      } finally {
-        if (navigationRef.current?.controller === controller) navigationRef.current = null;
-      }
+      return runWithCleanup(
+        async () => {
+          if ((await port.install(turnId, controller.signal)) !== "applied") return null;
+          if (controller.signal.aborted) return null;
+          return (await revealInstalledTurn?.(turnId, mode, controller.signal)) ?? null;
+        },
+        {
+          onError: () => {
+            return null;
+          },
+          cleanup: () => {
+            if (navigationRef.current?.controller === controller) navigationRef.current = null;
+          },
+        },
+      );
     },
     [port, residentItems, revealInstalledTurn, revealResidentItem, threadId],
   );
 
   const turns = port && index?.threadId === threadId ? index.turns : null;
   const previewsByTurnId = previews.port === port ? previews.byTurnId : EMPTY_PREVIEWS;
-  const items = useMemo(
-    () => buildLocalConversationPromptRailItems({ turns, residentItems, previewsByTurnId }),
-    [previewsByTurnId, residentItems, turns],
-  );
+  const items = buildLocalConversationPromptRailItems({ turns, residentItems, previewsByTurnId });
 
   return { items, previewItem, revealItem };
 }

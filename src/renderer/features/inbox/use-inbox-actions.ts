@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useLayoutEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type {
@@ -130,15 +131,21 @@ export function useInboxActions(
     })).catch(() => undefined);
   }, [decisions, visibleItems, storeEpoch, write]);
   const run = async (fallback: string, task: () => Promise<unknown>): Promise<boolean> => {
-    try {
-      await task();
-      return true;
-    } catch (error) {
-      toast.danger(readableIpcError(error, fallback));
-      return false;
-    } finally {
-      void invalidateInbox(queryClient);
-    }
+    return runWithCleanup(
+      async () => {
+        await task();
+        return true;
+      },
+      {
+        onError: (error) => {
+          toast.danger(readableIpcError(error, fallback));
+          return false;
+        },
+        cleanup: () => {
+          void invalidateInbox(queryClient);
+        },
+      },
+    );
   };
 
   const announceCleared = (outcome: "kept" | "done", pageIds: readonly string[]) =>
@@ -207,65 +214,72 @@ export function useInboxActions(
     key: string,
     chat: InboxChat | null,
   ) => {
-    try {
-      const prepared = local.read().decisions[key] ?? (await prepareInboxConfirmation(draft));
-      await local.write((state) => ({
-        ...state,
-        decisions: { ...state.decisions, [key]: prepared },
-      }));
-      const result = await submitPrepared(prepared);
-      await local.write((state) => ({
-        ...state,
-        decisions: Object.fromEntries(Object.entries(state.decisions).filter(([id]) => id !== key)),
-      }));
-      const action = draft.action;
-      if (action) {
-        onDecided(
-          draft.basis.map((basis) => basis.pageId),
-          decisionOf(action, prepared.sessionId, chat),
-        );
-      }
-      if (result.value.undoToken) {
-        const undoToken = result.value.undoToken;
-        const operationId = createBoundedOperationId("inbox.undo");
-        toast.success(
-          action?.type === "move_to_project"
-            ? `Moved to ${projects.find((project) => project.id === action.projectId)?.name ?? "Project"}`
-            : "Moved",
-          {
-            action: {
-              label: "Undo",
-              onClick: () => {
-                void run("The move could not be undone", () =>
-                  undoInboxDecision({ operationId, undoToken }),
-                );
+    return runWithCleanup(
+      async () => {
+        const prepared = local.read().decisions[key] ?? (await prepareInboxConfirmation(draft));
+        await local.write((state) => ({
+          ...state,
+          decisions: { ...state.decisions, [key]: prepared },
+        }));
+        const result = await submitPrepared(prepared);
+        await local.write((state) => ({
+          ...state,
+          decisions: Object.fromEntries(
+            Object.entries(state.decisions).filter(([id]) => id !== key),
+          ),
+        }));
+        const action = draft.action;
+        if (action) {
+          onDecided(
+            draft.basis.map((basis) => basis.pageId),
+            decisionOf(action, prepared.sessionId, chat),
+          );
+        }
+        if (result.value.undoToken) {
+          const undoToken = result.value.undoToken;
+          const operationId = createBoundedOperationId("inbox.undo");
+          toast.success(
+            action?.type === "move_to_project"
+              ? `Moved to ${projects.find((project) => project.id === action.projectId)?.name ?? "Project"}`
+              : "Moved",
+            {
+              action: {
+                label: "Undo",
+                onClick: () => {
+                  void run("The move could not be undone", () =>
+                    undoInboxDecision({ operationId, undoToken }),
+                  );
+                },
               },
             },
-          },
-        );
-      } else if (action?.type === "keep")
-        announceCleared(
-          "kept",
-          draft.basis.map((basis) => basis.pageId),
-        );
-    } catch (error) {
-      if (inboxReceiptNeedsReview(error))
-        throw new Error(
-          "This handoff could not be verified. Check the destination before deciding again.",
-          { cause: error },
-        );
-      if (error instanceof RendererCommandRejectedError || error instanceof CoreApiError) {
-        await local
-          .write((state) => ({
-            ...state,
-            decisions: Object.fromEntries(
-              Object.entries(state.decisions).filter(([id]) => id !== key),
-            ),
-          }))
-          .catch(() => undefined);
-      }
-      throw error;
-    }
+          );
+        } else if (action?.type === "keep")
+          announceCleared(
+            "kept",
+            draft.basis.map((basis) => basis.pageId),
+          );
+      },
+      {
+        onError: async (error) => {
+          if (inboxReceiptNeedsReview(error))
+            throw new Error(
+              "This handoff could not be verified. Check the destination before deciding again.",
+              { cause: error },
+            );
+          if (error instanceof RendererCommandRejectedError || error instanceof CoreApiError) {
+            await local
+              .write((state) => ({
+                ...state,
+                decisions: Object.fromEntries(
+                  Object.entries(state.decisions).filter(([id]) => id !== key),
+                ),
+              }))
+              .catch(() => undefined);
+          }
+          throw error;
+        },
+      },
+    );
   };
 
   const decide = (

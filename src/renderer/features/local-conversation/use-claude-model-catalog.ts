@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AgentSessionConfigSelectOption } from "../../../shared/agent-conversation";
 import { agentBackendRuntime } from "../../lib/agent-backend-runtime";
@@ -70,28 +71,37 @@ export function useClaudeModelCatalog(
       controller?.abort();
       const request = new AbortController();
       controller = request;
-      try {
-        const discovery = await read(
-          { scope: requestScope, ...(force ? { forceReload: true } : {}) },
-          request.signal,
-        );
-        if (disposed || controller !== request) return;
-        failures = 0;
-        setCatalog({ key, options: discovery.models, discovery, error: discovery.health.error });
-        schedule(freshnessMs);
-      } catch {
-        if (disposed || controller !== request) return;
-        const error = "Could not discover Claude models. Reconnect or update the selected profile.";
-        setCatalog((previous) => ({
-          ...(previous?.key === key ? previous : { options: defaultOptions, discovery: null }),
-          key,
-          error,
-        }));
-        schedule(failureDelaysMs[failures++] ?? freshnessMs);
-        if (force) throw new Error(error);
-      } finally {
-        if (controller === request) controller = null;
-      }
+      return runWithCleanup(
+        async () => {
+          const discovery = await read(
+            { scope: requestScope, ...(force ? { forceReload: true } : {}) },
+            request.signal,
+          );
+          if (disposed || controller !== request) return;
+          failures = 0;
+          setCatalog({ key, options: discovery.models, discovery, error: discovery.health.error });
+          schedule(freshnessMs);
+        },
+        {
+          onError: () => {
+            if (disposed || controller !== request) return;
+            const error =
+              "Could not discover Claude models. Reconnect or update the selected profile.";
+            setCatalog((previous) => ({
+              ...(previous?.key === key ? previous : { options: defaultOptions, discovery: null }),
+              key,
+              error,
+            }));
+            const delay = failureDelaysMs[failures] ?? freshnessMs;
+            failures += 1;
+            schedule(delay);
+            if (force) throw new Error(error);
+          },
+          cleanup: () => {
+            if (controller === request) controller = null;
+          },
+        },
+      );
     };
     const refreshWhenDue = () => {
       if (disposed || controller || !visible() || Date.now() < nextRefreshAt) return;

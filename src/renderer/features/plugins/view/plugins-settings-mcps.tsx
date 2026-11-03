@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ActivitySpinnerIcon } from "@/components/shared/icons";
 import { TrashIcon } from "@/components/shared/icons/customize-action-icons";
@@ -303,15 +304,21 @@ function McpServerEditor({
   const run = async (action: () => Promise<boolean>, fallback: string) => {
     setError(null);
     setSubmitting(true);
-    try {
-      if (await action()) onClose();
-    } catch (cause) {
-      setError(
-        cause instanceof Error && cause.message.trim().length > 0 ? cause.message : fallback,
-      );
-    } finally {
-      setSubmitting(false);
-    }
+    return runWithCleanup(
+      async () => {
+        if (await action()) onClose();
+      },
+      {
+        onError: (cause) => {
+          setError(
+            cause instanceof Error && cause.message.trim().length > 0 ? cause.message : fallback,
+          );
+        },
+        cleanup: () => {
+          setSubmitting(false);
+        },
+      },
+    );
   };
   const save = () =>
     run(async () => {
@@ -594,19 +601,25 @@ export function McpServersTab({
       });
       toast.danger(`Couldn’t connect to MCP server “${server.name}”. Try again.`);
     };
-    try {
-      const result = await management.loginMcpServer({
-        name: server.name,
-        ...(registration === "auto" ? {} : { clientRegistration: registration }),
-      });
-      if (!pluginMutationSucceeded(result)) throw new Error(result.error.message);
-      const url = result.value.authorizationUrl.trim();
-      if (url.length === 0) throw new Error("MCP OAuth login returned an empty authorization URL");
-      setAuthUrls((current) => ({ ...current, [server.name]: url }));
-      void openExternalUrl(url);
-    } catch {
-      fail();
-    }
+    return runWithCleanup(
+      async () => {
+        const result = await management.loginMcpServer({
+          name: server.name,
+          ...(registration === "auto" ? {} : { clientRegistration: registration }),
+        });
+        if (!pluginMutationSucceeded(result)) throw new Error(result.error.message);
+        const url = result.value.authorizationUrl.trim();
+        if (url.length === 0)
+          throw new Error("MCP OAuth login returned an empty authorization URL");
+        setAuthUrls((current) => ({ ...current, [server.name]: url }));
+        void openExternalUrl(url);
+      },
+      {
+        onError: () => {
+          fail();
+        },
+      },
+    );
   };
   const setEnabled = async (server: PluginMcpServer, enabled: boolean) => {
     const result = await management.setMcpServerEnabled({ name: server.name, enabled });
@@ -666,13 +679,18 @@ function McpAppsDataSection({ context }: { readonly context: PluginContext }) {
   const clear = async () => {
     if (clearing) return;
     setClearing(true);
-    try {
-      const result = await management.clearMcpAppData();
-      if (pluginMutationSucceeded(result)) toast.success("MCP app data cleared");
-      else toast.danger("Unable to clear MCP app data");
-    } finally {
-      setClearing(false);
-    }
+    return runWithCleanup(
+      async () => {
+        const result = await management.clearMcpAppData();
+        if (pluginMutationSucceeded(result)) toast.success("MCP app data cleared");
+        else toast.danger("Unable to clear MCP app data");
+      },
+      {
+        cleanup: () => {
+          setClearing(false);
+        },
+      },
+    );
   };
   return (
     <NodexSettingsSection title="MCP Apps">

@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { createElement, useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
 import { ActivitySpinnerIcon, PluginsIcon } from "@/components/shared/icons";
 import { SlashMcpIcon } from "@/components/shared/icons/app-icons";
@@ -326,20 +327,26 @@ function SkillSettingsRow({
   const setEnabled = async (next: boolean) => {
     setOptimistic(next);
     setUpdating(true);
-    try {
-      const result = await management.setSkillEnabled(
-        skill.name.includes(":")
-          ? { name: skill.name, enabled: next }
-          : { path: skill.path, enabled: next },
-      );
-      if (!pluginMutationSucceeded(result)) throw new Error(result.error.message);
-      toast.success(next ? `${name} skill enabled` : `${name} skill disabled`);
-    } catch {
-      setOptimistic(null);
-      toast.danger("Failed to update skill");
-    } finally {
-      setUpdating(false);
-    }
+    return runWithCleanup(
+      async () => {
+        const result = await management.setSkillEnabled(
+          skill.name.includes(":")
+            ? { name: skill.name, enabled: next }
+            : { path: skill.path, enabled: next },
+        );
+        if (!pluginMutationSucceeded(result)) throw new Error(result.error.message);
+        toast.success(next ? `${name} skill enabled` : `${name} skill disabled`);
+      },
+      {
+        onError: () => {
+          setOptimistic(null);
+          toast.danger("Failed to update skill");
+        },
+        cleanup: () => {
+          setUpdating(false);
+        },
+      },
+    );
   };
   const skillSwitch = (
     <NodexTooltip tooltipContent={toggleLabel} side="top">

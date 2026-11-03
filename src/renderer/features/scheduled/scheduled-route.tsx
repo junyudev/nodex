@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useEffect, useState, type FormEvent } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import {
@@ -124,12 +125,17 @@ function ReplyComposer({ onSend }: { onSend: (message: string) => Promise<void> 
     event?.preventDefault();
     if (!trimmed || sending) return;
     setSending(true);
-    try {
-      await onSend(trimmed);
-      setMessage("");
-    } finally {
-      setSending(false);
-    }
+    return runWithCleanup(
+      async () => {
+        await onSend(trimmed);
+        setMessage("");
+      },
+      {
+        cleanup: () => {
+          setSending(false);
+        },
+      },
+    );
   };
   return (
     <form

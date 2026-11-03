@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import {
   useEffect,
   useEffectEvent,
@@ -265,15 +266,21 @@ export function SkillsPage({
 
   const installRecommended = async (skill: RecommendedSkill) => {
     setInstallingSkillId(skill.id);
-    try {
-      const result = await management.installRecommendedSkill({ id: skill.id, scope: "user" });
-      if (!pluginMutationSucceeded(result)) throw new Error(result.error.message);
-      toast.success(`${skillDisplayName({ name: skill.name })} skill installed`);
-    } catch {
-      toast.danger("Failed to install skill");
-    } finally {
-      setInstallingSkillId(null);
-    }
+    return runWithCleanup(
+      async () => {
+        const result = await management.installRecommendedSkill({ id: skill.id, scope: "user" });
+        if (!pluginMutationSucceeded(result)) throw new Error(result.error.message);
+        toast.success(`${skillDisplayName({ name: skill.name })} skill installed`);
+      },
+      {
+        onError: () => {
+          toast.danger("Failed to install skill");
+        },
+        cleanup: () => {
+          setInstallingSkillId(null);
+        },
+      },
+    );
   };
 
   const focusSearch = useEffectEvent(() => searchRef.current?.focus());

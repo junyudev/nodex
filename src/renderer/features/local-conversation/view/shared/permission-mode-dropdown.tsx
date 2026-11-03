@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useRef, useState, type ComponentType } from "react";
 import type { RuntimeMode } from "@nodex/agent-runtime/contracts";
 import {
@@ -81,13 +82,19 @@ export function PermissionModeDropdown({
   const select = async (next: RuntimeMode) => {
     if (pending || next === mode) return;
     setPending(true);
-    try {
-      await onSelect(next);
-    } catch (error) {
-      toast.danger(error instanceof Error ? error.message : "Could not change permissions");
-    } finally {
-      setPending(false);
-    }
+    return runWithCleanup(
+      async () => {
+        await onSelect(next);
+      },
+      {
+        onError: (error) => {
+          toast.danger(error instanceof Error ? error.message : "Could not change permissions");
+        },
+        cleanup: () => {
+          setPending(false);
+        },
+      },
+    );
   };
 
   const showLabel = triggerStyle === "settings" || emphasized;

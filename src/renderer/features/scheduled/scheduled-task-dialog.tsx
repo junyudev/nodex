@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -152,21 +153,26 @@ function ScheduledTaskEditor({
   const submit = async () => {
     if (!validation.canSave || busy) return;
     setSaving(true);
-    try {
-      if (editedTask) {
-        const update = buildCodexScheduledAutomationUpdateInput({
-          draft: { ...submitted, status: liveTask?.status ?? submitted.status },
-          id: editedTask.id,
-        });
-        if (update && (await tasks.updateTask(update, "Could not save task"))) onClose();
-        return;
-      }
-      const input = buildCodexScheduledAutomationCreateInput({ draft: submitted });
-      const created = input ? await tasks.createTask(input) : null;
-      if (created) onCreated(created);
-    } finally {
-      setSaving(false);
-    }
+    return runWithCleanup(
+      async () => {
+        if (editedTask) {
+          const update = buildCodexScheduledAutomationUpdateInput({
+            draft: { ...submitted, status: liveTask?.status ?? submitted.status },
+            id: editedTask.id,
+          });
+          if (update && (await tasks.updateTask(update, "Could not save task"))) onClose();
+          return;
+        }
+        const input = buildCodexScheduledAutomationCreateInput({ draft: submitted });
+        const created = input ? await tasks.createTask(input) : null;
+        if (created) onCreated(created);
+      },
+      {
+        cleanup: () => {
+          setSaving(false);
+        },
+      },
+    );
   };
 
   const paused = liveTask?.status === "PAUSED";

@@ -283,12 +283,13 @@ export function useThreadOutputOpenInMenu(
         current.request === generation ? { ...current, items, isLoading: false } : current,
       );
     } catch (cause) {
+      const error = cause instanceof Error ? cause : new Error(String(cause));
       setMenu((current) =>
         current.request === generation
           ? {
               ...current,
               isLoading: false,
-              error: cause instanceof Error ? cause : new Error(String(cause)),
+              error,
             }
           : current,
       );

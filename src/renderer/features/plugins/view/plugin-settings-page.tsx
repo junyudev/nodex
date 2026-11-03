@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useState, type ReactNode } from "react";
 import { ActivitySpinnerIcon } from "@/components/shared/icons";
 import { ChevronRightMdIcon } from "@/components/shared/icons/customize-action-icons";
@@ -83,20 +84,26 @@ function PluginSkillSettingsRow({
   const setEnabled = async (next: boolean) => {
     setOptimistic(next);
     setUpdating(true);
-    try {
-      const result = await management.setSkillEnabled(
-        skill.name.includes(":") || skill.path == null
-          ? { name: skill.name, enabled: next }
-          : { path: skill.path, enabled: next },
-      );
-      if (!pluginMutationSucceeded(result)) throw new Error(result.error.message);
-      toast.success(next ? `${name} skill enabled` : `${name} skill disabled`);
-    } catch {
-      setOptimistic(null);
-      toast.danger("Failed to update skill");
-    } finally {
-      setUpdating(false);
-    }
+    return runWithCleanup(
+      async () => {
+        const result = await management.setSkillEnabled(
+          skill.name.includes(":") || skill.path == null
+            ? { name: skill.name, enabled: next }
+            : { path: skill.path, enabled: next },
+        );
+        if (!pluginMutationSucceeded(result)) throw new Error(result.error.message);
+        toast.success(next ? `${name} skill enabled` : `${name} skill disabled`);
+      },
+      {
+        onError: () => {
+          setOptimistic(null);
+          toast.danger("Failed to update skill");
+        },
+        cleanup: () => {
+          setUpdating(false);
+        },
+      },
+    );
   };
 
   return (

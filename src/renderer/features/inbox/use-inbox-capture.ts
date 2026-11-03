@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useLayoutEffect, useRef, useState } from "react";
 import { InboxSendInputSchema } from "../../../shared/schemas/inbox";
 import type { InboxScope, InboxSendInput, InboxSendResult } from "../../../shared/inbox";
@@ -101,35 +102,41 @@ export function useInboxCapture({
     )
       return "failed";
     inFlight.current.add(intent.pageId);
-    try {
-      // Retry may follow a failed local write. Admission always waits for the envelope's disk write.
-      await write((current) => retainInboxCapture(current, capture));
-      await write((current) => consumeInboxDraft(current, capture));
-      const result = await onSend(intent);
-      if (result.pageId !== intent.pageId)
-        throw new Error("The saved message did not match this capture. Retry to check it.");
-      await write((current) =>
-        result.state === "deleted"
-          ? observeInboxCaptures(current, new Set([intent.pageId]), intent.storeEpoch)
-          : settleInboxCapture(current, intent.pageId, null),
-      );
-      // A deleted receipt also confirms this capture was saved, then removed elsewhere.
-      return "sent";
-    } catch (error) {
-      await write((current) =>
-        settleInboxCapture(
-          current,
-          intent.pageId,
-          inboxReceiptNeedsReview(error)
-            ? "Could not verify whether this capture was saved. Check the Inbox before recovering it."
-            : readableIpcError(error, "Message not saved — retry"),
-          inboxReceiptNeedsReview(error),
-        ),
-      ).catch(() => undefined);
-      return "failed";
-    } finally {
-      inFlight.current.delete(intent.pageId);
-    }
+    return runWithCleanup<InboxSubmitOutcome>(
+      async () => {
+        // Retry may follow a failed local write. Admission always waits for the envelope's disk write.
+        await write((current) => retainInboxCapture(current, capture));
+        await write((current) => consumeInboxDraft(current, capture));
+        const result = await onSend(intent);
+        if (result.pageId !== intent.pageId)
+          throw new Error("The saved message did not match this capture. Retry to check it.");
+        await write((current) =>
+          result.state === "deleted"
+            ? observeInboxCaptures(current, new Set([intent.pageId]), intent.storeEpoch)
+            : settleInboxCapture(current, intent.pageId, null),
+        );
+        // A deleted receipt also confirms this capture was saved, then removed elsewhere.
+        return "sent";
+      },
+      {
+        onError: async (error): Promise<InboxSubmitOutcome> => {
+          await write((current) =>
+            settleInboxCapture(
+              current,
+              intent.pageId,
+              inboxReceiptNeedsReview(error)
+                ? "Could not verify whether this capture was saved. Check the Inbox before recovering it."
+                : readableIpcError(error, "Message not saved — retry"),
+              inboxReceiptNeedsReview(error),
+            ),
+          ).catch(() => undefined);
+          return "failed";
+        },
+        cleanup: () => {
+          inFlight.current.delete(intent.pageId);
+        },
+      },
+    );
   };
 
   const submit = async (): Promise<InboxSubmitOutcome> => {
@@ -151,14 +158,20 @@ export function useInboxCapture({
       preparing.current = false;
       return "unsent";
     }
-    try {
-      await write((latest) => retainInboxCapture(latest, capture));
-      await write((latest) => consumeInboxDraft(latest, capture));
-    } catch {
-      return read().draftRevision === capture.draftRevision ? "unsent" : "failed";
-    } finally {
-      preparing.current = false;
-    }
+    const outcome = await runWithCleanup<InboxSubmitOutcome | null>(
+      async () => {
+        await write((latest) => retainInboxCapture(latest, capture));
+        await write((latest) => consumeInboxDraft(latest, capture));
+        return null;
+      },
+      {
+        onError: () => (read().draftRevision === capture.draftRevision ? "unsent" : "failed"),
+        cleanup: () => {
+          preparing.current = false;
+        },
+      },
+    );
+    if (outcome !== null) return outcome;
     return deliver(capture);
   };
 

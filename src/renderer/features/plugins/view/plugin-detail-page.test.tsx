@@ -175,6 +175,29 @@ it("leads back to the directory view the plugin was opened from", async () => {
   expect(navigation.onNavigate).toHaveBeenCalledWith("/plugins?directoryTab=personal&search=fig");
 });
 
+it("keeps a disabled plugin's prompt available after enabling fails, then starts it on retry", async () => {
+  setPluginEnabled.mockRejectedValueOnce(new Error("Connection lost"));
+  setPluginEnabled.mockResolvedValueOnce({
+    status: "success",
+    value: undefined,
+    refreshFailures: [],
+  });
+  const navigation = renderPage(detailView({ installed: true, enabled: false }));
+
+  await click(screen.getByRole("button", { name: /Implement this frame/ }));
+  expect(navigation.onStartChat).not.toHaveBeenCalled();
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: /Implement this frame/ }).hasAttribute("disabled"),
+    ).toBe(false),
+  );
+  await click(screen.getByRole("button", { name: /Implement this frame/ }));
+
+  expect(navigation.onStartChat).toHaveBeenCalledExactlyOnceWith(
+    "[@Figma](plugin://figma@codex-official) Implement this frame",
+  );
+});
+
 it("explains a plugin that fails to load", () => {
   renderPage(new Error("path does not exist"));
 

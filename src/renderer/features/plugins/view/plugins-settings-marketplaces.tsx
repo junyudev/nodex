@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useState } from "react";
 import { ActivitySpinnerIcon } from "@/components/shared/icons";
 import { CheckmarkIcon, TrashIcon } from "@/components/shared/icons/customize-action-icons";
@@ -127,25 +128,31 @@ function RemoveMarketplaceDialog({
     if (!state.canSubmit) return;
     setStaleOperationId(latest?.operationId ?? null);
     setIsRemoving(true);
-    try {
-      const result = await management.removeMarketplace({
-        marketplaceName: marketplace.name,
-        marketplacePath: marketplace.path,
-        ...(operationId == null ? {} : { operationId }),
-      });
-      setOperationId(result.operationId);
-      setSettled(result);
-      if (result.removed) {
-        toast.success(`${label} marketplace removed`);
-        onClose();
-      } else {
-        toast.danger("Failed to remove marketplace");
-      }
-    } catch {
-      toast.danger("Failed to remove marketplace");
-    } finally {
-      setIsRemoving(false);
-    }
+    return runWithCleanup(
+      async () => {
+        const result = await management.removeMarketplace({
+          marketplaceName: marketplace.name,
+          marketplacePath: marketplace.path,
+          ...(operationId == null ? {} : { operationId }),
+        });
+        setOperationId(result.operationId);
+        setSettled(result);
+        if (result.removed) {
+          toast.success(`${label} marketplace removed`);
+          onClose();
+        } else {
+          toast.danger("Failed to remove marketplace");
+        }
+      },
+      {
+        onError: () => {
+          toast.danger("Failed to remove marketplace");
+        },
+        cleanup: () => {
+          setIsRemoving(false);
+        },
+      },
+    );
   };
 
   return (
@@ -271,26 +278,37 @@ export function MarketplacesTab({
 
   const retry = async () => {
     setRefreshing(true);
-    try {
-      const [result] = await Promise.all([management.refresh(), query.refetch()]);
-      if (!pluginMutationSucceeded(result)) toast.danger("Failed to refresh skills and apps");
-    } finally {
-      setRefreshing(false);
-    }
+    return runWithCleanup(
+      async () => {
+        const [result] = await Promise.all([management.refresh(), query.refetch()]);
+        if (!pluginMutationSucceeded(result)) toast.danger("Failed to refresh skills and apps");
+      },
+      {
+        cleanup: () => {
+          setRefreshing(false);
+        },
+      },
+    );
   };
   const upgrade = async (marketplace: ConfiguredMarketplace) => {
     const label = marketplaceLabel(marketplace);
     setUpgrading(marketplace.name);
-    try {
-      const result = await management.upgradeMarketplaces({ marketplaceName: marketplace.name });
-      if (!pluginMutationSucceeded(result)) throw new Error(result.error.message);
-      const outcome = marketplaceUpgradeToast(label, result.value.errors.length);
-      toast[outcome.tone](outcome.message);
-    } catch {
-      toast.danger(marketplaceUpgradeToast(label, 1).message);
-    } finally {
-      setUpgrading(null);
-    }
+    return runWithCleanup(
+      async () => {
+        const result = await management.upgradeMarketplaces({ marketplaceName: marketplace.name });
+        if (!pluginMutationSucceeded(result)) throw new Error(result.error.message);
+        const outcome = marketplaceUpgradeToast(label, result.value.errors.length);
+        toast[outcome.tone](outcome.message);
+      },
+      {
+        onError: () => {
+          toast.danger(marketplaceUpgradeToast(label, 1).message);
+        },
+        cleanup: () => {
+          setUpgrading(null);
+        },
+      },
+    );
   };
 
   if (query.isPending) {

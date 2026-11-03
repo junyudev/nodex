@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { AsyncQuestionComposer } from "./async-question-surface";
 import { NodexDropdownItem, NodexDropdownMenu } from "@/components/ui/dropdown";
 import {
@@ -502,17 +503,24 @@ function QueuePanel({ model, actions }: { model: ThreadFooterModel; actions: Thr
   };
 
   const handleResume = async () => {
-    if (!actions.onResumeQueuedFollowUps || isResumePending) return;
+    const resume = actions.onResumeQueuedFollowUps;
+    if (!resume || isResumePending) return;
     setResumePending(true);
-    try {
-      await actions.onResumeQueuedFollowUps(threadId);
-    } catch (error) {
-      toast.danger(error instanceof Error ? error.message : "Could not resume the queue", {
-        id: "queued-follow-up-resume-failed",
-      });
-    } finally {
-      setResumePending(false);
-    }
+    return runWithCleanup(
+      async () => {
+        await resume(threadId);
+      },
+      {
+        onError: (error) => {
+          toast.danger(error instanceof Error ? error.message : "Could not resume the queue", {
+            id: "queued-follow-up-resume-failed",
+          });
+        },
+        cleanup: () => {
+          setResumePending(false);
+        },
+      },
+    );
   };
 
   return (
@@ -699,37 +707,51 @@ function ThreadGoalResumeConfirmationDialog({
   const isBusy = pendingAction !== null;
 
   const handleDismiss = async () => {
-    if (!actions.onDismissThreadGoalResumeConfirmation) {
+    const dismiss = actions.onDismissThreadGoalResumeConfirmation;
+    if (!dismiss) {
       return;
     }
 
     setPendingAction("dismiss");
-    try {
-      await actions.onDismissThreadGoalResumeConfirmation(threadId);
-    } catch {
-      toast.danger(getThreadGoalMessage("composer.threadGoal.resumeConfirmation.dismissError"));
-    } finally {
-      setPendingAction(null);
-    }
+    return runWithCleanup(
+      async () => {
+        await dismiss(threadId);
+      },
+      {
+        onError: () => {
+          toast.danger(getThreadGoalMessage("composer.threadGoal.resumeConfirmation.dismissError"));
+        },
+        cleanup: () => {
+          setPendingAction(null);
+        },
+      },
+    );
   };
 
   const handleResume = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!actions.onSetThreadGoal) {
+    const setGoal = actions.onSetThreadGoal;
+    if (!setGoal) {
       return;
     }
 
     setPendingAction("resume");
-    try {
-      await actions.onSetThreadGoal({
-        threadId,
-        status: "active",
-      });
-    } catch {
-      toast.danger(getThreadGoalMessage("composer.threadGoal.statusUpdateError"));
-    } finally {
-      setPendingAction(null);
-    }
+    return runWithCleanup(
+      async () => {
+        await setGoal({
+          threadId,
+          status: "active",
+        });
+      },
+      {
+        onError: () => {
+          toast.danger(getThreadGoalMessage("composer.threadGoal.statusUpdateError"));
+        },
+        cleanup: () => {
+          setPendingAction(null);
+        },
+      },
+    );
   };
 
   return (
