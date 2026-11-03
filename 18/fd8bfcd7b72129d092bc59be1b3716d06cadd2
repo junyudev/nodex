@@ -1,0 +1,51 @@
+scripts/ci/classify-change.test.ts
+  s_057b9cacf6bd32::t_e417be97b9bcfb 209-214,240
+docs/CI.md
+  s_057b9cacf6bd32::t_e7a3cceb3a36ac 5-6,17-19,201,203-211
+AGENTS.md
+  s_057b9cacf6bd32::t_e7a3cceb3a36ac 184
+package.json
+  s_057b9cacf6bd32::t_f9c1a8be2fb6f8 32
+docs/development.md
+  s_057b9cacf6bd32::t_e7a3cceb3a36ac 955,959-964
+  s_057b9cacf6bd32::t_bb6037e2d8fd3a 956-958
+scripts/ci/verify-ci-matrix-contracts.ts
+  s_057b9cacf6bd32::t_94f142d95a3df1 6,184,223-225
+  s_057b9cacf6bd32::t_e417be97b9bcfb 148-183,185-195,222
+scripts/ci/verify-ci-matrix-contracts.test.ts
+  s_057b9cacf6bd32::t_e7a3cceb3a36ac 7,157-203
+  s_057b9cacf6bd32::t_a5cda0f6bfff17 204
+scripts/run-playwright-e2e.ts
+  s_057b9cacf6bd32::t_f9c1a8be2fb6f8 8-26,34-38
+  s_583cc45f239209::t_710882597a25ec 39
+.github/workflows/ci-nightly.yml
+  s_057b9cacf6bd32::t_f9c1a8be2fb6f8 81-117,127
+scripts/run-playwright-e2e.test.ts
+  s_057b9cacf6bd32::t_e417be97b9bcfb 4,33-38
+  s_057b9cacf6bd32::t_bb6037e2d8fd3a 32
+  s_583cc45f239209::t_0fb03a167118cc 39-41
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "18fd8bfcd7b72129d092bc59be1b3716d06cadd2",
+  "prompts": {},
+  "sessions": {
+    "s_057b9cacf6bd32": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a228-6248-7ef1-9f2f-042aea6158c1",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_583cc45f239209": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a228-8cfd-76e3-9adf-63d4b5eaa9d8",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
