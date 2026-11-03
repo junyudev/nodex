@@ -1,0 +1,35 @@
+src/renderer/features/inbox/inbox-plan-steps.tsx
+  s_39af2826685004::t_334478b98f256e 1-71
+src/renderer/features/inbox/inbox-presentation.ts
+  s_39af2826685004::t_5d75530347eb25 519-520
+src/renderer/features/inbox/inbox-triage.tsx
+  s_39af2826685004::t_5d75530347eb25 45,325,328-329,364,734-742
+src/renderer/features/inbox/inbox-dispatch-editor.tsx
+  s_39af2826685004::t_2474ebc93a1e96 39
+src/renderer/features/inbox/inbox-triage.test.tsx
+  s_6c9891f66c664a::t_860076120d0f92 829-877
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7c1de2795640627ddd667f7a728dc727b7f4c69d",
+  "prompts": {},
+  "sessions": {
+    "s_39af2826685004": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d6e56d2e-aae2-44a9-9afb-e48fc0c1ee5c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

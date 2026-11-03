@@ -1,0 +1,45 @@
+src/renderer/features/inbox/inbox-nodex.tsx
+  s_39af2826685004::t_076984efb0ee9c 1-23,25-54
+src/renderer/features/inbox/inbox-composer.tsx
+  s_39af2826685004::t_16278d17541623 90-95
+  s_39af2826685004::t_f6a3cd8429d2a4 9,86-87,89,96-100,132-136,138-152,195
+src/renderer/features/inbox/inbox-presentation.ts
+  s_39af2826685004::t_4d709010c7c73f 13
+  s_39af2826685004::t_47fbd80e658341 41-47,136-142,185-186
+src/renderer/features/inbox/inbox-composer.test.tsx
+  s_39af2826685004::t_b9da121ced6bdf 388-419
+src/renderer/features/inbox/inbox-triage.tsx
+  s_39af2826685004::t_4d709010c7c73f 432,435-436,920-961,991,993-997
+  s_39af2826685004::t_1839735e9f5eb7 23,28
+src/renderer/features/inbox/inbox-message.tsx
+  s_39af2826685004::t_48d53ec7315a81 36,71-72,91,100-104,135-155,238,240,242,308
+src/renderer/features/inbox/inbox-capture-state.ts
+  s_39af2826685004::t_f3ad5b9aa5afbf 21-30,35,178
+  s_39af2826685004::t_061321c4e74af9 152
+  s_39af2826685004::t_16278d17541623 111-114
+src/renderer/features/inbox/inbox-route.tsx
+  s_39af2826685004::t_16278d17541623 443-451,885
+  s_39af2826685004::t_1839735e9f5eb7 520
+src/renderer/features/inbox/inbox-capture-state.test.tsx
+  s_39af2826685004::t_b9da121ced6bdf 141-159
+src/renderer/features/inbox/inbox-triage.test.tsx
+  s_39af2826685004::t_e81a382dda8d05 829-900
+src/renderer/components/shared/icons/generic-icons.tsx
+  s_39af2826685004::t_47fbd80e658341 30,189
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9ac03acdccc5e7a9b1db806bb7ddc815e36837ef",
+  "prompts": {},
+  "sessions": {
+    "s_39af2826685004": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d6e56d2e-aae2-44a9-9afb-e48fc0c1ee5c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

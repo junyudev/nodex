@@ -1,0 +1,62 @@
+CHANGELOG.md
+  s_39af2826685004::t_6145ddca97979b 9-10
+src/shared/nodex-app-tools/argument-schemas.ts
+  s_39af2826685004::t_9f77f18e8ec2b0 8-9,45-48
+src/shared/nodex-app-tools/coordinator-schema.ts
+  s_39af2826685004::t_f3e30f358f8111 19-28,32-47,50-54,92-109
+  s_39af2826685004::t_f5ddf31c2054bf 18,86,91
+src/shared/nodex-app-tools/work-schema.ts
+  s_39af2826685004::t_f5ddf31c2054bf 25,28-29
+  s_39af2826685004::t_f3e30f358f8111 6-11,30-36
+crates/nodex-core/src/workspace/inbox_nodex.rs
+  s_39af2826685004::t_e15aad1452dbb2 61-62,67,74-78,81-96,132,138,169-171
+crates/nodex-core/src/workspace/inbox_nodex_tests.rs
+  s_39af2826685004::t_e15aad1452dbb2 86,113-114,181-188,190-192
+  s_39af2826685004::t_4425a7ab00d540 189
+  s_39af2826685004::t_8d802de70cee68 259-297
+  s_39af2826685004::t_1801d927a2e5ef 258
+crates/nodex-core/src/workspace/coordinator_tests.rs
+  s_39af2826685004::t_8d802de70cee68 659-668,670,675-705
+crates/nodex-core/src/infrastructure/local_commit.rs
+  s_39af2826685004::t_8d802de70cee68 1552-1556
+crates/nodex-core/src/infrastructure/migration_serializer_tests.rs
+  s_39af2826685004::t_8d802de70cee68 243-260,364
+crates/nodex-core/src/database/mod.rs
+  s_39af2826685004::t_8d802de70cee68 8644-8645,8932-8945,8947-8955,9101-9102,9225-9226
+crates/nodex-core/src/workspace/mod.rs
+  s_39af2826685004::t_8d802de70cee68 13-15
+crates/nodex-core/src/database/read.rs
+  s_39af2826685004::t_8d802de70cee68 416-418,895-906,909-915
+crates/nodex-core/src/workspace/read.rs
+  s_39af2826685004::t_8d802de70cee68 62-71
+crates/nodex-core/src/infrastructure/workflow_status_migration_tests.rs
+  s_39af2826685004::t_8d802de70cee68 362-384
+src/renderer/components/workbench/page-work-chip.tsx
+  s_39af2826685004::t_e15803582c42bc 26
+src/renderer/features/inbox/inbox-composer.tsx
+  s_39af2826685004::t_367585b60c041a 137
+src/renderer/features/inbox/inbox-nodex.tsx
+  s_39af2826685004::t_367585b60c041a 24
+src/renderer/features/inbox/inbox-route.tsx
+  s_39af2826685004::t_367585b60c041a 157
+docs/product-specs/coordinator-behavior.md
+  s_39af2826685004::t_0a634b100d0dad 112-114
+docs/product-specs/inbox-behavior.md
+  s_39af2826685004::t_bc12a8dfb36b95 277-282
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e8c7586b01e3245231171270d4ad113737c349b8",
+  "prompts": {},
+  "sessions": {
+    "s_39af2826685004": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d6e56d2e-aae2-44a9-9afb-e48fc0c1ee5c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
