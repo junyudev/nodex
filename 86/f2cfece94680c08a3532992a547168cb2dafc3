@@ -11,6 +11,8 @@ src/renderer/lib/desktop-notification-action.ts
 src/renderer/components/workbench/workbench-runtime.tsx
   s_bbde30ff38ad85::t_1cd178e4b02997 186,3566
   s_bbde30ff38ad85::t_b56ecc91085cc0 1348-1349
+  s_bbde30ff38ad85::t_06552170daccec 3549-3552,3556-3557,3560-3561,3564,3567-3584,3589-3598
+  s_bbde30ff38ad85::t_72dce599f3629f 253
 src/shared/side-chat-tab.ts
   s_bbde30ff38ad85::t_8d33a690c73d2a 1-9,12-22
   s_bbde30ff38ad85::t_40fb582dea8e74 10-11
