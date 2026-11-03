@@ -820,35 +820,19 @@ impl StoreWriter {
                 });
                 error
             })?;
-        let result = loop {
-            if cancellation.is_cancelled() {
-                endpoint.queue.remove(command_id);
-                break Err(query_interrupted(true));
-            }
-            let remaining = deadline.saturating_duration_since(Instant::now());
-            if remaining.is_zero() {
-                endpoint.queue.remove(command_id);
-                break Err(query_interrupted(false));
-            }
-            match result_receiver.recv_timeout(remaining.min(WRITER_RESULT_POLL_INTERVAL)) {
-                Ok(result) => break result,
-                Err(RecvTimeoutError::Timeout) => {}
-                Err(RecvTimeoutError::Disconnected) => {
-                    if cancellation.is_cancelled() {
-                        break Err(query_interrupted(true));
-                    }
-                    if Instant::now() >= deadline {
-                        break Err(query_interrupted(false));
-                    }
-                    break Err(StoreError::new(
-                        StoreErrorCode::WriterClosed,
-                        "SQLite writer stopped before returning a result",
-                        true,
-                    ));
-                }
-            }
-        };
+        #[cfg(test)]
+        let execution_before_wait = self.control.writer_execution.snapshot();
+        let result = wait_for_writer_result(&result_receiver, deadline, &cancellation, || {
+            endpoint.queue.remove(command_id);
+        });
         self.control.command_latency.record(started_at.elapsed());
+        #[cfg(test)]
+        if matches!(&result, Err(error) if error.code == StoreErrorCode::DeadlineExceeded) {
+            eprintln!(
+                "writer deadline: execution_before_wait={execution_before_wait:?} runtime_metrics={:?}",
+                self.control.metrics(),
+            );
+        }
         result
     }
 
@@ -861,6 +845,46 @@ impl StoreWriter {
             .as_ref()
             .and_then(|generation| generation.writer.as_ref())
             .map_or(0, |writer| writer.endpoint.queue.len())
+    }
+}
+
+fn wait_for_writer_result<T>(
+    result_receiver: &mpsc::Receiver<Result<T, StoreError>>,
+    deadline: Instant,
+    cancellation: &QueryCancellation,
+    remove_queued: impl FnOnce(),
+) -> Result<T, StoreError> {
+    loop {
+        // A published outcome is authoritative even if the waiter was scheduled late.
+        if let Ok(result) = result_receiver.try_recv() {
+            return result;
+        }
+        if cancellation.is_cancelled() {
+            remove_queued();
+            return Err(query_interrupted(true));
+        }
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            remove_queued();
+            return Err(query_interrupted(false));
+        }
+        match result_receiver.recv_timeout(remaining.min(WRITER_RESULT_POLL_INTERVAL)) {
+            Ok(result) => return result,
+            Err(RecvTimeoutError::Timeout) => {}
+            Err(RecvTimeoutError::Disconnected) if cancellation.is_cancelled() => {
+                return Err(query_interrupted(true));
+            }
+            Err(RecvTimeoutError::Disconnected) if Instant::now() >= deadline => {
+                return Err(query_interrupted(false));
+            }
+            Err(RecvTimeoutError::Disconnected) => {
+                return Err(StoreError::new(
+                    StoreErrorCode::WriterClosed,
+                    "SQLite writer stopped before returning a result",
+                    true,
+                ));
+            }
+        }
     }
 }
 
@@ -1452,6 +1476,57 @@ mod tests {
             thread::yield_now();
         }
         assert!(!operation_ran.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn completed_writer_result_survives_a_late_waiter() {
+        let (sender, receiver) = mpsc::sync_channel(1);
+        sender.send(Ok("committed")).unwrap();
+        let mut removed = false;
+        let result =
+            wait_for_writer_result(&receiver, Instant::now(), &QueryCancellation::new(), || {
+                removed = true
+            });
+        assert_eq!(result.unwrap(), "committed");
+        assert!(
+            !removed,
+            "completed work must not be retired as queued work"
+        );
+    }
+
+    #[test]
+    fn completed_writer_failure_keeps_its_actual_cause_after_waiter_expiry() {
+        let (sender, receiver) = mpsc::sync_channel(1);
+        sender
+            .send(Err::<(), _>(StoreError::new(
+                StoreErrorCode::SqliteFailure,
+                "operation failed",
+                false,
+            )))
+            .unwrap();
+        drop(sender);
+        let error =
+            wait_for_writer_result(&receiver, Instant::now(), &QueryCancellation::new(), || {
+                panic!("completed failure must not be retired as queued work")
+            })
+            .unwrap_err();
+        assert_eq!(error.code, StoreErrorCode::SqliteFailure);
+        assert!(!error.retryable);
+    }
+
+    #[test]
+    fn completed_writer_result_survives_waiter_cancellation() {
+        let (sender, receiver) = mpsc::sync_channel(1);
+        sender.send(Ok("committed")).unwrap();
+        let cancellation = QueryCancellation::new();
+        cancellation.cancel();
+        let result = wait_for_writer_result(
+            &receiver,
+            Instant::now() + Duration::from_secs(1),
+            &cancellation,
+            || panic!("a completed operation is no longer queued"),
+        );
+        assert_eq!(result.unwrap(), "committed");
     }
 
     #[test]

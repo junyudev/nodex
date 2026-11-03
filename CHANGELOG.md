@@ -64,6 +64,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Changes that finish saving during a brief slowdown are no longer reported as failed. Nodex used to show a timeout or cancellation for a save that had already completed.
 - Cancelling worktree setup now waits for its commands to stop before removing the worktree. If a command cannot be stopped, Nodex keeps its files and reports the failure.
 - Agents can use the in-app Browser when you start Nodex from inside another desktop app, such as from its terminal, or when that app shares your Codex settings. Browser actions used to fail with "native pipe path unavailable" because they tried to reach the other app's private services; Nodex now ignores what that app leaves behind and keeps its Browser on its own.
 - Hovering an Agent's reply now shows when it arrived. Claude Code, Codex, OpenCode and ACP chats keep each reply's time, and it stays the same after you reopen a chat or restart Nodex.

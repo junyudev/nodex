@@ -176,6 +176,10 @@ poll the same cancellation/deadline while queued, release their blocking worker
 promptly, and immediately evict a cancelled command that is still queued. A
 command racing with dequeue retains the same cancellation token and cannot
 execute domain side effects after the boundary expires.
+A completed writer outcome takes precedence over later waiter cancellation or
+deadline checks. A waiter that resumes late returns that known outcome; it does
+not turn a committed write into a timeout. Pending work retains the same
+cancellation and deadline enforcement.
 
 The writer schedules a bounded total queue by request class. Interactive work
 runs before unaged background and maintenance work; aging promotes one older
