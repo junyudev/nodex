@@ -1,4 +1,4 @@
-# macOS Release Runbook
+# Application Release Runbook
 
 This document is the source of truth for Nodex application releases. A normal
 release is expressed by a reviewed metadata-only commit on protected `main`;
@@ -30,24 +30,40 @@ actual publication requires the distribution, assembly, and promotion jobs to
 succeed and the matching immutable prerelease and Nightly feed to exist.
 
 The important seam is the Release Bundle, not a YAML artifact convention.
-The Apple silicon build emits an `architecture-build.json` that binds its
+Each native build emits an `architecture-build.json` that binds its
 source commit/tree, Release Identity, runtime locks, prepared-build generation,
 package provenance, official Agent Skills manifest/tree identity,
 runner/toolchain versions, and artifact hashes. The assembler verifies this
-manifest and its Sparkle update against one release identity, then emits:
+manifest and its signed update against one release identity, then emits:
 
 - `Nodex-latest-arm64.dmg`
 - the versioned arm64 full-update ZIP
 - the signed arm64 appcast snapshot and closed update manifest
 - any architecture-qualified deltas the official Sparkle generator retained
+- `Nodex-<displayVersion>-windows-x64.exe` and `Nodex-<displayVersion>-windows-arm64.exe`
+- stable-only `Nodex-latest-windows-x64.exe` and `Nodex-latest-windows-arm64.exe` aliases with identical bytes
+- signed Windows appcast snapshots and closed update manifests for each CPU
 - `release-identity.json`
 - `release-bundle.json`
 - `SHA256SUMS`
 - `release-notes.md` for the publisher (not a public asset)
 
-Release Bundles carry only Apple silicon artifacts. Delta history must pass the
-current bundle and packaged-provenance contracts; releases without compatible
-history publish a full ZIP update. Nightly retention leaves unverified bundles intact.
+Every Release Bundle requires macOS arm64, Windows x64, and Windows arm64.
+A failed or missing native build, installed-app probe, or finalizer blocks assembly
+and publication. Stable includes the Windows aliases; Nightly carries only
+versioned installers, matching its versioned macOS DMG policy. Delta history must
+pass the bundle and packaged-provenance contracts; releases without compatible
+history publish a full ZIP update. Windows feeds carry one full installer and no
+deltas. Nightly retention leaves unverified bundles intact.
+
+`_windows-distribution.yml` is the single Windows packaging implementation for
+Release, Nightly, Rehearsal, Recovery, and the `Windows` validation workflow. It
+builds natively on `windows-latest` (x64) and `windows-11-arm` (arm64), verifies
+prepared and packaged identity, runs the installed-app startup/upgrade/uninstall
+probe, and only then uploads its architecture bundle. Provenance binds the
+Release Identity, clean source commit/tree, prepared output, Skills identity,
+runtime locks (including Node), payload inventory, probe receipt, runner versions,
+and final installer hash. See [Windows distribution](release-windows.md).
 
 The tag is created only after this bundle passes. A published release is never
 rebuilt in place, and an existing tag is never moved.
@@ -90,9 +106,9 @@ authorization enabled; a successful staging probe cannot substitute for it.
 
 `package.json` remains the canonical source version. The Release Module derives
 one exact-key Release Identity from the protected-main commit and passes that
-artifact through the Apple silicon build, Sparkle finalizer, assembler, and
+artifact through every native build, protected update finalizer, assembler, and
 publisher. Stable keeps the source `x.y.z` as its display version. Both channels
-encode the first-parent ordinal as a monotonic Apple build version (`842`
+encode the first-parent ordinal as a monotonic build version (`842`
 becomes `1.8.42`); Nightly derives its display version as
 `x.y.(z+1)-nightly.YYYYMMDD.<first-parent-ordinal>`.
 Workflow inputs and arbitrary environment variables cannot replace the
@@ -145,14 +161,14 @@ They separate deployment policy and audit. Reusable workflows receive only the
 explicit repository-secret contract declared by their caller; protected
 environment secrets are resolved only by direct jobs.
 
-| Environment                 | Authority                                                                    |
-| --------------------------- | ---------------------------------------------------------------------------- |
-| `macos-distribution`        | Apple signing/notarization; Sentry upload once from production arm64         |
-| `sparkle-feed-finalization` | Sign appcasts and full/delta enclosures after the Apple silicon build passes |
-| `release-publish`           | Job-scoped repository `contents: write` only                                 |
-| `official-skills-publish`   | Publish the verified artifact to `NodexApp/skills`                           |
-| `homebrew-tap`              | Update and smoke-install `junyudev/homebrew-tap`                             |
-| `landing-production`        | Deploy `NodexApp/NodexApp.github.io`                                         |
+| Environment                 | Authority                                                                      |
+| --------------------------- | ------------------------------------------------------------------------------ |
+| `macos-distribution`        | Apple signing/notarization; Sentry upload once from production arm64           |
+| `sparkle-feed-finalization` | Sign macOS and Windows appcasts and enclosures after every native build passes |
+| `release-publish`           | Job-scoped repository `contents: write` only                                   |
+| `official-skills-publish`   | Publish the verified artifact to `NodexApp/skills`                             |
+| `homebrew-tap`              | Update and smoke-install `junyudev/homebrew-tap`                               |
+| `landing-production`        | Deploy `NodexApp/NodexApp.github.io`                                           |
 
 Configure these repository Action secrets:
 
@@ -167,7 +183,7 @@ Configure these repository Action secrets:
 
 Configure `SPARKLE_ED25519_PRIVATE_KEY` as an environment secret on
 `sparkle-feed-finalization`, not as a repository-wide secret and not as a
-caller-supplied `workflow_call` secret. `Release`, `Distribution Rehearsal`, and
+caller-supplied `workflow_call` secret. `Release`, `Nightly Release`, `Distribution Rehearsal`, and
 `Release Recovery` each own direct finalizer jobs bound to that environment and
 pass the value only to the repository-local Sparkle finalization action. The
 reusable native-distribution and Bundle-assembly workflows never declare or
@@ -266,15 +282,19 @@ both their signed runtime identity and `Info.plist`. The stable feeds are:
 
 ```text
 https://nodex.jyu.app/updates/stable/arm64/appcast.xml
+https://nodex.jyu.app/updates/stable/windows-x64/appcast.xml
+https://nodex.jyu.app/updates/stable/windows-arm64/appcast.xml
 ```
 
 The isolated Nightly feeds are:
 
 ```text
 https://nodex.jyu.app/updates/nightly/arm64/appcast.xml
+https://nodex.jyu.app/updates/nightly/windows-x64/appcast.xml
+https://nodex.jyu.app/updates/nightly/windows-arm64/appcast.xml
 ```
 
-GitHub Release is the immutable data plane for full ZIPs, deltas, update
+GitHub Release is the immutable data plane for full ZIPs, Windows installers, deltas, update
 manifests, and signed appcast snapshots. Stable releases are Latest; Nightly
 releases are prereleases and never update Homebrew or official Agent Skills.
 Stable site deploys replace only `updates/stable/`; Nightly publication stages
@@ -298,7 +318,7 @@ machine-readable directory list. Empty history is an empty array; paths do not
 depend on shell delimiters or GitHub step-output parsing.
 
 `Nightly Retention` keeps the newest 20 published Nightly releases and every
-release younger than 14 days. It also protects every tag referenced by either
+release younger than 14 days. It also protects every tag referenced by any
 live Nightly appcast and deletes only immutable releases whose downloaded
 Release Bundle index exactly matches the remote asset digests. A feed fetch or
 Bundle verification failure fails closed. Scheduled runs are dry-run only.
@@ -342,6 +362,28 @@ lost, stop ordinary feed publication and follow Sparkle's signed-feed recovery
 procedure with a higher-version Developer ID signed and notarized recovery
 image; do not upload an unsigned replacement ZIP or rewrite an immutable
 release.
+
+### Windows signed update contract
+
+Windows finalizers use the same pinned Sparkle `sign_update` tool and protected
+Ed25519 key as macOS. The direct protected job matrix covers `arm64`,
+`windows-x64`, and `windows-arm64`; reusable workflows never receive that key.
+Each Windows feed has exactly one item with the Release Identity build version,
+display version, source publication date, embedded release notes, and one
+`application/octet-stream` enclosure marked `sparkle:os="windows"`. Its URL is
+the immutable tag's versioned installer, never a Latest alias. The enclosure's
+length and Ed25519 signature cover the exact installer bytes. The appcast is
+also signed with Sparkle; its closed update manifest records a detached
+signature over the final XML bytes. Assembly independently verifies both
+signatures against `resources/sparkle/public-key.txt` before accepting the Bundle.
+This authenticates update bytes; Windows installers do not yet use Authenticode.
+
+Native distribution passes `NODEX_RELEASE_IDENTITY_PATH`, `NODEX_RELEASE_VERSION`,
+`NODEX_BUILD_VERSION`, and `NODEX_SPARKLE_CHANNEL` through build, runtime staging,
+and packaging on both platforms. Official builds use the identity's channel;
+Windows CI validation uses `disabled`. The prepared manifest embeds the identity,
+and the package's display/build metadata comes from that same artifact. Windows
+runtime-manifest generation belongs to its updater implementation.
 
 ## Local gates
 
@@ -426,6 +468,8 @@ workflow definition. Inside that boundary, the shared provenance guard requires
 the immutable SHA to be reachable from `main` and to have a successful
 protected-main `Main CI` push run before any source checkout or execution.
 The hosted Apple silicon runner uses that source and the protected signing environment.
+Both native Windows runners build and probe the same certified identity. All
+three update finalizers and the complete Bundle assembly are required.
 Rehearsal also uses the protected Sparkle finalization environment, but it does
 not receive `contents: write`, Homebrew/landing credentials, or a Sentry upload
 token. It creates no tag, Release, tap commit, feed commit, or production
@@ -504,11 +548,15 @@ A valid version transition runs this sequence:
 2. Certify the exact source SHA and Git tree through the full deterministic
    static, Rust, app, browser, stress, and macOS runtime gates without signing
    secrets.
-3. Build, sign, notarize, launch, and inspect arm64 on `macos-26`, refusing a
-   source tree that does not match the certificate.
+3. Build, sign, notarize, launch, and inspect macOS arm64 on `macos-26`; build,
+   install, probe, upgrade, and uninstall Windows x64 on `windows-latest` and
+   Windows arm64 on `windows-11-arm`. Every build refuses a source tree that does
+   not match the certificate.
 4. On native macOS runners, fetch only compatible release history,
    generate and round-trip deltas, normalize their architecture-qualified
    names, and sign the final appcasts and enclosures with the protected key.
+   Windows finalizers sign each installer and its single-item appcast with the
+   same tool/key, without generating deltas.
 5. Assemble and hash the exact Release Bundle with its source certificate on a
    clean Linux runner; obsolete blockmaps, `latest-mac.yml`, and
    `app-update.yml` are rejected.
@@ -525,7 +573,7 @@ A valid version transition runs this sequence:
     minimum as `depends_on macos: :sequoia`.
 11. Deploy the landing site from the same source SHA after release verification,
     preserving existing feeds on ordinary site deploys and atomically projecting
-    the signed Apple silicon snapshot on release deploys. Public feed bytes and every
+    all three signed architecture snapshots on release deploys. Public feed bytes and every
     enclosure are checked after push.
 
 Sentry source maps are uploaded only by the production arm64 build. Main, preload,
@@ -550,7 +598,7 @@ Recovery repeats the `release-source` environment and shared protected-main
 provenance guard, then requires that exact commit to be a valid metadata-only
 transition for the supplied version. Its behavior is idempotent:
 
-- absent tag/release: rebuild, verify, tag, publish;
+- absent tag/release: rebuild every architecture, verify, tag, publish;
 - matching tag: reuse only when it resolves to the exact source SHA;
 - matching draft: verify every existing asset digest, upload only missing
   assets, then publish;

@@ -108,7 +108,11 @@ const immutableReleaseUrl = (value: unknown, tag: string, name: string): string 
   return parsed.toString();
 };
 
-const parseFile = (value: unknown, tag: string, label: string): SparkleFileIdentity => {
+export const parseSparkleFileIdentity = (
+  value: unknown,
+  tag: string,
+  label: string,
+): SparkleFileIdentity => {
   if (!isRecord(value)) throw new Error(`${label} is invalid.`);
   assertExactKeys(value, ["bytes", "edSignature", "name", "sha256", "url"], label);
   const name = requireSafeName(value.name, `${label} name`);
@@ -138,7 +142,7 @@ const parseDelta = (value: unknown, tag: string): SparkleDeltaIdentity => {
     ],
     "Sparkle delta",
   );
-  const file = parseFile(
+  const file = parseSparkleFileIdentity(
     {
       bytes: value.bytes,
       edSignature: value.edSignature,
@@ -224,7 +228,7 @@ export function parseSparkleArchitectureUpdateManifest(
   ) {
     throw new Error("Sparkle appcast projection identity is invalid.");
   }
-  const full = parseFile(value.full, tag, "Sparkle full update");
+  const full = parseSparkleFileIdentity(value.full, tag, "Sparkle full update");
   if (full.name !== `Nodex-${version}-${value.architecture}.zip`) {
     throw new Error("Sparkle full update name is invalid.");
   }

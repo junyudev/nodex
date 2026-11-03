@@ -151,7 +151,7 @@
     "release:verify:bundle": "tsx scripts/release/cli.ts verify-bundle",
     "release:verify:remote": "tsx scripts/release/cli.ts verify-remote",
     "browser-runtime:publish": "tsx scripts/release/cli.ts publish-browser-runtime",
-    "ci:workflow-contracts": "tsx scripts/ci/verify-reusable-workflow-secrets.ts && tsx scripts/ci/verify-release-source-trust.ts && tsx scripts/ci/verify-ci-matrix-contracts.ts",
+    "ci:workflow-contracts": "tsx scripts/ci/verify-reusable-workflow-secrets.ts && tsx scripts/ci/verify-release-source-trust.ts && tsx scripts/ci/verify-ci-matrix-contracts.ts && tsx scripts/ci/verify-release-distribution-contracts.ts",
     "ci:vite-plus-workflow-contracts": "tsx scripts/ci/verify-vite-plus-workflow-contracts.ts",
     "ci:stress-workflow-contracts": "tsx scripts/ci/verify-stress-workflow-contracts.ts",
     "ci:verify-ignored-rust-tests": "tsx scripts/ci/verify-ignored-rust-tests.ts",

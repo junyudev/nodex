@@ -3,7 +3,7 @@ description: Sign one architecture's appcast, enclosures, and compatible deltas
 
 inputs:
   architecture:
-    description: macOS release architecture
+    description: arm64, windows-x64 or windows-arm64
     required: true
   channel:
     description: stable or nightly update channel
@@ -29,10 +29,11 @@ runs:
       run: vp install --frozen-lockfile
     - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
       with:
-        name: nodex-macos-${{ inputs.architecture }}-${{ inputs.source_sha }}
+        name: nodex-${{ inputs.architecture == 'arm64' && 'macos-arm64' || inputs.architecture }}-${{ inputs.source_sha }}
         path: ${{ runner.temp }}/architecture
 
     - name: Fetch verified compatible update history
+      if: inputs.architecture == 'arm64'
       env:
         GH_TOKEN: ${{ github.token }}
         RELEASE_ARCH: ${{ inputs.architecture }}
@@ -78,7 +79,15 @@ runs:
           --output "${SPARKLE_OUTPUT}"
           --history-manifest "${RUNNER_TEMP}/sparkle-history.json"
         )
-        vp run release:finalize:sparkle -- "${sparkle_args[@]}"
+        if [[ "${RELEASE_ARCH}" == "arm64" ]]; then
+          vp run release:finalize:sparkle -- "${sparkle_args[@]}"
+        else
+          vp exec tsx scripts/release/cli.ts finalize-windows \
+            --arch "${RELEASE_ARCH#windows-}" --channel "${{ inputs.channel }}" \
+            --architecture-dir "${RUNNER_TEMP}/architecture" \
+            --notes "${RUNNER_TEMP}/release-notes.md" --published-at "${published_at}" \
+            --source-sha "${RELEASE_SOURCE_SHA}" --version "${RELEASE_VERSION}" --output "${SPARKLE_OUTPUT}"
+        fi
 
     - name: Summarize signed update set
       env:

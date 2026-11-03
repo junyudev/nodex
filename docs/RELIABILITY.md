@@ -775,7 +775,7 @@ fault boundary, not a target for an interactive projection.
 
 Build, signing, notarization, appcast/delta, Homebrew, landing, runtime manifest,
 and Release recovery procedures belong in
-[the macOS Release Runbook](release-macos.md). Release identity and supply-chain
+[the Application Release Runbook](release.md). Release identity and supply-chain
 trust belong in [Security](SECURITY.md). Do not duplicate those inventories
 here.
 
@@ -792,7 +792,7 @@ here.
 | Runtime ownership and critical flows                        | [Architecture](ARCHITECTURE.md) and ADRs                                    |
 | Trust, sandbox, authorization, supply chain                 | [Security](SECURITY.md)                                                     |
 | Exact schema versions, limits, filenames, protocol versions | Source contracts, generated artifacts, and tests                            |
-| Release procedures and operational recovery                 | [macOS Release Runbook](release-macos.md)                                   |
+| Release procedures and operational recovery                 | [Application Release Runbook](release.md)                                   |
 
 Replace stale statements at the narrow owner. Do not append migration history,
 per-file behavior, release inventories, or feature acceptance rules to this map.

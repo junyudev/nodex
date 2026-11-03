@@ -224,7 +224,7 @@ not only the primary binary.
 Release publication is a transaction: package and validate every target before
 creating irreversible version/tag state. Verify the artifact that is actually
 signed and notarized. Keep version-specific runner, Icon Composer, signing, and
-packaging constraints in [the macOS release runbook](release-macos.md), where
+packaging constraints in [the application release runbook](release.md), where
 they can carry current versions and recovery steps.
 
 ### 13. Static-analysis output is an agent Interface
@@ -399,7 +399,7 @@ measurement loop is too expensive to rediscover through runtime testing alone.
 | Review/file-change UI                                                                                              | [Review right panel](product-specs/review-right-panel-behavior.md)                 |
 | Command-palette indexing and navigation                                                                            | [Command palette](product-specs/command-palette-behavior.md)                       |
 | Local validation and runtime selection                                                                             | [Development](development.md)                                                      |
-| macOS build, signing, notarization, and recovery                                                                   | [macOS release CI](release-macos.md)                                               |
+| macOS build, signing, notarization, and recovery                                                                   | [Application release CI](release.md)                                               |
 | Security seams and hardening                                                                                       | [Security](SECURITY.md)                                                            |
 
 When two documents appear to disagree, authority follows this order: accepted

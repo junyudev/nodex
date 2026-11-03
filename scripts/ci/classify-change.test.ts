@@ -5,7 +5,7 @@ import { buildChangeClassificationDocument, classifyChangedPaths } from "./class
 
 describe("CI change classification", () => {
   test("keeps documentation out of executable gates", () => {
-    expect(classifyChangedPaths(["docs/release-macos.md", "docs/ARCHITECTURE.md"])).toEqual({
+    expect(classifyChangedPaths(["docs/release.md", "docs/ARCHITECTURE.md"])).toEqual({
       allGates: false,
       appTestSuites: [],
       dependencyKind: "none",

@@ -129,8 +129,10 @@ async function main(): Promise<void> {
   if (existsSync(root))
     throw new Error(`Installer probe needs a fresh evidence directory: ${root}`);
   mkdirSync(artifacts, { recursive: true });
-  const installers = readdirSync("dist").filter((name) =>
-    name.endsWith(`-win-${target.arch}-setup.exe`),
+  const installers = readdirSync("dist").filter(
+    (name) =>
+      name.endsWith(`-win-${target.arch}-setup.exe`) ||
+      name.endsWith(`-windows-${target.arch}.exe`),
   );
   if (installers.length !== 1)
     throw new Error(`Expected one ${target.key} installer, found ${installers.length}`);

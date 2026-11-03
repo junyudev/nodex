@@ -29,6 +29,10 @@ tool and is never an automated quality gate.
   probes, application startup, architecture bundles, and certificate
   propagation. The packaged startup probe requires a valid Core descriptor;
   merely keeping an Electron process alive is not sufficient.
+- `_windows-distribution.yml` owns both native Windows installer builds and the
+  installed-app startup/upgrade/uninstall probes. Official callers require the
+  same source certificate and identity as macOS. All three architectures must
+  succeed before protected signing, Bundle assembly, and promotion.
 
 An exact four-file stable release transition (`CHANGELOG.md`, `Cargo.lock`,
 `Cargo.toml`, and `package.json`) remains a narrow PR/Main mode. Release
@@ -49,8 +53,10 @@ paths select this deterministic tier. It is independent of the existing `require
 aggregate while Windows support is being qualified.
 
 The daily Windows schedule and manual dispatch also build and stage each native
-runtime, package an unsigned per-user NSIS installer, upload it, silently install
-it, and probe the installed application. Pushes to `codex/windows-**` run this
+runtime, package an unsigned per-user NSIS installer, silently install and probe
+it, then upload its verified architecture bundle. They call the same reusable
+Windows distribution as stable releases, Nightly, Rehearsal, and Recovery, with
+updates disabled for validation builds. Pushes to `codex/windows-**` run this
 full tier for platform development feedback. PR runs omit packaging. These jobs
 use no signing credentials and do not publish a Release or update feed.
 

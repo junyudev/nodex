@@ -9,6 +9,8 @@ import {
 } from "./bundle";
 import { extractReleaseNotes } from "./changelog";
 import { publishBrowserRuntime } from "./browser-runtime";
+import { buildWindowsDistribution } from "./windows-distribution";
+import { finalizeWindowsArchitectureUpdate } from "./windows-updates";
 import { buildMacDistribution } from "./distribution";
 import { generateHomebrewCaskFromBundle } from "./homebrew";
 import {
@@ -223,10 +225,47 @@ const main = async (): Promise<void> => {
     });
     return;
   }
+  if (command === "build-windows") {
+    const architecture = required(flags, "arch");
+    if (architecture !== "x64" && architecture !== "arm64")
+      throw new Error("Windows --arch must be x64 or arm64.");
+    buildWindowsDistribution({
+      architecture,
+      cwd: projectRoot,
+      identityPath: required(flags, "identity"),
+      outputDirectory: required(flags, "output"),
+      release: flags.get("release") === "true",
+    });
+    return;
+  }
+  if (command === "finalize-windows") {
+    const architecture = required(flags, "arch");
+    const channel = required(flags, "channel");
+    if (architecture !== "x64" && architecture !== "arm64")
+      throw new Error("Windows --arch must be x64 or arm64.");
+    if (channel !== "stable" && channel !== "nightly")
+      throw new Error("Windows --channel must be stable or nightly.");
+    await finalizeWindowsArchitectureUpdate({
+      architecture,
+      channel,
+      architectureDirectory: required(flags, "architecture-dir"),
+      outputDirectory: required(flags, "output"),
+      privateKey: process.env.SPARKLE_ED25519_PRIVATE_KEY ?? "",
+      publishedAt: required(flags, "published-at"),
+      releaseNotesPath: required(flags, "notes"),
+      sourceSha: required(flags, "source-sha"),
+      version: required(flags, "version"),
+    });
+    return;
+  }
   if (command === "assemble") {
     assembleReleaseBundle({
       arm64Directory: required(flags, "arm64-dir"),
       arm64UpdateDirectory: required(flags, "arm64-update-dir"),
+      windowsX64Directory: required(flags, "windows-x64-dir"),
+      windowsArm64Directory: required(flags, "windows-arm64-dir"),
+      windowsX64UpdateDirectory: required(flags, "windows-x64-update-dir"),
+      windowsArm64UpdateDirectory: required(flags, "windows-arm64-update-dir"),
       identityPath: required(flags, "identity"),
       outputDirectory: required(flags, "output"),
     });

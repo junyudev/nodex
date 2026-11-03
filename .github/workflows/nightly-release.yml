@@ -135,9 +135,26 @@ jobs:
       csc_key_password: ${{ secrets.CSC_KEY_PASSWORD }}
       csc_link: ${{ secrets.CSC_LINK }}
 
+  windows-distribution:
+    name: build native Windows distributions
+    if: needs.resolve.outputs.should_release == 'true'
+    needs: [resolve, certification]
+    permissions:
+      actions: read
+      contents: read
+    uses: ./.github/workflows/_windows-distribution.yml
+    with:
+      source_sha: ${{ needs.resolve.outputs.source_sha }}
+      source_tree: ${{ needs.certification.outputs.source_tree }}
+      retention_days: 14
+
   finalize-sparkle:
     if: needs.resolve.outputs.should_release == 'true'
-    needs: [resolve, distribution]
+    needs: [resolve, distribution, windows-distribution]
+    strategy:
+      fail-fast: false
+      matrix:
+        architecture: [arm64, windows-x64, windows-arm64]
     runs-on: macos-26
     environment: sparkle-feed-finalization
     permissions:
@@ -149,7 +166,7 @@ jobs:
           ref: ${{ needs.resolve.outputs.source_sha }}
       - uses: ./.github/actions/finalize-sparkle
         with:
-          architecture: arm64
+          architecture: ${{ matrix.architecture }}
           channel: nightly
           private_key: ${{ secrets.SPARKLE_ED25519_PRIVATE_KEY }}
           retention_days: 14
@@ -158,7 +175,7 @@ jobs:
 
   assemble:
     if: needs.resolve.outputs.should_release == 'true'
-    needs: [resolve, distribution, finalize-sparkle]
+    needs: [resolve, distribution, windows-distribution, finalize-sparkle]
     permissions:
       actions: read
       contents: read
