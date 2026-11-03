@@ -1346,7 +1346,8 @@ export function WorkbenchRuntime({
     () => (activeProject ? (sessionsByProject[activeProject.id] ?? []) : []),
     [activeProject, sessionsByProject],
   );
-  const activeThreadId = activeSession?.thread?.threadId ?? null;
+  // Runtime-bound Sessions name their root through execution, not a native Thread link.
+  const activeThreadId = sessionExecutionThreadId(activeSession);
   useLayoutEffect(() => {
     activeThreadIdRef.current = activeThreadId;
   }, [activeThreadId]);
