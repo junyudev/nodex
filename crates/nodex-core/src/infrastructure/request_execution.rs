@@ -208,6 +208,23 @@ pub(crate) fn query_control(
     })
 }
 
+/// Behavioral/pressure tests may budget debug-build work independently of production latency.
+/// An explicit request context always keeps its own deadline and cancellation.
+#[cfg(test)]
+pub(crate) fn with_test_request_budget<T>(operation: impl FnOnce() -> T) -> T {
+    if current_request_execution_observer().is_some() {
+        return operation();
+    }
+    within_request_execution(
+        RequestExecutionContext::new(
+            RequestExecutionClass::Interactive,
+            QueryCancellation::new(),
+            Instant::now() + Duration::from_secs(60),
+        ),
+        operation,
+    )
+}
+
 struct RequestExecutionGuard;
 
 impl Drop for RequestExecutionGuard {
@@ -252,6 +269,28 @@ mod tests {
         assert_eq!(
             current_request_execution_class(),
             RequestExecutionClass::Interactive
+        );
+    }
+
+    #[test]
+    fn fixture_budget_preserves_an_explicit_request_lifetime() {
+        let deadline = Instant::now();
+        let cancellation = QueryCancellation::new();
+        cancellation.cancel();
+        within_request_execution(
+            RequestExecutionContext::new(
+                RequestExecutionClass::Interactive,
+                cancellation,
+                deadline,
+            ),
+            || {
+                with_test_request_budget(|| {
+                    let (actual, cancellation) =
+                        query_control(Duration::from_secs(10), QueryCancellation::new());
+                    assert_eq!(actual, deadline);
+                    assert!(cancellation.is_cancelled());
+                })
+            },
         );
     }
 

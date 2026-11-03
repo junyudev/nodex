@@ -144,14 +144,16 @@ mod tests {
         create_project(&workspace.module, "create-project-a", "project:a");
         create_project(&workspace.module, "create-project-b", "project:b");
         for index in 0..66 {
-            create_session_thread(
-                &workspace.module,
-                &format!("task-{index}"),
-                &format!("session:{index:03}"),
-                &format!("thread:{index:03}"),
-                Some("project:a"),
-                index,
-            );
+            crate::infrastructure::request_execution::with_test_request_budget(|| {
+                create_session_thread(
+                    &workspace.module,
+                    &format!("task-{index}"),
+                    &format!("session:{index:03}"),
+                    &format!("thread:{index:03}"),
+                    Some("project:a"),
+                    index,
+                );
+            });
         }
         workspace
             .kernel

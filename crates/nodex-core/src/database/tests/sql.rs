@@ -18,34 +18,36 @@ fn create_rows(
         let operation_label = format!("sql:{key}:{start}");
         let writer_before = kernel.metrics();
         let started = std::time::Instant::now();
-        let result = library.apply(
-            &context(),
-            ModuleApplyRequest {
-                contract_version: LIBRARY_CONTRACT_VERSION,
-                operation_id: operation_label.clone(),
-                store_epoch: StoreEpoch("epoch-1".into()),
-                intent: LibraryIntent::CreatePagesFromText {
-                    request: LibraryAgentCreatePagesRequest {
-                        destination: LibraryAgentPageDestination::DataSource {
-                            data_source_id: source.into(),
-                            values: vec![],
-                            view_id: None,
-                            group_key: None,
-                            at: None,
-                        },
-                        pages: (start..(start + 16).min(count))
-                            .map(|index| LibraryAgentCreatePageDraft {
-                                title_markdown: format!("Item {index:03}"),
-                                markdown: String::new(),
+        let result = crate::infrastructure::request_execution::with_test_request_budget(|| {
+            library.apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    operation_id: operation_label.clone(),
+                    store_epoch: StoreEpoch("epoch-1".into()),
+                    intent: LibraryIntent::CreatePagesFromText {
+                        request: LibraryAgentCreatePagesRequest {
+                            destination: LibraryAgentPageDestination::DataSource {
+                                data_source_id: source.into(),
                                 values: vec![],
-                            })
-                            .collect(),
-                        include_block_ids: false,
-                        include_etags: false,
+                                view_id: None,
+                                group_key: None,
+                                at: None,
+                            },
+                            pages: (start..(start + 16).min(count))
+                                .map(|index| LibraryAgentCreatePageDraft {
+                                    title_markdown: format!("Item {index:03}"),
+                                    markdown: String::new(),
+                                    values: vec![],
+                                })
+                                .collect(),
+                            include_block_ids: false,
+                            include_etags: false,
+                        },
                     },
                 },
-            },
-        );
+            )
+        });
         if let Err(error) = &result {
             eprintln!(
                 "sql_fixture_failure phase=create_pages operation={operation_label} batch_start={start} batch_end={} total_rows={count} elapsed_ms={} writer_before={writer_before:?} writer_at_return={:?} outcome={error:?}",
