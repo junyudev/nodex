@@ -13,10 +13,12 @@ import { DeepLinkRuntime, live } from "./DeepLinkRuntime";
 
 it.effect("keeps the newest queued targets behind readiness and flushes resolved routes", () =>
   Effect.gen(function* () {
+    let rendererReady = false;
     const sent: Array<{ channel: string; payload: unknown }> = [];
     const window = {
       isDestroyed: () => false,
       webContents: {
+        id: 1,
         isDestroyed: () => false,
         isLoadingMainFrame: () => false,
         send: (channel: string, payload: unknown) => sent.push({ channel, payload }),
@@ -24,6 +26,7 @@ it.effect("keeps the newest queued targets behind readiness and flushes resolved
     } as unknown as BrowserWindow;
     const windows = {
       getLastFocused: () => window,
+      isRendererInitialized: () => rendererReady,
     } as unknown as WindowRuntimeService;
     const library = {
       findPageLocation: (pageId: string) => Effect.succeed({ pageId, projectId: "project-1" }),
@@ -63,6 +66,9 @@ it.effect("keeps the newest queued targets behind readiness and flushes resolved
     assert.strictEqual(sent.length, 0);
 
     yield* runtime.markReady;
+    assert.strictEqual(sent.length, 0);
+    rendererReady = true;
+    yield* runtime.flush;
     assert.strictEqual(sent.length, 1);
     assert.strictEqual(sent[0]?.channel, "deeplink:open-page");
     assert.deepStrictEqual(sent[0]?.payload, { projectId: "project-1", pageId: "new" });

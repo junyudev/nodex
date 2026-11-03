@@ -10,6 +10,7 @@ export class MainApplication extends Context.Service<
   MainApplication,
   {
     readonly activate: Effect.Effect<void, MainApplicationError>;
+    readonly confirmQuit?: Effect.Effect<boolean>;
     readonly handleBootstrapEvent: (
       event: BootstrapRuntimeEvent,
     ) => Effect.Effect<void, MainApplicationError>;

@@ -1,4 +1,6 @@
 !define NODEX_PROTOCOL_KEY "Software\Classes\nodex"
+!define NODEX_RUN_KEY "Software\Microsoft\Windows\CurrentVersion\Run"
+!define NODEX_STARTUP_APPROVED_KEY "Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run"
 
 !macro customCheckAppRunning
   ; Run the incoming helper before an older uninstaller can try to rename busy files.
@@ -35,6 +37,11 @@
 !macroend
 
 !macro customInstall
+  ; Windows owns startup approval. Never reset a user's disabled state on upgrade.
+  ReadRegStr $R0 HKCU "${NODEX_RUN_KEY}" "Nodex"
+  ${If} $R0 == ""
+    WriteRegStr HKCU "${NODEX_RUN_KEY}" "Nodex" '"$INSTDIR\${APP_EXECUTABLE_FILENAME}" --startup'
+  ${EndIf}
   WriteRegStr HKCU "${NODEX_PROTOCOL_KEY}" "" "URL:Nodex Deep Link"
   WriteRegStr HKCU "${NODEX_PROTOCOL_KEY}" "URL Protocol" ""
   WriteRegStr HKCU "${NODEX_PROTOCOL_KEY}\DefaultIcon" "" '"$INSTDIR\${APP_EXECUTABLE_FILENAME}",0'
@@ -58,6 +65,14 @@
 !macroend
 
 !macro customUnInstall
+  ; Install-over preserves both registration and Windows' approval decision.
+  ${IfNot} ${isUpdated}
+    ReadRegStr $R0 HKCU "${NODEX_RUN_KEY}" "Nodex"
+    ${If} $R0 == '"$INSTDIR\${APP_EXECUTABLE_FILENAME}" --startup'
+      DeleteRegValue HKCU "${NODEX_RUN_KEY}" "Nodex"
+      DeleteRegValue HKCU "${NODEX_STARTUP_APPROVED_KEY}" "Nodex"
+    ${EndIf}
+  ${EndIf}
   ; Leave another installation's handler alone if the user has replaced ours.
   ReadRegStr $R0 HKCU "${NODEX_PROTOCOL_KEY}\shell\open\command" ""
   ${If} $R0 == '"$INSTDIR\${APP_EXECUTABLE_FILENAME}" "%1"'

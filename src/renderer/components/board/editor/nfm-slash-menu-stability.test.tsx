@@ -37,6 +37,7 @@ function makeMatch(chat: Partial<ChatCatalogEntry> = {}): ChatSearchMatch {
       pullRequests: [],
       pinned: false,
       pinnedOrder: null,
+      unread: false,
       activity: "idle",
       createdAt: 1,
       recencyAt: 2,

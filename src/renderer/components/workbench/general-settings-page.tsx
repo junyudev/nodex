@@ -3,6 +3,7 @@ import { startTransition } from "react";
 import { NodexButton } from "@/components/ui/button";
 import { CodexRequestDiagnostics } from "@/features/local-conversation/codex-request-diagnostics";
 import { AppUpdateSettingRows } from "./app-update-settings-control";
+import { WindowsStartupSettingsRow } from "./windows-startup-settings-row";
 import {
   ComposerEnterBehaviorControl,
   ComposerPredictionSettingControl,
@@ -51,6 +52,7 @@ export function GeneralSettingsPage({
           <WindowRestoreSettingControl />
         </SettingRow>
         <AppUpdateSettingRows open={open} />
+        <WindowsStartupSettingsRow open={open} />
         <SettingRow
           label="Open source licenses"
           description="Third-party notices for bundled dependencies."

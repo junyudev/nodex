@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Nodex stays available in the Windows notification area when you close its last window, so chats and scheduled tasks keep running. Open Nodex, start a new chat or return to a recent chat from the tray. Nodex starts quietly at login; manage this in Windows Startup Apps from General settings.
+
 - Nodex runs on Windows 11, on both x64 and Arm PCs. Download the installer from nodex.jyu.app: it installs for your account without administrator rights, and Nodex keeps itself up to date from Stable or Nightly as it does on macOS.
 
 - Sites in the built-in Browser can ask for your camera, microphone, location, notifications and other permissions. The request appears under the address bar, where you allow it while visiting, allow it this time or never allow it; Site information lists what each site may do and resets it, and a permission your system blocks offers to open System Settings.

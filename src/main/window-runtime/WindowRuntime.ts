@@ -27,6 +27,7 @@ import { safeSendToWindow } from "../ipc-safe-send";
 import { getLogger } from "../logging/logger";
 import { resolveElectronWindowBackdrop } from "../electron-window-backdrop";
 import { MAIN_OBSERVATION_EVENT_CAPACITY } from "../runtime-limits";
+import { shouldHideLastWindow } from "../windows-desktop-policy";
 import type {
   WindowRuntimeAuxiliaryRole,
   WindowRuntimeLifecycleEvent,
@@ -234,6 +235,7 @@ export class WindowRuntime extends Context.Service<WindowRuntime, WindowRuntimeS
 export const fromState = (
   sessions: WindowSessionState,
   appearance: WindowAppearancePort = noWindowAppearance,
+  canHideLastWindow: () => boolean = () => false,
 ): Layer.Layer<WindowRuntime> =>
   Layer.effect(
     WindowRuntime,
@@ -400,6 +402,19 @@ export const fromState = (
               managed.finish();
             };
             managed.closeHandler = (event) => {
+              if (
+                shouldHideLastWindow({
+                  applicationQuitting: applicationQuitRequested,
+                  primaryWindowCount: primaryEntries().length,
+                  trayAvailable: canHideLastWindow(),
+                })
+              ) {
+                event.preventDefault();
+                managed.allowImmediate = false;
+                sessions.updateBounds(webContentsId, captureWindowSessionBounds(window));
+                window.hide();
+                return;
+              }
               if (managed.allowImmediate) {
                 managed.allowImmediate = false;
                 return;
@@ -683,9 +698,17 @@ export const fromState = (
     }),
   );
 
-export const live = (userDataPath: string, platform: NodeJS.Platform): Layer.Layer<WindowRuntime> =>
+export const live = (
+  userDataPath: string,
+  platform: NodeJS.Platform,
+  canHideLastWindow: () => boolean = () => false,
+): Layer.Layer<WindowRuntime> =>
   Layer.unwrap(
     Effect.sync(() =>
-      fromState(new WindowSessionState(userDataPath), createElectronWindowAppearance(platform)),
+      fromState(
+        new WindowSessionState(userDataPath),
+        createElectronWindowAppearance(platform),
+        canHideLastWindow,
+      ),
     ),
   );

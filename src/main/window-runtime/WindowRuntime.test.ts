@@ -20,6 +20,7 @@ import { fromState, WindowRuntime } from "./WindowRuntime";
 const fakeWindow = (webContentsId: number) => {
   let destroyed = false;
   let focused = false;
+  let hidden = false;
   const events = new EventEmitter();
   const rendererEvents = new EventEmitter();
   const sentChannels: string[] = [];
@@ -44,6 +45,9 @@ const fakeWindow = (webContentsId: number) => {
       destroy: () => {
         destroyed = true;
         events.emit("closed");
+      },
+      hide: () => {
+        hidden = true;
       },
       close: () => {
         let prevented = false;
@@ -74,6 +78,7 @@ const fakeWindow = (webContentsId: number) => {
       events.emit("focus");
     },
     isDestroyed: () => destroyed,
+    isHidden: () => hidden,
     sentChannels,
     rendererEvents,
   };
@@ -276,6 +281,42 @@ it.effect("owns the bounded renderer flush handshake before a user close", () =>
 
     yield* Scope.close(scope, Exit.void);
   }),
+);
+
+it.effect(
+  "retains the last tray window and its renderer, then closes it through ordinary quit",
+  () =>
+    Effect.gen(function* () {
+      const sessions = new WindowSessionState(mkdtempSync(join(tmpdir(), "window-tray-runtime-")));
+      const first = fakeWindow(331);
+      const last = fakeWindow(332);
+      const scope = yield* Scope.make();
+      const context = yield* Layer.buildWithScope(
+        fromState(sessions, undefined, () => true),
+        scope,
+      );
+      const runtime = Context.get(context, WindowRuntime);
+      runtime.attach(first.window, sessions.createFreshSession().id);
+      const retainedSessionId = sessions.createFreshSession().id;
+      runtime.attach(last.window, retainedSessionId);
+      runtime.markRendererInitialized(332);
+      first.window.close();
+      runtime.acknowledgeClose(331);
+      assert.isTrue(first.isDestroyed());
+      last.window.close();
+      assert.isTrue(last.isHidden());
+      assert.isFalse(last.isDestroyed());
+      assert.isTrue(runtime.isRendererInitialized(332));
+      assert.equal(runtime.resolveSessionId(332), retainedSessionId);
+      assert.deepEqual(last.sentChannels, []);
+      runtime.beginApplicationQuit();
+      last.window.close();
+      assert.deepEqual(last.sentChannels, ["app:flush-before-close"]);
+      runtime.acknowledgeClose(332);
+      assert.isTrue(last.isDestroyed());
+      assert.equal(runtime.count(), 0);
+      yield* Scope.close(scope, Exit.void);
+    }),
 );
 
 it.effect("closes an unresponsive renderer through a Scope-owned deadline", () =>

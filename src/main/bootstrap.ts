@@ -7,6 +7,7 @@ import * as Effect from "effect/Effect";
 import { configureInstanceScopePaths } from "./instance-scope";
 import { resolveBootstrapConfig } from "./bootstrap-config";
 import { BootstrapRuntimeEventQueue } from "./bootstrap-events";
+import { isWindowsStartupActivation } from "./windows-desktop-policy";
 import { configureBackendLogger, getLogger, shutdownBackendLogger } from "./logging/logger";
 import { getDiagnosticsSettings } from "./settings/application-settings-persistence";
 import { captureMainException, initializeMainSentry } from "./observability/sentry-main";
@@ -301,6 +302,7 @@ function launchMainApplication(): void {
 
 function registerPrimaryInstance(): void {
   app.on("second-instance", (_event, argv) => {
+    if (isWindowsStartupActivation(process.platform, argv)) return;
     void runtimeQueue.enqueueSecondInstance(argv);
   });
 

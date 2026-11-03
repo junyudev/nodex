@@ -42,6 +42,7 @@ export interface ChatCatalogEntry {
   readonly pullRequests: readonly ChatPullRequest[];
   readonly pinned: boolean;
   readonly pinnedOrder: number | null;
+  readonly unread: boolean;
   readonly activity: ChatActivity;
   /** Epoch milliseconds. */
   readonly createdAt: number;

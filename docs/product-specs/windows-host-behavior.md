@@ -25,6 +25,44 @@ Ordinary Desktop quit gracefully shuts down its selected Core generation within
 a five-second Scope-release bound. A crash or force-termination can leave detached
 Core running; the CLI and other clients can also start Core without Desktop.
 
+## Notification area and startup
+
+Windows keeps Nodex available in the notification area. Closing the last Workbench
+window hides it and retains its renderer, Core, Agent turns and scheduled tasks,
+whether idle or busy. Other Workbench windows close normally. Left-clicking the
+icon restores and focuses the last window without changing its current chat.
+Right-click opens a native menu with nonempty Running, Unread, Pinned and Recent
+chat sections, New chat and Quit. Sections show three chats before a More submenu.
+Titles use at most 35 Unicode codepoints. Existing chat and Workspace owners supply
+the bounded catalog, activity, unread state and ordering; the tray owns no history.
+
+New chat opens the current Project's default draft, or a projectless draft when
+there is no Project context. Choosing a chat resolves its current Workspace
+placement. Quit asks for confirmation while local chats or scheduled tasks would
+be interrupted, then uses ordinary graceful Desktop shutdown. Cancel keeps Nodex
+running. Process termination bypasses this interactive confirmation.
+
+The application Scope owns the tray and native theme subscription. The ICO follows
+the system notification-area appearance independently of Nodex's appearance.
+Packaged Stable, Nightly and update-disabled builds have distinct stable GUIDs;
+development has no persistent GUID. Regenerate the committed assets from
+`resources/nodex-icon.svg` with `vp exec tsx scripts/sync-windows-tray-icons.ts`
+or the existing `vp run sync:icons` command.
+
+The per-user installer enables launch at login by registering
+`HKCU\Software\Microsoft\Windows\CurrentVersion\Run\Nodex` as the installed
+executable with `--startup`. Windows Startup Apps owns enablement. General shows
+Launch at login status and Open Startup Apps. Install-over preserves registration
+and Windows' disabled state. Uninstall removes the Run value and startup approval
+only when the command still belongs to that installation; another installation's
+registration is left intact. No system service or elevation is required.
+
+Startup activation creates hidden Workbench windows and the tray, and starts Core
+and Agent Runtime without showing or focusing a window. A startup activation of
+an already-running Desktop never navigates, opens or focuses windows. An ordinary
+launch, `nodex://` link or tray action reveals the existing window. Closing the
+last failed startup window still quits through the normal recovery boundary.
+
 Install-over and uninstall first close processes whose executable image is inside
 that installation directory. Detached Core receives an authenticated shutdown
 request for its exact process and has eight seconds to drain. Remaining Core,

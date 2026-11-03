@@ -53,7 +53,7 @@ it.effect(
           ...row("pinned", "Other"),
           task: {
             ...row("pinned").task,
-            session: { ...row("pinned").task.session, pinned: true, pinned_order: 2 },
+            session: { ...row("pinned").task.session, pinned: true, pinned_order: 2, unread: true },
           },
         };
         const firstPinned = {
@@ -73,6 +73,7 @@ it.effect(
           metadata: (id) => metadata(id, { preview: "Earlier words. A needle\ninside the prompt" }),
         }).service;
         const recent = yield* search.search({ query: "", limit: 4 });
+        assert.isTrue(recent.matches.find(({ chat }) => chat.sessionId === "pinned")?.chat.unread);
         assert.deepEqual(
           recent.matches.slice(0, 2).map(({ chat }) => chat.sessionId),
           ["first", "pinned"],

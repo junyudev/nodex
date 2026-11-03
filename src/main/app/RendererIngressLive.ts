@@ -14,6 +14,7 @@ import * as CodexThreadHandoffIpc from "../ipc/handlers/CodexThreadHandoffIpc";
 import * as Layer from "effect/Layer";
 import * as WorkbenchAgentIpc from "../ipc/handlers/WorkbenchAgentIpc";
 import * as AppUpdateIpc from "../ipc/handlers/AppUpdateIpc";
+import * as WindowsStartupIpc from "../ipc/handlers/WindowsStartupIpc";
 import * as OpenCodeSetupIpc from "../ipc/handlers/OpenCodeSetupIpc";
 import * as NodexAccountIpc from "../ipc/handlers/NodexAccountIpc";
 import * as OpenCodeSetup from "../host-runtime/OpenCodeSetup";
@@ -80,6 +81,7 @@ const terminalIngress = TerminalIpc.live.pipe(Layer.provideMerge(TerminalProject
 export const live = Layer.mergeAll(
   WorkbenchAgentIpc.live,
   AppUpdateIpc.live,
+  WindowsStartupIpc.live,
   NodexAccountIpc.live,
   OpenCodeSetupIpc.live.pipe(
     Layer.provide(OpenCodeSetup.live.pipe(Layer.provide(OpenCodeInstallPlatform.nodeLive))),

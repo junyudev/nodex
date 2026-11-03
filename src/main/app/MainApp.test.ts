@@ -22,7 +22,7 @@ import { mainApplicationTestLayer } from "./MainApplication.test-support";
 import { MainApplicationError } from "./MainApplication";
 import { MainShutdown, layer as shutdownLayer } from "./MainShutdown";
 
-const fakeElectronLayer = (events: string[]) =>
+const fakeElectronLayer = (events: string[], overrides: Partial<ElectronApp["Service"]> = {}) =>
   Layer.succeed(
     ElectronApp,
     ElectronApp.of({
@@ -41,6 +41,7 @@ const fakeElectronLayer = (events: string[]) =>
       onSecondInstance: () => Effect.void,
       onTerminationSignal: () => Effect.void,
       onWindowAllClosed: () => Effect.void,
+      ...overrides,
     }),
   );
 
@@ -629,5 +630,65 @@ it.effect("turns the first ready-state before-quit into the same scoped shutdown
     assert.deepEqual(events, ["flush", "persisted", "release", "quit"]);
     assert.deepEqual(yield* shutdown.awaitRequest, { _tag: "UserQuit" });
     yield* Scope.close(foundationScope, Exit.void);
+  }),
+);
+
+it.effect("Windows stays resident without windows and a canceled Quit leaves its Scope alive", () =>
+  Effect.gen(function* () {
+    const events: string[] = [];
+    const ready = yield* Deferred.make<void>();
+    let windowAllClosed = Effect.void;
+    let beforeQuit: (() => ElectronBeforeQuitDecision) | null = null;
+    let approved = false;
+    const electron = fakeElectronLayer(events, {
+      onWindowAllClosed: (handler) =>
+        Effect.sync(() => {
+          windowAllClosed = handler;
+        }),
+      onBeforeQuit: (handler) =>
+        Effect.sync(() => {
+          beforeQuit = handler;
+        }),
+    });
+    const scope = yield* Scope.make();
+    const context = yield* Layer.buildWithScope(
+      Layer.mergeAll(shutdownLayer, cleanupLayer, electron, configLayer({ platform: "win32" })),
+      scope,
+    );
+    const shutdown = Context.get(context, MainShutdown);
+    const fiber = yield* program({
+      initialEvents: [],
+      applicationLayer: mainApplicationTestLayer({
+        acquire: Effect.void,
+        handleBootstrapEvent: () => Effect.void,
+        confirmQuit: Effect.sync(() => {
+          events.push("confirm");
+          return approved;
+        }),
+        prepareShutdown: Effect.sync(() => {
+          events.push("flush");
+        }),
+        release: Effect.sync(() => {
+          events.push("release");
+        }),
+      }),
+      runStartupGate: Effect.succeed("continue"),
+      onApplicationReady: () => Deferred.succeed(ready, undefined).pipe(Effect.asVoid),
+    }).pipe(Effect.provide(context), Effect.forkScoped);
+    yield* Deferred.await(ready);
+    yield* windowAllClosed;
+    assert.isFalse(yield* shutdown.isRequested);
+    const handler = beforeQuit as (() => ElectronBeforeQuitDecision) | null;
+    assert.isNotNull(handler);
+    const canceled = handler!();
+    assert.isTrue(canceled.preventDefault);
+    yield* canceled.task;
+    assert.isFalse(yield* shutdown.isRequested);
+    assert.notInclude(events, "release");
+    approved = true;
+    yield* handler!().task;
+    yield* Fiber.join(fiber);
+    assert.deepEqual(events, ["ready", "confirm", "confirm", "flush", "release", "quit"]);
+    yield* Scope.close(scope, Exit.void);
   }),
 );

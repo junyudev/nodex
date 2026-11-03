@@ -104,7 +104,7 @@ Run the checklist with both the arm64 and the x64 installer.
    without a globally installed Visual C++ runtime. Verify Core, CLI, and bundled
    search; a loader failure must leave bounded evidence under the isolated
    Profile's `diagnostics/startup` even with logging disabled.
-2. **Core lifecycle**: Core starts, survives closing the window when work is active,
+2. **Core lifecycle**: Core starts, survives closing the last window both idle and while work is active,
    restarts after being terminated, and leaves no orphaned `nodex-core.exe`, provider,
    `node.exe`, or terminal processes after quit.
 3. **Profile storage**: a Profile under the non-ASCII user directory, long Page and
@@ -129,6 +129,19 @@ Run the checklist with both the arm64 and the x64 installer.
    notifications attributed to Nodex.
 9. **Upgrade and uninstall**: installing over a previous build while Core is running,
    and uninstalling without leaving application files behind (the Profile remains).
+10. **Notification area and login**: close the last window during a live Agent turn,
+    let it finish, then left-click the tray and verify the same chat and completed
+    result. Right-click for Running, Unread, Pinned, Recent, New chat and Quit;
+    verify empty sections, More, projectless chats, Unicode titles and navigation.
+    Test Quit/Cancel during a local turn and with a scheduled task enabled; accepted
+    Quit must drain Core and Agent children and remove the tray. Switch Windows'
+    system light/dark appearance while Nodex uses the opposite app appearance,
+    restart Explorer, and check icon visibility, refresh and stable placement.
+    Sign out/in with Launch at login On: the tray appears without a visible or
+    focused window; ordinary launch and deep links then reveal the retained window.
+    Toggle Nodex Off in Windows Startup Apps, reopen General to verify Off, upgrade
+    and sign in again to verify it remains Off. Re-enable it, repeat sign-in and
+    uninstall; confirm Startup Apps and the notification area no longer list Nodex.
 
 ## Acceptance before a public Windows release
 

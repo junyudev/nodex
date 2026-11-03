@@ -750,6 +750,8 @@ export interface IpcApi
     args: [];
     result: AppRuntimeCapabilities;
   };
+  "windows-startup:status": { args: []; result: import("./windows-startup").WindowsStartupStatus };
+  "windows-startup:open-settings": { args: []; result: void };
   "app:startup-failure-evidence": {
     args: [];
     result: import("./app-startup").AppStartupFailureEvidence | null;

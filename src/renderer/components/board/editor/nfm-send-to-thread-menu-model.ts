@@ -165,6 +165,7 @@ export function createLinkedChatMatch(item: PageChatItem): ChatSearchMatch | nul
     pullRequests: [],
     pinned: false,
     pinnedOrder: null,
+    unread: item.unread,
     activity: item.threadStatus
       ? threadActivity(item.threadStatus.statusType, item.threadStatus.activeFlags)
       : "idle",
@@ -193,6 +194,7 @@ function createPreferredThreadMatch(
     pullRequests: [],
     pinned: false,
     pinnedOrder: null,
+    unread: thread.hasUnreadTurn ?? false,
     activity: threadActivity(thread.statusType, thread.statusActiveFlags),
     createdAt: thread.createdAt,
     recencyAt: thread.updatedAt,

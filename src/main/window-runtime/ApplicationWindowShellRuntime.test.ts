@@ -9,6 +9,7 @@ import type {
   BrowserWindow,
   BrowserWindowConstructorOptions,
   Display,
+  NativeImage,
   WebContents,
 } from "electron";
 import { it } from "@effect/vitest";
@@ -23,6 +24,8 @@ import {
 } from "./ApplicationWindowShellRuntime";
 
 let nextWindowId = 1;
+
+vi.mock("../platform/electron/WindowBackdrop", () => ({ isWindowBackdropSupported: () => true }));
 
 class FakeBrowserWindow extends EventEmitter {
   readonly id = nextWindowId++;
@@ -115,6 +118,51 @@ describe("ApplicationWindowShellRuntime", () => {
       vibrancy: undefined,
     });
   });
+
+  it.effect("keeps startup activation hidden through native and renderer readiness", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const restored = session("startup", 1);
+        const windows = {
+          attach: () => restored,
+          markFocused: () => undefined,
+          selectStartupSessions: () => [restored],
+        } as unknown as WindowRuntimeService;
+        const context = yield* Layer.build(
+          live({
+            createIcon: () => ({}) as NativeImage,
+            createWindow: () => new FakeBrowserWindow() as unknown as BrowserWindow,
+            displays: {
+              getAllDisplays: () => [
+                { bounds: { x: 0, y: 0, width: 1920, height: 1080 }, scaleFactor: 1 } as Display,
+              ],
+              getDisplayMatching: () => ({ scaleFactor: 1 }) as Display,
+              getPrimaryDisplay: () => ({ scaleFactor: 1 }) as Display,
+            },
+            iconPath: "/tmp/nodex-icon.png",
+            installContextMenu: () => () => undefined,
+            platform: "win32",
+            preloadPath: "/tmp/nodex-preload.js",
+            rendererUrl: "app://-/index.html",
+            theme: { prefersReducedTransparency: false, shouldUseDarkColors: false },
+            windows,
+          }),
+        );
+        const shell = Context.get(context, ApplicationWindowShellRuntime);
+        const opened = shell.openInitial("all", "hidden")[0] as unknown as FakeBrowserWindow;
+        opened.emit("ready-to-show");
+        opened.webContents.emit("did-finish-load");
+        for (const lease of shell.claimPendingActivation())
+          shell.completeActivation(lease.window.webContents.id);
+        shell.reportRenderer(opened.webContents.id);
+        yield* TestClock.adjust("10 seconds");
+        expect(opened.showCount).toBe(0);
+        expect(opened.isDestroyed()).toBe(false);
+        opened.show();
+        expect(opened.showCount).toBe(1);
+      }),
+    ),
+  );
 
   it.effect("opens restored renderer gates primary-first with concurrency one", () => {
     const sessions = [session("primary", 3), session("secondary", 2), session("tertiary", 1)];

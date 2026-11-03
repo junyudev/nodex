@@ -71,6 +71,8 @@ export const live = (
       const flush = Effect.gen(function* () {
         const targetWindow = options.windows.getLastFocused();
         if (!targetWindow || targetWindow.isDestroyed()) return;
+        // A tray action can create a window whose document has loaded before its route owner.
+        if (!options.windows.isRendererInitialized(targetWindow.webContents.id)) return;
         if (
           targetWindow.webContents.isDestroyed() ||
           targetWindow.webContents.isLoadingMainFrame()

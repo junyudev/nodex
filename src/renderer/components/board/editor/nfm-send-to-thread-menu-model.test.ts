@@ -27,6 +27,7 @@ function makeMatch(
       pullRequests: [],
       pinned: false,
       pinnedOrder: null,
+      unread: false,
       activity: "idle",
       createdAt: 0,
       recencyAt: 0,

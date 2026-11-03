@@ -3,6 +3,7 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
+import * as Semaphore from "effect/Semaphore";
 import type * as Scope from "effect/Scope";
 import { ElectronApp } from "../platform/electron/ElectronApp";
 import { MainCleanup } from "./MainCleanup";
@@ -10,6 +11,7 @@ import { MainApplication } from "./MainApplication";
 import { MainConfig } from "./MainConfig";
 import { MainApplicationError, type MainExit } from "./MainExit";
 import { MainShutdown } from "./MainShutdown";
+import { shouldQuitWithoutWindows } from "../windows-desktop-policy";
 
 export type MainStartupGateResult = "continue" | "moved" | "quit";
 
@@ -68,6 +70,7 @@ export const program = <R, E>(options: MainAppOptions<R, E>) =>
     const cleanup = yield* MainCleanup;
     const config = yield* MainConfig;
     const shutdown = yield* MainShutdown;
+    const quitPermit = yield* Semaphore.make(1);
     let quitAllowed = false;
     let completeShutdown = Effect.void;
     let activeApplication: MainApplication["Service"] | null = null;
@@ -77,12 +80,22 @@ export const program = <R, E>(options: MainAppOptions<R, E>) =>
     );
     yield* electron.onBeforeQuit(() => ({
       preventDefault: !quitAllowed,
-      task: quitAllowed ? Effect.void : shutdown.request({ _tag: "UserQuit" }).pipe(Effect.asVoid),
+      task: quitAllowed
+        ? Effect.void
+        : quitPermit.withPermit(
+            Effect.gen(function* () {
+              if (yield* shutdown.isRequested) return;
+              const approved = yield* activeApplication?.confirmQuit ?? Effect.succeed(true);
+              if (approved) yield* shutdown.request({ _tag: "UserQuit" });
+            }),
+          ),
     }));
     yield* electron.onWindowAllClosed(
-      config.platform === "darwin"
-        ? Effect.void
-        : shutdown.request({ _tag: "UserQuit" }).pipe(Effect.asVoid),
+      Effect.suspend(() =>
+        shouldQuitWithoutWindows(config.platform, activeApplication?.readiness === "startup-failed")
+          ? shutdown.request({ _tag: "UserQuit" }).pipe(Effect.asVoid)
+          : Effect.void,
+      ),
     );
     yield* electron.onTerminationSignal((signal) =>
       shutdown.request({ _tag: "Signal", signal }).pipe(Effect.asVoid),
