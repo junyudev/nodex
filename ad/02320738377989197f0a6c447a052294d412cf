@@ -1,0 +1,119 @@
+src/main/platform/node/CodexProcessEnvironment.test.ts
+  s_4ecb22df858a2c::t_e7dea353e806d2 1-21
+  s_4ecb22df858a2c::t_272f644202c88d 22-38
+src/main/platform/node/GitCommandPlatformNode.ts
+  s_4ecb22df858a2c::t_5c954d17a3e4cc 9
+  s_4ecb22df858a2c::t_e198451e9acabd 122-138
+src/main/platform/node/git-launch.ts
+  s_4ecb22df858a2c::t_5c954d17a3e4cc 1-25,29-32,35,39-45
+  s_4ecb22df858a2c::t_1a721942a2a5bf 26-28,33-34,36-38
+  s_4ecb22df858a2c::t_139b02636a8b10 46-47
+src/main/platform/node/child-process-environment.ts
+  s_4ecb22df858a2c::t_7ec10380007530 1-43
+src/main/platform/node/CodexProcessEnvironment.ts
+  s_4ecb22df858a2c::t_7ec10380007530 3,14-15,17
+  s_4ecb22df858a2c::t_e1e0623cb294b2 18-19
+src/main/platform/node/CodexProcessExecutionHost.ts
+  s_4ecb22df858a2c::t_7ec10380007530 10,31-33
+src/main/platform/node/git-launch.test.ts
+  s_4ecb22df858a2c::t_e7dea353e806d2 1-14,26-29,36,38-39
+  s_4ecb22df858a2c::t_1a721942a2a5bf 40-43
+  s_4ecb22df858a2c::t_36b431708b70e3 15-25,30-35,37,44-90
+  s_4ecb22df858a2c::t_b5facee4f39af6 91-97
+src/main/git-worker/git-command-runner.ts
+  s_4ecb22df858a2c::t_7ec10380007530 19,220,232,241,355,371,376
+  s_4ecb22df858a2c::t_e4bbfa85db6f54 490,507
+src/main/platform/node/child-process-environment.test.ts
+  s_4ecb22df858a2c::t_e7dea353e806d2 1-30
+  s_4ecb22df858a2c::t_facaa7bf773751 31-48
+docs/product-specs/windows-host-behavior.md
+  s_4ecb22df858a2c::t_36b431708b70e3 53-57,60-62
+  s_4ecb22df858a2c::t_b20a0fdcb27784 63-64
+  s_31333ce1edfc28::t_1309355be36b8b 65
+  s_4ecb22df858a2c::t_4d93d23147a45c 12-16
+  s_4ecb22df858a2c::t_91b33683d5d847 52
+  s_4ecb22df858a2c::t_25c0d902ec6153 49-51
+docs/windows-verification.md
+  s_4ecb22df858a2c::t_36b431708b70e3 116,119-122
+  s_4ecb22df858a2c::t_91b33683d5d847 117
+src/main/platform/node/NodexCliShell.ts
+  s_4ecb22df858a2c::t_7ec10380007530 6,132-133
+src/main/git-worker/git-worker-module.ts
+  s_4ecb22df858a2c::t_1a721942a2a5bf 119,838-839,959-962
+src/main/git-worker/git-command-runner.test.ts
+  s_4ecb22df858a2c::t_36b431708b70e3 47,64-77,88,239-240,285-286
+  s_4ecb22df858a2c::t_2bf637cbc77cbf 78-87,89-94,237-238,283-284
+src/main/codex/codex-git-command.ts
+  s_4ecb22df858a2c::t_5c954d17a3e4cc 2,79,102-103,105-106
+src/main/platform/node/TerminalEnvironment.test.ts
+  s_4ecb22df858a2c::t_7f3f88a610e3e7 2-6,30-35,45-57
+  s_4ecb22df858a2c::t_e7dea353e806d2 27-28,36-37,39-44
+  s_4ecb22df858a2c::t_d67fba4d5e8693 21-22
+  s_4ecb22df858a2c::t_60adafa3802c66 23-25
+  s_3022e59a160914::t_21ec883123a7ec 26
+  s_4ecb22df858a2c::t_25c0d902ec6153 29,38
+src/main/platform/node/TerminalEnvironment.ts
+  s_4ecb22df858a2c::t_7ec10380007530 52-54,62,104
+  s_4ecb22df858a2c::t_7f3f88a610e3e7 10,108-109,114-115
+  s_4ecb22df858a2c::t_36b431708b70e3 55-57,59-61,126
+  s_4ecb22df858a2c::t_b20a0fdcb27784 110-113
+  s_4ecb22df858a2c::t_44f1fbcfcf7b91 116,127,141
+  s_4ecb22df858a2c::t_91b33683d5d847 97
+  s_4ecb22df858a2c::t_25c0d902ec6153 58
+src/main/git-worker/entry.ts
+  s_4ecb22df858a2c::t_1689a075f36642 49
+src/main/git-worker/git-review-operations.integration.ts
+  s_4ecb22df858a2c::t_d32f17abf874cb 94
+src/main/git-worker/git-review.stress.test.ts
+  s_4ecb22df858a2c::t_1e65611a2ba40a 46
+src/main/git-worker/git-worker-module.test.ts
+  s_4ecb22df858a2c::t_41bfa747cea67d 49,179,185-188
+src/main/git-worker/repository-registry.test.ts
+  s_4ecb22df858a2c::t_828d165c56ca9d 25-28
+src/main/git-worker/untracked-cache.test.ts
+  s_4ecb22df858a2c::t_bfb2a04e6dd07f 68,108,149
+src/main/host-runtime/WorkspaceFileQueries.node.test.ts
+  s_4ecb22df858a2c::t_99c846b3935b71 504-507
+src/main/file-manager-windows.test.ts
+  s_4ecb22df858a2c::t_4d93d23147a45c 1-30
+  s_4ecb22df858a2c::t_8bcbc758755503 31-34
+src/main/ipc/handlers/NativeShellIpc.ts
+  s_4ecb22df858a2c::t_4d93d23147a45c 271
+  s_4ecb22df858a2c::t_33072f563f04eb 272-278,323-330
+src/main/file-link-opener.ts
+  s_4ecb22df858a2c::t_4d93d23147a45c 7,668-671,673-682
+src/main/process-tree.test.ts
+  s_4ecb22df858a2c::t_9f7c38b3b4c4a1 214-219
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ad02320738377989197f0a6c447a052294d412cf",
+  "prompts": {},
+  "sessions": {
+    "s_3022e59a160914": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1def126e-fd62-476f-9393-67b0835f01b6",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_31333ce1edfc28": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a054-7bf2-75b1-8bd9-e26360b6ebcf",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_4ecb22df858a2c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a055-207c-72a1-b1ad-e6102c15fab4",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
