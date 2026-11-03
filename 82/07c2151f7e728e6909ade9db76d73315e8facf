@@ -1,0 +1,23 @@
+src/main/mcp-app/mcp-app-sandbox-host.integration.ts
+  s_84ee72558030d8::t_e45c878bb36f3d 74,78-92,95-107
+tests/fixtures/mcp-app-sandbox/electron-main.ts
+  s_84ee72558030d8::t_0cec696f783d63 104-109,218,222
+tests/fixtures/mcp-app-sandbox/owner-script.ts
+  s_84ee72558030d8::t_d93623ee2e0c3d 12,14,21-25,49-52
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8207c2151f7e728e6909ade9db76d73315e8facf",
+  "prompts": {},
+  "sessions": {
+    "s_84ee72558030d8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a01f-2c76-7dd0-96f6-7c553a1da79b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
