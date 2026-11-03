@@ -1,0 +1,44 @@
+packages/landing/src/layouts/BaseLayout.astro
+  s_3022e59a160914::t_b1fc9cc8e01dc7 68-83
+packages/landing/src/components/SiteNav.astro
+  s_3022e59a160914::t_5ab259b05d4f0b 2,22
+packages/landing/src/components/BrewCommand.astro
+  s_3022e59a160914::t_8136739b203777 1-28
+packages/landing/src/lib/site.ts
+  s_3022e59a160914::t_065b5c3e29bc5f 24-26,31-33
+  s_3022e59a160914::t_8d6e786f432fb1 5,7-21,23,27-30
+  s_3022e59a160914::t_990627ff082e37 22
+packages/landing/src/pages/download/index.astro
+  s_3022e59a160914::t_5ab259b05d4f0b 1-12,14-30,32-45,47-80,82-103
+  s_3022e59a160914::t_0110bdcb2b6cb3 13,31,46,81
+packages/landing/src/styles/global.css
+  s_3022e59a160914::t_b1fc9cc8e01dc7 5-6
+packages/landing/src/sections/DownloadActions.astro
+  s_3022e59a160914::t_b1fc9cc8e01dc7 2-4,13-15,20-21,24-38,40-42,44-46,50-55
+  s_3022e59a160914::t_0110bdcb2b6cb3 43
+packages/landing/src/site.test.ts
+  s_3022e59a160914::t_3a6cd41a1100a3 1-12
+docs/landing-site.md
+  s_3022e59a160914::t_fa406af4e3fb96 85,103-104
+packages/landing/src/components/PlatformIcon.astro
+  s_3022e59a160914::t_065b5c3e29bc5f 1-20
+packages/landing/src/landing-build.test.ts
+  s_3022e59a160914::t_3a6cd41a1100a3 8,47,71-78,80-82,85-88,90-102,104-105,109-110
+  s_3022e59a160914::t_fa406af4e3fb96 83,106-108
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9d048de42ae91c6316f7c91a47dddf4f56080e8a",
+  "prompts": {},
+  "sessions": {
+    "s_3022e59a160914": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1def126e-fd62-476f-9393-67b0835f01b6",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
