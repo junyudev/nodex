@@ -1,0 +1,19 @@
+scripts/tooling/vitest-cached-reporter.test.ts
+  s_6c9891f66c664a::t_5fbff11ee53ba1 2,15,21-25,35,39,41,51,58-59,78-81
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "13f4543e675c33171cdba20c1b20943c404ccfdd",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
