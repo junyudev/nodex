@@ -1,0 +1,61 @@
+docs/release-windows.md
+  s_8c62977aa6fb11::t_cdd708e5174fbb 64-78
+scripts/agent-runtime-native.ts
+  s_8c62977aa6fb11::t_6c5c43ce27416b 270
+src/main/platform/node/ClaudeSdkModule.node.test.ts
+  s_8c62977aa6fb11::t_dc988f60adc37d 1-5,12-17,22-23,25,37,47-52,58-59
+  s_8c62977aa6fb11::t_3630baceb313b0 6-11,18-21,24,26-36,38-46,53-57
+  s_8c62977aa6fb11::t_e6cb3e51fa200e 60-74
+CHANGELOG.md
+  s_8c62977aa6fb11::t_cdd708e5174fbb 29
+src/main/platform/node/ClaudeSdkModule.ts
+  s_8c62977aa6fb11::t_14a4a0244be6d4 1-12
+  s_8c62977aa6fb11::t_c139a5686011b0 13-15
+scripts/desktop-runtime-payload.test.ts
+  s_8c62977aa6fb11::t_dc988f60adc37d 1-15,21-45,58-61,67,71-73,78-83,87-88,100-101,105-107,111-117
+  s_8c62977aa6fb11::t_6c5c43ce27416b 16-20,46-57,62-66,68-70,74-77,84-86,89-94,98-99,102-104,108,110
+  s_8c62977aa6fb11::t_0440b36944c6fc 95-97,109
+scripts/desktop-runtime-payload.mjs
+  s_8c62977aa6fb11::t_8f8b15beb64dae 1-14,18-20,24-26,34-35,38-39,48,53,60-63,65,68-75
+  s_8c62977aa6fb11::t_cdd708e5174fbb 15-17,21-23,27-33,36-37,41-47,49-52,54-55,59,66-67
+  s_8c62977aa6fb11::t_5239989010e178 64
+  s_8c62977aa6fb11::t_0440b36944c6fc 40,56-58
+  s_8c62977aa6fb11::t_b3807357dc2c15 76
+scripts/ci/probe-windows-installer.ts
+  s_8c62977aa6fb11::t_c442260c48f59a 359-371
+  s_8c62977aa6fb11::t_cdd708e5174fbb 21-22,304-312,372
+  s_8c62977aa6fb11::t_26c86387c428a9 373-374,433
+electron-builder.yml
+  s_8c62977aa6fb11::t_14a4a0244be6d4 21-22,28-29,32-33
+  s_8c62977aa6fb11::t_cdd708e5174fbb 30
+  s_8c62977aa6fb11::t_0440b36944c6fc 31,34
+scripts/desktop-runtime-payload.d.mts
+  s_8c62977aa6fb11::t_8f8b15beb64dae 1-6
+scripts/restore-packaged-runtime-closure.mjs
+  s_8c62977aa6fb11::t_6c861a3e7fde1d 133
+  s_8c62977aa6fb11::t_8f8b15beb64dae 9,134-140
+docs/ARCHITECTURE.md
+  s_8c62977aa6fb11::t_cdd708e5174fbb 133-137
+scripts/packaged-app-archive.d.mts
+  s_8c62977aa6fb11::t_a6e616af9ad7b4 5-6
+scripts/packaged-app-archive.mjs
+  s_8c62977aa6fb11::t_18222c50dc6c46 10-11,26,32-49
+src/main/platform/node/ClaudeSdk.ts
+  s_8c62977aa6fb11::t_8c7737447e5079 5-11,36,168,170-173,177,312-337,396-406,408-424,426-437,439-450,452-463,465-480,482-499,505,522-526,529
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ffd4ba1d8f2d9851877a1df5b50ae907d3903356",
+  "prompts": {},
+  "sessions": {
+    "s_8c62977aa6fb11": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19eca-da45-7583-a0bd-2b995907eee9",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
