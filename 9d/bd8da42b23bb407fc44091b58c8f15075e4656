@@ -1,0 +1,37 @@
+src/main/platform/electron/ElectronApp.ts
+  s_451af6ca019856::t_fcb434bd29928d 29,97
+src/main/app/MainApp.test.ts
+  s_451af6ca019856::t_fac8ad59b91b7a 34,59-61
+  s_451af6ca019856::t_5c6ccd97616421 49-52,62,96
+  s_451af6ca019856::t_fcb434bd29928d 368,425,480,540,600
+scripts/ci/probe-windows-installer.ts
+  s_451af6ca019856::t_945edf3b6699fe 189,276,438-443
+src/main/host-runtime/BrowserProfileRuntime.test.ts
+  s_451af6ca019856::t_fcb434bd29928d 120
+src/main/app/MainApp.ts
+  s_451af6ca019856::t_3a1755d4eda937 73-74,80
+  s_451af6ca019856::t_5c6ccd97616421 75-79
+docs/product-specs/windows-host-behavior.md
+  s_451af6ca019856::t_5c6ccd97616421 10,13
+  s_451af6ca019856::t_3a1755d4eda937 11-12
+src/main/host-runtime/ApplicationHostRuntime.test.ts
+  s_451af6ca019856::t_3a1755d4eda937 27
+docs/windows-verification.md
+  s_451af6ca019856::t_0773db292e5a4b 128-132
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9dbd8da42b23bb407fc44091b58c8f15075e4656",
+  "prompts": {},
+  "sessions": {
+    "s_451af6ca019856": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a309-73d5-7181-8f9e-e89a3a7986c4",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": null
+    }
+  }
+}
