@@ -396,8 +396,6 @@
 }
 
 :root {
-  --color-background-control: var(--app-color-background-elevated-primary);
-  --color-background-control-opaque: var(--app-color-background-elevated-primary-opaque);
   overscroll-behavior: none;
 }
 

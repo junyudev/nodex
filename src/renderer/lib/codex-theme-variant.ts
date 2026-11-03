@@ -212,23 +212,24 @@ interface DerivedTheme {
 const BLACK: Rgb = { blue: 0, green: 0, red: 0 };
 const WHITE: Rgb = { blue: 255, green: 255, red: 255 };
 
-// Resolved preset colors. Interpolation baselines below are a separate contract.
+// The default preset's resolved seed. Every surface, control, border and text role derives
+// from these five inputs; the interpolation baselines below are a separate contract.
 const DEFAULT_THEMES: Record<ThemeVariant, BaseTheme> = {
   dark: {
     accent: "#3a83f7",
     contrast: 60,
-    ink: "#ffffff",
+    ink: "#fcfcfc",
     semanticColors: {
       diffAdded: "#00a240",
       diffRemoved: "#e02e2a",
       skill: "#b06dff",
     },
-    surface: "#181818",
+    surface: "#111111",
   },
   light: {
     accent: "#3a83f7",
     contrast: 45,
-    ink: "#1a1c1f",
+    ink: "#0d0d0d",
     semanticColors: {
       diffAdded: "#00a240",
       diffRemoved: "#e02e2a",
@@ -266,7 +267,7 @@ const CODEX_RUNTIME_DOCUMENT_STYLE = {
   "--cursor-interaction": "pointer",
 } as const;
 
-/** Projects a raw palette. Resolve selected preferences first; applyCodexThemeVariant does this. */
+/** Projects a raw palette. Resolve selected preferences first; applyCodexDocumentTheme does this. */
 export function getCodexThemeVariantStyle(
   variant: ThemeVariant,
   accent: CodexAccent = DEFAULT_CODEX_ACCENT,
@@ -455,7 +456,7 @@ function deriveAccentStyle(
         : `${palette[300]}59`
       : preset === "black"
         ? isDark
-          ? "#78787866"
+          ? "color-mix(in srgb, var(--color-text) 32%, transparent)"
           : "#afafaf66"
         : isDark
           ? `${palette[400]}${preset === "yellow" ? "80" : "99"}`
@@ -577,27 +578,79 @@ function relativeLuminance(color: Rgb): number {
   return linear(color.red) * 0.2126 + linear(color.green) * 0.7152 + linear(color.blue) * 0.0722;
 }
 
-export function applyCodexThemeVariant(
-  root: HTMLElement,
+const APP_THEME_STYLE_SELECTOR = "style[data-codex-app-themes]";
+
+export function renderCodexAppThemes(
+  palettes: Readonly<Record<ThemeVariant, Readonly<Record<string, string>>>>,
+): string {
+  const scope = ':where(:root:not([data-codex-window-type="extension"]))';
+  const rules = (["light", "dark"] as const).map((variant) => {
+    const selector = `[data-theme="${variant}"]`;
+    const declarations = Object.entries(palettes[variant])
+      .map(([name, value]) => `${name}:${value};`)
+      .join("\n");
+    return `${scope}${selector}, ${scope} ${selector} {${declarations}}`;
+  });
+  return `@layer theme {${rules.join("\n")}}`;
+}
+
+export function applyCodexDocumentTheme(
+  document: Document,
   variant: ThemeVariant,
-  body?: HTMLElement,
-  accent: CodexAccent = DEFAULT_CODEX_ACCENT,
+  accents?: Readonly<Partial<Record<ThemeVariant, CodexAccent>>>,
   coloredUserMessages = true,
 ): void {
-  root.dataset.theme = variant;
-  const styles = getCodexThemeVariantStyle(
-    variant,
-    resolveEffectiveCodexAccent(accent),
-    coloredUserMessages,
-  );
-  for (const [name, value] of Object.entries(styles)) {
-    root.style.setProperty(name, value);
+  const root = document.documentElement;
+  if (root.dataset.theme !== variant) root.dataset.theme = variant;
+  const palette = (appearance: ThemeVariant) =>
+    getCodexThemeVariantStyle(
+      appearance,
+      resolveEffectiveCodexAccent(accents?.[appearance]),
+      coloredUserMessages,
+    );
+  const css = renderCodexAppThemes({ light: palette("light"), dark: palette("dark") });
+  let style = document.head.querySelector(APP_THEME_STYLE_SELECTOR);
+  if (!style) {
+    style = document.createElement("style");
+    style.setAttribute("data-codex-app-themes", "");
+    document.head.append(style);
   }
+  if (style.textContent !== css) style.textContent = css;
 
-  if (!body) return;
   for (const [name, value] of Object.entries(CODEX_RUNTIME_DOCUMENT_STYLE)) {
-    body.style.setProperty(name, value);
+    if (document.body?.style.getPropertyValue(name) !== value) {
+      document.body?.style.setProperty(name, value);
+    }
   }
+}
+
+/** Batches appearance and inline typography changes into a single observer delivery. */
+export function observeCodexDocumentAppearance(
+  document: Document,
+  onChange: (records: MutationRecord[]) => void,
+  { observeBody = false }: { observeBody?: boolean } = {},
+): () => void {
+  const observer = new MutationObserver((records) => {
+    const relevant = records.filter((record) => {
+      if (record.type === "attributes") return true;
+      const element =
+        record.target instanceof Element ? record.target : record.target.parentElement;
+      if (element?.matches(APP_THEME_STYLE_SELECTOR)) return true;
+      return [...record.addedNodes, ...record.removedNodes].some(
+        (node) => node instanceof Element && node.matches(APP_THEME_STYLE_SELECTOR),
+      );
+    });
+    if (relevant.length > 0) onChange(relevant);
+  });
+  observer.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["class", "data-theme", "data-codex-window-type", "style"],
+  });
+  observer.observe(document.head, { childList: true, characterData: true, subtree: true });
+  if (observeBody) {
+    observer.observe(document.body, { attributes: true, attributeFilter: ["class", "style"] });
+  }
+  return () => observer.disconnect();
 }
 
 function prepareTheme(theme: BaseTheme, variant: ThemeVariant): PreparedTheme {

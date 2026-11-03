@@ -1,6 +1,6 @@
 import { synchronizeWindowAppearance } from "./application-menu";
 import { useCallback, useEffect, useLayoutEffect, type ReactNode } from "react";
-import { applyCodexThemeVariant, type CodexAccent } from "./codex-theme-variant";
+import { applyCodexDocumentTheme, type CodexAccent } from "./codex-theme-variant";
 import {
   ACCENT_COLOR_STORAGE_KEY,
   THEME_STORAGE_KEY,
@@ -10,6 +10,7 @@ import {
   updateAccentColorPreference,
   writeAccentColorPreferences,
   writeThemePreference,
+  type AccentColorPreferences,
   type ResolvedTheme,
   type ThemePreference,
 } from "./theme-preferences";
@@ -60,12 +61,12 @@ const resolvedThemeAtom = scopedDerivedAtom(
   { debugLabel: "resolved-theme" },
 );
 
-function syncDocumentThemeClasses(resolved: ResolvedTheme, accent: CodexAccent): void {
+function syncDocumentThemeClasses(resolved: ResolvedTheme, accents: AccentColorPreferences): void {
   const root = document.documentElement;
   const isDark = resolved === "dark";
 
   root.classList.toggle("dark", isDark);
-  applyCodexThemeVariant(root, resolved, document.body, accent);
+  applyCodexDocumentTheme(document, resolved, accents);
 
   if (root.dataset.codexWindowType !== "electron") return;
 
@@ -106,10 +107,10 @@ function useThemeInternal(): ThemeContextValue {
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const value = useThemeInternal();
   const [, setThemeState] = useScopedAtom(themePreferenceAtom);
-  const [, setAccentPreferences] = useScopedAtom(accentColorPreferenceAtom);
+  const [accentPreferences, setAccentPreferences] = useScopedAtom(accentColorPreferenceAtom);
   useLayoutEffect(() => {
-    syncDocumentThemeClasses(value.resolved, value.accent);
-  }, [value.resolved, value.accent]);
+    syncDocumentThemeClasses(value.resolved, accentPreferences);
+  }, [value.resolved, accentPreferences]);
 
   useEffect(() => {
     if (document.documentElement.dataset.codexOs !== "win32" || !window.api) return;

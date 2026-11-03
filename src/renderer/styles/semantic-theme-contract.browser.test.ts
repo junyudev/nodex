@@ -6,6 +6,7 @@ import {
   readRendererThemeColor,
 } from "@/test/renderer-theme";
 import { workbenchMainSurfaceClassName } from "@/components/workbench/workbench-route-host";
+import { getCodexThemeVariantStyle, resolveEffectiveCodexAccent } from "@/lib/codex-theme-variant";
 
 import "@/globals.css";
 
@@ -169,13 +170,13 @@ describe("semantic theme contract in the renderer build", () => {
     setWindowTheme("electron", "dark");
     const rootStyle = getComputedStyle(document.documentElement);
 
-    expect(rootStyle.getPropertyValue("--app-color-text-foreground").trim()).toBe("#ffffff");
-    expect(getComputedStyle(mountRole("text-token-foreground")).color).toBe("rgb(255, 255, 255)");
+    expect(rootStyle.getPropertyValue("--app-color-text-foreground").trim()).toBe("#fcfcfc");
+    expect(getComputedStyle(mountRole("text-token-foreground")).color).toBe("rgb(252, 252, 252)");
     expect(rootStyle.getPropertyValue("--app-color-text-foreground-secondary").trim()).toBe(
-      "rgba(255, 255, 255, 0.71)",
+      "rgba(252, 252, 252, 0.71)",
     );
     expect(rootStyle.getPropertyValue("--app-color-text-foreground-tertiary").trim()).toBe(
-      "rgba(255, 255, 255, 0.498)",
+      "rgba(252, 252, 252, 0.498)",
     );
   });
 
@@ -184,7 +185,7 @@ describe("semantic theme contract in the renderer build", () => {
       outer: "light",
       inner: "dark",
       danger: "rgb(255, 103, 100)",
-      surface: "rgb(24, 24, 24)",
+      surface: "rgb(17, 17, 17)",
     },
     {
       outer: "dark",
@@ -195,7 +196,12 @@ describe("semantic theme contract in the renderer build", () => {
   ] as const)(
     "resolves an $inner inspection surface inside an $outer window",
     ({ outer, inner, danger, surface }) => {
-      setWindowTheme("electron", outer);
+      applyRendererThemeForTest(outer, {
+        accents: {
+          light: { kind: "custom", color: "#365b9d" },
+          dark: { kind: "custom", color: "#df5142" },
+        },
+      });
       const inspection = mountRole("");
       inspection.dataset.theme = inner;
       const status = mountRole("text-danger bg-surface");
@@ -203,6 +209,41 @@ describe("semantic theme contract in the renderer build", () => {
 
       expect(getComputedStyle(status).color).toBe(danger);
       expect(getComputedStyle(status).backgroundColor).toBe(surface);
+      expect(getComputedStyle(status).getPropertyValue("--codex-base-accent")).toBe(
+        inner === "dark" ? "#df5142" : "#365b9d",
+      );
+    },
+  );
+
+  test.each([
+    { windowType: "electron", outer: "light", inner: "dark" },
+    { windowType: "electron", outer: "dark", inner: "light" },
+    { windowType: "browser", outer: "light", inner: "dark" },
+    { windowType: "browser", outer: "dark", inner: "light" },
+  ] as const)(
+    "lets the runtime palette own every role it publishes in a $windowType $outer window and its $inner region",
+    ({ windowType, outer, inner }) => {
+      applyRendererThemeForTest(outer, { windowType });
+      const region = mountRole("");
+      region.dataset.theme = inner;
+      for (const [scope, variant] of [
+        [document.documentElement, outer],
+        [region, inner],
+      ] as const) {
+        // Resolve the expected value in the same scope so nested var() references substitute alike.
+        const expected = document.createElement("span");
+        scope.append(expected);
+        const actual = getComputedStyle(scope);
+        for (const [name, value] of Object.entries(
+          getCodexThemeVariantStyle(variant, resolveEffectiveCodexAccent()),
+        )) {
+          expected.style.setProperty("--expected-role", value);
+          expect(actual.getPropertyValue(name).trim(), `${variant} ${name}`).toBe(
+            getComputedStyle(expected).getPropertyValue("--expected-role").trim(),
+          );
+        }
+        expected.remove();
+      }
     },
   );
 
@@ -217,8 +258,8 @@ describe("semantic theme contract in the renderer build", () => {
     for (const scheme of ["dark", "light", "dark"] as const) {
       setWindowTheme("electron", scheme);
       const isDark = scheme === "dark";
-      const surface = isDark ? "rgb(24, 24, 24)" : "rgb(255, 255, 255)";
-      const ink = isDark ? "rgb(255, 255, 255)" : "rgb(26, 28, 31)";
+      const surface = isDark ? "rgb(17, 17, 17)" : "rgb(255, 255, 255)";
+      const ink = isDark ? "rgb(252, 252, 252)" : "rgb(13, 13, 13)";
 
       expect(getComputedStyle(main).backgroundColor).toBe(surface);
       expect(getComputedStyle(main).color).toBe(ink);

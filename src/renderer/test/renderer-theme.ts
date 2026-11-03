@@ -1,16 +1,16 @@
 import { afterEach, beforeEach } from "vite-plus/test";
-import { applyCodexThemeVariant, type CodexAccent } from "@/lib/codex-theme-variant";
+import { applyCodexDocumentTheme, type CodexAccent } from "@/lib/codex-theme-variant";
 
 /** Applies the same document palette and window classes as renderer startup and appearance changes. */
 export function applyRendererThemeForTest(
   variant: "light" | "dark" = "light",
   {
     windowType = "electron",
-    accent,
+    accents,
     coloredUserMessages,
   }: {
     readonly windowType?: "browser" | "electron";
-    readonly accent?: CodexAccent;
+    readonly accents?: Readonly<Partial<Record<"light" | "dark", CodexAccent>>>;
     readonly coloredUserMessages?: boolean;
   } = {},
 ): void {
@@ -19,13 +19,14 @@ export function applyRendererThemeForTest(
   root.classList.toggle("dark", variant === "dark");
   root.classList.toggle("electron-dark", windowType === "electron" && variant === "dark");
   root.classList.toggle("electron-light", windowType === "electron" && variant === "light");
-  applyCodexThemeVariant(root, variant, document.body, accent, coloredUserMessages);
+  applyCodexDocumentTheme(document, variant, accents, coloredUserMessages);
 }
 
 /** Keeps each product-surface test on a fresh runtime theme rather than static CSS fallbacks. */
 export function installRendererThemeFixture(): void {
   beforeEach(() => applyRendererThemeForTest());
   afterEach(() => {
+    document.head.querySelector("style[data-codex-app-themes]")?.remove();
     const root = document.documentElement;
     root.removeAttribute("style");
     root.removeAttribute("data-theme");

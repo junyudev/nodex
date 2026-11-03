@@ -1,25 +1,17 @@
-import { afterEach, expect, test } from "vite-plus/test";
-import { applyCodexThemeVariant } from "../codex-theme-variant";
+import { expect, test } from "vite-plus/test";
+import { applyRendererThemeForTest, installRendererThemeFixture } from "@/test/renderer-theme";
 import { readMcpAppHostStyleVariables } from "./mcp-app-host-styles";
 
 import "@/globals.css";
 
-afterEach(() => {
-  document.documentElement.removeAttribute("style");
-  document.documentElement.removeAttribute("data-codex-window-type");
-  document.documentElement.removeAttribute("data-theme");
-  document.documentElement.classList.remove("dark", "electron-dark", "electron-light");
-});
+installRendererThemeFixture();
 
 test.each(["light", "dark"] as const)(
   "exports portable host values and updates accent roles without changing %s appearance",
   (variant) => {
-    const root = document.documentElement;
-    root.dataset.codexWindowType = "electron";
-    root.classList.toggle("dark", variant === "dark");
-    root.classList.toggle("electron-dark", variant === "dark");
-    root.classList.toggle("electron-light", variant === "light");
-    applyCodexThemeVariant(root, variant, document.body, { kind: "preset", name: "green" });
+    applyRendererThemeForTest(variant, {
+      accents: { [variant]: { kind: "preset", name: "green" } },
+    });
     const green = readMcpAppHostStyleVariables();
 
     expect(Object.keys(green).length).toBeGreaterThan(60);
@@ -30,7 +22,9 @@ test.each(["light", "dark"] as const)(
     expect(green["--font-weight-normal"]).toBe("430");
     expect(Number.parseFloat(green["--border-radius-md"] ?? "")).toBeGreaterThan(0);
 
-    applyCodexThemeVariant(root, variant, document.body, { kind: "preset", name: "pink" });
+    applyRendererThemeForTest(variant, {
+      accents: { [variant]: { kind: "preset", name: "pink" } },
+    });
     const pink = readMcpAppHostStyleVariables();
     expect(pink["--color-text-info"]).not.toBe(green["--color-text-info"]);
     expect(pink["--color-ring-info"]).not.toBe(green["--color-ring-info"]);
@@ -38,7 +32,9 @@ test.each(["light", "dark"] as const)(
     expect(pink["--color-text-success"]).toBe(green["--color-text-success"]);
     expect(pink["--color-text-danger"]).toBe(green["--color-text-danger"]);
 
-    applyCodexThemeVariant(root, variant, document.body, { kind: "preset", name: "green" });
+    applyRendererThemeForTest(variant, {
+      accents: { [variant]: { kind: "preset", name: "green" } },
+    });
 
     const guest = document.createElement("div");
     const shadow = guest.attachShadow({ mode: "open" });

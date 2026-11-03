@@ -51,6 +51,7 @@ afterEach(() => {
   for (const store of stores.splice(0)) disposeMaitaiStore(store);
   vi.restoreAllMocks();
   localStorage.clear();
+  document.head.querySelector("style[data-codex-app-themes]")?.remove();
   document.documentElement.removeAttribute("style");
   document.documentElement.removeAttribute("class");
   document.documentElement.removeAttribute("data-theme");
@@ -64,13 +65,17 @@ describe("appearance preference application", () => {
     initializeApplicationAppearance();
     const expected = getCodexThemeVariantStyle("light", { kind: "preset", name: "blue" });
     expect(
-      document.documentElement.style.getPropertyValue("--color-background-composer-primary"),
+      getComputedStyle(document.documentElement).getPropertyValue(
+        "--color-background-composer-primary",
+      ),
     ).toBe(expected["--color-background-composer-primary"]);
     mountTheme();
     expect(screen.getByLabelText("Accent").textContent).toBe("default");
     await click("Black");
     expect(
-      document.documentElement.style.getPropertyValue("--color-background-composer-primary"),
+      getComputedStyle(document.documentElement).getPropertyValue(
+        "--color-background-composer-primary",
+      ),
     ).toBe("#000000");
     await click("Default");
     expect(screen.getByLabelText("Accent").textContent).toBe("default");
@@ -79,26 +84,40 @@ describe("appearance preference application", () => {
       name: "default",
     });
     expect(
-      document.documentElement.style.getPropertyValue("--color-background-composer-primary"),
+      getComputedStyle(document.documentElement).getPropertyValue(
+        "--color-background-composer-primary",
+      ),
     ).toBe(expected["--color-background-composer-primary"]);
-    expect(document.documentElement.style.getPropertyValue("--color-background-user-message")).toBe(
-      expected["--color-background-user-message"],
-    );
+    expect(
+      getComputedStyle(document.documentElement).getPropertyValue(
+        "--color-background-user-message",
+      ),
+    ).toBe(expected["--color-background-user-message"]);
   });
 
-  test("restores the saved accent before React mounts", () => {
+  test("restores both saved accents before React mounts", () => {
     localStorage.setItem(
       ACCENT_COLOR_STORAGE_KEY,
-      JSON.stringify({ preset: "green", light: null, dark: null }),
+      JSON.stringify({
+        light: { kind: "preset", name: "green" },
+        dark: { kind: "preset", name: "pink" },
+      }),
     );
     initializeApplicationAppearance();
     expect(
-      document.documentElement.style.getPropertyValue("--color-background-composer-primary"),
+      getComputedStyle(document.documentElement).getPropertyValue(
+        "--color-background-composer-primary",
+      ),
     ).toBe(
       getCodexThemeVariantStyle("light", { kind: "preset", name: "green" })[
         "--color-background-composer-primary"
       ],
     );
+    const inspection = document.body.appendChild(document.createElement("div"));
+    inspection.dataset.theme = "dark";
+    expect(getComputedStyle(inspection).getPropertyValue("--codex-base-accent")).toBe("#f077af");
+    expect(document.documentElement.style.getPropertyValue("--codex-base-accent")).toBe("");
+    expect(document.body.style.getPropertyValue("--cursor-interaction")).toBe("pointer");
   });
 
   test("retains independent colors and restores after remount", async () => {
@@ -137,7 +156,9 @@ describe("appearance preference application", () => {
     await waitFor(() => expect(screen.getByLabelText("Accent").textContent).toBe("orange"));
     expect(screen.getByLabelText("Appearance").textContent).toBe("dark");
     expect(
-      document.documentElement.style.getPropertyValue("--color-background-composer-primary"),
+      getComputedStyle(document.documentElement).getPropertyValue(
+        "--color-background-composer-primary",
+      ),
     ).toBe(
       getCodexThemeVariantStyle("dark", { kind: "preset", name: "orange" })[
         "--color-background-composer-primary"
@@ -193,20 +214,28 @@ describe("appearance preference application", () => {
       await Promise.resolve();
     });
     await waitFor(() => expect(screen.getByLabelText("Accent").textContent).toBe("#445566"));
-    expect(document.documentElement.style.getPropertyValue("--codex-base-accent")).toBe("#445566");
+    expect(getComputedStyle(document.documentElement).getPropertyValue("--codex-base-accent")).toBe(
+      "#445566",
+    );
     expect(localStorage.getItem(ACCENT_COLOR_STORAGE_KEY)).toBe(preferences);
   });
 
-  test("editing an inactive preset leaves the active theme untouched until that mode is selected", async () => {
+  test("editing an inactive preset updates its nested palette without changing the active theme", async () => {
     localStorage.setItem(THEME_STORAGE_KEY, "light");
     mountTheme();
-    const activeColor = document.documentElement.style.getPropertyValue("--codex-base-accent");
+    const activeColor = getComputedStyle(document.documentElement).getPropertyValue(
+      "--codex-base-accent",
+    );
+    const inspection = document.body.appendChild(document.createElement("div"));
+    inspection.dataset.theme = "dark";
+    expect(getComputedStyle(inspection).getPropertyValue("--codex-base-accent")).toBe("#3a83f7");
     await click("Dark green");
     expect(screen.getByLabelText("Appearance").textContent).toBe("light");
     expect(screen.getByLabelText("Accent").textContent).toBe("default");
-    expect(document.documentElement.style.getPropertyValue("--codex-base-accent")).toBe(
+    expect(getComputedStyle(document.documentElement).getPropertyValue("--codex-base-accent")).toBe(
       activeColor,
     );
+    expect(getComputedStyle(inspection).getPropertyValue("--codex-base-accent")).toBe("#53b559");
     await click("Dark");
     await waitFor(() => expect(screen.getByLabelText("Accent").textContent).toBe("green"));
   });

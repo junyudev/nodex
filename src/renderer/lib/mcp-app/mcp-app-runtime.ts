@@ -1,3 +1,4 @@
+import { observeCodexDocumentAppearance } from "../codex-theme-variant";
 import { openLink } from "../link-opening";
 import type { LinkOpenRequest } from "../../../shared/link-opening";
 import { deriveMcpAppSandboxIdentity } from "../../../shared/mcp-app/mcp-app-sandbox-contract";
@@ -151,7 +152,7 @@ export class McpAppRuntime {
     requestedDisplayMode: null,
     status: "loading",
   };
-  #themeObserver: MutationObserver | null = null;
+  #stopThemeObserver: (() => void) | null = null;
   #widgetId = crypto.randomUUID();
   #widgetState: unknown = null;
 
@@ -484,16 +485,12 @@ export class McpAppRuntime {
       this.#resizeObserver.observe(this.element);
     }
     if (typeof MutationObserver === "function") {
-      this.#themeObserver = new MutationObserver(() => {
+      this.#stopThemeObserver = observeCodexDocumentAppearance(document, () => {
         const connected = this.#connected;
         if (!connected || this.#abortController.signal.aborted) return;
         const theme = resolveTheme();
         void connected.api.setTheme({ theme }).catch(() => undefined);
         notify();
-      });
-      this.#themeObserver.observe(document.documentElement, {
-        attributeFilter: ["class", "data-theme", "style"],
-        attributes: true,
       });
     }
   }
@@ -501,8 +498,8 @@ export class McpAppRuntime {
   #stopContextObservers(): void {
     this.#resizeObserver?.disconnect();
     this.#resizeObserver = null;
-    this.#themeObserver?.disconnect();
-    this.#themeObserver = null;
+    this.#stopThemeObserver?.();
+    this.#stopThemeObserver = null;
     if (this.#resizeAnimationFrame !== null) {
       cancelAnimationFrame(this.#resizeAnimationFrame);
       this.#resizeAnimationFrame = null;

@@ -1,3 +1,4 @@
+import { observeCodexDocumentAppearance } from "./codex-theme-variant";
 import { useCallback, useEffect, useEffectEvent, useRef, useState, type RefObject } from "react";
 import { ClipboardAddon } from "@xterm/addon-clipboard";
 import { FitAddon } from "@xterm/addon-fit";
@@ -559,33 +560,29 @@ export function useTerminal({
         });
     });
 
-    const themeObserver = new MutationObserver(() => {
-      if (disposed) return;
-      term.options.theme = readTerminalTheme(container);
-      const nextTypography = resolveTerminalTypography(container);
-      const currentTypography = {
-        fontFamily: term.options.fontFamily ?? "",
-        fontSize: term.options.fontSize ?? 0,
-      };
-      if (!sameTerminalTypography(currentTypography, nextTypography)) {
-        applyTypography(nextTypography);
-      }
-    });
-    themeObserver.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ["class", "style", "data-codex-window-type"],
-    });
-    themeObserver.observe(document.body, {
-      attributes: true,
-      attributeFilter: ["class", "style"],
-    });
+    const stopThemeObserver = observeCodexDocumentAppearance(
+      document,
+      () => {
+        if (disposed) return;
+        term.options.theme = readTerminalTheme(container);
+        const nextTypography = resolveTerminalTypography(container);
+        const currentTypography = {
+          fontFamily: term.options.fontFamily ?? "",
+          fontSize: term.options.fontSize ?? 0,
+        };
+        if (!sameTerminalTypography(currentTypography, nextTypography)) {
+          applyTypography(nextTypography);
+        }
+      },
+      { observeBody: true },
+    );
 
     return () => {
       disposed = true;
       window.cancelAnimationFrame(resizeRaf);
       window.cancelAnimationFrame(initRaf);
       observer.disconnect();
-      themeObserver.disconnect();
+      stopThemeObserver();
       unsubscribe();
       restoreMouseCoordinates();
       for (const disposable of disposables) {

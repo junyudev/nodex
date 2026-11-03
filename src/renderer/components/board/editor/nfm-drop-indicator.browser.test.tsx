@@ -27,7 +27,9 @@ const unexpectedDrop = async (): Promise<never> => {
 test.each(["light", "dark"] as const)(
   "shares editor placement paint without changing cursor orientation in %s",
   async (variant) => {
-    applyRendererThemeForTest(variant, { accent: { kind: "preset", name: "orange" } });
+    applyRendererThemeForTest(variant, {
+      accents: { [variant]: { kind: "preset", name: "orange" } },
+    });
     let orientation:
       | "block-horizontal"
       | "inline"

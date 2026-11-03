@@ -1,3 +1,4 @@
+import { getCodexThemeVariantStyle } from "../codex-theme-variant";
 import { readDocumentTheme } from "../use-document-theme";
 import {
   DEFAULT_UI_FONT_WEIGHT,
@@ -126,6 +127,8 @@ function chartSeries(accent: string, theme: "light" | "dark"): readonly string[]
 export function readInlineVisualizationStyleVariables(): Record<string, string> {
   const theme = readDocumentTheme();
   const dark = theme === "dark";
+  // Neutral fallbacks follow the default palette when the host has not resolved its roles.
+  const palette = getCodexThemeVariantStyle(theme);
   const rootStyle = getComputedStyle(document.documentElement);
   const probe = document.createElement("div");
   probe.style.display = "none";
@@ -153,7 +156,7 @@ export function readInlineVisualizationStyleVariables(): Record<string, string> 
   try {
     const foreground = color(
       ["--app-color-text-foreground", "--color-text", "--foreground"],
-      dark ? "#ffffff" : "#1a1c1f",
+      palette["--app-color-text-foreground"]!,
     );
     const accent = color(
       ["--app-color-text-accent", "--color-text-info"],
@@ -169,15 +172,15 @@ export function readInlineVisualizationStyleVariables(): Record<string, string> 
       "--accent-foreground": accent,
       "--background": background(
         ["--app-color-background-surface", "--color-surface", "--background"],
-        dark ? "#181818" : "#ffffff",
+        palette["--app-color-background-surface"]!,
       ),
       "--border": color(
         ["--app-color-border", "--color-border", "--border"],
-        dark ? "rgb(255 255 255 / 8.2%)" : "rgb(26 28 31 / 8%)",
+        palette["--app-color-border"]!,
       ),
       "--border-strong": color(
         ["--app-color-border-heavy", "--color-border-strong"],
-        dark ? "rgb(255 255 255 / 12%)" : "rgb(26 28 31 / 12%)",
+        palette["--app-color-border-heavy"]!,
       ),
       "--card": `color-mix(in oklab, ${foreground} 5%, transparent)`,
       "--card-foreground": foreground,
@@ -215,12 +218,12 @@ export function readInlineVisualizationStyleVariables(): Record<string, string> 
       "--foreground": foreground,
       "--input": color(
         ["--color-border-primary-outline", "--input"],
-        dark ? "rgb(255 255 255 / 11.8%)" : "rgb(26 28 31 / 11.8%)",
+        dark ? "rgb(252 252 252 / 11.8%)" : "rgb(13 13 13 / 11.8%)",
       ),
       "--muted": `color-mix(in srgb, ${foreground} 10%, transparent)`,
       "--muted-foreground": color(
         ["--app-color-text-foreground-secondary", "--foreground-secondary"],
-        dark ? "rgb(255 255 255 / 49.8%)" : "rgb(26 28 31 / 49.4%)",
+        palette["--app-color-text-foreground-secondary"]!,
       ),
       "--popover": background(
         [

@@ -1,3 +1,4 @@
+import { observeCodexDocumentAppearance } from "../codex-theme-variant";
 import { parseMcpAppLinkRequest } from "../../../shared/mcp-app/mcp-app-navigation";
 import { openLink } from "../link-opening";
 import type { LinkOpenRequest } from "../../../shared/link-opening";
@@ -485,37 +486,33 @@ export function createInlineVisualizationRuntime(input: {
     void updateContext();
   });
   resize.observe(element);
-  const themeObserver = new MutationObserver((records) => {
-    const nextTheme = theme();
-    const nextBodyStyle = bodyStyleVariables();
-    const bodyLayoutOnly =
-      nextBodyStyle === bodyStyleSnapshot &&
-      nextTheme === styleTheme &&
-      records.every(
-        ({ target, attributeName }) => target === document.body && attributeName === "style",
-      );
-    bodyStyleSnapshot = nextBodyStyle;
-    // Native drag cursors and selection guards do not change the widget's custom properties.
-    if (bodyLayoutOnly) return;
-    const nextStyle = readInlineVisualizationStyleVariables();
-    if (
-      nextTheme === styleTheme &&
-      Object.keys(nextStyle).length === Object.keys(styleSnapshot).length &&
-      Object.entries(nextStyle).every(([name, value]) => styleSnapshot[name] === value)
-    )
-      return;
-    styleTheme = nextTheme;
-    styleSnapshot = nextStyle;
-    void updateContext();
-  });
-  themeObserver.observe(document.documentElement, {
-    attributes: true,
-    attributeFilter: ["class", "data-theme", "style"],
-  });
-  themeObserver.observe(document.body, {
-    attributes: true,
-    attributeFilter: ["class", "style"],
-  });
+  const stopThemeObserver = observeCodexDocumentAppearance(
+    document,
+    (records) => {
+      const nextTheme = theme();
+      const nextBodyStyle = bodyStyleVariables();
+      const bodyLayoutOnly =
+        nextBodyStyle === bodyStyleSnapshot &&
+        nextTheme === styleTheme &&
+        records.every(
+          ({ target, attributeName }) => target === document.body && attributeName === "style",
+        );
+      bodyStyleSnapshot = nextBodyStyle;
+      // Native drag cursors and selection guards do not change the widget's custom properties.
+      if (bodyLayoutOnly) return;
+      const nextStyle = readInlineVisualizationStyleVariables();
+      if (
+        nextTheme === styleTheme &&
+        Object.keys(nextStyle).length === Object.keys(styleSnapshot).length &&
+        Object.entries(nextStyle).every(([name, value]) => styleSnapshot[name] === value)
+      )
+        return;
+      styleTheme = nextTheme;
+      styleSnapshot = nextStyle;
+      void updateContext();
+    },
+    { observeBody: true },
+  );
   const onFailure = () => fail(new Error("This response couldn’t load"));
   const failureEvents = ["crashed", "did-fail-load", "render-process-gone"];
   const configureGuest = () => {
@@ -794,7 +791,7 @@ export function createInlineVisualizationRuntime(input: {
         actionController.abort();
         annotations.dispose();
         resize.disconnect();
-        themeObserver.disconnect();
+        stopThemeObserver();
         cancelLocale();
         failureEvents.forEach((name) => webview.removeEventListener(name, onFailure));
         if (!preparedLease) connected?.dispose();

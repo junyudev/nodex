@@ -4,7 +4,6 @@ import { userEvent } from "vite-plus/test/browser";
 import { NodexButton, NodexSwitch } from "@/components/ui/button";
 import { NodexCheckbox } from "@/components/ui/settings";
 import {
-  applyCodexThemeVariant,
   CODEX_ACCENT_PRESETS,
   DEFAULT_CODEX_ACCENT,
   getCodexAccentStyle,
@@ -13,6 +12,8 @@ import {
 } from "@/lib/codex-theme-variant";
 
 import "@blocknote/shadcn/style.css";
+import { applyRendererThemeForTest } from "@/test/renderer-theme";
+
 import "@/globals.css";
 
 const accentCases: Array<{ label: string; accent: CodexAccent }> = [
@@ -138,12 +139,7 @@ function AccentSurfaces() {
 }
 
 function applyAccent(variant: "light" | "dark", accent: CodexAccent): void {
-  const root = document.documentElement;
-  root.dataset.codexWindowType = "electron";
-  root.classList.toggle("dark", variant === "dark");
-  root.classList.toggle("electron-dark", variant === "dark");
-  root.classList.toggle("electron-light", variant === "light");
-  applyCodexThemeVariant(root, variant, document.body, accent);
+  applyRendererThemeForTest(variant, { accents: { [variant]: accent } });
 }
 
 /** Normalize reference-tested runtime values through the same browser color parser as paint. */
@@ -158,6 +154,7 @@ function color(value: string): string {
 
 afterEach(() => {
   window.getSelection()?.removeAllRanges();
+  document.head.querySelector("style[data-codex-app-themes]")?.remove();
   const root = document.documentElement;
   root.removeAttribute("style");
   root.removeAttribute("data-theme");

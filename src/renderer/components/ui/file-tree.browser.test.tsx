@@ -3,12 +3,14 @@ import { useState } from "react";
 import { describe, expect, test } from "vite-plus/test";
 import { userEvent } from "vite-plus/test/browser";
 import { FileTree, type FileTreeState } from "./file-tree";
-import { applyCodexThemeVariant } from "@/lib/codex-theme-variant";
+import { applyRendererThemeForTest, installRendererThemeFixture } from "@/test/renderer-theme";
 import {
   applyTypographyPreferences,
   DEFAULT_TYPOGRAPHY_PREFERENCES,
 } from "@/lib/typography-preferences";
 import "../../globals.css";
+
+installRendererThemeFixture();
 
 const settle = async () => {
   await new Promise<void>((resolve) =>
@@ -67,7 +69,6 @@ describe("shared file tree navigation", () => {
       expect(getRow(view.container, "one.ts")).toBe(row);
     } finally {
       view.unmount();
-      document.documentElement.removeAttribute("style");
       document.body.removeAttribute("style");
     }
   });
@@ -197,7 +198,7 @@ describe("shared file tree navigation", () => {
     );
     await act(settle);
     for (const theme of ["light", "dark"] as const) {
-      applyCodexThemeVariant(document.documentElement, theme);
+      applyRendererThemeForTest(theme);
       const marker = getRow(view.container, "file.ts").querySelector(
         '[data-item-section="git"] > span',
       )!;
@@ -206,6 +207,5 @@ describe("shared file tree navigation", () => {
       );
       expect(getComputedStyle(marker, "::before").maskImage).not.toBe("none");
     }
-    document.documentElement.removeAttribute("style");
   });
 });

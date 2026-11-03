@@ -1,29 +1,14 @@
 import { describe, expect, test } from "vite-plus/test";
 import {
-  applyCodexThemeVariant,
   closestCodexAccentPreset,
   getCodexAccentStyle,
   getCodexThemeVariantStyle,
   normalizeCodexAccentColor,
   parseCodexAccent,
+  renderCodexAppThemes,
   resolveEffectiveCodexAccent,
-  type CodexAccent,
   type CodexAccentPreset,
 } from "./codex-theme-variant";
-
-function makeStyleTarget() {
-  const declarations: Record<string, string> = {};
-  const target = {
-    dataset: {},
-    style: {
-      setProperty(name: string, value: string) {
-        declarations[name] = value;
-      },
-    },
-  } as HTMLElement;
-
-  return { declarations, target };
-}
 
 describe("getCodexThemeVariantStyle", () => {
   test("defines the runtime semantic control and foreground tokens for light", () => {
@@ -32,32 +17,33 @@ describe("getCodexThemeVariantStyle", () => {
     expect(styles["--app-color-background-control"]).toBe("rgba(255, 255, 255, 0.96)");
     expect(styles["--color-background-control-opaque"]).toBe("rgb(255, 255, 255)");
     expect(styles["--app-color-accent-blue"]).toBe("#3a83f7");
-    expect(styles["--app-color-text-foreground"]).toBe("#1a1c1f");
+    expect(styles["--app-color-text-foreground"]).toBe("#0d0d0d");
     expect(styles["--app-color-background-surface"]).toBe("#ffffff");
-    expect(styles["--app-color-border"]).toBe("rgba(26, 28, 31, 0.078)");
+    expect(styles["--app-color-background-surface-under"]).toBe("#f5f5f5");
+    expect(styles["--app-color-border"]).toBe("rgba(13, 13, 13, 0.078)");
     expect(styles["--cursor-interaction"]).toBe("pointer");
-    expect(styles["--app-color-background-elevated-tertiary-opaque"]).toBe("#f4f4f4");
+    expect(styles["--app-color-background-elevated-tertiary-opaque"]).toBe("#f3f3f3");
   });
 
   test("defines the runtime semantic control and foreground tokens for dark", () => {
     const styles = getCodexThemeVariantStyle("dark");
 
-    expect(styles["--app-color-background-control"]).toBe("rgba(45, 45, 45, 0.96)");
-    expect(styles["--color-background-control-opaque"]).toBe("rgb(45, 45, 45)");
+    expect(styles["--app-color-background-control"]).toBe("rgba(38, 38, 38, 0.96)");
+    expect(styles["--color-background-control-opaque"]).toBe("rgb(38, 38, 38)");
     expect(styles["--app-color-accent-blue"]).toBe("#3a83f7");
-    expect(styles["--app-color-background-surface"]).toBe("#181818");
-    expect(styles["--app-color-text-foreground"]).toBe("#ffffff");
-    expect(styles["--app-color-text-foreground-secondary"]).toBe("rgba(255, 255, 255, 0.71)");
-    expect(styles["--app-color-text-foreground-tertiary"]).toBe("rgba(255, 255, 255, 0.498)");
-    expect(styles["--app-color-border"]).toBe("rgba(255, 255, 255, 0.084)");
-    expect(styles["--app-color-background-button-primary"]).toBe("rgb(13, 13, 13)");
-    expect(styles["--app-color-background-surface-under"]).toBe("#141414");
-    expect(styles["--color-background-panel"]).toBe("#232323");
-    expect(styles["--color-background-composer-action-bar"]).toBe("#282828");
-    expect(styles["--app-color-background-editor-opaque"]).toBe("rgb(40, 40, 40)");
-    expect(styles["--app-color-background-elevated-primary-opaque"]).toBe("rgb(54, 54, 54)");
+    expect(styles["--app-color-background-surface"]).toBe("#111111");
+    expect(styles["--app-color-text-foreground"]).toBe("#fcfcfc");
+    expect(styles["--app-color-text-foreground-secondary"]).toBe("rgba(252, 252, 252, 0.71)");
+    expect(styles["--app-color-text-foreground-tertiary"]).toBe("rgba(252, 252, 252, 0.498)");
+    expect(styles["--app-color-border"]).toBe("rgba(252, 252, 252, 0.084)");
+    expect(styles["--app-color-background-button-primary"]).toBe("rgb(9, 9, 9)");
+    expect(styles["--app-color-background-surface-under"]).toBe("#0e0e0e");
+    expect(styles["--color-background-panel"]).toBe("#1c1c1c");
+    expect(styles["--color-background-composer-action-bar"]).toBe("#212121");
+    expect(styles["--app-color-background-editor-opaque"]).toBe("rgb(33, 33, 33)");
+    expect(styles["--app-color-background-elevated-primary-opaque"]).toBe("rgb(47, 47, 47)");
     expect(styles["--cursor-interaction"]).toBe("pointer");
-    expect(styles["--app-color-background-elevated-tertiary-opaque"]).toBe("rgb(40, 40, 40)");
+    expect(styles["--app-color-background-elevated-tertiary-opaque"]).toBe("rgb(33, 33, 33)");
   });
 
   test("resolves conversation accent roles independently from generic button roles", () => {
@@ -74,28 +60,6 @@ describe("getCodexThemeVariantStyle", () => {
     expect(dark["--app-color-decoration-added"]).toBe("#00a240");
     expect(light["--app-color-accent-purple"]).toBe("#751ed9");
     expect(dark["--app-color-accent-purple"]).toBe("#b06dff");
-  });
-
-  test("updates the active palette and scheme while preserving document interaction tokens", () => {
-    const root = makeStyleTarget();
-    const body = makeStyleTarget();
-
-    applyCodexThemeVariant(root.target, "light", body.target);
-
-    expect(root.target.dataset.theme).toBe("light");
-    expect(root.declarations["--cursor-interaction"]).toBe("pointer");
-    expect(body.declarations["--cursor-interaction"]).toBe("pointer");
-
-    applyCodexThemeVariant(root.target, "dark", body.target);
-    expect(root.target.dataset.theme).toBe("dark");
-    expect(root.declarations).toEqual(
-      getCodexThemeVariantStyle("dark", { kind: "preset", name: "blue" }),
-    );
-    applyCodexThemeVariant(root.target, "light", body.target);
-    expect(root.target.dataset.theme).toBe("light");
-    expect(root.declarations).toEqual(
-      getCodexThemeVariantStyle("light", { kind: "preset", name: "blue" }),
-    );
   });
 });
 
@@ -221,7 +185,7 @@ const presetCases: Array<{
     submit: ["#000000", "#ffffff"],
     link: ["#2c67c5", "#2c67c5"],
     message: ["#000000", "rgb(50 50 50 / 85%)"],
-    selection: ["#afafaf66", "#78787866"],
+    selection: ["#afafaf66", "color-mix(in srgb, var(--color-text) 32%, transparent)"],
   },
 ];
 
@@ -229,26 +193,22 @@ describe("accent role projection", () => {
   test.each(["light", "dark"] as const)(
     "applies selected Default as Blue and keeps explicit Black/White distinct in %s",
     (variant) => {
-      const root = makeStyleTarget();
-      applyCodexThemeVariant(root.target, variant);
-      expect(root.declarations["--color-background-composer-primary"]).toBe(
+      const blue = getCodexThemeVariantStyle(variant, resolveEffectiveCodexAccent());
+      expect(blue["--color-background-composer-primary"]).toBe(
         variant === "light" ? "#3a83f7" : "#2c67c5",
       );
-      expect(root.declarations["--color-text-composer-primary"]).toBe("#ffffff");
-      expect(root.declarations["--color-background-user-message"]).toBe(
+      expect(blue["--color-text-composer-primary"]).toBe("#ffffff");
+      expect(blue["--color-background-user-message"]).toBe(
         variant === "light" ? "#e8f3fe" : "#173e76",
       );
-      const blue = { ...root.declarations };
 
-      applyCodexThemeVariant(root.target, variant, undefined, { kind: "preset", name: "black" });
-      expect(root.declarations["--color-background-composer-primary"]).toBe(
+      const black = getCodexThemeVariantStyle(variant, { kind: "preset", name: "black" });
+      expect(black["--color-background-composer-primary"]).toBe(
         variant === "light" ? "#000000" : "#ffffff",
       );
-      expect(root.declarations["--color-background-user-message"]).toBe(
+      expect(black["--color-background-user-message"]).toBe(
         variant === "light" ? "#000000" : "rgb(50 50 50 / 85%)",
       );
-      applyCodexThemeVariant(root.target, variant);
-      expect(root.declarations).toEqual(blue);
     },
   );
 
@@ -306,23 +266,17 @@ describe("accent role projection", () => {
       "var(--color-background-info-soft)",
     );
   });
+});
 
-  test("clears named color projections when changing to custom and back to default", () => {
-    const root = makeStyleTarget();
-    const accents: CodexAccent[] = [
-      { kind: "preset", name: "purple" },
-      { kind: "custom", color: "#159c6f" },
-      { kind: "preset", name: "default" },
-    ];
-    for (const accent of accents) {
-      applyCodexThemeVariant(root.target, "dark", undefined, accent);
-      expect(root.declarations).toEqual(
-        getCodexThemeVariantStyle("dark", resolveEffectiveCodexAccent(accent)),
-      );
-    }
-    expect(root.declarations["--color-background-composer-primary"]).toBe("#2c67c5");
-    expect(root.declarations["--color-background-user-message"]).toBe("#173e76");
-    expect(root.declarations["--color-chart-sequential-1"]).toBe("var(--blue-800)");
-    expect(root.declarations["--app-color-text-accent"]).toBe("#2c67c5");
-  });
+test("serializes both supplied palettes for document roots and nested appearance scopes", () => {
+  expect(
+    renderCodexAppThemes({
+      light: { "--surface": "#ffffff", "--accent": "#365b9d" },
+      dark: { "--surface": "#111111", "--accent": "#df5142" },
+    }),
+  )
+    .toBe(`@layer theme {:where(:root:not([data-codex-window-type="extension"]))[data-theme="light"], :where(:root:not([data-codex-window-type="extension"])) [data-theme="light"] {--surface:#ffffff;
+--accent:#365b9d;}
+:where(:root:not([data-codex-window-type="extension"]))[data-theme="dark"], :where(:root:not([data-codex-window-type="extension"])) [data-theme="dark"] {--surface:#111111;
+--accent:#df5142;}}`);
 });

@@ -360,7 +360,7 @@ export function InboxComposer({
 }) {
   const sendOpacity = useTransform(placeholderOpacity, (value) => 1 - value * 0.5);
   return (
-    <div className="flex items-end gap-1 rounded-[25px] bg-app-menu p-2 shadow-[0_3px_7.5px_rgb(0_0_0/0.04),0_0_20px_rgb(0_0_0/0.05)] ring-[0.5px] ring-[rgb(26_28_31/0.118)] [corner-shape:superellipse(1.5)] dark:ring-white/[0.157]">
+    <div className="flex items-end gap-1 rounded-[25px] bg-app-menu p-2 shadow-[0_3px_7.5px_rgb(0_0_0/0.04),0_0_20px_rgb(0_0_0/0.05)] ring-[0.5px] ring-[rgb(13_13_13/0.118)] [corner-shape:superellipse(1.5)] dark:ring-white/[0.157]">
       <span
         className="flex size-[34px] shrink-0 items-center justify-center text-app-muted"
         aria-label="Add images"

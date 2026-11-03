@@ -256,7 +256,7 @@ export function ChatComposer({
   readonly modelPopover?: ReactNode;
 }) {
   return (
-    <div className="relative flex flex-col rounded-[25px] bg-white text-[14px] leading-[21px] shadow-[0_3px_7.5px_rgb(0_0_0/0.04),0_0_20px_rgb(0_0_0/0.05)] ring-[0.5px] ring-[rgb(26_28_31/0.118)] [corner-shape:superellipse(1.5)] dark:bg-[#363636] dark:ring-white/[0.157]">
+    <div className="relative flex flex-col rounded-[25px] bg-white text-[14px] leading-[21px] shadow-[0_3px_7.5px_rgb(0_0_0/0.04),0_0_20px_rgb(0_0_0/0.05)] ring-[0.5px] ring-[rgb(13_13_13/0.118)] [corner-shape:superellipse(1.5)] dark:bg-[#2f2f2f] dark:ring-white/[0.157]">
       <span className="min-h-[50px] px-3 pt-3 pb-1">
         {input ?? <span className="text-app-faint">{placeholder}</span>}
       </span>

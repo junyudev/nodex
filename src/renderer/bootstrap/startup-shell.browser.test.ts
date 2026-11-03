@@ -54,6 +54,7 @@ function readCenter(element: Element): { readonly x: number; readonly y: number 
 
 afterEach(() => {
   document.head.querySelector("[data-startup-shell-test]")?.remove();
+  document.head.querySelector("style[data-codex-app-themes]")?.remove();
   const root = document.documentElement;
   root.removeAttribute("style");
   root.removeAttribute("data-theme");
@@ -101,10 +102,14 @@ describe("parser-time startup shell presentation", () => {
       mountStartupShell({ dark, opaque: true });
       const startupSurface = getComputedStyle(document.body).backgroundColor;
 
-      // Read parser-time paint before replacing its CSS with the application's palette.
-      document.head.querySelector("[data-startup-shell-test]")?.remove();
-      applyRendererThemeForTest(dark ? "dark" : "light");
+      const variant = dark ? "dark" : "light";
+      applyRendererThemeForTest(variant, {
+        accents: { [variant]: { kind: "custom", color: "#df5142" } },
+      });
       expect(startupSurface).toBe(readRendererThemeColor("--app-color-background-surface-under"));
+      expect(
+        getComputedStyle(document.documentElement).getPropertyValue("--codex-base-accent"),
+      ).toBe("#df5142");
     },
   );
 

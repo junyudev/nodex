@@ -467,12 +467,15 @@ foundation values such as radius scale remain product-owned. Never hand-edit a
 generated theme artifact.
 
 The resolved default palette is owned by
-`src/renderer/lib/codex-theme-variant.ts`. The startup HTML and application mount
-consume that same pure generator before React mounts; early window setup does
-not load the full application palette. The theme provider reapplies it on
-appearance changes. Static palette fallbacks do not
-determine the effective preset. Review computed styles with the runtime theme
-applied, including shared legacy content aliases and conversation accent roles.
+`src/renderer/lib/codex-theme-variant.ts`, which supplies the startup shell and
+writes both runtime palettes with independent accents into one document
+stylesheet before React mounts and whenever appearance preferences change.
+Each `data-theme` scope receives its matching palette, including nested regions.
+That stylesheet sits in the `theme` cascade layer, so product CSS must not
+redeclare a property the palette publishes; an unlayered alias would silently
+replace the runtime value. Static palette fallbacks do not determine the
+effective preset. Review computed styles with the runtime theme applied,
+including shared legacy content aliases and conversation accent roles.
 Browser product-surface tests use `src/renderer/test/renderer-theme.ts` to initialize
 and reset this document state. Switch appearance through that fixture and compare
 paint with the active semantic role; a local `.dark` class cannot replace the

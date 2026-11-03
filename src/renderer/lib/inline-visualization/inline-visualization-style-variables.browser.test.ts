@@ -1,6 +1,6 @@
 import { act, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vite-plus/test";
-import { applyCodexThemeVariant } from "../codex-theme-variant";
+import { applyCodexDocumentTheme } from "../codex-theme-variant";
 import {
   DEFAULT_TYPOGRAPHY_PREFERENCES,
   applyTypographyPreferences,
@@ -20,8 +20,8 @@ const boundary = vi.hoisted(() => ({
     >(),
 }));
 vi.mock("../mcp-app/mcp-app-port-rpc", () => ({ connectMcpAppSandbox: boundary.connect }));
-vi.mock("../renderer-command", () => ({
-  defineRendererCommand: (input: unknown) => input,
+vi.mock("../renderer-command", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../renderer-command")>()),
   invokeRendererControl: async () => true,
 }));
 
@@ -125,6 +125,8 @@ afterEach(async () => {
     guest.dispatchEvent(new guest.Event("pagehide"));
     frame.remove();
   }
+  document.head.querySelector("style[data-codex-app-themes]")?.remove();
+  document.documentElement.removeAttribute("data-theme");
   document.documentElement.setAttribute("style", rootStyle);
   document.documentElement.className = rootClass;
   document.body.setAttribute("style", bodyStyle);
@@ -154,13 +156,23 @@ function renderedColor(value: unknown): string {
   }
 }
 
+function hostFont(variable: "--font-sans" | "--font-mono"): string {
+  const probe = document.body.appendChild(document.createElement("span"));
+  probe.style.fontFamily = `var(${variable})`;
+  try {
+    return getComputedStyle(probe).fontFamily;
+  } finally {
+    probe.remove();
+  }
+}
+
 function hostColor(variable: `--${string}`): string {
   return renderedColor(getComputedStyle(document.documentElement).getPropertyValue(variable));
 }
 
 test("actual host typography preferences reach the authored document on first execution and update the retained guest", async () => {
   document.documentElement.className = "";
-  applyCodexThemeVariant(document.documentElement, "light", document.body);
+  applyCodexDocumentTheme(document, "light");
   applyTypographyPreferences(
     document.documentElement,
     document.body,
@@ -183,12 +195,12 @@ test("actual host typography preferences reach the authored document on first ex
   const guest = frame.contentWindow as GuestWindow;
   expect(guest.initialStyles).toEqual({
     size: "14px",
-    font: document.documentElement.style.getPropertyValue("--font-sans"),
+    font: hostFont("--font-sans"),
     persistence: "none",
   });
   const sent = guest.openai.visualizationStyleVariables;
   expect(sent).toMatchObject({
-    "--font-mono": document.documentElement.style.getPropertyValue("--font-mono"),
+    "--font-mono": hostFont("--font-mono"),
     "--font-smoothing": "antialiased",
     "--radius": "14px",
     "--control-spacing": "16px",
@@ -226,15 +238,14 @@ test("actual host typography preferences reach the authored document on first ex
 
 test("a real host appearance change updates semantic colors and accent-derived chart hues in the same document", async () => {
   document.documentElement.className = "";
-  applyCodexThemeVariant(document.documentElement, "light", document.body);
+  applyCodexDocumentTheme(document, "light");
   mount();
   await waitFor(() => expect(runs).toHaveBeenCalledOnce());
   const guest = guests[0]!.contentWindow as GuestWindow;
   const light = record(guest.openai.visualizationStyleVariables);
   await act(async () => {
-    applyCodexThemeVariant(document.documentElement, "dark", document.body, {
-      kind: "custom",
-      color: "#df5142",
+    applyCodexDocumentTheme(document, "dark", {
+      dark: { kind: "custom", color: "#df5142" },
     });
     document.documentElement.classList.add("dark");
     await Promise.resolve();
@@ -261,9 +272,8 @@ test.each(["light", "dark"] as const)(
   "changing the accent within %s updates the same authored document without replacing status colors",
   async (appearance) => {
     document.documentElement.classList.toggle("dark", appearance === "dark");
-    applyCodexThemeVariant(document.documentElement, appearance, document.body, {
-      kind: "preset",
-      name: "green",
+    applyCodexDocumentTheme(document, appearance, {
+      [appearance]: { kind: "preset", name: "green" },
     });
     mount();
     await waitFor(() => expect(runs).toHaveBeenCalledOnce());
@@ -272,9 +282,8 @@ test.each(["light", "dark"] as const)(
     const green = record(guest.openai.visualizationStyleVariables);
     expect(renderedColor(green["--primary"])).toBe(hostColor("--app-color-text-accent"));
     await act(async () => {
-      applyCodexThemeVariant(document.documentElement, appearance, document.body, {
-        kind: "preset",
-        name: "pink",
+      applyCodexDocumentTheme(document, appearance, {
+        [appearance]: { kind: "preset", name: "pink" },
       });
       await Promise.resolve();
     });
@@ -306,7 +315,7 @@ test.each(["light", "dark"] as const)(
 
 test("drag and layout presentation changes send no widget context while fractional typography and cursor preferences update the same guest", async () => {
   document.documentElement.className = "";
-  applyCodexThemeVariant(document.documentElement, "light", document.body);
+  applyCodexDocumentTheme(document, "light");
   applyTypographyPreferences(
     document.documentElement,
     document.body,

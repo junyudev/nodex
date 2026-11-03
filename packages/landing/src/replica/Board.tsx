@@ -113,7 +113,7 @@ export function BoardCardView({
       layout
       transition={{ type: "spring", stiffness: 260, damping: 30 }}
       data-cursor-target={cursorTarget}
-      className="min-w-0 overflow-hidden rounded-[10px] bg-white/96 dark:bg-[rgba(54,54,54,0.96)] [corner-shape:superellipse(1.5)]"
+      className="min-w-0 overflow-hidden rounded-[10px] bg-white/96 dark:bg-[rgba(47,47,47,0.96)] [corner-shape:superellipse(1.5)]"
       style={{
         boxShadow: `0 3px 10px color-mix(in srgb, var(--app-fg) 5%, transparent), 0 1px 2px color-mix(in srgb, var(--app-fg) 4%, transparent), 0 0 0 0.8px color-mix(in srgb, ${STATUS_ACCENT[card.status]} 17%, transparent)`,
       }}

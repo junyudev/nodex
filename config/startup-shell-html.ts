@@ -36,7 +36,9 @@ export function createStartupShellCriticalCss(): string {
       return `${variant === "dark" ? ":root.dark" : ":root"} {\n${declarations}\n}`;
     })
     .join("\n");
-  return `${themeCss}
+  return `@layer startup {
+${themeCss}
+}
 :root {
   --startup-logo-base: rgb(0 0 0 / 0.24);
   --startup-logo-shimmer-soft: rgb(255 255 255 / 0.04);

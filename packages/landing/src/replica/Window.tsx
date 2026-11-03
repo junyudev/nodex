@@ -85,14 +85,14 @@ export function AppWindow({
     <div
       data-app-window
       className={cx(
-        "relative flex h-full w-full flex-col overflow-hidden rounded-[14px] bg-[#f6f6f6] font-app text-[11.48px] leading-[17.22px] font-[430] text-app-fg antialiased shadow-window select-none dark:bg-[#141414]",
-        "[--app-fg:#1a1c1f] [--app-muted:rgb(26_28_31/0.695)] [--app-faint:rgb(26_28_31/0.495)] [--usage-low:#d8a32f] [--usage-critical:#e56458] dark:[--app-fg:#fff] dark:[--app-muted:rgb(255_255_255/0.71)] dark:[--app-faint:rgb(255_255_255/0.498)] dark:[--usage-low:#eac26b] dark:[--usage-critical:#e97366]",
+        "relative flex h-full w-full flex-col overflow-hidden rounded-[14px] bg-[#f5f5f5] font-app text-[11.48px] leading-[17.22px] font-[430] text-app-fg antialiased shadow-window select-none dark:bg-[#0e0e0e]",
+        "[--app-fg:#0d0d0d] [--app-muted:rgb(13_13_13/0.695)] [--app-faint:rgb(13_13_13/0.495)] [--usage-low:#d8a32f] [--usage-critical:#e56458] dark:[--app-fg:#fcfcfc] dark:[--app-muted:rgb(252_252_252/0.71)] dark:[--app-faint:rgb(252_252_252/0.498)] dark:[--usage-low:#eac26b] dark:[--usage-critical:#e97366]",
         className,
       )}
     >
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 bg-[#f6f6f6]/85 dark:bg-[#282828]/80"
+        className="pointer-events-none absolute inset-0 bg-[#f5f5f5]/85 dark:bg-[#212121]/80"
       />
       <div data-window-titlebar className="relative flex h-[36.08px] shrink-0 items-center">
         <div
