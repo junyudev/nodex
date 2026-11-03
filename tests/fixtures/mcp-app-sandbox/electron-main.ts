@@ -101,6 +101,12 @@ const OWNER_HTML = `<!doctype html>
         portCount: 0,
         webviewCount: 0,
       };
+      let reportAttachment;
+      window.fixtureAttached = new Promise(resolve => { reportAttachment = resolve; });
+      window.reportFixtureAttachment = (facts) => {
+        Object.assign(window.fixtureState, facts);
+        reportAttachment();
+      };
       const sandbox = ${JSON.stringify({
         partition: FIXTURE_PARTITION,
         sourceUrl: appendMcpAppSandboxInitId(buildMcpAppSandboxSourceUrl({
@@ -108,12 +114,6 @@ const OWNER_HTML = `<!doctype html>
           subdomain: "mcp-calendar-fixture",
         }), "fixture-init"),
       })};
-      window.addEventListener("message", (event) => {
-        if (event.data?.type !== "init") return;
-        window.fixtureState.handshake = true;
-        window.fixtureState.portCount = event.ports.length;
-        document.querySelector("#status").textContent = "ready";
-      });
       function attach(sandbox, repeated) {
         const webview = document.createElement("webview");
         webview.setAttribute("partition", sandbox.partition);
@@ -138,16 +138,6 @@ const OWNER_HTML = `<!doctype html>
           document.getElementById("fixture-inline").append(frame);
         }
         window.fixtureState.webviewCount = document.querySelectorAll("webview").length;
-        setTimeout(() => {
-          if (window.fixtureState.handshake) return;
-          try {
-            window.fixtureState.error = "webview-timeout:id=" + webview.getWebContentsId()
-              + ";src=" + webview.getAttribute("src")
-              + ";partition=" + webview.getAttribute("partition");
-          } catch (error) {
-            window.fixtureState.error = "webview-timeout:" + String(error?.stack || error);
-          }
-        }, 5_000);
       }
       window.attachAgain = () => attach(sandbox, true);
       try {
@@ -225,10 +215,11 @@ const program = Effect.scoped(
     const didAttachSessionMatched = guest.session === session.fromPartition(FIXTURE_PARTITION);
     const didAttachAccepted = host.handleDidAttach(guest);
     void ownerWindow.webContents.executeJavaScript(
-      `Object.assign(window.fixtureState, ${JSON.stringify({
+      `window.reportFixtureAttachment(${JSON.stringify({
         didAttachAccepted,
         didAttachSessionMatched,
         didAttachUrl,
+        guestId: didAttachAccepted ? guest.id : null,
       })})`,
       false,
     );
@@ -236,10 +227,6 @@ const program = Effect.scoped(
       guest.close();
       return;
     }
-    void ownerWindow.webContents.executeJavaScript(
-      `window.fixtureState.guestId = ${guest.id}`,
-      false,
-    );
   });
   yield* Effect.promise(() =>
     ownerWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(OWNER_HTML)}`),

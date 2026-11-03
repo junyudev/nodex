@@ -71,37 +71,40 @@ describe("MCP App sandbox host Electron boundary", () => {
         env: childEnvironment,
       });
       const page = await application.firstWindow();
+      await page.waitForURL((url) => url.protocol === "data:");
       expect(await application.evaluate(({ app }) => app.getPath("userData"))).toBe(
         path.join(home, "user-data"),
       );
-      await expect
-        .poll(async () =>
-          page.evaluate(
-            () => (window as unknown as { fixtureState: SandboxFixtureState }).fixtureState,
-          ),
-        )
-        .toMatchObject({
-          didAttachAccepted: true,
-          didAttachSessionMatched: true,
-          guestId: expect.any(Number),
-          webviewCount: 1,
-        });
-      const state = await page.evaluate(
-        () => (window as unknown as { fixtureState: SandboxFixtureState }).fixtureState,
-      );
+      // Native webview creation is a lifecycle boundary, not a one-second render assertion.
+      const state = await page.evaluate(async () => {
+        const fixture = window as unknown as {
+          fixtureAttached: Promise<void>;
+          fixtureState: SandboxFixtureState;
+        };
+        await fixture.fixtureAttached;
+        return fixture.fixtureState;
+      });
+      expect(state).toMatchObject({
+        didAttachAccepted: true,
+        didAttachSessionMatched: true,
+        guestId: expect.any(Number),
+        webviewCount: 1,
+      });
       expect(state.guestId).not.toBe(null);
 
-      await expect
-        .poll(async () =>
-          page.evaluate(
-            () => (window as unknown as { fixtureState: SandboxFixtureState }).fixtureState,
-          ),
-        )
-        .toMatchObject({
-          error: null,
-          handshake: true,
-          portCount: MCP_APP_REQUIRED_GUEST_PORT_NAMES.length + 1,
-        });
+      const ready = await page.evaluate(async () => {
+        const fixture = window as unknown as {
+          whenFixturePortsReady(): Promise<void>;
+          fixtureState: SandboxFixtureState;
+        };
+        await fixture.whenFixturePortsReady();
+        return fixture.fixtureState;
+      });
+      expect(ready).toMatchObject({
+        error: null,
+        handshake: true,
+        portCount: MCP_APP_REQUIRED_GUEST_PORT_NAMES.length + 1,
+      });
 
       const guestFacts = await application.evaluate(
         async ({ BrowserWindow, webContents }, guestId) => {
