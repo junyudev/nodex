@@ -1,0 +1,55 @@
+docs/product-specs/agent-runtime-behavior.md
+  s_e7c42becea402b::t_eee72c644539c5 93-101
+CHANGELOG.md
+  s_e7c42becea402b::t_e26e0c36e02ebb 67
+packages/agent-runtime/src/orchestration-v2/Adapters/CodexAdapterV2.test.ts
+  s_257252f4b46824::t_76f270573103c9 71,2035,2094-2098,2114,2116-2131,2140-2141,2171,7783-7826
+packages/agent-runtime/src/orchestration-v2/Adapters/CodexAdapterV2.ts
+  s_257252f4b46824::t_99941bd48b3293 1,1309-1312,1317-1320,2135,2324,2581,4984-4987,6008-6009,6360-6363,6466-6469,7481-7496,8587-8601
+packages/agent-runtime/src/orchestration-v2/ProviderEventBuffer.test.ts
+  s_257252f4b46824::t_b8fc8aa4059ba0 1-80
+packages/agent-runtime/src/orchestration-v2/ProviderEventBuffer.ts
+  s_257252f4b46824::t_75e858da4631fb 1-182
+packages/agent-runtime/src/orchestration-v2/ProviderSessionManager.test.ts
+  s_257252f4b46824::t_a2620893d824f8 1,18,317-321,424-429,439,497-502,546-554,588-594,1162,3568-3576,4472,5811-6268
+packages/agent-runtime/src/orchestration-v2/ProviderSessionManager.ts
+  s_257252f4b46824::t_d4a73f359b9505 224,276-279,629-649,651-652,654-655,657-670,676,681,686,1082,1096-1101,1131,1842,1858,1883,1902,1904-1905,1910,1946,1964-1993,2308-2311,2345-2399,2443-2464,2470,2500-2509,2517-2530,2534,2539-2550,2704-2710,2838,2842,2875-2894
+packages/agent-runtime/src/orchestration-v2/SharedSessionContainment.test.ts
+  s_257252f4b46824::t_6637b3a97a6a48 1-255
+packages/agent-runtime/src/testUtils/NativeProtocolPressure.test.ts
+  s_257252f4b46824::t_d3e788ffc7670d 52-53
+packages/agent-runtime/vendor/effect-codex-app-server/src/errors.ts
+  s_257252f4b46824::t_3753f76f3a3404 112
+packages/agent-runtime/vendor/effect-codex-app-server/src/protocol.test.ts
+  s_257252f4b46824::t_71c1843a87d645 3-5,8,16,25-26,29-35,38-44,49-73,75-77,81-110,114-331
+packages/agent-runtime/vendor/effect-codex-app-server/src/protocol.ts
+  s_257252f4b46824::t_fc8747b5699279 168-172,176,202-204,257-280,298-302,357-372,374-403,405-407,409-411,414-425,429-430,572-574,586-589,591-601,605-607,618
+packages/agent-runtime/vendor/provider-core/src/server/ProviderAdapter.ts
+  s_257252f4b46824::t_42c9c879e3924a 603-611,628-630,725-729
+packages/agent-runtime/vendor/shared/src/BoundedQueue.ts
+  s_257252f4b46824::t_d12a4242ce2467 98-102,109,118,127-132,243-249
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b82d3a2b32bdf938411b7df12adf54777610ffd9",
+  "prompts": {},
+  "sessions": {
+    "s_257252f4b46824": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19ff8-37a2-7ba1-960e-02cb9c49b080",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_e7c42becea402b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a1773314-9d15-4e0e-a443-b0b84b8ea9e9",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
