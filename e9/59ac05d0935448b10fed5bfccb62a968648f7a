@@ -1,0 +1,21 @@
+src/main/core-client/profile-clone.node.test.ts
+  s_098df3235fa721::t_0289915658b2d3 3,6,22,76,78-84,124
+docs/windows-verification.md
+  s_098df3235fa721::t_b00dd4db9eedb0 49-50
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e959ac05d0935448b10fed5bfccb62a968648f7a",
+  "prompts": {},
+  "sessions": {
+    "s_098df3235fa721": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19eb9-df69-7222-adba-8eb488f30462",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
