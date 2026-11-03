@@ -1,0 +1,104 @@
+packages/agent-runtime/src/provider/CodexChatGptSessionLock.ts
+  s_74fe86f7f91964::t_08b1f0d0bf021f 26
+src/main/platform/node/TerminalEnvironment.ts
+  s_74fe86f7f91964::t_26d3be85a9fc35 114
+src/renderer/lib/workbench-command-shortcuts.jsdom.test.ts
+  s_74fe86f7f91964::t_bcbdec8acd4632 2
+src/renderer/lib/source-highlight-cache.node.test.ts
+  s_74fe86f7f91964::t_45eb8e0d997421 19
+src/main/platform/node/NodexModelAccessPlatform.node.test.ts
+  s_74fe86f7f91964::t_b6bea7106cba98 5
+packages/agent-runtime/src/git/GitWorkflow.ts
+  s_5cec66ce245092::t_d1635d2ac7bc4f 59-61
+src/renderer/lib/use-library-navigation.ts
+  s_74fe86f7f91964::t_26d3be85a9fc35 356,465
+packages/agent-runtime/src/vcs/GitVcsDriver.ts
+  s_74fe86f7f91964::t_8bfa75eacfd339 111-113,118,133,138-139,143-144,148,167-168,173
+scripts/ci/lint-warning-baseline.json
+  s_17eba91634a37a::t_ef58c4ce0e19bb 844
+packages/agent-runtime/src/orchestration-v2/legacy/LegacyV1ThreadImporter.ts
+  s_74fe86f7f91964::t_b4a55c2ccae0cc 114
+packages/agent-runtime/src/pullRequest/PullRequestService.ts
+  s_74fe86f7f91964::t_41860dd1d8a170 1981,2681
+packages/agent-runtime/src/orchestration-v2/RunFinalizationService.ts
+  s_74fe86f7f91964::t_d42b3324e83a39 9
+docs/LINTING.md
+  s_5cec66ce245092::t_ed6a0803e7e9d9 178-180,204-222
+src/renderer/components/workbench/backup-settings-control.tsx
+  s_74fe86f7f91964::t_94c45e75a22485 18
+vite.config.ts
+  s_74fe86f7f91964::t_1d47f5390c87b7 207,210,214-216,230,232-234,237-238
+src/renderer/lib/editor-model/equation-security.jsdom.test.ts
+  s_74fe86f7f91964::t_c2fd8ae8337745 15-16,23-27
+  s_74fe86f7f91964::t_26d3be85a9fc35 11-14
+src/main/agent-runtime/AgentRuntimeSessionOrdering.node.test.ts
+  s_74fe86f7f91964::t_26d3be85a9fc35 30
+packages/agent-runtime/src/config.ts
+  s_5cec66ce245092::t_d1635d2ac7bc4f 92
+src/shared/block-documents/page-reference-derived-records.test.ts
+  s_74fe86f7f91964::t_110f421e94b883 14
+  s_74fe86f7f91964::t_219e0b87f8b738 15-16
+src/main/nodex-agent-application/NodexAgentDynamicTools.ts
+  s_74fe86f7f91964::t_1b292e6f0b4c6e 10
+packages/agent-runtime/src/vcs/VcsStatusBroadcaster.ts
+  s_74fe86f7f91964::t_edc11addb1d77d 138,144,148,532,616
+packages/agent-runtime/src/terminal/Manager.ts
+  s_74fe86f7f91964::t_7eeb7e895a70b2 344,1484,1628-1629,1631,1635,1648
+packages/agent-runtime/src/processRunner.ts
+  s_74fe86f7f91964::t_869f5c4fd72be1 190,193
+packages/agent-runtime/src/vcs/GitVcsDriverCore.ts
+  s_74fe86f7f91964::t_110f421e94b883 488,596,813
+src/main/agent-backend/NativeSessionState.node.test.ts
+  s_74fe86f7f91964::t_29dccfa53f6b9b 120
+  s_74fe86f7f91964::t_43942f0c9a5b6c 1,119
+packages/agent-runtime/src/git/GitManager.ts
+  s_5cec66ce245092::t_d1635d2ac7bc4f 90,139-141,205
+src/renderer/components/board/editor/nfm-editor-extensions.test.ts
+  s_74fe86f7f91964::t_db3bb00354b416 12
+src/main/codex-application/CodexConversationArchive.ts
+  s_74fe86f7f91964::t_110f421e94b883 290
+packages/agent-runtime/src/orchestration-v2/WireProjection.ts
+  s_74fe86f7f91964::t_110f421e94b883 176
+src/main/platform/node/NodexModelAccessPlatform.ts
+  s_74fe86f7f91964::t_26d3be85a9fc35 44,48,56
+packages/agent-runtime/src/project/ProjectSetupScriptRunner.ts
+  s_74fe86f7f91964::t_d2ab193bf0a3a1 147-152
+src/main/ipc/handlers/ApplicationBootstrapIpc.ts
+  s_74fe86f7f91964::t_26d3be85a9fc35 33
+src/renderer/components/workbench/workbench-testkit/workbench-shell-harness.tsx
+  s_74fe86f7f91964::t_7dca77c32373cb 94
+src/renderer/features/local-conversation/view/composer/local-conversation-thread-composer.tsx
+  s_5cec66ce245092::t_d40839e0017809 1135
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bd354842bb6624f0373f2e5f49d58eba00e24d67",
+  "prompts": {},
+  "sessions": {
+    "s_17eba91634a37a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19f56-59b4-73c3-8615-5162dccf172d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_5cec66ce245092": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d35af60e-664c-450c-a6fb-09ff7e66af9e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": null
+    },
+    "s_74fe86f7f91964": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19f56-7dff-7362-be57-2d0672b4941e",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
