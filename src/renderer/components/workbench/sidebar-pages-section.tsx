@@ -151,7 +151,7 @@ function SidebarPageRootRow({
     onHoverSurfaceOpenChange?.(true);
     return () => onHoverSurfaceOpenChange?.(false);
   }, [actionsOpen, onHoverSurfaceOpenChange]);
-  const dnd = useSidebarLibraryResourceDnd({
+  const { setNodeRef, ...dnd } = useSidebarLibraryResourceDnd({
     resource: actionableTarget
       ? {
           target: actionableTarget,
@@ -182,7 +182,7 @@ function SidebarPageRootRow({
 
   return (
     <CodexSidebarTreeRow
-      ref={dnd.setNodeRef}
+      ref={setNodeRef}
       {...dnd.attributes}
       {...dnd.listeners}
       role="listitem"
@@ -300,14 +300,11 @@ export function SidebarPagesSection({
     () => (selectedRoot ? [...loadedRoots, selectedRoot] : loadedRoots),
     [loadedRoots, selectedRoot],
   );
-  const rootDropTarget = useSidebarLibraryRootDropTarget();
+  const { setNodeRef: setRootNode, isOver: rootIsOver } = useSidebarLibraryRootDropTarget();
 
   return (
     <CodexSidebarSection heading="Content" collapsed={collapsed} onToggle={onToggle}>
-      <div
-        ref={rootDropTarget.setNodeRef}
-        className={cn(rootDropTarget.isOver && "rounded-lg ring-1 ring-token-border")}
-      >
+      <div ref={setRootNode} className={cn(rootIsOver && "rounded-lg ring-1 ring-token-border")}>
         {query.isPending ? (
           <div className="flex h-token-nav-row items-center rounded-lg px-1 text-base text-token-description-foreground">
             <span className="flex size-6 shrink-0 items-center justify-center" aria-hidden>

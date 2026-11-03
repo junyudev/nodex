@@ -145,6 +145,46 @@ describe("StableWorktreeCreateDialog", () => {
     expect(closeCount).toBe(1);
   });
 
+  test("resets the project draft on a new name and on reopening", async () => {
+    const onOpenChange = () => {};
+    const onCreate = () => {};
+    const props = { onOpenChange, onCreate };
+    const view = render(<StableWorktreeCreateDialog {...props} open initialProjectName="First" />);
+    await act(async () => {
+      fireEvent.input(view.getByRole("textbox", { name: "Project name" }), {
+        target: { value: "Edited" },
+      });
+      await Promise.resolve();
+    });
+    view.rerender(
+      <NodexTooltipProvider>
+        <StableWorktreeCreateDialog {...props} open initialProjectName="Second" />
+      </NodexTooltipProvider>,
+    );
+    expect((view.getByRole("textbox", { name: "Project name" }) as HTMLInputElement).value).toBe(
+      "Second",
+    );
+    await act(async () => {
+      fireEvent.input(view.getByRole("textbox", { name: "Project name" }), {
+        target: { value: "Edited again" },
+      });
+      await Promise.resolve();
+    });
+    view.rerender(
+      <NodexTooltipProvider>
+        <StableWorktreeCreateDialog {...props} open={false} initialProjectName="Second" />
+      </NodexTooltipProvider>,
+    );
+    view.rerender(
+      <NodexTooltipProvider>
+        <StableWorktreeCreateDialog {...props} open initialProjectName="Second" />
+      </NodexTooltipProvider>,
+    );
+    expect((view.getByRole("textbox", { name: "Project name" }) as HTMLInputElement).value).toBe(
+      "Second",
+    );
+  });
+
   test("disables empty submission and keeps callback failures inline", async () => {
     const view = render(
       <StableWorktreeCreateDialog

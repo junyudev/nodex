@@ -1,4 +1,4 @@
-import { startTransition, useDeferredValue, useEffect, useState } from "react";
+import { startTransition, useDeferredValue, useEffect, useEffectEvent, useState } from "react";
 import { DeleteIcon, SearchIcon } from "@/components/shared/icons";
 import { NodexButton } from "@/components/ui/button";
 import {
@@ -153,7 +153,7 @@ export function ArchivedChatsSettingsPage({
   projects,
 }: SettingsSectionPageProps) {
   const [chats, setChats] = useState<readonly CodexSidebarThreadItem[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(open);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
@@ -173,19 +173,26 @@ export function ArchivedChatsSettingsPage({
   });
   const matchingCount = groups.reduce((count, group) => count + group.chats.length, 0);
 
-  const load = async (refresh: boolean) => {
+  const load = async (refresh: boolean, isCurrent = () => true) => {
     const snapshot = await readArchivedChats(refresh);
+    if (!isCurrent()) return;
     startTransition(() => {
       setChats(selectArchivedRootChats(snapshot));
       setLoadError(null);
     });
   };
 
+  const [previousOpen, setPreviousOpen] = useState(open);
+  if (previousOpen !== open) {
+    setPreviousOpen(open);
+    if (open) setLoading(true);
+  }
+  const loadFromSubscription = useEffectEvent(load);
   useEffect(() => {
     if (!open) return;
     let active = true;
-    setLoading(true);
-    void load(true)
+    const isCurrent = () => active;
+    void loadFromSubscription(true, isCurrent)
       .catch((cause) => {
         if (!active) return;
         setLoadError(cause instanceof Error ? cause.message : "Could not load archived chats.");
@@ -195,10 +202,10 @@ export function ArchivedChatsSettingsPage({
       });
     const unsubscribeCodex = subscribeCodexEvents((event) => {
       if (event.type !== "threadArchivedState" && event.type !== "threadDeleted") return;
-      void load(false).catch(() => undefined);
+      void loadFromSubscription(false, isCurrent).catch(() => undefined);
     });
     const unsubscribeSessions = subscribeProjectSessionChanges(() => {
-      void load(false).catch(() => undefined);
+      void loadFromSubscription(false, isCurrent).catch(() => undefined);
     });
     return () => {
       active = false;

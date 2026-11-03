@@ -309,6 +309,9 @@ export function AgentRuntimeSubagentsOverviewPanel(input: {
     agentRuntimeSubagentApprovalsQueryOptions(input.sessionId, input.threadId, state.source),
   ).data;
   const [attachment, setAttachment] = useState(0);
+  const isCurrentAttachment = useEffectEvent(
+    (requestAttachment: number) => requestAttachment === attachment,
+  );
   const loadingMore = useRef(new Set<"active" | "terminal">());
   const connection = useAgentRuntimeConnectionState();
   const readyGeneration = connection.status === "ready" ? connection.generation : null;
@@ -341,7 +344,7 @@ export function AgentRuntimeSubagentsOverviewPanel(input: {
       .subscribe(
         { sessionId: input.sessionId, threadId: input.threadId, eventTypes: ["subagent.updated"] },
         (notification) => {
-          if (!active) return;
+          if (!active || !isCurrentAttachment(attachment)) return;
           if (notification.type === "reset-required") {
             active = false;
             release?.();

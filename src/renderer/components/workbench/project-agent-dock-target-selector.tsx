@@ -179,11 +179,14 @@ export function ProjectAgentDockTargetSelector({
   const triggerIndicatorLabel =
     model.trigger.kind === "session" ? indicatorLabel(triggerIndicator) : null;
 
-  useEffect(() => {
-    if (!open) return;
-    const selectedIndex = model.rows.findIndex((row) => row.selected);
-    setActiveIndex(selectedIndex >= 0 ? selectedIndex : 0);
-  }, [model.rows, open]);
+  const [selectionInput, setSelectionInput] = useState({ open, rows: model.rows });
+  if (selectionInput.open !== open || selectionInput.rows !== model.rows) {
+    setSelectionInput({ open, rows: model.rows });
+    if (open) {
+      const selectedIndex = model.rows.findIndex((row) => row.selected);
+      setActiveIndex(selectedIndex >= 0 ? selectedIndex : 0);
+    }
+  }
 
   useEffect(() => {
     if (!open) return;

@@ -90,18 +90,22 @@ export function AppearanceSettingsPage({
     setReducedMotion("system");
     setSeparateModes(false);
   };
-  useEffect(() => {
+  const [advancedInput, setAdvancedInput] = useState({ initialSearchQuery, settingsAnchor });
+  if (
+    advancedInput.initialSearchQuery !== initialSearchQuery ||
+    advancedInput.settingsAnchor !== settingsAnchor
+  ) {
+    setAdvancedInput({ initialSearchQuery, settingsAnchor });
     if (
-      settingsAnchor !== APPEARANCE_ADVANCED_ANCHOR &&
-      !shouldExpandAppearanceAdvanced(initialSearchQuery)
-    ) {
-      return;
-    }
-    setAdvancedOpen(true);
-    if (settingsAnchor === APPEARANCE_ADVANCED_ANCHOR) {
-      document.getElementById(APPEARANCE_ADVANCED_ANCHOR)?.scrollIntoView({ block: "start" });
-    }
-  }, [initialSearchQuery, settingsAnchor]);
+      settingsAnchor === APPEARANCE_ADVANCED_ANCHOR ||
+      shouldExpandAppearanceAdvanced(initialSearchQuery)
+    )
+      setAdvancedOpen(true);
+  }
+  useEffect(() => {
+    if (advancedInput.settingsAnchor !== APPEARANCE_ADVANCED_ANCHOR) return;
+    document.getElementById(advancedInput.settingsAnchor)?.scrollIntoView({ block: "start" });
+  }, [advancedInput]);
 
   return (
     <NodexSettingsPageSurface title="Appearance">

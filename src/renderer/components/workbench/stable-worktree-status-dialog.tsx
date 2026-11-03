@@ -189,8 +189,16 @@ function StableWorktreeStatusDialogController({
     void transport.clearAttention(observedEntry.hostId, observedEntry.id).catch(reportEffectError);
   });
 
-  useEffect(() => {
+  const [previousSource, setPreviousSource] = useState({ pendingWorktreeId, transport });
+  if (
+    previousSource.pendingWorktreeId !== pendingWorktreeId ||
+    previousSource.transport !== transport
+  ) {
+    setPreviousSource({ pendingWorktreeId, transport });
     setEntry(undefined);
+  }
+
+  useEffect(() => {
     let disposed = false;
     let receivedSubscription = false;
 

@@ -253,7 +253,7 @@ export const useDatabaseViewMutationHistory = (
       detach();
       lease.release();
     };
-  }, [mounted, scopeKey]);
+  }, [mounted]);
   return provided ?? mounted!.history;
 };
 

@@ -320,16 +320,13 @@ export function WorkbenchShell({
     [navigateToProject],
   );
 
-  useEffect(() => {
-    if (!pendingSessionDeepLinkOpen) return;
-    if (
-      workbenchSceneLocation.kind !== "session" ||
-      workbenchSceneLocation.sessionId !== pendingSessionDeepLinkOpen.sessionId
-    ) {
-      return;
-    }
+  if (
+    pendingSessionDeepLinkOpen &&
+    workbenchSceneLocation.kind === "session" &&
+    workbenchSceneLocation.sessionId === pendingSessionDeepLinkOpen.sessionId
+  ) {
     setPendingSessionDeepLinkOpen(null);
-  }, [pendingSessionDeepLinkOpen, workbenchSceneLocation]);
+  }
 
   const flushBeforeWindowClone = useCallback(async () => {
     await pageStagePersistRef.current?.();

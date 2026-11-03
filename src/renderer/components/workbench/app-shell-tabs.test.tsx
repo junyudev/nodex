@@ -668,6 +668,46 @@ describe("AppShellTabs", () => {
     );
   });
 
+  test("remeasures title overflow after a live title change without a window resize", async () => {
+    let liveTitle = "Short";
+    const listeners = new Set<() => void>();
+    const tabs = makeTabs();
+    tabs[1] = {
+      ...tabs[1]!,
+      titleSource: {
+        getSnapshot: () => liveTitle,
+        subscribe: (listener) => {
+          listeners.add(listener);
+          return () => listeners.delete(listener);
+        },
+      },
+    };
+    const view = renderAppShellTabs({ tabs, activeTabId: "two" });
+    const title = view.container.querySelector('[data-app-shell-tab-title="two"]');
+    if (!(title instanceof HTMLElement)) throw new Error("Expected title element");
+    Object.defineProperty(title, "clientWidth", { configurable: true, value: 80 });
+    Object.defineProperty(title, "scrollWidth", {
+      configurable: true,
+      get: () => liveTitle.length * 8,
+    });
+    await act(async () => {
+      liveTitle = "A much longer live Page title";
+      listeners.forEach((listener) => listener());
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect(view.container.querySelector('[data-app-shell-tab-title-fade="two"]')).not.toBeNull(),
+    );
+    await act(async () => {
+      liveTitle = "Short";
+      listeners.forEach((listener) => listener());
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect(view.container.querySelector('[data-app-shell-tab-title-fade="two"]')).toBeNull(),
+    );
+  });
+
   test("close button suppresses selection on mouse down", () => {
     const selected: string[] = [];
     const closed: string[] = [];

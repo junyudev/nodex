@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { LazySourceViewer } from "@/components/ui/lazy-source-viewer";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { useConversation } from "@/features/local-conversation";
@@ -20,56 +20,48 @@ export function McpAppSessionTab({ tab }: { tab: McpAppPanelTab }) {
   );
 }
 
+/** Retains the final output after the terminal owner releases its exited record. */
+function createProcessOutputSnapshotSource(sessionId: string | null) {
+  let snapshot: TerminalSessionSnapshot | null | undefined;
+  return {
+    sessionId,
+    getSnapshot: (): TerminalSessionSnapshot | null => {
+      if (snapshot === undefined)
+        snapshot = sessionId ? terminalSessionStore.getSnapshot(sessionId) : null;
+      return snapshot;
+    },
+    subscribe(onChange: () => void) {
+      if (!sessionId) return () => {};
+      let cancelled = false;
+      terminalSessionStore.ensureEventSubscriptions();
+      if (!snapshot?.exited) snapshot = terminalSessionStore.getSnapshot(sessionId);
+      const unsubscribe = terminalSessionStore.subscribe(sessionId, (event) => {
+        if (event.type === "exit" && snapshot) {
+          snapshot = { ...snapshot, exited: true, exitCode: event.exitCode };
+        } else {
+          snapshot = terminalSessionStore.getSnapshot(sessionId);
+        }
+        onChange();
+      });
+      void terminalSessionStore.fetchSnapshot(sessionId).then((nextSnapshot) => {
+        if (cancelled || !nextSnapshot) return;
+        snapshot = nextSnapshot;
+        onChange();
+      });
+      return () => {
+        cancelled = true;
+        unsubscribe();
+      };
+    },
+  };
+}
+
 function useProcessOutputTerminalSnapshot(
   sessionId: string | null,
 ): TerminalSessionSnapshot | null {
-  const [snapshot, setSnapshot] = useState<TerminalSessionSnapshot | null>(() =>
-    sessionId ? terminalSessionStore.getSnapshot(sessionId) : null,
-  );
-
-  useEffect(() => {
-    if (!sessionId) {
-      setSnapshot(null);
-      return;
-    }
-
-    let cancelled = false;
-    terminalSessionStore.ensureEventSubscriptions();
-    setSnapshot(terminalSessionStore.getSnapshot(sessionId));
-    void terminalSessionStore.fetchSnapshot(sessionId).then((nextSnapshot) => {
-      if (!cancelled && nextSnapshot) {
-        setSnapshot(nextSnapshot);
-      }
-    });
-
-    const unsubscribe = terminalSessionStore.subscribe(sessionId, (event) => {
-      if (cancelled) return;
-      if (event.type === "init-log" || event.type === "attached") {
-        setSnapshot(event.snapshot);
-        return;
-      }
-      if (event.type === "exit") {
-        setSnapshot((current) =>
-          current
-            ? {
-                ...current,
-                exited: true,
-                exitCode: event.exitCode,
-              }
-            : terminalSessionStore.getSnapshot(sessionId),
-        );
-        return;
-      }
-      setSnapshot(terminalSessionStore.getSnapshot(sessionId));
-    });
-
-    return () => {
-      cancelled = true;
-      unsubscribe();
-    };
-  }, [sessionId]);
-
-  return snapshot;
+  const [source, setSource] = useState(() => createProcessOutputSnapshotSource(sessionId));
+  if (source.sessionId !== sessionId) setSource(createProcessOutputSnapshotSource(sessionId));
+  return useSyncExternalStore(source.subscribe, source.getSnapshot);
 }
 
 export function ProcessOutputPanelTabView({ tab }: { tab: ProcessOutputPanelTab }) {

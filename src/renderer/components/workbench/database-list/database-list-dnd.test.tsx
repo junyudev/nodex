@@ -55,15 +55,15 @@ const page = (input: {
 });
 
 const TestPage = ({ item }: { readonly item: DatabaseListPageRow }) => {
-  const dnd = useDatabaseListPageDnd(item);
+  const { attributes, listeners, setNodeRef, active, target } = useDatabaseListPageDnd(item);
   return (
     <div
-      {...dnd.attributes}
-      {...dnd.listeners}
-      ref={dnd.setNodeRef}
+      {...attributes}
+      {...listeners}
+      ref={setNodeRef}
       data-test-row={item.key}
-      data-active={dnd.active || undefined}
-      data-target={dnd.target?.kind === "page" ? dnd.target.pointerEdge : undefined}
+      data-active={active || undefined}
+      data-target={target?.kind === "page" ? target.pointerEdge : undefined}
     >
       {item.row.title}
       <button type="button">Property</button>

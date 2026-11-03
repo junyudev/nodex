@@ -101,8 +101,6 @@ import { NodexIconButton } from "@/components/ui/button";
 import { NodexTabsRoot, NodexTabsList, NodexTabsTab, NodexTabsPanel } from "@/components/ui/tabs";
 import { ShortcutKeycaps } from "@/components/ui/shortcut-keycaps";
 import {
-  NAVIGATE_BACK_COMMAND_ID,
-  NAVIGATE_FORWARD_COMMAND_ID,
   RENAME_THREAD_COMMAND_ID,
   TOGGLE_SIDEBAR_COMMAND_ID,
 } from "../../../shared/window-navigation";
@@ -202,65 +200,45 @@ function resolveSelectableIndex(
   return -1;
 }
 
-function getCommandGlyph(id: string) {
-  if (id === "captureToInbox") return InboxIcon;
-  if (id === "newPage") return NewPageIcon;
-  if (id === NAVIGATE_BACK_COMMAND_ID)
-    return (props: { className?: string }) => <CommandMenuReferenceIcon name="search" {...props} />;
-  if (id === NAVIGATE_FORWARD_COMMAND_ID)
-    return (props: { className?: string }) => <CommandMenuReferenceIcon name="search" {...props} />;
-  if (id === "newThread" || id === "newThreadInProject")
-    return (props: { className?: string }) => (
-      <CommandMenuReferenceIcon name="compose" {...props} />
-    );
-  if (id === TOGGLE_SIDEBAR_COMMAND_ID) return SidebarVisibleIcon;
-  if (id === RENAME_THREAD_COMMAND_ID)
-    return (props: { className?: string }) => (
-      <CommandMenuReferenceIcon name="compose" {...props} />
-    );
-  if (id === "archiveThread")
-    return (props: { className?: string }) => (
-      <CommandMenuReferenceIcon name="archive" {...props} />
-    );
-  if (id === "toggleThreadPin")
-    return (props: { className?: string }) => <CommandMenuReferenceIcon name="pin" {...props} />;
-  if (id === "toggleThreadUnread")
-    return (props: { className?: string }) => <NativeMenuIcon iconKey="unread" {...props} />;
-  if (id === "clearThreadReminder" || isRemindThreadCommandId(id)) return ClockIcon;
-  if (id === "openThreadInNewWindow")
-    return (props: { className?: string }) => <CommandMenuReferenceIcon name="search" {...props} />;
-  if (id === "toggleFileTreePanel" || id === "openFolder" || id === "searchFiles")
-    return (props: { className?: string }) => <CommandMenuReferenceIcon name="folder" {...props} />;
-  if (id === "openBrowserTab")
-    return (props: { className?: string }) => <CommandMenuReferenceIcon name="globe" {...props} />;
-  if (id === "toggleTerminal")
-    return (props: { className?: string }) => (
-      <CommandMenuReferenceIcon name="terminal" {...props} />
-    );
-  if (id === "searchChats" || id === "searchPages" || id === "searchText" || id === "findInThread")
-    return (props: { className?: string }) => <CommandMenuReferenceIcon name="search" {...props} />;
-  if (id === OPEN_DB_VIEW_TAB_COMMAND_ID) return BoardIcon;
-  if (id === "openSideChat") return SidePanelSideChatIcon;
-  if (
-    id === "settings" ||
-    id === "showKeyboardShortcuts" ||
-    id.endsWith("Settings") ||
-    id.startsWith("settings:")
-  )
-    return (props: { className?: string }) => (
-      <CommandMenuReferenceIcon name="settings" {...props} />
-    );
-  return (props: { className?: string }) => <CommandMenuReferenceIcon name="search" {...props} />;
+function CommandGlyph({ id, className }: { id: string; className: string }) {
+  if (id === "captureToInbox") return <InboxIcon className={className} />;
+  if (id === "newPage") return <NewPageIcon className={className} />;
+  if (id === TOGGLE_SIDEBAR_COMMAND_ID) return <SidebarVisibleIcon className={className} />;
+  if (id === "clearThreadReminder" || isRemindThreadCommandId(id))
+    return <ClockIcon className={className} />;
+  if (id === OPEN_DB_VIEW_TAB_COMMAND_ID) return <BoardIcon className={className} />;
+  if (id === "openSideChat") return <SidePanelSideChatIcon className={className} />;
+  if (id === "toggleThreadUnread") return <NativeMenuIcon iconKey="unread" className={className} />;
+  const name =
+    id === "newThread" || id === "newThreadInProject" || id === RENAME_THREAD_COMMAND_ID
+      ? "compose"
+      : id === "archiveThread"
+        ? "archive"
+        : id === "toggleThreadPin"
+          ? "pin"
+          : id === "toggleFileTreePanel" || id === "openFolder" || id === "searchFiles"
+            ? "folder"
+            : id === "openBrowserTab"
+              ? "globe"
+              : id === "toggleTerminal"
+                ? "terminal"
+                : id === "settings" ||
+                    id === "showKeyboardShortcuts" ||
+                    id.endsWith("Settings") ||
+                    id.startsWith("settings:")
+                  ? "settings"
+                  : "search";
+  return <CommandMenuReferenceIcon name={name} className={className} />;
 }
 
 function CommandRow({ item, selected }: { item: CommandPaletteCommand; selected: boolean }) {
-  const Glyph = getCommandGlyph(item.id);
   const subtitle = item.disabledReason ?? item.subtitle;
   const displaySubtitle = Boolean(item.disabledReason);
 
   return (
     <div className={cn("flex w-full gap-2", displaySubtitle ? "items-start" : "items-center")}>
-      <Glyph
+      <CommandGlyph
+        id={item.id}
         className={cn(
           "size-4 shrink-0 text-token-description-foreground",
           selected && "text-token-foreground",
@@ -729,7 +707,7 @@ export const CommandPaletteSurface = forwardRef<
     hostId: historyScope?.hostId ?? "local",
     projectRoots: historyScope?.roots ?? [],
   });
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(open ? (initialQuery ?? "") : "");
   useEffect(() => {
     if (open && !activePage && (mode === "root" || mode === "files")) onQueryChange?.(query);
   }, [open, query, mode, activePage, onQueryChange]);
@@ -759,16 +737,12 @@ export const CommandPaletteSurface = forwardRef<
     scope: searchScope,
   });
   const retryFileLookup = fileSearch.retry;
-  const files = useMemo<CommandPaletteFile[]>(
-    () =>
-      fileSearch.matches.map((file) => ({
-        kind: "file",
-        id: file.fsPath,
-        file,
-        hostId: searchScope?.hostId ?? "local",
-      })),
-    [fileSearch.matches, searchScope?.hostId],
-  );
+  const files: CommandPaletteFile[] = fileSearch.matches.map((file) => ({
+    kind: "file",
+    id: file.fsPath,
+    file,
+    hostId: searchScope?.hostId ?? "local",
+  }));
   const textSearch = useWorkspaceTextSearch({
     enabled:
       open && !activePage && (mode === "text" || (mode === "root" && query.trim().length > 0)),
@@ -778,17 +752,13 @@ export const CommandPaletteSurface = forwardRef<
     priorityFolders:
       priorityFolders ?? getWorkspaceSearchPriorityFolders(searchScope?.hostId ?? "local"),
   });
-  const textMatches = useMemo<CommandPaletteText[]>(
-    () =>
-      textSearch.matches.map((match) => ({
-        kind: "text",
-        id: `text:${match.path}:${match.line}`,
-        match,
-        hostId: searchScope?.hostId ?? "local",
-        disabled: !textSearch.matchesCurrent,
-      })),
-    [textSearch.matches, textSearch.matchesCurrent, searchScope?.hostId],
-  );
+  const textMatches: CommandPaletteText[] = textSearch.matches.map((match) => ({
+    kind: "text",
+    id: `text:${match.path}:${match.line}`,
+    match,
+    hostId: searchScope?.hostId ?? "local",
+    disabled: !textSearch.matchesCurrent,
+  }));
   const textLabels = workspaceTextSearchResultLabels(textSearch.matches, searchScope?.roots ?? []);
   const [pageFilters, setPageFilters] = useState<CommandPalettePageFilters>(() =>
     readCommandPalettePageFilters(),
@@ -982,54 +952,56 @@ export const CommandPaletteSurface = forwardRef<
   const showSubtitle = visibleModel.query.length > 0;
   const [selectedIndex, setSelectedIndex] = useState(0);
 
+  const [openingInput, setOpeningInput] = useState({ open, initialQuery, openTriggerTick });
+  if (
+    openingInput.open !== open ||
+    openingInput.initialQuery !== initialQuery ||
+    openingInput.openTriggerTick !== openTriggerTick
+  ) {
+    setOpeningInput({ open, initialQuery, openTriggerTick });
+    if (open) {
+      setQuery(initialQuery ?? "");
+      setFilterOpen(false);
+      setPageStack([]);
+    } else {
+      setQuery("");
+      setSelectedIndex(0);
+    }
+  }
+  const selectionKey = JSON.stringify([
+    selectionScopeKey,
+    open,
+    openTriggerTick,
+    visibleModel.query,
+  ]);
+  const [previousSelectionKey, setPreviousSelectionKey] = useState(selectionKey);
+  const resetSelection = previousSelectionKey !== selectionKey && open;
+  if (previousSelectionKey !== selectionKey) setPreviousSelectionKey(selectionKey);
+  if (mode !== "pages" && filterOpen) setFilterOpen(false);
+  if (!areCommandPalettePageFiltersEqual(pageFilters, normalizedPageFilters)) {
+    setPageFilters(normalizedPageFilters);
+  }
+
   useEffect(() => {
-    if (!open) return;
-
-    const nextQuery = initialQuery ?? "";
-    setQuery(nextQuery);
-    setFilterOpen(false);
-    setPageStack([]);
-
+    if (!openingInput.open) return;
     const rafId = window.requestAnimationFrame(() => {
-      const input = inputRef.current;
-      input?.focus();
-      if (!input) {
-        return;
-      }
-
-      input.select();
+      inputRef.current?.focus();
+      inputRef.current?.select();
     });
+    return () => window.cancelAnimationFrame(rafId);
+  }, [openingInput]);
 
-    return () => {
-      window.cancelAnimationFrame(rafId);
-    };
-  }, [initialQuery, open, openTriggerTick]);
-
+  const scrolledSelectionKeyRef = useRef<string | null>(null);
   useEffect(() => {
-    if (open) return;
-    setQuery("");
-    setSelectedIndex(0);
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    pointerSelectionRef.current = false;
-    setSelectedIndex(0);
-    if (scrollViewportRef.current) scrollViewportRef.current.scrollTop = 0;
-  }, [selectionScopeKey, open, openTriggerTick, visibleModel.query]);
-
-  useEffect(() => {
-    if (mode === "pages") return;
-    setFilterOpen(false);
-  }, [mode]);
-
-  useEffect(() => {
-    if (areCommandPalettePageFiltersEqual(pageFilters, normalizedPageFilters)) {
+    if (!open) {
+      scrolledSelectionKeyRef.current = null;
       return;
     }
-
-    setPageFilters(normalizedPageFilters);
-  }, [pageFilters, normalizedPageFilters]);
+    if (scrolledSelectionKeyRef.current === selectionKey) return;
+    scrolledSelectionKeyRef.current = selectionKey;
+    pointerSelectionRef.current = false;
+    if (scrollViewportRef.current) scrollViewportRef.current.scrollTop = 0;
+  }, [open, selectionKey]);
 
   useEffect(() => {
     writeCommandPalettePageFilters(
@@ -1093,20 +1065,11 @@ export const CommandPaletteSurface = forwardRef<
               ? textSearch.loading
               : false;
 
-  useEffect(() => {
-    if (flatItems.length === 0) {
-      if (selectedIndex === -1) return;
-      setSelectedIndex(-1);
-      return;
-    }
-
-    const preferredIndex = selectedIndex < 0 ? 0 : selectedIndex;
-    const forwardIndex = resolveSelectableIndex(flatItems, preferredIndex, 1);
-    const nextIndex =
-      forwardIndex < 0 ? resolveSelectableIndex(flatItems, preferredIndex, -1) : forwardIndex;
-    if (selectedIndex === nextIndex) return;
-    setSelectedIndex(nextIndex);
-  }, [flatItems, selectedIndex]);
+  const preferredIndex = resetSelection || selectedIndex < 0 ? 0 : selectedIndex;
+  const forwardIndex = resolveSelectableIndex(flatItems, preferredIndex, 1);
+  const nextSelectedIndex =
+    forwardIndex < 0 ? resolveSelectableIndex(flatItems, preferredIndex, -1) : forwardIndex;
+  if (selectedIndex !== nextSelectedIndex) setSelectedIndex(nextSelectedIndex);
 
   useEffect(() => {
     if (pointerSelectionRef.current) {
@@ -1129,84 +1092,69 @@ export const CommandPaletteSurface = forwardRef<
     if (focusInput) inputRef.current?.focus();
   };
 
-  const handleExecute = useCallback(
-    (item: PaletteItem) => {
-      if (isPaletteItemDisabled(item)) return;
-      if (item.kind === "more") {
-        setSelectedIndex(flatItems.findIndex((candidate) => candidate.id === item.id));
-        setExpandedDiscovery({
-          key: discoveryKey,
-          limits: {
-            ...discoveryLimits,
-            [item.scope]: Math.min(
-              getDiscoveryResultLimit(item.scope),
-              discoveryLimits[item.scope] + 5,
-            ),
-          },
-        });
+  const handleExecute = (item: PaletteItem) => {
+    if (isPaletteItemDisabled(item)) return;
+    if (item.kind === "more") {
+      setSelectedIndex(flatItems.findIndex((candidate) => candidate.id === item.id));
+      setExpandedDiscovery({
+        key: discoveryKey,
+        limits: {
+          ...discoveryLimits,
+          [item.scope]: Math.min(
+            getDiscoveryResultLimit(item.scope),
+            discoveryLimits[item.scope] + 5,
+          ),
+        },
+      });
+      inputRef.current?.focus();
+      return;
+    }
+    if (item.kind === "command" && item.themeAction) {
+      if (item.themeAction === "open") {
+        setPageStack((pages) => [...pages, "themes"]);
+        setQuery("");
         inputRef.current?.focus();
         return;
       }
-      if (item.kind === "command" && item.themeAction) {
-        if (item.themeAction === "open") {
-          setPageStack((pages) => [...pages, "themes"]);
-          setQuery("");
-          inputRef.current?.focus();
-          return;
-        }
-        if (theme.execute(item.id)) onRequestClose();
-        return;
-      }
-      if (item.kind === "command" && item.id === "retryFileLookup") {
-        retryFileLookup?.();
-        return;
-      }
-      if (item.kind === "text-query") {
-        setQuery(item.query);
-        inputRef.current?.focus();
-        return;
-      }
-      if (item.kind === "command" && item.id === "searchText") {
-        setQuery("");
-        onChangeMode("text");
-        return;
-      }
-      if (item.kind === "text") history.commit(query);
-      if (item.kind === "command" && item.id === "searchChats") {
-        setQuery("");
-        onChangeMode("chats");
-        return;
-      }
+      if (theme.execute(item.id)) onRequestClose();
+      return;
+    }
+    if (item.kind === "command" && item.id === "retryFileLookup") {
+      retryFileLookup?.();
+      return;
+    }
+    if (item.kind === "text-query") {
+      setQuery(item.query);
+      inputRef.current?.focus();
+      return;
+    }
+    if (item.kind === "command" && item.id === "searchText") {
+      setQuery("");
+      onChangeMode("text");
+      return;
+    }
+    if (item.kind === "text") history.commit(query);
+    if (item.kind === "command" && item.id === "searchChats") {
+      setQuery("");
+      onChangeMode("chats");
+      return;
+    }
 
-      if (item.kind === "command" && item.id === "searchPages") {
-        setQuery("");
-        onChangeMode("pages");
-        return;
-      }
+    if (item.kind === "command" && item.id === "searchPages") {
+      setQuery("");
+      onChangeMode("pages");
+      return;
+    }
 
-      if (item.kind === "command" && item.id === "searchFiles") {
-        setQuery("");
-        onChangeMode("files");
-        return;
-      }
+    if (item.kind === "command" && item.id === "searchFiles") {
+      setQuery("");
+      onChangeMode("files");
+      return;
+    }
 
-      onRequestClose();
-      onExecute(item, query);
-    },
-    [
-      discoveryKey,
-      discoveryLimits,
-      flatItems,
-      retryFileLookup,
-      history,
-      theme,
-      query,
-      onChangeMode,
-      onExecute,
-      onRequestClose,
-      setQuery,
-    ],
-  );
+    onRequestClose();
+    onExecute(item, query);
+  };
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
     pointerSelectionRef.current = false;

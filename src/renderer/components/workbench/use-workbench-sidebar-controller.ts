@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useCallback, useEffect, type MouseEvent as ReactMouseEvent } from "react";
 import type { QueryClient } from "@tanstack/react-query";
 import { ensureFreshDatabaseViewBoard } from "@/lib/board-store";
@@ -457,15 +458,15 @@ export function useWorkbenchSidebarController({
     async (item: CodexSidebarThreadItem) => {
       if (item.disabled) return;
       const nextPinned = !item.pinned;
+      const session = item.sessionId
+        ? (knownSessions.find((candidate) => candidate.id === item.sessionId) ?? null)
+        : null;
       try {
         if (item.kind === "pending-worktree") {
           if (!item.pendingWorktreeId) return;
           await setPendingWorktreePinned(item.hostId, item.pendingWorktreeId, nextPinned);
           return;
         }
-        const session = item.sessionId
-          ? (knownSessions.find((candidate) => candidate.id === item.sessionId) ?? null)
-          : null;
         const authority = resolveSidebarThreadMutationAuthority(item);
         if (authority.kind === "unavailable") return;
         if (authority.kind === "workspace") {
@@ -579,11 +580,14 @@ export function useWorkbenchSidebarController({
     [appHandle],
   );
 
-  const archiveSession = useCallback(
-    async (session: ProjectSessionDomain, options: { showToast?: boolean } = {}) => {
-      try {
-        const refreshedPresentations = await catalog.archive(session);
-        try {
+  const archiveSession = async (
+    session: ProjectSessionDomain,
+    options: { showToast?: boolean } = {},
+  ) => {
+    try {
+      const refreshedPresentations = await catalog.archive(session);
+      await runWithCleanup(
+        async () => {
           await refreshSidebarThreadSnapshot();
           if (activeSessionId === session.id) {
             const sessions = refreshedPresentations.map(presentWorkbenchSession);
@@ -595,28 +599,22 @@ export function useWorkbenchSidebarController({
               workbenchWindow.selectProject(session.projectId);
             }
           }
-        } finally {
-          panelController.pruneSession(session.id);
-          await documentSessionRegistry.disposeProjectSession(session.id);
-        }
-        return true;
-      } catch {
-        if (options.showToast !== false) {
-          toast.danger("Failed to archive chat");
-        }
-        return false;
+        },
+        {
+          cleanup: async () => {
+            panelController.pruneSession(session.id);
+            await documentSessionRegistry.disposeProjectSession(session.id);
+          },
+        },
+      );
+      return true;
+    } catch {
+      if (options.showToast !== false) {
+        toast.danger("Failed to archive chat");
       }
-    },
-    [
-      activeSessionId,
-      activeSessions,
-      catalog,
-      panelController,
-      refreshSidebarThreadSnapshot,
-      selectSession,
-      workbenchWindow,
-    ],
-  );
+      return false;
+    }
+  };
 
   const resolveSidebarArchivePendingKeyForSession = useCallback(
     (session: ProjectSessionDomain) => {
@@ -629,26 +627,31 @@ export function useWorkbenchSidebarController({
     [sidebarThreadModel.threadItemsByKey],
   );
 
-  const archiveSessionWithSidebarPendingState = useCallback(
-    async (session: ProjectSessionDomain) => {
-      const pendingKey = resolveSidebarArchivePendingKeyForSession(session);
-      if (!beginArchive(pendingKey)) return;
+  const archiveSessionWithSidebarPendingState = async (session: ProjectSessionDomain) => {
+    const pendingKey = resolveSidebarArchivePendingKeyForSession(session);
+    if (!beginArchive(pendingKey)) return;
 
-      try {
+    await runWithCleanup(
+      async () => {
         const archived = await archiveSession(session, { showToast: false });
         if (!archived) toast.danger("Failed to archive chat");
-      } finally {
-        finishArchive(pendingKey);
-      }
-    },
-    [archiveSession, beginArchive, finishArchive, resolveSidebarArchivePendingKeyForSession],
-  );
+      },
+      {
+        cleanup: () => {
+          finishArchive(pendingKey);
+        },
+      },
+    );
+  };
 
-  const archiveSidebarThreadItem = useCallback(
-    async (item: CodexSidebarThreadItem, sessionOverride?: ProjectSessionDomain) => {
-      if (item.disabled || !beginArchive(item.key)) return;
+  const archiveSidebarThreadItem = async (
+    item: CodexSidebarThreadItem,
+    sessionOverride?: ProjectSessionDomain,
+  ) => {
+    if (item.disabled || !beginArchive(item.key)) return;
 
-      try {
+    await runWithCleanup(
+      async () => {
         if (item.kind === "pending-worktree") {
           if (!item.pendingWorktreeId) return;
           await cancelPendingWorktree(item.hostId, item.pendingWorktreeId);
@@ -679,33 +682,28 @@ export function useWorkbenchSidebarController({
 
         await archiveWorkbenchThread(item.threadId);
         await refreshSidebarThreadSnapshot();
-      } catch {
-        toast.danger(
-          item.kind === "pending-worktree"
-            ? "Failed to cancel worktree setup"
-            : "Failed to archive chat",
-        );
-      } finally {
-        finishArchive(item.key);
-      }
-    },
-    [
-      archiveSession,
-      beginArchive,
-      closePendingWorktreeRoute,
-      finishArchive,
-      knownSessions,
-      pendingWorktreeClientThreadId,
-      refreshSidebarThreadSnapshot,
-    ],
-  );
+      },
+      {
+        cleanup: () => {
+          finishArchive(item.key);
+        },
+        onError: () => {
+          toast.danger(
+            item.kind === "pending-worktree"
+              ? "Failed to cancel worktree setup"
+              : "Failed to archive chat",
+          );
+        },
+      },
+    );
+  };
 
-  const archiveSidebarThreadItemQuiet = useCallback(
-    async (item: CodexSidebarThreadItem): Promise<boolean> => {
-      if (item.disabled || item.kind === "pending-worktree") return false;
-      if (!beginArchive(item.key)) return false;
+  const archiveSidebarThreadItemQuiet = async (item: CodexSidebarThreadItem): Promise<boolean> => {
+    if (item.disabled || item.kind === "pending-worktree") return false;
+    if (!beginArchive(item.key)) return false;
 
-      try {
+    return await runWithCleanup(
+      async () => {
         const session = item.sessionId
           ? (knownSessions.find((candidate) => candidate.id === item.sessionId) ?? null)
           : (knownSessions.find((candidate) => candidate.thread?.threadId === item.threadId) ??
@@ -723,14 +721,17 @@ export function useWorkbenchSidebarController({
 
         await archiveWorkbenchThread(item.threadId);
         return true;
-      } catch {
-        return false;
-      } finally {
-        finishArchive(item.key);
-      }
-    },
-    [archiveSession, beginArchive, finishArchive, knownSessions],
-  );
+      },
+      {
+        cleanup: () => {
+          finishArchive(item.key);
+        },
+        onError: () => {
+          return false;
+        },
+      },
+    );
+  };
 
   const markSidebarThreadItemRead = useCallback(
     async (item: CodexSidebarThreadItem) => {
@@ -761,21 +762,26 @@ export function useWorkbenchSidebarController({
   const toggleSessionUnread = useCallback(
     async (session: ProjectSessionDomain) => {
       const hasUnreadTurn = !session.unread;
-      try {
-        if (session.thread && isCodexAgentBackendBinding(session.thread.backendBinding)) {
-          if (hasUnreadTurn) {
-            await codexControl.markConversationAsUnread(session.thread.threadId);
-          } else {
-            await codexControl.markConversationAsRead(session.thread.threadId);
+      await runWithCleanup(
+        async () => {
+          if (session.thread && isCodexAgentBackendBinding(session.thread.backendBinding)) {
+            if (hasUnreadTurn) {
+              await codexControl.markConversationAsUnread(session.thread.threadId);
+            } else {
+              await codexControl.markConversationAsRead(session.thread.threadId);
+            }
+            mergeSessionInState({ ...session, unread: hasUnreadTurn });
+            return;
           }
-          mergeSessionInState({ ...session, unread: hasUnreadTurn });
-          return;
-        }
-        const updated = await catalog.markUnread(session, hasUnreadTurn);
-        if (updated) mergeSessionInState(updated);
-      } catch {
-        toast.danger(hasUnreadTurn ? "Failed to mark chat unread" : "Failed to mark chat read");
-      }
+          const updated = await catalog.markUnread(session, hasUnreadTurn);
+          if (updated) mergeSessionInState(updated);
+        },
+        {
+          onError: () => {
+            toast.danger(hasUnreadTurn ? "Failed to mark chat unread" : "Failed to mark chat read");
+          },
+        },
+      );
     },
     [catalog, codexControl, mergeSessionInState],
   );
@@ -870,243 +876,225 @@ export function useWorkbenchSidebarController({
     ],
   );
 
-  const handleSessionContextMenuAction = useCallback(
-    async (session: ProjectSessionDomain, actionId: string) => {
-      if (
-        actionId === SESSION_CONTEXT_MENU_ACTION_IDS.fork ||
-        actionId === SESSION_CONTEXT_MENU_ACTION_IDS.forkInNewWorktree
-      ) {
+  const handleSessionContextMenuAction = async (
+    session: ProjectSessionDomain,
+    actionId: string,
+  ) => {
+    if (
+      actionId === SESSION_CONTEXT_MENU_ACTION_IDS.fork ||
+      actionId === SESSION_CONTEXT_MENU_ACTION_IDS.forkInNewWorktree
+    ) {
+      const target =
+        actionId === SESSION_CONTEXT_MENU_ACTION_IDS.forkInNewWorktree ? "newWorktree" : "local";
+      try {
+        await forkSession(session, { target });
+      } catch (error) {
+        toast.danger("Couldn’t fork chat", {
+          description: `${session.displayTitle || session.noThreadFallbackTitle}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        });
+      }
+      return;
+    }
+    const moveTargetSectionId = readSessionMoveToSectionActionId(actionId);
+    if (moveTargetSectionId) {
+      await workspaceSidebarCommands.moveItem({
+        item: { kind: "session", sessionId: session.id },
+        sectionId: moveTargetSectionId,
+        placement: { kind: "end" },
+      });
+      await queryClient.invalidateQueries({ queryKey: SIDEBAR_SECTIONS_QUERY_KEY });
+      return;
+    }
+    if (actionId === SESSION_CONTEXT_MENU_ACTION_IDS.newSection) {
+      openModal(appHandle, SidebarSectionNameDialog, {
+        title: "New section",
+        description: "Create a section and move this chat into it.",
+        allowEmpty: true,
+        onSave: async (name) => {
+          await workspaceSidebarCommands.create({
+            name,
+            initialItem: { kind: "session", sessionId: session.id },
+          });
+          await queryClient.invalidateQueries({ queryKey: SIDEBAR_SECTIONS_QUERY_KEY });
+        },
+      });
+      return;
+    }
+    if (actionId === SESSION_CONTEXT_MENU_ACTION_IDS.removeFromSection) {
+      await workspaceSidebarCommands.moveItem({
+        item: { kind: "session", sessionId: session.id },
+        sectionId: null,
+        placement: { kind: "end" },
+      });
+      await queryClient.invalidateQueries({ queryKey: SIDEBAR_SECTIONS_QUERY_KEY });
+      return;
+    }
+    const moveTargetProjectId = readSessionMoveToProjectActionId(actionId);
+    if (moveTargetProjectId || actionId === SESSION_CONTEXT_MENU_ACTION_IDS.removeFromProject) {
+      const move = resolveSessionProjectMove(resolveSessionExecution(session));
+      if (move?.kind === "runtime") {
         try {
-          await forkSession(session, {
-            target:
-              actionId === SESSION_CONTEXT_MENU_ACTION_IDS.forkInNewWorktree
-                ? "newWorktree"
-                : "local",
+          await agentRuntimeRuntime.moveSession({
+            operationId: `session-move:${createUuidV7()}`,
+            sessionId: move.sessionId,
+            projectId: moveTargetProjectId,
           });
-        } catch (error) {
-          toast.danger("Couldn’t fork chat", {
-            description: `${session.displayTitle || session.noThreadFallbackTitle}: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          });
-        }
-        return;
-      }
-      const moveTargetSectionId = readSessionMoveToSectionActionId(actionId);
-      if (moveTargetSectionId) {
-        await workspaceSidebarCommands.moveItem({
-          item: { kind: "session", sessionId: session.id },
-          sectionId: moveTargetSectionId,
-          placement: { kind: "end" },
-        });
-        await queryClient.invalidateQueries({ queryKey: SIDEBAR_SECTIONS_QUERY_KEY });
-        return;
-      }
-      if (actionId === SESSION_CONTEXT_MENU_ACTION_IDS.newSection) {
-        openModal(appHandle, SidebarSectionNameDialog, {
-          title: "New section",
-          description: "Create a section and move this chat into it.",
-          allowEmpty: true,
-          onSave: async (name) => {
-            await workspaceSidebarCommands.create({
-              name,
-              initialItem: { kind: "session", sessionId: session.id },
-            });
-            await queryClient.invalidateQueries({ queryKey: SIDEBAR_SECTIONS_QUERY_KEY });
-          },
-        });
-        return;
-      }
-      if (actionId === SESSION_CONTEXT_MENU_ACTION_IDS.removeFromSection) {
-        await workspaceSidebarCommands.moveItem({
-          item: { kind: "session", sessionId: session.id },
-          sectionId: null,
-          placement: { kind: "end" },
-        });
-        await queryClient.invalidateQueries({ queryKey: SIDEBAR_SECTIONS_QUERY_KEY });
-        return;
-      }
-      const moveTargetProjectId = readSessionMoveToProjectActionId(actionId);
-      if (moveTargetProjectId || actionId === SESSION_CONTEXT_MENU_ACTION_IDS.removeFromProject) {
-        const move = resolveSessionProjectMove(resolveSessionExecution(session));
-        if (move?.kind === "runtime") {
-          try {
-            await agentRuntimeRuntime.moveSession({
-              operationId: `session-move:${createUuidV7()}`,
-              sessionId: move.sessionId,
-              projectId: moveTargetProjectId,
-            });
-          } catch {
-            toast.danger("Couldn’t move chat");
-            return;
-          }
-          await Promise.all(
-            [...new Set([session.projectId, moveTargetProjectId])].map((projectId) =>
-              catalog.refresh(projectId).catch(() => undefined),
-            ),
-          );
+        } catch {
+          toast.danger("Couldn’t move chat");
           return;
         }
-        if (move?.kind !== "codex-thread") return;
-        const containers = resolveSessionProjectMoveContainers(session, moveTargetProjectId);
-        await moveSidebarThreadInputForSidebar({
-          hostId: "local",
-          threadId: move.threadId,
-          ...containers,
-          beforeThreadId: null,
-        });
-        return;
-      }
-      if (actionId === SESSION_CONTEXT_MENU_ACTION_IDS.togglePin) {
-        await toggleSessionPin(session);
-        return;
-      }
-      if (actionId === SESSION_CONTEXT_MENU_ACTION_IDS.rename) {
-        openRenameSessionDialog(session);
-        return;
-      }
-      if (actionId === SESSION_CONTEXT_MENU_ACTION_IDS.archive) {
-        await archiveSessionWithSidebarPendingState(session);
-        return;
-      }
-      if (actionId === SESSION_CONTEXT_MENU_ACTION_IDS.markUnread) {
-        await toggleSessionUnread(session);
-        return;
-      }
-      if (actionId === SESSION_CONTEXT_MENU_ACTION_IDS.clearReminder) {
-        await setSessionReminder(session, null);
-        return;
-      }
-      const remindAt = readSessionRemindAtActionId(actionId);
-      if (remindAt) {
-        await setSessionReminder(session, remindAt);
-        return;
-      }
-      if (actionId === SESSION_CONTEXT_MENU_ACTION_IDS.copyWorkingDirectory) {
-        await copySessionText(
-          (await readSessionLocation(session))?.cwd ?? "",
-          "Copied working directory",
-          "Failed to copy working directory",
+        await Promise.all(
+          [...new Set([session.projectId, moveTargetProjectId])].map((projectId) =>
+            catalog.refresh(projectId).catch(() => undefined),
+          ),
         );
         return;
       }
-      if (actionId === SESSION_CONTEXT_MENU_ACTION_IDS.copyDeeplink) {
-        await copySessionText(
-          buildSessionDeepLink({ sessionId: session.id }),
-          "Copied deeplink",
-          "Failed to copy deeplink",
-        );
-        return;
-      }
-      if (actionId === SESSION_CONTEXT_MENU_ACTION_IDS.copyConversationMarkdown) {
-        await copySessionConversationMarkdown(
-          session,
-          session.displayTitle || session.noThreadFallbackTitle,
-          (await readSessionLocation(session))?.cwd ?? null,
-        );
-        return;
-      }
-      const openerId = readSessionOpenInActionId(actionId);
-      if (openerId) {
-        if (!FILE_LINK_OPENER_OPTIONS.some((option) => option.id === openerId)) return;
-        const cwd = (await readSessionLocation(session))?.cwd;
-        if (!cwd) return;
-        const opened = await openFileLink({ path: cwd }, openerId);
-        if (!opened) toast.danger("Failed to open working directory");
-        return;
-      }
-      if (actionId === SESSION_CONTEXT_MENU_ACTION_IDS.openInNewWindow) {
-        const presentation = catalog.findById(session.id);
-        const projectedSession = presentation
-          ? presentWorkbenchSession(presentation)
-          : presentWorkbenchSessionDomainWithScene(session, catalog.resolveScene(session));
-        await onOpenProjectSessionInNewWindow?.(projectedSession);
-      }
-    },
-    [
-      archiveSessionWithSidebarPendingState,
-      appHandle,
-      catalog,
-      copySessionText,
-      forkSession,
-      moveSidebarThreadInputForSidebar,
-      onOpenProjectSessionInNewWindow,
-      openRenameSessionDialog,
-      queryClient,
-      readSessionLocation,
-      setSessionReminder,
-      toggleSessionPin,
-      toggleSessionUnread,
-    ],
-  );
-
-  const openSessionContextMenu = useCallback(
-    async (session: ProjectSessionDomain, event: ReactMouseEvent<HTMLElement>) => {
-      event.preventDefault();
-      event.stopPropagation();
-      const [sections, directSectionId, availableOpeners, location] = await Promise.all([
-        listAllSidebarSections().catch(() => []),
-        readSidebarSectionItemPlacement({
-          kind: "session",
-          sessionId: session.id,
-        }).catch(() => null),
-        listAvailableFileLinkOpeners().catch(() => []),
-        readSessionLocation(session),
-      ]);
-      const customSections = sections.filter(
-        (section) => section.kind === "custom" && section.lifecycle === "active",
+      if (move?.kind !== "codex-thread") return;
+      const containers = resolveSessionProjectMoveContainers(session, moveTargetProjectId);
+      await moveSidebarThreadInputForSidebar({
+        hostId: "local",
+        threadId: move.threadId,
+        ...containers,
+        beforeThreadId: null,
+      });
+      return;
+    }
+    if (actionId === SESSION_CONTEXT_MENU_ACTION_IDS.togglePin) {
+      await toggleSessionPin(session);
+      return;
+    }
+    if (actionId === SESSION_CONTEXT_MENU_ACTION_IDS.rename) {
+      openRenameSessionDialog(session);
+      return;
+    }
+    if (actionId === SESSION_CONTEXT_MENU_ACTION_IDS.archive) {
+      await archiveSessionWithSidebarPendingState(session);
+      return;
+    }
+    if (actionId === SESSION_CONTEXT_MENU_ACTION_IDS.markUnread) {
+      await toggleSessionUnread(session);
+      return;
+    }
+    if (actionId === SESSION_CONTEXT_MENU_ACTION_IDS.clearReminder) {
+      await setSessionReminder(session, null);
+      return;
+    }
+    const remindAt = readSessionRemindAtActionId(actionId);
+    if (remindAt) {
+      await setSessionReminder(session, remindAt);
+      return;
+    }
+    if (actionId === SESSION_CONTEXT_MENU_ACTION_IDS.copyWorkingDirectory) {
+      await copySessionText(
+        (await readSessionLocation(session))?.cwd ?? "",
+        "Copied working directory",
+        "Failed to copy working directory",
       );
-      const preferredOpener = readFileLinkOpener();
-      const discoveredOpeners = Array.isArray(availableOpeners) ? availableOpeners : [];
-      const openInIds = discoveredOpeners.includes(preferredOpener)
-        ? [preferredOpener, ...discoveredOpeners.filter((id) => id !== preferredOpener)]
-        : discoveredOpeners;
-      const openInTargets = openInIds.flatMap((id) => {
-        const option = FILE_LINK_OPENER_OPTIONS.find((candidate) => candidate.id === id);
-        return option
-          ? [{ id: option.id, label: option.label, iconUrl: FILE_LINK_OPENER_ICON_URLS[option.id] }]
-          : [];
-      });
-      const execution = resolveSessionExecution(session);
-      const repository =
-        execution.kind === "runtime" && location?.cwd
-          ? await queryClient
-              .fetchQuery(gitRepositoryIdentityQueryOptions(location.cwd))
-              .catch(() => null)
-          : null;
-      const items = buildSessionContextMenuItems({
+      return;
+    }
+    if (actionId === SESSION_CONTEXT_MENU_ACTION_IDS.copyDeeplink) {
+      await copySessionText(
+        buildSessionDeepLink({ sessionId: session.id }),
+        "Copied deeplink",
+        "Failed to copy deeplink",
+      );
+      return;
+    }
+    if (actionId === SESSION_CONTEXT_MENU_ACTION_IDS.copyConversationMarkdown) {
+      await copySessionConversationMarkdown(
         session,
-        projects,
-        sections: customSections,
-        directSectionId,
-        openInTargets,
-        location,
-        forkDestinations: sessionForkDestinations({
-          isWorktree: Boolean(location?.managedWorktreePath),
-          canCreateWorktree: repository !== null,
-        }),
-      });
+        session.displayTitle || session.noThreadFallbackTitle,
+        (await readSessionLocation(session))?.cwd ?? null,
+      );
+      return;
+    }
+    const openerId = readSessionOpenInActionId(actionId);
+    if (openerId) {
+      if (!FILE_LINK_OPENER_OPTIONS.some((option) => option.id === openerId)) return;
+      const cwd = (await readSessionLocation(session))?.cwd;
+      if (!cwd) return;
+      const opened = await openFileLink({ path: cwd }, openerId);
+      if (!opened) toast.danger("Failed to open working directory");
+      return;
+    }
+    if (actionId === SESSION_CONTEXT_MENU_ACTION_IDS.openInNewWindow) {
+      const presentation = catalog.findById(session.id);
+      const projectedSession = presentation
+        ? presentWorkbenchSession(presentation)
+        : presentWorkbenchSessionDomainWithScene(session, catalog.resolveScene(session));
+      await onOpenProjectSessionInNewWindow?.(projectedSession);
+    }
+  };
 
-      beginContextMenu(session.id);
-      try {
+  const openSessionContextMenu = async (
+    session: ProjectSessionDomain,
+    event: ReactMouseEvent<HTMLElement>,
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const [sections, directSectionId, availableOpeners, location] = await Promise.all([
+      listAllSidebarSections().catch(() => []),
+      readSidebarSectionItemPlacement({
+        kind: "session",
+        sessionId: session.id,
+      }).catch(() => null),
+      listAvailableFileLinkOpeners().catch(() => []),
+      readSessionLocation(session),
+    ]);
+    const customSections = sections.filter(
+      (section) => section.kind === "custom" && section.lifecycle === "active",
+    );
+    const preferredOpener = readFileLinkOpener();
+    const discoveredOpeners = Array.isArray(availableOpeners) ? availableOpeners : [];
+    const openInIds = discoveredOpeners.includes(preferredOpener)
+      ? [preferredOpener, ...discoveredOpeners.filter((id) => id !== preferredOpener)]
+      : discoveredOpeners;
+    const openInTargets = openInIds.flatMap((id) => {
+      const option = FILE_LINK_OPENER_OPTIONS.find((candidate) => candidate.id === id);
+      return option
+        ? [{ id: option.id, label: option.label, iconUrl: FILE_LINK_OPENER_ICON_URLS[option.id] }]
+        : [];
+    });
+    const execution = resolveSessionExecution(session);
+    const repository =
+      execution.kind === "runtime" && location?.cwd
+        ? await queryClient
+            .fetchQuery(gitRepositoryIdentityQueryOptions(location.cwd))
+            .catch(() => null)
+        : null;
+    const items = buildSessionContextMenuItems({
+      session,
+      projects,
+      sections: customSections,
+      directSectionId,
+      openInTargets,
+      location,
+      forkDestinations: sessionForkDestinations({
+        isWorktree: Boolean(location?.managedWorktreePath),
+        canCreateWorktree: repository !== null,
+      }),
+    });
+
+    beginContextMenu(session.id);
+    await runWithCleanup(
+      async () => {
         const selectedId = await showNativeContextMenu(items);
         if (!selectedId) return;
         await handleSessionContextMenuAction(session, selectedId);
-      } catch {
-        toast.danger("Native context menu is unavailable");
-      } finally {
-        finishContextMenu();
-      }
-    },
-    [
-      beginContextMenu,
-      finishContextMenu,
-      handleSessionContextMenuAction,
-      projects,
-      queryClient,
-      readSessionLocation,
-    ],
-  );
+      },
+      {
+        cleanup: () => {
+          finishContextMenu();
+        },
+        onError: () => {
+          toast.danger("Native context menu is unavailable");
+        },
+      },
+    );
+  };
 
   return {
     archiveSession,

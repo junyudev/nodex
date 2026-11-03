@@ -221,10 +221,14 @@ export function ComputerUseSettingsPage({ open }: { open: boolean }) {
   const [pending, setPending] = useState<PendingComputerUseSetting>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const [previousOpen, setPreviousOpen] = useState(open);
+  if (previousOpen !== open) {
+    setPreviousOpen(open);
+    if (open) setError(null);
+  }
   useEffect(() => {
     if (!open) return;
     let disposed = false;
-    setError(null);
     void readComputerUseSettings()
       .then((nextSnapshot) => {
         if (!disposed) setSnapshot(nextSnapshot);

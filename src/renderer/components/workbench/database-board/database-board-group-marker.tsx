@@ -1,7 +1,4 @@
-import {
-  dataSourcePropertyIcon,
-  dataSourcePropertyTypeIcon,
-} from "@/components/database/data-source-property-presentation";
+import { PropertyEditorIcon, PropertyTypeIcon } from "@/components/database/property-editor-icons";
 import { PriorityValueIcon } from "@/components/shared/icons/priority-value-icon";
 import { StatusIcon } from "@/lib/status-presentation";
 import { cn } from "@/lib/utils";
@@ -42,21 +39,16 @@ export function DatabaseBoardGroupMarker({
       />
     );
   }
-  const Icon =
-    group.marker.propertyId === null
-      ? dataSourcePropertyTypeIcon(group.marker.valueType)
-      : dataSourcePropertyIcon({
-          propertyId: group.marker.propertyId,
-          valueType: group.marker.valueType,
-        });
+  const iconProps = {
+    className: cn("size-4 shrink-0", group.marker.kind === "unassigned" && "opacity-55", className),
+    style: { color: group.accentColor },
+  };
+  if (group.marker.propertyId === null)
+    return <PropertyTypeIcon valueType={group.marker.valueType} {...iconProps} />;
   return (
-    <Icon
-      className={cn(
-        "size-4 shrink-0",
-        group.marker.kind === "unassigned" && "opacity-55",
-        className,
-      )}
-      style={{ color: group.accentColor }}
+    <PropertyEditorIcon
+      property={{ propertyId: group.marker.propertyId, valueType: group.marker.valueType }}
+      {...iconProps}
     />
   );
 }

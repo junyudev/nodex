@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useCallback, useEffect, useState } from "react";
 import { NodexButton } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
@@ -30,18 +31,23 @@ function GitInstructionSettingControl({
   const [draft, setDraft] = useState(value);
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => setDraft(value), [value]);
+  const [previousValue, setPreviousValue] = useState(value);
+  if (previousValue !== value) {
+    setPreviousValue(value);
+    setDraft(value);
+  }
 
   const changed = draft !== value;
-  const save = useCallback(async () => {
+  const save = async () => {
     if (!changed || saving) return;
     setSaving(true);
-    try {
-      await onSave(draft);
-    } finally {
-      setSaving(false);
-    }
-  }, [changed, draft, onSave, saving]);
+    return runWithCleanup(
+      async () => {
+        await onSave(draft);
+      },
+      { cleanup: () => setSaving(false) },
+    );
+  };
 
   return (
     <SectionBlock title={label}>

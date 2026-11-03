@@ -61,6 +61,7 @@ export function WorkbenchSceneFrame({
   layout,
   chrome,
 }: WorkbenchSceneFrameProps) {
+  const { setRightPanelComposerOverlayTarget } = chrome;
   const rightPanelOnLeft = layout.rightPanel.side === "left";
   const rightPanelConcealed = layout.rightPanel.concealed === true;
   return (
@@ -133,7 +134,7 @@ export function WorkbenchSceneFrame({
 
             <div className="absolute inset-0 min-h-0 min-w-0 overflow-hidden">
               <motion.div
-                ref={chrome.setRightPanelComposerOverlayTarget}
+                ref={setRightPanelComposerOverlayTarget}
                 data-right-panel-composer-overlay-host="true"
                 className={cn(
                   "absolute top-0 bottom-0 min-w-0 bg-token-main-surface-primary",

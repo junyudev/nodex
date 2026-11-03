@@ -295,6 +295,26 @@ describe("PendingWorktreeRoute", () => {
       "true",
     );
     expect((view.container.textContent ?? "").includes("\u001b")).toBe(false);
+
+    await act(async () => {
+      transport.emit({
+        ...settingUp,
+        setupOutputText: "bun install\nFinished dependency resolution\n",
+      });
+      await Promise.resolve();
+    });
+    expect(view.getByRole("button", { name: "Less details" }).getAttribute("aria-expanded")).toBe(
+      "true",
+    );
+    await act(async () => {
+      transport.emit({ ...settingUp, attempt: 2 });
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect(view.getByRole("button", { name: "More details" }).getAttribute("aria-expanded")).toBe(
+        "false",
+      ),
+    );
   });
 
   test("cancels only active worktree creation and exits the route", async () => {

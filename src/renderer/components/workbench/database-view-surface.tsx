@@ -449,7 +449,7 @@ function BoardDatabaseViewSurface({
       commitSeq: evidence.commitSeq,
       pageIds: new Set(evidence.pageIds),
     });
-  }, [canonicalMutationModel.boundedRead, model.routingContext, model.dataSourceId]);
+  }, [canonicalMutationModel.boundedRead, model.dataSourceId]);
   const promotions = useDatabasePromotionPresentation({
     model: canonicalMutationModel,
     effective: effectivePresentation,
@@ -536,9 +536,11 @@ function BoardDatabaseViewSurface({
   const [columnLayoutPrefs, setColumnLayoutPrefs] = useState<DatabaseBoardColumnLayoutPrefs>(() =>
     readDatabaseBoardColumnLayoutPrefs(columnLayoutScope),
   );
-  useEffect(() => {
+  const [previousColumnLayoutScope, setPreviousColumnLayoutScope] = useState(columnLayoutScope);
+  if (previousColumnLayoutScope !== columnLayoutScope) {
+    setPreviousColumnLayoutScope(columnLayoutScope);
     setColumnLayoutPrefs(readDatabaseBoardColumnLayoutPrefs(columnLayoutScope));
-  }, [columnLayoutScope]);
+  }
   const patchColumnLayout = (
     pathKey: string,
     patch: Parameters<typeof updateDatabaseBoardColumnLayoutPrefs>[3],
@@ -636,13 +638,15 @@ function BoardDatabaseViewSurface({
   );
   const visiblePageIds = useMemo(() => new Set(allRows.map((row) => row.pageId)), [allRows]);
 
-  useEffect(() => {
-    setHighlightedPageId((current) => (current && !visiblePageIds.has(current) ? null : current));
-    setSelectedPageIds((current) => {
-      const next = new Set([...current].filter((pageId) => visiblePageIds.has(pageId)));
-      return next.size === current.size ? current : next;
-    });
-  }, [visiblePageIds]);
+  if (highlightedPageId && !visiblePageIds.has(highlightedPageId)) {
+    setHighlightedPageId(null);
+  }
+  const visibleSelectedPageIds = new Set(
+    [...selectedPageIds].filter((id) => visiblePageIds.has(id)),
+  );
+  if (visibleSelectedPageIds.size !== selectedPageIds.size) {
+    setSelectedPageIds(visibleSelectedPageIds);
+  }
   const failedContinuations = [...(groupPagination?.values() ?? [])].filter(
     (state) => state.error !== null,
   );

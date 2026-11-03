@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import {
   useCallback,
   useEffect,
@@ -497,29 +498,30 @@ function toDiagnosticsUpdateInput(
 
 export function DiagnosticsSettingRows({ open }: { open: boolean }) {
   const [settings, setSettings] = useState<DiagnosticsSettings>(DEFAULT_DIAGNOSTICS_SETTINGS);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState(open);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      const result = await readDiagnosticsSettings();
-      if (!isDiagnosticsSettings(result)) {
-        throw new Error("Could not load diagnostics settings.");
-      }
-      setSettings(result);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not load diagnostics settings.");
-    } finally {
-      setBusy(false);
+  const [previousOpen, setPreviousOpen] = useState(open);
+  if (previousOpen !== open) {
+    setPreviousOpen(open);
+    if (open) {
+      setBusy(true);
+      setError(null);
     }
-  }, []);
+  }
 
   useEffect(() => {
     if (!open) return;
-    void load();
-  }, [load, open]);
+    void readDiagnosticsSettings()
+      .then((result) => {
+        if (!isDiagnosticsSettings(result)) throw new Error("Could not load diagnostics settings.");
+        setSettings(result);
+      })
+      .catch((err: unknown) => {
+        setError(err instanceof Error ? err.message : "Could not load diagnostics settings.");
+      })
+      .finally(() => setBusy(false));
+  }, [open]);
 
   const handleEnabledChange = useCallback(
     async (enabled: boolean) => {
@@ -529,20 +531,24 @@ export function DiagnosticsSettingRows({ open }: { open: boolean }) {
       setBusy(true);
       setError(null);
 
-      try {
-        const result = await updateDiagnosticsSettings(
-          toDiagnosticsUpdateInput(settings, { enabled }),
-        );
-        if (!isDiagnosticsSettings(result)) {
-          throw new Error("Could not save diagnostics settings.");
-        }
-        setSettings(result);
-      } catch (err) {
-        setSettings(previous);
-        setError(err instanceof Error ? err.message : "Could not save diagnostics settings.");
-      } finally {
-        setBusy(false);
-      }
+      return runWithCleanup(
+        async () => {
+          const result = await updateDiagnosticsSettings(
+            toDiagnosticsUpdateInput(settings, { enabled }),
+          );
+          if (!isDiagnosticsSettings(result)) {
+            throw new Error("Could not save diagnostics settings.");
+          }
+          setSettings(result);
+        },
+        {
+          cleanup: () => setBusy(false),
+          onError: (err) => {
+            setSettings(previous);
+            setError(err instanceof Error ? err.message : "Could not save diagnostics settings.");
+          },
+        },
+      );
     },
     [settings],
   );
@@ -555,20 +561,24 @@ export function DiagnosticsSettingRows({ open }: { open: boolean }) {
       setBusy(true);
       setError(null);
 
-      try {
-        const result = await updateDiagnosticsSettings(
-          toDiagnosticsUpdateInput(settings, { replayEnabled }),
-        );
-        if (!isDiagnosticsSettings(result)) {
-          throw new Error("Could not save diagnostics settings.");
-        }
-        setSettings(result);
-      } catch (err) {
-        setSettings(previous);
-        setError(err instanceof Error ? err.message : "Could not save diagnostics settings.");
-      } finally {
-        setBusy(false);
-      }
+      return runWithCleanup(
+        async () => {
+          const result = await updateDiagnosticsSettings(
+            toDiagnosticsUpdateInput(settings, { replayEnabled }),
+          );
+          if (!isDiagnosticsSettings(result)) {
+            throw new Error("Could not save diagnostics settings.");
+          }
+          setSettings(result);
+        },
+        {
+          cleanup: () => setBusy(false),
+          onError: (err) => {
+            setSettings(previous);
+            setError(err instanceof Error ? err.message : "Could not save diagnostics settings.");
+          },
+        },
+      );
     },
     [settings],
   );
@@ -652,29 +662,30 @@ function toTelemetryUpdateInput(
 
 export function TelemetrySettingRows({ open }: { open: boolean }) {
   const [settings, setSettings] = useState<TelemetrySettings>(DEFAULT_TELEMETRY_SETTINGS);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState(open);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      const result = await readTelemetrySettings();
-      if (!isTelemetrySettings(result)) {
-        throw new Error("Could not load telemetry settings.");
-      }
-      setSettings(result);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not load telemetry settings.");
-    } finally {
-      setBusy(false);
+  const [previousOpen, setPreviousOpen] = useState(open);
+  if (previousOpen !== open) {
+    setPreviousOpen(open);
+    if (open) {
+      setBusy(true);
+      setError(null);
     }
-  }, []);
+  }
 
   useEffect(() => {
     if (!open) return;
-    void load();
-  }, [load, open]);
+    void readTelemetrySettings()
+      .then((result) => {
+        if (!isTelemetrySettings(result)) throw new Error("Could not load telemetry settings.");
+        setSettings(result);
+      })
+      .catch((err: unknown) => {
+        setError(err instanceof Error ? err.message : "Could not load telemetry settings.");
+      })
+      .finally(() => setBusy(false));
+  }, [open]);
 
   const handleEnabledChange = useCallback(
     async (enabled: boolean) => {
@@ -684,18 +695,24 @@ export function TelemetrySettingRows({ open }: { open: boolean }) {
       setBusy(true);
       setError(null);
 
-      try {
-        const result = await updateTelemetrySettings(toTelemetryUpdateInput(settings, { enabled }));
-        if (!isTelemetrySettings(result)) {
-          throw new Error("Could not save telemetry settings.");
-        }
-        setSettings(result);
-      } catch (err) {
-        setSettings(previous);
-        setError(err instanceof Error ? err.message : "Could not save telemetry settings.");
-      } finally {
-        setBusy(false);
-      }
+      return runWithCleanup(
+        async () => {
+          const result = await updateTelemetrySettings(
+            toTelemetryUpdateInput(settings, { enabled }),
+          );
+          if (!isTelemetrySettings(result)) {
+            throw new Error("Could not save telemetry settings.");
+          }
+          setSettings(result);
+        },
+        {
+          cleanup: () => setBusy(false),
+          onError: (err) => {
+            setSettings(previous);
+            setError(err instanceof Error ? err.message : "Could not save telemetry settings.");
+          },
+        },
+      );
     },
     [settings],
   );
@@ -708,20 +725,24 @@ export function TelemetrySettingRows({ open }: { open: boolean }) {
       setBusy(true);
       setError(null);
 
-      try {
-        const result = await updateTelemetrySettings(
-          toTelemetryUpdateInput(settings, { autoCaptureEnabled }),
-        );
-        if (!isTelemetrySettings(result)) {
-          throw new Error("Could not save telemetry settings.");
-        }
-        setSettings(result);
-      } catch (err) {
-        setSettings(previous);
-        setError(err instanceof Error ? err.message : "Could not save telemetry settings.");
-      } finally {
-        setBusy(false);
-      }
+      return runWithCleanup(
+        async () => {
+          const result = await updateTelemetrySettings(
+            toTelemetryUpdateInput(settings, { autoCaptureEnabled }),
+          );
+          if (!isTelemetrySettings(result)) {
+            throw new Error("Could not save telemetry settings.");
+          }
+          setSettings(result);
+        },
+        {
+          cleanup: () => setBusy(false),
+          onError: (err) => {
+            setSettings(previous);
+            setError(err instanceof Error ? err.message : "Could not save telemetry settings.");
+          },
+        },
+      );
     },
     [settings],
   );
@@ -867,9 +888,11 @@ function PasteResourceNumberSettingControl({
 }) {
   const [draft, setDraft] = useState(String(value));
 
-  useEffect(() => {
+  const [previousValue, setPreviousValue] = useState(value);
+  if (previousValue !== value) {
+    setPreviousValue(value);
     setDraft(String(value));
-  }, [value]);
+  }
 
   const commit = useCallback(() => {
     const parsed = Number.parseInt(draft, 10);
@@ -1278,9 +1301,11 @@ export function WorktreeAutoBranchPrefixSettingControl({
 }) {
   const [draft, setDraft] = useState(value);
 
-  useEffect(() => {
+  const [previousValue, setPreviousValue] = useState(value);
+  if (previousValue !== value) {
+    setPreviousValue(value);
     setDraft(value);
-  }, [value]);
+  }
 
   const commit = useCallback(() => {
     if (disabled) return;

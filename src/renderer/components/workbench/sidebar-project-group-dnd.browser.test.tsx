@@ -145,7 +145,7 @@ function SortableProject({
   controller: SidebarGroupDndController;
   projectId: string;
 }) {
-  const sortable = useSortable({
+  const { setNodeRef, setActivatorNodeRef, ...sortable } = useSortable({
     id: getSidebarGroupDndId(projectId),
     data: {
       kind: "sidebar-group",
@@ -156,14 +156,14 @@ function SortableProject({
   });
   return (
     <div
-      ref={sortable.setNodeRef}
+      ref={setNodeRef}
       {...sortable.attributes}
       data-project-id={projectId}
       data-testid={`project-${projectId}`}
       style={{ alignItems: "center", display: "flex", height: 40, width: 240 }}
     >
       <div
-        ref={sortable.setActivatorNodeRef}
+        ref={setActivatorNodeRef}
         {...sortable.listeners}
         data-testid={`project-${projectId}-activator`}
       >
@@ -270,11 +270,11 @@ function MixedSidebarReorderHarness({
 }
 
 function PinnedProjectDropTarget() {
-  const target = useSidebarPinnedDropContainer();
+  const { setNodeRef, ...target } = useSidebarPinnedDropContainer();
 
   return (
     <div
-      ref={target.setNodeRef}
+      ref={setNodeRef}
       data-testid="pinned-project-drop-target"
       style={{ height: 40, width: 240 }}
     >
@@ -284,7 +284,7 @@ function PinnedProjectDropTarget() {
 }
 
 function CustomSectionProjectDropTarget() {
-  const target = useSidebarThreadDropContainer({
+  const { setNodeRef, ...target } = useSidebarThreadDropContainer({
     acceptProjectDrop: true,
     containerId: "section:section-alpha",
     targetProjectKind: "local",
@@ -292,7 +292,7 @@ function CustomSectionProjectDropTarget() {
   const active = target.isOver && (target.projectDragActive || target.threadDragActive);
 
   return (
-    <div ref={target.setNodeRef}>
+    <div ref={setNodeRef}>
       {active ? <SidebarDropIndicator /> : null}
       <div data-testid="custom-section-project-drop-target" style={{ height: 40, width: 240 }} />
     </div>

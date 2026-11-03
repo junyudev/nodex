@@ -40,7 +40,7 @@ import {
 } from "../../../shared/workbench-commands";
 import { DEFAULT_PROJECT_APPEARANCE } from "../../../shared/project-appearance";
 import type { CommandPaletteWorkspaceSelection } from "@/lib/command-palette-workspace-selection";
-import type { CommandPaletteSurfaceHandle } from "./command-palette-surface";
+import { CommandPaletteSurface, type CommandPaletteSurfaceHandle } from "./command-palette-surface";
 
 vi.mock("./threads-icon", () => ({
   ThreadsIcon: ({ className }: { className?: string }) => createElement("span", { className }, "T"),
@@ -505,7 +505,6 @@ function makePageSearchResult(
 
 describe("CommandPaletteSurface", () => {
   test("closes on Escape without replacing the live query", async () => {
-    const { CommandPaletteSurface } = await import("./command-palette-surface");
     const close = vi.fn();
     const view = render(
       <CommandPaletteSurface
@@ -530,7 +529,6 @@ describe("CommandPaletteSurface", () => {
   });
 
   test("preserves the query and input focus when switching scopes by click or Tab", async () => {
-    const { CommandPaletteSurface } = await import("./command-palette-surface");
     function Harness() {
       const [mode, setMode] = useState<CommandMenuMode>("root");
       return (
@@ -610,7 +608,6 @@ describe("CommandPaletteSurface", () => {
   });
 
   test("leaves IME acceptance and navigation with the composition owner", async () => {
-    const { CommandPaletteSurface } = await import("./command-palette-surface");
     const surfaceRef = createRef<CommandPaletteSurfaceHandle>();
     const execute = vi.fn();
     const changeMode = vi.fn();
@@ -661,7 +658,6 @@ describe("CommandPaletteSurface", () => {
   });
 
   test("opens All with quick actions and recent content, and Actions with the complete catalog", async () => {
-    const { CommandPaletteSurface } = await import("./command-palette-surface");
     const pages = Array.from({ length: 8 }, (_, index) =>
       makePalettePage({
         id: `default:recent-page-${index}`,
@@ -714,7 +710,6 @@ describe("CommandPaletteSurface", () => {
   });
 
   test("expands a discovery section without closing, losing the query, or moving selection", async () => {
-    const { CommandPaletteSurface } = await import("./command-palette-surface");
     const pages = Array.from({ length: 12 }, (_, index) =>
       makePalettePage({
         id: `default:page-${index}`,
@@ -788,7 +783,6 @@ describe("CommandPaletteSurface", () => {
   });
 
   test("opens the top fuzzy description match when the selected result is activated", async () => {
-    const { CommandPaletteSurface } = await import("./command-palette-surface");
     const executedItems: CommandPalettePage[] = [];
     const closeCalls: number[] = [];
     const pages = [
@@ -862,7 +856,6 @@ describe("CommandPaletteSurface", () => {
   });
 
   test("root mode searches commands without the legacy > prefix or unrelated Pages", async () => {
-    const { CommandPaletteSurface } = await import("./command-palette-surface");
     const { container, getByLabelText } = render(
       <CommandPaletteSurface
         open
@@ -903,7 +896,6 @@ describe("CommandPaletteSurface", () => {
   });
 
   test("runs a result with the query that found it in every scope", async () => {
-    const { CommandPaletteSurface } = await import("./command-palette-surface");
     const execute = vi.fn();
     const { container } = render(
       <CommandPaletteSurface
@@ -941,7 +933,6 @@ describe("CommandPaletteSurface", () => {
   });
 
   test("keeps Page search pending instead of flashing a false empty state", async () => {
-    const { CommandPaletteSurface } = await import("./command-palette-surface");
     const pages = [
       makePalettePage({
         page: makePage({
@@ -976,7 +967,6 @@ describe("CommandPaletteSurface", () => {
   });
 
   test("surfaces Core Page-search failures without falling back to local Pages", async () => {
-    const { CommandPaletteSurface } = await import("./command-palette-surface");
     const pages = [
       makePalettePage({
         page: makePage({
@@ -1012,7 +1002,6 @@ describe("CommandPaletteSurface", () => {
   });
 
   test("shows the Page empty state only after the current search settles", async () => {
-    const { CommandPaletteSurface } = await import("./command-palette-surface");
     const pages = [
       makePalettePage({
         page: makePage({
@@ -1046,7 +1035,6 @@ describe("CommandPaletteSurface", () => {
   });
 
   test("caps root Page discovery at five results", async () => {
-    const { CommandPaletteSurface } = await import("./command-palette-surface");
     const pages = Array.from({ length: 10 }, (_, index) =>
       makePalettePage({
         id: `default:page-result-${index}`,
@@ -1085,7 +1073,6 @@ describe("CommandPaletteSurface", () => {
   });
 
   test("surfaces Page body-only matches in root mode", async () => {
-    const { CommandPaletteSurface } = await import("./command-palette-surface");
     const pages = [
       makePalettePage({
         page: makePage({
@@ -1154,7 +1141,6 @@ describe("CommandPaletteSurface", () => {
   });
 
   test("keeps five Page results alongside independent command and chat sections", async () => {
-    const { CommandPaletteSurface } = await import("./command-palette-surface");
     const pages = Array.from({ length: 8 }, (_, index) =>
       makePalettePage({
         id: `default:page-result-${index}`,
@@ -1204,7 +1190,6 @@ describe("CommandPaletteSurface", () => {
   });
 
   test("opens a chat found by a title substring through its Session", async () => {
-    const { CommandPaletteSurface } = await import("./command-palette-surface");
     const executedItems: CommandPaletteChat[] = [];
     const closeCalls: number[] = [];
     const searched: ChatSearchInput[] = [];
@@ -1261,7 +1246,6 @@ describe("CommandPaletteSurface", () => {
   });
 
   test("pages mode does not search or render chats", async () => {
-    const { CommandPaletteSurface } = await import("./command-palette-surface");
     const pages = [
       makePalettePage({
         page: makePage({
@@ -1307,7 +1291,6 @@ describe("CommandPaletteSurface", () => {
   });
 
   test("lists chats matched only by message history after catalog matches", async () => {
-    const { CommandPaletteSurface } = await import("./command-palette-surface");
     mockChatQueries({
       search: () => ({
         matches: [chatMatch(makeChat({ sessionId: "title-hit", title: "Snippet notes" }))],
@@ -1353,7 +1336,6 @@ describe("CommandPaletteSurface", () => {
   });
 
   test("keeps commands and catalog chats together in root mode", async () => {
-    const { CommandPaletteSurface } = await import("./command-palette-surface");
     mockChatCatalog([chatMatch(makeChat({ title: "Open historical chat" }))]);
     const { container } = render(
       <CommandPaletteSurface
@@ -1377,7 +1359,6 @@ describe("CommandPaletteSurface", () => {
   });
 
   test("keeps five root catalog chats interactive while message history is searched", async () => {
-    const { CommandPaletteSurface } = await import("./command-palette-surface");
     mockChatQueries({
       search: (input) => ({
         matches: Array.from({ length: 9 }, (_, index) =>
@@ -1408,7 +1389,6 @@ describe("CommandPaletteSurface", () => {
   });
 
   test("keeps catalog chats when some message history cannot be searched", async () => {
-    const { CommandPaletteSurface } = await import("./command-palette-surface");
     mockChatQueries({
       search: () => ({
         matches: [chatMatch(makeChat({ title: "Fallback metadata chat" }))],
@@ -1467,7 +1447,6 @@ describe("CommandPaletteSurface", () => {
   });
 
   test("skips disabled commands and updates aria-activedescendant during keyboard navigation", async () => {
-    const { CommandPaletteSurface } = await import("./command-palette-surface");
     const executedItems: CommandPaletteCommand[] = [];
     const { container, getByLabelText } = render(
       <CommandPaletteSurface
@@ -1558,7 +1537,6 @@ describe("CommandPaletteSurface", () => {
   });
 
   test("jumps between enabled section entries and list edges with modified arrows", async () => {
-    const { CommandPaletteSurface } = await import("./command-palette-surface");
     const view = render(
       <CommandPaletteSurface
         open
@@ -1618,7 +1596,6 @@ describe("CommandPaletteSurface", () => {
   });
 
   test("renders the filter button on the search-input row", async () => {
-    const { CommandPaletteSurface } = await import("./command-palette-surface");
     const pages = [
       makePalettePage({
         projectId: "ops",
@@ -1757,7 +1734,6 @@ describe("buildCommandPaletteCommands navigation", () => {
 test.each(["needle", "/workspace/result.ts"])(
   "Files requires a folder before searching %s",
   async (query) => {
-    const { CommandPaletteSurface } = await import("./command-palette-surface");
     const previousApi = window.api;
     const previousQuery = apiMock.invokeImplementation;
     const queryOwner = vi.fn(previousQuery);
@@ -1799,7 +1775,6 @@ test.each(["needle", "/workspace/result.ts"])(
 );
 
 test("Files keeps empty and pending states out of keyboard selection and opens the full result path", async () => {
-  const { CommandPaletteSurface } = await import("./command-palette-surface");
   const name = `report-${"🙂".repeat(100)}.ts`;
   const path = `deep/${"nested/".repeat(20)}${name}`;
   const fixture = createFileSearchFixture([{ name, path, type: "file", isSymlink: false }]);
@@ -1885,7 +1860,6 @@ test("Files keeps empty and pending states out of keyboard selection and opens t
 });
 
 test("choosing the current Project folder remains an explicit boundary until context is restored", async () => {
-  const { CommandPaletteSurface } = await import("./command-palette-surface");
   const previousQuery = apiMock.invokeImplementation;
   const metadata = vi.fn(async () => ({ isFile: true }));
   apiMock.invokeImplementation = async (...args) => {
@@ -1971,7 +1945,6 @@ test("choosing the current Project folder remains an explicit boundary until con
 });
 
 test("All shows progress while only current Text search remains pending and removes it for results", async () => {
-  const { CommandPaletteSurface } = await import("./command-palette-surface");
   type Request = import("../../../shared/workspace-text-search").WorkspaceTextSearchRequest;
   type SearchEvent = import("../../../shared/workspace-text-search").WorkspaceTextSearchEvent;
   const requests: Request[] = [];
@@ -2043,7 +2016,6 @@ test("All shows progress while only current Text search remains pending and remo
 });
 
 test("file search opens directories on the selected host and releases its session", async () => {
-  const { CommandPaletteSurface } = await import("./command-palette-surface");
   const fixture = createFileSearchFixture([
     { name: "src", path: "src", type: "directory", isSymlink: false },
     { name: "index.ts", path: "src/index.ts", type: "file", isSymlink: false },
@@ -2107,7 +2079,6 @@ test("file search opens directories on the selected host and releases its sessio
 });
 
 test("Text streams host-scoped matches, filters file types, and fences stale acceptance", async () => {
-  const { CommandPaletteSurface } = await import("./command-palette-surface");
   const listeners = new Set<(...args: unknown[]) => void>();
   const requests: import("../../../shared/workspace-text-search").WorkspaceTextSearchRequest[] = [];
   const stopped: string[] = [];
@@ -2227,7 +2198,6 @@ test("Text streams host-scoped matches, filters file types, and fences stale acc
 });
 
 test("Text keeps Project query and mask history when choosing a different search folder", async () => {
-  const { CommandPaletteSurface } = await import("./command-palette-surface");
   type Request = import("../../../shared/workspace-text-search").WorkspaceTextSearchRequest;
   const requests: Request[] = [];
   const fileRequests: import("../../../shared/file-search").FileSearchStartInput[] = [];
@@ -2374,7 +2344,6 @@ test("Text keeps Project query and mask history when choosing a different search
 });
 
 test("Text recovers after a terminal error without accepting stale results", async () => {
-  const { CommandPaletteSurface } = await import("./command-palette-surface");
   type Request = import("../../../shared/workspace-text-search").WorkspaceTextSearchRequest;
   type SearchEvent = import("../../../shared/workspace-text-search").WorkspaceTextSearchEvent;
   const requests: Request[] = [];

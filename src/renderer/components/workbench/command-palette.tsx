@@ -105,6 +105,7 @@ export function CommandPalette({
     workspaceSelection.initialMode !== initialMode ||
     workspaceSelection.openTriggerTick !== openTriggerTick
   ) {
+    if (open) setMode(initialMode);
     setWorkspaceSelection({
       open,
       initialMode,
@@ -121,12 +122,20 @@ export function CommandPalette({
   const focusSnapshot = useRef<CommandPaletteFocusSnapshot | null>(null);
   const lastQuery = useRef("");
   const [openingQuery, setOpeningQuery] = useState(initialQuery ?? "");
+  const openingRequestRef = useRef<{ tick: number; query: string | undefined } | null>(null);
   useLayoutEffect(() => {
     if (open) {
       focusSnapshot.current ??= captureCommandPaletteFocus();
+      if (
+        openingRequestRef.current?.tick === openTriggerTick &&
+        openingRequestRef.current.query === initialQuery
+      )
+        return;
+      openingRequestRef.current = { tick: openTriggerTick, query: initialQuery };
       setOpeningQuery(initialQuery ?? readCommandPaletteSelectionQuery() ?? lastQuery.current);
       return;
     }
+    openingRequestRef.current = null;
     focusSnapshot.current?.restore();
     focusSnapshot.current = null;
   }, [open, initialQuery, openTriggerTick]);
@@ -168,10 +177,6 @@ export function CommandPalette({
     ],
     [commandContext, isMac, onOpenSettingsSection],
   );
-
-  useEffect(() => {
-    if (open) setMode(initialMode);
-  }, [initialMode, open, openTriggerTick]);
 
   const handleChangeMode = useCallback((nextMode: CommandMenuMode) => {
     setMode(nextMode);

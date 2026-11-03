@@ -59,7 +59,6 @@ export function useDatabaseSettingsRuntime(input: {
   const [pageLayoutLoading, setPageLayoutLoading] = useState(false);
   const authorityRef = useRef(authority);
   const readSequence = useRef(0);
-  authorityRef.current = authority;
 
   const applyAuthority = useCallback((next: DatabaseSettingsAuthority) => {
     authorityRef.current = next;
@@ -90,12 +89,17 @@ export function useDatabaseSettingsRuntime(input: {
     }
   }, [applyAuthority, input.activeViewId, input.databaseId, input.projectId]);
 
-  useEffect(() => {
+  const refreshIdentity = JSON.stringify([input.projectId, input.databaseId, input.activeViewId]);
+  const [previousIdentity, setPreviousIdentity] = useState(refreshIdentity);
+  if (previousIdentity !== refreshIdentity) {
+    setPreviousIdentity(refreshIdentity);
     setAuthority(null);
-    authorityRef.current = null;
     setPageLayout(null);
+  }
+  useEffect(() => {
+    authorityRef.current = null;
     void refresh();
-  }, [input.databaseId, input.projectId, refresh]);
+  }, [refresh]);
 
   const loadPageLayout = useCallback(
     async (dataSourceId: string): Promise<DatabasePageLayoutV2 | null> => {

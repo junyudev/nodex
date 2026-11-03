@@ -2,7 +2,7 @@ import { draggable as registerDraggable } from "@atlaskit/pragmatic-drag-and-dro
 import { disableNativeDragPreview } from "@atlaskit/pragmatic-drag-and-drop/utils/disable-native-drag-preview";
 import { preserveOffsetOnSource } from "@atlaskit/pragmatic-drag-and-drop/utils/preserve-offset-on-source";
 import { setCustomNativeDragPreview } from "@atlaskit/pragmatic-drag-and-drop/utils/set-custom-native-drag-preview";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 
 import type { BoardCardDragData } from "@/components/board/pragmatic-drag-data";
 import type {
@@ -162,11 +162,9 @@ export const useDatabaseViewPageDragSource = (
     readonly onDragFinished?: () => void;
   } = {},
 ): DatabaseViewPageDragSourceRegistration => {
-  const dragDataRef = useRef(dragData);
+  const readDragData = useEffectEvent(() => dragData);
+  const onDragFinished = useEffectEvent(() => options.onDragFinished?.());
   const activeDragDataRef = useRef<BoardCardDragData | null>(null);
-  const onDragFinishedRef = useRef(options.onDragFinished);
-  dragDataRef.current = dragData;
-  onDragFinishedRef.current = options.onDragFinished;
   const enabled = dragData !== null;
   const dragHandle = options.dragHandle ?? null;
   const nativePreview = options.nativePreview ?? "disabled";
@@ -185,7 +183,7 @@ export const useDatabaseViewPageDragSource = (
       element.removeAttribute("data-database-view-page-drag-active");
       dragHandle?.removeAttribute("data-database-view-page-drag-active");
       activeDragDataRef.current = null;
-      if (wasActive) onDragFinishedRef.current?.();
+      if (wasActive) onDragFinished();
     };
     const setCopyMove = (event: DragEvent): void => {
       if (event.dataTransfer) event.dataTransfer.effectAllowed = "copyMove";
@@ -195,7 +193,7 @@ export const useDatabaseViewPageDragSource = (
       element,
       ...(dragHandle ? { dragHandle } : {}),
       getInitialData: () => {
-        const activeDragData = activeDragDataRef.current ?? dragDataRef.current;
+        const activeDragData = activeDragDataRef.current ?? readDragData();
         if (!activeDragData) {
           throw new Error("Database Page drag data is unavailable");
         }

@@ -40,7 +40,7 @@ import {
   NodexPopoverContent,
   NodexPopoverTrigger,
 } from "@/components/ui/popover";
-import { dataSourcePropertyIcon } from "@/components/database/data-source-property-presentation";
+import { PropertyEditorIcon } from "@/components/database/property-editor-icons";
 import {
   databaseFilterClauseWithOperator,
   databaseFilterClauseWithProperty,
@@ -365,17 +365,19 @@ function SortableQuickFilterToken({
   readonly busy: boolean;
   readonly actionPreview?: PersonalRuleActionKind;
 }) {
-  const sortable = useContinuousSortable({ id: filter.filterId, disabled: busy });
+  const { setNodeRef, style, attributes, listeners } = useContinuousSortable({
+    id: filter.filterId,
+    disabled: busy,
+  });
   const property = properties.find(
     (candidate) => candidate.propertyId === filter.clause.propertyId,
   );
-  const Icon = property ? dataSourcePropertyIcon(property) : FilterIcon;
   const summary = summarizeDatabaseViewFilter(filter.clause, properties, optionRegistries)[0];
   const empty = databaseViewFilterClauseIsEmpty(filter.clause);
   const open =
     controller.popover?.kind === "quick_filter" && controller.popover.filterId === filter.filterId;
   return (
-    <div ref={sortable.setNodeRef} style={sortable.style} className="flex shrink-0 items-center">
+    <div ref={setNodeRef} style={style} className="flex shrink-0 items-center">
       <NodexPopover
         open={open}
         onOpenChange={(next) =>
@@ -389,14 +391,18 @@ function SortableQuickFilterToken({
             actionPreview={actionPreview}
           >
             <span
-              {...sortable.attributes}
-              {...sortable.listeners}
+              {...attributes}
+              {...listeners}
               className="-ml-1 inline-flex cursor-grab touch-none items-center opacity-55 active:cursor-grabbing"
               aria-label={`Reorder filter ${property?.name ?? "Missing property"}`}
             >
               <DragHandleDotsIcon className="size-3" />
             </span>
-            <Icon className="size-3.5" />
+            {property ? (
+              <PropertyEditorIcon property={property} className="size-3.5" />
+            ) : (
+              <FilterIcon className="size-3.5" />
+            )}
             <span className="max-w-56 truncate">
               {summary
                 ? `${summary.label}: ${summary.value}`
@@ -443,7 +449,10 @@ function SortableSortRow({
   readonly onDelete: () => void;
 }) {
   const id = sortKey(sort);
-  const sortable = useContinuousSortable({ id, disabled: busy });
+  const { setNodeRef, style, attributes, listeners } = useContinuousSortable({
+    id,
+    disabled: busy,
+  });
   const [ascending, descending] = databaseViewSortDirectionLabels(sort, properties);
   const selectedPropertyId = sort.field.kind === "property" ? sort.field.propertyId : null;
   const selectedProperty = selectedPropertyId
@@ -494,13 +503,13 @@ function SortableSortRow({
   ].filter((field) => field.value === id || !unavailableFieldKeys.has(field.value));
   return (
     <div
-      ref={sortable.setNodeRef}
-      style={sortable.style}
+      ref={setNodeRef}
+      style={style}
       className="grid min-h-8 w-full grid-cols-[24px_max-content_max-content_minmax(32px,1fr)_24px] items-center gap-2 px-1"
     >
       <span
-        {...sortable.attributes}
-        {...sortable.listeners}
+        {...attributes}
+        {...listeners}
         className="inline-flex size-6 cursor-grab touch-none items-center justify-center text-token-description-foreground active:cursor-grabbing"
         aria-label={`Reorder sort ${databaseViewSortFieldLabel(sort, properties)}`}
       >
@@ -692,7 +701,7 @@ function SortPopover({
 interface RulePropertyPickerOption {
   readonly key: string;
   readonly label: string;
-  readonly Icon: ComponentType<{ className?: string }>;
+  readonly icon: ReactNode;
   readonly onSelect: () => void;
 }
 
@@ -749,9 +758,9 @@ function RulePropertyPicker({
         />
       ) : null}
       <div className="max-h-72 overflow-y-auto">
-        {candidates.map(({ key, label, Icon, onSelect }) => (
+        {candidates.map(({ key, label, icon, onSelect }) => (
           <button key={key} type="button" className={MENU_ROW} onClick={onSelect}>
-            <Icon className="size-4" />
+            {icon}
             <span className="min-w-0 flex-1 truncate">{label}</span>
           </button>
         ))}
@@ -812,7 +821,7 @@ function FilterPropertyPicker({
       options={candidates.map((property) => ({
         key: property.propertyId,
         label: property.name,
-        Icon: dataSourcePropertyIcon(property),
+        icon: <PropertyEditorIcon property={property} className="size-4" />,
         onSelect: () => controller.addQuickFilter(property),
       }))}
       footer={
@@ -849,13 +858,13 @@ function SortPropertyPicker({
     {
       key: "title",
       label: "Name",
-      Icon: NamePropertyIcon,
+      icon: <NamePropertyIcon className="size-4" />,
       onSelect: () => controller.addSort({ kind: "title" }),
     },
     {
       key: "created",
       label: "Created time",
-      Icon: ClockIcon,
+      icon: <ClockIcon className="size-4" />,
       onSelect: () => controller.addSort({ kind: "created" }),
     },
     ...properties
@@ -863,7 +872,7 @@ function SortPropertyPicker({
       .map((property) => ({
         key: `property:${property.propertyId}`,
         label: property.name,
-        Icon: dataSourcePropertyIcon(property),
+        icon: <PropertyEditorIcon property={property} className="size-4" />,
         onSelect: () => controller.addSort({ kind: "property", propertyId: property.propertyId }),
       })),
   ].filter((option) => !existing.has(option.key));

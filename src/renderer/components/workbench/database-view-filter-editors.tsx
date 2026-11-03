@@ -10,7 +10,7 @@ import {
   SearchIcon,
 } from "@/components/shared/icons";
 import { DatePropertyEditor } from "@/components/database/date-property-editor";
-import { dataSourcePropertyIcon } from "@/components/database/data-source-property-presentation";
+import { PropertyEditorIcon } from "@/components/database/property-editor-icons";
 import { PropertyOptionPicker } from "@/components/database/property-option-picker";
 import {
   presentSemanticPropertyOptions,
@@ -42,7 +42,7 @@ import {
   wrapDatabaseViewAdvancedFilterNode,
 } from "@/lib/database-view-advanced-filter";
 import { useObjectIdentityKey } from "@/lib/use-object-identity-keys";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
 import type {
   DatabaseJsonValue,
   DatabasePropertyOption,
@@ -79,10 +79,12 @@ export function DatabaseRulePropertyLabel({
   readonly property: DataSourcePropertyRecordV2;
   readonly className?: string;
 }) {
-  const Icon = dataSourcePropertyIcon(property);
   return (
     <span className={cn("flex min-w-0 items-center gap-1.5", className)}>
-      <Icon className="size-4 shrink-0 text-token-text-secondary" />
+      <PropertyEditorIcon
+        property={property}
+        className="size-4 shrink-0 text-token-text-secondary"
+      />
       <span className="truncate">{property.name}</span>
     </span>
   );
@@ -289,29 +291,35 @@ function DebouncedFilterTextInput({
   readonly onChange: (value: string) => void;
 }) {
   const [draft, setDraft] = useState(value);
-  const latestRef = useRef(value);
-  const onChangeRef = useRef(onChange);
-  latestRef.current = draft;
-  onChangeRef.current = onChange;
-  useEffect(() => setDraft(value), [value]);
+  const pendingDraftRef = useRef<string | null>(null);
+  const commitPending = useEffectEvent((previousValue: string) => {
+    const pending = pendingDraftRef.current;
+    if (pending !== null && pending !== previousValue) onChange(pending);
+  });
+  const [previousValue, setPreviousValue] = useState(value);
+  if (previousValue !== value) {
+    setPreviousValue(value);
+    setDraft(value);
+  }
   useEffect(() => {
     if (draft === value) return;
     const timeout = window.setTimeout(() => onChange(draft), 250);
     return () => window.clearTimeout(timeout);
   }, [draft, onChange, value]);
-  useEffect(
-    () => () => {
-      if (latestRef.current !== value) onChangeRef.current(latestRef.current);
-    },
-    [value],
-  );
+  useEffect(() => {
+    pendingDraftRef.current = null;
+    return () => commitPending(value);
+  }, [value]);
   return (
     <input
       type={type}
       aria-label={ariaLabel}
       value={draft}
       disabled={disabled}
-      onChange={(event) => setDraft(event.target.value)}
+      onChange={(event) => {
+        pendingDraftRef.current = event.target.value;
+        setDraft(event.target.value);
+      }}
       onBlur={() => {
         if (draft !== value) onChange(draft);
       }}

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vite-plus/test";
 import type { DragEndEvent } from "@dnd-kit/core";
-import { act } from "react";
+import { act, useLayoutEffect } from "react";
 import { render } from "@/test/dom";
 import {
   dispatchSidebarThreadDragEnd,
@@ -1247,13 +1247,16 @@ describe("optimistic sidebar thread order", () => {
     let latest!: ReturnType<typeof useSidebarThreadReorderController>;
 
     function Harness() {
-      latest = useSidebarThreadReorderController({
+      const controller = useSidebarThreadReorderController({
         visibleThreadKeys: ["alpha", "beta", "gamma"],
         onVisibleThreadOrderChange(change) {
           changes.push(change);
           return request.promise;
         },
       });
+      useLayoutEffect(() => {
+        latest = controller;
+      }, [controller]);
       return null;
     }
 
@@ -1298,7 +1301,7 @@ describe("optimistic sidebar thread order", () => {
     let latest!: ReturnType<typeof useSidebarThreadReorderController>;
 
     function Harness({ visibleThreadKeys }: { visibleThreadKeys: string[] }) {
-      latest = useSidebarThreadReorderController({
+      const controller = useSidebarThreadReorderController({
         visibleThreadKeys,
         onVisibleThreadOrderChange() {
           const request = requestIndex === 0 ? firstRequest : secondRequest;
@@ -1306,6 +1309,9 @@ describe("optimistic sidebar thread order", () => {
           return request.promise;
         },
       });
+      useLayoutEffect(() => {
+        latest = controller;
+      }, [controller]);
       return null;
     }
 
@@ -1362,12 +1368,15 @@ describe("optimistic sidebar thread order", () => {
     let latest!: ReturnType<typeof useSidebarThreadReorderController>;
 
     function Harness() {
-      latest = useSidebarThreadReorderController({
+      const controller = useSidebarThreadReorderController({
         visibleThreadKeys: ["alpha", "beta", "gamma"],
         onVisibleThreadOrderChange() {
           return Promise.reject(failure);
         },
       });
+      useLayoutEffect(() => {
+        latest = controller;
+      }, [controller]);
       return null;
     }
 

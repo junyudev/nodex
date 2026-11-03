@@ -219,9 +219,6 @@ export function HeaderShellSlot({
   const entries = useHeaderActions(side);
   const slotRef = useRef<HTMLDivElement | null>(null);
   const railRef = useRef<HTMLDivElement | null>(null);
-  const measurementKey = entries
-    .map((entry) => `${entry.actionId}:${entry.align}:${entry.order}`)
-    .join("|");
   const paddingClassName = resolveHeaderSlotPaddingClassName(side, entries.length);
 
   // Each action mounts once: the slot's natural width is read from the actions it shows, so
@@ -269,14 +266,7 @@ export function HeaderShellSlot({
     return () => {
       resizeObserver.disconnect();
     };
-  }, [
-    entries.length,
-    fallbackRailWidth,
-    fallbackWidth,
-    measurementKey,
-    onMeasuredRailWidthChange,
-    onMeasuredWidthChange,
-  ]);
+  }, [entries, fallbackRailWidth, fallbackWidth, onMeasuredRailWidthChange, onMeasuredWidthChange]);
 
   return (
     <motion.div

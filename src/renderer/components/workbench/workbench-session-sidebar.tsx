@@ -1959,7 +1959,7 @@ export function ProjectSessionSidebar({
     sessionCollectionsByProject,
   ]);
   const { mutation: libraryMutation } = useApplyLibraryOperation();
-  const sidebarScrollChrome = useSidebarScrollChrome();
+  const { scrollAreaRef, ...sidebarScrollChrome } = useSidebarScrollChrome();
   useEffect(
     () => () => {
       onHoverSurfaceOpenChange?.(false);
@@ -2130,7 +2130,7 @@ export function ProjectSessionSidebar({
           </WorkbenchSidebarHeader>
 
           <div
-            ref={sidebarScrollChrome.scrollAreaRef}
+            ref={scrollAreaRef}
             data-app-action-sidebar-scroll=""
             data-content-below={sidebarScrollChrome.hasContentBelow ? "true" : "false"}
             className={SIDEBAR_SCROLL_AREA_CLASS}

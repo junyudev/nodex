@@ -1,4 +1,4 @@
-import { useEffect, useId, useState, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 import {
   AutomationActiveStatusIcon,
   ChevronRightIcon,
@@ -95,9 +95,23 @@ export function PendingWorktreeProgress({
   const [detailsExpanded, setDetailsExpanded] = useState(model.detailsInitiallyExpanded);
   const [initialOutput] = useState(model.outputText);
 
-  useEffect(() => {
+  const [detailsInput, setDetailsInput] = useState({
+    attempt: entry.attempt,
+    id: entry.id,
+    expanded: model.detailsInitiallyExpanded,
+  });
+  if (
+    detailsInput.attempt !== entry.attempt ||
+    detailsInput.id !== entry.id ||
+    detailsInput.expanded !== model.detailsInitiallyExpanded
+  ) {
+    setDetailsInput({
+      attempt: entry.attempt,
+      id: entry.id,
+      expanded: model.detailsInitiallyExpanded,
+    });
     setDetailsExpanded(model.detailsInitiallyExpanded);
-  }, [entry.attempt, entry.id, model.detailsInitiallyExpanded]);
+  }
 
   const detailsVisible = model.outputText.length > 0;
   const footerVisible = detailsVisible || actions !== null;

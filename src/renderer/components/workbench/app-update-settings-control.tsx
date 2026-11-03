@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { readSettingsHostPresentation } from "@/lib/settings-host-presentation";
 import { useCallback, useEffect, useState } from "react";
 import { NodexButton, NodexSwitch } from "@/components/ui/button";
@@ -100,6 +101,11 @@ const FALLBACK_STATUS: AppUpdateStatus = {
   channelChangeAllowed: false,
 };
 
+async function restartForAppUpdate(): Promise<void> {
+  const result = await installAppUpdate();
+  if (result !== true) throw new Error("Could not restart to install the update.");
+}
+
 export function AppUpdateSettingsControlView({
   busy,
   error,
@@ -200,34 +206,24 @@ export function AppUpdateSettingRows({ open }: { open: boolean }) {
     automaticChecksEnabled: true,
     channel: "stable",
   });
-  const [status, setStatus] = useState<AppUpdateStatus>(FALLBACK_STATUS);
-  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<AppUpdateStatus>(sharedStatus ?? FALLBACK_STATUS);
+  const [busy, setBusy] = useState(open);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setBusy(true);
-    setError(null);
-
-    try {
-      const [settingsResult, statusResult] = await Promise.all([
-        readAppUpdateSettings(),
-        readAppUpdateStatus(),
-      ]);
-
-      if (!isAppUpdateSettings(settingsResult)) {
-        throw new Error("Could not load app update settings.");
-      }
-      if (!isAppUpdateStatus(statusResult)) {
-        throw new Error("Could not load app update status.");
-      }
-
-      setSettings(settingsResult);
-      setStatus(statusResult);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not load app update settings.");
-    } finally {
-      setBusy(false);
-    }
+  const load = useCallback(() => {
+    const request = async () => Promise.all([readAppUpdateSettings(), readAppUpdateStatus()]);
+    return request()
+      .then(([settingsResult, statusResult]) => {
+        if (!isAppUpdateSettings(settingsResult))
+          throw new Error("Could not load app update settings.");
+        if (!isAppUpdateStatus(statusResult)) throw new Error("Could not load app update status.");
+        setSettings(settingsResult);
+        setStatus(statusResult);
+      })
+      .catch((err) =>
+        setError(err instanceof Error ? err.message : "Could not load app update settings."),
+      )
+      .finally(() => setBusy(false));
   }, []);
 
   useEffect(() => {
@@ -242,9 +238,15 @@ export function AppUpdateSettingRows({ open }: { open: boolean }) {
     });
   }, [load, open, sharedStatus]);
 
-  useEffect(() => {
+  const [loadInput, setLoadInput] = useState({ open, sharedStatus });
+  if (loadInput.open !== open || loadInput.sharedStatus !== sharedStatus) {
+    setLoadInput({ open, sharedStatus });
+    if (open) {
+      setBusy(true);
+      setError(null);
+    }
     if (sharedStatus) setStatus(sharedStatus);
-  }, [sharedStatus]);
+  }
 
   const handleAutomaticChecksChange = useCallback(
     async (automaticChecksEnabled: boolean) => {
@@ -253,22 +255,26 @@ export function AppUpdateSettingRows({ open }: { open: boolean }) {
       setBusy(true);
       setError(null);
 
-      try {
-        const result = await updateAppUpdateSettings({
-          automaticChecksEnabled,
-        });
+      return runWithCleanup(
+        async () => {
+          const result = await updateAppUpdateSettings({
+            automaticChecksEnabled,
+          });
 
-        if (!isAppUpdateSettings(result)) {
-          throw new Error("Could not save app update settings.");
-        }
+          if (!isAppUpdateSettings(result)) {
+            throw new Error("Could not save app update settings.");
+          }
 
-        setSettings(result);
-      } catch (err) {
-        setSettings(previous);
-        setError(err instanceof Error ? err.message : "Could not save app update settings.");
-      } finally {
-        setBusy(false);
-      }
+          setSettings(result);
+        },
+        {
+          cleanup: () => setBusy(false),
+          onError: (err) => {
+            setSettings(previous);
+            setError(err instanceof Error ? err.message : "Could not save app update settings.");
+          },
+        },
+      );
     },
     [settings],
   );
@@ -279,16 +285,20 @@ export function AppUpdateSettingRows({ open }: { open: boolean }) {
       const previous = settings;
       setBusy(true);
       setError(null);
-      try {
-        const result = await updateAppUpdateSettings({ channel });
-        if (!isAppUpdateSettings(result)) throw new Error("Could not save update channel.");
-        setSettings(result);
-      } catch (err) {
-        setSettings(previous);
-        setError(err instanceof Error ? err.message : "Could not save update channel.");
-      } finally {
-        setBusy(false);
-      }
+      return runWithCleanup(
+        async () => {
+          const result = await updateAppUpdateSettings({ channel });
+          if (!isAppUpdateSettings(result)) throw new Error("Could not save update channel.");
+          setSettings(result);
+        },
+        {
+          cleanup: () => setBusy(false),
+          onError: (err) => {
+            setSettings(previous);
+            setError(err instanceof Error ? err.message : "Could not save update channel.");
+          },
+        },
+      );
     },
     [settings],
   );
@@ -297,17 +307,21 @@ export function AppUpdateSettingRows({ open }: { open: boolean }) {
     setBusy(true);
     setError(null);
 
-    try {
-      const result = await checkForAppUpdate();
-      if (!isAppUpdateStatus(result)) {
-        throw new Error("Could not check for app updates.");
-      }
-      setStatus(result);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not check for app updates.");
-    } finally {
-      setBusy(false);
-    }
+    return runWithCleanup(
+      async () => {
+        const result = await checkForAppUpdate();
+        if (!isAppUpdateStatus(result)) {
+          throw new Error("Could not check for app updates.");
+        }
+        setStatus(result);
+      },
+      {
+        cleanup: () => setBusy(false),
+        onError: (err) => {
+          setError(err instanceof Error ? err.message : "Could not check for app updates.");
+        },
+      },
+    );
   }, []);
 
   const handleInstall = useCallback(async () => {
@@ -315,10 +329,7 @@ export function AppUpdateSettingRows({ open }: { open: boolean }) {
     setError(null);
 
     try {
-      const result = await installAppUpdate();
-      if (result !== true) {
-        throw new Error("Could not restart to install the update.");
-      }
+      await restartForAppUpdate();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not restart to install the update.");
       setBusy(false);

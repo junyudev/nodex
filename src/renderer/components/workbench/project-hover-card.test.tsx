@@ -70,6 +70,45 @@ describe("ProjectHoverCard", () => {
     expect(onParentClick).not.toHaveBeenCalled();
   });
 
+  it("keeps an active rename draft and uses the current Project name after cancellation", async () => {
+    const card = (name: string) => (
+      <ProjectHoverCard
+        project={{ ...PROJECT, name }}
+        activity={null}
+        repositoryIdentity={null}
+        pathContext={null}
+        onAppearanceChange={() => undefined}
+        onRename={async () => undefined}
+        onOpenSource={() => undefined}
+        onEdit={() => undefined}
+      />
+    );
+    const view = render(card("Nodex"));
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Nodex" }));
+      await Promise.resolve();
+    });
+    const input = view.getByRole("textbox", { name: "Project name" });
+    await act(async () => {
+      fireEvent.change(input, { target: { value: "Local draft" } });
+      await Promise.resolve();
+    });
+    view.rerender(card("Remote rename"));
+    expect(input).toHaveProperty("value", "Local draft");
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Escape" });
+      await Promise.resolve();
+    });
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Remote rename" }));
+      await Promise.resolve();
+    });
+    expect(view.getByRole("textbox", { name: "Project name" })).toHaveProperty(
+      "value",
+      "Remote rename",
+    );
+  });
+
   it("commits a trimmed inline rename and cancels Escape", async () => {
     const onRename = vi.fn(async () => undefined);
     const view = render(

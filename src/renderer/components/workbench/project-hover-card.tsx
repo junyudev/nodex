@@ -136,10 +136,9 @@ export function ProjectHoverCard({
     pathContext,
   });
 
-  useEffect(() => {
-    if (editingName) return;
+  if (!editingName && nameDraft !== project.name) {
     setNameDraft(project.name);
-  }, [editingName, project.name]);
+  }
 
   useEffect(() => {
     if (!editingName) return;

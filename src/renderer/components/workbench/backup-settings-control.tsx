@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useForm, useStore } from "@tanstack/react-form";
 import { useCallback, useEffect, useState } from "react";
 import { DeleteIcon } from "@/components/shared/icons";
@@ -81,7 +82,7 @@ export function BackupSettingsControl({ open }: { open: boolean }) {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<
     "refresh" | "save" | "create" | "restore" | "delete" | null
-  >(null);
+  >(open ? "refresh" : null);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const scheduleForm = useForm({
@@ -102,34 +103,38 @@ export function BackupSettingsControl({ open }: { open: boolean }) {
       setError(null);
       setStatus(null);
 
-      try {
-        const updated = await updateBackupSettings({
-          autoEnabled: settings.envOverrides.autoEnabled
-            ? settings.autoEnabled
-            : parsed.autoEnabled,
-          intervalHours: settings.envOverrides.intervalHours
-            ? settings.intervalHours
-            : parsed.intervalHours,
-          retentionCount: settings.envOverrides.retentionCount
-            ? settings.retentionCount
-            : parsed.retentionCount,
-          retentionGiB: settings.envOverrides.retentionGiB
-            ? settings.retentionGiB
-            : parsed.retentionGiB,
-        });
-        setSettings(updated);
-        scheduleForm.reset({
-          autoEnabled: updated.autoEnabled,
-          intervalHours: String(updated.intervalHours),
-          retentionCount: String(updated.retentionCount),
-          retentionGiB: String(updated.retentionGiB),
-        });
-        setStatus("Backup schedule saved.");
-      } catch (err) {
-        setError(resolveFormErrorMessage(err) ?? "Could not save backup schedule.");
-      } finally {
-        setBusyAction(null);
-      }
+      return runWithCleanup(
+        async () => {
+          const updated = await updateBackupSettings({
+            autoEnabled: settings.envOverrides.autoEnabled
+              ? settings.autoEnabled
+              : parsed.autoEnabled,
+            intervalHours: settings.envOverrides.intervalHours
+              ? settings.intervalHours
+              : parsed.intervalHours,
+            retentionCount: settings.envOverrides.retentionCount
+              ? settings.retentionCount
+              : parsed.retentionCount,
+            retentionGiB: settings.envOverrides.retentionGiB
+              ? settings.retentionGiB
+              : parsed.retentionGiB,
+          });
+          setSettings(updated);
+          scheduleForm.reset({
+            autoEnabled: updated.autoEnabled,
+            intervalHours: String(updated.intervalHours),
+            retentionCount: String(updated.retentionCount),
+            retentionGiB: String(updated.retentionGiB),
+          });
+          setStatus("Backup schedule saved.");
+        },
+        {
+          cleanup: () => setBusyAction(null),
+          onError: (err) => {
+            setError(resolveFormErrorMessage(err) ?? "Could not save backup schedule.");
+          },
+        },
+      );
     },
   });
   const historyForm = useForm({
@@ -150,22 +155,26 @@ export function BackupSettingsControl({ open }: { open: boolean }) {
       setError(null);
       setStatus(null);
 
-      try {
-        const updated = await updateHistorySettings({
-          retentionCount: historySettings.envOverrides.retentionCount
-            ? historySettings.retentionCount
-            : parsed.retentionCount,
-        });
-        setHistorySettings(updated);
-        historyForm.reset({
-          retentionCount: String(updated.retentionCount),
-        });
-        setStatus("History retention saved.");
-      } catch (err) {
-        setError(resolveFormErrorMessage(err) ?? "Could not save history retention.");
-      } finally {
-        setBusyAction(null);
-      }
+      return runWithCleanup(
+        async () => {
+          const updated = await updateHistorySettings({
+            retentionCount: historySettings.envOverrides.retentionCount
+              ? historySettings.retentionCount
+              : parsed.retentionCount,
+          });
+          setHistorySettings(updated);
+          historyForm.reset({
+            retentionCount: String(updated.retentionCount),
+          });
+          setStatus("History retention saved.");
+        },
+        {
+          cleanup: () => setBusyAction(null),
+          onError: (err) => {
+            setError(resolveFormErrorMessage(err) ?? "Could not save history retention.");
+          },
+        },
+      );
     },
   });
   const snapshotForm = useForm({
@@ -180,60 +189,86 @@ export function BackupSettingsControl({ open }: { open: boolean }) {
       setError(null);
       setStatus(null);
 
-      try {
-        const result = await startManualBackup(parsed.label || undefined);
-        formApi.reset();
-        setStatus(
-          result.kind === "submitted"
-            ? "Snapshot started in the background."
-            : "A snapshot was already running. Showing its progress.",
-        );
-      } catch (err) {
-        setError(resolveFormErrorMessage(err) ?? "Could not create backup.");
-      } finally {
-        setBusyAction(null);
-      }
+      return runWithCleanup(
+        async () => {
+          const result = await startManualBackup(parsed.label || undefined);
+          formApi.reset();
+          setStatus(
+            result.kind === "submitted"
+              ? "Snapshot started in the background."
+              : "A snapshot was already running. Showing its progress.",
+          );
+        },
+        {
+          cleanup: () => setBusyAction(null),
+          onError: (err) => {
+            setError(resolveFormErrorMessage(err) ?? "Could not create backup.");
+          },
+        },
+      );
     },
   });
   const scheduleValues = useStore(scheduleForm.store, (state) => state.values);
   const historyValues = useStore(historyForm.store, (state) => state.values);
   const snapshotValues = useStore(snapshotForm.store, (state) => state.values);
 
-  const loadBackupSettings = useCallback(async () => {
-    const data = await readBackupSettings();
-    setSettings(data);
-    scheduleForm.reset({
-      autoEnabled: data.autoEnabled,
-      intervalHours: String(data.intervalHours),
-      retentionCount: String(data.retentionCount),
-      retentionGiB: String(data.retentionGiB),
-    });
-  }, [scheduleForm]);
+  const loadBackupSettings = useCallback(
+    async () =>
+      readBackupSettings().then((data) => {
+        setSettings(data);
+        scheduleForm.reset({
+          autoEnabled: data.autoEnabled,
+          intervalHours: String(data.intervalHours),
+          retentionCount: String(data.retentionCount),
+          retentionGiB: String(data.retentionGiB),
+        });
+      }),
+    [scheduleForm],
+  );
 
-  const loadHistorySettings = useCallback(async () => {
-    const data = await readHistorySettings();
-    setHistorySettings(data);
-    historyForm.reset({
-      retentionCount: String(data.retentionCount),
-    });
-  }, [historyForm]);
+  const loadHistorySettings = useCallback(
+    async () =>
+      readHistorySettings().then((data) => {
+        setHistorySettings(data);
+        historyForm.reset({
+          retentionCount: String(data.retentionCount),
+        });
+      }),
+    [historyForm],
+  );
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(
+    () =>
+      Promise.all([loadBackupSettings(), loadHistorySettings(), refreshBackupRuntime()])
+        .then(() => {
+          setConfirmRestoreId(null);
+          setConfirmDeleteId(null);
+        })
+        .catch((error: unknown) => {
+          setError(error instanceof Error ? error.message : "Could not load backups.");
+        })
+        .finally(() => setBusyAction(null)),
+    [loadBackupSettings, loadHistorySettings, refreshBackupRuntime],
+  );
+
+  const [refreshInput, setRefreshInput] = useState({ open, refresh });
+  if (refreshInput.open !== open || refreshInput.refresh !== refresh) {
+    setRefreshInput({ open, refresh });
+    if (open) setBusyAction("refresh");
+    setStatus(null);
+    setError(null);
+    if (!open) {
+      setConfirmRestoreId(null);
+      setConfirmDeleteId(null);
+    }
+  }
+  const startRefresh = () => {
+    clearBackupNotice();
     setBusyAction("refresh");
     setError(null);
     setStatus(null);
-
-    try {
-      await Promise.all([loadBackupSettings(), loadHistorySettings(), refreshBackupRuntime()]);
-      setConfirmRestoreId(null);
-      setConfirmDeleteId(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not load backups.");
-    } finally {
-      setBusyAction(null);
-    }
-  }, [loadBackupSettings, loadHistorySettings, refreshBackupRuntime]);
-
+    return refresh();
+  };
   useEffect(() => {
     if (!open) return;
     void refresh();
@@ -242,12 +277,8 @@ export function BackupSettingsControl({ open }: { open: boolean }) {
   useEffect(() => {
     if (open) return;
     clearBackupNotice();
-    setStatus(null);
-    setError(null);
-    setConfirmRestoreId(null);
-    setConfirmDeleteId(null);
     snapshotForm.reset();
-  }, [clearBackupNotice, historyForm, open, snapshotForm]);
+  }, [clearBackupNotice, open, snapshotForm]);
 
   const handleRestoreBackup = useCallback(
     async (backupId: string) => {
@@ -263,20 +294,24 @@ export function BackupSettingsControl({ open }: { open: boolean }) {
       setError(null);
       setStatus(null);
 
-      try {
-        await restoreBackup({
-          backupId,
-          confirm: true,
-          createSafetyBackup,
-        });
-        await loadBackups();
-        setConfirmRestoreId(null);
-        setStatus("Backup restored.");
-      } catch (err) {
-        setError(resolveFormErrorMessage(err) ?? "Could not restore backup.");
-      } finally {
-        setBusyAction(null);
-      }
+      return runWithCleanup(
+        async () => {
+          await restoreBackup({
+            backupId,
+            confirm: true,
+            createSafetyBackup,
+          });
+          await loadBackups();
+          setConfirmRestoreId(null);
+          setStatus("Backup restored.");
+        },
+        {
+          cleanup: () => setBusyAction(null),
+          onError: (err) => {
+            setError(resolveFormErrorMessage(err) ?? "Could not restore backup.");
+          },
+        },
+      );
     },
     [clearBackupNotice, confirmRestoreId, createSafetyBackup, loadBackups],
   );
@@ -296,16 +331,20 @@ export function BackupSettingsControl({ open }: { open: boolean }) {
       setError(null);
       setStatus(null);
 
-      try {
-        await deleteBackup(backupId);
-        await loadBackups();
-        setConfirmDeleteId(null);
-        setStatus("Snapshot deleted.");
-      } catch (err) {
-        setError(resolveFormErrorMessage(err) ?? "Could not delete backup.");
-      } finally {
-        setBusyAction(null);
-      }
+      return runWithCleanup(
+        async () => {
+          await deleteBackup(backupId);
+          await loadBackups();
+          setConfirmDeleteId(null);
+          setStatus("Snapshot deleted.");
+        },
+        {
+          cleanup: () => setBusyAction(null),
+          onError: (err) => {
+            setError(resolveFormErrorMessage(err) ?? "Could not delete backup.");
+          },
+        },
+      );
     },
     [clearBackupNotice, confirmDeleteId, loadBackups],
   );
@@ -382,7 +421,7 @@ export function BackupSettingsControl({ open }: { open: boolean }) {
             <NodexButton
               variant="secondary"
               size="sm"
-              onClick={() => void refresh()}
+              onClick={() => void startRefresh()}
               disabled={isBackupBusy}
             >
               Refresh

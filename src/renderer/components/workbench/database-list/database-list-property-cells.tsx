@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import { DataSourcePropertyValueEditor } from "@/components/database/data-source-property-value-editor";
 import { DueDateValueIcon } from "@/components/database/due-date-value-icon";
@@ -171,7 +171,11 @@ function DatabaseListAssigneeEditor({
 }) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(value);
-  useEffect(() => setDraft(value), [revision, value]);
+  const [committed, setCommitted] = useState({ revision, value });
+  if (committed.revision !== revision || committed.value !== value) {
+    setCommitted({ revision, value });
+    setDraft(value);
+  }
   const commit = () => {
     const next = draft.trim();
     if (next !== value) onChange(next || null);

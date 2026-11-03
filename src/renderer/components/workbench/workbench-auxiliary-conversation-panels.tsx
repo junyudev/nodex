@@ -309,17 +309,28 @@ function NativeSubagentsPanelSessionTab({
     sourceSession.thread?.executionHostId ?? null,
   );
   const refreshSelectedSubagentAuthority = codexControl.refreshSelectedSubagentAuthority;
-  const [selectedCanInteract, setSelectedCanInteract] = useState(false);
+  const selectedAuthorityKey = JSON.stringify([
+    tab.rootThreadId,
+    tab.selectedThreadId,
+    tab.selectedHydration?.status,
+  ]);
+  const [selectedAuthority, setSelectedAuthority] = useState<{
+    key: string;
+    reader: typeof refreshSelectedSubagentAuthority;
+    canInteract: boolean;
+  } | null>(null);
+  const selectedCanInteract =
+    selectedAuthority?.key === selectedAuthorityKey &&
+    selectedAuthority.reader === refreshSelectedSubagentAuthority &&
+    selectedAuthority.canInteract;
   useEffect(() => {
     const selectedThreadId = tab.selectedThreadId;
-    setSelectedCanInteract(false);
     if (!selectedThreadId || tab.selectedHydration?.status !== "ready") return;
     let disposed = false;
     let timer: number | null = null;
     let sequence = 0;
     const refreshAuthority = (): void => {
       const requestSequence = ++sequence;
-      setSelectedCanInteract(false);
       void refreshSelectedSubagentAuthority({
         rootThreadId: tab.rootThreadId,
         threadId: selectedThreadId,
@@ -330,11 +341,19 @@ function NativeSubagentsPanelSessionTab({
             hydrated.outcome === "ready" &&
             hydrated.rootThreadId === tab.rootThreadId &&
             hydrated.threadId === selectedThreadId;
-          setSelectedCanInteract(authorized && hydrated.canInteract);
+          setSelectedAuthority({
+            key: selectedAuthorityKey,
+            reader: refreshSelectedSubagentAuthority,
+            canInteract: authorized && hydrated.canInteract,
+          });
         })
         .catch(() => {
           if (disposed || requestSequence !== sequence) return;
-          setSelectedCanInteract(false);
+          setSelectedAuthority({
+            key: selectedAuthorityKey,
+            reader: refreshSelectedSubagentAuthority,
+            canInteract: false,
+          });
         });
     };
     const unsubscribe = subscribeCodexEvents((event) => {
@@ -344,7 +363,11 @@ function NativeSubagentsPanelSessionTab({
         event.type === "threadArchivedState" && event.threadId === selectedThreadId;
       if (!rootInvalidated && !selectedArchived) return;
       sequence += 1;
-      setSelectedCanInteract(false);
+      setSelectedAuthority({
+        key: selectedAuthorityKey,
+        reader: refreshSelectedSubagentAuthority,
+        canInteract: false,
+      });
       if (timer !== null) return;
       timer = window.setTimeout(() => {
         timer = null;
@@ -360,7 +383,7 @@ function NativeSubagentsPanelSessionTab({
     };
   }, [
     refreshSelectedSubagentAuthority,
-    onRouteSubagent,
+    selectedAuthorityKey,
     tab.rootThreadId,
     tab.selectedHydration?.status,
     tab.selectedThreadId,

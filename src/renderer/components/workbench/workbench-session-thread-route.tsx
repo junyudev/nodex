@@ -54,6 +54,22 @@ import {
   writeLocalEnvironmentSelection,
 } from "./local-environment-selection";
 
+function NewThreadProjectReset({
+  projectId,
+  hasSummary,
+  onReset,
+}: {
+  projectId: string | null;
+  hasSummary: boolean;
+  onReset: (projectId: string | null) => void;
+}) {
+  useEffect(() => {
+    if (hasSummary) return;
+    onReset(projectId);
+  }, [hasSummary, onReset, projectId]);
+  return null;
+}
+
 function SharedConnectedSessionThread({
   agent,
   selectedNewThreadProjectId,
@@ -317,11 +333,6 @@ function SharedConnectedSessionThread({
   );
 
   useEffect(() => {
-    if (summary) return;
-    setSelectedNewThreadProjectId(session.projectId);
-  }, [session.id, session.projectId, summary, setSelectedNewThreadProjectId]);
-
-  useEffect(() => {
     if (selectedNewThreadProjectId === null) return;
     if (projects.some((candidate) => candidate.id === selectedNewThreadProjectId)) {
       return;
@@ -518,43 +529,57 @@ function SharedConnectedSessionThread({
       }),
   } as const;
 
+  const projectReset = (
+    <NewThreadProjectReset
+      key={session.id}
+      projectId={session.projectId}
+      hasSummary={Boolean(summary)}
+      onReset={setSelectedNewThreadProjectId}
+    />
+  );
   if (composerDock) {
     return (
-      <ConnectedThreadComposerDock
-        {...connectedStageProps}
-        routeActive={routeActive}
-        visible={composerDock.visible}
-        overlayTarget={composerDock.target}
-        overlayPlacement={composerDock.placement}
-        leadingContent={composerDock.leadingContent}
-        composerScopeIdentity={composerScopeIdentity}
-      />
+      <>
+        {projectReset}
+        <ConnectedThreadComposerDock
+          {...connectedStageProps}
+          routeActive={routeActive}
+          visible={composerDock.visible}
+          overlayTarget={composerDock.target}
+          overlayPlacement={composerDock.placement}
+          leadingContent={composerDock.leadingContent}
+          composerScopeIdentity={composerScopeIdentity}
+        />
+      </>
     );
   }
 
   return (
-    <div className="h-full min-h-0">
-      <ConnectedThreadStage
-        {...connectedStageProps}
-        visualizationSurfaceId={JSON.stringify([
-          "workbench-session",
-          session.id,
-          presentation,
-          composerScopeIdentity ?? null,
-        ])}
-        summaryPanelMounted={summaryPanelMounted}
-        summaryPanelOpen={summaryPanelOpen}
-        summaryPanelHideImmediately={summaryPanelHideImmediately}
-        summaryPanelContentShift={summaryPanelContentShift}
-        rightPanelComposerOverlayEnabled={rightPanelComposerOverlayEnabled}
-        rightPanelComposerOverlayTarget={rightPanelComposerOverlayTarget}
-        rightPanelComposerOverlayPlacement={rightPanelComposerOverlayPlacement}
-        turnDiffHoverPreviewDisabled={turnDiffHoverPreviewDisabled}
-        routeActive={routeActive}
-        threadBodyVisible={threadBodyVisible}
-        presentation={presentation}
-      />
-    </div>
+    <>
+      {projectReset}
+      <div className="h-full min-h-0">
+        <ConnectedThreadStage
+          {...connectedStageProps}
+          visualizationSurfaceId={JSON.stringify([
+            "workbench-session",
+            session.id,
+            presentation,
+            composerScopeIdentity ?? null,
+          ])}
+          summaryPanelMounted={summaryPanelMounted}
+          summaryPanelOpen={summaryPanelOpen}
+          summaryPanelHideImmediately={summaryPanelHideImmediately}
+          summaryPanelContentShift={summaryPanelContentShift}
+          rightPanelComposerOverlayEnabled={rightPanelComposerOverlayEnabled}
+          rightPanelComposerOverlayTarget={rightPanelComposerOverlayTarget}
+          rightPanelComposerOverlayPlacement={rightPanelComposerOverlayPlacement}
+          turnDiffHoverPreviewDisabled={turnDiffHoverPreviewDisabled}
+          routeActive={routeActive}
+          threadBodyVisible={threadBodyVisible}
+          presentation={presentation}
+        />
+      </div>
+    </>
   );
 }
 

@@ -1290,8 +1290,15 @@ export const MockOwnedBlockDocumentBoundary = ({
     });
   }, [routingContext, fetchDescriptor, ownerBlockId]);
   useEffect(() => {
-    void reload();
-  }, [reload]);
+    if (!fetchDescriptor) return;
+    let active = true;
+    void fetchDescriptor(routingContext, ownerBlockId).then((descriptor) => {
+      if (active) setModel({ descriptor, status: "ready", routingContext, ownerBlockId });
+    });
+    return () => {
+      active = false;
+    };
+  }, [routingContext, fetchDescriptor, ownerBlockId]);
   return children(model, { reload });
 };
 
@@ -4549,39 +4556,52 @@ export function renderWorkbench({
     const commandPortRef = useRef<WorkbenchCommandPort | null>(null);
     const [pendingViewOpen, setPendingViewOpen] = useState(pendingViewDeepLinkOpen);
     const initialWorkbenchCommandConsumedRef = useRef(false);
-    requestWorkbenchNavigation = (
-      direction,
-      source = direction === "back" ? "sidebar_back" : "sidebar_forward",
-    ) => {
-      commandPortRef.current?.navigate(direction, source);
-    };
-    requestPanelTabCycle = (direction) => {
-      commandPortRef.current?.cyclePanelTab(direction);
-    };
-    requestPanelTabClose = () => {
-      commandPortRef.current?.closePanelTab();
-    };
-    requestSidebarToggle = (source) => {
-      commandPortRef.current?.toggleSidebar(source);
-    };
-    requestWorkbenchCommand = (source) => {
-      commandPortRef.current?.execute("toggleBottomPanel", source);
-    };
-    requestInboxCaptureCommand = (source) => {
-      commandPortRef.current?.execute(CAPTURE_TO_INBOX_COMMAND_ID, source);
-    };
-    openCommandPalette = (mode = "root", initialQuery = "") => {
-      commandPortRef.current?.openCommandPalette({
-        mode,
-        query: initialQuery,
-      });
-    };
-    replaceProjects = (nextProjects) => {
-      projectState = nextProjects;
-      setRenderedProjects(nextProjects);
-    };
-    const initialWindowLayoutSnapshotRef = useRef(
-      initialWindowLayoutSnapshot ??
+    useLayoutEffect(() => {
+      requestWorkbenchNavigation = (
+        direction,
+        source = direction === "back" ? "sidebar_back" : "sidebar_forward",
+      ) => {
+        commandPortRef.current?.navigate(direction, source);
+      };
+      requestPanelTabCycle = (direction) => {
+        commandPortRef.current?.cyclePanelTab(direction);
+      };
+      requestPanelTabClose = () => {
+        commandPortRef.current?.closePanelTab();
+      };
+      requestSidebarToggle = (source) => {
+        commandPortRef.current?.toggleSidebar(source);
+      };
+      requestWorkbenchCommand = (source) => {
+        commandPortRef.current?.execute("toggleBottomPanel", source);
+      };
+      requestInboxCaptureCommand = (source) => {
+        commandPortRef.current?.execute(CAPTURE_TO_INBOX_COMMAND_ID, source);
+      };
+      openCommandPalette = (mode = "root", initialQuery = "") => {
+        commandPortRef.current?.openCommandPalette({
+          mode,
+          query: initialQuery,
+        });
+      };
+      replaceProjects = (nextProjects) => {
+        projectState = nextProjects;
+        setRenderedProjects(nextProjects);
+      };
+      return () => {
+        requestWorkbenchNavigation = () => undefined;
+        requestPanelTabCycle = () => undefined;
+        requestPanelTabClose = () => undefined;
+        requestSidebarToggle = () => undefined;
+        requestWorkbenchCommand = () => undefined;
+        requestInboxCaptureCommand = () => undefined;
+        openCommandPalette = () => undefined;
+        replaceProjects = () => undefined;
+      };
+    }, []);
+    const [initialSnapshot] = useState(
+      () =>
+        initialWindowLayoutSnapshot ??
         WorkbenchLayoutSnapshotSchema.parse({
           version: 7 as const,
           location: resolvedInitialSelectedSessionId
@@ -4597,7 +4617,7 @@ export function renderWorkbench({
           scenesByOwnerKey,
         }),
     );
-    const owner = useWorkbenchWindowOwner(initialWindowLayoutSnapshotRef.current);
+    const owner = useWorkbenchWindowOwner(initialSnapshot);
     useLayoutEffect(() => {
       let previous = owner.read().windowState.scenesByOwnerKey;
       let revision = 0;
@@ -4626,7 +4646,7 @@ export function renderWorkbench({
     return (
       <WorkbenchShell
         windowSessionId="window-session:test"
-        initialWindowLayoutSnapshot={initialWindowLayoutSnapshotRef.current}
+        initialWindowLayoutSnapshot={initialSnapshot}
         projects={renderedProjects}
         sidebar={sidebarState}
         pageStageCloseRef={createRef()}

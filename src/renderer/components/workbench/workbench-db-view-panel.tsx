@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { CanvasIcon, PlusIcon } from "@/components/shared/icons";
 import { SlidersHorizontal } from "@/components/shared/icons/generic-icons";
 import {
@@ -590,76 +591,82 @@ export function DbViewSessionTab({
       if (!databaseView || !effectivePresentation || publishingPresentation) return;
       setPublishingPresentation(true);
       setRulePublishError(null);
-      try {
-        const currentPreferences = await personalPreference.flushPreferences();
-        const publishFilters = scope === "filters" || scope === "all";
-        const publishSorts = scope === "sorts" || scope === "all";
-        const durableRules = databaseView.query.view.config.rules;
-        const nextRules: DatabaseViewRules = {
-          propertyFilters: publishFilters
-            ? effectivePresentation.rules.propertyFilters
-            : durableRules.propertyFilters,
-          advancedFilter: publishFilters
-            ? effectivePresentation.rules.advancedFilter
-            : durableRules.advancedFilter,
-          sorts: publishSorts ? effectivePresentation.rules.sorts : durableRules.sorts,
-        };
-        const remainingRulesOverride = clearDatabaseViewRulesOverrideScope(
-          currentPreferences.rulesOverride,
-          scope,
-        );
-        const receipt = await runtime.publishDatabaseViewDefinition({
-          kind: "rules",
-          patch: { rules: nextRules },
-          commit: async (canonicalModel, operationId) => {
-            const committed = await commitDatabaseViewOperations({
-              model: canonicalModel,
-              operationId,
-              operations: [
-                {
-                  kind: "put_view",
-                  databaseId: canonicalModel.databaseId,
-                  dataSourceId: canonicalModel.dataSourceId,
-                  viewId: canonicalModel.databaseViewId,
-                  expectedRevision: canonicalModel.query.view.revision,
-                  name: canonicalModel.query.view.name,
-                  layout: canonicalModel.query.view.layout,
-                  config: { ...canonicalModel.query.view.config, rules: nextRules },
-                  isDefault: canonicalModel.query.view.isDefault,
-                },
-                {
-                  kind: "put_view_personal_preferences",
-                  viewId: canonicalModel.databaseViewId,
-                  expectedRevision: currentPreferences.revision,
-                  rulesOverride: remainingRulesOverride ?? {},
-                  presentationOverride: currentPreferences.presentationOverride,
-                },
-              ],
-            });
-            if (!committed) throw new Error("The View rules no longer require publication");
-            return committed;
+      await runWithCleanup(
+        async () => {
+          const currentPreferences = await personalPreference.flushPreferences();
+          const publishFilters = scope === "filters" || scope === "all";
+          const publishSorts = scope === "sorts" || scope === "all";
+          const durableRules = databaseView.query.view.config.rules;
+          const nextRules: DatabaseViewRules = {
+            propertyFilters: publishFilters
+              ? effectivePresentation.rules.propertyFilters
+              : durableRules.propertyFilters,
+            advancedFilter: publishFilters
+              ? effectivePresentation.rules.advancedFilter
+              : durableRules.advancedFilter,
+            sorts: publishSorts ? effectivePresentation.rules.sorts : durableRules.sorts,
+          };
+          const remainingRulesOverride = clearDatabaseViewRulesOverrideScope(
+            currentPreferences.rulesOverride,
+            scope,
+          );
+          const receipt = await runtime.publishDatabaseViewDefinition({
+            kind: "rules",
+            patch: { rules: nextRules },
+            commit: async (canonicalModel, operationId) => {
+              const committed = await commitDatabaseViewOperations({
+                model: canonicalModel,
+                operationId,
+                operations: [
+                  {
+                    kind: "put_view",
+                    databaseId: canonicalModel.databaseId,
+                    dataSourceId: canonicalModel.dataSourceId,
+                    viewId: canonicalModel.databaseViewId,
+                    expectedRevision: canonicalModel.query.view.revision,
+                    name: canonicalModel.query.view.name,
+                    layout: canonicalModel.query.view.layout,
+                    config: { ...canonicalModel.query.view.config, rules: nextRules },
+                    isDefault: canonicalModel.query.view.isDefault,
+                  },
+                  {
+                    kind: "put_view_personal_preferences",
+                    viewId: canonicalModel.databaseViewId,
+                    expectedRevision: currentPreferences.revision,
+                    rulesOverride: remainingRulesOverride ?? {},
+                    presentationOverride: currentPreferences.presentationOverride,
+                  },
+                ],
+              });
+              if (!committed) throw new Error("The View rules no longer require publication");
+              return committed;
+            },
+          });
+          const preferenceRevision =
+            Object.entries(receipt.committedRevisions).find(
+              ([key]) =>
+                key.startsWith("view_preferences:") &&
+                key.endsWith(`:${databaseView.databaseViewId}`),
+            )?.[1] ?? currentPreferences.revision;
+          runtime.setRulesOverride(remainingRulesOverride);
+          personalPreference.acceptPreferencesCommitted({
+            rulesOverride: remainingRulesOverride,
+            presentationOverride: currentPreferences.presentationOverride,
+            revision: preferenceRevision,
+            commitSeq: receipt.commitSeq,
+          });
+        },
+        {
+          cleanup: () => {
+            setPublishingPresentation(false);
           },
-        });
-        const preferenceRevision =
-          Object.entries(receipt.committedRevisions).find(
-            ([key]) =>
-              key.startsWith("view_preferences:") &&
-              key.endsWith(`:${databaseView.databaseViewId}`),
-          )?.[1] ?? currentPreferences.revision;
-        runtime.setRulesOverride(remainingRulesOverride);
-        personalPreference.acceptPreferencesCommitted({
-          rulesOverride: remainingRulesOverride,
-          presentationOverride: currentPreferences.presentationOverride,
-          revision: preferenceRevision,
-          commitSeq: receipt.commitSeq,
-        });
-      } catch (cause) {
-        setRulePublishError(
-          cause instanceof Error ? cause.message : "View rules could not be saved for everyone",
-        );
-      } finally {
-        setPublishingPresentation(false);
-      }
+          onError: (cause) => {
+            setRulePublishError(
+              cause instanceof Error ? cause.message : "View rules could not be saved for everyone",
+            );
+          },
+        },
+      );
     },
     [databaseView, effectivePresentation, personalPreference, publishingPresentation, runtime],
   );
@@ -677,7 +684,7 @@ export function DbViewSessionTab({
     onReset: resetEffectiveRules,
     onPublish: (scope) => void publishEffectiveRules(scope),
   });
-  const publishEffectivePresentation = useCallback(async () => {
+  const publishEffectivePresentation = async () => {
     if (
       !databaseView ||
       !effectivePresentation ||
@@ -686,69 +693,68 @@ export function DbViewSessionTab({
     )
       return;
     setPublishingPresentation(true);
-    try {
-      const currentPresentation = await personalPreference.flushPreferences();
-      const receipt = await runtime.publishDatabaseViewDefinition({
-        kind: "presentation",
-        patch: {
-          layout: effectivePresentation.layout,
-          presentation: effectivePresentation.presentation,
-        },
-        commit: async (canonicalModel, operationId) => {
-          const committed = await commitDatabaseViewOperations({
-            model: canonicalModel,
-            operationId,
-            operations: [
-              {
-                kind: "put_view",
-                databaseId: canonicalModel.databaseId,
-                dataSourceId: canonicalModel.dataSourceId,
-                viewId: canonicalModel.databaseViewId,
-                expectedRevision: canonicalModel.query.view.revision,
-                name: canonicalModel.query.view.name,
-                layout: effectivePresentation.layout,
-                config: {
-                  ...canonicalModel.query.view.config,
-                  presentation: effectivePresentation.presentation,
+    await runWithCleanup(
+      async () => {
+        const currentPresentation = await personalPreference.flushPreferences();
+        const receipt = await runtime.publishDatabaseViewDefinition({
+          kind: "presentation",
+          patch: {
+            layout: effectivePresentation.layout,
+            presentation: effectivePresentation.presentation,
+          },
+          commit: async (canonicalModel, operationId) => {
+            const committed = await commitDatabaseViewOperations({
+              model: canonicalModel,
+              operationId,
+              operations: [
+                {
+                  kind: "put_view",
+                  databaseId: canonicalModel.databaseId,
+                  dataSourceId: canonicalModel.dataSourceId,
+                  viewId: canonicalModel.databaseViewId,
+                  expectedRevision: canonicalModel.query.view.revision,
+                  name: canonicalModel.query.view.name,
+                  layout: effectivePresentation.layout,
+                  config: {
+                    ...canonicalModel.query.view.config,
+                    presentation: effectivePresentation.presentation,
+                  },
+                  isDefault: canonicalModel.query.view.isDefault,
                 },
-                isDefault: canonicalModel.query.view.isDefault,
-              },
-              {
-                kind: "put_view_personal_preferences",
-                viewId: canonicalModel.databaseViewId,
-                expectedRevision: currentPresentation.revision,
-                rulesOverride: currentPresentation.rulesOverride,
-                presentationOverride: {},
-              },
-            ],
-          });
-          if (!committed) throw new Error("The View presentation no longer requires publication");
-          return committed;
+                {
+                  kind: "put_view_personal_preferences",
+                  viewId: canonicalModel.databaseViewId,
+                  expectedRevision: currentPresentation.revision,
+                  rulesOverride: currentPresentation.rulesOverride,
+                  presentationOverride: {},
+                },
+              ],
+            });
+            if (!committed) throw new Error("The View presentation no longer requires publication");
+            return committed;
+          },
+        });
+        const preferenceRevision =
+          Object.entries(receipt.committedRevisions).find(
+            ([key]) =>
+              key.startsWith("view_preferences:") &&
+              key.endsWith(`:${databaseView.databaseViewId}`),
+          )?.[1] ?? currentPresentation.revision;
+        runtime.setPresentationOverride(null);
+        personalPreference.acceptPreferencesCommitted({
+          rulesOverride: currentPresentation.rulesOverride,
+          presentationOverride: null,
+          revision: preferenceRevision,
+          commitSeq: receipt.commitSeq,
+        });
+      },
+      {
+        cleanup: () => {
+          setPublishingPresentation(false);
         },
-      });
-      const preferenceRevision =
-        Object.entries(receipt.committedRevisions).find(
-          ([key]) =>
-            key.startsWith("view_preferences:") && key.endsWith(`:${databaseView.databaseViewId}`),
-        )?.[1] ?? currentPresentation.revision;
-      runtime.setPresentationOverride(null);
-      personalPreference.acceptPreferencesCommitted({
-        rulesOverride: currentPresentation.rulesOverride,
-        presentationOverride: null,
-        revision: preferenceRevision,
-        commitSeq: receipt.commitSeq,
-      });
-    } finally {
-      setPublishingPresentation(false);
-    }
-  }, [
-    databaseView,
-    durableEffectivePresentation,
-    effectivePresentation,
-    publishingPresentation,
-    personalPreference,
-    runtime,
-  ]);
+      },
+    );
+  };
   const publishConditionalColors = useCallback(
     async (conditionalColors: readonly DatabaseViewConditionalColorRule[]) => {
       if (!databaseView) throw new Error("The Database View is not loaded");

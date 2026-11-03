@@ -1,4 +1,4 @@
-import { startTransition, useEffect, useMemo, useState, type ReactNode } from "react";
+import { startTransition, useMemo, useState, type ReactNode } from "react";
 import {
   ActivitySpinnerIcon,
   ChevronRightIcon,
@@ -233,35 +233,17 @@ export function LocalEnvironmentsSettingsPage({
   });
   const saveMutation = useSaveLocalEnvironmentConfigMutation();
 
-  useEffect(() => {
-    if (!open || !active) return;
-    const targetProjectId = initialProjectId ?? (initialConfigPath ? activeProjectId : null);
-    const validProjectId = workspaceProjects.some((project) => project.id === targetProjectId)
-      ? targetProjectId
-      : null;
-    const contextKey = `${validProjectId ?? "workspace"}:${initialConfigPath ?? ""}`;
-    if (contextKey === initializedContext) return;
-
+  const targetProjectId = initialProjectId ?? (initialConfigPath ? activeProjectId : null);
+  const validProjectId = workspaceProjects.some((project) => project.id === targetProjectId)
+    ? targetProjectId
+    : null;
+  const contextKey = `${validProjectId ?? "workspace"}:${initialConfigPath ?? ""}`;
+  if (open && active && contextKey !== initializedContext) {
     setInitializedContext(contextKey);
-    if (!validProjectId) {
-      setMode("workspace");
-      setSelectedProjectId(null);
-      setSelectedConfigPath(null);
-      return;
-    }
-
     setSelectedProjectId(validProjectId);
-    setSelectedConfigPath(initialConfigPath ?? null);
-    setMode("summary");
-  }, [
-    active,
-    activeProjectId,
-    initialConfigPath,
-    initialProjectId,
-    initializedContext,
-    open,
-    workspaceProjects,
-  ]);
+    setSelectedConfigPath(validProjectId ? (initialConfigPath ?? null) : null);
+    setMode(validProjectId ? "summary" : "workspace");
+  }
 
   function selectEnvironment(projectId: string, configPath: string): void {
     startTransition(() => {

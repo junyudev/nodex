@@ -4,7 +4,7 @@ import {
   synchronizeWindowAppearance,
 } from "@/lib/application-menu";
 import { readThemePreference } from "@/lib/theme-preferences";
-import { useCallback, useEffect, useLayoutEffect, useState, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import {
   resolveWindowContentCaptionClearance,
   measureWorkbenchWindowControlsOverlay,
@@ -113,6 +113,29 @@ function readRootFontSize(): number {
   return Number.isFinite(parsedFontSize) && parsedFontSize > 0 ? parsedFontSize : 16;
 }
 
+function readShellBodyFallbackSize(applicationMenuBarEnabled: boolean, root: HTMLElement | null) {
+  if (typeof window === "undefined") {
+    return { height: 0, width: 0 };
+  }
+  const windowZoom = readWindowZoom(root);
+  return {
+    height: Math.max(
+      0,
+      window.innerHeight / windowZoom -
+        (applicationMenuBarEnabled
+          ? WORKBENCH_APPLICATION_MENU_HEIGHT_PX
+          : WORKBENCH_TITLEBAR_HEIGHT_PX) -
+        WORKBENCH_SURFACE_GUTTER_PX,
+    ),
+    width: Math.max(
+      0,
+      window.innerWidth / windowZoom -
+        WORKBENCH_NAVIGATION_RAIL_WIDTH_PX -
+        WORKBENCH_SURFACE_GUTTER_PX,
+    ),
+  };
+}
+
 /**
  * Owns Workbench DOM measurement and animation state. Pointer commands consume
  * its MotionValues, while React consumers only observe settled layout modes.
@@ -136,33 +159,17 @@ export function useWorkbenchChromeLayout({
   sidebarMotion,
   sidebarOpen,
 }: WorkbenchChromeLayoutInput) {
-  const readShellBodyFallbackSize = useCallback(() => {
-    if (typeof window === "undefined") {
-      return { height: 0, width: 0 };
-    }
-    const windowZoom = readWindowZoom(rootRef.current);
-    return {
-      height: Math.max(
-        0,
-        window.innerHeight / windowZoom -
-          (applicationMenuBarEnabled
-            ? WORKBENCH_APPLICATION_MENU_HEIGHT_PX
-            : WORKBENCH_TITLEBAR_HEIGHT_PX) -
-          WORKBENCH_SURFACE_GUTTER_PX,
-      ),
-      width: Math.max(
-        0,
-        window.innerWidth / windowZoom -
-          WORKBENCH_NAVIGATION_RAIL_WIDTH_PX -
-          WORKBENCH_SURFACE_GUTTER_PX,
-      ),
-    };
-  }, [applicationMenuBarEnabled, rootRef]);
-  const initialShellBodySize = readShellBodyFallbackSize();
+  const readFallbackSize = useCallback(
+    () => readShellBodyFallbackSize(applicationMenuBarEnabled, rootRef.current),
+    [applicationMenuBarEnabled, rootRef],
+  );
+  const [initialShellBodySize] = useState(() =>
+    readShellBodyFallbackSize(applicationMenuBarEnabled, null),
+  );
   const measuredBodySize = useElementSizeMotionValues({
     initialHeight: initialShellBodySize.height,
     initialWidth: initialShellBodySize.width,
-    readFallbackSize: readShellBodyFallbackSize,
+    readFallbackSize,
   });
   // Windows measures the full-height sidebar row; panel sizing uses the content below its header.
   const contentBodyHeight = useTransform(measuredBodySize.height, (height) =>
@@ -193,13 +200,37 @@ export function useWorkbenchChromeLayout({
     persistedBottomPanelHeight ?? BOTTOM_PANEL_DEFAULT_HEIGHT,
   );
 
+  const appliedPanelSizes = useRef<{
+    sessionId: string | null;
+    rightWidth: number | null;
+    bottomHeight: number | null;
+  } | null>(null);
   useLayoutEffect(() => {
-    rightPanelRequestedWidth.set(persistedRightPanelWidth ?? RIGHT_PANEL_DEFAULT_WIDTH);
-  }, [activeSessionId, persistedRightPanelWidth, rightPanelRequestedWidth]);
-
-  useLayoutEffect(() => {
-    bottomPanelRequestedHeight.set(persistedBottomPanelHeight ?? BOTTOM_PANEL_DEFAULT_HEIGHT);
-  }, [activeSessionId, bottomPanelRequestedHeight, persistedBottomPanelHeight]);
+    const previous = appliedPanelSizes.current;
+    if (
+      previous?.sessionId !== activeSessionId ||
+      previous.rightWidth !== persistedRightPanelWidth
+    ) {
+      rightPanelRequestedWidth.set(persistedRightPanelWidth ?? RIGHT_PANEL_DEFAULT_WIDTH);
+    }
+    if (
+      previous?.sessionId !== activeSessionId ||
+      previous.bottomHeight !== persistedBottomPanelHeight
+    ) {
+      bottomPanelRequestedHeight.set(persistedBottomPanelHeight ?? BOTTOM_PANEL_DEFAULT_HEIGHT);
+    }
+    appliedPanelSizes.current = {
+      sessionId: activeSessionId,
+      rightWidth: persistedRightPanelWidth,
+      bottomHeight: persistedBottomPanelHeight,
+    };
+  }, [
+    activeSessionId,
+    persistedRightPanelWidth,
+    persistedBottomPanelHeight,
+    rightPanelRequestedWidth,
+    bottomPanelRequestedHeight,
+  ]);
 
   useEffect(() => {
     if (!applicationMenuBarEnabled) return;

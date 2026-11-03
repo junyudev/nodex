@@ -1,6 +1,12 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, test, vi } from "vite-plus/test";
-import { ComputerUseSettingsView } from "./computer-use-settings-page";
+import { ComputerUseSettingsPage, ComputerUseSettingsView } from "./computer-use-settings-page";
+
+const readSettings = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/computer-use-settings", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/computer-use-settings")>()),
+  readComputerUseSettings: readSettings,
+}));
 
 const snapshot = {
   alwaysHidePictureInPicture: false,
@@ -66,4 +72,19 @@ describe("ComputerUseSettingsView", () => {
 
     expect(screen.queryByRole("switch", { name: "Enable Locked use" })).toBeNull();
   });
+});
+
+test("clears a failed load when reopening Computer Use settings", async () => {
+  readSettings.mockRejectedValueOnce(new Error("Could not reach settings"));
+  const view = render(<ComputerUseSettingsPage open />);
+  expect(await view.findByText("Could not reach settings")).toBeTruthy();
+  view.rerender(<ComputerUseSettingsPage open={false} />);
+  readSettings.mockImplementationOnce(() => new Promise(() => undefined));
+  await act(async () => {
+    view.rerender(<ComputerUseSettingsPage open />);
+    await Promise.resolve();
+  });
+  expect(view.queryByText("Could not reach settings")).toBeNull();
+  expect(view.getByText("Loading Computer Use settings…")).toBeTruthy();
+  expect(readSettings).toHaveBeenCalledTimes(2);
 });

@@ -39,8 +39,7 @@ const dispatchMockInvoke = async (channel: string, ...args: unknown[]) => {
   return await mockInvokeImpl(channel, ...args);
 };
 
-vi.mock("./workbench-settings-overlay-deps", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("./workbench-settings-overlay-deps")>()),
+vi.mock("./workbench-settings-overlay-deps", () => ({
   applyAgentImport: async (scanId: string, itemIds: readonly string[]) =>
     await dispatchMockInvoke("agent-import:apply", { itemIds, scanId }),
   backupRuntimePort: {
@@ -52,6 +51,7 @@ vi.mock("./workbench-settings-overlay-deps", async (importOriginal) => ({
     cancel: async (jobId: string) => await dispatchMockInvoke("backup:cancel", jobId),
   },
   deleteBackup: async (backupId: string) => await dispatchMockInvoke("backup:delete", backupId),
+  readClaudeAgentSettings: vi.fn(),
   readBackupSettings: async () => await dispatchMockInvoke("settings:backup:get"),
   readCodexHomeSettings: async () => ({
     homePath: "",
@@ -79,6 +79,8 @@ vi.mock("./workbench-settings-overlay-deps", async (importOriginal) => ({
     await dispatchMockInvoke("agent-import:scan-picked-home", { sourceKind }),
   updateBackupSettings: async (input: unknown) =>
     await dispatchMockInvoke("settings:backup:update", input),
+  updateClaudeAgentSettings: vi.fn(),
+  updateCodexHomeSettings: vi.fn(),
   updateCodexPermissionConfigValue: async (...args: unknown[]) =>
     await dispatchMockInvoke("codex:permission:config-value:set", ...args),
   updateCodexPermissionMode: async (...args: unknown[]) =>
@@ -141,6 +143,7 @@ async function renderOverlay(path = buildSettingsPath("backups")) {
   installWindowApi({
     ...rendererApi,
     invoke: async (channel: string, ...args: unknown[]) => {
+      if (channel === "settings:notification-authorization:read") return "not-determined";
       if (channel === "settings:window-restore:get") {
         return { policy: "all" };
       }

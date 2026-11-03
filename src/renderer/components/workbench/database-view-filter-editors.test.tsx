@@ -1,4 +1,5 @@
 import { act, fireEvent } from "@testing-library/react";
+import { StrictMode } from "react";
 import { describe, expect, test, vi } from "vite-plus/test";
 
 import { parseDataSourceId, parseDataSourcePropertyId } from "../../../shared/database-identities";
@@ -140,4 +141,68 @@ describe("DatabaseViewAdvancedFilterEditor", () => {
     });
     expect(onChange).toHaveBeenCalledWith("p2-medium");
   });
+});
+
+test("flushes the latest filter draft through the current callback on unmount", async () => {
+  vi.useFakeTimers();
+  const previousChange = vi.fn();
+  const currentChange = vi.fn();
+  const field = (onChange: (value: unknown) => void) => (
+    <StrictMode>
+      <DatabaseViewFilterValueField
+        clause={{
+          kind: "clause",
+          propertyId: name.propertyId,
+          operator: "text_contains",
+          value: "initial",
+        }}
+        property={name}
+        options={[]}
+        disabled={false}
+        onChange={onChange}
+      />
+    </StrictMode>
+  );
+  const view = render(field(previousChange));
+  try {
+    await act(async () => {
+      fireEvent.change(view.getByRole("textbox", { name: "Filter value for Name" }), {
+        target: { value: "pending" },
+      });
+      await Promise.resolve();
+    });
+    view.rerender(field(currentChange));
+    view.unmount();
+    expect(previousChange).not.toHaveBeenCalled();
+    expect(currentChange).toHaveBeenCalledExactlyOnceWith("pending");
+    await act(async () => {
+      vi.runOnlyPendingTimers();
+      await Promise.resolve();
+    });
+    expect(currentChange).toHaveBeenCalledOnce();
+  } finally {
+    view.unmount();
+    vi.useRealTimers();
+  }
+});
+
+test("accepts an external filter value without echoing a draft change", () => {
+  const onChange = vi.fn();
+  const field = (value: string) => (
+    <DatabaseViewFilterValueField
+      clause={{ kind: "clause", propertyId: name.propertyId, operator: "text_contains", value }}
+      property={name}
+      options={[]}
+      disabled={false}
+      onChange={onChange}
+    />
+  );
+  const view = render(field("initial"));
+  view.rerender(field("external"));
+  expect(view.getByRole("textbox", { name: "Filter value for Name" })).toHaveProperty(
+    "value",
+    "external",
+  );
+  view.unmount();
+  expect(onChange).not.toHaveBeenCalled();
 });

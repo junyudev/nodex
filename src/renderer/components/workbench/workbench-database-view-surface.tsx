@@ -192,7 +192,7 @@ export function WorkbenchDatabaseViewSurface({
 }) {
   const queryClient = useQueryClient();
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const inFlightScopesRef = useRef(new Set<string>());
+  const inFlightScopesRef = useRef({ updatedAt: 0, scopes: new Set<string>() });
   const requiredMinimumCommitSeqRef = useRef(0);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
@@ -237,15 +237,17 @@ export function WorkbenchDatabaseViewSurface({
     },
   });
 
-  useEffect(() => {
+  const [previousDataUpdatedAt, setPreviousDataUpdatedAt] = useState(query.dataUpdatedAt);
+  if (previousDataUpdatedAt !== query.dataUpdatedAt) {
+    setPreviousDataUpdatedAt(query.dataUpdatedAt);
     setContinuations(new Map());
-    inFlightScopesRef.current.clear();
-  }, [query.dataUpdatedAt]);
-
-  useEffect(() => {
+  }
+  const [previousTargetIdentity, setPreviousTargetIdentity] = useState(targetIdentity);
+  if (previousTargetIdentity !== targetIdentity) {
+    setPreviousTargetIdentity(targetIdentity);
     setSearchQuery("");
     setSearchOpen(false);
-  }, [targetIdentity]);
+  }
 
   const windowsByScope = useMemo(
     () =>
@@ -364,7 +366,11 @@ export function WorkbenchDatabaseViewSurface({
   );
 
   const loadMoreGroup = async (scopeKey: string): Promise<void> => {
-    if (inFlightScopesRef.current.has(scopeKey)) return;
+    if (inFlightScopesRef.current.updatedAt !== query.dataUpdatedAt) {
+      inFlightScopesRef.current = { updatedAt: query.dataUpdatedAt, scopes: new Set() };
+    }
+    const inFlightScopes = inFlightScopesRef.current.scopes;
+    if (inFlightScopes.has(scopeKey)) return;
     const base = query.data?.scopedWindows.find((candidate) => candidate.scopeKey === scopeKey);
     if (!base) return;
     const current = continuations.get(scopeKey);
@@ -373,7 +379,7 @@ export function WorkbenchDatabaseViewSurface({
     if (!cursor) return;
     const readTarget = readTargetFromIdentity(targetIdentity);
 
-    inFlightScopesRef.current.add(scopeKey);
+    inFlightScopes.add(scopeKey);
     setContinuations((states) =>
       new Map(states).set(scopeKey, {
         windows: current?.windows ?? [],
@@ -403,7 +409,7 @@ export function WorkbenchDatabaseViewSurface({
         }),
       );
     } finally {
-      inFlightScopesRef.current.delete(scopeKey);
+      inFlightScopes.delete(scopeKey);
     }
   };
 

@@ -34,9 +34,11 @@ function deferredPage(title: string, anchor?: string) {
   };
 }
 
+const noop = () => {};
+
 function SettingsLoadingHarness({
   initialPath = buildSettingsPath("general-settings"),
-  onBackToApp = () => {},
+  onBackToApp = noop,
 }: {
   initialPath?: string;
   onBackToApp?: () => void;

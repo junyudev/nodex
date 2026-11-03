@@ -509,11 +509,7 @@ const reviewDiffPanelTestDeps = {
     reviewDiffPanelTestInvoke("read-file-metadata", input) as never,
   readWorkspaceFileText: (input: unknown) => reviewDiffPanelTestInvoke("read-file", input) as never,
   gitWorkerClient: createReviewGitWorkerTestClient(),
-  useTheme: () => ({
-    theme: "light" as const,
-    resolved: "light" as const,
-    setTheme: () => {},
-  }),
+  theme: "light" as const,
   FileDiff: <LAnnotation, Caret>(props: FileDiffProps<LAnnotation, Caret>) => {
     const { className, fileDiff, options, lineAnnotations, renderAnnotation, selectedLines } =
       props;
@@ -929,6 +925,25 @@ async function settleAsyncRender(): Promise<void> {
 }
 
 describe("review diff panel", () => {
+  test("updates diff colors from the injected theme value", async () => {
+    const { ReviewDiffPanel } = await loadReviewDiffPanelModule();
+    const conversation = buildConversation();
+    const panel = (theme: "dark" | "light") => (
+      <NodexTooltipProvider>
+        <ReviewDiffPanel
+          conversation={conversation}
+          projectWorkspacePath="/tmp/codex"
+          deps={{ theme }}
+        />
+      </NodexTooltipProvider>
+    );
+    const view = render(panel("dark"));
+    await waitFor(() => expect(lastFileDiffProps?.options).toMatchObject({ themeType: "dark" }));
+    view.rerender(panel("light"));
+    await waitFor(() => expect(lastFileDiffProps?.options).toMatchObject({ themeType: "light" }));
+    view.unmount();
+  });
+
   test("renders last-turn file diffs from the active conversation", async () => {
     const { ReviewDiffPanel } = await loadReviewDiffPanelModule();
 

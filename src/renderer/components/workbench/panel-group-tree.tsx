@@ -112,12 +112,11 @@ export function PanelGroupTree({
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const [previewIntent, setPreviewIntent] = useState<PanelTabDropIntent | null>(null);
 
-  const clearDragState = () => {
-    setActiveDragId(null);
-    setPreviewIntent(null);
-  };
-
   useEffect(() => {
+    const clearDragState = () => {
+      setActiveDragId(null);
+      setPreviewIntent(null);
+    };
     return monitorForElements({
       canMonitor: ({ source }) =>
         isPanelTabDragData(source.data) && source.data.sessionId === sessionId,
@@ -375,14 +374,11 @@ function PanelGroupSplit({
   const ratio = optimisticRatio ?? branch.ratio;
   const isHorizontal = branch.direction === "horizontal";
 
-  useEffect(() => {
-    setOptimisticRatio((currentRatio) => {
-      if (currentRatio === null) return null;
-      if (Math.abs(currentRatio - branch.ratio) > PANEL_GROUP_RATIO_ACK_EPSILON)
-        return currentRatio;
-      return null;
-    });
-  }, [branch.ratio]);
+  if (
+    optimisticRatio !== null &&
+    Math.abs(optimisticRatio - branch.ratio) <= PANEL_GROUP_RATIO_ACK_EPSILON
+  )
+    setOptimisticRatio(null);
 
   const commitRatio = (nextRatio: number) => {
     const commitId = resizeCommitIdRef.current + 1;

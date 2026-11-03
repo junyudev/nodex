@@ -1,4 +1,5 @@
-import { act, fireEvent } from "@testing-library/react";
+import { deferred } from "./agent-instance-settings.test-fixtures";
+import { act, fireEvent, waitFor } from "@testing-library/react";
 import { describe, expect, test, vi } from "vite-plus/test";
 import type {
   ManagedWorktreeRecord,
@@ -116,11 +117,17 @@ describe("ManagedWorktreesSettingControl", () => {
     expect(view.getByRole("heading", { name: "/repositories/alpha" })).toBeTruthy();
     expect(view.getByRole("heading", { name: "Other worktrees" })).toBeTruthy();
     expect(view.queryByRole("heading", { name: "/repositories/beta" })).toBeNull();
-    fireEvent.click(view.getByRole("button", { name: "Investigate parser" }));
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Investigate parser" }));
+      await Promise.resolve();
+    });
     expect(openedThreads).toEqual(["thread-alpha"]);
 
     const root = view.getByRole("textbox", { name: "Worktree root" });
-    fireEvent.change(root, { target: { value: "/custom/worktrees" } });
+    await act(async () => {
+      fireEvent.change(root, { target: { value: "/custom/worktrees" } });
+      await Promise.resolve();
+    });
     await act(async () => {
       fireEvent.keyDown(root, { key: "s", metaKey: true });
       await settleAsyncRender();
@@ -131,8 +138,11 @@ describe("ManagedWorktreesSettingControl", () => {
     expect(service.list).toHaveBeenCalledTimes(2);
 
     const limit = view.getByRole("spinbutton", { name: "Auto-delete limit" });
-    fireEvent.change(limit, { target: { value: "24" } });
-    limit.focus();
+    await act(async () => {
+      fireEvent.change(limit, { target: { value: "24" } });
+      limit.focus();
+      await Promise.resolve();
+    });
     await act(async () => {
       fireEvent.keyDown(limit, { key: "Enter" });
       await Promise.resolve();
@@ -167,8 +177,8 @@ describe("ManagedWorktreesSettingControl", () => {
     await settleAsyncRender();
 
     const toggle = view.getByRole("switch", { name: "Automatically delete old worktrees" });
-    toggle.focus();
     await act(async () => {
+      toggle.focus();
       fireEvent.click(toggle);
       await Promise.resolve();
     });
@@ -179,15 +189,20 @@ describe("ManagedWorktreesSettingControl", () => {
       fireEvent.click(view.getByRole("button", { name: "Keep automatic deletion" }));
       await Promise.resolve();
     });
-    await settleAsyncRender();
-    expect(document.activeElement).toBe(toggle);
+    await waitFor(() => expect(view.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(toggle));
 
-    fireEvent.click(toggle);
     await act(async () => {
-      fireEvent.click(view.getByRole("button", { name: "Disable automatic deletion" }));
+      fireEvent.click(toggle);
+      await Promise.resolve();
+    });
+    const confirm = await view.findByRole("button", { name: "Disable automatic deletion" });
+    await act(async () => {
+      fireEvent.click(confirm);
       await Promise.resolve();
     });
     expect(service.updateSettings).toHaveBeenCalledWith({ autoDeleteEnabled: false });
+    await waitFor(() => expect(view.queryByRole("dialog")).toBeNull());
   });
 
   test("deletes the selected host/path only after the service succeeds", async () => {
@@ -204,6 +219,43 @@ describe("ManagedWorktreesSettingControl", () => {
     });
     expect(service.delete).toHaveBeenCalledWith("local", "/managed/alpha/a1b2/alpha");
     expect(view.queryByText("Investigate parser")).toBeNull();
+  });
+
+  test("keeps failed deletion settings open for retry and releases the saving state", async () => {
+    const service = createService();
+    const action = deferred<ManagedWorktreeSettings>();
+    service.updateSettings.mockReturnValueOnce(action.promise);
+    const view = render(<ManagedWorktreesSettingControl open service={service} />);
+    await settleAsyncRender();
+
+    await act(async () => {
+      fireEvent.click(view.getByRole("switch", { name: "Automatically delete old worktrees" }));
+      await Promise.resolve();
+    });
+    const confirm = view.getByRole("button", { name: "Disable automatic deletion" });
+    await act(async () => {
+      fireEvent.click(confirm);
+      await Promise.resolve();
+    });
+    expect(confirm).toHaveProperty("disabled", true);
+    await act(async () => {
+      action.reject(new Error("Could not save"));
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(confirm).toHaveProperty("disabled", false));
+    expect(view.getByRole("dialog", { name: "Disable automatic worktree deletion?" })).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.click(confirm);
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(view.queryByRole("dialog")).toBeNull());
+    expect(service.updateSettings).toHaveBeenCalledTimes(2);
+    expect(
+      view
+        .getByRole("switch", { name: "Automatically delete old worktrees" })
+        .getAttribute("aria-checked"),
+    ).toBe("false");
   });
 
   test("projects inventory failures to a stable message without leaking internal errors", async () => {

@@ -71,7 +71,11 @@ function SettingsPageContent({
   path: string;
   children: ReactNode;
 }) {
+  const scrolledRequestRef = useRef<{ anchor: string | null; path: string } | null>(null);
   useEffect(() => {
+    const previous = scrolledRequestRef.current;
+    if (previous?.anchor === anchor && previous.path === path) return;
+    scrolledRequestRef.current = { anchor, path };
     if (!anchor) return;
     document.getElementById(anchor)?.scrollIntoView({ block: "start" });
   }, [anchor, path]);

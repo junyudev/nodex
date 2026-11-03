@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { WorkbenchWorkspaceFrame } from "./workbench-workspace-frame";
 import type { CSSProperties } from "react";
 import { NodexApplicationMenubar } from "@/components/ui/application-menubar";
@@ -749,13 +750,9 @@ export function WorkbenchRuntime({
     selectedProjectSceneId,
     workbenchWindow,
   ]);
-  const projectSceneOwner = useMemo(
-    () =>
-      selectedProjectSceneId
-        ? { kind: "project" as const, projectId: selectedProjectSceneId }
-        : null,
-    [selectedProjectSceneId],
-  );
+  const projectSceneOwner = selectedProjectSceneId
+    ? { kind: "project" as const, projectId: selectedProjectSceneId }
+    : null;
   const projectSceneKey = projectSceneOwner ? makeWorkbenchSceneKey(projectSceneOwner) : null;
   const activeProjectScene =
     projectSceneOwner && projectSceneKey
@@ -763,12 +760,14 @@ export function WorkbenchRuntime({
         materializeInitialWorkbenchScene(projectSceneOwner))
       : null;
   useEffect(() => {
-    if (!projectSceneOwner || !projectSceneKey || !activeProjectScene) return;
+    if (!selectedProjectSceneId || !projectSceneKey || !activeProjectScene) return;
     if (workbenchWindow.scenesByOwnerKey[projectSceneKey]) return;
-    workbenchWindow.setScene(projectSceneOwner, activeProjectScene, {
-      recordHistory: false,
-    });
-  }, [activeProjectScene, projectSceneKey, projectSceneOwner, workbenchWindow]);
+    workbenchWindow.setScene(
+      { kind: "project", projectId: selectedProjectSceneId },
+      activeProjectScene,
+      { recordHistory: false },
+    );
+  }, [activeProjectScene, projectSceneKey, selectedProjectSceneId, workbenchWindow]);
   // Space and the Library Inbox are the window's two Scenes of Library content.
   const librarySceneOwner =
     sceneLocation.kind === "library"
@@ -884,9 +883,19 @@ export function WorkbenchRuntime({
   const panelController = useWorkbenchPanelController({
     mutateScene,
   });
+  const activeSession = sessionCatalog.activeProjection;
+  const workbenchCodexControl = useCodexAppServerControl(
+    activeSession?.thread?.threadId ?? null,
+    activeSession?.thread?.executionHostId ?? null,
+  );
+  const sceneCommands = useWorkbenchSceneCommands(
+    workbenchWindow.owner,
+    windowSessionId,
+    workbenchCodexControl.discardSideChat,
+    panelController.tabOpenerStore,
+  );
+  const updatePanelCollapsedOverrides = panelController.updatePanelCollapsedOverrides;
   const prunePanelOwner = panelController.pruneOwner;
-  const panelControllerRef = useRef(panelController);
-  panelControllerRef.current = panelController;
   useEffect(() => {
     if (
       !selectedProjectSceneId ||
@@ -907,87 +916,57 @@ export function WorkbenchRuntime({
     selectedProjectQuery.isSuccess,
     selectedProjectSceneId,
   ]);
-  const previewSurfacesByPanelRef = useRef(panelController.previewSurfacesByPanel);
-  previewSurfacesByPanelRef.current = panelController.previewSurfacesByPanel;
-  const workbenchWindowRef = useRef(workbenchWindow);
-  workbenchWindowRef.current = workbenchWindow;
-  const sessionCatalogRef = useRef(sessionCatalog);
-  sessionCatalogRef.current = sessionCatalog;
-  const sceneCommandsRef = useRef<ReturnType<typeof useWorkbenchSceneCommands> | null>(null);
-  const sceneNavigator = useMemo(
-    () =>
-      createWorkbenchSceneNavigator({
-        getScene: (owner) =>
-          workbenchWindowRef.current.owner.read().windowState.scenesByOwnerKey[
-            makeWorkbenchSceneKey(owner)
-          ],
-        presentDurable: (input, surface) => {
-          const capability = sceneCommandsRef.current;
-          if (!capability)
-            return Promise.resolve({ status: "unavailable", reason: "Workbench is starting" });
-          return capability.present(input, surface);
-        },
-        hasConversation(sessionId) {
-          return hasSessionConversation(
-            sessionCatalogRef.current.findById(sessionId)?.domain ?? null,
-          );
-        },
-        setScene(owner, update) {
-          workbenchWindowRef.current.setScene(owner, update);
-        },
-        setSceneAndSelect(owner, update, location) {
-          workbenchWindowRef.current.setSceneAndNavigate(owner, update, location);
-        },
-        selectLocation(location) {
-          workbenchWindowRef.current.navigate(location);
-        },
-        preview: {
-          prepareReplace: (owner, entry) => prepareWorkbenchSceneSurfaceClose(owner, entry.surface),
-          list(owner) {
-            const state = workbenchWindowRef.current.owner.read();
-            const scene =
-              state.windowState.scenesByOwnerKey[makeWorkbenchSceneKey(owner)] ??
-              materializeInitialWorkbenchScene(owner);
-            return listWorkbenchScenePreviewEntries(
-              scene,
-              state.ephemeralPanels.previewSurfacesByPanel,
-              state.ephemeralPanels.tabOrderByPanelGroup,
+  const sceneNavigator = createWorkbenchSceneNavigator({
+    getScene: (owner) =>
+      workbenchWindow.owner.read().windowState.scenesByOwnerKey[makeWorkbenchSceneKey(owner)],
+    presentDurable: (input, surface) => sceneCommands.present(input, surface),
+    hasConversation(sessionId) {
+      return hasSessionConversation(sessionCatalog.findById(sessionId)?.domain ?? null);
+    },
+    setScene(owner, update) {
+      workbenchWindow.setScene(owner, update);
+    },
+    setSceneAndSelect(owner, update, location) {
+      workbenchWindow.setSceneAndNavigate(owner, update, location);
+    },
+    selectLocation(location) {
+      workbenchWindow.navigate(location);
+    },
+    preview: {
+      prepareReplace: (owner, entry) => prepareWorkbenchSceneSurfaceClose(owner, entry.surface),
+      list(owner) {
+        const state = workbenchWindow.owner.read();
+        const scene =
+          state.windowState.scenesByOwnerKey[makeWorkbenchSceneKey(owner)] ??
+          materializeInitialWorkbenchScene(owner);
+        return listWorkbenchScenePreviewEntries(
+          scene,
+          state.ephemeralPanels.previewSurfacesByPanel,
+          state.ephemeralPanels.tabOrderByPanelGroup,
+        );
+      },
+      set(owner, panelId, leafId, surface, targetIndex) {
+        if (surface && targetIndex !== undefined) {
+          const scene =
+            workbenchWindow.owner.read().windowState.scenesByOwnerKey[makeWorkbenchSceneKey(owner)];
+          if (scene)
+            panelController.updateTabOrderByPanelGroup((current) =>
+              orderWorkbenchScenePreview(scene, panelId, leafId, surface.id, targetIndex, current),
             );
-          },
-          set(owner, panelId, leafId, surface, targetIndex) {
-            if (surface && targetIndex !== undefined) {
-              const scene =
-                workbenchWindowRef.current.owner.read().windowState.scenesByOwnerKey[
-                  makeWorkbenchSceneKey(owner)
-                ];
-              if (scene)
-                panelControllerRef.current.updateTabOrderByPanelGroup((current) =>
-                  orderWorkbenchScenePreview(
-                    scene,
-                    panelId,
-                    leafId,
-                    surface.id,
-                    targetIndex,
-                    current,
-                  ),
-                );
-            }
-            const slotKey = makeWorkbenchScenePreviewSlotKey(owner, panelId, leafId);
-            const next = {
-              ...workbenchWindowRef.current.owner.read().ephemeralPanels.previewSurfacesByPanel,
-            };
-            if (surface) {
-              next[slotKey] = surface;
-            } else {
-              delete next[slotKey];
-            }
-            previewSurfacesByPanelRef.current = next;
-            panelControllerRef.current.updatePreviewSurfacesByPanel(next);
-          },
-        },
-      }),
-    [],
-  );
+        }
+        const slotKey = makeWorkbenchScenePreviewSlotKey(owner, panelId, leafId);
+        const next = {
+          ...workbenchWindow.owner.read().ephemeralPanels.previewSurfacesByPanel,
+        };
+        if (surface) {
+          next[slotKey] = surface;
+        } else {
+          delete next[slotKey];
+        }
+        panelController.updatePreviewSurfacesByPanel(next);
+      },
+    },
+  });
   const {
     previewTabsByPanel,
     previewSurfacesByPanel,
@@ -1009,43 +988,27 @@ export function WorkbenchRuntime({
     panelCollapsedOverrides,
     tabOrderByPanelGroup,
   } = panelController;
-  const projectScenePresentation = useMemo(
-    () =>
-      activeProjectScene
-        ? projectWorkbenchScenePreviews(
-            activeProjectScene,
-            previewSurfacesByPanel,
-            tabOrderByPanelGroup,
-          )
-        : null,
-    [activeProjectScene, previewSurfacesByPanel, tabOrderByPanelGroup],
-  );
-  const libraryScenePresentation = useMemo(
-    () =>
-      activeLibraryScene
-        ? projectWorkbenchScenePreviews(
-            activeLibraryScene,
-            previewSurfacesByPanel,
-            tabOrderByPanelGroup,
-          )
-        : null,
-    [activeLibraryScene, previewSurfacesByPanel, tabOrderByPanelGroup],
-  );
+  const projectScenePresentation = activeProjectScene
+    ? projectWorkbenchScenePreviews(
+        activeProjectScene,
+        previewSurfacesByPanel,
+        tabOrderByPanelGroup,
+      )
+    : null;
+  const libraryScenePresentation = activeLibraryScene
+    ? projectWorkbenchScenePreviews(
+        activeLibraryScene,
+        previewSurfacesByPanel,
+        tabOrderByPanelGroup,
+      )
+    : null;
   const activeOwnedScenePresentation = projectScenePresentation ?? libraryScenePresentation;
-  const projectScenePresentedPageIds = useMemo<ReadonlySet<string>>(
-    () =>
-      projectScenePresentation
-        ? collectWorkbenchScenePresentedPageIds(projectScenePresentation.scene)
-        : new Set(),
-    [projectScenePresentation],
-  );
-  const libraryScenePresentedPageIds = useMemo<ReadonlySet<string>>(
-    () =>
-      libraryScenePresentation
-        ? collectWorkbenchScenePresentedPageIds(libraryScenePresentation.scene)
-        : new Set(),
-    [libraryScenePresentation],
-  );
+  const projectScenePresentedPageIds = projectScenePresentation
+    ? collectWorkbenchScenePresentedPageIds(projectScenePresentation.scene)
+    : new Set<string>();
+  const libraryScenePresentedPageIds = libraryScenePresentation
+    ? collectWorkbenchScenePresentedPageIds(libraryScenePresentation.scene)
+    : new Set<string>();
   const librarySceneNavigation = useLibrarySceneNavigation(libraryScenePresentation?.scene ?? null);
   const [pageTitleStore] = useState(createPageTitleProjectionStore);
   const [panelTabPresentationRegistry] = useState(() => new PanelTabPresentationRegistry());
@@ -1201,23 +1164,15 @@ export function WorkbenchRuntime({
   const projectAgentDockCollection = selectedProjectSceneId
     ? (sessionCollectionsByProject[selectedProjectSceneId] ?? null)
     : null;
-  const projectAgentDockPendingWorktree = useMemo(
-    () =>
-      resolveProjectAgentDockPendingWorktree(
-        pendingWorktrees,
-        projectAgentDockBoundSessionId,
-        Boolean(projectAgentDockExactSession?.thread),
-      ),
-    [pendingWorktrees, projectAgentDockBoundSessionId, projectAgentDockExactSession?.thread],
+  const projectAgentDockPendingWorktree = resolveProjectAgentDockPendingWorktree(
+    pendingWorktrees,
+    projectAgentDockBoundSessionId,
+    Boolean(projectAgentDockExactSession?.thread),
   );
-  const projectAgentDockPendingWorktreeModel = useMemo(
-    () =>
-      projectAgentDockPendingWorktree
-        ? buildProjectAgentDockPendingWorktreeModel(projectAgentDockPendingWorktree)
-        : null,
-    [projectAgentDockPendingWorktree],
-  );
-  const projectAgentDockModel = useMemo(() => {
+  const projectAgentDockPendingWorktreeModel = projectAgentDockPendingWorktree
+    ? buildProjectAgentDockPendingWorktreeModel(projectAgentDockPendingWorktree)
+    : null;
+  const projectAgentDockModel = (() => {
     if (!selectedProjectSceneId || !activeProjectScene?.agentDock || !projectAgentDockCollection) {
       return null;
     }
@@ -1234,14 +1189,8 @@ export function WorkbenchRuntime({
       hasMore: projectAgentDockCollection.hasMore,
       query: projectAgentDockQuery,
     });
-  }, [
-    activeProjectScene?.agentDock,
-    projectAgentDockCollection,
-    projectAgentDockExactSession,
-    projectAgentDockQuery,
-    selectedProjectSceneId,
-  ]);
-  const projectAgentDockSession = useMemo(() => {
+  })();
+  const projectAgentDockSession = (() => {
     if (!activeProjectScene?.agentDock || !selectedProjectSceneId) return null;
     if (activeProjectScene.agentDock.binding.kind === "new") {
       const domain = createProjectAgentDockDraftSession(
@@ -1261,13 +1210,8 @@ export function WorkbenchRuntime({
       domain: projectAgentDockExactSession,
       scene: resolveSessionScene(projectAgentDockExactSession),
     });
-  }, [
-    activeProjectScene?.agentDock,
-    projectAgentDockExactSession,
-    resolveSessionScene,
-    selectedProjectSceneId,
-  ]);
-  const projectAgentDockThreadScope = useMemo(() => {
+  })();
+  const projectAgentDockThreadScope = (() => {
     if (!activeProjectScene?.agentDock) return null;
     if (activeProjectScene.agentDock.binding.kind === "new") {
       return resolveProjectDraftThreadScopeDescriptor(
@@ -1281,12 +1225,7 @@ export function WorkbenchRuntime({
       projectAgentDockExactSession,
       projectAgentDockPendingWorktree?.clientThreadId ?? null,
     );
-  }, [
-    activeProjectScene?.agentDock,
-    projectAgentDockExactSession,
-    projectAgentDockPendingWorktree?.clientThreadId,
-    threadScopeIdentityRegistry,
-  ]);
+  })();
   const updateProjectAgentDock = useCallback(
     (
       projectId: string,
@@ -1332,69 +1271,57 @@ export function WorkbenchRuntime({
     },
     [workbenchWindow],
   );
-  const updateProjectAgentDockOverlay = useCallback(
-    (patch: Partial<WorkbenchComposerOverlayState>) => {
-      if (!selectedProjectSceneId) return;
-      updateComposerOverlay({ kind: "project", projectId: selectedProjectSceneId }, patch);
-    },
-    [selectedProjectSceneId, updateComposerOverlay],
-  );
-  const selectProjectAgentDockTarget = useCallback(
-    (row: ProjectAgentDockTargetRow) => {
-      if (!selectedProjectSceneId) return;
-      updateProjectAgentDock(selectedProjectSceneId, (dock) => ({
-        ...dock,
-        binding:
-          row.kind === "new" ? { kind: "new" } : { kind: "session", sessionId: row.sessionId! },
-      }));
-    },
-    [selectedProjectSceneId, updateProjectAgentDock],
-  );
-  const materializeProjectAgentDockDraft = useCallback(
-    async (input: {
-      readonly projectId: string;
-      readonly draftId: string;
-    }): Promise<ProjectSessionDomain> =>
-      projectAgentDockMaterializer.materialize(input, {
-        ensureDefaultDraft: async (projectId) =>
-          (await sessionCatalogRef.current.ensureDefaultDraft(projectId)).domain,
-      }),
-    [projectAgentDockMaterializer],
-  );
-  const commitMaterializedProjectAgentDockDraft = useCallback(
-    (input: {
-      readonly projectId: string;
-      readonly draftId: string;
-      readonly sessionId: string;
-    }) => {
-      composerDraftIntents.materializeProjectDraft(
-        { kind: "project-draft", projectId: input.projectId, draftId: input.draftId },
-        input.sessionId,
-      );
-      const owner = { kind: "project", projectId: input.projectId } as const;
-      workbenchWindowRef.current.setScene(
-        owner,
-        (stored) => {
-          const scene = stored ?? materializeInitialWorkbenchScene(owner);
-          const dock = scene.agentDock;
-          if (!dock || dock.newDraftId !== input.draftId) return scene;
-          return {
-            ...scene,
-            agentDock: {
-              ...dock,
-              newDraftId: createProjectAgentDockDraftId(),
-              binding:
-                dock.binding.kind === "new"
-                  ? { kind: "session", sessionId: input.sessionId }
-                  : dock.binding,
-            },
-          };
-        },
-        { recordHistory: false },
-      );
-    },
-    [],
-  );
+  const updateProjectAgentDockOverlay = (patch: Partial<WorkbenchComposerOverlayState>) => {
+    if (!selectedProjectSceneId) return;
+    updateComposerOverlay({ kind: "project", projectId: selectedProjectSceneId }, patch);
+  };
+  const selectProjectAgentDockTarget = (row: ProjectAgentDockTargetRow) => {
+    if (!selectedProjectSceneId) return;
+    updateProjectAgentDock(selectedProjectSceneId, (dock) => ({
+      ...dock,
+      binding:
+        row.kind === "new" ? { kind: "new" } : { kind: "session", sessionId: row.sessionId! },
+    }));
+  };
+  const materializeProjectAgentDockDraft = async (input: {
+    readonly projectId: string;
+    readonly draftId: string;
+  }): Promise<ProjectSessionDomain> =>
+    projectAgentDockMaterializer.materialize(input, {
+      ensureDefaultDraft: async (projectId) =>
+        (await sessionCatalog.ensureDefaultDraft(projectId)).domain,
+    });
+  const commitMaterializedProjectAgentDockDraft = (input: {
+    readonly projectId: string;
+    readonly draftId: string;
+    readonly sessionId: string;
+  }) => {
+    composerDraftIntents.materializeProjectDraft(
+      { kind: "project-draft", projectId: input.projectId, draftId: input.draftId },
+      input.sessionId,
+    );
+    const owner = { kind: "project", projectId: input.projectId } as const;
+    workbenchWindow.setScene(
+      owner,
+      (stored) => {
+        const scene = stored ?? materializeInitialWorkbenchScene(owner);
+        const dock = scene.agentDock;
+        if (!dock || dock.newDraftId !== input.draftId) return scene;
+        return {
+          ...scene,
+          agentDock: {
+            ...dock,
+            newDraftId: createProjectAgentDockDraftId(),
+            binding:
+              dock.binding.kind === "new"
+                ? { kind: "session", sessionId: input.sessionId }
+                : dock.binding,
+          },
+        };
+      },
+      { recordHistory: false },
+    );
+  };
   useEffect(() => {
     if (!selectedProjectSceneId || !projectAgentDockBoundSessionId) return;
     if (!projectAgentDockSessionQuery.isSuccess) return;
@@ -1410,16 +1337,19 @@ export function WorkbenchRuntime({
     selectedProjectSceneId,
     updateProjectAgentDock,
   ]);
-  useEffect(() => {
+  const [previousDockProjectId, setPreviousDockProjectId] = useState(selectedProjectSceneId);
+  if (previousDockProjectId !== selectedProjectSceneId) {
+    setPreviousDockProjectId(selectedProjectSceneId);
     setProjectAgentDockQuery("");
-  }, [selectedProjectSceneId]);
+  }
   const activeSessions = useMemo(
     () => (activeProject ? (sessionsByProject[activeProject.id] ?? []) : []),
     [activeProject, sessionsByProject],
   );
-  const activeSession = sessionCatalog.activeProjection;
   const activeThreadId = activeSession?.thread?.threadId ?? null;
-  activeThreadIdRef.current = activeThreadId;
+  useLayoutEffect(() => {
+    activeThreadIdRef.current = activeThreadId;
+  }, [activeThreadId]);
   useEffect(() => {
     if (!activeThreadId) return;
     for (const waiter of [...activeThreadWaitersRef.current]) {
@@ -1455,65 +1385,60 @@ export function WorkbenchRuntime({
       activeThreadWaitersRef.current.add(waiter);
     });
   }, []);
-  const createSessionViewTab = useCallback(
-    async (input: WorkbenchTabCreateInput): Promise<WorkbenchTabProjection | null> => {
-      if (!activeSession || input.sessionId !== activeSession.id) return null;
-      const commands = sceneCommandsRef.current;
-      if (!commands) return null;
-      const surface = workbenchSurfaceFromCreateInput(input);
-      const sceneOwner = { kind: "session" as const, sessionId: input.sessionId };
-      const scene =
-        workbenchWindow.owner.read().windowState.scenesByOwnerKey[
-          makeWorkbenchSceneKey(sceneOwner)
-        ];
-      if (!scene) return null;
-      const { id, state: _state, stateKey: _stateKey, ...opening } = surface;
-      const receipt = await commands.execute(
-        sceneOwner,
-        {
-          kind: "open_tab",
-          panelId: input.panelId,
-          groupId: input.targetLeafId ?? scene.panels[input.panelId].layout.activeLeafId,
-          surface: opening,
+  const createSessionViewTab = async (
+    input: WorkbenchTabCreateInput,
+  ): Promise<WorkbenchTabProjection | null> => {
+    if (!activeSession || input.sessionId !== activeSession.id) return null;
+    const commands = sceneCommands;
+    if (!commands) return null;
+    const surface = workbenchSurfaceFromCreateInput(input);
+    const sceneOwner = { kind: "session" as const, sessionId: input.sessionId };
+    const scene =
+      workbenchWindow.owner.read().windowState.scenesByOwnerKey[makeWorkbenchSceneKey(sceneOwner)];
+    if (!scene) return null;
+    const { id, state: _state, stateKey: _stateKey, ...opening } = surface;
+    const receipt = await commands.execute(
+      sceneOwner,
+      {
+        kind: "open_tab",
+        panelId: input.panelId,
+        groupId: input.targetLeafId ?? scene.panels[input.panelId].layout.activeLeafId,
+        surface: opening,
+      },
+      {
+        surfaceId: id,
+        open: {
+          presentation: input.presentation,
+          targetIndex: input.targetIndex,
+          openerTabId: input.openerTabId,
         },
-        {
-          surfaceId: id,
-          open: {
-            presentation: input.presentation,
-            targetIndex: input.targetIndex,
-            openerTabId: input.openerTabId,
-          },
-        },
-      );
-      if (receipt.error || !receipt.tabId) return null;
-      const next =
-        workbenchWindow.owner.read().windowState.scenesByOwnerKey[
-          makeWorkbenchSceneKey(sceneOwner)
-        ];
-      return next
-        ? (presentWorkbenchSessionDomainWithScene(activeSession, next).tabs.find(
-            (candidate) => candidate.id === receipt.tabId,
-          ) ?? null)
-        : null;
-    },
-    [activeSession, workbenchWindow.owner],
-  );
-  const updateSessionViewTab = useCallback(
-    (tabId: string, patch: WorkbenchSurfaceUpdatePatch): WorkbenchTabProjection | null => {
-      if (!activeSession) return null;
-      const current = resolveSessionScene(activeSession);
-      const surface = current.panelSurfacesById[tabId];
-      if (!surface) return null;
-      const nextSurface = applyWorkbenchSurfacePatch(surface, patch);
-      const next = panelControllerRef.current.durable.updateTab(activeSession, tabId, nextSurface);
-      return (
-        presentWorkbenchSessionDomainWithScene(activeSession, next).tabs.find(
-          (candidate) => candidate.id === tabId,
-        ) ?? null
-      );
-    },
-    [activeSession, resolveSessionScene],
-  );
+      },
+    );
+    if (receipt.error || !receipt.tabId) return null;
+    const next =
+      workbenchWindow.owner.read().windowState.scenesByOwnerKey[makeWorkbenchSceneKey(sceneOwner)];
+    return next
+      ? (presentWorkbenchSessionDomainWithScene(activeSession, next).tabs.find(
+          (candidate) => candidate.id === receipt.tabId,
+        ) ?? null)
+      : null;
+  };
+  const updateSessionViewTab = (
+    tabId: string,
+    patch: WorkbenchSurfaceUpdatePatch,
+  ): WorkbenchTabProjection | null => {
+    if (!activeSession) return null;
+    const current = resolveSessionScene(activeSession);
+    const surface = current.panelSurfacesById[tabId];
+    if (!surface) return null;
+    const nextSurface = applyWorkbenchSurfacePatch(surface, patch);
+    const next = panelController.durable.updateTab(activeSession, tabId, nextSurface);
+    return (
+      presentWorkbenchSessionDomainWithScene(activeSession, next).tabs.find(
+        (candidate) => candidate.id === tabId,
+      ) ?? null
+    );
+  };
   const activeRenderSession = activeSession;
   const activeSessionScene = activeSession ? resolveSessionScene(activeSession) : null;
   const updateActiveSessionComposerOverlay = useCallback(
@@ -1526,6 +1451,16 @@ export function WorkbenchRuntime({
   const forkTransferTargetConversationId = activeRenderSession?.thread?.threadId ?? null;
   const forkTransferTargetSessionId = activeRenderSession?.id ?? null;
   const consumedForkTransferTargetsRef = useRef(new Set<string>());
+  const applyForkTransfer = useEffectEvent(
+    (
+      session: NonNullable<typeof activeRenderSession>,
+      snapshot: Parameters<typeof applyForkBrowserTransferToWorkbenchScene>[1],
+    ) => {
+      panelController.durable.apply(session, (scene) =>
+        applyForkBrowserTransferToWorkbenchScene(scene, snapshot),
+      );
+    },
+  );
   useLayoutEffect(() => {
     if (!forkTransferTargetConversationId || !forkTransferTargetSessionId) return;
     const targetKey = `${forkTransferTargetConversationId}\0${forkTransferTargetSessionId}`;
@@ -1539,9 +1474,7 @@ export function WorkbenchRuntime({
     })
       .then((snapshot) => {
         if (!snapshot || !activeRenderSession) return;
-        panelControllerRef.current.durable.apply(activeRenderSession, (scene) =>
-          applyForkBrowserTransferToWorkbenchScene(scene, snapshot),
-        );
+        applyForkTransfer(activeRenderSession, snapshot);
       })
       .catch(() => {
         consumedForkTransferTargetsRef.current.delete(targetKey);
@@ -1597,23 +1530,11 @@ export function WorkbenchRuntime({
     [processManagerThreads],
   );
   const processManagerConversationsById = useConversationSubset(processManagerThreadIds);
-  const workbenchCodexControl = useCodexAppServerControl(
-    activeSession?.thread?.threadId ?? null,
-    activeSession?.thread?.executionHostId ?? null,
-  );
-  const sceneCommands = useWorkbenchSceneCommands(
-    workbenchWindow.owner,
-    windowSessionId,
-    workbenchCodexControl.discardSideChat,
-    panelController.tabOpenerStore,
-  );
-  sceneCommandsRef.current = sceneCommands;
   const executeSceneCommand = sceneCommands.execute;
   useWorkbenchAgentBridge(
     workbenchWindow.owner,
     {
-      resolveSessionProjectId: (sessionId) =>
-        sessionCatalogRef.current.findById(sessionId)?.domain.projectId,
+      resolveSessionProjectId: (sessionId) => sessionCatalog.findById(sessionId)?.domain.projectId,
     },
     sceneCommands.executor,
   );
@@ -1690,19 +1611,20 @@ export function WorkbenchRuntime({
       : true;
   const sidePanelOpen = !rightPanelCollapsed;
   const bottomPanelOpen = !bottomPanelCollapsed;
-  useEffect(() => {
-    setPageStageHistoryModal((current) => {
-      if (!current) return current;
-      if (!activeSession || activeSession.id !== current.sessionId) return null;
-
-      const ownerTab = activeSession.tabs.find((tab) => tab.id === current.tabId);
+  const [previousHistorySession, setPreviousHistorySession] = useState(activeSession);
+  if (previousHistorySession !== activeSession) {
+    setPreviousHistorySession(activeSession);
+    if (pageStageHistoryModal) {
+      const ownerTab = activeSession?.tabs.find((tab) => tab.id === pageStageHistoryModal.tabId);
       const pageRef = readPageStagePanelTabPageRef(ownerTab);
-      if (!pageRef) return null;
-      if (pageRef.projectId !== current.projectId || pageRef.pageId !== current.pageId) return null;
-
-      return current;
-    });
-  }, [activeSession]);
+      if (
+        activeSession?.id !== pageStageHistoryModal.sessionId ||
+        pageRef?.projectId !== pageStageHistoryModal.projectId ||
+        pageRef?.pageId !== pageStageHistoryModal.pageId
+      )
+        setPageStageHistoryModal(null);
+    }
+  }
   const closePageStageHistoryModal = useCallback(() => {
     setPageStageHistoryModal(null);
   }, []);
@@ -1824,12 +1746,13 @@ export function WorkbenchRuntime({
     });
   }, [onNavigationStateChange, shellCanNavigateBack, shellCanNavigateForward]);
 
-  useEffect(() => {
-    if (!pendingWorktreeClientThreadId) return;
-    setSettingsPath(null);
-    setLocalEnvironmentSettingsInitial(null);
-    setAutomationsPath(null);
-  }, [pendingWorktreeClientThreadId, setAutomationsPath, setSettingsPath]);
+  const [previousPendingWorktreeId, setPreviousPendingWorktreeId] = useState(
+    pendingWorktreeClientThreadId,
+  );
+  if (previousPendingWorktreeId !== pendingWorktreeClientThreadId) {
+    setPreviousPendingWorktreeId(pendingWorktreeClientThreadId);
+    if (pendingWorktreeClientThreadId) setLocalEnvironmentSettingsInitial(null);
+  }
 
   const handleCodexAccountLogout = useCallback(async () => {
     await codexAccountActions.logout();
@@ -1840,7 +1763,7 @@ export function WorkbenchRuntime({
   }, []);
   useEffect(() => {
     if (!activePanelOwnerKey || !rightPanel || !bottomPanel) {
-      panelControllerRef.current.updatePanelCollapsedOverrides((current) =>
+      updatePanelCollapsedOverrides((current) =>
         Object.keys(current).length === 0 ? current : {},
       );
       return;
@@ -1848,7 +1771,7 @@ export function WorkbenchRuntime({
 
     const rightKey = makeWorkbenchPanelSlotKey(activePanelOwnerKey, "right");
     const bottomKey = makeWorkbenchPanelSlotKey(activePanelOwnerKey, "bottom");
-    panelControllerRef.current.updatePanelCollapsedOverrides((current) => {
+    updatePanelCollapsedOverrides((current) => {
       const rightMatches = current[rightKey] === rightPanel.collapsed;
       const bottomMatches = current[bottomKey] === bottomPanel.collapsed;
       if (!rightMatches && !bottomMatches) {
@@ -1860,7 +1783,7 @@ export function WorkbenchRuntime({
       if (bottomMatches) delete next[bottomKey];
       return next;
     });
-  }, [activePanelOwnerKey, bottomPanel, rightPanel]);
+  }, [activePanelOwnerKey, bottomPanel, rightPanel, updatePanelCollapsedOverrides]);
 
   const openSettings = useCallback(() => {
     closePendingWorktreeRoute();
@@ -1933,10 +1856,10 @@ export function WorkbenchRuntime({
 
   useEffect(() => subscribeDictationRecordingNavigation(openVoiceSettings), [openVoiceSettings]);
 
-  const openKeyboardShortcutHelp = useCallback(() => {
+  const openKeyboardShortcutHelp = () => {
     setCommandPaletteOpen(false);
     setKeyboardShortcutHelpOpen(true);
-  }, []);
+  };
 
   const toggleSettings = useCallback(() => {
     setAutomationsPath(null);
@@ -2136,36 +2059,33 @@ export function WorkbenchRuntime({
    * Writes a message to the Inbox where the user is without leaving. When that Inbox's own
    * composer is already on screen, the capture simply focuses it.
    */
-  const captureToInbox = useCallback(
-    (source: WorkbenchCommandInvocation["source"]): boolean => {
-      const destination = resolveInboxCaptureDestination();
-      const seed =
-        source === "keyboard_shortcut" ? readCaptureSelection(window.getSelection()) : null;
-      const homeOwner: WorkbenchSceneOwner =
-        destination.scope.kind === "project"
-          ? { kind: "project", projectId: destination.scope.projectId }
-          : INBOX_SCENE_OWNER;
-      const home = workbenchWindow.scenesByOwnerKey[makeWorkbenchSceneKey(homeOwner)]?.primary;
-      const { location } = workbenchWindow;
-      const homeSceneShowing =
-        homeOwner.kind === "project"
-          ? location.kind === "project" && location.projectId === homeOwner.projectId
-          : location.kind === "inbox";
-      const homeShowing =
-        homeSceneShowing &&
-        home?.kind === "inbox" &&
-        readWorkbenchAgentContext(workbenchWindow.owner.read(), homeOwner)?.groups.some(
-          (group) => group.visible && group.selectedTabId === home.id,
-        ) === true;
-      if (homeShowing && seed === null) {
-        setInboxFocusToken((current) => current + 1);
-        return true;
-      }
-      setInboxQuickCapture({ destination, seed });
+  const captureToInbox = (source: WorkbenchCommandInvocation["source"]): boolean => {
+    const destination = resolveInboxCaptureDestination();
+    const seed =
+      source === "keyboard_shortcut" ? readCaptureSelection(window.getSelection()) : null;
+    const homeOwner: WorkbenchSceneOwner =
+      destination.scope.kind === "project"
+        ? { kind: "project", projectId: destination.scope.projectId }
+        : INBOX_SCENE_OWNER;
+    const home = workbenchWindow.scenesByOwnerKey[makeWorkbenchSceneKey(homeOwner)]?.primary;
+    const { location } = workbenchWindow;
+    const homeSceneShowing =
+      homeOwner.kind === "project"
+        ? location.kind === "project" && location.projectId === homeOwner.projectId
+        : location.kind === "inbox";
+    const homeShowing =
+      homeSceneShowing &&
+      home?.kind === "inbox" &&
+      readWorkbenchAgentContext(workbenchWindow.owner.read(), homeOwner)?.groups.some(
+        (group) => group.visible && group.selectedTabId === home.id,
+      ) === true;
+    if (homeShowing && seed === null) {
+      setInboxFocusToken((current) => current + 1);
       return true;
-    },
-    [resolveInboxCaptureDestination, workbenchWindow],
-  );
+    }
+    setInboxQuickCapture({ destination, seed });
+    return true;
+  };
   const inboxCounts = useInboxCounts();
   useInboxInvalidation();
   useEffect(() => {
@@ -2237,68 +2157,73 @@ export function WorkbenchRuntime({
         readonly isCurrent?: () => boolean;
       } = {},
     ): Promise<boolean> => {
-      try {
-        const request: WorkbenchSurfaceOpenRequest =
-          target.kind === "page"
-            ? {
-                kind: "page_stage",
-                config: {
-                  routingContext: options.pageRoutingContext ?? libraryContentRoute,
-                  pageId: target.pageId,
-                  ...(options.titleSnapshot ? { titleSnapshot: options.titleSnapshot } : {}),
-                },
-                titleSnapshot: options.titleSnapshot,
-              }
-            : target.kind === "canvas"
+      return await runWithCleanup(
+        async () => {
+          const request: WorkbenchSurfaceOpenRequest =
+            target.kind === "page"
               ? {
-                  kind: "canvas_stage",
+                  kind: "page_stage",
                   config: {
-                    routingContext: { kind: "library" },
-                    canvasBlockId: target.canvasId,
+                    routingContext: options.pageRoutingContext ?? libraryContentRoute,
+                    pageId: target.pageId,
                     ...(options.titleSnapshot ? { titleSnapshot: options.titleSnapshot } : {}),
                   },
                   titleSnapshot: options.titleSnapshot,
                 }
-              : target.kind === "database"
+              : target.kind === "canvas"
                 ? {
-                    kind: "db_view",
+                    kind: "canvas_stage",
                     config: {
                       routingContext: { kind: "library" },
-                      target: {
-                        kind: "database-default",
-                        databaseId: target.databaseId,
-                      },
+                      canvasBlockId: target.canvasId,
+                      ...(options.titleSnapshot ? { titleSnapshot: options.titleSnapshot } : {}),
                     },
                     titleSnapshot: options.titleSnapshot,
                   }
-                : {
-                    kind: "db_view",
-                    config: {
-                      routingContext: { kind: "library" },
-                      target: {
-                        kind: "database-view",
-                        databaseViewId: target.viewId,
+                : target.kind === "database"
+                  ? {
+                      kind: "db_view",
+                      config: {
+                        routingContext: { kind: "library" },
+                        target: {
+                          kind: "database-default",
+                          databaseId: target.databaseId,
+                        },
                       },
-                    },
-                    titleSnapshot: options.titleSnapshot,
-                  };
-        const presented = await sceneNavigator.presentPanelSurface({
-          owner: options.owner ?? LIBRARY_SCENE_OWNER,
-          request,
-          target: {
-            panelId: options.targetPanelId ?? "right",
-            ...(options.targetLeafId ? { leafId: options.targetLeafId } : {}),
-            ...(options.placement ? { placement: options.placement } : {}),
+                      titleSnapshot: options.titleSnapshot,
+                    }
+                  : {
+                      kind: "db_view",
+                      config: {
+                        routingContext: { kind: "library" },
+                        target: {
+                          kind: "database-view",
+                          databaseViewId: target.viewId,
+                        },
+                      },
+                      titleSnapshot: options.titleSnapshot,
+                    };
+          const presented = await sceneNavigator.presentPanelSurface({
+            owner: options.owner ?? LIBRARY_SCENE_OWNER,
+            request,
+            target: {
+              panelId: options.targetPanelId ?? "right",
+              ...(options.targetLeafId ? { leafId: options.targetLeafId } : {}),
+              ...(options.placement ? { placement: options.placement } : {}),
+            },
+            mode: options.mode ?? "durable",
+            navigation: "select-owner",
+            ...(options.isCurrent ? { isCurrent: options.isCurrent } : {}),
+          });
+          return presented.status === "presented";
+        },
+        {
+          onError: (error) => {
+            toast.danger(error instanceof Error ? error.message : "Resource could not be opened");
+            return false;
           },
-          mode: options.mode ?? "durable",
-          navigation: "select-owner",
-          ...(options.isCurrent ? { isCurrent: options.isCurrent } : {}),
-        });
-        return presented.status === "presented";
-      } catch (error) {
-        toast.danger(error instanceof Error ? error.message : "Resource could not be opened");
-        return false;
-      }
+        },
+      );
     },
     [sceneNavigator],
   );
@@ -2325,12 +2250,13 @@ export function WorkbenchRuntime({
     ): Promise<boolean> => {
       let created: { readonly pageId: string; readonly projectId: string | null };
       if (owner.kind === "project" || owner.kind === "session") {
+        const pageOwner =
+          owner.kind === "project"
+            ? { kind: "project" as const, projectId: owner.projectId }
+            : { kind: "session" as const, sessionId: owner.sessionId };
         try {
           created = await createPageFor({
-            for:
-              owner.kind === "project"
-                ? { kind: "project", projectId: owner.projectId }
-                : { kind: "session", sessionId: owner.sessionId },
+            for: pageOwner,
           });
         } catch (error) {
           toast.danger(error instanceof Error ? error.message : "Could not create Page");
@@ -2452,42 +2378,34 @@ export function WorkbenchRuntime({
     closePanelTab,
     closePlanSidePanel,
   } = panelLifecycle;
-  const updateActiveWorkbenchPanel = useCallback(
-    async (panelId: PanelId, input: Partial<WorkbenchSceneSnapshot["panels"][PanelId]>) => {
-      if (!activeOwnedSceneOwner) {
-        return await updateActivePanel(panelId, input);
-      }
-      const receipt = await executeSceneCommand(activeOwnedSceneOwner, {
-        kind: "set_panel_state",
-        panelId,
-        ...(input.collapsed === undefined ? {} : { collapsed: input.collapsed }),
-        ...(input.size === undefined ? {} : { size: input.size }),
-      });
-      return receipt.error
-        ? null
-        : (workbenchWindow.owner.read().windowState.scenesByOwnerKey[
-            makeWorkbenchSceneKey(activeOwnedSceneOwner)
-          ] ?? null);
-    },
-    [activeOwnedSceneOwner, executeSceneCommand, updateActivePanel, workbenchWindow.owner],
-  );
-  const setActiveWorkbenchPanelCollapsed = useCallback(
-    async (panelId: PanelId, collapsed: boolean) => {
-      if (activeOwnedSceneOwner && panelId === "right" && collapsed) {
-        return activeOwnedScene?.panels.right ?? null;
-      }
-      if (!activeOwnedSceneOwner) {
-        return await setActivePanelCollapsed(panelId, collapsed);
-      }
-      return await updateActiveWorkbenchPanel(panelId, { collapsed });
-    },
-    [
-      activeOwnedSceneOwner,
-      activeOwnedScene?.panels.right,
-      setActivePanelCollapsed,
-      updateActiveWorkbenchPanel,
-    ],
-  );
+  const updateActiveWorkbenchPanel = async (
+    panelId: PanelId,
+    input: Partial<WorkbenchSceneSnapshot["panels"][PanelId]>,
+  ) => {
+    if (!activeOwnedSceneOwner) {
+      return await updateActivePanel(panelId, input);
+    }
+    const receipt = await executeSceneCommand(activeOwnedSceneOwner, {
+      kind: "set_panel_state",
+      panelId,
+      ...(input.collapsed === undefined ? {} : { collapsed: input.collapsed }),
+      ...(input.size === undefined ? {} : { size: input.size }),
+    });
+    return receipt.error
+      ? null
+      : (workbenchWindow.owner.read().windowState.scenesByOwnerKey[
+          makeWorkbenchSceneKey(activeOwnedSceneOwner)
+        ] ?? null);
+  };
+  const setActiveWorkbenchPanelCollapsed = async (panelId: PanelId, collapsed: boolean) => {
+    if (activeOwnedSceneOwner && panelId === "right" && collapsed) {
+      return activeOwnedScene?.panels.right ?? null;
+    }
+    if (!activeOwnedSceneOwner) {
+      return await setActivePanelCollapsed(panelId, collapsed);
+    }
+    return await updateActiveWorkbenchPanel(panelId, { collapsed });
+  };
   const presentProjectSceneSurface = useCallback(
     async (
       projectId: string,
@@ -2705,25 +2623,23 @@ export function WorkbenchRuntime({
     windowSessionId,
   });
 
-  const presentOwnedSceneFile = useCallback<FileReferenceRouterPort["openWorkspaceFileTab"]>(
-    async (input) => {
-      if (!activeOwnedSceneOwner) return false;
-      const location = getWorkbenchSceneReturnLocation(workbenchWindowRef.current.location);
-      return openWorkbenchSceneFile({
-        owner: activeOwnedSceneOwner,
-        navigator: sceneNavigator,
-        projects,
-        input: {
-          ...input,
-          isCurrent: () =>
-            input.isCurrent?.() !== false &&
-            JSON.stringify(getWorkbenchSceneReturnLocation(workbenchWindowRef.current.location)) ===
-              JSON.stringify(location),
-        },
-      });
-    },
-    [activeOwnedSceneOwner, projects, sceneNavigator],
-  );
+  const presentOwnedSceneFile: FileReferenceRouterPort["openWorkspaceFileTab"] = async (input) => {
+    if (!activeOwnedSceneOwner) return false;
+    const location = getWorkbenchSceneReturnLocation(workbenchWindow.location);
+    return openWorkbenchSceneFile({
+      owner: activeOwnedSceneOwner,
+      navigator: sceneNavigator,
+      projects,
+      input: {
+        ...input,
+        isCurrent: () =>
+          input.isCurrent?.() !== false &&
+          JSON.stringify(
+            getWorkbenchSceneReturnLocation(workbenchWindow.owner.read().windowState.location),
+          ) === JSON.stringify(location),
+      },
+    });
+  };
   const linkWindowOwner = workbenchWindow.owner;
   const linkBrowserAvailable = linkBrowserOwner(workbenchWindow.location) !== null;
   const linkPresenterForOwner = useCallback(
@@ -2801,9 +2717,7 @@ export function WorkbenchRuntime({
       }),
     [linkRouter],
   );
-  const presentOwnedScenePageFile = useCallback<
-    import("@/lib/workbench-page-file-opener").OpenPageFileTabHandler
-  >(
+  const presentOwnedScenePageFile: import("@/lib/workbench-page-file-opener").OpenPageFileTabHandler =
     async (input) => {
       if (!activeOwnedSceneOwner) return false;
       const result = await sceneNavigator.presentPanelSurface({
@@ -2824,9 +2738,7 @@ export function WorkbenchRuntime({
         navigation: "background",
       });
       return result.status === "presented";
-    },
-    [activeOwnedSceneOwner, sceneNavigator],
-  );
+    };
   const panelOpeners = useWorkbenchPanelOpeners({
     preparePageFilePreviewClose: prepareWorkbenchSceneSurfaceClose,
     presentOwnedScenePageFile,
@@ -2859,8 +2771,6 @@ export function WorkbenchRuntime({
     openWorkspaceFileTab,
     openPageFileTab,
   } = panelOpeners;
-  const openExistingSideChatRef = useRef(openExistingSideChat);
-  openExistingSideChatRef.current = openExistingSideChat;
 
   const sessionCommands = useWorkbenchSessionCommands({
     activeProject,
@@ -3100,6 +3010,7 @@ export function WorkbenchRuntime({
   useEffect(() => {
     if (!pendingViewDeepLinkOpen) return;
     if (pendingViewDeepLinkOpen.projectId !== activeProjectId) return;
+    if (!activeSession?.id) return;
 
     void openPendingViewDeepLink(pendingViewDeepLinkOpen);
   }, [activeProjectId, activeSession?.id, pendingViewDeepLinkOpen]);
@@ -3140,27 +3051,24 @@ export function WorkbenchRuntime({
   } = chromeCommands;
   const activeSessionRightPanel = activeSessionPanelModel?.rightPanel ?? null;
   /** Shows the Chat in place of the content panel, keeping full view and every content tab. */
-  const presentSessionConversationInFullView = useCallback(() => {
+  const presentSessionConversationInFullView = () => {
     if (!activeSessionRightPanel) return;
     void updateActiveWorkbenchPanel("right", {
       collapsed: true,
       size: { ...activeSessionRightPanel.size, fullWidth: true },
     });
-  }, [activeSessionRightPanel, updateActiveWorkbenchPanel]);
+  };
   /** Places the Chat in the pane on `side`, its content beside it, and remembers the choice. */
-  const moveSessionConversationToSide = useCallback(
-    (side: WorkbenchPanelSide) => {
-      if (!activeSessionRightPanel) return;
-      const contentSide = oppositeWorkbenchPanelSide(side);
-      updatePreferredSessionContentSide(contentSide);
-      void updateActiveWorkbenchPanel("right", {
-        collapsed: false,
-        side: contentSide,
-        size: { ...activeSessionRightPanel.size, fullWidth: false },
-      });
-    },
-    [activeSessionRightPanel, updateActiveWorkbenchPanel, updatePreferredSessionContentSide],
-  );
+  const moveSessionConversationToSide = (side: WorkbenchPanelSide) => {
+    if (!activeSessionRightPanel) return;
+    const contentSide = oppositeWorkbenchPanelSide(side);
+    updatePreferredSessionContentSide(contentSide);
+    void updateActiveWorkbenchPanel("right", {
+      collapsed: false,
+      side: contentSide,
+      size: { ...activeSessionRightPanel.size, fullWidth: false },
+    });
+  };
   const rightPanelComposerOverlayPlacement: FloatingComposerPlacement | undefined =
     activeSessionScene && activeSession
       ? {
@@ -3289,7 +3197,7 @@ export function WorkbenchRuntime({
       rightPanelMotion.mounted,
     ],
   );
-  const projectBrowserRetentionTabs = useMemo<WorkbenchTabProjection[]>(() => {
+  const projectBrowserRetentionTabs: WorkbenchTabProjection[] = (() => {
     if (!activeProjectScene || !activeProject || !projectSceneKey) return [];
     return Object.values(activeProjectScene.panelSurfacesById).flatMap((surface, index) =>
       surface.kind === "browser"
@@ -3320,8 +3228,8 @@ export function WorkbenchRuntime({
           ]
         : [],
     );
-  }, [activeProject, activeProjectScene, projectSceneKey]);
-  const visibleProjectBrowserTabIds = useMemo(() => {
+  })();
+  const visibleProjectBrowserTabIds = (() => {
     const visible = new Set<string>();
     if (!activeProjectScene) return visible;
     for (const panelId of ["right", "bottom"] as const) {
@@ -3335,7 +3243,7 @@ export function WorkbenchRuntime({
       }
     }
     return visible;
-  }, [activeProjectScene]);
+  })();
 
   useEffect(() => {
     if (settingsPath !== null) return;
@@ -3356,11 +3264,11 @@ export function WorkbenchRuntime({
         (crossedNarrowWidth && atNarrowWidth && sidePanelOpen));
     if (shouldClearRightPanel) {
       const overrideKey = makeWorkbenchPanelSlotKey(activePanelOwnerKey, "right");
-      panelControllerRef.current.updatePanelCollapsedOverrides((current) => ({
+      updatePanelCollapsedOverrides((current) => ({
         ...current,
         [overrideKey]: true,
       }));
-      void updateActiveWorkbenchPanel("right", {
+      void updateActivePanel("right", {
         collapsed: true,
         size: {
           ...rightPanel.size,
@@ -3371,7 +3279,7 @@ export function WorkbenchRuntime({
           toast.danger(error instanceof Error ? error.message : "Unable to update panel");
         })
         .finally(() => {
-          panelControllerRef.current.updatePanelCollapsedOverrides((current) => {
+          updatePanelCollapsedOverrides((current) => {
             if (!(overrideKey in current)) return current;
             const next = { ...current };
             delete next[overrideKey];
@@ -3384,6 +3292,7 @@ export function WorkbenchRuntime({
       setSidebarCollapsedWithCodexState(true, { animate: false });
     }
   }, [
+    updatePanelCollapsedOverrides,
     activePanelOwnerKey,
     activeOwnedSceneOwner,
     rightPanel,
@@ -3392,33 +3301,23 @@ export function WorkbenchRuntime({
     sidePanelOpen,
     sidebarOpen,
     shellWidthClass,
-    updateActiveWorkbenchPanel,
+    updateActivePanel,
   ]);
 
   const toggleThreadSummaryPanel = useCallback(() => {
     toggleThreadSummaryPanelPinnedOpen();
   }, [toggleThreadSummaryPanelPinnedOpen]);
-  const threadSummaryCommands = useMemo<WorkbenchThreadSummaryCommands>(
-    () => ({
-      selectPanelTab,
-      setPanelCollapsed: setActivePanelCollapsed,
-      openAutomationSidePanel,
-      openAutomations,
-      openProcessOutput: openProcessOutputInCurrentSession,
-      openProcessManager: () => {
-        setProcessManagerOpen(true);
-      },
-      presentBrowserTab: browserUsePresentation.presentBrowserTab,
-    }),
-    [
-      openAutomationSidePanel,
-      openAutomations,
-      openProcessOutputInCurrentSession,
-      browserUsePresentation.presentBrowserTab,
-      selectPanelTab,
-      setActivePanelCollapsed,
-    ],
-  );
+  const threadSummaryCommands: WorkbenchThreadSummaryCommands = (() => ({
+    selectPanelTab,
+    setPanelCollapsed: setActivePanelCollapsed,
+    openAutomationSidePanel,
+    openAutomations,
+    openProcessOutput: openProcessOutputInCurrentSession,
+    openProcessManager: () => {
+      setProcessManagerOpen(true);
+    },
+    presentBrowserTab: browserUsePresentation.presentBrowserTab,
+  }))();
   const threadSummary = useWorkbenchThreadSummary({
     activeSession,
     windowSessionId,
@@ -3459,20 +3358,14 @@ export function WorkbenchRuntime({
     />
   );
 
-  const toggleActiveSidePanel = useCallback(() => {
+  const toggleActiveSidePanel = () => {
     if (!activePanelOwnerKey || activeOwnedSceneOwner) return;
     if (!sidePanelOpen) {
       void showActiveRightPanel();
       return;
     }
     void hideActiveRightPanel();
-  }, [
-    activePanelOwnerKey,
-    hideActiveRightPanel,
-    activeOwnedSceneOwner,
-    showActiveRightPanel,
-    sidePanelOpen,
-  ]);
+  };
 
   const sessionContentTabCount = activeSessionPanelModel
     ? Object.values(activeSessionPanelModel.renderableTabsByPanelLeaf.right).reduce(
@@ -3484,32 +3377,23 @@ export function WorkbenchRuntime({
    * Enters full view showing the selected content, or returns a full view to split view. Without
    * content, it opens a New tab to show.
    */
-  const setSessionWorkspaceFullView = useCallback(
-    (fullView: boolean) => {
-      if (!sessionWorkspace) return;
-      if (sessionContentTabCount > 0) {
-        setActiveRightPanelFullWidth(fullView);
-        return;
-      }
-      if (!resolveActivePanelCapabilities("right").actions.browser.available) return;
-      // Settle the layout first, so the New tab appears in place without a passing layout.
+  const setSessionWorkspaceFullView = (fullView: boolean) => {
+    if (!sessionWorkspace) return;
+    if (sessionContentTabCount > 0) {
       setActiveRightPanelFullWidth(fullView);
-      void dispatchPanelAction("browser", { panelId: "right" });
-    },
-    [
-      dispatchPanelAction,
-      resolveActivePanelCapabilities,
-      sessionContentTabCount,
-      sessionWorkspace,
-      setActiveRightPanelFullWidth,
-    ],
-  );
-  const toggleActiveWorkspaceFullView = useCallback(() => {
+      return;
+    }
+    if (!resolveActivePanelCapabilities("right").actions.browser.available) return;
+    // Settle the layout first, so the New tab appears in place without a passing layout.
+    setActiveRightPanelFullWidth(fullView);
+    void dispatchPanelAction("browser", { panelId: "right" });
+  };
+  const toggleActiveWorkspaceFullView = () => {
     if (!sessionWorkspace) return;
     setSessionWorkspaceFullView(sessionWorkspace.layout !== "full");
-  }, [sessionWorkspace, setSessionWorkspaceFullView]);
+  };
 
-  const toggleActiveBottomPanel = useCallback(() => {
+  const toggleActiveBottomPanel = () => {
     if (!activePanelOwnerKey) return;
     if (bottomPanelOpen) {
       void hideActiveBottomPanel();
@@ -3555,22 +3439,7 @@ export function WorkbenchRuntime({
     }
 
     void showActiveBottomPanel();
-  }, [
-    activePanelOwnerKey,
-    activeOwnedScene,
-    activeOwnedSceneOwner,
-    activeProject,
-    activeProjectScene?.panels.bottom.layout.activeLeafId,
-    activeSession,
-    activeSessionPanelModel?.bottomRenderableTabs.length,
-    bottomPanelOpen,
-    dispatchPanelAction,
-    hideActiveBottomPanel,
-    openProjectSceneManualSurface,
-    projectSceneOwner,
-    resolveActivePanelCapabilities,
-    showActiveBottomPanel,
-  ]);
+  };
 
   const resolveNewTabOwnerContext = useCallback(
     (owner: WorkbenchSceneOwner, panelId: PanelId): WorkbenchNewTabOwnerContext | null => {
@@ -3677,150 +3546,127 @@ export function WorkbenchRuntime({
     },
   });
 
-  const handleDesktopNotificationAction = useCallback(
-    async (invocation: DesktopNotificationActionInvocation): Promise<void> => {
-      const parentThreadId = resolveDesktopNotificationParentThreadId(invocation);
-      if (!parentThreadId) return;
-      const runtimeSessionId = resolveDesktopNotificationRuntimeSessionId(invocation);
+  const handleDesktopNotificationAction = async (
+    invocation: DesktopNotificationActionInvocation,
+  ): Promise<void> => {
+    const parentThreadId = resolveDesktopNotificationParentThreadId(invocation);
+    if (!parentThreadId) return;
+    const runtimeSessionId = resolveDesktopNotificationRuntimeSessionId(invocation);
 
-      const opened = await openAttachedThreadSessionById(
-        parentThreadId,
-        runtimeSessionId ? { runtimeSessionId } : undefined,
+    const opened = await openAttachedThreadSessionById(
+      parentThreadId,
+      runtimeSessionId ? { runtimeSessionId } : undefined,
+    );
+    if (!opened) return;
+    const presented = await waitForActiveThread(parentThreadId);
+    if (!presented) return;
+    if (runtimeSessionId) {
+      await executeRuntimeDesktopNotificationAction(invocation, runtimeSessionId, (input) =>
+        agentRuntimeRuntime.message({
+          sessionId: input.sessionId,
+          message: { messageId: createUuidV7(), text: input.text },
+        }),
       );
-      if (!opened) return;
-      const presented = await waitForActiveThread(parentThreadId);
-      if (!presented) return;
-      if (runtimeSessionId) {
-        await executeRuntimeDesktopNotificationAction(invocation, runtimeSessionId, (input) =>
-          agentRuntimeRuntime.message({
-            sessionId: input.sessionId,
-            message: { messageId: createUuidV7(), text: input.text },
-          }),
-        );
-        return;
-      }
+      return;
+    }
 
-      const sideChatThreadId = resolveDesktopNotificationSideChatThreadId(invocation);
-      if (sideChatThreadId) {
-        const sideChatOpened = await openExistingSideChatRef.current({
-          threadId: sideChatThreadId,
-          parentThreadId,
-          parentNavigationPath: invocation.navigationPath ?? `thread:${parentThreadId}`,
-        });
-        if (!sideChatOpened) return;
-      }
+    const sideChatThreadId = resolveDesktopNotificationSideChatThreadId(invocation);
+    if (sideChatThreadId) {
+      const sideChatOpened = await openExistingSideChat({
+        threadId: sideChatThreadId,
+        parentThreadId,
+        parentNavigationPath: invocation.navigationPath ?? `thread:${parentThreadId}`,
+      });
+      if (!sideChatOpened) return;
+    }
 
-      const manager = codexAppServerRegistry.getForHostId(invocation.hostId);
-      await executeDesktopNotificationAction(invocation, manager);
+    const manager = codexAppServerRegistry.getForHostId(invocation.hostId);
+    await executeDesktopNotificationAction(invocation, manager);
+  };
+
+  const openDesktopNotification = (
+    invocation: DesktopNotificationActionInvocation,
+  ): Promise<void> => {
+    const action = desktopNotificationActionChainRef.current
+      .catch(() => undefined)
+      .then(() => handleDesktopNotificationAction(invocation));
+    desktopNotificationActionChainRef.current = action;
+    return action;
+  };
+
+  const executeWorkbenchCommand = ({ commandId, source }: WorkbenchCommandInvocation): boolean => {
+    if (commandId === "settings") {
+      openSettings();
+      return true;
+    }
+    if (commandId === CAPTURE_TO_INBOX_COMMAND_ID) return captureToInbox(source);
+    if (commandId === TOGGLE_BOTTOM_PANEL_COMMAND_ID) {
+      toggleActiveBottomPanel();
+      return true;
+    }
+    if (commandId === TOGGLE_FULL_VIEW_COMMAND_ID) {
+      toggleActiveWorkspaceFullView();
+      return true;
+    }
+    return false;
+  };
+
+  const commandPort: WorkbenchCommandPort = (() => ({
+    navigate: (direction) => {
+      executeShellNavigation(direction);
     },
-    [codexAppServerRegistry, openAttachedThreadSessionById, waitForActiveThread],
-  );
-
-  const openDesktopNotification = useCallback(
-    (invocation: DesktopNotificationActionInvocation): Promise<void> => {
-      const action = desktopNotificationActionChainRef.current
-        .catch(() => undefined)
-        .then(() => handleDesktopNotificationAction(invocation));
-      desktopNotificationActionChainRef.current = action;
-      return action;
+    toggleSidebar: () => {
+      toggleSidebarCollapsed();
     },
-    [handleDesktopNotificationAction],
-  );
-
-  const executeWorkbenchCommand = useCallback(
-    ({ commandId, source }: WorkbenchCommandInvocation): boolean => {
-      if (commandId === "settings") {
-        openSettings();
-        return true;
-      }
-      if (commandId === CAPTURE_TO_INBOX_COMMAND_ID) return captureToInbox(source);
-      if (commandId === TOGGLE_BOTTOM_PANEL_COMMAND_ID) {
-        toggleActiveBottomPanel();
-        return true;
-      }
-      if (commandId === TOGGLE_FULL_VIEW_COMMAND_ID) {
-        toggleActiveWorkspaceFullView();
-        return true;
-      }
-      return false;
+    renameThread: () => {
+      if (!activeSession) return;
+      openRenameSessionDialog(activeSession);
     },
-    [captureToInbox, openSettings, toggleActiveBottomPanel, toggleActiveWorkspaceFullView],
-  );
-
-  const commandPort = useMemo<WorkbenchCommandPort>(
-    () => ({
-      navigate: (direction) => {
-        executeShellNavigation(direction);
-      },
-      toggleSidebar: () => {
-        toggleSidebarCollapsed();
-      },
-      renameThread: () => {
-        if (!activeSession) return;
-        openRenameSessionDialog(activeSession);
-      },
-      openContentSearch: (source, preferredDomain) => {
-        requestContentSearchOpen(source, preferredDomain);
-      },
-      cyclePanelTab: (direction) => {
-        cycleFocusedPanelTab(panelTabCycleRequestDirectionToOffset(direction), null, {
-          respectActiveElementGuard: true,
-        });
-      },
-      closePanelTab: () => {
-        closeFocusedPanelTab(null, { respectActiveElementGuard: true });
-      },
-      execute: (commandId, source) => {
-        if (commandId === CAPTURE_TO_INBOX_COMMAND_ID || commandId === "settings") {
-          return executeWorkbenchCommand({ commandId, source });
-        }
-        if (!selectedSessionDetailReady) {
-          pendingWorkbenchCommandInvocationsRef.current.push({
-            commandId,
-            source,
-          });
-          return true;
-        }
+    openContentSearch: (source, preferredDomain) => {
+      requestContentSearchOpen(source, preferredDomain);
+    },
+    cyclePanelTab: (direction) => {
+      cycleFocusedPanelTab(panelTabCycleRequestDirectionToOffset(direction), null, {
+        respectActiveElementGuard: true,
+      });
+    },
+    closePanelTab: () => {
+      closeFocusedPanelTab(null, { respectActiveElementGuard: true });
+    },
+    execute: (commandId, source) => {
+      if (commandId === CAPTURE_TO_INBOX_COMMAND_ID || commandId === "settings") {
         return executeWorkbenchCommand({ commandId, source });
-      },
-      openCommandPalette,
-      goToPages: workbenchWindow.selectLibrary,
-      goToSettings: openSettings,
-      toggleSettings,
-      openKeyboardShortcuts: openKeyboardShortcutHelp,
-      openDesktopNotification,
-    }),
-    [
-      activeSession,
-      closeFocusedPanelTab,
-      cycleFocusedPanelTab,
-      executeShellNavigation,
-      executeWorkbenchCommand,
-      openCommandPalette,
-      workbenchWindow.selectLibrary,
-      openSettings,
-      openKeyboardShortcutHelp,
-      openDesktopNotification,
-      openRenameSessionDialog,
-      requestContentSearchOpen,
-      selectedSessionDetailReady,
-      toggleSettings,
-      toggleSidebarCollapsed,
-    ],
-  );
+      }
+      if (!selectedSessionDetailReady) {
+        pendingWorkbenchCommandInvocationsRef.current.push({
+          commandId,
+          source,
+        });
+        return true;
+      }
+      return executeWorkbenchCommand({ commandId, source });
+    },
+    openCommandPalette,
+    goToPages: workbenchWindow.selectLibrary,
+    goToSettings: openSettings,
+    toggleSettings,
+    openKeyboardShortcuts: openKeyboardShortcutHelp,
+    openDesktopNotification,
+  }))();
 
   useEffect(() => {
     if (!onRegisterCommandPort) return undefined;
     return onRegisterCommandPort(commandPort);
   }, [commandPort, onRegisterCommandPort]);
 
+  const executePendingWorkbenchCommands = useEffectEvent(() => {
+    const pending = pendingWorkbenchCommandInvocationsRef.current.splice(0);
+    for (const invocation of pending) executeWorkbenchCommand(invocation);
+  });
   useEffect(() => {
     if (!selectedSessionDetailReady) return;
-    const pending = pendingWorkbenchCommandInvocationsRef.current.splice(0);
-    for (const invocation of pending) {
-      executeWorkbenchCommand(invocation);
-    }
-  }, [executeWorkbenchCommand, selectedSessionDetailReady]);
+    executePendingWorkbenchCommands();
+  }, [selectedSessionDetailReady]);
 
   const sidebarCollapseControlLabel = sidebarLogicalCollapsed ? "Show sidebar" : "Hide sidebar";
   const sidebarCollapseControlButton = (
@@ -3904,19 +3750,16 @@ export function WorkbenchRuntime({
 
   const fullViewShortcutLabel = formatToggleFullViewShortcutLabel(commandKeymapState);
   // Split view offers moving the Chat to the content's side; the content then takes the Chat's.
-  const titlebarThreadHeaderSlot = useMemo<ThreadStageHeaderSlot>(
-    () => ({
-      variant: "titlebar",
-      paneMove:
-        sessionWorkspace?.layout === "split"
-          ? {
-              side: sessionWorkspace.contentSide,
-              onSelect: () => moveSessionConversationToSide(sessionWorkspace.contentSide),
-            }
-          : null,
-    }),
-    [moveSessionConversationToSide, sessionWorkspace],
-  );
+  const titlebarThreadHeaderSlot: ThreadStageHeaderSlot = (() => ({
+    variant: "titlebar",
+    paneMove:
+      sessionWorkspace?.layout === "split"
+        ? {
+            side: sessionWorkspace.contentSide,
+            onSelect: () => moveSessionConversationToSide(sessionWorkspace.contentSide),
+          }
+        : null,
+  }))();
   // The Chat tab carries the chat's live status while content hides the conversation.
   const sessionChatStatus = useSessionRowStatus(
     sessionWorkspace?.fullViewSurface === "content" ? activeSession : null,
@@ -4347,754 +4190,642 @@ export function WorkbenchRuntime({
   const activeSessionProject = activeRenderSession?.projectId
     ? (projects.find((project) => project.id === activeRenderSession.projectId) ?? activeProject)
     : null;
-  const renderOwnedSceneFileSurface = useCallback(
-    (
-      surface: Extract<WorkbenchSurfaceDescriptor, { kind: "files" }>,
-      context: { readonly active: boolean; readonly panelId: PanelId },
-    ) => {
-      if (!activeOwnedScene || !activeOwnedSceneOwner || !activeOwnedSceneKey) return null;
-      const owner = activeOwnedSceneOwner;
-      const sceneKey = activeOwnedSceneKey;
-      const preview = listWorkbenchScenePreviewEntries(
-        activeOwnedScene,
-        previewSurfacesByPanel,
-      ).some((entry) => entry.surface.id === surface.id);
-      const tab = {
-        id: surface.id,
-        sessionId: sceneKey,
-        projectId: surface.config.projectId,
-        panelId: context.panelId,
-        kind: "files" as const,
-        title: surface.titleSnapshot,
-        order: 0,
-        config: surface.config,
-        browserTabId: null,
-        stateKey: surface.stateKey,
-        state: surface.state,
-        createdAt: activeOwnedScene.touchedAt,
-        updatedAt: activeOwnedScene.touchedAt,
-        ...(preview ? { preview: true as const } : {}),
-      } as WorkspaceFilesTab;
-      return (
-        <WorkspaceFilesPanel
-          key={`${sceneKey}:${surface.id}:${surface.stateKey}`}
-          tab={tab}
-          presentationOwnerId={sceneKey}
-          project={projects.find((project) => project.id === surface.config.projectId) ?? null}
-          onOpenFileTab={openWorkspaceFileTab}
-          onSearchInFiles={() => openCommandPalette({ mode: "text" })}
-          onUpdateTabState={(state) => {
-            const scene = workbenchWindowRef.current.scenesByOwnerKey[sceneKey];
-            const entry = scene
-              ? listWorkbenchScenePreviewEntries(scene, previewSurfacesByPanelRef.current).find(
-                  (entry) => entry.surface.id === surface.id,
-                )
-              : undefined;
-            if (!entry) {
-              updateSceneSurfacePresentation(owner, surface.id, { state });
-              return;
-            }
-            const slotKey = makeWorkbenchScenePreviewSlotKey(owner, entry.panelId, entry.leafId);
-            const next = {
-              ...previewSurfacesByPanelRef.current,
-              [slotKey]: { ...entry.surface, state },
-            };
-            previewSurfacesByPanelRef.current = next;
-            panelControllerRef.current.updatePreviewSurfacesByPanel(next);
-          }}
-        />
-      );
-    },
-    [
-      activeOwnedScene,
-      activeOwnedSceneOwner,
-      activeOwnedSceneKey,
-      projects,
-      previewSurfacesByPanel,
-      openCommandPalette,
-      openWorkspaceFileTab,
-      updateSceneSurfacePresentation,
-    ],
-  );
-  const renderOwnedScenePageFileSurface = useCallback(
-    (
-      surface: Extract<WorkbenchSurfaceDescriptor, { kind: "page_file" }>,
-      context: { readonly active: boolean; readonly panelId: PanelId },
-    ) => {
-      if (!activeOwnedScene || !activeOwnedSceneOwner) return null;
-      const owner = activeOwnedSceneOwner;
-      const leaf = findWorkbenchPanelLeafForTab(
-        activeOwnedScenePresentation?.scene.panels[context.panelId].layout ??
-          activeOwnedScene.panels[context.panelId].layout,
-        surface.id,
-      );
-      return (
-        <WorkbenchPageFileSurface
-          surface={surface}
-          isActive={context.active}
-          onClose={() => void executeSceneCommand(owner, { kind: "close_tab", tabId: surface.id })}
-          onPinPreview={() => {
-            if (leaf)
-              sceneNavigator.pinPreview({
-                owner,
-                panelId: context.panelId,
-                leafId: leaf.id,
-                surfaceId: surface.id,
-              });
-          }}
-          onUpdateConfig={(patch) =>
-            updateWorkbenchPageFileConfig(workbenchWindow.owner, owner, surface.id, patch)
+  const renderOwnedSceneFileSurface = (
+    surface: Extract<WorkbenchSurfaceDescriptor, { kind: "files" }>,
+    context: { readonly active: boolean; readonly panelId: PanelId },
+  ) => {
+    if (!activeOwnedScene || !activeOwnedSceneOwner || !activeOwnedSceneKey) return null;
+    const owner = activeOwnedSceneOwner;
+    const sceneKey = activeOwnedSceneKey;
+    const preview = listWorkbenchScenePreviewEntries(activeOwnedScene, previewSurfacesByPanel).some(
+      (entry) => entry.surface.id === surface.id,
+    );
+    const tab = {
+      id: surface.id,
+      sessionId: sceneKey,
+      projectId: surface.config.projectId,
+      panelId: context.panelId,
+      kind: "files" as const,
+      title: surface.titleSnapshot,
+      order: 0,
+      config: surface.config,
+      browserTabId: null,
+      stateKey: surface.stateKey,
+      state: surface.state,
+      createdAt: activeOwnedScene.touchedAt,
+      updatedAt: activeOwnedScene.touchedAt,
+      ...(preview ? { preview: true as const } : {}),
+    } as WorkspaceFilesTab;
+    return (
+      <WorkspaceFilesPanel
+        key={`${sceneKey}:${surface.id}:${surface.stateKey}`}
+        tab={tab}
+        presentationOwnerId={sceneKey}
+        project={projects.find((project) => project.id === surface.config.projectId) ?? null}
+        onOpenFileTab={openWorkspaceFileTab}
+        onSearchInFiles={() => openCommandPalette({ mode: "text" })}
+        onUpdateTabState={(state) => {
+          const scene = workbenchWindow.owner.read().windowState.scenesByOwnerKey[sceneKey];
+          const entry = scene
+            ? listWorkbenchScenePreviewEntries(
+                scene,
+                workbenchWindow.owner.read().ephemeralPanels.previewSurfacesByPanel,
+              ).find((entry) => entry.surface.id === surface.id)
+            : undefined;
+          if (!entry) {
+            updateSceneSurfacePresentation(owner, surface.id, { state });
+            return;
           }
-          onOpenPage={({ routingContext, pageId, title }) => {
-            void sceneNavigator.presentPanelSurface({
+          const slotKey = makeWorkbenchScenePreviewSlotKey(owner, entry.panelId, entry.leafId);
+          const next = {
+            ...workbenchWindow.owner.read().ephemeralPanels.previewSurfacesByPanel,
+            [slotKey]: { ...entry.surface, state },
+          };
+          panelController.updatePreviewSurfacesByPanel(next);
+        }}
+      />
+    );
+  };
+  const renderOwnedScenePageFileSurface = (
+    surface: Extract<WorkbenchSurfaceDescriptor, { kind: "page_file" }>,
+    context: { readonly active: boolean; readonly panelId: PanelId },
+  ) => {
+    if (!activeOwnedScene || !activeOwnedSceneOwner) return null;
+    const owner = activeOwnedSceneOwner;
+    const leaf = findWorkbenchPanelLeafForTab(
+      activeOwnedScenePresentation?.scene.panels[context.panelId].layout ??
+        activeOwnedScene.panels[context.panelId].layout,
+      surface.id,
+    );
+    return (
+      <WorkbenchPageFileSurface
+        surface={surface}
+        isActive={context.active}
+        onClose={() => void executeSceneCommand(owner, { kind: "close_tab", tabId: surface.id })}
+        onPinPreview={() => {
+          if (leaf)
+            sceneNavigator.pinPreview({
               owner,
-              request: {
-                kind: "page_stage",
-                titleSnapshot: title,
-                config: { routingContext, pageId, titleSnapshot: title },
-              },
-              target: {
-                panelId: context.panelId,
-                placement: { kind: "same-group", sourceSurfaceId: surface.id },
-              },
-              mode: "durable",
-              navigation: "background",
+              panelId: context.panelId,
+              leafId: leaf.id,
+              surfaceId: surface.id,
+            });
+        }}
+        onUpdateConfig={(patch) =>
+          updateWorkbenchPageFileConfig(workbenchWindow.owner, owner, surface.id, patch)
+        }
+        onOpenPage={({ routingContext, pageId, title }) => {
+          void sceneNavigator.presentPanelSurface({
+            owner,
+            request: {
+              kind: "page_stage",
+              titleSnapshot: title,
+              config: { routingContext, pageId, titleSnapshot: title },
+            },
+            target: {
+              panelId: context.panelId,
+              placement: { kind: "same-group", sourceSurfaceId: surface.id },
+            },
+            mode: "durable",
+            navigation: "background",
+          });
+        }}
+      />
+    );
+  };
+  const renderProjectSceneSurface = (
+    surface: WorkbenchSurfaceDescriptor,
+    context: { readonly active: boolean; readonly panelId: PanelId },
+  ) => {
+    if (!activeProjectScene || !activeProject || !projectSceneKey) return null;
+    const previewEntry =
+      listWorkbenchScenePreviewEntries(activeProjectScene, previewSurfacesByPanel).find(
+        (entry) => entry.surface.id === surface.id,
+      ) ?? null;
+    const leafId =
+      findWorkbenchPanelLeafForTab(activeProjectScene.panels[context.panelId].layout, surface.id)
+        ?.id ?? activeProjectScene.panels[context.panelId].layout.activeLeafId;
+    const common = {
+      id: surface.id,
+      sessionId: projectSceneKey,
+      projectId: activeProject.id,
+      panelId: context.panelId,
+      title: surface.titleSnapshot,
+      order: 0,
+      stateKey: surface.stateKey,
+      state: surface.state,
+      createdAt: activeProjectScene.touchedAt,
+      updatedAt: activeProjectScene.touchedAt,
+      browserTabId: null,
+      ...(previewEntry ? { preview: true as const } : {}),
+    };
+    const closeSurface = () => {
+      void executeSceneCommand(activeProjectScene.owner, {
+        kind: "close_tab",
+        tabId: surface.id,
+      });
+    };
+
+    if (surface.kind === "page_file") return renderOwnedScenePageFileSurface(surface, context);
+    if (surface.kind === "inbox") {
+      const projectId = inboxScopeProjectId(surface.config.scope);
+      if (!projectId) return null;
+      const homeProject = projects.find((project) => project.id === projectId);
+      return (
+        <InboxRoute
+          windowSessionId={windowSessionId}
+          scope={surface.config.scope}
+          visible={context.active}
+          projects={projects}
+          focusComposerToken={inboxFocusToken}
+          onOpenSession={sessionCommands.openProjectSessionById}
+          onShowPagesInChat={sessionCommands.showPagesInChat}
+          onOpenScheduledTask={(automationId) =>
+            navigateScheduled(buildAutomationsPath({ automationId }))
+          }
+          onOpenPage={(pageId) => {
+            const peek = inboxPagePeek(surface.id);
+            void openProjectScenePage(projectId, pageId, "Page", {
+              placement: peek.placement,
+              openMode: peek.mode,
             });
           }}
+          onOpenDatabase={(databaseId) => {
+            // The Board button opens this Project's default View beside its Home.
+            if (databaseId === homeProject?.databaseId) {
+              void presentProjectSceneSurface(
+                projectId,
+                {
+                  kind: "db_view",
+                  config: {
+                    routingContext: { kind: "project", projectId },
+                    target: { kind: "project-default" },
+                  },
+                },
+                { panelId: context.panelId },
+              );
+              return;
+            }
+            void openResourceTarget({
+              kind: "database",
+              databaseId: parseDatabaseId(databaseId),
+            });
+          }}
+          onOpenSettings={() => openSettingsAt("inbox-settings")}
         />
       );
-    },
-    [
-      activeOwnedScene,
-      activeOwnedSceneOwner,
-      activeOwnedScenePresentation,
-      executeSceneCommand,
-      sceneNavigator,
-      workbenchWindow.owner,
-    ],
-  );
-  const renderProjectSceneSurface = useCallback(
-    (
-      surface: WorkbenchSurfaceDescriptor,
-      context: { readonly active: boolean; readonly panelId: PanelId },
-    ) => {
-      if (!activeProjectScene || !activeProject || !projectSceneKey) return null;
-      const previewEntry =
-        listWorkbenchScenePreviewEntries(activeProjectScene, previewSurfacesByPanel).find(
-          (entry) => entry.surface.id === surface.id,
-        ) ?? null;
-      const leafId =
-        findWorkbenchPanelLeafForTab(activeProjectScene.panels[context.panelId].layout, surface.id)
-          ?.id ?? activeProjectScene.panels[context.panelId].layout.activeLeafId;
-      const common = {
-        id: surface.id,
-        sessionId: projectSceneKey,
-        projectId: activeProject.id,
-        panelId: context.panelId,
-        title: surface.titleSnapshot,
-        order: 0,
-        stateKey: surface.stateKey,
-        state: surface.state,
-        createdAt: activeProjectScene.touchedAt,
-        updatedAt: activeProjectScene.touchedAt,
-        browserTabId: null,
-        ...(previewEntry ? { preview: true as const } : {}),
-      };
-      const closeSurface = () => {
-        void executeSceneCommand(activeProjectScene.owner, {
-          kind: "close_tab",
-          tabId: surface.id,
-        });
-      };
+    }
 
-      if (surface.kind === "page_file") return renderOwnedScenePageFileSurface(surface, context);
-      if (surface.kind === "inbox") {
-        const projectId = inboxScopeProjectId(surface.config.scope);
-        if (!projectId) return null;
-        const homeProject = projects.find((project) => project.id === projectId);
-        return (
-          <InboxRoute
-            windowSessionId={windowSessionId}
-            scope={surface.config.scope}
-            visible={context.active}
-            projects={projects}
-            focusComposerToken={inboxFocusToken}
-            onOpenSession={sessionCommands.openProjectSessionById}
-            onShowPagesInChat={sessionCommands.showPagesInChat}
-            onOpenScheduledTask={(automationId) =>
-              navigateScheduled(buildAutomationsPath({ automationId }))
-            }
-            onOpenPage={(pageId) => {
-              const peek = inboxPagePeek(surface.id);
-              void openProjectScenePage(projectId, pageId, "Page", {
-                placement: peek.placement,
-                openMode: peek.mode,
-              });
-            }}
-            onOpenDatabase={(databaseId) => {
-              // The Board button opens this Project's default View beside its Home.
-              if (databaseId === homeProject?.databaseId) {
-                void presentProjectSceneSurface(
-                  projectId,
-                  {
-                    kind: "db_view",
-                    config: {
-                      routingContext: { kind: "project", projectId },
-                      target: { kind: "project-default" },
-                    },
-                  },
-                  { panelId: context.panelId },
-                );
-                return;
-              }
-              void openResourceTarget({
-                kind: "database",
-                databaseId: parseDatabaseId(databaseId),
-              });
-            }}
-            onOpenSettings={() => openSettingsAt("inbox-settings")}
-          />
-        );
-      }
+    if (
+      (surface.kind === "db_view" ||
+        surface.kind === "page_stage" ||
+        surface.kind === "canvas_stage") &&
+      surface.config.routingContext.kind === "library"
+    ) {
+      return (
+        <WorkbenchLibraryResourceSurface
+          onOpenPageFile={openPageFileTab}
+          surface={surface}
+          owner={workbenchWindow.owner}
+          sceneOwner={activeProjectScene.owner}
+          windowSessionId={windowSessionId}
+          active={context.active}
+          presentedPageIds={projectScenePresentedPageIds}
+          onClose={closeSurface}
+          onTitleChange={(titleSnapshot) => {
+            updateSceneSurfacePresentation(activeProjectScene.owner, surface.id, {
+              titleSnapshot,
+            });
+          }}
+          onOpenTarget={(target, options) => {
+            void presentLibraryTarget(target, {
+              ...options,
+              owner: activeProjectScene.owner,
+              targetPanelId: context.panelId,
+              placement: { kind: "same-group", sourceSurfaceId: surface.id },
+            });
+          }}
+          pageChats={pageChatCommands}
+        />
+      );
+    }
 
-      if (
-        (surface.kind === "db_view" ||
-          surface.kind === "page_stage" ||
-          surface.kind === "canvas_stage") &&
-        surface.config.routingContext.kind === "library"
-      ) {
+    if (surface.kind === "db_view") {
+      if (surface.config.routingContext.kind !== "project") return null;
+      const routingContext = surface.config.routingContext;
+      if (surface.config.target.kind === "database-default")
         return (
-          <WorkbenchLibraryResourceSurface
-            onOpenPageFile={openPageFileTab}
-            surface={surface}
-            owner={workbenchWindow.owner}
-            sceneOwner={activeProjectScene.owner}
-            windowSessionId={windowSessionId}
-            active={context.active}
-            presentedPageIds={projectScenePresentedPageIds}
-            onClose={closeSurface}
-            onTitleChange={(titleSnapshot) => {
-              updateSceneSurfacePresentation(activeProjectScene.owner, surface.id, {
-                titleSnapshot,
-              });
-            }}
-            onOpenTarget={(target, options) => {
-              void presentLibraryTarget(target, {
-                ...options,
-                owner: activeProjectScene.owner,
-                targetPanelId: context.panelId,
-                placement: { kind: "same-group", sourceSurfaceId: surface.id },
-              });
-            }}
-            pageChats={pageChatCommands}
-          />
-        );
-      }
-
-      if (surface.kind === "db_view") {
-        if (surface.config.routingContext.kind !== "project") return null;
-        const routingContext = surface.config.routingContext;
-        if (surface.config.target.kind === "database-default")
-          return (
-            <WorkbenchDatabaseViewSurface
-              isActivePanelTab={context.active}
-              workbenchPresentation={{
-                owner: workbenchWindow.owner,
-                sceneOwner: activeProjectScene.owner,
-                surface,
-              }}
-              routingContext={routingContext}
-              target={surface.config.target}
-              presentedPageIds={projectScenePresentedPageIds}
-              onOpenPage={(pageId, titleSnapshot, openMode) => {
-                void openProjectScenePage(routingContext.projectId, pageId, titleSnapshot, {
-                  openMode,
-                  placement: { kind: "same-group", sourceSurfaceId: surface.id },
-                });
-              }}
-            />
-          );
-        const databaseViewId =
-          surface.config.target.kind === "project-default"
-            ? projects.find((project) => project.id === routingContext.projectId)
-                ?.defaultDatabaseViewId
-            : surface.config.target.kind === "database-view"
-              ? surface.config.target.databaseViewId
-              : null;
-        if (!databaseViewId) {
-          return (
-            <div className="flex h-full items-center justify-center text-sm text-token-text-secondary">
-              Database View is unavailable
-            </div>
-          );
-        }
-        const tab: WorkbenchTabProjection = {
-          ...common,
-          kind: "db_view",
-          config: {
-            routingContext,
-            target: { kind: "database-view", databaseViewId },
-          },
-        };
-        return (
-          <DbViewSessionTab
+          <WorkbenchDatabaseViewSurface
             isActivePanelTab={context.active}
             workbenchPresentation={{
               owner: workbenchWindow.owner,
               sceneOwner: activeProjectScene.owner,
               surface,
             }}
-            sessionId={`${windowSessionId}:${projectSceneKey}:${surface.id}`}
-            tab={tab}
-            projects={projects}
-            activeSearchQuery={activeSearchQuery}
-            searchByProject={searchByProject}
+            routingContext={routingContext}
+            target={surface.config.target}
             presentedPageIds={projectScenePresentedPageIds}
-            taskSearchOpenTick={taskSearchOpenTick}
-            setSearchQuery={setSearchQuery}
-            onOpenPageTab={openProjectScenePage}
-            onOpenPageInNewChat={sessionCommands.openPageInNewChat}
-            onOpenRelatedChat={sessionCommands.openProjectSessionById}
-            onSendPageToChat={sessionCommands.sendPageToChat}
-            onOpenCanvasStage={openProjectSceneCanvas}
-            onSelectDatabaseView={(nextViewId, title) => {
-              if (!projectSceneOwner) return;
-              updateSceneSurfacePresentation(projectSceneOwner, surface.id, {
-                titleSnapshot: title,
-                config: {
-                  ...surface.config,
-                  target: { kind: "database-view", databaseViewId: nextViewId },
-                },
-              });
-            }}
-            targetLeafId={leafId}
-            pageStageCloseRef={pageStageCloseRef}
-          />
-        );
-      }
-
-      if (surface.kind === "canvas_stage") {
-        if (surface.config.routingContext.kind !== "project") return null;
-        const projectId = surface.config.routingContext.projectId;
-        return (
-          <WorkbenchCanvasStagePanel
-            surface={surface}
-            windowSessionId={windowSessionId}
-            presentationOwnerId={projectSceneKey}
-            isActivePanelTab={context.active}
-            onClose={closeSurface}
-            onTitleChange={(title) => {
-              if (!projectSceneOwner) return;
-              updateSceneSurfacePresentation(projectSceneOwner, surface.id, {
-                titleSnapshot: title,
-              });
-            }}
-            onOpenPage={({ pageId, titleSnapshot }) => {
-              void openProjectScenePage(projectId, pageId, titleSnapshot, {
-                openMode: "durable",
+            onOpenPage={(pageId, titleSnapshot, openMode) => {
+              void openProjectScenePage(routingContext.projectId, pageId, titleSnapshot, {
+                openMode,
                 placement: { kind: "same-group", sourceSurfaceId: surface.id },
               });
             }}
           />
         );
-      }
-
-      if (surface.kind === "page_stage") {
-        if (surface.config.routingContext.kind !== "project") return null;
-        const pageAccessProjectId = surface.config.routingContext.projectId;
-        const tab: WorkbenchTabProjection = {
-          ...common,
-          kind: "page_stage",
-          config: surface.config,
-        };
+      const databaseViewId =
+        surface.config.target.kind === "project-default"
+          ? projects.find((project) => project.id === routingContext.projectId)
+              ?.defaultDatabaseViewId
+          : surface.config.target.kind === "database-view"
+            ? surface.config.target.databaseViewId
+            : null;
+      if (!databaseViewId) {
         return (
-          <PageStageSessionTab
-            onOpenPageFile={openPageFileTab}
-            tab={tab}
-            project={projects.find((item) => item.id === pageAccessProjectId) ?? null}
-            closeRef={pageStageCloseRef}
-            persistRef={pageStagePersistRef}
-            sessionSnapshotRef={pageStageSessionSnapshotRef}
-            sessionId={projectSceneKey}
-            sessionThread={null}
-            canStartThreadInSession={false}
-            onLeavePage={onLeavePageStage}
-            onClose={closeSurface}
-            onOpenTerminal={async () => {
-              await openProjectSceneManualSurface(activeProject.id, "terminal", {
-                panelId: "bottom",
-                targetLeafId: activeProjectScene.panels.bottom.layout.activeLeafId,
-              });
-            }}
-            onEnsureDefaultDraftSessionForProject={ensureDefaultDraftSessionForProject}
-            onRefreshSessions={refreshProjectSessions}
-            onOpenPageTab={openProjectScenePage}
-            onOpenCanvasStage={openProjectSceneCanvas}
-            onOpenThread={async (threadId) => {
-              await openAttachedThreadSessionById(threadId);
-            }}
-            onOpenRelatedChat={sessionCommands.openProjectSessionById}
-            onOpenPageInNewChat={sessionCommands.openPageInNewChat}
-            onLinkPageToChat={sessionCommands.linkPageToChat}
-            onHandOffPageToChat={sessionCommands.handOffPageToChat}
-            relatedChatCandidates={pageStageRelatedChatCandidates}
-            onResolveChatSessionForThread={sessionCommands.resolveChatSessionForThread}
-            historyPanelActive={Boolean(
-              pageStageHistoryModal &&
-              pageStageHistoryModal.sessionId === projectSceneKey &&
-              pageStageHistoryModal.tabId === surface.id,
-            )}
-            onToggleHistoryPanel={togglePageStageHistoryModal}
-            isActivePanelTab={context.active}
-          />
+          <div className="flex h-full items-center justify-center text-sm text-token-text-secondary">
+            Database View is unavailable
+          </div>
         );
       }
-
-      if (surface.kind === "files") return renderOwnedSceneFileSurface(surface, context);
-
-      if (surface.kind === "browser") {
-        const tab: WorkbenchTabProjection = {
-          ...common,
-          kind: "browser",
-          browserTabId: surface.config.browserTabId,
-          config: {
-            projectId: activeProject.id,
-            ...surface.config,
-          },
-        };
-        return (
-          <WorkbenchBrowserSidebarPanel
-            owner={{ kind: "project", projectId: activeProject.id }}
-            surfaceId={surface.id}
-            panelId={context.panelId}
-            tab={tab}
-            surfaceContext={{
-              browserConversationId: projectSceneKey,
-              codexSessionId: null,
-            }}
-            browserViewScopeId={windowSessionId}
-            onRefreshSessions={refreshProjectSessions}
-            onUpdateTab={(_surfaceId, patch) => {
-              const patchConfig = patch.config;
-              const nextConfig = {
-                ...surface.config,
-                ...(patchConfig && "url" in patchConfig ? { url: patchConfig.url } : {}),
-                ...(patchConfig && "title" in patchConfig ? { title: patchConfig.title } : {}),
-                ...(patchConfig && "faviconUrl" in patchConfig
-                  ? { faviconUrl: patchConfig.faviconUrl }
-                  : {}),
-                ...(patchConfig && "deviceToolbarVisible" in patchConfig
-                  ? { deviceToolbarVisible: patchConfig.deviceToolbarVisible }
-                  : {}),
-                ...(patchConfig && "deviceToolbarState" in patchConfig
-                  ? { deviceToolbarState: patchConfig.deviceToolbarState }
-                  : {}),
-              };
-              if (projectSceneOwner) {
-                panelControllerRef.current.sceneDurable?.updateSurface(
-                  projectSceneOwner,
-                  surface.id,
-                  {
-                    ...(patch.title === undefined ? {} : { titleSnapshot: patch.title }),
-                    ...(!("state" in patch) ? {} : { state: patch.state }),
-                    config: nextConfig,
-                  },
-                );
-              }
-              return {
-                ...tab,
-                ...(patch.title === undefined ? {} : { title: patch.title }),
-                config: {
-                  projectId: activeProject.id,
-                  ...nextConfig,
-                },
-              };
-            }}
-            onOpenNewTab={(request) => {
-              return openBrowserTabRequest(
-                { kind: "project", projectId: activeProject.id },
-                request,
-              );
-            }}
-            boundsSyncTrigger={
-              context.panelId === "right"
-                ? rightPanelMotion.animatedSize
-                : bottomPanelMotion.animatedSize
-            }
-            onOpenBrowserSettings={openBrowserSettings}
-            activeForContentSearch={context.active}
-            isVisible={context.active}
-          />
-        );
-      }
-
-      if (surface.kind === "terminal") {
-        const contextProjectId =
-          surface.config.context?.kind === "project"
-            ? surface.config.context.projectId
-            : activeProject.id;
-        const terminalProject =
-          projects.find((item) => item.id === contextProjectId) ?? activeProject;
-        const cwd = projectWorkspaceRootOrNull(terminalProject);
-        if (!cwd) {
-          return (
-            <div className="flex h-full items-center justify-center text-sm text-token-text-secondary">
-              Terminal workspace is unavailable
-            </div>
-          );
-        }
-        return (
-          <TerminalPanel
-            terminalId={surface.config.terminalSessionId}
-            cwd={cwd}
-            conversationId={null}
-            projectSessionId={null}
-            onNewTerminalTab={() => {
-              void openProjectSceneManualSurface(activeProject.id, "terminal", {
-                panelId: context.panelId,
-                targetLeafId: leafId,
-              });
-            }}
-          />
-        );
-      }
-
-      return null;
-    },
-    [
-      renderOwnedScenePageFileSurface,
-      openPageFileTab,
-      renderOwnedSceneFileSurface,
-      executeSceneCommand,
-      activeProject,
-      activeProjectScene,
-      activeSearchQuery,
-      bottomPanelMotion.animatedSize,
-      ensureDefaultDraftSessionForProject,
-      inboxFocusToken,
-      navigateScheduled,
-      onLeavePageStage,
-      openAttachedThreadSessionById,
-      openResourceTarget,
-      openSettingsAt,
-      pageChatCommands,
-      presentProjectSceneSurface,
-      openBrowserSettings,
-      openBrowserTabRequest,
-      openProjectSceneCanvas,
-      openProjectSceneManualSurface,
-      openProjectScenePage,
-      presentLibraryTarget,
-      sessionCommands.openPageInNewChat,
-      sessionCommands.openProjectSessionById,
-      sessionCommands.showPagesInChat,
-      sessionCommands.linkPageToChat,
-      sessionCommands.handOffPageToChat,
-      sessionCommands.resolveChatSessionForThread,
-      sessionCommands.sendPageToChat,
-      pageStageCloseRef,
-      pageStageHistoryModal,
-      pageStageRelatedChatCandidates,
-      pageStagePersistRef,
-      pageStageSessionSnapshotRef,
-      projectSceneKey,
-      projectScenePresentedPageIds,
-      projectSceneOwner,
-      projects,
-      previewSurfacesByPanel,
-      refreshProjectSessions,
-      searchByProject,
-      setSearchQuery,
-      taskSearchOpenTick,
-      togglePageStageHistoryModal,
-      rightPanelMotion.animatedSize,
-      updateSceneSurfacePresentation,
-      workbenchWindow.owner,
-      windowSessionId,
-    ],
-  );
-  const renderLibrarySceneSurface = useCallback(
-    (
-      surface: WorkbenchSurfaceDescriptor,
-      context: { readonly active: boolean; readonly panelId: PanelId },
-    ) => {
-      if (!activeLibraryScene || !librarySceneOwner || !librarySceneKey) {
-        return null;
-      }
-      const removeSurface = () => {
-        void executeSceneCommand(librarySceneOwner, { kind: "close_tab", tabId: surface.id });
+      const tab: WorkbenchTabProjection = {
+        ...common,
+        kind: "db_view",
+        config: {
+          routingContext,
+          target: { kind: "database-view", databaseViewId },
+        },
       };
-      const publishTitle = (title: string) => {
-        if (surface.titleSnapshot === title) return;
-        updateSceneSurfacePresentation(librarySceneOwner, surface.id, { titleSnapshot: title });
-      };
-      // Content opened from this Scene stays in it, in the source surface's tab group; an Inbox
-      // opens a message's Page beside itself instead.
-      const openInSourceGroup = (target: LibraryRouteTarget, titleSnapshot?: string) => {
-        void presentLibraryTarget(target, {
-          owner: librarySceneOwner,
-          titleSnapshot,
-          targetPanelId: context.panelId,
-          placement: { kind: "same-group", sourceSurfaceId: surface.id },
-        });
-      };
-
-      if (surface.kind === "page_file") return renderOwnedScenePageFileSurface(surface, context);
-      if (surface.kind === "files") return renderOwnedSceneFileSurface(surface, context);
-
-      if (surface.kind === "inbox") {
-        return (
-          <InboxRoute
-            windowSessionId={windowSessionId}
-            scope={surface.config.scope}
-            visible={context.active}
-            projects={projects}
-            focusComposerToken={inboxFocusToken}
-            onOpenSession={sessionCommands.openProjectSessionById}
-            onShowPagesInChat={sessionCommands.showPagesInChat}
-            onOpenScheduledTask={(automationId) =>
-              navigateScheduled(buildAutomationsPath({ automationId }))
-            }
-            onOpenPage={(pageId) =>
-              void presentLibraryTarget(
-                { kind: "page", pageId },
-                {
-                  owner: librarySceneOwner,
-                  targetPanelId: context.panelId,
-                  ...inboxPagePeek(surface.id),
-                },
-              )
-            }
-            onOpenDatabase={(databaseId) =>
-              openInSourceGroup({ kind: "database", databaseId: parseDatabaseId(databaseId) })
-            }
-            onOpenSettings={() => openSettingsAt("inbox-settings")}
-          />
-        );
-      }
-
-      if (surface.kind === "db_view") {
-        if (surface.config.target.kind === "project-default") {
-          return (
-            <div className="flex h-full items-center justify-center text-sm text-token-text-secondary">
-              Database View is unavailable
-            </div>
-          );
-        }
-        return (
-          <WorkbenchDatabaseViewSurface
-            isActivePanelTab={context.active}
-            workbenchPresentation={{
-              owner: workbenchWindow.owner,
-              sceneOwner: librarySceneOwner,
-              surface,
-            }}
-            routingContext={surface.config.routingContext}
-            target={surface.config.target}
-            keyboardSurface={{
-              surfaceId: surface.id,
-              presentationId: surface.id,
-            }}
-            presentedPageIds={libraryScenePresentedPageIds}
-            projects={projects}
-            pageStageCloseRef={pageStageCloseRef}
-            onOpenPageInNewChat={sessionCommands.openPageInNewChat}
-            onOpenRelatedChat={sessionCommands.openProjectSessionById}
-            onSendPageToChat={sessionCommands.sendPageToChat}
-            onPresentationChange={({ databaseName, viewName }) => {
-              publishTitle(
-                surface.config.target.kind === "database-default" ? databaseName : viewName,
-              );
-            }}
-            onOpenPage={(pageId, titleSnapshot, openMode) => {
-              void presentLibraryTarget(
-                { kind: "page", pageId },
-                {
-                  owner: librarySceneOwner,
-                  titleSnapshot,
-                  placement: { kind: "adjacent-right", sourceSurfaceId: surface.id },
-                  mode: openMode,
-                },
-              );
-            }}
-          />
-        );
-      }
-
-      if (surface.kind === "page_stage") {
-        return (
-          <WorkbenchLibraryPageSurface
-            onOpenPageFile={openPageFileTab}
-            pageId={surface.config.pageId}
-            surfaceId={surface.id}
-            isActivePanelTab={context.active}
-            onClose={removeSurface}
-            onOpenDatabase={(databaseId) => openInSourceGroup({ kind: "database", databaseId })}
-            onOpenPage={(pageId, titleSnapshot) =>
-              openInSourceGroup({ kind: "page", pageId }, titleSnapshot)
-            }
-            onOpenCanvas={(canvasId, titleSnapshot) =>
-              openInSourceGroup({ kind: "canvas", canvasId }, titleSnapshot)
-            }
-            pageChats={pageChatCommands}
-          />
-        );
-      }
-
-      if (surface.kind === "canvas_stage") {
-        return (
-          <WorkbenchCanvasStagePanel
-            surface={surface}
-            windowSessionId={windowSessionId}
-            presentationOwnerId={librarySceneKey}
-            isActivePanelTab={context.active}
-            onClose={removeSurface}
-            onTitleChange={publishTitle}
-            onOpenPage={({ pageId, titleSnapshot }) =>
-              openInSourceGroup({ kind: "page", pageId }, titleSnapshot)
-            }
-          />
-        );
-      }
-
       return (
-        <div className="flex h-full items-center justify-center text-sm text-token-text-secondary">
-          This surface requires a Project or chat.
-        </div>
+        <DbViewSessionTab
+          isActivePanelTab={context.active}
+          workbenchPresentation={{
+            owner: workbenchWindow.owner,
+            sceneOwner: activeProjectScene.owner,
+            surface,
+          }}
+          sessionId={`${windowSessionId}:${projectSceneKey}:${surface.id}`}
+          tab={tab}
+          projects={projects}
+          activeSearchQuery={activeSearchQuery}
+          searchByProject={searchByProject}
+          presentedPageIds={projectScenePresentedPageIds}
+          taskSearchOpenTick={taskSearchOpenTick}
+          setSearchQuery={setSearchQuery}
+          onOpenPageTab={openProjectScenePage}
+          onOpenPageInNewChat={sessionCommands.openPageInNewChat}
+          onOpenRelatedChat={sessionCommands.openProjectSessionById}
+          onSendPageToChat={sessionCommands.sendPageToChat}
+          onOpenCanvasStage={openProjectSceneCanvas}
+          onSelectDatabaseView={(nextViewId, title) => {
+            if (!projectSceneOwner) return;
+            updateSceneSurfacePresentation(projectSceneOwner, surface.id, {
+              titleSnapshot: title,
+              config: {
+                ...surface.config,
+                target: { kind: "database-view", databaseViewId: nextViewId },
+              },
+            });
+          }}
+          targetLeafId={leafId}
+          pageStageCloseRef={pageStageCloseRef}
+        />
       );
-    },
-    [
-      renderOwnedScenePageFileSurface,
-      openPageFileTab,
-      renderOwnedSceneFileSurface,
-      executeSceneCommand,
-      activeLibraryScene,
-      inboxFocusToken,
-      navigateScheduled,
-      openSettingsAt,
-      presentLibraryTarget,
-      librarySceneKey,
-      libraryScenePresentedPageIds,
-      librarySceneOwner,
-      pageChatCommands,
-      pageStageCloseRef,
-      projects,
-      sessionCommands.openPageInNewChat,
-      sessionCommands.openProjectSessionById,
-      sessionCommands.showPagesInChat,
-      sessionCommands.sendPageToChat,
-      updateSceneSurfacePresentation,
-      workbenchWindow.owner,
-      windowSessionId,
-    ],
-  );
-  const closeActiveOwnedScenePanelTab = useCallback(
-    async (tabId: string): Promise<void> => {
-      if (!activeOwnedSceneOwner) return;
-      await executeSceneCommand(activeOwnedSceneOwner, { kind: "close_tab", tabId });
-    },
-    [activeOwnedSceneOwner, executeSceneCommand],
-  );
+    }
+
+    if (surface.kind === "canvas_stage") {
+      if (surface.config.routingContext.kind !== "project") return null;
+      const projectId = surface.config.routingContext.projectId;
+      return (
+        <WorkbenchCanvasStagePanel
+          surface={surface}
+          windowSessionId={windowSessionId}
+          presentationOwnerId={projectSceneKey}
+          isActivePanelTab={context.active}
+          onClose={closeSurface}
+          onTitleChange={(title) => {
+            if (!projectSceneOwner) return;
+            updateSceneSurfacePresentation(projectSceneOwner, surface.id, {
+              titleSnapshot: title,
+            });
+          }}
+          onOpenPage={({ pageId, titleSnapshot }) => {
+            void openProjectScenePage(projectId, pageId, titleSnapshot, {
+              openMode: "durable",
+              placement: { kind: "same-group", sourceSurfaceId: surface.id },
+            });
+          }}
+        />
+      );
+    }
+
+    if (surface.kind === "page_stage") {
+      if (surface.config.routingContext.kind !== "project") return null;
+      const pageAccessProjectId = surface.config.routingContext.projectId;
+      const tab: WorkbenchTabProjection = {
+        ...common,
+        kind: "page_stage",
+        config: surface.config,
+      };
+      return (
+        <PageStageSessionTab
+          onOpenPageFile={openPageFileTab}
+          tab={tab}
+          project={projects.find((item) => item.id === pageAccessProjectId) ?? null}
+          closeRef={pageStageCloseRef}
+          persistRef={pageStagePersistRef}
+          sessionSnapshotRef={pageStageSessionSnapshotRef}
+          sessionId={projectSceneKey}
+          sessionThread={null}
+          canStartThreadInSession={false}
+          onLeavePage={onLeavePageStage}
+          onClose={closeSurface}
+          onOpenTerminal={async () => {
+            await openProjectSceneManualSurface(activeProject.id, "terminal", {
+              panelId: "bottom",
+              targetLeafId: activeProjectScene.panels.bottom.layout.activeLeafId,
+            });
+          }}
+          onEnsureDefaultDraftSessionForProject={ensureDefaultDraftSessionForProject}
+          onRefreshSessions={refreshProjectSessions}
+          onOpenPageTab={openProjectScenePage}
+          onOpenCanvasStage={openProjectSceneCanvas}
+          onOpenThread={async (threadId) => {
+            await openAttachedThreadSessionById(threadId);
+          }}
+          onOpenRelatedChat={sessionCommands.openProjectSessionById}
+          onOpenPageInNewChat={sessionCommands.openPageInNewChat}
+          onLinkPageToChat={sessionCommands.linkPageToChat}
+          onHandOffPageToChat={sessionCommands.handOffPageToChat}
+          relatedChatCandidates={pageStageRelatedChatCandidates}
+          onResolveChatSessionForThread={sessionCommands.resolveChatSessionForThread}
+          historyPanelActive={Boolean(
+            pageStageHistoryModal &&
+            pageStageHistoryModal.sessionId === projectSceneKey &&
+            pageStageHistoryModal.tabId === surface.id,
+          )}
+          onToggleHistoryPanel={togglePageStageHistoryModal}
+          isActivePanelTab={context.active}
+        />
+      );
+    }
+
+    if (surface.kind === "files") return renderOwnedSceneFileSurface(surface, context);
+
+    if (surface.kind === "browser") {
+      const tab: WorkbenchTabProjection = {
+        ...common,
+        kind: "browser",
+        browserTabId: surface.config.browserTabId,
+        config: {
+          projectId: activeProject.id,
+          ...surface.config,
+        },
+      };
+      return (
+        <WorkbenchBrowserSidebarPanel
+          owner={{ kind: "project", projectId: activeProject.id }}
+          surfaceId={surface.id}
+          panelId={context.panelId}
+          tab={tab}
+          surfaceContext={{
+            browserConversationId: projectSceneKey,
+            codexSessionId: null,
+          }}
+          browserViewScopeId={windowSessionId}
+          onRefreshSessions={refreshProjectSessions}
+          onUpdateTab={(_surfaceId, patch) => {
+            const patchConfig = patch.config;
+            const nextConfig = {
+              ...surface.config,
+              ...(patchConfig && "url" in patchConfig ? { url: patchConfig.url } : {}),
+              ...(patchConfig && "title" in patchConfig ? { title: patchConfig.title } : {}),
+              ...(patchConfig && "faviconUrl" in patchConfig
+                ? { faviconUrl: patchConfig.faviconUrl }
+                : {}),
+              ...(patchConfig && "deviceToolbarVisible" in patchConfig
+                ? { deviceToolbarVisible: patchConfig.deviceToolbarVisible }
+                : {}),
+              ...(patchConfig && "deviceToolbarState" in patchConfig
+                ? { deviceToolbarState: patchConfig.deviceToolbarState }
+                : {}),
+            };
+            if (projectSceneOwner) {
+              panelController.sceneDurable?.updateSurface(projectSceneOwner, surface.id, {
+                ...(patch.title === undefined ? {} : { titleSnapshot: patch.title }),
+                ...(!("state" in patch) ? {} : { state: patch.state }),
+                config: nextConfig,
+              });
+            }
+            return {
+              ...tab,
+              ...(patch.title === undefined ? {} : { title: patch.title }),
+              config: {
+                projectId: activeProject.id,
+                ...nextConfig,
+              },
+            };
+          }}
+          onOpenNewTab={(request) => {
+            return openBrowserTabRequest({ kind: "project", projectId: activeProject.id }, request);
+          }}
+          boundsSyncTrigger={
+            context.panelId === "right"
+              ? rightPanelMotion.animatedSize
+              : bottomPanelMotion.animatedSize
+          }
+          onOpenBrowserSettings={openBrowserSettings}
+          activeForContentSearch={context.active}
+          isVisible={context.active}
+        />
+      );
+    }
+
+    if (surface.kind === "terminal") {
+      const contextProjectId =
+        surface.config.context?.kind === "project"
+          ? surface.config.context.projectId
+          : activeProject.id;
+      const terminalProject =
+        projects.find((item) => item.id === contextProjectId) ?? activeProject;
+      const cwd = projectWorkspaceRootOrNull(terminalProject);
+      if (!cwd) {
+        return (
+          <div className="flex h-full items-center justify-center text-sm text-token-text-secondary">
+            Terminal workspace is unavailable
+          </div>
+        );
+      }
+      return (
+        <TerminalPanel
+          terminalId={surface.config.terminalSessionId}
+          cwd={cwd}
+          conversationId={null}
+          projectSessionId={null}
+          onNewTerminalTab={() => {
+            void openProjectSceneManualSurface(activeProject.id, "terminal", {
+              panelId: context.panelId,
+              targetLeafId: leafId,
+            });
+          }}
+        />
+      );
+    }
+
+    return null;
+  };
+  const renderLibrarySceneSurface = (
+    surface: WorkbenchSurfaceDescriptor,
+    context: { readonly active: boolean; readonly panelId: PanelId },
+  ) => {
+    if (!activeLibraryScene || !librarySceneOwner || !librarySceneKey) {
+      return null;
+    }
+    const removeSurface = () => {
+      void executeSceneCommand(librarySceneOwner, { kind: "close_tab", tabId: surface.id });
+    };
+    const publishTitle = (title: string) => {
+      if (surface.titleSnapshot === title) return;
+      updateSceneSurfacePresentation(librarySceneOwner, surface.id, { titleSnapshot: title });
+    };
+    // Content opened from this Scene stays in it, in the source surface's tab group; an Inbox
+    // opens a message's Page beside itself instead.
+    const openInSourceGroup = (target: LibraryRouteTarget, titleSnapshot?: string) => {
+      void presentLibraryTarget(target, {
+        owner: librarySceneOwner,
+        titleSnapshot,
+        targetPanelId: context.panelId,
+        placement: { kind: "same-group", sourceSurfaceId: surface.id },
+      });
+    };
+
+    if (surface.kind === "page_file") return renderOwnedScenePageFileSurface(surface, context);
+    if (surface.kind === "files") return renderOwnedSceneFileSurface(surface, context);
+
+    if (surface.kind === "inbox") {
+      return (
+        <InboxRoute
+          windowSessionId={windowSessionId}
+          scope={surface.config.scope}
+          visible={context.active}
+          projects={projects}
+          focusComposerToken={inboxFocusToken}
+          onOpenSession={sessionCommands.openProjectSessionById}
+          onShowPagesInChat={sessionCommands.showPagesInChat}
+          onOpenScheduledTask={(automationId) =>
+            navigateScheduled(buildAutomationsPath({ automationId }))
+          }
+          onOpenPage={(pageId) =>
+            void presentLibraryTarget(
+              { kind: "page", pageId },
+              {
+                owner: librarySceneOwner,
+                targetPanelId: context.panelId,
+                ...inboxPagePeek(surface.id),
+              },
+            )
+          }
+          onOpenDatabase={(databaseId) =>
+            openInSourceGroup({ kind: "database", databaseId: parseDatabaseId(databaseId) })
+          }
+          onOpenSettings={() => openSettingsAt("inbox-settings")}
+        />
+      );
+    }
+
+    if (surface.kind === "db_view") {
+      if (surface.config.target.kind === "project-default") {
+        return (
+          <div className="flex h-full items-center justify-center text-sm text-token-text-secondary">
+            Database View is unavailable
+          </div>
+        );
+      }
+      return (
+        <WorkbenchDatabaseViewSurface
+          isActivePanelTab={context.active}
+          workbenchPresentation={{
+            owner: workbenchWindow.owner,
+            sceneOwner: librarySceneOwner,
+            surface,
+          }}
+          routingContext={surface.config.routingContext}
+          target={surface.config.target}
+          keyboardSurface={{
+            surfaceId: surface.id,
+            presentationId: surface.id,
+          }}
+          presentedPageIds={libraryScenePresentedPageIds}
+          projects={projects}
+          pageStageCloseRef={pageStageCloseRef}
+          onOpenPageInNewChat={sessionCommands.openPageInNewChat}
+          onOpenRelatedChat={sessionCommands.openProjectSessionById}
+          onSendPageToChat={sessionCommands.sendPageToChat}
+          onPresentationChange={({ databaseName, viewName }) => {
+            publishTitle(
+              surface.config.target.kind === "database-default" ? databaseName : viewName,
+            );
+          }}
+          onOpenPage={(pageId, titleSnapshot, openMode) => {
+            void presentLibraryTarget(
+              { kind: "page", pageId },
+              {
+                owner: librarySceneOwner,
+                titleSnapshot,
+                placement: { kind: "adjacent-right", sourceSurfaceId: surface.id },
+                mode: openMode,
+              },
+            );
+          }}
+        />
+      );
+    }
+
+    if (surface.kind === "page_stage") {
+      return (
+        <WorkbenchLibraryPageSurface
+          onOpenPageFile={openPageFileTab}
+          pageId={surface.config.pageId}
+          surfaceId={surface.id}
+          isActivePanelTab={context.active}
+          onClose={removeSurface}
+          onOpenDatabase={(databaseId) => openInSourceGroup({ kind: "database", databaseId })}
+          onOpenPage={(pageId, titleSnapshot) =>
+            openInSourceGroup({ kind: "page", pageId }, titleSnapshot)
+          }
+          onOpenCanvas={(canvasId, titleSnapshot) =>
+            openInSourceGroup({ kind: "canvas", canvasId }, titleSnapshot)
+          }
+          pageChats={pageChatCommands}
+        />
+      );
+    }
+
+    if (surface.kind === "canvas_stage") {
+      return (
+        <WorkbenchCanvasStagePanel
+          surface={surface}
+          windowSessionId={windowSessionId}
+          presentationOwnerId={librarySceneKey}
+          isActivePanelTab={context.active}
+          onClose={removeSurface}
+          onTitleChange={publishTitle}
+          onOpenPage={({ pageId, titleSnapshot }) =>
+            openInSourceGroup({ kind: "page", pageId }, titleSnapshot)
+          }
+        />
+      );
+    }
+
+    return (
+      <div className="flex h-full items-center justify-center text-sm text-token-text-secondary">
+        This surface requires a Project or chat.
+      </div>
+    );
+  };
+  const closeActiveOwnedScenePanelTab = async (tabId: string): Promise<void> => {
+    if (!activeOwnedSceneOwner) return;
+    await executeSceneCommand(activeOwnedSceneOwner, { kind: "close_tab", tabId });
+  };
   const projectScenePanels =
     projectScenePresentation && activeProject && panelController.sceneDurable
       ? buildWorkbenchScenePanels({
@@ -5227,7 +4958,7 @@ export function WorkbenchRuntime({
               panelId,
               leafId,
             });
-            panelControllerRef.current.sceneDurable?.activateSurface(
+            panelController.sceneDurable?.activateSurface(
               activeOwnedSceneOwner,
               panelId,
               leafId,
@@ -5249,7 +4980,9 @@ export function WorkbenchRuntime({
           }
         : null
     : null;
-  panelTabShortcutStateRef.current = activePanelTabShortcutState;
+  useLayoutEffect(() => {
+    panelTabShortcutStateRef.current = activePanelTabShortcutState;
+  });
   const projectAgentDockLeadingContent =
     projectAgentDockModel && selectedProjectSceneId ? (
       <ProjectAgentDockLeadingRow
@@ -5464,6 +5197,16 @@ export function WorkbenchRuntime({
         />
       </WorkbenchSessionScopePath>
     ) : null;
+  const activeSessionCanOpenSideChat =
+    activeRenderSession &&
+    filterAvailablePanelActions(PANEL_NEW_TAB_ACTIONS, activeRenderSession.tabs, "right", {
+      kind: "session",
+      backendKind: activeRenderSession.thread?.backendBinding.kind ?? "codex",
+      projectId: activeRenderSession.projectId,
+      hasAttachedThread: hasSessionConversation(activeRenderSession),
+      cwd: activeRenderSession.thread?.cwd,
+      projectWorkspaceRoot: projectWorkspaceRootOrNull(activeSessionProject),
+    }).some((action) => action.kind === "side_chat");
   const activeSessionRoute =
     activeRenderSession && activeSessionPanelModel && sessionWorkspace ? (
       <WorkbenchSessionScene
@@ -5559,19 +5302,7 @@ export function WorkbenchRuntime({
           rightPanelComposerOverlayEnabled,
           rightPanelComposerOverlayTarget,
           rightPanelComposerOverlayPlacement,
-          onOpenSideChat: filterAvailablePanelActions(
-            PANEL_NEW_TAB_ACTIONS,
-            activeRenderSession.tabs,
-            "right",
-            {
-              kind: "session",
-              backendKind: activeRenderSession.thread?.backendBinding.kind ?? "codex",
-              projectId: activeRenderSession.projectId,
-              hasAttachedThread: hasSessionConversation(activeRenderSession),
-              cwd: activeRenderSession.thread?.cwd,
-              projectWorkspaceRoot: projectWorkspaceRootOrNull(activeSessionProject),
-            },
-          ).some((action) => action.kind === "side_chat")
+          onOpenSideChat: activeSessionCanOpenSideChat
             ? (input) =>
                 openSideChat({
                   ...input,

@@ -115,13 +115,18 @@ function useProjectDatabaseDescriptors(
     error: string | null;
   }>(() => ({ descriptors: new Map(), loading: enabled, error: null }));
 
+  const [requestInput, setRequestInput] = useState({ enabled, projectKey });
+  if (requestInput.enabled !== enabled || requestInput.projectKey !== projectKey) {
+    setRequestInput({ enabled, projectKey });
+    setState({
+      descriptors: enabled ? state.descriptors : new Map(),
+      loading: enabled,
+      error: null,
+    });
+  }
   useEffect(() => {
-    if (!enabled) {
-      setState({ descriptors: new Map(), loading: false, error: null });
-      return;
-    }
+    if (!enabled) return;
     let cancelled = false;
-    setState((current) => ({ ...current, loading: true, error: null }));
     const projectIds = projectKey ? projectKey.split("\u0000") : [];
     void Promise.all(
       projectIds.map(async (projectId) => {
@@ -335,16 +340,20 @@ export function PanelDestinationPickerSurface({
   const [acceptError, setAcceptError] = useState<string | null>(null);
   const [showDelayedLoading, setShowDelayedLoading] = useState(false);
 
-  useEffect(() => {
+  const [previousInitialQuery, setPreviousInitialQuery] = useState(initialQuery);
+  if (previousInitialQuery !== initialQuery) {
+    setPreviousInitialQuery(initialQuery);
     setQuery(initialQuery);
     setFocusedRowId(null);
-  }, [initialQuery]);
+  }
+  const [previousLoading, setPreviousLoading] = useState(loading);
+  if (previousLoading !== loading) {
+    setPreviousLoading(loading);
+    if (!loading) setShowDelayedLoading(false);
+  }
 
   useEffect(() => {
-    if (!loading) {
-      setShowDelayedLoading(false);
-      return;
-    }
+    if (!loading) return;
 
     const timer = window.setTimeout(() => {
       setShowDelayedLoading(true);
@@ -509,8 +518,6 @@ export function PanelDestinationPickerSurface({
     }
   };
 
-  let rowIndex = 0;
-
   return (
     <div
       role="dialog"
@@ -545,9 +552,10 @@ export function PanelDestinationPickerSurface({
       </div>
       <div className="notion-scroller vertical h-[374px] min-h-0 overflow-y-auto pb-3">
         <div id={listboxId} role="listbox" aria-labelledby={comboboxId} aria-busy={loading}>
-          {sections.map((section) => {
-            const startIndex = rowIndex;
-            rowIndex += section.rows.length;
+          {sections.map((section, sectionIndex) => {
+            const startIndex = sections
+              .slice(0, sectionIndex)
+              .reduce((count, entry) => count + entry.rows.length, 0);
             return (
               <PanelDestinationSectionView
                 key={section.key}

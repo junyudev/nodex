@@ -516,7 +516,10 @@ export function AppShellTabs({
       updateClippedEdges();
       tabRow.addEventListener("scroll", updateClippedEdges, { passive: true });
       window.addEventListener("resize", updateClippedEdges);
+      const mutationObserver = new MutationObserver(updateClippedEdges);
+      mutationObserver.observe(tabRow, { childList: true, subtree: true, characterData: true });
       return () => {
+        mutationObserver.disconnect();
         tabRow.removeEventListener("scroll", updateClippedEdges);
         window.removeEventListener("resize", updateClippedEdges);
       };
@@ -543,7 +546,7 @@ export function AppShellTabs({
     return () => {
       observer.disconnect();
     };
-  }, [tabs.length]);
+  }, []);
 
   useLayoutEffect(() => {
     if (!resolvedActiveTabId) return;
@@ -563,10 +566,12 @@ export function AppShellTabs({
     tabNodesRef.current.delete(tabId);
   }, []);
 
-  useEffect(() => {
-    if (!panelTabDnd?.activeDragId) return;
-    exitTabCloseMode();
-  }, [exitTabCloseMode, panelTabDnd?.activeDragId]);
+  const activeDragId = panelTabDnd?.activeDragId;
+  const [previousActiveDragId, setPreviousActiveDragId] = useState(activeDragId);
+  if (previousActiveDragId !== activeDragId) {
+    setPreviousActiveDragId(activeDragId);
+    if (activeDragId) setLockedTabWidthPx(null);
+  }
 
   useEffect(() => {
     if (!dndSessionId || !dndPanelId || !dndLeafId) return undefined;
@@ -814,13 +819,11 @@ function useMeasuredElementWidth(): {
 
   const elementRef = useCallback((nextElement: HTMLDivElement | null) => {
     setElement(nextElement);
+    if (!nextElement) setElementWidthPx(0);
   }, []);
 
   useLayoutEffect(() => {
-    if (!element) {
-      setElementWidthPx(0);
-      return undefined;
-    }
+    if (!element) return undefined;
 
     const measure = () => {
       const nextWidthPx = Math.ceil(element.getBoundingClientRect().width);
@@ -959,7 +962,7 @@ function AppShellTab({
   const accessibleLabel = makeAppShellTabAccessibleLabel(tab, resolvedTitle, locationDetail);
   const tooltipContent = makeAppShellTabTooltip(tab, resolvedTitle);
   const titleRef = useRef<HTMLSpanElement | null>(null);
-  const titleOverflows = useAppShellTabTitleOverflow(titleRef, resolvedTitle);
+  const titleOverflows = useAppShellTabTitleOverflow(titleRef);
   // The title fades on its own, so a location telling same-titled tabs apart stays readable.
   const title = (
     <span
@@ -1439,7 +1442,7 @@ function AppShellLeadingTabChrome({
   onContextMenuOpen: () => void;
 }) {
   const titleRef = useRef<HTMLSpanElement | null>(null);
-  const titleOverflows = useAppShellTabTitleOverflow(titleRef, tab.title);
+  const titleOverflows = useAppShellTabTitleOverflow(titleRef);
   const chrome = (
     <div
       data-app-shell-leading-tab={tab.id}
@@ -1658,10 +1661,7 @@ function ContextMenuDivider() {
   );
 }
 
-function useAppShellTabTitleOverflow(
-  titleRef: RefObject<HTMLElement | null>,
-  title: string,
-): boolean {
+function useAppShellTabTitleOverflow(titleRef: RefObject<HTMLElement | null>): boolean {
   const [overflows, setOverflows] = useState(false);
 
   useLayoutEffect(() => {
@@ -1681,13 +1681,16 @@ function useAppShellTabTitleOverflow(
     const resizeObserver =
       typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
     resizeObserver?.observe(titleElement);
+    const mutationObserver = new MutationObserver(measure);
+    mutationObserver.observe(titleElement, { childList: true, characterData: true, subtree: true });
     window.addEventListener("resize", measure);
 
     return () => {
       resizeObserver?.disconnect();
+      mutationObserver.disconnect();
       window.removeEventListener("resize", measure);
     };
-  }, [title, titleRef]);
+  }, [titleRef]);
 
   return overflows;
 }

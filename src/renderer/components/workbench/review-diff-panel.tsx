@@ -1,3 +1,5 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
+import { createReviewDiffDraftSource } from "./review-diff-draft-source";
 import type { ComposerChatKey } from "@/lib/composer-draft-intents";
 import type { OnDiffLineEnterLeaveProps } from "@pierre/diffs";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -17,6 +19,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type CSSProperties,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
@@ -177,7 +180,6 @@ import {
   buildReviewDiffDraftStorageScope,
   createReviewDiffDraftFromLine,
   createReviewDiffDraftFromRange,
-  readReviewDiffDraftStorage,
   shouldBlockReviewDiffDraft,
   writeReviewDiffDraftStorage,
   type ReviewDiffAnnotationMetadata,
@@ -223,7 +225,7 @@ import {
   FileDiff as defaultFileDiff,
   readWorkspaceFileMetadata as defaultReadWorkspaceFileMetadata,
   readWorkspaceFileText as defaultReadWorkspaceFileText,
-  useTheme as defaultUseTheme,
+  useTheme,
   Virtualizer as ReviewDiffVirtualizer,
 } from "./review-diff-panel-deps";
 import {
@@ -256,7 +258,7 @@ interface ReviewDiffPanelDeps {
   parsePatchFiles: typeof defaultParsePatchFiles;
   readWorkspaceFileMetadata: typeof defaultReadWorkspaceFileMetadata;
   readWorkspaceFileText: typeof defaultReadWorkspaceFileText;
-  useTheme: () => Pick<ReturnType<typeof defaultUseTheme>, "resolved">;
+  theme?: ReturnType<typeof useTheme>["resolved"];
   FileDiff: typeof defaultFileDiff;
   gitWorkerClient?: GitWorkerQueryClient;
   initialSummaryQuery?: boolean;
@@ -333,7 +335,6 @@ const DEFAULT_REVIEW_DIFF_PANEL_DEPS: ReviewDiffPanelDeps = {
   parsePatchFiles: defaultParsePatchFiles,
   readWorkspaceFileMetadata: defaultReadWorkspaceFileMetadata,
   readWorkspaceFileText: defaultReadWorkspaceFileText,
-  useTheme: defaultUseTheme,
   FileDiff: defaultFileDiff,
 };
 
@@ -476,39 +477,38 @@ function createReviewJumpTextMeasurer(font: string): ((value: string) => number 
 }
 
 function ReviewJumpMiddleTruncatedText({ className, text }: { className?: string; text: string }) {
-  const [element, setElement] = useState<HTMLSpanElement | null>(null);
+  const elementRef = useRef<HTMLSpanElement | null>(null);
   const [measurement, setMeasurement] = useState<{
     font: string;
     maxWidthPx: number;
   } | null>(null);
 
-  const updateMeasurement = useCallback(() => {
-    if (!element || element.clientWidth <= 0) {
-      setMeasurement(null);
-      return;
-    }
-
-    const ownerWindow = element.ownerDocument.defaultView ?? window;
-    const style = ownerWindow.getComputedStyle(element);
-    const nextMeasurement = {
-      font: buildReviewJumpCanvasFont(style),
-      maxWidthPx: element.clientWidth,
-    };
-    setMeasurement((current) =>
-      current?.font === nextMeasurement.font && current.maxWidthPx === nextMeasurement.maxWidthPx
-        ? current
-        : nextMeasurement,
-    );
-  }, [element]);
-
   useLayoutEffect(() => {
+    const element = elementRef.current;
+    if (!element) return;
+    const updateMeasurement = () => {
+      if (element.clientWidth <= 0) {
+        setMeasurement(null);
+        return;
+      }
+      const ownerWindow = element.ownerDocument.defaultView ?? window;
+      const style = ownerWindow.getComputedStyle(element);
+      const nextMeasurement = {
+        font: buildReviewJumpCanvasFont(style),
+        maxWidthPx: element.clientWidth,
+      };
+      setMeasurement((current) =>
+        current?.font === nextMeasurement.font && current.maxWidthPx === nextMeasurement.maxWidthPx
+          ? current
+          : nextMeasurement,
+      );
+    };
     updateMeasurement();
-    if (!element || typeof ResizeObserver === "undefined") return;
-
-    const observer = new ResizeObserver(() => updateMeasurement());
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(updateMeasurement);
     observer.observe(element);
     return () => observer.disconnect();
-  }, [element, updateMeasurement]);
+  }, []);
 
   const renderedText = useMemo(() => {
     if (!measurement) return text;
@@ -519,7 +519,7 @@ function ReviewJumpMiddleTruncatedText({ className, text }: { className?: string
 
   const body = (
     <span
-      ref={setElement}
+      ref={elementRef}
       className={cn("block min-w-0 overflow-hidden whitespace-nowrap", className)}
     >
       {renderedText}
@@ -1478,9 +1478,11 @@ function ReviewDiffCommentAnnotationCard({
 }) {
   const [draftValue, setDraftValue] = useState(value);
 
-  useEffect(() => {
+  const [previousInput, setPreviousInput] = useState({ key: metadata.key, value });
+  if (previousInput.key !== metadata.key || previousInput.value !== value) {
+    setPreviousInput({ key: metadata.key, value });
     setDraftValue(value);
-  }, [metadata.key, value]);
+  }
 
   const lineLabel = formatReviewDiffCommentLineLabel({
     side: metadata.side,
@@ -1612,9 +1614,8 @@ function areShallowArraysEqual<T>(left: T[], right: T[]): boolean {
   );
 }
 
-function buildStableReviewCommentAttachmentsByPath(
+function groupReviewCommentAttachmentsByPath(
   attachments: CodexReviewDiffCommentAttachment[],
-  previous: ReadonlyMap<string, CodexReviewDiffCommentAttachment[]>,
 ): ReadonlyMap<string, CodexReviewDiffCommentAttachment[]> {
   const grouped = new Map<string, CodexReviewDiffCommentAttachment[]>();
   for (const attachment of attachments) {
@@ -1627,17 +1628,7 @@ function buildStableReviewCommentAttachmentsByPath(
     grouped.set(path, [attachment]);
   }
 
-  let unchanged = grouped.size === previous.size;
-  for (const [path, bucket] of grouped) {
-    const previousBucket = previous.get(path);
-    if (previousBucket && areShallowArraysEqual(bucket, previousBucket)) {
-      grouped.set(path, previousBucket);
-      continue;
-    }
-    unchanged = false;
-  }
-
-  return unchanged ? previous : grouped;
+  return grouped;
 }
 
 function areReviewFileEntriesEqual(left: ReviewFileEntry, right: ReviewFileEntry): boolean {
@@ -1709,10 +1700,11 @@ const ReviewFileRow = memo(function ReviewFileRow({
   onToggleWrap,
 }: ReviewFileRowProps) {
   recordReviewRuntimeEvent({ type: "row-render", path: entry.displayPath });
-  const { useTheme, FileDiff } = deps;
+  const { FileDiff } = deps;
   const fileReferenceRouter = useFileReferenceRouter();
   const links = useLinkOpening();
-  const { resolved } = useTheme();
+  const theme = useTheme();
+  const resolved = deps.theme ?? theme.resolved;
   const rowRef = useRef<HTMLElement | null>(null);
   const menuScopeRef = useRef<{ sourceKey: string; request: number } | null>(null);
   useEffect(() => {
@@ -1727,8 +1719,6 @@ const ReviewFileRow = memo(function ReviewFileRow({
   const renderWordDiffs = supportsWordDiffs && wordDiffsEnabled;
   const lineDiffType = renderWordDiffs ? "word-alt" : "none";
   const [selectedLines, setSelectedLines] = useState<SelectedLineRange | null>(null);
-  const [draftsByKey, setDraftsByKey] = useState<Record<string, ReviewDiffDraft>>({});
-  const [draftStorageHydratedScope, setDraftStorageHydratedScope] = useState<string | null>(null);
   const hoveredLineRef = useRef<{
     side: ReviewDiffAnnotationSide;
     lineNumber: number;
@@ -1742,6 +1732,20 @@ const ReviewFileRow = memo(function ReviewFileRow({
       }),
     [entry.displayPath, sourceKey, threadId],
   );
+  const [draftSource, setDraftSource] = useState(() =>
+    createReviewDiffDraftSource(draftStorageScope, entry.displayPath, entry.patchText),
+  );
+  if (
+    draftSource.scope !== draftStorageScope ||
+    draftSource.path !== entry.displayPath ||
+    draftSource.patchText !== entry.patchText
+  ) {
+    setDraftSource(
+      createReviewDiffDraftSource(draftStorageScope, entry.displayPath, entry.patchText),
+    );
+  }
+  const draftsByKey = useSyncExternalStore(draftSource.subscribe, draftSource.getSnapshot);
+  const setDraftsByKey = draftSource.update;
   const fileLevelComments = useMemo(() => comments.filter((comment) => !comment.start), [comments]);
   const modelLineComments = useMemo(
     () => comments.filter((comment) => typeof comment.start === "number" && comment.start > 0),
@@ -1764,36 +1768,13 @@ const ReviewFileRow = memo(function ReviewFileRow({
   const draftKeys = useMemo(() => new Set(Object.keys(draftsByKey)), [draftsByKey]);
 
   useEffect(() => {
-    const storedDrafts = readReviewDiffDraftStorage(draftStorageScope);
-    setDraftsByKey(
-      Object.fromEntries(
-        Object.entries(storedDrafts).flatMap(([key, text]) => {
-          const [side, rawLineNumber] = key.split(":");
-          if ((side !== "additions" && side !== "deletions") || !rawLineNumber) return [];
-          const lineNumber = Number(rawLineNumber);
-          if (!Number.isFinite(lineNumber) || lineNumber <= 0) return [];
-          const draft = createReviewDiffDraftFromLine({
-            side,
-            lineNumber,
-            path: entry.displayPath,
-            patchText: entry.patchText,
-          });
-          return [[key, { ...draft, text }]];
-        }),
-      ),
-    );
-    setDraftStorageHydratedScope(draftStorageScope);
-  }, [draftStorageScope, entry.displayPath, entry.patchText]);
-
-  useEffect(() => {
-    if (draftStorageHydratedScope !== draftStorageScope) return;
     const persistedDrafts = Object.fromEntries(
       Object.entries(draftsByKey)
         .filter(([, draft]) => draft.text.length > 0)
         .map(([key, draft]) => [key, draft.text]),
     );
     writeReviewDiffDraftStorage(draftStorageScope, persistedDrafts);
-  }, [draftStorageHydratedScope, draftStorageScope, draftsByKey]);
+  }, [draftStorageScope, draftsByKey]);
 
   const createDraft = useCallback(
     (draft: ReviewDiffDraft | null) => {
@@ -1813,7 +1794,7 @@ const ReviewFileRow = memo(function ReviewFileRow({
         [draft.key]: draft,
       }));
     },
-    [draftKeys, existingAnnotationKeys],
+    [draftKeys, existingAnnotationKeys, setDraftsByKey],
   );
 
   const createDraftFromRange = useCallback(
@@ -1834,28 +1815,34 @@ const ReviewFileRow = memo(function ReviewFileRow({
     [createDraft, entry.displayPath, entry.patchText],
   );
 
-  const updateDraftText = useCallback((key: string, text: string) => {
-    setDraftsByKey((current) => {
-      const draft = current[key];
-      if (!draft) return current;
-      return {
-        ...current,
-        [key]: {
-          ...draft,
-          text,
-        },
-      };
-    });
-  }, []);
+  const updateDraftText = useCallback(
+    (key: string, text: string) => {
+      setDraftsByKey((current) => {
+        const draft = current[key];
+        if (!draft) return current;
+        return {
+          ...current,
+          [key]: {
+            ...draft,
+            text,
+          },
+        };
+      });
+    },
+    [setDraftsByKey],
+  );
 
-  const removeDraft = useCallback((key: string) => {
-    setDraftsByKey((current) => {
-      if (!(key in current)) return current;
-      const next = { ...current };
-      delete next[key];
-      return next;
-    });
-  }, []);
+  const removeDraft = useCallback(
+    (key: string) => {
+      setDraftsByKey((current) => {
+        if (!(key in current)) return current;
+        const next = { ...current };
+        delete next[key];
+        return next;
+      });
+    },
+    [setDraftsByKey],
+  );
 
   const submitDraft = useCallback(
     (key: string, text: string) => {
@@ -2386,6 +2373,95 @@ const ReviewFileRow = memo(function ReviewFileRow({
   );
 }, areReviewFileRowPropsEqual);
 
+/** Read a transcript file without letting unavailable workspace content fail Review. */
+async function readTranscriptReviewFullContents(
+  entry: ReviewFileEntry,
+  fileDiff: FileDiffMetadata,
+  path: string,
+  { readWorkspaceFileMetadata, readWorkspaceFileText }: ReviewDiffPanelDeps,
+): Promise<ReviewFullFileContents> {
+  try {
+    const contents = await readExactWorkspaceTextFile(
+      {
+        path,
+        maxBytes: REVIEW_FULL_FILE_MAX_BYTES,
+        contentSampleByteLimit: 8_192,
+      },
+      {
+        readMetadata: readWorkspaceFileMetadata,
+        readText: readWorkspaceFileText,
+      },
+    );
+    if (contents === null) {
+      return isReviewNewFile(fileDiff)
+        ? buildTranscriptNewFileContentsFromPatch(entry)
+        : buildUnavailableReviewFullContents(entry);
+    }
+    return buildTranscriptFullContentsFromPatch(entry, contents);
+  } catch {
+    return isReviewNewFile(fileDiff)
+      ? buildTranscriptNewFileContentsFromPatch(entry)
+      : buildUnavailableReviewFullContents(entry);
+  }
+}
+
+async function copyReviewGitApplyCommand(
+  gitWorkerClient: GitWorkerQueryClient,
+  {
+    cwd,
+    source,
+    baseRef,
+    commitSha,
+  }: {
+    cwd: string;
+    source: GitReviewSource;
+    baseRef: string | null;
+    commitSha: string | null;
+  },
+): Promise<void> {
+  try {
+    const result = await gitWorkerClient.request({
+      method: "review-patch",
+      params: {
+        cwd,
+        source,
+        baseRef,
+        commitSha,
+        operationSource: "review_model",
+      },
+    });
+    if ("type" in result) {
+      toast.danger("The repository changed. Refresh Review and try again.", {
+        id: "review-diff-notice",
+      });
+      return;
+    }
+    const patchResult: GitReviewPatchResult = result;
+    if (patchResult.diff.type !== "success" || patchResult.diff.unifiedDiff.trim().length === 0) {
+      toast.danger("Could not copy git apply command.", {
+        id: "review-diff-notice",
+      });
+      return;
+    }
+
+    const copied = await writeTextToClipboard(
+      buildReviewGitApplyCommand(patchResult.diff.unifiedDiff),
+    );
+    if (copied) {
+      toast.success("Copied git apply command to the clipboard", {
+        id: "review-diff-notice",
+      });
+      return;
+    }
+  } catch {
+    // Fall through to the shared failure toast below.
+  }
+
+  toast.danger("Could not copy git apply command.", {
+    id: "review-diff-notice",
+  });
+}
+
 export function ReviewDiffPanel({
   composerChatKey,
   conversationProjection,
@@ -2405,7 +2481,7 @@ export function ReviewDiffPanel({
     }),
     [deps],
   );
-  const { parsePatchFiles, readWorkspaceFileMetadata, readWorkspaceFileText } = resolvedDeps;
+  const { parsePatchFiles } = resolvedDeps;
   const gitWorkerClient = resolvedDeps.gitWorkerClient ?? getGitWorkerClient();
   const reviewConversation = conversationProjection;
   const reviewContentRootRef = useRef<HTMLDivElement | null>(null);
@@ -2517,15 +2593,6 @@ export function ReviewDiffPanel({
   );
   const rowRefs = useRef<Map<string, HTMLElement>>(new Map());
   const navigationRevealControllerRef = useRef<AbortController | null>(null);
-  const reviewCommentsByPathCacheRef = useRef<{
-    comments: ReviewCodeComment[];
-    pathsIdentity: string;
-    value: Map<string, ReviewCodeComment[]>;
-    counts: Map<string, number>;
-  } | null>(null);
-  const pendingReviewCommentsByPathRef = useRef<
-    ReadonlyMap<string, CodexReviewDiffCommentAttachment[]>
-  >(new Map());
   const queryClient = useQueryClient();
   const gitLiveQueryCoordinator = useMemo(
     () => getGitLiveQueryCoordinator(queryClient, gitWorkerClient),
@@ -2539,12 +2606,6 @@ export function ReviewDiffPanel({
       ? (selectedTurnDiff?.cwd ?? reviewConversation.cwd ?? projectWorkspacePath ?? null)
       : (reviewConversation.cwd ?? projectWorkspacePath ?? null)
     : (projectWorkspacePath ?? reviewConversation.cwd ?? null);
-
-  useEffect(() => {
-    clearContentSearchMarks(reviewContentRootRef.current, {
-      includeShadowRoots: true,
-    });
-  }, [reviewConversation.threadId]);
 
   useEffect(() => {
     initializeRouteState({
@@ -2823,29 +2884,12 @@ export function ReviewDiffPanel({
           return buildUnavailableReviewFullContents(entry);
         }
 
-        try {
-          const contents = await readExactWorkspaceTextFile(
-            {
-              path: entry.openPath,
-              maxBytes: REVIEW_FULL_FILE_MAX_BYTES,
-              contentSampleByteLimit: 8_192,
-            },
-            {
-              readMetadata: readWorkspaceFileMetadata,
-              readText: readWorkspaceFileText,
-            },
-          );
-          if (contents === null) {
-            return isReviewNewFile(entry.fileDiff)
-              ? buildTranscriptNewFileContentsFromPatch(entry)
-              : buildUnavailableReviewFullContents(entry);
-          }
-          return buildTranscriptFullContentsFromPatch(entry, contents);
-        } catch {
-          return isReviewNewFile(entry.fileDiff)
-            ? buildTranscriptNewFileContentsFromPatch(entry)
-            : buildUnavailableReviewFullContents(entry);
-        }
+        return readTranscriptReviewFullContents(
+          entry,
+          entry.fileDiff,
+          entry.openPath,
+          resolvedDeps,
+        );
       }
 
       const normalizedCwd = gitSnapshot?.cwd?.trim() ?? reviewCwd?.trim() ?? "";
@@ -2901,8 +2945,7 @@ export function ReviewDiffPanel({
       gitSnapshot?.cwd,
       gitSnapshot?.snapshotGeneration,
       gitWorkerClient,
-      readWorkspaceFileMetadata,
-      readWorkspaceFileText,
+      resolvedDeps,
       reviewCwd,
       source,
     ],
@@ -3012,11 +3055,17 @@ export function ReviewDiffPanel({
     [snapshot.files, totalChangedBytes, totalChangedLines],
   );
 
+  const markedSearchScopeRef = useRef<string | null>(null);
   useEffect(() => {
-    clearContentSearchMarks(reviewContentRootRef.current, {
-      includeShadowRoots: true,
-    });
-  }, [reviewContentSearchIdentity, source]);
+    const scope = JSON.stringify([
+      reviewConversation.threadId,
+      reviewContentSearchIdentity,
+      source,
+    ]);
+    if (markedSearchScopeRef.current === scope) return;
+    markedSearchScopeRef.current = scope;
+    clearContentSearchMarks(reviewContentRootRef.current, { includeShadowRoots: true });
+  }, [reviewConversation.threadId, reviewContentSearchIdentity, source]);
 
   const generatedPathsInput = useMemo(
     () => ({
@@ -3281,28 +3330,35 @@ export function ReviewDiffPanel({
     );
 
     void (async () => {
-      try {
-        if (!entry) {
-          for (let attempt = 0; attempt < 200; attempt += 1) {
-            await waitForReviewRevealRetry(controller.signal);
+      await runWithCleanup(
+        async () => {
+          if (!entry) {
+            for (let attempt = 0; attempt < 200; attempt += 1) {
+              await waitForReviewRevealRetry(controller.signal);
+            }
+            toast.danger(`Could not find ${pendingReveal.targetPath} in Review.`);
+            acknowledgeReveal(pendingReveal.requestId);
+            return;
           }
-          toast.danger(`Could not find ${pendingReveal.targetPath} in Review.`);
+          const revealed = await revealReviewEntry(entry, {
+            signal: controller.signal,
+            block: "start",
+            clearFilter: true,
+          });
+          if (!revealed) {
+            toast.danger(`Could not reveal ${entry.displayPath} in Review.`);
+          }
           acknowledgeReveal(pendingReveal.requestId);
-          return;
-        }
-        const revealed = await revealReviewEntry(entry, {
-          signal: controller.signal,
-          block: "start",
-          clearFilter: true,
-        });
-        if (!revealed) {
-          toast.danger(`Could not reveal ${entry.displayPath} in Review.`);
-        }
-        acknowledgeReveal(pendingReveal.requestId);
-      } catch (error) {
-        if (controller.signal.aborted) return;
-        toast.danger(error instanceof Error ? error.message : "Could not reveal the Review file.");
-      }
+        },
+        {
+          onError: (error) => {
+            if (controller.signal.aborted) return;
+            toast.danger(
+              error instanceof Error ? error.message : "Could not reveal the Review file.",
+            );
+          },
+        },
+      );
     })();
 
     return () => controller.abort();
@@ -3524,41 +3580,21 @@ export function ReviewDiffPanel({
     [setRouteState],
   );
 
-  const reviewFilePathsIdentity = useMemo(
-    () => snapshot.files.map((entry) => entry.displayPath).join("\0"),
-    [snapshot.files],
+  const reviewCommentsByPath = new Map(
+    snapshot.files.map((entry) => {
+      const comments = filterReviewCodeCommentsForPath(reviewCodeComments, entry.displayPath);
+      return [
+        entry.displayPath,
+        comments.length > 0 ? comments : EMPTY_REVIEW_CODE_COMMENTS,
+      ] as const;
+    }),
   );
-  const reviewCommentsCache = reviewCommentsByPathCacheRef.current;
-  const reviewCommentsByPath =
-    reviewCommentsCache?.comments === reviewCodeComments &&
-    reviewCommentsCache.pathsIdentity === reviewFilePathsIdentity
-      ? reviewCommentsCache.value
-      : new Map(
-          snapshot.files.map((entry) => {
-            const comments = filterReviewCodeCommentsForPath(reviewCodeComments, entry.displayPath);
-            return [
-              entry.displayPath,
-              comments.length > 0 ? comments : EMPTY_REVIEW_CODE_COMMENTS,
-            ] as const;
-          }),
-        );
-  const fileTreeCommentCounts =
-    reviewCommentsByPath === reviewCommentsCache?.value
-      ? reviewCommentsCache.counts
-      : new Map([...reviewCommentsByPath].map(([path, comments]) => [path, comments.length]));
-  if (reviewCommentsByPath !== reviewCommentsCache?.value) {
-    reviewCommentsByPathCacheRef.current = {
-      comments: reviewCodeComments,
-      pathsIdentity: reviewFilePathsIdentity,
-      value: reviewCommentsByPath,
-      counts: fileTreeCommentCounts,
-    };
-  }
-  const pendingReviewCommentsByPath = buildStableReviewCommentAttachmentsByPath(
+  const fileTreeCommentCounts = new Map(
+    [...reviewCommentsByPath].map(([path, comments]) => [path, comments.length]),
+  );
+  const pendingReviewCommentsByPath = groupReviewCommentAttachmentsByPath(
     pendingReviewCommentAttachments,
-    pendingReviewCommentsByPathRef.current,
   );
-  pendingReviewCommentsByPathRef.current = pendingReviewCommentsByPath;
 
   const renderReviewRow = (entry: ReviewFileEntry, keyPrefix = "") => (
     <div
@@ -3628,20 +3664,25 @@ export function ReviewDiffPanel({
     const normalizedCwd = reviewCwd?.trim() ?? "";
     if (!normalizedCwd) return;
 
-    try {
-      await gitWorkerClient.request({
-        method: "git-init-repo",
-        params: { cwd: normalizedCwd },
-      });
-      toast.success("Created a Git repository for this workspace.", {
-        id: "review-diff-notice",
-      });
-    } finally {
-      void queryClient.invalidateQueries({
-        queryKey: gitRepositoryMetadataQueryKey,
-        exact: true,
-      });
-    }
+    await runWithCleanup(
+      async () => {
+        await gitWorkerClient.request({
+          method: "git-init-repo",
+          params: { cwd: normalizedCwd },
+        });
+        toast.success("Created a Git repository for this workspace.", {
+          id: "review-diff-notice",
+        });
+      },
+      {
+        cleanup: () => {
+          void queryClient.invalidateQueries({
+            queryKey: gitRepositoryMetadataQueryKey,
+            exact: true,
+          });
+        },
+      },
+    );
   };
 
   const startThreadPrompt = async (prompt: string) => {
@@ -3676,46 +3717,11 @@ export function ReviewDiffPanel({
   const handleCopyGitApplyCommand = async () => {
     if (!canCopyGitApplyCommand || !reviewCwd || !isGitReviewSource(source)) return;
 
-    try {
-      const result = await gitWorkerClient.request({
-        method: "review-patch",
-        params: {
-          cwd: reviewCwd,
-          source,
-          baseRef: snapshot.baseRef,
-          commitSha,
-          operationSource: "review_model",
-        },
-      });
-      if ("type" in result) {
-        toast.danger("The repository changed. Refresh Review and try again.", {
-          id: "review-diff-notice",
-        });
-        return;
-      }
-      const patchResult: GitReviewPatchResult = result;
-      if (patchResult.diff.type !== "success" || patchResult.diff.unifiedDiff.trim().length === 0) {
-        toast.danger("Could not copy git apply command.", {
-          id: "review-diff-notice",
-        });
-        return;
-      }
-
-      const copied = await writeTextToClipboard(
-        buildReviewGitApplyCommand(patchResult.diff.unifiedDiff),
-      );
-      if (copied) {
-        toast.success("Copied git apply command to the clipboard", {
-          id: "review-diff-notice",
-        });
-        return;
-      }
-    } catch {
-      // Fall through to the shared failure toast below.
-    }
-
-    toast.danger("Could not copy git apply command.", {
-      id: "review-diff-notice",
+    await copyReviewGitApplyCommand(gitWorkerClient, {
+      cwd: reviewCwd,
+      source,
+      baseRef: snapshot.baseRef,
+      commitSha,
     });
   };
 

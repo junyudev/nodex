@@ -1,3 +1,5 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
+import { PropertyEditorIcon } from "@/components/database/property-editor-icons";
 import {
   DndContext,
   type DragEndEvent,
@@ -8,6 +10,7 @@ import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable"
 import {
   startTransition,
   useDeferredValue,
+  useCallback,
   useEffect,
   useEffectEvent,
   useLayoutEffect,
@@ -310,7 +313,11 @@ function InlineNameEditor({
 }) {
   const [draft, setDraft] = useState(value);
   const inputRef = useRef<HTMLInputElement | null>(null);
-  useEffect(() => setDraft(value), [value]);
+  const [previousValue, setPreviousValue] = useState(value);
+  if (previousValue !== value) {
+    setPreviousValue(value);
+    setDraft(value);
+  }
   useEffect(() => {
     if (focusRequest <= 0) return;
     const frame = window.requestAnimationFrame(() => {
@@ -492,7 +499,7 @@ function ViewOverview({
     if (next) void onProjectionCommitted();
     return next;
   };
-  const ActiveViewIcon = databaseViewLayoutIcon(activeView.layout);
+  const ActiveViewIcon = activeView.layout === "board" ? BoardIcon : ListLayoutIcon;
   return (
     <>
       <div
@@ -721,7 +728,6 @@ function PropertyVisibilityRowContent({
   readonly setActivatorNodeRef?: (element: HTMLElement | null) => void;
   readonly onToggle?: () => void;
 }) {
-  const Icon = dataSourcePropertyIcon(property);
   const propertyId = String(property.propertyId);
   const VisibilityStateIcon = visible ? VisibilityIcon : VisibilityOffIcon;
   return (
@@ -741,7 +747,10 @@ function PropertyVisibilityRowContent({
       >
         <DragHandleDotsIcon className="icon-2xs" />
       </span>
-      <Icon className="ml-1 icon-xs shrink-0 text-token-text-primary" />
+      <PropertyEditorIcon
+        property={property}
+        className="ml-1 icon-xs shrink-0 text-token-text-primary"
+      />
       <span className="ml-2 min-w-0 flex-1 truncate text-token-text-primary">{property.name}</span>
       {overlay ? (
         <span
@@ -785,17 +794,20 @@ function SortablePropertyVisibilityRow({
   readonly onToggle: () => void;
 }) {
   const propertyId = String(property.propertyId);
-  const sortable = useContinuousSortable({ id: propertyId, disabled: !canReorder });
+  const { setNodeRef, style, isDragging, listeners, setActivatorNodeRef } = useContinuousSortable({
+    id: propertyId,
+    disabled: !canReorder,
+  });
   return (
     <div
-      ref={sortable.setNodeRef}
-      style={sortable.style}
+      ref={setNodeRef}
+      style={style}
       data-property-id={property.propertyId}
       data-property-sortable={property.propertyId}
-      data-property-dragging={sortable.isDragging ? "true" : "false"}
+      data-property-dragging={isDragging ? "true" : "false"}
       className={cn(
         "mx-2 flex h-7 items-center rounded-md px-1 text-sm leading-[16.8px] hover:bg-token-foreground/5",
-        sortable.isDragging && "opacity-0",
+        isDragging && "opacity-0",
       )}
     >
       <PropertyVisibilityRowContent
@@ -803,8 +815,8 @@ function SortablePropertyVisibilityRow({
         visible={visible}
         busy={busy}
         canReorder={canReorder}
-        dragListeners={sortable.listeners}
-        setActivatorNodeRef={sortable.setActivatorNodeRef}
+        dragListeners={listeners}
+        setActivatorNodeRef={setActivatorNodeRef}
         onToggle={onToggle}
       />
     </div>
@@ -818,12 +830,12 @@ function SortablePropertyVisibilityBoundary({
   readonly disabled: boolean;
   readonly children: ReactNode;
 }) {
-  const sortable = useContinuousSortable({
+  const { setNodeRef, style } = useContinuousSortable({
     id: DATABASE_VIEW_HIDDEN_PROPERTY_BOUNDARY,
     disabled,
   });
   return (
-    <div ref={sortable.setNodeRef} style={sortable.style} data-property-visibility-boundary="true">
+    <div ref={setNodeRef} style={style} data-property-visibility-boundary="true">
       {children}
     </div>
   );
@@ -1614,26 +1626,27 @@ function SortableConditionalColorRule({
   readonly onChange: (rule: DatabaseViewConditionalColorRule) => void;
   readonly onDelete: () => void;
 }) {
-  const sortable = useContinuousSortable({ id: rule.ruleId, disabled });
+  const { setNodeRef, style, isDragging, setActivatorNodeRef, attributes, listeners } =
+    useContinuousSortable({ id: rule.ruleId, disabled });
   const clause = conditionalColorRuleClause(rule);
   return (
     <div
-      ref={sortable.setNodeRef}
-      style={sortable.style}
+      ref={setNodeRef}
+      style={style}
       data-conditional-color-rule={rule.ruleId}
-      data-conditional-color-dragging={sortable.isDragging ? "true" : undefined}
+      data-conditional-color-dragging={isDragging ? "true" : undefined}
       className={cn(
         "group relative w-full rounded-[10px] border border-transparent bg-token-foreground/5",
-        sortable.isDragging && "shadow-lg ring-[0.5px] ring-token-border",
+        isDragging && "shadow-lg ring-[0.5px] ring-token-border",
       )}
     >
       <button
-        ref={sortable.setActivatorNodeRef}
+        ref={setActivatorNodeRef}
         type="button"
         aria-label={`Reorder conditional color for ${property.name}`}
         disabled={disabled}
-        {...sortable.attributes}
-        {...sortable.listeners}
+        {...attributes}
+        {...listeners}
         className="absolute -left-2.5 top-1 z-10 inline-flex size-5 touch-none cursor-grab items-center justify-center rounded-md bg-token-main-surface-secondary text-token-description-foreground opacity-0 outline-hidden transition-opacity hover:text-token-text-primary focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-token-focus-border group-hover:opacity-100 active:cursor-grabbing disabled:cursor-not-allowed"
       >
         <DragHandleDotsIcon className="size-3" />
@@ -1747,16 +1760,12 @@ function ViewConditionalColorRoute({
       rules.filter((rule) => !databaseViewFilterClauseIsEmpty(conditionalColorRuleClause(rule))),
     [rules],
   );
-  const previewFingerprint = useMemo(
-    () => databaseConditionalColorRulesFingerprint(previewRules),
-    [previewRules],
-  );
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [draggedRuleId, setDraggedRuleId] = useState<string | null>(null);
   const rulesRef = useRef<HTMLDivElement | null>(null);
   const ruleDnd = useContinuousSortableDnd({ axis: "vertical", containerRef: rulesRef });
-  const previousSharedRulesRef = useRef<readonly DatabaseViewConditionalColorRule[]>(sharedRules);
+  const [previousSharedRules, setPreviousSharedRules] = useState(sharedRules);
   const lastSyncAttemptRef = useRef<string | null>(null);
   const inFlightFingerprintRef = useRef<string | null>(null);
   // This route is keyed by View. Its mounted publisher must keep that View's
@@ -1767,20 +1776,25 @@ function ViewConditionalColorRoute({
   );
   useEffect(() => {
     updatePreview(previewRules);
-  }, [previewFingerprint, previewRules]);
-  useEffect(() => {
-    const previousShared = previousSharedRulesRef.current;
-    previousSharedRulesRef.current = sharedRules;
-    setRules((draft) =>
-      reconcileDatabaseConditionalColorDraft({ previousShared, nextShared: sharedRules, draft }),
+  }, [previewRules]);
+  if (previousSharedRules !== sharedRules) {
+    setPreviousSharedRules(sharedRules);
+    setRules(
+      reconcileDatabaseConditionalColorDraft({
+        previousShared: previousSharedRules,
+        nextShared: sharedRules,
+        draft: rules,
+      }),
     );
-  }, [sharedFingerprint, sharedRules]);
+  }
   const changed = rulesFingerprint !== sharedFingerprint;
   const complete = rules.every(
     (rule) => !databaseViewFilterClauseIsEmpty(conditionalColorRuleClause(rule)),
   );
   const latestSyncRef = useRef({ changed, complete, rules, rulesFingerprint });
-  latestSyncRef.current = { changed, complete, rules, rulesFingerprint };
+  useLayoutEffect(() => {
+    latestSyncRef.current = { changed, complete, rules, rulesFingerprint };
+  }, [changed, complete, rules, rulesFingerprint]);
   useEffect(
     () => () => {
       updatePreview(null);
@@ -1807,21 +1821,29 @@ function ViewConditionalColorRoute({
       inFlightFingerprintRef.current = nextFingerprint;
       setSyncing(true);
       setSyncError(null);
-      try {
-        await onPublishConditionalColors(nextRules);
-        if (databaseConditionalColorRulesFingerprint(rules) === nextFingerprint) {
-          updatePreview(null);
-        }
-      } catch (cause) {
-        setSyncError(
-          cause instanceof Error ? cause.message : "Conditional colors could not be synchronized",
-        );
-      } finally {
-        if (inFlightFingerprintRef.current === nextFingerprint) {
-          inFlightFingerprintRef.current = null;
-        }
-        setSyncing(false);
-      }
+      return runWithCleanup(
+        async () => {
+          await onPublishConditionalColors(nextRules);
+          if (databaseConditionalColorRulesFingerprint(rules) === nextFingerprint) {
+            updatePreview(null);
+          }
+        },
+        {
+          cleanup: () => {
+            if (inFlightFingerprintRef.current === nextFingerprint) {
+              inFlightFingerprintRef.current = null;
+            }
+            setSyncing(false);
+          },
+          onError: (cause) => {
+            setSyncError(
+              cause instanceof Error
+                ? cause.message
+                : "Conditional colors could not be synchronized",
+            );
+          },
+        },
+      );
     },
   );
   useEffect(() => {
@@ -2216,7 +2238,7 @@ function PropertyRoute({
     <div className="py-2">
       <div className="mx-2 flex h-11 items-center gap-2 px-2">
         <div className="-ml-1 mr-1 flex size-6 shrink-0 items-center justify-center rounded-md text-token-text-primary ring-[0.5px] ring-inset ring-token-border">
-          <Icon className="icon-xs" />
+          <PropertyEditorIcon property={property} className="icon-xs" />
         </div>
         <div className="min-w-0 flex-1">
           <InlineNameEditor
@@ -2980,14 +3002,16 @@ function PageLayoutRoute({
       {layout.entries.map((entry, index) => {
         const property = propertyById.get(entry.propertyId);
         if (!property || property.lifecycle !== "active") return null;
-        const Icon = dataSourcePropertyIcon(property);
         return (
           <div
             key={entry.propertyId}
             className="group/page-layout mx-2 flex min-h-7 items-center gap-1 rounded-md px-1 hover:bg-token-foreground/5"
           >
             <DragHandleDotsIcon className="icon-2xs shrink-0 text-token-description-foreground" />
-            <Icon className="icon-xs shrink-0 text-token-text-primary" />
+            <PropertyEditorIcon
+              property={property}
+              className="icon-xs shrink-0 text-token-text-primary"
+            />
             <span className="ml-1 min-w-0 flex-1 truncate text-sm leading-[16.8px] text-token-text-primary">
               {property.name}
             </span>
@@ -3052,11 +3076,10 @@ function DeletedPropertiesRoute({ runtime }: { readonly runtime: DatabaseSetting
   return (
     <div className="py-2">
       {deleted.map((property) => {
-        const Icon = dataSourcePropertyIcon(property);
         return (
           <div key={property.propertyId} className="px-3">
             <div className="flex min-h-9 items-center gap-2">
-              <Icon className="size-4 text-token-text-primary" />
+              <PropertyEditorIcon property={property} className="size-4 text-token-text-primary" />
               <span className="min-w-0 flex-1 truncate text-left text-sm text-token-text-primary">
                 {property.name}
               </span>
@@ -3200,10 +3223,10 @@ export function DatabaseSettingsRail({
     const frame = window.requestAnimationFrame(() => setEntered(true));
     return () => window.cancelAnimationFrame(frame);
   }, []);
-  useEffect(() => {
-    const focusTarget = headerRef.current?.querySelector<HTMLElement>("button, input");
-    focusTarget?.focus();
-  }, [route.kind]);
+  const focusHeader = useCallback((node: HTMLDivElement | null) => {
+    headerRef.current = node;
+    node?.querySelector<HTMLElement>("button, input")?.focus();
+  }, []);
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.defaultPrevented) return;
@@ -3382,7 +3405,8 @@ export function DatabaseSettingsRail({
     >
       <div className="flex h-full min-h-0 w-full flex-col">
         <div
-          ref={headerRef}
+          key={route.kind}
+          ref={focusHeader}
           className={cn("flex h-[42px] shrink-0 items-center", rootRoute ? "px-4" : "px-[10px]")}
         >
           {!rootRoute ? (

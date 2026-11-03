@@ -31,7 +31,6 @@ import type {
   CommandPaletteShellCommandContext,
   CommandPaletteShellCommandHandlers,
 } from "@/lib/command-palette-commands";
-import { remindThreadCommandHandlers } from "@/lib/command-palette-commands";
 import { chatReminderPresetTime } from "@/lib/chat-reminder";
 import type { useWorkbenchSidebarController } from "./use-workbench-sidebar-controller";
 import { CommandPalette } from "./command-palette";
@@ -203,6 +202,14 @@ export function WorkbenchCommandPaletteHost({
     commandKeymapState,
     gitBlameEnabled: activeLineBlame.enabled,
   };
+  const remindThread = (presetId: Parameters<typeof chatReminderPresetTime>[0]) => {
+    if (!activeSession) return;
+    void sidebarCommands.setSessionReminder(
+      activeSession,
+      chatReminderPresetTime(presetId, new Date()),
+    );
+  };
+
   const commandHandlers: CommandPaletteShellCommandHandlers = {
     openFolder: () => {
       void openFolder();
@@ -246,13 +253,10 @@ export function WorkbenchCommandPaletteHost({
       if (!activeSession) return;
       void sidebarCommands.toggleSessionUnread(activeSession);
     },
-    ...remindThreadCommandHandlers((presetId) => {
-      if (!activeSession) return;
-      void sidebarCommands.setSessionReminder(
-        activeSession,
-        chatReminderPresetTime(presetId, new Date()),
-      );
-    }),
+    remindThreadInOneHour: () => remindThread("in-1-hour"),
+    remindThreadInThreeHours: () => remindThread("in-3-hours"),
+    remindThreadInTheMorning: () => remindThread("next-morning"),
+    remindThreadNextWeek: () => remindThread("next-week"),
     clearThreadReminder: () => {
       if (!activeSession) return;
       void sidebarCommands.setSessionReminder(activeSession, null);

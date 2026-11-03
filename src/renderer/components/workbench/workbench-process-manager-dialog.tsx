@@ -9,7 +9,7 @@ import {
   TerminalIcon,
 } from "@/components/shared/icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { NodexButton, NodexIconButton } from "@/components/ui/button";
 import {
   NodexDialog,
@@ -351,12 +351,14 @@ export function WorkbenchProcessManagerDialog({
   const rows = useMemo(() => query.data ?? [], [query.data]);
   const visibleRows = frozenRows ?? rows;
 
-  useEffect(() => {
+  const [previousOpen, setPreviousOpen] = useState(open);
+  if (previousOpen !== open) {
+    setPreviousOpen(open);
     if (!open) {
       setFrozenRows(null);
       setActionStates({});
     }
-  }, [open]);
+  }
 
   const handleMenuOpenChange = useCallback(
     (nextOpen: boolean) => {

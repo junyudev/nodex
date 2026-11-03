@@ -893,10 +893,17 @@ function CodexProjectHoverCardContent({
   const appearanceMutation = useProjectAppearanceMutation(project);
   const [pinPending, setPinPending] = useState(false);
 
-  useEffect(() => {
-    if (appearanceMutation.pending) return;
-    setAppearance(project.appearance);
-  }, [appearanceMutation.pending, project.appearance]);
+  const [appearanceInput, setAppearanceInput] = useState({
+    pending: appearanceMutation.pending,
+    appearance: project.appearance,
+  });
+  if (
+    appearanceInput.pending !== appearanceMutation.pending ||
+    appearanceInput.appearance !== project.appearance
+  ) {
+    setAppearanceInput({ pending: appearanceMutation.pending, appearance: project.appearance });
+    if (!appearanceMutation.pending) setAppearance(project.appearance);
+  }
 
   const renameProject = async (name: string) => {
     const updated = await onUpdateProject(project.id, { name });
@@ -1076,6 +1083,15 @@ export function CodexProjectRow({
     projectId: project.id,
     targetProjectKind: "local",
   });
+  const { setNodeRef: setGutterNode } = gutterThreadDropTarget;
+  const {
+    setNodeRef: setWholeNode,
+    isProjectDropTargetOver: wholeDropOver,
+    isExternalThreadDropTarget: wholeExternalDrop,
+  } = wholeThreadDropTarget;
+  const { setNodeRef: setRowNode, isExternalThreadDropTarget: rowExternalDrop } =
+    rowThreadDropTarget;
+  const { setNodeRef: setIconNode } = iconThreadDropTarget;
   const sortableId = dnd?.sortableId ?? getSidebarGroupDndId(project.id);
   const { activeProjectId, projectDragActive } = useSidebarProjectDndState();
   const dragOverlay = useMemo(
@@ -1121,16 +1137,16 @@ export function CodexProjectRow({
     disabled: !sortableEnabled,
     data: sortableData,
   });
-  const projectRowRef = useCombinedRefs(setNodeRef, wholeThreadDropTarget.setNodeRef);
+  const projectRowRef = useCombinedRefs(setNodeRef, setWholeNode);
   const activeProjectDrag = isDragging || activeProjectId === project.id;
-  const projectDropActive = wholeThreadDropTarget.isProjectDropTargetOver;
+  const projectDropActive = wholeDropOver;
   const resolvedHoverCardOpen = hoverCardOpen ?? uncontrolledHoverCardOpen;
   const hoverCardDisabled =
     activeProjectDrag ||
     projectDragActive ||
     projectActionsMenuOpen ||
-    rowThreadDropTarget.isExternalThreadDropTarget ||
-    wholeThreadDropTarget.isExternalThreadDropTarget;
+    rowExternalDrop ||
+    wholeExternalDrop;
   const sortableStyle =
     sortableEnabled && !projectDragActive && transform
       ? getCodexSidebarSortableStyle(transform, transition)
@@ -1156,14 +1172,20 @@ export function CodexProjectRow({
     void queryClient.prefetchQuery(gitRepositoryIdentityQueryOptions(primaryWorkspaceRoot));
   };
 
-  useEffect(() => {
-    if (!onCreateStableWorktree || !primaryWorkspaceRoot) {
-      setCanCreateStableWorktree(false);
-      return;
-    }
-
-    let disposed = false;
+  const [worktreeInput, setWorktreeInput] = useState({
+    onCreateStableWorktree,
+    primaryWorkspaceRoot,
+  });
+  if (
+    worktreeInput.onCreateStableWorktree !== onCreateStableWorktree ||
+    worktreeInput.primaryWorkspaceRoot !== primaryWorkspaceRoot
+  ) {
+    setWorktreeInput({ onCreateStableWorktree, primaryWorkspaceRoot });
     setCanCreateStableWorktree(false);
+  }
+  useEffect(() => {
+    if (!onCreateStableWorktree || !primaryWorkspaceRoot) return;
+    let disposed = false;
     void getGitWorkerClient()
       .request({
         method: "branch-metadata",
@@ -1224,7 +1246,7 @@ export function CodexProjectRow({
         }
       >
         <CodexSidebarTreeRow
-          ref={rowThreadDropTarget.setNodeRef}
+          ref={setRowNode}
           {...(sortableEnabled ? attributes : {})}
           data-app-action-sidebar-project-collapsed={String(!expanded)}
           data-app-action-sidebar-project-id={project.id}
@@ -1243,7 +1265,7 @@ export function CodexProjectRow({
           }}
         >
           <CodexSidebarRowLayout
-            leadingRef={iconThreadDropTarget.setNodeRef}
+            leadingRef={setIconNode}
             leadingSlotProps={{
               className: "group/project-leading-slot",
             }}
@@ -1361,7 +1383,7 @@ export function CodexProjectRow({
         </CodexSidebarTreeRow>
       </NodexHoverCard>
       <div
-        ref={gutterThreadDropTarget.setNodeRef}
+        ref={setGutterNode}
         aria-hidden
         className="absolute bottom-0 left-0 top-[var(--height-token-nav-row)] z-10 w-2"
       />
@@ -1469,12 +1491,19 @@ function RelativeThreadAge({ recencyAt }: { recencyAt: number }) {
   const [now, setNow] = useState(Date.now);
 
   useEffect(() => {
-    const timeout = window.setTimeout(
-      () => setNow(Date.now()),
-      getNextElapsedTimeUpdateDelay(recencyAt, Date.now()),
-    );
+    let timeout: number;
+    const schedule = () => {
+      timeout = window.setTimeout(
+        () => {
+          setNow(Date.now());
+          schedule();
+        },
+        getNextElapsedTimeUpdateDelay(recencyAt, Date.now()),
+      );
+    };
+    schedule();
     return () => window.clearTimeout(timeout);
-  }, [now, recencyAt]);
+  }, [recencyAt]);
 
   return (
     <time dateTime={new Date(recencyAt).toJSON() ?? undefined}>
@@ -1898,14 +1927,22 @@ function CodexSidebarThreadRowView({
   const normalizedHoverCardCwd = item.cwd?.trim() ?? "";
   const resolvedHoverCardBranchName = hoverCardBranchName ?? lazyBranchName;
 
-  useEffect(() => {
-    if (hoverCardBranchName !== undefined) {
-      setLazyBranchName(null);
-      return;
-    }
-
+  const [branchInput, setBranchInput] = useState({
+    hoverCardBranchName,
+    normalizedHoverCardCwd,
+    resolvedHoverCardOpen,
+  });
+  if (
+    branchInput.hoverCardBranchName !== hoverCardBranchName ||
+    branchInput.normalizedHoverCardCwd !== normalizedHoverCardCwd ||
+    branchInput.resolvedHoverCardOpen !== resolvedHoverCardOpen
+  ) {
+    setBranchInput({ hoverCardBranchName, normalizedHoverCardCwd, resolvedHoverCardOpen });
     setLazyBranchName(null);
-    if (!resolvedHoverCardOpen || !normalizedHoverCardCwd) return;
+  }
+  useEffect(() => {
+    if (hoverCardBranchName !== undefined || !resolvedHoverCardOpen || !normalizedHoverCardCwd)
+      return;
 
     let cancelled = false;
     void getGitWorkerClient()

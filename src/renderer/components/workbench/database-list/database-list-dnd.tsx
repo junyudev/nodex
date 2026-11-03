@@ -26,6 +26,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -282,8 +283,10 @@ export function DatabaseListDndProvider({
   const [sources, setSources] = useState<DatabaseListDragSources | null>(null);
   const [target, setTarget] = useState<DatabaseListDragTarget | null>(null);
   const [overlayWidth, setOverlayWidth] = useState(320);
-  rowsRef.current = rows;
-  selectionRef.current = selection;
+  useLayoutEffect(() => {
+    rowsRef.current = rows;
+    selectionRef.current = selection;
+  }, [rows, selection]);
 
   const publishTarget = (next: DatabaseListDragTarget | null): void => {
     const unchanged =
@@ -532,7 +535,10 @@ export function DatabaseListDndProvider({
 
   useEffect(
     () => () => {
-      stopAutoScroll();
+      if (autoScrollFrameRef.current !== null) {
+        window.cancelAnimationFrame(autoScrollFrameRef.current);
+        autoScrollFrameRef.current = null;
+      }
       if (releaseClickTimerRef.current !== null) {
         window.clearTimeout(releaseClickTimerRef.current);
       }
@@ -655,15 +661,15 @@ export const DatabaseListGroupDropTarget = ({
   readonly className?: string;
   readonly children: ReactNode;
 } & Omit<React.HTMLAttributes<HTMLDivElement>, "children">) => {
-  const dnd = useDatabaseListGroupDnd(item);
+  const { setNodeRef, active } = useDatabaseListGroupDnd(item);
   return (
     <div
       {...props}
-      ref={dnd.setNodeRef}
-      data-database-list-drop-inside={dnd.active || undefined}
+      ref={setNodeRef}
+      data-database-list-drop-inside={active || undefined}
       className={cn(
         className,
-        dnd.active && "ring-1 ring-inset ring-[var(--database-list-drop-indicator)]",
+        active && "ring-1 ring-inset ring-[var(--database-list-drop-indicator)]",
       )}
     >
       {children}

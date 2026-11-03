@@ -372,56 +372,75 @@ export function PendingWorktreeRoute({
   const openingThreadIdRef = useRef<string | null>(null);
 
   const load = useCallback(
-    async (entriesOverride?: readonly CodexPendingWorktreeEntry[]) => {
+    (entriesOverride?: readonly CodexPendingWorktreeEntry[]) => {
       const sequence = loadSequenceRef.current + 1;
       loadSequenceRef.current = sequence;
-      try {
-        const [entries, resolution, target] = await Promise.all([
+      const request = async () =>
+        Promise.all([
           entriesOverride ?? transport.list(),
           transport.resolveThread(clientThreadId),
           expectedHostId === undefined
             ? Promise.resolve(undefined)
             : readTarget({ clientThreadId, expectedHostId }),
         ]);
-        if (loadSequenceRef.current !== sequence) return;
-        const admitted =
-          target === undefined ||
-          (target?.hostId === expectedHostId && target?.clientThreadId === clientThreadId);
-        const entry =
-          admitted && (target === undefined || target?.pendingWorktreeId !== undefined)
-            ? findPendingWorktreeEntry(entries, clientThreadId, target?.pendingWorktreeId)
+      return request()
+        .then(([entries, resolution, target]) => {
+          if (loadSequenceRef.current !== sequence) return;
+          const admitted =
+            target === undefined ||
+            (target?.hostId === expectedHostId && target?.clientThreadId === clientThreadId);
+          const entry =
+            admitted && (target === undefined || target?.pendingWorktreeId !== undefined)
+              ? findPendingWorktreeEntry(entries, clientThreadId, target?.pendingWorktreeId)
+              : null;
+          const matchingResolution = admitted
+            ? verifiedPendingResolution(resolution, target)
             : null;
-        const matchingResolution = admitted ? verifiedPendingResolution(resolution, target) : null;
-        setSnapshot({
-          status: entry || matchingResolution ? "ready" : "missing",
-          entry,
-          resolution: matchingResolution,
-          errorMessage: null,
+          setSnapshot({
+            status: entry || matchingResolution ? "ready" : "missing",
+            entry,
+            resolution: matchingResolution,
+            errorMessage: null,
+          });
+        })
+        .catch((error) => {
+          if (loadSequenceRef.current !== sequence) return;
+          setSnapshot({
+            status: "error",
+            entry: null,
+            resolution: null,
+            errorMessage: errorMessage(error),
+          });
         });
-      } catch (error) {
-        if (loadSequenceRef.current !== sequence) return;
-        setSnapshot({
-          status: "error",
-          entry: null,
-          resolution: null,
-          errorMessage: errorMessage(error),
-        });
-      }
     },
     [clientThreadId, expectedHostId, readTarget, transport],
   );
 
-  useEffect(() => {
+  const [loadInput, setLoadInput] = useState({
+    clientThreadId,
+    expectedHostId,
+    readTarget,
+    transport,
+  });
+  if (
+    loadInput.clientThreadId !== clientThreadId ||
+    loadInput.expectedHostId !== expectedHostId ||
+    loadInput.readTarget !== readTarget ||
+    loadInput.transport !== transport
+  ) {
+    setLoadInput({ clientThreadId, expectedHostId, readTarget, transport });
     setSnapshot(INITIAL_SNAPSHOT);
     setActionError(null);
     setBusyAction(null);
     setWorkLocallyHidden(false);
+  }
+  useEffect(() => {
     openingThreadIdRef.current = null;
     void load();
     return transport.subscribe((entries) => {
       void load(entries);
     });
-  }, [clientThreadId, load, transport]);
+  }, [load, transport]);
 
   const clearAttentionOnRouteEntry = useEffectEvent(() => {
     const entry = snapshot.entry;

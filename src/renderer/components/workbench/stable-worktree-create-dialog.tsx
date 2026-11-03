@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   NodexDialog,
   NodexDialogAction,
@@ -37,12 +37,15 @@ export function StableWorktreeCreateDialog({
   const trimmedProjectName = projectName.trim();
   const createDisabled = creating || trimmedProjectName.length === 0;
 
-  useEffect(() => {
-    if (!open) return;
-    setProjectName(initialProjectName);
-    setErrorMessage(null);
-    setCreating(false);
-  }, [initialProjectName, open]);
+  const [previousInput, setPreviousInput] = useState({ open, initialProjectName });
+  if (previousInput.open !== open || previousInput.initialProjectName !== initialProjectName) {
+    setPreviousInput({ open, initialProjectName });
+    if (open) {
+      setProjectName(initialProjectName);
+      setErrorMessage(null);
+      setCreating(false);
+    }
+  }
 
   const createWorktree = async () => {
     if (createDisabled) return;

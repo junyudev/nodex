@@ -45,8 +45,14 @@ const dragData = {
   ],
 } as unknown as BoardCardDragData;
 
-function DragSourceProbe({ onDragFinished }: { readonly onDragFinished: () => void }) {
-  const { setElementRef } = useDatabaseViewPageDragSource(dragData, { onDragFinished });
+function DragSourceProbe({
+  onDragFinished,
+  data = dragData,
+}: {
+  readonly onDragFinished: () => void;
+  readonly data?: BoardCardDragData;
+}) {
+  const { setElementRef } = useDatabaseViewPageDragSource(data, { onDragFinished });
   return createElement("div", { ref: setElementRef });
 }
 
@@ -80,6 +86,27 @@ describe("Database View Page drag preview", () => {
 
     expect(clone.style.boxShadow).toBe("0 0 0 1px blue");
     expect(preview.lastElementChild?.textContent).toBe("3");
+  });
+
+  test("uses current committed data and completion callbacks while keeping an active drag stable", async () => {
+    const previousFinish = vi.fn();
+    const currentFinish = vi.fn();
+    const view = render(createElement(DragSourceProbe, { onDragFinished: previousFinish }));
+    const registration = draggableHarness.registration;
+    if (!registration) throw new Error("Page drag source was not registered");
+    const nextData = { ...dragData, sourcePageId: "page-b" };
+    view.rerender(
+      createElement(DragSourceProbe, { onDragFinished: currentFinish, data: nextData }),
+    );
+    expect(draggableHarness.registration).toBe(registration);
+    expect(registration.getInitialData?.({} as never)).toBe(nextData);
+    view.rerender(
+      createElement(DragSourceProbe, { onDragFinished: currentFinish, data: dragData }),
+    );
+    expect(registration.getInitialData?.({} as never)).toBe(nextData);
+    view.unmount();
+    expect(previousFinish).not.toHaveBeenCalled();
+    expect(currentFinish).toHaveBeenCalledOnce();
   });
 
   test("finishes an active Page drag when its source unmounts", async () => {

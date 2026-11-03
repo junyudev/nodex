@@ -8,7 +8,6 @@ import {
 import { SortableContext, arrayMove, horizontalListSortingStrategy } from "@dnd-kit/sortable";
 import { SearchIcon } from "@/components/shared/icons";
 import {
-  useEffect,
   useMemo,
   useRef,
   useState,
@@ -149,28 +148,28 @@ function SortableDatabaseViewTab({
   readonly dragDisabled: boolean;
   readonly onActiveClick: (event: ReactMouseEvent<HTMLElement>) => void;
 }) {
-  const sortable = useContinuousSortable({
+  const { setNodeRef, style, isDragging, listeners } = useContinuousSortable({
     id: item.id,
     disabled: dragDisabled,
   });
   return (
     <div
-      ref={sortable.setNodeRef}
-      style={sortable.style}
+      ref={setNodeRef}
+      style={style}
       className={cn(
         "flex h-10 shrink-0 items-center",
-        dragDisabled ? "cursor-default" : sortable.isDragging ? "cursor-grabbing" : "cursor-grab",
-        sortable.isDragging && "opacity-0",
+        dragDisabled ? "cursor-default" : isDragging ? "cursor-grabbing" : "cursor-grab",
+        isDragging && "opacity-0",
       )}
       data-database-view-tab-sortable={item.id}
-      data-database-view-tab-dragging={sortable.isDragging ? "true" : "false"}
+      data-database-view-tab-dragging={isDragging ? "true" : "false"}
     >
       <DatabaseViewTabPill
         item={item}
         active={active}
         menuOpen={menuOpen}
         onActiveClick={onActiveClick}
-        dragListeners={sortable.listeners}
+        dragListeners={listeners}
       />
     </div>
   );
@@ -220,10 +219,11 @@ export function DbViewToolbar({
   const [menuOpen, setMenuOpen] = useState(false);
   const tabListRef = useRef<HTMLDivElement | null>(null);
   const tabDnd = useContinuousSortableDnd({ axis: "horizontal", containerRef: tabListRef });
-  useEffect(
-    () => setOrderedItemIds(canonicalOrderKey ? canonicalOrderKey.split("\u0000") : []),
-    [canonicalOrderKey],
-  );
+  const [previousOrderKey, setPreviousOrderKey] = useState(canonicalOrderKey);
+  if (previousOrderKey !== canonicalOrderKey) {
+    setPreviousOrderKey(canonicalOrderKey);
+    setOrderedItemIds(canonicalItemIds);
+  }
   const orderedItems = orderedItemIds.flatMap((id) => {
     const item = items.find((candidate) => candidate.id === id);
     return item ? [item] : [];

@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { RefreshIcon } from "@/components/shared/icons";
 import { NodexButton, NodexSwitch } from "@/components/ui/button";
@@ -192,36 +193,49 @@ export function ManagedWorktreesSettingControl({
   const [rootDraft, setRootDraft] = useState("");
   const [limitDraft, setLimitDraft] = useState<string | null>(null);
   const [records, setRecords] = useState<ManagedWorktreeRecord[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(open);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [savingSetting, setSavingSetting] = useState(false);
   const [deletingKey, setDeletingKey] = useState<string | null>(null);
   const [confirmDisable, setConfirmDisable] = useState(false);
   const disableDialogReturnFocusRef = useRef<HTMLElement | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setLoadError(null);
-    try {
-      const [nextSettings, nextHosts, nextRecords] = await Promise.all([
+  const load = useCallback(() => {
+    const request = async () =>
+      Promise.all([
         service.getSettings(),
         service.getExecutionHosts(),
         service.list(selectedHostId),
       ]);
-      setSettings(nextSettings);
-      setExecutionHosts(nextHosts);
-      const selectedRemote = nextHosts.sshHosts.find((host) => host.id === selectedHostId);
-      setRootDraft(selectedRemote?.managedRoot ?? nextSettings.worktreeRoot ?? "");
-      setLimitDraft(null);
-      setRecords(nextRecords);
-    } catch {
-      setLoadError("Something went wrong while loading worktrees.");
-      setRecords([]);
-    } finally {
-      setLoading(false);
-    }
+    return request()
+      .then(([nextSettings, nextHosts, nextRecords]) => {
+        setSettings(nextSettings);
+        setExecutionHosts(nextHosts);
+        const selectedRemote = nextHosts.sshHosts.find((host) => host.id === selectedHostId);
+        setRootDraft(selectedRemote?.managedRoot ?? nextSettings.worktreeRoot ?? "");
+        setLimitDraft(null);
+        setRecords(nextRecords);
+      })
+      .catch(() => {
+        setLoadError("Something went wrong while loading worktrees.");
+        setRecords([]);
+      })
+      .finally(() => setLoading(false));
   }, [selectedHostId, service]);
 
+  const [loadInput, setLoadInput] = useState({ open, load });
+  if (loadInput.open !== open || loadInput.load !== load) {
+    setLoadInput({ open, load });
+    if (open) {
+      setLoading(true);
+      setLoadError(null);
+    }
+  }
+  const refresh = () => {
+    setLoading(true);
+    setLoadError(null);
+    return load();
+  };
   useEffect(() => {
     if (!open) return;
     void load();
@@ -234,26 +248,34 @@ export function ManagedWorktreesSettingControl({
     ): Promise<boolean> => {
       if (savingSetting) return false;
       setSavingSetting(true);
-      try {
-        const next = await service.updateSettings(patch);
-        setSettings(next);
-        setRootDraft(next.worktreeRoot ?? "");
-        setLimitDraft(null);
-        if (patch.worktreeRoot !== undefined) await load();
-        if (successMessage) toast.success(successMessage);
-        return true;
-      } catch {
-        toast.danger(
-          patch.autoDeleteLimit !== undefined
-            ? "Failed to save auto-delete limit"
-            : patch.autoDeleteEnabled !== undefined
-              ? "Failed to save automatic deletion setting"
-              : "Failed to save worktree root",
-        );
-        return false;
-      } finally {
-        setSavingSetting(false);
-      }
+      return runWithCleanup(
+        async () => {
+          const next = await service.updateSettings(patch);
+          setSettings(next);
+          setRootDraft(next.worktreeRoot ?? "");
+          setLimitDraft(null);
+          if (patch.worktreeRoot !== undefined) {
+            setLoading(true);
+            setLoadError(null);
+            await load();
+          }
+          if (successMessage) toast.success(successMessage);
+          return true;
+        },
+        {
+          cleanup: () => setSavingSetting(false),
+          onError: () => {
+            toast.danger(
+              patch.autoDeleteLimit !== undefined
+                ? "Failed to save auto-delete limit"
+                : patch.autoDeleteEnabled !== undefined
+                  ? "Failed to save automatic deletion setting"
+                  : "Failed to save worktree root",
+            );
+            return false;
+          },
+        },
+      );
     },
     [load, savingSetting, service],
   );
@@ -400,7 +422,7 @@ export function ManagedWorktreesSettingControl({
         <NodexSettingsSection>
           <WorktreeCardHeader
             title="Unable to load worktrees"
-            action={<RefreshWorktreesButton loading={loading} onRefresh={() => void load()} />}
+            action={<RefreshWorktreesButton loading={loading} onRefresh={() => void refresh()} />}
           />
           <div className="p-3 text-sm text-danger">{loadError}</div>
         </NodexSettingsSection>
@@ -408,7 +430,7 @@ export function ManagedWorktreesSettingControl({
         <NodexSettingsSection>
           <WorktreeCardHeader
             title="No worktrees yet"
-            action={<RefreshWorktreesButton loading={loading} onRefresh={() => void load()} />}
+            action={<RefreshWorktreesButton loading={loading} onRefresh={() => void refresh()} />}
           />
           <div className="semantic-text-secondary p-3 text-sm">
             Worktrees created by Nodex will appear here
@@ -428,7 +450,7 @@ export function ManagedWorktreesSettingControl({
                 </div>
               </div>
               {groupIndex === 0 ? (
-                <RefreshWorktreesButton loading={loading} onRefresh={() => void load()} />
+                <RefreshWorktreesButton loading={loading} onRefresh={() => void refresh()} />
               ) : null}
             </div>
             <NodexSettingsSection>

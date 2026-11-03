@@ -1,6 +1,5 @@
 import {
   useId,
-  useRef,
   useState,
   type Dispatch,
   type DragEvent,
@@ -289,8 +288,7 @@ function ProjectEditorForm({
   const [saving, setSaving] = useState(false);
   const [saveFailure, setSaveFailure] = useState<ProjectPageKeySaveFailure | null>(null);
   const [metadataCommitted, setMetadataCommitted] = useState(false);
-  const readNamespaceRef = useRef(pageKeyAuthority.readNamespace);
-  readNamespaceRef.current = pageKeyAuthority.readNamespace;
+  const readNamespace = pageKeyAuthority.readNamespace;
 
   // The reader is an injectable transport, not part of the server-state identity.
   // eslint-disable-next-line @tanstack/query/exhaustive-deps
@@ -300,7 +298,7 @@ function ProjectEditorForm({
       if (!projectId || !databaseId) {
         throw new Error("Project and Database identities are required for Page-key settings");
       }
-      return await readNamespaceRef.current(projectId, databaseId);
+      return await readNamespace(projectId, databaseId);
     },
     enabled:
       mode === "edit" && pageKeyExpanded && projectId !== undefined && databaseId !== undefined,
