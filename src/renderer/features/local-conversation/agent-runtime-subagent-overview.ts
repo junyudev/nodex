@@ -165,9 +165,14 @@ function upsert(
   }
   const page = next[target];
   const last = page.items.at(-1);
-  // Beyond a partly loaded section the item belongs to a page the user has not loaded.
+  // New arrivals beyond a partly loaded section stay on their unloaded page. A row the
+  // user already loaded stays resident when its own metadata changes.
   const outside =
-    withinLoadedWindow && page.hasMore && last !== undefined && newerFirst(last, item) < 0;
+    origin !== target &&
+    withinLoadedWindow &&
+    page.hasMore &&
+    last !== undefined &&
+    newerFirst(last, item) < 0;
   if (!outside) next[target] = { ...page, items: [...page.items, item].sort(newerFirst) };
   return next;
 }

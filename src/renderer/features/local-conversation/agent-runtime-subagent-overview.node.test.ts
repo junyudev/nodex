@@ -239,6 +239,27 @@ describe("Runtime subagent overview events", () => {
     expect(newer.active.nextCursor).toBe("after-task");
   });
 
+  it("retains a loaded row when a metadata update leaves it behind the other loaded rows", () => {
+    const newer = { ...task, id: "newer", updatedAt: "2026-10-13T20:00:10Z" };
+    const older = { ...task, id: "older", updatedAt: "2026-10-13T20:00:05Z" };
+    const loaded: AgentSubagentOverview = {
+      active: page([newer, older], "after-older", 3),
+      terminal: page([]),
+    };
+
+    const updated = applyAgentRuntimeOverviewTask(
+      loaded,
+      record({ id: "older", title: "Updated review", updatedAt: "2026-10-13T20:00:06Z" }),
+    );
+
+    expect(updated.active.items.map((item) => [item.id, item.title])).toEqual([
+      ["newer", "Review"],
+      ["older", "Updated review"],
+    ]);
+    expect(updated.active.nextCursor).toBe("after-older");
+    expect(updated.active.totalCount).toBe(3);
+  });
+
   it("refills a partly loaded section that settling rows left short of what was shown", () => {
     const working = (id: string) => ({ ...task, id, childThreadId: `${id}-child` });
     const loaded: AgentSubagentOverview = {

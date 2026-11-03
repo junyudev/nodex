@@ -104,6 +104,7 @@ All notable changes to this project will be documented in this file.
 - Web and mail addresses in plain text pasted into a Page now become links, while each line keeps exactly its text.
 - Notes Nodex sends to wake an Agent no longer show up among your queued messages. When a delegated task finished while Claude was mid-reply, its "Delegated task … reached a terminal state" note sat in your queue, where Steer failed and Delete quietly cancelled the wake-ups for the rest of that turn's tasks. The queue now holds only what you and other chats sent; the Agent still continues on its own, and the chat shows which task finished.
 - Clicking a tab's close button right after the tab opens now always closes it. The tabs used to shift under the pointer as the press began, so the release could land beside the button and the click did nothing.
+- A subagent you already loaded in the Subagents overview no longer disappears when its status changes. A row that sorted past the loaded part of the list after an update used to vanish until you loaded more.
 
 ### Security
 
