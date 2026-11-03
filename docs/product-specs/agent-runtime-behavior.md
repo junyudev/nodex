@@ -90,6 +90,15 @@ turn left running after its reply ended is stopped. If a message is accepted int
 native turn whose reply had already ended, the new reply adopts that turn; a turn that
 belongs to a live reply is never silently reassigned.
 
+Several chats can share one Agent process, so Nodex ends that process only when it has
+exited, when its connection can no longer carry messages, or on an explicit lifecycle
+action such as shutdown, idle release or a sign-in change. A problem in Nodex's own
+handling of one chat's output, such as falling behind a burst of events, a message too
+large to keep or a failed write, makes only that chat's reply reattach and reconcile; it
+never stops the process serving the others. When a shared process does stop, every reply
+it served recovers on its own as described below, and each failure keeps the reason the
+process ended for Copy diagnostics.
+
 Agents retry their own requests first. Nodex shows their reported cause, attempt, limit
 and next attempt time in the shared
 [request recovery states](codex-thread-transcript-behavior.md). Codex keeps a turn alive

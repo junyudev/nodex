@@ -600,6 +600,15 @@ export interface ProviderAdapterV2TurnReconciliation {
   readonly failure?: import("@t3tools/contracts").OrchestrationV2ProviderFailure;
 }
 
+/** Observation loss is control metadata, never a provider outcome. */
+export type ProviderAdapterV2Observation =
+  | { readonly type: "event"; readonly event: ProviderAdapterV2Event }
+  | {
+      readonly type: "observation_loss";
+      readonly threadId: ThreadId | undefined;
+      readonly cause: ProviderAdapterV2Error;
+    };
+
 export interface ProviderAdapterV2SessionRuntime {
   readonly reconcileTurn?: (input: {
     readonly providerThread: OrchestrationV2ProviderThread;
@@ -616,6 +625,9 @@ export interface ProviderAdapterV2SessionRuntime {
   readonly driver: ProviderDriverKind;
   readonly providerSessionId: ProviderSessionId;
   readonly providerSession: OrchestrationV2ProviderSession;
+  /** Physical transport loss, independent of local observation and persistence. */
+  readonly termination?: Effect.Effect<never, ProviderAdapterV2Error>;
+  readonly observations?: Stream.Stream<ProviderAdapterV2Observation, ProviderAdapterV2Error>;
   readonly events: Stream.Stream<ProviderAdapterV2Event, ProviderAdapterV2Error>;
   /**
    * Manager-owned runtimes expose a synchronous subscription so concurrent
@@ -710,6 +722,11 @@ export interface ProviderAdapterV2SessionRuntime {
   readonly unloadThread?: (input: {
     readonly providerThread: OrchestrationV2ProviderThread;
   }) => Effect.Effect<void, ProviderAdapterV2Error>;
+  /** Reject one unpersistable native request without closing its session. */
+  readonly rejectRuntimeRequest?: (
+    requestId: RuntimeRequestId,
+    cause: unknown,
+  ) => Effect.Effect<void>;
   readonly respondToRuntimeRequest: (
     input: ProviderAdapterV2RuntimeRequestResponseInput,
   ) => Effect.Effect<void, ProviderAdapterV2Error>;

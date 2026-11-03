@@ -68,7 +68,7 @@ import * as Orchestrator from "../Orchestrator.ts";
 import * as ProjectionStore from "../ProjectionStore.ts";
 import * as ProviderReplayHarness from "../testkit/ProviderReplayHarness.ts";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
-import type * as ProviderContinuationRequests from "@t3tools/provider-core/server/ProviderContinuationRequests";
+import * as ProviderContinuationRequests from "@t3tools/provider-core/server/ProviderContinuationRequests";
 import * as CodexAdapterV2 from "./CodexAdapterV2.ts";
 import { makeReplayServerConfig, withCodexReplayChildMetadata } from "./CodexAdapterV2.testkit.ts";
 import * as CodexAdapterV2Testkit from "./CodexAdapterV2.testkit.ts";
@@ -2032,6 +2032,7 @@ describe("CodexAdapterV2 post-settle continuation", () => {
       client: CodexClient.CodexAppServerClient["Service"],
     ) => CodexClient.CodexAppServerClient["Service"],
     serverConfigOverride?: ServerConfig.ServerConfig["Service"],
+    continuationFailure?: ProviderContinuationRequests.ProviderContinuationQueueFull,
   ) =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
@@ -2090,7 +2091,11 @@ describe("CodexAdapterV2 post-settle continuation", () => {
           offer: (request) =>
             Effect.sync(() => {
               continuationRequests.push(request);
-            }),
+            }).pipe(
+              Effect.andThen(
+                continuationFailure === undefined ? Effect.void : Effect.fail(continuationFailure),
+              ),
+            ),
         },
       });
       const threadId = ThreadId.make(`thread-${transcript.scenario}`);
@@ -2106,10 +2111,24 @@ describe("CodexAdapterV2 post-settle continuation", () => {
         runtimePolicy: CODEX_TEST_RUNTIME_POLICY,
       });
       const events: Array<ProviderAdapter.ProviderAdapterV2Event> = [];
+      const observationLosses: Array<ProviderAdapter.ProviderAdapterV2Observation> = [];
       const firstTerminal = yield* Deferred.make<void>();
-      yield* runtime.events.pipe(
-        Stream.runForEach((event) =>
-          Effect.sync(() => {
+      yield* (
+        runtime.observations ??
+        runtime.events.pipe(
+          Stream.map((event): ProviderAdapter.ProviderAdapterV2Observation => ({
+            type: "event",
+            event,
+          })),
+        )
+      ).pipe(
+        Stream.runForEach((signal) => {
+          if (signal.type === "observation_loss")
+            return Effect.sync(() => {
+              observationLosses.push(signal);
+            });
+          const event = signal.event;
+          return Effect.sync(() => {
             events.push(event);
           }).pipe(
             Effect.andThen(
@@ -2118,8 +2137,8 @@ describe("CodexAdapterV2 post-settle continuation", () => {
                 : Effect.void,
             ),
             Effect.andThen(onEvent(event)),
-          ),
-        ),
+          );
+        }),
         Effect.forkScoped,
       );
       if (runtime.hasPendingBackgroundWork === undefined) {
@@ -2149,6 +2168,7 @@ describe("CodexAdapterV2 post-settle continuation", () => {
         serverConfig,
         events,
         continuationRequests,
+        observationLosses,
         terminalEvents,
         subagentUpdates,
         hasPendingBackgroundWork,
@@ -7759,6 +7779,50 @@ describe("CodexAdapterV2 post-settle continuation", () => {
       ],
     });
   };
+
+  it.effect("a rejected continuation loses only that thread's observation", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const failure = new ProviderContinuationRequests.ProviderContinuationQueueFull({
+          maxItems: 1,
+          maxBytes: 1,
+        });
+        const harness = yield* makeCodexReplayHarness(
+          backgroundExecTranscript,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          failure,
+        );
+        yield* harness.runtime.startTurn(
+          makeCodexTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now: yield* DateTime.now,
+            attemptId: RunAttemptId.make("attempt-codex-bg-overload"),
+            text: BG_PROMPT,
+          }),
+        );
+        yield* awaitUntil(() => harness.terminalEvents().length === 1, "root turn terminal");
+        yield* TestClock.adjust("30 seconds");
+        yield* awaitUntil(() => harness.observationLosses.length === 1, "thread observation loss");
+        const lost = harness.observationLosses[0]!;
+        assert.equal(lost.type, "observation_loss");
+        if (lost.type !== "observation_loss") return;
+        assert.equal(lost.threadId, harness.threadId);
+        assert.equal(lost.cause._tag, "ProviderAdapterEventStreamError");
+        if (lost.cause._tag === "ProviderAdapterEventStreamError")
+          assert.strictEqual(lost.cause.cause, failure);
+        assert.isFalse(yield* harness.runtime.nativeSessionRetired!);
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
+    ),
+  );
 
   it.effect.each(backgroundStopCases)(
     "stops a command after root completion when termination returns %s",

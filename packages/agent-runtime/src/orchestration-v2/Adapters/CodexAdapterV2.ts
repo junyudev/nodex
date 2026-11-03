@@ -1,5 +1,5 @@
+import { makeProviderEventBuffer } from "../ProviderEventBuffer.ts";
 import type { CodexErrorInfo } from "../../../../codex-app-server-protocol/src/v2/CodexErrorInfo.ts";
-import * as BoundedQueue from "@t3tools/shared/BoundedQueue";
 import * as PubSub from "effect/PubSub";
 import { revertCodexThread, revertCodexThreadTurns } from "../../provider/CodexThreadRevert.ts";
 import { historyResponseItems } from "@t3tools/provider-core/server/handoffBudget";
@@ -1306,12 +1306,18 @@ type PendingCodexRuntimeRequest =
       readonly requestId: RuntimeRequestId;
       readonly context: ActiveCodexTurnContext;
       readonly artifacts: CodexApprovalArtifacts;
-      readonly decision: Deferred.Deferred<ProviderApprovalDecision>;
+      readonly decision: Deferred.Deferred<
+        ProviderApprovalDecision,
+        ProviderAdapter.ProviderAdapterRuntimeRequestResponseError
+      >;
     }
   | {
       readonly type: "user_input";
       readonly requestId: RuntimeRequestId;
-      readonly answers: Deferred.Deferred<ProviderUserInputAnswers>;
+      readonly answers: Deferred.Deferred<
+        ProviderUserInputAnswers,
+        ProviderAdapter.ProviderAdapterRuntimeRequestResponseError
+      >;
     };
 
 const approvalOwnerCodexTurn = (context: ActiveCodexTurnContext) => {
@@ -2126,11 +2132,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
           model: input.modelSelection.model,
           now,
         });
-        const events = yield* BoundedQueue.make<
-          ProviderAdapter.ProviderAdapterV2Event,
-          ProviderAdapter.ProviderAdapterEventStreamError
-        >({
-          label: "Codex native events",
+        const events = yield* makeProviderEventBuffer({
           mapOverflow: (cause) =>
             new ProviderAdapter.ProviderAdapterEventStreamError({
               driver: CODEX_PROVIDER,
@@ -2319,7 +2321,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             backgroundThreads.set(nativeId, event.providerThread);
             if (rootProviderThreads.has(nativeId))
               rootProviderThreads.set(nativeId, event.providerThread);
-          }).pipe(Effect.andThen(BoundedQueue.offer(events, event)), Effect.asVoid);
+          }).pipe(Effect.andThen(events.offer(event)), Effect.asVoid);
 
         const publishBackgroundTerminals = Effect.fnUntraced(function* (
           nativeThreadId: string,
@@ -2576,8 +2578,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                 Effect.andThen(resetBackgroundTerminals),
                 Effect.andThen(PubSub.shutdown(nativeInputs)),
                 Effect.andThen(
-                  BoundedQueue.failAfterDrain(
-                    events,
+                  events.fail(
                     new ProviderAdapter.ProviderAdapterEventStreamError({
                       driver: CODEX_PROVIDER,
                       providerSessionId: input.providerSessionId,
@@ -4980,7 +4981,10 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             if (options.some((option) => option.decision === "accept")) return "accept" as const;
           }
           const artifacts = yield* buildApprovalRequestArtifacts({ ...input, options });
-          const decision = yield* Deferred.make<ProviderApprovalDecision>();
+          const decision = yield* Deferred.make<
+            ProviderApprovalDecision,
+            ProviderAdapter.ProviderAdapterRuntimeRequestResponseError
+          >();
           yield* Ref.update(pendingRuntimeRequests, (current) =>
             new Map(current).set(String(artifacts.request.id), {
               type: "approval",
@@ -6001,8 +6005,8 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                       })
                       .pipe(
                         Effect.catch((cause) =>
-                          BoundedQueue.fail(
-                            events,
+                          events.lose(
+                            context.projectionThreadId,
                             new ProviderAdapter.ProviderAdapterEventStreamError({
                               driver: CODEX_PROVIDER,
                               providerSessionId: input.providerSessionId,
@@ -6353,7 +6357,10 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               nativeRequestId,
               questions,
             });
-            const answers = yield* Deferred.make<ProviderUserInputAnswers>();
+            const answers = yield* Deferred.make<
+              ProviderUserInputAnswers,
+              ProviderAdapter.ProviderAdapterRuntimeRequestResponseError
+            >();
             yield* Ref.update(pendingRuntimeRequests, (current) =>
               new Map(current).set(String(artifacts.request.id), {
                 type: "user_input",
@@ -6456,7 +6463,10 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                 ? {}
                 : { autoResolutionMs: payload.autoResolutionMs }),
             });
-            const answers = yield* Deferred.make<ProviderUserInputAnswers>();
+            const answers = yield* Deferred.make<
+              ProviderUserInputAnswers,
+              ProviderAdapter.ProviderAdapterRuntimeRequestResponseError
+            >();
             yield* Ref.update(pendingRuntimeRequests, (current) => {
               const updated = new Map(current);
               updated.set(String(artifacts.request.id), {
@@ -7468,7 +7478,22 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
           driver: CODEX_PROVIDER,
           providerSessionId: input.providerSessionId,
           providerSession: session,
-          events: Stream.fromEffectRepeat(BoundedQueue.take(events)),
+          events: events.events,
+          observations: events.observations,
+          ...(client.raw.termination === undefined
+            ? {}
+            : {
+                termination: client.raw.termination.pipe(
+                  Effect.mapError(
+                    (cause) =>
+                      new ProviderAdapter.ProviderAdapterEventStreamError({
+                        driver: CODEX_PROVIDER,
+                        providerSessionId: input.providerSessionId,
+                        cause,
+                      }),
+                  ),
+                ),
+              }),
           nativeSessionRetired: Ref.get(nativeSessionRetired),
           codexNative: {
             initialize: ensureInitialized.pipe(
@@ -8558,6 +8583,21 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                     cause,
                   }),
               ),
+            ),
+          rejectRuntimeRequest: (requestId, cause) =>
+            Ref.get(pendingRuntimeRequests).pipe(
+              Effect.flatMap((pending) => {
+                const request = pending.get(String(requestId));
+                if (request === undefined) return Effect.void;
+                const error = new ProviderAdapter.ProviderAdapterRuntimeRequestResponseError({
+                  driver: CODEX_PROVIDER,
+                  requestId,
+                  cause,
+                });
+                return request.type === "approval"
+                  ? Deferred.fail(request.decision, error).pipe(Effect.asVoid)
+                  : Deferred.fail(request.answers, error).pipe(Effect.asVoid);
+              }),
             ),
           respondToRuntimeRequest: (requestInput) =>
             Effect.gen(function* () {

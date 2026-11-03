@@ -221,6 +221,7 @@ export class ProviderSessionManagerV2 extends Context.Service<
 >()("t3/orchestration-v2/ProviderSessionManager/ProviderSessionManagerV2") {}
 
 interface LiveSessionEntry {
+  readonly observedChildParents: Map<ThreadId, ThreadId>;
   readonly attachedThreadIds: ReadonlySet<ThreadId>;
   readonly loadedProviderThreadKeyByThread: ReadonlyMap<ThreadId, string>;
   /**
@@ -272,12 +273,10 @@ interface IdleThreadUnload {
   readonly retirementTurnId?: ProviderTurnId | null;
 }
 
-type ProviderSessionEventSignal =
-  | { readonly type: "event"; readonly event: ProviderAdapter.ProviderAdapterV2Event }
-  | {
-      readonly type: "failure";
-      readonly cause: Cause.Cause<ProviderAdapter.ProviderAdapterV2Error>;
-    };
+type ProviderSessionEventSignal = {
+  readonly type: "event";
+  readonly event: ProviderAdapter.ProviderAdapterV2Event;
+};
 
 // One raw frame can publish several canonical updates before its terminal.
 export const MAX_EVENT_SUBSCRIPTION_ITEMS = BoundedQueue.DEFAULT_MAX_ITEMS * 2;
@@ -627,59 +626,64 @@ export const layerWithOptions = (
               ),
             );
 
+      const subscriptionThreads = new WeakMap<object, ThreadId>();
+      const runtimeViews = new WeakMap<
+        object,
+        Map<ThreadId, ProviderAdapter.ProviderAdapterV2SessionRuntime>
+      >();
+      const belongsToThread = (
+        entry: LiveSessionEntry,
+        owner: ThreadId | undefined,
+        threadId: ThreadId | undefined,
+      ) => {
+        if (owner === undefined || threadId === undefined) return false;
+        const seen = new Set<ThreadId>();
+        while (!seen.has(threadId)) {
+          if (owner === threadId) return true;
+          seen.add(threadId);
+          const parent = entry.observedChildParents.get(threadId);
+          if (parent === undefined) return false;
+          threadId = parent;
+        }
+        return false;
+      };
       const publishToSubscribers = (
-        subscribers: Ref.Ref<
-          ReadonlyMap<
-            number,
-            BoundedQueue.BoundedQueue<
-              ProviderSessionEventSignal,
-              ProviderAdapter.ProviderAdapterV2Error
-            >
-          >
-        >,
-        signal: ProviderSessionEventSignal,
+        entry: LiveSessionEntry,
+        event: ProviderAdapter.ProviderAdapterV2Event,
       ) =>
-        Ref.get(subscribers).pipe(
-          Effect.flatMap((current) =>
+        Ref.get(entry.eventSubscribers).pipe(
+          Effect.flatMap((subscribers) =>
             Effect.forEach(
-              current.entries(),
-              ([subscriberId, queue]) =>
-                signal.type === "failure"
-                  ? BoundedQueue.isOverflow(Cause.squash(signal.cause))
-                    ? BoundedQueue.failCause(queue, signal.cause)
-                    : BoundedQueue.offer(queue, signal).pipe(
-                        Effect.andThen(BoundedQueue.end(queue)),
-                      )
-                  : BoundedQueue.offer(queue, signal).pipe(
-                      Effect.flatMap((offered) =>
-                        offered
-                          ? Effect.void
-                          : Ref.update(subscribers, (latest) => {
-                              const next = new Map(latest);
-                              next.delete(subscriberId);
-                              return next;
-                            }),
-                      ),
-                    ),
+              subscribers,
+              ([id, queue]) => {
+                return BoundedQueue.offer(queue, { type: "event" as const, event }).pipe(
+                  Effect.flatMap((offered) =>
+                    offered
+                      ? Effect.void
+                      : Ref.update(entry.eventSubscribers, (latest) => {
+                          const next = new Map(latest);
+                          next.delete(id);
+                          return next;
+                        }),
+                  ),
+                );
+              },
               { discard: true },
             ),
           ),
         );
 
-      const failSubscribers = (entry: LiveSessionEntry, detail: string) =>
+      const failSubscribers = (entry: LiveSessionEntry, cause: unknown) =>
         Effect.gen(function* () {
           const error = new ProviderAdapter.ProviderAdapterEventStreamError({
             driver: entry.runtime.driver,
             providerSessionId: entry.runtime.providerSessionId,
-            cause: detail,
+            cause,
           });
           const subscribers = yield* Ref.getAndSet(entry.eventSubscribers, new Map());
           yield* Effect.forEach(
             subscribers.values(),
-            (queue) =>
-              BoundedQueue.offer(queue, { type: "failure", cause: Cause.fail(error) }).pipe(
-                Effect.andThen(BoundedQueue.end(queue)),
-              ),
+            (queue) => BoundedQueue.failAfterDrain(queue, error),
             { discard: true },
           );
         });
@@ -1075,6 +1079,7 @@ export const layerWithOptions = (
         readonly providerSessionId: ProviderSessionId;
         readonly reason: ProviderSessionReleaseReason;
         readonly detail?: string;
+        readonly cause?: Cause.Cause<ProviderAdapter.ProviderAdapterV2Error>;
         readonly cancelIdleFiber?: boolean;
         readonly onlyIfIdleGeneration?: number;
         readonly gracefulSubscribers?: boolean;
@@ -1088,6 +1093,12 @@ export const layerWithOptions = (
               onNone: () => Effect.void,
               onSome: (entry) =>
                 Effect.gen(function* () {
+                  if (input.reason === "runtime_error") {
+                    yield* Effect.logError("orchestration-v2.driver-session.runtime-retired", {
+                      providerSessionId: input.providerSessionId,
+                      cause: input.cause ?? input.detail,
+                    });
+                  }
                   if (input.cancelIdleFiber !== false) {
                     yield* cancelIdleFiber(entry.idleFiber);
                   }
@@ -1117,7 +1128,7 @@ export const layerWithOptions = (
                   } else {
                     yield* failSubscribers(
                       entry,
-                      input.detail ?? `Provider session released: ${input.reason}.`,
+                      input.cause ?? input.detail ?? `Provider session released: ${input.reason}.`,
                     );
                   }
                   const closeExit = yield* closeScopeWithin(entry.scope, {
@@ -1828,6 +1839,7 @@ export const layerWithOptions = (
           >
         >,
         runtime: ProviderAdapter.ProviderAdapterV2SessionRuntime,
+        threadId: ThreadId,
       ): Effect.Effect<ProviderAdapter.ProviderAdapterV2EventSubscription> =>
         Effect.gen(function* () {
           const queue = yield* BoundedQueue.make<
@@ -1843,6 +1855,7 @@ export const layerWithOptions = (
                 cause,
               }),
           });
+          subscriptionThreads.set(queue, threadId);
           const subscriberId = yield* Ref.getAndUpdate(nextSubscriberId, (value) => value + 1);
           yield* Ref.update(subscribers, (current) => {
             const updated = new Map(current);
@@ -1867,11 +1880,7 @@ export const layerWithOptions = (
             ),
           );
           const events = BoundedQueue.stream(queue).pipe(
-            Stream.mapEffect((signal) =>
-              signal.type === "event"
-                ? Effect.succeed(signal.event)
-                : Effect.failCause(signal.cause),
-            ),
+            Stream.map((signal) => signal.event),
             Stream.ensuring(close),
           );
           return { events, close } satisfies ProviderAdapter.ProviderAdapterV2EventSubscription;
@@ -1890,12 +1899,15 @@ export const layerWithOptions = (
           >
         >,
         terminalPublicationWaiters: LiveSessionEntry["terminalPublicationWaiters"],
+        threadId: ThreadId,
       ): ProviderAdapter.ProviderAdapterV2SessionRuntime => {
+        const cached = runtimeViews.get(runtime)?.get(threadId);
+        if (cached !== undefined) return cached;
         const providerSessionId = runtime.providerSessionId;
         const subscribeEvents = Effect.gen(function* () {
           const current = (yield* Ref.get(sessions)).get(sessionKey(providerSessionId));
           if (current?.runtime === runtime)
-            return yield* makeEventSubscription(eventSubscribers, runtime);
+            return yield* makeEventSubscription(eventSubscribers, runtime, threadId);
           return {
             events: Stream.fail(
               new ProviderAdapter.ProviderAdapterEventStreamError({
@@ -1931,7 +1943,7 @@ export const layerWithOptions = (
               modelFamily: normalizeModelMetricLabel(model),
             },
           });
-        return {
+        const view: ProviderAdapter.ProviderAdapterV2SessionRuntime = {
           ...runtime,
           nativeGeneration,
           ...(runtime.codexNative === undefined
@@ -1948,6 +1960,36 @@ export const layerWithOptions = (
                     ),
                   retain: (nativeThreadId) => runtime.codexNative!.retain(nativeThreadId),
                 } satisfies import("@t3tools/provider-core/server/nativeInteraction").CodexNativeInteraction,
+              }),
+          ...(runtime.reconcileTurn === undefined
+            ? {}
+            : {
+                reconcileTurn: (input) =>
+                  runtime.reconcileTurn!(input).pipe(
+                    Effect.tap((reconciled) =>
+                      Ref.get(sessions).pipe(
+                        Effect.flatMap((current) => {
+                          if (current.get(sessionKey(providerSessionId))?.runtime !== runtime)
+                            return Effect.void;
+                          return Effect.forEach(
+                            reconciled.events,
+                            (event) =>
+                              event.type === "turn.terminal"
+                                ? observeActivity(
+                                    providerSessionId,
+                                    markIdle(
+                                      providerSessionId,
+                                      event.providerThreadId,
+                                      event.runOrdinal,
+                                    ),
+                                  )
+                                : Effect.void,
+                            { discard: true },
+                          );
+                        }),
+                      ),
+                    ),
+                  ),
               }),
           subscribeEvents,
           events: Stream.unwrap(
@@ -2263,6 +2305,10 @@ export const layerWithOptions = (
               ),
             ),
         };
+        const views = runtimeViews.get(runtime) ?? new Map();
+        views.set(threadId, view);
+        runtimeViews.set(runtime, views);
+        return view;
       };
 
       const persistProviderSessionUpdate = (
@@ -2296,8 +2342,61 @@ export const layerWithOptions = (
 
       const startEventPump = (entry: LiveSessionEntry) => {
         let stoppedByProvider = false;
-        return entry.runtime.events.pipe(
-          Stream.runForEach((event) => {
+        const observations =
+          entry.runtime.observations ??
+          entry.runtime.events.pipe(
+            Stream.map((event): ProviderAdapter.ProviderAdapterV2Observation => ({
+              type: "event",
+              event,
+            })),
+          );
+        const pump = observations.pipe(
+          Stream.runForEach((signal) => {
+            if (signal.type === "observation_loss")
+              return Effect.logWarning("orchestration-v2.driver-session.thread-observation-lost", {
+                providerSessionId: entry.runtime.providerSessionId,
+                threadId: signal.threadId,
+                cause: signal.cause,
+              }).pipe(
+                Effect.andThen(Ref.get(entry.eventSubscribers)),
+                Effect.flatMap((subscribers) => {
+                  const owners = Array.from(subscribers).filter(([, queue]) =>
+                    belongsToThread(entry, subscriptionThreads.get(queue), signal.threadId),
+                  );
+                  // Unknown ownership must trigger reconciliation, never silent event loss.
+                  const affected = owners.length === 0 ? subscribers : owners;
+                  return Effect.forEach(
+                    affected,
+                    ([id, queue]) =>
+                      BoundedQueue.fail(queue, signal.cause).pipe(
+                        Effect.andThen(
+                          Ref.update(entry.eventSubscribers, (latest) => {
+                            const next = new Map(latest);
+                            next.delete(id);
+                            return next;
+                          }),
+                        ),
+                      ),
+                    { discard: true },
+                  );
+                }),
+              );
+            const event = signal.event;
+            if (
+              event.type === "app_thread.created" &&
+              event.appThread.lineage.relationshipToParent === "subagent" &&
+              event.appThread.lineage.parentThreadId !== null
+            )
+              entry.observedChildParents.set(
+                event.appThread.id,
+                event.appThread.lineage.parentThreadId,
+              );
+            if (
+              event.type === "subagent.updated" &&
+              event.subagent.origin === "provider_native" &&
+              event.subagent.childThreadId !== null
+            )
+              entry.observedChildParents.set(event.subagent.childThreadId, event.subagent.threadId);
             if (shutdownSignal.received) return Effect.void;
             if (
               event.type === "provider_session.updated" &&
@@ -2341,19 +2440,34 @@ export const layerWithOptions = (
                           event,
                         })
                         .pipe(
-                          Effect.mapError(
-                            (cause) =>
-                              new ProviderAdapter.ProviderAdapterEventStreamError({
-                                driver: entry.runtime.driver,
-                                providerSessionId: entry.runtime.providerSessionId,
-                                cause,
-                              }),
+                          Effect.catchCause((cause) =>
+                            Cause.hasInterruptsOnly(cause)
+                              ? Effect.interrupt
+                              : Effect.logError(
+                                  "orchestration-v2.driver-session.artifact-ingest-failed",
+                                  {
+                                    providerSessionId: entry.runtime.providerSessionId,
+                                    threadId,
+                                    eventType: event.type,
+                                    cause,
+                                  },
+                                ).pipe(
+                                  Effect.andThen(
+                                    event.type === "runtime_request.updated" &&
+                                      event.runtimeRequest.status === "pending"
+                                      ? (entry.runtime.rejectRuntimeRequest?.(
+                                          event.runtimeRequest.id,
+                                          cause,
+                                        ) ?? Effect.void)
+                                      : Effect.void,
+                                  ),
+                                ),
                           ),
                         );
                     }).pipe(entry.requestEventPermit.withPermits(1));
                     return;
                   }
-                  yield* publishToSubscribers(entry.eventSubscribers, { type: "event", event });
+                  yield* publishToSubscribers(entry, event);
                   if (event.type === "turn.terminal") {
                     const waiter = (yield* Ref.get(entry.terminalPublicationWaiters)).get(
                       String(event.providerTurnId),
@@ -2383,8 +2497,16 @@ export const layerWithOptions = (
                 }).pipe(logReleaseFailure(entry.runtime.providerSessionId));
                 return;
               }
-              const cause = Exit.isFailure(exit)
-                ? exit.cause
+              const transportRetired =
+                entry.runtime.nativeSessionRetired === undefined
+                  ? false
+                  : yield* entry.runtime.nativeSessionRetired;
+              const outcome =
+                entry.runtime.termination !== undefined && transportRetired
+                  ? yield* Effect.exit(entry.runtime.termination)
+                  : exit;
+              const cause = Exit.isFailure(outcome)
+                ? outcome.cause
                 : Cause.fail(
                     new ProviderAdapter.ProviderAdapterEventStreamError({
                       driver: entry.runtime.driver,
@@ -2392,18 +2514,40 @@ export const layerWithOptions = (
                       cause: "Provider event stream ended unexpectedly.",
                     }),
                   );
-              yield* publishToSubscribers(entry.eventSubscribers, {
-                type: "failure",
-                cause,
-              });
-              yield* Ref.set(entry.eventSubscribers, new Map());
+              if (entry.runtime.termination !== undefined && !transportRetired) {
+                yield* Effect.logWarning("orchestration-v2.driver-session.observation-lost", {
+                  providerSessionId: entry.runtime.providerSessionId,
+                  cause,
+                });
+                const subscribers = yield* Ref.getAndSet(entry.eventSubscribers, new Map());
+                yield* Effect.forEach(
+                  subscribers.values(),
+                  (queue) => BoundedQueue.failCause(queue, cause),
+                  { discard: true },
+                );
+                yield* Effect.sleep("100 millis");
+                return;
+              }
               yield* releaseEntry({
                 providerSessionId: entry.runtime.providerSessionId,
                 reason: "runtime_error",
+                cause,
                 detail: Cause.pretty(cause),
               }).pipe(logReleaseFailure(entry.runtime.providerSessionId));
             }),
           ),
+        );
+        return pump.pipe(
+          Effect.repeat({
+            while: () =>
+              Ref.get(sessions).pipe(
+                Effect.map(
+                  (current) =>
+                    current.get(sessionKey(entry.runtime.providerSessionId))?.runtime ===
+                    entry.runtime,
+                ),
+              ),
+          }),
           Effect.forkIn(layerScope),
         );
       };
@@ -2557,7 +2701,13 @@ export const layerWithOptions = (
                   providerInstanceId: existing.runtime.instanceId,
                 });
                 yield* touchActivity(input.providerSessionId);
-                return existing.exposedRuntime;
+                return decorateRuntime(
+                  existing.runtime,
+                  existing.exposedRuntime.nativeGeneration!,
+                  existing.eventSubscribers,
+                  existing.terminalPublicationWaiters,
+                  input.threadId,
+                );
               }
 
               const adapter = yield* registry.get(input.modelSelection.instanceId).pipe(
@@ -2685,9 +2835,11 @@ export const layerWithOptions = (
                 nativeGeneration,
                 eventSubscribers,
                 terminalPublicationWaiters,
+                input.threadId,
               );
               const now = yield* Clock.currentTimeMillis;
               const entry: LiveSessionEntry = {
+                observedChildParents: new Map(),
                 openedRuntimeMode: input.runtimePolicy.runtimeMode,
                 attachedThreadIds: new Set([input.threadId]),
                 loadedProviderThreadKeyByThread: new Map(),
@@ -2720,31 +2872,26 @@ export const layerWithOptions = (
               // The entry now guards the credential via its recorded id, so
               // the pre-open reservation can be dropped.
               yield* dropReservation;
-              yield* withActivityError(
-                input.providerSessionId,
-                writeProviderSessionEvents({
-                  runtime,
-                  threadIds: [input.threadId],
-                  type: "provider-session.attached",
-                  payload: runtime.providerSession,
-                }),
-              ).pipe(
-                // Released on interrupt too: this entry has no event pump or
-                // idle timer yet, so nothing else would ever release it.
-                Effect.onError((cause) =>
-                  releaseEntry(
-                    Cause.hasInterruptsOnly(cause)
-                      ? {
-                          providerSessionId: input.providerSessionId,
-                          reason: "manual_shutdown",
-                          detail: "The provider session start was interrupted.",
-                        }
-                      : {
-                          providerSessionId: input.providerSessionId,
-                          reason: "runtime_error",
-                          detail: "Failed to persist the provider-session attachment.",
-                        },
-                  ).pipe(logReleaseFailure(input.providerSessionId)),
+              yield* writeProviderSessionEvents({
+                runtime,
+                threadIds: [input.threadId],
+                type: "provider-session.attached",
+                payload: runtime.providerSession,
+              }).pipe(
+                Effect.catchCause((cause) =>
+                  Cause.hasInterruptsOnly(cause)
+                    ? releaseEntry({
+                        providerSessionId: input.providerSessionId,
+                        reason: "manual_shutdown",
+                        detail: "Provider session start interrupted.",
+                      }).pipe(
+                        logReleaseFailure(input.providerSessionId),
+                        Effect.andThen(Effect.interrupt),
+                      )
+                    : Effect.logError("orchestration-v2.driver-session.attach-persist-failed", {
+                        providerSessionId: input.providerSessionId,
+                        cause,
+                      }),
                 ),
               );
               yield* startEventPump(entry);

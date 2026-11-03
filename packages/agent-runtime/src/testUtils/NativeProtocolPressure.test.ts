@@ -49,6 +49,8 @@ describe("native protocol pressure", () => {
           );
           assert.isTrue(Exit.isFailure(flood));
           const terminal = yield* Deferred.await(stopped);
+          assert.isTrue(BoundedQueue.isOverflow(terminal));
+          if (Exit.isFailure(flood)) assert.strictEqual(Cause.squash(flood.cause), terminal);
           const failed = yield* Fiber.await(pending);
           assert.isTrue(Exit.isFailure(failed));
           if (Exit.isFailure(failed)) assert.strictEqual(Cause.squash(failed.cause), terminal);

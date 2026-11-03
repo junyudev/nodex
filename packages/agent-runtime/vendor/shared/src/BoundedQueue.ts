@@ -95,14 +95,18 @@ export const overflowUnsafe = <A, E>(self: BoundedQueue<A, E>): void => {
   );
 };
 
-export const offer = <A, E>(self: BoundedQueue<A, E>, value: A): Effect.Effect<boolean> =>
+const admit = <A, E>(
+  self: BoundedQueue<A, E>,
+  value: A,
+  failOnOverflow: boolean,
+): Effect.Effect<boolean> =>
   Effect.sync(() => {
     if (Option.isSome(self.failure) || self.queue.state._tag !== "Open") return false;
     let bytes: number;
     try {
       bytes = self.sizeOf(value);
     } catch {
-      overflowUnsafe(self);
+      if (failOnOverflow) overflowUnsafe(self);
       return false;
     }
     if (
@@ -111,7 +115,7 @@ export const offer = <A, E>(self: BoundedQueue<A, E>, value: A): Effect.Effect<b
       self.items >= self.maxItems ||
       self.bytes + bytes > self.maxBytes
     ) {
-      overflowUnsafe(self);
+      if (failOnOverflow) overflowUnsafe(self);
       return false;
     }
     if (!Queue.offerUnsafe(self.queue, { value, bytes })) return false;
@@ -119,6 +123,12 @@ export const offer = <A, E>(self: BoundedQueue<A, E>, value: A): Effect.Effect<b
     self.bytes += bytes;
     return true;
   });
+
+/** Reject only this value, preserving the queue and all admitted work. */
+export const tryOffer = <A, E>(self: BoundedQueue<A, E>, value: A): Effect.Effect<boolean> =>
+  admit(self, value, false);
+export const offer = <A, E>(self: BoundedQueue<A, E>, value: A): Effect.Effect<boolean> =>
+  admit(self, value, true);
 
 export const take = <A, E>(self: BoundedQueue<A, E>): Effect.Effect<A, E | Cause.Done> =>
   Queue.take(self.queue).pipe(
@@ -230,9 +240,13 @@ export const broadcast = <A, E>(options: Parameters<typeof make<A, E>>[0]) =>
         ).pipe(Effect.map(stream)),
       ),
       offer: (value: A) =>
-        Effect.forEach(subscribers, (queue) => offer(queue, value)).pipe(
-          Effect.map((accepted) => accepted.every(Boolean)),
-        ),
+        Effect.forEach(subscribers, (queue) =>
+          offer(queue, value).pipe(
+            Effect.tap((accepted) =>
+              accepted ? Effect.void : Effect.sync(() => subscribers.delete(queue)),
+            ),
+          ),
+        ).pipe(Effect.map((accepted) => accepted.every(Boolean))),
       fail: (error: E) =>
         Effect.sync(() => {
           terminal = Cause.fail(error);

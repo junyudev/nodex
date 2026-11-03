@@ -64,6 +64,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Codex chats running side by side no longer all stop at once. When one chat's output arrived faster than Nodex could keep up, or Nodex failed to record one of its events, Nodex closed the Codex process the chats share, and every reply ended with "The provider event stream closed unexpectedly". Now only that chat catches up with Codex while the others keep going, and replies whose Codex process does stop resume on their own.
 - Changes that finish saving during a brief slowdown are no longer reported as failed. Nodex used to show a timeout or cancellation for a save that had already completed.
 - Cancelling worktree setup now waits for its commands to stop before removing the worktree. If a command cannot be stopped, Nodex keeps its files and reports the failure.
 - Agents can use the in-app Browser when you start Nodex from inside another desktop app, such as from its terminal, or when that app shares your Codex settings. Browser actions used to fail with "native pipe path unavailable" because they tried to reach the other app's private services; Nodex now ignores what that app leaves behind and keeps its Browser on its own.

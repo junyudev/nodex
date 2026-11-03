@@ -165,12 +165,15 @@ export const makeCodexAppServerPatchedProtocol = Effect.fn("makeCodexAppServerPa
   ): Effect.fn.Return<CodexAppServerPatchedProtocol, never, Scope.Scope> {
     const protocolScope = yield* Scope.Scope;
     const requestHandlerScope = yield* Scope.fork(protocolScope, "parallel");
-    const overflowError = (cause: BoundedQueue.BufferOverflow): CodexError.CodexAppServerError =>
-      new CodexError.CodexAppServerTransportError({ operation: "read-input-stream", cause });
+    const overflowError = (
+      cause: BoundedQueue.BufferOverflow,
+      operation: CodexError.CodexAppServerTransportOperation = "read-input-stream",
+    ): CodexError.CodexAppServerError =>
+      new CodexError.CodexAppServerTransportError({ operation, cause });
     const outgoing = yield* BoundedQueue.make<string, CodexError.CodexAppServerError>({
       label: "Codex outgoing",
       maxBytes: BoundedQueue.MAX_PROMPT_BYTES,
-      mapOverflow: overflowError,
+      mapOverflow: (cause) => overflowError(cause, "write-output-stream"),
     });
     const incomingNotifications = yield* BoundedQueue.broadcast<
       CodexAppServerIncomingNotification,
@@ -196,7 +199,9 @@ export const makeCodexAppServerPatchedProtocol = Effect.fn("makeCodexAppServerPa
     const terminationFailure = yield* Ref.make(Option.none<CodexError.CodexAppServerError>());
     const terminationSignal = yield* Deferred.make<void>();
     const activeRequestHandlers = yield* Ref.make({ count: 0, bytes: 0 });
-    const requestHandlers = yield* FiberMap.make<string | number>().pipe(Scope.provide(requestHandlerScope));
+    const requestHandlers = yield* FiberMap.make<string | number>().pipe(
+      Scope.provide(requestHandlerScope),
+    );
 
     const logProtocol = (event: CodexAppServerProtocolLogEvent) => {
       if (event.direction === "incoming" && !options.logIncoming) {
@@ -249,6 +254,30 @@ export const makeCodexAppServerPatchedProtocol = Effect.fn("makeCodexAppServerPa
         ] as const;
       }).pipe(Effect.flatten);
 
+    const termination = Deferred.await(terminationSignal).pipe(
+      Effect.andThen(Ref.get(terminationFailure)),
+      Effect.flatMap((failure) =>
+        Effect.fail(
+          Option.getOrElse(failure, () => new CodexError.CodexAppServerInputStreamEndedError({})),
+        ),
+      ),
+    );
+
+    // Exhausted peer-consumption budgets make every pending request unobservable.
+    const retireTransport = (error: CodexError.CodexAppServerError) =>
+      handleTermination(() => Effect.succeed(error)).pipe(Effect.andThen(termination));
+
+    const overload = (
+      label: string,
+      maxItems = BoundedQueue.DEFAULT_MAX_ITEMS,
+      maxBytes = BoundedQueue.DEFAULT_MAX_BYTES,
+    ) =>
+      new CodexError.CodexAppServerRequestError({
+        code: -32001,
+        errorMessage: "Server overloaded; retry later.",
+        cause: new BoundedQueue.BufferOverflow({ label, maxItems, maxBytes }),
+      });
+
     const offerOutgoing = (message: Record<string, unknown>) =>
       Effect.gen(function* () {
         const failure = yield* Ref.get(terminationFailure);
@@ -266,18 +295,11 @@ export const makeCodexAppServerPatchedProtocol = Effect.fn("makeCodexAppServerPa
           payload: encoded,
         });
         const accepted = yield* BoundedQueue.offer(outgoing, encoded);
-        if (!accepted) {
-          const overflow = yield* BoundedQueue.failure(outgoing);
-          if (Option.isSome(overflow)) {
-            yield* handleTermination(() => Effect.succeed(overflow.value));
-            return yield* overflow.value;
-          }
-          const closed = yield* Ref.get(terminationFailure);
-          return yield* Option.getOrElse(
-            closed,
-            () => new CodexError.CodexAppServerInputStreamEndedError({}),
-          );
-        }
+        if (accepted) return;
+        const overflow = yield* BoundedQueue.failure(outgoing);
+        return yield* retireTransport(
+          Option.getOrElse(overflow, () => new CodexError.CodexAppServerInputStreamEndedError({})),
+        );
       });
 
     const removePending = (requestId: string) =>
@@ -332,97 +354,86 @@ export const makeCodexAppServerPatchedProtocol = Effect.fn("makeCodexAppServerPa
       );
     };
 
+    // An oversized reply is request-local; a full writer queue retires the transport.
+    const offerNativeResponse = (message: Record<string, unknown>) =>
+      Effect.gen(function* () {
+        const encoded = yield* encodeWireMessage(message);
+        if (BoundedQueue.encodedBytes(encoded) > outgoing.maxBytes)
+          return yield* overload("Codex outgoing response", outgoing.maxItems, outgoing.maxBytes);
+        return yield* offerOutgoing(message);
+      });
+    const respondNativeError = (
+      requestId: string | number,
+      error: CodexError.CodexAppServerRequestError,
+    ) => offerNativeResponse(toProtocolMessage(requestId, { error: error.toProtocolError() }));
+
+    const containResponseFailure = (error: CodexError.CodexAppServerError) =>
+      Effect.logWarning("Codex native response could not be admitted", { cause: error });
+
     const handleRequest = (request: CodexAppServerIncomingRequest) =>
-      incomingRequests.offer(request).pipe(
-        Effect.flatMap((accepted) => {
-          if (!accepted)
-            return Effect.fail(
-              overflowError(
-                new BoundedQueue.BufferOverflow({
-                  label: "Codex request observer",
-                  maxItems: BoundedQueue.DEFAULT_MAX_ITEMS,
-                  maxBytes: BoundedQueue.DEFAULT_MAX_BYTES,
-                }),
-              ),
-            );
-          const handler = options.onRequest;
-          if (!handler) return Effect.void;
-
-          const bytes = BoundedQueue.encodedBytes(request);
-          return Ref.modify(activeRequestHandlers, (state) =>
-            state.count >= MAX_BUFFERED_RAW_MESSAGES ||
-            state.bytes + bytes > BoundedQueue.DEFAULT_MAX_BYTES
-              ? [false, state]
-              : [true, { count: state.count + 1, bytes: state.bytes + bytes }],
-          ).pipe(
-            Effect.flatMap((accepted) => {
-              if (!accepted) {
-                return Effect.fail(
-                  overflowError(
-                    new BoundedQueue.BufferOverflow({
-                      label: "Codex active native requests",
-                      maxItems: MAX_BUFFERED_RAW_MESSAGES,
-                      maxBytes: BoundedQueue.DEFAULT_MAX_BYTES,
-                    }),
-                  ),
-                );
-              }
-
-              return handler(request).pipe(
-                Effect.matchEffect({
-                  onFailure: (error) =>
-                    respondError(
-                      request.id,
-                      CodexError.CodexAppServerRequestError.fromAppServerError(
-                        error,
-                        request.method,
-                      ),
+      Effect.gen(function* () {
+        // Observers are diagnostic subscribers; losing one cannot reject native work.
+        yield* incomingRequests.offer(request);
+        const handler = options.onRequest;
+        if (!handler) return;
+        const bytes = BoundedQueue.encodedBytes(request);
+        const accepted = yield* Ref.modify(activeRequestHandlers, (state) =>
+          state.count >= MAX_BUFFERED_RAW_MESSAGES ||
+          state.bytes + bytes > BoundedQueue.DEFAULT_MAX_BYTES
+            ? ([false, state] as const)
+            : ([true, { count: state.count + 1, bytes: state.bytes + bytes }] as const),
+        );
+        if (!accepted) {
+          yield* respondNativeError(
+            request.id,
+            overload("Codex active native requests", MAX_BUFFERED_RAW_MESSAGES),
+          ).pipe(Effect.catch(containResponseFailure));
+          return;
+        }
+        yield* handler(request).pipe(
+          Effect.matchCauseEffect({
+            onFailure: (cause) =>
+              Cause.hasInterruptsOnly(cause)
+                ? Effect.interrupt
+                : respondNativeError(
+                    request.id,
+                    CodexError.CodexAppServerRequestError.internalError(
+                      "Native request handler failed.",
+                      undefined,
+                      { method: request.method, cause },
                     ),
-                  onSuccess: (result) => respond(request.id, result),
-                }),
-                Effect.ensuring(
-                  Ref.update(activeRequestHandlers, (state) => ({
-                    count: Math.max(0, state.count - 1),
-                    bytes: Math.max(0, state.bytes - bytes),
-                  })),
-                ),
+                  ),
+            onSuccess: (result) =>
+              offerNativeResponse(toProtocolMessage(request.id, { result })).pipe(
                 Effect.catch((error) =>
-                  handleTermination(() => Effect.succeed(error)).pipe(
-                    Effect.forkIn(protocolScope),
-                    Effect.asVoid,
+                  respondNativeError(
+                    request.id,
+                    CodexError.CodexAppServerRequestError.fromAppServerError(error, request.method),
                   ),
                 ),
-                FiberMap.run(requestHandlers, request.id),
-                Effect.asVoid,
-              );
-            }),
-          );
-        }),
-        Effect.asVoid,
-      );
+              ),
+          }),
+          Effect.ensuring(
+            Ref.update(activeRequestHandlers, (state) => ({
+              count: Math.max(0, state.count - 1),
+              bytes: Math.max(0, state.bytes - bytes),
+            })),
+          ),
+          Effect.catch(containResponseFailure),
+          FiberMap.run(requestHandlers, request.id),
+        );
+      });
 
     const releaseResolvedRequest = (notification: CodexAppServerIncomingNotification) =>
       notification.method === "serverRequest/resolved" &&
-      isObject(notification.params) && isJsonRpcId(notification.params.requestId)
+      isObject(notification.params) &&
+      isJsonRpcId(notification.params.requestId)
         ? FiberMap.remove(requestHandlers, notification.params.requestId)
         : Effect.void;
 
     const handleNotification = (notification: CodexAppServerIncomingNotification) =>
       releaseResolvedRequest(notification).pipe(
         Effect.andThen(incomingNotifications.offer(notification)),
-        Effect.flatMap((accepted) =>
-          accepted
-            ? Effect.void
-            : Effect.fail(
-                overflowError(
-                  new BoundedQueue.BufferOverflow({
-                    label: "Codex notification observer",
-                    maxItems: BoundedQueue.DEFAULT_MAX_ITEMS,
-                    maxBytes: BoundedQueue.DEFAULT_MAX_BYTES,
-                  }),
-                ),
-              ),
-        ),
         Effect.andThen(options.onNotification ? options.onNotification(notification) : Effect.void),
         Effect.asVoid,
       );
@@ -558,7 +569,9 @@ export const makeCodexAppServerPatchedProtocol = Effect.fn("makeCodexAppServerPa
     yield* BoundedQueue.stream(outgoing).pipe(
       Stream.run(options.stdio.stdout()),
       Effect.catch((error) =>
-        handleTermination(() => Effect.succeed(normalizeIncomingError(error, "read-input-stream"))),
+        handleTermination(() =>
+          Effect.succeed(normalizeIncomingError(error, "write-output-stream")),
+        ),
       ),
       Effect.forkScoped,
     );
@@ -569,28 +582,29 @@ export const makeCodexAppServerPatchedProtocol = Effect.fn("makeCodexAppServerPa
           nextRequestId,
           (current) => [current, current + 1] as const,
         );
-        if ((yield* Ref.get(pending)).size >= BoundedQueue.DEFAULT_MAX_ITEMS) {
-          const error = overflowError(
-            new BoundedQueue.BufferOverflow({
-              label: "Codex pending requests",
-              maxItems: BoundedQueue.DEFAULT_MAX_ITEMS,
-              maxBytes: BoundedQueue.DEFAULT_MAX_BYTES,
-            }),
-          );
-          yield* handleTermination(() => Effect.succeed(error));
-          return yield* error;
-        }
         const deferred = yield* Deferred.make<unknown, CodexError.CodexAppServerError>();
-        yield* Ref.update(pending, (current) =>
-          new Map(current).set(String(requestId), { deferred, method }),
+        const admitted = yield* Ref.modify(pending, (current) =>
+          current.size >= BoundedQueue.DEFAULT_MAX_ITEMS
+            ? ([false, current] as const)
+            : ([true, new Map(current).set(String(requestId), { deferred, method })] as const),
         );
-        yield* offerOutgoing({
+        if (!admitted)
+          return yield* retireTransport(
+            overflowError(
+              new BoundedQueue.BufferOverflow({
+                label: "Codex pending requests",
+                maxItems: BoundedQueue.DEFAULT_MAX_ITEMS,
+                maxBytes: BoundedQueue.DEFAULT_MAX_BYTES,
+              }),
+            ),
+          );
+        return yield* offerOutgoing({
           id: requestId,
           method,
           ...(payload !== undefined ? { params: payload } : {}),
-        }).pipe(Effect.tapError(() => removePending(String(requestId))));
-        return yield* Deferred.await(deferred).pipe(
-          Effect.onInterrupt(() => removePending(String(requestId))),
+        }).pipe(
+          Effect.andThen(Deferred.await(deferred)),
+          Effect.ensuring(removePending(String(requestId))),
         );
       });
 
@@ -601,14 +615,7 @@ export const makeCodexAppServerPatchedProtocol = Effect.fn("makeCodexAppServerPa
       });
 
     return {
-      termination: Deferred.await(terminationSignal).pipe(
-        Effect.andThen(Ref.get(terminationFailure)),
-        Effect.flatMap((failure) =>
-          Effect.fail(
-            Option.getOrElse(failure, () => new CodexError.CodexAppServerInputStreamEndedError({})),
-          ),
-        ),
-      ),
+      termination,
       incomingNotifications: incomingNotifications.stream,
       incomingRequests: incomingRequests.stream,
       request,
