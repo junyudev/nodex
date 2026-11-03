@@ -1,0 +1,39 @@
+src/renderer/lib/run-workbench-action.node.test.ts
+  s_9dac0437005d8f::t_d4f3bb0eda7375 1-90
+src/renderer/components/workbench/workbench-runtime.tsx
+  s_9dac0437005d8f::t_1eed3d641f2ea8 1,1274-1285,2253-2256,2259,2400-2408,3232,3246,4249-4267,4269-4271,4273-4295,5200-5209,5305
+  s_9dac0437005d8f::t_7f39bcd8ab4b2a 753-755,763,765-770,991-1004,1006-1011,1167-1170,1172-1174,2160-2163,2165,2167-2168,2173,2175,2178-2179,2183-2191,2193-2223,2225-2226
+  s_9dac0437005d8f::t_52caee5963bfc7 2381-2399,3054,3060,3062,4825-4828
+  s_9dac0437005d8f::t_678b57d3abee3c 2720,2741,3063-3071,3271,3304
+src/renderer/components/workbench/use-workbench-sidebar-controller.ts
+  s_9dac0437005d8f::t_cad0c330599c85 461-463,590-600,602,605-609,635-638,641-644,654-661,664-674,676-681,683-685,688-689,691-698,706-713,715-720,722-724,727-728,730-733,765-774,776-784,887-888,890,1083-1087,1091,1093-1096
+  s_9dac0437005d8f::t_7eeda711f41be0 1,589,603-604,634,639-640,653,686-687,690,705,725-726,729,1082,1088-1090,1092
+src/renderer/components/workbench/review-diff-panel.tsx
+  s_9dac0437005d8f::t_38f80d1910c2f8 1,2376-2464,2484,2887-2892,2948,3333-3349,3352-3361,3667-3675,3677,3679-3681,3684-3685
+  s_9dac0437005d8f::t_62067dce38a479 3676,3678,3682-3683,3720-3724
+src/renderer/lib/run-workbench-action.ts
+  s_9dac0437005d8f::t_d4f3bb0eda7375 1-4
+  s_9dac0437005d8f::t_38f80d1910c2f8 5-24
+src/renderer/components/workbench/command-palette-surface.tsx
+  s_9dac0437005d8f::t_4f9cbe65088756 740-745,755-761
+src/renderer/components/workbench/workbench-db-view-panel.tsx
+  s_9dac0437005d8f::t_5938c10ac16223 1,594-698,700-704,717-721,727-729,733,742-743,745-746,750-753,755-756
+src/renderer/lib/use-workbench-panel-lifecycle.ts
+  s_9dac0437005d8f::t_9bb2783d2b69d1 1,233-269,274,276-282,294-318
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a8cd4921b62f9b582033658845b34e0593a63e0e",
+  "prompts": {},
+  "sessions": {
+    "s_9dac0437005d8f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a092-edd4-7633-a6b4-0575907696eb",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
