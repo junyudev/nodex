@@ -18,7 +18,10 @@ interface FixtureOwnerWindow extends Window {
 
 const owner = window as unknown as FixtureOwnerWindow;
 const ports: MessagePort[] = [];
-const { promise: portsReady, resolve: markPortsReady } = Promise.withResolvers<void>();
+let markPortsReady: () => void;
+const portsReady = new Promise<void>((resolve) => {
+  markPortsReady = resolve;
+});
 owner.whenFixturePortsReady = () => portsReady;
 const pending = new Map<
   number,

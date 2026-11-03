@@ -101,8 +101,8 @@ const OWNER_HTML = `<!doctype html>
         portCount: 0,
         webviewCount: 0,
       };
-      const { promise: attached, resolve: reportAttachment } = Promise.withResolvers();
-      window.fixtureAttached = attached;
+      let reportAttachment;
+      window.fixtureAttached = new Promise(resolve => { reportAttachment = resolve; });
       window.reportFixtureAttachment = (facts) => {
         Object.assign(window.fixtureState, facts);
         reportAttachment();
