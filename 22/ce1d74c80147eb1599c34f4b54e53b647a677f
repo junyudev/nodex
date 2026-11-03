@@ -1,0 +1,26 @@
+tests/e2e/support/agent-smoke-harness.ts
+  s_3b30385b04dc37::t_b888898c9e1e82 8-10,233-234
+  s_3b30385b04dc37::t_d7ffb160f096c3 7
+tests/e2e/scripted-agent-runtime.spec.ts
+  s_3b30385b04dc37::t_b29d39c967ca82 1392-1396
+  s_3b30385b04dc37::t_b888898c9e1e82 1373,1386,1402-1403
+  s_3b30385b04dc37::t_fdc220cc4485d5 1391
+docs/agent-runtime-testing.md
+  s_3b30385b04dc37::t_b888898c9e1e82 25-30
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "22ce1d74c80147eb1599c34f4b54e53b647a677f",
+  "prompts": {},
+  "sessions": {
+    "s_3b30385b04dc37": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a158-2ca9-71b1-ad75-3f1a2d227382",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
