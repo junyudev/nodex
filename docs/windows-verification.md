@@ -29,7 +29,7 @@ executable before either host Node or Electron starts the tests.
 Behavioral tests do not use production request latency as a debug-build benchmark.
 The Windows Rust job runs its two 100,000-row writer fixtures in a separate serial
 phase so bulk storage construction does not compete with ordinary deadline tests. Every test
-still runs on both CPUs. Core's `with_test_request_budget` scopes an explicit execution
+still runs on both architectures. Core's `with_test_request_budget` scopes an explicit execution
 deadline around bulk SQL, Page and Session seeding and measured manual-position calls.
 Explicit request contexts keep their original deadline and cancellation. Production
 defaults and dedicated deadline/cancellation tests remain unchanged. A completed writer
@@ -37,7 +37,11 @@ outcome is checked before waiter expiry, with deterministic coverage for late an
 waiters. Rust deadline failures retain writer execution metrics for diagnosis. Storage
 pressure setup has its own budget. Manual-order scalability is enforced by counted SQLite VM work across Source
 sizes, with latency recorded only as descriptive evidence. The multi-megabyte Canvas
-round trip has a test-local budget covering seeding, binary commands, preview and export.
+round trip runs after the ordinary Core-client suite in its own serial step. Its
+test-local request and whole-test budgets cover debug binary commands, recovery capture,
+preview and export; ordinary requests keep their production budgets. Cold-restart
+identity-window tests retain their limits and report their active phase and Canvas
+provider state on failure.
 
 Timestamp-order fixtures explicitly cover distinct and equal recency values; keyset
 pagination must retain every Session exactly once even when timestamps tie. Renderer

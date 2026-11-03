@@ -107,7 +107,14 @@ jobs:
       - uses: ./.github/actions/setup-windows-rust
         if: steps.suite.outputs.needs_rust == 'true'
       - name: Run application suite
+        if: matrix.suite != 'core-client'
         run: vp run test:${{ matrix.suite }}
+      - name: Run ordinary Core-client suite
+        if: matrix.suite == 'core-client'
+        run: vp run test:core-client --exclude src/main/core-client/canvas-recovery-bytes.node.test.ts
+      - name: Test large Canvas binary recovery
+        if: matrix.suite == 'core-client'
+        run: vp run test:core-client src/main/core-client/canvas-recovery-bytes.node.test.ts --maxWorkers=1
 
   package:
     name: installer ${{ matrix.arch }}
