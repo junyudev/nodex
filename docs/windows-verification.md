@@ -24,6 +24,28 @@ fallback remains writable when that executable cannot load; normal private data
 still requires the native permission boundary. The typed suite owners prepare that Core
 executable before either host Node or Electron starts the tests.
 
+## Deterministic suite contracts
+
+Behavioral tests do not use production request latency as a debug-build benchmark.
+The Windows Rust job runs its two 100,000-row writer fixtures in a separate serial
+phase so storage pressure cannot consume unrelated requests' deadlines. Every test
+still runs on both CPUs. Core's `with_test_request_budget` scopes an explicit execution
+deadline around bulk SQL seeding and measured manual-position calls. Production defaults
+and the dedicated deadline/cancellation tests remain unchanged. Storage pressure setup has its own
+budget. Manual-order scalability is enforced by counted SQLite VM work across Source
+sizes, with latency recorded only as descriptive evidence. The multi-megabyte Canvas
+round trip has a test-local budget covering seeding, binary commands, preview and export.
+
+Timestamp-order fixtures explicitly cover distinct and equal recency values; keyset
+pagination must retain every Session exactly once even when timestamps tie. Renderer
+recovery tests await the mount-triggered IndexedDB refresh inside `act` before checking
+preview state. Native ConPTY tests send input after PID publication, accumulate output
+across arbitrary chunks, and use the built-in command shell without profile startup.
+
+Windows temporary executable cleanup follows asserted child close and process absence.
+The cleanup operation permits bounded filesystem backoff for pending NTFS handle release;
+it never retries startup, shutdown or a test assertion.
+
 ## What each layer cannot prove
 
 - **Hosted runners** run as an administrator with UAC disabled and Defender real-time
