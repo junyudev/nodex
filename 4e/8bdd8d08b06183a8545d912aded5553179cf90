@@ -1,0 +1,167 @@
+src/renderer/features/local-conversation/agent-runtime-conversation-adapter.ts
+  s_4ecb22df858a2c::t_f25a2e215a4ec6 1,1041-1045,1051-1052,1057-1059,1061,1374-1426,1428-1429,1431-1439,1441-1442
+src/renderer/features/local-conversation/data/use-summary-git-state.test.tsx
+  s_4ecb22df858a2c::t_a2556820dff6b8 1-118
+src/renderer/features/local-conversation/data/use-summary-git-state.ts
+  s_4ecb22df858a2c::t_ddf107a4f67462 1,94-100,105,185
+src/renderer/features/local-conversation/local-conversation-store.test.tsx
+  s_4ecb22df858a2c::t_0ffa2d73c38722 2627-2632,3301-3306,3442-3444,3450-3452,3624-3627,11513-11516,14948,14952,20079-20082
+src/renderer/features/local-conversation/use-agent-instances.ts
+  s_4ecb22df858a2c::t_ec2c7e6ba87b6b 15,17,31,61,69-74
+src/renderer/features/local-conversation/use-agent-model-catalog.ts
+  s_4ecb22df858a2c::t_025b49b68158cf 64-68
+src/renderer/features/local-conversation/use-claude-model-catalog.ts
+  s_4ecb22df858a2c::t_eb0c4b269fdcc0 39,44-45,102
+src/renderer/features/local-conversation/view/blocks/local-conversation-block-leaves.tsx
+  s_4ecb22df858a2c::t_194f1bf4af3350 1,61-69,565-579,602,606,875-880
+src/renderer/features/local-conversation/view/composer/async-question-controls.tsx
+  s_4ecb22df858a2c::t_6ef6368cd60b77 1,125-147
+src/renderer/features/local-conversation/view/composer/async-question-panel.tsx
+  s_4ecb22df858a2c::t_48c61291aa7c2f 79-80,95-97,101-103,108
+src/renderer/features/local-conversation/view/composer/composer-add-context-menu.tsx
+  s_4ecb22df858a2c::t_bf9b62560a0c4b 15,279-283,285,306,585-588,642,646-655,657-677,679-680,682-683,685-707,709,711-718
+src/renderer/features/local-conversation/view/composer/composer-notice-rail.tsx
+  s_4ecb22df858a2c::t_6f22ada8346b82 1,84-95
+src/renderer/features/local-conversation/view/composer/composer-prompt-editor.tsx
+  s_4ecb22df858a2c::t_ea8324d5e4e6fa 1697
+src/renderer/features/local-conversation/view/composer/composer-ui-scope.test.tsx
+  s_4ecb22df858a2c::t_e11b9df8110ed0 52-57,70
+src/renderer/features/local-conversation/view/composer/configure-local-environment-popover.tsx
+  s_4ecb22df858a2c::t_c671bfd37e4f4f 283-287
+src/renderer/features/local-conversation/view/composer/image-attachments/use-composer-image-attachments.ts
+  s_4ecb22df858a2c::t_6898a8928700ce 1,137,142-145,154-157,330,345-346
+src/renderer/features/local-conversation/view/composer/local-conversation-thread-composer-speed.test.tsx
+  s_4ecb22df858a2c::t_5656bbb7270bd3 2573-2577,2655-2659
+src/renderer/features/local-conversation/view/composer/local-conversation-thread-composer-status-strip.test.tsx
+  s_4ecb22df858a2c::t_a469662be5a798 5-6,11-12,14-18,20-27,29-32,34-51,54-63,91-94,159-198
+src/renderer/features/local-conversation/view/composer/local-conversation-thread-composer-status-strip.tsx
+  s_4ecb22df858a2c::t_32ba60294813c4 1,3,73-77,80-83,114-128,131-140,157-179
+src/renderer/features/local-conversation/view/composer/local-conversation-thread-composer.browser.test.tsx
+  s_4ecb22df858a2c::t_a28aee336faca0 1-189
+src/renderer/features/local-conversation/view/composer/local-conversation-thread-composer.tsx
+  s_4ecb22df858a2c::t_e29cb3c9e17721 1,1179-1188,1452-1511,1560-1572,1580-1586,1743,1750,1902-1904,2235-2236,2267-2307,2310-2311,2334-2359,2376-2429,2431-2440,2442-2448,2450-2498,2500-2501,2503-2505,2509-2512,2514-2516,2518-2524,2526-2530,2534-2536,2560-2573,2575-2584,2586-2597,2599-2600,2782-2806,2861,2875,2889-2890,2897-2905,2957-2963,2971-2981,2983-2989,2991-3002,3217,3220-3233,3246-3259,3360-3368,3393-3399,3402,3414,3437,3455,3463-3466,3468,3472,3486,3496,3503-3521,3527-3531,3535-3543,3545-3549,3556-3560,3562,3564-3567,3571-3572,3574-3579,3582,3585-3586,3589-3611,3614-3621,3623-3626,3628-3639,3641-3649,3652,3654-3664,3666-3669,3672-3697,3699-3702,3757-3776,3778-3788,3790,3793,3796-3821,3835,3846-3855
+src/renderer/features/local-conversation/view/composer/local-conversation-thread-goal-status-row.tsx
+  s_4ecb22df858a2c::t_56ab89391cf5ce 73,92,112,164-168,252-254,259
+src/renderer/features/local-conversation/view/composer/request-cards/codex-mcp-elicitation-request-card.test.tsx
+  s_4ecb22df858a2c::t_2764c673c57702 78-99
+src/renderer/features/local-conversation/view/composer/request-cards/codex-mcp-elicitation-request-card.tsx
+  s_4ecb22df858a2c::t_f1518d3aee5847 1,405-410,413
+src/renderer/features/local-conversation/view/composer/request-cards/codex-user-input-request-card.tsx
+  s_4ecb22df858a2c::t_827a5184b3aa8a 48
+src/renderer/features/local-conversation/view/composer/slash-command-menu/expanded-slash-command-dialog.tsx
+  s_4ecb22df858a2c::t_2e62a2f7f6e87a 75
+src/renderer/features/local-conversation/view/composer/slash-command-menu/inline-slash-command-menu.tsx
+  s_4ecb22df858a2c::t_0c9bbf1e3a77fa 54
+src/renderer/features/local-conversation/view/composer/thread-composer-prompt-history.test.tsx
+  s_4ecb22df858a2c::t_725d94a75640a1 83,147
+src/renderer/features/local-conversation/view/composer/thread-composer-prompt-history.ts
+  s_4ecb22df858a2c::t_b66a52f560d19b 1,147-150,152-153
+src/renderer/features/local-conversation/view/composer/use-composer-dictation.ts
+  s_4ecb22df858a2c::t_7114762856e882 1,39,128-250,252,254,257-263,267,271,275-276,278,282-284,286,289-292,300-301,307-308,312-315,318,321,325,328-331,335-336,339-429,450-452,456-457
+src/renderer/features/local-conversation/view/composer/use-composer-intelligence-controller.ts
+  s_4ecb22df858a2c::t_2f8762eb72f649 1-2,52-55,59,61,64,77-79,81-90,92,98-123,126-134,138,140-142,144-149,151,156,168-170,175-179,181
+src/renderer/features/local-conversation/view/connected-review-diff-panel.tsx
+  s_4ecb22df858a2c::t_adabb646722e4d 250-252,255-257
+src/renderer/features/local-conversation/view/conversation-task-dialog.test.tsx
+  s_4ecb22df858a2c::t_6dec0f76f55a3a 315,320
+src/renderer/features/local-conversation/view/inline-visualization-frame.tsx
+  s_4ecb22df858a2c::t_b9ffe3f7b4fdc1 138-140
+src/renderer/features/local-conversation/view/local-conversation-above-composer-portal.tsx
+  s_4ecb22df858a2c::t_18b8ddfaeaa5c4 61,81
+src/renderer/features/local-conversation/view/local-conversation-footer.tsx
+  s_4ecb22df858a2c::t_0d44721447fa65 1,256-272,275-277,279,282-285
+src/renderer/features/local-conversation/view/local-conversation-inline-visualization.tsx
+  s_4ecb22df858a2c::t_8eb8a9bf497f12 136-139
+src/renderer/features/local-conversation/view/local-conversation-selected-text-actions.tsx
+  s_4ecb22df858a2c::t_2ed778849ebcf6 2-9,106-112,175
+src/renderer/features/local-conversation/view/local-conversation-stage-header.tsx
+  s_4ecb22df858a2c::t_c66635eb4e3365 1,264-274
+src/renderer/features/local-conversation/view/local-conversation-thread-body-owner.tsx
+  s_4ecb22df858a2c::t_5f10cffe73b4d8 2,381-388,694-698,988-990,992-998,1004-1005,1193,1202-1206,1261,1269
+src/renderer/features/local-conversation/view/local-conversation-virtualized-turn-list.tsx
+  s_4ecb22df858a2c::t_594e193796e2b2 1,1084-1090,1162-1167,1343-1344,1790-1791
+src/renderer/features/local-conversation/view/response-text-annotation-layer.tsx
+  s_4ecb22df858a2c::t_f92c7bb8546e75 35-40,62,175-206
+src/renderer/features/local-conversation/view/shared/branch-selector-popover.tsx
+  s_4ecb22df858a2c::t_be2361805fa5ce 1-2,139-141,143,343-348
+src/renderer/features/local-conversation/view/shared/delegated-task-row.tsx
+  s_4ecb22df858a2c::t_fa385a2477b35a 322-323,327
+src/renderer/features/local-conversation/view/shared/environment-selector-popover.tsx
+  s_4ecb22df858a2c::t_cd5224669137a9 8,99-101,103
+src/renderer/features/local-conversation/view/shared/multi-agent-action-surface.tsx
+  s_4ecb22df858a2c::t_d03174b75c9675 282,294-302,309
+src/renderer/features/local-conversation/view/shared/request-cards/local-conversation-request-cards.test.tsx
+  s_4ecb22df858a2c::t_adedd57915833d 603-645
+src/renderer/features/local-conversation/view/shared/request-cards/local-conversation-request-cards.tsx
+  s_4ecb22df858a2c::t_0aa3e16cdafd0b 1,309,677-680,746,798,813-833,893-911,922-940,945,947
+src/renderer/features/local-conversation/view/shared/thread-footer-metadata.test.tsx
+  s_4ecb22df858a2c::t_0bffa6dc5aebf7 2,25-27
+src/renderer/features/local-conversation/view/shared/tools/mcp-capability-view-frame.tsx
+  s_4ecb22df858a2c::t_a547db33485857 106-119
+src/renderer/features/local-conversation/view/shared/tools/mcp-tool-call.tsx
+  s_4ecb22df858a2c::t_25505ad97ab67d 2,559-563
+src/renderer/features/local-conversation/view/shared/tools/thread-command-shell-block.test.tsx
+  s_4ecb22df858a2c::t_25d5dc04e3c4c8 2,4,49-72
+src/renderer/features/local-conversation/view/shared/tools/thread-command-shell-block.tsx
+  s_4ecb22df858a2c::t_e33ec8847b099b 85-98,102-104,107,211,213-215,217
+src/renderer/features/local-conversation/view/shared/tools/tool-call-icons.test.tsx
+  s_4ecb22df858a2c::t_fa06dce9491668 2,372-388
+src/renderer/features/local-conversation/view/shared/tools/tool-call-icons.tsx
+  s_4ecb22df858a2c::t_aa4e70149ae2f4 3,164-166,168
+src/renderer/features/local-conversation/view/shared/tools/use-tool-call-output-detail.ts
+  s_4ecb22df858a2c::t_9bef205cdaa2fa 16-25
+src/renderer/features/local-conversation/view/shared/turn-diff-surface.test.tsx
+  s_4ecb22df858a2c::t_1be4085b271cc9 2,607-635
+src/renderer/features/local-conversation/view/shared/turn-diff-surface.tsx
+  s_4ecb22df858a2c::t_2c937c391f4253 1,3,655-669,674,710-722,724-727,730-737,739-753
+src/renderer/features/local-conversation/view/shared/use-measured-element-height.test.tsx
+  s_4ecb22df858a2c::t_1d8ff1c96819b2 1-67
+src/renderer/features/local-conversation/view/shared/use-measured-element-height.ts
+  s_4ecb22df858a2c::t_63d00d86cddd27 1,5-6,10-13,15-17,19-20,22-23
+src/renderer/features/local-conversation/view/shared/use-worked-for-label.test.tsx
+  s_4ecb22df858a2c::t_724f8604552838 1-2,82-109
+src/renderer/features/local-conversation/view/shared/use-worked-for-label.ts
+  s_4ecb22df858a2c::t_516abf32774fe6 1,17-23,25-38
+src/renderer/features/local-conversation/view/shared/user-message-collapse.tsx
+  s_4ecb22df858a2c::t_2a01338da7b9b5 66,71
+src/renderer/features/local-conversation/view/shared/worktree-starting-state-popover.tsx
+  s_4ecb22df858a2c::t_7fd36297fb64ed 148-163,165-167,169,199-200
+src/renderer/features/local-conversation/view/subagents-panel/subagents-panel.test.tsx
+  s_4ecb22df858a2c::t_d76bdf7bddf4b4 444-480
+src/renderer/features/local-conversation/view/subagents-panel/subagents-panel.tsx
+  s_4ecb22df858a2c::t_37341c27e2a143 4-11,298-304,326-330,333-337,339-384,386,393-397
+src/renderer/features/local-conversation/view/summary-panel/thread-execution-location-selector.tsx
+  s_4ecb22df858a2c::t_2747abc4dabe0e 48-52
+src/renderer/features/local-conversation/view/summary-panel/thread-floating-summary-panel.tsx
+  s_4ecb22df858a2c::t_070895d21ed543 2,8,678,681-688,690,692-699,703-710,712-717,725-730,748-750,770-774,781-798,815-834,854-871
+src/renderer/features/local-conversation/view/summary-panel/thread-summary-branch-setup-dialog.tsx
+  s_4ecb22df858a2c::t_b4e17b760aa348 1,3,78-85,108-114,116-128
+src/renderer/features/local-conversation/view/summary-panel/thread-summary-create-pull-request-dialog.tsx
+  s_4ecb22df858a2c::t_dc6220b64a5851 1,130-133,139-148,157-159,161,163-165,169-170,254-298,301-317,320-345,350,353,357-359,361-363,367-383
+src/renderer/features/local-conversation/view/summary-panel/thread-summary-git-action-dialog.tsx
+  s_4ecb22df858a2c::t_01e58c302ef34a 2,140,144-165,174,240-270,273-275,278-281,285-298,301-311,337-354
+src/renderer/features/local-conversation/view/summary-panel/thread-summary-panel-section.test.tsx
+  s_4ecb22df858a2c::t_0289cbf95e58db 1,245-285
+src/renderer/features/local-conversation/view/summary-panel/thread-summary-panel-section.tsx
+  s_4ecb22df858a2c::t_e30165ed4917a8 6,186-188,191-194,213-215,218,222
+src/renderer/features/local-conversation/view/thread-user-message-navigation-rail.tsx
+  s_4ecb22df858a2c::t_15091089d1d8ae 129-141,144
+src/renderer/features/local-conversation/view/use-chat-message-reveal.ts
+  s_4ecb22df858a2c::t_704615fa28859a 48-53,65-68
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4e8bdd8d08b06183a8545d912aded5553179cf90",
+  "prompts": {},
+  "sessions": {
+    "s_4ecb22df858a2c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a055-207c-72a1-b1ad-e6102c15fab4",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
