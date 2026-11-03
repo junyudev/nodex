@@ -1,0 +1,181 @@
+crates/nodex-core-contracts/src/collection_audit.rs
+  s_8c62977aa6fb11::t_22b08ed8ad6bfc 36-40
+crates/nodex-core-contracts/src/workspace.rs
+  s_8c62977aa6fb11::t_55dcbdecc02717 19,56-65,276-287,1332-1419,1422,1438,1656-1686,1822-1824
+crates/nodex-core/schema/current.sql
+  s_098df3235fa721::t_0e0f8457d96137 1063-1067,4518-4551
+crates/nodex-core/schema/migrations/v201_to_v202.sql
+  s_861e195a25a694::t_8906a9cc301671 1-37
+crates/nodex-core/src/document/integrity.rs
+  s_861e195a25a694::t_b3dfc373d275d0 84
+crates/nodex-core/src/infrastructure/migration.rs
+  s_861e195a25a694::t_48bc185194e925 424-428,2633-2647,3594-3596,8713-8714,9322-9417
+crates/nodex-core/src/infrastructure/migration_serializer_tests.rs
+  s_861e195a25a694::t_dcb675ada81e08 132-133,137,141-146,148,156,162
+crates/nodex-core/src/infrastructure/store_validation.rs
+  s_8c62977aa6fb11::t_b6691491fd9ded 34-35
+crates/nodex-core/src/workspace/agent_command.rs
+  s_8c62977aa6fb11::t_8e435e22e80a9a 26-34
+crates/nodex-core/src/workspace/agent_runtime_authority.rs
+  s_8c62977aa6fb11::t_64c78f453a0c04 72
+crates/nodex-core/src/workspace/agent_runtime_binding.rs
+  s_8c62977aa6fb11::t_6e54bb7d845594 41,43-45,191-193,280,490
+crates/nodex-core/src/workspace/agent_runtime_cleanup.rs
+  s_8c62977aa6fb11::t_f268c874cc86a6 140
+crates/nodex-core/src/workspace/app_tool_operation.rs
+  s_8c62977aa6fb11::t_e94feb92a938e7 115,207,247
+crates/nodex-core/src/workspace/coordinator.rs
+  s_cb3e022ee09d1e::t_2eb296b2cbedc9 1-355
+crates/nodex-core/src/workspace/coordinator_tests.rs
+  s_8c62977aa6fb11::t_58e43050a4ac56 1-479
+crates/nodex-core/src/workspace/inbox_read.rs
+  s_861e195a25a694::t_5cd59353b2742a 1170,1455
+crates/nodex-core/src/workspace/inbox_tests.rs
+  s_8c62977aa6fb11::t_ac5b4695774e76 1446
+crates/nodex-core/src/workspace/mod.rs
+  s_8c62977aa6fb11::t_cd36434e73d7a4 8-10
+crates/nodex-core/src/workspace/mutation.rs
+  s_8c62977aa6fb11::t_98c63829e1c54f 308,800,826
+crates/nodex-core/src/workspace/page_chat.rs
+  s_8c62977aa6fb11::t_7f3389ed619ec2 420,463,506,609,619,716-727,1221
+crates/nodex-core/src/workspace/page_handoff_tests.rs
+  s_8c62977aa6fb11::t_4d55044a9fc1a5 377
+crates/nodex-core/src/workspace/read.rs
+  s_8c62977aa6fb11::t_aa0c0f829106da 61-78
+crates/nodex-core/src/workspace/session_listing.rs
+  s_8c62977aa6fb11::t_e0c2a73141e170 170,580
+crates/nodex-core/src/workspace/session_order.rs
+  s_861e195a25a694::t_72a69f7d7ece4b 16,71
+crates/nodex-core/src/workspace/sidebar_section.rs
+  s_8c62977aa6fb11::t_025890a083da50 100,288,1027,1043,1052,1087,1121,1668
+crates/nodex-core/src/workspace/task_window.rs
+  s_861e195a25a694::t_0d36afd39d3624 199
+crates/nodex-core/tests/fixtures/rewind-v202-to-v201.sql
+  s_861e195a25a694::t_0ec4e9a3ed8649 1-12
+crates/nodex-core/tests/fixtures/schema-v201.sql
+  s_861e195a25a694::t_d3a53c5aaf5916 1-4996
+crates/nodex-store-format/src/lib.rs
+  s_8c62977aa6fb11::t_7b281733018308 277-280
+packages/agent-runtime/src/nodex/Interface.ts
+  s_8c62977aa6fb11::t_78c6efa12b3fec 457
+packages/agent-runtime/src/nodex/Service.ts
+  s_8c62977aa6fb11::t_0af5182742246c 312,1020-1025
+packages/core-protocol/openapi.json
+  s_8c62977aa6fb11::t_dc18581f784a2f 7674-7683,8908-9079,29654-29830,30604-30607,36258-36329,38242-38265,38511-38557,41070-41246,42020-42023,44406,44458-44460,52492-52577,54476-54484
+packages/core-protocol/src/compatibility.generated.ts
+  s_8c62977aa6fb11::t_c029214a931242 24,42-43
+packages/core-protocol/src/generated.ts
+  s_8c62977aa6fb11::t_32a2708f941165 1802,2114-2156,7148-7185,7348-7349,8616-8632,9071-9077,9130-9141,9861-9898,10061-10062,10597,12287-12302,12736-12737
+src/main/agent-runtime/AgentRuntimeApplication.node.test.ts
+  s_8c62977aa6fb11::t_34247c813932ab 7347-7393
+src/main/agent-runtime/AgentRuntimeApplication.ts
+  s_8c62977aa6fb11::t_8a6989b4f174ad 1111-1115,1125,1238,1254,1308-1309,1348-1353,1374-1379,2613-2617,2638,2710,2713-2714,2755,2765
+src/main/agent-runtime/AgentRuntimeHost.node.test.ts
+  s_8c62977aa6fb11::t_cdbac2523281be 32-35,96-97,134-137,228-233,269,502-521
+src/main/agent-runtime/AgentRuntimeHost.ts
+  s_8c62977aa6fb11::t_e653ca41bf5c21 1-4,170-182
+src/main/agent-runtime/AgentRuntimeHostTools.ts
+  s_861e195a25a694::t_8417d18df26e38 20,80,116
+src/main/app-tools/AppToolInterpreter.ts
+  s_861e195a25a694::t_9b9d9555db3e2f 33,60,97,128
+src/main/app-tools/HostedAppToolCatalog.ts
+  s_861e195a25a694::t_6153a9bcd1ca59 17
+src/main/app-tools/WorkAppTools.node.test.ts
+  s_8c62977aa6fb11::t_8da6566ed2fc78 1-91
+src/main/app-tools/WorkAppTools.ts
+  s_8c62977aa6fb11::t_a539f5fdd0e4b5 1-78
+src/main/app/MainApplicationLive.ts
+  s_8c62977aa6fb11::t_b9fc7f4af3d15a 48-49,156-160
+src/main/coordinator/CoordinatorDeliveryRuntime.node.test.ts
+  s_861e195a25a694::t_641ff6b6bc1497 1-137
+src/main/coordinator/CoordinatorDeliveryRuntime.ts
+  s_861e195a25a694::t_781a8c3c18992a 1-142
+src/main/coordinator/CoordinatorSession.node.test.ts
+  s_cb3e022ee09d1e::t_5b942c94734571 1-108
+src/main/coordinator/CoordinatorSession.ts
+  s_cb3e022ee09d1e::t_e35ab0d87c5390 1-149
+src/main/coordinator/coordinator-instructions.ts
+  s_861e195a25a694::t_a840d50a679447 1-6
+src/main/coordinator/work-event-message.ts
+  s_8c62977aa6fb11::t_6ed23f1ecabb32 1-30
+src/main/core-client/project-workspace-adapter.ts
+  s_8c62977aa6fb11::t_333c3444edcf19 205-215,228
+src/main/project-application/ProjectWorkspace.node.test.ts
+  s_8c62977aa6fb11::t_1745c03e4a01ec 712,770,793
+src/renderer/components/board/editor/nfm-send-to-thread-menu-model.test.ts
+  s_8c62977aa6fb11::t_b5609f16fe1065 75
+src/renderer/components/board/editor/nfm-text-action-menu.test.tsx
+  s_8c62977aa6fb11::t_d9fe43b7fcb2bb 495
+src/renderer/components/board/page-stage/properties-section.browser.test.tsx
+  s_8c62977aa6fb11::t_fac75e596bfe2a 20
+src/renderer/components/board/page-stage/properties-section.test.tsx
+  s_8c62977aa6fb11::t_6e512e763235b4 248,333
+src/renderer/components/workbench/database-view-surface.test.tsx
+  s_8c62977aa6fb11::t_69affd3af8ecbb 91,878
+src/renderer/components/workbench/page-chat-activity-control.test.tsx
+  s_8c62977aa6fb11::t_3b2dd0e257bf58 18,34
+src/renderer/components/workbench/workbench-shell.library-shell-navigation.test.tsx
+  s_8c62977aa6fb11::t_186e5bd92fdef6 799
+src/renderer/components/workbench/workbench-testkit/workbench-shell-harness.tsx
+  s_8c62977aa6fb11::t_26c96d8db7486f 3364
+src/renderer/features/inbox/inbox-message.browser.test.tsx
+  s_8c62977aa6fb11::t_6a6bbfc3f431f6 322,371,396
+src/renderer/lib/page-chat-activity-presentation.node.test.ts
+  s_8c62977aa6fb11::t_546882f62a9b97 18,101
+src/renderer/lib/page-chat-activity-presentation.ts
+  s_8c62977aa6fb11::t_0207d4457f4f5d 97
+src/renderer/lib/page-chat-queries.node.test.ts
+  s_8c62977aa6fb11::t_5ffed86f77449e 25
+src/renderer/lib/use-page-chat-activity-summaries.test.tsx
+  s_8c62977aa6fb11::t_c6956e51f99fa8 22
+src/renderer/lib/use-page-chat-activity.test.tsx
+  s_8c62977aa6fb11::t_14a2e43d39510b 46
+src/shared/agent-runtime-api.ts
+  s_861e195a25a694::t_0ba234b7ecbf45 58-60
+src/shared/nodex-app-tools/catalog.ts
+  s_861e195a25a694::t_3e7ce3138c479b 17,41
+src/shared/nodex-app-tools/work-schema.ts
+  s_8c62977aa6fb11::t_570f4352e05584 1-17
+src/shared/types.ts
+  s_8c62977aa6fb11::t_dd64b467fe1c20 651-661,663,686
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e2c72ec43bf303ac2458837e16c6199c5bea11a6",
+  "prompts": {},
+  "sessions": {
+    "s_098df3235fa721": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19eb9-df69-7222-adba-8eb488f30462",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_861e195a25a694": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19f00-6774-7220-894e-a1a31770d0e3",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_8c62977aa6fb11": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19eca-da45-7583-a0bd-2b995907eee9",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_cb3e022ee09d1e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19f10-83da-79e1-8002-21edccb7e7aa",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
