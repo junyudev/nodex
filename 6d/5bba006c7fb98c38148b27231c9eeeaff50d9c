@@ -1,0 +1,103 @@
+src/renderer/components/workbench/review-diff-draft-source.test.tsx
+  s_3b20445a86fd34::t_97739c02fca205 1-46
+src/renderer/components/workbench/review-diff-draft-source.ts
+  s_3b20445a86fd34::t_0337f5d4d64515 1-45
+src/renderer/components/workbench/review-diff-panel.tsx
+  s_3b20445a86fd34::t_0fde1652138932 1,21,480,487-505,507-508,511,522,1481-1483,1485,1617,1631,1734-1747,1776,1796,1817-1832,1834-1844,2986,2988-2996,3504-3511,3513-3516
+src/renderer/components/workbench/sidebar-pages-section.tsx
+  s_6c9891f66c664a::t_08236277cd9be7 154,185,303,307
+src/renderer/components/workbench/sidebar-project-group-dnd.browser.test.tsx
+  s_3b20445a86fd34::t_f968c423288ad7 148,159,166,273,277,287,295
+src/renderer/components/workbench/sidebar-thread-reorder.test.tsx
+  s_3b20445a86fd34::t_b9e93ccb9c7ed3 3,1250,1257-1259,1304,1312-1314,1371,1377-1379
+src/renderer/components/workbench/stable-worktree-create-dialog.tsx
+  s_3b20445a86fd34::t_4015bf901052c8 1,40-48
+src/renderer/components/workbench/stable-worktree-dialogs.test.tsx
+  s_6c9891f66c664a::t_d9fbcf1b684391 148-187
+src/renderer/components/workbench/stable-worktree-status-dialog.tsx
+  s_6c9891f66c664a::t_bc990a4fb8b81e 192-197,199-201
+src/renderer/components/workbench/use-workbench-chrome-layout.test.tsx
+  s_0defe1a26b25f0::t_03042656b5b689 5,8-14,18-44,47-57,109-129
+src/renderer/components/workbench/use-workbench-chrome-layout.ts
+  s_6c9891f66c664a::t_dc21e7c9db032a 7,116-138,162-168,172,203-207,209-233
+src/renderer/components/workbench/use-workbench-panel-projection.tsx
+  s_6c9891f66c664a::t_4bbfd0cff67100 3,221-232,305-361,363-397,399-413,415-445,448-454,457-472,475-525,527-542,545-546,548-553,557-585,588-627,629,631-661,663-666,670-769,771,773-777,779-797,799-800,802-806,808,816,818-820
+src/renderer/components/workbench/use-workbench-sidebar-controller.ts
+  s_6c9891f66c664a::t_90f9b42f640fd7 582-587,589-597,600-602,604-611,624-626,628-634,636-640,642-647,649-650,652-662,664-668,671-682,684-686,688-694,696-699,702-710,850-863,865-869,872-919,922-925,929-935,937-981,983-1004,1006-1043,1045-1065
+src/renderer/components/workbench/workbench-agent-runtime-panels.tsx
+  s_6c9891f66c664a::t_f17bf614b19e84 312-314,347
+src/renderer/components/workbench/workbench-auxiliary-conversation-panels.tsx
+  s_0defe1a26b25f0::t_db0e0027fb82c9 312-325,344-348,352-356,366-370,386
+src/renderer/components/workbench/workbench-command-palette-host.tsx
+  s_6c9891f66c664a::t_f7659c1599b06a 205-212,256-259
+src/renderer/components/workbench/workbench-database-view-surface.tsx
+  s_3b20445a86fd34::t_648638f0a04027 195,240-242,244-247,250,369-373,382,412
+src/renderer/components/workbench/workbench-db-view-panel.tsx
+  s_5663ec459e661b::t_bb15d8951f5119 680,744
+src/renderer/components/workbench/workbench-header-actions.tsx
+  s_6c9891f66c664a::t_5c2b30d94f0301 269
+src/renderer/components/workbench/workbench-process-manager-dialog.tsx
+  s_3b20445a86fd34::t_d637fc3b14a726 12,354-356,361
+src/renderer/components/workbench/workbench-runtime-panel-surfaces.test.tsx
+  s_6c9891f66c664a::t_184b7f237a802f 1-122
+src/renderer/components/workbench/workbench-runtime-panel-surfaces.tsx
+  s_3b20445a86fd34::t_ef3ac0eda270ec 1,23-58,62-64
+src/renderer/components/workbench/workbench-runtime.tsx
+  s_0defe1a26b25f0::t_87d58cc630d4d1 887-898,920-955,957-970,1200,1217-1218,1238-1239,1253,1317-1355,1371-1373,1375,1381-1383,1419-1444,1446-1472,1485-1494,1508,1568,1645-1649,1651-1658,1780-1786,1797,1805,1817,1890,1893,2093-2114,2116-2119,2659-2675,3050,3240,3271,3307,3322,3335,3350-3360,3401,3408,3420-3422,3424-3431,3434,3436,3482,3589-3594,3596-3608,3610-3611,3613-3621,3623-3625,3627-3635,3637-3678,3680-3684,3687,3689-3695,3702-3705,3708-3709,3793-3802,4233-4288,4346-4377,4379-4412,4414-4427,4429-4461,4463-4466,4468,4475-4476,4478-4480,4486-4493,4495-4497,4500-4533,4535-4543,4545-4569,4571-4577,4579-4620,4622,4624-4667,4669-4691,4693-4701,4703-4705,4708-4722,4724-4783,4785-4786,4788-4790,4793-4831,4833,4835-4849,4851-4874,5014,5036-5038
+src/renderer/components/workbench/workbench-scene-frame.tsx
+  s_3b20445a86fd34::t_6dad5ccd13cc27 64,137
+src/renderer/components/workbench/workbench-session-sidebar.tsx
+  s_3b20445a86fd34::t_c0e9262c6409fd 1962,2133
+src/renderer/components/workbench/workbench-session-thread-route.tsx
+  s_3b20445a86fd34::t_6778a68d248fb0 57-72,532-539,542-553,558-582
+src/renderer/components/workbench/workbench-settings-controls.test.tsx
+  s_3b20445a86fd34::t_095cc17404c645 1-23
+src/renderer/components/workbench/workbench-settings-controls.tsx
+  s_3b20445a86fd34::t_64f5ea0f5ee875 500,503-508,510,514-523,656,659-664,666,670-679,872-874,876,1285-1287,1289
+src/renderer/components/workbench/workbench-settings-route-shell.loading.test.tsx
+  s_0defe1a26b25f0::t_d25c7424fa7dac 37-38,41
+src/renderer/components/workbench/workbench-settings-route-shell.tsx
+  s_3b20445a86fd34::t_3d4f40cb6372cc 74,76-78
+src/renderer/components/workbench/workbench-shell.tsx
+  s_3b20445a86fd34::t_c1aa1005e6d842 323-327,329
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6d5bba006c7fb98c38148b27231c9eeeaff50d9c",
+  "prompts": {},
+  "sessions": {
+    "s_0defe1a26b25f0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19f87-3cbc-71c0-b75f-4b44b640616a",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_3b20445a86fd34": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19f87-4fb8-7281-95a6-1d8d27874686",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_5663ec459e661b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19f87-8cc7-7bc1-b1c3-9a767bd62295",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
