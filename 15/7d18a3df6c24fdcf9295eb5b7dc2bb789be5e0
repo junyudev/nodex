@@ -1,0 +1,35 @@
+src/main/platform/node/TerminalEnvironment.ts
+  s_4ecb22df858a2c::t_91b33683d5d847 99
+src/main/platform/node/TerminalEnvironment.test.ts
+  s_4ecb22df858a2c::t_d67fba4d5e8693 21-22
+  s_4ecb22df858a2c::t_60adafa3802c66 23-25
+  s_3022e59a160914::t_21ec883123a7ec 26
+docs/product-specs/windows-host-behavior.md
+  s_4ecb22df858a2c::t_91b33683d5d847 50-51
+docs/windows-verification.md
+  s_4ecb22df858a2c::t_91b33683d5d847 117
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "157d18a3df6c24fdcf9295eb5b7dc2bb789be5e0",
+  "prompts": {},
+  "sessions": {
+    "s_3022e59a160914": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1def126e-fd62-476f-9393-67b0835f01b6",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_4ecb22df858a2c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a055-207c-72a1-b1ad-e6102c15fab4",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
