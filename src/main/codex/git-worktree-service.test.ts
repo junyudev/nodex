@@ -1,3 +1,5 @@
+import { runCodexGitCommand, createCodexRequestCanceledError } from "./codex-git-command";
+import { WindowsProcessTreeReleaseError } from "../process-tree";
 import { execFile, execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import {
@@ -6,6 +8,7 @@ import {
   mkdtemp,
   readFile,
   readdir,
+  realpath,
   rm,
   stat,
   symlink,
@@ -16,9 +19,15 @@ import path from "node:path";
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 import {
   createManagedWorktree,
+  removeManagedWorktree,
   resolveManagedWorktreeDefaultStartingState,
   setManagedWorktreeOwnerThread,
 } from "./git-worktree-service";
+
+vi.mock("./codex-git-command", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./codex-git-command")>();
+  return { ...actual, runCodexGitCommand: vi.fn(actual.runCodexGitCommand) };
+});
 
 const cryptoBoundary = vi.hoisted(() => ({
   randomUUID: vi.fn<() => `${string}-${string}-${string}-${string}-${string}`>(),
@@ -62,7 +71,7 @@ function runCommand(command: string, args: string[], cwd: string): Promise<Comma
 }
 
 async function createRepository(): Promise<{ repositoryPath: string; root: string }> {
-  const root = await mkdtemp(path.join(tmpdir(), "nodex-git-worktree-abort-"));
+  const root = await realpath(await mkdtemp(path.join(tmpdir(), "nodex-git-worktree-abort-")));
   tempRoots.push(root);
   const repositoryPath = path.join(root, "repository");
   await mkdir(repositoryPath);
@@ -119,6 +128,144 @@ afterEach(async () => {
       }),
     ),
   );
+});
+
+describe("managed worktree process ownership", () => {
+  test("retains an allocated worktree when Git creation loses native release confirmation", async () => {
+    const actual =
+      await vi.importActual<typeof import("./codex-git-command")>("./codex-git-command");
+    const { repositoryPath, root } = await createRepository();
+    const managedRoot = path.join(root, "managed");
+    const allocatedWorktreePath = path.join(managedRoot, "owned", "repository");
+    const failure = new Error("Worktree add acknowledgement failed", {
+      cause: new WindowsProcessTreeReleaseError(1234, new Error("Native wait failed")),
+    });
+    try {
+      vi.mocked(runCodexGitCommand).mockImplementation(async (args, cwd, options) => {
+        const result = await actual.runCodexGitCommand(args, cwd, options);
+        if (args[0] === "worktree" && args[1] === "add") throw failure;
+        return result;
+      });
+      await expect(
+        createManagedWorktree({
+          repositoryPath,
+          managedRoot,
+          allocatedWorktreePath,
+          nodexHome: path.join(root, "home"),
+          projectId: "project",
+          targetId: "target",
+          mode: "detachedHead",
+          startingState: { type: "branch", branchName: "main" },
+        }),
+      ).rejects.toBe(failure);
+      expect(await readFile(path.join(allocatedWorktreePath, "README.md"), "utf8")).toBe("base\n");
+      expect(
+        (
+          await runCommand("git", ["worktree", "list", "--porcelain"], repositoryPath)
+        ).stdout.replaceAll("\\", "/"),
+      ).toContain(allocatedWorktreePath.replaceAll("\\", "/"));
+      expect(
+        vi
+          .mocked(runCodexGitCommand)
+          .mock.calls.some(([args]) => args[0] === "worktree" && args[1] === "remove"),
+      ).toBe(false);
+    } finally {
+      vi.mocked(runCodexGitCommand).mockReset().mockImplementation(actual.runCodexGitCommand);
+    }
+  });
+
+  test("does not fall back to deleting files when Git removal cannot confirm release", async () => {
+    const actual =
+      await vi.importActual<typeof import("./codex-git-command")>("./codex-git-command");
+    const { repositoryPath, root } = await createRepository();
+    const created = await createManagedWorktree({
+      repositoryPath,
+      nodexHome: path.join(root, "home"),
+      projectId: "project",
+      targetId: "target",
+      mode: "detachedHead",
+      startingState: { type: "branch", branchName: "main" },
+    });
+    const failure = new WindowsProcessTreeReleaseError(1234, new Error("Native wait failed"));
+    try {
+      vi.mocked(runCodexGitCommand).mockImplementation((args, cwd, options) =>
+        args[0] === "worktree" && args[1] === "remove"
+          ? Promise.reject(failure)
+          : actual.runCodexGitCommand(args, cwd, options),
+      );
+      await expect(removeManagedWorktree(created.worktreeGitRoot)).rejects.toBe(failure);
+      expect(await readFile(path.join(created.worktreeGitRoot, "README.md"), "utf8")).toBe(
+        "base\n",
+      );
+    } finally {
+      vi.mocked(runCodexGitCommand).mockReset().mockImplementation(actual.runCodexGitCommand);
+    }
+  });
+
+  test("joins sibling Git operations and preserves a release failure after cancellation", async () => {
+    const actual =
+      await vi.importActual<typeof import("./codex-git-command")>("./codex-git-command");
+    const { repositoryPath, root } = await createRepository();
+    const controller = new AbortController();
+    const cancellation = createCodexRequestCanceledError();
+    const failure = new WindowsProcessTreeReleaseError(1234, new Error("Native wait failed"));
+    let started!: () => void;
+    const siblingStarted = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    let rejectSibling!: (error: unknown) => void;
+    const sibling = new Promise<{ stdout: string; stderr: string }>((_resolve, reject) => {
+      rejectSibling = reject;
+    });
+    let operation: Promise<PromiseSettledResult<unknown>> | undefined;
+    let completed = false;
+    try {
+      vi.mocked(runCodexGitCommand).mockImplementation(async (args, cwd, options) => {
+        if (args.includes("--show-toplevel")) {
+          await siblingStarted;
+          controller.abort();
+          throw cancellation;
+        }
+        if (args.includes("--show-prefix")) {
+          started();
+          return sibling;
+        }
+        return actual.runCodexGitCommand(args, cwd, options);
+      });
+      operation = createManagedWorktree({
+        repositoryPath,
+        nodexHome: path.join(root, "home"),
+        projectId: "project",
+        targetId: "target",
+        mode: "detachedHead",
+        startingState: { type: "branch", branchName: "main" },
+        signal: controller.signal,
+      }).then(
+        (value) => {
+          completed = true;
+          return { status: "fulfilled" as const, value };
+        },
+        (reason: unknown) => {
+          completed = true;
+          return { status: "rejected" as const, reason };
+        },
+      );
+      await siblingStarted;
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(controller.signal.aborted).toBe(true);
+      expect(completed).toBe(false);
+      rejectSibling(failure);
+      const outcome = await operation;
+      expect(outcome.status).toBe("rejected");
+      if (outcome.status !== "rejected") throw new Error("Expected failed Git release");
+      expect(outcome.reason).toBeInstanceOf(AggregateError);
+      expect((outcome.reason as AggregateError).errors).toEqual([cancellation, failure]);
+    } finally {
+      rejectSibling(failure);
+      await operation;
+      vi.mocked(runCodexGitCommand).mockReset().mockImplementation(actual.runCodexGitCommand);
+    }
+  });
 });
 
 describe("createManagedWorktree starting state", () => {

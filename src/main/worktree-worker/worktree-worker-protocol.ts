@@ -71,7 +71,11 @@ export type CodexWorktreeWorkerThreadMessage =
         | { readonly type: "ok"; readonly success: CodexWorktreeWorkerSuccess }
         | {
             readonly type: "error";
-            readonly code: "canceled" | "invalid-request" | "operation-failed";
+            readonly code:
+              | "canceled"
+              | "invalid-request"
+              | "operation-failed"
+              | "release-unconfirmed";
             readonly message: string;
             readonly retryable: boolean;
             readonly preparationRestored?: boolean;
@@ -778,7 +782,8 @@ export function isCodexWorktreeWorkerThreadMessage(
     return (
       (value.result.code === "canceled" ||
         value.result.code === "invalid-request" ||
-        value.result.code === "operation-failed") &&
+        value.result.code === "operation-failed" ||
+        value.result.code === "release-unconfirmed") &&
       typeof value.result.message === "string" &&
       typeof value.result.retryable === "boolean" &&
       (value.result.preparationRestored === undefined ||

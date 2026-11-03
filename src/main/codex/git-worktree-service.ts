@@ -1,3 +1,4 @@
+import { hasWindowsProcessTreeReleaseFailure } from "../process-tree";
 import { randomUUID } from "node:crypto";
 import { constants as fsConstants } from "node:fs";
 import {
@@ -21,6 +22,8 @@ import {
 } from "../../shared/worktree-auto-branch";
 import {
   runCodexGitCommand as runGitCommand,
+  throwIfCodexGitRecoveryUnsafe,
+  joinCodexGitOperations,
   throwIfCodexRequestAborted as throwIfRequestAborted,
   type CodexGitCommandOutputStream as GitCommandOutputStream,
 } from "./codex-git-command";
@@ -97,8 +100,8 @@ async function branchExists(
     { signal },
   )
     .then(() => true)
-    .catch(() => {
-      throwIfRequestAborted(signal);
+    .catch((error) => {
+      throwIfCodexGitRecoveryUnsafe(error, signal);
       return false;
     });
   return exists;
@@ -155,8 +158,8 @@ async function resolveRemoteDefaultBranch(
     ["symbolic-ref", "--quiet", `refs/remotes/${remote}/HEAD`],
     repositoryPath,
     { signal },
-  ).catch(() => {
-    throwIfRequestAborted(signal);
+  ).catch((error) => {
+    throwIfCodexGitRecoveryUnsafe(error, signal);
     return null;
   });
   const locallyKnownRef = normalizeBranchName(locallyKnown?.stdout ?? "");
@@ -165,8 +168,8 @@ async function resolveRemoteDefaultBranch(
   const remoteDetails = await runGitCommand(["remote", "show", remote], repositoryPath, {
     signal,
     timeoutMs: 10_000,
-  }).catch(() => {
-    throwIfRequestAborted(signal);
+  }).catch((error) => {
+    throwIfCodexGitRecoveryUnsafe(error, signal);
     return null;
   });
   const remoteDefault = /HEAD branch:\s*(.+)/.exec(remoteDetails?.stdout ?? "")?.[1]?.trim();
@@ -185,8 +188,8 @@ async function remoteBranchExists(
     { signal },
   )
     .then(() => true)
-    .catch(() => {
-      throwIfRequestAborted(signal);
+    .catch((error) => {
+      throwIfCodexGitRecoveryUnsafe(error, signal);
       return false;
     });
 }
@@ -253,7 +256,7 @@ async function resolveSourceWorkspace(
 ): Promise<ResolvedSourceWorkspace> {
   const sourceWorkspaceRoot = await ensureDirectory(repositoryPath, signal);
   await ensureGitRepository(sourceWorkspaceRoot, signal);
-  const [gitRootResult, prefixResult] = await Promise.all([
+  const [gitRootResult, prefixResult] = await joinCodexGitOperations([
     runGitCommand(["rev-parse", "--path-format=absolute", "--show-toplevel"], sourceWorkspaceRoot, {
       signal,
     }),
@@ -292,6 +295,7 @@ async function withTemporaryGitIndex<T>(
     mkdtemp(path.join(tmpdir(), "nodex-git-index-")),
   );
 
+  let retainTemporaryIndex = false;
   try {
     const indexResult = await runGitCommand(
       ["rev-parse", "--path-format=absolute", "--git-path", "index"],
@@ -304,8 +308,8 @@ async function withTemporaryGitIndex<T>(
 
     const sharedIndexResult = await runGitCommand(["rev-parse", "--shared-index-path"], cwd, {
       signal,
-    }).catch(() => {
-      throwIfRequestAborted(signal);
+    }).catch((error) => {
+      throwIfCodexGitRecoveryUnsafe(error, signal);
       return null;
     });
     const sharedIndexOutput = sharedIndexResult?.stdout.trim() ?? "";
@@ -327,8 +331,11 @@ async function withTemporaryGitIndex<T>(
         GIT_INDEX_FILE: temporaryIndexPath,
       },
     });
+  } catch (error) {
+    retainTemporaryIndex = hasWindowsProcessTreeReleaseFailure(error);
+    throw error;
   } finally {
-    await rm(directoryPath, { recursive: true, force: true });
+    if (!retainTemporaryIndex) await rm(directoryPath, { recursive: true, force: true });
   }
 }
 
@@ -373,8 +380,8 @@ async function resolveSpecifiedBranchRef(
     ["rev-parse", "--abbrev-ref", "--symbolic-full-name", `${branchName}@{u}`],
     repositoryPath,
     { signal },
-  ).catch(() => {
-    throwIfRequestAborted(signal);
+  ).catch((error) => {
+    throwIfCodexGitRecoveryUnsafe(error, signal);
     return null;
   });
   const upstreamRef = upstream?.stdout.trim() ?? "";
@@ -384,8 +391,8 @@ async function resolveSpecifiedBranchRef(
     ["rev-list", "--left-right", "--count", `${branchName}...${upstreamRef}`],
     repositoryPath,
     { signal },
-  ).catch(() => {
-    throwIfRequestAborted(signal);
+  ).catch((error) => {
+    throwIfCodexGitRecoveryUnsafe(error, signal);
     return null;
   });
   const [leftAheadText, rightAheadText] = counts?.stdout.trim().split(/\s+/) ?? [];
@@ -409,8 +416,8 @@ async function resolveWorkingTreeStartingRef(
     ["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"],
     repositoryPath,
     { signal },
-  ).catch(() => {
-    throwIfRequestAborted(signal);
+  ).catch((error) => {
+    throwIfCodexGitRecoveryUnsafe(error, signal);
     return null;
   });
   const remoteDefaultName = normalizeBranchName(remoteDefault?.stdout ?? "")
@@ -436,8 +443,8 @@ async function resolveCurrentBranchName(
     ["symbolic-ref", "--quiet", "--short", "HEAD"],
     repositoryPath,
     { signal },
-  ).catch(() => {
-    throwIfRequestAborted(signal);
+  ).catch((error) => {
+    throwIfCodexGitRecoveryUnsafe(error, signal);
     return null;
   });
   const symbolicHeadName = normalizeBranchName(symbolicHead?.stdout ?? "");
@@ -473,8 +480,8 @@ async function resolveRequestedMissingBranch(input: {
     ["rev-parse", "--verify", "--end-of-options", `${branchName}^{commit}`],
     input.repositoryPath,
     { signal: input.signal },
-  ).catch(() => {
-    throwIfRequestAborted(input.signal);
+  ).catch((error) => {
+    throwIfCodexGitRecoveryUnsafe(error, input.signal);
     return null;
   });
   if (existing) return null;
@@ -527,7 +534,7 @@ async function resolveDetachedStartingState(input: {
     };
   }
 
-  const [startingRef, startingDiff, syncedBranch, untrackedPaths] = await Promise.all([
+  const [startingRef, startingDiff, syncedBranch, untrackedPaths] = await joinCodexGitOperations([
     resolveWorkingTreeStartingRef(input.repositoryPath, input.signal),
     captureTrackedWorkingTreeDiff(input.repositoryPath, input.signal),
     resolveCurrentBranchName(input.repositoryPath, input.signal),
@@ -597,7 +604,10 @@ async function removeLocalTrackingBranch(
   repositoryPath: string,
   branchName: string,
 ): Promise<void> {
-  await runGitCommand(["branch", "-D", branchName], repositoryPath).catch(() => undefined);
+  await runGitCommand(["branch", "-D", branchName], repositoryPath).catch((error) => {
+    throwIfCodexGitRecoveryUnsafe(error);
+    return undefined;
+  });
 }
 
 async function createMissingLocalTrackingBranch(input: {
@@ -621,7 +631,13 @@ async function createMissingLocalTrackingBranch(input: {
     throwIfRequestAborted(input.signal);
     return branchName;
   } catch (error) {
-    if (await branchExists(input.repositoryPath, branchName).catch(() => false)) {
+    throwIfCodexGitRecoveryUnsafe(error);
+    if (
+      await branchExists(input.repositoryPath, branchName).catch((error) => {
+        throwIfCodexGitRecoveryUnsafe(error);
+        return false;
+      })
+    ) {
       await removeLocalTrackingBranch(input.repositoryPath, branchName);
     }
     throw error;
@@ -668,7 +684,7 @@ async function findIgnoredCodexOverrideFiles(
     sourceGitRoot,
     { signal },
   ).catch((error) => {
-    throwIfRequestAborted(signal);
+    throwIfCodexGitRecoveryUnsafe(error, signal);
     throw new Error(`git ls-files failed while locating ${CODEX_OVERRIDE_FILE}`, {
       cause: error,
     });
@@ -696,7 +712,7 @@ async function findWorktreeIncludedFiles(
     throw error;
   }
 
-  const [ignoredResult, includedResult] = await Promise.all([
+  const [ignoredResult, includedResult] = await joinCodexGitOperations([
     runGitCommand(
       ["ls-files", "--others", "--ignored", "--exclude-standard", "-z"],
       sourceGitRoot,
@@ -708,7 +724,7 @@ async function findWorktreeIncludedFiles(
       { signal },
     ),
   ]).catch((error) => {
-    throwIfRequestAborted(signal);
+    throwIfCodexGitRecoveryUnsafe(error, signal);
     throw new Error(`git ls-files failed while locating ${WORKTREE_INCLUDE_FILE} files`, {
       cause: error,
     });
@@ -888,7 +904,7 @@ async function persistSelectedWorktreeEnvironment(input: {
       );
       return { success: true };
     } catch (error) {
-      throwIfRequestAborted(input.signal);
+      throwIfCodexGitRecoveryUnsafe(error, input.signal);
       return { success: false, error };
     }
   };
@@ -905,8 +921,8 @@ async function persistSelectedWorktreeEnvironment(input: {
       { signal: input.signal },
     )
       .then(() => true)
-      .catch(() => {
-        throwIfRequestAborted(input.signal);
+      .catch((error) => {
+        throwIfCodexGitRecoveryUnsafe(error, input.signal);
         return false;
       });
     if (enabled) result = await writeConfig();
@@ -991,7 +1007,10 @@ async function resolveWorktreeRepositoryPath(worktreePath: string): Promise<stri
   const result = await runGitCommand(
     ["rev-parse", "--path-format=absolute", "--git-common-dir"],
     worktreePath,
-  ).catch(() => null);
+  ).catch((error) => {
+    throwIfCodexGitRecoveryUnsafe(error);
+    return null;
+  });
   const gitCommonDir = result?.stdout.trim();
   if (!gitCommonDir) return null;
 
@@ -1137,13 +1156,19 @@ export async function removeManagedWorktree(worktreePath: string): Promise<void>
     repositoryPath,
   )
     .then(() => true)
-    .catch(() => false);
+    .catch((error) => {
+      throwIfCodexGitRecoveryUnsafe(error);
+      return false;
+    });
 
   if (!removedByGit) {
     await rm(resolvedPath, { recursive: true, force: true });
   }
 
-  await runGitCommand(["worktree", "prune"], repositoryPath).catch(() => undefined);
+  await runGitCommand(["worktree", "prune"], repositoryPath).catch((error) => {
+    throwIfCodexGitRecoveryUnsafe(error);
+    return undefined;
+  });
   await cleanupEmptyWorktreeTokenDir(resolvedPath);
 }
 
@@ -1297,13 +1322,23 @@ export async function createManagedWorktree(
         branchName: null,
       };
     } catch (error) {
-      await removeManagedWorktree(worktreeGitRoot).catch(() => undefined);
+      throwIfCodexGitRecoveryUnsafe(error);
+      await removeManagedWorktree(worktreeGitRoot).catch((cleanupError) => {
+        throw new AggregateError(
+          [error, cleanupError],
+          "Worktree creation failed and cleanup could not complete",
+          { cause: error },
+        );
+      });
       if (createdRequestedBranch) {
         // Compare the original commit so cleanup cannot erase subsequent user work.
         await runGitCommand(
           ["update-ref", "--no-deref", "-d", createdRequestedBranch, baseRef],
           sourceGitRoot,
-        ).catch(() => undefined);
+        ).catch((error) => {
+          throwIfCodexGitRecoveryUnsafe(error);
+          return undefined;
+        });
       }
       if (createdTrackingBranch) {
         await removeLocalTrackingBranch(sourceGitRoot, createdTrackingBranch);

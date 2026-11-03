@@ -7,7 +7,10 @@ import {
   setManagedWorktreeOwnerThread,
 } from "./git-worktree-service";
 import { readWorktreeEnvironmentDefinition } from "./worktree-environment-service";
-import { runCodexWorktreeSetupScript } from "./codex-worktree-shell-environment";
+import {
+  CodexWorktreeShellReleaseError,
+  runCodexWorktreeSetupScript,
+} from "./codex-worktree-shell-environment";
 import {
   inspectManagedWorktree,
   listManagedWorktreesOnHost,
@@ -25,7 +28,13 @@ import {
   exportCrossHostThreadHandoff,
   importCrossHostThreadHandoff,
 } from "./codex-cross-host-thread-handoff-git";
-import { isCodexNonGitRepositoryMessage, runCodexGitCommand } from "./codex-git-command";
+import {
+  createCodexRequestCanceledError,
+  isCodexRequestCanceledError,
+  isCodexNonGitRepositoryMessage,
+  runCodexGitCommand,
+  throwIfCodexGitRecoveryUnsafe,
+} from "./codex-git-command";
 import type {
   CodexWorktreeWorkerCreateInput,
   CodexWorktreeWorkerCreateResult,
@@ -116,7 +125,8 @@ async function readSafeFsmonitorOverride(
         }
       }
     }
-  } catch {
+  } catch (error) {
+    throwIfCodexGitRecoveryUnsafe(error, signal);
     value = "";
   }
 
@@ -186,14 +196,7 @@ async function resolveGitRoot(
 
 function canceled(signal: AbortSignal): never {
   void signal;
-  throw new Error("Request canceled");
-}
-
-function isCanceled(signal: AbortSignal, error: unknown): boolean {
-  return (
-    signal.aborted ||
-    (error instanceof Error && (error.name === "AbortError" || error.message.includes("canceled")))
-  );
+  throw createCodexRequestCanceledError();
 }
 
 export async function executeCodexWorktreeWorkerCreate(
@@ -248,7 +251,7 @@ export async function executeCodexWorktreeWorkerCreate(
     worktreeWorkspaceRoot: created.worktreeWorkspaceRoot,
   };
   if (signal.aborted) {
-    await removeManagedWorktree(created.worktreeGitRoot).catch(() => undefined);
+    await removeManagedWorktree(created.worktreeGitRoot);
     return canceled(signal);
   }
   if (input.localEnvironmentConfigPath === null) {
@@ -296,10 +299,14 @@ export async function executeCodexWorktreeWorkerCreate(
       shellEnvironment,
     };
   } catch (error) {
-    if (isCanceled(signal, error)) {
-      await removeManagedWorktree(created.worktreeGitRoot).catch(() => undefined);
+    // A canceled signal cannot authorize deleting a worktree whose process release failed.
+    if (error instanceof CodexWorktreeShellReleaseError) throw error;
+    throwIfCodexGitRecoveryUnsafe(error);
+    if (isCodexRequestCanceledError(error, signal)) {
+      await removeManagedWorktree(created.worktreeGitRoot);
       return canceled(signal);
     }
+    if (signal.aborted) throw error;
     return {
       ...paths,
       setupError: error instanceof Error ? error.message : String(error),

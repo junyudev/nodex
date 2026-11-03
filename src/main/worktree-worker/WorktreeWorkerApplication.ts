@@ -6,11 +6,16 @@ import * as FiberSet from "effect/FiberSet";
 import * as Schema from "effect/Schema";
 import { executeCodexWorktreeWorkerOperation } from "../codex/codex-worktree-worker-operation";
 import { LocalThreadHandoffPreparationError } from "../codex/codex-local-thread-handoff-git";
+import { isCodexRequestCanceledError } from "../codex/codex-git-command";
 import {
   type CodexLocalShellEnvironmentRuntimeError,
   make as makeShellEnvironment,
 } from "../codex/CodexLocalShellEnvironmentRuntime";
-import type { CodexLocalShellEnvironmentOptions } from "../codex/codex-worktree-shell-environment";
+import {
+  CodexWorktreeShellReleaseError,
+  type CodexLocalShellEnvironmentOptions,
+} from "../codex/codex-worktree-shell-environment";
+import { hasWindowsProcessTreeReleaseFailure } from "../process-tree";
 import {
   CODEX_WORKTREE_WORKER_PROTOCOL_VERSION,
   isCodexWorktreeWorkerHostMessage,
@@ -21,7 +26,6 @@ import {
 export interface WorktreeWorkerTransport {
   readonly close: () => void;
   readonly post: (message: CodexWorktreeWorkerThreadMessage) => void;
-  readonly reportCancellation: boolean;
   readonly subscribe: (listener: (message: unknown) => void, onClose: () => void) => () => void;
 }
 
@@ -86,60 +90,89 @@ export const runWorktreeWorkerApplication = (
         },
       });
       const execute = (message: Extract<CodexWorktreeWorkerHostMessage, { type: "request" }>) =>
-        Effect.promise((signal) =>
-          executeCodexWorktreeWorkerOperation(message.request, {
-            loadBaseEnvironment: () => loadBaseEnvironment(shellEnvironment.load),
-            signal,
-            onEvent: (event) =>
-              transport.post({
-                type: "event",
-                id: message.id,
-                operation: message.request.operation,
-                event,
-              }),
-          }),
-        ).pipe(
-          Effect.tap((success) =>
-            Effect.sync(() =>
-              transport.post({
-                type: "result",
-                id: message.id,
-                operation: message.request.operation,
-                result: { type: "ok", success },
+        Effect.uninterruptibleMask((restore) =>
+          restore(
+            Effect.callback<Awaited<ReturnType<typeof executeCodexWorktreeWorkerOperation>>>(
+              (resume, signal) => {
+                const completion = executeCodexWorktreeWorkerOperation(message.request, {
+                  loadBaseEnvironment: () => loadBaseEnvironment(shellEnvironment.load),
+                  signal,
+                  onEvent: (event) =>
+                    transport.post({
+                      type: "event",
+                      id: message.id,
+                      operation: message.request.operation,
+                      event,
+                    }),
+                }).then(
+                  (success) => {
+                    resume(Effect.succeed(success));
+                    return { status: "fulfilled" as const, value: success };
+                  },
+                  (reason: unknown) => {
+                    resume(Effect.die(reason));
+                    return { status: "rejected" as const, reason };
+                  },
+                );
+                // Effect aborts this signal before running its interruption finalizer. Join
+                // the same operation before acknowledging cancellation or closing the transport.
+                return Effect.promise(() => completion).pipe(
+                  Effect.flatMap((outcome) =>
+                    outcome.status === "rejected" &&
+                    !isCodexRequestCanceledError(outcome.reason, signal)
+                      ? Effect.die(outcome.reason)
+                      : Effect.void,
+                  ),
+                );
+              },
+            ),
+          ).pipe(
+            // Once the external owner drains, publish exactly one terminal result even
+            // when cancellation or Scope shutdown has interrupted the request fiber.
+            Effect.tap((success) =>
+              Effect.sync(() =>
+                transport.post({
+                  type: "result",
+                  id: message.id,
+                  operation: message.request.operation,
+                  result: { type: "ok", success },
+                }),
+              ),
+            ),
+            Effect.catchCause((cause) => {
+              if (isInterruptedOnly(cause)) {
+                return Effect.sync(() => transport.post(canceledResult(message)));
+              }
+              const error = Cause.squash(cause);
+              return Effect.sync(() =>
+                transport.post({
+                  type: "result",
+                  id: message.id,
+                  operation: message.request.operation,
+                  result: {
+                    type: "error",
+                    code:
+                      error instanceof CodexWorktreeShellReleaseError ||
+                      hasWindowsProcessTreeReleaseFailure(error)
+                        ? "release-unconfirmed"
+                        : "operation-failed",
+                    message: String(error),
+                    retryable: true,
+                    ...(message.request.operation === "prepare-handoff" &&
+                    error instanceof LocalThreadHandoffPreparationError
+                      ? { preparationRestored: error.preparationRestored }
+                      : {}),
+                  },
+                }),
+              );
+            }),
+            Effect.ensuring(
+              Effect.sync(() => {
+                activeOperations.delete(message.id);
               }),
             ),
+            Effect.asVoid,
           ),
-          Effect.catchCause((cause) => {
-            if (isInterruptedOnly(cause)) {
-              return options.transport.reportCancellation
-                ? Effect.sync(() => transport.post(canceledResult(message)))
-                : Effect.void;
-            }
-            const error = Cause.squash(cause);
-            return Effect.sync(() =>
-              transport.post({
-                type: "result",
-                id: message.id,
-                operation: message.request.operation,
-                result: {
-                  type: "error",
-                  code: "operation-failed",
-                  message: String(error),
-                  retryable: true,
-                  ...(message.request.operation === "prepare-handoff" &&
-                  error instanceof LocalThreadHandoffPreparationError
-                    ? { preparationRestored: error.preparationRestored }
-                    : {}),
-                },
-              }),
-            );
-          }),
-          Effect.ensuring(
-            Effect.sync(() => {
-              activeOperations.delete(message.id);
-            }),
-          ),
-          Effect.asVoid,
         );
       const onMessage = (raw: unknown): void => {
         if (!isCodexWorktreeWorkerHostMessage(raw)) {

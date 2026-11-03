@@ -1,3 +1,4 @@
+import { createCodexRequestCanceledError } from "./codex-git-command";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdtemp, open, readFile, rm, writeFile } from "node:fs/promises";
@@ -9,7 +10,7 @@ import {
   AgentEnvironmentValueSchema,
   ENVIRONMENT_NAME_PATTERN,
 } from "../../shared/agent-environment";
-import { killChildProcessTree } from "../process-tree";
+import { signalPosixChildProcessTree, terminateWindowsProcessTree } from "../process-tree";
 import { withoutDesktopToolHostBindings } from "./desktop-tool-environment";
 
 export interface CodexStoredShellEnvironment {
@@ -172,8 +173,14 @@ function readCodexLoginShellEnvironment(input: {
       complete();
     };
     const onAbort = (): void => {
-      killChildProcessTree(child, "SIGKILL");
-      settle(() => reject(new Error("Interactive login shell environment loading was canceled")));
+      signalPosixChildProcessTree(child, "SIGKILL");
+      settle(() =>
+        reject(
+          createCodexRequestCanceledError(
+            "Interactive login shell environment loading was canceled",
+          ),
+        ),
+      );
     };
     input.signal?.addEventListener("abort", onAbort, { once: true });
     if (input.signal?.aborted) onAbort();
@@ -346,6 +353,22 @@ function appendOutputTail(currentTail: string, chunk: string, maxChars = 64_000)
 
 const SETUP_KILL_ESCALATION_MS = 250;
 
+/** A failed native release leaves the command's scripts and worktree owned until exit is proven. */
+export class CodexWorktreeShellReleaseError extends AggregateError {
+  readonly phase: "setup" | "cleanup";
+  readonly temporaryRoot: string;
+
+  constructor(phase: "setup" | "cleanup", temporaryRoot: string, errors: readonly unknown[]) {
+    super(
+      errors,
+      `Worktree environment ${phase} cancellation could not release its process tree. Temporary scripts retained at ${temporaryRoot}.`,
+    );
+    this.name = "CodexWorktreeShellReleaseError";
+    this.phase = phase;
+    this.temporaryRoot = temporaryRoot;
+  }
+}
+
 export interface RunCodexWorktreeSetupScriptInput {
   readonly script: string;
   readonly cwd: string;
@@ -363,7 +386,7 @@ export async function runCodexWorktreeSetupScript(
   input: RunCodexWorktreeSetupScriptInput,
 ): Promise<CodexStoredShellEnvironment | null> {
   if (input.signal?.aborted) {
-    throw new Error("Worktree environment setup canceled.");
+    throw createCodexRequestCanceledError("Worktree environment setup canceled.");
   }
   const captureRoot = await mkdtemp(path.join(tmpdir(), "nodex-worktree-shell-environment-"));
   const scriptPath = path.join(captureRoot, `${randomUUID()}-setup-script.sh`);
@@ -381,6 +404,7 @@ export async function runCodexWorktreeSetupScript(
     "utf8",
   );
 
+  let retainTemporaryScripts = false;
   try {
     const baseEnvironment = input.loadBaseEnvironment
       ? await input.loadBaseEnvironment()
@@ -388,7 +412,7 @@ export async function runCodexWorktreeSetupScript(
           onError: input.onShellEnvironmentError,
         });
     if (input.signal?.aborted) {
-      throw new Error("Worktree environment setup canceled.");
+      throw createCodexRequestCanceledError("Worktree environment setup canceled.");
     }
     return await new Promise<CodexStoredShellEnvironment | null>((resolve, reject) => {
       const child = spawn("bash", [wrapperPath], {
@@ -409,15 +433,43 @@ export async function runCodexWorktreeSetupScript(
       let stderrTail = "";
       let settled = false;
       let canceled = false;
+      let childError: Error | null = null;
       let killTimer: ReturnType<typeof setTimeout> | null = null;
+      let windowsTermination: Promise<PromiseSettledResult<void>> | null = null;
       const onAbort = (): void => {
         canceled = true;
         if (child.exitCode !== null || child.signalCode !== null) return;
-        killChildProcessTree(child, "SIGTERM");
+        if (process.platform === "win32") {
+          if (child.pid === undefined || windowsTermination) return;
+          const pid = child.pid;
+          // Keep draining shell output until every captured native handle has exited.
+          windowsTermination = Promise.resolve()
+            .then(() => terminateWindowsProcessTree(pid))
+            .then(
+              () => ({ status: "fulfilled" as const, value: undefined }),
+              (reason: unknown) => {
+                retainTemporaryScripts = true;
+                if (!settled) {
+                  settled = true;
+                  input.signal?.removeEventListener("abort", onAbort);
+                  reject(
+                    new CodexWorktreeShellReleaseError("setup", captureRoot, [
+                      createCodexRequestCanceledError("Worktree environment setup canceled."),
+                      ...(childError ? [childError] : []),
+                      reason,
+                    ]),
+                  );
+                }
+                return { status: "rejected" as const, reason };
+              },
+            );
+          return;
+        }
+        signalPosixChildProcessTree(child, "SIGTERM");
         if (killTimer) return;
         killTimer = setTimeout(() => {
           if (child.exitCode === null && child.signalCode === null) {
-            killChildProcessTree(child, "SIGKILL");
+            signalPosixChildProcessTree(child, "SIGKILL");
           } else if (child.pid !== undefined && process.platform !== "win32") {
             // A shell can exit after SIGTERM while a descendant ignores it. The
             // process group remains addressable by the original leader pid.
@@ -434,32 +486,30 @@ export async function runCodexWorktreeSetupScript(
       input.signal?.addEventListener("abort", onAbort, { once: true });
       if (input.signal?.aborted) onAbort();
 
-      child.stdout?.on("data", (chunk: Buffer) => {
+      const handleStdout = (chunk: Buffer): void => {
+        if (settled) return;
         const text = stdoutDecoder.write(chunk);
         if (!text) return;
         stdoutTail = appendOutputTail(stdoutTail, text);
         input.onOutput?.({ stream: "stdout", data: text });
-      });
-      child.stderr?.on("data", (chunk: Buffer) => {
+      };
+      const handleStderr = (chunk: Buffer): void => {
+        if (settled) return;
         const text = stderrDecoder.write(chunk);
         if (!text) return;
         stderrTail = appendOutputTail(stderrTail, text);
         input.onOutput?.({ stream: "stderr", data: text });
-      });
+      };
 
-      child.on("error", (error) => {
-        if (settled) return;
-        settled = true;
-        if (killTimer && !canceled) clearTimeout(killTimer);
-        input.signal?.removeEventListener("abort", onAbort);
-        if (canceled) {
-          reject(new Error("Worktree environment setup canceled."));
-          return;
-        }
-        reject(new Error(`Worktree environment setup script failed.\n${String(error)}`));
-      });
+      const handleError = (error: Error): void => {
+        if (!settled) childError = error;
+      };
 
-      child.on("close", async (code) => {
+      const handleClose = async (code: number | null): Promise<void> => {
+        child.stdout?.off("data", handleStdout);
+        child.stderr?.off("data", handleStderr);
+        child.off("error", handleError);
+        child.off("close", handleClose);
         if (settled) return;
         settled = true;
         if (killTimer && !canceled) clearTimeout(killTimer);
@@ -475,9 +525,32 @@ export async function runCodexWorktreeSetupScript(
           input.onOutput?.({ stream: "stderr", data: trailingStderr });
         }
 
+        const termination = await windowsTermination;
+        if (termination?.status === "rejected") {
+          input.signal?.removeEventListener("abort", onAbort);
+          reject(
+            new CodexWorktreeShellReleaseError("setup", captureRoot, [
+              createCodexRequestCanceledError("Worktree environment setup canceled."),
+              ...(childError ? [childError] : []),
+              termination.reason,
+            ]),
+          );
+          return;
+        }
+        if (childError) {
+          input.signal?.removeEventListener("abort", onAbort);
+          reject(
+            new Error(
+              `Worktree environment setup script failed.
+${String(childError)}`,
+              { cause: childError },
+            ),
+          );
+          return;
+        }
         if (canceled) {
           input.signal?.removeEventListener("abort", onAbort);
-          reject(new Error("Worktree environment setup canceled."));
+          reject(createCodexRequestCanceledError("Worktree environment setup canceled."));
           return;
         }
 
@@ -490,7 +563,7 @@ export async function runCodexWorktreeSetupScript(
               readEnvironmentCapture(capturePath),
             ]);
             if (canceled) {
-              reject(new Error("Worktree environment setup canceled."));
+              reject(createCodexRequestCanceledError("Worktree environment setup canceled."));
               return;
             }
             resolve(
@@ -501,7 +574,7 @@ export async function runCodexWorktreeSetupScript(
             );
           } catch (error) {
             if (canceled) {
-              reject(new Error("Worktree environment setup canceled."));
+              reject(createCodexRequestCanceledError("Worktree environment setup canceled."));
               return;
             }
             input.onCaptureError?.(error);
@@ -519,10 +592,14 @@ export async function runCodexWorktreeSetupScript(
         reject(
           new Error(`Worktree environment setup script failed.${output ? `\n${output}` : ""}`),
         );
-      });
+      };
+      child.stdout?.on("data", handleStdout);
+      child.stderr?.on("data", handleStderr);
+      child.on("error", handleError);
+      child.once("close", handleClose);
     });
   } finally {
-    await rm(captureRoot, { recursive: true, force: true });
+    if (!retainTemporaryScripts) await rm(captureRoot, { recursive: true, force: true });
   }
 }
 
@@ -534,10 +611,12 @@ export async function runCodexWorktreeCleanupScript(input: {
   readonly onOutput?: (output: { stream: "stdout" | "stderr"; data: string }) => void;
   readonly loadBaseEnvironment?: () => Promise<NodeJS.ProcessEnv>;
 }): Promise<void> {
-  if (input.signal?.aborted) throw new Error("Worktree environment cleanup canceled.");
+  if (input.signal?.aborted)
+    throw createCodexRequestCanceledError("Worktree environment cleanup canceled.");
   const temporaryRoot = await mkdtemp(path.join(tmpdir(), "nodex-worktree-cleanup-"));
   const scriptPath = path.join(temporaryRoot, `${randomUUID()}-cleanup.sh`);
   await writeFile(scriptPath, input.script, "utf8");
+  let retainTemporaryScripts = false;
   try {
     const baseEnvironment = input.loadBaseEnvironment
       ? await input.loadBaseEnvironment()
@@ -557,49 +636,99 @@ export async function runCodexWorktreeCleanupScript(input: {
       });
       let settled = false;
       let canceled = false;
+      let childError: Error | null = null;
       let killTimer: ReturnType<typeof setTimeout> | null = null;
+      let windowsTermination: Promise<PromiseSettledResult<void>> | null = null;
       let stdoutTail = "";
       let stderrTail = "";
       const onAbort = () => {
         canceled = true;
         if (child.exitCode !== null || child.signalCode !== null) return;
-        killChildProcessTree(child, "SIGTERM");
+        if (process.platform === "win32") {
+          if (child.pid === undefined || windowsTermination) return;
+          const pid = child.pid;
+          // Keep draining shell output until every captured native handle has exited.
+          windowsTermination = Promise.resolve()
+            .then(() => terminateWindowsProcessTree(pid))
+            .then(
+              () => ({ status: "fulfilled" as const, value: undefined }),
+              (reason: unknown) => {
+                retainTemporaryScripts = true;
+                if (!settled) {
+                  settled = true;
+                  input.signal?.removeEventListener("abort", onAbort);
+                  reject(
+                    new CodexWorktreeShellReleaseError("cleanup", temporaryRoot, [
+                      createCodexRequestCanceledError("Worktree environment cleanup canceled."),
+                      ...(childError ? [childError] : []),
+                      reason,
+                    ]),
+                  );
+                }
+                return { status: "rejected" as const, reason };
+              },
+            );
+          return;
+        }
+        signalPosixChildProcessTree(child, "SIGTERM");
         killTimer = setTimeout(() => {
           if (child.exitCode === null && child.signalCode === null) {
-            killChildProcessTree(child, "SIGKILL");
+            signalPosixChildProcessTree(child, "SIGKILL");
           }
         }, SETUP_KILL_ESCALATION_MS);
         killTimer.unref?.();
       };
       input.signal?.addEventListener("abort", onAbort, { once: true });
       if (input.signal?.aborted) onAbort();
-      child.stdout?.on("data", (chunk: Buffer) => {
+      const handleStdout = (chunk: Buffer): void => {
+        if (settled) return;
         const text = chunk.toString("utf8");
         stdoutTail = appendOutputTail(stdoutTail, text);
         input.onOutput?.({ stream: "stdout", data: text });
-      });
-      child.stderr?.on("data", (chunk: Buffer) => {
+      };
+      const handleStderr = (chunk: Buffer): void => {
+        if (settled) return;
         const text = chunk.toString("utf8");
         stderrTail = appendOutputTail(stderrTail, text);
         input.onOutput?.({ stream: "stderr", data: text });
-      });
-      child.on("error", (error) => {
-        if (settled) return;
-        settled = true;
-        input.signal?.removeEventListener("abort", onAbort);
-        reject(
-          canceled
-            ? new Error("Worktree environment cleanup canceled.")
-            : new Error(`Worktree environment cleanup script failed.\n${String(error)}`),
-        );
-      });
-      child.on("close", (code) => {
+      };
+      const handleError = (error: Error): void => {
+        if (!settled) childError = error;
+      };
+
+      const handleClose = async (code: number | null): Promise<void> => {
+        child.stdout?.off("data", handleStdout);
+        child.stderr?.off("data", handleStderr);
+        child.off("error", handleError);
+        child.off("close", handleClose);
         if (settled) return;
         settled = true;
         if (killTimer) clearTimeout(killTimer);
         input.signal?.removeEventListener("abort", onAbort);
+        const termination = await windowsTermination;
+        if (termination?.status === "rejected") {
+          reject(
+            new CodexWorktreeShellReleaseError("cleanup", temporaryRoot, [
+              createCodexRequestCanceledError("Worktree environment cleanup canceled."),
+              ...(childError ? [childError] : []),
+              termination.reason,
+            ]),
+          );
+          return;
+        }
+        if (childError) {
+          input.signal?.removeEventListener("abort", onAbort);
+          reject(
+            new Error(
+              `Worktree environment cleanup script failed.
+${String(childError)}`,
+              { cause: childError },
+            ),
+          );
+          return;
+        }
         if (canceled) {
-          reject(new Error("Worktree environment cleanup canceled."));
+          reject(createCodexRequestCanceledError("Worktree environment cleanup canceled."));
           return;
         }
         if (code === 0) {
@@ -610,10 +739,14 @@ export async function runCodexWorktreeCleanupScript(input: {
         reject(
           new Error(`Worktree environment cleanup script failed.${output ? `\n${output}` : ""}`),
         );
-      });
+      };
+      child.stdout?.on("data", handleStdout);
+      child.stderr?.on("data", handleStderr);
+      child.on("error", handleError);
+      child.once("close", handleClose);
     });
   } finally {
-    await rm(temporaryRoot, { recursive: true, force: true });
+    if (!retainTemporaryScripts) await rm(temporaryRoot, { recursive: true, force: true });
   }
 }
 

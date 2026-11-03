@@ -211,9 +211,25 @@ working in the worktree starts with them applied to its own environment, so ever
 command it runs sees what setup prepared. Persistence failure is nonfatal because
 it must not discard a successfully created and set-up worktree. Setup script or config
 failure retains the worktree for Retry, Continue anyway, Edit environment, or
-Auto-fix. Cancellation sends termination to the complete detached process
-group, escalates to a kill signal after a short grace period, then removes the
-partial worktree. Descendant setup processes must not survive cancellation.
+Auto-fix. Cancellation releases the complete owned process tree before removing the
+partial worktree. Windows release remains asynchronous while Main drains the command's
+streams and awaits retained native handles; POSIX release signals the detached process
+group and escalates after a short grace period. The worker acknowledges cancellation
+only after every owned Git or shell operation has settled and its release has completed.
+An aborted signal or a cancellation message alone does not confirm release. Git failures
+and handoff restoration failures retain their terminal error and restoration proof. A failed native
+release reports a failure and retains the worktree and temporary scripts because a
+process may still be using them. Descendant setup processes must not survive a
+successful cancellation.
+
+A failed cancellation result, an unconfirmed native release result, or a missing terminal acknowledgement after 30 seconds
+retains a failure barrier for that execution host's current Scope. An active operation
+that loses its terminal outcome also leaves native release unconfirmed after the worker
+endpoint exits, regardless of whether its caller requested cancellation. Later worktree
+mutations remain unavailable, and replacing the worker must not bypass that barrier.
+An idle worker may be replaced after its endpoint exit is confirmed. The ordinary
+1.5-second worker-exit window begins only after pending operations have returned their
+terminal drain outcomes; it does not bound native process release.
 
 ## Conversation handoff and synthetic activity
 

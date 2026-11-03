@@ -1,3 +1,4 @@
+import { hasWindowsProcessTreeReleaseFailure } from "../process-tree";
 import type { CodexThreadHandoffBranches } from "../../shared/codex-thread-handoff";
 import { buildWorktreeThreadSlug } from "../../shared/worktree-auto-branch";
 import { createManagedWorktree, removeManagedWorktree } from "./git-worktree-service";
@@ -70,6 +71,13 @@ export class LocalThreadHandoffPreparationError extends Error {
     super(`${cause instanceof Error ? cause.message : String(cause)}${suffix}`, { cause });
     this.name = "LocalThreadHandoffPreparationError";
   }
+}
+
+function throwIfHandoffReleaseFailed(error: unknown): void {
+  if (!hasWindowsProcessTreeReleaseFailure(error)) return;
+  if (error instanceof LocalThreadHandoffPreparationError && !error.preparationRestored)
+    throw error;
+  throw new LocalThreadHandoffPreparationError(error, false);
 }
 
 async function readOptionalRef(
@@ -221,6 +229,7 @@ async function stashAndCheckout(
       stashRef = await stashWorkingTree(input.cwd, input.operationId, options.signal);
       options.onProgress(input.stashStep, stashRef ? "completed" : "skipped");
     } catch (error) {
+      throwIfHandoffReleaseFailed(error);
       options.onProgress(input.stashStep, "failed");
       // A failed stash command can have changed Git even when its acknowledgement was lost.
       throw new LocalThreadHandoffPreparationError(error, false);
@@ -235,6 +244,7 @@ async function stashAndCheckout(
     options.onProgress(input.checkoutStep, "completed");
     return { previousBranch, stashRef };
   } catch (error) {
+    throwIfHandoffReleaseFailed(error);
     options.onProgress(input.checkoutStep, "failed");
     const warnings = await restoreCheckout({
       cwd: input.cwd,
@@ -254,14 +264,16 @@ async function restoreCheckout(input: {
 }): Promise<string[]> {
   const warnings: string[] = [];
   if (input.previousBranch) {
-    await checkoutBranchOrCommit(input.cwd, input.previousBranch, input.signal).catch(() =>
-      warnings.push("restore-branch-failed"),
-    );
+    await checkoutBranchOrCommit(input.cwd, input.previousBranch, input.signal).catch((error) => {
+      throwIfHandoffReleaseFailed(error);
+      return warnings.push("restore-branch-failed");
+    });
   }
   if (input.stashRef) {
-    await applyStash(input.cwd, input.stashRef, "pop", input.signal).catch(() =>
-      warnings.push("restore-stash-failed"),
-    );
+    await applyStash(input.cwd, input.stashRef, "pop", input.signal).catch((error) => {
+      throwIfHandoffReleaseFailed(error);
+      return warnings.push("restore-stash-failed");
+    });
   }
   return warnings;
 }
@@ -337,20 +349,28 @@ async function moveToWorktree(
 
     if (target.stashRef) {
       await applyStash(input.worktreeWorkspaceRoot, target.stashRef, "drop", options.signal).catch(
-        () => warnings.push("drop-target-stash-failed"),
+        (error) => {
+          throwIfHandoffReleaseFailed(error);
+          return warnings.push("drop-target-stash-failed");
+        },
       );
     }
     if (source.stashRef) {
-      await applyStash(input.localCwd, source.stashRef, "drop", options.signal).catch(() =>
-        warnings.push("drop-source-stash-failed"),
-      );
+      await applyStash(input.localCwd, source.stashRef, "drop", options.signal).catch((error) => {
+        throwIfHandoffReleaseFailed(error);
+        return warnings.push("drop-source-stash-failed");
+      });
     }
     return warnings;
   } catch (error) {
+    throwIfHandoffReleaseFailed(error);
     options.onProgress("apply-changes-to-worktree", "failed");
     if (!sourceApplied && target?.stashRef) {
       await applyStash(input.worktreeWorkspaceRoot, target.stashRef, "pop", options.signal).catch(
-        () => warnings.push("restore-target-stash-failed"),
+        (error) => {
+          throwIfHandoffReleaseFailed(error);
+          return warnings.push("restore-target-stash-failed");
+        },
       );
     }
     let sourceRestored =
@@ -367,9 +387,10 @@ async function moveToWorktree(
       sourceRestored = !sourceApplied && warnings.length === 0;
     }
     if (input.createdWorktree && sourceRestored) {
-      await removeManagedWorktree(input.worktreeGitRoot).catch(() =>
-        warnings.push("cleanup-created-worktree-failed"),
-      );
+      await removeManagedWorktree(input.worktreeGitRoot).catch((error) => {
+        throwIfHandoffReleaseFailed(error);
+        return warnings.push("cleanup-created-worktree-failed");
+      });
     }
     throw new LocalThreadHandoffPreparationError(
       error,
@@ -424,18 +445,25 @@ async function moveToCheckout(
       await applyStash(input.localGitRoot, source.stashRef, "apply", options.signal);
       sourceApplied = true;
       options.onProgress("apply-changes-to-local", "completed");
-      await applyStash(input.sourceWorktreeCwd, source.stashRef, "drop", options.signal).catch(() =>
-        warnings.push("drop-source-stash-failed"),
+      await applyStash(input.sourceWorktreeCwd, source.stashRef, "drop", options.signal).catch(
+        (error) => {
+          throwIfHandoffReleaseFailed(error);
+          return warnings.push("drop-source-stash-failed");
+        },
       );
     } else {
       options.onProgress("apply-changes-to-local", "skipped");
     }
     return { localCheckoutPreviousBranch: localPreviousBranch, warnings };
   } catch (error) {
+    throwIfHandoffReleaseFailed(error);
     options.onProgress("apply-changes-to-local", "failed");
     if (localCheckedOut && localPreviousBranch) {
       await checkoutBranchOrCommit(input.localGitRoot, localPreviousBranch, options.signal).catch(
-        () => warnings.push("restore-local-branch-failed"),
+        (error) => {
+          throwIfHandoffReleaseFailed(error);
+          return warnings.push("restore-local-branch-failed");
+        },
       );
     }
     let sourceRestored =
@@ -578,18 +606,21 @@ export async function prepareLocalThreadHandoff(
         warnings,
       };
     } catch (error) {
+      throwIfHandoffReleaseFailed(error);
       const sourceRestored =
         !sourceMayChange ||
         (error instanceof LocalThreadHandoffPreparationError && error.preparationRestored);
       let cleanupComplete = true;
       if (sourceRestored) {
-        await removeManagedWorktree(created.worktreeGitRoot).catch(() => {
+        await removeManagedWorktree(created.worktreeGitRoot).catch((cleanupError) => {
+          throwIfHandoffReleaseFailed(cleanupError);
           cleanupComplete = false;
         });
       }
       throw new LocalThreadHandoffPreparationError(error, sourceRestored && cleanupComplete);
     }
   } catch (error) {
+    throwIfHandoffReleaseFailed(error);
     if (error instanceof LocalThreadHandoffPreparationError) throw error;
     throw new LocalThreadHandoffPreparationError(error, !sourceMayChange);
   }

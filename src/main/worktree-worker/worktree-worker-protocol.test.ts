@@ -481,3 +481,24 @@ test("accepts restoration proof only for a typed handoff preparation failure", (
     }),
   ).toBe(false);
 });
+
+test("accepts a native release outcome independently of cancellation", () => {
+  const message = {
+    type: "result",
+    id: "create:release",
+    operation: "create",
+    result: {
+      type: "error",
+      code: "release-unconfirmed",
+      message: "Git process handles remain unconfirmed",
+      retryable: true,
+    },
+  };
+  expect(isCodexWorktreeWorkerThreadMessage(message)).toBe(true);
+  expect(
+    isCodexWorktreeWorkerThreadMessage({
+      ...message,
+      result: { ...message.result, code: "unknown-release-state" },
+    }),
+  ).toBe(false);
+});
