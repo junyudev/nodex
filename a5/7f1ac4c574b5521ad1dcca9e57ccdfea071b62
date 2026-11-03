@@ -1,0 +1,25 @@
+.github/workflows/windows.yml
+  s_84ee72558030d8::t_adf3ad448204e7 114,119-130
+src/main/core-client/canvas-recovery-bytes.node.test.ts
+  s_84ee72558030d8::t_eccf6b4d817de3 1-187
+src/main/core-client/document-module-bytes.node.test.ts
+  s_84ee72558030d8::t_d7bbc7b8407556 5
+src/main/core-client/document-operation-window.node.test.ts
+  s_84ee72558030d8::t_9299c9bef61709 3,22-31,33-64,67-160,163-164,166,168,170,174,176,178-192,194-196,200,202-203,206-208,210-212
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a57f1ac4c574b5521ad1dcca9e57ccdfea071b62",
+  "prompts": {},
+  "sessions": {
+    "s_84ee72558030d8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a01f-2c76-7dd0-96f6-7c553a1da79b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
