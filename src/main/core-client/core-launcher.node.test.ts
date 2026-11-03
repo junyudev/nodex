@@ -172,7 +172,8 @@ describe("native Core launcher", () => {
         expect(authorityExit).toMatchObject({ processId: pid, code: 0, signal: null });
         expect(processExists(pid)).toBe(false);
       }
-      rmSync(root, { recursive: true, force: true });
+      // Child close is asserted above; NTFS may still be completing image deletion.
+      rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     }
   });
 

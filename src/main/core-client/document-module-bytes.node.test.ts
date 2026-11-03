@@ -91,6 +91,8 @@ test("Module byte reads and writes preserve live authorization, update identity 
   });
 });
 
+// Covers seeding plus repeated multi-megabyte encode/decode/export passes.
+// Individual Core requests retain their production deadlines.
 test("large Canvas content uses binary commands and limited previews retain recovery capabilities", async () => {
   await withCoreScenario({ scenarioId: DOCUMENT_SYNC_RECOVERY_SCENARIO_ID }, async (ctx) => {
     const documentId = ctx.manifest.entityIdsByKey!.canvasDocumentId!;
@@ -215,4 +217,4 @@ test("large Canvas content uses binary commands and limited previews retain reco
       await stream.close();
     }
   });
-});
+}, 120_000);
