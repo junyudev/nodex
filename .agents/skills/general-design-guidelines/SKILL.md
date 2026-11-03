@@ -259,6 +259,22 @@ Active/selected items must be **unmistakable** without being garish:
   stays visible through hover and selection. Controls that hover reveals, such as
   a selection checkbox, appear beside it, never on top of it.
 
+### Place failures by what they describe
+
+- A standing condition that blocks a surface, such as an Agent that is not
+  signed in, is a notice attached to that surface: a product-language title, the
+  source's own explanation only when it names a fix the UI cannot offer, and the
+  fixes as actions. It derives from state and leaves when the condition clears.
+  Choose its tone from the condition (`warning` for a step to take, `danger` for
+  something broken) and color only the icon; the text stays primary/secondary.
+- A one-off failure of something the person did is a danger toast through
+  `toastFailure(title, cause)`: the title says what failed, the readable reason
+  goes underneath. A stable `id` keeps a repeating failure to one toast.
+- A failure that belongs to a record, such as a failed Run, is part of that record.
+- Never write status or error text inside an input's surface or let it change the
+  input's layout, and never funnel unrelated failures into one shared error string
+  owned by a container.
+
 ### Chips and compact tokens
 
 - Use outline for neutral references and resources whose object boundary helps

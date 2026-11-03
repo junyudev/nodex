@@ -1,3 +1,4 @@
+import { toastFailure } from "@/lib/failure-toast";
 import { useChatMessageReveal } from "./use-chat-message-reveal";
 import { ThreadForkSubmissionContext } from "./shared/thread-fork-state";
 import { CodexThreadNavigationMarker } from "./codex-thread-navigation-marker";
@@ -604,7 +605,6 @@ interface LocalConversationThreadBodyOwnerProps {
   isWorktreeThread?: boolean;
   onForkFromTurnIntoWorktree?: LocalConversationForkIntoWorktreeHandler;
   planSidePanelState?: ThreadPlanSidePanelState | null;
-  onErrorMessage: (message: string | null) => void;
   initialUiState?: ThreadBodyUiStateOverrides;
   readRestoreSnapshot: () => LocalConversationThreadRestoreSnapshot;
   onRestoreSnapshotChange: (
@@ -655,7 +655,6 @@ export function LocalConversationThreadBodyOwner({
   isWorktreeThread = false,
   onForkFromTurnIntoWorktree,
   planSidePanelState,
-  onErrorMessage,
   initialUiState,
   readRestoreSnapshot,
   onRestoreSnapshotChange,
@@ -1177,35 +1176,32 @@ export function LocalConversationThreadBodyOwner({
 
   const handleEditUserTurn = useCallback(
     async (input: { threadId: string; turnId: string; message: string }) => {
-      onErrorMessage(null);
       if (presentation === "main")
         threadScrollController.prepareLatestTurnSubmitPlacement({ placeLatestTurn: true });
       try {
         await actions.onEditUserTurn(input);
       } catch (error) {
         threadScrollController.clearPendingLatestTurnSubmitPlacement();
-        const nextError = error instanceof Error ? error.message : "Could not edit the message";
-        onErrorMessage(nextError);
+        toastFailure("Couldn’t edit the message", error);
         throw error;
       }
     },
-    [actions, onErrorMessage, presentation, threadScrollController],
+    [actions, presentation, threadScrollController],
   );
 
   const runForkChoice = useCallback(
-    async (turnId: string, fork: () => Promise<void>, fallbackError: string) => {
+    async (turnId: string, fork: () => Promise<void>, failureTitle: string) => {
       if (forkSubmissionInFlightRef.current) return;
 
       forkSubmissionInFlightRef.current = true;
       setForkingTurnId(turnId);
-      onErrorMessage(null);
       await withThreadBodyCleanup(
         async () => {
           try {
             await fork();
             setForkDialogState(null);
           } catch (error) {
-            onErrorMessage(error instanceof Error ? error.message : fallbackError);
+            toastFailure(failureTitle, error);
           }
         },
         () => {
@@ -1214,7 +1210,7 @@ export function LocalConversationThreadBodyOwner({
         },
       );
     },
-    [onErrorMessage],
+    [],
   );
 
   const runForkFromTurn = useCallback(
@@ -1222,7 +1218,7 @@ export function LocalConversationThreadBodyOwner({
       await runForkChoice(
         input.turnId,
         () => actions.onForkFromTurn(input),
-        "Could not fork the conversation",
+        "Couldn’t fork the conversation",
       );
     },
     [actions, runForkChoice],
@@ -1239,7 +1235,7 @@ export function LocalConversationThreadBodyOwner({
             threadId: input.threadId,
             targetTurnId: input.turnId,
           }),
-        "Could not fork the conversation into a new worktree",
+        "Couldn’t fork the conversation into a new worktree",
       );
     },
     [onForkFromTurnIntoWorktree, runForkChoice],
@@ -1265,18 +1261,17 @@ export function LocalConversationThreadBodyOwner({
     if (!threadId || isRestoringArchivedThread) return;
 
     setIsRestoringArchivedThread(true);
-    onErrorMessage(null);
     await withThreadBodyCleanup(
       async () => {
         try {
           await actions.onUnarchiveThread(threadId, projectId);
         } catch (error) {
-          onErrorMessage(error instanceof Error ? error.message : String(error));
+          toastFailure("Couldn’t restore the chat", error);
         }
       },
       () => setIsRestoringArchivedThread(false),
     );
-  }, [actions, isRestoringArchivedThread, onErrorMessage, projectId, threadId]);
+  }, [actions, isRestoringArchivedThread, projectId, threadId]);
 
   const handleRevealUserMessageNavigationItem = useCallback(
     async (item: ThreadUserMessageNavigationItem): Promise<HTMLElement | null> => {

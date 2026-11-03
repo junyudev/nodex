@@ -61,7 +61,6 @@ interface LocalConversationThreadBodyProps {
   resolveHistoryImage?: import("../thread-stage-types").ConversationProviderPresentation["resolveHistoryImage"];
   resolveRuntimeAttachment?: import("../thread-stage-types").ConversationProviderPresentation["resolveRuntimeAttachment"];
   readToolOutput?: import("../thread-stage-types").ConversationProviderPresentation["readToolOutput"];
-  onErrorMessage: (message: string | null) => void;
   contentShiftX?: MotionValue<number>;
   footer?: ReactNode;
   leadingContent?: ReactNode;
@@ -84,7 +83,6 @@ function LocalConversationThreadBodyLayout({
   isWorktreeThread = false,
   onForkFromTurnIntoWorktree,
   planSidePanelState,
-  onErrorMessage,
   contentShiftX,
   footer,
   leadingContent,
@@ -174,7 +172,6 @@ function LocalConversationThreadBodyLayout({
                   isWorktreeThread={isWorktreeThread}
                   onForkFromTurnIntoWorktree={onForkFromTurnIntoWorktree}
                   planSidePanelState={planSidePanelState}
-                  onErrorMessage={onErrorMessage}
                   initialUiState={initialUiState}
                   readRestoreSnapshot={readRestoreSnapshot}
                   onRestoreSnapshotChange={onRestoreSnapshotChange}
@@ -347,7 +344,6 @@ export const LocalConversationThreadBody = memo(
     left.resolveRuntimeAttachment === right.resolveRuntimeAttachment &&
     left.readToolOutput === right.readToolOutput &&
     left.planSidePanelState === right.planSidePanelState &&
-    left.onErrorMessage === right.onErrorMessage &&
     left.contentShiftX === right.contentShiftX &&
     left.footer === right.footer &&
     left.leadingContent === right.leadingContent &&

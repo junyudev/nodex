@@ -1,3 +1,4 @@
+import { toastFailure } from "@/lib/failure-toast";
 import { useEffect, useState } from "react";
 import {
   ActivitySpinnerIcon,
@@ -34,12 +35,10 @@ export function ThreadExecutionLocationSelector({
   model,
   disabled,
   worktreeAvailable,
-  onErrorMessage,
 }: {
   model: ThreadExecutionLocationModel;
   disabled: boolean;
   worktreeAvailable: boolean;
-  onErrorMessage: (message: string | null) => void;
 }) {
   const { operation, busy, blocked, move } = useThreadExecutionLocation(model.threadId);
   const [destination, setDestination] = useState<"local" | "worktree" | null>(null);
@@ -47,9 +46,9 @@ export function ThreadExecutionLocationSelector({
   const Icon = model.kind === "worktree" ? WorktreeStatusIcon : LocalStatusIcon;
   const title = destination === "local" ? "Move to local" : "Move to worktree";
   useEffect(() => {
-    if (operation?.status === "error") onErrorMessage(operation.message ?? "Could not move chat");
+    if (operation?.status === "error") toastFailure("Couldn’t move the chat", operation.message);
     if (operation?.status === "success" || operation?.status === "warning") setDestination(null);
-  }, [operation?.message, operation?.status, onErrorMessage]);
+  }, [operation?.message, operation?.status]);
 
   if (!model.canMove)
     return (
@@ -146,9 +145,8 @@ export function ThreadExecutionLocationSelector({
                 disabled={busy || blocked}
                 onClick={() => {
                   if (!destination) return;
-                  onErrorMessage(null);
                   void move(destination).catch((cause) =>
-                    onErrorMessage(cause instanceof Error ? cause.message : "Could not move chat"),
+                    toastFailure("Couldn’t move the chat", cause),
                   );
                 }}
               >

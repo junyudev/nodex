@@ -29,7 +29,6 @@ interface ThreadSummaryBranchSetupDialogProps {
   threadTitle?: string | null;
   onCreateBranch: (branch: string) => Promise<boolean>;
   onCreated: (branch: string) => void;
-  onErrorMessage: (message: string | null) => void;
   onOpenChange: (open: boolean) => void;
 }
 
@@ -51,7 +50,6 @@ export function ThreadSummaryBranchSetupDialog({
   threadTitle,
   onCreateBranch,
   onCreated,
-  onErrorMessage,
   onOpenChange,
 }: ThreadSummaryBranchSetupDialogProps) {
   const defaultBranchName = useMemo(
@@ -102,7 +100,6 @@ export function ThreadSummaryBranchSetupDialog({
 
       setBusy(true);
       setInlineError(null);
-      onErrorMessage(null);
 
       try {
         const didCreate = await onCreateBranch(normalizedBranchName);
@@ -116,12 +113,11 @@ export function ThreadSummaryBranchSetupDialog({
       } catch (error) {
         const message = error instanceof Error ? error.message : "Could not create branch.";
         setInlineError(message);
-        onErrorMessage(message);
       } finally {
         setBusy(false);
       }
     },
-    [canSubmit, normalizedBranchName, onCreateBranch, onCreated, onErrorMessage, onOpenChange],
+    [canSubmit, normalizedBranchName, onCreateBranch, onCreated, onOpenChange],
   );
 
   return (

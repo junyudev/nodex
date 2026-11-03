@@ -554,6 +554,31 @@ persist the same way until it starts. Choosing another Agent's model starts from
 options last chosen for that model, so a round trip between Agents keeps each model's
 effort and speed.
 
+### Agent readiness and failures around the composer
+
+The composer's text field never carries status or error text. What keeps a chat from
+sending is a standing condition, shown as one notice attached above the composer (inset at
+the top of a floating composer): what is wrong in product words, then the Agent's own
+explanation when it names a fix Nodex cannot offer, then the fixes Nodex can, such as
+`Sign in`, `Check again`, `Settings`, `Retry` or `Work locally`. The notice leaves on its
+own once the condition clears. When several hold, the most specific shows: the chat's
+worktree could not be prepared, then the chat could not connect, then the Agents could not
+be listed, then the selected Agent is turned off, signed out, missing or not ready. Sign-in,
+missing and not-ready states come from the Agent's checked state, not from the wording of
+its message, and only signed-out Codex signs in from the notice; completing that sign-in
+checks the Agents again.
+
+Only the Agent a chat runs on, or one the person chose, raises a readiness notice. While no
+Agent is usable, the stand-in the composer offers stays quiet: the model picker asks for a
+model and lists each turned-on Codex or Claude that cannot run yet with its next step
+(`Sign in`, `Install` or `Unavailable`), and the account rail offers sign-in. A notice never
+blocks sending, since an Agent that missed its check can still answer.
+
+A one-off failure is a toast that says what failed with the reason underneath: a message
+that did not go out keeps its draft and says `Message not sent`, and attachment, draft,
+stop, resume, header, transcript, branch and Git actions name their own failure. A Run that
+fails after it started is part of the transcript instead.
+
 ### Context window
 
 The Composer ring shows the active Agent's current native conversation occupancy,

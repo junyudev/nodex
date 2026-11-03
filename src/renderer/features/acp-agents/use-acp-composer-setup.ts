@@ -1,7 +1,7 @@
 import type { AgentModelSetupPresentation } from "@/components/shared/agent-runtime/agent-model-picker";
 import { appScope, useScopeHandle } from "@/lib/maitai";
 import type { AgentBackendBinding } from "../../../shared/agent-backend";
-import type { ConversationProviderStatus } from "../local-conversation/thread-stage-types";
+import type { ComposerNotice } from "../local-conversation/thread-stage-types";
 import { acpComposerSetupHint, acpProviderId, type AcpProviderSnapshot } from "./acp-agent-model";
 import type { AcpAgentsOwner } from "./acp-agents-owner";
 import { openAcpAgentSetupDialog } from "./acp-agent-setup-dialog";
@@ -14,7 +14,7 @@ interface ComposerInstance {
 }
 
 /**
- * The model menu's ACP setup entries and the Composer's sign-in prompt, from the Runtime state
+ * The model menu's ACP setup entries and the Composer's sign-in notice, from the Runtime state
  * the Composer already read. Each opens the instance's setup dialog in place.
  */
 export function useAcpComposerSetup({
@@ -31,7 +31,7 @@ export function useAcpComposerSetup({
   readonly owner?: AcpAgentsOwner;
 }): {
   readonly setups: readonly AgentModelSetupPresentation[];
-  readonly status: ConversationProviderStatus | null;
+  readonly notice: ComposerNotice | null;
 } {
   const appHandle = useScopeHandle(appScope);
   const entries = instances.flatMap((instance) => {
@@ -65,16 +65,14 @@ export function useAcpComposerSetup({
       tone: hint.tone,
       action: { kind: "open", open: ({ showModels }) => open(showModels) },
     })),
-    status:
+    notice:
       selectedEntry?.hint.hint === "Sign in"
         ? {
-            message: `Sign in to ${selectedEntry.instance.label} to send messages.`,
+            key: `agent:${selectedEntry.instanceId}:signed-out`,
+            tone: "warning",
+            title: `${selectedEntry.instance.label} isn’t signed in`,
             actions: [
-              {
-                label: "Sign in",
-                pendingLabel: "Opening…",
-                run: async () => selectedEntry.open(),
-              },
+              { label: "Sign in", pendingLabel: "Opening…", run: () => selectedEntry.open() },
             ],
           }
         : null,

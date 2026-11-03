@@ -86,6 +86,8 @@ import {
 } from "@/components/shared/icons";
 import { ShortcutKeycaps } from "@/components/ui/shortcut-keycaps";
 import { toast } from "@/components/ui/toast";
+import { toastFailure } from "@/lib/failure-toast";
+import { readableIpcError } from "@/lib/ipc-error-message";
 import {
   NodexDialog,
   NodexDialogAction,
@@ -104,7 +106,7 @@ import type {
 } from "../../thread-stage-types";
 import { ComposerActionTooltipContent } from "./composer-submit-tooltip";
 import { QueuedFollowUpSendDialog } from "./queued-follow-up-send-dialog";
-import { ComposerProviderStatus } from "./composer-provider-status";
+import { ComposerNoticeRail } from "./composer-notice-rail";
 import {
   isComposerDictationShortcut,
   isComposerDictationShortcutTargetBlocked,
@@ -326,8 +328,6 @@ import { resolveImageEditComposerTarget } from "../../image-edit-composer-target
 interface ThreadComposerProps {
   model: ThreadFooterModel;
   actions: ThreadStageActions;
-  errorMessage: string | null;
-  onErrorMessage: (message: string | null) => void;
   contextRailLeadingContent?: ReactNode;
   backgroundAgentRows?: readonly ThreadComposerShellBackgroundAgentRowModel[];
   intelligenceController?: ComposerIntelligenceController;
@@ -953,6 +953,14 @@ function PlanModeTooltipContent() {
   );
 }
 
+/**
+ * A message that did not go out. Its draft stays in the composer, so sending again is the retry;
+ * each new attempt replaces the previous toast instead of stacking another.
+ */
+function toastUnsentMessage(reason: unknown): void {
+  toastFailure("Message not sent", reason, { id: "composer-message-not-sent" });
+}
+
 function PlanKeywordSuggestion({
   onUsePlanMode,
   onDismiss,
@@ -1124,7 +1132,7 @@ function ControlledThreadComposer(
     readonly intelligenceController: ComposerIntelligenceController;
   },
 ) {
-  const { model, actions, onErrorMessage } = props;
+  const { model, actions } = props;
   const { intelligenceController } = props;
   const { floating: isFloatingComposer, visible: composerVisible } =
     useRightPanelComposerPresentation();
@@ -1153,7 +1161,6 @@ function ControlledThreadComposer(
     clearCompletedDraft,
     clearPromptDraft: promptDraft.clear,
     composerThreadId,
-    onErrorMessage,
   });
   const composerHandle = useScopeHandle(ComposerScope);
   const threadScopePath = useScopeHandle(ThreadScope).path;
@@ -1224,9 +1231,7 @@ function ControlledThreadComposer(
           },
         )
         .catch((error: unknown) => {
-          onErrorMessage(
-            error instanceof Error ? error.message : "Could not restore composer draft",
-          );
+          toastFailure("Couldn’t restore your draft", error, { id: "composer-draft-restore" });
         });
       setTransfer(null);
     }
@@ -1327,9 +1332,7 @@ function ControlledThreadComposer(
                   mentionPrompt,
                 );
         void promptDraft.setPrompt(nextPrompt).catch((error: unknown) => {
-          onErrorMessage(
-            error instanceof Error ? error.message : "Could not apply composer intent",
-          );
+          toastFailure("Couldn’t add that to your message", error);
         });
       }
       setConsumedIntentNonce(intent.focusNonce);
@@ -1348,7 +1351,6 @@ function ControlledThreadComposer(
     initialized,
     intent,
     model.hostId,
-    onErrorMessage,
     promptDraft,
     setAddedFiles,
     setAppshotContexts,
@@ -1370,10 +1372,10 @@ function ControlledThreadComposer(
   const setPrompt = useCallback(
     (nextPrompt: string) => {
       void promptDraft.setPrompt(nextPrompt).catch((error: unknown) => {
-        onErrorMessage(error instanceof Error ? error.message : "Could not save composer draft");
+        toastFailure("Couldn’t save your draft", error, { id: "composer-draft-save" });
       });
     },
-    [onErrorMessage, promptDraft],
+    [promptDraft],
   );
   // Saved images follow the draft once it is restored, so a reload brings them back with its text.
   useEffect(() => {
@@ -1381,25 +1383,24 @@ function ControlledThreadComposer(
     const saved = persistableComposerImages(imageAttachments);
     if (JSON.stringify(saved) === JSON.stringify(imageDraft.images)) return;
     void imageDraft.setImages(saved).catch((error: unknown) => {
-      onErrorMessage(error instanceof Error ? error.message : "Could not save composer images");
+      toastFailure("Couldn’t save your draft’s images", error, {
+        id: "composer-draft-images-save",
+      });
     });
-  }, [imageAttachments, imageDraft, initialized, onErrorMessage]);
+  }, [imageAttachments, imageDraft, initialized]);
   useLayoutEffect(() => {
     submittedDraftCleanupRef.current = {
       clearCompletedDraft,
       clearPromptDraft: promptDraft.clear,
       composerThreadId,
-      onErrorMessage,
     };
-  }, [clearCompletedDraft, composerThreadId, onErrorMessage, promptDraft.clear]);
+  }, [clearCompletedDraft, composerThreadId, promptDraft.clear]);
   const clearSubmittedDraft = useCallback(() => {
     const cleanup = submittedDraftCleanupRef.current;
     cleanup.clearCompletedDraft();
     clearReviewDiffCommentAttachments(cleanup.composerThreadId);
     void cleanup.clearPromptDraft().catch((error: unknown) => {
-      cleanup.onErrorMessage(
-        error instanceof Error ? error.message : "Could not clear composer draft",
-      );
+      toastFailure("Couldn’t clear your draft", error, { id: "composer-draft-clear" });
     });
   }, []);
 
@@ -1441,8 +1442,6 @@ function ControlledThreadComposer(
 function HydratedThreadComposer({
   model,
   actions,
-  errorMessage,
-  onErrorMessage,
   contextRailLeadingContent,
   backgroundAgentRows,
   prompt,
@@ -1681,7 +1680,7 @@ function HydratedThreadComposer({
     scopeKey: composerScopeKey,
     enabled: imageInputSupported,
     unavailableReason: imageInputUnavailableReason,
-    onError: (message) => onErrorMessage(message),
+    onError: (message) => toastFailure(message),
     onRemove: (attachmentId) => {
       if (isImageEditComposerAttachmentId(attachmentId)) {
         removeImageEditComposerAttachment(imageEditComposerChannelId, attachmentId);
@@ -1974,15 +1973,9 @@ function HydratedThreadComposer({
           ? failure.reason.message
           : "Could not add one or more files"
         : null;
-      if (failure) {
-        onErrorMessage(
-          failure.reason instanceof Error
-            ? failure.reason.message
-            : "Could not add one or more files",
-        );
-      }
+      if (failure) toastFailure("Couldn’t add one or more files", failure.reason);
     },
-    [isDraftCaptureLocked, onErrorMessage, setFileAttachments],
+    [isDraftCaptureLocked, setFileAttachments],
   );
 
   const libraryReadAuthority = useLibraryFileReadAuthority();
@@ -2163,13 +2156,12 @@ function HydratedThreadComposer({
       if (!model.conversation) {
         const target = model.newThreadTarget;
         if (!target?.sessionId || !actions.onStartThreadForSession) {
-          onErrorMessage("Session thread creation is not available.");
+          toastFailure("Couldn’t start a new chat here");
           return false;
         }
 
         const submittedPresentation = actions.onCaptureSubmissionPresentation?.();
         setBusyAction("send");
-        onErrorMessage(null);
         let prompt = draft.objective;
         const threadGoalDraft: CodexThreadGoalDraftInput = {
           objective: draft.objective,
@@ -2224,7 +2216,7 @@ function HydratedThreadComposer({
             imageEditDraft,
             goalModeActive: true,
           });
-          onErrorMessage(error instanceof Error ? error.message : "Could not start thread goal");
+          toastFailure("Couldn’t start the goal", error, { id: "thread-goal-start-failed" });
           return false;
         } finally {
           setBusyAction(null);
@@ -2232,12 +2224,13 @@ function HydratedThreadComposer({
       }
 
       if (!actions.onSetThreadGoal) {
-        onErrorMessage(getThreadGoalMessage("composer.threadGoal.setError"));
+        toastFailure(getThreadGoalMessage("composer.threadGoal.setError"), undefined, {
+          id: "thread-goal-set-failed",
+        });
         return false;
       }
 
       setBusyAction("send");
-      onErrorMessage(null);
       let materialized: CodexThreadGoalMaterializedDraft | null = null;
       try {
         materialized = await materializeThreadGoalDraft(goalHostId, {
@@ -2281,7 +2274,6 @@ function HydratedThreadComposer({
       isDraftCaptureLocked,
       model.conversation,
       model.hostId,
-      onErrorMessage,
       model.newThreadTarget,
       recordSuccessfulPromptSubmit,
       restoreAdmittedSubmission,
@@ -2326,7 +2318,7 @@ function HydratedThreadComposer({
           })
         : null;
       if (input.imageEditIntent && !intentImageAttachments) {
-        onErrorMessage("One or more images could not be read. Add them again and retry.");
+        toastUnsentMessage("One or more images couldn’t be read. Add them again and retry.");
         return false;
       }
       const effectiveImageAttachments = intentImageAttachments ?? imageAttachments;
@@ -2346,8 +2338,8 @@ function HydratedThreadComposer({
         buildComposerImagePromptInputs(effectiveImageAttachments, executionHostId).length !==
         effectiveImageAttachments.length
       ) {
-        onErrorMessage(
-          "One or more images are unavailable on the selected execution host. Remove them or add them again.",
+        toastUnsentMessage(
+          "One or more images aren’t available where this chat runs. Remove them or add them again.",
         );
         return false;
       }
@@ -2363,7 +2355,7 @@ function HydratedThreadComposer({
           executionHostId,
         );
       } catch (error) {
-        onErrorMessage(error instanceof Error ? error.message : "An image can't be read");
+        toastUnsentMessage(readableIpcError(error, "An image couldn’t be read."));
         return false;
       }
       const hasAgentConfig =
@@ -2378,8 +2370,8 @@ function HydratedThreadComposer({
         !hasAgentConfig &&
         ((promptInput?.images?.length ?? 0) > 0 || input.imageEditIntent)
       ) {
-        onErrorMessage(
-          imageInputUnavailableReason ?? "Remove images or switch models to send this message",
+        toastUnsentMessage(
+          imageInputUnavailableReason ?? "Remove images or switch models to send this message.",
         );
         return false;
       }
@@ -2444,7 +2436,6 @@ function HydratedThreadComposer({
         }
 
         setBusyAction("send");
-        onErrorMessage(null);
         try {
           const sideChatPromptInput = await materializeWrittenImages(
             buildComposerPromptInput({
@@ -2491,7 +2482,6 @@ function HydratedThreadComposer({
       }
 
       setBusyAction("send");
-      onErrorMessage(null);
       const optimisticImageEdit =
         isImageEditFollowUp &&
         model.conversation &&
@@ -2509,7 +2499,7 @@ function HydratedThreadComposer({
           if (!target) return false;
           if (target.sessionId) {
             if (!actions.onStartThreadForSession) {
-              onErrorMessage("Session thread creation is not available.");
+              toastUnsentMessage("This place can’t start a new chat.");
               return false;
             }
             await intelligenceController.flush();
@@ -2535,7 +2525,7 @@ function HydratedThreadComposer({
             });
             recordSuccessfulPromptSubmit(nextPrompt);
           } else {
-            onErrorMessage("Select a session before starting a new thread.");
+            toastUnsentMessage("Choose where the new chat starts, then send again.");
             return false;
           }
         } else if (model.isThreadRunning && approvals.pending.length === 0) {
@@ -2604,8 +2594,8 @@ function HydratedThreadComposer({
             });
             await finalizeEditedQueuedFollowUp();
           } else {
-            onErrorMessage(
-              "Nodex is already running. Choose Queue or Steer before submitting a follow-up.",
+            toastUnsentMessage(
+              "The Agent is still working. Choose Queue or Steer to send a follow-up.",
             );
             return false;
           }
@@ -2698,7 +2688,7 @@ function HydratedThreadComposer({
             imageEditDraft,
           });
         }
-        onErrorMessage(error instanceof Error ? error.message : "Could not send prompt");
+        toastUnsentMessage(error);
         return false;
       } finally {
         setBusyAction(null);
@@ -2734,7 +2724,6 @@ function HydratedThreadComposer({
       queuedFollowUpEdit,
       recordSuccessfulPromptSubmit,
       readSubmittedPastedTextFiles,
-      onErrorMessage,
       cleanupSubmittedPastedTextAttachments,
       restoreAdmittedSubmission,
       setGoalModeActive,
@@ -2881,9 +2870,9 @@ function HydratedThreadComposer({
       }
       imageAttachmentController.addPickedFiles(nextImageFiles);
     } catch (error) {
-      onErrorMessage(error instanceof Error ? error.message : "Could not add files");
+      toastFailure("Couldn’t add files", error);
     }
-  }, [imageAttachmentController, onErrorMessage, setFileAttachments]);
+  }, [imageAttachmentController, setFileAttachments]);
 
   const handleCaptureAppshot = useCallback(
     async (target: CodexComposerAppshotTarget): Promise<void> => {
@@ -2948,14 +2937,14 @@ function HydratedThreadComposer({
           browserViewScopeId: browserImageDrag.browserViewScopeId,
           browserTabId: browserImageDrag.browserTabId,
         });
-        if (!result.ok) onErrorMessage(result.message);
+        if (!result.ok) toastFailure("Couldn’t add the Browser image", result.message);
       } catch (error) {
-        onErrorMessage(error instanceof Error ? error.message : "Could not add Browser image");
+        toastFailure("Couldn’t add the Browser image", error);
       } finally {
         clearBrowserImageDragState(browserAnnotationConversationId);
       }
     },
-    [browserAnnotationConversationId, browserImageDrag, onErrorMessage],
+    [browserAnnotationConversationId, browserImageDrag],
   );
 
   const handleComposerDrop = useCallback(
@@ -3198,21 +3187,14 @@ function HydratedThreadComposer({
   const handleInterrupt = useCallback(async () => {
     if (!model.conversation || !model.isThreadRunning) return;
     setBusyAction("interrupt");
-    onErrorMessage(null);
     try {
       await actions.onInterruptTurn(model.activeTurn?.turnId ?? undefined);
     } catch (error) {
-      onErrorMessage(error instanceof Error ? error.message : "Could not stop Nodex");
+      toastFailure("Couldn’t stop the Agent", error, { id: "composer-interrupt-failed" });
     } finally {
       setBusyAction(null);
     }
-  }, [
-    actions,
-    model.activeTurn?.turnId,
-    model.conversation,
-    model.isThreadRunning,
-    onErrorMessage,
-  ]);
+  }, [actions, model.activeTurn?.turnId, model.conversation, model.isThreadRunning]);
 
   const handleResumeInterruptedTurn = useCallback(async () => {
     const resumeInterruptedTurn = actions.onResumeInterruptedTurn;
@@ -3225,16 +3207,15 @@ function HydratedThreadComposer({
     );
     if (!releaseAttempt) return;
     setBusyAction("resume");
-    onErrorMessage(null);
     try {
       await resumeInterruptedTurn();
     } catch (error) {
-      onErrorMessage(error instanceof Error ? error.message : "Could not resume Nodex");
+      toastFailure("Couldn’t resume the Agent", error, { id: "composer-resume-failed" });
     } finally {
       releaseAttempt();
       setBusyAction(null);
     }
-  }, [actions, model, onErrorMessage, resumeAttemptGate]);
+  }, [actions, model, resumeAttemptGate]);
 
   const handleRemoveFileAttachment = useCallback(
     (attachmentId: string) => {
@@ -3276,12 +3257,12 @@ function HydratedThreadComposer({
       if (attachment.status === "ready") {
         void removePastedTextAttachment({ file: attachment.attachment.file }).catch(
           (error: unknown) => {
-            onErrorMessage(error instanceof Error ? error.message : "Could not remove pasted text");
+            toastFailure("Couldn’t remove the pasted text", error);
           },
         );
       }
     },
-    [incrementAttachmentGeneration, onErrorMessage, setPastedTextAttachments],
+    [incrementAttachmentGeneration, setPastedTextAttachments],
   );
 
   const handleShowPastedTextInField = useCallback(
@@ -3314,10 +3295,10 @@ function HydratedThreadComposer({
           await removePastedTextAttachment({ file: item.attachment.file });
         })
         .catch((error: unknown) => {
-          onErrorMessage(error instanceof Error ? error.message : "Could not restore pasted text");
+          toastFailure("Couldn’t show the pasted text", error);
         });
     },
-    [onErrorMessage, setPastedTextAttachments, setPrompt],
+    [setPastedTextAttachments, setPrompt],
   );
 
   const handleRemoveCommentAttachment = useCallback(
@@ -3766,13 +3747,14 @@ function HydratedThreadComposer({
         : widthPx,
     );
   }, []);
+  const composerNotice = model.provider?.notice ?? null;
   const composerLayout = resolveComposerAdaptiveLayout({
     isFloatingComposer,
     hasAttachments,
     hasExplicitLineBreak: hasMultilinePrompt,
     promptIntrinsicWidthPx,
     compactInputWidthPx,
-    hasError: Boolean(errorMessage),
+    hasNotice: composerNotice !== null,
     isDictating: showDictationRow,
   });
   const floatingComposerSingleLine = composerLayout === "single-line";
@@ -4451,11 +4433,13 @@ function HydratedThreadComposer({
   );
   return (
     <>
+      {composerNotice && !isFloatingComposer ? (
+        <ComposerNoticeRail notice={composerNotice} placement="attached" />
+      ) : null}
       <ComposerContextRailSlot visible={showExternalFooter}>
         <ThreadComposerStatusStrip
           model={model}
           actions={actions}
-          onErrorMessage={onErrorMessage}
           contextRailLeadingContent={contextRailLeadingContent}
           projectSelectorDisabled={busyAction !== null}
         />
@@ -4557,10 +4541,13 @@ function HydratedThreadComposer({
             floatingComposerSingleLine
               ? "overflow-visible rounded-full"
               : cn("overflow-y-auto", !isFloatingComposer && "composer-multiline-surface"),
-            showExternalFooter && "z-10",
+            (showExternalFooter || composerNotice) && "z-10",
           )}
         >
           <div className="relative z-10 flex min-h-0 flex-1 flex-col">
+            {composerNotice && isFloatingComposer ? (
+              <ComposerNoticeRail notice={composerNotice} placement="inset" />
+            ) : null}
             {!floatingComposerSingleLine ? (
               <div
                 className="composer-attachments"
@@ -4836,43 +4823,9 @@ function HydratedThreadComposer({
             <ComposerAdaptiveFooter
               layout={composerLayout}
               input={
-                <>
-                  <ComposerInput layout={composerLayout}>
-                    {renderPromptEditor(floatingComposerSingleLine)}
-                  </ComposerInput>
-                  {model.provider?.authentication ? (
-                    <div className="flex items-center gap-2 px-3 pb-2">
-                      {model.provider.authentication.methods.map((method) => (
-                        <button
-                          key={method.id}
-                          type="button"
-                          disabled={model.provider?.authentication?.pending}
-                          className="text-sm text-token-text-link-foreground disabled:opacity-50"
-                          onClick={() => {
-                            void model.provider?.authentication
-                              ?.signIn(method.id)
-                              .catch((cause: unknown) =>
-                                onErrorMessage(
-                                  cause instanceof Error ? cause.message : "Could not sign in",
-                                ),
-                              );
-                          }}
-                        >
-                          Sign in with {method.name}
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
-                  {errorMessage ? (
-                    <div className="px-3 pb-2 text-xs text-(--destructive)">{errorMessage}</div>
-                  ) : null}
-                  {model.provider?.status ? (
-                    <ComposerProviderStatus
-                      status={model.provider.status}
-                      onErrorMessage={onErrorMessage}
-                    />
-                  ) : null}
-                </>
+                <ComposerInput layout={composerLayout}>
+                  {renderPromptEditor(floatingComposerSingleLine)}
+                </ComposerInput>
               }
               leadingControls={
                 showDictationRow

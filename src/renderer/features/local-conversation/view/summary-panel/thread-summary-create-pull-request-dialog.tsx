@@ -37,7 +37,6 @@ interface ThreadSummaryCreatePullRequestDialogProps {
   hostId?: string;
   onOpenChange: (open: boolean) => void;
   onCompleted?: () => void;
-  onErrorMessage: (message: string | null) => void;
   onWorkflowChange?: (state: SummaryGitActionWorkflowState | null) => void;
 }
 
@@ -125,7 +124,6 @@ export function ThreadSummaryCreatePullRequestDialog({
   hostId = "local",
   onOpenChange,
   onCompleted,
-  onErrorMessage,
   onWorkflowChange,
 }: ThreadSummaryCreatePullRequestDialogProps) {
   const [readState, setReadState] = useState<CreatePrReadState>(EMPTY_READ_STATE);
@@ -223,14 +221,6 @@ export function ThreadSummaryCreatePullRequestDialog({
     });
   }, [activeOperationId, onOpenChange, onWorkflowChange]);
 
-  const finishWithError = useCallback(
-    (message: string) => {
-      setInlineError(message);
-      onErrorMessage(message);
-    },
-    [onErrorMessage],
-  );
-
   const runCreatePullRequest = useCallback(
     async ({ draft, openInBrowser }: { draft: boolean; openInBrowser: boolean }) => {
       const initialStatus = readState.status;
@@ -247,7 +237,6 @@ export function ThreadSummaryCreatePullRequestDialog({
       setBusy(true);
       setActiveOperationId(operationId);
       setInlineError(null);
-      onErrorMessage(null);
 
       try {
         let latestStatus = initialStatus;
@@ -269,7 +258,7 @@ export function ThreadSummaryCreatePullRequestDialog({
           });
           const commitMessageError = getCommitMessageResultError(generatedCommit);
           if (commitMessageError) {
-            finishWithError(commitMessageError);
+            setInlineError(commitMessageError);
             return;
           }
 
@@ -288,7 +277,7 @@ export function ThreadSummaryCreatePullRequestDialog({
           });
           const commitError = getGitActionResultError(commitResult);
           if (commitError) {
-            finishWithError(commitError);
+            setInlineError(commitError);
             return;
           }
 
@@ -307,7 +296,7 @@ export function ThreadSummaryCreatePullRequestDialog({
           });
           const pushError = getGitActionResultError(pushResult);
           if (pushError) {
-            finishWithError(pushError);
+            setInlineError(pushError);
             return;
           }
 
@@ -331,7 +320,7 @@ export function ThreadSummaryCreatePullRequestDialog({
           });
           const pullRequestMessageError = getPullRequestMessageResultError(generatedPullRequest);
           if (pullRequestMessageError) {
-            finishWithError(pullRequestMessageError);
+            setInlineError(pullRequestMessageError);
             return;
           }
 
@@ -356,7 +345,7 @@ export function ThreadSummaryCreatePullRequestDialog({
         });
         const createError = getPullRequestMutationError(result);
         if (createError) {
-          finishWithError(createError);
+          setInlineError(createError);
           return;
         }
 
@@ -364,7 +353,7 @@ export function ThreadSummaryCreatePullRequestDialog({
         onCompleted?.();
         onOpenChange(false);
       } catch (error) {
-        finishWithError(error instanceof Error ? error.message : "Could not create pull request.");
+        setInlineError(error instanceof Error ? error.message : "Could not create pull request.");
       } finally {
         setBusy(false);
         setActiveOperationId((current) => (current === operationId ? null : current));
@@ -377,10 +366,8 @@ export function ThreadSummaryCreatePullRequestDialog({
       canCreate,
       cwd,
       effectiveIncludeLocalChanges,
-      finishWithError,
       hostId,
       onCompleted,
-      onErrorMessage,
       onOpenChange,
       onWorkflowChange,
       readState.status,

@@ -234,17 +234,29 @@ export interface ThreadOpenThreadContext {
   subagent?: ThreadOpenSubagentPayload;
 }
 
-/** A status line beside the composer, such as a workspace that could not be prepared. */
-export interface ConversationProviderStatusAction {
-  readonly label: string;
-  readonly pendingLabel: string;
-  readonly run: () => Promise<void>;
+/**
+ * Why the composer can't send right now and how to fix it, such as an Agent that isn't signed in
+ * or a worktree that could not be prepared. It describes a standing condition, so it stays until
+ * the condition clears. A one-off action failure is a toast instead, and a Run failure is part of
+ * the transcript.
+ */
+export interface ComposerNotice {
+  /** Names the condition; a notice with the same key is the same notice, updated in place. */
+  readonly key: string;
+  /** `warning` asks for a step the person can take; `danger` reports something that broke. */
+  readonly tone: "warning" | "danger";
+  readonly title: string;
+  /** The Agent's own explanation, such as the command or setting that fixes it. */
+  readonly detail?: string | null;
+  readonly actions?: readonly ComposerNoticeAction[];
 }
 
-export interface ConversationProviderStatus {
-  readonly message: string;
-  readonly tone?: "neutral" | "danger";
-  readonly actions?: readonly ConversationProviderStatusAction[];
+export interface ComposerNoticeAction {
+  readonly label: string;
+  /** Replaces the label while `run` is pending. */
+  readonly pendingLabel?: string;
+  /** A rejection keeps the notice and reports why the action failed. */
+  readonly run: () => void | Promise<void>;
 }
 
 /** Work the Agent left running after the tool call that started it, such as a dev server. */
@@ -289,7 +301,8 @@ export interface ConversationProviderPresentation {
   readonly runtimeMode?: import("@nodex/agent-runtime/contracts").RuntimeMode | null;
   readonly supportedRuntimeModes?: readonly import("@nodex/agent-runtime/contracts").RuntimeMode[];
   readonly defaultRuntimeMode?: import("@nodex/agent-runtime/contracts").RuntimeMode;
-  readonly status?: ConversationProviderStatus | null;
+  /** What keeps the composer from sending, shown attached to it until it clears. */
+  readonly notice?: ComposerNotice | null;
   /** Live background work of the opened conversation; subagents are listed separately. */
   readonly backgroundTasks?: ConversationBackgroundTasks | null;
   /** What an empty transcript means here, such as imported history the Agent hasn't restored. */
@@ -339,12 +352,6 @@ export interface ConversationProviderPresentation {
   readonly label: string;
   readonly selection: string;
   readonly commands: readonly { name: string; description: string; inputHint: string | null }[];
-  readonly authentication?: {
-    readonly methods: readonly { id: string; name: string }[];
-    readonly pending: boolean;
-    readonly signIn: (methodId: string) => Promise<void>;
-  };
-  readonly error: string | null;
 }
 
 export interface ThreadStageRouteInput {

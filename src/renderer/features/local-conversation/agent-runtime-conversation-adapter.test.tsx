@@ -179,6 +179,133 @@ const codexProvider = {
   models: [codexModel("gpt", true), codexModel("gpt-mini")],
 } as unknown as AgentRuntimeProvider;
 
+describe("Agent Runtime composer readiness", () => {
+  const signedOutCodex: AgentRuntimeProvider = {
+    ...provider,
+    status: "error",
+    auth: { status: "unauthenticated" },
+    models: [],
+  };
+  const wrapper = ({ children }: PropsWithChildren) => (
+    <RuntimeWorkbench>
+      <AgentSettingsNavigationProvider openAgentSettings={() => {}}>
+        {children}
+      </AgentSettingsNavigationProvider>
+    </RuntimeWorkbench>
+  );
+  const mountChat = (started: boolean) => {
+    const sessionId = started ? "readiness-started" : "readiness-draft";
+    const conversation = {
+      sessionId,
+      projectId: "project",
+      threadId: "engine-thread",
+      snapshot: agentRuntimeSnapshotFixture({
+        thread: { modelSelection: { instanceId: "codex", model: "gpt" } },
+      }),
+    };
+    vi.spyOn(agentRuntimeRuntime, "control").mockResolvedValue(conversation);
+    vi.spyOn(agentRuntimeRuntime, "read").mockResolvedValue(conversation);
+    vi.spyOn(agentRuntimeRuntime, "subscribe").mockResolvedValue(() => {});
+    return renderHook(
+      () =>
+        useAgentRuntimeConversationAdapter({
+          sessionId,
+          sessionUnread: false,
+          executionRef: started ? { runtimeId: "engine", threadId: "engine-thread" } : null,
+          projectId: "project",
+          modelProjectId: "project",
+          instances,
+          onRefresh: async () => {},
+          onOpenThread: () => {},
+          ensureDraft: async () => ({ id: sessionId }),
+        }),
+      { wrapper },
+    );
+  };
+
+  it("keeps an unstarted chat quiet while offering Codex sign-in in the model picker", async () => {
+    vi.spyOn(agentRuntimeRuntime, "catalog").mockResolvedValue([signedOutCodex]);
+    const { result, unmount } = mountChat(false);
+    await waitFor(() => expect(result.current.provider.modelCatalog?.loading).toBe(false));
+    expect(result.current.provider.modelCatalog?.selected).toEqual({
+      binding: { kind: "codex" },
+      model: "",
+    });
+    expect(result.current.provider.notice).toBeNull();
+    expect(result.current.provider.modelCatalog?.setups).toEqual([
+      expect.objectContaining({ kind: "codex", label: "Codex", hint: "Sign in" }),
+    ]);
+    await act(async () => unmount());
+  });
+
+  it("waits for Check again to refresh signed-out Codex before clearing a started chat's notice", async () => {
+    let resolveRefresh!: (providers: AgentRuntimeProvider[]) => void;
+    const refreshedCatalog = {
+      promise: new Promise<AgentRuntimeProvider[]>((resolve) => {
+        resolveRefresh = resolve;
+      }),
+      resolve: (providers: AgentRuntimeProvider[]) => resolveRefresh(providers),
+    };
+    const catalog = vi
+      .spyOn(agentRuntimeRuntime, "catalog")
+      .mockResolvedValueOnce([signedOutCodex])
+      .mockReturnValue(refreshedCatalog.promise);
+    const { result, unmount } = mountChat(true);
+    await waitFor(() => expect(result.current.state.connection).toBe("ready"));
+    await waitFor(() =>
+      expect(result.current.provider.notice).toMatchObject({
+        title: "Codex isn’t signed in",
+        tone: "warning",
+      }),
+    );
+    const actions = result.current.provider.notice!.actions!;
+    expect(actions.map(({ label }) => label)).toEqual(["Sign in", "Check again"]);
+    const checkAgain = actions.find(({ label }) => label === "Check again")!;
+    let settled = false;
+    let checking: Promise<void> | undefined;
+    await act(async () => {
+      checking = Promise.resolve(checkAgain.run()).then(() => {
+        settled = true;
+      });
+      await Promise.resolve();
+    });
+    expect(catalog).toHaveBeenLastCalledWith({ refresh: true });
+    expect(settled).toBe(false);
+    expect(result.current.provider.notice?.title).toBe("Codex isn’t signed in");
+    await act(async () => {
+      refreshedCatalog.resolve([codexProvider]);
+      await checking;
+    });
+    expect(settled).toBe(true);
+    await waitFor(() => expect(result.current.provider.notice).toBeNull());
+    await act(async () => unmount());
+  });
+
+  it("shows a catalog load failure ahead of a started Agent's readiness notice", async () => {
+    const catalog = vi.spyOn(agentRuntimeRuntime, "catalog").mockResolvedValue([signedOutCodex]);
+    const { result, unmount } = mountChat(true);
+    await waitFor(() => expect(result.current.state.connection).toBe("ready"));
+    await waitFor(() =>
+      expect(result.current.provider.notice?.title).toBe("Codex isn’t signed in"),
+    );
+    catalog.mockRejectedValueOnce(new Error("Agent catalog is offline"));
+    await act(async () => {
+      void result.current.provider
+        .notice!.actions!.find(({ label }) => label === "Check again")!
+        .run();
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect(result.current.provider.notice).toMatchObject({
+        title: "Couldn’t load Agents",
+        tone: "danger",
+        detail: "Agent catalog is offline",
+      }),
+    );
+    await act(async () => unmount());
+  });
+});
+
 describe("Agent Runtime failed-provider settings", () => {
   it.each(["configured", "missing-configuration", "codex", "no-window-navigation"] as const)(
     "keeps the failed Agent's settings authority with %s",
@@ -1204,7 +1331,7 @@ describe("Agent Runtime background work", () => {
         },
       ]),
     );
-    expect(result.current.provider.status).toBeNull();
+    expect(result.current.provider.notice).toBeNull();
     await expect(result.current.provider.backgroundTasks!.readOutput!("shell")).resolves.toEqual({
       text: "ready on :4321",
       truncated: true,

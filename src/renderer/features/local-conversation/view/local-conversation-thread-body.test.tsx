@@ -1,3 +1,4 @@
+import { toast } from "@/components/ui/toast";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { act, fireEvent, waitFor } from "@testing-library/react";
 import { useContext, useLayoutEffect, useState, type ReactNode } from "react";
@@ -528,7 +529,6 @@ describe("LocalConversationThreadBody", () => {
                     canonicalRequests={[]}
                     backgroundAgentRows={[]}
                     actions={buildActions()}
-                    onErrorMessage={() => {}}
                     readRestoreSnapshot={() => EMPTY_LOCAL_CONVERSATION_THREAD_RESTORE_SNAPSHOT}
                     onRestoreSnapshotChange={() => {}}
                   />
@@ -653,7 +653,6 @@ describe("LocalConversationThreadBody", () => {
                 canonicalRequests={[]}
                 backgroundAgentRows={[]}
                 actions={buildActions()}
-                onErrorMessage={() => {}}
                 readRestoreSnapshot={() => EMPTY_LOCAL_CONVERSATION_THREAD_RESTORE_SNAPSHOT}
                 onRestoreSnapshotChange={() => {}}
               />
@@ -769,7 +768,6 @@ describe("LocalConversationThreadBody", () => {
                   canonicalRequests={[]}
                   backgroundAgentRows={[]}
                   actions={buildActions()}
-                  onErrorMessage={() => {}}
                   readRestoreSnapshot={() => EMPTY_LOCAL_CONVERSATION_THREAD_RESTORE_SNAPSHOT}
                   onRestoreSnapshotChange={() => {}}
                 />
@@ -847,6 +845,7 @@ describe("LocalConversationThreadBody", () => {
     }
   });
   beforeEach(() => {
+    vi.mocked(toast.danger).mockClear();
     installAsyncRequestAnimationFrame();
     installThreadRailWideLayoutGeometry();
     idleCallbacks = [];
@@ -915,7 +914,6 @@ describe("LocalConversationThreadBody", () => {
                 canonicalRequests={[]}
                 backgroundAgentRows={[]}
                 actions={buildActions()}
-                onErrorMessage={() => {}}
                 readRestoreSnapshot={() => EMPTY_LOCAL_CONVERSATION_THREAD_RESTORE_SNAPSHOT}
                 onRestoreSnapshotChange={() => {}}
               />
@@ -1013,7 +1011,6 @@ describe("LocalConversationThreadBody", () => {
               sideChatInputs.push(input);
             },
           })}
-          onErrorMessage={() => {}}
         />
       </TooltipProvider>,
     );
@@ -1068,7 +1065,6 @@ describe("LocalConversationThreadBody", () => {
           actions={buildActions({
             onOpenSideChat: async () => {},
           })}
-          onErrorMessage={() => {}}
         />
       </TooltipProvider>,
     );
@@ -1139,7 +1135,6 @@ describe("LocalConversationThreadBody", () => {
           <LocalConversationThreadBody
             model={buildModel({ conversation })}
             actions={buildActions()}
-            onErrorMessage={() => {}}
           />
         </TooltipProvider>
       );
@@ -1171,7 +1166,6 @@ describe("LocalConversationThreadBody", () => {
           actions={buildActions({
             onOpenSideChat: async () => {},
           })}
-          onErrorMessage={() => {}}
         />
       </TooltipProvider>,
     );
@@ -1243,7 +1237,6 @@ describe("LocalConversationThreadBody", () => {
               openedThreads.push([threadId, context]);
             },
           })}
-          onErrorMessage={() => {}}
         />
       </TooltipProvider>,
     );
@@ -1294,7 +1287,6 @@ describe("LocalConversationThreadBody", () => {
             presentation={presentation}
             model={buildModel({ conversation })}
             actions={buildActions()}
-            onErrorMessage={() => {}}
           />
         </TooltipProvider>,
       );
@@ -1313,11 +1305,7 @@ describe("LocalConversationThreadBody", () => {
     const { LocalConversationThreadBody } = await import("./local-conversation-thread-body");
     const { container } = render(
       <TooltipProvider>
-        <LocalConversationThreadBody
-          model={buildModel()}
-          actions={buildActions()}
-          onErrorMessage={() => {}}
-        />
+        <LocalConversationThreadBody model={buildModel()} actions={buildActions()} />
       </TooltipProvider>,
     );
 
@@ -1380,7 +1368,6 @@ describe("LocalConversationThreadBody", () => {
             model={unmounted && reason === "resuming history" ? waiting : model}
             actions={actions}
             transcriptVisible={!(unmounted && reason === "hidden transcript")}
-            onErrorMessage={() => {}}
           />
         </TooltipProvider>
       );
@@ -1447,7 +1434,6 @@ describe("LocalConversationThreadBody", () => {
         presentation="floating"
         model={model}
         actions={actions}
-        onErrorMessage={() => {}}
         leadingContent={<Probe name="floating" />}
       />
     );
@@ -1463,7 +1449,6 @@ describe("LocalConversationThreadBody", () => {
             model={model}
             actions={actions}
             transcriptVisible={false}
-            onErrorMessage={() => {}}
             leadingContent={<Probe name="main" />}
             footer={createPortal(floating, document.body)}
           />
@@ -1516,12 +1501,7 @@ describe("LocalConversationThreadBody", () => {
         <ContentSearchProvider>
           <FindControls />
           {expanded ? (
-            <LocalConversationThreadBody
-              presentation="floating"
-              model={model}
-              actions={actions}
-              onErrorMessage={() => {}}
-            />
+            <LocalConversationThreadBody presentation="floating" model={model} actions={actions} />
           ) : null}
         </ContentSearchProvider>
       </TooltipProvider>
@@ -1593,7 +1573,6 @@ describe("LocalConversationThreadBody", () => {
               presentation={presentation}
               model={model}
               actions={actions}
-              onErrorMessage={() => {}}
               leadingContent={<ScrollProbe />}
             />
           ) : null}
@@ -1670,7 +1649,6 @@ describe("LocalConversationThreadBody", () => {
         <LocalConversationThreadBody
           model={buildModel({ conversation })}
           actions={buildActions()}
-          onErrorMessage={() => {}}
         />
       </TooltipProvider>,
     );
@@ -1697,7 +1675,6 @@ describe("LocalConversationThreadBody", () => {
         <LocalConversationThreadBody
           model={buildModel({ conversation })}
           actions={buildActions()}
-          onErrorMessage={() => {}}
         />
       </TooltipProvider>,
     );
@@ -1734,11 +1711,7 @@ describe("LocalConversationThreadBody", () => {
 
     const { getByRole, queryByText } = render(
       <TooltipProvider>
-        <LocalConversationThreadBody
-          model={resumingModel}
-          actions={buildActions()}
-          onErrorMessage={() => {}}
-        />
+        <LocalConversationThreadBody model={resumingModel} actions={buildActions()} />
       </TooltipProvider>,
     );
 
@@ -1764,7 +1737,6 @@ describe("LocalConversationThreadBody", () => {
             },
           })}
           actions={buildActions()}
-          onErrorMessage={() => {}}
         />
       </TooltipProvider>,
     );
@@ -1794,7 +1766,6 @@ describe("LocalConversationThreadBody", () => {
             },
           })}
           actions={buildActions()}
-          onErrorMessage={() => {}}
         />
       </TooltipProvider>,
     );
@@ -1823,7 +1794,6 @@ describe("LocalConversationThreadBody", () => {
             },
           })}
           actions={buildActions()}
-          onErrorMessage={() => {}}
         />
       </TooltipProvider>,
     );
@@ -1851,7 +1821,6 @@ describe("LocalConversationThreadBody", () => {
               restoreCalls.push({ threadId, projectId });
             },
           })}
-          onErrorMessage={() => {}}
         />
       </TooltipProvider>,
     );
@@ -1877,7 +1846,6 @@ describe("LocalConversationThreadBody", () => {
       .fn()
       .mockImplementationOnce(() => pending)
       .mockResolvedValueOnce(undefined);
-    const reportError = vi.fn();
     const view = render(
       <TooltipProvider>
         <LocalConversationThreadBody
@@ -1885,7 +1853,6 @@ describe("LocalConversationThreadBody", () => {
             conversation: buildConversation({ archived: true, resumeState: "needs_resume" }),
           })}
           actions={buildActions({ onUnarchiveThread: restore })}
-          onErrorMessage={reportError}
         />
       </TooltipProvider>,
     );
@@ -1900,12 +1867,14 @@ describe("LocalConversationThreadBody", () => {
     await waitFor(() =>
       expect(view.getByRole("button", { name: "Restore" }).hasAttribute("disabled")).toBe(false),
     );
-    expect(reportError).toHaveBeenLastCalledWith("Restore unavailable");
+    expect(toast.danger).toHaveBeenLastCalledWith("Couldn’t restore the chat", {
+      description: "Restore unavailable",
+    });
     await act(async () => {
       fireEvent.click(view.getByRole("button", { name: "Restore" }));
     });
     await waitFor(() => expect(restore).toHaveBeenCalledTimes(2));
-    expect(reportError).toHaveBeenLastCalledWith(null);
+    expect(toast.danger).toHaveBeenCalledTimes(1);
     view.unmount();
   });
 
@@ -1919,7 +1888,6 @@ describe("LocalConversationThreadBody", () => {
       .fn()
       .mockImplementationOnce(() => pending)
       .mockResolvedValueOnce(undefined);
-    const reportError = vi.fn();
     const view = render(
       <TooltipProvider>
         <LocalConversationThreadBody
@@ -1942,7 +1910,6 @@ describe("LocalConversationThreadBody", () => {
             }),
           })}
           actions={buildActions({ onForkFromTurn: fork })}
-          onErrorMessage={reportError}
         />
       </TooltipProvider>,
     );
@@ -1957,12 +1924,14 @@ describe("LocalConversationThreadBody", () => {
     await waitFor(() =>
       expect(view.getByLabelText("Fork chat from here").hasAttribute("disabled")).toBe(false),
     );
-    expect(reportError).toHaveBeenLastCalledWith("Fork unavailable");
+    expect(toast.danger).toHaveBeenLastCalledWith("Couldn’t fork the conversation", {
+      description: "Fork unavailable",
+    });
     await act(async () => {
       fireEvent.click(view.getByLabelText("Fork chat from here"));
     });
     await waitFor(() => expect(fork).toHaveBeenCalledTimes(2));
-    expect(reportError).toHaveBeenLastCalledWith(null);
+    expect(toast.danger).toHaveBeenCalledTimes(1);
     view.unmount();
   });
 
@@ -2022,7 +1991,6 @@ describe("LocalConversationThreadBody", () => {
               await pendingFork;
             },
           })}
-          onErrorMessage={() => {}}
         />
       </TooltipProvider>,
     );
@@ -2109,7 +2077,6 @@ describe("LocalConversationThreadBody", () => {
           onForkFromTurnIntoWorktree={async (input) => {
             worktreeForkCalls.push(input);
           }}
-          onErrorMessage={() => {}}
         />
       </TooltipProvider>,
     );
@@ -2133,6 +2100,43 @@ describe("LocalConversationThreadBody", () => {
     expect(worktreeForkCalls[0]?.targetTurnId).toBe("turn_older");
   });
 
+  test("keeps a rejected message edit available for retry and reports the failure", async () => {
+    const { LocalConversationThreadBody } = await import("./local-conversation-thread-body");
+    const edit = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Edit unavailable"))
+      .mockResolvedValueOnce(undefined);
+    const view = render(
+      <TooltipProvider>
+        <LocalConversationThreadBody
+          model={buildModel()}
+          actions={buildActions({ onEditUserTurn: edit })}
+        />
+      </TooltipProvider>,
+    );
+    await act(async () => {
+      fireEvent.click(view.getByLabelText("Edit message"));
+      await Promise.resolve();
+    });
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Send" }));
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect(toast.danger).toHaveBeenCalledExactlyOnceWith("Couldn’t edit the message", {
+        description: "Edit unavailable",
+      }),
+    );
+    expect(view.getByDisplayValue("run `bun test`")).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Send" }));
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(view.queryByDisplayValue("run `bun test`")).toBeNull());
+    expect(edit).toHaveBeenCalledTimes(2);
+    expect(toast.danger).toHaveBeenCalledTimes(1);
+  });
+
   test("opens an inline edit prompt in place and only edits on send", async () => {
     const onEditUserTurnCalls: Array<{
       threadId: string;
@@ -2149,7 +2153,6 @@ describe("LocalConversationThreadBody", () => {
               onEditUserTurnCalls.push(input);
             },
           })}
-          onErrorMessage={() => {}}
         />
       </TooltipProvider>,
     );
@@ -2180,11 +2183,7 @@ describe("LocalConversationThreadBody", () => {
     });
     const view = (conversation: CodexConversationSnapshot) => (
       <TooltipProvider>
-        <LocalConversationThreadBody
-          model={buildModel({ conversation })}
-          actions={actions}
-          onErrorMessage={() => {}}
-        />
+        <LocalConversationThreadBody model={buildModel({ conversation })} actions={actions} />
       </TooltipProvider>
     );
     const { getAllByRole, queryAllByRole, getByDisplayValue, getByRole, rerender } = render(
@@ -2239,7 +2238,6 @@ describe("LocalConversationThreadBody", () => {
               edited.push(input.turnId);
             },
           })}
-          onErrorMessage={() => {}}
         />
       </TooltipProvider>,
     );
@@ -2301,7 +2299,6 @@ describe("LocalConversationThreadBody", () => {
         <LocalConversationThreadBody
           model={buildModel({ conversation })}
           actions={buildActions()}
-          onErrorMessage={() => {}}
           initialUiState={{ collapsedAgentBodyByTurnId: { turn_1: true } }}
         />
       </TooltipProvider>,
@@ -2346,7 +2343,6 @@ describe("LocalConversationThreadBody", () => {
               }),
             })}
             actions={buildActions()}
-            onErrorMessage={() => {}}
           />
         </TooltipProvider>,
       );
@@ -2355,3 +2351,7 @@ describe("LocalConversationThreadBody", () => {
     },
   );
 });
+
+vi.mock("@/components/ui/toast", () => ({
+  toast: { danger: vi.fn(), success: vi.fn(), info: vi.fn(), warning: vi.fn() },
+}));

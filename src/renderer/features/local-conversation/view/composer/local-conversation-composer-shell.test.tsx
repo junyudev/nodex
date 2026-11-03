@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { act, fireEvent, waitFor, within } from "@testing-library/react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { NodexTooltipProvider as TooltipProvider } from "@/components/ui/tooltip";
 import type { ThreadFooterModel, ThreadStageActions } from "../../thread-stage-types";
 import type { ThreadGoal } from "@nodex/codex-app-server-protocol/v2";
@@ -173,12 +173,7 @@ function renderComposerShell(
             <div className="z-10 mx-auto flex w-full max-w-(--thread-content-max-width) flex-col px-toolbar pb-4">
               <LocalConversationAboveComposerPortalHost conversationId={model.threadId} />
               <LocalConversationAboveComposerQueuePortalHost conversationId={model.threadId} />
-              <LocalConversationComposerShell
-                model={model}
-                actions={actions}
-                errorMessage={null}
-                onErrorMessage={() => {}}
-              />
+              <LocalConversationComposerShell model={model} actions={actions} />
             </div>
           </TooltipProvider>
         </TestThreadRouteScopePath>
@@ -362,8 +357,6 @@ describe("LocalConversationComposerShell", () => {
             },
             onEditQueuedFollowUp: edit,
           })}
-          errorMessage={null}
-          onErrorMessage={() => {}}
         />
       );
     }

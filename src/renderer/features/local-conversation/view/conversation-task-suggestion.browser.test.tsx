@@ -115,10 +115,6 @@ describe("task suggestion Composer handoff", () => {
               },
             }}
             actions={actions}
-            errorMessage={null}
-            onErrorMessage={(error) => {
-              if (error) throw new Error(error);
-            }}
           />
         </>
       );

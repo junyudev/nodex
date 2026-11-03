@@ -249,7 +249,6 @@ describe("actual transcript Find placement", () => {
                       searchOpenTick={0}
                       threadStartProgress={null}
                       actions={actions}
-                      onErrorMessage={() => {}}
                       readRestoreSnapshot={() => EMPTY_LOCAL_CONVERSATION_THREAD_RESTORE_SNAPSHOT}
                       onRestoreSnapshotChange={() => {}}
                     />
@@ -411,7 +410,6 @@ describe("actual transcript Find placement", () => {
         searchOpenTick={0}
         threadStartProgress={null}
         actions={actions}
-        onErrorMessage={() => {}}
         readRestoreSnapshot={() => restore}
         onRestoreSnapshotChange={() => {}}
       />

@@ -96,8 +96,6 @@ import { markContextualKeyboardActionTargetActive } from "@/lib/contextual-keybo
 interface LocalConversationComposerShellProps {
   model: ThreadFooterModel;
   actions: ThreadStageActions;
-  errorMessage: string | null;
-  onErrorMessage: (message: string | null) => void;
   contextRailLeadingContent?: ReactNode;
 }
 
@@ -804,8 +802,6 @@ export function LocalConversationComposerShell(props: LocalConversationComposerS
 function ScopedLocalConversationComposerShell({
   model,
   actions,
-  errorMessage,
-  onErrorMessage,
   contextRailLeadingContent,
 }: LocalConversationComposerShellProps) {
   const intelligenceController = useComposerIntelligenceController(model, actions);
@@ -896,7 +892,6 @@ function ScopedLocalConversationComposerShell({
           <ThreadComposerStatusStrip
             model={model}
             actions={actions}
-            onErrorMessage={onErrorMessage}
             contextRailLeadingContent={contextRailLeadingContent}
           />
         </ComposerContextRailSlot>
@@ -917,8 +912,6 @@ function ScopedLocalConversationComposerShell({
           backgroundAgentRows={model.composerShell.backgroundAgentRows}
           model={model}
           actions={actions}
-          errorMessage={errorMessage}
-          onErrorMessage={onErrorMessage}
           contextRailLeadingContent={contextRailLeadingContent}
           intelligenceController={intelligenceController}
         />

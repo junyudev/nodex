@@ -91,10 +91,23 @@ import {
   type AgentRuntimeConversationOwnerSnapshot,
 } from "./agent-runtime-conversation-owner";
 import type { ConversationContentSource, ConversationRuntime } from "./conversation-runtime";
-import type { ThreadStageActions, ConversationProviderPresentation } from "./thread-stage-types";
-import type { AgentModelPickerEntry } from "../../components/shared/agent-runtime/agent-model-picker";
+import type {
+  ComposerNotice,
+  ThreadStageActions,
+  ConversationProviderPresentation,
+} from "./thread-stage-types";
+import type {
+  AgentModelPickerEntry,
+  AgentModelSetupPresentation,
+} from "../../components/shared/agent-runtime/agent-model-picker";
 import { sessionFirstSubmissionOwner } from "../conversation-launch/session-first-submission-owner";
-import { setLocalConversationThreadPresented } from "./local-conversation-store";
+import {
+  setLocalConversationThreadPresented,
+  useDefaultCodexAppServerManager,
+} from "./local-conversation-store";
+import { agentReadinessNotice, agentReadinessSetupHint } from "./agent-readiness-notice";
+import { toastFailure } from "../../lib/failure-toast";
+import { useCodexAccountActions } from "../../lib/use-codex-account-actions";
 import { copyAgentRuntimeConversationMarkdown } from "./agent-runtime-markdown-export";
 import {
   agentRuntimeDelegatedTasks,
@@ -868,6 +881,13 @@ export function useAgentRuntimeConversationAdapter(input: {
   const [catalogRequest, setCatalogRequest] = useState({ revision: 0, refresh: false });
   const refreshCatalog = () =>
     setCatalogRequest(({ revision }) => ({ revision: revision + 1, refresh: true }));
+  // Each "Check again" settles once the read it started has answered.
+  const catalogWaiters = useRef<(() => void)[]>([]);
+  const checkCatalogAgain = () =>
+    new Promise<void>((resolve) => {
+      catalogWaiters.current.push(resolve);
+      refreshCatalog();
+    });
   const reloadCatalog = () =>
     setCatalogRequest(({ revision }) => ({ revision: revision + 1, refresh: false }));
   // A newly usable host OpenCode reloads the catalog; the chosen model is never replaced.
@@ -884,6 +904,23 @@ export function useAgentRuntimeConversationAdapter(input: {
       }),
     [],
   );
+  // Signing in to Codex from the composer finishes in the browser; the new account checks the
+  // Agents again so the composer can send without a manual refresh.
+  const codexAccounts = useDefaultCodexAppServerManager();
+  const codexAccountActions = useCodexAccountActions();
+  useEffect(() => {
+    let signedIn = Boolean(codexAccounts.readAccount()?.account);
+    return codexAccounts.subscribeAccount(() => {
+      const nowSignedIn = Boolean(codexAccounts.readAccount()?.account);
+      if (nowSignedIn && !signedIn)
+        setCatalogRequest(({ revision }) => ({ revision: revision + 1, refresh: true }));
+      signedIn = nowSignedIn;
+    });
+  }, [codexAccounts]);
+  const signInToCodex = async () => {
+    const login = await codexAccountActions.startChatGptLogin();
+    if (login.type === "chatgpt" && login.authUrl) window.open(login.authUrl, "_blank");
+  };
   useEffect(() => {
     let active = true;
     const load = agentRuntimeRuntime
@@ -899,22 +936,25 @@ export function useAgentRuntimeConversationAdapter(input: {
         ),
       );
     catalogLoad.current = load;
+    const waiters = catalogWaiters.current;
     void load
-      .then((providers) => {
-        if (active) setCatalogState({ providers, loading: false, error: null });
-      })
-      .catch((cause: unknown) => {
-        if (active)
-          setCatalogState({
-            providers: [],
-            loading: false,
-            error: cause instanceof Error ? cause.message : String(cause),
-          });
+      .then(
+        (providers) => ({ providers, loading: false, error: null }),
+        (cause: unknown) => ({
+          providers: [],
+          loading: false,
+          error: cause instanceof Error ? cause.message : String(cause),
+        }),
+      )
+      .then((next) => {
+        if (!active) return;
+        setCatalogState(next);
+        for (const resolve of waiters.splice(0)) resolve();
       });
     return () => {
       active = false;
     };
-  }, [catalogRequest, input.instances]);
+  }, [catalogRequest, input.instances, catalogLoad, catalogWaiters]);
   const bindingFor = (instanceId: string) => agentRuntimeBinding(instanceId, input.instances);
   const openAgentSettings = useAgentSettingsNavigation();
   useEffect(() => {
@@ -1612,6 +1652,87 @@ export function useAgentRuntimeConversationAdapter(input: {
   };
   // An imported native conversation stays empty until its Agent restores it on the next message.
   const pendingImport = acpPendingImportedHistory(projection);
+  // A turned-on Codex or Claude that cannot run yet explains its missing models in the picker;
+  // OpenCode and ACP Agents bring their own setup rows.
+  const builtInSetups = catalogState.providers.flatMap((entry): AgentModelSetupPresentation[] => {
+    const binding = isNodexProviderId(entry.instanceId) ? undefined : bindingFor(entry.instanceId);
+    const hint = agentReadinessSetupHint(entry);
+    if (!hint || (binding?.kind !== "codex" && binding?.kind !== "claude")) return [];
+    const signIn = entry.instanceId === "codex" && hint.hint === "Sign in";
+    return [
+      {
+        kind: binding.kind,
+        label: agentRuntimeProviderLabel(entry, input.instances),
+        ...hint,
+        action: {
+          kind: "open",
+          open: signIn
+            ? () =>
+                void signInToCodex().catch((cause: unknown) =>
+                  toastFailure("Couldn’t start signing in to Codex", cause),
+                )
+            : () => openSettingsFor(binding),
+        },
+      },
+    ];
+  });
+  // Only the Agent this chat runs on, or one the person chose, raises a readiness notice. The
+  // stand-in offered while no Agent is usable stays quiet: the model picker already asks for a
+  // model and the account rail already offers sign-in.
+  const agentNotice =
+    acpSetup.notice ??
+    (observed || selection.model
+      ? agentReadinessNotice(
+          provider ? agentRuntimeProviderLabel(provider, input.instances) : "The Agent",
+          provider,
+          {
+            ...(provider?.instanceId === "codex" ? { signIn: signInToCodex } : {}),
+            ...(openAgentSettings
+              ? { openSettings: () => openSettingsFor(selection.binding) }
+              : {}),
+            checkAgain: checkCatalogAgain,
+          },
+        )
+      : null);
+  // One standing condition at a time, the most specific first: this chat's own Run, then its
+  // connection, then the Agents it can use.
+  const composerNotice: ComposerNotice | null = preparationFailure
+    ? {
+        key: `worktree-preparation:${preparationFailure}`,
+        tone: "danger",
+        title: "Couldn’t prepare the worktree",
+        actions: [
+          {
+            label: "Retry",
+            pendingLabel: "Retrying…",
+            run: () => retryPreparation(preparationFailure, false),
+          },
+          {
+            label: "Work locally",
+            pendingLabel: "Starting…",
+            run: () => retryPreparation(preparationFailure, true),
+          },
+        ],
+      }
+    : state.error
+      ? {
+          key: "conversation-connection",
+          tone: "danger",
+          title: "Couldn’t connect to this chat",
+          detail: state.error,
+          actions: owner
+            ? [{ label: "Retry", pendingLabel: "Retrying…", run: () => owner.resume() }]
+            : [],
+        }
+      : catalogState.error
+        ? {
+            key: "agent-catalog",
+            tone: "danger",
+            title: "Couldn’t load Agents",
+            detail: catalogState.error,
+            actions: [{ label: "Retry", pendingLabel: "Retrying…", run: checkCatalogAgain }],
+          }
+        : agentNotice;
   const presentation: ConversationProviderPresentation = {
     runtimeMode: resolveAgentRuntimeMode(
       observed?.runtimeMode ?? draftRuntimeMode,
@@ -1677,7 +1798,11 @@ export function useAgentRuntimeConversationAdapter(input: {
       runtimeOptions: [],
       chooseRuntime: () => {},
       manage: () => openSettingsFor(selection.binding),
-      setups: [...(openCodeSetup.setup ? [openCodeSetup.setup] : []), ...acpSetup.setups],
+      setups: [
+        ...builtInSetups,
+        ...(openCodeSetup.setup ? [openCodeSetup.setup] : []),
+        ...acpSetup.setups,
+      ],
     },
     commands:
       provider?.slashCommands.map((command) => ({
@@ -1718,30 +1843,7 @@ export function useAgentRuntimeConversationAdapter(input: {
     refreshSkills: async () => {
       refreshCatalog();
     },
-    // Only a blocking provider state is a composer error; warnings such as an unchecked status or
-    // a model that needs a newer CLI belong to provider settings.
-    error:
-      state.error ??
-      catalogState.error ??
-      (provider?.status === "error" ? (provider.message ?? null) : null),
-    status: preparationFailure
-      ? {
-          message: "The worktree could not be prepared.",
-          tone: "danger",
-          actions: [
-            {
-              label: "Retry",
-              pendingLabel: "Retrying…",
-              run: () => retryPreparation(preparationFailure, false),
-            },
-            {
-              label: "Work locally",
-              pendingLabel: "Starting…",
-              run: () => retryPreparation(preparationFailure, true),
-            },
-          ],
-        }
-      : (acpSetup.status ?? null),
+    notice: composerNotice,
     backgroundTasks,
   };
   return {

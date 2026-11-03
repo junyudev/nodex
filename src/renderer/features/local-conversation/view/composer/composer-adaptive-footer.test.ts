@@ -7,7 +7,7 @@ const compactFloatingComposer = {
   hasExplicitLineBreak: false,
   promptIntrinsicWidthPx: 320,
   compactInputWidthPx: 400,
-  hasError: false,
+  hasNotice: false,
   isDictating: false,
 } as const;
 
@@ -47,6 +47,15 @@ describe("resolveComposerAdaptiveLayout", () => {
       resolveComposerAdaptiveLayout({
         ...compactFloatingComposer,
         isFloatingComposer: false,
+      }),
+    ).toBe("multiline");
+  });
+
+  test("opens a floating composer into its card while a notice heads it", () => {
+    expect(
+      resolveComposerAdaptiveLayout({
+        ...compactFloatingComposer,
+        hasNotice: true,
       }),
     ).toBe("multiline");
   });

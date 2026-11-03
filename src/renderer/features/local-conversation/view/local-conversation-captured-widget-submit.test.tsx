@@ -81,11 +81,7 @@ describe("transcript widget submission owners", () => {
         onSendPrompt: send,
       });
       const view = renderWithMaitai(
-        <LocalConversationThreadBody
-          model={model(running)}
-          actions={actions}
-          onErrorMessage={() => {}}
-        />,
+        <LocalConversationThreadBody model={model(running)} actions={actions} />,
         { wrapper: LocalConversationTestQueryProvider },
       );
       try {

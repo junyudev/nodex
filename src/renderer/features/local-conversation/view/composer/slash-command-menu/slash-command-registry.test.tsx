@@ -76,7 +76,6 @@ describe("buildComposerSlashCommands", () => {
               { name: "side", description: "Native side command", inputHint: null },
               { name: "scan", description: "Scan this workspace", inputHint: null },
             ],
-            error: null,
           },
         },
         actions: { ...buildActions(), onOpenSideChat, onSendPrompt },
@@ -127,7 +126,6 @@ describe("buildComposerSlashCommands", () => {
             label: kind,
             selection: `${kind}:work`,
             commands: [],
-            error: null,
           },
         },
         actions: {
@@ -182,7 +180,6 @@ describe("buildComposerSlashCommands", () => {
             label: kind,
             selection: `${kind}:work`,
             commands: [],
-            error: null,
           },
         },
         actions,
@@ -233,7 +230,6 @@ describe("buildComposerSlashCommands", () => {
       label: "Claude",
       selection: "claude:work",
       commands: [{ name: "mcp", description: "Native command", inputHint: null }],
-      error: null,
       diagnostics: async () => ({
         health: { status: "ready", executable: null, version: null, account: null, error: null },
         mcpServers: [],

@@ -1,3 +1,5 @@
+import { NodexModalHost } from "@/lib/modal-registry";
+import { toast } from "@/components/ui/toast";
 // Collect the fixed component graph before a test owns its render and cleanup lifetime.
 import {
   ThreadFloatingSummaryPanel,
@@ -28,7 +30,7 @@ import type {
 import { NodexTooltipProvider } from "../../../../components/ui/tooltip";
 import { buildCodexFileChangeMap } from "../../../../../shared/codex-file-change";
 import { buildReviewFileSafety } from "../../../../../shared/review-file-safety";
-import { textContent } from "../../../../test/dom";
+import { openNodexMenu, textContent } from "../../../../test/dom";
 import { renderWithAppMaitai as render } from "../../../../test/app-maitai";
 import { TestQueryProvider } from "../../../../test/query";
 import type { ThreadPlanSidePanelTarget, ThreadStageActions } from "../../thread-stage-types";
@@ -408,6 +410,7 @@ describe("ThreadFloatingSummaryPanel", () => {
   });
 
   beforeEach(() => {
+    vi.mocked(toast.danger).mockClear();
     invokeCalls = [];
     gitWorkerCalls = [];
     mockInvokeImpl = null;
@@ -448,7 +451,6 @@ describe("ThreadFloatingSummaryPanel", () => {
         cwd={null}
         projectWorkspacePath={null}
         turns={[]}
-        onErrorMessage={() => undefined}
       />,
     );
 
@@ -468,7 +470,6 @@ describe("ThreadFloatingSummaryPanel", () => {
         cwd="/repo/project"
         projectWorkspacePath="/repo/project"
         turns={[]}
-        onErrorMessage={() => undefined}
       />,
     );
 
@@ -492,7 +493,6 @@ describe("ThreadFloatingSummaryPanel", () => {
         cwd={null}
         projectWorkspacePath={null}
         turns={[]}
-        onErrorMessage={() => undefined}
       />,
     );
 
@@ -510,7 +510,6 @@ describe("ThreadFloatingSummaryPanel", () => {
         cwd={null}
         projectWorkspacePath={null}
         turns={[]}
-        onErrorMessage={() => undefined}
       />,
     );
 
@@ -569,7 +568,6 @@ describe("ThreadFloatingSummaryPanel", () => {
         cwd="/repo/project"
         projectWorkspacePath="/repo/project"
         turns={[]}
-        onErrorMessage={() => undefined}
       />,
     );
 
@@ -606,6 +604,65 @@ describe("ThreadFloatingSummaryPanel", () => {
     expect(invokeCalls.some((call) => call[0] === "branch-metadata")).toBe(false);
   });
 
+  for (const create of [false, true]) {
+    test(`reports a rejected summary branch ${create ? "creation" : "switch"}`, async () => {
+      mockInvokeImpl = async (channel, input) => {
+        if (channel === "branch-metadata")
+          return {
+            currentBranch: "feature/summary-panel",
+            defaultBranch: "main",
+            branches: ["feature/summary-panel", "main"],
+          };
+        if (channel === "create-branch" || channel === "checkout-branch")
+          return new Error("Git checkout is locked");
+        if (channel === "review-summary")
+          return makeSnapshot((input as { source: GitReviewSource }).source, 0, 0);
+        return null;
+      };
+      const view = renderSummary(
+        <>
+          <ThreadFloatingSummaryPanel
+            mounted
+            open
+            activeThreadId="thread-1"
+            cwd="/repo/project"
+            projectWorkspacePath="/repo/project"
+            turns={[]}
+          />
+          <NodexModalHost />
+        </>,
+      );
+      const label = await view.findByText("feature/summary-panel");
+      const trigger = label.closest<HTMLElement>("[role='button']");
+      if (!trigger) throw new Error("Expected the branch selector");
+      await openNodexMenu(trigger);
+      if (create) {
+        await act(async () => {
+          fireEvent.click(view.getByRole("menuitem", { name: "Create and checkout new branch" }));
+          await Promise.resolve();
+        });
+        const input = await view.findByRole("textbox", { name: "Branch name" });
+        await act(async () => {
+          fireEvent.change(input, { target: { value: "new-feature" } });
+          await Promise.resolve();
+        });
+        await act(async () => {
+          fireEvent.click(view.getByRole("button", { name: "Create and checkout" }));
+          await Promise.resolve();
+        });
+      } else {
+        const branch = await view.findByRole("menuitem", { name: "main" });
+        await clickAndAct(branch);
+      }
+      await waitFor(() =>
+        expect(toast.danger).toHaveBeenCalledExactlyOnceWith(
+          create ? "Couldn’t create a branch" : "Couldn’t switch branches",
+          { description: "Git checkout is locked" },
+        ),
+      );
+    });
+  }
+
   test("opens the Review surface from the Changes row using the primary git source", async () => {
     const openedSources: GitReviewSource[] = [];
     mockInvokeImpl = async (channel: string, input?: unknown) => {
@@ -641,7 +698,6 @@ describe("ThreadFloatingSummaryPanel", () => {
             },
           } as Partial<ThreadStageActions> as ThreadStageActions
         }
-        onErrorMessage={() => undefined}
       />,
     );
 
@@ -723,7 +779,6 @@ describe("ThreadFloatingSummaryPanel", () => {
             },
           } as Partial<ThreadStageActions> as ThreadStageActions
         }
-        onErrorMessage={() => undefined}
       />,
     );
 
@@ -836,7 +891,6 @@ describe("ThreadFloatingSummaryPanel", () => {
         cwd="/repo/project"
         projectWorkspacePath="/repo/project"
         turns={[]}
-        onErrorMessage={() => undefined}
       />,
     );
 
@@ -891,6 +945,7 @@ describe("ThreadFloatingSummaryPanel", () => {
 
       if (channel === "create-branch") {
         branchCreateInputs.push(input);
+        if (branchCreateInputs.length === 1) return new Error("Branch name is already in use");
         branchCreated = true;
         return {
           cwd: "/repo/project",
@@ -919,7 +974,6 @@ describe("ThreadFloatingSummaryPanel", () => {
         cwd="/repo/project"
         projectWorkspacePath="/repo/project"
         turns={[]}
-        onErrorMessage={() => undefined}
       />,
     );
 
@@ -947,8 +1001,15 @@ describe("ThreadFloatingSummaryPanel", () => {
       fireEvent.click(view.getByRole("button", { name: "Create" }));
     });
 
+    expect(await view.findByText("Branch name is already in use")).toBeTruthy();
+    expect(toast.danger).not.toHaveBeenCalled();
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Create" }));
+      await Promise.resolve();
+    });
+
     await waitFor(() => {
-      if (branchCreateInputs.length !== 1) {
+      if (branchCreateInputs.length !== 2) {
         throw new Error("Expected branch creation before commit workflow.");
       }
     });
@@ -1013,7 +1074,6 @@ describe("ThreadFloatingSummaryPanel", () => {
         cwd="/repo/project"
         projectWorkspacePath="/repo/project"
         turns={[]}
-        onErrorMessage={() => undefined}
       />,
     );
 
@@ -1109,7 +1169,6 @@ describe("ThreadFloatingSummaryPanel", () => {
         cwd="/repo/project"
         projectWorkspacePath="/repo/project"
         turns={[]}
-        onErrorMessage={() => undefined}
       />,
     );
 
@@ -1205,7 +1264,6 @@ describe("ThreadFloatingSummaryPanel", () => {
         cwd="/repo/project"
         projectWorkspacePath="/repo/project"
         turns={[]}
-        onErrorMessage={() => undefined}
       />,
     );
 
@@ -1265,7 +1323,6 @@ describe("ThreadFloatingSummaryPanel", () => {
         cwd="/repo/project"
         projectWorkspacePath="/repo/project"
         turns={[]}
-        onErrorMessage={() => undefined}
       />,
     );
 
@@ -1350,7 +1407,6 @@ describe("ThreadFloatingSummaryPanel", () => {
         cwd="/repo/project"
         projectWorkspacePath="/repo/project"
         turns={[]}
-        onErrorMessage={() => undefined}
       />,
     );
 
@@ -1488,7 +1544,6 @@ describe("ThreadFloatingSummaryPanel", () => {
         cwd="/repo/project"
         projectWorkspacePath="/repo/project"
         turns={[]}
-        onErrorMessage={() => undefined}
       />,
     );
 
@@ -1588,7 +1643,6 @@ describe("ThreadFloatingSummaryPanel", () => {
         cwd="/repo/project"
         projectWorkspacePath="/repo/project"
         turns={[]}
-        onErrorMessage={() => undefined}
       />,
     );
 
@@ -1707,7 +1761,6 @@ describe("ThreadFloatingSummaryPanel", () => {
         cwd="/repo/project"
         projectWorkspacePath="/repo/project"
         turns={[]}
-        onErrorMessage={() => undefined}
       />,
     );
 
@@ -1837,6 +1890,14 @@ describe("ThreadFloatingSummaryPanel", () => {
 
       if (channel === "gh-pr-create") {
         createPullRequestInputs.push(input);
+        if (createPullRequestInputs.length === 1)
+          return {
+            cwd: "/repo/project",
+            available: true,
+            disabledReason: null,
+            url: null,
+            message: "Pull request access denied",
+          };
         return {
           cwd: "/repo/project",
           available: true,
@@ -1866,7 +1927,6 @@ describe("ThreadFloatingSummaryPanel", () => {
             },
           } as Partial<ThreadStageActions> as ThreadStageActions
         }
-        onErrorMessage={() => undefined}
       />,
     );
 
@@ -1891,11 +1951,18 @@ describe("ThreadFloatingSummaryPanel", () => {
       fireEvent.click(view.getByRole("button", { name: "Create PR" }));
     });
 
+    expect(await view.findByText("Pull request access denied")).toBeTruthy();
+    expect(toast.danger).not.toHaveBeenCalled();
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Create PR" }));
+      await Promise.resolve();
+    });
+
     await waitFor(() => {
       if (messageGenerateInputs.length !== 1) {
         throw new Error("Expected blank PR title/body to be generated before creating the PR.");
       }
-      if (createPullRequestInputs.length !== 1) {
+      if (createPullRequestInputs.length !== 2) {
         throw new Error("Expected gh-pr-create to be called.");
       }
     });
@@ -2001,7 +2068,6 @@ describe("ThreadFloatingSummaryPanel", () => {
         cwd="/repo/project"
         projectWorkspacePath="/repo/project"
         turns={[]}
-        onErrorMessage={() => undefined}
       />,
     );
 
@@ -2195,7 +2261,6 @@ describe("ThreadFloatingSummaryPanel", () => {
             isMaterialized: false,
           },
         ]}
-        onErrorMessage={() => undefined}
       />,
     );
 
@@ -2258,7 +2323,6 @@ describe("ThreadFloatingSummaryPanel", () => {
           nextRunLabel: "tomorrow at 9:00 AM",
         }}
         actions={actions}
-        onErrorMessage={() => undefined}
       />,
     );
 
@@ -2340,7 +2404,6 @@ describe("ThreadFloatingSummaryPanel", () => {
           },
         ]}
         actions={actions}
-        onErrorMessage={() => undefined}
       />,
     );
 
@@ -2411,7 +2474,6 @@ describe("ThreadFloatingSummaryPanel", () => {
           },
         ]}
         actions={actions}
-        onErrorMessage={() => undefined}
       />,
     );
 
@@ -2468,7 +2530,6 @@ describe("ThreadFloatingSummaryPanel", () => {
           },
         ]}
         actions={actions}
-        onErrorMessage={() => undefined}
       />,
     );
 
@@ -2501,7 +2562,6 @@ describe("ThreadFloatingSummaryPanel", () => {
         projectWorkspacePath={null}
         turns={[]}
         computerUsePip={{ visible: true }}
-        onErrorMessage={() => undefined}
       />,
     );
 
@@ -2537,7 +2597,6 @@ describe("ThreadFloatingSummaryPanel", () => {
             onOpenSummaryBrowserRow: () => undefined,
           } as Partial<ThreadStageActions> as ThreadStageActions
         }
-        onErrorMessage={() => undefined}
       />,
     );
 
@@ -2587,7 +2646,6 @@ describe("ThreadFloatingSummaryPanel", () => {
             },
           } as Partial<ThreadStageActions> as ThreadStageActions
         }
-        onErrorMessage={() => undefined}
       />,
     );
 
@@ -2627,7 +2685,6 @@ describe("ThreadFloatingSummaryPanel", () => {
           turns={[]}
           activeThreadIsManagedWorktree={kind === "worktree"}
           executionLocation={{ threadId: "thread-1", kind, canMove: true }}
-          onErrorMessage={() => undefined}
         />,
       );
 
@@ -2685,7 +2742,6 @@ describe("ThreadFloatingSummaryPanel", () => {
         cwd={null}
         projectWorkspacePath={null}
         turns={[]}
-        onErrorMessage={() => undefined}
       />,
     );
 
@@ -2723,7 +2779,6 @@ describe("ThreadFloatingSummaryPanel", () => {
         cwd={null}
         projectWorkspacePath={null}
         turns={turns}
-        onErrorMessage={() => undefined}
       />,
     );
 
@@ -2771,7 +2826,6 @@ describe("ThreadFloatingSummaryPanel", () => {
           cwd={null}
           projectWorkspacePath={null}
           turns={turns}
-          onErrorMessage={() => undefined}
         />,
       );
 
@@ -2864,7 +2918,6 @@ describe("ThreadFloatingSummaryPanel", () => {
         projectWorkspacePath={null}
         turns={turns}
         actions={actions}
-        onErrorMessage={() => undefined}
       />,
     );
 
@@ -2961,7 +3014,6 @@ describe("ThreadFloatingSummaryPanel", () => {
         projectWorkspacePath={null}
         turns={turns}
         actions={actions}
-        onErrorMessage={() => undefined}
       />,
     );
 
@@ -3028,7 +3080,6 @@ describe("ThreadFloatingSummaryPanel", () => {
         projectWorkspacePath={null}
         turns={turns}
         actions={actions}
-        onErrorMessage={() => undefined}
       />,
     );
 
@@ -3091,7 +3142,6 @@ describe("ThreadFloatingSummaryPanel", () => {
         cwd="/repo/project"
         projectWorkspacePath="/repo/project"
         turns={turns}
-        onErrorMessage={() => undefined}
       />,
     );
 
@@ -3148,7 +3198,6 @@ describe("ThreadFloatingSummaryPanel", () => {
           cwd="/repo/project"
           projectWorkspacePath="/repo/project"
           turns={turns}
-          onErrorMessage={() => undefined}
         />,
       );
     });
@@ -3198,7 +3247,6 @@ describe("ThreadFloatingSummaryPanel", () => {
         cwd={null}
         projectWorkspacePath={null}
         turns={turns}
-        onErrorMessage={() => undefined}
       />,
     );
 
@@ -3231,7 +3279,6 @@ describe("ThreadFloatingSummaryPanel", () => {
           cwd="/repo/project/dist"
           projectWorkspacePath="/repo/project"
           turns={makeFileOutputTurns(path)}
-          onErrorMessage={() => undefined}
         />,
       );
 
@@ -3264,7 +3311,6 @@ describe("ThreadFloatingSummaryPanel", () => {
         cwd="/repo/project"
         projectWorkspacePath="/repo/project"
         turns={makeFileOutputTurns(path)}
-        onErrorMessage={() => undefined}
       />,
     );
 
@@ -3282,7 +3328,6 @@ describe("ThreadFloatingSummaryPanel", () => {
 
   test("reports when a summary output cannot be opened", async () => {
     outputOpeners.openFile.mockResolvedValue(false);
-    const onErrorMessage = vi.fn();
     const view = renderSummary(
       <ThreadFloatingSummaryPanel
         mounted
@@ -3291,14 +3336,15 @@ describe("ThreadFloatingSummaryPanel", () => {
         cwd={null}
         projectWorkspacePath={null}
         turns={makeFileOutputTurns("/repo/project/dist/report.pdf")}
-        onErrorMessage={onErrorMessage}
       />,
     );
 
     const row = await view.findByRole("button", { name: "report.pdf" });
     await clickAndAct(row);
 
-    await waitFor(() => expect(onErrorMessage).toHaveBeenLastCalledWith("Could not open output"));
+    await waitFor(() =>
+      expect(toast.danger).toHaveBeenLastCalledWith("Couldn’t open the output", {}),
+    );
   });
 
   test("opens URL summary panel output rows through link routing", async () => {
@@ -3360,7 +3406,6 @@ describe("ThreadFloatingSummaryPanel", () => {
         cwd={null}
         projectWorkspacePath={null}
         turns={turns}
-        onErrorMessage={() => undefined}
       />,
     );
 
@@ -3408,7 +3453,6 @@ describe("ThreadFloatingSummaryPanel", () => {
           taskDetailsKind="observation"
           actions={{ onOpenTaskObservation }}
           onOpenThread={onOpenThread}
-          onErrorMessage={() => {}}
         />,
       );
       const row = view.getByText("Review changes").closest("[role='button']");
@@ -3490,7 +3534,6 @@ describe("ThreadFloatingSummaryPanel", () => {
         onOpenThread={(threadId, context) => {
           openCalls.push({ threadId, context });
         }}
-        onErrorMessage={() => undefined}
       />,
     );
 
@@ -3614,7 +3657,6 @@ describe("ThreadFloatingSummaryPanel", () => {
             openPanelCalls.push("open");
           },
         }}
-        onErrorMessage={() => undefined}
       />,
     );
 
@@ -3692,7 +3734,6 @@ describe("ThreadFloatingSummaryPanel", () => {
         turns={[]}
         childMemberships={memberships}
         knownConversationsById={knownConversationsById}
-        onErrorMessage={() => undefined}
       />,
     );
 
@@ -3709,3 +3750,7 @@ describe("ThreadFloatingSummaryPanel", () => {
     ).toBe(true);
   });
 });
+
+vi.mock("@/components/ui/toast", () => ({
+  toast: { danger: vi.fn(), success: vi.fn(), info: vi.fn(), warning: vi.fn() },
+}));

@@ -167,7 +167,6 @@ describe("useComposerIntelligenceController", () => {
         selection: "claude:local",
         label: "Claude Code",
         commands: [],
-        error: null,
       },
     } satisfies ThreadFooterModel;
     hook.rerender({ model: nativeModel, commit: nativeCommit });
@@ -193,7 +192,6 @@ describe("useComposerIntelligenceController", () => {
         selection: "claude:local",
         label: "Claude Code",
         commands: [],
-        error: null,
       },
     } satisfies ThreadFooterModel;
     const actions = {

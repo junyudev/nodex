@@ -1,3 +1,4 @@
+import { toastFailure } from "@/lib/failure-toast";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ThreadFooterModel, ThreadStageActions } from "../../thread-stage-types";
 import {
@@ -18,7 +19,6 @@ import { NewChatLocationSelector } from "./new-chat-location-selector";
 interface ThreadComposerStatusStripProps {
   model: ThreadFooterModel;
   actions: ThreadStageActions;
-  onErrorMessage: (message: string | null) => void;
   contextRailLeadingContent?: ReactNode;
   projectSelectorDisabled?: boolean;
   className?: string;
@@ -27,7 +27,6 @@ interface ThreadComposerStatusStripProps {
 export function ThreadComposerStatusStrip({
   model,
   actions,
-  onErrorMessage,
   contextRailLeadingContent,
   projectSelectorDisabled = false,
   className,
@@ -38,7 +37,6 @@ export function ThreadComposerStatusStrip({
     <ThreadComposerStatusStripContent
       model={model}
       actions={actions}
-      onErrorMessage={onErrorMessage}
       contextRailLeadingContent={contextRailLeadingContent}
       projectSelectorDisabled={projectSelectorDisabled}
       className={className}
@@ -53,7 +51,6 @@ export function shouldShowThreadComposerStatusStrip(model: ThreadFooterModel): b
 function ThreadComposerStatusStripContent({
   model,
   actions,
-  onErrorMessage,
   contextRailLeadingContent,
   projectSelectorDisabled = false,
   className,
@@ -151,7 +148,6 @@ function ThreadComposerStatusStripContent({
         });
 
       setIsBranchBusy(true);
-      onErrorMessage(null);
       try {
         const nextState = await changeComposerBranch({
           cwd: requestedCwd,
@@ -163,20 +159,14 @@ function ThreadComposerStatusStripContent({
         return true;
       } catch (error) {
         if (isCurrentRequest()) {
-          onErrorMessage(
-            error instanceof Error
-              ? error.message
-              : create
-                ? "Could not create branch"
-                : "Could not switch branches",
-          );
+          toastFailure(create ? "Couldn’t create a branch" : "Couldn’t switch branches", error);
         }
         return false;
       } finally {
         if (isCurrentRequest()) setIsBranchBusy(false);
       }
     },
-    [branchCwd, onErrorMessage],
+    [branchCwd],
   );
 
   const handleCheckoutBranch = (branch: string) => handleChangeBranch(branch, false);

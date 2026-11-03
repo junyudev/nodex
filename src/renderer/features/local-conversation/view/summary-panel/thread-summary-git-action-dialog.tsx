@@ -1,3 +1,4 @@
+import { toastFailure } from "@/lib/failure-toast";
 import {
   BranchStatusIcon,
   ReviewCommitOrPushIcon,
@@ -42,7 +43,6 @@ interface ThreadSummaryGitActionDialogProps {
   initialMode: SummaryGitActionDialogMode;
   onOpenChange: (open: boolean) => void;
   onCompleted?: () => void;
-  onErrorMessage: (message: string | null) => void;
   onWorkflowChange?: (state: SummaryGitActionWorkflowState | null) => void;
 }
 
@@ -133,7 +133,6 @@ export function ThreadSummaryGitActionDialog({
   initialMode,
   onOpenChange,
   onCompleted,
-  onErrorMessage,
   onWorkflowChange,
 }: ThreadSummaryGitActionDialogProps) {
   const [status, setStatus] = useState<GitActionStatusResult | null>(null);
@@ -200,19 +199,16 @@ export function ThreadSummaryGitActionDialog({
   }, []);
 
   const handleMutationResult = useCallback(
-    (result: GitActionMutationResult) => {
+    (result: GitActionMutationResult, failureTitle: string) => {
       const error = getResultError(result);
       if (error) {
-        setInlineError(error);
-        onErrorMessage(error);
+        toastFailure(failureTitle, error);
         return;
       }
-
-      onErrorMessage(null);
       onCompleted?.();
       onOpenChange(false);
     },
-    [onCompleted, onErrorMessage, onOpenChange],
+    [onCompleted, onOpenChange],
   );
 
   const runCommit = useCallback(
@@ -228,10 +224,12 @@ export function ThreadSummaryGitActionDialog({
         operationId,
       });
       onOpenChange(false);
+      let failureTitle = "Couldn’t commit changes";
       try {
         let commitMessage = trimmedMessage;
         let commitIncludeUnstaged = includeUnstaged;
         if (!commitMessage) {
+          failureTitle = "Couldn’t generate a commit message";
           const generatedResult = await threadSummaryGitOperations.generateCommitMessage({
             cwd,
             hostId,
@@ -241,8 +239,7 @@ export function ThreadSummaryGitActionDialog({
           });
           const generationError = getGenerationResultError(generatedResult);
           if (generationError) {
-            setInlineError(generationError);
-            onErrorMessage(generationError);
+            toastFailure(failureTitle, generationError);
             return;
           }
 
@@ -256,6 +253,7 @@ export function ThreadSummaryGitActionDialog({
           });
         }
 
+        failureTitle = "Couldn’t commit changes";
         const result = await threadSummaryGitOperations.commit({
           cwd,
           hostId,
@@ -267,11 +265,12 @@ export function ThreadSummaryGitActionDialog({
 
         const commitError = getResultError(result);
         if (commitError) {
-          handleMutationResult(result);
+          handleMutationResult(result, failureTitle);
           return;
         }
 
         if (nextStep === "commit-and-push") {
+          failureTitle = "Couldn’t push changes";
           onWorkflowChange?.({
             workflow: "commit",
             phase: "pushing",
@@ -281,15 +280,13 @@ export function ThreadSummaryGitActionDialog({
             cwd,
             operationId,
           });
-          handleMutationResult(pushResult);
+          handleMutationResult(pushResult, failureTitle);
           return;
         }
 
-        handleMutationResult(result);
+        handleMutationResult(result, failureTitle);
       } catch (error) {
-        const nextError = error instanceof Error ? error.message : "Could not commit changes.";
-        setInlineError(nextError);
-        onErrorMessage(nextError);
+        toastFailure(failureTitle, error);
       } finally {
         setBusy(false);
         onWorkflowChange?.(null);
@@ -303,7 +300,6 @@ export function ThreadSummaryGitActionDialog({
       hostId,
       includeUnstaged,
       message,
-      onErrorMessage,
       onOpenChange,
       onWorkflowChange,
     ],
@@ -325,16 +321,14 @@ export function ThreadSummaryGitActionDialog({
         cwd,
         operationId,
       });
-      handleMutationResult(result);
+      handleMutationResult(result, "Couldn’t push changes");
     } catch (error) {
-      const nextError = error instanceof Error ? error.message : "Could not push changes.";
-      setInlineError(nextError);
-      onErrorMessage(nextError);
+      toastFailure("Couldn’t push changes", error);
     } finally {
       setBusy(false);
       onWorkflowChange?.(null);
     }
-  }, [busy, canPush, cwd, handleMutationResult, onErrorMessage, onOpenChange, onWorkflowChange]);
+  }, [busy, canPush, cwd, handleMutationResult, onOpenChange, onWorkflowChange]);
 
   return (
     <NodexDialog

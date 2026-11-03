@@ -1,3 +1,4 @@
+import { toastFailure } from "@/lib/failure-toast";
 import { useComposerDraftIntent, type ComposerChatKey } from "@/lib/composer-draft-intents";
 import { useConversationBodyPresentation } from "../use-conversation-body-presentation";
 import { useShownConversationReadState } from "../use-shown-conversation-read-state";
@@ -248,13 +249,11 @@ function ConnectedThreadStageHeader({
   isWorktree,
   input,
   actions,
-  onErrorMessage,
 }: {
   activeThreadId: string | null;
   isWorktree: boolean;
   input: ConnectedThreadStageInput;
   actions: ThreadStageActions;
-  onErrorMessage: (message: string | null) => void;
 }) {
   const summaryFields = useConversationSummaryFields(activeThreadId);
   const activeSummary =
@@ -330,14 +329,7 @@ function ConnectedThreadStageHeader({
     ],
   );
 
-  return (
-    <ThreadStageHeader
-      model={model}
-      actions={headerActions}
-      provider={input.provider}
-      onErrorMessage={onErrorMessage}
-    />
-  );
+  return <ThreadStageHeader model={model} actions={headerActions} provider={input.provider} />;
 }
 
 interface ConnectedThreadStageBodyProps {
@@ -347,7 +339,6 @@ interface ConnectedThreadStageBodyProps {
   composerScopeIdentity: string | null;
   onForkFromTurnIntoWorktree?: (input: { threadId: string; targetTurnId: string }) => Promise<void>;
   isWorktreeThread: boolean;
-  onErrorMessage: (message: string | null) => void;
   contentShiftX?: MotionValue<number>;
   footer?: ReactNode;
   leadingContent?: ReactNode;
@@ -368,7 +359,6 @@ function ConnectedThreadStageBody({
   composerScopeIdentity,
   onForkFromTurnIntoWorktree,
   isWorktreeThread,
-  onErrorMessage,
   contentShiftX,
   footer,
   leadingContent,
@@ -424,7 +414,6 @@ function ConnectedThreadStageBody({
     () => ({
       ...actions,
       onRetryThreadAttachment: async (threadId) => {
-        onErrorMessage(null);
         if (readOnly) {
           await runtime.loadHistory(threadId).catch(() => null);
           return;
@@ -432,7 +421,7 @@ function ConnectedThreadStageBody({
         await runtime.resume(threadId).catch(() => null);
       },
     }),
-    [actions, onErrorMessage, runtime, readOnly],
+    [actions, runtime, readOnly],
   );
 
   // Compared by value: the provider rebuilds its presentation object on every render.
@@ -560,7 +549,6 @@ function ConnectedThreadStageBody({
       actions={actionsWithAttachmentRetry}
       isWorktreeThread={isWorktreeThread}
       onForkFromTurnIntoWorktree={onForkFromTurnIntoWorktree}
-      onErrorMessage={onErrorMessage}
       contentShiftX={contentShiftX}
       footer={footer}
       leadingContent={leadingContent}
@@ -635,8 +623,6 @@ export function ConnectedThreadStageFooter({
   input,
   actions,
   composerScopeIdentity,
-  errorMessage,
-  onErrorMessage,
   variant = "thread",
   rightPanelComposerOverlayEnabled = false,
   rightPanelComposerOverlayTarget = null,
@@ -649,8 +635,6 @@ export function ConnectedThreadStageFooter({
   input: ConnectedThreadStageInput;
   actions: ThreadStageActions;
   composerScopeIdentity: string | null;
-  errorMessage: string | null;
-  onErrorMessage: (message: string | null) => void;
   variant?: "thread" | "newThreadHome";
   rightPanelComposerOverlayEnabled?: boolean;
   rightPanelComposerOverlayTarget?: HTMLElement | null;
@@ -1085,8 +1069,6 @@ export function ConnectedThreadStageFooter({
         normalizedPreview={bodyPresentation.preview}
         actions={actionsWithComposerCapabilityRefresh}
         worktreeRuntimeAvailable={worktreeRuntimeAvailable}
-        errorMessage={errorMessage ?? input.provider?.error ?? null}
-        onErrorMessage={onErrorMessage}
         variant={variant}
         rightPanelComposerOverlay={{
           enabled: rightPanelComposerOverlayEnabled,
@@ -1124,7 +1106,6 @@ export function ConnectedThreadComposerDock({
   leadingContent,
   ...input
 }: ConnectedThreadComposerDockProps) {
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const activeThreadId = resolveConnectedStageActiveThreadId(input);
   const preferredHostId = input.activeThreadSummary?.executionHostId ?? null;
   const runtime = useConversationRuntime(activeThreadId, preferredHostId);
@@ -1222,8 +1203,6 @@ export function ConnectedThreadComposerDock({
         input={input}
         actions={actions}
         composerScopeIdentity={composerScopeIdentity}
-        errorMessage={errorMessage ?? input.provider?.error ?? null}
-        onErrorMessage={setErrorMessage}
         rightPanelComposerOverlayEnabled
         rightPanelComposerOverlayTarget={overlayTarget}
         rightPanelComposerOverlayPlacement={overlayPlacement}
@@ -1238,7 +1217,6 @@ export function ConnectedThreadComposerDock({
               isWorktreeThread={Boolean(
                 summaryFields.managedWorktreePath ?? input.activeThreadSummary?.managedWorktreePath,
               )}
-              onErrorMessage={setErrorMessage}
               readOnly={archived}
             />
           ) : null
@@ -1289,7 +1267,6 @@ function ConnectedThreadStageContent({
   presentation = "primary",
   ...input
 }: ConnectedThreadStageProps) {
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const activeThreadId = resolveConnectedStageActiveThreadId(input);
   const preferredHostId = input.activeThreadSummary?.executionHostId ?? null;
   const runtime = useConversationRuntime(activeThreadId, preferredHostId);
@@ -1524,7 +1501,6 @@ function ConnectedThreadStageContent({
         runtime.kind === "codex" && activeThreadId
           ? { hostId: runtime.hostId, threadId: activeThreadId }
           : undefined,
-      onErrorMessage: setErrorMessage,
     }),
     [
       activeThreadId,
@@ -1550,7 +1526,6 @@ function ConnectedThreadStageContent({
       input.projectWorkspacePath,
       actions,
       turns,
-      setErrorMessage,
     ],
   );
   const ownsAppShellHeader = presentation === "primary" && !isSideChat && !backgroundAgentDetail;
@@ -1607,8 +1582,7 @@ function ConnectedThreadStageContent({
     const historyIds = [activeThreadId, parentThreadId].filter((id): id is string => id !== null);
     let current = true;
     void Promise.all(historyIds.map((id) => runtime.loadHistory(id))).catch((cause: unknown) => {
-      if (current)
-        setErrorMessage(cause instanceof Error ? cause.message : "Could not load thread history");
+      if (current) toastFailure("Couldn’t load this chat’s history", cause);
     });
     return () => {
       current = false;
@@ -1647,8 +1621,6 @@ function ConnectedThreadStageContent({
               input={input}
               actions={actions}
               composerScopeIdentity={composerScopeIdentity}
-              errorMessage={errorMessage ?? input.provider?.error ?? null}
-              onErrorMessage={setErrorMessage}
               variant="newThreadHome"
               rightPanelComposerOverlayEnabled={false}
               rightPanelComposerOverlayTarget={null}
@@ -1687,7 +1659,6 @@ function ConnectedThreadStageContent({
       isWorktree={activeThreadIsManagedWorktree}
       input={input}
       actions={actions}
-      onErrorMessage={setErrorMessage}
     />
   ) : null;
 
@@ -1714,7 +1685,6 @@ function ConnectedThreadStageContent({
             composerScopeIdentity={composerScopeIdentity}
             isWorktreeThread={activeThreadIsManagedWorktree}
             onForkFromTurnIntoWorktree={onForkFromTurnIntoWorktree}
-            onErrorMessage={setErrorMessage}
             leadingContent={
               activeThreadId && activeThreadIsManagedWorktree ? (
                 <ManagedWorktreeRestoreBannerContainer threadId={activeThreadId} />
@@ -1751,8 +1721,6 @@ function ConnectedThreadStageContent({
                   input={input}
                   actions={actions}
                   composerScopeIdentity={composerScopeIdentity}
-                  errorMessage={errorMessage ?? input.provider?.error ?? null}
-                  onErrorMessage={setErrorMessage}
                   rightPanelComposerOverlayEnabled={rightPanelComposerOverlayEnabled && !isSideChat}
                   rightPanelComposerOverlayTarget={rightPanelComposerOverlayTarget}
                   rightPanelComposerOverlayPlacement={rightPanelComposerOverlayPlacement}
@@ -1765,7 +1733,6 @@ function ConnectedThreadStageContent({
                         composerScopeIdentity={composerScopeIdentity}
                         isWorktreeThread={activeThreadIsManagedWorktree}
                         onForkFromTurnIntoWorktree={onForkFromTurnIntoWorktree}
-                        onErrorMessage={setErrorMessage}
                       />
                     ) : null
                   }

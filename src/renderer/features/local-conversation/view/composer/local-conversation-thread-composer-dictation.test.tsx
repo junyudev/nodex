@@ -392,8 +392,6 @@ async function renderThreadComposer(input?: {
               <ThreadComposer
                 model={buildModel(input?.model)}
                 actions={buildActions(input?.actions)}
-                errorMessage={null}
-                onErrorMessage={() => {}}
               />
             </OptionalVoiceProvider>
           </TooltipProvider>

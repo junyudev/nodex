@@ -1,3 +1,4 @@
+import { toastFailure } from "@/lib/failure-toast";
 import type { CodexSubagentRow } from "../../../../../shared/codex-subagent-row-model";
 import { PictureInPicture2, Slash } from "@/components/shared/icons/generic-icons";
 import {
@@ -157,7 +158,6 @@ export interface ThreadSummaryPanelContentProps {
   actions?: Partial<ThreadStageActions>;
   taskDetailsKind?: "thread" | "observation";
   onOpenThread?: ThreadStageActions["onOpenThread"];
-  onErrorMessage: (message: string | null) => void;
 }
 
 interface ThreadFloatingSummaryPanelProps extends ThreadSummaryPanelContentProps {
@@ -761,15 +761,7 @@ function useSummaryPullRequestStatus(
   return state;
 }
 
-function useSummaryPanelBranchState({
-  cwd,
-  enabled,
-  onErrorMessage,
-}: {
-  cwd: string | null;
-  enabled: boolean;
-  onErrorMessage: (message: string | null) => void;
-}) {
+function useSummaryPanelBranchState({ cwd, enabled }: { cwd: string | null; enabled: boolean }) {
   const [branchState, setBranchState] = useState<BranchSelectorState>(EMPTY_BRANCH_SELECTOR_STATE);
   const [busy, setBusy] = useState(false);
   const branchStateRef = useRef(branchState);
@@ -845,7 +837,6 @@ function useSummaryPanelBranchState({
         });
 
       setBusy(true);
-      onErrorMessage(null);
       try {
         const result = await threadSummaryGitOperations.checkoutBranch(requestedCwd, branch);
         if (!isCurrentRequest()) return false;
@@ -854,14 +845,14 @@ function useSummaryPanelBranchState({
         return true;
       } catch (error) {
         if (isCurrentRequest()) {
-          onErrorMessage(error instanceof Error ? error.message : "Could not switch branches");
+          toastFailure("Couldn’t switch branches", error);
         }
         return false;
       } finally {
         if (isCurrentRequest()) setBusy(false);
       }
     },
-    [cwd, onErrorMessage],
+    [cwd],
   );
 
   const createBranch = useCallback(
@@ -879,23 +870,20 @@ function useSummaryPanelBranchState({
         });
 
       setBusy(true);
-      onErrorMessage(null);
       try {
         const result = await threadSummaryGitOperations.createBranch(requestedCwd, branch);
         if (!isCurrentRequest()) return false;
         if (result.type === "error") throw new Error(result.errorMessage);
         setBranchState(parseBranchSelectorState(result.value));
         return true;
-      } catch (error) {
-        if (isCurrentRequest()) {
-          onErrorMessage(error instanceof Error ? error.message : "Could not create branch");
-        }
-        return false;
+      } catch (cause) {
+        if (!isCurrentRequest()) return false;
+        throw cause;
       } finally {
         if (isCurrentRequest()) setBusy(false);
       }
     },
-    [cwd, onErrorMessage],
+    [cwd],
   );
 
   return {
@@ -933,7 +921,6 @@ export function ThreadSummaryPanelSurface({
   actions,
   taskDetailsKind = "thread",
   onOpenThread,
-  onErrorMessage,
 }: Omit<ThreadFloatingSummaryPanelProps, "mounted" | "open">) {
   const branchCwd = useMemo(
     () => resolveBranchSelectorCwd(cwd, projectWorkspacePath),
@@ -960,7 +947,18 @@ export function ThreadSummaryPanelSurface({
     error: branchError,
     loading: branchLoading,
     refreshBranchState,
-  } = useSummaryPanelBranchState({ cwd: branchCwd, enabled: isVisible, onErrorMessage });
+  } = useSummaryPanelBranchState({ cwd: branchCwd, enabled: isVisible });
+  const handleCreateBranch = useCallback(
+    async (branch: string) => {
+      try {
+        return await createBranch(branch);
+      } catch (cause) {
+        toastFailure("Couldn’t create a branch", cause);
+        return false;
+      }
+    },
+    [createBranch],
+  );
   const { data: mcpApps } = useCodexMcpApps({ enabled: isVisible });
   const sourceModel = useMemo(
     () => buildThreadSummaryPanelSourceModel(turns, mcpApps ?? []),
@@ -1224,10 +1222,12 @@ export function ThreadSummaryPanelSurface({
     row: ThreadSummaryPanelOutputRow,
     event: ReactMouseEvent<HTMLElement> | ReactKeyboardEvent<HTMLElement>,
   ) => {
-    onErrorMessage(null);
-    void outputs.openFromEvent(row, event).then((opened) => {
-      if (!opened) onErrorMessage("Could not open output");
-    });
+    void outputs
+      .openFromEvent(row, event)
+      .then((opened) => {
+        if (!opened) toastFailure("Couldn’t open the output");
+      })
+      .catch((cause: unknown) => toastFailure("Couldn’t open the output", cause));
   };
   const onOpenPlanInSidePanel = actions?.onOpenPlanInSidePanel;
   const handleOpenPlan = useCallback(
@@ -1346,7 +1346,6 @@ export function ThreadSummaryPanelSurface({
                           model={executionLocation}
                           disabled={!isVisible}
                           worktreeAvailable={worktreeAvailable}
-                          onErrorMessage={onErrorMessage}
                         />
                       ) : (
                         <ThreadSummaryPanelRow
@@ -1372,7 +1371,7 @@ export function ThreadSummaryPanelSurface({
                           error={branchError}
                           onRefresh={refreshBranchState}
                           onCheckout={checkoutBranch}
-                          onCreate={createBranch}
+                          onCreate={handleCreateBranch}
                           selectedBranch={currentBranch}
                           disabled={!isVisible || !branchCwd || branchBusy}
                           side="left"
@@ -1636,7 +1635,6 @@ export function ThreadSummaryPanelSurface({
                       key={section.kind}
                       background={backgroundTasks}
                       autoCollapse={section.autoCollapse}
-                      onErrorMessage={onErrorMessage}
                     />
                   ) : null;
 
@@ -1742,7 +1740,6 @@ export function ThreadSummaryPanelSurface({
         initialMode={gitActionDialogMode ?? "commit"}
         onOpenChange={handleGitActionDialogOpenChange}
         onCompleted={handleGitActionCompleted}
-        onErrorMessage={onErrorMessage}
         onWorkflowChange={setGitActionWorkflow}
       />
       <ThreadSummaryCreatePullRequestDialog
@@ -1750,7 +1747,6 @@ export function ThreadSummaryPanelSurface({
         cwd={branchCwd}
         onOpenChange={handleCreatePullRequestDialogOpenChange}
         onCompleted={handleCreatePullRequestCompleted}
-        onErrorMessage={onErrorMessage}
         onWorkflowChange={setGitActionWorkflow}
       />
       <ThreadSummaryBranchSetupDialog
@@ -1761,7 +1757,6 @@ export function ThreadSummaryPanelSurface({
         threadTitle={activeThreadTitle}
         onCreateBranch={createBranch}
         onCreated={handleBranchSetupCreated}
-        onErrorMessage={onErrorMessage}
         onOpenChange={handleBranchSetupOpenChange}
       />
     </>

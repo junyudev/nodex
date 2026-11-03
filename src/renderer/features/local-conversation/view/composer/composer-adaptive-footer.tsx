@@ -11,7 +11,7 @@ export function resolveComposerAdaptiveLayout({
   hasExplicitLineBreak,
   promptIntrinsicWidthPx,
   compactInputWidthPx,
-  hasError,
+  hasNotice,
   isDictating,
 }: {
   isFloatingComposer: boolean;
@@ -19,11 +19,12 @@ export function resolveComposerAdaptiveLayout({
   hasExplicitLineBreak: boolean;
   promptIntrinsicWidthPx: number | null;
   compactInputWidthPx: number | null;
-  hasError: boolean;
+  /** A notice heads a floating composer's card, which a single-line pill has no room for. */
+  hasNotice: boolean;
   isDictating: boolean;
 }): ComposerAdaptiveLayout {
   if (!isFloatingComposer) return "multiline";
-  if (hasAttachments || hasExplicitLineBreak || hasError || isDictating) {
+  if (hasAttachments || hasExplicitLineBreak || hasNotice || isDictating) {
     return "multiline";
   }
   if (

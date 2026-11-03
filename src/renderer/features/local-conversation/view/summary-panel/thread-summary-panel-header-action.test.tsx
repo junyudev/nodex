@@ -18,7 +18,6 @@ const content: ThreadSummaryPanelContentProps = {
   cwd: "/workspace",
   projectWorkspacePath: "/workspace",
   turns: [],
-  onErrorMessage: () => undefined,
 };
 
 function Stage({ publish }: { publish: boolean }) {

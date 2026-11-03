@@ -1,3 +1,4 @@
+import { toastFailure } from "@/lib/failure-toast";
 import { memo, useCallback, useRef, useState } from "react";
 import {
   ArchiveIcon,
@@ -44,7 +45,6 @@ import { useThreadStageHeaderSlot } from "./thread-stage-header-slot";
 interface ThreadStageHeaderProps {
   model: ThreadStageHeaderModel;
   actions: ThreadStageActions;
-  onErrorMessage: (message: string | null) => void;
   provider?: ConversationProviderPresentation;
 }
 
@@ -53,12 +53,7 @@ const menuIconClassName = "icon-xs shrink-0";
 const CHAT_TAB_ACTIONS_TRIGGER_CLASS =
   "no-drag flex size-5 shrink-0 cursor-interaction items-center justify-center rounded-md p-0.5 text-tertiary hover:bg-(--color-background-primary-ghost-hover) hover:text-(--color-text) focus-visible:bg-(--color-background-primary-ghost-hover) data-[state=open]:bg-(--color-background-primary-ghost-hover) data-[state=open]:text-(--color-text)";
 
-function ThreadStageHeaderComponent({
-  model,
-  actions,
-  onErrorMessage,
-  provider,
-}: ThreadStageHeaderProps) {
+function ThreadStageHeaderComponent({ model, actions, provider }: ThreadStageHeaderProps) {
   const { variant, paneMove } = useThreadStageHeaderSlot();
   const [menuOpen, setMenuOpen] = useState(false);
   // Reminder presets are relative to when the menu opens.
@@ -93,16 +88,15 @@ function ThreadStageHeaderComponent({
   );
 
   const handleAction = useCallback(
-    async (action: (() => void | Promise<void>) | undefined, fallbackError: string) => {
+    async (action: (() => void | Promise<void>) | undefined, failureTitle: string) => {
       if (!action) return;
-      onErrorMessage(null);
       try {
         await action();
       } catch (error) {
-        onErrorMessage(error instanceof Error ? error.message : fallbackError);
+        toastFailure(failureTitle, error);
       }
     },
-    [onErrorMessage],
+    [],
   );
 
   const handleCopyText = useCallback(async (value: string | null, successMessage: string) => {
@@ -120,8 +114,8 @@ function ThreadStageHeaderComponent({
     setGeneratingTitle(true);
     await handleAction(async () => {
       const title = await provider.generateTitle?.();
-      if (!title) throw new Error("Could not generate a title");
-    }, "Could not generate a title");
+      if (!title) throw new Error("Couldn’t generate a title");
+    }, "Couldn’t generate a title");
     setGeneratingTitle(false);
   };
 
@@ -184,7 +178,12 @@ function ThreadStageHeaderComponent({
             )
           }
           keyboardShortcut={model.shortcuts?.togglePin}
-          onSelect={() => void handleAction(actions.onToggleThreadPin, "Failed to update task pin")}
+          onSelect={() =>
+            void handleAction(
+              actions.onToggleThreadPin,
+              model.pinned ? "Couldn’t unpin the chat" : "Couldn’t pin the chat",
+            )
+          }
         >
           {model.pinned ? "Unpin" : "Pin"}
         </NodexDropdownItem>
@@ -209,7 +208,7 @@ function ThreadStageHeaderComponent({
               onSelect={() =>
                 void handleAction(
                   () => actions.onSetThreadReminder?.(preset.remindAt),
-                  "Failed to set reminder",
+                  "Couldn’t set the reminder",
                 )
               }
             >
@@ -223,7 +222,7 @@ function ThreadStageHeaderComponent({
                 onSelect={() =>
                   void handleAction(
                     () => actions.onSetThreadReminder?.(null),
-                    "Failed to cancel reminder",
+                    "Couldn’t cancel the reminder",
                   )
                 }
               >
@@ -238,7 +237,7 @@ function ThreadStageHeaderComponent({
         <NodexDropdownItem
           leftSlot={<SidePanelSideChatIcon className={menuIconClassName} />}
           keyboardShortcut={model.shortcuts?.openSideTask}
-          onSelect={() => void handleAction(actions.onOpenSideChat, "Failed to open side chat")}
+          onSelect={() => void handleAction(actions.onOpenSideChat, "Couldn’t open a side chat")}
         >
           New side chat
         </NodexDropdownItem>
@@ -267,7 +266,7 @@ function ThreadStageHeaderComponent({
                     forkInFlight.current = false;
                     setForking(false);
                   }
-                }, "Failed to fork chat");
+                }, "Couldn’t fork the conversation");
               }}
             >
               {destination.label}
@@ -278,7 +277,7 @@ function ThreadStageHeaderComponent({
       {canClearContext ? (
         <NodexDropdownItem
           leftSlot={<ClearContextIcon className={menuIconClassName} />}
-          onSelect={() => void handleAction(actions.onClearContext, "Could not clear the context")}
+          onSelect={() => void handleAction(actions.onClearContext, "Couldn’t clear the context")}
         >
           Clear context
         </NodexDropdownItem>
@@ -352,7 +351,7 @@ function ThreadStageHeaderComponent({
             pendingModal.current = () => {
               void handleAction(
                 actions.onOpenSubagentsPanel,
-                opensSubagents ? "Could not open subagents" : "Could not open tasks",
+                opensSubagents ? "Couldn’t open subagents" : "Couldn’t open tasks",
               );
             };
           }}
@@ -374,7 +373,7 @@ function ThreadStageHeaderComponent({
           <NodexDropdownItem
             leftSlot={<ArchiveIcon className={menuIconClassName} />}
             keyboardShortcut={model.shortcuts?.archive}
-            onSelect={() => void handleAction(actions.onArchiveThread, "Failed to archive task")}
+            onSelect={() => void handleAction(actions.onArchiveThread, "Couldn’t archive the chat")}
           >
             Archive
           </NodexDropdownItem>
@@ -427,7 +426,6 @@ export const ThreadStageHeader = memo(
   (left, right) =>
     left.actions === right.actions &&
     left.provider === right.provider &&
-    left.onErrorMessage === right.onErrorMessage &&
     left.model.title === right.model.title &&
     left.model.projectId === right.model.projectId &&
     left.model.sessionId === right.model.sessionId &&

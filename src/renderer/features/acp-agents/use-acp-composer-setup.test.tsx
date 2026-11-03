@@ -45,7 +45,7 @@ function Composer({
   readonly providers: readonly AcpProviderSnapshot[];
   readonly openSettings: (instanceId: string) => void;
 }) {
-  const { setups, status } = useAcpComposerSetup({
+  const { setups, notice } = useAcpComposerSetup({
     owner,
     providers,
     instances: [
@@ -63,10 +63,10 @@ function Composer({
           <li key={setup.label}>{`${setup.label}: ${setup.hint}`}</li>
         ))}
       </ul>
-      {status ? (
+      {notice ? (
         <p>
-          {status.message}
-          {status.actions?.map((action) => (
+          {notice.title}
+          {notice.actions?.map((action) => (
             <button key={action.label} type="button" onClick={() => void action.run()}>
               {action.label}
             </button>
@@ -105,7 +105,7 @@ describe("ACP setup in the Composer", () => {
     expect(view.getByRole("list", { name: "Setup" }).textContent).toBe(
       "Qoder: Sign inScripted: Install",
     );
-    view.getByText("Sign in to Qoder to send messages.");
+    view.getByText("Qoder isn’t signed in");
 
     await press(view.getByRole("button", { name: "Sign in" }));
     const dialog = await view.findByRole("dialog");

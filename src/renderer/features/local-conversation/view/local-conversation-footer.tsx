@@ -26,8 +26,6 @@ import {
 interface LocalConversationFooterProps {
   model: ThreadFooterModel;
   actions: ThreadStageActions;
-  errorMessage: string | null;
-  onErrorMessage: (message: string | null) => void;
   variant?: "thread" | "newThreadHome";
   rightPanelComposerOverlay?: {
     enabled: boolean;
@@ -46,16 +44,12 @@ interface LocalConversationFooterProps {
 function LocalConversationFooterChrome({
   model,
   actions,
-  errorMessage,
-  onErrorMessage,
   catchUpControl,
   contextRailLeadingContent,
   showComposer = true,
 }: {
   model: ThreadFooterModel;
   actions: ThreadStageActions;
-  errorMessage: string | null;
-  onErrorMessage: (message: string | null) => void;
   catchUpControl: ReactNode;
   contextRailLeadingContent?: ReactNode;
   showComposer?: boolean;
@@ -70,8 +64,6 @@ function LocalConversationFooterChrome({
           <LocalConversationComposerShell
             model={model}
             actions={actions}
-            errorMessage={errorMessage}
-            onErrorMessage={onErrorMessage}
             contextRailLeadingContent={contextRailLeadingContent}
           />
         ) : contextRailLeadingContent ? (
@@ -135,8 +127,6 @@ type LocalConversationFooterBranchProps = Omit<
 function FloatingLocalConversationFooter({
   model,
   actions,
-  errorMessage,
-  onErrorMessage,
   worktreeRuntimeAvailable = true,
   normalizedPreview = null,
   onMarkConversationRead,
@@ -225,8 +215,6 @@ function FloatingLocalConversationFooter({
       <LocalConversationFooterChrome
         model={model}
         actions={actions}
-        errorMessage={errorMessage}
-        onErrorMessage={onErrorMessage}
         catchUpControl={null}
         contextRailLeadingContent={overlay.leadingContent}
         showComposer={showComposer}
@@ -239,8 +227,6 @@ function FloatingLocalConversationFooter({
 function DockedLocalConversationFooter({
   model,
   actions,
-  errorMessage,
-  onErrorMessage,
   variant = "thread",
   worktreeRuntimeAvailable = true,
   isResumingActiveThread,
@@ -394,8 +380,6 @@ function DockedLocalConversationFooter({
         <LocalConversationFooterChrome
           model={model}
           actions={actionsWithSubmitPlacement}
-          errorMessage={errorMessage}
-          onErrorMessage={onErrorMessage}
           catchUpControl={catchUpControl}
           showComposer={false}
         />
@@ -414,8 +398,6 @@ function DockedLocalConversationFooter({
       <LocalConversationFooterChrome
         model={model}
         actions={actionsWithSubmitPlacement}
-        errorMessage={errorMessage}
-        onErrorMessage={onErrorMessage}
         catchUpControl={catchUpControl}
       />
     </div>

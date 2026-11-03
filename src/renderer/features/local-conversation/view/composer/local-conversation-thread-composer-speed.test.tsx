@@ -117,6 +117,16 @@ function resetStorage(): void {
   persistedAtomListeners.clear();
   clearPersistedAtomStoreForTests();
   localStorageRef.removeItem("nodex-codex-default-service-tier-v1");
+  __resetNodexToastStoreForTests();
+}
+
+/** The failures the composer reported, as "title: reason". */
+function failureToasts(): string[] {
+  return __getNodexToastSnapshotForTests().flatMap((record) =>
+    record.kind === "plain" && record.level === "danger" && record.isShown
+      ? [[record.title, record.description].filter(Boolean).map(String).join(": ")]
+      : [],
+  );
 }
 
 type TestInvoke = (channel: string, ...args: unknown[]) => Promise<unknown>;
@@ -381,7 +391,6 @@ async function renderComposer(
   overrides?: Partial<ThreadFooterModel>,
   actionOverrides?: Partial<ThreadStageActions>,
   testInvoke?: TestInvoke,
-  onErrorMessage: (message: string | null) => void = () => {},
   backgroundAgentRows?: readonly ThreadComposerShellBackgroundAgentRowModel[],
 ) {
   installAsyncRequestAnimationFrame();
@@ -397,8 +406,6 @@ async function renderComposer(
             model={buildModel(overrides)}
             backgroundAgentRows={backgroundAgentRows}
             actions={buildActions(actionOverrides)}
-            errorMessage={null}
-            onErrorMessage={onErrorMessage}
           />
           <NodexModalHost />
         </TestComposerScopePath>
@@ -434,12 +441,7 @@ test.each([true, false])(
       useApplicationReady(true);
       return (
         <RightPanelComposerPresentationProvider visible={visible}>
-          <ThreadComposer
-            model={buildModel()}
-            actions={buildActions()}
-            errorMessage={null}
-            onErrorMessage={() => undefined}
-          />
+          <ThreadComposer model={buildModel()} actions={buildActions()} />
         </RightPanelComposerPresentationProvider>
       );
     }
@@ -556,7 +558,6 @@ test.each(["queue", "replace"] as const)(
       .fn<NonNullable<ThreadStageActions["onReplaceQueuedFollowUp"]>>()
       .mockResolvedValueOnce(false)
       .mockResolvedValue(true);
-    const error = vi.fn();
     const view = await renderComposer(
       buildRunningComposerModel({
         isQueueingEnabled: true,
@@ -573,14 +574,10 @@ test.each(["queue", "replace"] as const)(
         },
       }),
       { onEnqueueQueuedFollowUp: enqueue, onReplaceQueuedFollowUp: replace },
-      undefined,
-      error,
     );
     await view.findByRole("button", { name: "Remove Fixture app context" });
     await keyDownComposer(view, { key: "Enter" });
-    await waitFor(() =>
-      expect(error.mock.calls.some(([value]) => typeof value === "string")).toBe(true),
-    );
+    await waitFor(() => expect(failureToasts()).toHaveLength(1));
     expect(view.getByRole("button", { name: "Remove Fixture app context" })).toBeTruthy();
     expect(view.container.querySelector('[data-codex-composer="true"]')?.textContent).toBe(
       "Keep this input",
@@ -610,7 +607,6 @@ test("a new chat admits restored app context and restores the same capture after
     .fn<NonNullable<ThreadStageActions["onStartThreadForSession"]>>()
     .mockImplementationOnce(() => firstStart)
     .mockResolvedValue(undefined);
-  const errors = vi.fn();
   const view = await renderComposer(
     {
       threadId: null,
@@ -634,7 +630,6 @@ test("a new chat admits restored app context and restores the same capture after
     },
     { onStartThreadForSession: starts },
     undefined,
-    errors,
   );
   await view.findByRole("button", { name: "Remove Fixture app context" });
   try {
@@ -738,8 +733,6 @@ test("a completed draft transfer preserves the captured app context identity", a
         <ThreadComposer
           model={buildModel({ composerIntent: null })}
           actions={buildActions({ onSendPrompt: send })}
-          errorMessage={null}
-          onErrorMessage={() => {}}
         />
       </TestComposerScopePath>
     </AppProviders>,
@@ -867,12 +860,9 @@ test("saving a mounted Claude side draft freezes input and restores its complete
               selection: "claude",
               commands: [],
               controls: { images: true, goals: true },
-              error: null,
             },
           })}
           actions={buildActions({ onSendPrompt: send, onSetThreadGoal: setGoal })}
-          errorMessage={null}
-          onErrorMessage={() => {}}
         />
       </ScopeProvider>
     );
@@ -1038,8 +1028,6 @@ test("hidden app context alone cannot send a blank prompt but accompanies actual
           <ThreadComposer
             model={buildModel({ composerIntent: null })}
             actions={buildActions({ onSendPrompt: send })}
-            errorMessage={null}
-            onErrorMessage={() => {}}
           />
         </ComposerAppModelContextProvider>
       </TestComposerScopePath>
@@ -1127,8 +1115,6 @@ async function renderControlledThreadIntelligenceComposer() {
             });
           },
         })}
-        errorMessage={null}
-        onErrorMessage={() => {}}
       />
     );
   }
@@ -1190,8 +1176,6 @@ async function renderNewThreadComposerThatAttachesBeforeStartCompletes() {
             await startCompletion;
           },
         })}
-        errorMessage={null}
-        onErrorMessage={() => {}}
       />
     );
   }
@@ -1509,7 +1493,6 @@ describe("ThreadComposer speed menu", () => {
       source: managedSource,
     });
     const starts: Parameters<NonNullable<ThreadStageActions["onStartThreadForSession"]>>[0][] = [];
-    const errors: string[] = [];
     const view = await renderComposer(
       {
         projectId: null,
@@ -1530,9 +1513,6 @@ describe("ThreadComposer speed menu", () => {
         },
       },
       undefined,
-      (message) => {
-        if (message) errors.push(message);
-      },
     );
     try {
       await waitFor(() => {
@@ -1571,7 +1551,7 @@ describe("ThreadComposer speed menu", () => {
       });
 
       expect(result).toEqual({ status: "submitted" });
-      expect(errors).toEqual([]);
+      expect(failureToasts()).toEqual([]);
       expect(starts).toHaveLength(1);
       expect(starts[0]?.promptInput?.images).toEqual([
         {
@@ -1603,7 +1583,6 @@ describe("ThreadComposer speed menu", () => {
       source: managedSource,
     });
     const sentPromptInputs: unknown[] = [];
-    const errors: string[] = [];
     const baseConversation = buildModel().conversation;
     if (!baseConversation) throw new Error("Expected a conversation fixture");
     const view = await renderComposer(
@@ -1618,9 +1597,6 @@ describe("ThreadComposer speed menu", () => {
         },
       },
       undefined,
-      (message) => {
-        if (message) errors.push(message);
-      },
     );
 
     try {
@@ -1658,7 +1634,7 @@ describe("ThreadComposer speed menu", () => {
       });
 
       expect(result).toEqual({ status: "submitted" });
-      expect(errors).toEqual([]);
+      expect(failureToasts()).toEqual([]);
       expect(sentPromptInputs).toMatchObject([
         {
           text: "Remove the area marked in the second image from the first image",
@@ -1901,7 +1877,6 @@ describe("ThreadComposer speed menu", () => {
   test("keeps existing images but blocks send after switching to a text-only model", async () => {
     resetStorage();
     const sent: unknown[] = [];
-    const errors: string[] = [];
     const view = await renderComposer(
       {
         availableModels: [
@@ -1948,23 +1923,21 @@ describe("ThreadComposer speed menu", () => {
         },
       },
       undefined,
-      (message) => {
-        if (message) errors.push(message);
-      },
     );
 
     expect(await view.findByRole("button", { name: "diagram.png" })).toBeDefined();
     await submitCurrentComposerDraft(view);
 
     expect(sent).toEqual([]);
-    expect(errors).toContain("Remove images or switch models to send this message");
+    expect(failureToasts()).toContain(
+      "Message not sent: Remove images or switch models to send this message.",
+    );
     expect(view.getByRole("button", { name: "diagram.png" })).toBeDefined();
   });
 
   test("blocks a restored local-only image when its execution host changes", async () => {
     resetStorage();
     const sent: unknown[] = [];
-    const errors: string[] = [];
     const view = await renderComposer(
       {
         hostId: "ssh:remote",
@@ -1988,9 +1961,6 @@ describe("ThreadComposer speed menu", () => {
         },
       },
       undefined,
-      (message) => {
-        if (message) errors.push(message);
-      },
     );
 
     const thumbnail = await view.findByRole("button", { name: "local-only.png" });
@@ -2000,8 +1970,8 @@ describe("ThreadComposer speed menu", () => {
     await submitCurrentComposerDraft(view);
 
     expect(sent).toEqual([]);
-    expect(errors).toContain(
-      "One or more images are unavailable on the selected execution host. Remove them or add them again.",
+    expect(failureToasts()).toContain(
+      "Message not sent: One or more images aren’t available where this chat runs. Remove them or add them again.",
     );
   });
 
@@ -2115,7 +2085,6 @@ describe("ThreadComposer speed menu", () => {
       rejectStart = reject;
     });
     let startCount = 0;
-    const errors: string[] = [];
     const view = await renderComposer(
       {
         threadId: null,
@@ -2140,9 +2109,6 @@ describe("ThreadComposer speed menu", () => {
         },
       },
       undefined,
-      (message) => {
-        if (message) errors.push(message);
-      },
     );
 
     await waitFor(() => expect(readComposerText(view)).toBe("Retry the retained first submission"));
@@ -2155,7 +2121,7 @@ describe("ThreadComposer speed menu", () => {
       await Promise.resolve();
     });
     await waitFor(() => expect(readComposerText(view)).toBe("Retry the retained first submission"));
-    expect(errors).toContain("Thread start failed");
+    expect(failureToasts()).toContain("Message not sent: Thread start failed");
 
     await submitCurrentComposerDraft(view);
     await waitFor(() => expect(startCount).toBe(2));
@@ -2207,7 +2173,6 @@ describe("ThreadComposer speed menu", () => {
   test("keeps the original queued row and draft when an edit loses its revision race", async () => {
     resetStorage();
     const removed: string[] = [];
-    const errors: Array<string | null> = [];
     const view = await renderComposer(
       buildRunningComposerModel({
         isQueueingEnabled: true,
@@ -2224,13 +2189,14 @@ describe("ThreadComposer speed menu", () => {
         },
       },
       undefined,
-      (message) => errors.push(message),
     );
 
     await keyDownComposer(view, { key: "Enter" });
 
     await waitFor(() =>
-      expect(errors.at(-1)).toBe("The queued message changed before it could be edited"),
+      expect(failureToasts().at(-1)).toBe(
+        "Message not sent: The queued message changed before it could be edited",
+      ),
     );
     expect(removed).toEqual([]);
     expect(readComposerText(view)).toBe("Stale queued edit");
@@ -2608,12 +2574,7 @@ describe("ThreadComposer speed menu", () => {
     const renderTree = (intent: NonNullable<ThreadFooterModel["composerIntent"]>) => (
       <AppProviders>
         <TestComposerScopePath>
-          <ThreadComposer
-            model={buildModel({ composerIntent: intent })}
-            actions={actions}
-            errorMessage={null}
-            onErrorMessage={() => {}}
-          />
+          <ThreadComposer model={buildModel({ composerIntent: intent })} actions={actions} />
         </TestComposerScopePath>
       </AppProviders>
     );
@@ -2647,12 +2608,7 @@ describe("ThreadComposer speed menu", () => {
     const renderTree = (intent: NonNullable<ThreadFooterModel["composerIntent"]>) => (
       <AppProviders>
         <TestComposerScopePath>
-          <ThreadComposer
-            model={buildModel({ composerIntent: intent })}
-            actions={actions}
-            errorMessage={null}
-            onErrorMessage={() => {}}
-          />
+          <ThreadComposer model={buildModel({ composerIntent: intent })} actions={actions} />
           <button type="button">Outside composer</button>
         </TestComposerScopePath>
       </AppProviders>
@@ -2695,12 +2651,7 @@ describe("ThreadComposer speed menu", () => {
     const renderTree = (intent: NonNullable<ThreadFooterModel["composerIntent"]>) => (
       <AppProviders>
         <TestComposerScopePath>
-          <ThreadComposer
-            model={buildModel({ composerIntent: intent })}
-            actions={actions}
-            errorMessage={null}
-            onErrorMessage={() => {}}
-          />
+          <ThreadComposer model={buildModel({ composerIntent: intent })} actions={actions} />
         </TestComposerScopePath>
       </AppProviders>
     );
@@ -3482,7 +3433,6 @@ describe("ThreadComposer speed menu", () => {
           sentPromptInputs.push(opts?.promptInput);
         },
       },
-      undefined,
       undefined,
       [
         {
@@ -4342,7 +4292,6 @@ describe("ThreadComposer speed menu", () => {
       rejectStart = reject;
     });
     let startCount = 0;
-    const errors: string[] = [];
     const view = await renderComposer(
       {
         threadId: null,
@@ -4367,9 +4316,6 @@ describe("ThreadComposer speed menu", () => {
         },
       },
       undefined,
-      (message) => {
-        if (message) errors.push(message);
-      },
     );
 
     await submitCurrentComposerDraft(view);
@@ -4381,7 +4327,7 @@ describe("ThreadComposer speed menu", () => {
       await Promise.resolve();
     });
     await waitFor(() => expect(readComposerText(view)).toBe("Keep retry semantics explicit"));
-    expect(errors).toContain("Goal start failed");
+    expect(failureToasts()).toContain("Couldn’t start the goal: Goal start failed");
 
     await submitCurrentComposerDraft(view);
     await waitFor(() => expect(startCount).toBe(2));
@@ -4752,8 +4698,6 @@ describe("ThreadComposer speed menu", () => {
                 },
               })}
               actions={actions}
-              errorMessage={null}
-              onErrorMessage={() => {}}
             />
           </TestComposerScopePath>
         </AppProviders>,
@@ -4844,8 +4788,6 @@ describe("ThreadComposer speed menu", () => {
                   selectedModel: "gpt-5.5",
                 })}
                 actions={buildActions()}
-                errorMessage={null}
-                onErrorMessage={() => {}}
               />
             </TestComposerScopePath>
           </AppProviders>,
@@ -5629,7 +5571,6 @@ describe("ThreadComposer speed menu", () => {
 test("sends a restored image with a vision config while the selected Runtime model is text-only", async () => {
   resetStorage();
   const send = vi.fn<ThreadStageActions["onSendPrompt"]>(async () => {});
-  const errors: string[] = [];
   const model = buildModel().availableModels[0]!;
   const prompt = ':agent-config{model="vision"}\n\nDescribe this image';
   const images = [{ source: "data:image/png;base64,aW1hZ2U=", caption: "diagram.png" }];
@@ -5648,7 +5589,6 @@ test("sends a restored image with a vision config while the selected Runtime mod
         commands: [],
         controls: { images: false },
         imageInputUnavailableReason: "This model does not support image attachments.",
-        error: null,
       },
       composerIntent: {
         prompt,
@@ -5658,9 +5598,6 @@ test("sends a restored image with a vision config while the selected Runtime mod
     },
     { onSendPrompt: send },
     undefined,
-    (message) => {
-      if (message) errors.push(message);
-    },
   );
   try {
     expect(await view.findByRole("button", { name: "diagram.png" })).toBeDefined();
@@ -5674,7 +5611,7 @@ test("sends a restored image with a vision config while the selected Runtime mod
       options?.promptInput?.agentConfigs ??
         splitCodexPromptAgentConfigLines(sentPrompt).agentConfigs,
     ).toEqual([{ model: "vision" }]);
-    expect(errors).toEqual([]);
+    expect(failureToasts()).toEqual([]);
   } finally {
     await act(async () => view.unmount());
   }
@@ -5731,12 +5668,7 @@ test("selected text intents append without replacing prose or duplicating an alr
   const tree = (intent: NonNullable<ThreadFooterModel["composerIntent"]>) => (
     <AppProviders>
       <TestComposerScopePath>
-        <ThreadComposer
-          model={buildModel({ composerIntent: intent })}
-          actions={actions}
-          errorMessage={null}
-          onErrorMessage={() => {}}
-        />
+        <ThreadComposer model={buildModel({ composerIntent: intent })} actions={actions} />
       </TestComposerScopePath>
     </AppProviders>
   );
@@ -5827,8 +5759,6 @@ test("chat intent delivery survives first-thread attachment and preserves append
           composerIntent,
         })}
         actions={buildActions()}
-        errorMessage={null}
-        onErrorMessage={() => {}}
       />
     );
   }

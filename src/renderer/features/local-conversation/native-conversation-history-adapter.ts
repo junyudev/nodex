@@ -89,7 +89,15 @@ export function useNativeConversationHistoryAdapter(input: {
     label: backend === "claude" ? "Claude" : backend === "opencode" ? "OpenCode" : "ACP",
     selection: backend,
     commands: [],
-    error: state.error,
+    notice: state.error
+      ? {
+          key: "conversation-history",
+          tone: "danger",
+          title: "Couldn’t load this chat",
+          detail: state.error,
+          actions: [{ label: "Retry", pendingLabel: "Retrying…", run: () => owner.refresh() }],
+        }
+      : null,
     resolveHistoryImage: (reference) =>
       agentBackendRuntime.historyImage({
         threadId: summary.threadId,

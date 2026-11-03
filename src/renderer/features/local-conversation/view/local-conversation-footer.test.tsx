@@ -270,8 +270,6 @@ describe("LocalConversationFooter", () => {
           <LocalConversationFooter
             model={model}
             actions={buildActions({ onResumeInterruptedTurn })}
-            errorMessage={null}
-            onErrorMessage={() => {}}
           />
         </EnsureLocalConversationThreadScrollController>
       </TooltipProvider>,
@@ -318,12 +316,7 @@ describe("LocalConversationFooter", () => {
       <TestQueryProvider>
         <TooltipProvider>
           <EnsureLocalConversationThreadScrollController>
-            <LocalConversationFooter
-              model={model}
-              actions={buildActions()}
-              errorMessage={null}
-              onErrorMessage={() => {}}
-            />
+            <LocalConversationFooter model={model} actions={buildActions()} />
           </EnsureLocalConversationThreadScrollController>
         </TooltipProvider>
       </TestQueryProvider>,
@@ -351,8 +344,6 @@ describe("LocalConversationFooter", () => {
           <LocalConversationFooter
             model={{ ...baseModel, selectedCollaborationMode: "default" }}
             actions={actions}
-            errorMessage={null}
-            onErrorMessage={() => {}}
           />
         </EnsureLocalConversationThreadScrollController>
       </TooltipProvider>,
@@ -366,8 +357,6 @@ describe("LocalConversationFooter", () => {
           <LocalConversationFooter
             model={{ ...baseModel, selectedCollaborationMode: "plan" }}
             actions={actions}
-            errorMessage={null}
-            onErrorMessage={() => {}}
           />
         </EnsureLocalConversationThreadScrollController>
       </TooltipProvider>,
@@ -397,8 +386,6 @@ describe("LocalConversationFooter", () => {
           <LocalConversationFooter
             model={{ ...baseModel, selectedCollaborationMode: "default" }}
             actions={actions}
-            errorMessage={null}
-            onErrorMessage={() => {}}
           />
         </EnsureLocalConversationThreadScrollController>
       </TooltipProvider>,
@@ -419,12 +406,7 @@ describe("LocalConversationFooter", () => {
                   <div style={{ height: "1200px" }}>Thread content</div>
                 </LocalConversationThreadScrollLayout>
               </div>
-              <LocalConversationFooter
-                model={buildModel()}
-                actions={buildActions()}
-                errorMessage={null}
-                onErrorMessage={() => {}}
-              />
+              <LocalConversationFooter model={buildModel()} actions={buildActions()} />
             </div>
           </EnsureLocalConversationThreadScrollController>
         </div>
@@ -516,8 +498,6 @@ describe("LocalConversationFooter", () => {
           <LocalConversationFooter
             model={buildModelWithRenderableLatestTurn()}
             actions={buildActions()}
-            errorMessage={null}
-            onErrorMessage={() => {}}
             rightPanelComposerOverlay={{ enabled: true, target, transcript: floatingThread }}
           />
         </EnsureLocalConversationThreadScrollController>
@@ -601,8 +581,6 @@ describe("LocalConversationFooter", () => {
           <LocalConversationFooter
             model={buildModelWithRenderableLatestTurn()}
             actions={buildActions()}
-            errorMessage={null}
-            onErrorMessage={() => {}}
             rightPanelComposerOverlay={{
               enabled: true,
               target,
@@ -660,8 +638,6 @@ describe("LocalConversationFooter", () => {
               body: { ...base.body, turnCount: 0, latestTurnId: null },
             })}
             actions={buildActions()}
-            errorMessage={null}
-            onErrorMessage={() => {}}
             rightPanelComposerOverlay={{
               enabled: true,
               target,
@@ -753,8 +729,6 @@ describe("LocalConversationFooter", () => {
             <LocalConversationFooter
               model={model}
               actions={buildActions()}
-              errorMessage={null}
-              onErrorMessage={() => {}}
               rightPanelComposerOverlay={{
                 enabled: true,
                 target,
@@ -795,8 +769,6 @@ describe("LocalConversationFooter", () => {
           <LocalConversationFooter
             model={{ ...model, composerScopeIdentity }}
             actions={actions}
-            errorMessage={null}
-            onErrorMessage={() => {}}
             rightPanelComposerOverlay={{ enabled: true, target, transcript: floatingThread }}
           />
         </EnsureLocalConversationThreadScrollController>
@@ -848,8 +820,6 @@ describe("LocalConversationFooter", () => {
               },
             }}
             actions={buildActions()}
-            errorMessage={null}
-            onErrorMessage={() => {}}
             rightPanelComposerOverlay={{ enabled: true, target }}
           />
         </EnsureLocalConversationThreadScrollController>
@@ -920,8 +890,6 @@ describe("LocalConversationFooter", () => {
                 },
               }}
               actions={buildActions()}
-              errorMessage={null}
-              onErrorMessage={() => {}}
               rightPanelComposerOverlay={{ enabled: true, target }}
             />
           </EnsureLocalConversationThreadScrollController>
@@ -972,12 +940,7 @@ describe("LocalConversationFooter", () => {
     const { container } = render(
       <TooltipProvider>
         <EnsureLocalConversationThreadScrollController>
-          <LocalConversationFooter
-            model={model}
-            actions={buildActions()}
-            errorMessage={null}
-            onErrorMessage={() => {}}
-          />
+          <LocalConversationFooter model={model} actions={buildActions()} />
         </EnsureLocalConversationThreadScrollController>
       </TooltipProvider>,
     );
@@ -1012,8 +975,6 @@ describe("LocalConversationFooter", () => {
             <LocalConversationFooter
               model={buildModelWithRenderableLatestTurn()}
               actions={buildActions()}
-              errorMessage={null}
-              onErrorMessage={() => {}}
               rightPanelComposerOverlay={{ enabled: true, target, transcript: floatingThread }}
             />
           </EnsureLocalConversationThreadScrollController>
@@ -1067,8 +1028,6 @@ describe("LocalConversationFooter", () => {
           <LocalConversationFooter
             model={{ ...base, conversation: { ...base.conversation!, hasUnreadTurn } }}
             actions={buildActions()}
-            errorMessage={null}
-            onErrorMessage={() => {}}
             onMarkConversationRead={onMarkConversationRead}
             rightPanelComposerOverlay={{
               enabled: true,
@@ -1122,8 +1081,6 @@ describe("LocalConversationFooter", () => {
           <LocalConversationFooter
             model={{ ...base, conversation: { ...base.conversation!, hasUnreadTurn: true } }}
             actions={buildActions()}
-            errorMessage={null}
-            onErrorMessage={() => {}}
             rightPanelComposerOverlay={{
               enabled: true,
               target,
@@ -1172,8 +1129,6 @@ describe("LocalConversationFooter", () => {
           <LocalConversationFooter
             model={buildModel({ resumeState: "needs_resume" })}
             actions={buildActions()}
-            errorMessage={null}
-            onErrorMessage={() => {}}
             rightPanelComposerOverlay={{ enabled: true, target }}
           />
         </EnsureLocalConversationThreadScrollController>
@@ -1201,8 +1156,6 @@ describe("LocalConversationFooter", () => {
           <LocalConversationFooter
             model={buildModel({ resumeState: "needs_resume" })}
             actions={buildActions()}
-            errorMessage={null}
-            onErrorMessage={() => {}}
             rightPanelComposerOverlay={{
               enabled: true,
               target,

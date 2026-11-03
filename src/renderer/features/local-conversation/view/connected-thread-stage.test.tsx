@@ -1,3 +1,4 @@
+import { toast } from "@/components/ui/toast";
 import { composerDraftIntents } from "@/lib/composer-draft-intents";
 import type { ThreadReadStateChange } from "../../../../shared/codex-thread-read-state";
 import type { ThreadResumeResponse } from "@nodex/codex-app-server-protocol/v2";
@@ -71,6 +72,7 @@ beforeEach(() => {
       return await previousApi?.invoke(channel, ...args);
     },
   });
+  vi.mocked(toast.danger).mockClear();
   readStateWrites = [];
   overviewChild = false;
   coordination.resumeError = null;
@@ -988,7 +990,6 @@ test("imported native history pages remain readable without a Composer or execut
       label: "Claude",
       selection: "claude",
       commands: [],
-      error: null,
     },
   });
   await view.findByText("Imported answer 2");
@@ -1056,6 +1057,42 @@ describe("ConnectedThreadStage archived resume behavior", () => {
       await act(async () => view.unmount());
     },
   );
+
+  test("reports a readonly history load failure without a composer", async () => {
+    const summary = buildThreadSummary(false);
+    const conversation = withCanonicalState(
+      buildConversation(summary.threadId, { statusType: "idle" }),
+    );
+    const connection = { status: "connected", retries: 0 } as const;
+    const attachment = { status: "attached" } as const;
+    const runtime: ConversationRuntime = {
+      kind: "codex",
+      hostId: "local",
+      sessionId: "runtime-session",
+      read: (id) => (id === summary.threadId ? conversation : null),
+      subscribe: () => () => {},
+      children: () => [],
+      attachment: () => attachment,
+      connection: () => connection,
+      role: () => "follower",
+      primaryRequest: () => null,
+      retain: () => () => {},
+      loadHistory: vi.fn(async () => {
+        throw new Error("History storage is unavailable");
+      }),
+      resume: vi.fn(async () => {}),
+      markRead: async () => {},
+      setPresented: async () => {},
+    };
+    const view = await renderStage(summary, { runtime, executionAvailable: false });
+    await waitFor(() =>
+      expect(toast.danger).toHaveBeenCalledWith("Couldn’t load this chat’s history", {
+        description: "History storage is unavailable",
+      }),
+    );
+    expect(view.queryByRole("textbox", { name: "Message" })).toBeNull();
+    await act(async () => view.unmount());
+  });
 
   test.each(["codex", "claude"] as const)(
     "retries readonly history through its current owner (%s)",
@@ -1360,7 +1397,6 @@ describe("ConnectedThreadStage archived resume behavior", () => {
             label: "Claude",
             selection: "claude:work",
             commands: [],
-            error: null,
             controls: { nativeTaskDetails: true },
           },
         },
@@ -1481,7 +1517,6 @@ describe("ConnectedThreadStage archived resume behavior", () => {
         label: "Codex",
         selection: "codex",
         commands: [],
-        error: null,
         controls: { subagents: true },
       },
     });
@@ -1532,7 +1567,6 @@ describe("ConnectedThreadStage archived resume behavior", () => {
           label: kind,
           selection: `${kind}:work`,
           commands: [],
-          error: null,
           refreshSkills,
         },
       });
@@ -2877,3 +2911,7 @@ describe("ConnectedThreadStage new-chat home", () => {
     ).toBe(true);
   });
 });
+
+vi.mock("@/components/ui/toast", () => ({
+  toast: { danger: vi.fn(), success: vi.fn(), info: vi.fn(), warning: vi.fn() },
+}));

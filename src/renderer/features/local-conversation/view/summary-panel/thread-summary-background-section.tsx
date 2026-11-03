@@ -1,3 +1,4 @@
+import { toastFailure } from "@/lib/failure-toast";
 import { useEffect, useState } from "react";
 import { BellIcon, StopIcon, TerminalIcon } from "@/components/shared/icons";
 import { CircleDotIcon, ListTree } from "@/components/shared/icons/generic-icons";
@@ -227,11 +228,9 @@ const HEADER_ICON_BUTTON_CLASS_NAME =
 export function ThreadSummaryBackgroundSection({
   background,
   autoCollapse,
-  onErrorMessage,
 }: {
   background: ConversationBackgroundTasks;
   autoCollapse: boolean;
-  onErrorMessage: (message: string | null) => void;
 }) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   // Stop shows at once, before the Agent confirms; the list drops the task when it ends.
@@ -241,17 +240,13 @@ export function ThreadSummaryBackgroundSection({
   const live = tasks.filter((task) => !isStopping(task));
   const stop = (taskId?: string) => {
     const ids = taskId === undefined ? live.map((task) => task.id) : [taskId];
-    onErrorMessage(null);
     setRequested((current) => new Set([...current, ...ids]));
     void background
       .stop(taskId)
       .catch((cause: unknown) => {
-        onErrorMessage(
-          cause instanceof Error
-            ? cause.message
-            : taskId
-              ? "Could not stop the background task"
-              : "Could not stop background tasks",
+        toastFailure(
+          taskId ? "Couldn’t stop the background task" : "Couldn’t stop background tasks",
+          cause,
         );
       })
       .finally(() =>

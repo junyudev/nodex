@@ -1,5 +1,7 @@
+import { ThreadStageHeader } from "./local-conversation-stage-header";
+import { toast } from "@/components/ui/toast";
 import { act, fireEvent, within } from "@testing-library/react";
-import { describe, expect, test, vi } from "vite-plus/test";
+import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { render, openNodexMenu, settleAsyncRender, textContent } from "../../../test/dom";
 import { ThreadStageHeaderSlotContext } from "./thread-stage-header-slot";
 import type { ThreadStageActions, ThreadStageHeaderModel } from "../thread-stage-types";
@@ -44,12 +46,34 @@ function buildActions(): ThreadStageActions {
 }
 
 describe("ThreadStageHeader", () => {
+  beforeEach(() => vi.mocked(toast.danger).mockClear());
+
+  test.each([
+    ["Archive", "onArchiveThread", "Couldn’t archive the chat"],
+    ["Pin", "onToggleThreadPin", "Couldn’t pin the chat"],
+    ["New side chat", "onOpenSideChat", "Couldn’t open a side chat"],
+  ] as const)("reports a failed %s action with its reason", async (label, action, title) => {
+    const fail = vi.fn(async () => {
+      throw new Error("Error invoking remote method 'chat:action': Error: Access denied");
+    });
+    const view = render(
+      <ThreadStageHeader
+        model={buildModel({ showSideChatAction: true })}
+        actions={{ ...buildActions(), [action]: fail }}
+      />,
+    );
+    await openNodexMenu(view.getByRole("button", { name: "Chat actions" }));
+    await act(async () => {
+      fireEvent.click(view.getByText(label));
+      await Promise.resolve();
+    });
+    expect(toast.danger).toHaveBeenCalledExactlyOnceWith(title, { description: "Access denied" });
+  });
+
   test("keeps a named child Thread's avatar through title and nickname changes", async () => {
-    const { ThreadStageHeader } = await import("./local-conversation-stage-header");
     const actions = buildActions();
-    const onErrorMessage = () => {};
     const header = (model: ThreadStageHeaderModel) => (
-      <ThreadStageHeader model={model} actions={actions} onErrorMessage={onErrorMessage} />
+      <ThreadStageHeader model={model} actions={actions} />
     );
     const view = render(header(buildModel({ subagentName: "Scout" })));
     const avatar = view.container.querySelector<HTMLImageElement>(
@@ -71,20 +95,17 @@ describe("ThreadStageHeader", () => {
   test.each(["claude", "opencode"] as const)(
     "offers a working Fork chat action for a %s Runtime conversation",
     async (kind) => {
-      const { ThreadStageHeader } = await import("./local-conversation-stage-header");
       const onForkThread = vi.fn(async (_target: "local" | "newWorktree") => {});
       const actions = { ...buildActions(), onForkThread };
       const view = render(
         <ThreadStageHeader
           model={buildModel()}
           actions={actions}
-          onErrorMessage={() => {}}
           provider={{
             kind,
             label: kind === "claude" ? "Claude Code" : "OpenCode",
             selection: `${kind}:work`,
             commands: [],
-            error: null,
           }}
         />,
       );
@@ -108,19 +129,16 @@ describe("ThreadStageHeader", () => {
   );
 
   test("requests a native generated title only after its explicit menu action", async () => {
-    const { ThreadStageHeader } = await import("./local-conversation-stage-header");
     const generateTitle = vi.fn(async () => "Generated task title");
     const view = render(
       <ThreadStageHeader
         model={buildModel()}
         actions={buildActions()}
-        onErrorMessage={() => {}}
         provider={{
           kind: "claude",
           label: "Claude",
           selection: "claude:work",
           commands: [],
-          error: null,
           generateTitle,
         }}
       />,
@@ -134,12 +152,10 @@ describe("ThreadStageHeader", () => {
     expect(generateTitle).toHaveBeenCalledTimes(1);
   });
   test("renders the global thread title", async () => {
-    const { ThreadStageHeader } = await import("./local-conversation-stage-header");
     const { container } = render(
       <ThreadStageHeader
         model={buildModel({ title: "Review shell header parity" })}
         actions={buildActions()}
-        onErrorMessage={() => {}}
       />,
     );
 
@@ -148,17 +164,12 @@ describe("ThreadStageHeader", () => {
   });
 
   test("places chat actions at the trailing edge after the growing title", async () => {
-    const { ThreadStageHeader } = await import("./local-conversation-stage-header");
     const actions = {
       ...buildActions(),
       onOpenSideChat: async () => {},
     };
     const { container } = render(
-      <ThreadStageHeader
-        model={buildModel({ showSideChatAction: true })}
-        actions={actions}
-        onErrorMessage={() => {}}
-      />,
+      <ThreadStageHeader model={buildModel({ showSideChatAction: true })} actions={actions} />,
     );
 
     const title = container.querySelector('[data-testid="thread-stage-title"]');
@@ -171,7 +182,6 @@ describe("ThreadStageHeader", () => {
   });
 
   test("renders the chat action ordering before the Copy flyout", async () => {
-    const { ThreadStageHeader } = await import("./local-conversation-stage-header");
     let renameCalls = 0;
     const actions = {
       ...buildActions(),
@@ -181,11 +191,7 @@ describe("ThreadStageHeader", () => {
       onOpenSideChat: async () => {},
     };
     const screen = render(
-      <ThreadStageHeader
-        model={buildModel({ showSideChatAction: true })}
-        actions={actions}
-        onErrorMessage={() => {}}
-      />,
+      <ThreadStageHeader model={buildModel({ showSideChatAction: true })} actions={actions} />,
     );
 
     const trigger = screen.getByRole("button", { name: "Chat actions" });
@@ -204,16 +210,13 @@ describe("ThreadStageHeader", () => {
   });
 
   test("offers Clear context with the chat's new-work actions and reports its refusal", async () => {
-    const { ThreadStageHeader } = await import("./local-conversation-stage-header");
     const onClearContext = vi.fn(async () => {
       throw new Error("Wait for the reply and queued messages to finish, then clear the context.");
     });
-    const onErrorMessage = vi.fn();
     const screen = render(
       <ThreadStageHeader
         model={buildModel({ showSideChatAction: true })}
         actions={{ ...buildActions(), onOpenSideChat: async () => {}, onClearContext }}
-        onErrorMessage={onErrorMessage}
       />,
     );
 
@@ -227,20 +230,18 @@ describe("ThreadStageHeader", () => {
       await Promise.resolve();
     });
     expect(onClearContext).toHaveBeenCalledOnce();
-    expect(onErrorMessage).toHaveBeenLastCalledWith(
-      "Wait for the reply and queued messages to finish, then clear the context.",
-    );
+    expect(toast.danger).toHaveBeenLastCalledWith("Couldn’t clear the context", {
+      description: "Wait for the reply and queued messages to finish, then clear the context.",
+    });
   });
 
   test("sets, states and cancels the chat's reminder from Remind me", async () => {
-    const { ThreadStageHeader } = await import("./local-conversation-stage-header");
     const onSetThreadReminder = vi.fn(async (_remindAt: string | null) => {});
     const remindAt = new Date(Date.now() + 2 * 60 * 60 * 1_000).toISOString();
     const view = render(
       <ThreadStageHeader
         model={buildModel({ remindAt })}
         actions={{ ...buildActions(), onSetThreadReminder }}
-        onErrorMessage={() => {}}
       />,
     );
     const openRemindMe = async () => {
@@ -274,7 +275,6 @@ describe("ThreadStageHeader", () => {
   });
 
   test("opens Copy as a separate submenu with Codex item ordering", async () => {
-    const { ThreadStageHeader } = await import("./local-conversation-stage-header");
     const screen = render(
       <ThreadStageHeader
         model={buildModel()}
@@ -283,7 +283,6 @@ describe("ThreadStageHeader", () => {
           onRequestRenameThread: () => {},
           onCopyConversationMarkdown: async () => {},
         }}
-        onErrorMessage={() => {}}
       />,
     );
 
@@ -311,7 +310,6 @@ describe("ThreadStageHeader workspace slot", () => {
   test.each(["right", "left"] as const)(
     "offers Move to %s pane after Copy and before runtime and Archive",
     async (side) => {
-      const { ThreadStageHeader } = await import("./local-conversation-stage-header");
       const onSelect = vi.fn();
       const view = render(
         <ThreadStageHeaderSlotContext value={{ variant: "titlebar", paneMove: { side, onSelect } }}>
@@ -322,13 +320,11 @@ describe("ThreadStageHeader workspace slot", () => {
               onArchiveThread: async () => {},
               onOpenSubagentsPanel: async () => {},
             }}
-            onErrorMessage={() => {}}
             provider={{
               kind: "claude",
               label: "Claude",
               selection: "claude:work",
               commands: [],
-              error: null,
               controls: { subagents: true },
             }}
           />
@@ -355,23 +351,15 @@ describe("ThreadStageHeader workspace slot", () => {
   );
 
   test("the default header has no pane move action", async () => {
-    const { ThreadStageHeader } = await import("./local-conversation-stage-header");
-    const view = render(
-      <ThreadStageHeader model={buildModel()} actions={buildActions()} onErrorMessage={() => {}} />,
-    );
+    const view = render(<ThreadStageHeader model={buildModel()} actions={buildActions()} />);
     await openNodexMenu(view.getByRole("button", { name: "Chat actions" }));
     expect(view.queryByRole("menuitem", { name: /^Move to .* pane$/ })).toBeNull();
   });
 
   test("the Chat tab slot renders only its working Chat actions trigger", async () => {
-    const { ThreadStageHeader } = await import("./local-conversation-stage-header");
     const view = render(
       <ThreadStageHeaderSlotContext value={{ variant: "chat-tab", paneMove: null }}>
-        <ThreadStageHeader
-          model={buildModel()}
-          actions={buildActions()}
-          onErrorMessage={() => {}}
-        />
+        <ThreadStageHeader model={buildModel()} actions={buildActions()} />
       </ThreadStageHeaderSlotContext>,
     );
     expect(view.queryByText("Thread title")).toBeNull();
@@ -383,3 +371,7 @@ describe("ThreadStageHeader workspace slot", () => {
     expect(view.queryByRole("menuitem", { name: /^Move to .* pane$/ })).toBeNull();
   });
 });
+
+vi.mock("@/components/ui/toast", () => ({
+  toast: { danger: vi.fn(), success: vi.fn(), info: vi.fn(), warning: vi.fn() },
+}));

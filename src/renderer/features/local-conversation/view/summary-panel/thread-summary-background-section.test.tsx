@@ -1,4 +1,5 @@
-import { describe, expect, test, vi } from "vite-plus/test";
+import { toast } from "@/components/ui/toast";
+import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { act, fireEvent, waitFor } from "@testing-library/react";
 import { render } from "../../../../test/dom";
 import { NodexTooltipProvider } from "../../../../components/ui/tooltip";
@@ -23,19 +24,16 @@ const task = (id: string, overrides: Partial<ConversationBackgroundTask> = {}) =
   ...overrides,
 });
 
-function renderSection(background: ConversationBackgroundTasks, onErrorMessage = vi.fn()) {
+function renderSection(background: ConversationBackgroundTasks) {
   return render(
     <NodexTooltipProvider>
-      <ThreadSummaryBackgroundSection
-        background={background}
-        autoCollapse={false}
-        onErrorMessage={onErrorMessage}
-      />
+      <ThreadSummaryBackgroundSection background={background} autoCollapse={false} />
     </NodexTooltipProvider>,
   );
 }
 
 describe("ThreadSummaryBackgroundSection", () => {
+  beforeEach(() => vi.mocked(toast.danger).mockClear());
   test("stops one task from its row and every task from the section", async () => {
     const stop = vi.fn(async () => {});
     const view = renderSection({
@@ -99,23 +97,24 @@ describe("ThreadSummaryBackgroundSection", () => {
     expect(await view.findByText("Output isn't available for this task")).toBeTruthy();
   });
 
-  test("reports a Stop the Agent refused", async () => {
-    const onErrorMessage = vi.fn();
-    const view = renderSection(
-      {
-        tasks: [task("Dev server")],
-        stop: vi.fn(async () => {
-          throw new Error("Agent execution is unavailable");
-        }),
-      },
-      onErrorMessage,
-    );
+  test.each([
+    ["Stop Dev server", "Couldn’t stop the background task"],
+    ["Stop all", "Couldn’t stop background tasks"],
+  ] as const)("reports a refused %s action", async (action, title) => {
+    const view = renderSection({
+      tasks: [task("Dev server"), task("Watch logs")],
+      stop: vi.fn(async () => {
+        throw new Error("Agent execution is unavailable");
+      }),
+    });
     await act(async () => {
-      fireEvent.click(view.getByRole("button", { name: "Stop Dev server" }));
+      fireEvent.click(view.getByRole("button", { name: action }));
       await Promise.resolve();
     });
     await waitFor(() =>
-      expect(onErrorMessage).toHaveBeenLastCalledWith("Agent execution is unavailable"),
+      expect(toast.danger).toHaveBeenLastCalledWith(title, {
+        description: "Agent execution is unavailable",
+      }),
     );
   });
 });
@@ -128,3 +127,7 @@ describe("formatBackgroundTaskAge", () => {
     expect(formatBackgroundTaskAge(start, start + 3 * 3_600_000)).toBe("3h");
   });
 });
+
+vi.mock("@/components/ui/toast", () => ({
+  toast: { danger: vi.fn(), success: vi.fn(), info: vi.fn(), warning: vi.fn() },
+}));
