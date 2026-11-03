@@ -88,7 +88,35 @@ test("Backspace inside an IME composition on a new line keeps and saves the comp
 
       await paragraphs.first().click();
       await expect(editor).toBeFocused();
-      await editor.press(process.platform === "darwin" ? "Meta+ArrowRight" : "End");
+      // ProseMirror observes native caret movement through selectionchange.
+      // Finish that movement before Enter creates the empty composition Block.
+      const caretMovement = await paragraphs.first().evaluateHandle((paragraph) => {
+        const controller = new AbortController();
+        const settled = new Promise<void>((resolve) => {
+          document.addEventListener(
+            "selectionchange",
+            () => {
+              const selection = window.getSelection();
+              if (
+                !selection?.isCollapsed ||
+                selection.anchorNode !== paragraph.firstChild ||
+                selection.anchorOffset !== paragraph.textContent?.length
+              )
+                return;
+              resolve();
+            },
+            { signal: controller.signal },
+          );
+        });
+        return { settled, release: () => controller.abort() };
+      });
+      try {
+        await editor.press(process.platform === "darwin" ? "Meta+ArrowRight" : "End");
+        await caretMovement.evaluate(({ settled }) => settled);
+      } finally {
+        await caretMovement.evaluate(({ release }) => release());
+        await caretMovement.dispose();
+      }
       await editor.press("Enter");
       await expect(paragraphs).toHaveText([FIRST_PARAGRAPH, "", SECOND_PARAGRAPH]);
       const newLineId = (await blockIds())[1];
