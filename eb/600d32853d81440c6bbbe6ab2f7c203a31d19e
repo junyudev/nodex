@@ -1,0 +1,95 @@
+src/renderer/features/browser-sidebar/browser-profile-import-dialog.test.tsx
+  s_4ecb22df858a2c::t_1f67872c65ff77 1-61
+src/renderer/features/browser-sidebar/browser-profile-import-dialog.tsx
+  s_4ecb22df858a2c::t_22714db67387a5 76,84-92,120-136,144-155
+src/renderer/features/browser-sidebar/browser-settings-pages.tsx
+  s_4ecb22df858a2c::t_606237064cfd9b 475,478-479,893-902,980-989,991-992,1181,1183-1184
+src/renderer/features/browser-sidebar/browser-sidebar-hidden-webview-hosts.tsx
+  s_4ecb22df858a2c::t_b62296b781a7bb 1,194-196,206,263,273,298,300,304-305,308-316
+src/renderer/features/browser-sidebar/browser-sidebar-panel.tsx
+  s_4ecb22df858a2c::t_dfca8867bce2dd 54,311-314,316,368-372,374,393-402,458-460,504-525,527,529,539,554,740-744,785,806,890-891,897,901,910,915-918,920,973,976-980,1876-1888,3049-3060,3062,3064-3065,3079,3511-3518
+src/renderer/features/browser-sidebar/browser-use-cursor-portal.tsx
+  s_4ecb22df858a2c::t_69823633ddb588 1-8,79,148,154
+src/renderer/features/content-search/content-search-context.test.tsx
+  s_4ecb22df858a2c::t_a3af07ac74d87b 3,28-31,108-111,181-184,237-240
+src/renderer/features/content-search/content-search-context.tsx
+  s_4ecb22df858a2c::t_bdfe69d175d22a 148-150,306,311,344-346,350,360-395,397-398,451,456,477-478,502
+src/renderer/features/content-search/content-search-surface.test.tsx
+  s_4ecb22df858a2c::t_dbb66378bdacfc 1-44
+src/renderer/features/content-search/content-search-surface.tsx
+  s_4ecb22df858a2c::t_8407061808b851 1,71-76,78-83,85-87
+src/renderer/features/dictation/global-dictation-page.tsx
+  s_4ecb22df858a2c::t_dbad9b1d6723ef 2-9,160-182,186,190,199,218,228-230,232,317,358-410,412,446,457-459,469,473,476,481-482,484,494,503-524,528,535,540,545-546,556,559-560,563-564,568,575-576,583-587,597,600,605,607,615,619,622,630-631,636,638-640,644-645,648,659,661-662,665,670,690-691,693,702
+src/renderer/features/dictation/in-app-dictation-router.test.tsx
+  s_4ecb22df858a2c::t_037c783197d5f2 87-126
+src/renderer/features/dictation/in-app-dictation-router.tsx
+  s_4ecb22df858a2c::t_d863a34df8b7b5 1-9,67,79,170,178-183,189-192
+src/renderer/features/dictation/use-floating-window-pointer-interactivity.test.tsx
+  s_4ecb22df858a2c::t_cfdb040b60760c 1-67
+src/renderer/features/dictation/use-floating-window-pointer-interactivity.ts
+  s_4ecb22df858a2c::t_ae57f1a6fbe5d6 1,39-40,64-65,95-106,109,119-125
+src/renderer/features/dictation/voice-settings-page.tsx
+  s_4ecb22df858a2c::t_8cc0f986446197 341,344,416,418,459-490,497,504-515,521-525,531-536,539-543,564,568,571,581,884-887
+src/renderer/features/document-recovery/recovery-review.test.tsx
+  s_4ecb22df858a2c::t_1e0f79a15ae967 108-111,118-123,219-222,225-227
+src/renderer/features/document-recovery/recovery-review.tsx
+  s_4ecb22df858a2c::t_49aac04a29fb7e 85-91,93,118,120-132,134,152,157-169,175-183,189
+src/renderer/features/inbox/inbox-composer.test.tsx
+  s_4ecb22df858a2c::t_65d051a7ec7236 388-425
+src/renderer/features/inbox/inbox-composer.tsx
+  s_4ecb22df858a2c::t_5e334b5bfbea6a 65,67,69-70
+src/renderer/features/inbox/inbox-history.tsx
+  s_4ecb22df858a2c::t_213d9ad821f52c 1,165
+src/renderer/features/inbox/inbox-message-editor.tsx
+  s_4ecb22df858a2c::t_db54810b616bf1 58
+src/renderer/features/inbox/inbox-route.tsx
+  s_4ecb22df858a2c::t_3bfba20c81818c 1,337
+src/renderer/features/inbox/inbox-settings-page.tsx
+  s_4ecb22df858a2c::t_cdd5b27e787320 24,166
+src/renderer/features/inbox/inbox-triage.tsx
+  s_4ecb22df858a2c::t_f420d1c7ee6fd2 1,467,484-485,720
+src/renderer/features/inbox/inbox-viewport.browser.test.tsx
+  s_4ecb22df858a2c::t_d265a7fbb9b1ba 17-18,25
+src/renderer/features/inbox/use-inbox-clock.test.tsx
+  s_4ecb22df858a2c::t_58a3784e47cdea 1-26
+src/renderer/features/inbox/use-inbox-clock.ts
+  s_4ecb22df858a2c::t_410d5bd0e8c806 1-11
+src/renderer/features/inbox/use-inbox.ts
+  s_4ecb22df858a2c::t_87345f20ffd533 1,44,48-49,51,58
+src/renderer/features/review/data/use-review-path-diffs.ts
+  s_4ecb22df858a2c::t_60d8e488dd34bf 2,143-145,171-172,176-177,179,184,186,196-214,219-222,229,309,376-416
+src/renderer/features/workspace-files/workspace-files-panel.tsx
+  s_4ecb22df858a2c::t_cd5c028b3beb42 10,220-226,264,281,404,542,566,568,570-571,574-580,588-590,592,730,758-761,763-766,816-818,835,853-880,882-883,895-932,935-941,944-947,949-951,953-963,965-992,994-998,1000-1030,1033-1036,1038,1041-1051,1070,1241-1243,1245,1265-1268,1271-1274,1277-1279,1282,1304-1357,1564,1587
+src/renderer/features/workspace-files/workspace-pdf-preview.test.tsx
+  s_4ecb22df858a2c::t_418ef041a9cb03 2,32,37,49-52,105-107,114-158
+src/renderer/features/workspace-files/workspace-pdf-preview.tsx
+  s_4ecb22df858a2c::t_58e9db377cfa10 77-80,101,130,141,188,361,365-367,375,388,397-401,447,449-451,467,575-579,685
+src/renderer/features/workspace-files/workspace-pierre-editor.tsx
+  s_4ecb22df858a2c::t_b4205e9498c3f2 200-202
+scripts/ci/lint-warning-baseline.json
+  s_5cec66ce245092::t_7d1bc18ec5ed88 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "eb600d32853d81440c6bbbe6ab2f7c203a31d19e",
+  "prompts": {},
+  "sessions": {
+    "s_4ecb22df858a2c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a055-207c-72a1-b1ad-e6102c15fab4",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_5cec66ce245092": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d35af60e-664c-450c-a6fb-09ff7e66af9e",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
