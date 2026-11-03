@@ -182,3 +182,5 @@ export const updateCodexHomeSettings = (input: CodexHomeSettingsUpdateInput) =>
   invokePlainCommand(updateCodexHomeSettingsCommand, input);
 export const updateClaudeAgentSettings = (input: UpdateClaudeAgentSettingsInput) =>
   invokePlainCommand(updateClaudeAgentSettingsCommand, input);
+
+export const readTerminalShells = () => invokeRendererQuery("terminal-shells:list");

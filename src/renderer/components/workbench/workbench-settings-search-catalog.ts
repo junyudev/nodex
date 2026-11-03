@@ -1,3 +1,4 @@
+import { readSettingsHostPresentation } from "@/lib/settings-host-presentation";
 import { buildSettingsSearchResults, type SettingsSearchContext } from "@/lib/settings-search";
 import { scoreSettingsQueryMatch } from "@/lib/settings-search-score";
 import { DEFAULT_WORKTREE_AUTO_BRANCH_PREFIX } from "../../lib/worktree-branch-prefix";
@@ -24,6 +25,7 @@ interface SettingsSearchCatalogGroup {
 }
 
 interface SettingsSearchCatalogEntry {
+  visibleWhen?: () => boolean;
   label: string;
   description?: string;
   terms?: readonly string[];
@@ -33,8 +35,9 @@ function entry(
   label: string,
   description?: string,
   terms: readonly string[] = [],
+  visibleWhen?: () => boolean,
 ): SettingsSearchCatalogEntry {
-  return { description, label, terms };
+  return { description, label, terms, visibleWhen };
 }
 
 function uniqueText(values: readonly unknown[]): string[] {
@@ -69,7 +72,9 @@ function materializePanelSearchMessages(panel: SettingsSearchCatalogPanel): read
     group.title,
     group.description,
     group.messages,
-    group.entries?.flatMap((setting) => [setting.label, setting.description, setting.terms]),
+    group.entries
+      ?.filter((setting) => setting.visibleWhen?.() ?? true)
+      .flatMap((setting) => [setting.label, setting.description, setting.terms]),
   ]);
 
   return uniqueText([panel.title, panel.subtitle, panel.messages, groups]);
@@ -110,6 +115,12 @@ export const SETTINGS_SEARCH_PANELS = {
             "quit",
             "reopen",
           ]),
+          entry(
+            "Terminal shell",
+            "Applies to new terminals.",
+            ["Automatic", "PowerShell 7", "Windows PowerShell", "Command Prompt", "Git Bash"],
+            () => readSettingsHostPresentation().terminalShell,
+          ),
           entry("Nodex version", "Check for updates, or restart to install a downloaded one.", [
             "App updates",
             "Check now",

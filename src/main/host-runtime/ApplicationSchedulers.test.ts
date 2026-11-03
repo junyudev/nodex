@@ -350,6 +350,7 @@ const buildHarness = (input: {
             Layer.succeed(
               ApplicationSettings,
               ApplicationSettings.of({
+                terminalShellSettingsChanges: Stream.empty,
                 usageMeterSettingsChanges: Stream.empty,
                 composerPredictionSettingsChanges: Stream.empty,
                 linkOpeningSettingsChanges: Stream.empty,

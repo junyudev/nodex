@@ -1578,6 +1578,18 @@ export interface IpcApi
     args: [input: import("./composer-prediction-settings").ComposerPredictionSettings];
     result: import("./composer-prediction-settings").ComposerPredictionSettings;
   };
+  "terminal-shells:list": {
+    args: [];
+    result: readonly import("./terminal-shell-settings").WindowsTerminalShell[];
+  };
+  "settings:terminal-shell:get": {
+    args: [];
+    result: import("./terminal-shell-settings").TerminalShellSettings;
+  };
+  "settings:terminal-shell:update": {
+    args: [input: import("./terminal-shell-settings").TerminalShellSettings];
+    result: import("./terminal-shell-settings").TerminalShellSettings;
+  };
   "settings:window-restore:get": { args: []; result: WindowRestoreSettings };
   "settings:inbox:get": { args: []; result: import("./inbox").InboxSettings };
   "settings:inbox:update": {
@@ -3149,6 +3161,7 @@ export interface IpcEvents {
   "chrome-control-settings-changed": ChromeControlRuntimeSnapshot;
   "claude-agent-settings-changed": void;
   "agent-settings-changed": void;
+  "terminal-shell-settings-changed": import("./terminal-shell-settings").TerminalShellSettings;
   "link-opening-settings-changed": import("./link-opening-settings").LinkOpeningSettings;
   "link:open-requested": import("./link-opening").LinkOpenRequest;
   "usage-meter-settings-changed": import("./usage-meter-settings").UsageMeterSettings;

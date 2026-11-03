@@ -3,7 +3,16 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import fs from "node:fs";
 import { MainConfig } from "../../app/MainConfig";
-import { claudeExecutableCandidates, claudeHostEnvironmentValue } from "./ClaudeExecutable";
+import { ApplicationSettings } from "../../settings/ApplicationSettings";
+import {
+  DEFAULT_TERMINAL_SHELL_SETTINGS,
+  type WindowsTerminalShell,
+} from "../../../shared/terminal-shell-settings";
+import {
+  discoverWindowsTerminalShells,
+  resolveWindowsTerminalShell,
+  windowsAutomaticShellCandidates,
+} from "./WindowsTerminalShells";
 import path from "node:path";
 import type { TerminalSize } from "../../../shared/types";
 import type { TerminalRuntimeConfig } from "../../terminal-runtime/TerminalRuntimeMap";
@@ -21,6 +30,7 @@ export interface TerminalEnvironmentInput {
 export class TerminalEnvironment extends Context.Service<
   TerminalEnvironment,
   {
+    readonly availableShells: Effect.Effect<readonly WindowsTerminalShell[]>;
     readonly resolve: (input: TerminalEnvironmentInput) => Effect.Effect<TerminalRuntimeConfig>;
   }
 >()("nodex/main/platform/node/TerminalEnvironment") {}
@@ -46,55 +56,18 @@ export const terminalShellCandidates = (
 ): readonly string[] => {
   if (platform !== "win32")
     return [environment.SHELL || (platform === "darwin" ? "/bin/zsh" : "/bin/sh")];
-  const root = claudeHostEnvironmentValue(environment, "SystemRoot", platform);
-  return [
-    "pwsh.exe",
-    ...["ProgramW6432", "ProgramFiles", "LOCALAPPDATA"].flatMap((name) => {
-      const directory = claudeHostEnvironmentValue(environment, name, platform);
-      if (!directory) return [];
-      return [
-        path.win32.join(
-          directory,
-          ...(name === "LOCALAPPDATA" ? ["Microsoft", "PowerShell"] : ["PowerShell", "7"]),
-          "pwsh.exe",
-        ),
-      ];
-    }),
-    ...(root
-      ? [path.win32.join(root, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")]
-      : []),
-    "powershell.exe",
-    claudeHostEnvironmentValue(environment, "COMSPEC", platform) || "cmd.exe",
-  ];
-};
-
-const resolveShell = (
-  platform: string,
-  environment: Readonly<NodeJS.ProcessEnv>,
-  home: string,
-): string => {
-  const candidates = terminalShellCandidates(platform, environment);
-  if (platform !== "win32") return candidates[0]!;
-  for (const shell of candidates) {
-    const found = claudeExecutableCandidates(shell, environment, platform, home).find(
-      (candidate) => {
-        try {
-          return fs.statSync(candidate).isFile();
-        } catch {
-          return false;
-        }
-      },
-    );
-    if (found) return found;
-  }
-  return candidates.at(-1)!;
+  const { pwsh, powershell, cmd } = windowsAutomaticShellCandidates(environment);
+  return [...pwsh, ...powershell, ...new Set(cmd)];
 };
 
 export const resolveTerminalCommand = (
   shell: string,
   platform: NodeJS.Platform,
 ): readonly [string, ...string[]] => {
-  if (platform === "win32") return [shell];
+  if (platform === "win32")
+    return path.win32.basename(shell).toLowerCase() === "bash.exe"
+      ? [shell, "--login", "-i"]
+      : [shell];
   const basename = path.basename(shell).toLowerCase();
   if (basename === "bash") return [shell, "--login", "-i"];
   if (basename === "zsh" || basename === "fish") return [shell, "-l", "-i"];
@@ -104,6 +77,7 @@ export const resolveTerminalCommand = (
 export const buildTerminalEnvironment = (
   environment: Readonly<NodeJS.ProcessEnv>,
   platform: string,
+  shell?: string,
 ): Readonly<Record<string, string>> => {
   return mergeProcessEnvironments(
     platform,
@@ -113,6 +87,14 @@ export const buildTerminalEnvironment = (
       ),
     ),
     { TERM: "xterm-256color" },
+    platform === "win32" && shell && path.win32.basename(shell).toLowerCase() === "bash.exe"
+      ? {
+          CHERE_INVOKING: "1",
+          MSYS2_PATH_TYPE: "inherit",
+          // Git's login profile must capture the task PATH instead of reusing a parent shell's cache.
+          ORIGINAL_PATH: undefined,
+        }
+      : {},
   );
 };
 
@@ -120,11 +102,37 @@ export const live = Layer.effect(
   TerminalEnvironment,
   Effect.gen(function* () {
     const config = yield* MainConfig;
+    const settings = yield* ApplicationSettings;
+    const environment = buildTerminalEnvironment(config.environment, config.platform);
     return TerminalEnvironment.of({
+      availableShells: Effect.sync(() =>
+        config.platform === "win32"
+          ? discoverWindowsTerminalShells(environment, config.homeDirectory).map(
+              (shell) => shell.id,
+            )
+          : [],
+      ),
       resolve: (input) =>
         Effect.gen(function* () {
-          const environment = buildTerminalEnvironment(config.environment, config.platform);
-          const shell = resolveShell(config.platform, environment, config.homeDirectory);
+          const preference =
+            config.platform === "win32"
+              ? yield* settings.snapshot().pipe(
+                  Effect.map((snapshot) => snapshot.terminalShell),
+                  Effect.catch(() =>
+                    Effect.logWarning(
+                      "Could not read terminal shell preference; using Automatic",
+                    ).pipe(Effect.as(DEFAULT_TERMINAL_SHELL_SETTINGS)),
+                  ),
+                )
+              : DEFAULT_TERMINAL_SHELL_SETTINGS;
+          const shell =
+            config.platform === "win32"
+              ? resolveWindowsTerminalShell(
+                  environment,
+                  config.homeDirectory,
+                  preference.windowsShell,
+                )
+              : terminalShellCandidates(config.platform, environment)[0]!;
           const [command, ...args] = resolveTerminalCommand(
             shell,
             config.platform as NodeJS.Platform,
@@ -138,7 +146,7 @@ export const live = Layer.effect(
             command,
             args,
             cwd: resolveCwd(input.cwd, config.homeDirectory),
-            env: environment,
+            env: buildTerminalEnvironment(environment, config.platform, shell),
             cols: Math.max(2, Math.floor(size.cols)),
             rows: Math.max(1, Math.floor(size.rows)),
           } satisfies TerminalRuntimeConfig;

@@ -11,6 +11,7 @@ export function makeTestApplicationSettings(input?: {
   readonly pullRequestInstructions?: string;
 }): ApplicationSettings["Service"] {
   return ApplicationSettings.of({
+    terminalShellSettingsChanges: Stream.empty,
     linkOpeningSettingsChanges: Stream.succeed(DEFAULT_LINK_OPENING_SETTINGS),
     usageMeterSettingsChanges: Stream.succeed(DEFAULT_USAGE_METER_SETTINGS),
     composerPredictionSettingsChanges: Stream.empty,
@@ -21,6 +22,7 @@ export function makeTestApplicationSettings(input?: {
       Effect.succeed({
         linkOpening: DEFAULT_LINK_OPENING_SETTINGS,
         usageMeters: DEFAULT_USAGE_METER_SETTINGS,
+        terminalShell: { windowsShell: "automatic" },
         composerPredictions: { enabled: true },
         developer: { detailLevel: input?.detailLevel ?? "STEPS_COMMANDS" },
         git: {

@@ -30,6 +30,7 @@ it.live.skipIf(process.platform === "win32")(
       const environment = Layer.succeed(
         TerminalEnvironment,
         TerminalEnvironment.of({
+          availableShells: Effect.succeed([]),
           resolve: (input) =>
             Effect.succeed({
               sessionId: input.sessionId,

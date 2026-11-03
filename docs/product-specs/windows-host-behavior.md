@@ -45,10 +45,21 @@ host checks the observed clipboard contents before enhancement and verifies the
 committed text/HTML afterward. Structural authority still belongs to Core; native
 clipboard data supplies only its bounded descriptor.
 
-Terminals discover PowerShell 7, Windows PowerShell and cmd from the captured
-host environment. PowerShell 7 discovery also checks `%ProgramFiles%\PowerShell\7`
+Settings → General → Terminal shell offers Automatic followed by the installed
+PowerShell 7, Windows PowerShell, Command Prompt and Git Bash shells. Automatic
+uses PowerShell 7, then Windows PowerShell, then Command Prompt; it never selects
+Git Bash. The Profile preference synchronizes across windows and applies only to
+new terminals. If the chosen shell is removed, its saved choice remains visible
+as unavailable and new terminals use Automatic until it is available again or
+the user changes the preference. WSL is not listed.
+
+Terminals discover shells from the captured host environment. PowerShell 7 discovery also checks `%ProgramFiles%\PowerShell\7`
 and the user ZIP installer's `%LOCALAPPDATA%\Microsoft\PowerShell` directory
-when they are absent from PATH.
+when they are absent from PATH. Git Bash discovery checks Git launchers on PATH,
+sibling Git installation paths, and machine and per-user Git install directories.
+ConPTY launches Git's `bin\bash.exe` console wrapper with `--login -i`, preserving
+the Windows working directory, inherited environment and task-bound `nodex` CLI
+search path.
 Windows executable discovery honors case-insensitive PATH and
 PATHEXT without launching a login shell. Environment overlays replace names
 case-insensitively, including PATH, and explicit removals remove every case variant.

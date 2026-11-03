@@ -9,6 +9,11 @@ import type { ProjectionScope, ProjectionStreamMessage } from "../../shared/proj
 import type { ContentRoutingIdentity } from "../../shared/content-routing-context";
 
 export interface RendererTransport {
+  subscribeTerminalShellSettingsChanges?: (
+    callback: (
+      settings: import("../../shared/terminal-shell-settings").TerminalShellSettings,
+    ) => void,
+  ) => () => void;
   subscribeLinkOpeningSettingsChanges?: (
     callback: (settings: import("../../shared/link-opening-settings").LinkOpeningSettings) => void,
   ) => () => void;

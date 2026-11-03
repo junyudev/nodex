@@ -1,3 +1,8 @@
+import {
+  DEFAULT_TERMINAL_SHELL_SETTINGS,
+  TerminalShellSettingsSchema,
+  type TerminalShellSettings,
+} from "../../shared/terminal-shell-settings";
 import { syncDirectorySync } from "../platform/node/filesystem-durability";
 import {
   LinkOpeningSettingsSchema,
@@ -130,6 +135,7 @@ interface ServerTomlConfig {
   history_retention?: number;
   app_updates_auto_check_enabled?: boolean;
   app_updates_channel?: "stable" | "nightly";
+  terminal_shell?: TerminalShellSettings["windowsShell"];
   window_restore_policy?: WindowRestorePolicy;
   composer_predictions_enabled?: boolean;
   default_runtime_mode?: AgentRuntimeSettings["defaultRuntimeMode"];
@@ -1495,4 +1501,25 @@ export function updateLinkOpeningSettings(
     external_browser_link_shortcut: settings.externalBrowserLinkShortcut,
   });
   return settings;
+}
+
+export function getTerminalShellSettings(
+  source: ApplicationSettingsDocumentSource,
+): TerminalShellSettings {
+  const parsed = TerminalShellSettingsSchema.safeParse({
+    windowsShell: loadProfileServerTomlConfig(source).terminal_shell,
+  });
+  return parsed.success ? parsed.data : DEFAULT_TERMINAL_SHELL_SETTINGS;
+}
+
+export function updateTerminalShellSettings(
+  input: TerminalShellSettings,
+  source: ApplicationSettingsDocumentSource,
+): TerminalShellSettings {
+  const settings = TerminalShellSettingsSchema.parse(input);
+  writeProfileServerTomlConfig(source, {
+    ...loadProfileServerTomlConfig(source),
+    terminal_shell: settings.windowsShell,
+  });
+  return getTerminalShellSettings(source);
 }

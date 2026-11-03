@@ -161,6 +161,8 @@ it.effect("owns the complete application settings ingress with the Main Scope", 
       "settings:opencode-agents:update",
       "settings:telemetry:get",
       "settings:telemetry:update",
+      "settings:terminal-shell:get",
+      "settings:terminal-shell:update",
       "settings:third-party-notices:get",
       "settings:thread-notifications:get",
       "settings:thread-notifications:update",
@@ -174,6 +176,25 @@ it.effect("owns the complete application settings ingress with the Main Scope", 
       sender: { getType: () => "window", id: 7, mainFrame: frame },
       senderFrame: frame,
     } as unknown as IpcMainInvokeEvent;
+    assert.deepEqual(yield* handlers.get("settings:terminal-shell:get")!(event), {
+      windowsShell: "automatic",
+    });
+    assert.deepEqual(
+      yield* handlers.get("settings:terminal-shell:update")!(event, { windowsShell: "git-bash" }),
+      { windowsShell: "git-bash" },
+    );
+    const invalidShell = yield* Effect.result(
+      handlers.get("settings:terminal-shell:update")!(event, { windowsShell: "wsl" }),
+    );
+    assert.strictEqual(invalidShell._tag, "Failure");
+    yield* Effect.yieldNow;
+    assert.isTrue(
+      broadcasts.some(
+        (entry) =>
+          entry.channel === "terminal-shell-settings-changed" &&
+          (entry.value as { windowsShell: string }).windowsShell === "git-bash",
+      ),
+    );
     assert.deepEqual(yield* handlers.get("settings:usage-meters:get")!(event), {
       claude: true,
       codex: true,

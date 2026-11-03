@@ -5,6 +5,7 @@ import { resolveCodexRendererOs } from "./codex-window-runtime";
 export function resolveSettingsHostPresentation(platform: string) {
   const capabilities = hostCapabilities(platform);
   return {
+    terminalShell: platform === "win32",
     computerUse: capabilities.computerControl,
     browserProfileImport: capabilities.browserProfileImport,
     browserControl: capabilities.browserControl,

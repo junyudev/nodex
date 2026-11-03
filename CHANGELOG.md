@@ -6,7 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
-- Nodex runs on Windows 11, on both x64 and Arm PCs. Download the installer from nodex.jyu.app: it installs for your account without administrator rights, and Nodex keeps itself up to date from Stable or Nightly as it does on macOS.
+- Nodex runs on Windows 11, on both x64 and Arm PCs. Download the installer from nodex.jyu.app: it installs for your account without administrator rights, and Nodex keeps itself up to date from Stable or Nightly as it does on macOS. Choose PowerShell, Command Prompt or Git Bash for new terminals in General settings.
 
 - Sites in the built-in Browser can ask for your camera, microphone, location, notifications and other permissions. The request appears under the address bar, where you allow it while visiting, allow it this time or never allow it; Site information lists what each site may do and resets it, and a permission your system blocks offers to open System Settings.
 - Sort chats by Last updated or Manual order from the options menu in the sidebar's Projects header. Manual order keeps the chats you arrange where you put them, with new and never-arranged chats above them by activity, and switching between the two keeps your arrangement.
