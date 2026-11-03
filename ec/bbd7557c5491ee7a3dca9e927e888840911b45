@@ -1,0 +1,25 @@
+scripts/ci/windows-core-abba.ps1
+  s_6c9891f66c664a::t_c297706e1b2719 2-3,19-23,33-36,44-52,86-87,101-104,107-109
+  s_6c9891f66c664a::t_871ebf7299f9b5 105-106
+scripts/fixtures/windows-core-baseline-2e51.json
+  s_6c9891f66c664a::t_797b0a49efe77c 1-74
+.github/workflows/windows.yml
+  s_6c9891f66c664a::t_15231a3bfaf916 63,91
+  s_6c9891f66c664a::t_c297706e1b2719 7,9,21,55-56,89,96
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ecbbd7557c5491ee7a3dca9e927e888840911b45",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
