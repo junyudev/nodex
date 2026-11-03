@@ -1,0 +1,125 @@
+src/renderer/components/workbench/app-shell-tabs.test.tsx
+  s_83da818fb5fd40::t_c57b354ea58a2e 671-710
+src/renderer/components/workbench/app-shell-tabs.tsx
+  s_3be7810364377d::t_6a8d6e03a7a97b 519-520,522,549,569-574,822,826,965,1445,1664,1684-1685,1690,1693
+src/renderer/components/workbench/app-update-settings-control.tsx
+  s_3b20445a86fd34::t_51b8d2d9e74b20 203-204,207-220,235-241,243
+src/renderer/components/workbench/appearance-settings-page.tsx
+  s_3b20445a86fd34::t_9eb4a3feb17c75 93-98,100-108
+src/renderer/components/workbench/archived-chats-settings-page.tsx
+  s_3be7810364377d::t_16625216c34b96 1,156,176,178,185-190,194-195,205,208
+src/renderer/components/workbench/backup-settings-control.tsx
+  s_0defe1a26b25f0::t_0eb4e2520234cf 84,233-249,259,394
+src/renderer/components/workbench/codex-sidebar.tsx
+  s_3be7810364377d::t_bf9476e89a1d15 896-906,1086-1094,1140,1142,1148-1149,1175-1185,1187,1249,1268,1386,1494-1504,1506,1930-1942,1944
+src/renderer/components/workbench/command-palette-surface.tsx
+  s_3be7810364377d::t_d7047c00a9972e 203-231,240-241,710,963-991,993-994,996-997,999-1000,1002,1004-1005,1008-1012,1076-1080,1103-1122,1124,1127-1149,1151-1155,1157-1161,1163-1165
+src/renderer/components/workbench/command-palette.test.tsx
+  s_0defe1a26b25f0::t_910ea2d6f1176b 43
+src/renderer/components/workbench/command-palette.tsx
+  s_3be7810364377d::t_3da8442a5c194a 108,125,129-134,138
+src/renderer/components/workbench/computer-use-settings-page.test.tsx
+  s_0defe1a26b25f0::t_453b36d49c61f9 1,3-9,76-90
+src/renderer/components/workbench/computer-use-settings-page.tsx
+  s_5663ec459e661b::t_d44796c26acbc4 224-228
+src/renderer/components/workbench/database-view-filter-editors.test.tsx
+  s_83da818fb5fd40::t_6847c86d4dee59 2,145-208
+src/renderer/components/workbench/database-view-filter-editors.tsx
+  s_83da818fb5fd40::t_bd356dac894b03 45,292-301,307-310,317-320
+src/renderer/components/workbench/database-view-mutation-history.ts
+  s_0defe1a26b25f0::t_42afad52b430e3 256
+src/renderer/components/workbench/database-view-page-drag.jsdom.test.ts
+  s_17eba91634a37a::t_5f0def20c3582f 48-55,91-111
+src/renderer/components/workbench/database-view-page-drag.ts
+  s_0defe1a26b25f0::t_253e6c8c68f677 5,165-166,186,196
+src/renderer/components/workbench/database-view-rules-bar.tsx
+  s_3be7810364377d::t_70939df95d9265 368-371,381,395-396,449-452,503-504,508-509
+src/renderer/components/workbench/database-view-surface.tsx
+  s_3be7810364377d::t_a4626978ee2c35 452,539-541,543,641-649
+src/renderer/components/workbench/db-view-toolbar.tsx
+  s_3b20445a86fd34::t_618963c0cc0d8d 151,157-158,161-162,165,172,222-226
+src/renderer/components/workbench/git-settings-page.test.tsx
+  s_3be7810364377d::t_92060415736ff5 1-59
+src/renderer/components/workbench/git-settings-page.tsx
+  s_0defe1a26b25f0::t_5fdfc6e15068bb 33-37,40,48
+src/renderer/components/workbench/local-environments-settings-page.tsx
+  s_0defe1a26b25f0::t_3f1f00207be954 1,236-241,244-246
+src/renderer/components/workbench/managed-worktrees-settings-control.tsx
+  s_3be7810364377d::t_a39ec0b91fcd40 195,202-204,209-222,225-237,255-259,420,428,448
+src/renderer/components/workbench/panel-destination-picker.tsx
+  s_3be7810364377d::t_1bd65ab929fe07 118-126,128,343-345,348-353,356,555-558
+src/renderer/components/workbench/panel-group-tree.tsx
+  s_3be7810364377d::t_5c9bcb9feeb1ea 116-119,377-381
+src/renderer/components/workbench/pending-worktree-progress.tsx
+  s_3be7810364377d::t_28136967b1e13e 1,98-112,114
+src/renderer/components/workbench/pending-worktree-route.test.tsx
+  s_17eba91634a37a::t_73d2ebdc95129f 298-317
+src/renderer/components/workbench/pending-worktree-route.tsx
+  s_3be7810364377d::t_e29cfd3dde442e 375,378-379,386-397,399-413,419-431,436-437,443
+src/renderer/components/workbench/project-agent-dock-target-selector.tsx
+  s_0defe1a26b25f0::t_3afcdd0b358bc9 182-189
+src/renderer/components/workbench/project-edit-dialog.tsx
+  s_0defe1a26b25f0::t_81b27ed2adfe87 291,301
+src/renderer/components/workbench/project-hover-card.test.tsx
+  s_83da818fb5fd40::t_23265ef3e1b1c5 73-111
+src/renderer/components/workbench/project-hover-card.tsx
+  s_0defe1a26b25f0::t_50c696c4df6eb0 139,141
+src/renderer/components/workbench/workbench-testkit/workbench-shell-harness.tsx
+  s_3be7810364377d::t_8c4733759afa07 1293-1301,4559-4604,4620,4649
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a57caadf67008a12af82ef5f7e4feee7af415f76",
+  "prompts": {},
+  "sessions": {
+    "s_0defe1a26b25f0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19f87-3cbc-71c0-b75f-4b44b640616a",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_17eba91634a37a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19f56-59b4-73c3-8615-5162dccf172d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_3b20445a86fd34": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19f87-4fb8-7281-95a6-1d8d27874686",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_3be7810364377d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19f87-a1b4-7fe1-9fa1-806d4f5e39e1",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_5663ec459e661b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19f87-8cc7-7bc1-b1c3-9a767bd62295",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_83da818fb5fd40": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19f87-5991-7b22-bf81-ae60d850f81f",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
