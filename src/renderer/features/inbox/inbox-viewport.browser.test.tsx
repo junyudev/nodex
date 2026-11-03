@@ -14,13 +14,15 @@ const messages = (count: number, prefix = "m") =>
     (_, index) => ({ pageId: `${prefix}${count - index}` }) as InboxItem,
   );
 
+const fetchNoMorePages = async () => undefined;
+
 /** The Inbox route's stream reduced to what keeping a place depends on. */
 function Stream({
   scopeKey,
   items,
   view = "inbox",
   hasNextPage = false,
-  fetchNextPage = async () => undefined,
+  fetchNextPage = fetchNoMorePages,
 }: {
   scopeKey: string;
   items: readonly InboxItem[];

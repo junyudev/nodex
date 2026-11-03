@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
-import { fireEvent, waitFor } from "@testing-library/react";
+import { act, fireEvent, waitFor } from "@testing-library/react";
 import { render, settleAsyncRender } from "../../test/dom";
 import { WorkspacePdfPreview } from "./workspace-pdf-preview";
 
@@ -29,10 +29,12 @@ vi.mock("./workspace-pdf-runtime", () => {
   };
 });
 
+const originalElementFromPoint = document.elementFromPoint;
 const originalCanvasContext = HTMLCanvasElement.prototype.getContext;
 const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
 
 beforeAll(() => {
+  Object.defineProperty(document, "elementFromPoint", { configurable: true, value: () => null });
   Object.defineProperty(HTMLCanvasElement.prototype, "getContext", {
     configurable: true,
     value: () => ({ clearRect: vi.fn() }),
@@ -44,6 +46,10 @@ beforeAll(() => {
 });
 
 afterAll(() => {
+  Object.defineProperty(document, "elementFromPoint", {
+    configurable: true,
+    value: originalElementFromPoint,
+  });
   Object.defineProperty(HTMLCanvasElement.prototype, "getContext", {
     configurable: true,
     value: originalCanvasContext,
@@ -96,11 +102,58 @@ describe("WorkspacePdfPreview", () => {
     expect(view.container.querySelectorAll("canvas")).toHaveLength(2);
     expect(view.getByText("1/2")).not.toBeNull();
 
-    fireEvent.click(view.getByRole("button", { name: "Next page" }));
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Next page" }));
+    });
     expect(view.getByText("2/2")).not.toBeNull();
 
     view.unmount();
     expect(loadingTask.destroy).toHaveBeenCalledOnce();
+  });
+
+  test("switching files resets page and zoom and releases the previous document", async () => {
+    const first = {
+      destroyed: false,
+      destroy: vi.fn(async () => undefined),
+      promise: Promise.resolve(makeDocument([makePage(), makePage()])),
+    };
+    const second = {
+      destroyed: false,
+      destroy: vi.fn(async () => undefined),
+      promise: Promise.resolve(makeDocument([makePage()])),
+    };
+    runtimeMocks.getDocument.mockReturnValueOnce(first).mockReturnValueOnce(second);
+    const onOpenExternalLink = () => undefined;
+    const view = render(
+      <WorkspacePdfPreview
+        fileDataUrl="data:application/pdf;base64,JVBERg=="
+        title="first.pdf"
+        onOpenExternalLink={onOpenExternalLink}
+      />,
+    );
+    await view.findByText("1/2");
+    const initialZoomLabel = view
+      .getByRole("button", { name: /^Zoom, / })
+      .getAttribute("aria-label")!;
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Next page" }));
+      fireEvent.click(view.getByRole("button", { name: "Zoom in" }));
+    });
+    expect(view.getByText("2/2")).toBeTruthy();
+    await act(async () => {
+      view.rerender(
+        <WorkspacePdfPreview
+          fileDataUrl="data:application/pdf;base64,JVBERi0="
+          title="second.pdf"
+          onOpenExternalLink={onOpenExternalLink}
+        />,
+      );
+    });
+    expect(await view.findByText("1/1")).toBeTruthy();
+    expect(view.getByRole("button", { name: initialZoomLabel })).toBeTruthy();
+    expect(first.destroy).toHaveBeenCalledOnce();
+    view.unmount();
+    expect(second.destroy).toHaveBeenCalledOnce();
   });
 
   test("shows a bounded error state when the data URL cannot be decoded", async () => {

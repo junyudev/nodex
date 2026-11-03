@@ -338,9 +338,10 @@ export function VoiceSettingsPage({
         }));
       }
     } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not update shortcut";
       setShortcutErrors((current) => ({
         ...current,
-        [entry.id]: error instanceof Error ? error.message : "Could not update shortcut",
+        [entry.id]: message,
       }));
     }
   };
@@ -412,11 +413,9 @@ export function VoiceSettingsPage({
   const refreshMicrophones = async (): Promise<void> => {
     await requestMicrophoneAccess();
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true }).catch(() => null);
-    try {
-      await devicesQuery.refetch();
-    } finally {
+    await devicesQuery.refetch().finally(() => {
       stream?.getTracks().forEach((track) => track.stop());
-    }
+    });
   };
 
   const updateRecording = (recording: DictationRecordingMetadata): void => {
@@ -457,91 +456,90 @@ export function VoiceSettingsPage({
       previousAttempt + 1,
     );
     let outcome: "completed" | "failed" | "cancelled" = "failed";
-    try {
-      const audio = await readDictationRecordingAudio(id);
-      signal.throwIfAborted();
-      const rawTranscript = await diagnostics.measure("buffered", () =>
-        transcribeDictationBlob(
-          new Blob([Uint8Array.from(audio.bytes).buffer], { type: audio.recording.mimeType }),
-          { filename: audio.recording.fileName, signal, onDiagnostics: diagnostics.request },
-        ),
-      );
-      signal.throwIfAborted();
-      diagnostics.useTransport("buffered");
-      const transcript = rawTranscript.trim();
-      if (!transcript) throw new Error("The recording returned an empty transcript");
-      const recording = await diagnostics.measure("history", () =>
-        setDictationRecordingTranscript({ id, transcript }),
-      );
-      updateRecording(recording);
-      diagnostics.delivered();
-      outcome = "completed";
-      if (!signal.aborted) toast.success("Recording transcribed");
-    } catch {
-      if (signal.aborted) outcome = "cancelled";
-      else toast.danger("Could not transcribe this recording");
-    } finally {
-      await setDictationRecordingDiagnostics({
-        id,
-        diagnostics: diagnostics.snapshot(outcome),
-      }).catch(() => undefined);
-      await queryClient.invalidateQueries({ queryKey: HISTORY_QUERY_KEY }).catch(() => undefined);
-    }
+    await readDictationRecordingAudio(id)
+      .then(async (audio) => {
+        signal.throwIfAborted();
+        const rawTranscript = await diagnostics.measure("buffered", () =>
+          transcribeDictationBlob(
+            new Blob([Uint8Array.from(audio.bytes).buffer], { type: audio.recording.mimeType }),
+            { filename: audio.recording.fileName, signal, onDiagnostics: diagnostics.request },
+          ),
+        );
+        signal.throwIfAborted();
+        recordBufferedTransport(diagnostics);
+        const transcript = rawTranscript.trim();
+        if (!transcript) throw new Error("The recording returned an empty transcript");
+        const recording = await diagnostics.measure("history", () =>
+          setDictationRecordingTranscript({ id, transcript }),
+        );
+        updateRecording(recording);
+        diagnostics.delivered();
+        outcome = "completed";
+        if (!signal.aborted) toast.success("Recording transcribed");
+      })
+      .catch(() => {
+        if (signal.aborted) outcome = "cancelled";
+        else toast.danger("Could not transcribe this recording");
+      })
+      .finally(async () => {
+        await setDictationRecordingDiagnostics({
+          id,
+          diagnostics: diagnostics.snapshot(outcome),
+        }).catch(() => undefined);
+        await queryClient.invalidateQueries({ queryKey: HISTORY_QUERY_KEY }).catch(() => undefined);
+      });
   };
 
   const retryRecording = async (id: string): Promise<void> => {
     if (!canTranscribeRecordings) return;
     const controller = beginHistoryAction(`retry:${id}`);
     if (!controller) return;
-    try {
-      await transcribeRecording(id, controller.signal);
-    } finally {
-      finishHistoryAction(controller);
-    }
+    await transcribeRecording(id, controller.signal).finally(() => finishHistoryAction(controller));
   };
 
   const importRecording = async (): Promise<void> => {
     if (!canTranscribeRecordings) return;
     const controller = beginHistoryAction("import");
     if (!controller) return;
-    try {
-      const recording = await importDictationRecordingFile();
-      if (!recording) return;
-      await queryClient.cancelQueries({ queryKey: HISTORY_QUERY_KEY });
-      updateRecording(recording);
-      controller.signal.throwIfAborted();
-      await transcribeRecording(recording.id, controller.signal, "file");
-    } catch {
-      if (!controller.signal.aborted) toast.danger("Could not import this WebM file");
-    } finally {
-      finishHistoryAction(controller);
-    }
+    await importDictationRecordingFile()
+      .then(async (recording) => {
+        if (!recording) return;
+        await queryClient.cancelQueries({ queryKey: HISTORY_QUERY_KEY });
+        updateRecording(recording);
+        controller.signal.throwIfAborted();
+        await transcribeRecording(recording.id, controller.signal, "file");
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) toast.danger("Could not import this WebM file");
+      })
+      .finally(() => finishHistoryAction(controller));
   };
 
   const downloadRecording = async (id: string): Promise<void> => {
     const controller = beginHistoryAction(`download:${id}`);
     if (!controller) return;
-    try {
-      await downloadDictationRecording(id);
-    } catch {
-      toast.danger("Could not download this recording");
-    } finally {
-      finishHistoryAction(controller);
-    }
+    await downloadDictationRecording(id)
+      .catch(() => {
+        toast.danger("Could not download this recording");
+      })
+      .finally(() => finishHistoryAction(controller));
   };
 
   const removeRecording = async (id: string): Promise<void> => {
     const controller = beginHistoryAction(`delete:${id}`);
     if (!controller) return;
-    try {
-      await deleteDictationRecording(id);
-      await queryClient.invalidateQueries({ queryKey: HISTORY_QUERY_KEY });
-    } catch {
-      toast.danger("Could not delete this recording");
-    } finally {
-      finishHistoryAction(controller);
-    }
+    await deleteDictationRecording(id)
+      .then(() => queryClient.invalidateQueries({ queryKey: HISTORY_QUERY_KEY }))
+      .catch(() => {
+        toast.danger("Could not delete this recording");
+      })
+      .finally(() => finishHistoryAction(controller));
   };
+
+  const microphoneInputDeviceId = settings?.microphoneInputDeviceId ?? null;
+  const microphoneOptions = deviceOptions(devicesQuery.data ?? [], microphoneInputDeviceId);
+  const microphoneValue = microphoneInputDeviceId ?? "";
+  const selectedMicrophone = microphoneOptions.find((option) => option.value === microphoneValue);
 
   return (
     <NodexSettingsPageSurface title="Voice">
@@ -563,22 +561,14 @@ export function VoiceSettingsPage({
             }}
             triggerButton={
               <NodexSettingsDropdownTrigger>
-                <span className="truncate">
-                  {
-                    deviceOptions(
-                      devicesQuery.data ?? [],
-                      settings?.microphoneInputDeviceId ?? null,
-                    ).find((option) => option.value === (settings?.microphoneInputDeviceId ?? ""))
-                      ?.label
-                  }
-                </span>
+                <span className="truncate">{selectedMicrophone?.label}</span>
               </NodexSettingsDropdownTrigger>
             }
           >
-            {deviceOptions(devicesQuery.data ?? [], settings?.microphoneInputDeviceId ?? null)
+            {microphoneOptions
               .filter(
                 (option) =>
-                  option.value !== settings?.microphoneInputDeviceId ||
+                  option.value !== microphoneInputDeviceId ||
                   (devicesQuery.data ?? []).some((device) => device.deviceId === option.value),
               )
               .map((option) => (
@@ -588,9 +578,7 @@ export function VoiceSettingsPage({
                     updateSettings.mutate({ microphoneInputDeviceId: option.value || null })
                   }
                   rightSlot={
-                    option.value === (settings?.microphoneInputDeviceId ?? "") ? (
-                      <NodexDropdownSelectedIcon />
-                    ) : null
+                    option.value === microphoneValue ? <NodexDropdownSelectedIcon /> : null
                   }
                 >
                   {option.label}
@@ -892,4 +880,8 @@ export function VoiceSettingsPage({
       ) : null}
     </NodexSettingsPageSurface>
   );
+}
+
+function recordBufferedTransport(diagnostics: DictationDiagnosticsRecorder): void {
+  diagnostics.useTransport("buffered");
 }

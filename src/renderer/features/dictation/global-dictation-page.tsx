@@ -1,5 +1,12 @@
 import { deliverGlobalDictation } from "./global-dictation-delivery";
-import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import {
+  useEffect,
+  useEffectEvent,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import {
   ActivitySpinnerIcon,
   DictationDismissIcon,
@@ -150,47 +157,37 @@ function GlobalDictationReadyTooltip({
 
 function GlobalDictationCompactCanvas({ levels }: { readonly levels: readonly number[] }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const levelsRef = useRef(levels);
-  const paintRef = useRef<() => void>(() => undefined);
-  levelsRef.current = levels;
-
+  const paint = useEffectEvent((paintLevels: readonly number[] = levels): void => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const context = canvas.getContext("2d");
+    if (!context || canvas.clientWidth === 0 || canvas.clientHeight === 0) return;
+    const ratio = window.devicePixelRatio || 1;
+    const width = Math.floor(canvas.clientWidth * ratio);
+    const height = Math.floor(canvas.clientHeight * ratio);
+    if (canvas.width !== width || canvas.height !== height) {
+      canvas.width = width;
+      canvas.height = height;
+    }
+    context.setTransform(1, 0, 0, 1, 0, 0);
+    context.clearRect(0, 0, width, height);
+    context.fillStyle = getComputedStyle(canvas).color || "#fff";
+    for (const rect of resolveGlobalDictationCompactBarRects(width, height, ratio, paintLevels)) {
+      context.globalAlpha = rect.alpha;
+      context.beginPath();
+      context.roundRect(rect.x, rect.y, rect.width, rect.height, rect.radius);
+      context.fill();
+    }
+    context.globalAlpha = 1;
+  });
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const paint = (): void => {
-      const context = canvas.getContext("2d");
-      if (!context || canvas.clientWidth === 0 || canvas.clientHeight === 0) return;
-      const ratio = window.devicePixelRatio || 1;
-      const width = Math.floor(canvas.clientWidth * ratio);
-      const height = Math.floor(canvas.clientHeight * ratio);
-      if (canvas.width !== width || canvas.height !== height) {
-        canvas.width = width;
-        canvas.height = height;
-      }
-      context.setTransform(1, 0, 0, 1, 0, 0);
-      context.clearRect(0, 0, width, height);
-      context.fillStyle = getComputedStyle(canvas).color || "#fff";
-      for (const rect of resolveGlobalDictationCompactBarRects(
-        width,
-        height,
-        ratio,
-        levelsRef.current,
-      )) {
-        context.globalAlpha = rect.alpha;
-        context.beginPath();
-        context.roundRect(rect.x, rect.y, rect.width, rect.height, rect.radius);
-        context.fill();
-      }
-      context.globalAlpha = 1;
-    };
-    paintRef.current = paint;
-    paint();
-    const observer = new ResizeObserver(paint);
+    const observer = new ResizeObserver(() => paint());
     observer.observe(canvas);
     return () => observer.disconnect();
   }, []);
-
-  useEffect(() => paintRef.current(), [levels]);
+  useEffect(() => paint(levels), [levels]);
 
   return <canvas ref={canvasRef} className="h-4 min-w-0 flex-1 text-white" aria-hidden="true" />;
 }
@@ -199,7 +196,7 @@ export function GlobalDictationBar({
   state,
   waveform,
   error,
-  canRetry = error?.retryable ?? false,
+  canRetry,
   configuredHotkey = null,
   configuredToggleHotkey = null,
   activationNonce = 0,
@@ -218,6 +215,7 @@ export function GlobalDictationBar({
   readonly onRetry: () => void;
   readonly onClose: () => void;
 }) {
+  const retryAvailable = canRetry ?? error?.retryable ?? false;
   const interactiveRegionRef = useRef<HTMLElement>(null);
   const [tooltipOpen, setTooltipOpen] = useState(false);
   const hasConfiguredShortcut = configuredHotkey !== null || configuredToggleHotkey !== null;
@@ -227,9 +225,11 @@ export function GlobalDictationBar({
     onInteractiveChange: publishPointerInteractivity,
   });
 
-  useEffect(() => {
+  const [previousState, setPreviousState] = useState(state);
+  if (previousState !== state) {
+    setPreviousState(state);
     if (state !== "idle") setTooltipOpen(false);
-  }, [state]);
+  }
 
   const contextMenu = async (event: ReactMouseEvent): Promise<void> => {
     event.preventDefault();
@@ -314,7 +314,7 @@ export function GlobalDictationBar({
             <span className="max-w-[252px] min-w-0 truncate text-xs font-medium text-[#ffa495]">
               {status}
             </span>
-            {canRetry ? (
+            {retryAvailable ? (
               <button
                 type="button"
                 className="no-drag flex size-5 shrink-0 items-center justify-center rounded-full text-white/65 hover:bg-white/8 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
@@ -355,15 +355,61 @@ export function GlobalDictationBar({
   );
 }
 
+/** Imperative capture coordination has one lifetime; rendered status is React state. */
+class GlobalDictationSessionState {
+  #activeSessionId: string | null = null;
+  readonly #listeners = new Set<() => void>();
+  readonly getActiveSessionId = () => this.#activeSessionId;
+  readonly subscribe = (listener: () => void) => {
+    this.#listeners.add(listener);
+    return () => {
+      this.#listeners.delete(listener);
+    };
+  };
+  get activeSessionId(): string | null {
+    return this.#activeSessionId;
+  }
+  completionReported = false;
+  lastStateEvent: string | null = null;
+  readonly appliedCompletionIds = new Set<string>();
+  captureSettings = DEFAULT_DICTATION_SETTINGS;
+  playSounds = false;
+  recovery: DictationRecovery | null = null;
+  pasteRecovery = false;
+
+  setActiveSessionId(value: GlobalDictationSessionState["activeSessionId"]): void {
+    if (this.#activeSessionId === value) return;
+    this.#activeSessionId = value;
+    for (const listener of this.#listeners) listener();
+  }
+
+  setCompletionReported(value: GlobalDictationSessionState["completionReported"]): void {
+    this.completionReported = value;
+  }
+
+  setLastStateEvent(value: GlobalDictationSessionState["lastStateEvent"]): void {
+    this.lastStateEvent = value;
+  }
+
+  setCaptureSettings(value: GlobalDictationSessionState["captureSettings"]): void {
+    this.captureSettings = value;
+  }
+
+  setPlaySounds(value: GlobalDictationSessionState["playSounds"]): void {
+    this.playSounds = value;
+  }
+
+  setRecovery(value: GlobalDictationSessionState["recovery"]): void {
+    this.recovery = value;
+  }
+
+  setPasteRecovery(value: GlobalDictationSessionState["pasteRecovery"]): void {
+    this.pasteRecovery = value;
+  }
+}
+
 export function GlobalDictationRoot() {
-  const activeSessionIdRef = useRef<string | null>(null);
-  const completionReportedRef = useRef(false);
-  const lastStateEventRef = useRef<string | null>(null);
-  const appliedCompletionIdsRef = useRef(new Set<string>());
-  const captureSettingsRef = useRef(DEFAULT_DICTATION_SETTINGS);
-  const playSoundsRef = useRef(false);
-  const recoveryRef = useRef<DictationRecovery | null>(null);
-  const pasteRecoveryRef = useRef(false);
+  const [session] = useState(() => new GlobalDictationSessionState());
   const [recovery, setRecovery] = useState<DictationRecovery | null>(null);
   const [presentationState, setPresentationState] =
     useState<GlobalDictationBarState>("initializing");
@@ -397,7 +443,7 @@ export function GlobalDictationRoot() {
               .catch(() => null);
             return await acquireMicrophone({
               mediaDevices: navigator.mediaDevices,
-              selectedDeviceId: captureSettingsRef.current.microphoneInputDeviceId,
+              selectedDeviceId: session.captureSettings.microphoneInputDeviceId,
               builtInMicrophoneLabelHint,
             });
           },
@@ -408,9 +454,9 @@ export function GlobalDictationRoot() {
         buffered: { transcribe },
         cleanup: { enabled: false, transcript: async (text) => text },
         onRecoveryChange: (next) => {
-          const sessionId = activeSessionIdRef.current;
-          if (!sessionId || pasteRecoveryRef.current) return;
-          recoveryRef.current = next;
+          const sessionId = session.activeSessionId;
+          if (!sessionId || session.pasteRecovery) return;
+          session.setRecovery(next);
           setRecovery(next);
           setPresentationState("error");
           void sendEvent({
@@ -420,22 +466,22 @@ export function GlobalDictationRoot() {
           });
         },
         onStopRequested: () => {
-          const sessionId = activeSessionIdRef.current;
+          const sessionId = session.activeSessionId;
           if (sessionId) void sendEvent({ type: "recording-stopped", sessionId });
         },
         onRecordingStarted: () => {
-          if (playSoundsRef.current) playDictationSound("start");
+          if (session.playSounds) playDictationSound("start");
         },
         onRecordingStopped: () => {
-          if (playSoundsRef.current) playDictationSound("stop");
+          if (session.playSounds) playDictationSound("stop");
         },
         history: createGlobalHistoryPort(),
         completion: {
           apply: async ({ sessionId: recordingSessionId, transcript, signal }) => {
-            if (appliedCompletionIdsRef.current.has(recordingSessionId)) return;
-            const sessionId = activeSessionIdRef.current;
+            if (session.appliedCompletionIds.has(recordingSessionId)) return;
+            const sessionId = session.activeSessionId;
             if (!sessionId) throw new DOMException("Dictation was cancelled", "AbortError");
-            completionReportedRef.current = true;
+            session.setCompletionReported(true);
             const bridge = window.globalDictation;
             if (!bridge) throw new Error("Global dictation bridge is unavailable");
             const delivered = await deliverGlobalDictation({
@@ -445,7 +491,7 @@ export function GlobalDictationRoot() {
               sendEvent,
               onCommand: bridge.onCommand,
             });
-            appliedCompletionIdsRef.current.add(recordingSessionId);
+            session.appliedCompletionIds.add(recordingSessionId);
             return delivered;
           },
         },
@@ -454,28 +500,50 @@ export function GlobalDictationRoot() {
       }),
   );
   const snapshot = useDictationSession(controller);
+  const activeSessionId = useSyncExternalStore(session.subscribe, session.getActiveSessionId);
+  const [presentationInput, setPresentationInput] = useState({
+    kind: snapshot.kind,
+    activeSessionId,
+    pasteRecovery: pasteRecovery !== null,
+  });
+  if (
+    presentationInput.kind !== snapshot.kind ||
+    presentationInput.activeSessionId !== activeSessionId ||
+    presentationInput.pasteRecovery !== (pasteRecovery !== null)
+  ) {
+    setPresentationInput({
+      kind: snapshot.kind,
+      activeSessionId,
+      pasteRecovery: pasteRecovery !== null,
+    });
+    if (activeSessionId && snapshot.kind === "recording") setPresentationState("listening");
+    if (activeSessionId && (snapshot.kind === "transcribing" || snapshot.kind === "stopping"))
+      setPresentationState("transcribing");
+    if (activeSessionId && snapshot.kind === "retryable-error" && !pasteRecovery)
+      setPresentationState("error");
+  }
 
   useEffect(() => {
     void sendEvent({ type: "ready" });
-  }, [controller]);
+  }, []);
 
   useEffect(() => {
     const bridge = window.globalDictation;
     if (!bridge) return;
     return bridge.onCommand((command) => {
       if (command.type === "paste-failed") {
-        pasteRecoveryRef.current = true;
+        session.setPasteRecovery(true);
         setPasteRecovery({ sessionId: command.sessionId, failure: command.failure });
         return;
       }
       if (command.type === "idle") {
-        activeSessionIdRef.current = null;
+        session.setActiveSessionId(null);
         setConfiguredHotkey(command.configuredHotkey);
         setConfiguredToggleHotkey(command.configuredToggleHotkey);
         setExternalError(null);
         setPasteRecovery(null);
-        pasteRecoveryRef.current = false;
-        recoveryRef.current = null;
+        session.setPasteRecovery(false);
+        session.setRecovery(null);
         setRecovery(null);
         setActivationNonce((nonce) => nonce + 1);
         setPresentationState(
@@ -485,37 +553,38 @@ export function GlobalDictationRoot() {
       }
       if (command.type === "start") {
         if (controller.getSnapshot().kind !== "idle") {
-          if (!recoveryRef.current && !pasteRecoveryRef.current) return;
+          if (!session.recovery && !session.pasteRecovery) return;
           controller.cancel();
         }
-        activeSessionIdRef.current = command.sessionId;
-        completionReportedRef.current = false;
+        session.setActiveSessionId(command.sessionId);
+        session.setCompletionReported(false);
         setExternalError(null);
         setPasteRecovery(null);
-        pasteRecoveryRef.current = false;
-        recoveryRef.current = null;
+        session.setPasteRecovery(false);
+        session.setRecovery(null);
         setRecovery(null);
         setActivationNonce((nonce) => nonce + 1);
         setPresentationState("listening");
-        lastStateEventRef.current = null;
+        session.setLastStateEvent(null);
         void sendEvent({
           type: "accepted",
           sessionId: command.sessionId,
           requestId: command.requestId,
           targetId: "global-overlay",
         }).then(async (accepted) => {
-          if (!accepted || activeSessionIdRef.current !== command.sessionId) {
-            if (activeSessionIdRef.current === command.sessionId) activeSessionIdRef.current = null;
+          if (!accepted || session.activeSessionId !== command.sessionId) {
+            if (session.activeSessionId === command.sessionId) session.setActiveSessionId(null);
             return;
           }
           const [settings, capabilities] = await Promise.all([
             globalDictationTransport.readSettings().catch(() => DEFAULT_DICTATION_SETTINGS),
             globalDictationTransport.readCapabilities().catch(() => null),
           ]);
-          if (activeSessionIdRef.current !== command.sessionId) return;
-          captureSettingsRef.current = settings;
-          playSoundsRef.current =
-            settings.dictationSoundsEnabled && capabilities?.capabilities.sounds === true;
+          if (session.activeSessionId !== command.sessionId) return;
+          session.setCaptureSettings(settings);
+          session.setPlaySounds(
+            settings.dictationSoundsEnabled && capabilities?.capabilities.sounds === true,
+          );
           await controller.start({
             surface: "global",
             gesture: command.gesture,
@@ -525,17 +594,17 @@ export function GlobalDictationRoot() {
         });
         return;
       }
-      if (command.sessionId !== activeSessionIdRef.current) return;
+      if (command.sessionId !== session.activeSessionId) return;
       if (command.type === "paste-completed") return;
       if (command.type === "finish") {
-        activeSessionIdRef.current = null;
+        session.setActiveSessionId(null);
         setExternalError(null);
         return;
       }
       if (command.type === "stop") {
-        if (recoveryRef.current) return;
+        if (session.recovery) return;
         if (controller.getSnapshot().kind === "idle") {
-          activeSessionIdRef.current = null;
+          session.setActiveSessionId(null);
           void sendEvent({ type: "cancelled", sessionId: command.sessionId });
           return;
         }
@@ -543,14 +612,14 @@ export function GlobalDictationRoot() {
         controller.stop("insert");
       } else {
         controller.cancel();
-        recoveryRef.current = null;
+        session.setRecovery(null);
         setRecovery(null);
       }
     });
-  }, [controller]);
+  }, [controller, session]);
 
   useEffect(() => {
-    const sessionId = activeSessionIdRef.current;
+    const sessionId = session.activeSessionId;
     if (!sessionId) return;
     const nextEvent =
       snapshot.kind === "recording"
@@ -558,27 +627,25 @@ export function GlobalDictationRoot() {
         : snapshot.kind === "transcribing" || snapshot.kind === "stopping"
           ? "transcribing"
           : null;
-    if (nextEvent) setPresentationState(nextEvent);
-    if (nextEvent && lastStateEventRef.current !== nextEvent) {
-      lastStateEventRef.current = nextEvent;
+    if (nextEvent && session.lastStateEvent !== nextEvent) {
+      session.setLastStateEvent(nextEvent);
       void sendEvent({ type: "state", sessionId, state: nextEvent });
       return;
     }
     if (snapshot.kind === "retryable-error") {
-      if (pasteRecoveryRef.current) return;
+      if (session.pasteRecovery) return;
       const identity = `failed:${snapshot.error.kind}`;
-      setPresentationState("error");
-      if (lastStateEventRef.current === identity) return;
-      lastStateEventRef.current = identity;
-      if (playSoundsRef.current) playDictationSound("error");
+      if (session.lastStateEvent === identity) return;
+      session.setLastStateEvent(identity);
+      if (session.playSounds) playDictationSound("error");
       void sendEvent({ type: "failed", sessionId, error: snapshot.error });
       return;
     }
-    if (snapshot.kind === "idle" && !completionReportedRef.current && !recoveryRef.current) {
-      activeSessionIdRef.current = null;
+    if (snapshot.kind === "idle" && !session.completionReported && !session.recovery) {
+      session.setActiveSessionId(null);
       void sendEvent({ type: "cancelled", sessionId });
     }
-  }, [snapshot]);
+  }, [snapshot, session]);
 
   const retry = (): void => {
     if (externalError) setExternalError(null);
@@ -589,18 +656,18 @@ export function GlobalDictationRoot() {
   };
 
   const dismiss = (): void => {
-    const sessionId = activeSessionIdRef.current;
+    const sessionId = session.activeSessionId;
     controller.cancel();
-    const recovering = recoveryRef.current !== null;
-    recoveryRef.current = null;
+    const recovering = session.recovery !== null;
+    session.setRecovery(null);
     setRecovery(null);
     if (!sessionId) return;
-    activeSessionIdRef.current = null;
+    session.setActiveSessionId(null);
     void sendEvent({ type: externalError || recovering ? "dismiss" : "cancelled", sessionId });
   };
 
   const close = (): void => {
-    void sendEvent({ type: "close", sessionId: activeSessionIdRef.current });
+    void sendEvent({ type: "close", sessionId: session.activeSessionId });
   };
 
   const waveform = snapshot.kind === "recording" ? snapshot.waveform : [];
@@ -620,10 +687,10 @@ export function GlobalDictationRoot() {
         onOpenSettings={() => void sendEvent({ type: "open-accessibility-settings", sessionId })}
         onDismiss={() => {
           controller.cancel();
-          activeSessionIdRef.current = null;
-          pasteRecoveryRef.current = false;
+          session.setActiveSessionId(null);
+          session.setPasteRecovery(false);
           setPasteRecovery(null);
-          recoveryRef.current = null;
+          session.setRecovery(null);
           setRecovery(null);
           void sendEvent({ type: "close", sessionId });
         }}
@@ -632,7 +699,7 @@ export function GlobalDictationRoot() {
   }
 
   if (recovery) {
-    const sessionId = activeSessionIdRef.current;
+    const sessionId = activeSessionId;
     return (
       <GlobalDictationTranscriptionRecovery
         recovery={recovery}

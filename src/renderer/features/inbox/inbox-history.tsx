@@ -1,3 +1,4 @@
+import { useInboxClock } from "./use-inbox-clock";
 import { useState } from "react";
 import type { InboxItem } from "../../../shared/inbox";
 import {
@@ -161,7 +162,7 @@ export function InboxHistory({
   items,
   ...handlers
 }: { readonly items: readonly InboxItem[] } & HistoryHandlers) {
-  const now = new Date();
+  const now = new Date(useInboxClock());
   const outcomes = useInboxOutcomes(items);
   const inProgress = items.filter((item) => outcomes.get(item.pageId)?.inProgress);
   const finished = items.filter((item) => !outcomes.get(item.pageId)?.inProgress);

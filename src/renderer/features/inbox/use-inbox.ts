@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useEffectEvent, useMemo } from "react";
 import {
   useInfiniteQuery,
   useMutation,
@@ -41,19 +41,21 @@ const INBOX_INVALIDATION_COALESCE_MS = 120;
  */
 export function useInboxInvalidation(): void {
   const queryClient = useQueryClient();
+  const refresh = useEffectEvent(() => invalidateInbox(queryClient));
   useEffect(() => {
     let pending: ReturnType<typeof setTimeout> | null = null;
     const unsubscribe = subscribeInboxChanges(() => {
-      pending ??= setTimeout(() => {
+      if (pending !== null) return;
+      pending = setTimeout(() => {
         pending = null;
-        void invalidateInbox(queryClient);
+        void refresh();
       }, INBOX_INVALIDATION_COALESCE_MS);
     });
     return () => {
       unsubscribe();
       if (pending !== null) clearTimeout(pending);
     };
-  }, [queryClient]);
+  }, []);
 }
 
 export function useInboxSummary(scope: InboxScope) {

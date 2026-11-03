@@ -1,4 +1,4 @@
-import { useEffect, type RefObject } from "react";
+import { useEffect, useRef, type RefObject } from "react";
 
 const isVisibleElement = (element: Element): boolean => {
   const style = getComputedStyle(element);
@@ -36,6 +36,8 @@ export function useFloatingWindowPointerInteractivity(options: {
   readonly onInteractiveChange: (interactive: boolean) => void;
 }): void {
   const { activationNonce, interactiveRegionRef, onInteractiveChange } = options;
+  const activationRef = useRef(activationNonce);
+  const resetRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     let published: boolean | null = null;
@@ -59,7 +61,8 @@ export function useFloatingWindowPointerInteractivity(options: {
       publish(resolvePoint(currentPoint));
     };
     const scheduleSample = (): void => {
-      sampleFrame ??= requestAnimationFrame(sample);
+      if (sampleFrame !== null) return;
+      sampleFrame = requestAnimationFrame(sample);
     };
     const onMouseMove = (event: MouseEvent): void => {
       currentPoint = { x: event.clientX, y: event.clientY };
@@ -89,9 +92,21 @@ export function useFloatingWindowPointerInteractivity(options: {
       subtree: true,
     });
     publishInitial();
-    const initialFrame = requestAnimationFrame(publishInitial);
+    let initialFrame = requestAnimationFrame(publishInitial);
+    resetRef.current = () => {
+      onInteractiveChange(true);
+      published = null;
+      currentPoint = null;
+      lastPoint = null;
+      if (sampleFrame !== null) cancelAnimationFrame(sampleFrame);
+      sampleFrame = null;
+      cancelAnimationFrame(initialFrame);
+      publishInitial();
+      initialFrame = requestAnimationFrame(publishInitial);
+    };
 
     return () => {
+      resetRef.current = null;
       window.removeEventListener("mousemove", onMouseMove);
       window.removeEventListener("resize", resample);
       window.removeEventListener("scroll", resample, true);
@@ -101,5 +116,11 @@ export function useFloatingWindowPointerInteractivity(options: {
       if (sampleFrame !== null) cancelAnimationFrame(sampleFrame);
       onInteractiveChange(true);
     };
-  }, [activationNonce, interactiveRegionRef, onInteractiveChange]);
+  }, [interactiveRegionRef, onInteractiveChange]);
+
+  useEffect(() => {
+    if (activationRef.current === activationNonce) return;
+    activationRef.current = activationNonce;
+    resetRef.current?.();
+  }, [activationNonce]);
 }

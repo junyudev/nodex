@@ -73,7 +73,7 @@ export function BrowserProfileImportDialog({
   const [importPasswords, setImportPasswords] = useState(true);
   const [importCookies, setImportCookies] = useState(true);
   const [domainAllowlist, setDomainAllowlist] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(open);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<BrowserProfileImportResult | null>(null);
   const selectedProfile = useMemo(
@@ -81,12 +81,18 @@ export function BrowserProfileImportDialog({
     [profiles, selectedProfilePath],
   );
 
+  const [wasOpen, setWasOpen] = useState(open);
+  if (wasOpen !== open) {
+    setWasOpen(open);
+    if (open) {
+      setError(null);
+      setResult(null);
+      setLoading(true);
+    }
+  }
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    setError(null);
-    setResult(null);
-    setLoading(true);
     void Promise.all([readBrowserProfileCapabilities(), readImportableBrowserProfiles()])
       .then(([nextCapabilities, nextProfiles]) => {
         if (cancelled) return;
@@ -111,11 +117,23 @@ export function BrowserProfileImportDialog({
     };
   }, [open]);
 
-  useEffect(() => {
-    if (!selectedProfile) return;
-    setImportCookies(selectedProfile.hasCookies);
-    setImportPasswords(selectedProfile.hasPasswords && capabilities.credentialVault.available);
-  }, [capabilities.credentialVault.available, selectedProfile]);
+  const [previousSelection, setPreviousSelection] = useState({
+    profile: selectedProfile,
+    vaultAvailable: capabilities.credentialVault.available,
+  });
+  if (
+    previousSelection.profile !== selectedProfile ||
+    previousSelection.vaultAvailable !== capabilities.credentialVault.available
+  ) {
+    setPreviousSelection({
+      profile: selectedProfile,
+      vaultAvailable: capabilities.credentialVault.available,
+    });
+    if (selectedProfile) {
+      setImportCookies(selectedProfile.hasCookies);
+      setImportPasswords(selectedProfile.hasPasswords && capabilities.credentialVault.available);
+    }
+  }
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -123,20 +141,18 @@ export function BrowserProfileImportDialog({
     setLoading(true);
     setError(null);
     setResult(null);
-    try {
-      const imported = await importBrowserProfile({
-        source: selectedProfile.source,
-        profilePath: selectedProfile.profilePath,
-        importCookies,
-        importPasswords,
-        ...(importCookies ? { cookieDomainAllowlist: parseDomainAllowlist(domainAllowlist) } : {}),
-      });
-      setResult(imported);
-    } catch (reason) {
-      setError(readErrorMessage(reason, "Browser Profile import failed"));
-    } finally {
-      setLoading(false);
-    }
+    await importBrowserProfile({
+      source: selectedProfile.source,
+      profilePath: selectedProfile.profilePath,
+      importCookies,
+      importPasswords,
+      ...(importCookies ? { cookieDomainAllowlist: parseDomainAllowlist(domainAllowlist) } : {}),
+    })
+      .then(setResult)
+      .catch((reason: unknown) => {
+        setError(readErrorMessage(reason, "Browser Profile import failed"));
+      })
+      .finally(() => setLoading(false));
   };
 
   const importDisabled =

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vite-plus/test";
 import { act, waitFor } from "@testing-library/react";
-import { createElement, useMemo } from "react";
+import { createElement, useLayoutEffect, useMemo } from "react";
 import { render, settleAsyncRender } from "../../test/dom";
 import {
   ContentSearchProvider,
@@ -25,7 +25,10 @@ describe("ContentSearchProvider", () => {
     let controller: ContentSearchController | null = null;
 
     function Probe() {
-      controller = useContentSearch();
+      const currentController = useContentSearch();
+      useLayoutEffect(() => {
+        controller = currentController;
+      }, [currentController]);
       const source = useMemo<ContentSearchLocalSource>(
         () => ({
           domain: "conversation",
@@ -102,7 +105,10 @@ describe("ContentSearchProvider", () => {
     let controller: ContentSearchController | null = null;
 
     function Probe() {
-      controller = useContentSearch();
+      const currentController = useContentSearch();
+      useLayoutEffect(() => {
+        controller = currentController;
+      }, [currentController]);
       const source = useMemo<ContentSearchLocalSource>(
         () => ({
           domain: "conversation",
@@ -172,7 +178,10 @@ describe("ContentSearchProvider", () => {
     let controller: ContentSearchController | null = null;
 
     function Probe() {
-      controller = useContentSearch();
+      const currentController = useContentSearch();
+      useLayoutEffect(() => {
+        controller = currentController;
+      }, [currentController]);
       const source = useMemo<ContentSearchLocalSource>(
         () => ({
           domain: "diff",
@@ -225,7 +234,10 @@ describe("ContentSearchProvider", () => {
     let controller: ContentSearchController | null = null;
 
     function Probe() {
-      controller = useContentSearch();
+      const currentController = useContentSearch();
+      useLayoutEffect(() => {
+        controller = currentController;
+      }, [currentController]);
       const source = useMemo<ContentSearchLocalSource>(
         () => ({
           domain: "diff",

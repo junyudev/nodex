@@ -55,7 +55,7 @@ export function InboxMessageEditor({
     if (!textarea) return;
     textarea.style.height = "0px";
     textarea.style.height = `${Math.min(textarea.scrollHeight, MAX_TEXTAREA_HEIGHT_PX)}px`;
-  }, [draft.text]);
+  });
 
   useLayoutEffect(() => {
     const textarea = textareaRef.current;

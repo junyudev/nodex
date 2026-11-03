@@ -145,7 +145,9 @@ export function ContentSearchProvider({
   const activeEnsureAbortRef = useRef<AbortController | null>(null);
   const lastOpenRequestTickRef = useRef(openRequest?.tick ?? 0);
   const lastDomainRef = useRef<ContentSearchDomain>("conversation");
-  const [sourceVersion, setSourceVersion] = useState(0);
+  const [sources, setSources] = useState<
+    ReadonlyMap<ContentSearchLocalDomain, ContentSearchLocalSource>
+  >(() => new Map());
   const [browserTarget, setBrowserTarget] = useState<ContentSearchBrowserTarget | null>(null);
   const [state, setState] = useState<ContentSearchState>({
     open: false,
@@ -301,12 +303,12 @@ export function ContentSearchProvider({
 
   const registerLocalSource = useCallback((source: ContentSearchLocalSource) => {
     sourcesRef.current.set(source.domain, source);
-    setSourceVersion((version) => version + 1);
+    setSources(new Map(sourcesRef.current));
     return () => {
       if (sourcesRef.current.get(source.domain) !== source) return;
       source.clear();
       sourcesRef.current.delete(source.domain);
-      setSourceVersion((version) => version + 1);
+      setSources(new Map(sourcesRef.current));
     };
   }, []);
 
@@ -339,17 +341,13 @@ export function ContentSearchProvider({
     lastDomainRef.current = state.domain;
   }, [clearDomain, state.domain]);
 
-  useEffect(() => {
-    if (state.domain !== "browser" || hasBrowserTarget) return;
-    setState((current) => ({
-      ...current,
-      domain: "conversation",
-    }));
-  }, [hasBrowserTarget, state.domain]);
+  if (state.domain === "browser" && !hasBrowserTarget) {
+    setState({ ...state, domain: "conversation" });
+  }
 
   useEffect(() => {
     if (!state.open || state.domain !== "browser") return;
-    const target = browserTargetRef.current;
+    const target = browserTarget;
     if (!target?.available) return;
     const query = state.queryByDomain.browser;
     void target.command({
@@ -359,29 +357,53 @@ export function ContentSearchProvider({
     });
   }, [state.domain, state.open, state.queryByDomain.browser, browserTarget]);
 
-  useEffect(() => {
-    if (!state.open || !isLocalDomain(state.domain)) return;
-    const domain = state.domain;
-    const source = sourcesRef.current.get(domain);
-    const query = normalizeContentSearchQuery(state.queryByDomain[domain]);
-    const sequence = searchSequenceRef.current + 1;
-    searchSequenceRef.current = sequence;
-
-    if (!source || !query) {
-      source?.clear();
+  const query = normalizeContentSearchQuery(state.queryByDomain[state.domain]);
+  const source = isLocalDomain(state.domain) ? sources.get(state.domain) : undefined;
+  const [localSearchInput, setLocalSearchInput] = useState({
+    domain: state.domain,
+    open: state.open,
+    query,
+    source,
+  });
+  if (
+    localSearchInput.domain !== state.domain ||
+    localSearchInput.open !== state.open ||
+    localSearchInput.query !== query ||
+    localSearchInput.source !== source
+  ) {
+    const nextInput = { domain: state.domain, open: state.open, query, source };
+    setLocalSearchInput(nextInput);
+    const { domain, open } = nextInput;
+    if (open && isLocalDomain(domain)) {
       setState((current) => ({
         ...current,
-        loadingDomain: current.loadingDomain === domain ? null : current.loadingDomain,
-        resultByDomain: {
-          ...current.resultByDomain,
-          [domain]: query ? { query, matches: [], totalMatches: 0, capped: false } : null,
-        },
+        loadingDomain:
+          source && query
+            ? domain
+            : current.loadingDomain === domain
+              ? null
+              : current.loadingDomain,
+        resultByDomain:
+          source && query
+            ? current.resultByDomain
+            : {
+                ...current.resultByDomain,
+                [domain]: query ? { query, matches: [], totalMatches: 0, capped: false } : null,
+              },
       }));
+    }
+  }
+  useEffect(() => {
+    const { domain, open, source, query } = localSearchInput;
+    if (!open || !isLocalDomain(domain)) return;
+    const sequence = searchSequenceRef.current + 1;
+    searchSequenceRef.current = sequence;
+    if (!source || !query) {
+      source?.clear();
       return;
     }
 
     const controller = new AbortController();
-    setState((current) => ({ ...current, loadingDomain: domain }));
     const timerId = window.setTimeout(() => {
       void Promise.resolve(
         source.search(query, CONTENT_SEARCH_LOCAL_MATCH_LIMIT, {
@@ -426,12 +448,12 @@ export function ContentSearchProvider({
       window.clearTimeout(timerId);
       controller.abort();
     };
-  }, [sourceVersion, state.domain, state.open, state.queryByDomain]);
+  }, [localSearchInput]);
 
   useEffect(() => {
     if (!state.open || !isLocalDomain(state.domain)) return;
     const domain = state.domain;
-    const source = sourcesRef.current.get(domain);
+    const source = sources.get(domain);
     const result = state.resultByDomain[domain];
     const liveQuery = normalizeContentSearchQuery(state.queryByDomain[domain]);
     const activeIndex = state.activeIndexByDomain[domain] ?? 0;
@@ -452,8 +474,8 @@ export function ContentSearchProvider({
 
     void (async () => {
       try {
-        source.publishResult?.(result, match.id);
-        await source.ensureVisible?.(match, { signal: controller.signal });
+        if (source.publishResult) source.publishResult(result, match.id);
+        if (source.ensureVisible) await source.ensureVisible(match, { signal: controller.signal });
         if (controller.signal.aborted) return;
         await source.activate(match, result.query, {
           signal: controller.signal,
@@ -477,7 +499,7 @@ export function ContentSearchProvider({
     state.open,
     state.queryByDomain,
     state.resultByDomain,
-    sourceVersion,
+    sources,
   ]);
 
   const labelInput: ContentSearchLabelInput = {

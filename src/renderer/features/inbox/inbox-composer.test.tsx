@@ -385,3 +385,41 @@ test("a rewrite shows the message's text as typed and saves only a change", asyn
   });
   expect(onSave).toHaveBeenCalledWith("Keep a < b and C:\\Users, please");
 });
+
+test("focus requests keep the composer mounted and text changes resize before paint", async () => {
+  const onSend = async () => undefined;
+  const onDraftChange = () => undefined;
+  const props = { images: null, onSend, onDraftChange };
+  const view = render(<InboxComposer {...props} draft={EMPTY_INBOX_DRAFT} focusToken={1} />);
+  const textarea = view.getByRole("textbox", { name: "Message your Inbox" }) as HTMLTextAreaElement;
+  expect(document.activeElement).toBe(textarea);
+  Object.defineProperty(textarea, "scrollHeight", {
+    configurable: true,
+    get: () => (textarea.value ? 300 : 34),
+  });
+  const other = document.createElement("button");
+  document.body.append(other);
+  try {
+    other.focus();
+    await act(async () => {
+      view.rerender(
+        <InboxComposer
+          {...props}
+          draft={{ ...EMPTY_INBOX_DRAFT, text: "Several lines" }}
+          focusToken={1}
+        />,
+      );
+    });
+    expect(document.activeElement).toBe(other);
+    expect(textarea.style.height).toBe("240px");
+    await act(async () => {
+      view.rerender(<InboxComposer {...props} draft={EMPTY_INBOX_DRAFT} focusToken={2} />);
+    });
+    expect(view.getByRole("textbox", { name: "Message your Inbox" })).toBe(textarea);
+    expect(document.activeElement).toBe(textarea);
+    expect(textarea.style.height).toBe("34px");
+  } finally {
+    other.remove();
+    view.unmount();
+  }
+});

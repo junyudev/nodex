@@ -1,5 +1,5 @@
 import { useQueries, useQuery } from "@tanstack/react-query";
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useMemo, useRef, useLayoutEffect, useSyncExternalStore } from "react";
 import type { GitReviewFileSummary, GitReviewSnapshot, ReviewDiffEntry } from "@/lib/types";
 import { requestReviewDiffPath, StaleReviewSnapshot } from "./review-diff-batcher";
 import type { GitWorkerQueryClient } from "./git-query";
@@ -139,10 +139,10 @@ function toReviewPathDiffError(error: unknown): Error | null {
 export function useReviewPathDiffs(
   input: ReviewPathDiffQueryInput,
 ): ReadonlyMap<string, ReviewPathDiffState> {
-  const clientRef = useRef(input.client);
   const onStaleSnapshotRef = useRef(input.onStaleSnapshot);
-  clientRef.current = input.client;
-  onStaleSnapshotRef.current = input.onStaleSnapshot;
+  useLayoutEffect(() => {
+    onStaleSnapshotRef.current = input.onStaleSnapshot;
+  }, [input.onStaleSnapshot]);
 
   const snapshot = input.snapshot;
   const files = useMemo(() => snapshot?.files ?? [], [snapshot]);
@@ -168,45 +168,22 @@ export function useReviewPathDiffs(
     root: input.root,
     source,
   });
-  const staleRecoveryRef = useRef<ReviewStaleRecoveryState | null>(null);
-  if (staleRecoveryRef.current?.comparisonKey !== comparisonKey) {
-    staleRecoveryRef.current = {
-      comparisonKey,
-      highestGeneration: 0,
-      pathGenerations: new Map(),
-    };
-  }
+  const recovery = useMemo(() => createStaleRecovery(comparisonKey), [comparisonKey]);
+  const staleRecovery = useSyncExternalStore(recovery.subscribe, recovery.getSnapshot);
 
   const recordStaleSnapshot = useCallback(
     (pathIdentities: readonly string[], generation: number, nextComparisonKey: string) => {
-      let recovery = staleRecoveryRef.current;
-      if (recovery?.comparisonKey !== nextComparisonKey) {
-        recovery = {
-          comparisonKey: nextComparisonKey,
-          highestGeneration: 0,
-          pathGenerations: new Map(),
-        };
-        staleRecoveryRef.current = recovery;
-      }
-      for (const pathIdentity of pathIdentities) {
-        recovery.pathGenerations.set(pathIdentity, generation);
-      }
-      if (generation <= recovery.highestGeneration) return;
-      recovery.highestGeneration = generation;
-      onStaleSnapshotRef.current();
+      if (nextComparisonKey !== comparisonKey) return;
+      if (recovery.record(pathIdentities, generation)) onStaleSnapshotRef.current();
     },
-    [],
+    [comparisonKey, recovery],
   );
 
   const clearRecoveredPath = useCallback(
     (pathIdentity: string, generation: number, nextComparisonKey: string) => {
-      const recovery = staleRecoveryRef.current;
-      if (recovery?.comparisonKey !== nextComparisonKey) return;
-      const staleGeneration = recovery.pathGenerations.get(pathIdentity);
-      if (staleGeneration === undefined || generation <= staleGeneration) return;
-      recovery.pathGenerations.delete(pathIdentity);
+      if (nextComparisonKey === comparisonKey) recovery.clear(pathIdentity, generation);
     },
-    [],
+    [comparisonKey, recovery],
   );
 
   const requestEntry = useCallback(
@@ -216,43 +193,40 @@ export function useReviewPathDiffs(
     }): Promise<ReviewDiffEntry> => {
       if (!snapshot) throw new Error("Missing review diff metadata.");
       const pathIdentity = buildReviewFileIdentity(inputFile.file);
-      try {
-        const entry = await requestReviewDiffPath({
-          bucketKey: JSON.stringify([comparisonKey, snapshotGeneration]),
-          request: {
-            cwd,
-            source,
-            baseRef,
-            commitSha: source === "commit" ? input.commitSha : null,
-            hideWhitespace: input.hideWhitespace,
-            snapshotGeneration,
-            operationSource: "review_model",
-          },
-          path: inputFile.file.path,
-          previousPath: inputFile.file.previousPath,
-          untracked: inputFile.file.status === "untracked",
-          status: inputFile.file.status,
-          revision: inputFile.file.revision,
-          signal: inputFile.signal,
-          client: clientRef.current,
-        });
-        if (!entry) {
-          throw new Error(`Could not load review diff for ${inputFile.file.path}.`);
-        }
-        clearRecoveredPath(pathIdentity, snapshotGeneration, comparisonKey);
-        return entry;
-      } catch (error) {
+      const entry = await requestReviewDiffPath({
+        bucketKey: JSON.stringify([comparisonKey, snapshotGeneration]),
+        request: {
+          cwd,
+          source,
+          baseRef,
+          commitSha: source === "commit" ? input.commitSha : null,
+          hideWhitespace: input.hideWhitespace,
+          snapshotGeneration,
+          operationSource: "review_model",
+        },
+        path: inputFile.file.path,
+        previousPath: inputFile.file.previousPath,
+        untracked: inputFile.file.status === "untracked",
+        status: inputFile.file.status,
+        revision: inputFile.file.revision,
+        signal: inputFile.signal,
+        client: input.client,
+      }).catch((error: unknown) => {
         if (isStaleSnapshotError(error)) {
           recordStaleSnapshot([pathIdentity], snapshotGeneration, comparisonKey);
         }
         throw error;
-      }
+      });
+      if (!entry) throw new Error(`Could not load review diff for ${inputFile.file.path}.`);
+      clearRecoveredPath(pathIdentity, snapshotGeneration, comparisonKey);
+      return entry;
     },
     [
       baseRef,
       clearRecoveredPath,
       comparisonKey,
       cwd,
+      input.client,
       input.commitSha,
       input.hideWhitespace,
       recordStaleSnapshot,
@@ -332,7 +306,7 @@ export function useReviewPathDiffs(
       const initialEntry = initialData?.entries.get(file.path);
       const hasMatchingInitialEntry = isMatchingReviewDiffEntry(initialEntry, file);
       const pathIdentity = buildReviewFileIdentity(file);
-      const staleGeneration = staleRecoveryRef.current?.pathGenerations.get(pathIdentity);
+      const staleGeneration = staleRecovery.pathGenerations.get(pathIdentity);
       const staleGenerationRecovered =
         staleGeneration === undefined || snapshotGeneration > staleGeneration;
       const shouldFallback =
@@ -340,8 +314,6 @@ export function useReviewPathDiffs(
         !(untracked ? untrackedInitialIsFetching : trackedInitialIsFetching) &&
         !hasMatchingInitialEntry;
 
-      // Runtime callbacks are read through refs so handler identity does not
-      // replace an otherwise identical comparison query.
       return {
         queryKey: snapshot
           ? buildReviewPathDiffQueryKey({ comparisonKey, file })
@@ -400,4 +372,45 @@ export function useReviewPathDiffs(
     untrackedInitialError,
     untrackedInitialIsFetching,
   ]);
+}
+
+/** Query callbacks publish immutable observations; rendering never reads the mutable request guard. */
+function createStaleRecovery(comparisonKey: string) {
+  let snapshot: ReviewStaleRecoveryState = {
+    comparisonKey,
+    highestGeneration: 0,
+    pathGenerations: new Map(),
+  };
+  const listeners = new Set<() => void>();
+  const publish = (next: ReviewStaleRecoveryState) => {
+    snapshot = next;
+    for (const listener of listeners) listener();
+  };
+  return {
+    getSnapshot: () => snapshot,
+    subscribe: (listener: () => void) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    record: (paths: readonly string[], generation: number): boolean => {
+      const notify = generation > snapshot.highestGeneration;
+      const pathGenerations = new Map(snapshot.pathGenerations);
+      for (const path of paths) pathGenerations.set(path, generation);
+      publish({
+        ...snapshot,
+        highestGeneration: Math.max(generation, snapshot.highestGeneration),
+        pathGenerations,
+      });
+      return notify;
+    },
+    clear: (path: string, generation: number) => {
+      const stale = snapshot.pathGenerations.get(path);
+      if (stale === undefined || generation <= stale) return;
+      const pathGenerations = new Map(snapshot.pathGenerations);
+      pathGenerations.delete(path);
+      publish({ ...snapshot, pathGenerations });
+    },
+  };
 }

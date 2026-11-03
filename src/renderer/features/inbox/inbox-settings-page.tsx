@@ -21,6 +21,7 @@ import { INBOX_ROUTING_PREFERENCES_PLACEHOLDER } from "./inbox-presentation";
 export function InboxSettingsPage() {
   const settingsQuery = useInboxSettingsQuery();
   const settings = settingsQuery.data ?? DEFAULT_INBOX_SETTINGS;
+  const { useModelGuide: modelGuideEnabled } = settings;
   const update = useUpdateInboxSettings();
   const [instructionsDraft, setInstructionsDraft] = useState<string | null>(null);
   const instructions = instructionsDraft ?? settings.instructions;
@@ -162,7 +163,7 @@ export function InboxSettingsPage() {
         >
           <NodexSwitch
             ariaLabel="Use Nodex's model guide"
-            checked={settings.useModelGuide}
+            checked={modelGuideEnabled}
             disabled={!settings.suggestionsChooseModels}
             onCheckedChange={(useModelGuide) => save({ useModelGuide })}
           />

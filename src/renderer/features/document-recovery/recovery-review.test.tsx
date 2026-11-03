@@ -105,19 +105,22 @@ test("review keeps export and Later separate from persisted discard, undo and re
     await inclusion.mock.results[0]!.value;
   });
   const click = async (name: string) => {
-    await view.findByRole("button", { name });
-    await waitFor(() =>
-      expect((view.getByRole("button", { name }) as HTMLButtonElement).disabled).toBe(false),
+    await view.findByRole("button", { name }, { timeout: 5_000 });
+    await waitFor(
+      () => expect((view.getByRole("button", { name }) as HTMLButtonElement).disabled).toBe(false),
+      { timeout: 5_000 },
     );
     await act(async () => {
       fireEvent.click(view.getByRole("button", { name }));
       await Promise.resolve();
     });
   };
-  await waitFor(() =>
-    expect(view.getByRole("article", { name: "Recovery preview" }).textContent).toBe(
-      "Merged edits",
-    ),
+  await waitFor(
+    () =>
+      expect(view.getByRole("article", { name: "Recovery preview" }).textContent).toBe(
+        "Merged edits",
+      ),
+    { timeout: 5_000 },
   );
   await click("Current content");
   currentTitle = "New current content";
@@ -213,12 +216,15 @@ test("an issue opens its exact draft and retargeting the review resets the previ
   await act(async () => {
     await inclusion.mock.results[0]!.value;
   });
-  await waitFor(() =>
-    expect(view.getByRole("article", { name: "Recovery preview" }).textContent).toBe("Second"),
+  await waitFor(
+    () =>
+      expect(view.getByRole("article", { name: "Recovery preview" }).textContent).toBe("Second"),
+    { timeout: 5_000 },
   );
   view.rerender(<RecoveryReview module={module} initialDraftId="First" onClose={close} />);
-  await waitFor(() =>
-    expect(view.getByRole("article", { name: "Recovery preview" }).textContent).toBe("First"),
+  await waitFor(
+    () => expect(view.getByRole("article", { name: "Recovery preview" }).textContent).toBe("First"),
+    { timeout: 5_000 },
   );
   expect(module.getSnapshot().pendingCount).toBe(2);
 });

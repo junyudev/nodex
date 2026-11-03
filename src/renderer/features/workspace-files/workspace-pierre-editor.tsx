@@ -197,7 +197,9 @@ export function WorkspacePierreEditor({
   const fileRouter = useFileReferenceRouter();
   const fileIdentity = file ? `${file.hostId ?? "local"}\0${file.path}` : null;
   const fileIdentityRef = useRef(fileIdentity);
-  fileIdentityRef.current = fileIdentity;
+  useLayoutEffect(() => {
+    fileIdentityRef.current = fileIdentity;
+  }, [fileIdentity]);
   const codeViewRef = useRef<CodeViewHandle<undefined, undefined>>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const sessionRef = useRef<EditorSession | null>(null);

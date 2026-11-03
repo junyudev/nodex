@@ -7,6 +7,7 @@ import {
   useCallback,
   useEffect,
   useEffectEvent,
+  useLayoutEffect,
   lazy,
   useMemo,
   useRef,
@@ -216,7 +217,13 @@ function parentDirectory(path: string): string {
   return index > 0 ? normalized.slice(0, index) : normalized;
 }
 
-function buildBinaryObjectUrl(dataBase64: string, mimeType: string | undefined): string {
+function buildBinaryPreviewUrl(
+  dataBase64: string | null,
+  mimeType: string | undefined,
+  kind: "image" | "pdf",
+): string {
+  if (!dataBase64) throw new Error("Unable to read binary file.");
+  if (kind === "pdf") return `data:application/pdf;base64,${dataBase64}`;
   const decoded = window.atob(dataBase64);
   const bytes = new Uint8Array(decoded.length);
   for (let index = 0; index < decoded.length; index += 1) {
@@ -227,7 +234,6 @@ function buildBinaryObjectUrl(dataBase64: string, mimeType: string | undefined):
 
 /** What the Files panel feeds its text editor beyond the document itself. */
 interface WorkspaceFileEditorBinding {
-  readonly ref: RefObject<WorkspacePierreEditorHandle | null>;
   readonly comparison: WorkspacePierreEditorProps["comparison"];
   /** A comparison outcome shown above the editor, such as a failed read. */
   readonly notice: { readonly message: string; readonly onRetry?: () => void } | null;
@@ -255,6 +261,7 @@ function WorkspaceFilePreview({
   onRevealComplete,
   resourceRevision,
   editor,
+  editorRef,
 }: {
   hostId: string;
   state: WorkspaceFilePreviewState;
@@ -271,6 +278,7 @@ function WorkspaceFilePreview({
   onRevealComplete: (location: NonNullable<WorkspaceFilesTabState["pendingReveal"]>) => void;
   resourceRevision: number;
   editor: WorkspaceFileEditorBinding;
+  editorRef: RefObject<WorkspacePierreEditorHandle | null>;
 }) {
   if (state.status === "idle") return <WorkspaceFileOpenFileState />;
   if (state.status === "loading") return <WorkspaceFileLoadingState />;
@@ -393,7 +401,7 @@ function WorkspaceFilePreview({
           </div>
         ) : null}
         <WorkspacePierreEditor
-          ref={editor.ref}
+          ref={editorRef}
           value={document.content}
           filename={getWorkspaceFileName(document.path)}
           language={resolveWorkspaceSourceLanguage(document.path)}
@@ -531,7 +539,7 @@ export function WorkspaceFilesPanel({
   );
   const navigationStateRef = useRef(navigationState);
   const navigationWriteTimeoutRef = useRef<number | null>(null);
-  const initialTabStateRef = useRef(normalizeWorkspaceFilesTabState(tab.state));
+  const [initialTabState] = useState(() => normalizeWorkspaceFilesTabState(tab.state));
   const debouncedSearchQuery = useDebouncedValue(navigationState.searchQuery.trim(), 100);
   const search = useFileSearch({
     enabled: localFile && Boolean(workspaceRoot),
@@ -555,26 +563,33 @@ export function WorkspaceFilesPanel({
   searchPaths.unshift(
     ...Array.from(searchDirectories, (path) => ({ path, kind: "directory" as const })),
   );
-  const persistedTabStateRef = useRef<WorkspaceFilesTabState>(initialTabStateRef.current);
+  const persistedTabStateRef = useRef<WorkspaceFilesTabState>(initialTabState);
   const [treeWidth, setTreeWidth] = useState(
-    initialTabStateRef.current.treeWidth ?? WORKSPACE_TREE_DEFAULT_WIDTH,
+    initialTabState.treeWidth ?? WORKSPACE_TREE_DEFAULT_WIDTH,
   );
-  const [treeVisible, setTreeVisible] = useState(initialTabStateRef.current.treeVisible ?? true);
-  const revealLocation = initialTabStateRef.current.pendingReveal;
+  const [treeVisible, setTreeVisible] = useState(initialTabState.treeVisible ?? true);
+  const revealLocation = initialTabState.pendingReveal;
   // A file opened at a location starts in its source view, where the location is visible.
   const [richView, setRichView] = useState(
-    initialTabStateRef.current.richView ?? revealLocation === undefined,
+    initialTabState.richView ?? revealLocation === undefined,
   );
-  const [wordWrap, setWordWrap] = useState(initialTabStateRef.current.wordWrap ?? true);
-  const [previewState, setPreviewState] = useState<WorkspaceFilePreviewState>(EMPTY_PREVIEW_STATE);
+  const [wordWrap, setWordWrap] = useState(initialTabState.wordWrap ?? true);
+  const [previewState, setPreviewState] = useState<WorkspaceFilePreviewState>(() =>
+    selectedPath
+      ? { ...EMPTY_PREVIEW_STATE, status: "loading", path: selectedPath }
+      : EMPTY_PREVIEW_STATE,
+  );
   const [previewRevision, setPreviewRevision] = useState(0);
   const [documentSnapshot, setDocumentSnapshot] = useState<WorkspaceTextDocumentSnapshot | null>(
     null,
   );
   const documentControllerRef = useRef<WorkspaceTextDocumentController | null>(null);
   const onUpdateTabStateRef = useRef(onUpdateTabState);
-  onUpdateTabStateRef.current = onUpdateTabState;
+  useLayoutEffect(() => {
+    onUpdateTabStateRef.current = onUpdateTabState;
+  }, [onUpdateTabState]);
   const bodyRef = useRef<HTMLDivElement | null>(null);
+  const [bodyWidth, setBodyWidth] = useState(0);
   const readRichView = useEffectEvent(() => richView);
   const view =
     previewState.metadata?.isFile && previewState.path
@@ -712,9 +727,7 @@ export function WorkspaceFilesPanel({
 
   // Text files can show their changes against a Git source, with the change under the caret
   // counted in the header and, optionally, the active line's author and commit.
-  const [comparisonState, setComparisonState] = useState(
-    initialTabStateRef.current.comparison ?? null,
-  );
+  const [comparisonState, setComparisonState] = useState(initialTabState.comparison ?? null);
   const fileComparison =
     selectedPath && comparisonState?.path === selectedPath ? comparisonState : null;
   const isGitFile = localFile && Boolean(repositoryQuery.data?.isGitRepository);
@@ -742,11 +755,15 @@ export function WorkspaceFilesPanel({
     },
     [persistTabState],
   );
-  // The first resolved default sticks, so editing the file cannot switch the source under it.
+  // Resolve the default as part of the comparison state, before editing can change it.
+  if (comparing && fileComparison && !fileComparison.source && resolvedSource) {
+    setComparisonState({ ...fileComparison, source: resolvedSource });
+  }
   useEffect(() => {
-    if (!comparing || !fileComparison || fileComparison.source || !resolvedSource) return;
-    updateComparison({ ...fileComparison, source: resolvedSource });
-  }, [comparing, fileComparison, resolvedSource, updateComparison]);
+    if (!comparisonState?.source || persistedTabStateRef.current.comparison === comparisonState)
+      return;
+    persistTabState({ ...persistedTabStateRef.current, comparison: comparisonState });
+  }, [comparisonState, persistTabState]);
   const [changeNavigation, setChangeNavigation] =
     useState<WorkspaceFileChangeNavigationState | null>(null);
   const [highlightPending, setHighlightPending] = useState(false);
@@ -796,9 +813,9 @@ export function WorkspaceFilesPanel({
   const [savedContent, setSavedContent] = useState<string | null>(null);
   const savedSnapshotContent =
     documentSnapshot?.status === "clean" ? documentSnapshot.content : null;
-  useEffect(() => {
-    if (savedSnapshotContent !== null) setSavedContent(savedSnapshotContent);
-  }, [savedSnapshotContent]);
+  if (savedSnapshotContent !== null && savedSnapshotContent !== savedContent) {
+    setSavedContent(savedSnapshotContent);
+  }
 
   const handleRevealComplete = useCallback(
     (location: NonNullable<WorkspaceFilesTabState["pendingReveal"]>) => {
@@ -815,6 +832,7 @@ export function WorkspaceFilesPanel({
     if (!body || typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(([entry]) => {
       if (!entry) return;
+      setBodyWidth(body.getBoundingClientRect().width);
       setTreeWidth((current) => clampWorkspaceTreeWidth(current, entry.contentRect.width));
     });
     observer.observe(body);
@@ -832,12 +850,37 @@ export function WorkspaceFilesPanel({
     if (!localFile && selectedPath) setPreviewRevision((current) => current + 1);
   }, [localFile, refreshDirectories, selectedPath]);
 
+  const [previewRequest, setPreviewRequest] = useState({
+    hostId,
+    localFile,
+    selectedPath,
+    tabId: tab.id,
+    revision: previewRevision,
+  });
+  if (
+    previewRequest.hostId !== hostId ||
+    previewRequest.selectedPath !== selectedPath ||
+    previewRequest.tabId !== tab.id ||
+    previewRequest.revision !== previewRevision
+  ) {
+    setPreviewRequest({
+      hostId,
+      localFile,
+      selectedPath,
+      tabId: tab.id,
+      revision: previewRevision,
+    });
+    setDocumentSnapshot(null);
+    setPreviewState(
+      selectedPath
+        ? { ...EMPTY_PREVIEW_STATE, status: "loading", path: selectedPath }
+        : EMPTY_PREVIEW_STATE,
+    );
+  }
+
   useEffect(() => {
-    if (!selectedPath) {
-      setPreviewState(EMPTY_PREVIEW_STATE);
-      setDocumentSnapshot(null);
-      return;
-    }
+    const { selectedPath, hostId, localFile, tabId } = previewRequest;
+    if (!selectedPath) return;
 
     let cancelled = false;
     let unsubscribeDocument: (() => void) | null = null;
@@ -847,173 +890,165 @@ export function WorkspaceFilesPanel({
     let unsubscribeFileWatch: (() => void) | null = null;
     let binaryObjectUrl: string | null = null;
     documentControllerRef.current = null;
-    setDocumentSnapshot(null);
-    setPreviewState({
-      ...EMPTY_PREVIEW_STATE,
-      status: "loading",
-      path: selectedPath,
-    });
 
     const loadPreview = async () => {
-      try {
-        const metadata = await queryClient.fetchQuery({
-          ...workspaceFileMetadataQueryOptions({
-            hostId,
-            path: selectedPath,
-            contentSampleByteLimit: WORKSPACE_FILE_CONTENT_SAMPLE_BYTES,
-            contentSampleMaxFileBytes: WORKSPACE_FILE_PREVIEW_MAX_BYTES,
-          }),
-          ...(!localFile ? { staleTime: 0 } : {}),
-        });
-        if (cancelled) return;
-        const settle = (patch: Partial<WorkspaceFilePreviewState>) =>
-          setPreviewState({ ...EMPTY_PREVIEW_STATE, path: selectedPath, metadata, ...patch });
-        if (!metadata.isFile) {
-          settle({ status: "unsupported", message: "Directories open from the file tree." });
-          return;
-        }
-
-        const nextView = resolveWorkspaceFileView({
+      const metadata = await queryClient.fetchQuery({
+        ...workspaceFileMetadataQueryOptions({
+          hostId,
           path: selectedPath,
-          metadata,
-          richView: readRichView(),
-        });
-        if (nextView.kind === "too-large" || nextView.kind === "unsupported") {
-          settle({ status: "loaded" });
-          return;
-        }
-        const previewKind = resolveWorkspaceFilePreviewKind({
-          path: selectedPath,
-          contentKind: metadata.contentKind,
-        });
-        // Media streams from its own element; it never loads through this reader.
-        if (previewKind === "audio" || previewKind === "video") {
-          settle({ status: "loaded" });
-          return;
-        }
-        if (nextView.kind === "rich" && (previewKind === "image" || previewKind === "pdf")) {
-          const binary = await queryClient.fetchQuery({
-            ...workspaceFileBinaryQueryOptions({ hostId, path: selectedPath }),
-            ...(!localFile ? { staleTime: 0 } : {}),
-          });
-          if (!binary.contentsBase64) throw new Error("Unable to read binary file.");
-          const nextBinaryUrl =
-            previewKind === "pdf"
-              ? `data:application/pdf;base64,${binary.contentsBase64}`
-              : buildBinaryObjectUrl(binary.contentsBase64, binary.mimeType);
-          if (cancelled) {
-            if (previewKind === "image") URL.revokeObjectURL(nextBinaryUrl);
-            return;
-          }
-          if (previewKind === "image") binaryObjectUrl = nextBinaryUrl;
-          settle({ status: "loaded", binaryUrl: nextBinaryUrl });
-          return;
-        }
-
-        const text = await queryClient.fetchQuery({
-          ...workspaceFileTextQueryOptions({
-            hostId,
-            path: selectedPath,
-            maxBytes: WORKSPACE_TEXT_LOAD_MAX_BYTES,
-          }),
-          ...(!localFile ? { staleTime: 0 } : {}),
-        });
-        if (cancelled) return;
-        // Any sampled text is a document; its language only chooses highlighting.
-        const editable =
-          metadata.sizeBytes !== null && metadata.sizeBytes < WORKSPACE_TEXT_EDITABLE_MAX_BYTES;
-        if (localFile && editable) {
-          loadedController = new WorkspaceTextDocumentController(
-            {
-              path: selectedPath,
-              content: text.contents,
-              mtimeMs: metadata.mtimeMs,
-              draft: persistedTabStateRef.current.draft,
-            },
-            {
-              write: async (path, content, expectedMtimeMs) =>
-                await writeWorkspaceFile({
-                  hostId: "local",
-                  path,
-                  content,
-                  expectedMtimeMs,
-                }),
-              readDisk: async (path) => {
-                const nextMetadata = await readWorkspaceFileMetadata({
-                  hostId,
-                  path,
-                  contentSampleByteLimit: WORKSPACE_FILE_CONTENT_SAMPLE_BYTES,
-                  contentSampleMaxFileBytes: WORKSPACE_TEXT_LOAD_MAX_BYTES,
-                });
-                const nextText = await readWorkspaceFileText({
-                  hostId,
-                  path,
-                  maxBytes: WORKSPACE_TEXT_LOAD_MAX_BYTES,
-                });
-                return {
-                  content: nextText.contents,
-                  mtimeMs: nextMetadata.mtimeMs,
-                };
-              },
-              persistDraft: (draft) => {
-                persistTabState({
-                  ...persistedTabStateRef.current,
-                  draft,
-                });
-              },
-              clearDraft: () => {
-                const nextState = { ...persistedTabStateRef.current };
-                delete nextState.draft;
-                persistTabState(nextState);
-              },
-            },
-          );
-          documentControllerRef.current = loadedController;
-          setDocumentSnapshot(loadedController.getSnapshot());
-          unsubscribeDocument = loadedController.subscribe(() => {
-            setDocumentSnapshot(loadedController?.getSnapshot() ?? null);
-          });
-          unregisterDocument = workspaceTextDocumentRegistry.register(tab.id, loadedController);
-          unsubscribeFileWatch = subscribeWorkspaceFileChanges((event) => {
-            if (event.subscriptionId !== fileWatchSubscriptionId) return;
-            void loadedController?.notifyExternalChange();
-          });
-          void startWorkspaceFileWatch({
-            hostId: "local",
-            path: selectedPath,
-          })
-            .then((result) => {
-              if (cancelled) {
-                void stopWorkspaceFileWatch({
-                  subscriptionId: result.subscriptionId,
-                });
-                return;
-              }
-              fileWatchSubscriptionId = result.subscriptionId;
-              // Reconcile once after subscribing so a write between the
-              // initial read and watcher registration cannot leave a stale view.
-              void loadedController?.notifyExternalChange();
-            })
-            .catch(() => {
-              unsubscribeFileWatch?.();
-              unsubscribeFileWatch = null;
-            });
-        }
-        settle({ status: "loaded", content: text.contents });
-      } catch (error) {
-        if (cancelled) return;
-        setPreviewState({
-          status: "error",
-          path: selectedPath,
-          metadata: null,
-          content: "",
-          binaryUrl: null,
-          message: error instanceof Error ? error.message : "Unable to load file.",
-        });
+          contentSampleByteLimit: WORKSPACE_FILE_CONTENT_SAMPLE_BYTES,
+          contentSampleMaxFileBytes: WORKSPACE_FILE_PREVIEW_MAX_BYTES,
+        }),
+        ...(!localFile ? { staleTime: 0 } : {}),
+      });
+      if (cancelled) return;
+      const settle = (patch: Partial<WorkspaceFilePreviewState>) =>
+        setPreviewState({ ...EMPTY_PREVIEW_STATE, path: selectedPath, metadata, ...patch });
+      if (!metadata.isFile) {
+        settle({ status: "unsupported", message: "Directories open from the file tree." });
+        return;
       }
+
+      const nextView = resolveWorkspaceFileView({
+        path: selectedPath,
+        metadata,
+        richView: readRichView(),
+      });
+      if (nextView.kind === "too-large" || nextView.kind === "unsupported") {
+        settle({ status: "loaded" });
+        return;
+      }
+      const previewKind = resolveWorkspaceFilePreviewKind({
+        path: selectedPath,
+        contentKind: metadata.contentKind,
+      });
+      // Media streams from its own element; it never loads through this reader.
+      if (previewKind === "audio" || previewKind === "video") {
+        settle({ status: "loaded" });
+        return;
+      }
+      if (nextView.kind === "rich" && (previewKind === "image" || previewKind === "pdf")) {
+        const binary = await queryClient.fetchQuery({
+          ...workspaceFileBinaryQueryOptions({ hostId, path: selectedPath }),
+          ...(!localFile ? { staleTime: 0 } : {}),
+        });
+        const nextBinaryUrl = buildBinaryPreviewUrl(
+          binary.contentsBase64,
+          binary.mimeType,
+          previewKind,
+        );
+        if (cancelled) {
+          if (previewKind === "image") URL.revokeObjectURL(nextBinaryUrl);
+          return;
+        }
+        if (previewKind === "image") binaryObjectUrl = nextBinaryUrl;
+        settle({ status: "loaded", binaryUrl: nextBinaryUrl });
+        return;
+      }
+
+      const text = await queryClient.fetchQuery({
+        ...workspaceFileTextQueryOptions({
+          hostId,
+          path: selectedPath,
+          maxBytes: WORKSPACE_TEXT_LOAD_MAX_BYTES,
+        }),
+        ...(!localFile ? { staleTime: 0 } : {}),
+      });
+      if (cancelled) return;
+      // Any sampled text is a document; its language only chooses highlighting.
+      const editable =
+        metadata.sizeBytes !== null && metadata.sizeBytes < WORKSPACE_TEXT_EDITABLE_MAX_BYTES;
+      if (localFile && editable) {
+        loadedController = new WorkspaceTextDocumentController(
+          {
+            path: selectedPath,
+            content: text.contents,
+            mtimeMs: metadata.mtimeMs,
+            draft: persistedTabStateRef.current.draft,
+          },
+          {
+            write: async (path, content, expectedMtimeMs) =>
+              await writeWorkspaceFile({
+                hostId: "local",
+                path,
+                content,
+                expectedMtimeMs,
+              }),
+            readDisk: async (path) => {
+              const nextMetadata = await readWorkspaceFileMetadata({
+                hostId,
+                path,
+                contentSampleByteLimit: WORKSPACE_FILE_CONTENT_SAMPLE_BYTES,
+                contentSampleMaxFileBytes: WORKSPACE_TEXT_LOAD_MAX_BYTES,
+              });
+              const nextText = await readWorkspaceFileText({
+                hostId,
+                path,
+                maxBytes: WORKSPACE_TEXT_LOAD_MAX_BYTES,
+              });
+              return {
+                content: nextText.contents,
+                mtimeMs: nextMetadata.mtimeMs,
+              };
+            },
+            persistDraft: (draft) => {
+              persistTabState({
+                ...persistedTabStateRef.current,
+                draft,
+              });
+            },
+            clearDraft: () => {
+              const nextState = { ...persistedTabStateRef.current };
+              delete nextState.draft;
+              persistTabState(nextState);
+            },
+          },
+        );
+        documentControllerRef.current = loadedController;
+        setDocumentSnapshot(loadedController.getSnapshot());
+        unsubscribeDocument = loadedController.subscribe(() => {
+          setDocumentSnapshot(loadedController?.getSnapshot() ?? null);
+        });
+        unregisterDocument = workspaceTextDocumentRegistry.register(tabId, loadedController);
+        unsubscribeFileWatch = subscribeWorkspaceFileChanges((event) => {
+          if (event.subscriptionId !== fileWatchSubscriptionId) return;
+          void loadedController?.notifyExternalChange();
+        });
+        void startWorkspaceFileWatch({
+          hostId: "local",
+          path: selectedPath,
+        })
+          .then((result) => {
+            if (cancelled) {
+              void stopWorkspaceFileWatch({
+                subscriptionId: result.subscriptionId,
+              });
+              return;
+            }
+            fileWatchSubscriptionId = result.subscriptionId;
+            // Reconcile once after subscribing so a write between the
+            // initial read and watcher registration cannot leave a stale view.
+            void loadedController?.notifyExternalChange();
+          })
+          .catch(() => {
+            unsubscribeFileWatch?.();
+            unsubscribeFileWatch = null;
+          });
+      }
+      settle({ status: "loaded", content: text.contents });
     };
 
-    void loadPreview();
+    void loadPreview().catch((error: unknown) => {
+      if (cancelled) return;
+      setPreviewState({
+        status: "error",
+        path: selectedPath,
+        metadata: null,
+        content: "",
+        binaryUrl: null,
+        message: error instanceof Error ? error.message : "Unable to load file.",
+      });
+    });
     return () => {
       cancelled = true;
       unsubscribeDocument?.();
@@ -1032,7 +1067,7 @@ export function WorkspaceFilesPanel({
         documentControllerRef.current = null;
       }
     };
-  }, [hostId, localFile, persistTabState, previewRevision, queryClient, selectedPath, tab.id]);
+  }, [persistTabState, previewRequest, queryClient]);
 
   const browsePaths = directoryTree.paths;
   const treePaths = navigationState.searchQuery.trim() ? (searchPaths ?? []) : browsePaths;
@@ -1203,16 +1238,11 @@ export function WorkspaceFilesPanel({
   const resizeTreeByKeyboard = useCallback(
     (delta: number) => {
       const bodyWidth = bodyRef.current?.getBoundingClientRect().width ?? 0;
-      setTreeWidth((current) => {
-        const next = clampWorkspaceTreeWidth(current + delta, bodyWidth);
-        persistTabState({
-          ...persistedTabStateRef.current,
-          treeWidth: next,
-        });
-        return next;
-      });
+      const next = clampWorkspaceTreeWidth(treeWidth + delta, bodyWidth);
+      setTreeWidth(next);
+      persistTabState({ ...persistedTabStateRef.current, treeWidth: next });
     },
-    [persistTabState],
+    [persistTabState, treeWidth],
   );
 
   const editDocument = useCallback((value: string) => {
@@ -1232,39 +1262,24 @@ export function WorkspaceFilesPanel({
   }, []);
 
   const toggleTree = useCallback(() => {
-    setTreeVisible((current) => {
-      const next = !current;
-      persistTabState({
-        ...persistedTabStateRef.current,
-        treeVisible: next,
-      });
-      return next;
-    });
-  }, [persistTabState]);
+    const next = !treeVisible;
+    setTreeVisible(next);
+    persistTabState({ ...persistedTabStateRef.current, treeVisible: next });
+  }, [persistTabState, treeVisible]);
 
   const toggleWordWrap = useCallback(() => {
-    setWordWrap((current) => {
-      const next = !current;
-      persistTabState({
-        ...persistedTabStateRef.current,
-        wordWrap: next,
-      });
-      return next;
-    });
-  }, [persistTabState]);
+    const next = !wordWrap;
+    setWordWrap(next);
+    persistTabState({ ...persistedTabStateRef.current, wordWrap: next });
+  }, [persistTabState, wordWrap]);
 
   const toggleRichView = useCallback(() => {
-    setRichView((current) => {
-      const next = !current;
-      persistTabState({
-        ...persistedTabStateRef.current,
-        richView: next,
-      });
-      return next;
-    });
+    const next = !richView;
+    setRichView(next);
+    persistTabState({ ...persistedTabStateRef.current, richView: next });
     // An image's source and its bytes load separately, so switching an SVG's view reloads it.
     if (loadedPreviewKind === "image") setPreviewRevision((current) => current + 1);
-  }, [loadedPreviewKind, persistTabState]);
+  }, [loadedPreviewKind, persistTabState, richView]);
 
   const copyText = useCallback((value: string, failure: string) => {
     void writeTextToClipboard(value).then((copied) => {
@@ -1286,49 +1301,60 @@ export function WorkspaceFilesPanel({
   }
 
   const fileContent = documentSnapshot?.content ?? previewState.content;
-  const options: WorkspaceFileViewerOption[] = [];
-  if (selectedPath) {
-    options.push({
-      id: "copy-path",
-      label: "Copy path",
-      icon: <CopyLightIcon />,
-      onSelect: () => copyText(pathVariants?.absolute ?? selectedPath, "Unable to copy path"),
-    });
-    const relativePath = pathVariants?.repoRelative ?? pathVariants?.projectRelative ?? null;
-    if (relativePath) {
-      options.push({
-        id: "copy-relative-path",
-        label: "Copy relative path",
-        icon: <CopyLightIcon />,
-        onSelect: () => copyText(relativePath, "Unable to copy path"),
-      });
-    }
-  }
-  if (showsText && fileContent) {
-    options.push({
-      id: "copy-contents",
-      label: "Copy file contents",
-      icon: <CopyLightIcon />,
-      onSelect: () => copyText(fileContent, "Unable to copy contents"),
-    });
-  }
-  if (richViewMode === "toggle" && previewState.status === "loaded") {
-    options.push({
-      id: "rich-view",
-      label: richView ? "Disable rich view" : "Enable rich view",
-      onSelect: toggleRichView,
-    });
-  }
-  if (showsSource && previewState.status === "loaded") {
-    options.push({
-      id: "word-wrap",
-      label: wordWrap ? "Disable word wrap" : "Enable word wrap",
-      onSelect: toggleWordWrap,
-    });
-  }
-  if (workspaceRoot || !localFile) {
-    options.push({ id: "refresh", label: "Refresh files", onSelect: refreshFiles });
-  }
+  const relativePath = pathVariants?.repoRelative ?? pathVariants?.projectRelative ?? null;
+  const options: WorkspaceFileViewerOption[] = [
+    ...(selectedPath
+      ? [
+          {
+            id: "copy-path",
+            label: "Copy path",
+            icon: <CopyLightIcon />,
+            onSelect: () => copyText(pathVariants?.absolute ?? selectedPath, "Unable to copy path"),
+          },
+          ...(relativePath
+            ? [
+                {
+                  id: "copy-relative-path",
+                  label: "Copy relative path",
+                  icon: <CopyLightIcon />,
+                  onSelect: () => copyText(relativePath, "Unable to copy path"),
+                },
+              ]
+            : []),
+        ]
+      : []),
+    ...(showsText && fileContent
+      ? [
+          {
+            id: "copy-contents",
+            label: "Copy file contents",
+            icon: <CopyLightIcon />,
+            onSelect: () => copyText(fileContent, "Unable to copy contents"),
+          },
+        ]
+      : []),
+    ...(richViewMode === "toggle" && previewState.status === "loaded"
+      ? [
+          {
+            id: "rich-view",
+            label: richView ? "Disable rich view" : "Enable rich view",
+            onSelect: toggleRichView,
+          },
+        ]
+      : []),
+    ...(showsSource && previewState.status === "loaded"
+      ? [
+          {
+            id: "word-wrap",
+            label: wordWrap ? "Disable word wrap" : "Enable word wrap",
+            onSelect: toggleWordWrap,
+          },
+        ]
+      : []),
+    ...(workspaceRoot || !localFile
+      ? [{ id: "refresh", label: "Refresh files", onSelect: refreshFiles }]
+      : []),
+  ];
 
   const editorTargets: WorkspaceFileOpenTarget[] = FILE_LINK_OPENER_OPTIONS.filter(
     (option) =>
@@ -1412,7 +1438,6 @@ export function WorkspaceFilesPanel({
     ]),
   );
   const editorBinding: WorkspaceFileEditorBinding = {
-    ref: editorRef,
     comparison: comparisonResult
       ? {
           oldContent: comparisonResult.oldContent,
@@ -1536,6 +1561,7 @@ export function WorkspaceFilesPanel({
                   onRevealComplete={handleRevealComplete}
                   resourceRevision={previewRevision}
                   editor={editorBinding}
+                  editorRef={editorRef}
                 />
               </div>
 
@@ -1558,10 +1584,7 @@ export function WorkspaceFilesPanel({
                       aria-valuemin={WORKSPACE_TREE_MIN_WIDTH}
                       aria-valuemax={Math.max(
                         WORKSPACE_TREE_MIN_WIDTH,
-                        Math.round(
-                          (bodyRef.current?.getBoundingClientRect().width ?? 0) *
-                            WORKSPACE_TREE_MAX_RATIO,
-                        ),
+                        Math.round(bodyWidth * WORKSPACE_TREE_MAX_RATIO),
                       )}
                       aria-valuenow={Math.round(treeWidth)}
                       tabIndex={0}

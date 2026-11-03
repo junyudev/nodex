@@ -62,9 +62,12 @@ export function InboxComposer({
     if (!textarea) return;
     textarea.style.height = "0px";
     textarea.style.height = `${Math.min(textarea.scrollHeight, MAX_TEXTAREA_HEIGHT_PX)}px`;
-  }, [draft.text]);
+  });
 
+  const focusedTokenRef = useRef<{ token: number | undefined } | null>(null);
   useLayoutEffect(() => {
+    if (focusedTokenRef.current?.token === focusToken && focusedTokenRef.current !== null) return;
+    focusedTokenRef.current = { token: focusToken };
     textareaRef.current?.focus();
   }, [focusToken]);
 

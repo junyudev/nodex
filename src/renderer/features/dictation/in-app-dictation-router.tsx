@@ -1,4 +1,12 @@
-import { createContext, useContext, useEffect, useRef, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useEffectEvent,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import type { DictationGesture } from "../../../shared/dictation";
 import type {
   GlobalDictationDeclineReason,
@@ -56,8 +64,7 @@ const selectTarget = (
 export function InAppDictationRouter({ children }: { readonly children: ReactNode }) {
   const targetsRef = useRef(new Map<string, InAppDictationTarget>());
   const activeRef = useRef<ActiveRoute | null>(null);
-  const registryRef = useRef<InAppDictationTargetRegistry | null>(null);
-  registryRef.current ??= {
+  const [registry] = useState<InAppDictationTargetRegistry>(() => ({
     register: (target) => {
       targetsRef.current.set(target.id, target);
       return () => {
@@ -69,7 +76,7 @@ export function InAppDictationRouter({ children }: { readonly children: ReactNod
         void report({ type: "cancelled", sessionId: active.sessionId }).catch(() => undefined);
       };
     },
-  };
+  }));
 
   useEffect(() => {
     return subscribeGlobalDictationCommands((command) => {
@@ -160,7 +167,7 @@ export function InAppDictationRouter({ children }: { readonly children: ReactNod
   }, []);
 
   return (
-    <InAppDictationTargetContext.Provider value={registryRef.current}>
+    <InAppDictationTargetContext.Provider value={registry}>
       {children}
     </InAppDictationTargetContext.Provider>
   );
@@ -168,17 +175,21 @@ export function InAppDictationRouter({ children }: { readonly children: ReactNod
 
 export function useInAppDictationTarget(target: InAppDictationTarget): void {
   const registry = useContext(InAppDictationTargetContext);
-  const targetRef = useRef(target);
-  targetRef.current = target;
+  const admission = useEffectEvent(() => target.admission());
+  const start = useEffectEvent((input: Parameters<InAppDictationTarget["start"]>[0]) =>
+    target.start(input),
+  );
+  const stop = useEffectEvent(() => target.stop());
+  const cancel = useEffectEvent(() => target.cancel());
   useEffect(
     () =>
       registry?.register({
         id: target.id,
         priority: target.priority,
-        admission: () => targetRef.current.admission(),
-        start: (input) => targetRef.current.start(input),
-        stop: () => targetRef.current.stop(),
-        cancel: () => targetRef.current.cancel(),
+        admission: () => admission(),
+        start: (input) => start(input),
+        stop: () => stop(),
+        cancel: () => cancel(),
       }),
     [registry, target.id, target.priority],
   );

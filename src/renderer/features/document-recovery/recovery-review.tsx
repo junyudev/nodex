@@ -82,10 +82,16 @@ function RecoveryReviewContent({
     null;
   const local = selectedEntry?.kind === "staged" ? selectedEntry.source : null;
   const draftId = selectedEntry?.kind === "received" ? selectedEntry.draft.draft_id : null;
-  const revision = selectedEntry?.kind === "received" ? selectedEntry.draft.revision : undefined;
+  const draftRevision =
+    selectedEntry?.kind === "received" ? selectedEntry.draft.revision : undefined;
+  const inspectionKey = JSON.stringify([draftId, draftRevision, state.previewRevision]);
+  const [inspectionRequest, setInspectionRequest] = useState({ key: inspectionKey, draftId });
+  if (inspectionRequest.key !== inspectionKey)
+    setInspectionRequest({ key: inspectionKey, draftId });
+  if (inspection && inspection.summary.draft_id !== draftId) setInspection(null);
   useEffect(() => {
+    const { draftId } = inspectionRequest;
     const version = ++request.current;
-    setInspection((previous) => (previous?.summary.draft_id === draftId ? previous : null));
     if (!draftId) return;
     void module
       .inspect(draftId)
@@ -109,11 +115,24 @@ function RecoveryReviewContent({
     return () => {
       request.current += 1;
     };
-  }, [module, draftId, revision, state.previewRevision]);
+  }, [module, inspectionRequest]);
   const current = inspection?.summary.draft_id === draftId ? inspection : null;
-  useEffect(() => {
-    let active = true;
+  const [previewRequest, setPreviewRequest] = useState({
+    current,
+    view,
+    revision: state.previewRevision,
+  });
+  if (
+    previewRequest.current !== current ||
+    previewRequest.view !== view ||
+    previewRequest.revision !== state.previewRevision
+  ) {
+    setPreviewRequest({ current, view, revision: state.previewRevision });
     setPreview(null);
+  }
+  useEffect(() => {
+    const { current, view } = previewRequest;
+    let active = true;
     if (!current) return;
     void module
       .preview(current, view)
@@ -130,42 +149,44 @@ function RecoveryReviewContent({
     return () => {
       active = false;
     };
-  }, [module, current, view, state.previewRevision]);
+  }, [module, previewRequest]);
   const run = async (choice: RecoveryChoice) => {
     if (!current || busy) return;
     setBusy(true);
     setError(null);
-    try {
-      const result = await module.resolve(current, choice);
-      setInspection({ ...current, summary: result, can_restore: false, can_copy: false });
-      setConfirmDiscard(false);
-      setShowResolved(true);
-      setSelected(receivedRecoveryKey(result.draft_id));
-      await module.refresh();
-    } catch (error) {
-      setError(error instanceof Error ? error.message : String(error));
-    } finally {
-      setBusy(false);
-    }
+    await module
+      .resolve(current, choice)
+      .then(async (result) => {
+        setInspection({ ...current, summary: result, can_restore: false, can_copy: false });
+        setConfirmDiscard(false);
+        setShowResolved(true);
+        setSelected(receivedRecoveryKey(result.draft_id));
+        await module.refresh();
+      })
+      .catch((error: unknown) => {
+        setError(error instanceof Error ? error.message : String(error));
+      })
+      .finally(() => setBusy(false));
   };
   const removeLocal = async () => {
     if (!removeTarget || busy) return;
     setBusy(true);
     setError(null);
-    try {
-      await module.removeLocal(removeTarget);
-      setRemoveTarget(null);
-    } catch (error) {
-      setError(error instanceof Error ? error.message : String(error));
-    } finally {
-      setBusy(false);
-    }
+    await module
+      .removeLocal(removeTarget)
+      .then(() => {
+        setRemoveTarget(null);
+      })
+      .catch((error: unknown) => {
+        setError(error instanceof Error ? error.message : String(error));
+      })
+      .finally(() => setBusy(false));
   };
   const exportDraft = async () => {
     try {
       if (local) await module.exportLocal(local.sourceKey);
       else if (draftId) await module.export(draftId);
-      else await exportLocal?.();
+      else if (exportLocal) await exportLocal();
     } catch (error) {
       setError(error instanceof Error ? error.message : String(error));
     }

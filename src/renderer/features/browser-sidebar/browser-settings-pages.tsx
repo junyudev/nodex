@@ -472,12 +472,11 @@ function BrowserDownloadsSettingsPage({ backSlot, open }: { backSlot: ReactNode;
   const [snapshot, setSnapshot] = useState<BrowserDownloadsSnapshot>({ downloads: [] });
   const [status, setStatus] = useState<string | null>(null);
 
-  const refresh = useCallback(async () => {
-    setSnapshot(await readBrowserDownloads());
-  }, []);
+  const refresh = useCallback(() => readBrowserDownloads().then(setSnapshot), []);
 
   useEffect(() => {
-    if (open) void refresh();
+    if (!open) return;
+    void refresh();
   }, [open, refresh]);
 
   const runAction = async (downloadId: string, action: BrowserDownloadAction) => {
@@ -891,14 +890,16 @@ export function BrowserPasswordsSettingsPage({
   const [capability, setCapability] = useState<BrowserCapabilityStatus>(EMPTY_CAPABILITY);
   const [importOpen, setImportOpen] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
-  const refresh = useCallback(async () => {
-    const [capabilities, nextCredentials] = await Promise.all([
-      readBrowserProfileCapabilities(),
-      readAllBrowserCredentials(),
-    ]);
-    setCapability(capabilities.credentialVault);
-    setCredentials(nextCredentials);
-  }, []);
+  const refresh = useCallback(
+    () =>
+      Promise.all([readBrowserProfileCapabilities(), readAllBrowserCredentials()]).then(
+        ([capabilities, credentials]) => {
+          setCapability(capabilities.credentialVault);
+          setCredentials(credentials);
+        },
+      ),
+    [],
+  );
   useEffect(() => {
     if (!open) return;
     void refresh();
@@ -976,16 +977,19 @@ export function BrowserContactInfoSettingsPage({
   const [capability, setCapability] = useState<BrowserCapabilityStatus>(EMPTY_CAPABILITY);
   const [draft, setDraft] = useState<BrowserContactInfoUpsertInput | null>(null);
   const [status, setStatus] = useState<string | null>(null);
-  const refresh = useCallback(async () => {
-    const [capabilities, nextContacts] = await Promise.all([
-      readBrowserProfileCapabilities(),
-      readBrowserContactInfo(),
-    ]);
-    setCapability(capabilities.contactInfo);
-    setContacts(nextContacts);
-  }, []);
+  const refresh = useCallback(
+    () =>
+      Promise.all([readBrowserProfileCapabilities(), readBrowserContactInfo()]).then(
+        ([capabilities, contacts]) => {
+          setCapability(capabilities.contactInfo);
+          setContacts(contacts);
+        },
+      ),
+    [],
+  );
   useEffect(() => {
-    if (open) void refresh();
+    if (!open) return;
+    void refresh();
   }, [open, refresh]);
 
   const save = async () => {
@@ -1174,11 +1178,10 @@ export function BrowserExtensionsSettingsPage({
     extensions: [],
   });
   const [status, setStatus] = useState<string | null>(null);
-  const refresh = useCallback(async () => {
-    setSnapshot(await readBrowserExtensions());
-  }, []);
+  const refresh = useCallback(() => readBrowserExtensions().then(setSnapshot), []);
   useEffect(() => {
-    if (open) void refresh();
+    if (!open) return;
+    void refresh();
   }, [open, refresh]);
 
   const load = async () => {

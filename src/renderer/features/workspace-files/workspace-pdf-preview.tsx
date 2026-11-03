@@ -74,13 +74,16 @@ interface ZoomAnchor {
   ratioY: number;
 }
 
+function isValidPdfPageCount(count: number): boolean {
+  return Number.isSafeInteger(count) && count > 0;
+}
+
 function useWorkspacePdfDocument(fileDataUrl: string): PdfLoadState {
   const [state, setState] = useState<PdfLoadState>({ status: "loading", dataUrl: fileDataUrl });
 
   useEffect(() => {
     let cancelled = false;
     let loadingTask: PDFDocumentLoadingTask | null = null;
-    setState({ status: "loading", dataUrl: fileDataUrl });
 
     const load = async () => {
       try {
@@ -95,7 +98,7 @@ function useWorkspacePdfDocument(fileDataUrl: string): PdfLoadState {
         loadingTask = runtime.getDocument({ data: bytes });
         const document = await loadingTask.promise;
         if (cancelled) return;
-        if (!Number.isSafeInteger(document.numPages) || document.numPages <= 0) {
+        if (!isValidPdfPageCount(document.numPages)) {
           await loadingTask.destroy();
           setState({ status: "error", dataUrl: fileDataUrl });
           return;
@@ -124,7 +127,7 @@ function useWorkspacePdfDocument(fileDataUrl: string): PdfLoadState {
     };
   }, [fileDataUrl]);
 
-  return state;
+  return state.dataUrl === fileDataUrl ? state : { status: "loading", dataUrl: fileDataUrl };
 }
 
 function getPdfPageElements(container: HTMLElement): HTMLElement[] {
@@ -133,20 +136,12 @@ function getPdfPageElements(container: HTMLElement): HTMLElement[] {
 
 function useWorkspacePdfPageNavigation(input: {
   containerRef: RefObject<HTMLDivElement | null>;
-  navigationKey: string;
   totalPages: number;
 }) {
-  const { containerRef, navigationKey, totalPages } = input;
+  const { containerRef, totalPages } = input;
   const [currentPage, setCurrentPage] = useState(1);
   const programmaticPageRef = useRef<number | null>(null);
   const scrollCleanupRef = useRef<(() => void) | null>(null);
-
-  useEffect(() => {
-    programmaticPageRef.current = null;
-    scrollCleanupRef.current?.();
-    scrollCleanupRef.current = null;
-    setCurrentPage(1);
-  }, [navigationKey]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -190,7 +185,7 @@ function useWorkspacePdfPageNavigation(input: {
       scrollCleanupRef.current?.();
       scrollCleanupRef.current = null;
     };
-  }, [containerRef, navigationKey, totalPages]);
+  }, [containerRef, totalPages]);
 
   const goToPage = useCallback(
     (requestedPage: number, behavior: ScrollBehavior = "smooth") => {
@@ -344,7 +339,6 @@ function WorkspacePdfPage(input: {
   runtime: WorkspacePdfRuntime;
   scrollRootRef: RefObject<HTMLDivElement | null>;
   zoom: number;
-  zoomEndTick: number;
 }) {
   const {
     currentPage,
@@ -359,25 +353,26 @@ function WorkspacePdfPage(input: {
     runtime,
     scrollRootRef,
     zoom,
-    zoomEndTick,
   } = input;
   const pageElementRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [pageState, setPageState] = useState<{
     document: PDFDocumentProxy;
+    pageNumber: number;
     page: PDFPageProxy;
     viewport: PageViewport;
   } | null>(null);
-  const [intersectsRenderWindow, setIntersectsRenderWindow] = useState(false);
+  const [intersectsRenderWindow, setIntersectsRenderWindow] = useState(
+    () => typeof IntersectionObserver === "undefined",
+  );
 
   useEffect(() => {
     let cancelled = false;
-    setPageState(null);
     void document
       .getPage(pageNumber)
       .then((page) => {
         if (cancelled) return;
-        setPageState({ document, page, viewport: page.getViewport({ scale: 1 }) });
+        setPageState({ document, pageNumber, page, viewport: page.getViewport({ scale: 1 }) });
       })
       .catch(() => {
         if (!cancelled) onError();
@@ -390,10 +385,7 @@ function WorkspacePdfPage(input: {
   useEffect(() => {
     const element = pageElementRef.current;
     if (element === null) return undefined;
-    if (typeof IntersectionObserver === "undefined") {
-      setIntersectsRenderWindow(true);
-      return undefined;
-    }
+    if (typeof IntersectionObserver === "undefined") return undefined;
     const observer = new IntersectionObserver(
       ([entry]) => setIntersectsRenderWindow(Boolean(entry?.isIntersecting)),
       { root: scrollRootRef.current, rootMargin: PAGE_RENDER_ROOT_MARGIN, threshold: 0.01 },
@@ -402,9 +394,11 @@ function WorkspacePdfPage(input: {
     return () => observer.disconnect();
   }, [scrollRootRef]);
 
-  const loadedPage = pageState?.document === document ? pageState.page : null;
-  const baseSize = pageState
-    ? { width: pageState.viewport.width, height: pageState.viewport.height }
+  const currentPageState =
+    pageState?.document === document && pageState.pageNumber === pageNumber ? pageState : null;
+  const loadedPage = currentPageState?.page ?? null;
+  const baseSize = currentPageState
+    ? { width: currentPageState.viewport.width, height: currentPageState.viewport.height }
     : fallbackSize;
   const pageSize = resolveWorkspacePdfPageSize({
     baseSize,
@@ -450,9 +444,11 @@ function WorkspacePdfPage(input: {
       cancelled = true;
       renderTask?.cancel();
     };
-  }, [isZooming, loadedPage, onError, pageSize.height, pageSize.width, shouldRender, zoomEndTick]);
+  }, [isZooming, loadedPage, onError, pageSize.height, pageSize.width, shouldRender]);
 
-  const scaleFactor = pageState?.viewport.width ? pageSize.width / pageState.viewport.width : 1;
+  const scaleFactor = currentPageState?.viewport.width
+    ? pageSize.width / currentPageState.viewport.width
+    : 1;
   const style = {
     "--scale-factor": scaleFactor,
     "--user-unit": loadedPage?.userUnit ?? 1,
@@ -468,7 +464,7 @@ function WorkspacePdfPage(input: {
       data-workspace-pdf-page
       data-page-number={pageNumber}
       data-current-page={currentPage === pageNumber}
-      data-page-viewport-ready={pageState === null ? undefined : ""}
+      data-page-viewport-ready={currentPageState === null ? undefined : ""}
       style={style}
     >
       <canvas ref={canvasRef} className="absolute inset-0 size-full" />
@@ -576,7 +572,11 @@ function PdfZoomControl(input: {
   );
 }
 
-export function WorkspacePdfPreview({
+export function WorkspacePdfPreview(props: WorkspacePdfPreviewProps) {
+  return <WorkspacePdfPreviewContent key={props.fileDataUrl} {...props} />;
+}
+
+function WorkspacePdfPreviewContent({
   fileDataUrl,
   title,
   onOpenExternalLink,
@@ -592,7 +592,6 @@ export function WorkspacePdfPreview({
   const [fitToWidth, setFitToWidth] = useState(true);
   const [zoom, setZoom] = useState(1);
   const [isZooming, setIsZooming] = useState(false);
-  const [zoomEndTick, setZoomEndTick] = useState(0);
   const [runtime, setRuntime] = useState<WorkspacePdfRuntime | null>(null);
   const [renderFailed, setRenderFailed] = useState(false);
 
@@ -601,7 +600,6 @@ export function WorkspacePdfPreview({
   const totalPages = pdfDocument?.numPages ?? 0;
   const { currentPage, goToPage } = useWorkspacePdfPageNavigation({
     containerRef: scrollRootRef,
-    navigationKey: fileDataUrl,
     totalPages,
   });
 
@@ -614,12 +612,6 @@ export function WorkspacePdfPreview({
       cancelled = true;
     };
   }, []);
-
-  useEffect(() => {
-    setRenderFailed(false);
-    setFitToWidth(true);
-    setZoom(1);
-  }, [fileDataUrl]);
 
   useEffect(() => {
     if (resizeTarget === null || typeof ResizeObserver === "undefined") return undefined;
@@ -690,7 +682,7 @@ export function WorkspacePdfPreview({
       pageRect.height * anchor.ratioY -
       (containerRect.top + anchor.containerOffsetY);
     zoomAnchorRef.current = null;
-  }, [availableWidth, fitToWidth, zoom]);
+  });
 
   const beginZoom = useCallback(() => {
     setIsZooming(true);
@@ -698,7 +690,6 @@ export function WorkspacePdfPreview({
     zoomTimeoutRef.current = window.setTimeout(() => {
       zoomTimeoutRef.current = null;
       setIsZooming(false);
-      setZoomEndTick((tick) => tick + 1);
     }, ZOOM_GESTURE_END_MS);
   }, []);
 
@@ -851,7 +842,6 @@ export function WorkspacePdfPreview({
                 runtime={runtime}
                 scrollRootRef={scrollRootRef}
                 zoom={zoom}
-                zoomEndTick={zoomEndTick}
               />
             ))}
           </div>

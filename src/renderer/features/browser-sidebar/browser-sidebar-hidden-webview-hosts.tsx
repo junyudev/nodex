@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type {
   BrowserSidebarBrowserUseCaptureSurfaceEvent,
   BrowserSidebarBrowserUseViewportEvent,
@@ -191,7 +191,9 @@ export function BrowserSidebarBrowserUseWebviewHosts() {
     };
   }, []);
 
-  useEffect(() => {
+  const [previousTabs, setPreviousTabs] = useState(browserUseState.tabs);
+  if (previousTabs !== browserUseState.tabs) {
+    setPreviousTabs(browserUseState.tabs);
     const liveTabKeys = new Set(
       browserUseState.tabs
         .filter((tab) => !tab.released)
@@ -201,7 +203,7 @@ export function BrowserSidebarBrowserUseWebviewHosts() {
       if ([...current.keys()].every((key) => liveTabKeys.has(key))) return current;
       return new Map([...current].filter(([key]) => liveTabKeys.has(key)));
     });
-  }, [browserUseState.tabs]);
+  }
 
   const descriptors = useMemo(
     () =>
@@ -258,7 +260,7 @@ function HiddenBrowserWebviewHost({
 }) {
   // A retained Browser page owns one webview for the lifetime of its route identity. URL, title,
   // viewport, and presentation changes are live projections of that page, not remount signals.
-  const initialUrlRef = useRef(descriptor.initialUrl);
+  const [initialUrl] = useState(descriptor.initialUrl);
   const leaseRef = useRef<BrowserSidebarHostLease | null>(null);
   const claimInput = useMemo<BrowserSidebarHostClaimInput>(
     () => ({
@@ -268,7 +270,7 @@ function HiddenBrowserWebviewHost({
       browserStorageId: descriptor.browserStorageId,
       projectId: descriptor.projectId,
       hostKind: descriptor.hostKind,
-      initialUrl: initialUrlRef.current,
+      initialUrl,
       title: descriptor.title,
       faviconUrl: descriptor.faviconUrl,
       deviceToolbarVisible: descriptor.deviceToolbarVisible,
@@ -293,17 +295,25 @@ function HiddenBrowserWebviewHost({
       },
       themeVariant,
     }),
-    [descriptor, themeVariant],
+    [descriptor, initialUrl, themeVariant],
   );
-  const claimInputRef = useRef(claimInput);
-  claimInputRef.current = claimInput;
+  const readClaimInput = useEffectEvent(() => claimInput);
 
   useLayoutEffect(() => {
     if (!window.api) return undefined;
-    if (isBlankBrowserUrl(initialUrlRef.current) && descriptor.hostKind !== "retained") {
+    const input = readClaimInput();
+    if (isBlankBrowserUrl(input.initialUrl) && input.hostKind !== "retained") {
       return undefined;
     }
-    const lease = browserSidebarRendererWebviewManager.claimHost(claimInputRef.current);
+    const lease = browserSidebarRendererWebviewManager.claimHost({
+      ...input,
+      browserConversationId: descriptor.browserConversationId,
+      browserStorageId: descriptor.browserStorageId,
+      browserTabId: descriptor.browserTabId,
+      browserViewScopeId: descriptor.browserViewScopeId,
+      hostKind: descriptor.hostKind,
+      projectId: descriptor.projectId,
+    });
     leaseRef.current = lease;
     return () => {
       if (leaseRef.current === lease) leaseRef.current = null;

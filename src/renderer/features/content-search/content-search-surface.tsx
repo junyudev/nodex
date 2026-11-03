@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useSyncExternalStore, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import {
   CloseIcon,
@@ -68,36 +68,23 @@ function getPlaceholder(domain: ContentSearchDomain): string {
   return "Find in page";
 }
 
+function hasDialogOverlay(): boolean {
+  return (
+    typeof document !== "undefined" &&
+    Boolean(document.querySelector(".codex-dialog-overlay, [data-slot='codex-dialog-overlay']"))
+  );
+}
+
+function subscribeDialogOverlays(onChange: () => void): () => void {
+  if (typeof MutationObserver === "undefined") return () => undefined;
+  const observer = new MutationObserver(onChange);
+  observer.observe(document.body, { childList: true, subtree: true });
+  return () => observer.disconnect();
+}
+
 function useDialogOverlaySuppressed(open: boolean): boolean {
-  const [suppressed, setSuppressed] = useState(false);
-
-  useEffect(() => {
-    if (!open || typeof document === "undefined") {
-      setSuppressed(false);
-      return undefined;
-    }
-
-    const updateSuppressed = () => {
-      setSuppressed(
-        Boolean(
-          document.querySelector(".codex-dialog-overlay, [data-slot='codex-dialog-overlay']"),
-        ),
-      );
-    };
-    updateSuppressed();
-
-    if (typeof MutationObserver === "undefined") return undefined;
-    const observer = new MutationObserver(updateSuppressed);
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true,
-    });
-    return () => {
-      observer.disconnect();
-    };
-  }, [open]);
-
-  return suppressed;
+  const suppressed = useSyncExternalStore(subscribeDialogOverlays, hasDialogOverlay, () => false);
+  return open && suppressed;
 }
 
 export function ContentSearchSurfaceView({

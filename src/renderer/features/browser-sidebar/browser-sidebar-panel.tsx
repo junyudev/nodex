@@ -51,6 +51,7 @@ import {
   type BrowserSidebarImageDragStateEvent,
   type BrowserSidebarLocalServer,
   type BrowserSidebarLocalServerThumbnailResult,
+  type BrowserSidebarThemeVariant,
   type BrowserSidebarLocalServersSnapshot,
   type BrowserSidebarOpenNewTabRequest,
   type BrowserPageFailure,
@@ -273,7 +274,6 @@ export function BrowserSidebarPanel({
   activeSession,
   surfaceContext,
   browserViewScopeId,
-  onRefreshSessions,
   onUpdateTab = ignoreBrowserTabUpdate,
   onOpenNewTab,
   onOpenBrowserSettings,
@@ -308,12 +308,12 @@ export function BrowserSidebarPanel({
   const linkOpening = useLinkOpening();
   const { resolved: themeVariant } = useTheme();
   const webviewHostRef = useRef<HTMLDivElement | null>(null);
-  const syncWebviewPresentationRef = useRef<(() => void) | null>(null);
+  const syncWebviewPresentationRef = useRef<
+    | ((presentation?: { isVisible: boolean; themeVariant: BrowserSidebarThemeVariant }) => void)
+    | null
+  >(null);
   const webviewHostLeaseRef = useRef<BrowserSidebarHostLease | null>(null);
-  const isVisibleRef = useRef(isVisible);
-  const themeVariantRef = useRef(themeVariant);
-  isVisibleRef.current = isVisible;
-  themeVariantRef.current = themeVariant;
+  const readPresentation = useEffectEvent(() => ({ isVisible, themeVariant }));
   const [snapshot, setSnapshot] = useState<BrowserSidebarTabSnapshot>(() =>
     makeInitialSnapshot(tab, browserConversationId, browserViewScopeId),
   );
@@ -365,12 +365,13 @@ export function BrowserSidebarPanel({
   const commentMode = snapshot.interactionMode === "comment";
   const pageActionsDisabled = snapshot.pageActionsDisabled || isBlank;
   const canOpenExternally = !snapshot.failure || isErrorPageExternalUrl(snapshot.failure.failedUrl);
-  const initialWebviewUrlRef = useRef(snapshot.url);
-  if (isBlank) {
-    initialWebviewUrlRef.current = "about:blank";
-  } else if (isBlankBrowserUrl(initialWebviewUrlRef.current)) {
-    initialWebviewUrlRef.current = snapshot.url;
+  const [initialWebviewUrl, setInitialWebviewUrl] = useState(snapshot.url);
+  if (isBlank && initialWebviewUrl !== "about:blank") {
+    setInitialWebviewUrl("about:blank");
+  } else if (!isBlank && isBlankBrowserUrl(initialWebviewUrl)) {
+    setInitialWebviewUrl(snapshot.url);
   }
+  const readInitialWebviewUrl = useEffectEvent(() => initialWebviewUrl);
 
   const command = useCallback(
     async (input: BrowserSidebarCommand): Promise<BrowserSidebarCommandResult> => {
@@ -389,10 +390,16 @@ export function BrowserSidebarPanel({
   const tabInitialUrl = readBrowserConfigUrl(tab);
   const tabFaviconUrl = readBrowserConfigFavicon(tab);
   const tabDeviceToolbarVisible = readBrowserConfigDeviceToolbarVisible(tab);
-  const tabDeviceToolbarState = readBrowserConfigDeviceToolbarState(tab);
-  const tabDeviceToolbarStateRef = useRef(tabDeviceToolbarState);
-  tabDeviceToolbarStateRef.current = tabDeviceToolbarState;
-  const tabDeviceToolbarStateKey = JSON.stringify(tabDeviceToolbarState ?? null);
+  const tabDeviceToolbarStateKey = JSON.stringify(readBrowserConfigDeviceToolbarState(tab) ?? null);
+  // Registration follows the serialized configuration, even when validation returns a fresh object.
+  const tabDeviceToolbarState = useMemo(
+    () =>
+      (JSON.parse(tabDeviceToolbarStateKey) ?? undefined) as ReturnType<
+        typeof readBrowserConfigDeviceToolbarState
+      >,
+    [tabDeviceToolbarStateKey],
+  );
+  const readDeviceToolbarState = useEffectEvent(() => tabDeviceToolbarState);
   const browserStorageId = readBrowserConfigStorageId(tab) ?? `browser:legacy:${browserTabId}`;
   const tabProjectId = tab.projectId;
   const tabTitle = tab.title;
@@ -448,9 +455,9 @@ export function BrowserSidebarPanel({
   const addressRows = buildBrowserAddressSuggestions(addressValue, workspaceAddressCandidates);
   const addressSuggestionsOpen =
     !shouldMountWebview && addressFocused && !addressSuggestionsDismissed && addressRows.length > 0;
-  const highlightedAddressIndex = Math.max(
-    0,
-    addressRows.findIndex((row) => row.id === highlightedAddressSuggestionId),
+  const highlightedAddressIndex = findHighlightedAddressIndex(
+    addressRows,
+    highlightedAddressSuggestionId,
   );
   const highlightedAddressRow = addressRows[highlightedAddressIndex];
   const activeAddressOptionId = addressSuggestionsOpen
@@ -494,13 +501,32 @@ export function BrowserSidebarPanel({
     });
   };
 
+  const siteInfoAvailable =
+    browserRuntimeAvailable && !isBlank && registeredBrowserKey === browserIdentityKey;
+  const siteInfoKey = JSON.stringify([
+    browserIdentityKey,
+    siteInfoAvailable,
+    snapshot.url,
+    snapshot.permissionPrompts?.length,
+    siteInfoRevision,
+  ]);
+  const [siteInfoRequest, setSiteInfoRequest] = useState({
+    key: siteInfoKey,
+    identity: browserIdentity,
+    available: siteInfoAvailable,
+  });
+  if (siteInfoRequest.key !== siteInfoKey) {
+    setSiteInfoRequest({
+      key: siteInfoKey,
+      identity: browserIdentity,
+      available: siteInfoAvailable,
+    });
+    if (!siteInfoAvailable) setSiteInfo(null);
+  }
   useEffect(() => {
-    if (!browserRuntimeAvailable || isBlank || registeredBrowserKey !== browserIdentityKey) {
-      setSiteInfo(null);
-      return;
-    }
+    if (!siteInfoRequest.available) return;
     let cancelled = false;
-    void readBrowserSiteInfo(browserIdentity)
+    void readBrowserSiteInfo(siteInfoRequest.identity)
       .then((nextSiteInfo) => {
         if (!cancelled) setSiteInfo(nextSiteInfo);
       })
@@ -510,16 +536,7 @@ export function BrowserSidebarPanel({
     return () => {
       cancelled = true;
     };
-  }, [
-    browserIdentity,
-    browserIdentityKey,
-    browserRuntimeAvailable,
-    isBlank,
-    registeredBrowserKey,
-    snapshot.url,
-    snapshot.permissionPrompts?.length,
-    siteInfoRevision,
-  ]);
+  }, [siteInfoRequest]);
 
   useEffect(() => {
     if (!browserRuntimeAvailable) return undefined;
@@ -534,11 +551,7 @@ export function BrowserSidebarPanel({
   useEffect(() => {
     if (!credentialCandidate) return undefined;
     const remaining = credentialCandidate.expiresAt - Date.now();
-    if (remaining <= 0) {
-      setCredentialCandidate(null);
-      return undefined;
-    }
-    const timeout = window.setTimeout(() => setCredentialCandidate(null), remaining);
+    const timeout = window.setTimeout(() => setCredentialCandidate(null), Math.max(0, remaining));
     return () => window.clearTimeout(timeout);
   }, [credentialCandidate]);
 
@@ -724,9 +737,11 @@ export function BrowserSidebarPanel({
     });
   }, [browserIdentity, browserRuntimeAvailable, codexSessionId, command]);
 
-  useEffect(() => {
-    setAnnotationDraft((current) => navigateBrowserAnnotationDraft(current, snapshot.url));
-  }, [snapshot.url]);
+  const [annotationUrl, setAnnotationUrl] = useState(snapshot.url);
+  if (annotationUrl !== snapshot.url) {
+    setAnnotationUrl(snapshot.url);
+    setAnnotationDraft(navigateBrowserAnnotationDraft(annotationDraft, snapshot.url));
+  }
 
   useEffect(() => {
     if (!commentMode) return undefined;
@@ -767,7 +782,7 @@ export function BrowserSidebarPanel({
         title: tabTitle,
         faviconUrl: tabFaviconUrl,
         deviceToolbarVisible: tabDeviceToolbarVisible,
-        deviceToolbarState: tabDeviceToolbarStateRef.current,
+        deviceToolbarState: tabDeviceToolbarState,
         browserStorageId,
       });
       if (!result.ok || cancelled) return;
@@ -788,7 +803,7 @@ export function BrowserSidebarPanel({
     browserStorageId,
     browserViewScopeId,
     command,
-    tabDeviceToolbarStateKey,
+    tabDeviceToolbarState,
     tabDeviceToolbarVisible,
     tabFaviconUrl,
     tabInitialUrl,
@@ -872,18 +887,18 @@ export function BrowserSidebarPanel({
 
     let disposed = false;
     let animationFrame: number | null = null;
-    const makeClaimInput = (): BrowserSidebarHostClaimInput => {
-      const visible = isVisibleRef.current;
+    const makeClaimInput = (presentation = readPresentation()): BrowserSidebarHostClaimInput => {
+      const { isVisible: visible, themeVariant } = presentation;
       return {
         ...browserIdentity,
         browserStorageId,
         projectId: tab.projectId,
         hostKind: "panel",
-        initialUrl: initialWebviewUrlRef.current,
+        initialUrl: readInitialWebviewUrl(),
         title: tabTitle,
         faviconUrl: tabFaviconUrl,
         deviceToolbarVisible: tabDeviceToolbarVisible,
-        deviceToolbarState: tabDeviceToolbarStateRef.current,
+        deviceToolbarState: readDeviceToolbarState(),
         pagePersistence: browserPagePersistence,
         // The route effect above owns registration and snapshot installation for a panel.
         tabRegistration: "preestablished",
@@ -892,14 +907,17 @@ export function BrowserSidebarPanel({
           isVisible: visible,
           shouldPaint: visible,
         },
-        themeVariant: themeVariantRef.current,
+        themeVariant,
       };
     };
     const lease = browserSidebarRendererWebviewManager.claimHost(makeClaimInput());
     webviewHostLeaseRef.current = lease;
-    const syncCurrentPresentation = () => {
+    const syncCurrentPresentation = (presentation?: {
+      isVisible: boolean;
+      themeVariant: BrowserSidebarThemeVariant;
+    }) => {
       if (disposed) return;
-      lease.update(makeClaimInput());
+      lease.update(makeClaimInput(presentation));
     };
     syncWebviewPresentationRef.current = syncCurrentPresentation;
     const syncBounds = () => {
@@ -952,13 +970,14 @@ export function BrowserSidebarPanel({
   ]);
 
   useLayoutEffect(() => {
-    syncWebviewPresentationRef.current?.();
+    syncWebviewPresentationRef.current?.({ isVisible, themeVariant });
   }, [isVisible, themeVariant]);
 
-  useEffect(() => {
-    if (addressFocused) return;
-    setAddressValue(readBrowserAddressValue(snapshot.url));
-  }, [addressFocused, snapshot.url]);
+  const [addressInput, setAddressInput] = useState({ focused: addressFocused, url: snapshot.url });
+  if (addressInput.focused !== addressFocused || addressInput.url !== snapshot.url) {
+    setAddressInput({ focused: addressFocused, url: snapshot.url });
+    if (!addressFocused) setAddressValue(readBrowserAddressValue(snapshot.url));
+  }
 
   useEffect(() => {
     if (tab.preview) return undefined;
@@ -980,7 +999,6 @@ export function BrowserSidebarPanel({
     }, 650);
     return () => window.clearTimeout(timeout);
   }, [
-    onRefreshSessions,
     onUpdateTab,
     browserStorageId,
     snapshot.deviceToolbarVisible,
@@ -1854,24 +1872,20 @@ function BrowserCredentialMenu({
   const [contacts, setContacts] = useState<BrowserContactInfo[]>([]);
   const [open, setOpen] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const refresh = useCallback(async () => {
-    try {
-      const [nextCredentials, nextContacts] = await Promise.all([
-        readBrowserCredentials(identity),
-        readBrowserContactInfo(),
-      ]);
-      setCredentials(nextCredentials);
-      setContacts(nextContacts);
-      setMessage(null);
-    } catch (error) {
-      setCredentials([]);
-      setContacts([]);
-      setMessage(error instanceof Error ? error.message : "Passwords unavailable");
-    }
-  }, [identity]);
   useEffect(() => {
-    if (open && !disabled) void refresh();
-  }, [disabled, open, refresh]);
+    if (!open || disabled) return;
+    void Promise.all([readBrowserCredentials(identity), readBrowserContactInfo()])
+      .then(([nextCredentials, nextContacts]) => {
+        setCredentials(nextCredentials);
+        setContacts(nextContacts);
+        setMessage(null);
+      })
+      .catch((error: unknown) => {
+        setCredentials([]);
+        setContacts([]);
+        setMessage(error instanceof Error ? error.message : "Passwords unavailable");
+      });
+  }, [disabled, open, identity]);
 
   return (
     <NodexDropdownMenu
@@ -3032,17 +3046,23 @@ function LocalServerThumbnail({
   onRequest?: (url: string) => Promise<BrowserSidebarLocalServerThumbnailResult>;
 }) {
   const [dataUrl, setDataUrl] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-
+  const [loading, setLoading] = useState(Boolean(online && onRequest));
+  const [request, setRequest] = useState({ origin, online, onRequest, lastSeenAt });
+  if (
+    request.origin !== origin ||
+    request.online !== online ||
+    request.onRequest !== onRequest ||
+    request.lastSeenAt !== lastSeenAt
+  ) {
+    setRequest({ origin, online, onRequest, lastSeenAt });
+    setLoading(Boolean(online && onRequest));
+    if (!online || !onRequest) setDataUrl(null);
+  }
   useEffect(() => {
-    if (!online || !onRequest) {
-      setDataUrl(null);
-      setLoading(false);
-      return undefined;
-    }
+    if (!request.online || !request.onRequest) return;
     let cancelled = false;
-    setLoading(true);
-    void onRequest(origin)
+    void request
+      .onRequest(request.origin)
       .then((result) => {
         if (cancelled) return;
         setDataUrl(result.status === "ready" ? result.dataUrl : null);
@@ -3056,7 +3076,7 @@ function LocalServerThumbnail({
     return () => {
       cancelled = true;
     };
-  }, [lastSeenAt, onRequest, online, origin]);
+  }, [request]);
 
   const frameClass =
     "aspect-[16/10] w-full shrink-0 overflow-hidden rounded-lg border border-token-border-light";
@@ -3487,4 +3507,12 @@ function readWebviewHostBounds(element: HTMLElement) {
     width: rect.width,
     height: rect.height,
   };
+}
+
+function findHighlightedAddressIndex(
+  rows: readonly { id: string }[],
+  highlightedId: string | null,
+): number {
+  const index = rows.findIndex((row) => row.id === highlightedId);
+  return index < 0 ? 0 : index;
 }

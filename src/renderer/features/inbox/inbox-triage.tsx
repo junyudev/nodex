@@ -1,3 +1,4 @@
+import { useInboxClock } from "./use-inbox-clock";
 import { loadPageDocumentMaterialization } from "@/lib/page-prompt-context";
 import { toast } from "@/components/ui/toast";
 import { useState, type ReactNode } from "react";
@@ -463,6 +464,7 @@ export function InboxTriage({
   readonly children: (parts: InboxTriageParts) => ReactNode;
 }) {
   // What the row changed on this suggestion before deciding; another suggestion starts afresh.
+  const now = new Date(useInboxClock());
   const [rowEdit, setRowEdit] = useState<InboxRowEdit | null>(null);
   const task = useInboxFiringTask(item);
   const taskAgent = task ? scheduledTaskChatAgent(task) : null;
@@ -479,7 +481,8 @@ export function InboxTriage({
     proposedAction?.type === "new_chat" || proposedAction?.type === "run_task"
       ? proposedAction
       : null;
-  const edit = rowEdit?.proposalId === item.proposal?.proposalId ? rowEdit : null;
+  const edit =
+    rowEdit && item.proposal && rowEdit.proposalId === item.proposal.proposalId ? rowEdit : null;
   // The suggestion as the row has it, once a model is chosen or an addition dropped here.
   const rowAction = item.proposal ? inboxRowAction(item.proposal.action, edit) : null;
   // A new chat starts from the Inbox's own model; a scheduled run from its task's.
@@ -714,7 +717,7 @@ export function InboxTriage({
               {groupMembers(proposal)}
               <SuggestionStrip
                 proposal={proposal}
-                firingLine={item.firing ? describeInboxFiring(item.firing, task, new Date()) : null}
+                firingLine={item.firing ? describeInboxFiring(item.firing, task, now) : null}
                 dropped={edit?.dropped ?? []}
                 onToggleAddition={(index) => toggleAddition(proposal.proposalId, index)}
               />

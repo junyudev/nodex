@@ -84,6 +84,46 @@ describe("InAppDictationRouter", () => {
     expect(hidden.stop).not.toHaveBeenCalled();
   });
 
+  test("an active route uses committed target callbacks without cancelling on rerender", async () => {
+    const target = {
+      id: "composer",
+      priority: 10,
+      admission: () => null,
+      start: vi.fn(async () => undefined),
+      stop: vi.fn(),
+      cancel: vi.fn(),
+    };
+    const view = render(
+      <InAppDictationRouter>
+        <RegisteredTarget target={target} />
+      </InAppDictationRouter>,
+    );
+    await act(async () => {
+      dispatch?.({
+        type: "start",
+        sessionId: SESSION_ID,
+        requestId: REQUEST_ID,
+        deadlineAtMs: Date.now() + 1_000,
+        gesture: "hold",
+      });
+    });
+    await waitFor(() => expect(target.start).toHaveBeenCalledOnce());
+    const stop = vi.fn();
+    await act(async () => {
+      view.rerender(
+        <InAppDictationRouter>
+          <RegisteredTarget target={{ ...target, stop }} />
+        </InAppDictationRouter>,
+      );
+    });
+    expect(target.cancel).not.toHaveBeenCalled();
+    await act(async () => {
+      dispatch?.({ type: "stop", sessionId: SESSION_ID });
+    });
+    expect(stop).toHaveBeenCalledOnce();
+    expect(target.stop).not.toHaveBeenCalled();
+  });
+
   test("declines immediately when every mounted composer is ineligible", async () => {
     const target = {
       id: "composer:collapsed",

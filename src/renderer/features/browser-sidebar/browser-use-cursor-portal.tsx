@@ -1,4 +1,11 @@
-import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import {
+  useEffect,
+  useEffectEvent,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { createPortal } from "react-dom";
 import type {
   BrowserSidebarTabIdentity,
@@ -69,10 +76,7 @@ function useCursorPresentationSize(overlayHost: HTMLElement | null): CursorSurfa
     observed?.host === overlayHost ? observed.size : readCursorPresentationSize(overlayHost);
 
   useLayoutEffect(() => {
-    if (!overlayHost) {
-      setObserved(null);
-      return undefined;
-    }
+    if (!overlayHost) return undefined;
     const update = () => {
       const next = readCursorPresentationSize(overlayHost);
       setObserved((current) => {
@@ -141,14 +145,13 @@ export function BrowserUseCursorOverlay({
 }: BrowserUseCursorOverlayProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const controllerRef = useRef<BrowserAgentCursorController | null>(null);
-  const onArrivedRef = useRef(onArrived);
-  onArrivedRef.current = onArrived;
+  const notifyArrived = useEffectEvent((moveSequence: number) => onArrived?.(moveSequence));
 
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return undefined;
     const controller = createBrowserAgentCursorController(host, {
-      onArrived: (moveSequence) => onArrivedRef.current?.(moveSequence),
+      onArrived: (moveSequence) => notifyArrived(moveSequence),
     });
     controllerRef.current = controller;
     return () => {

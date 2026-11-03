@@ -1,3 +1,4 @@
+import { useInboxClock } from "./use-inbox-clock";
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import {
@@ -333,7 +334,7 @@ export function InboxRoute({
   const linkedChats = usePageChatActivitySummaries(inboxItems.map((item) => item.pageId));
   // The last messages decided still say where they went before the Inbox reads as clear.
   const shownItems = view === "inbox" ? inboxItems : stream.items;
-  const nowMs = Date.now();
+  const nowMs = useInboxClock();
   const policy = inboxSuggestionPolicy(settings, agents.providers, nowMs);
   const suggestionsOffered = inboxSuggestionsOffered(policy);
   const entries = streamEntries(inboxItems, nowMs);
