@@ -1,0 +1,98 @@
+src/renderer/features/local-conversation/use-agent-model-catalog.ts
+  s_7713c656a14496::t_f733d59b1c8a08 2,88-109
+  s_7713c656a14496::t_b219ac962d6155 82-83
+  s_7713c656a14496::t_53786288a6583e 110-114
+src/renderer/features/inbox/use-inbox-capture.ts
+  s_7713c656a14496::t_2ce5fa59d41a5f 122
+  s_7713c656a14496::t_e34d7a93fad106 1,172,174
+  s_7713c656a14496::t_e2e1694c4b422b 105-121,123-139,161-171,173
+src/renderer/features/local-conversation/view/composer/composer-context-controls.tsx
+  s_7713c656a14496::t_b219ac962d6155 3,99-108
+  s_7713c656a14496::t_797fba7d09e86a 109-111
+src/renderer/features/local-conversation/view/use-local-conversation-prompt-rail.ts
+  s_7713c656a14496::t_79b9f52715327e 1-2,153-167,174
+src/renderer/components/conversation-media/conversation-media.tsx
+  s_7713c656a14496::t_b219ac962d6155 323,332
+src/renderer/features/plugins/view/plugins-settings-page.test.tsx
+  s_7713c656a14496::t_fd76eb47595c23 175-192
+  s_7713c656a14496::t_eae8358d37c20b 193-194
+src/renderer/features/local-conversation/view/use-thread-output-opener.tsx
+  s_7713c656a14496::t_b219ac962d6155 286,292
+src/renderer/features/local-conversation/view/composer/local-conversation-composer-shell.tsx
+  s_7713c656a14496::t_e2e1694c4b422b 1,506-507,509-523,710-711,716-728,733-734,739-754
+src/renderer/features/plugins/view/plugin-detail-page.test.tsx
+  s_7713c656a14496::t_fd76eb47595c23 178-194,200
+  s_7713c656a14496::t_add3d79bfc60ce 195-199
+src/renderer/features/local-conversation/view/composer/local-conversation-thread-goal-status-row.tsx
+  s_7713c656a14496::t_79b9f52715327e 1-2,241,263-264,266-278,286-287,289-298,303-317,326-332,334-351
+  s_7713c656a14496::t_e2e1694c4b422b 259-260,265,282-283,288,321-322,333
+src/renderer/features/local-conversation/view/composer/composer-add-context-menu.tsx
+  s_7713c656a14496::t_b219ac962d6155 859
+  s_7713c656a14496::t_06ffa13f81adb9 854-858,860-867,869,917,919,1126-1128,1130-1137,1139-1144,1146-1159
+src/renderer/features/local-conversation/use-claude-model-catalog.ts
+  s_7713c656a14496::t_b219ac962d6155 1,74-97
+  s_7713c656a14496::t_1df59455535e3b 98-104
+src/renderer/features/scheduled/use-scheduled-tasks.ts
+  s_7713c656a14496::t_79b9f52715327e 1-2,46,65-84,91-109,117-131,136-146,148-159
+src/renderer/features/inbox/use-inbox-important.ts
+  s_7713c656a14496::t_b219ac962d6155 43
+src/renderer/features/local-conversation/view/composer/composer-add-context-menu.test.tsx
+  s_7713c656a14496::t_6405102aca72b3 1-7,10-28,93-134
+  s_7713c656a14496::t_b43f251cae6db6 135-176
+src/renderer/features/inbox/use-inbox-actions.ts
+  s_7713c656a14496::t_8a97de92ed8506 1,134-148,217-252,255-282
+src/renderer/features/inbox/use-send-inbox-message.ts
+  s_7713c656a14496::t_994b3207c9870e 1,11-20
+src/renderer/features/local-conversation/view/shared/auth-rate-limits.tsx
+  s_7713c656a14496::t_109ad797f81be9 1,87-104
+src/renderer/features/local-conversation/view/shared/conversation-recovery-surface.tsx
+  s_7713c656a14496::t_c50740a020562b 1,66-80
+src/renderer/features/local-conversation/view/shared/permission-mode-dropdown.test.tsx
+  s_7713c656a14496::t_35e8453b3a8936 1-36
+src/renderer/features/local-conversation/view/shared/permission-mode-dropdown.tsx
+  s_7713c656a14496::t_f08d78b2db0caa 1,85-97
+src/renderer/features/plugins/view/customize-header-actions.tsx
+  s_7713c656a14496::t_5bfcbda10cac01 1,105-118
+src/renderer/features/plugins/view/plugin-detail-page.tsx
+  s_7713c656a14496::t_56ff07d2f8fba7 1,246-255
+src/renderer/features/plugins/view/plugin-includes.tsx
+  s_7713c656a14496::t_81cd8d60d5d73c 1,147-163,397-415,704-717
+src/renderer/features/plugins/view/plugin-settings-page.tsx
+  s_7713c656a14496::t_d5798e9be27b8f 1,87-106
+src/renderer/features/plugins/view/plugins-settings-marketplaces.tsx
+  s_7713c656a14496::t_24ea9cc6c51795 1,131-155,281-291,296-311
+src/renderer/features/plugins/view/plugins-settings-mcps.tsx
+  s_7713c656a14496::t_4d77733ab12689 1,307-321,604-622,682-693
+src/renderer/features/plugins/view/plugins-settings-page.tsx
+  s_7713c656a14496::t_1fa68839e7917c 1,330-349
+src/renderer/features/plugins/view/skill-card.tsx
+  s_7713c656a14496::t_bd61094a577b3d 1,119-138,142-156
+src/renderer/features/plugins/view/skills-page.tsx
+  s_7713c656a14496::t_1d15f16becbce9 1,269-283
+src/renderer/features/plugins/view/use-plugin-row-actions.tsx
+  s_7713c656a14496::t_b74bcedf57888c 1,41-65,67-79,85-96,98-108,113-124,126-135
+src/renderer/features/scheduled/scheduled-route.tsx
+  s_7713c656a14496::t_86f7f2c27a8a9e 1,128-138
+src/renderer/features/scheduled/scheduled-task-dialog.tsx
+  s_7713c656a14496::t_aa0fef4a0221c3 1,156-175
+src/renderer/features/scheduled/scheduled-task-side-panel.tsx
+  s_7713c656a14496::t_833d5910112cbd 1,160-181
+src/renderer/features/scheduled/use-scheduled-tasks.test.tsx
+  s_7713c656a14496::t_5aa04813aedfea 1-168
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e1978de33cdf342c638b7f5f14959f89826b84fc",
+  "prompts": {},
+  "sessions": {
+    "s_7713c656a14496": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a17c-0752-7352-a377-51b5677197de",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
