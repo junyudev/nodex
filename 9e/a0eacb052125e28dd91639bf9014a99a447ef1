@@ -1,0 +1,31 @@
+scripts/dependency-glob-runtime.test.ts
+  s_6c9891f66c664a::t_7cfeccf9edc850 1-215
+patches/glob@7.2.3.patch
+  s_6c9891f66c664a::t_7cfeccf9edc850 1-50
+patches/@electron__asar@3.4.1.patch
+  s_6c9891f66c664a::t_7cfeccf9edc850 1-31
+patches/@redocly__openapi-core@1.34.17.patch
+  s_6c9891f66c664a::t_7cfeccf9edc850 1-13
+pnpm-workspace.yaml
+  s_6c9891f66c664a::t_7cfeccf9edc850 17-20,48-49,54-55
+docs/development.md
+  s_6c9891f66c664a::t_7cfeccf9edc850 51-57
+patches/dir-compare@4.2.0.patch
+  s_6c9891f66c664a::t_7cfeccf9edc850 1-22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9ea0eacb052125e28dd91639bf9014a99a447ef1",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
