@@ -1,3 +1,4 @@
+import { TerminalShellSettingRow } from "./terminal-shell-setting-row";
 import { UsageMeterSettingRows } from "./usage-meter-setting-rows";
 import { startTransition } from "react";
 import { NodexButton } from "@/components/ui/button";
@@ -50,6 +51,7 @@ export function GeneralSettingsPage({
         >
           <WindowRestoreSettingControl />
         </SettingRow>
+        <TerminalShellSettingRow />
         <AppUpdateSettingRows open={open} />
         <SettingRow
           label="Open source licenses"

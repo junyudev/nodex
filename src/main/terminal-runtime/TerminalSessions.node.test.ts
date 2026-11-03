@@ -69,6 +69,7 @@ const fakePty = (): FakePty => {
 const environmentLayer = Layer.succeed(
   TerminalEnvironment,
   TerminalEnvironment.of({
+    availableShells: Effect.succeed([]),
     resolve: (input) =>
       Effect.succeed({
         sessionId: input.sessionId,

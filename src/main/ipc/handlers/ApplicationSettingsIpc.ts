@@ -1,4 +1,8 @@
 import {
+  TERMINAL_SHELL_SETTINGS_CHANGED_CHANNEL,
+  TerminalShellSettingsSchema,
+} from "../../../shared/terminal-shell-settings";
+import {
   LINK_OPENING_SETTINGS_CHANGED_CHANNEL,
   LinkOpeningSettingsSchema,
 } from "../../../shared/link-opening-settings";
@@ -84,6 +88,7 @@ type SettingsReadChannel =
   | "settings:history:get"
   | "settings:telemetry:get"
   | "settings:thread-notifications:get"
+  | "settings:terminal-shell:get"
   | "settings:window-restore:get"
   | "settings:link-opening:get"
   | "settings:usage-meters:get"
@@ -204,6 +209,16 @@ export const live: Layer.Layer<
         Effect.sync(() => {
           safeBroadcastToWindows(windows.all(), LINK_OPENING_SETTINGS_CHANGED_CHANNEL, [settings]);
         }),
+      ),
+      Effect.forkScoped({ startImmediately: true }),
+    );
+    yield* applicationSettings.terminalShellSettingsChanges.pipe(
+      Stream.runForEach((settings) =>
+        Effect.sync(() =>
+          safeBroadcastToWindows(windows.all(), TERMINAL_SHELL_SETTINGS_CHANGED_CHANNEL, [
+            settings,
+          ]),
+        ),
       ),
       Effect.forkScoped({ startImmediately: true }),
     );
@@ -611,6 +626,25 @@ export const live: Layer.Layer<
             "update-git-settings",
             { type: "update-git", input: parsed },
             (value) => value.git,
+          ),
+        ),
+      ),
+    );
+    yield* handleRead(
+      "settings:terminal-shell:get",
+      "Terminal shell settings",
+      (value) => value.terminalShell,
+    );
+    yield* ipc.handlePlainCommand("settings:terminal-shell:update", (event, input: unknown) =>
+      authorize(event, "Terminal shell settings").pipe(
+        Effect.andThen(
+          parse("parse-terminal-shell-settings", () => TerminalShellSettingsSchema.parse(input)),
+        ),
+        Effect.flatMap((parsed) =>
+          update(
+            "update-terminal-shell-settings",
+            { type: "update-terminal-shell", input: parsed },
+            (value) => value.terminalShell,
           ),
         ),
       ),

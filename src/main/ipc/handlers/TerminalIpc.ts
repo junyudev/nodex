@@ -231,6 +231,7 @@ export const live: Layer.Layer<
         ),
       ),
     );
+    yield* ipc.handleQuery("terminal-shells:list", () => sessions.availableShells);
     yield* ipc.handleQuery("terminal-session:snapshot", (_event, sessionId: string) =>
       sessions.getSessionSnapshot(sessionId),
     );

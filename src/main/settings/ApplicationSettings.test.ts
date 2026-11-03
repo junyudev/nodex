@@ -39,6 +39,45 @@ afterEach(() => {
 });
 
 describe("ApplicationSettings", () => {
+  it.effect("persists the shell choice across reopen and rejects unsupported shells", () =>
+    Effect.gen(function* () {
+      const { root, settingsPath } = fixture('[plugin]\nname = "keep"\n');
+      const input = { environment: {}, hostHomeDirectory: root, settingsPath };
+      const settings = yield* makeApplicationSettings(input);
+      assert.deepEqual((yield* settings.snapshot()).terminalShell, { windowsShell: "automatic" });
+      const saved = yield* settings.update({
+        type: "update-terminal-shell",
+        input: { windowsShell: "git-bash" },
+      });
+      assert.deepEqual(saved.terminalShell, { windowsShell: "git-bash" });
+      const reopened = yield* makeApplicationSettings(input);
+      assert.deepEqual((yield* reopened.snapshot()).terminalShell, saved.terminalShell);
+      const invalid = yield* Effect.result(
+        settings.update({ type: "update-terminal-shell", input: { windowsShell: "wsl" as never } }),
+      );
+      assert.strictEqual(invalid._tag, "Failure");
+      assert.deepEqual((yield* settings.snapshot()).terminalShell, saved.terminalShell);
+      yield* settings.update({
+        type: "update-terminal-shell",
+        input: { windowsShell: "automatic" },
+      });
+      assert.deepEqual((yield* settings.snapshot()).terminalShell, { windowsShell: "automatic" });
+      assert.deepEqual(parseToml(readFileSync(settingsPath, "utf8")).plugin, { name: "keep" });
+    }),
+  );
+
+  it.effect("uses Automatic for an invalid persisted shell identifier", () =>
+    Effect.gen(function* () {
+      const { root, settingsPath } = fixture('[server]\nterminal_shell = "C:\\\\untrusted.exe"\n');
+      const settings = yield* makeApplicationSettings({
+        environment: {},
+        hostHomeDirectory: root,
+        settingsPath,
+      });
+      assert.deepEqual((yield* settings.snapshot()).terminalShell, { windowsShell: "automatic" });
+    }),
+  );
+
   it.effect(
     "persists link destinations independently, validates shortcuts, and publishes saved changes",
     () =>

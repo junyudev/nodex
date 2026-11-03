@@ -6,7 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
-- Nodex runs on Windows 11, on both x64 and Arm PCs. Download the installer from nodex.jyu.app: it installs for your account without administrator rights, and Nodex keeps itself up to date from Stable or Nightly as it does on macOS.
+- Nodex runs on Windows 11, on both x64 and Arm PCs. Download the installer from nodex.jyu.app: it installs for your account without administrator rights, and Nodex keeps itself up to date from Stable or Nightly as it does on macOS. Choose PowerShell, Command Prompt or Git Bash for new terminals in General settings.
 
 - Codex sets up its Windows sandbox once before working in Ask for approval or Approve for me. The notice beside the composer offers Set up, which asks for administrator approval, and setup without it if that doesn't work; Full access needs no setup.
 

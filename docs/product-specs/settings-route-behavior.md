@@ -92,7 +92,7 @@ Other agents owns ACP instance setup, sign-in and model services, as described i
 Agents > Codex owns the speed new Codex chats start with, and Copy setup. Setup migration is separate from conversation import and targets
 shared Codex configuration.
 
-General is grouped by what a setting affects, in this order: App (window restore, the running
+General is grouped by what a setting affects, in this order: App (window restore, Terminal shell on Windows, the running
 version with its update actions and preferences, open source licenses), Chats, Writing, Files &
 links, Notifications, Privacy (crash reports, session replays, product telemetry and web analytics)
 and Troubleshooting (app-server request diagnostics). Each preference is its own row; a row's
@@ -101,6 +101,14 @@ environment override, a prerequisite or a change that applies after restart. A s
 General setting lands on its group. Request diagnostics are captured only while the General page is
 open and show bounded recent request timing, scheduling, transport, and failure data for local
 troubleshooting.
+On Windows, General's Terminal shell row lists Automatic first, followed by only
+discovered PowerShell 7, Windows PowerShell, Command Prompt and Git Bash choices.
+The saved Profile choice synchronizes across windows and applies to new terminals.
+An uninstalled saved shell remains shown as a muted, disabled unavailable option;
+launching uses Automatic without clearing that preference. Automatic retains the
+PowerShell 7 → Windows PowerShell → Command Prompt order. macOS and Linux omit
+this row and keep their existing terminal behavior. WSL is outside this catalog.
+
 Browser owns General, Autofill and passwords, Extensions,
 Downloads, Permissions, Site permissions, Developer mode, and its focused
 history/manager detail pages. Pages owns only the Block → Page task-shorthand

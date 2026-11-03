@@ -1,3 +1,4 @@
+import type { WindowsTerminalShell } from "../../shared/terminal-shell-settings";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -98,6 +99,7 @@ export class TerminalSessionError extends Schema.TaggedError<TerminalSessionErro
 export class TerminalSessions extends Context.Service<
   TerminalSessions,
   {
+    readonly availableShells: Effect.Effect<readonly WindowsTerminalShell[]>;
     readonly subscribe: Effect.Effect<Stream.Stream<TerminalSessionEvent>, never, Scope.Scope>;
     readonly create: (
       owner: TerminalOwner,
@@ -482,6 +484,7 @@ export const live: Layer.Layer<
         Effect.map((snapshots) => snapshots.filter((snapshot) => snapshot !== null)),
       );
     return TerminalSessions.of({
+      availableShells: environment.availableShells,
       listSnapshotsForOwners,
       subscribe: PubSub.subscribe(events).pipe(Effect.map(Stream.fromSubscription)),
       create: (owner, request) => {

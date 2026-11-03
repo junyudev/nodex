@@ -1,3 +1,4 @@
+import type { ApplicationSettings } from "../settings/ApplicationSettings";
 import type { MainConfig } from "../app/MainConfig";
 import * as Layer from "effect/Layer";
 import * as TerminalEnvironment from "../platform/node/TerminalEnvironment";
@@ -15,7 +16,7 @@ export const layer = TerminalSessions.live.pipe(Layer.provideMerge(TerminalRunti
 export const live: Layer.Layer<
   TerminalSessions.TerminalSessions | TerminalRuntimeMap.TerminalRuntimeMap,
   never,
-  MainConfig
+  MainConfig | ApplicationSettings
 > = layer.pipe(
   Layer.provide(
     Layer.mergeAll(TerminalEnvironment.live, TerminalProcessMetrics.live, TerminalPty.live),

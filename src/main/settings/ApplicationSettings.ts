@@ -1,4 +1,8 @@
 import {
+  DEFAULT_TERMINAL_SHELL_SETTINGS,
+  type TerminalShellSettings,
+} from "../../shared/terminal-shell-settings";
+import {
   DEFAULT_LINK_OPENING_SETTINGS,
   sameLinkOpeningSettings,
   type LinkOpeningSettings,
@@ -85,6 +89,8 @@ import {
   getTelemetrySettings,
   getThreadNotificationSettings,
   getWindowRestoreSettings,
+  getTerminalShellSettings,
+  updateTerminalShellSettings,
   getComposerPredictionSettings,
   getAgentRuntimeSettings,
   updateAgentRuntimeSettings,
@@ -132,6 +138,7 @@ export interface ApplicationSettingsSnapshot {
   readonly openCodeAgents: OpenCodeAgentSettings;
   readonly commandKeymap: CommandKeymapState;
   readonly appUpdate: AppUpdateSettings;
+  readonly terminalShell: TerminalShellSettings;
   readonly windowRestore: WindowRestoreSettings;
   readonly inbox: InboxSettings;
   readonly composerPredictions: ComposerPredictionSettings;
@@ -141,6 +148,7 @@ export interface ApplicationSettingsSnapshot {
 }
 
 export type ApplicationSettingsCommand =
+  | { readonly type: "update-terminal-shell"; readonly input: TerminalShellSettings }
   | { readonly type: "update-backup"; readonly input: UpdateBackupSettingsInput }
   | { readonly type: "update-history"; readonly input: UpdateHistorySettingsInput }
   | { readonly type: "update-diagnostics"; readonly input: UpdateDiagnosticsSettingsInput }
@@ -194,6 +202,7 @@ export class ApplicationSettings extends Context.Service<
   ApplicationSettings,
   {
     /** Current Profile meter choices and subsequent saved changes. */
+    readonly terminalShellSettingsChanges: Stream.Stream<TerminalShellSettings>;
     readonly linkOpeningSettingsChanges: Stream.Stream<LinkOpeningSettings>;
     readonly usageMeterSettingsChanges: Stream.Stream<UsageMeterSettings>;
     /** Latest saved preference; slow observers may coalesce intermediate invalidations. */
@@ -297,6 +306,7 @@ function makeSnapshot(
     commandKeymap: getCommandKeymapState(snapshotSource),
     appUpdate: getAppUpdateSettings(snapshotSource, buildDefaultChannel),
     windowRestore: getWindowRestoreSettings(snapshotSource),
+    terminalShell: getTerminalShellSettings(snapshotSource),
     inbox: getInboxSettings(snapshotSource),
     composerPredictions: getComposerPredictionSettings(snapshotSource),
     agentRuntime: getAgentRuntimeSettings(snapshotSource),
@@ -359,6 +369,9 @@ function applyCommand(
     case "update-app-update":
       updateAppUpdateSettings(command.input, source, buildDefaultChannel);
       return;
+    case "update-terminal-shell":
+      updateTerminalShellSettings(command.input, source);
+      return;
     case "update-window-restore":
       updateWindowRestoreSettings(command.input, source);
       return;
@@ -393,6 +406,7 @@ export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
     ...(input.secretEncryption ? { secretEncryption: input.secretEncryption } : {}),
   };
   const writes = yield* Semaphore.make(1);
+  const terminalShell = yield* SubscriptionRef.make(DEFAULT_TERMINAL_SHELL_SETTINGS);
   const usageMeters = yield* SubscriptionRef.make(DEFAULT_USAGE_METER_SETTINGS);
   const linkOpening = yield* SubscriptionRef.make(DEFAULT_LINK_OPENING_SETTINGS);
   // Observers invalidate predictions and reread settings before admitting new work.
@@ -421,6 +435,12 @@ export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
     if (!sameLinkOpeningSettings(yield* SubscriptionRef.get(linkOpening), snapshot.linkOpening)) {
       yield* SubscriptionRef.set(linkOpening, snapshot.linkOpening);
     }
+    if (
+      (yield* SubscriptionRef.get(terminalShell)).windowsShell !==
+      snapshot.terminalShell.windowsShell
+    ) {
+      yield* SubscriptionRef.set(terminalShell, snapshot.terminalShell);
+    }
     const previousHome = yield* Ref.get(activeCodexHome);
     if (previousHome === undefined) {
       yield* Ref.set(activeCodexHome, {
@@ -446,6 +466,7 @@ export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
   });
 
   return ApplicationSettings.of({
+    terminalShellSettingsChanges: SubscriptionRef.changes(terminalShell),
     usageMeterSettingsChanges: SubscriptionRef.changes(usageMeters),
     linkOpeningSettingsChanges: SubscriptionRef.changes(linkOpening),
     composerPredictionSettingsChanges: Stream.fromPubSub(composerPredictionChanges),
