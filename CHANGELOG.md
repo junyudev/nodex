@@ -103,6 +103,7 @@ All notable changes to this project will be documented in this file.
 - Copying from a Page no longer puts a backslash before periods, commas, question marks and `&`. A parenthesis or bracket in a paragraph used to leave most punctuation after it escaped, both in what you pasted into a chat or another app and in the text Agents read and edit. Now a backslash appears only where the character would otherwise become formatting, existing Pages are rewritten when Nodex updates, and web addresses copy without one, so they still open wherever you paste them.
 - Web and mail addresses in plain text pasted into a Page now become links, while each line keeps exactly its text.
 - Notes Nodex sends to wake an Agent no longer show up among your queued messages. When a delegated task finished while Claude was mid-reply, its "Delegated task … reached a terminal state" note sat in your queue, where Steer failed and Delete quietly cancelled the wake-ups for the rest of that turn's tasks. The queue now holds only what you and other chats sent; the Agent still continues on its own, and the chat shows which task finished.
+- Clicking a tab's close button right after the tab opens now always closes it. The tabs used to shift under the pointer as the press began, so the release could land beside the button and the click did nothing.
 
 ### Security
 

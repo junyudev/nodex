@@ -457,9 +457,15 @@ export function AppShellTabs({
     setLockedTabWidthPx(null);
   }, []);
 
-  const handleTabListMouseDownCapture = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
+  const handleTabListCloseCapture = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
     if (!(event.target instanceof Element)) return;
-    if (event.button !== 1 && !event.target.closest("[data-app-shell-tab-close-button]")) return;
+    // Lock only when closing: primary presses must keep their release target in place.
+    const middleClose = event.type === "mousedown" && event.button === 1;
+    const primaryClose =
+      event.type === "click" &&
+      event.button === 0 &&
+      event.target.closest("[data-app-shell-tab-close-button]");
+    if (!middleClose && !primaryClose) return;
 
     const tabElement = event.target.closest<HTMLElement>("[data-app-shell-tab-controller]");
     if (!tabElement) return;
@@ -640,7 +646,8 @@ export function AppShellTabs({
       role="tablist"
       aria-owns={leadingTabDomId}
       className="relative z-0 flex shrink-0"
-      onMouseDownCapture={handleTabListMouseDownCapture}
+      onMouseDownCapture={handleTabListCloseCapture}
+      onClickCapture={handleTabListCloseCapture}
       style={{ gap: APP_SHELL_TAB_GAP_PX, width: tabListWidth }}
     >
       <AnimatePresence initial={false} onExitComplete={() => setRetainedTabCount(tabs.length)}>
