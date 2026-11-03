@@ -4510,7 +4510,7 @@ CREATE TABLE project_session_user_message_receipts (
   message_id TEXT NOT NULL,
   PRIMARY KEY (session_id, message_id)
 ) WITHOUT ROWID, STRICT;
-PRAGMA user_version = 201;
+PRAGMA user_version = 202;
 
 CREATE TABLE document_recovery_drafts (
     library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,

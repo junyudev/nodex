@@ -1510,6 +1510,21 @@ pub(super) fn persist_markdown_serialization(
             "Serializer migration requires an exact Document head",
         ));
     }
+    // Page summaries consume the serialized byte length. Update those fields
+    // with the Markdown while leaving the head, preview, and modification time intact.
+    let (length, has_description) = page_description_metrics(&materialization.markdown)?;
+    connection.execute(
+        "UPDATE page_read_model SET description_length=?1, has_description=?2
+         WHERE document_id=?3 AND document_generation=?4 AND document_projected_seq=?5
+           AND (description_length<>?1 OR has_description<>?2)",
+        params![
+            length,
+            has_description,
+            head.id,
+            head.generation,
+            head.head_seq
+        ],
+    )?;
     Ok(())
 }
 
@@ -2105,6 +2120,12 @@ pub(super) fn replace_secondary_projections(
     Ok(())
 }
 
+fn page_description_metrics(markdown: &str) -> Result<(i64, bool), StoreError> {
+    let length =
+        i64::try_from(markdown.len()).map_err(|_| internal("Page description length overflow"))?;
+    Ok((length, !markdown.trim().is_empty()))
+}
+
 fn update_page_document_projection(
     connection: &Connection,
     authority: &DocumentAuthorityRow,
@@ -2116,6 +2137,7 @@ fn update_page_document_projection(
     if authority.owner_type != "page" {
         return Ok(());
     }
+    let (length, has_description) = page_description_metrics(&materialization.markdown)?;
     let updated = connection.execute(
         "UPDATE page_read_model SET document_generation = ?1, document_projected_seq = ?2, \
            document_schema_version = ?3, document_authority = 'ydoc_primary', title = ?4, \
@@ -2127,9 +2149,8 @@ fn update_page_document_projection(
             authority.head.schema_version,
             materialization.title,
             materialization.preview,
-            i64::try_from(materialization.markdown.len())
-                .map_err(|_| internal("Page description length overflow"))?,
-            i64::from(!materialization.markdown.trim().is_empty()),
+            length,
+            has_description,
             now,
             authority.owner_block_id,
             authority.head.id,

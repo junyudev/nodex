@@ -157,3 +157,86 @@ fn language_migration_rolls_back_column_content_and_epoch_together() {
         .unwrap();
     prepare_profile_store(&mut connection, profile.path()).unwrap();
 }
+
+#[test]
+fn migration_normalizes_legacy_cleanup_time_without_changing_its_instant() {
+    let profile = nodex_platform::test_support::tempdir().unwrap();
+    let mut connection = open_writer(&profile.path().join("nodex.db")).unwrap();
+    prepare_profile_store(&mut connection, profile.path()).unwrap();
+    // v202 changes the timestamp contract without changing the SQL schema.
+    connection.pragma_update(None, "user_version", 201).unwrap();
+    connection
+        .execute(
+            "INSERT INTO nodex_agent_runtime_execution_cleanups
+                (cleanup_id, library_id, session_id, runtime_id, runtime_thread_id, created_at)
+             VALUES ('cleanup', 'library', 'session', 'runtime', 'thread', '2026-01-02 03:04:05')",
+            [],
+        )
+        .unwrap();
+
+    let result = prepare_profile_store(&mut connection, profile.path()).unwrap();
+    assert_eq!(result.migrated_from_version, Some(201));
+    let timestamp = connection
+        .query_row(
+            "SELECT created_at FROM nodex_agent_runtime_execution_cleanups WHERE cleanup_id='cleanup'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .unwrap();
+    assert_eq!(timestamp, "2026-01-02T03:04:05.000Z");
+    validate_current_store(&connection).unwrap();
+}
+
+#[test]
+fn migration_rebuilds_predecessor_markdown_from_verified_document_authority() {
+    let profile = nodex_platform::test_support::tempdir().unwrap();
+    nodex_platform::private_fs::write(
+        profile.path().join("nodex.db"),
+        include_bytes!("../../tests/fixtures/store-v191.db"),
+    )
+    .unwrap();
+    let mut connection = open_writer(&profile.path().join("nodex.db")).unwrap();
+    prepare_profile_store(&mut connection, profile.path()).unwrap();
+    let (id, expected) = connection
+        .query_row(
+            "SELECT document_id, markdown FROM document_materializations
+             WHERE markdown <> '' AND document_id IN (SELECT document_id FROM page_read_model)
+             ORDER BY document_id LIMIT 1",
+            [],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+        )
+        .unwrap();
+    with_schema_rebuild_transaction(&mut connection, |transaction| {
+        rewind_v201_to_v200(transaction)?;
+        transaction.pragma_update(None, "user_version", 199)?;
+        transaction.execute(
+            "DELETE FROM core_store_migration_history WHERE source_revision>=199",
+            [],
+        )?;
+        transaction.execute(
+            "UPDATE document_materializations SET materialization_derivation_version=4",
+            [],
+        )?;
+        transaction.execute(
+            "UPDATE document_materializations SET markdown='Old serializer projection'
+             WHERE document_id=?1",
+            [&id],
+        )?;
+        transaction.execute(
+            "UPDATE page_read_model SET description_length=length('Old serializer projection')
+             WHERE document_id=?1",
+            [&id],
+        )?;
+        Ok(())
+    })
+    .unwrap();
+
+    let result = prepare_profile_store(&mut connection, profile.path()).unwrap();
+    assert_eq!(result.migrated_from_version, Some(199));
+    let actual = DocumentReadRepository::new(&connection)
+        .materialization(&id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(actual.markdown, expected);
+    validate_restore_documents(&connection).unwrap();
+}

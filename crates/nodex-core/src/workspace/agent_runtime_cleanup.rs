@@ -23,7 +23,7 @@ pub(super) fn enqueue(
     session_id: &str,
     project_id: Option<&str>,
 ) -> Result<(), StoreError> {
-    connection.execute("INSERT INTO nodex_agent_runtime_execution_cleanups(cleanup_id, library_id, session_id, project_id, runtime_id, runtime_thread_id, created_at) SELECT ?1, ?2, ?3, ?4, runtime_id, runtime_thread_id, datetime('now') FROM project_session_execution_bindings WHERE session_id = ?3", params![operation_id, library_id, session_id, project_id])?;
+    connection.execute("INSERT INTO nodex_agent_runtime_execution_cleanups(cleanup_id, library_id, session_id, project_id, runtime_id, runtime_thread_id, created_at) SELECT ?1, ?2, ?3, ?4, runtime_id, runtime_thread_id, ?5 FROM project_session_execution_bindings WHERE session_id = ?3", params![operation_id, library_id, session_id, project_id, sqlite_now(connection)?])?;
     Ok(())
 }
 
@@ -194,6 +194,13 @@ mod tests {
         let cleanups = read(&workspace, "runtime", CollectionWindowRequest::default());
         assert_eq!(cleanups.items.len(), 1);
         let cleanup = &cleanups.items[0];
+        let timestamp = chrono::DateTime::parse_from_rfc3339(&cleanup.created_at).unwrap();
+        assert_eq!(
+            cleanup.created_at,
+            timestamp
+                .with_timezone(&chrono::Utc)
+                .to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
+        );
         assert_eq!(
             (
                 &cleanup.cleanup_id,

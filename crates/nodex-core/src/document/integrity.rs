@@ -22,8 +22,8 @@ pub(crate) fn validate_restore_documents(connection: &Connection) -> Result<usiz
 }
 
 /// Checks the source revision's projections against reconstructed authority.
-/// Serializer predecessors may use equivalent exact escape spellings; current
-/// text matches byte for byte. Revisions 187/188 wrote both known encodings under v2.
+/// Serializer predecessors rebuild Markdown from the verified Yrs authority.
+/// The current projection must match byte for byte.
 pub(crate) fn validate_documents_for_store_revision(
     connection: &Connection,
     store_revision: i64,
@@ -81,7 +81,7 @@ pub(crate) fn materialization_derivation_for_store_revision(
         130..=188 => Ok(2),
         189..=191 => Ok(3),
         192..=199 => Ok(4),
-        200..=201 => Ok(5),
+        200..=202 => Ok(5),
         _ => Err(StoreError::new(
             StoreErrorCode::UnsupportedSchema,
             format!("Store v{store_revision} has no registered Document derivation"),
@@ -217,17 +217,10 @@ fn assert_persisted_materialization(
     // Earlier language migrations authenticate the adapted canonical tree;
     // derivation v4 and later also validate every unaffected projection exactly.
     let current_shape = store_revision >= 192;
-    let markdown_matches = match store_revision {
-        // The predecessor exact writer round-tripped its output. Its escaped
-        // parentheses/brackets could never denote literal pairs, so removing
-        // those math aliases does not change how any predecessor output reads.
-        // Check the complete content against Yrs, allowing only spelling changes;
-        // every other v4 projection field remains an exact comparison below.
-        192..=199 => nodex_markdown::read(&persisted.markdown, nodex_markdown::ReadOptions::EXACT)
-            .is_ok_and(|blocks| nodex_markdown::write(&blocks) == actual.markdown),
-        200.. => persisted.markdown == actual.markdown,
-        _ => true,
-    };
+    // The exact language changed at v200. Parsing old derived text with the
+    // new reader cannot authenticate it. Verify the canonical tree and every
+    // unchanged field below, then rebuild Markdown in the migration.
+    let markdown_matches = store_revision < 200 || persisted.markdown == actual.markdown;
     let persisted_block_tree = if current_shape {
         persisted.block_tree.clone()
     } else {

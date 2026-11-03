@@ -67,6 +67,8 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Nodex opens existing Profiles after an upgrade even when they contain older chat cleanup records or Pages written by an earlier Markdown serializer.
+
 - Codex chats running side by side no longer all stop at once. When one chat's output arrived faster than Nodex could keep up, or Nodex failed to record one of its events, Nodex closed the Codex process the chats share, and every reply ended with "The provider event stream closed unexpectedly". Now only that chat catches up with Codex while the others keep going, and replies whose Codex process does stop resume on their own.
 - An Agent that delegates tasks now always learns how they ended. A brief local read failure as a task finished could leave it shown as working to the delegating chat until Nodex restarted, so the Agent was never woken; Nodex now retries that handoff and rechecks unsettled tasks every minute.
 - Changes that finish saving during a brief slowdown are no longer reported as failed. Nodex used to show a timeout or cancellation for a save that had already completed.

@@ -421,6 +421,11 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 201,
         apply: migrate_v200_to_v201,
     },
+    MigrationStep {
+        from_revision: 201,
+        to_revision: 202,
+        apply: migrate_v201_to_v202,
+    },
 ];
 
 fn resolve_migration_path(
@@ -2635,6 +2640,36 @@ fn migrate_v200_to_v201(
         params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
             context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
             r#"{"session_activity_and_manual_placement":true}"#],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
+fn migrate_v201_to_v202(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    let rows = connection
+        .prepare("SELECT cleanup_id, created_at FROM nodex_agent_runtime_execution_cleanups")?
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut repaired = 0;
+    for (id, value) in rows {
+        let Some(canonical) = super::store_validation::legacy_cleanup_timestamp(&value) else {
+            continue;
+        };
+        repaired += connection.execute(
+            "UPDATE nodex_agent_runtime_execution_cleanups SET created_at=?1 WHERE cleanup_id=?2",
+            params![canonical, id],
+        )?;
+    }
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            json!({"normalized_execution_cleanup_timestamps": repaired}).to_string()],
     )?;
     connection.pragma_update(None, "user_version", context.target_revision)?;
     Ok(())
@@ -8687,7 +8722,8 @@ mod tests {
                 (197, 198),
                 (198, 199),
                 (199, 200),
-                (200, 201)
+                (200, 201),
+                (201, 202)
             ]
         );
         let states = connection

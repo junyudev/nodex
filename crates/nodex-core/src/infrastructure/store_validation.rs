@@ -303,6 +303,7 @@ pub(crate) fn validate_store_semantics(connection: &Connection) -> Result<(), St
         DatabaseViewStorageContract::V6,
         true,
         CURRENT_DOCUMENT_MATERIALIZATION_DERIVATION_VERSION,
+        false,
     )
 }
 
@@ -319,6 +320,7 @@ pub(crate) fn validate_migration_source_semantics(
         view_contract,
         has_library_files,
         materialization_derivation_version,
+        true,
     )
 }
 
@@ -327,11 +329,12 @@ fn validate_store_semantics_for_view_contract(
     view_contract: DatabaseViewStorageContract,
     has_library_files: bool,
     materialization_derivation_version: i64,
+    migration_source: bool,
 ) -> Result<(), StoreError> {
     let started_at = Instant::now();
     validate_codex_thread_timestamp_invariants(connection)?;
     let canonical_timestamp_started_at = Instant::now();
-    validate_canonical_text_timestamp_invariants(connection)?;
+    validate_canonical_text_timestamp_invariants(connection, migration_source)?;
     tracing::info!(
         durationMs = duration_millis(canonical_timestamp_started_at.elapsed()),
         "Canonical Store timestamp validation completed"
@@ -1099,7 +1102,10 @@ fn validate_document_materialization_derivation(
     expect_zero(stale, "Document materializations from an older derivation")
 }
 
-fn validate_canonical_text_timestamp_invariants(connection: &Connection) -> Result<(), StoreError> {
+fn validate_canonical_text_timestamp_invariants(
+    connection: &Connection,
+    migration_source: bool,
+) -> Result<(), StoreError> {
     let columns = connection
         .prepare(
             "SELECT schema.name, column.name \
@@ -1129,12 +1135,29 @@ fn validate_canonical_text_timestamp_invariants(connection: &Connection) -> Resu
             if canonical_utc_timestamp(&value).is_some_and(|canonical| canonical == value) {
                 continue;
             }
+            // The cleanup enqueue path used SQLite datetime('now') before v202.
+            if migration_source
+                && table == "nodex_agent_runtime_execution_cleanups"
+                && column == "created_at"
+                && legacy_cleanup_timestamp(&value).is_some()
+            {
+                continue;
+            }
             return Err(corrupt(format!(
                 "Store protocol timestamp invariant failed for {table}.{column}"
             )));
         }
     }
     Ok(())
+}
+
+pub(super) fn legacy_cleanup_timestamp(value: &str) -> Option<String> {
+    let timestamp = NaiveDateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%S").ok()?;
+    (timestamp.format("%Y-%m-%d %H:%M:%S").to_string() == value).then(|| {
+        timestamp
+            .and_utc()
+            .to_rfc3339_opts(SecondsFormat::Millis, true)
+    })
 }
 
 fn canonical_utc_timestamp(value: &str) -> Option<String> {

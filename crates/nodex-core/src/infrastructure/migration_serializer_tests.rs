@@ -360,9 +360,8 @@ fn serializer_upgrade_rebuilds_exact_text_without_content_or_identity_changes() 
 }
 
 #[test]
-fn serializer_preflight_rejects_changed_content_and_unaffected_projection_corruption() {
+fn serializer_preflight_rejects_frozen_content_and_unaffected_projection_corruption() {
     for mutation in [
-        "UPDATE document_materializations SET markdown='Different content' WHERE document_id LIKE 'document:serializer:%'",
         "UPDATE document_materializations SET plain_text='Different content' WHERE document_id LIKE 'document:serializer:%'",
         "UPDATE inbox_suggestion_requests SET inputs_json=json_set(inputs_json,'$[0].content.markdown','Different content')",
         "UPDATE inbox_suggestion_requests SET inputs_json=json_set(inputs_json,'$[0].input.body','Different content')",

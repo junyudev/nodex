@@ -308,15 +308,13 @@ new epoch.
 
 Yrs is the authority for Document content during migration. If a migration
 changes the interpretation of derived materialization records, Core validates
-the Yrs update chain, state vector, and exact persisted projections against their
-published source derivation before the transaction. It rebuilds affected fields
-through the owning Document or Database persistence boundary, then performs the
-exact current projection checks afterward. For a serializer-only predecessor,
-exact-mode decoding may prove the complete stored text against reconstructed
-canonical content while accepting equivalent escape spellings; every unaffected
-field still matches exactly, and current text must match the current writer byte
-for byte. This requires proving that the current reader preserves the meaning of
-every predecessor exact output. A serializer-only change preserves
+the Yrs update chain, state vector, canonical tree, and unchanged projections
+before the transaction. It rebuilds affected fields through the owning Document
+or Database persistence boundary, then validates the current projection byte
+for byte. A new exact reader can interpret predecessor text differently, so a
+derived Markdown string that will be rebuilt does not authenticate a Yrs
+Document. Frozen Inbox input is independently authoritative and retains its
+own content fingerprint checks. A serializer-only change preserves
 unaffected indexes, references, search, assets, and modification times. The Block
 identity index stays unchanged when the canonical tree is unchanged; retained
 recovery Documents can contain Block IDs currently indexed under another Document.
