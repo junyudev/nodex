@@ -1,8 +1,9 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { once } from "node:events";
 import { mkdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { join, toNamespacedPath } from "node:path";
-import { setTimeout } from "node:timers/promises";
+import { createInterface } from "node:readline";
 import { promisify } from "node:util";
 import { expect, test } from "vite-plus/test";
 import { withCoreScenario } from "../../../scripts/scenarios/harness/core-scenario-harness";
@@ -18,7 +19,7 @@ import json, pathlib, sqlite3, sys, time
 home = pathlib.Path(sys.argv[1])
 db = sqlite3.connect(home / 'agent-runtime.sqlite')
 db.executescript('PRAGMA journal_mode=WAL; CREATE TABLE watermark(value INTEGER); INSERT INTO watermark VALUES(0); CREATE TABLE history(id INTEGER PRIMARY KEY, value INTEGER); INSERT INTO history VALUES(1,0),(2,0); CREATE TABLE payload(body BLOB); INSERT INTO payload VALUES(zeroblob(33554432)); CREATE TABLE runs(state TEXT); INSERT INTO runs VALUES("running");')
-(home / 'ready').write_text('ready')
+print('ready', flush=True)
 while not (home / 'stop').exists():
     with db:
         db.execute('UPDATE watermark SET value=value+1')
@@ -72,17 +73,15 @@ test("clones online execution while its owner keeps writing, without reading pro
       process.platform === "win32" ? "junction" : "dir",
     );
     const writing = exec(python, ["-u", "-c", writerProgram, execution], { timeout: 45_000 });
+    const output = createInterface({ input: writing.child.stdout! });
     try {
-      for (let attempt = 0; attempt < 200; attempt += 1) {
-        if (
-          await stat(join(execution, "ready")).then(
-            () => true,
-            () => false,
-          )
-        )
-          break;
-        await setTimeout(10);
-      }
+      const [signal] = await Promise.race([
+        once(output, "line"),
+        writing.then(() => {
+          throw new Error("Execution fixture exited before publishing readiness");
+        }),
+      ]);
+      expect(signal).toBe("ready");
       const sourceDatabase = join(execution, "agent-runtime.sqlite");
       const before = await readDatabase(sourceDatabase);
       const target = join(profile.runRoot, "cloned-profile");
@@ -122,6 +121,7 @@ test("clones online execution while its owner keeps writing, without reading pro
         { code: "ENOENT" },
       );
     } finally {
+      output.close();
       await writeFile(join(execution, "stop"), "stop");
       await writing;
     }

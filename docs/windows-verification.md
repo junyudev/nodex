@@ -46,6 +46,8 @@ preview state. Native ConPTY tests send input after PID publication, accumulate 
 across arbitrary chunks, and use the built-in command shell without profile startup.
 The MCP sandbox integration fixture reports native attachment and validated port readiness
 explicitly; its assertions await those events within the existing test deadline.
+The online Profile clone fixture awaits its writer's post-initialization readiness line
+before reading SQLite; an early writer exit fails setup instead of falling through a poll.
 
 Windows temporary executable cleanup follows asserted child close and process absence.
 The cleanup operation permits bounded filesystem backoff for pending NTFS handle release;
