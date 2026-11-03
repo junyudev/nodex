@@ -1,0 +1,20 @@
+tests/e2e/scripted-agent-runtime.spec.ts
+  s_057b9cacf6bd32::t_6e37bfe27359f8 519-522
+  s_057b9cacf6bd32::t_23a9979997f41d 817,822,862
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9f9c67ef3259742e9fb142110fce9d5f8b19d158",
+  "prompts": {},
+  "sessions": {
+    "s_057b9cacf6bd32": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a228-6248-7ef1-9f2f-042aea6158c1",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
