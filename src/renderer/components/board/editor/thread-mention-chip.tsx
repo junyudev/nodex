@@ -213,15 +213,24 @@ export function ThreadMentionInlineContentView({
   );
   const canOpen = Boolean(props.uuid && runtime.openSession && !missing);
 
+  const [previousResolution, setPreviousResolution] = useState({
+    uuid: props.uuid,
+    thread,
+    resolveSession: runtime.resolveSession,
+  });
+  if (
+    previousResolution.uuid !== props.uuid ||
+    previousResolution.thread !== thread ||
+    previousResolution.resolveSession !== runtime.resolveSession
+  ) {
+    setPreviousResolution({ uuid: props.uuid, thread, resolveSession: runtime.resolveSession });
+    setMissing(false);
+  }
+
   useEffect(() => {
-    if (thread) {
-      setMissing(false);
-      return;
-    }
     if (!props.uuid || thread || !runtime.resolveSession) return;
 
     let cancelled = false;
-    setMissing(false);
     void runtime
       .resolveSession(props.uuid)
       .then((resolvedThread) => {

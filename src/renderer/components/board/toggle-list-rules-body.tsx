@@ -1,5 +1,5 @@
 import { resolveWorkflowStatusName } from "../../../shared/workflow-status";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   CloseIcon,
   PlusIcon,
@@ -172,9 +172,11 @@ export function ToggleListRulesBody({
   const [dslError, setDslError] = useState<string | null>(null);
   const [showRaw, setShowRaw] = useState(false);
 
-  useEffect(() => {
+  const [previousRules, setPreviousRules] = useState(settings.rulesV2);
+  if (previousRules !== settings.rulesV2) {
+    setPreviousRules(settings.rulesV2);
     setDslText(formatRulesV2AsJsonLogic(settings.rulesV2));
-  }, [settings.rulesV2]);
+  }
 
   const updateRulesV2 = (fn: (rules: ToggleListRulesV2) => ToggleListRulesV2) => {
     updateSettings((prev) =>

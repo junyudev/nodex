@@ -55,12 +55,18 @@ export function usePropertyOptionRegistries({
   /** Selected identities whose labels are visible before a picker opens. */
   readonly requiredOptionIds?: Readonly<Record<string, readonly string[]>>;
 }) {
-  const [entries, setEntries] = useState<Readonly<Record<string, PropertyOptionRegistryEntry>>>({});
+  const [entries, setEntries] = useState<Readonly<Record<string, PropertyOptionRegistryEntry>>>(
+    () =>
+      Object.fromEntries(
+        properties
+          .filter(isOptionProperty)
+          .map((property) => [property.propertyId, initialEntry(property)]),
+      ),
+  );
   const entriesRef = useRef(entries);
-  entriesRef.current = entries;
-  const propertiesRef = useRef(properties);
-  propertiesRef.current = properties;
-  const generationRef = useRef(0);
+  useLayoutEffect(() => {
+    entriesRef.current = entries;
+  }, [entries]);
   const loadsRef = useRef(new Map<string, Promise<void>>());
   const propertyAuthorityKey = JSON.stringify([
     routingContext.kind === "project" ? ["project", routingContext.projectId] : ["library"],
@@ -73,17 +79,22 @@ export function usePropertyOptionRegistries({
     ]),
   ]);
 
-  useLayoutEffect(() => {
-    generationRef.current += 1;
-    loadsRef.current.clear();
+  const [authority, setAuthority] = useState({ key: propertyAuthorityKey });
+  const generationRef = useRef(authority);
+  if (authority.key !== propertyAuthorityKey) {
+    setAuthority({ key: propertyAuthorityKey });
     setEntries(
       Object.fromEntries(
-        propertiesRef.current
+        properties
           .filter(isOptionProperty)
           .map((property) => [property.propertyId, initialEntry(property)]),
       ),
     );
-  }, [propertyAuthorityKey]);
+  }
+  useLayoutEffect(() => {
+    generationRef.current = authority;
+    loadsRef.current.clear();
+  }, [authority]);
 
   const load = useCallback(
     (property: DataSourcePropertyRecordV2, continuation: boolean) => {
@@ -190,13 +201,13 @@ export function usePropertyOptionRegistries({
 
   useEffect(() => {
     const propertyById = new Map<string, DataSourcePropertyRecordV2>(
-      propertiesRef.current.map((property) => [String(property.propertyId), property]),
+      properties.map((property) => [String(property.propertyId), property]),
     );
     for (const [propertyId, requiredIds] of requiredOptionEntries) {
       if (requiredIds.length === 0) continue;
       const property = propertyById.get(propertyId);
       if (!property || !isOptionProperty(property)) continue;
-      const entry = entriesRef.current[property.propertyId] ?? initialEntry(property);
+      const entry = entries[property.propertyId] ?? initialEntry(property);
       const presentIds = new Set(entry.options.map((option) => option.id));
       if (requiredIds.every((optionId) => presentIds.has(optionId))) continue;
       if (entry.state === "idle") {
@@ -207,15 +218,15 @@ export function usePropertyOptionRegistries({
         load(property, true);
       }
     }
-  }, [entries, load, requiredOptionEntries]);
+  }, [entries, load, properties, requiredOptionEntries]);
 
   useEffect(() => {
-    for (const property of propertiesRef.current) {
+    for (const property of properties) {
       if (!isCompactSemanticRegistry(property)) continue;
-      const entry = entriesRef.current[property.propertyId] ?? initialEntry(property);
+      const entry = entries[property.propertyId] ?? initialEntry(property);
       if (entry.state === "idle") load(property, false);
     }
-  }, [entries, load]);
+  }, [entries, load, properties]);
 
   return useMemo(
     () => ({

@@ -5,6 +5,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  useSyncExternalStore,
   type ComponentPropsWithoutRef,
   type CSSProperties,
   type FocusEvent as ReactFocusEvent,
@@ -236,44 +237,35 @@ function isComposerOwnedTarget(target: EventTarget | null, frame: HTMLElement | 
   return target instanceof Element && target.closest(COMPOSER_FLOATING_UI_SELECTOR) !== null;
 }
 
-/** Keeps a body portal over the pane and publishes the pane's scroll reserve. */
-function usePaneGeometry(target: HTMLElement | null, reservePx: number) {
-  const [geometry, setGeometry] = useState<FloatingComposerPortalGeometry | null>(null);
-
-  const syncGeometry = useEffectEvent(() => {
-    if (!target) return;
-    setGeometry(
-      resolveFloatingComposerPortalGeometry({
+/** One cached DOM observation per pane; native callbacks publish measured geometry. */
+function createPaneGeometryObservation(target: HTMLElement | null) {
+  let snapshot: FloatingComposerPortalGeometry | null = null;
+  const getSnapshot = () => snapshot;
+  const subscribe = (listener: () => void) => {
+    if (!target) return () => {};
+    const view = target.ownerDocument.defaultView;
+    if (!view) return () => {};
+    const measure = () => {
+      const next = resolveFloatingComposerPortalGeometry({
         rect: target.getBoundingClientRect(),
         zoom: readWindowZoom(target),
         toolbarHeight: readPixelProperty(target, "--height-toolbar-pane") ?? 0,
-      }),
-    );
-  });
-
-  useLayoutEffect(() => {
-    if (!target) return;
-    target.style.setProperty(
-      RIGHT_PANEL_COMPOSER_OVERLAY_HEIGHT_VAR,
-      `${RIGHT_PANEL_COMPOSER_OVERLAY_HEIGHT_PX}px`,
-    );
-    target.style.setProperty(RIGHT_PANEL_COMPOSER_OVERLAY_RESERVE_VAR, `${reservePx}px`);
-    syncGeometry();
-    return () => {
-      target.style.removeProperty(RIGHT_PANEL_COMPOSER_OVERLAY_HEIGHT_VAR);
-      target.style.removeProperty(RIGHT_PANEL_COMPOSER_OVERLAY_RESERVE_VAR);
+      });
+      if (
+        snapshot &&
+        Object.entries(next).every(
+          ([key, value]) => snapshot?.[key as keyof FloatingComposerPortalGeometry] === value,
+        )
+      )
+        return;
+      snapshot = next;
+      listener();
     };
-  }, [reservePx, target]);
-
-  useLayoutEffect(() => {
-    if (!target) return;
-    const view = target.ownerDocument.defaultView;
-    if (!view) return;
     const resizeObserver =
-      typeof ResizeObserver === "undefined" ? null : new ResizeObserver(syncGeometry);
+      typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
     resizeObserver?.observe(target);
     const mutationObserver =
-      typeof MutationObserver === "undefined" ? null : new MutationObserver(syncGeometry);
+      typeof MutationObserver === "undefined" ? null : new MutationObserver(measure);
     for (const owner of new Set(
       [
         findInlineCustomPropertyOwner(target, "--app-shell-bottom-panel-height"),
@@ -282,14 +274,34 @@ function usePaneGeometry(target: HTMLElement | null, reservePx: number) {
     )) {
       mutationObserver?.observe(owner, { attributes: true, attributeFilter: ["style"] });
     }
-    view.addEventListener("resize", syncGeometry);
+    view.addEventListener("resize", measure);
+    measure();
     return () => {
       mutationObserver?.disconnect();
       resizeObserver?.disconnect();
-      view.removeEventListener("resize", syncGeometry);
+      view.removeEventListener("resize", measure);
     };
-  }, [target]);
+  };
+  return { target, getSnapshot, subscribe };
+}
 
+/** Keeps a body portal over the pane and publishes the pane's scroll reserve. */
+function usePaneGeometry(target: HTMLElement | null, reservePx: number) {
+  const [observation, setObservation] = useState(() => createPaneGeometryObservation(target));
+  if (observation.target !== target) setObservation(createPaneGeometryObservation(target));
+  const geometry = useSyncExternalStore(observation.subscribe, observation.getSnapshot);
+  useLayoutEffect(() => {
+    if (!target) return;
+    target.style.setProperty(
+      RIGHT_PANEL_COMPOSER_OVERLAY_HEIGHT_VAR,
+      `${RIGHT_PANEL_COMPOSER_OVERLAY_HEIGHT_PX}px`,
+    );
+    target.style.setProperty(RIGHT_PANEL_COMPOSER_OVERLAY_RESERVE_VAR, `${reservePx}px`);
+    return () => {
+      target.style.removeProperty(RIGHT_PANEL_COMPOSER_OVERLAY_HEIGHT_VAR);
+      target.style.removeProperty(RIGHT_PANEL_COMPOSER_OVERLAY_RESERVE_VAR);
+    };
+  }, [reservePx, target]);
   return target ? geometry : null;
 }
 

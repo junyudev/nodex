@@ -454,7 +454,12 @@ describe("BlockNote view lifecycle in Chromium", () => {
         });
         const closingPopover = document.body.querySelector<HTMLElement>(".notion-text-action-menu");
         if (!closingPopover) break;
-        expect(view.getByTestId("formatting-toolbar-exit-probe")).toBe(openProbe);
+        // The controller opts into an inert HTML snapshot; its positioned root
+        // stays mounted while the child DOM preserves the committed appearance.
+        expect(closingPopover).toBe(openPopover);
+        expect(view.getByTestId("formatting-toolbar-exit-probe").outerHTML).toBe(
+          openProbe.outerHTML,
+        );
         expect(closingPopover.inert).toBe(true);
         expect(closingPopover.getAttribute("aria-hidden")).toBe("true");
         exitPositions.push({

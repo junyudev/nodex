@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useState } from "react";
+import { createElement, useMemo, useState } from "react";
 
 import { ThreadsIcon } from "@/components/workbench/threads-icon";
 import { NodexDropdown } from "@/components/ui/dropdown";
@@ -330,10 +330,9 @@ function DataSourcePropertyRow({
   readonly item: PageStageController["propertyControls"]["properties"][number];
   readonly controls: PageStageController["propertyControls"];
 }) {
-  const Icon = dataSourcePropertyIcon(item.property);
   return (
     <PageStagePropertyRow
-      icon={<Icon />}
+      icon={createElement(dataSourcePropertyIcon(item.property))}
       label={item.property.name}
       data-page-stage-property-id={item.property.propertyId}
     >
@@ -401,18 +400,12 @@ export function PageStagePropertiesSection({ controller }: PageStagePropertiesSe
   });
   if (nextDisclosure !== disclosure) setDisclosure(nextDisclosure);
 
-  useLayoutEffect(() => {
-    setQuietPropertiesState((current) =>
-      advancePageStageQuietPropertiesState(current, {
-        pageId,
-        files: {
-          signal: filesSignal,
-          manifestRevision: filesManifestRevision,
-        },
-        linkedChats: { signal: linkedChatsSignal },
-      }),
-    );
-  }, [filesManifestRevision, filesSignal, linkedChatsSignal, pageId]);
+  const nextQuietPropertiesState = advancePageStageQuietPropertiesState(
+    quietPropertiesState,
+    quietPropertiesInput,
+  );
+  if (nextQuietPropertiesState !== quietPropertiesState)
+    setQuietPropertiesState(nextQuietPropertiesState);
 
   if (!controller.page) return null;
   const shownRows = rows.filter((row) => nextDisclosure.shownKeys.has(row.key));

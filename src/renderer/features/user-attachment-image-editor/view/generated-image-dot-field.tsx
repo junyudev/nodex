@@ -1,9 +1,9 @@
 import {
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   useSyncExternalStore,
-  type CSSProperties,
   type RefObject,
 } from "react";
 import { useResolvedReducedMotion } from "@/lib/use-reduced-motion";
@@ -36,10 +36,6 @@ interface DotFieldGrid {
   readonly yPositions: Float32Array;
 }
 
-interface GeneratedImageDotFieldStyle extends CSSProperties {
-  "--generated-image-dot-field-delay": string;
-}
-
 function clampUnit(value: number): number {
   return Math.min(1, Math.max(0, value));
 }
@@ -64,10 +60,7 @@ function useElementIntersection(ref: RefObject<Element | null>): boolean {
   useEffect(() => {
     const element = ref.current;
     if (!element) return;
-    if (typeof IntersectionObserver === "undefined") {
-      setIntersecting(true);
-      return;
-    }
+    if (typeof IntersectionObserver === "undefined") return;
     const observer = new IntersectionObserver((entries) => {
       setIntersecting(entries[0]?.isIntersecting === true);
     });
@@ -91,26 +84,19 @@ export function GeneratedImageDotField({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const configKey = `${presentation}:${seed}`;
-  const configRef = useRef<{
-    readonly key: string;
-    readonly value: ReturnType<typeof createGeneratedImageDotFieldConfig>;
-  } | null>(null);
-  if (configRef.current?.key !== configKey) {
-    configRef.current = {
-      key: configKey,
-      value: createGeneratedImageDotFieldConfig(createStableGeneratedImageRandom(configKey)),
-    };
-  }
-  const config = configRef.current.value;
+  const config = createGeneratedImageDotFieldConfig(createStableGeneratedImageRandom(configKey));
   const dotPresentation = resolveGeneratedImageDotFieldPresentation(presentation);
   const clock = getGeneratedImageAnimationClock();
-  const mountedAtRef = useRef<number | null>(null);
-  mountedAtRef.current ??= clock.now();
-  const mountedAt = mountedAtRef.current;
+  const [mountedAt] = useState(() => clock.now());
+  useLayoutEffect(() => {
+    containerRef.current?.style.setProperty(
+      "--generated-image-dot-field-delay",
+      `${-(Math.max(0, clock.now() - mountedAt) % DOT_FIELD_OPACITY_DURATION_MS)}ms`,
+    );
+  });
   const documentVisible = useDocumentVisible();
   const intersecting = useElementIntersection(containerRef);
   const animationActive = active && intersecting && documentVisible && !reducedMotion;
-  const elapsedMs = Math.max(0, clock.now() - mountedAt);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -247,15 +233,11 @@ export function GeneratedImageDotField({
       data-animate={animationActive ? "true" : undefined}
       data-generated-image-dot-field="true"
       data-presentation={presentation}
-      style={
-        {
-          "--generated-image-dot-field-delay": `${-(elapsedMs % DOT_FIELD_OPACITY_DURATION_MS)}ms`,
-          maskImage:
-            "linear-gradient(to top left, transparent 0%, black 30% 70%, transparent 100%)",
-          WebkitMaskImage:
-            "linear-gradient(to top left, transparent 0%, black 30% 70%, transparent 100%)",
-        } as GeneratedImageDotFieldStyle
-      }
+      style={{
+        maskImage: "linear-gradient(to top left, transparent 0%, black 30% 70%, transparent 100%)",
+        WebkitMaskImage:
+          "linear-gradient(to top left, transparent 0%, black 30% 70%, transparent 100%)",
+      }}
     >
       <canvas ref={canvasRef} aria-hidden="true" className="block h-full w-full" />
     </div>

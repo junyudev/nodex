@@ -49,17 +49,17 @@ export const BoardScrollContainer = forwardRef<HTMLDivElement, ViewScrollContain
 );
 
 export function ToggleListScrollContainer({ children, scrollStateKey }: ViewScrollContainerProps) {
-  const retainedScroll = useRetainedScrollPosition<HTMLDivElement>(scrollStateKey ?? null, {
-    axis: "vertical",
-    retryFrames: 2,
-  });
+  const { ref: setScrollContainer, onScroll } = useRetainedScrollPosition<HTMLDivElement>(
+    scrollStateKey ?? null,
+    { axis: "vertical", retryFrames: 2 },
+  );
 
   return (
     <div
-      ref={retainedScroll.ref}
+      ref={setScrollContainer}
       className="scrollbar-token h-full min-h-0 overflow-y-auto"
       data-testid={TOGGLE_LIST_SCROLL_CONTAINER_TEST_ID}
-      onScroll={retainedScroll.onScroll}
+      onScroll={onScroll}
       style={RIGHT_PANEL_COMPOSER_OVERLAY_SCROLL_RESERVE_STYLE}
     >
       {children}

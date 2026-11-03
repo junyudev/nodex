@@ -1,5 +1,5 @@
 import { LinkToolbarExtension } from "@blocknote/core/extensions";
-import { KeyboardEvent, useCallback, useEffect, useState } from "react";
+import { KeyboardEvent, useCallback, useState } from "react";
 import { useExtension, type LinkToolbarProps } from "./nfm-link-toolbar-deps";
 import { normalizeNfmEditorLinkUrl } from "./nfm-link-url";
 
@@ -15,10 +15,12 @@ export function useNfmLinkEditorState(props: NfmLinkEditorProps) {
   const [currentUrl, setCurrentUrl] = useState<string>(url);
   const [currentText, setCurrentText] = useState<string>(text);
 
-  useEffect(() => {
+  const [previousLink, setPreviousLink] = useState({ text, url });
+  if (previousLink.text !== text || previousLink.url !== url) {
+    setPreviousLink({ text, url });
     setCurrentUrl(url);
     setCurrentText(text);
-  }, [text, url]);
+  }
 
   const submit = useCallback(
     (overrideUrl?: string, overrideText?: string) => {

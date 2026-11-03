@@ -97,12 +97,14 @@ function CardRowMetadata({
   );
 }
 
+const EMPTY_STATUS_OPTIONS: NonNullable<ReferencedCardRowProps["statusOptions"]> = [];
+
 export function ReferencedCardRow({
   disclosureKey,
   routingContext,
   card,
   canEdit,
-  statusOptions = [],
+  statusOptions = EMPTY_STATUS_OPTIONS,
   archived = false,
   legacy = false,
   inlineEditingDisabledReason,
@@ -117,8 +119,8 @@ export function ReferencedCardRow({
   const surfaceInstanceId = useId();
   const surfaceInstanceKey = `referenced-card:${disclosureKey}:mount:${surfaceInstanceId}`;
   const [preferredExpanded, setExpanded] = useBlockDisclosure(disclosureKey, disclosureStore);
-  const visibility = useElementVisibility();
-  const visible = visibilityOverride ?? visibility.visible;
+  const { ref: visibilityRef, visible: observedVisible } = useElementVisibility();
+  const visible = visibilityOverride ?? observedVisible;
   const expandable = canEdit && typeof renderDocument === "function";
   const expanded = expandable && preferredExpanded;
   const active = useReferenceSurfaceActivation(
@@ -130,7 +132,7 @@ export function ReferencedCardRow({
 
   return (
     <section
-      ref={visibility.ref}
+      ref={visibilityRef}
       contentEditable={false}
       data-reference-card={card.id}
       data-reference-access={contentRoutingContextKey(routingContext)}

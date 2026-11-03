@@ -1,5 +1,6 @@
 import {
   forwardRef,
+  useCallback,
   useEffect,
   useEffectEvent,
   useLayoutEffect,
@@ -192,16 +193,17 @@ export function ConversationVideoPlayer({
     },
     [element],
   );
-  useLayoutEffect(() => {
-    // Metadata can arrive before this owner observes the element, e.g. from a cached source.
+  const attachVideo = useCallback((element: HTMLVideoElement | null) => {
+    setElement(element);
     if (!element) return;
+    // Cached metadata may already exist when this DOM node is attached.
     setPlayback((current) => ({
       ...current,
       duration: safeDuration(element.duration),
       time: element.currentTime,
       playing: !element.paused,
     }));
-  }, [element]);
+  }, []);
   const sourceFailed = useEffectEvent(() => setFailed(resource.identity));
   const sourceIsCurrent = useEffectEvent(resource.isCurrent);
   useEffect(() => {
@@ -280,7 +282,7 @@ export function ConversationVideoPlayer({
         }}
       >
         <video
-          ref={setElement}
+          ref={attachVideo}
           src={/^data:/iu.test(resource.url ?? "") ? undefined : (resource.url ?? undefined)}
           aria-label={label}
           tabIndex={0}

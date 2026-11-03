@@ -1042,14 +1042,14 @@ function NfmSideMenuSubmenu({
 > & {
   submenu: NfmSideMenuSubmenuKey;
 }) {
-  const cardInRowRef = useRef<HTMLDivElement>(null);
+  const [cardInRow, setCardInRow] = useState<HTMLDivElement | null>(null);
   const [cardInOpen, setCardInOpen] = useState(false);
   const closeCardInAndRestoreFocus = useCallback(() => {
     setCardInOpen(false);
     requestAnimationFrame(() => {
-      cardInRowRef.current?.focus();
+      cardInRow?.focus();
     });
-  }, []);
+  }, [cardInRow]);
   const cardInMenuProps = {
     sourceProjectId,
     sourcePageId,
@@ -1105,7 +1105,7 @@ function NfmSideMenuSubmenu({
           >
             <NodexPopoverAnchor>
               <NfmSideMenuSubmenuRow
-                ref={cardInRowRef}
+                ref={setCardInRow}
                 leftSlot={<NfmSideMenuPageInIcon />}
                 rightSlot={
                   <NfmSideMenuChevronRightIcon className="text-token-description-foreground" />
@@ -1231,7 +1231,6 @@ export function NfmSideMenuSurface({
   sendToThreadPreferredTarget,
   onSendBlocksToThread,
 }: NfmSideMenuSurfaceProps) {
-  let rowIndex = 0;
   const flatRowsForSeparators = useMemo(() => flattenNfmSideMenuRows(sections), [sections]);
 
   const handleInputKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
@@ -1359,9 +1358,10 @@ export function NfmSideMenuSurface({
                 No results
               </div>
             ) : null}
-            {sections.map((section) => {
-              const startIndex = rowIndex;
-              rowIndex += section.rows.length;
+            {sections.map((section, sectionIndex) => {
+              const startIndex = sections
+                .slice(0, sectionIndex)
+                .reduce((count, item) => count + item.rows.length, 0);
               return (
                 <NfmSideMenuSectionView
                   key={section.key}
@@ -1627,26 +1627,20 @@ function NfmSideMenuPopup({
     ],
   );
 
-  useEffect(() => {
-    if (!openState) {
-      setVisible(false);
-      return;
-    }
-
-    pendingCloseRef.current = false;
-    clearCloseTimer();
+  const [previousOpenState, setPreviousOpenState] = useState(openState);
+  if (previousOpenState !== openState) {
+    setPreviousOpenState(openState);
     setQuery("");
     setFocusedIndex(-1);
     setActiveSubmenu(null);
     setVisible(false);
-
-    const animationFrame = requestAnimationFrame(() => {
-      setVisible(true);
-    });
-
-    return () => {
-      cancelAnimationFrame(animationFrame);
-    };
+  }
+  useEffect(() => {
+    if (!openState) return;
+    pendingCloseRef.current = false;
+    clearCloseTimer();
+    const animationFrame = requestAnimationFrame(() => setVisible(true));
+    return () => cancelAnimationFrame(animationFrame);
   }, [clearCloseTimer, openState]);
 
   useEffect(
@@ -1848,22 +1842,26 @@ function NfmSideMenuPopup({
     activateRow(focusedRow);
   }, [activateRow, flatRows, focusedIndex]);
 
-  useEffect(() => {
+  const [previousRows, setPreviousRows] = useState({ flatRows, query });
+  if (previousRows.flatRows !== flatRows || previousRows.query !== query) {
+    setPreviousRows({ flatRows, query });
     setFocusedIndex(getInitialNfmSideMenuFocusIndex(query, flatRows));
     setActiveSubmenu(null);
-  }, [flatRows, query]);
+  }
 
-  // An opening that names a submenu shows it once; later row or query changes own it again.
-  const appliedInitialSubmenuRef = useRef<NfmSideMenuOpenState | null>(null);
-  useEffect(() => {
-    const initialSubmenu = openState?.initialSubmenu;
-    if (!openState || !initialSubmenu || appliedInitialSubmenuRef.current === openState) return;
+  // Apply the requested submenu once per opening; subsequent search changes own it.
+  const [appliedInitialSubmenu, setAppliedInitialSubmenu] = useState<NfmSideMenuOpenState | null>(
+    null,
+  );
+  const initialSubmenu = openState?.initialSubmenu;
+  if (openState && initialSubmenu && appliedInitialSubmenu !== openState) {
     const index = flatRows.findIndex(({ row }) => row.submenu === initialSubmenu && row.enabled);
-    if (index < 0) return;
-    appliedInitialSubmenuRef.current = openState;
-    setFocusedIndex(index);
-    setActiveSubmenu(initialSubmenu);
-  }, [flatRows, openState]);
+    if (index >= 0) {
+      setAppliedInitialSubmenu(openState);
+      setFocusedIndex(index);
+      setActiveSubmenu(initialSubmenu);
+    }
+  }
 
   useEffect(() => {
     if (!openState || !visible) return;
@@ -2240,11 +2238,9 @@ export function NfmSideMenuOpenProvider({ children }: { children: ReactNode }) {
     suppressionRange: formattingToolbarSuppressionRange,
   });
 
-  useEffect(() => {
-    if (!formattingToolbarSuppressionRange) return;
-    if (shouldKeepSuppressionRange) return;
+  if (formattingToolbarSuppressionRange && !shouldKeepSuppressionRange) {
     setFormattingToolbarSuppressionRange(null);
-  }, [formattingToolbarSuppressionRange, shouldKeepSuppressionRange]);
+  }
 
   useEffect(
     () => () => {
@@ -2461,7 +2457,9 @@ export function NfmSideMenu() {
             );
           }}
           onDragStart={(event: SideMenuDragStartEvent) => {
-            dragFreezeReleaseRef.current ??= sideMenuOpenController.acquireSideMenuFreeze();
+            if (dragFreezeReleaseRef.current === null) {
+              dragFreezeReleaseRef.current = sideMenuOpenController.acquireSideMenuFreeze();
+            }
             dragStartedRef.current = true;
             selectionIntentRef.current = null;
             const dragEvent = {

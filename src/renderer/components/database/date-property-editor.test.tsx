@@ -170,6 +170,35 @@ describe("DatePropertyEditor", () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
+  test("resets an open date draft on a new revision without committing or moving focus", async () => {
+    const onChange = vi.fn();
+    const props = {
+      label: "Due date",
+      mode: "date" as const,
+      value: "2026-08-04",
+      revision: 3,
+      disabled: false,
+      presentation: "page" as const,
+      onChange,
+    };
+    const view = render(<DatePropertyEditor {...props} />);
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Edit Due date" }));
+      await Promise.resolve();
+    });
+    const input = view.getByRole("textbox", { name: "Due date date" }) as HTMLInputElement;
+    await act(async () => {
+      input.focus();
+      fireEvent.change(input, { target: { value: "2026-08-19" } });
+      await Promise.resolve();
+    });
+    view.rerender(<DatePropertyEditor {...props} revision={4} />);
+    expect(view.getByRole("textbox", { name: "Due date date" })).toBe(input);
+    expect(document.activeElement).toBe(input);
+    expect(input.value).toBe("2026-08-04");
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   test("allows retrying the same draft after reopening without a revision change", async () => {
     const onChange = vi.fn();
     const view = render(

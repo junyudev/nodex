@@ -69,7 +69,12 @@ const matchesFilter = (entry: PageHistoryEntry, filter: HistoryFilter): boolean 
   return entry.kind !== "document_version";
 };
 
-export function HistoryPanel({
+export function HistoryPanel(props: HistoryPanelProps) {
+  if (!props.open) return null;
+  return <OpenHistoryPanel key={JSON.stringify([props.projectId, props.pageId])} {...props} />;
+}
+
+function OpenHistoryPanel({
   fileAuthority,
   projectId,
   pageId,
@@ -91,58 +96,54 @@ export function HistoryPanel({
   const [nextCursor, setNextCursor] = useState<PageHistoryCursor | null>(null);
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
   const [filter, setFilter] = useState<HistoryFilter>("revisions");
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(pageId !== null);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [timelineError, setTimelineError] = useState<string | null>(null);
   const [previewCache, setPreviewCache] = useState<ReadonlyMap<string, DocumentVersionDetail>>(
     () => new Map(),
   );
-  const [previewLoading, setPreviewLoading] = useState(false);
-  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [previewResult, setPreviewResult] = useState<{
+    readonly entry: PageHistoryEntry;
+    readonly error: string | null;
+  } | null>(null);
   const [confirmingRestore, setConfirmingRestore] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const [restoreError, setRestoreError] = useState<string | null>(null);
 
   const loadFirstPage = useCallback(
-    async (targetPageId: string) => {
+    (targetPageId: string) => {
       const requestSerial = requestSerialRef.current + 1;
       requestSerialRef.current = requestSerial;
-      setLoading(true);
-      setLoadingOlder(false);
-      setTimelineError(null);
-      setEntries([]);
-      setNextCursor(null);
-      setSelectedEntryId(null);
-      setPreviewCache(new Map());
-      try {
-        const result = await listPageHistory({
-          requestingProjectId: projectId,
-          pageId: targetPageId,
-          pageSize: DEFAULT_PAGE_HISTORY_PAGE_SIZE,
-        });
-        if (requestSerial !== requestSerialRef.current) return;
-        if (!result.ok) {
+      return listPageHistory({
+        requestingProjectId: projectId,
+        pageId: targetPageId,
+        pageSize: DEFAULT_PAGE_HISTORY_PAGE_SIZE,
+      })
+        .then((result) => {
+          if (requestSerial !== requestSerialRef.current) return;
+          if (!result.ok) {
+            setEntries([]);
+            setNextCursor(null);
+            setTimelineError(result.error.message);
+            return;
+          }
+          setEntries(result.value.entries);
+          setNextCursor(result.value.nextCursor);
+          setSelectedEntryId((current) =>
+            current && result.value.entries.some((entry) => entry.id === current)
+              ? current
+              : "current",
+          );
+        })
+        .catch((error: unknown) => {
+          if (requestSerial !== requestSerialRef.current) return;
           setEntries([]);
           setNextCursor(null);
-          setTimelineError(result.error.message);
-          return;
-        }
-        setEntries(result.value.entries);
-        setNextCursor(result.value.nextCursor);
-        setSelectedEntryId((current) => {
-          if (current && result.value.entries.some((entry) => entry.id === current)) {
-            return current;
-          }
-          return "current";
+          setTimelineError(toErrorMessage(error, "Couldn’t load Page history."));
+        })
+        .finally(() => {
+          if (requestSerial === requestSerialRef.current) setLoading(false);
         });
-      } catch (error) {
-        if (requestSerial !== requestSerialRef.current) return;
-        setEntries([]);
-        setNextCursor(null);
-        setTimelineError(toErrorMessage(error, "Couldn’t load Page history."));
-      } finally {
-        if (requestSerial === requestSerialRef.current) setLoading(false);
-      }
     },
     [projectId],
   );
@@ -152,55 +153,51 @@ export function HistoryPanel({
     void loadFirstPage(pageId);
   }, [pageId, loadFirstPage, open]);
 
-  useEffect(() => {
-    if (open) return;
-    requestSerialRef.current += 1;
-    setEntries([]);
-    setNextCursor(null);
-    setSelectedEntryId(null);
-    setFilter("revisions");
-    setTimelineError(null);
-    setPreviewCache(new Map());
-    setPreviewError(null);
-    setConfirmingRestore(false);
-    setRestoreError(null);
-    pendingRestoreRef.current = null;
-  }, [open]);
+  useEffect(
+    () => () => {
+      requestSerialRef.current += 1;
+      pendingRestoreRef.current = null;
+    },
+    [],
+  );
 
   const filteredEntries = useMemo(
     () => entries.filter((entry) => matchesFilter(entry, filter)),
     [entries, filter],
   );
 
-  useEffect(() => {
-    if (filter === "revisions" && selectedEntryId === "current") return;
-    if (filteredEntries.some((entry) => entry.id === selectedEntryId)) return;
-    setSelectedEntryId(filter === "revisions" ? "current" : (filteredEntries[0]?.id ?? null));
-  }, [filter, filteredEntries, selectedEntryId]);
+  if (
+    !(filter === "revisions" && selectedEntryId === "current") &&
+    !filteredEntries.some((entry) => entry.id === selectedEntryId)
+  ) {
+    const nextId = filter === "revisions" ? "current" : (filteredEntries[0]?.id ?? null);
+    if (selectedEntryId !== nextId) setSelectedEntryId(nextId);
+  }
 
   const selectedIsCurrent = filter === "revisions" && selectedEntryId === "current";
   const selectedIndex = filteredEntries.findIndex((entry) => entry.id === selectedEntryId);
   const selectedEntry = selectedIndex < 0 ? null : (filteredEntries[selectedIndex] ?? null);
   const selectedPreview = selectedEntry ? (previewCache.get(selectedEntry.id) ?? null) : null;
 
-  useEffect(() => {
+  const [previousPreview, setPreviousPreview] = useState({ selectedEntry, previewCache });
+  if (
+    previousPreview.selectedEntry !== selectedEntry ||
+    previousPreview.previewCache !== previewCache
+  ) {
+    setPreviousPreview({ selectedEntry, previewCache });
     setConfirmingRestore(false);
     setRestoreError(null);
-    pendingRestoreRef.current = null;
-    if (!selectedEntry || selectedEntry.kind !== "document_version") {
-      setPreviewLoading(false);
-      setPreviewError(null);
-      return;
-    }
-    if (previewCache.has(selectedEntry.id)) {
-      setPreviewLoading(false);
-      setPreviewError(null);
-      return;
-    }
+    setPreviewResult(null);
+  }
+  const previewNeedsRead = selectedEntry?.kind === "document_version" && !selectedPreview;
+  const previewLoading = previewNeedsRead && previewResult?.entry !== selectedEntry;
+  const previewError =
+    previewNeedsRead && previewResult?.entry === selectedEntry ? previewResult.error : null;
 
+  useEffect(() => {
+    pendingRestoreRef.current = null;
+    if (!selectedEntry || selectedEntry.kind !== "document_version" || selectedPreview) return;
     let cancelled = false;
-    setPreviewLoading(true);
-    setPreviewError(null);
     void getDocumentVersion({
       projectId,
       documentId: selectedEntry.documentId,
@@ -208,28 +205,21 @@ export function HistoryPanel({
     })
       .then((result) => {
         if (cancelled) return;
-        if (!result.ok) {
-          setPreviewError(result.error.message);
-          return;
-        }
-        setPreviewCache((current) => {
-          const next = new Map(current);
-          next.set(selectedEntry.id, result.value);
-          return next;
-        });
+        setPreviewResult({ entry: selectedEntry, error: result.ok ? null : result.error.message });
+        if (!result.ok) return;
+        setPreviewCache((current) => new Map(current).set(selectedEntry.id, result.value));
       })
       .catch((error: unknown) => {
-        if (cancelled) return;
-        setPreviewError(toErrorMessage(error, "Revision preview is unavailable."));
-      })
-      .finally(() => {
-        if (!cancelled) setPreviewLoading(false);
+        if (!cancelled)
+          setPreviewResult({
+            entry: selectedEntry,
+            error: toErrorMessage(error, "Revision preview is unavailable."),
+          });
       });
-
     return () => {
       cancelled = true;
     };
-  }, [previewCache, projectId, selectedEntry]);
+  }, [projectId, selectedEntry, selectedPreview]);
 
   const navigate = useCallback(
     (direction: -1 | 1) => {
@@ -353,6 +343,13 @@ export function HistoryPanel({
       pendingRestoreRef.current = null;
       setConfirmingRestore(false);
       onPageMutated?.();
+      setLoading(true);
+      setLoadingOlder(false);
+      setTimelineError(null);
+      setEntries([]);
+      setNextCursor(null);
+      setSelectedEntryId(null);
+      setPreviewCache(new Map());
       await loadFirstPage(pageId);
     } catch (error) {
       setRestoreError(toErrorMessage(error, "Couldn’t restore this revision."));

@@ -3,6 +3,7 @@ import {
   useEffect,
   useId,
   useMemo,
+  useRef,
   useState,
   type KeyboardEvent,
   type PointerEvent as ReactPointerEvent,
@@ -190,7 +191,9 @@ export function NfmSendToThreadMenu({
   const comboboxId = useId();
   const [query, setQuery] = useState(initialQuery);
   const [focusedRowId, setFocusedRowId] = useState<string | null>(null);
-  const [acceptingRowId, setAcceptingRowId] = useState<string | null>(null);
+  const [immediateAcceptingRowId, setAcceptingRowId] = useState<string | null>(null);
+  const [readyRow, setReadyRow] = useState<NfmSendToThreadRow | null>(null);
+  const acceptingRowId = immediateAcceptingRowId ?? readyRow?.id ?? null;
   const [acceptError, setAcceptError] = useState<string | null>(null);
   const [pendingAcceptQuery, setPendingAcceptQuery] = useState<string | null>(null);
   // Sending targets a Thread, so only started chats are destinations.
@@ -222,11 +225,13 @@ export function NfmSendToThreadMenu({
   );
   // Rows answer the query chat search last answered; keys and Enter wait for the live one.
   const rowsQuery = chatSearch.query;
-  useEffect(() => {
+  const [previousInitialQuery, setPreviousInitialQuery] = useState(initialQuery);
+  if (previousInitialQuery !== initialQuery) {
+    setPreviousInitialQuery(initialQuery);
     setQuery(initialQuery);
     setFocusedRowId(null);
     setPendingAcceptQuery(null);
-  }, [initialQuery]);
+  }
 
   const messageMatches = chatMessageSearch.query === rowsQuery ? chatMessageSearch.matches : null;
   const rows = useMemo(
@@ -315,43 +320,48 @@ export function NfmSendToThreadMenu({
     [acceptRow, disabled],
   );
 
-  useEffect(() => {
-    if (!pendingAcceptQuery) return;
-    const result = resolvePendingQueryFreshAccept({
-      pendingQuery: pendingAcceptQuery,
-      liveQuery: query,
-      rowsQuery,
-      rows: resolveAcceptableRows(rows),
-      getRowId: (row) => row.id,
-      normalizeQuery: normalizeCommandPaletteSearchText,
-    });
-    if (result.status === "accepted") {
-      activateRow(result.row);
-      return;
-    }
-
-    if (
-      !areQueryFresh({
+  const pendingResult = pendingAcceptQuery
+    ? resolvePendingQueryFreshAccept({
+        pendingQuery: pendingAcceptQuery,
         liveQuery: query,
         rowsQuery,
+        rows: resolveAcceptableRows(rows),
+        getRowId: (row) => row.id,
         normalizeQuery: normalizeCommandPaletteSearchText,
       })
-    ) {
-      return;
-    }
+    : null;
+  if (pendingAcceptQuery && pendingResult?.status === "accepted" && !disabled) {
+    setPendingAcceptQuery(null);
+    setAcceptError(null);
+    setReadyRow(pendingResult.row);
+  }
+  if (
+    pendingAcceptQuery &&
+    pendingResult?.status !== "accepted" &&
+    !waitingForChats &&
+    areQueryFresh({
+      liveQuery: query,
+      rowsQuery,
+      normalizeQuery: normalizeCommandPaletteSearchText,
+    })
+  )
+    setPendingAcceptQuery(null);
 
-    if (!waitingForChats) {
-      setPendingAcceptQuery(null);
-    }
-  }, [
-    activateRow,
-    pendingAcceptQuery,
-    query,
-    resolveAcceptableRows,
-    rows,
-    rowsQuery,
-    waitingForChats,
-  ]);
+  const startedRowRef = useRef<NfmSendToThreadRow | null>(null);
+  useEffect(() => {
+    if (!readyRow || startedRowRef.current === readyRow) return;
+    startedRowRef.current = readyRow;
+    const accept = async () => onAccept({ target: readyRow.target });
+    void accept()
+      .catch((error: unknown) => {
+        const message = error instanceof Error ? error.message.trim() : "";
+        setAcceptError(message || SEND_TO_THREAD_ERROR);
+      })
+      .finally(() => {
+        startedRowRef.current = null;
+        setReadyRow((current) => (current === readyRow ? null : current));
+      });
+  }, [onAccept, readyRow]);
 
   const handleInputKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "ArrowDown") {

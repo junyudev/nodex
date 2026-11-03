@@ -134,6 +134,16 @@ export function useEditorDragBehaviors({
     if (!hasCrossSurface) return setupToggleDrop(el, editor);
     // Only leaving this semantic surface cancels an in-flight save wait. Ordinary
     // renders refresh callbacks without destroying the native drop owner.
-    return setupBlockTransferDocumentDrop(el, editor, readDropBoundary);
+    return setupBlockTransferDocumentDrop(el, editor, () => {
+      const boundary = readDropBoundary();
+      if (
+        boundary.surfaceId !== surfaceId ||
+        boundary.projectId !== projectId ||
+        boundary.documentId !== documentId ||
+        boundary.storeEpoch !== storeEpoch
+      )
+        throw new Error("The editor changed; start the drag again.");
+      return boundary;
+    });
   }, [containerRef, hasCrossSurface, editor, surfaceId, projectId, documentId, storeEpoch]);
 }

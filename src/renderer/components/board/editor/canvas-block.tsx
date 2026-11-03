@@ -79,10 +79,7 @@ export function CanvasBlockFrame({
     expanded,
   });
 
-  useEffect(() => {
-    if (renaming) return;
-    setDraftTitle(title);
-  }, [renaming, title]);
+  if (!renaming && draftTitle !== title) setDraftTitle(title);
 
   const commitRename = useCallback(() => {
     const nextTitle = draftTitle.trim() || "Untitled Canvas";

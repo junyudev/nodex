@@ -363,28 +363,22 @@ export function NfmMoveToMenuSurface({
   const [acceptError, setAcceptError] = useState<string | null>(null);
   const [showDelayedLoading, setShowDelayedLoading] = useState(false);
 
-  useEffect(() => {
+  const [previousInputs, setPreviousInputs] = useState({ projects, sourceProjectId, initialQuery });
+  if (previousInputs.projects !== projects || previousInputs.sourceProjectId !== sourceProjectId) {
+    setPreviousInputs({ projects, sourceProjectId, initialQuery });
     setExpandedProjectIds(getDefaultNfmMoveToExpandedProjectIds(projects, sourceProjectId));
-  }, [projects, sourceProjectId]);
-
-  useEffect(() => {
+  }
+  if (previousInputs.initialQuery !== initialQuery) {
+    setPreviousInputs({ projects, sourceProjectId, initialQuery });
     setQuery(initialQuery);
     setFocusedRowId(null);
-  }, [initialQuery]);
+  }
+  if (!resolvedLoading && showDelayedLoading) setShowDelayedLoading(false);
 
   useEffect(() => {
-    if (!resolvedLoading) {
-      setShowDelayedLoading(false);
-      return;
-    }
-
-    const timer = window.setTimeout(() => {
-      setShowDelayedLoading(true);
-    }, MOVE_TO_MENU_LOAD_DELAY_MS);
-
-    return () => {
-      window.clearTimeout(timer);
-    };
+    if (!resolvedLoading) return;
+    const timer = window.setTimeout(() => setShowDelayedLoading(true), MOVE_TO_MENU_LOAD_DELAY_MS);
+    return () => window.clearTimeout(timer);
   }, [resolvedLoading]);
 
   const searchIndex = useMemo(
@@ -568,8 +562,6 @@ export function NfmMoveToMenuSurface({
     }
   };
 
-  let rowIndex = 0;
-
   return (
     <NodexDestinationPicker
       ariaLabel={ariaLabel}
@@ -587,9 +579,10 @@ export function NfmMoveToMenuSurface({
       onKeyDown={handleInputKeyDown}
       autoFocus={autoFocus}
     >
-      {sections.map((section) => {
-        const startIndex = rowIndex;
-        rowIndex += section.rows.length;
+      {sections.map((section, sectionIndex) => {
+        const startIndex = sections
+          .slice(0, sectionIndex)
+          .reduce((count, item) => count + item.rows.length, 0);
         return (
           <NfmMoveToSectionView
             key={section.key}

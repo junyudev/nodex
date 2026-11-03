@@ -1,3 +1,4 @@
+import { useNfmSearchState } from "./use-nfm-search-state";
 import type { PageChatSendResult } from "@/lib/page-chat-send";
 import {
   createPageEditorSelectionObservation,
@@ -12,6 +13,7 @@ import type { DocumentWaitOptions } from "@/lib/document-wait";
 import { registerPageEditorObservationParticipant } from "@/lib/page-editor-observation-registry";
 import {
   useEffect,
+  useEffectEvent,
   useLayoutEffect,
   useImperativeHandle,
   useRef,
@@ -117,18 +119,13 @@ import { ReadonlyMarkdownBlockNotePreview } from "./readonly-nfm-blocknote-previ
 import { reportNfmChatSendFailure } from "./nfm-chat-send-feedback";
 import { resolveSendBlockSelection } from "./send-block-selection";
 import { PasteResourceDialog } from "./paste-resource-dialog";
+import { pasteNfmImages, pasteNfmResourceAttachments } from "./nfm-paste-commands";
 import {
-  canMaterializePasteResourceItems,
   clipboardFilesFromDataTransfer,
   continueInlinePaste,
   capturePasteResourceTarget,
-  createPastedTextUploadFile,
-  derivePastedTextAttachmentName,
-  insertBlocksAtPasteTarget,
-  insertAttachmentsAtPasteTarget,
   normalizeClipboardFileDraftItems,
   shouldPromptForOversizedText,
-  type PasteAttachmentInlineContent,
   type PasteResourceDialogState,
 } from "./paste-resource";
 import {
@@ -357,13 +354,52 @@ export function NfmEditor(props: NfmEditorProps) {
   );
 }
 
+/** Bind the external Editor's inline-view metadata only after its view commits. */
+function bindNfmSourcePageContext(
+  editor: unknown,
+  context: InlineViewHostContextRuntimeEditor["nodexSourcePageContext"],
+): void {
+  (editor as InlineViewHostContextRuntimeEditor).nodexSourcePageContext = context;
+}
+
+/** Focus only a live Block and tolerate non-text or detached editor targets. */
+function focusNfmEditorBlock(editor: NfmEditorOwner["editor"], blockId: string): boolean {
+  if (!editor.getBlock(blockId)) return false;
+  try {
+    editor.setTextCursorPosition(blockId, "start");
+    const cssEscape =
+      globalThis.CSS?.escape ?? ((value: string) => value.replace(/["\\]/g, "\\$&"));
+    editor.prosemirrorView?.dom
+      .querySelector<HTMLElement>(`.bn-block[data-id="${cssEscape(blockId)}"]`)
+      ?.scrollIntoView({ block: "center" });
+    editor.focus();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Non-inline Blocks keep their selection when the handoff cannot place a caret. */
+function collapseNfmHandedOffSelection(
+  editor: NfmEditorOwner["editor"],
+  blockIds: readonly string[],
+): void {
+  const lastBlockId = blockIds.at(-1);
+  try {
+    if (lastBlockId && editor.getBlock(lastBlockId)) {
+      editor.setTextCursorPosition(lastBlockId, "end");
+    }
+  } catch {
+    // A Block without inline content keeps its selection.
+  }
+}
+
 function NfmEditorInstance({
   owner,
   contentRoutingContext,
   projectName = null,
   projectWorkspacePath,
   source,
-  editorInstanceKey,
   sourcePageContext,
   documentOwnerBlockId,
   sessionId = null,
@@ -371,7 +407,6 @@ function NfmEditorInstance({
   canStartThreadInSession = false,
   sessionTitle = null,
   chatProjectId = null,
-  onOpenCodexThread,
   onOpenSession,
   onOpenPage,
   onOpenDatabase,
@@ -389,6 +424,11 @@ function NfmEditorInstance({
   onEditorViewUnmount,
   editorSession,
 }: NfmEditorInstanceProps) {
+  const {
+    editor,
+    controller: structuralEditingController,
+    structuralSession: structuralEditingSession,
+  } = owner;
   const queryClient = useQueryClient();
   const executionProjectId = projectIdFromContentRoutingContext(contentRoutingContext);
   // Sends go through the beside chat's Project, which a Library Page does not have of its own.
@@ -404,8 +444,8 @@ function NfmEditorInstance({
   const [searchQuery, setSearchQuery] = useState("");
   const [replaceOpen, setReplaceOpen] = useState(false);
   const [replaceQuery, setReplaceQuery] = useState("");
-  const [searchMatchCount, setSearchMatchCount] = useState(0);
-  const [searchActiveIndex, setSearchActiveIndex] = useState(-1);
+  const { totalMatches: searchMatchCount, activeIndex: searchActiveIndex } =
+    useNfmSearchState(editor);
   const [pasteResourceDialog, setPasteResourceDialog] = useState<PasteResourceDialogState | null>(
     null,
   );
@@ -468,13 +508,14 @@ function NfmEditorInstance({
   );
   // One editor instance owns one isolated cache; the Provider releases every acquired scope.
   const [pageFileReadCache] = useState(createRendererFileReadCache);
+  const libraryId = surfaceMutationBarrier?.libraryId;
   const fileRuntime = useMemo(
     () =>
-      sourcePageId && surfaceMutationBarrier?.libraryId
+      sourcePageId && libraryId
         ? createFilePlacementRuntime(
             {
               contentRoutingContext: pageFileContentRoutingContext,
-              libraryId: surfaceMutationBarrier.libraryId,
+              libraryId,
               readSource: { kind: "page", page_id: sourcePageId },
               storeEpoch: source.storeEpoch,
             },
@@ -488,7 +529,7 @@ function NfmEditorInstance({
       source.storeEpoch,
       source.documentId,
       sourcePageId,
-      surfaceMutationBarrier?.libraryId,
+      libraryId,
     ],
   );
   const resolveLocalClipboardFileReference = useCallback(
@@ -576,24 +617,6 @@ function NfmEditorInstance({
     [fileRuntime],
   );
 
-  const canvasCommandHandlersRef = useRef({
-    duplicate: async (canvasBlockId: string) => {
-      void canvasBlockId;
-    },
-    delete: async (canvasBlockId: string) => {
-      void canvasBlockId;
-    },
-  });
-  const pageCommandHandlersRef = useRef({
-    delete: async (pageBlockId: string) => {
-      void pageBlockId;
-    },
-  });
-  const {
-    editor,
-    controller: structuralEditingController,
-    structuralSession: structuralEditingSession,
-  } = owner;
   useLayoutEffect(
     () => owner.bindCallbacks({ uploadFile, resolveFileUrl, resolveCopiedFileReferences }),
     [owner, uploadFile, resolveFileUrl, resolveCopiedFileReferences],
@@ -602,7 +625,7 @@ function NfmEditorInstance({
     const view = editor.prosemirrorView;
     if (!isActivePanelTab) clearNfmPasteTargets(view);
     return () => clearNfmPasteTargets(view);
-  }, [editor, editorInstanceKey, isActivePanelTab]);
+  }, [editor, isActivePanelTab]);
   useEffect(() => () => pasteResourceDialog?.target.selection?.release(), [pasteResourceDialog]);
 
   const resolveSessionMention = useCallback(
@@ -663,13 +686,6 @@ function NfmEditorInstance({
     [],
   );
 
-  const syncSearchStats = useCallback(() => {
-    if (!editor) return;
-    const state = getNfmSearchState(editor);
-    setSearchMatchCount(state.totalMatches);
-    setSearchActiveIndex(state.activeIndex);
-  }, [editor]);
-
   const closeSearch = useCallback(() => {
     setSearchOpen(false);
     setSearchQuery("");
@@ -677,8 +693,7 @@ function NfmEditorInstance({
     setReplaceQuery("");
     if (!editor) return;
     setNfmSearchQuery(editor, "");
-    syncSearchStats();
-  }, [editor, syncSearchStats]);
+  }, [editor]);
 
   const openSearch = useCallback(() => {
     setSearchOpen(true);
@@ -697,14 +712,13 @@ function NfmEditorInstance({
         goToPreviousNfmSearchMatch(editor);
       }
       revealActiveNfmSearchMatch(editor);
-      syncSearchStats();
       if (preserveInputFocus) {
         requestAnimationFrame(() => {
           searchInputRef.current?.focus();
         });
       }
     },
-    [editor, syncSearchStats],
+    [editor],
   );
 
   const replaceCurrentMatch = useCallback(() => {
@@ -716,7 +730,6 @@ function NfmEditorInstance({
     if (state.activeIndex < 0) {
       goToNextNfmSearchMatch(editor);
       revealActiveNfmSearchMatch(editor);
-      syncSearchStats();
     }
 
     const replaced = replaceActiveNfmSearchMatch(editor, replaceQuery);
@@ -724,22 +737,20 @@ function NfmEditorInstance({
 
     goToNextNfmSearchMatch(editor);
     revealActiveNfmSearchMatch(editor);
-    syncSearchStats();
 
     requestAnimationFrame(() => {
       searchInputRef.current?.focus();
     });
-  }, [editor, replaceQuery, syncSearchStats]);
+  }, [editor, replaceQuery]);
 
   const replaceAllMatches = useCallback(() => {
     if (!editor) return;
     replaceAllNfmSearchMatches(editor, replaceQuery);
-    syncSearchStats();
 
     requestAnimationFrame(() => {
       searchInputRef.current?.focus();
     });
-  }, [editor, replaceQuery, syncSearchStats]);
+  }, [editor, replaceQuery]);
 
   const serializeEditorToNfm = useCallback((): string => {
     if (!editor) return "";
@@ -763,7 +774,7 @@ function NfmEditorInstance({
     if (wasActive) return;
 
     restoreEditorFocus();
-  }, [editor, isActivePanelTab, restoreEditorFocus]);
+  }, [isActivePanelTab, restoreEditorFocus]);
 
   const closePasteResourceDialog = useCallback(() => {
     setPasteResourcePending(false);
@@ -772,169 +783,29 @@ function NfmEditorInstance({
   }, []);
 
   useEffect(() => {
-    const runtime = editor as unknown as InlineViewHostContextRuntimeEditor;
-    runtime.nodexSourcePageContext =
+    bindNfmSourcePageContext(
+      editor,
       sourcePageContext && executionProjectId
-        ? {
-            projectId: executionProjectId,
-            pageId: sourcePageContext.pageId,
-          }
-        : null;
-
-    return () => {
-      runtime.nodexSourcePageContext = null;
-    };
+        ? { projectId: executionProjectId, pageId: sourcePageContext.pageId }
+        : null,
+    );
+    return () => bindNfmSourcePageContext(editor, null);
   }, [editor, executionProjectId, sourcePageContext]);
 
-  const handlePasteResourceChoice = useCallback(
-    async (mode: "materialized" | "link") => {
-      if (!editor || !pasteResourceDialog || pasteResourcePending) return;
-      const typedTarget = hasTypedOwnerType([
-        ...(pasteResourceDialog.target.selectedBlockTypes ?? []),
-        pasteResourceDialog.target.currentBlockType ?? null,
-      ]);
-      if (mode === "materialized" && !canMaterializePasteResourceItems(pasteResourceDialog.items)) {
-        setPasteResourceError("Folders can only be kept as links.");
-        return;
-      }
-
-      try {
-        setPasteResourcePending(true);
-        setPasteResourceError(null);
-
-        const nextAttachments: PasteAttachmentInlineContent[] = [];
-
-        for (const item of pasteResourceDialog.items) {
-          if (item.kind === "text") {
-            if (!fileRuntime) throw new Error("File authority is unavailable");
-            const text = pasteResourceDialog.textPayload ?? "";
-            const upload = createPastedTextUploadFile(text);
-            const uploaded = {
-              source: await fileRuntime.upload({ kind: "browser_file", file: upload }),
-              mimeType: upload.type || "text/plain",
-              bytes: upload.size,
-            };
-            nextAttachments.push({
-              type: "attachment",
-              props: {
-                kind: "text",
-                mode,
-                source: uploaded.source,
-                name: derivePastedTextAttachmentName(text),
-                mimeType: uploaded.mimeType,
-                bytes: uploaded.bytes,
-              },
-            });
-            continue;
-          }
-
-          if (mode === "link" && item.path) {
-            nextAttachments.push({
-              type: "attachment",
-              props: {
-                kind: item.kind,
-                mode: "link",
-                source: item.path,
-                name: item.name,
-                ...(item.mimeType ? { mimeType: item.mimeType } : {}),
-                ...(item.kind === "file" && typeof item.bytes === "number"
-                  ? { bytes: item.bytes }
-                  : {}),
-              },
-            });
-            continue;
-          }
-
-          if (item.path) {
-            if (!fileRuntime) throw new Error("File authority is unavailable");
-            const uploaded = {
-              source: await fileRuntime.upload({ kind: "local_path", path: item.path }, item.name),
-              name: item.name,
-              mimeType: item.mimeType ?? "application/octet-stream",
-              bytes: item.bytes,
-            };
-            nextAttachments.push({
-              type: "attachment",
-              props: {
-                kind: item.kind,
-                mode: "materialized",
-                source: uploaded.source,
-                name: uploaded.name,
-                mimeType: uploaded.mimeType,
-                ...(typeof uploaded.bytes === "number" ? { bytes: uploaded.bytes } : {}),
-                origin: item.path,
-              },
-            });
-            continue;
-          }
-
-          if (item.file) {
-            if (!fileRuntime) throw new Error("File authority is unavailable");
-            const uploaded = {
-              source: await fileRuntime.upload({ kind: "browser_file", file: item.file }),
-              name: item.file.name,
-              mimeType: item.file.type || "application/octet-stream",
-              bytes: item.file.size,
-            };
-            nextAttachments.push({
-              type: "attachment",
-              props: {
-                kind: item.kind,
-                mode: "materialized",
-                source: uploaded.source,
-                name: uploaded.name,
-                mimeType: uploaded.mimeType,
-                bytes: uploaded.bytes,
-              },
-            });
-          }
-        }
-
-        if (nextAttachments.length === 0) {
-          throw new Error("No pasted attachment could be created.");
-        }
-
-        if (!pasteResourceDialog.target.selection?.restore()) {
-          throw new Error("The original paste position is no longer available.");
-        }
-        const inserted = typedTarget
-          ? (structuralEditingController.current?.handleBlockPaste([
-              {
-                id: createUuidV7(),
-                type: "paragraph",
-                props: {},
-                content: nextAttachments,
-                children: [],
-              },
-            ]) ?? false)
-          : insertAttachmentsAtPasteTarget(editor, pasteResourceDialog.target, nextAttachments);
-        if (!inserted) {
-          throw new Error("Could not insert the attachment at the current cursor position.");
-        }
-
-        closePasteResourceDialog();
-      } catch (error) {
-        console.error("Failed to insert pasted attachments", error);
-        setPasteResourceError(
-          error instanceof Error && error.message.trim().length > 0
-            ? error.message
-            : "Failed to insert the pasted attachment.",
-        );
-      } finally {
-        setPasteResourcePending(false);
-      }
-    },
-    [
-      closePasteResourceDialog,
-      editor,
-      pasteResourceDialog,
-      pasteResourcePending,
+  const handlePasteResourceChoice = async (mode: "materialized" | "link") => {
+    if (!editor || !pasteResourceDialog || pasteResourcePending) return;
+    return pasteNfmResourceAttachments({
+      owner,
       fileRuntime,
-      structuralEditingController,
-    ],
-  );
+      dialog: pasteResourceDialog,
+      mode,
+      setPending: setPasteResourcePending,
+      setError: setPasteResourceError,
+      closeDialog: closePasteResourceDialog,
+    });
+  };
 
-  const handleContinuePasteInline = useCallback(() => {
+  const handleContinuePasteInline = () => {
     if (!editor || !pasteResourceDialog?.textPayload || pasteResourcePending) return;
     if (!pasteResourceDialog.target.selection?.restore()) {
       toast.info("The original paste position is no longer available.");
@@ -955,11 +826,15 @@ function NfmEditorInstance({
             ? editor.tryParseHTMLToBlocks(pasteResourceDialog.htmlPayload)
             : markdownBlocksForEditor(readPlainTextBlocks(pasteResourceDialog.textPayload));
       const handled =
-        structuralEditingController.current?.handleBlockPaste(
-          blocks as Parameters<
-            NonNullable<typeof structuralEditingController.current>["handleBlockPaste"]
-          >[0],
-        ) ?? false;
+        owner
+          .getActiveStructuralSession()
+          ?.handleBlockPaste(
+            blocks as Parameters<
+              NonNullable<
+                ReturnType<NfmEditorOwner["getActiveStructuralSession"]>
+              >["handleBlockPaste"]
+            >[0],
+          ) ?? false;
       if (!handled) {
         toast.info("The structural selection changed before paste could be applied.");
       }
@@ -975,53 +850,15 @@ function NfmEditorInstance({
       });
     }
     closePasteResourceDialog();
-  }, [
-    closePasteResourceDialog,
-    editor,
-    pasteResourceDialog,
-    pasteResourcePending,
-    structuralEditingController,
-  ]);
+  };
 
-  const handleImagePaste = useCallback(
-    async (files: File[], target: ReturnType<typeof capturePasteResourceTarget>) => {
-      if (!editor || files.length === 0) return;
-      try {
-        const blocks = await Promise.all(
-          files.map(async (file) => {
-            const uploaded = await uploadFile(file);
-            return {
-              id: createUuidV7(),
-              type: "image" as const,
-              props: uploaded.props,
-              children: [],
-            };
-          }),
-        );
-        const typedTarget = hasTypedOwnerType([
-          ...(target.selectedBlockTypes ?? []),
-          target.currentBlockType ?? null,
-        ]);
-        if (!target.selection?.restore()) {
-          throw new Error("The original paste position is no longer available.");
-        }
-        const inserted = typedTarget
-          ? (structuralEditingController.current?.handleBlockPaste(
-              blocks as Parameters<
-                NonNullable<typeof structuralEditingController.current>["handleBlockPaste"]
-              >[0],
-            ) ?? false)
-          : insertBlocksAtPasteTarget(editor, target, blocks);
-        if (!inserted) throw new Error("Couldn’t insert the pasted image at the original position");
-      } catch (error) {
-        console.error("Failed to paste image", error);
-        toast.danger(error instanceof Error ? error.message : "Couldn’t paste image");
-      } finally {
-        target.selection?.release();
-      }
-    },
-    [editor, structuralEditingController, uploadFile],
-  );
+  const handleImagePaste = async (
+    files: File[],
+    target: ReturnType<typeof capturePasteResourceTarget>,
+  ) => {
+    if (!editor || files.length === 0) return;
+    return pasteNfmImages({ owner, files, target, uploadFile });
+  };
 
   // Handle content changes from the editor
   const handleChange = useCallback(() => {
@@ -1029,6 +866,7 @@ function NfmEditorInstance({
     source.onDocumentChange?.();
   }, [editor, source]);
 
+  const pasteImageFromSubscription = useEffectEvent(handleImagePaste);
   useEffect(() => {
     const container = containerRef.current;
     if (!container || !editor) return;
@@ -1091,7 +929,7 @@ function NfmEditorInstance({
       if (onlyImageFiles) {
         event.preventDefault();
         event.stopPropagation();
-        void handleImagePaste(clipboardFiles, capturePasteResourceTarget(editor));
+        void pasteImageFromSubscription(clipboardFiles, capturePasteResourceTarget(editor));
         return;
       }
       const inspectedItems = readNativePastePayload(event)?.items ?? [];
@@ -1156,34 +994,18 @@ function NfmEditorInstance({
     return () => {
       container.removeEventListener("paste", handlePasteCapture, true);
     };
-  }, [editor, handleImagePaste, pasteResourceDialog, pasteResourceSettings, serializeEditorToNfm]);
+  }, [editor, pasteResourceDialog, pasteResourceSettings, serializeEditorToNfm]);
 
   useEffect(() => {
     if (!editor) return;
     setNfmSearchQuery(editor, searchQuery);
-    syncSearchStats();
-  }, [editor, searchQuery, syncSearchStats]);
-
-  useEffect(() => {
-    if (!editor) return;
-    const unsubscribeChange = editor.onChange(() => {
-      syncSearchStats();
-    });
-    const unsubscribeSelection = editor.onSelectionChange(() => {
-      syncSearchStats();
-    });
-    return () => {
-      unsubscribeChange();
-      unsubscribeSelection();
-    };
-  }, [editor, syncSearchStats]);
+  }, [editor, searchQuery]);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const selectionObservationRef = useRef<ReturnType<
     typeof createPageEditorSelectionObservation
   > | null>(null);
-  const pendingObservationInputRef = useRef(false);
-  pendingObservationInputRef.current = pasteResourceDialog != null;
+  const readPendingObservationInput = useEffectEvent(() => pasteResourceDialog != null);
   useLayoutEffect(() => {
     if (!editorSession || editorSession.descriptor.ownerType !== "page") return;
     const runtime = editorSession.runtime;
@@ -1198,12 +1020,11 @@ function NfmEditorInstance({
       subscribeSelection: selection.subscribeSelection,
       read: () => ({
         mounted: containerRef.current?.isConnected === true,
-        transientInput: pendingObservationInputRef.current || hasNfmEditorTransientInput(editor),
+        transientInput: readPendingObservationInput() || hasNfmEditorTransientInput(editor),
         status: runtime.getStatus(),
       }),
       prepare: async (options) => {
-        if (pendingObservationInputRef.current)
-          throw new Error("The Page editor has pending input");
+        if (readPendingObservationInput()) throw new Error("The Page editor has pending input");
         return prepareNfmEditorObservation(editor, containerRef.current, runtime, options);
       },
     });
@@ -1332,21 +1153,7 @@ function NfmEditorInstance({
         editor.focus();
         return true;
       },
-      focusBlock: (blockId) => {
-        if (!editor.getBlock(blockId)) return false;
-        try {
-          editor.setTextCursorPosition(blockId, "start");
-          const cssEscape =
-            globalThis.CSS?.escape ?? ((value: string) => value.replace(/["\\]/g, "\\$&"));
-          editor.prosemirrorView?.dom
-            .querySelector<HTMLElement>(`.bn-block[data-id="${cssEscape(blockId)}"]`)
-            ?.scrollIntoView({ block: "center" });
-          editor.focus();
-          return true;
-        } catch {
-          return false;
-        }
-      },
+      focusBlock: (blockId) => focusNfmEditorBlock(editor, blockId),
       focusBoundary: (direction) =>
         focusEmbeddedEditorBoundary(editor as unknown as EmbeddedSurfaceHostEditor, direction),
       openLineAtStart: () => {
@@ -1372,7 +1179,7 @@ function NfmEditorInstance({
       if (!ownsNfmEditorEvent(el, event.target)) return;
       if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement)
         return;
-      if (!structuralEditingController.current?.handleBeforeInput(event)) return;
+      if (!owner.getActiveStructuralSession()?.handleBeforeInput(event)) return;
       event.preventDefault();
       event.stopPropagation();
     };
@@ -1398,7 +1205,7 @@ function NfmEditorInstance({
         return;
       }
 
-      if (!targetIsTextField && structuralEditingController.current?.handleKeyDown(event)) {
+      if (!targetIsTextField && owner.getActiveStructuralSession()?.handleKeyDown(event)) {
         event.preventDefault();
         event.stopPropagation();
         return;
@@ -1543,16 +1350,7 @@ function NfmEditorInstance({
       el.removeEventListener("beforeinput", handleBeforeInput, true);
       el.removeEventListener("keydown", handleKeyDown, true);
     };
-  }, [
-    editor,
-    embeddedBoundary,
-    navigateSearch,
-    onOpenCodexThread,
-    openImagePreview,
-    openSearch,
-    searchOpen,
-    structuralEditingController,
-  ]);
+  }, [editor, embeddedBoundary, navigateSearch, openImagePreview, openSearch, searchOpen, owner]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -1617,91 +1415,75 @@ function NfmEditorInstance({
     [editor, sourcePageContext],
   );
 
-  const commitBlockSelectionMove = useCallback(
-    async (
-      selection: SendBlocksSelection,
-      destination: Extract<NfmMoveToDestination, { kind: "db-column" }>,
-    ) => {
-      if (!sourcePageContext) {
-        throw new Error("No blocks selected.");
-      }
-      if (executionProjectId === null) {
-        throw new Error("Moving Blocks requires a Project.");
-      }
-      const session = structuralEditingController.current;
-      if (!session) {
-        throw new Error("The collaborative Page surface changed; reopen it before moving Blocks.");
-      }
-      await session.promoteBlocks({
-        projectId: executionProjectId,
-        storeEpoch: source.storeEpoch,
-        sourcePageId: sourcePageContext.pageId,
-        sourceDocumentId: source.documentId,
-        sourceDocumentGeneration: source.generation,
-        rootBlockIds: selection.blockIds,
-        destination,
-      });
-    },
-    [executionProjectId, source, sourcePageContext, structuralEditingController],
-  );
+  const commitBlockSelectionMove = async (
+    selection: SendBlocksSelection,
+    destination: Extract<NfmMoveToDestination, { kind: "db-column" }>,
+  ) => {
+    if (!sourcePageContext) {
+      throw new Error("No blocks selected.");
+    }
+    if (executionProjectId === null) {
+      throw new Error("Moving Blocks requires a Project.");
+    }
+    const session = owner.getActiveStructuralSession();
+    if (!session) {
+      throw new Error("The collaborative Page surface changed; reopen it before moving Blocks.");
+    }
+    await session.promoteBlocks({
+      projectId: executionProjectId,
+      storeEpoch: source.storeEpoch,
+      sourcePageId: sourcePageContext.pageId,
+      sourceDocumentId: source.documentId,
+      sourceDocumentGeneration: source.generation,
+      rootBlockIds: selection.blockIds,
+      destination,
+    });
+  };
 
-  const moveBlocksToDestination = useCallback(
-    async (
-      destination: NfmMoveToDestination,
-      fallbackBlockId: string,
-      retainedBlockIds?: readonly string[],
-    ) => {
-      const selection = resolveSendBlocksSelection(fallbackBlockId, retainedBlockIds);
-      if (!selection) {
-        throw new Error("No blocks selected.");
-      }
+  const moveBlocksToDestination = async (
+    destination: NfmMoveToDestination,
+    fallbackBlockId: string,
+    retainedBlockIds?: readonly string[],
+  ) => {
+    const selection = resolveSendBlocksSelection(fallbackBlockId, retainedBlockIds);
+    if (!selection) {
+      throw new Error("No blocks selected.");
+    }
 
-      if (destination.kind === "page") {
-        if (
-          !sourcePageContext ||
-          destination.projectId !== executionProjectId ||
-          destination.pageId === sourcePageContext.pageId
-        ) {
-          throw new Error("Choose another Page in this Project.");
-        }
-        const session = structuralEditingController.current;
-        if (
-          !session?.moveBlocksToDocument(selection.blockIds, async () => {
-            const target = await prepareOwnedBlockDocument(
-              destination.projectId,
-              destination.pageId,
-            );
-            if (!target.ok) throw new Error(target.error.message);
-            return {
-              documentId: target.value.documentId,
-              storeEpoch: target.value.storeEpoch,
-              generation: target.value.generation,
-              headSeq: target.value.headSeq,
-            };
-          })
-        ) {
-          throw new Error("Structural editing is unavailable on this Page.");
-        }
-        await session.whenIdle();
-        return;
+    if (destination.kind === "page") {
+      if (
+        !sourcePageContext ||
+        destination.projectId !== executionProjectId ||
+        destination.pageId === sourcePageContext.pageId
+      ) {
+        throw new Error("Choose another Page in this Project.");
       }
-
-      if (hasTypedOwnerBlock(selection.blocks)) {
-        throw new Error("Selections that own nested content can move only to another Page.");
+      const session = owner.getActiveStructuralSession();
+      if (
+        !session?.moveBlocksToDocument(selection.blockIds, async () => {
+          const target = await prepareOwnedBlockDocument(destination.projectId, destination.pageId);
+          if (!target.ok) throw new Error(target.error.message);
+          return {
+            documentId: target.value.documentId,
+            storeEpoch: target.value.storeEpoch,
+            generation: target.value.generation,
+            headSeq: target.value.headSeq,
+          };
+        })
+      ) {
+        throw new Error("Structural editing is unavailable on this Page.");
       }
-      await commitBlockSelectionMove(selection, destination);
+      await session.whenIdle();
+      return;
+    }
 
-      restoreEditorFocus();
-    },
-    [
-      commitBlockSelectionMove,
-      resolveSendBlocksSelection,
-      restoreEditorFocus,
-      executionProjectId,
-      sourcePageContext,
-      structuralEditingController,
-    ],
-  );
+    if (hasTypedOwnerBlock(selection.blocks)) {
+      throw new Error("Selections that own nested content can move only to another Page.");
+    }
+    await commitBlockSelectionMove(selection, destination);
+
+    restoreEditorFocus();
+  };
 
   /** Sends a compiled Page prompt to one chat; resolves to the accepted message. */
   const sendPromptInputToChat = useCallback(
@@ -1770,14 +1552,7 @@ function NfmEditorInstance({
    */
   const settleHandedOffSelection = useCallback(
     (blockIds: readonly string[], focus: "page" | "composer") => {
-      const lastBlockId = blockIds.at(-1);
-      try {
-        if (lastBlockId && editor.getBlock(lastBlockId)) {
-          editor.setTextCursorPosition(lastBlockId, "end");
-        }
-      } catch {
-        // A Block without inline content keeps its selection.
-      }
+      collapseNfmHandedOffSelection(editor, blockIds);
       selectionObservationRef.current?.release();
       if (focus === "page") restoreEditorFocus();
     },
@@ -1924,8 +1699,8 @@ function NfmEditorInstance({
     ],
   );
 
-  const crossSurfaceDrag = useMemo(() => {
-    if (!structuralMutationParticipant) {
+  const crossSurfaceDrag = (() => {
+    if (!surfaceMutationBarrier) {
       return undefined;
     }
     return {
@@ -1940,7 +1715,11 @@ function NfmEditorInstance({
         storeEpoch: source.storeEpoch,
         ...(sourcePageContext?.pageId ? { hostPageId: sourcePageContext.pageId } : {}),
         ancestorPageIds: parentBlockReferenceRuntime?.ancestorPageIds ?? [],
-        prepareAndFence: structuralMutationParticipant.prepareAndFence,
+        prepareAndFence: (options?: DocumentWaitOptions) => {
+          if (!structuralMutationParticipant)
+            throw new Error("The editor is not ready for a transfer.");
+          return structuralMutationParticipant.prepareAndFence(options);
+        },
         prepareSourceAndFence: async (sourceSurfaceId: string, options?: DocumentWaitOptions) => {
           const participant = resolveBlockDocumentStructuralMutationParticipant(sourceSurfaceId);
           if (!participant) {
@@ -1949,7 +1728,7 @@ function NfmEditorInstance({
           return await participant.prepareAndFence(options);
         },
         receivePages: async (intent: NfmReceivingPageTransferIntent) => {
-          const session = structuralEditingController.current;
+          const session = owner.getActiveStructuralSession();
           if (!session) throw new Error("The editor is not ready to receive Pages.");
           await session.receivePages(intent);
         },
@@ -1972,7 +1751,7 @@ function NfmEditorInstance({
           };
           readonly preferredSelectionBlockId?: string;
         }) => {
-          const session = structuralEditingController.current;
+          const session = owner.getActiveStructuralSession();
           if (!session) throw new Error("The editor is not ready for a structural transfer.");
           await session.transferBlocks({
             mode,
@@ -1985,16 +1764,7 @@ function NfmEditorInstance({
         reportError: (message: string) => toast.danger(message),
       },
     };
-  }, [
-    parentBlockReferenceRuntime?.ancestorPageIds,
-    executionProjectId,
-    source.documentId,
-    source.clientSessionId,
-    source.storeEpoch,
-    sourcePageContext,
-    structuralEditingController,
-    structuralMutationParticipant,
-  ]);
+  })();
 
   useEditorDragBehaviors({
     editor,
@@ -2069,34 +1839,29 @@ function NfmEditorInstance({
     () => endLocalBlockDragSession({ sourceSurfaceId: source.clientSessionId }),
     [source.clientSessionId],
   );
-  const handleTurnBlocksInto = useCallback(
-    (input: NfmTurnBlocksIntoInput) => {
-      const expandedBlocks = input.expandedBlockIds.flatMap((blockId) => {
-        const block = editor.getBlock(blockId);
-        return block ? [block] : [];
-      });
-      const unsupportedOwner = expandedBlocks.find(
-        (block) => hasTypedOwnerType([block.type]) && block.type !== "page",
-      );
-      if (unsupportedOwner) {
-        toast.info("Canvas and Database blocks cannot be turned into text content.");
-        return true;
-      }
-      if (expandedBlocks.some((block) => block.type === "page")) {
-        return (
-          structuralEditingController.current?.turnBlocksInto(
-            input.rootBlockIds,
-            input.expandedBlockIds,
-            input.target,
-          ) ?? false
-        );
-      }
-      applyLocalNfmTurnInto(editor, expandedBlocks, input.localPatch);
+  const handleTurnBlocksInto = (input: NfmTurnBlocksIntoInput) => {
+    const expandedBlocks = input.expandedBlockIds.flatMap((blockId) => {
+      const block = editor.getBlock(blockId);
+      return block ? [block] : [];
+    });
+    const unsupportedOwner = expandedBlocks.find(
+      (block) => hasTypedOwnerType([block.type]) && block.type !== "page",
+    );
+    if (unsupportedOwner) {
+      toast.info("Canvas and Database blocks cannot be turned into text content.");
       return true;
-    },
-    [editor, structuralEditingController],
-  );
-  const sideMenuHandlersRef = useRef({
+    }
+    if (expandedBlocks.some((block) => block.type === "page")) {
+      return (
+        owner
+          .getActiveStructuralSession()
+          ?.turnBlocksInto(input.rootBlockIds, input.expandedBlockIds, input.target) ?? false
+      );
+    }
+    applyLocalNfmTurnInto(editor, expandedBlocks, input.localPatch);
+    return true;
+  };
+  const sideMenuHandlers = {
     canSendBlocks: blockActionCapabilities.canMoveBlocks,
     canSendToThread: blockActionCapabilities.canSendBlocksToThread,
     sendToThreadProjectNameById,
@@ -2116,43 +1881,15 @@ function NfmEditorInstance({
     onBlockDragStart: handleBlockDragStart,
     onBlockDragEnd: handleBlockDragEnd,
     onDuplicateBlocks: (blockIds: readonly string[]) =>
-      structuralEditingController.current?.duplicateBlocks(blockIds) ?? false,
+      owner.getActiveStructuralSession()?.duplicateBlocks(blockIds) ?? false,
     onDeleteBlocks: (blockIds: readonly string[]) =>
-      structuralEditingController.current?.deleteBlocks(blockIds, "backward") ?? false,
-    onTurnBlocksInto: handleTurnBlocksInto,
-  });
-  sideMenuHandlersRef.current = {
-    canSendBlocks: blockActionCapabilities.canMoveBlocks,
-    canSendToThread: blockActionCapabilities.canSendBlocksToThread,
-    sendToThreadProjectNameById,
-    sendToThreadPreferredTarget: sessionSendToThreadPreferredTarget,
-    onSendBlocksToThread: (request: NfmSendToThreadRequest, blockIds: readonly string[]) =>
-      sendBlocksToThread(request, blockIds[0] ?? "", blockIds),
-    ...(onAddPromptToChatComposer
-      ? {
-          onAddBlocksToComposer: (blockIds: readonly string[]) =>
-            addBlocksToComposer(blockIds[0] ?? "", blockIds),
-        }
-      : {}),
-    sourceProjectId: sourcePageContext ? executionProjectId : null,
-    sendToThreadProjectId: sourcePageContext ? chatSendProjectId : null,
-    sourcePageId: sourcePageContext?.pageId ?? null,
-    onMoveBlocksToDestination: moveBlocksToDestination,
-    onBlockDragStart: handleBlockDragStart,
-    onBlockDragEnd: handleBlockDragEnd,
-    onDuplicateBlocks: (blockIds: readonly string[]) =>
-      structuralEditingController.current?.duplicateBlocks(blockIds) ?? false,
-    onDeleteBlocks: (blockIds: readonly string[]) =>
-      structuralEditingController.current?.deleteBlocks(blockIds, "backward") ?? false,
+      owner.getActiveStructuralSession()?.deleteBlocks(blockIds, "backward") ?? false,
     onTurnBlocksInto: handleTurnBlocksInto,
   };
 
-  const sideMenuRuntimeValue = useMemo(
-    () => ({
-      getSnapshot: () => sideMenuHandlersRef.current,
-    }),
-    [],
-  );
+  const sideMenuRuntimeValue = {
+    getSnapshot: () => sideMenuHandlers,
+  };
 
   const customSideMenu = useCallback(() => <NfmSideMenu />, []);
 
@@ -2273,36 +2010,33 @@ function NfmEditorInstance({
     ],
   );
 
-  const createPageMention = useCallback(
-    async ({
+  const createPageMention = async ({
+    pageId,
+    title,
+    blockId,
+    expectedContent,
+    replacementContent,
+    destinationPageId,
+  }: Parameters<NonNullable<BlockReferenceHostRuntime["createPageMention"]>>[0]) => {
+    if (!sourcePageContext) {
+      throw new Error("A Page mention can only create a Page inside another Page.");
+    }
+    if (!structuralMutationParticipant) {
+      throw new Error("The Page Document is not ready to create a Page mention.");
+    }
+    const session = owner.getActiveStructuralSession();
+    if (!session) throw new Error("The editor is not ready to create a Page mention.");
+    await session.createPageMention({
       pageId,
       title,
+      hostPageId: sourcePageContext.pageId,
       blockId,
       expectedContent,
       replacementContent,
       destinationPageId,
-    }: Parameters<NonNullable<BlockReferenceHostRuntime["createPageMention"]>>[0]) => {
-      if (!sourcePageContext) {
-        throw new Error("A Page mention can only create a Page inside another Page.");
-      }
-      if (!structuralMutationParticipant) {
-        throw new Error("The Page Document is not ready to create a Page mention.");
-      }
-      const session = structuralEditingController.current;
-      if (!session) throw new Error("The editor is not ready to create a Page mention.");
-      await session.createPageMention({
-        pageId,
-        title,
-        hostPageId: sourcePageContext.pageId,
-        blockId,
-        expectedContent,
-        replacementContent,
-        destinationPageId,
-      });
-      return { pageId };
-    },
-    [sourcePageContext, structuralEditingController, structuralMutationParticipant],
-  );
+    });
+    return { pageId };
+  };
 
   const handleEditorClickCapture = useCallback(
     (event: ReactMouseEvent) => {
@@ -2324,38 +2058,21 @@ function NfmEditorInstance({
     [contentRoutingContext, editor, onOpenPage],
   );
 
-  const duplicateCanvasAfter = useCallback(
-    async (canvasBlockId: string) => {
-      const session = structuralEditingController.current;
-      if (!session?.duplicateBlocks([canvasBlockId])) {
-        throw new Error("Structural editing is unavailable for this Canvas.");
-      }
-      await session.whenIdle();
-    },
-    [structuralEditingController],
-  );
+  const duplicateCanvasAfter = async (canvasBlockId: string) => {
+    const session = owner.getActiveStructuralSession();
+    if (!session?.duplicateBlocks([canvasBlockId])) {
+      throw new Error("Structural editing is unavailable for this Canvas.");
+    }
+    await session.whenIdle();
+  };
 
-  const deletePage = useCallback(
-    async (pageBlockId: string) => {
-      const session = structuralEditingController.current;
-      if (!session?.deleteBlocks([pageBlockId], "backward")) {
-        throw new Error("Structural editing is unavailable for this Page.");
-      }
-      await session.whenIdle();
-    },
-    [structuralEditingController],
-  );
-
-  const deleteCanvas = useCallback(
-    async (canvasBlockId: string) => {
-      const session = structuralEditingController.current;
-      if (!session?.deleteBlocks([canvasBlockId], "backward")) {
-        throw new Error("Structural editing is unavailable for this Canvas.");
-      }
-      await session.whenIdle();
-    },
-    [structuralEditingController],
-  );
+  const deleteCanvas = async (canvasBlockId: string) => {
+    const session = owner.getActiveStructuralSession();
+    if (!session?.deleteBlocks([canvasBlockId], "backward")) {
+      throw new Error("Structural editing is unavailable for this Canvas.");
+    }
+    await session.whenIdle();
+  };
 
   useEffect(
     () =>
@@ -2388,33 +2105,6 @@ function NfmEditorInstance({
     },
     [contentRoutingContext],
   );
-  canvasCommandHandlersRef.current = {
-    duplicate: async (canvasBlockId) => {
-      try {
-        await duplicateCanvasAfter(canvasBlockId);
-        toast.success("Canvas duplicated");
-      } catch (error) {
-        toast.danger(error instanceof Error ? error.message : "Could not duplicate Canvas");
-      }
-    },
-    delete: async (canvasBlockId) => {
-      try {
-        await deleteCanvas(canvasBlockId);
-      } catch (error) {
-        toast.danger(error instanceof Error ? error.message : "Could not delete Canvas");
-      }
-    },
-  };
-  pageCommandHandlersRef.current = {
-    delete: async (pageBlockId) => {
-      try {
-        await deletePage(pageBlockId);
-      } catch (error) {
-        toast.danger(error instanceof Error ? error.message : "Could not delete Page");
-      }
-    },
-  };
-
   const threadMentionRuntimeValue = useMemo<ThreadMentionRuntimeValue>(
     () => ({
       sessions: threadMentionSummaryMap,
@@ -2441,7 +2131,7 @@ function NfmEditorInstance({
     [availableCodexModels, executionProjectId],
   );
 
-  const blockReferenceRuntimeValue = useMemo<BlockReferenceHostRuntime>(() => {
+  const blockReferenceRuntimeValue: BlockReferenceHostRuntime = (() => {
     const currentDocumentOwnerBlockId = documentOwnerBlockId ?? sourcePageContext?.pageId;
     return {
       contentRoutingContext,
@@ -2474,28 +2164,7 @@ function NfmEditorInstance({
         ? { createPageMention, createSubpageAtEmptyParagraph }
         : {}),
     };
-  }, [
-    contentRoutingContext,
-    documentOwnerBlockId,
-    isActivePanelTab,
-    onOpenPage,
-    onOpenDatabase,
-    onOpenCanvas,
-    projectName,
-    projectWorkspacePath,
-    parentBlockReferenceRuntime?.ancestorPageIds,
-    parentBlockReferenceRuntime?.ancestorDocumentOwnerBlockIds,
-    sourcePageContext,
-    source.clientSessionId,
-    structuralEditingSession,
-    surfaceMutationBarrier,
-    createCanvasAtEmptyParagraph,
-    createPageMention,
-    createSubpageAtEmptyParagraph,
-    deleteCanvas,
-    duplicateCanvasAfter,
-    renameCanvas,
-  ]);
+  })();
 
   const activeMatchLabel =
     searchMatchCount === 0
@@ -2663,8 +2332,9 @@ function NfmEditorInstance({
                   editor={editor}
                   onPreparePaste={() => {
                     const target = captureNfmPasteTarget(editor.prosemirrorView);
-                    const releaseStructural =
-                      structuralEditingController.current?.prepareNextStructuralPaste();
+                    const releaseStructural = owner
+                      .getActiveStructuralSession()
+                      ?.prepareNextStructuralPaste();
                     return {
                       restore: target.restore,
                       release: () => {

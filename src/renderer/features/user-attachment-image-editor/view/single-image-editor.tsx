@@ -235,9 +235,14 @@ export function SingleImageEditor({
     onToolChange?.(tool);
   };
 
-  useEffect(() => {
+  const [previousDescriptor, setPreviousDescriptor] = useState({
+    error: image.error,
+    id: image.id,
+  });
+  if (previousDescriptor.error !== image.error || previousDescriptor.id !== image.id) {
+    setPreviousDescriptor({ error: image.error, id: image.id });
     setDescriptorRetryRequested(false);
-  }, [image.error, image.id]);
+  }
 
   useEffect(() => {
     if (!displaySrc) return;

@@ -10,7 +10,7 @@ import {
   type FloatingUIOptions,
   type FormattingToolbarProps,
 } from "@blocknote/react";
-import { useMemo, useRef, type FC } from "react";
+import { useState, type FC } from "react";
 import { NodexFloatingLayerProvider } from "@/components/ui/floating-layer";
 import {
   isBlockLevelSelection,
@@ -262,65 +262,57 @@ export function NfmFormattingToolbarController(props: {
     textActionEligibility: currentToolbarEligibility.textAction,
     legacyEligibility: currentToolbarEligibility.legacy,
   });
-  const lastVisibleFloatingModeRef = useRef<NfmFormattingToolbarMode>(currentFloatingMode);
-
-  if (presentation.open) {
-    lastVisibleFloatingModeRef.current = presentation.mode;
+  const [lastVisibleFloatingMode, setLastVisibleFloatingMode] =
+    useState<NfmFormattingToolbarMode>(currentFloatingMode);
+  if (presentation.open && lastVisibleFloatingMode !== presentation.mode) {
+    setLastVisibleFloatingMode(presentation.mode);
   }
 
   const effectiveFloatingMode = resolveNfmFormattingToolbarEffectiveFloatingMode({
     show: presentation.open,
     currentMode: presentation.open ? presentation.mode : currentFloatingMode,
-    lastVisibleMode: lastVisibleFloatingModeRef.current,
+    lastVisibleMode: lastVisibleFloatingMode,
   });
   const position = presentation.open ? presentation.position : undefined;
   const textActionFloatingOptions =
     effectiveFloatingMode === "text-action" ? NFM_TEXT_ACTION_MENU_FLOATING_OPTIONS : undefined;
 
-  const floatingUIOptions = useMemo<FloatingUIOptions>(
-    () => ({
-      ...props.floatingUIOptions,
-      ...textActionFloatingOptions,
-      useFloatingOptions: {
-        open: presentation.open,
-        onOpenChange: (open, _event, reason) => {
-          formattingToolbar.store.setState(open);
+  const { useFloatingOptions: basePositionOptions } = props.floatingUIOptions ?? {};
+  const { useFloatingOptions: textActionPositionOptions } = textActionFloatingOptions ?? {};
+  const floatingUIOptions: FloatingUIOptions = {
+    ...props.floatingUIOptions,
+    ...textActionFloatingOptions,
+    useFloatingOptions: {
+      open: presentation.open,
+      onOpenChange: (open, _event, reason) => {
+        formattingToolbar.store.setState(open);
 
-          if (reason === "escape-key") {
-            editor.focus();
-          }
-        },
-        placement: currentPlacement,
-        strategy: "fixed",
-        middleware: createNfmEditorFloatingMiddleware(10),
-        ...props.floatingUIOptions?.useFloatingOptions,
-        ...textActionFloatingOptions?.useFloatingOptions,
+        if (reason === "escape-key") {
+          editor.focus();
+        }
       },
-      focusManagerProps: {
-        disabled: true,
-        ...props.floatingUIOptions?.focusManagerProps,
-        ...textActionFloatingOptions?.focusManagerProps,
+      placement: currentPlacement,
+      strategy: "fixed",
+      middleware: createNfmEditorFloatingMiddleware(10),
+      ...basePositionOptions,
+      ...textActionPositionOptions,
+    },
+    focusManagerProps: {
+      disabled: true,
+      ...props.floatingUIOptions?.focusManagerProps,
+      ...textActionFloatingOptions?.focusManagerProps,
+    },
+    elementProps: {
+      ...props.floatingUIOptions?.elementProps,
+      ...textActionFloatingOptions?.elementProps,
+      style: {
+        zIndex: NFM_EDITOR_FLOATING_UI_Z_INDEX,
+        ...props.floatingUIOptions?.elementProps?.style,
+        ...textActionFloatingOptions?.elementProps?.style,
       },
-      elementProps: {
-        ...props.floatingUIOptions?.elementProps,
-        ...textActionFloatingOptions?.elementProps,
-        style: {
-          zIndex: NFM_EDITOR_FLOATING_UI_Z_INDEX,
-          ...props.floatingUIOptions?.elementProps?.style,
-          ...textActionFloatingOptions?.elementProps?.style,
-        },
-      },
-      freezeChildrenOnClose: true,
-    }),
-    [
-      editor,
-      formattingToolbar.store,
-      currentPlacement,
-      presentation.open,
-      props.floatingUIOptions,
-      textActionFloatingOptions,
-    ],
-  );
+    },
+    freezeChildrenOnClose: true,
+  };
 
   const Component = props.formattingToolbar;
 

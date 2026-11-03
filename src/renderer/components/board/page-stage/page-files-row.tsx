@@ -1,5 +1,5 @@
 import { FileDetailsMetadata, FileListMetadata } from "@/components/shared/file-metadata";
-import { type DragEvent, useEffect, useId, useRef, useState } from "react";
+import { type DragEvent, useId, useRef, useState } from "react";
 
 import {
   ActivitySpinnerIcon,
@@ -153,15 +153,15 @@ function PageFilesDialogContent({
   const selected =
     value.files.find((item) => item.file.file_id === selectedFileId) ?? selectedQuery.item;
 
-  useEffect(() => {
-    if (selectedFileId === null && value.files.length > 0)
-      setSelectedFileId(value.files[0]!.file.file_id);
-  }, [selectedFileId, value.files]);
+  if (selectedFileId === null && value.files.length > 0)
+    setSelectedFileId(value.files[0]!.file.file_id);
 
-  useEffect(() => {
+  const [previousSelectedFileId, setPreviousSelectedFileId] = useState(selectedFileId);
+  if (previousSelectedFileId !== selectedFileId) {
+    setPreviousSelectedFileId(selectedFileId);
     setPath("");
     setEditingPath(false);
-  }, [selectedFileId]);
+  }
 
   const authority = metadata.data
     ? {

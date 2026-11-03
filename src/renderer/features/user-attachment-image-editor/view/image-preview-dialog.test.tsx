@@ -48,6 +48,23 @@ afterEach(() => {
 });
 
 describe("ImagePreviewDialog", () => {
+  test("starts a replacement image at the viewport origin", async () => {
+    const view = renderPreview();
+    const viewport = view.getByTestId("image-preview-dismiss-area");
+    viewport.scrollTop = 150;
+    viewport.scrollLeft = 90;
+    view.rerender(
+      <TestQueryProvider>
+        <ImagePreviewDialog open onOpenChange={() => undefined} src="data:image/png;base64,BAUG" />
+      </TestQueryProvider>,
+    );
+    await waitFor(() => {
+      const nextViewport = view.getByTestId("image-preview-dismiss-area");
+      expect(nextViewport.scrollTop).toBe(0);
+      expect(nextViewport.scrollLeft).toBe(0);
+    });
+  });
+
   test("does not download an image whose source retires while materializing it", async () => {
     let current = true;
     const download = vi

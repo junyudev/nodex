@@ -1,6 +1,6 @@
 import { useBlockNoteEditor } from "@blocknote/react";
 import { createPortal } from "react-dom";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
 import { writeTextToClipboard } from "@/lib/clipboard";
 import {
   getCodeBlockActionBarMode,
@@ -102,16 +102,17 @@ export function NfmCodeBlockController() {
   const editor = blockNoteEditor as unknown as CodeBlockControllerEditor;
   const sideMenu = useNfmSideMenuOpenController();
   const [active, setActive] = useState<ActiveCodeBlock | null>(null);
-  const activeRef = useRef<ActiveCodeBlock | null>(active);
-  activeRef.current = active;
+  const readActive = useEffectEvent(() => active);
   const [coarsePointer, setCoarsePointer] = useState(
     () => window.matchMedia?.("(pointer: coarse)").matches ?? false,
   );
   const interactionOpenRef = useRef(false);
   const hoveredBlockIdRef = useRef<string | null>(null);
   const draggingRef = useRef(false);
-  const sideMenuOpenBlockIdRef = useRef<string | null>(sideMenu.openBlockId);
-  sideMenuOpenBlockIdRef.current = sideMenu.openBlockId;
+  const sideMenuOpenBlockIdRef = useRef(sideMenu.openBlockId);
+  useLayoutEffect(() => {
+    sideMenuOpenBlockIdRef.current = sideMenu.openBlockId;
+  }, [sideMenu.openBlockId]);
 
   useEffect(() => {
     const media = window.matchMedia?.("(pointer: coarse)");
@@ -197,7 +198,7 @@ export function NfmCodeBlockController() {
       if (coarsePointer) showFirstSurface();
     };
     const mutationObserver = new MutationObserver(() => {
-      const current = activeRef.current;
+      const current = readActive();
       if (!current) return;
       if (!current.surface.isConnected) {
         const replacement = findSurfaceByBlockId(current.blockId);
@@ -249,13 +250,12 @@ export function NfmCodeBlockController() {
   }, [active, coarsePointer]);
 
   useEffect(() => {
-    if (!active) return;
-    if (coarsePointer) return;
-    if (sideMenu.openBlockId === active.blockId) return;
-    if (interactionOpenRef.current) return;
-    if (hoveredBlockIdRef.current === active.blockId) return;
-    if (active.surface.contains(document.activeElement)) return;
-    setActive(null);
+    if (!active || coarsePointer || sideMenu.openBlockId === active.blockId) return;
+    const keepActive =
+      interactionOpenRef.current ||
+      hoveredBlockIdRef.current === active.blockId ||
+      active.surface.contains(document.activeElement);
+    setActive(keepActive ? active : null);
   }, [active, coarsePointer, sideMenu.openBlockId]);
 
   if (!active) return null;

@@ -1,191 +1,4 @@
 {
-  "src/renderer/components/block-documents/block-document-surface.tsx": {
-    "react(exhaustive-effect-dependencies)": 1,
-    "react(refs)": 3,
-    "react(set-state-in-effect)": 1
-  },
-  "src/renderer/components/block-documents/block-document-sync-status.tsx": {
-    "react(exhaustive-effect-dependencies)": 1,
-    "react(refs)": 12
-  },
-  "src/renderer/components/block-documents/collaborative-page-title.tsx": {
-    "react(exhaustive-effect-dependencies)": 3,
-    "react(refs)": 1
-  },
-  "src/renderer/components/block-documents/owned-document-reference-surface.tsx": {
-    "react(refs)": 2
-  },
-  "src/renderer/components/block-documents/page-editor-session-surface.tsx": {
-    "react(exhaustive-effect-dependencies)": 1,
-    "react(refs)": 4,
-    "react(set-state-in-effect)": 1
-  },
-  "src/renderer/components/block-documents/page-outliner-surface.tsx": {
-    "react(set-state-in-effect)": 1
-  },
-  "src/renderer/components/block-documents/reference-block-surfaces.tsx": {
-    "react(no-object-type-as-default-prop)": 1,
-    "react(refs)": 1
-  },
-  "src/renderer/components/board/calendar/calendar-grid.tsx": {
-    "react(exhaustive-effect-dependencies)": 1,
-    "react(purity)": 1,
-    "react(set-state-in-effect)": 2
-  },
-  "src/renderer/components/board/editor/attachment-preview.ts": {
-    "react(exhaustive-effect-dependencies)": 1
-  },
-  "src/renderer/components/board/editor/canvas-block.tsx": {
-    "react(set-state-in-effect)": 1
-  },
-  "src/renderer/components/board/editor/date-mention-chip.tsx": {
-    "react(preserve-manual-memoization)": 1,
-    "react(purity)": 1,
-    "react(set-state-in-effect)": 1
-  },
-  "src/renderer/components/board/editor/image-block.tsx": {
-    "react(set-state-in-effect)": 1
-  },
-  "src/renderer/components/board/editor/nfm-code-block-controller.tsx": {
-    "react(refs)": 2,
-    "react(set-state-in-effect)": 1
-  },
-  "src/renderer/components/board/editor/nfm-edit-link-menu-items.tsx": {
-    "react(set-state-in-effect)": 1
-  },
-  "src/renderer/components/board/editor/nfm-editor-owner.tsx": {
-    "react(exhaustive-effect-dependencies)": 1,
-    "react(refs)": 1
-  },
-  "src/renderer/components/board/editor/nfm-editor.tsx": {
-    "react(exhaustive-effect-dependencies)": 3,
-    "react(immutability)": 1,
-    "react(preserve-manual-memoization)": 11,
-    "react(refs)": 5,
-    "react(set-state-in-effect)": 1
-  },
-  "src/renderer/components/board/editor/nfm-floating-popover.tsx": {
-    "react(exhaustive-effect-dependencies)": 1,
-    "react(refs)": 1
-  },
-  "src/renderer/components/board/editor/nfm-formatting-toolbar-controller.tsx": {
-    "react(hooks)": 1,
-    "react(refs)": 3
-  },
-  "src/renderer/components/board/editor/nfm-heading-navigation-rail.test.tsx": {
-    "react(memo-dependencies)": 1
-  },
-  "src/renderer/components/board/editor/nfm-heading-navigation-rail.tsx": {
-    "react(refs)": 5
-  },
-  "src/renderer/components/board/editor/nfm-link-toolbar-controller.tsx": {
-    "react(exhaustive-effect-dependencies)": 1,
-    "react(preserve-manual-memoization)": 1
-  },
-  "src/renderer/components/board/editor/nfm-link-toolbar.test.tsx": {
-    "react(static-components)": 1
-  },
-  "src/renderer/components/board/editor/nfm-link-toolbar.tsx": {
-    "react(exhaustive-effect-dependencies)": 1,
-    "react(set-state-in-effect)": 2
-  },
-  "src/renderer/components/board/editor/nfm-move-to-menu.tsx": {
-    "react(immutability)": 1,
-    "react(no-deriving-state-in-effects)": 1,
-    "react(set-state-in-effect)": 3
-  },
-  "src/renderer/components/board/editor/nfm-page-mention-create-flow.tsx": {
-    "react(refs)": 1,
-    "react(set-state-in-effect)": 1
-  },
-  "src/renderer/components/board/editor/nfm-retained-selection-presentation.ts": {
-    "react(exhaustive-effect-dependencies)": 1
-  },
-  "src/renderer/components/board/editor/nfm-send-to-thread-menu.tsx": {
-    "react(set-state-in-effect)": 2
-  },
-  "src/renderer/components/board/editor/nfm-side-menu.tsx": {
-    "react(immutability)": 1,
-    "react(refs)": 1,
-    "react(set-state-in-effect)": 4
-  },
-  "src/renderer/components/board/editor/nfm-text-action-menu.tsx": {
-    "react(refs)": 1
-  },
-  "src/renderer/components/board/editor/page-outliner-block.tsx": {
-    "react(set-state-in-effect)": 1
-  },
-  "src/renderer/components/board/editor/thread-mention-chip.tsx": {
-    "react(set-state-in-effect)": 1
-  },
-  "src/renderer/components/board/editor/use-editor-drag-behaviors.ts": {
-    "react(exhaustive-effect-dependencies)": 1
-  },
-  "src/renderer/components/board/history-panel.tsx": {
-    "react(set-state-in-effect)": 4
-  },
-  "src/renderer/components/board/page-create-dialog.tsx": {
-    "react(refs)": 4
-  },
-  "src/renderer/components/board/page-stage/page-files-row.tsx": {
-    "react(exhaustive-effect-dependencies)": 1,
-    "react(set-state-in-effect)": 2
-  },
-  "src/renderer/components/board/page-stage/properties-section.tsx": {
-    "react(set-state-in-effect)": 1,
-    "react(static-components)": 1
-  },
-  "src/renderer/components/board/page-stage/use-page-stage-controller.test.tsx": {
-    "react(globals)": 2
-  },
-  "src/renderer/components/board/page-stage/use-page-stage-controller.ts": {
-    "react(memo-dependencies)": 1,
-    "react(set-state-in-effect)": 1
-  },
-  "src/renderer/components/board/toggle-list-rules-body.tsx": {
-    "react(set-state-in-effect)": 1
-  },
-  "src/renderer/components/board/use-board-element-drag-monitor.ts": {
-    "react(exhaustive-effect-dependencies)": 1
-  },
-  "src/renderer/components/board/use-board-page-property-bindings.ts": {
-    "react(memo-dependencies)": 1
-  },
-  "src/renderer/components/board/view-scroll-containers.tsx": {
-    "react(refs)": 1
-  },
-  "src/renderer/components/conversation-media/conversation-video-player.tsx": {
-    "react(set-state-in-effect)": 1
-  },
-  "src/renderer/components/database/data-source-page-property-context-menu.tsx": {
-    "react(exhaustive-effect-dependencies)": 1,
-    "react(set-state-in-effect)": 1,
-    "react(static-components)": 1
-  },
-  "src/renderer/components/database/data-source-property-value-editor.tsx": {
-    "react(exhaustive-effect-dependencies)": 1,
-    "react(refs)": 1,
-    "react(set-state-in-effect)": 1,
-    "react(static-components)": 1
-  },
-  "src/renderer/components/database/date-property-editor.tsx": {
-    "react(exhaustive-effect-dependencies)": 1,
-    "react(purity)": 1,
-    "react(set-state-in-effect)": 2
-  },
-  "src/renderer/components/database/property-option-picker.tsx": {
-    "react(refs)": 1,
-    "react(set-state-in-effect)": 3
-  },
-  "src/renderer/components/database/relation-property-editor.tsx": {
-    "react(exhaustive-effect-dependencies)": 3,
-    "react(refs)": 2,
-    "react(set-state-in-effect)": 3
-  },
-  "src/renderer/components/database/use-property-option-registries.ts": {
-    "react(exhaustive-effect-dependencies)": 3,
-    "react(refs)": 2
-  },
   "src/renderer/components/workbench/app-shell-tabs.tsx": {
     "react(exhaustive-effect-dependencies)": 2,
     "react(set-state-in-effect)": 2
@@ -398,9 +211,6 @@
     "react(refs)": 9,
     "react(set-state-in-effect)": 1
   },
-  "src/renderer/features/avatar-overlay/avatar-overlay-page.tsx": {
-    "react(exhaustive-effect-dependencies)": 1
-  },
   "src/renderer/features/browser-sidebar/browser-profile-import-dialog.tsx": {
     "react(set-state-in-effect)": 2
   },
@@ -448,9 +258,6 @@
   "src/renderer/features/document-recovery/recovery-review.tsx": {
     "react(exhaustive-effect-dependencies)": 2,
     "react(set-state-in-effect)": 2
-  },
-  "src/renderer/features/floating-composer/floating-composer.tsx": {
-    "react(set-state-in-effect)": 1
   },
   "src/renderer/features/inbox/inbox-composer.tsx": {
     "react(exhaustive-effect-dependencies)": 2
@@ -682,33 +489,6 @@
   },
   "src/renderer/features/review/data/use-review-path-diffs.ts": {
     "react(refs)": 6
-  },
-  "src/renderer/features/user-attachment-image-editor/view/generated-image-dot-field.tsx": {
-    "react(refs)": 6,
-    "react(set-state-in-effect)": 1
-  },
-  "src/renderer/features/user-attachment-image-editor/view/generated-image-playground.tsx": {
-    "react(exhaustive-effect-dependencies)": 1,
-    "react(refs)": 1,
-    "react(set-state-in-effect)": 2
-  },
-  "src/renderer/features/user-attachment-image-editor/view/generated-image-rail.tsx": {
-    "react(refs)": 1
-  },
-  "src/renderer/features/user-attachment-image-editor/view/image-preview-dialog.tsx": {
-    "react(exhaustive-effect-dependencies)": 2,
-    "react(set-state-in-effect)": 1
-  },
-  "src/renderer/features/user-attachment-image-editor/view/image-zoom-viewer.tsx": {
-    "react(set-state-in-effect)": 1
-  },
-  "src/renderer/features/user-attachment-image-editor/view/single-image-editor.tsx": {
-    "react(exhaustive-effect-dependencies)": 1,
-    "react(set-state-in-effect)": 1
-  },
-  "src/renderer/features/user-attachment-image-editor/view/user-attachment-image-editor-surface.tsx": {
-    "react(refs)": 1,
-    "react(set-state-in-effect)": 1
   },
   "src/renderer/features/workspace-files/workspace-files-panel.tsx": {
     "react(exhaustive-effect-dependencies)": 1,

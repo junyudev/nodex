@@ -240,6 +240,40 @@ describe("DataSourcePropertyValueEditor", () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
+  test("replaces a focused scalar draft when its committed revision advances", async () => {
+    const onChange = vi.fn();
+    const props = {
+      property: {
+        ...statusProperty,
+        propertyId: parseDataSourcePropertyId("p_0123abcd"),
+        name: "Notes",
+        ...testPropertySemantics("text"),
+        valueType: "text" as const,
+        optionCount: 0,
+      },
+      value: "Committed",
+      revision: 3,
+      disabled: false,
+      onChange,
+    };
+    const view = render(<DataSourcePropertyValueEditor {...props} />);
+    const input = view.getByRole("textbox", { name: "Notes value" }) as HTMLInputElement;
+    await act(async () => {
+      input.focus();
+      fireEvent.change(input, { target: { value: "Unsaved draft" } });
+      await Promise.resolve();
+    });
+    view.rerender(<DataSourcePropertyValueEditor {...props} revision={4} />);
+    expect(view.getByRole("textbox", { name: "Notes value" })).toBe(input);
+    expect(document.activeElement).toBe(input);
+    expect(input.value).toBe("Committed");
+    await act(async () => {
+      fireEvent.blur(input);
+      await Promise.resolve();
+    });
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   test("emits only the user multi-select delta instead of replacing a stale whole set", async () => {
     const onChange = vi.fn();
     const onPatchOptions = vi.fn();

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import {
   readPageStageContentWidthPreference,
   readPageStageShowRawContentPreference,
@@ -126,6 +126,19 @@ function buildPageStageSessionSnapshot(
   };
 }
 
+/** Keep each saving claim until its command settles, including synchronous rejection. */
+async function runPageStageSavingCommand(
+  beginSaving: () => () => void,
+  command: () => void | Promise<void>,
+): Promise<void> {
+  const endSaving = beginSaving();
+  try {
+    await command();
+  } finally {
+    endSaving();
+  }
+}
+
 export function usePageStageController(
   props: PageStageProps,
   dependencies: PageStageControllerDependencies = {},
@@ -180,9 +193,10 @@ export function usePageStageController(
   const [showRawContent, setShowRawContent] = useState(() =>
     readPageStageShowRawContentPreference(),
   );
-  const appliedMetadataSourceVersionRef = useRef<PageStageMetadataSourceVersion | null>(null);
+  const [appliedMetadataSourceVersion, setAppliedMetadataSourceVersion] =
+    useState<PageStageMetadataSourceVersion | null>(null);
   const previousActivePanelTabRef = useRef(isActivePanelTab);
-  const beginSaving = useCallback(() => {
+  const beginSaving = () => {
     let finished = false;
     setSavingCount((current) => current + 1);
 
@@ -191,7 +205,7 @@ export function usePageStageController(
       finished = true;
       setSavingCount((current) => Math.max(0, current - 1));
     };
-  }, []);
+  };
 
   const propertyControls = usePageStageProperties({
     pageModel,
@@ -202,30 +216,24 @@ export function usePageStageController(
     beginSaving,
   });
 
-  const runUpdate = useCallback(
-    async (
-      nextPageId: string,
-      updates: Partial<PageInput>,
-    ): Promise<PageStageMetadataMutationResult> => {
-      const result = await onUpdate(nextPageId, updates);
-      if (!result) {
-        return {
-          status: "error",
-          error: "Missing update result",
-        };
-      }
-      return result;
-    },
-    [onUpdate],
-  );
-  const saveProperty = useCallback(
-    (updates: Partial<PageInput>) => {
-      if (!page) return;
-      const endSaving = beginSaving();
-      void runUpdate(page.id, updates).finally(endSaving);
-    },
-    [beginSaving, page, runUpdate],
-  );
+  const runUpdate = async (
+    nextPageId: string,
+    updates: Partial<PageInput>,
+  ): Promise<PageStageMetadataMutationResult> => {
+    const result = await onUpdate(nextPageId, updates);
+    if (!result) {
+      return {
+        status: "error",
+        error: "Missing update result",
+      };
+    }
+    return result;
+  };
+  const saveProperty = (updates: Partial<PageInput>) => {
+    if (!page) return;
+    const endSaving = beginSaving();
+    void runUpdate(page.id, updates).finally(endSaving);
+  };
 
   const schedulePage =
     page && databaseProperties && scheduleCapability ? { ...page, ...databaseProperties } : null;
@@ -238,76 +246,61 @@ export function usePageStageController(
   const applyRecurrenceState = schedule.applyRecurrenceState;
   const applyScheduleState = schedule.applyScheduleState;
 
-  useEffect(() => {
-    const pageId = page?.id ?? null;
-    const metadataSourceVersion = readPageStageMetadataSourceVersion(pageModel);
-    const prevPageId = appliedMetadataSourceVersionRef.current?.pageId ?? null;
-    if (
-      pageId === prevPageId &&
-      arePageStageMetadataSourceVersionsEqual(
-        appliedMetadataSourceVersionRef.current,
-        metadataSourceVersion,
-      )
-    )
-      return;
-
-    appliedMetadataSourceVersionRef.current = metadataSourceVersion;
-
+  const metadataSourceVersion = readPageStageMetadataSourceVersion(pageModel);
+  if (
+    !arePageStageMetadataSourceVersionsEqual(appliedMetadataSourceVersion, metadataSourceVersion)
+  ) {
+    setAppliedMetadataSourceVersion(metadataSourceVersion);
     if (page) {
       setTitle(page.title);
-      if (databaseProperties && scheduleCapability) {
-        const schedulePage = { ...page, ...databaseProperties };
+      if (schedulePage) {
         applyScheduleState(schedulePage);
         applyRecurrenceState(schedulePage);
       }
-      return;
     }
-  }, [
-    page,
-    pageModel,
-    databaseProperties,
-    scheduleCapability,
-    applyRecurrenceState,
-    applyScheduleState,
-  ]);
+  }
 
-  const handleDocumentTitleChange = useCallback((value: string) => {
+  const handleDocumentTitleChange = (value: string) => {
     setTitle(value);
-  }, []);
+  };
 
-  const handlePersist = useCallback(async () => {
+  const handlePersist = async () => {
     persistViewport?.();
     await (persistDocument?.() ?? Promise.resolve());
-  }, [persistDocument, persistViewport]);
+  };
 
-  const handleClose = useCallback(async () => {
+  const handleClose = async () => {
     await handlePersist();
     const sessionSnapshot = buildPageStageSessionSnapshot(executionProjectId, page, title);
     if (sessionSnapshot) {
       onLeavePage?.(sessionSnapshot);
     }
     onClose();
-  }, [executionProjectId, handlePersist, onClose, onLeavePage, page, title]);
+  };
 
+  const closeFromRegistration = useEffectEvent(handleClose);
+  const persistFromRegistration = useEffectEvent(handlePersist);
   useEffect(() => {
     if (!closeRef || !isActivePanelTab) return;
-    closeRef.current = handleClose;
+    const close = () => closeFromRegistration();
+    closeRef.current = close;
     return () => {
-      if (closeRef.current === handleClose) {
+      if (closeRef.current === close) {
         closeRef.current = null;
       }
     };
-  }, [closeRef, handleClose, isActivePanelTab]);
+  }, [closeRef, isActivePanelTab]);
 
   useEffect(() => {
     if (!persistRef || !isActivePanelTab) return;
-    persistRef.current = handlePersist;
+    const persist = () => persistFromRegistration();
+    persistRef.current = persist;
     return () => {
-      if (persistRef.current === handlePersist) {
+      if (persistRef.current === persist) {
         persistRef.current = null;
       }
     };
-  }, [persistRef, handlePersist, isActivePanelTab]);
+  }, [persistRef, isActivePanelTab]);
 
   useEffect(() => {
     if (!sessionSnapshotRef || !isActivePanelTab) return;
@@ -324,61 +317,42 @@ export function usePageStageController(
     const wasActive = previousActivePanelTabRef.current;
     previousActivePanelTabRef.current = isActivePanelTab;
     if (!wasActive || isActivePanelTab) return;
-    void handlePersist();
-  }, [handlePersist, isActivePanelTab]);
+    void persistFromRegistration();
+  }, [isActivePanelTab]);
 
-  const handleDelete = useCallback(async () => {
+  const handleDelete = async () => {
     if (!page || !onDelete) return;
-    const endSaving = beginSaving();
-    try {
+    return runPageStageSavingCommand(beginSaving, async () => {
       await onDelete(page.id);
       onClose();
-    } finally {
-      endSaving();
-    }
-  }, [beginSaving, page, onDelete, onClose]);
+    });
+  };
 
-  const handleOpenRelatedChat = useCallback(
-    async (sessionId: string) => {
-      if (!onOpenRelatedChat) return;
-      const endSaving = beginSaving();
-      try {
-        await onOpenRelatedChat(sessionId);
-      } finally {
-        endSaving();
-      }
-    },
-    [beginSaving, onOpenRelatedChat],
-  );
+  const handleOpenRelatedChat = async (sessionId: string) => {
+    if (!onOpenRelatedChat) return;
+    return runPageStageSavingCommand(beginSaving, () => onOpenRelatedChat(sessionId));
+  };
 
-  const handleRemoveRelatedChat = useCallback(
-    async (sessionId: string) => {
-      if (!onRemoveRelatedChat) return;
-      const endSaving = beginSaving();
-      try {
-        await onRemoveRelatedChat(sessionId);
-      } finally {
-        endSaving();
-      }
-    },
-    [beginSaving, onRemoveRelatedChat],
-  );
+  const handleRemoveRelatedChat = async (sessionId: string) => {
+    if (!onRemoveRelatedChat) return;
+    return runPageStageSavingCommand(beginSaving, () => onRemoveRelatedChat(sessionId));
+  };
 
-  const handleToggleContentWidth = useCallback(() => {
+  const handleToggleContentWidth = () => {
     setLimitMainContentWidth((current) => {
       const next = !current;
       writePageStageContentWidthPreference(next);
       return next;
     });
-  }, []);
+  };
 
-  const handleToggleShowRawContent = useCallback(() => {
+  const handleToggleShowRawContent = () => {
     setShowRawContent((current) => {
       const next = !current;
       writePageStageShowRawContentPreference(next);
       return next;
     });
-  }, []);
+  };
 
   const hasRelatedChatsRow =
     relatedChats.length > 0 ||

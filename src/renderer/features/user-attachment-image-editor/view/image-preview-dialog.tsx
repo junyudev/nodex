@@ -146,12 +146,15 @@ export function ImagePreviewDialog({
     viewportSize !== null &&
     (imageSize.width > viewportSize.width || imageSize.height > viewportSize.height);
 
-  useEffect(() => {
-    if (!open) return;
-    setManualZoomPercent(null);
-    setNaturalImageSize(null);
-    setLoadFailed(false);
-  }, [open, src]);
+  const [previousTarget, setPreviousTarget] = useState({ open, src });
+  if (previousTarget.open !== open || previousTarget.src !== src) {
+    setPreviousTarget({ open, src });
+    if (open) {
+      setManualZoomPercent(null);
+      setNaturalImageSize(null);
+      setLoadFailed(false);
+    }
+  }
 
   useEffect(() => {
     if (
@@ -168,13 +171,6 @@ export function ImagePreviewDialog({
       view: "preview_dialog",
     });
   }, [analyticsAvailableImageCount, analyticsEntrypoint, analyticsImageSource, open]);
-
-  useEffect(() => {
-    if (!open) return;
-    if (viewportNode) {
-      setPreviewScroll(viewportNode, 0, 0);
-    }
-  }, [open, src, viewportNode]);
 
   useEffect(() => {
     if (!viewportNode) return;
@@ -379,6 +375,7 @@ export function ImagePreviewDialog({
           ) : null}
 
           <div
+            key={src}
             ref={setViewportNode}
             data-testid="image-preview-dismiss-area"
             className="flex min-h-0 w-full flex-1 items-start justify-start overflow-auto"

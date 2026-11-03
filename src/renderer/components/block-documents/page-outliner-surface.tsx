@@ -1,6 +1,5 @@
 import {
   useCallback,
-  useEffect,
   useId,
   useState,
   type FocusEventHandler,
@@ -60,12 +59,10 @@ export const usePageOutlinerActivation = ({
   const surfaceInstanceKey = `page-outliner:${disclosureKey}:mount:${surfaceInstanceId}`;
   const [preferredExpanded, setExpanded] = useBlockDisclosure(disclosureKey, disclosureStore);
   const expanded = expandable && preferredExpanded;
-  const visibility = useElementVisibility();
-  const visible = visibilityOverride ?? visibility.visible;
+  const { ref: visibilityRef, visible: observedVisible } = useElementVisibility();
+  const visible = visibilityOverride ?? observedVisible;
   const [titleEngaged, setTitleEngaged] = useState(false);
-  useEffect(() => {
-    if (!expandable) setTitleEngaged(false);
-  }, [expandable]);
+  if (!expandable && titleEngaged) setTitleEngaged(false);
   const active = useReferenceSurfaceActivation(
     surfaceInstanceKey,
     expandable && (titleEngaged || (expanded && visible)),
@@ -87,7 +84,7 @@ export const usePageOutlinerActivation = ({
     visible,
     engageTitle,
     releaseTitle,
-    sectionRef: visibility.ref,
+    sectionRef: visibilityRef,
     setExpanded,
     touch,
   };

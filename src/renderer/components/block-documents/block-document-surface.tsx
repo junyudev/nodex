@@ -1,6 +1,7 @@
 import { ChevronRightIcon } from "@/components/shared/icons";
 import {
   useEffect,
+  useEffectEvent,
   useId,
   useLayoutEffect,
   useRef,
@@ -275,8 +276,7 @@ const useSurfaceAwareness = (
   awarenessLease?: EditorSurfaceAwarenessLease,
 ): void => {
   const retainedStateRef = useRef<Record<string, unknown> | null>(null);
-  const configuredRef = useRef(configured);
-  configuredRef.current = configured;
+  const readConfigured = useEffectEvent(() => configured);
 
   useEffect(() => {
     const awareness = runtime.awareness;
@@ -287,7 +287,7 @@ const useSurfaceAwareness = (
         runtime,
         routingContext,
         descriptor,
-        configuredRef.current,
+        readConfigured(),
         awarenessLease?.getRetainedState() ?? retainedStateRef.current,
       );
       if (awarenessLease) {
@@ -334,6 +334,20 @@ export interface OwnedBlockDocumentRuntimeSurfaceProps {
   readonly pendingFallback?: ReactNode;
   readonly renderFailureFallback?: OwnedBlockDocumentSurfaceProps["renderFailureFallback"];
   readonly children: OwnedBlockDocumentSurfaceProps["children"];
+}
+
+function SurfaceFailure({
+  failure,
+  renderFallback,
+}: {
+  readonly failure: BlockDocumentSurfaceFailureStateProps;
+  readonly renderFallback: OwnedBlockDocumentSurfaceProps["renderFailureFallback"];
+}) {
+  return renderFallback ? (
+    renderFallback(failure)
+  ) : (
+    <BlockDocumentSurfaceFailureState {...failure} />
+  );
 }
 
 export function OwnedBlockDocumentRuntimeSurface({
@@ -386,7 +400,7 @@ export function OwnedBlockDocumentRuntimeSurface({
         reloadInFlightRef.current = false;
         setReloading(false);
       });
-  }, [onReload, runtime, status.error, status.phase]);
+  }, [onReload, runtime, status.phase]);
 
   const failure = startupError ?? status.error;
   if (failure) {
@@ -397,11 +411,7 @@ export function OwnedBlockDocumentRuntimeSurface({
       reloading,
       reload,
     };
-    return renderFailureFallback ? (
-      renderFailureFallback(failureState)
-    ) : (
-      <BlockDocumentSurfaceFailureState {...failureState} />
-    );
+    return <SurfaceFailure failure={failureState} renderFallback={renderFailureFallback} />;
   }
 
   const document = status.ready ? runtime.getReadyDocument() : null;
@@ -449,15 +459,23 @@ function RuntimeOwner({
   const [descriptor] = useState(descriptorProp);
   const [ownerState, setOwnerState] = useState<RuntimeOwnerState>(EMPTY_RUNTIME_OWNER_STATE);
   const closeTailRef = useRef<Promise<void>>(Promise.resolve());
-  const onReloadRef = useRef(onReload);
-  onReloadRef.current = onReload;
+  const requestReload = useEffectEvent((context?: BlockDocumentSurfaceReloadContext) =>
+    onReload?.(context),
+  );
   const adapterFactory = dependencies.createAdapter ?? createDocumentSyncAdapterForContentRouting;
   const runtimeFactory = dependencies.createRuntime ?? createRuntime;
+  const [previousInput, setPreviousInput] = useState({ adapterFactory, runtimeFactory });
+  if (
+    previousInput.adapterFactory !== adapterFactory ||
+    previousInput.runtimeFactory !== runtimeFactory
+  ) {
+    setPreviousInput({ adapterFactory, runtimeFactory });
+    setOwnerState(EMPTY_RUNTIME_OWNER_STATE);
+  }
 
   useLayoutEffect(() => {
     let live = true;
     let ownedRuntime: BlockDocumentSurfaceRuntime | null = null;
-    setOwnerState(EMPTY_RUNTIME_OWNER_STATE);
 
     const openAfterPreviousClose = async (): Promise<void> => {
       await closeTailRef.current;
@@ -468,9 +486,8 @@ function RuntimeOwner({
         ownedRuntime = runtimeFactory({
           descriptor,
           adapter,
-          reload: (context) => onReloadRef.current?.(context),
+          reload: (context) => requestReload(context),
         });
-        if (runtimeRef) runtimeRef.current = ownedRuntime;
         setOwnerState({ runtime: ownedRuntime, startupError: null });
         await ownedRuntime.connect();
       } catch (error) {
@@ -486,7 +503,6 @@ function RuntimeOwner({
 
     return () => {
       live = false;
-      if (runtimeRef?.current === ownedRuntime) runtimeRef.current = null;
       setOwnerState((current) =>
         current.runtime === ownedRuntime ? EMPTY_RUNTIME_OWNER_STATE : current,
       );
@@ -496,13 +512,22 @@ function RuntimeOwner({
         () => undefined,
       );
     };
-  }, [adapterFactory, descriptor, runtimeFactory, runtimeRef]);
+  }, [adapterFactory, descriptor, runtimeFactory]);
+
+  useLayoutEffect(() => {
+    if (!runtimeRef) return;
+    const runtime = ownerState.runtime;
+    runtimeRef.current = runtime;
+    return () => {
+      if (runtimeRef.current === runtime) runtimeRef.current = null;
+    };
+  }, [ownerState.runtime, runtimeRef]);
 
   const { runtime, startupError } = ownerState;
 
   const reloadWithoutRuntime = async (): Promise<void> => {
     try {
-      await onReloadRef.current?.();
+      await onReload?.();
     } finally {
       restart();
     }
@@ -529,7 +554,7 @@ function RuntimeOwner({
   const handleReload = async (): Promise<void> => {
     try {
       if (!runtime.getStatus().reloadRequired) {
-        await onReloadRef.current?.();
+        await onReload?.();
       }
     } finally {
       restart();

@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import {
   GUTTER_WIDTH,
   TOTAL_SLOTS,
@@ -52,6 +60,13 @@ import {
   readRetainedScrollPosition,
   useRetainedScrollPosition,
 } from "@/lib/retained-scroll-position";
+
+function subscribeCalendarClock(onChange: () => void): () => void {
+  const timer = window.setInterval(onChange, 1_000);
+  return () => window.clearInterval(timer);
+}
+
+const readCalendarMinute = () => Math.floor(Date.now() / 60_000);
 
 interface ScheduledPage extends Omit<PageType, "scheduledStart" | "scheduledEnd"> {
   pageId?: string;
@@ -310,7 +325,13 @@ export function CalendarGrid({
   const eventPreviewRef = useRef<CalendarEventPreviewState | null>(null);
   const pendingDropPreviewEventIdRef = useRef<string | null>(null);
   const pendingDropPreviewTimeoutRef = useRef<number | null>(null);
-  const handledCreateRequestIdRef = useRef(0);
+  const [handledCreateRequestId, setHandledCreateRequestId] = useState(0);
+  const currentMinute = useSyncExternalStore(
+    subscribeCalendarClock,
+    readCalendarMinute,
+    readCalendarMinute,
+  );
+  const now = new Date(currentMinute * 60_000);
   const scrollRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
   const allDayRef = useRef<HTMLDivElement>(null);
@@ -323,6 +344,13 @@ export function CalendarGrid({
   const dayColWidthRef = useRef(0);
   const [visualOffsetPx, setVisualOffsetPx] = useState(0);
   const [visualBufferDays, setVisualBufferDays] = useState(1);
+  const [previousVisibleDays, setPreviousVisibleDays] = useState(visibleDays);
+  if (previousVisibleDays !== visibleDays) {
+    setPreviousVisibleDays(visibleDays);
+    setVisualOffsetPx(0);
+    setVisualBufferDays(1);
+  }
+  const animatedDaysRef = useRef(visibleDays);
   const retainedScroll = useRetainedScrollPosition<HTMLDivElement>(scrollStateKey ?? null, {
     axis: "vertical",
     retryFrames: 2,
@@ -483,6 +511,8 @@ export function CalendarGrid({
   }, []);
 
   useLayoutEffect(() => {
+    if (animatedDaysRef.current === visibleDays) return;
+    animatedDaysRef.current = visibleDays;
     if (shiftWheelSettleTimeoutRef.current !== null) {
       window.clearTimeout(shiftWheelSettleTimeoutRef.current);
       shiftWheelSettleTimeoutRef.current = null;
@@ -491,32 +521,22 @@ export function CalendarGrid({
       cancelAnimationFrame(shiftWheelSettleRafRef.current);
       shiftWheelSettleRafRef.current = null;
     }
-    resetShiftWheelVisualState();
-  }, [resetShiftWheelVisualState, visibleDays]);
+    shiftWheelAccumulatedPxRef.current = 0;
+    visualOffsetPxRef.current = 0;
+  }, [visibleDays]);
 
-  useEffect(() => {
-    if (createRequestId <= 0) return;
-    if (handledCreateRequestIdRef.current === createRequestId) return;
-    if (visibleDays.length === 0) return;
-    handledCreateRequestIdRef.current = createRequestId;
-
+  if (createRequestId > 0 && handledCreateRequestId !== createRequestId && visibleDays.length > 0) {
+    setHandledCreateRequestId(createRequestId);
     const firstDay = visibleDays[0]!;
-    const now = new Date();
     const roundedMinute = Math.ceil(now.getMinutes() / 15) * 15;
     const currentSlot = now.getHours() * 4 + Math.floor(roundedMinute / 15);
-    const fallbackSlot = 9 * 4;
     const startSlot = Math.max(
       0,
-      Math.min(isSameDay(firstDay, now) ? currentSlot : fallbackSlot, TOTAL_SLOTS - 4),
+      Math.min(isSameDay(firstDay, now) ? currentSlot : 9 * 4, TOTAL_SLOTS - 4),
     );
-
     setDragState(null);
-    setCreatorState({
-      dayIndex: 0,
-      startSlot,
-      endSlot: startSlot + 3,
-    });
-  }, [createRequestId, visibleDays]);
+    setCreatorState({ dayIndex: 0, startSlot, endSlot: startSlot + 3 });
+  }
 
   const pageById = useMemo(
     () => new Map(scheduledPages.map((page) => [page.id, page])),
@@ -1383,7 +1403,6 @@ export function CalendarGrid({
     [onNavigateNext, onNavigatePrev, resetShiftWheelVisualState, setVisualOffset],
   );
 
-  const now = new Date();
   const nowY = resolveNowY(now, hourHeight);
 
   const gridHeight = 24 * hourHeight;

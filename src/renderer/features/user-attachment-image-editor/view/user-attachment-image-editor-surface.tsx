@@ -1,3 +1,4 @@
+import { createImageEditorComposerObservation } from "./image-editor-composer-observation";
 import { useGeneratedImageCollectionGroups } from "../adapters/use-generated-image-collection-groups";
 import {
   useCallback,
@@ -16,10 +17,7 @@ import { NodexButton } from "@/components/ui/button";
 import { NodexPopover, NodexPopoverAnchor, NodexPopoverContent } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import {
-  getImageEditComposerDraftSnapshot,
-  replaceImageEditComposerDraft,
   requestImageEditComposerSubmit,
-  subscribeImageEditComposerDraft,
   type ImageEditComposerAttachment,
   type ImageEditComposerDraftSnapshot,
 } from "@/lib/image-edit-composer-channel";
@@ -344,18 +342,15 @@ function EditableImageSurface({
   const canUsePlayground = options.imageSource === "generated" && generatedImages.length > 0;
   const editorImages = options.imageSource === "generated" ? generatedImages : options.images;
   const composerChannelId = options.composerTarget?.channelId ?? options.threadId ?? "";
-  const getComposerDraftSnapshot = useCallback(
-    () => getImageEditComposerDraftSnapshot(composerChannelId),
-    [composerChannelId],
+  const [composerObservation, setComposerObservation] = useState(() =>
+    createImageEditorComposerObservation(composerChannelId),
   );
-  const subscribeComposerDraft = useCallback(
-    (listener: () => void) => subscribeImageEditComposerDraft(composerChannelId, listener),
-    [composerChannelId],
-  );
-  const composerDraft = useSyncExternalStore(
-    subscribeComposerDraft,
-    getComposerDraftSnapshot,
-    getComposerDraftSnapshot,
+  if (composerObservation.channelId !== composerChannelId)
+    setComposerObservation(createImageEditorComposerObservation(composerChannelId));
+  const { draft: composerDraft, externalRevision } = useSyncExternalStore(
+    composerObservation.subscribe,
+    composerObservation.getSnapshot,
+    composerObservation.getSnapshot,
   );
   const [activeImageId, setActiveImageId] = useState(options.initialImageId);
   const [view, setView] = useState<ImageEditorView>(
@@ -393,11 +388,10 @@ function EditableImageSurface({
   const previousGeneratedImagesRef = useRef(generatedImages);
   const previousGeneratedGroupsRef = useRef(generatedGroups);
   const optimisticFocusRef = useRef<GeneratedImageOptimisticFocus | null>(null);
-  const activeImageIdRef = useRef(activeImageId);
-  activeImageIdRef.current = activeImageId;
+  const readActiveImageId = useEffectEvent(() => activeImageId);
   const didTrackInitialViewRef = useRef(false);
-  const observedComposerRevisionRef = useRef(composerDraft.revision);
-  const skipComposerPublishRevisionRef = useRef<number | null>(null);
+  const [observedComposerRevision, setObservedComposerRevision] = useState(externalRevision);
+  const observedExternalRevisionRef = useRef(externalRevision);
   const submission = useImageEditSubmission({
     composerTarget: options.composerTarget,
     composerChatKey: options.composerChatKey,
@@ -456,7 +450,7 @@ function EditableImageSurface({
       optimisticFocusRef.current = captureGeneratedImageOptimisticFocus({
         groups: previousGroups,
         optimisticImageId: addedOptimistic.id,
-        previousImageId: activeImageIdRef.current,
+        previousImageId: readActiveImageId(),
       });
     }
     const focus = optimisticFocusRef.current;
@@ -545,10 +539,8 @@ function EditableImageSurface({
     [],
   );
 
-  useEffect(() => {
-    if (composerDraft.revision === observedComposerRevisionRef.current) return;
-    observedComposerRevisionRef.current = composerDraft.revision;
-    skipComposerPublishRevisionRef.current = composerDraft.revision;
+  if (externalRevision !== observedComposerRevision) {
+    setObservedComposerRevision(externalRevision);
 
     setCommentsByImageId(restoreCommentsFromComposerDraft(composerDraft, editorImages));
     if (composerDraft.mode === "selection") {
@@ -557,13 +549,12 @@ function EditableImageSurface({
     if (composerDraft.mode === "comment") {
       if (view === "playground") setPlaygroundTool("comment");
       else setSingleTool("comment");
-      return;
+    } else {
+      setActiveDraftImageId(null);
+      setSingleTool((current) => (current === "comment" ? "navigate" : current));
+      setPlaygroundTool((current) => (current === "comment" ? "navigate" : current));
     }
-    setActiveDraftImageId(null);
-    setSingleTool((current) => (current === "comment" ? "navigate" : current));
-    setPlaygroundTool((current) => (current === "comment" ? "navigate" : current));
-  }, [composerDraft, editorImages, view]);
-
+  }
   useEffect(() => {
     if (!composerChannelId || !activeImage) return;
     let mode: "comment" | "selection" | null = null;
@@ -595,19 +586,19 @@ function EditableImageSurface({
       mode = attachments.length > 0 ? "selection" : null;
     }
 
-    if (skipComposerPublishRevisionRef.current === composerDraft.revision) {
-      skipComposerPublishRevisionRef.current = null;
+    if (observedExternalRevisionRef.current !== externalRevision) {
+      observedExternalRevisionRef.current = externalRevision;
       return;
     }
     if (composerDraftMatches(composerDraft, { attachments, mode })) return;
-    replaceImageEditComposerDraft(composerChannelId, { attachments, mode });
-    observedComposerRevisionRef.current =
-      getImageEditComposerDraftSnapshot(composerChannelId).revision;
+    composerObservation.replace({ attachments, mode });
   }, [
     activeImage,
     commentsByImageId,
     composerChannelId,
     composerDraft,
+    composerObservation,
+    externalRevision,
     generatedImages,
     options.imageSource,
     playgroundTool,

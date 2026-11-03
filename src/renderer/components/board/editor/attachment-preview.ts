@@ -131,7 +131,8 @@ export function useAttachmentPreview(
   useEffect(
     () => () => {
       requestIdRef.current += 1;
-      if (entryRef.current?.state.status === "loading") entryRef.current = null;
+      if (entryRef.current?.key === previewKey && entryRef.current.state.status === "loading")
+        entryRef.current = null;
     },
     [previewKey],
   );

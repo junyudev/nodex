@@ -179,8 +179,7 @@ export function CollaborativePageTitle({
   const [richTitle, setRichTitle] = useState(() => readPortableRichTextFromYText(title));
   const richTitleSourceRef = useRef(portableRichTextSemanticSource(richTitle));
   const [localOrigin] = useState(() => ({ source: "collaborative-page-title" }));
-  const [selectionRevision, setSelectionRevision] = useState(0);
-  const [renderRevision, setRenderRevision] = useState(0);
+  const [, setSelectionRevision] = useState(0);
   const [selectedRange, setSelectedRange] = useState<{
     readonly start: number;
     readonly end: number;
@@ -195,9 +194,7 @@ export function CollaborativePageTitle({
   const relativeSelectionRef = useRef<RelativeTitleSelection | null>(null);
   const absoluteSelectionRef = useRef<AbsoluteTitleSelection | null>(null);
   const historyRef = useRef<PageTitleInteractionHistory | null>(null);
-  const onValueChangeRef = useRef(onValueChange);
-  onValueChangeRef.current = onValueChange;
-  const plainTitle = portableRichTextPlainText(richTitle);
+  const publishValueChange = useEffectEvent((value: string) => onValueChange?.(value));
   const disabled = ariaDisabled === true || ariaDisabled === "true";
 
   const requestHistory = (direction: SurfaceHistoryDirection): void => {
@@ -234,6 +231,8 @@ export function CollaborativePageTitle({
     }
   };
 
+  const captureCommittedSelection = useEffectEvent(captureSelection);
+
   useEffect(() => {
     const document = title.doc;
     if (!document) {
@@ -255,11 +254,10 @@ export function CollaborativePageTitle({
       if (nextSource === richTitleSourceRef.current) return;
       richTitleSourceRef.current = nextSource;
       setRichTitle(nextRichTitle);
-      setRenderRevision((revision) => revision + 1);
     };
     const handleTitleChange = (): void => {
       const nextRichTitle = readPortableRichTextFromYText(title);
-      onValueChangeRef.current?.(portableRichTextPlainText(nextRichTitle));
+      publishValueChange(portableRichTextPlainText(nextRichTitle));
       if (composingRef.current) return;
       publishRichTitle(nextRichTitle);
     };
@@ -313,7 +311,7 @@ export function CollaborativePageTitle({
     document.on("afterTransaction", handleAfterTransaction);
     const currentRichTitle = readPortableRichTextFromYText(title);
     publishRichTitle(currentRichTitle);
-    onValueChangeRef.current?.(portableRichTextPlainText(currentRichTitle));
+    publishValueChange(portableRichTextPlainText(currentRichTitle));
     return () => {
       title.unobserve(handleTitleChange);
       document.off("beforeTransaction", handleBeforeTransaction);
@@ -328,7 +326,7 @@ export function CollaborativePageTitle({
     const editor = editorRef.current;
     if (!editor || composingRef.current) return;
     renderRichTitleDom(editor, richTitle);
-  }, [renderRevision, richTitle]);
+  }, [richTitle]);
 
   useLayoutEffect(() => {
     const editor = editorRef.current;
@@ -336,8 +334,8 @@ export function CollaborativePageTitle({
     absoluteSelectionRef.current = null;
     if (!editor || !selection || editor.ownerDocument.activeElement !== editor) return;
     restoreRichTitleDomSelection(editor, selection.anchor, selection.focus);
-    captureSelection();
-  }, [plainTitle, richTitle, selectionRevision]);
+    captureCommittedSelection();
+  });
 
   // React only autofocuses form controls. A title asked to take focus does so once, when it
   // mounts, and selects its text so typing replaces a placeholder name such as "Untitled".
@@ -365,7 +363,7 @@ export function CollaborativePageTitle({
     if (!editor) return;
     const ownerDocument = editor.ownerDocument;
     const handleSelectionChange = (): void => {
-      if (ownerDocument.activeElement === editor) captureSelection();
+      if (ownerDocument.activeElement === editor) captureCommittedSelection();
     };
     ownerDocument.addEventListener("selectionchange", handleSelectionChange);
     return () => ownerDocument.removeEventListener("selectionchange", handleSelectionChange);

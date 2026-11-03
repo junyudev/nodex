@@ -1038,7 +1038,7 @@ function TextActionChatSection({
   const addToComposerShortcut = useCommandShortcutLabel("pageEditorAddToComposer");
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pending, setPending] = useState(false);
-  const anchorRef = useRef<HTMLDivElement>(null);
+  const [anchorElement, setAnchorElement] = useState<HTMLDivElement | null>(null);
   const contextualTarget = chat.contextualTarget;
   const onPickerOpenChangeRef = useRef(onPickerOpenChange);
   useLayoutEffect(() => {
@@ -1090,7 +1090,7 @@ function TextActionChatSection({
     },
     onClose: () => {
       setPicker(false);
-      requestAnimationFrame(() => anchorRef.current?.focus());
+      requestAnimationFrame(() => anchorElement?.focus());
     },
   };
 
@@ -1098,7 +1098,11 @@ function TextActionChatSection({
     <div className="flex flex-col gap-px">
       <NodexPopover open={pickerOpen} onOpenChange={setPicker}>
         <NodexPopoverAnchor>
-          <div ref={anchorRef} className="flex items-center gap-0.5" data-nfm-text-action-send>
+          <div
+            ref={setAnchorElement}
+            className="flex items-center gap-0.5"
+            data-nfm-text-action-send
+          >
             <TextActionChatRow
               icon={<TextActionSendGlyph pending={pending} />}
               label="Send to chat"

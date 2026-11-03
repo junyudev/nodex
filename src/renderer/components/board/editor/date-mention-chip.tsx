@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
+import { lazy, Suspense, useMemo, useState, type ReactNode } from "react";
 import type { DateRange } from "react-day-picker";
 import {
   NodexOptionPicker,
@@ -191,11 +191,12 @@ function DateMentionPopoverBody({
   onPatch: (patch: DateMentionPatch) => void;
 }) {
   const payload = dateMentionPropsToPayload(props);
-  const startDateValue = dateMentionValueToIsoDate(payload.start) ?? todayIsoDate();
+  const [fallbackDate] = useState(() => new Date());
+  const startDateValue = dateMentionValueToIsoDate(payload.start) ?? dateToIsoDate(fallbackDate);
   const endDateValue = payload.end ? dateMentionValueToIsoDate(payload.end) : null;
   const startTime = dateMentionValueToTime(payload.start);
   const endTime = payload.end ? dateMentionValueToTime(payload.end) : null;
-  const startDate = useMemo(() => isoDateToDate(startDateValue) ?? new Date(), [startDateValue]);
+  const startDate = isoDateToDate(startDateValue) ?? fallbackDate;
   const selectedRange = payload.end
     ? { from: startDate, to: isoDateToDate(endDateValue ?? startDateValue) ?? startDate }
     : { from: startDate, to: undefined };
@@ -204,10 +205,12 @@ function DateMentionPopoverBody({
   const hasEndDate = Boolean(payload.end);
   const hasTime = isDateMentionDateTimeValue(payload.start);
 
-  useEffect(() => {
+  const [previousStartDate, setPreviousStartDate] = useState(startDateValue);
+  if (previousStartDate !== startDateValue) {
+    setPreviousStartDate(startDateValue);
     setDateInput(startDateValue);
     setMonth(startDate);
-  }, [startDate, startDateValue]);
+  }
 
   const patchPayload = (nextPayload: DateMentionInlineContent) => {
     onPatch(dateMentionPayloadToProps(nextPayload));

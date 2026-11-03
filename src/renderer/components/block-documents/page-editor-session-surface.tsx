@@ -1,4 +1,11 @@
-import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { PageEditorSessionObservation } from "./page-editor-session-owner";
+import {
+  useEffectEvent,
+  useLayoutEffect,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
 import {
   BlockDocumentSurfaceFailureState,
   OwnedBlockDocumentRuntimeSurface,
@@ -25,19 +32,6 @@ interface PageEditorSessionSurfaceProps extends Omit<BlockDocumentSurfaceProps, 
   readonly children: (surface: BlockDocumentSurfaceValue, session: EditorSurfaceLease) => ReactNode;
 }
 
-interface SessionOwnerState {
-  readonly session: EditorSurfaceLease | null;
-  readonly startupError: Error | null;
-}
-
-const EMPTY_SESSION_OWNER_STATE: SessionOwnerState = {
-  session: null,
-  startupError: null,
-};
-
-const toError = (error: unknown): Error =>
-  error instanceof Error ? error : new Error(String(error));
-
 const createRuntime = (options: BlockDocumentSurfaceRuntimeOptions): BlockDocumentSurfaceRuntime =>
   new BlockDocumentSurfaceRuntime(options);
 
@@ -46,7 +40,7 @@ const createRuntime = (options: BlockDocumentSurfaceRuntimeOptions): BlockDocume
  * cleanup always releases presence and DOM; durable tabs leave model disposal
  * to the registry, while an unpromoted preview disposes on final unmount.
  */
-export function PageEditorSessionSurface({
+function PageEditorSessionOwner({
   sessionKey,
   retainModelOnUnmount = true,
   registry = documentSessionRegistry,
@@ -60,70 +54,46 @@ export function PageEditorSessionSurface({
   pendingFallback,
   renderFailureFallback,
   children,
-}: PageEditorSessionSurfaceProps) {
-  const [revision, setRevision] = useState(0);
-  const [ownerState, setOwnerState] = useState<SessionOwnerState>(EMPTY_SESSION_OWNER_STATE);
-  const descriptorRef = useRef(descriptor);
-  descriptorRef.current = descriptor;
-  const retainModelOnUnmountRef = useRef(retainModelOnUnmount);
-  retainModelOnUnmountRef.current = retainModelOnUnmount;
-  const onReloadRef = useRef(onReload);
-  onReloadRef.current = onReload;
-  const identity = makeDocumentSessionIdentity(descriptor);
+  restartOwner,
+}: PageEditorSessionSurfaceProps & { readonly restartOwner: () => void }) {
+  const [observation] = useState(() => new PageEditorSessionObservation());
+  const ownerState = useSyncExternalStore(observation.subscribe, observation.getSnapshot);
+  const [ownedDescriptor] = useState(descriptor);
+  const shouldRetainModel = useEffectEvent(() => retainModelOnUnmount);
   const adapterFactory = dependencies?.createAdapter ?? createDocumentSyncAdapterForContentRouting;
   const runtimeFactory = dependencies?.createRuntime ?? createRuntime;
 
-  useLayoutEffect(() => {
-    let live = true;
-    let session: EditorSurfaceLease | null = null;
-    let viewGeneration = 0;
-    setOwnerState(EMPTY_SESSION_OWNER_STATE);
-
-    try {
-      const currentDescriptor = descriptorRef.current;
-      session = registry.acquire({
-        key: sessionKey,
-        descriptor: currentDescriptor,
+  useLayoutEffect(
+    () =>
+      observation.attach({
+        registry,
+        sessionKey,
+        descriptor: ownedDescriptor,
         createRuntime: () =>
           runtimeFactory({
-            descriptor: currentDescriptor,
-            adapter: adapterFactory(currentDescriptor.routingContext),
+            descriptor: ownedDescriptor,
+            adapter: adapterFactory(ownedDescriptor.routingContext),
           }),
-      });
-      viewGeneration = session.claimView();
-      if (runtimeRef) runtimeRef.current = session.runtime;
-      setOwnerState({ session, startupError: null });
-      void session.connect().catch((error) => {
-        if (!live) return;
-        setOwnerState((current) =>
-          current.session === session ? { session, startupError: toError(error) } : current,
-        );
-      });
-    } catch (error) {
-      setOwnerState({ session: null, startupError: toError(error) });
-    }
-
-    return () => {
-      live = false;
-      if (runtimeRef && runtimeRef.current === session?.runtime) {
-        runtimeRef.current = null;
-      }
-      if (!session) return;
-      const retainModel = retainModelOnUnmountRef.current;
-      const released = session.releaseView(viewGeneration, {
-        persist: retainModel,
-      });
-      if (!released || retainModel) return;
-      void registry.dispose(sessionKey, session).catch(() => undefined);
-    };
-  }, [adapterFactory, identity, registry, revision, runtimeFactory, runtimeRef, sessionKey]);
+        runtimeRef,
+        retainModel: () => shouldRetainModel(),
+      }),
+    [
+      observation,
+      adapterFactory,
+      ownedDescriptor,
+      registry,
+      runtimeFactory,
+      runtimeRef,
+      sessionKey,
+    ],
+  );
 
   const restart = async (): Promise<void> => {
     const session = ownerState.session;
-    setOwnerState(EMPTY_SESSION_OWNER_STATE);
+    observation.clear();
     if (session) await registry.dispose(sessionKey, session);
-    await onReloadRef.current?.();
-    setRevision((current) => current + 1);
+    await onReload?.();
+    restartOwner();
   };
 
   const { session, startupError } = ownerState;
@@ -190,5 +160,17 @@ export function PageEditorSessionSurface({
         );
       }}
     </OwnedBlockDocumentRuntimeSurface>
+  );
+}
+
+export function PageEditorSessionSurface(props: PageEditorSessionSurfaceProps) {
+  const [revision, setRevision] = useState(0);
+  const identity = makeDocumentSessionIdentity(props.descriptor);
+  return (
+    <PageEditorSessionOwner
+      key={`${props.sessionKey}\u0000${identity}\u0000${revision}`}
+      {...props}
+      restartOwner={() => setRevision((current) => current + 1)}
+    />
   );
 }

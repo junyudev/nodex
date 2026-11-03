@@ -148,10 +148,7 @@ export function PageOutlinerBlock({
     });
   }, [expandable, hostEditor, requestBoundaryFocus, shellBlockId]);
 
-  useEffect(() => {
-    if (expandable) return;
-    setFocusIntent(null);
-  }, [expandable]);
+  if (!expandable && focusIntent !== null) setFocusIntent(null);
   const plainTitle = pageOutlinerPlainTitle(target);
   const rowProps: PageOutlinerRowChromeProps = {
     plainTitle,

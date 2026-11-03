@@ -139,7 +139,7 @@ export const GenericPopover = (
   if (!portalRoot) {
     throw new Error("Portal element not found");
   }
-  const { refs, floatingStyles, context } = useFloating<HTMLDivElement>({
+  const { refs, elements, floatingStyles, context } = useFloating<HTMLDivElement>({
     ...props.useFloatingOptions,
     whileElementsMounted: mergeWhileElementsMounted(
       autoUpdate,
@@ -258,19 +258,37 @@ export const GenericPopover = (
     () => {
       if (isMounted && !isClosing && hasRenderedChildren) {
         lastOpenChildren.current = props.children;
-        if (freezeChildrenOnClose && ref.current) {
-          lastOpenInnerHTML.current = ref.current.innerHTML;
-        }
       }
     },
     [
-      freezeChildrenOnClose,
       hasRenderedChildren,
       isClosing,
       isMounted,
       props.children,
     ],
   );
+
+  // Descendants can commit editor-state updates without changing the parent's
+  // children identity. Capture the visible DOM, including those nested commits,
+  // while open; never replace the snapshot with the closing subtree.
+  useLayoutEffect(() => {
+    const element = elements.floating;
+    if (!element || !isMounted || isClosing || !freezeChildrenOnClose) {
+      return;
+    }
+    const capture = () => {
+      lastOpenInnerHTML.current = element.innerHTML;
+    };
+    capture();
+    const observer = new MutationObserver(capture);
+    observer.observe(element, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+      attributes: true,
+    });
+    return () => observer.disconnect();
+  }, [elements.floating, freezeChildrenOnClose, isClosing, isMounted]);
 
   if (!isMounted) {
     return false;

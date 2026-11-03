@@ -113,9 +113,8 @@ function NfmPageLinkPicker({
       })
     : search.rows;
   const items = request ? pageSearchResultsToReferenceCandidates(request, rows) : [];
-  useEffect(() => {
-    setSelectedIndex((current) => Math.min(current, Math.max(items.length - 1, 0)));
-  }, [items.length]);
+  const clampedSelectedIndex = Math.min(selectedIndex, Math.max(items.length - 1, 0));
+  if (selectedIndex !== clampedSelectedIndex) setSelectedIndex(clampedSelectedIndex);
   const status =
     !hostRuntime || search.enrichment === "unavailable"
       ? ("error" as const)
@@ -375,9 +374,11 @@ function NfmCreateLinkButton({ renderTrigger }: NfmCreateLinkButtonProps) {
     },
   });
 
-  useEffect(() => {
+  const [previousSelection, setPreviousSelection] = useState(state);
+  if (previousSelection !== state) {
+    setPreviousSelection(state);
     setShowPopover(false);
-  }, [state]);
+  }
 
   useEffect(() => {
     const callback = (event: KeyboardEvent) => {

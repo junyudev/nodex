@@ -7,7 +7,6 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import type {
-  AvatarOverlayLayout,
   AvatarOverlayNativeLayoutState,
   AvatarOverlayRendererCommand,
   AvatarOverlayRendererEvent,
@@ -33,11 +32,7 @@ function reportEvent(event: AvatarOverlayRendererEvent): void {
   void sendEvent(event).catch(() => undefined);
 }
 
-function useAvatarOverlayGeometry(
-  frameRef: React.RefObject<HTMLElement | null>,
-  layout: AvatarOverlayLayout,
-  controlsVisible: boolean,
-): void {
+function useAvatarOverlayGeometry(frameRef: React.RefObject<HTMLElement | null>): void {
   useEffect(() => {
     const frame = frameRef.current;
     if (!frame) return;
@@ -104,7 +99,7 @@ function useAvatarOverlayGeometry(
       frame.removeEventListener("transitionend", schedule);
       frame.removeEventListener("animationend", schedule);
     };
-  }, [controlsVisible, frameRef, layout]);
+  }, [frameRef]);
 }
 
 function useAvatarOverlayPointerInteractivity(frameRef: React.RefObject<HTMLElement | null>): void {
@@ -198,7 +193,7 @@ export function AvatarOverlayRoot() {
   const [visible, setVisible] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(false);
 
-  useAvatarOverlayGeometry(frameRef, layout, controlsVisible);
+  useAvatarOverlayGeometry(frameRef);
   useAvatarOverlayPointerInteractivity(frameRef);
 
   useEffect(() => {

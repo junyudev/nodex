@@ -110,7 +110,7 @@ function PageCreateDialogContent({
   const titleInputRef = useRef<HTMLInputElement>(null);
   const descriptionNavigationRef = useRef<NfmEditorBoundaryHandle>(null);
   const pendingRef = useRef(false);
-  const restoredTagOptionsRef = useRef(createRestoredTagOptions(restoredSnapshot));
+  const [restoredTagOptions] = useState(() => createRestoredTagOptions(restoredSnapshot));
   const initialStatus = target.columns.some((column) => column.id === restoredSnapshot?.status)
     ? (restoredSnapshot?.status ?? origin.columnId)
     : origin.columnId;
@@ -118,11 +118,10 @@ function PageCreateDialogContent({
   const [status, setStatus] = useState<WorkflowStatus>(initialStatus);
   const [priority, setPriority] = useState<Priority | null>(restoredSnapshot?.priority ?? null);
   const [estimate, setEstimate] = useState<Estimate | null>(restoredSnapshot?.estimate ?? null);
-  const [draftTagOptions, setDraftTagOptions] = useState<readonly DatabasePropertyOption[]>(
-    restoredTagOptionsRef.current,
-  );
+  const [draftTagOptions, setDraftTagOptions] =
+    useState<readonly DatabasePropertyOption[]>(restoredTagOptions);
   const [selectedTagIds, setSelectedTagIds] = useState<readonly string[]>(
-    restoredTagOptionsRef.current.map((option) => option.id),
+    restoredTagOptions.map((option) => option.id),
   );
   const { draft: descriptionDraft, reset: resetDescriptionDraft } = usePageCreateDescriptionDraft(
     requestId,
@@ -291,7 +290,7 @@ function PageCreateDialogContent({
   return (
     <NodexDialog
       open
-      disablePointerDismissal={pendingRef.current}
+      disablePointerDismissal={saving}
       onOpenChange={(open, details) => {
         if (open) return;
         if (pendingRef.current || (details.reason === "escape" && nestedSurfaceOpen)) {

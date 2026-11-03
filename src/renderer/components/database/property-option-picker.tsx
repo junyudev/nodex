@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useEffectEvent,
   useId,
   useRef,
   useState,
@@ -291,9 +292,10 @@ export function PropertyOptionPicker({
   const [error, setError] = useState<string | null>(null);
   const listboxId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
-  const onOpenRef = useRef(onOpen);
+  const requestOptions = useEffectEvent(() => onOpen?.());
+  const notifyDisabledClose = useEffectEvent(() => onOpenChange?.(false));
+  const [closedByDisable, setClosedByDisable] = useState(false);
   const optionLoadRequestedRef = useRef(false);
-  onOpenRef.current = onOpen;
   const triggerDisabled = disabled || pending;
   const mutationDisabled = triggerDisabled || loading;
   const selected = dedupe(selectedIds);
@@ -316,6 +318,7 @@ export function PropertyOptionPicker({
       const selectedIndex = options.findIndex((option) => selectedSet.has(option.id));
       setActiveIndex(selectedIndex >= 0 ? selectedIndex : 0);
     }
+    setClosedByDisable(false);
     setOpen(next);
     onOpenChange?.(next);
   };
@@ -328,24 +331,29 @@ export function PropertyOptionPicker({
     changeOpen(next);
   };
 
-  useEffect(() => {
+  const [previousOpen, setPreviousOpen] = useState(open);
+  if (previousOpen !== open) {
+    setPreviousOpen(open);
     if (!open) {
       setQuery("");
       setActiveIndex(0);
       setCreating(false);
       setError(null);
-      return;
     }
-    if (host === "popover") return;
+  }
+  if (host !== "embedded" && disabled && open) {
+    setOpen(false);
+    setClosedByDisable(true);
+  }
+  useEffect(() => {
+    if (!open || host === "popover") return;
     const frame = requestAnimationFrame(() => inputRef.current?.focus());
     return () => cancelAnimationFrame(frame);
   }, [host, open]);
 
   useEffect(() => {
-    if (host === "embedded" || !disabled || !open) return;
-    setOpen(false);
-    onOpenChange?.(false);
-  }, [disabled, host, onOpenChange, open]);
+    if (closedByDisable) notifyDisabledClose();
+  }, [closedByDisable]);
 
   useEffect(() => {
     if (!open) {
@@ -358,12 +366,11 @@ export function PropertyOptionPicker({
     }
     if (registryError || optionLoadRequestedRef.current) return;
     optionLoadRequestedRef.current = true;
-    onOpenRef.current?.();
+    requestOptions();
   }, [loading, open, registryError]);
 
-  useEffect(() => {
-    setActiveIndex((current) => Math.min(current, Math.max(0, filtered.length - 1)));
-  }, [filtered.length]);
+  const boundedActiveIndex = Math.min(activeIndex, Math.max(0, filtered.length - 1));
+  if (activeIndex !== boundedActiveIndex) setActiveIndex(boundedActiveIndex);
 
   const selectOption = (optionId: string) => {
     if (mutationDisabled) return;

@@ -103,7 +103,7 @@ export function NfmLinkToolbarController(props: {
       destroyOnSelectionChangeHandler();
       domElement?.removeEventListener("mouseover", mouseCursorCallback);
     };
-  }, [editor, editor.domElement, link, linkToolbar, toolbarPositionFrozen]);
+  }, [editor, link, linkToolbar, toolbarPositionFrozen]);
 
   const floatingUIOptions = useMemo<FloatingUIOptions>(
     () => ({
@@ -150,10 +150,9 @@ export function NfmLinkToolbarController(props: {
     [editor, link, props.floatingUIOptions, toolbarOpen, toolbarPositionFrozen],
   );
 
-  const reference = useMemo<NfmPopoverReference | undefined>(
-    () => (link?.element ? { element: link.element } : undefined),
-    [link?.element],
-  );
+  const reference: NfmPopoverReference | undefined = link?.element
+    ? { element: link.element }
+    : undefined;
 
   if (!editor.isEditable) {
     return null;

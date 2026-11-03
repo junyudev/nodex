@@ -1,6 +1,14 @@
 import { SuggestionMenu, type SuggestionDeferredAcceptance } from "@blocknote/core/extensions";
 import { useBlockNoteEditor, useExtensionState } from "@blocknote/react";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
 import { NfmSideMenuPageInIcon, PageIcon } from "@/components/shared/icons";
 import { useBlockReferenceHostRuntime } from "@/components/block-documents/block-reference-runtime-context";
@@ -19,6 +27,12 @@ interface NfmPageMentionCreateLease {
   readonly title: string;
   readonly expectedContent: PortableRichText;
   readonly replacementContent: PortableRichText;
+}
+
+/** A created Page is accepted only after the exact suggestion lease reaches its editor. */
+function commitCreatedPageMention(flow: NfmPageMentionCreateLease): void {
+  if (flow.lease.commit()) return;
+  throw new Error("The created Page mention did not reach this editor.");
 }
 
 function NfmPageMentionDestinationMenu({
@@ -98,12 +112,20 @@ export function useNfmPageMentionCreateFlow({
   const editor = useBlockNoteEditor();
   const hostRuntime = useBlockReferenceHostRuntime();
   const hostRuntimeRef = useRef(hostRuntime);
-  hostRuntimeRef.current = hostRuntime;
-  const [destinationFlow, setDestinationFlow] = useState<NfmPageMentionCreateLease | null>(null);
+  useLayoutEffect(() => {
+    hostRuntimeRef.current = hostRuntime;
+  }, [hostRuntime]);
+  const [storedDestinationFlow, setDestinationFlow] = useState<NfmPageMentionCreateLease | null>(
+    null,
+  );
   const pendingSuggestionSessionId = useExtensionState(SuggestionMenu, {
     selector: (state) =>
       state?.show && state.acceptancePhase === "pending_authoritative" ? state.sessionId : null,
   });
+  const destinationFlow =
+    storedDestinationFlow?.lease.sessionId === pendingSuggestionSessionId
+      ? storedDestinationFlow
+      : null;
   const clearDestinationFlow = useCallback((flow: NfmPageMentionCreateLease) => {
     setDestinationFlow((current) => (current?.lease === flow.lease ? null : current));
   }, []);
@@ -112,11 +134,9 @@ export function useNfmPageMentionCreateFlow({
   // selection, and controller-driven closes can invalidate that parent without
   // invoking the picker's explicit close callback, so discard the orphan here.
   useEffect(() => {
-    if (!destinationFlow) return;
-    if (pendingSuggestionSessionId === destinationFlow.lease.sessionId) return;
-    destinationFlow.lease.rollback("parent-suggestion-ended");
-    clearDestinationFlow(destinationFlow);
-  }, [clearDestinationFlow, destinationFlow, pendingSuggestionSessionId]);
+    if (!storedDestinationFlow || destinationFlow) return;
+    storedDestinationFlow.lease.rollback("parent-suggestion-ended");
+  }, [destinationFlow, storedDestinationFlow]);
 
   const beginCreateFlow = useCallback(
     (query: string): NfmPageMentionCreateLease | null => {
@@ -126,11 +146,12 @@ export function useNfmPageMentionCreateFlow({
       const lease = editor.getExtension(SuggestionMenu)?.beginDeferredAcceptance(replacement);
       if (!lease) return null;
 
+      const title = query.trim() || "Untitled";
       try {
         return {
           lease,
           pageId,
-          title: query.trim() || "Untitled",
+          title,
           expectedContent: blockNoteInlineToPortableRichText(lease.expectedContent),
           replacementContent: blockNoteInlineToPortableRichText(lease.replacementContent),
         };
@@ -161,18 +182,17 @@ export function useNfmPageMentionCreateFlow({
         return;
       }
 
+      const request = {
+        pageId: flow.pageId,
+        title: flow.title,
+        blockId: flow.lease.blockId,
+        expectedContent: flow.expectedContent,
+        replacementContent: flow.replacementContent,
+        ...(destinationPageId ? { destinationPageId } : {}),
+      };
       try {
-        await createPageMention({
-          pageId: flow.pageId,
-          title: flow.title,
-          blockId: flow.lease.blockId,
-          expectedContent: flow.expectedContent,
-          replacementContent: flow.replacementContent,
-          ...(destinationPageId ? { destinationPageId } : {}),
-        });
-        if (!flow.lease.commit()) {
-          throw new Error("The created Page mention did not reach this editor.");
-        }
+        await createPageMention(request);
+        commitCreatedPageMention(flow);
         clearDestinationFlow(flow);
       } catch (error) {
         editor.focus();

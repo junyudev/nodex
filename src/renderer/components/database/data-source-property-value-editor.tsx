@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
+import { useRef, useState, type ReactElement, type ReactNode } from "react";
 import { NodexCheckbox } from "@/components/ui/settings";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { dataSourcePropertyIcon } from "./data-source-property-presentation";
+import { PropertyEditorIcon } from "./property-editor-icons";
 import { DueDateValueIcon } from "./due-date-value-icon";
 import {
   createCustomOptionId,
@@ -70,15 +70,15 @@ function ScalarPropertyEditor({
   const [error, setError] = useState<string | null>(null);
   const [focused, setFocused] = useState(false);
   const skipBlurCommitRef = useRef(false);
-  const disabledRef = useRef(disabled);
-  disabledRef.current = disabled;
-  useEffect(() => {
+  const [committed, setCommitted] = useState({ revision, value });
+  if (committed.revision !== revision || committed.value !== value) {
+    setCommitted({ revision, value });
     setDraft(value);
     setError(null);
-  }, [revision, value]);
+  }
 
   const commit = () => {
-    if (disabledRef.current) {
+    if (disabled) {
       setDraft(value);
       setError(null);
       return;
@@ -218,13 +218,15 @@ export function DataSourcePropertyValueEditor({
   onRelationValueStale,
 }: DataSourcePropertyValueEditorProps) {
   const role = resolveDataSourcePropertyPresentationRole(property);
-  const PropertyIcon = dataSourcePropertyIcon(property);
   const boardIcon =
     presentation !== "board" ? undefined : role.kind === "due_date" ? (
       <DueDateValueIcon value={value} />
-    ) : PropertyIcon ? (
-      <PropertyIcon className="size-3.5 shrink-0 text-[var(--database-property-chip-current-text,var(--database-property-chip-text))]" />
-    ) : undefined;
+    ) : (
+      <PropertyEditorIcon
+        property={property}
+        className="size-3.5 shrink-0 text-[var(--database-property-chip-current-text,var(--database-property-chip-text))]"
+      />
+    );
   const valueTriggerIcon = presentation === "board" ? boardIcon : triggerIcon;
   const createOption = onCreateOption
     ? (name: string) => {

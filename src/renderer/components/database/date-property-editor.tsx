@@ -1,12 +1,4 @@
-import {
-  lazy,
-  Suspense,
-  useEffect,
-  useRef,
-  useState,
-  type PointerEventHandler,
-  type ReactNode,
-} from "react";
+import { lazy, Suspense, useRef, useState, type PointerEventHandler, type ReactNode } from "react";
 import { CalendarIcon, ClockIcon } from "@/components/shared/icons";
 import { NodexPopover, NodexPopoverContent, NodexPopoverTrigger } from "@/components/ui/popover";
 import {
@@ -108,36 +100,39 @@ export function DatePropertyEditor({
   const [open, setOpen] = useState(false);
   const [dateInput, setDateInput] = useState(committed.date);
   const [timeInput, setTimeInput] = useState(committed.time);
-  const [month, setMonth] = useState(parseIsoDateToLocalDate(committed.date) ?? new Date());
+  const [initialMonth] = useState(() => new Date());
+  const [month, setMonth] = useState(() => parseIsoDateToLocalDate(committed.date) ?? initialMonth);
   const [error, setError] = useState<string | null>(null);
   const skipBlurCommitRef = useRef(false);
-  const lastCommittedDraftRef = useRef<string | null>(null);
+  const lastCommittedDraftRef = useRef<{ source: string; signature: string } | null>(null);
+  const source = JSON.stringify([committed.date, committed.time, revision]);
   const editorOpen = host === "embedded" || open;
   const closeEditor = () => {
     setOpen(false);
     onRequestClose?.();
   };
 
-  useEffect(() => {
+  const [previousSource, setPreviousSource] = useState(source);
+  if (previousSource !== source) {
+    setPreviousSource(source);
     setDateInput(committed.date);
     setTimeInput(committed.time);
-    setMonth(parseIsoDateToLocalDate(committed.date) ?? new Date());
+    setMonth(parseIsoDateToLocalDate(committed.date) ?? initialMonth);
     setError(null);
-    lastCommittedDraftRef.current = null;
-  }, [committed.date, committed.time, revision]);
-
-  useEffect(() => {
-    if (!disabled) return;
-    setOpen(false);
-  }, [disabled]);
+  }
+  if (disabled && open) setOpen(false);
 
   const commitDraft = (date: string, time = timeInput) => {
     if (disabled) return false;
     const signature = `${date}\u0000${mode === "datetime" ? time : ""}`;
-    if (lastCommittedDraftRef.current === signature) return true;
+    if (
+      lastCommittedDraftRef.current?.source === source &&
+      lastCommittedDraftRef.current.signature === signature
+    )
+      return true;
     if (!date) {
       setError(null);
-      lastCommittedDraftRef.current = signature;
+      lastCommittedDraftRef.current = { source, signature };
       onChange(null);
       return true;
     }
@@ -149,7 +144,7 @@ export function DatePropertyEditor({
     if (mode === "date") {
       setError(null);
       setMonth(parsedDate);
-      lastCommittedDraftRef.current = signature;
+      lastCommittedDraftRef.current = { source, signature };
       onChange(date);
       return true;
     }
@@ -161,7 +156,7 @@ export function DatePropertyEditor({
     setError(null);
     setTimeInput(time || "09:00");
     setMonth(parsedDate);
-    lastCommittedDraftRef.current = `${date}\u0000${time || "09:00"}`;
+    lastCommittedDraftRef.current = { source, signature: `${date}\u0000${time || "09:00"}` };
     onChange(next);
     return true;
   };

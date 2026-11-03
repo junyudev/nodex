@@ -1,4 +1,10 @@
-import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useEffectEvent,
+  useLayoutEffect,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
 import { BlockNoteEditor, type BlockNoteEditorOptions } from "@blocknote/core";
 import type { EditorSurfaceLease } from "@/lib/document-session-registry";
 import { PAGE_DOCUMENT_TITLE_KEY } from "../../../../shared/block-documents/page-document";
@@ -164,6 +170,10 @@ export class NfmEditorOwner {
     this.structuralSession = controller.attachEditor(this.editor, historyScope, locate);
   }
 
+  getActiveStructuralSession(): NfmStructuralEditingSession | null {
+    return this.controller.current;
+  }
+
   get closed(): boolean {
     return this.retired;
   }
@@ -213,6 +223,44 @@ export function NfmEditorOwnerBoundary({
   );
 }
 
+interface NfmEditorBinding {
+  readonly owner: NfmEditorOwner;
+  readonly editorSession: EditorSurfaceLease | undefined;
+}
+
+/** Publishes the resource acquired after commit, with a fresh owner for StrictMode remounts. */
+function createCommittedEditorBinding() {
+  let binding: NfmEditorBinding | null = null;
+  const listeners = new Set<() => void>();
+  const publish = (next: NfmEditorBinding | null) => {
+    binding = next;
+    for (const listener of listeners) listener();
+  };
+  return {
+    getSnapshot: () => binding,
+    subscribe: (listener: () => void) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    acquire: (input: NfmEditorOwnerInput) => {
+      validateRetainedAuthority(input);
+      const { editorSession } = input;
+      const create = () => new NfmEditorOwner(input);
+      const owner =
+        editorSession?.getOrCreateRetainedResource("nfm-editor-owner", create) ?? create();
+      owner.assertIdentity(input);
+      publish({ owner, editorSession });
+      return () => {
+        publish(null);
+        if (editorSession) return;
+        void owner.dispose().catch((error: unknown) => console.error("[nfm-editor:close]", error));
+      };
+    },
+  };
+}
+
 function CommittedNfmEditorOwnerBoundary({
   input,
   children,
@@ -220,29 +268,18 @@ function CommittedNfmEditorOwnerBoundary({
   readonly input: NfmEditorOwnerInput;
   readonly children: (owner: NfmEditorOwner) => ReactNode;
 }) {
-  const inputRef = useRef(input);
-  inputRef.current = input;
-  const [binding, setBinding] = useState<{
-    readonly owner: NfmEditorOwner;
-    readonly editorSession: EditorSurfaceLease | undefined;
-  } | null>(null);
-  const { editorInstanceKey, editorSession } = input;
-  useLayoutEffect(() => {
-    const currentInput = inputRef.current;
-    validateRetainedAuthority(currentInput);
-    const create = () => new NfmEditorOwner(currentInput);
-    const current =
-      editorSession?.getOrCreateRetainedResource("nfm-editor-owner", create) ?? create();
-    current.assertIdentity(currentInput);
-    setBinding({ owner: current, editorSession });
-    return () => {
-      setBinding(null);
-      if (editorSession) return;
-      void current.dispose().catch((error: unknown) => {
-        console.error("[nfm-editor:close]", error);
-      });
-    };
-  }, [editorInstanceKey, editorSession]);
+  const readInput = useEffectEvent(() => input);
+  const [resource] = useState(createCommittedEditorBinding);
+  const binding = useSyncExternalStore(
+    resource.subscribe,
+    resource.getSnapshot,
+    resource.getSnapshot,
+  );
+  const { editorSession } = input;
+  useLayoutEffect(
+    () => resource.acquire({ ...readInput(), editorSession }),
+    [resource, editorSession],
+  );
   if (!binding || binding.editorSession !== editorSession || binding.owner.closed) return null;
   return children(binding.owner);
 }

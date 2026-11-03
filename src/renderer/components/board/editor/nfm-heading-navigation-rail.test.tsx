@@ -100,9 +100,7 @@ function HeadingRailHarness({
   const editor = useMemo(
     () => ({
       document,
-      get domElement() {
-        return editorElement;
-      },
+      domElement: editorElement,
       onChange: () => () => undefined,
     }),
     [document, editorElement],

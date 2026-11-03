@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
-import { fireEvent } from "@testing-library/react";
+import { fireEvent, waitFor } from "@testing-library/react";
 import { act, type ComponentProps } from "react";
 import {
   installAsyncRequestAnimationFrame,
@@ -101,10 +101,10 @@ function buildVisibleDays(): Date[] {
   });
 }
 
-function renderCalendarGrid(props: Partial<ComponentProps<typeof CalendarGrid>> = {}) {
+function calendarGrid(props: Partial<ComponentProps<typeof CalendarGrid>> = {}) {
   const noop = () => undefined;
 
-  return render(
+  return (
     <CalendarGrid
       visibleDays={buildVisibleDays()}
       createRequestId={0}
@@ -120,8 +120,12 @@ function renderCalendarGrid(props: Partial<ComponentProps<typeof CalendarGrid>> 
       allDayLaneHeight={72}
       onAllDayLaneHeightChange={noop}
       {...props}
-    />,
+    />
   );
+}
+
+function renderCalendarGrid(props: Partial<ComponentProps<typeof CalendarGrid>> = {}) {
+  return render(calendarGrid(props));
 }
 
 function dispatchShiftWheel(target: Element, deltaY = 1000): boolean {
@@ -233,5 +237,36 @@ describe("CalendarGrid Shift+Wheel navigation", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("CalendarGrid create requests", () => {
+  test("waits for days, focuses once, and does not replay a dismissed request", async () => {
+    installCalendarGridMetrics();
+    const view = renderCalendarGrid({ visibleDays: [], createRequestId: 1 });
+    expect(view.queryByPlaceholderText("New task...")).toBeNull();
+    await act(async () => {
+      view.rerender(calendarGrid({ createRequestId: 1 }));
+      await settleAsyncRender();
+    });
+    const input = view.getByPlaceholderText("New task...");
+    await waitFor(() => expect(document.activeElement).toBe(input));
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Escape" });
+      await settleAsyncRender();
+    });
+    expect(view.queryByPlaceholderText("New task...")).toBeNull();
+    await act(async () => {
+      view.rerender(calendarGrid({ createRequestId: 1 }));
+      await settleAsyncRender();
+    });
+    expect(view.queryByPlaceholderText("New task...")).toBeNull();
+    await act(async () => {
+      view.rerender(calendarGrid({ createRequestId: 2 }));
+      await settleAsyncRender();
+    });
+    await waitFor(() =>
+      expect(document.activeElement).toBe(view.getByPlaceholderText("New task...")),
+    );
   });
 });

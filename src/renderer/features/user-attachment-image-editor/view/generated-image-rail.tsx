@@ -75,7 +75,9 @@ export function GeneratedImageRail({
     RAIL_PADDING_PX * 2 + Math.max(images.length - 1, 0) * THUMBNAIL_STRIDE_PX + THUMBNAIL_SIZE_PX;
 
   const initialMetricsRef = useRef({ activeIndex, contentHeight });
-  initialMetricsRef.current = { activeIndex, contentHeight };
+  useLayoutEffect(() => {
+    initialMetricsRef.current = { activeIndex, contentHeight };
+  }, [activeIndex, contentHeight]);
   const setScrollerRef = useCallback((scroller: HTMLDivElement | null) => {
     if (!scroller) {
       scrollerRef.current = null;

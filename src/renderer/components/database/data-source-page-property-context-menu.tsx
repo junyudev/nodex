@@ -1,6 +1,5 @@
 import {
   forwardRef,
-  useEffect,
   useRef,
   useState,
   type ComponentPropsWithoutRef,
@@ -23,7 +22,7 @@ import type {
   DataSourcePagePropertyMenuDescriptor,
   DataSourcePagePropertyMenuSource,
 } from "./data-source-page-property-menu-source";
-import { dataSourcePropertyIcon } from "./data-source-property-presentation";
+import { PropertyEditorIcon } from "./property-editor-icons";
 import { DataSourcePropertyValueEditor } from "./data-source-property-value-editor";
 import { PropertyEditorFeedback } from "./property-editor-feedback";
 
@@ -45,7 +44,6 @@ const PropertyMenuTrigger = forwardRef<
     readonly itemDataAttribute?: string;
   } & ComponentPropsWithoutRef<"div">
 >(function PropertyMenuTrigger({ descriptor, itemDataAttribute, className, ...props }, ref) {
-  const Icon = dataSourcePropertyIcon(descriptor.property);
   return (
     <div
       ref={ref}
@@ -58,7 +56,7 @@ const PropertyMenuTrigger = forwardRef<
         {descriptor.pending ? (
           <LoadingIcon className="size-4 animate-spin" />
         ) : (
-          <Icon className="size-4" />
+          <PropertyEditorIcon property={descriptor.property} className="size-4" />
         )}
       </span>
       <span className="min-w-0 flex-1 truncate">{descriptor.property.name}</span>
@@ -84,10 +82,12 @@ function ScalarPropertyEditorContent({
   const [error, setError] = useState<string | null>(null);
   const saveRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
+  const [previous, setPrevious] = useState({ revision: binding.revision, committed });
+  if (previous.revision !== binding.revision || previous.committed !== committed) {
+    setPrevious({ revision: binding.revision, committed });
     setDraft(committed);
     setError(null);
-  }, [binding.revision, committed]);
+  }
 
   const commit = (): boolean => {
     if (!number) {

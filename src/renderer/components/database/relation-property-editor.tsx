@@ -1,4 +1,12 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useEffectEvent,
+  useLayoutEffect,
+  useId,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { CloseIcon, PageIcon, PlusIcon, SearchIcon } from "@/components/shared/icons";
 import { NodexPopover, NodexPopoverContent, NodexPopoverTrigger } from "@/components/ui/popover";
 import {
@@ -162,10 +170,10 @@ export function RelationPropertyEditor({
   const descriptorGeneration = useRef(0);
   const searchGeneration = useRef(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const searchCandidatesRef = useRef(onSearchCandidates);
-  const loadTargetDescriptorRef = useRef(onLoadTargetDescriptor);
-  searchCandidatesRef.current = onSearchCandidates;
-  loadTargetDescriptorRef.current = onLoadTargetDescriptor;
+  const searchCandidates = useEffectEvent((query: string, after: string | null) =>
+    onSearchCandidates?.(query, after),
+  );
+  const loadTargetDescriptor = useEffectEvent(() => onLoadTargetDescriptor?.());
   const canSearchCandidates = onSearchCandidates !== undefined;
   const canLoadTargetDescriptor = onLoadTargetDescriptor !== undefined;
   const selectedHeadingId = useId();
@@ -225,14 +233,21 @@ export function RelationPropertyEditor({
     onPatch({ addPageIds: [pageId], removeEdgeIds: [] });
   };
 
-  useEffect(() => {
-    setActiveCandidateIndex((current) => Math.min(current, Math.max(0, available.length - 1)));
-  }, [available.length]);
+  const boundedCandidateIndex = Math.min(activeCandidateIndex, Math.max(0, available.length - 1));
+  if (activeCandidateIndex !== boundedCandidateIndex)
+    setActiveCandidateIndex(boundedCandidateIndex);
 
-  useEffect(() => {
-    targetGeneration.current += 1;
-    descriptorGeneration.current += 1;
-    searchGeneration.current += 1;
+  const resetIdentity = JSON.stringify([label, preview.valueRevision]);
+  const [requestScope, setRequestScope] = useState({ identity: resetIdentity });
+  const currentScope = useRef<typeof requestScope | null>(requestScope);
+  useLayoutEffect(() => {
+    currentScope.current = requestScope;
+    return () => {
+      currentScope.current = null;
+    };
+  }, [requestScope]);
+  if (requestScope.identity !== resetIdentity) {
+    setRequestScope({ identity: resetIdentity });
     setExpandedTargets(null);
     setTargetCursor(null);
     setTargetProjectionRevision(null);
@@ -247,49 +262,74 @@ export function RelationPropertyEditor({
     setTargetDescriptorLoaded(false);
     setCandidateErrorQuery(null);
     setTargetError(false);
-  }, [label, preview.valueRevision]);
+  }
 
   const readOnly = disabled || invalidPreview || (cardinality === "one" && onReplace === undefined);
   const actionDisabled = readOnly || pending;
 
-  useEffect(() => {
-    if (!readOnly) return;
-    setOpen(false);
-  }, [readOnly]);
+  if (readOnly && open) setOpen(false);
 
   useEffect(() => {
-    if (!editorOpen || !loadTargetDescriptorRef.current) return;
+    if (!editorOpen || !canLoadTargetDescriptor) return;
     const generation = ++descriptorGeneration.current;
-    void loadTargetDescriptorRef
-      .current()
-      .then((descriptor) => {
-        if (generation !== descriptorGeneration.current) return;
+    void loadTargetDescriptor()
+      ?.then((descriptor) => {
+        if (currentScope.current !== requestScope || generation !== descriptorGeneration.current)
+          return;
         setTargetName(descriptor?.name ?? null);
         setTargetDescriptorLoaded(true);
       })
       .catch(() => {
-        if (generation !== descriptorGeneration.current) return;
+        if (currentScope.current !== requestScope || generation !== descriptorGeneration.current)
+          return;
         setTargetName(null);
         setTargetDescriptorLoaded(true);
       });
-  }, [canLoadTargetDescriptor, editorOpen]);
+  }, [canLoadTargetDescriptor, editorOpen, requestScope]);
+
+  const searchIdentity = JSON.stringify([
+    editorOpen,
+    canSearchCandidates,
+    query,
+    searchRetry,
+    resetIdentity,
+  ]);
+  const [previousSearch, setPreviousSearch] = useState<string | null>(null);
+  const currentSearchIdentity = useRef(searchIdentity);
+  useLayoutEffect(() => {
+    currentSearchIdentity.current = searchIdentity;
+  }, [searchIdentity]);
+  if (previousSearch !== searchIdentity) {
+    setPreviousSearch(searchIdentity);
+    if (editorOpen && canSearchCandidates) {
+      setSearching(true);
+      setCandidateErrorQuery(null);
+    }
+  }
 
   useEffect(() => {
-    const searchCandidates = searchCandidatesRef.current;
-    if (!editorOpen || !searchCandidates) return;
+    if (!editorOpen || !canSearchCandidates) return;
     const generation = ++searchGeneration.current;
-    setSearching(true);
-    setCandidateErrorQuery(null);
     void searchCandidates(query, null)
-      .then((window) => {
-        if (generation !== searchGeneration.current) return;
+      ?.then((window) => {
+        if (
+          currentSearchIdentity.current !== searchIdentity ||
+          currentScope.current !== requestScope ||
+          generation !== searchGeneration.current
+        )
+          return;
         setCandidateResults(window.candidates);
         setCandidateQuery(query);
         setCandidateCursor(window.nextCursor);
         setCandidateProjectionRevision(window.projectionRevision);
       })
       .catch((cause: unknown) => {
-        if (generation !== searchGeneration.current) return;
+        if (
+          currentSearchIdentity.current !== searchIdentity ||
+          currentScope.current !== requestScope ||
+          generation !== searchGeneration.current
+        )
+          return;
         console.error("[relation-property:candidates]", cause);
         setCandidateResults([]);
         setCandidateQuery(null);
@@ -297,9 +337,14 @@ export function RelationPropertyEditor({
         setCandidateErrorQuery(query);
       })
       .finally(() => {
-        if (generation === searchGeneration.current) setSearching(false);
+        if (
+          currentSearchIdentity.current === searchIdentity &&
+          currentScope.current === requestScope &&
+          generation === searchGeneration.current
+        )
+          setSearching(false);
       });
-  }, [canSearchCandidates, editorOpen, preview.valueRevision, query, searchRetry]);
+  }, [canSearchCandidates, editorOpen, query, searchIdentity, requestScope]);
 
   const loadSelectedTargets = () => {
     if (!onLoadMore || loadingTargets || readOnly) return;
@@ -308,7 +353,8 @@ export function RelationPropertyEditor({
     setTargetError(false);
     const after = expandedTargets === null ? null : targetCursor;
     const acceptWindow = (window: RelationTargetWindow, replace: boolean) => {
-      if (generation !== targetGeneration.current) return false;
+      if (currentScope.current !== requestScope || generation !== targetGeneration.current)
+        return false;
       if (window.valueRevision !== preview.valueRevision) {
         setExpandedTargets(null);
         setTargetCursor(null);
@@ -325,7 +371,8 @@ export function RelationPropertyEditor({
     };
     void onLoadMore(after)
       .then(async (window) => {
-        if (generation !== targetGeneration.current) return;
+        if (currentScope.current !== requestScope || generation !== targetGeneration.current)
+          return;
         if (
           after !== null &&
           targetProjectionRevision !== null &&
@@ -338,7 +385,8 @@ export function RelationPropertyEditor({
         acceptWindow(window, after === null);
       })
       .catch(async (cause: unknown) => {
-        if (generation !== targetGeneration.current) return;
+        if (currentScope.current !== requestScope || generation !== targetGeneration.current)
+          return;
         if (after === null) {
           console.error("[relation-property:selected]", cause);
           setTargetError(true);
@@ -348,14 +396,15 @@ export function RelationPropertyEditor({
           const refreshed = await onLoadMore(null);
           acceptWindow(refreshed, true);
         } catch (refreshError) {
-          if (generation === targetGeneration.current) {
+          if (currentScope.current === requestScope && generation === targetGeneration.current) {
             console.error("[relation-property:selected]", refreshError);
             setTargetError(true);
           }
         }
       })
       .finally(() => {
-        if (generation === targetGeneration.current) setLoadingTargets(false);
+        if (currentScope.current === requestScope && generation === targetGeneration.current)
+          setLoadingTargets(false);
       });
   };
 
@@ -364,7 +413,7 @@ export function RelationPropertyEditor({
     const generation = searchGeneration.current;
     setSearching(true);
     const acceptFirstWindow = (window: RelationCandidateWindow) => {
-      if (generation !== searchGeneration.current) return;
+      if (currentScope.current !== requestScope || generation !== searchGeneration.current) return;
       setCandidateResults(window.candidates);
       setCandidateQuery(query);
       setCandidateCursor(window.nextCursor);
@@ -377,7 +426,8 @@ export function RelationPropertyEditor({
     };
     void onSearchCandidates(query, activeCandidateCursor)
       .then(async (window) => {
-        if (generation !== searchGeneration.current) return;
+        if (currentScope.current !== requestScope || generation !== searchGeneration.current)
+          return;
         if (
           candidateProjectionRevision !== null &&
           window.projectionRevision !== candidateProjectionRevision
@@ -390,18 +440,20 @@ export function RelationPropertyEditor({
         setCandidateCursor(window.nextCursor);
       })
       .catch(async (cause: unknown) => {
-        if (generation !== searchGeneration.current) return;
+        if (currentScope.current !== requestScope || generation !== searchGeneration.current)
+          return;
         try {
           await refreshFirstWindow();
         } catch (refreshError) {
-          if (generation === searchGeneration.current) {
+          if (currentScope.current === requestScope && generation === searchGeneration.current) {
             console.error("[relation-property:candidates]", cause, refreshError);
             setCandidateErrorQuery(query);
           }
         }
       })
       .finally(() => {
-        if (generation === searchGeneration.current) setSearching(false);
+        if (currentScope.current === requestScope && generation === searchGeneration.current)
+          setSearching(false);
       });
   };
 

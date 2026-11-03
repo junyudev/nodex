@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState, type RefObject } from "react";
 import { useResolvedReducedMotion } from "@/lib/use-reduced-motion";
 import {
   collectMarkerNavigationObservationTargets,
@@ -101,9 +101,17 @@ export function NfmHeadingNavigationRail({
     isCoarsePointer: coarsePointer,
   });
 
-  const scrollElement = scrollContainerRef.current;
-  const contentElement =
-    scrollElement?.querySelector<HTMLElement>("[data-page-stage-body='true']") ?? null;
+  const [elements, setElements] = useState<{
+    scroll: HTMLElement | null;
+    content: HTMLElement | null;
+  }>({ scroll: null, content: null });
+  useLayoutEffect(() => {
+    const scroll = scrollContainerRef.current;
+    const content = scroll?.querySelector<HTMLElement>("[data-page-stage-body='true']") ?? null;
+    setElements((current) =>
+      current.scroll === scroll && current.content === content ? current : { scroll, content },
+    );
+  }, [scrollContainerRef]);
 
   const findHeadingTarget = useCallback(
     (_scrollElement: HTMLElement, item: NfmHeadingNavigationItem): HTMLElement | null => {
@@ -167,8 +175,8 @@ export function NfmHeadingNavigationRail({
       ariaLabel="Headings"
       items={items}
       rowAriaLabel={(item) => `Jump to heading ${item.ordinal}: ${item.label}`}
-      scrollElement={scrollElement}
-      contentElement={contentElement}
+      scrollElement={elements.scroll}
+      contentElement={elements.content}
       portalTarget={portalElement}
       findTarget={findHeadingTarget}
       collectObservationTargets={collectHeadingObservationTargets}

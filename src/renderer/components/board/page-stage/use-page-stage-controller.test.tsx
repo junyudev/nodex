@@ -1,6 +1,7 @@
 import { act } from "@testing-library/react";
+import { useLayoutEffect } from "react";
 import type { ReactNode } from "react";
-import { describe, expect, test } from "vite-plus/test";
+import { describe, expect, test, vi } from "vite-plus/test";
 
 import type { DatabasePage, PageInput } from "@/lib/types";
 import { projectPageDetailToStageModel, type PageStagePageModel } from "@/lib/page-stage-page";
@@ -14,6 +15,16 @@ import {
 } from "./use-page-stage-controller";
 import type { PageStageProps, PageStageSessionSnapshot } from "./types";
 import { buildPageDetailFixtureResult } from "@/test/page-detail-fixture";
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
 
 type PageStageController = ReturnType<typeof usePageStageController>;
 
@@ -91,8 +102,11 @@ function renderController(
   let renderCount = 0;
 
   function Harness({ nextProps, children }: { nextProps: PageStageProps; children?: ReactNode }) {
-    renderCount += 1;
-    controller = usePageStageController(nextProps, dependencies);
+    const nextController = usePageStageController(nextProps, dependencies);
+    useLayoutEffect(() => {
+      renderCount += 1;
+      controller = nextController;
+    });
     return <>{children}</>;
   }
 
@@ -139,6 +153,71 @@ describe("usePageStageController", () => {
     await settleAsyncRender();
 
     expect(result.controller.title).toBe("Live collaborative title");
+  });
+
+  test("keeps saving until overlapping chat commands settle and propagates rejection", async () => {
+    const opening = deferred<void>();
+    const removing = deferred<void>();
+    const failure = new Error("Could not remove chat");
+    const result = renderController(
+      buildProps({
+        onOpenRelatedChat: () => opening.promise,
+        onRemoveRelatedChat: () => removing.promise,
+      }),
+    );
+    let opened!: Promise<void>;
+    let removed!: Promise<void>;
+    await act(async () => {
+      opened = result.controller.handleOpenRelatedChat("session-1");
+      removed = result.controller.handleRemoveRelatedChat("session-2");
+    });
+    expect(result.controller.saving).toBe(true);
+
+    await act(async () => {
+      opening.resolve();
+      await opened;
+    });
+    expect(result.controller.saving).toBe(true);
+
+    await act(async () => {
+      const rejected = expect(removed).rejects.toBe(failure);
+      removing.reject(failure);
+      await rejected;
+    });
+    expect(result.controller.saving).toBe(false);
+  });
+
+  test("releases saving after a synchronous delete failure and closes only after deletion", async () => {
+    const failure = new Error("Could not delete Page");
+    const onClose = vi.fn();
+    const deletion = deferred<void>();
+    const onDelete = vi
+      .fn<NonNullable<PageStageProps["onDelete"]>>()
+      .mockImplementationOnce(() => {
+        throw failure;
+      })
+      .mockImplementationOnce(() => deletion.promise);
+    const result = renderController(buildProps({ onDelete, onClose }));
+
+    await act(async () => {
+      await expect(result.controller.handleDelete()).rejects.toBe(failure);
+    });
+    expect(result.controller.saving).toBe(false);
+    expect(onClose).not.toHaveBeenCalled();
+
+    let pending!: Promise<void>;
+    await act(async () => {
+      pending = result.controller.handleDelete();
+    });
+    expect(result.controller.saving).toBe(true);
+    expect(onClose).not.toHaveBeenCalled();
+    await act(async () => {
+      deletion.resolve();
+      await pending;
+    });
+    expect(result.controller.saving).toBe(false);
+    expect(onDelete).toHaveBeenNthCalledWith(2, "page-1");
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   test("keeps collaborative title changes out of metadata writes", async () => {

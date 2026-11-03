@@ -1,6 +1,6 @@
 import { describe, expect, vi, test } from "vite-plus/test";
 import { fireEvent } from "@testing-library/react";
-import { act, useCallback, useState } from "react";
+import { act, useState } from "react";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import { render, settleAsyncRender } from "../../../test/dom";
 
@@ -224,18 +224,18 @@ describe("NfmLinkToolbar", () => {
     createLinkButtonState = undefined;
     const { NfmLinkToolbar } = await import("./nfm-link-toolbar");
 
+    function ToolbarComponent(toolbarProps: {
+      url: string;
+      text: string;
+      range: { from: number; to: number };
+      setToolbarOpen: () => void;
+      setToolbarPositionFrozen: () => void;
+    }) {
+      return <NfmLinkToolbar {...toolbarProps} projectWorkspacePath={null} />;
+    }
+
     function Host() {
       const [tick, setTick] = useState(0);
-      const ToolbarComponent = useCallback(
-        (toolbarProps: {
-          url: string;
-          text: string;
-          range: { from: number; to: number };
-          setToolbarOpen: () => void;
-          setToolbarPositionFrozen: () => void;
-        }) => <NfmLinkToolbar {...toolbarProps} projectWorkspacePath={null} />,
-        [],
-      );
 
       return (
         <NodexTooltipProvider>

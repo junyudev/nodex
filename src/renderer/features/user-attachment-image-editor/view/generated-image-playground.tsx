@@ -102,13 +102,19 @@ function GeneratedImagePlaygroundCard({
   const [renderFailed, setRenderFailed] = useState(false);
   const [statusRetryRequested, setStatusRetryRequested] = useState(false);
 
-  useEffect(() => {
+  const [previousImage, setPreviousImage] = useState({ id: image.id, status: image.status });
+  if (previousImage.id !== image.id || previousImage.status !== image.status) {
+    setPreviousImage({ id: image.id, status: image.status });
     setStatusRetryRequested(false);
-  }, [image.id, image.status]);
+  }
+  const [previousSource, setPreviousSource] = useState(displaySrc);
+  if (previousSource !== displaySrc) {
+    setPreviousSource(displaySrc);
+    if (displaySrc) setRenderFailed(false);
+  }
 
   useEffect(() => {
     if (!displaySrc) return;
-    setRenderFailed(false);
     onResolvedSource(
       asset.dataUrl ??
         image.dataUrl ??
@@ -312,7 +318,13 @@ export function GeneratedImagePlayground({
     0,
   );
   const zoomStyle = { zoom: zoomPercent / 100 } as CSSProperties;
-  const zoomGestures = useImageZoomGestures({
+  const {
+    setZoomAtViewportCenter,
+    setScrollContainerRef,
+    handleClickCapture,
+    handlePointerMoveCapture,
+    zoomTargetRef,
+  } = useImageZoomGestures({
     onZoomPercentChange,
     zoomPercent,
   });
@@ -344,19 +356,19 @@ export function GeneratedImagePlayground({
           fitSelected={false}
           showFitOption={false}
           zoomPercent={zoomPercent}
-          onZoomPercentChange={zoomGestures.setZoomAtViewportCenter}
-          onZoomToFit={() => zoomGestures.setZoomAtViewportCenter(100)}
+          onZoomPercentChange={setZoomAtViewportCenter}
+          onZoomToFit={() => setZoomAtViewportCenter(100)}
         />
       </div>
       <div
-        ref={zoomGestures.setScrollContainerRef}
+        ref={setScrollContainerRef}
         data-generated-image-playground-scroll
         className="h-full min-h-0 scroll-pt-14 overflow-auto ps-3 pe-16 pt-14 pb-[calc(var(--right-panel-composer-overlay-reserve,0px)+var(--spacing)*6)]"
-        onClickCapture={zoomGestures.handleClickCapture}
-        onPointerMoveCapture={zoomGestures.handlePointerMoveCapture}
+        onClickCapture={handleClickCapture}
+        onPointerMoveCapture={handlePointerMoveCapture}
       >
         <div
-          ref={zoomGestures.zoomTargetRef}
+          ref={zoomTargetRef}
           className="flex min-w-max flex-col items-start gap-6"
           style={zoomStyle}
         >

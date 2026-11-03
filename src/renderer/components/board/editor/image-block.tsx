@@ -131,10 +131,14 @@ export function formatImageFileSize(bytes: number): string {
 function useImageFileSize(source: string, pageFileByteLength: number | null): number | null {
   const knownSize = pageFileByteLength ?? resolveDataUrlByteLength(source);
   const [fileSize, setFileSize] = useState<number | null>(knownSize);
+  const [previousSource, setPreviousSource] = useState({ source, knownSize });
+  if (previousSource.source !== source || previousSource.knownSize !== knownSize) {
+    setPreviousSource({ source, knownSize });
+    setFileSize(knownSize);
+  }
 
   useEffect(() => {
     let mounted = true;
-    setFileSize(knownSize);
 
     if (knownSize !== null || parseAssetSource(source) === null) {
       return () => {

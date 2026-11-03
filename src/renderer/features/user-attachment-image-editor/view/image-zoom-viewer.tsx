@@ -141,7 +141,6 @@ export function ImageZoomViewer({
 
   useEffect(() => {
     if (!scrollElement || typeof ResizeObserver === "undefined") return undefined;
-    updateViewportSize(scrollElement);
     const observer = new ResizeObserver(() => updateViewportSize(scrollElement));
     observer.observe(scrollElement);
     return () => observer.disconnect();

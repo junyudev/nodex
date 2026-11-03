@@ -60,8 +60,8 @@ export function OwnedDocumentReferenceSurface({
   const surfaceInstanceId = useId();
   const surfaceInstanceKey = `owned-document:${disclosureKey}:mount:${surfaceInstanceId}`;
   const [preferredExpanded, setExpanded] = useBlockDisclosure(disclosureKey, disclosureStore);
-  const visibility = useElementVisibility();
-  const visible = visibilityOverride ?? visibility.visible;
+  const { ref: visibilityRef, visible: observedVisible } = useElementVisibility();
+  const visible = visibilityOverride ?? observedVisible;
   const normalizedOwnerBlockId = ownerBlockId.trim();
   const expandable =
     normalizedOwnerBlockId.length > 0 && !disabledReason && typeof renderDocument === "function";
@@ -96,7 +96,7 @@ export function OwnedDocumentReferenceSurface({
 
   return (
     <section
-      ref={visibility.ref}
+      ref={visibilityRef}
       contentEditable={false}
       data-document-bearing-owner-id={normalizedOwnerBlockId || undefined}
       data-owned-document-expanded={expanded ? "true" : "false"}

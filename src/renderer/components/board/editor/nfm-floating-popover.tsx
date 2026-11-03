@@ -10,7 +10,15 @@ import {
   useTransitionStatus,
   useTransitionStyles,
 } from "@floating-ui/react";
-import { useEffect, useRef, type HTMLAttributes, type ReactNode, type Ref } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type HTMLAttributes,
+  type ReactNode,
+  type Ref,
+} from "react";
 import type { FloatingUIOptions } from "@blocknote/react";
 
 export type NfmPopoverReference =
@@ -65,7 +73,7 @@ export function NfmFloatingPopover(
   const dismiss = useDismiss(context, props.useDismissProps);
   const hover = useHover(context, { enabled: false, ...props.useHoverProps });
   const { getFloatingProps } = useInteractions([dismiss, hover]);
-  const innerHTML = useRef("");
+  const [innerHTML, setInnerHTML] = useState("");
   const ref = useRef<HTMLDivElement>(null);
   const mergedRefs = useMergeRefs([ref, refs.setFloating, props.floatingRef]);
 
@@ -84,11 +92,22 @@ export function NfmFloatingPopover(
     });
   }, [props.reference, refs]);
 
-  useEffect(() => {
-    if ((status === "initial" || status === "open") && ref.current?.innerHTML) {
-      innerHTML.current = ref.current.innerHTML;
-    }
-  }, [props.children, props.reference, status]);
+  useLayoutEffect(() => {
+    const node = ref.current;
+    if (!node || (status !== "initial" && status !== "open")) return;
+    const capture = () => {
+      if (node.innerHTML) setInnerHTML(node.innerHTML);
+    };
+    capture();
+    const observer = new MutationObserver(capture);
+    observer.observe(node, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      characterData: true,
+    });
+    return () => observer.disconnect();
+  }, [status]);
 
   if (!isMounted) {
     return false;
@@ -117,11 +136,7 @@ export function NfmFloatingPopover(
 
   if (status === "close") {
     return renderWithPortal(
-      <div
-        ref={mergedRefs}
-        {...mergedProps}
-        dangerouslySetInnerHTML={{ __html: innerHTML.current }}
-      />,
+      <div ref={mergedRefs} {...mergedProps} dangerouslySetInnerHTML={{ __html: innerHTML }} />,
     );
   }
 

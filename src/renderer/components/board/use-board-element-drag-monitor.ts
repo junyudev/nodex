@@ -27,14 +27,17 @@ export function useBoardElementDragMonitor({
   onDrag,
   onDrop,
 }: UseBoardElementDragMonitorOptions): void {
-  const readCanMonitor = useEffectEvent(canMonitor);
+  const readCanMonitor = useEffectEvent(
+    (registeredScope: symbol, args: Parameters<CanMonitor>[0]) =>
+      registeredScope === scopeKey && canMonitor(args),
+  );
   const handleDragStart = useEffectEvent(onDragStart);
   const handleDrag = useEffectEvent(onDrag);
   const handleDrop = useEffectEvent(onDrop);
 
   useEffect(() => {
     const cleanup = monitorForElements({
-      canMonitor: (args) => readCanMonitor(args),
+      canMonitor: (args) => readCanMonitor(scopeKey, args),
       onDragStart: (args) => handleDragStart(args),
       onDrag: (args) => handleDrag(args),
       onDrop: (args) => handleDrop(args),

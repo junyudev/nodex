@@ -74,4 +74,35 @@ describe("NfmFloatingPopover", () => {
       anchor.remove();
     }
   });
+  test("keeps the latest committed content during its close transition", async () => {
+    const anchor = makeAnchorElement();
+    const content = (open: boolean, label: string | null) => (
+      <NfmFloatingPopover
+        reference={{ element: anchor }}
+        useFloatingOptions={{ open: open, strategy: "fixed" }}
+        useTransitionStylesProps={{ duration: { open: 0, close: 1_000 } }}
+        useTransitionStatusProps={{ duration: { open: 0, close: 1_000 } }}
+        focusManagerProps={{ disabled: true }}
+      >
+        {label ? <span>{label}</span> : null}
+      </NfmFloatingPopover>
+    );
+    const view = render(content(true, "Original link"));
+    try {
+      await act(settleAsyncRender);
+      await act(async () => {
+        view.rerender(content(true, "Updated link"));
+        await settleAsyncRender();
+      });
+      await act(async () => {
+        view.rerender(content(false, null));
+        await settleAsyncRender();
+      });
+      expect(view.getByText("Updated link")).toBeTruthy();
+      expect(view.queryByText("Original link")).toBeNull();
+    } finally {
+      view.unmount();
+      anchor.remove();
+    }
+  });
 });
