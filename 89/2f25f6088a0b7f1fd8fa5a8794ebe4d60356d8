@@ -1,0 +1,23 @@
+CHANGELOG.md
+  s_84ee72558030d8::t_970b7605c6bf5f 67
+crates/nodex-core/src/infrastructure/writer.rs
+  s_84ee72558030d8::t_4d52e59f3aac1d 823-827,829-835,851-890,1481-1531
+docs/reliability/core-lifecycle-and-store.md
+  s_84ee72558030d8::t_e84b587c83a15d 179-182
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "892f25f6088a0b7f1fd8fa5a8794ebe4d60356d8",
+  "prompts": {},
+  "sessions": {
+    "s_84ee72558030d8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a01f-2c76-7dd0-96f6-7c553a1da79b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
