@@ -1,0 +1,60 @@
+src/renderer/features/local-conversation/view/summary-panel/thread-floating-summary-panel.tsx
+  s_946f545c83a74a::t_d3d9a3b4618260 1,764,848,855,879-881,886,950-961,1225-1228
+  s_946f545c83a74a::t_c880a9addf3ed7 1229-1230,1374
+src/renderer/features/local-conversation/view/composer/local-conversation-composer-shell.test.tsx
+  s_946f545c83a74a::t_264b963444ca6c 3,176
+src/renderer/features/local-conversation/view/composer/local-conversation-thread-composer-status-strip.test.tsx
+  s_946f545c83a74a::t_be3b8f7d453298 1-7,9-10,12-113
+src/renderer/features/local-conversation/view/composer/local-conversation-thread-composer-status-strip.tsx
+  s_946f545c83a74a::t_7446bd8427d34e 1,162,169
+src/renderer/features/local-conversation/view/connected-thread-stage.test.tsx
+  s_946f545c83a74a::t_5b00f49c7317e7 1,75,1062-1097,2918-2921
+src/renderer/features/local-conversation/view/connected-thread-stage.tsx
+  s_946f545c83a74a::t_db14b88a95fd2b 1,332,424,1585
+src/renderer/features/local-conversation/view/local-conversation-captured-widget-submit.test.tsx
+  s_946f545c83a74a::t_dd1cdd1833af5f 84
+src/renderer/features/local-conversation/view/local-conversation-footer.test.tsx
+  s_946f545c83a74a::t_541c7b951530a7 319,409,943
+src/renderer/features/local-conversation/view/local-conversation-stage-header.test.tsx
+  s_946f545c83a74a::t_c24ea4b7b7360d 1-2,4,49-72,76,174,196,235-237,357,365,377-380
+src/renderer/features/local-conversation/view/local-conversation-stage-header.tsx
+  s_946f545c83a74a::t_572f199e7205fc 1,56,91,96,99,117-118,181-186,211,225,240,269,280,354,376
+src/renderer/features/local-conversation/view/local-conversation-thread-body-owner.tsx
+  s_946f545c83a74a::t_cfef809d63ac29 1,1185,1189,1193,1204,1213,1221,1238,1269,1274
+src/renderer/features/local-conversation/view/local-conversation-thread-body.test.tsx
+  s_946f545c83a74a::t_5cf5c060eef34e 1,848,1308,1504,1714,1870-1872,1877,1927-1929,1934,2103-2139,2186,2354-2357
+src/renderer/features/local-conversation/view/summary-panel/thread-execution-location-selector.test.tsx
+  s_946f545c83a74a::t_54b4e111aea794 1-74
+src/renderer/features/local-conversation/view/summary-panel/thread-execution-location-selector.tsx
+  s_946f545c83a74a::t_73eefc8a526359 1,49,51,149
+src/renderer/features/local-conversation/view/summary-panel/thread-floating-summary-panel.test.tsx
+  s_946f545c83a74a::t_982eb7bf0f0a36 1-2,33,413,607-665,948,1004-1010,1012,1893-1900,1954-1960,1965,3345-3347,3753-3756
+src/renderer/features/local-conversation/view/summary-panel/thread-summary-background-section.test.tsx
+  s_946f545c83a74a::t_6986a19e34025f 1-2,27,30,36,100-109,111,115-117,130-133
+src/renderer/features/local-conversation/view/summary-panel/thread-summary-background-section.tsx
+  s_946f545c83a74a::t_69536eb536c1ae 1,247-249
+src/renderer/features/local-conversation/view/summary-panel/thread-summary-branch-setup-dialog.tsx
+  s_946f545c83a74a::t_1da230d1e197b1 120
+src/renderer/features/local-conversation/view/summary-panel/thread-summary-create-pull-request-dialog.tsx
+  s_946f545c83a74a::t_d6701a54a616ce 261,280,299,323,348,356
+src/renderer/features/local-conversation/view/summary-panel/thread-summary-git-action-dialog.test.tsx
+  s_946f545c83a74a::t_351abd7a0f27b4 1-137
+src/renderer/features/local-conversation/view/summary-panel/thread-summary-git-action-dialog.tsx
+  s_946f545c83a74a::t_89dd2d478e48d5 1,202,205,211,227,232,242,256,268,273,283,287,289,324,326,331
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "85fbcf685fb30b0254c5c06f6165b8698af530e4",
+  "prompts": {},
+  "sessions": {
+    "s_946f545c83a74a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19edb-b1c5-7661-b501-1be49e0a2be2",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
