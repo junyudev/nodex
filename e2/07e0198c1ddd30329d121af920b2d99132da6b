@@ -1,0 +1,28 @@
+scripts/installed-payload.test.ts
+  s_8c62977aa6fb11::t_ee0d37db536150 1-24
+scripts/ci/probe-windows-installer.ts
+  s_8c62977aa6fb11::t_ee0d37db536150 20,296-298
+  s_8c62977aa6fb11::t_0c9f1e43861496 299-301
+scripts/installed-payload.mjs
+  s_8c62977aa6fb11::t_ee0d37db536150 1-24
+docs/release-windows.md
+  s_8c62977aa6fb11::t_88f12ec629a529 159-162
+scripts/installed-payload.d.mts
+  s_8c62977aa6fb11::t_ee0d37db536150 1-6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e207e0198c1ddd30329d121af920b2d99132da6b",
+  "prompts": {},
+  "sessions": {
+    "s_8c62977aa6fb11": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19eca-da45-7583-a0bd-2b995907eee9",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
