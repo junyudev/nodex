@@ -1,0 +1,95 @@
+crates/nodex-core/src/library/page_property_mutation.rs
+  s_2b421f5f98d895::t_263447d283bf93 1695-1709
+crates/nodex-core/src/infrastructure/migration.rs
+  s_2b421f5f98d895::t_e1f10b36fdc416 439-443,2678-2687,3697-3707,3736-3737,3753,8104,8106,8917-8918,9532-9536,9540,9747-9748,9751-9764,9766-9774,9806-9809,9859-9886
+crates/nodex-core/src/infrastructure/store_validation.rs
+  s_2b421f5f98d895::t_d479d195d8cc97 303-304
+crates/nodex-core/src/workspace/inbox_tests.rs
+  s_2b421f5f98d895::t_35eb0a76d944b1 7400-7712
+crates/nodex-core/src/library/mod.rs
+  s_2b421f5f98d895::t_25b7109021a29e 7794
+CONTEXT.md
+  s_2b421f5f98d895::t_d37d3a2b07a56d 435-438,714-716
+docs/product-specs/coordinator-behavior.md
+  s_2b421f5f98d895::t_3f307534920464 166-176
+crates/nodex-core-contracts/src/inbox.rs
+  s_2b421f5f98d895::t_eb8afc72f88849 93-97,133-161,303-305
+crates/nodex-store-format/src/lib.rs
+  s_2b421f5f98d895::t_9b34072dfebb97 289-292
+packages/core-protocol/src/compatibility.generated.ts
+  s_2b421f5f98d895::t_66b224f64d2c94 24,42-43
+crates/nodex-core/src/database/relation_projection.rs
+  s_2b421f5f98d895::t_1b2d4be6a6db6e 37,40-42,53-54,60,104,116,147-148,463,586,682-715
+crates/nodex-core/src/workspace/inbox_reliable.rs
+  s_2b421f5f98d895::t_5a474c3d4daef2 210-218,596-614,879,1032-1039
+src/renderer/features/inbox/inbox-dispatch-editor.tsx
+  s_2b421f5f98d895::t_094472b6cdd161 30,39,62-63,67,86-93,158-159
+src/main/inbox-application/InboxApplication.test-support.ts
+  s_2b421f5f98d895::t_903a3d35228b22 87-90,121,123,134-140
+crates/nodex-core/src/workspace/mutation.rs
+  s_2b421f5f98d895::t_9de33f10e055e7 1547,1709-1718
+src/main/core-client/inbox-adapter.ts
+  s_2b421f5f98d895::t_1b8fc47de7d4a5 44-62,108-126,255
+src/renderer/features/inbox/use-inbox-actions.ts
+  s_2b421f5f98d895::t_65b5b504f91757 173-174
+crates/nodex-core/schema/current.sql
+  s_2b421f5f98d895::t_ab396d716069f3 1466,3470-3473,3480,3484-3485,3491,4571,5074-5079
+crates/nodex-core/src/database/relation.rs
+  s_2b421f5f98d895::t_5bb9cac45b83dd 265-279,327-328,367,373-377,386-387,389,400,1131,1137,1155-1156,1163,1168,1170
+crates/nodex-core/src/workspace/inbox_plan.rs
+  s_2b421f5f98d895::t_7f0580ada17098 1-217
+src/renderer/features/inbox/inbox-icon-action.tsx
+  s_2b421f5f98d895::t_89fa5cdbe53cc9 21
+packages/core-protocol/src/generated.ts
+  s_2b421f5f98d895::t_001701583bc582 4239-4251,9728-9732,9950-9951,12019,12035
+crates/nodex-core/src/workspace/inbox_read.rs
+  s_2b421f5f98d895::t_0c8f1e18f49983 876-889
+crates/nodex-core/src/database/work_graph.rs
+  s_2b421f5f98d895::t_288b71313c4d54 98-99,103,107,127,537-571
+packages/core-protocol/openapi.json
+  s_2b421f5f98d895::t_fdf47ac05ef0ed 17332-17396,40671-40696,41528-41534,51189-51194,51287-51292
+crates/nodex-core/tests/fixtures/schema-v204.sql
+  s_2b421f5f98d895::t_931142d36bc246 1-5067
+src/main/inbox-application/inbox-plan.node.test.ts
+  s_2b421f5f98d895::t_9807ef8cd6b1e2 1-204
+src/renderer/features/inbox/inbox-presentation.ts
+  s_2b421f5f98d895::t_101a42371d5941 317-325,433,451-458,486-492,517-518
+src/main/inbox-application/inbox-suggestions.ts
+  s_2b421f5f98d895::t_78c5180ab963d3 20-21,98-99,126-127,217,220-274
+crates/nodex-core/src/document/integrity.rs
+  s_2b421f5f98d895::t_0f6c55e62757f7 84
+src/shared/inbox.ts
+  s_2b421f5f98d895::t_4d5b3fa0a9422e 5,55,81-90,200,401
+src/main/inbox-application/inbox-suggestions.node.test.ts
+  s_2b421f5f98d895::t_9bbf2ead50b428 536-668
+src/main/inbox-application/InboxApplication.ts
+  s_2b421f5f98d895::t_14c83efee0d16a 270-273,419-431,433,436,442
+crates/nodex-core/schema/migrations/v204_to_v205.sql
+  s_2b421f5f98d895::t_d480a47d9ca010 1-42
+src/shared/schemas/inbox.ts
+  s_2b421f5f98d895::t_7ca737ff76f60e 86-108
+docs/product-specs/database-pages-and-views-behavior.md
+  s_2b421f5f98d895::t_834221a8b8606f 906-908,931-932
+crates/nodex-core-contracts/src/workspace.rs
+  s_2b421f5f98d895::t_ad8ef56f8aefc9 19,2377-2378
+src/shared/nodex-app-tools/coordinator-schema.ts
+  s_2b421f5f98d895::t_27e358574fce94 14-34,79
+crates/nodex-core/src/workspace/inbox.rs
+  s_2b421f5f98d895::t_ec29f7bba825e5 13-14,1262-1264,1298-1300,2226-2229
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1ec789a83bb68fcdbabc46abd16b82a4226cbe7b",
+  "prompts": {},
+  "sessions": {
+    "s_2b421f5f98d895": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19fae-bb7a-7332-9cd7-9d77cc1fecc0",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
