@@ -6,6 +6,7 @@ import { MainApplication, type MainApplicationError } from "./MainApplication";
 export interface MainApplicationTestHooks {
   readonly acquire: Effect.Effect<void, MainApplicationError>;
   readonly activate?: Effect.Effect<void, MainApplicationError>;
+  readonly confirmQuit?: Effect.Effect<boolean>;
   readonly handleBootstrapEvent: (
     event: BootstrapRuntimeEvent,
   ) => Effect.Effect<void, MainApplicationError>;
@@ -25,6 +26,7 @@ export const mainApplicationTestLayer = (
       yield* hooks.acquire;
       return MainApplication.of({
         activate: hooks.activate ?? Effect.void,
+        confirmQuit: hooks.confirmQuit,
         handleBootstrapEvent: hooks.handleBootstrapEvent,
         prepareShutdown: hooks.prepareShutdown ?? Effect.void,
         completeShutdown: hooks.completeShutdown,

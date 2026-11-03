@@ -27,6 +27,7 @@ function match(sessionId: string, projectId: string | null = null): ChatSearchMa
       pullRequests: [],
       pinned: false,
       pinnedOrder: null,
+      unread: false,
       activity: "idle",
       createdAt: 0,
       recencyAt: 0,

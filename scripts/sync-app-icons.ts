@@ -4,6 +4,7 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { syncWindowsTrayIcons } from "./sync-windows-tray-icons";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(scriptDir, "..");
@@ -158,6 +159,7 @@ async function createWindowsIcon(): Promise<void> {
     format: "ico",
     outDir: resourcesDir,
   });
+  await syncWindowsTrayIcons();
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

@@ -1,7 +1,15 @@
 # Desktop Startup Behavior
 
 Status: Active
-Last updated: 2026-10-19
+Last updated: 2026-11-03
+
+On Windows, the per-user login registration launches Nodex with `--startup`.
+That activation acquires the normal application Scope, including the tray, Core,
+Agent Runtime and hidden canonical Workbench windows. It does not show or focus a
+window, including at renderer readiness or a presentation watchdog. A later
+interactive launch or tray action reveals the retained window. Repeated startup
+activations never become ordinary navigation. Other launches retain the startup
+presentation described below. See [Windows host behavior](windows-host-behavior.md#notification-area-and-startup).
 
 ## Promise
 

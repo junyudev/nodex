@@ -61,6 +61,7 @@ export const projectChat = (
     })),
     pinned: summary.pinned,
     pinnedOrder: item.task.session.pinned_order ?? null,
+    unread: item.task.session.unread,
     activity: activityOf(summary.status.status_type, summary.status.active_flags),
     createdAt,
     recencyAt: summary.recencyAt ?? createdAt,

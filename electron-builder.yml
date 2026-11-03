@@ -170,6 +170,10 @@ win:
       arch: [x64, arm64]
   artifactName: "${productName}-${version}-win-${arch}-setup.${ext}"
   extraResources:
+    - from: resources/windows
+      to: windows
+      filter:
+        - "tray-*.ico"
     - from: .generated/windows-updater/${arch}/app-update.json
       to: native/app-update.json
     - from: .generated/codex-runtime/bin

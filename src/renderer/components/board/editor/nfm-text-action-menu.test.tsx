@@ -50,6 +50,7 @@ function makeSendToThreadItem(overrides: Partial<ChatCatalogEntry> = {}): ChatCa
     pullRequests: [],
     pinned: false,
     pinnedOrder: null,
+    unread: false,
     activity: "idle",
     createdAt: 1,
     recencyAt: 2,

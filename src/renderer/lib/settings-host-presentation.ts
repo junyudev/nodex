@@ -10,6 +10,7 @@ export function resolveSettingsHostPresentation(platform: string) {
     browserProfileImport: capabilities.browserProfileImport,
     browserControl: capabilities.browserControl,
     appUpdates: capabilities.autoUpdate,
+    launchAtLogin: platform === "win32" || platform === "windows",
   };
 }
 

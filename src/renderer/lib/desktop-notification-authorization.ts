@@ -1,10 +1,10 @@
-import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   defineRendererCommand,
   invokePlainCommandWithTrace,
   invokeRendererQuery,
 } from "./renderer-command";
+import { useRefetchOnFocus } from "./use-refetch-on-focus";
 
 const requestAuthorization = defineRendererCommand({
   key: "desktop_notification_authorization.request",
@@ -33,16 +33,7 @@ export function useDesktopNotificationAuthorization(open: boolean) {
     staleTime: 0,
     refetchOnWindowFocus: true,
   });
-  const { refetch } = query;
-  useEffect(() => {
-    if (!open) return;
-    // Returning from System Settings does not necessarily change document visibility.
-    const refresh = () => {
-      void refetch();
-    };
-    window.addEventListener("focus", refresh);
-    return () => window.removeEventListener("focus", refresh);
-  }, [open, refetch]);
+  useRefetchOnFocus(open, query.refetch);
   const request = useMutation({
     mutationFn: () => invokePlainCommandWithTrace(requestAuthorization, null),
     onSuccess: (status) => queryClient.setQueryData(authorizationKey, status),

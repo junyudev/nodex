@@ -15,6 +15,11 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { _electron, type ElectronApplication } from "playwright";
 import { windowsUpdateInstallerCommand } from "../../src/main/windows-update-handoff";
+import {
+  WINDOWS_STARTUP_ARGUMENT,
+  WINDOWS_LOGIN_ITEM_NAME,
+  windowsLoginItemEnabled,
+} from "../../src/main/windows-desktop-policy";
 import { desktopBuildTarget } from "../desktop-build-target";
 import { terminateWindowsProcessTree } from "../../src/main/process-tree";
 import { verifyWindowsArchitectureClosure } from "../windows-pe.mjs";
@@ -42,6 +47,20 @@ const runMaintenance = promisify(execFile);
 const failureDetails = (error: unknown): string =>
   error instanceof Error ? (error.stack ?? error.message) : String(error);
 const protocolKey = "HKCU\\Software\\Classes\\nodex";
+const startupRunKey = "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run";
+const startupApprovedKey =
+  "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\StartupApproved\\Run";
+const queryStartupValue = (key: string): string | null => {
+  try {
+    return execFileSync("reg.exe", ["query", key, "/v", WINDOWS_LOGIN_ITEM_NAME], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+  } catch (error) {
+    if (error && typeof error === "object" && "status" in error && error.status === 1) return null;
+    throw error;
+  }
+};
 const isProcessRunning = (pid: number): boolean => {
   try {
     process.kill(pid, 0);
@@ -167,7 +186,12 @@ async function main(): Promise<void> {
   const appData = process.env.APPDATA;
   if (!localAppData || !appData) throw new Error("LOCALAPPDATA and APPDATA are required");
   const installRoot = join(localAppData, "Programs", "nodex");
-  if (existsSync(installRoot) || queryProtocol())
+  if (
+    existsSync(installRoot) ||
+    queryProtocol() ||
+    queryStartupValue(startupRunKey) ||
+    queryStartupValue(startupApprovedKey)
+  )
     throw new Error(
       "Installer probe refuses to replace an existing Nodex installation or protocol registration",
     );
@@ -256,8 +280,17 @@ exit $uninstaller.ExitCode
         const protocolRemoved = remainingProtocol === null;
         const shortcutsRemoved = shortcuts.length === 0;
         const profilePreserved = isProfilePreserved();
+        const startupRemoved =
+          queryStartupValue(startupRunKey) === null &&
+          queryStartupValue(startupApprovedKey) === null;
         uninstallEvidence = {
-          completed: filesRemoved && protocolRemoved && shortcutsRemoved && profilePreserved,
+          completed:
+            filesRemoved &&
+            protocolRemoved &&
+            shortcutsRemoved &&
+            profilePreserved &&
+            startupRemoved,
+          startupRemoved,
           elapsedMs: Date.now() - uninstallStarted,
           detachedCoreBeforeUninstall,
           desktopExit: detachedCoreBeforeUninstall === undefined ? undefined : "forced",
@@ -269,6 +302,8 @@ exit $uninstaller.ExitCode
         if (!filesRemoved)
           throw new Error(`Uninstall left files: ${readdirSync(installRoot).join(", ")}`);
         if (!protocolRemoved) throw new Error("Uninstall left the nodex:// protocol registration");
+        if (!startupRemoved)
+          throw new Error("Uninstall left owned login registration or startup approval");
         if (!shortcutsRemoved) throw new Error(`Uninstall left shortcuts: ${shortcuts.join(", ")}`);
         if (!profilePreserved) throw new Error("Uninstall removed the Profile");
         uninstallCompleted = true;
@@ -352,6 +387,9 @@ exit $uninstaller.ExitCode
     const registration = queryProtocol();
     if (!registration?.includes(`"${executable}" "%1"`) || !registration.includes("URL Protocol"))
       throw new Error("NSIS did not register nodex:// for the current user");
+    const loginRegistration = queryStartupValue(startupRunKey);
+    if (!loginRegistration?.includes(`"${executable}" ${WINDOWS_STARTUP_ARGUMENT}`))
+      throw new Error("NSIS did not register per-user background startup");
     const core = join(installRoot, "resources/bin/nodex-core.exe");
     const expectedCoreSha256 = readCoreArtifactDigest(
       core,
@@ -381,10 +419,14 @@ exit $uninstaller.ExitCode
       [ISOLATED_RUN_ID_ENV]: runId,
       [AGENT_RUNTIME_STARTUP_PROBE_ENV]: "1",
     });
-    const launchInstalled = async (): Promise<void> => {
+    let startupDisabled = false;
+    const launchInstalled = async (startup = false): Promise<void> => {
       application = await _electron.launch({
         executablePath: executable,
-        args: [`--user-data-dir=${join(root, "electron-user-data")}`],
+        args: [
+          `--user-data-dir=${join(root, "electron-user-data")}`,
+          ...(startup ? [WINDOWS_STARTUP_ARGUMENT] : []),
+        ],
         timeout: 60_000,
         cwd: root,
         env: installedEnvironment(),
@@ -392,6 +434,17 @@ exit $uninstaller.ExitCode
       child = application.process();
       // Playwright wraps Electron in cmd.exe on Windows; claims identify Main.
       const hostPid = await application.evaluate(() => process.pid);
+      const loginStatus = await application.evaluate(
+        ({ app }, argument) =>
+          app.getLoginItemSettings({ path: process.execPath, args: [argument] }),
+        WINDOWS_STARTUP_ARGUMENT,
+      );
+      writeFileSync(
+        join(artifacts, `startup-status-${startupDisabled ? "disabled" : "enabled"}.json`),
+        `${JSON.stringify(loginStatus, null, 2)}\n`,
+      );
+      if (windowsLoginItemEnabled(executable, loginStatus) === startupDisabled)
+        throw new Error("Installed Electron startup status differs from Windows approval");
       const sdkLoaded = await application.evaluate(
         (_electron, url) => {
           // Debugger evaluations have no ESM import callback; Node's loader uses the same file.
@@ -528,17 +581,72 @@ exit $uninstaller.ExitCode
       lease = acquireIsolatedRunLease({ nodexHome: profile, runId, supervisorPid: process.pid });
       rmSync(join(profile, "run", AGENT_RUNTIME_STARTUP_EVIDENCE_FILE), { force: true });
     };
-    await launchInstalled();
+    await launchInstalled(true);
+    if (!application) throw new Error("Background Desktop is missing");
+    const backgroundWindows = await application.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows().map((window) => ({
+        id: window.id,
+        visible: window.isVisible(),
+        focused: window.isFocused(),
+      })),
+    );
+    if (
+      backgroundWindows.length !== 1 ||
+      backgroundWindows.some((window) => window.visible || window.focused)
+    )
+      throw new Error("Startup activation displayed or focused an application window");
+    const retainedWindowId = backgroundWindows[0]!.id;
+    const coreBeforeHide = readCoreRuntimeConnection(profile).descriptor.pid;
+    await application.evaluate(({ BrowserWindow }, id) => {
+      const window = BrowserWindow.fromId(id);
+      window?.show();
+      window?.close();
+    }, retainedWindowId);
+    await delay(2_000);
+    const retained = await application.evaluate(({ BrowserWindow }, id) => {
+      const window = BrowserWindow.fromId(id);
+      return window ? { visible: window.isVisible(), destroyed: window.isDestroyed() } : null;
+    }, retainedWindowId);
+    if (
+      !retained ||
+      retained.visible ||
+      retained.destroyed ||
+      readCoreRuntimeConnection(profile).descriptor.pid !== coreBeforeHide ||
+      !isProcessRunning(coreBeforeHide)
+    )
+      throw new Error("Closing the last tray window retired Desktop, its renderer or Core");
+    writeFileSync(
+      join(artifacts, "tray-lifecycle.json"),
+      JSON.stringify({ backgroundWindows, retained, corePid: coreBeforeHide }, null, 2),
+    );
     await quitNormally();
     renewHostClaim();
     await launchInstalled();
     const oldCorePid = await forceDesktopLeavingCore();
+    execFileSync("reg.exe", [
+      "add",
+      startupApprovedKey,
+      "/v",
+      WINDOWS_LOGIN_ITEM_NAME,
+      "/t",
+      "REG_BINARY",
+      "/d",
+      "030000000000000000000000",
+      "/f",
+    ]);
+    const disabledApproval = queryStartupValue(startupApprovedKey);
+    startupDisabled = true;
     const upgradeStarted = Date.now();
     await runMaintenance(resolve("dist", installers[0]!), ["/S", "/currentuser"], {
       timeout: 180_000,
     });
     assertProcessStopped(oldCorePid);
     if (!isProfilePreserved()) throw new Error("Upgrade removed Profile content");
+    if (
+      queryStartupValue(startupRunKey) !== loginRegistration ||
+      queryStartupValue(startupApprovedKey) !== disabledApproval
+    )
+      throw new Error("Upgrade changed login registration or re-enabled disabled startup");
     upgradeEvidence = {
       completed: true,
       elapsedMs: Date.now() - upgradeStarted,

@@ -23,15 +23,25 @@ import { MainConfig } from "./MainConfig";
 import { MainShutdown } from "./MainShutdown";
 import { ScopedCallbackRuntime } from "./ScopedCallbackRuntime";
 import { ElectronDesktop } from "../platform/electron/ElectronDesktop";
+import { WindowsTrayRuntime, live as windowsTrayLive } from "../host-runtime/WindowsTrayRuntime";
+import { isWindowsStartupActivation } from "../windows-desktop-policy";
+import type * as FileSystem from "effect/FileSystem";
+
+const windowsTray = windowsTrayLive();
 
 const windowRuntime = Layer.unwrap(
   Effect.gen(function* () {
     const electron = yield* ElectronApp;
     const config = yield* MainConfig;
+    const tray = yield* WindowsTrayRuntime;
     const userDataPath = yield* electron.userDataPath;
-    return windowRuntimeLive(userDataPath, config.platform as NodeJS.Platform);
+    return windowRuntimeLive(
+      userDataPath,
+      config.platform as NodeJS.Platform,
+      tray.canHideLastWindow,
+    );
   }),
-);
+).pipe(Layer.provideMerge(windowsTray));
 
 const initialization = Layer.unwrap(
   Effect.gen(function* () {
@@ -56,8 +66,12 @@ const started = Layer.effect(
     yield* ApplicationBootstrapIpc;
     const applicationShell = yield* ApplicationWindowShellRuntime;
     const settings = yield* ApplicationSettings;
+    const config = yield* MainConfig;
     const snapshot = yield* settings.snapshot().pipe(Effect.orDie);
-    applicationShell.openInitial(snapshot.windowRestore.policy);
+    applicationShell.openInitial(
+      snapshot.windowRestore.policy,
+      isWindowsStartupActivation(config.platform, config.argv) ? "hidden" : "foreground",
+    );
     return applicationShell;
   }),
 ).pipe(Layer.provideMerge(bootstrapIpc));
@@ -65,6 +79,7 @@ const started = Layer.effect(
 /** Pre-Core state and startup presentation acquired before Store migration can block readiness. */
 export const live: Layer.Layer<
   | WindowRuntime
+  | WindowsTrayRuntime
   | ApplicationInitializationRuntime
   | ApplicationBootstrapIpc
   | ApplicationWindowShellRuntime
@@ -79,4 +94,5 @@ export const live: Layer.Layer<
   | ApplicationSettings
   | MainShutdown
   | ScopedCallbackRuntime
+  | FileSystem.FileSystem
 > = started;

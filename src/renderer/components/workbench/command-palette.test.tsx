@@ -399,6 +399,7 @@ function makeChat(overrides: Partial<ChatCatalogEntry> = {}): ChatCatalogEntry {
     pullRequests: [],
     pinned: false,
     pinnedOrder: null,
+    unread: false,
     activity: "idle",
     createdAt: 1_781_990_400_000,
     recencyAt: 1_781_990_400_000,

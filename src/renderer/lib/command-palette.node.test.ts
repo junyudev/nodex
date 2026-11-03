@@ -102,6 +102,7 @@ function makeChatMatch(sessionId: string, title = `Chat ${sessionId}`): ChatSear
       pullRequests: [],
       pinned: false,
       pinnedOrder: null,
+      unread: false,
       activity: "idle",
       createdAt: 1,
       recencyAt: 1,

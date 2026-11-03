@@ -88,6 +88,12 @@ import * as CodexConversationPeerRuntime from "../platform/node/CodexConversatio
 import { live as shellEnvironmentLive } from "../host-runtime/WorktreeShellEnvironmentRuntime";
 import { live as profilePersistedAtomsLive } from "../local-store/ProfilePersistedAtoms";
 import { live as codexVisualizationStateLive } from "../codex-application/CodexVisualizationState";
+import { WindowsTrayRuntime } from "../host-runtime/WindowsTrayRuntime";
+import {
+  WindowsTrayIntegration,
+  live as windowsTrayIntegrationLive,
+} from "../host-runtime/WindowsTrayIntegration";
+import { isWindowsStartupActivation } from "../windows-desktop-policy";
 
 const runtimeError = (operation: string, cause: unknown) =>
   new MainApplicationError({ phase: "startup", operation, cause });
@@ -153,7 +159,7 @@ const hostGraph = AgentRuntimeApplicationLive.hostTools.pipe(Layer.provideMerge(
 const inboxWorkersGraph = Layer.merge(inboxDispatcherLive, inboxDispatchRuntimeLive).pipe(
   Layer.provideMerge(hostGraph),
 );
-const applicationGraph = RendererIngressLive.live.pipe(
+const applicationGraph = Layer.merge(RendererIngressLive.live, windowsTrayIntegrationLive).pipe(
   Layer.provideMerge(inboxWorkersGraph),
   Layer.provide(CodexConversationPeerRuntime.live),
   Layer.provideMerge(shellEnvironment),
@@ -194,6 +200,7 @@ export const live: Layer.Layer<
   | ApplicationWindowShellRuntime
   | AppProtocolRuntime.AppProtocolRuntime
   | WindowRuntime
+  | WindowsTrayRuntime
 > = Layer.effect(
   MainApplication,
   Effect.gen(function* () {
@@ -217,6 +224,8 @@ export const live: Layer.Layer<
         const browser = yield* BrowserApplication;
         const executionHosts = yield* ExecutionHostRuntime;
         const appUpdates = yield* AppUpdateRuntime;
+        const windowsTray = yield* WindowsTrayRuntime;
+        const trayIntegration = yield* WindowsTrayIntegration;
         const shutdown = yield* MainShutdown;
         const applicationWindows = yield* ApplicationWindowRuntime;
         const deepLinks = yield* DeepLinkRuntime;
@@ -352,6 +361,7 @@ export const live: Layer.Layer<
         );
         yield* Fiber.join(initializationFiber);
         yield* initialization.markDone;
+        yield* windowsTray.markApplicationReady;
         applicationLogger.info("Desktop app initialization finished", {
           durationMs: Math.round(performance.now() - initializationStartedAt),
         });
@@ -360,6 +370,7 @@ export const live: Layer.Layer<
         let finishUpdate: (() => void | Promise<void>) | null = null;
         const application = MainApplication.of({
           activate: Effect.sync(applicationWindows.focusLast),
+          confirmQuit: trayIntegration.confirmQuit,
           handleBootstrapEvent: (event) => {
             if (event.type === "open-url") {
               return deepLinks.handle(event.url).pipe(
@@ -367,6 +378,7 @@ export const live: Layer.Layer<
                 Effect.asVoid,
               );
             }
+            if (isWindowsStartupActivation(config.platform, event.argv)) return Effect.void;
             return deepLinks.extractFromArgv(event.argv).pipe(
               Effect.tap((handled) =>
                 handled
@@ -435,6 +447,8 @@ const startupFailureLive = (
   | MainObservability
   | ScopedCallbackRuntime
   | WindowRuntime
+  | WindowsTrayRuntime
+  | MainConfig
 > =>
   Layer.effect(
     MainApplication,
@@ -444,6 +458,8 @@ const startupFailureLive = (
       const shell = yield* ApplicationWindowShellRuntime;
       const shutdown = yield* MainShutdown;
       const windows = yield* WindowRuntime;
+      const config = yield* MainConfig;
+      const tray = yield* WindowsTrayRuntime;
 
       applicationLogger.error("Desktop app startup failed; preserving the canonical window", {
         error,
@@ -455,7 +471,25 @@ const startupFailureLive = (
         cause: Cause.fail(runtimeError("startup", error)),
       });
       yield* initialization.markFailed;
+      yield* tray.markApplicationFailed;
       shell.failAll(error);
+
+      const revealFailure = Effect.sync(() => {
+        const window = windows.getLastFocused();
+        if (!window || window.isDestroyed()) return;
+        if (config.platform === "win32" && window.isMinimized()) window.restore();
+        window.show();
+        window.focus();
+      });
+      yield* tray.actions.pipe(
+        Stream.runForEach((action) => {
+          if (action.kind === "quit")
+            return shutdown.request({ _tag: "UserQuit" }).pipe(Effect.asVoid);
+          if (action.kind === "menu") return tray.showMenu([]);
+          return revealFailure;
+        }),
+        Effect.forkScoped,
+      );
 
       for (const window of windows.all()) {
         const onClosed = (): void => {
@@ -471,13 +505,16 @@ const startupFailureLive = (
       }
 
       return MainApplication.of({
-        activate: Effect.sync(() => {
-          const window = windows.getLastFocused();
-          if (!window || window.isDestroyed()) return;
-          window.show();
-          window.focus();
-        }),
-        handleBootstrapEvent: () => Effect.void,
+        activate: revealFailure,
+        handleBootstrapEvent: (event) => {
+          if (config.platform !== "win32") return Effect.void;
+          if (
+            event.type === "second-instance" &&
+            isWindowsStartupActivation(config.platform, event.argv)
+          )
+            return Effect.void;
+          return revealFailure;
+        },
         prepareShutdown: Effect.void,
         readiness: "startup-failed",
       });

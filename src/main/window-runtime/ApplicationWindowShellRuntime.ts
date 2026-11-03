@@ -13,6 +13,7 @@ import {
   screen,
   type BrowserWindowConstructorOptions,
   type Display,
+  type NativeImage,
 } from "electron";
 import { performance } from "node:perf_hooks";
 import { APP_RENDERER_URL } from "../../shared/app-renderer-policy";
@@ -63,11 +64,14 @@ export interface ApplicationWindowShellRuntimeService {
   readonly completeActivation: (webContentsId: number) => void;
   readonly create: (
     session: WindowSessionRecord,
-    presentation?: "background" | "foreground",
+    presentation?: "background" | "foreground" | "hidden",
   ) => BrowserWindow;
   readonly failAll: (cause: unknown) => void;
   readonly failActivation: (webContentsId: number, cause: unknown) => void;
-  readonly openInitial: (policy: WindowRestorePolicy) => readonly BrowserWindow[];
+  readonly openInitial: (
+    policy: WindowRestorePolicy,
+    presentation?: "foreground" | "hidden",
+  ) => readonly BrowserWindow[];
   readonly reportRenderer: (webContentsId: number) => void;
 }
 
@@ -77,6 +81,7 @@ export class ApplicationWindowShellRuntime extends Context.Service<
 >()("nodex/main/window-runtime/ApplicationWindowShellRuntime") {}
 
 export interface ApplicationWindowShellRuntimeOptions {
+  readonly createIcon?: (path: string) => NativeImage;
   readonly createWindow?: (options: BrowserWindowConstructorOptions) => BrowserWindow;
   readonly displays?: {
     readonly getAllDisplays: () => Display[];
@@ -100,7 +105,7 @@ interface ShellRecord {
   activationWatchdogPending: boolean;
   readonly gate: ActivationGate;
   phase: ApplicationWindowShellPhase;
-  readonly presentation: "background" | "foreground";
+  readonly presentation: "background" | "foreground" | "hidden";
   readyToShow: boolean;
   revealed: boolean;
   readonly session: WindowSessionRecord;
@@ -194,7 +199,7 @@ export const live = (
           const icon =
             options.platform === "darwin"
               ? undefined
-              : nativeImage.createFromPath(options.iconPath);
+              : (options.createIcon ?? nativeImage.createFromPath)(options.iconPath);
           const records = new Map<number, ShellRecord>();
           const activationOrder: number[] = [];
           let activationGateOwner: number | null = null;
@@ -216,7 +221,8 @@ export const live = (
             record: ShellRecord,
             reason: "activation" | "ready" | "watchdog",
           ): void => {
-            if (record.revealed || record.window.isDestroyed()) return;
+            if (record.presentation === "hidden" || record.revealed || record.window.isDestroyed())
+              return;
             record.revealed = true;
             clearShowWatchdog(record);
             if (record.presentation === "background") record.window.showInactive();
@@ -547,11 +553,14 @@ export const live = (
               if (activationOrder[0] === webContentsId) activationOrder.shift();
               openNextActivationGate();
             },
-            openInitial: (policy) => {
+            openInitial: (policy, presentation = "foreground") => {
               if (records.size > 0) return [...records.values()].map(({ window }) => window);
               const sessions = options.windows.selectStartupSessions(policy);
               const windows = sessions.map((session, index) =>
-                create(session, index === 0 ? "foreground" : "background"),
+                create(
+                  session,
+                  presentation === "hidden" ? "hidden" : index === 0 ? "foreground" : "background",
+                ),
               );
               const primary = windows[0];
               if (primary) options.windows.markFocused(primary.webContents.id);

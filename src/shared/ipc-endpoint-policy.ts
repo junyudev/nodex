@@ -73,6 +73,7 @@ export type IpcCommand<
 
 /** Exact owner-audited groups. Never replace one group with an `Exclude<keyof IpcApi, ...>` remainder. */
 type QueryEndpointPolicy =
+  | "windows-startup:status"
   | "codex:plugins:marketplaces"
   | "codex:plugins:apps"
   | "codex:plugins:mcp-servers"
@@ -519,6 +520,7 @@ type MainRevisionCommandEndpointPolicy =
   | "codex:visualization:interaction:write";
 
 type PlainResultCommandEndpointPolicy =
+  | "windows-startup:open-settings"
   | "page-text-rewrite:start"
   | "mcp-app:data:clear"
   | "codex:plugins:app-disconnect"
