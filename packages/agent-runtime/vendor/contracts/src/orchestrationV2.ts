@@ -1394,6 +1394,10 @@ export const OrchestrationV2ConversationMessage = Schema.Struct({
       parentRunId: RunId,
       generation: PositiveInt,
       taskIds: Schema.Array(NodeId),
+      /** Complete results carried by this message, rather than a later task read. */
+      inlinedResults: Schema.optional(
+        Schema.Array(Schema.Struct({ taskId: NodeId, result: Schema.String })),
+      ),
     }),
   ),
 });

@@ -707,7 +707,7 @@ export const layer: Layer.Layer<
             const results = observedTaskResults(item);
             const receipts =
               item.runId === null || results === undefined
-                ? []
+                ? { handoffs: [] }
                 : yield* delegatedResultReceipts({
                     store: projections,
                     threadId: input.threadId,
@@ -718,7 +718,7 @@ export const layer: Layer.Layer<
                     providerTurnId: item.providerTurnId,
                   });
             return [
-              ...(yield* Effect.forEach(receipts, (handoff) =>
+              ...(yield* Effect.forEach(receipts.handoffs, (handoff) =>
                 makeDomainEvent(input, {
                   type: "context-handoff.updated",
                   payload: handoff,

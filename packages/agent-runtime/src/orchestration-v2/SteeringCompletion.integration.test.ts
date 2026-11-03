@@ -264,6 +264,23 @@ it.effect.each(
             ],
           });
         }
+        const resultAccepted = mailbox
+          ? yield* watch(
+              (event) =>
+                event.type === "subagent.updated" &&
+                event.payload.id === taskId &&
+                event.payload.completionDelivery?.state === "acknowledged",
+            )
+          : null;
+        const wakeRunning =
+          mailbox && timing !== "after delivery"
+            ? yield* watch(
+                (event) =>
+                  event.type === "provider-turn.updated" &&
+                  event.payload.status === "running" &&
+                  event.payload.runAttemptId !== first.attemptId,
+              )
+            : null;
         const dispatchSteer = orchestrator.dispatch({
           type: "message.dispatch",
           commandId: CommandId.make("steer"),
@@ -332,12 +349,13 @@ it.effect.each(
         yield* orchestrator.resumeQueuedRuns;
         yield* worker.drain();
         if (timing === "after delivery") {
+          if (resultAccepted !== null) yield* Fiber.join(resultAccepted);
           assert.equal(steerCalls, 1);
           assert.equal(started.length, 1);
           if (mailbox) {
             const delivered = yield* orchestrator.getThreadProjection(threadId);
-            assert.equal(delivered.subagents[0]?.completionDelivery?.state, "delivered");
-            assert.equal(delivered.subagents[0]?.completionDelivery?.observedByRunId, null);
+            assert.equal(delivered.subagents[0]?.completionDelivery?.state, "acknowledged");
+            assert.equal(delivered.subagents[0]?.completionDelivery?.observedByRunId, first.runId);
             assert.equal(delivered.runs[0]?.delegatedCompletion?.delivery, null);
             assert.equal(
               delivered.turnItems.filter((item) => item.type === "notification").length,
@@ -365,8 +383,53 @@ it.effect.each(
         }
         assert.equal(started.length, 2);
         assert.equal(started[1]?.message.messageId, messageId);
-        if (mailbox) assert.include(started[1]?.message.text ?? "", String(taskId));
-        else assert.equal(started[1]?.message.text, "fix the popover");
+        if (mailbox) {
+          assert.include(
+            started[1]?.message.text ?? "",
+            `Delegated task ${taskId} (Background test) [completed]:\ndone`,
+          );
+          if (wakeRunning !== null) yield* Fiber.join(wakeRunning);
+          const admitted = yield* orchestrator.getThreadProjection(threadId);
+          assert.equal(
+            admitted.messages.find((message) => message.id === messageId)?.delivery,
+            "accepted",
+          );
+          assert.equal(admitted.subagents[0]?.completionDelivery?.state, "claimed");
+          const wake = started[1]!;
+          const wakeTurn = admitted.providerTurns.find(
+            (turn) => turn.runAttemptId === wake.attemptId,
+          )!;
+          const wakeWaiting = yield* watch(
+            (event) =>
+              event.type === "run.updated" &&
+              event.payload.id === wake.runId &&
+              event.payload.status === "waiting",
+          );
+          yield* Queue.offer(events, {
+            type: "provider_turn.updated",
+            driver,
+            providerTurn: { ...wakeTurn, status: "completed", completedAt: yield* DateTime.now },
+          });
+          yield* Queue.offer(events, {
+            type: "turn.terminal",
+            driver,
+            providerThreadId: wakeTurn.providerThreadId,
+            providerTurnId: wakeTurn.id,
+            runOrdinal: wake.runOrdinal,
+            status: "completed",
+            failure: null,
+            threadDisposition: "reusable",
+          });
+          yield* Fiber.join(wakeWaiting);
+          yield* worker.drain();
+          if (resultAccepted !== null) yield* Fiber.join(resultAccepted);
+          const accepted = yield* orchestrator.getThreadProjection(threadId);
+          assert.equal(accepted.runs.find((run) => run.id === wake.runId)?.status, "completed");
+          assert.deepEqual(accepted.subagents[0]?.completionDelivery, {
+            state: "acknowledged",
+            observedByRunId: wake.runId,
+          });
+        } else assert.equal(started[1]?.message.text, "fix the popover");
         assert.deepEqual(started[1]?.message.attachments, [
           {
             type: "image",

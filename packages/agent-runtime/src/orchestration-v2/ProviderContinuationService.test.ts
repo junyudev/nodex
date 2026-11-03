@@ -283,7 +283,7 @@ describe("ProviderContinuationService", () => {
           "node-provider-continuation-first",
           "node-provider-continuation-second",
         ]);
-        assert.include(command.text, "task_status");
+        assert.equal(command.text, "");
       }).pipe(
         Effect.provide(
           layerTest({

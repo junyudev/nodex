@@ -17,6 +17,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import {
   CommandId,
+  CheckpointId,
   ContextHandoffId,
   ContextTransferId,
   RunAttemptId,
@@ -359,6 +360,7 @@ it.layer(layerTest)("delegated completion delivery repairs", (it) => {
               nodeId: task.parentNodeId,
               role: "user",
               text: "Background task finished",
+              delivery: "accepted",
               attachments: [],
               streaming: false,
               createdBy: "agent",
@@ -465,6 +467,7 @@ it.layer(layerTest)("delegated completion delivery repairs", (it) => {
               nodeId: task.parentNodeId,
               role: "user",
               text: "Background task finished",
+              delivery: "accepted",
               attachments: [],
               streaming: false,
               createdBy: "agent",
@@ -665,7 +668,431 @@ it.layer(layerTest)("delegated completion delivery repairs", (it) => {
       assert.include(message?.text ?? "", String(firstTaskId));
       assert.include(message?.text ?? "", String(secondTaskId));
       assert.include(message?.text ?? "", "task_status");
+      assert.include(message?.text ?? "", "child finished");
+      assert.deepEqual(message?.delegatedCompletion?.inlinedResults, [
+        { taskId: firstTaskId, result: "child finished" },
+      ]);
     }),
+  );
+
+  it.effect.each([
+    { name: "single", results: ["first result"], inlined: [true] },
+    { name: "multiple", results: ["first result", "second result"], inlined: [true, true] },
+    {
+      name: "UTF-8 overflow",
+      results: ["界".repeat(6_000), "small result"],
+      inlined: [false, true],
+    },
+    {
+      name: "shared budget",
+      results: ["a".repeat(10_000), "b".repeat(10_000)],
+      inlined: [true, false],
+    },
+    { name: "missing result", results: [null, ""], inlined: [false, false] },
+    {
+      name: "exact fit",
+      results: [
+        "x".repeat(
+          16_000 -
+            Buffer.byteLength(
+              "Delegated task inline-task:exact fit:0 (Inspect regression) [failed]:\n",
+            ),
+        ),
+      ],
+      inlined: [true],
+    },
+    {
+      name: "one byte over",
+      results: [
+        "x".repeat(
+          16_001 -
+            Buffer.byteLength(
+              "Delegated task inline-task:one byte over:0 (Inspect regression) [failed]:\n",
+            ),
+        ),
+      ],
+      inlined: [false],
+    },
+  ])("inlines complete current results with a shared byte budget: $name", (testCase) =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const sink = yield* EventSink.EventSinkV2;
+      const now = yield* DateTime.now;
+      const threadId = ThreadId.make(`inline:${testCase.name}`);
+      const runId = RunId.make(`inline-parent:${testCase.name}`);
+      const taskIds = testCase.results.map((_, index) =>
+        NodeId.make(`inline-task:${testCase.name}:${index}`),
+      );
+      const messageId = MessageId.make(`message:delegated-delivery:${threadId}`);
+      yield* seedParentWithTerminalTask({
+        threadId,
+        runId,
+        projectId: ProjectId.make(`inline:${testCase.name}`),
+        rootNodeId: NodeId.make(`inline-root:${testCase.name}`),
+        taskId: taskIds[0]!,
+        deliveryState: "claimed",
+        completionWake: "always",
+        deliveryTaskIds: taskIds,
+        now,
+      });
+      const task = (yield* orchestrator.getThreadProjection(threadId)).subagents[0]!;
+      yield* sink.write({
+        events: taskIds.map((id, index) => ({
+          id: EventId.make(`inline-result:${id}`),
+          type: "subagent.updated" as const,
+          threadId,
+          runId,
+          nodeId: id,
+          occurredAt: now,
+          payload: {
+            ...task,
+            id,
+            result: testCase.results[index]!,
+            title: "Inspect regression",
+            status: "failed" as const,
+          },
+        })),
+      });
+      yield* orchestrator.dispatch({
+        type: "message.dispatch",
+        commandId: CommandId.make(`inline-dispatch:${threadId}`),
+        threadId,
+        messageId,
+        text: "Stale producer text",
+        attachments: [],
+        dispatchMode: { type: "queue_after_active" },
+        createdBy: "agent",
+        creationSource: "server",
+        delegatedCompletion: { parentRunId: runId, generation: 1, taskIds },
+      });
+      const projection = yield* orchestrator.getThreadProjection(threadId);
+      const message = projection.messages.find((row) => row.id === messageId)!;
+      const expectedCoverage = taskIds.flatMap((taskId, index) =>
+        testCase.inlined[index] ? [{ taskId, result: testCase.results[index]! }] : [],
+      );
+      assert.deepEqual(message.delegatedCompletion?.inlinedResults, expectedCoverage);
+      for (const [index, taskId] of taskIds.entries()) {
+        assert.include(message.text, `Delegated task ${taskId} (Inspect regression) [failed]`);
+        assert.equal(
+          message.text.includes(`Use task_status with taskId ${taskId}`),
+          !testCase.inlined[index],
+        );
+        if (testCase.inlined[index]) assert.include(message.text, testCase.results[index]!);
+        assert.equal(
+          projection.subagents.find((row) => row.id === taskId)?.completionDelivery?.state,
+          "claimed",
+        );
+      }
+      const wakeRun = projection.runs.find((row) => row.userMessageId === messageId)!;
+      const attempt = projection.attempts.find((row) => row.id === wakeRun.activeAttemptId)!;
+      const nativeId = projection.providerThreads.find(
+        (row) => row.id === wakeRun.providerThreadId,
+      )!.nativeThreadRef!.nativeId!;
+      yield* sink.write({
+        events: [
+          {
+            id: EventId.make(`inline-native-attempt:${threadId}`),
+            type: "run-attempt.updated",
+            threadId,
+            runId: wakeRun.id,
+            occurredAt: now,
+            payload: { ...attempt, nativeThreadId: nativeId },
+          },
+          {
+            id: EventId.make(`inline-accepted:${threadId}`),
+            type: "message.delivery.updated",
+            threadId,
+            occurredAt: now,
+            payload: { messageId, delivery: "accepted" },
+          },
+        ],
+      });
+      yield* orchestrator.dispatch({
+        type: "notification.delivery.accept",
+        threadId,
+        messageId,
+        commandId: CommandId.make(`inline-accept:${threadId}`),
+      });
+      const admitted = yield* orchestrator.getThreadProjection(threadId);
+      assert.equal(admitted.messages.find((row) => row.id === messageId)?.delivery, "accepted");
+      for (const taskId of taskIds) {
+        assert.equal(
+          admitted.subagents.find((row) => row.id === taskId)?.completionDelivery?.state,
+          "claimed",
+        );
+      }
+      yield* sink.writeWithEffects({
+        commandId: reconcileCommandId(`inline-completed:${threadId}`),
+        effects: [],
+        events: [
+          {
+            id: EventId.make(`inline-completed:${threadId}`),
+            type: "run.updated",
+            threadId,
+            runId: wakeRun.id,
+            occurredAt: now,
+            payload: { ...wakeRun, status: "completed", completedAt: now },
+          },
+        ],
+      });
+      yield* orchestrator.recoverDelegatedTasks;
+      const accepted = yield* orchestrator.getThreadProjection(threadId);
+      for (const [index, taskId] of taskIds.entries()) {
+        assert.deepEqual(accepted.subagents.find((row) => row.id === taskId)?.completionDelivery, {
+          state: testCase.inlined[index] ? "acknowledged" : "delivered",
+          observedByRunId: testCase.inlined[index] ? wakeRun.id : null,
+        });
+      }
+    }),
+  );
+
+  it.effect("retries the persisted result coverage and sends later siblings in a successor", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const sink = yield* EventSink.EventSinkV2;
+      const now = yield* DateTime.now;
+      const threadId = ThreadId.make("retry-inline");
+      const runId = RunId.make("retry-inline-parent");
+      const taskId = NodeId.make("retry-inline-first");
+      const siblingId = NodeId.make("retry-inline-sibling");
+      const messageId = MessageId.make(`message:delegated-delivery:${threadId}`);
+      yield* seedParentWithTerminalTask({
+        threadId,
+        runId,
+        taskId,
+        projectId: ProjectId.make("retry-inline"),
+        rootNodeId: NodeId.make("retry-inline-root"),
+        deliveryState: "claimed",
+        completionWake: "always",
+        deliveryTaskIds: [taskId],
+        now,
+      });
+      const initial = yield* orchestrator.getThreadProjection(threadId);
+      const task = initial.subagents[0]!;
+      const parent = initial.runs[0]!;
+      const text = `Delegated task ${taskId} [completed]:\noriginal result`;
+      const ownership = {
+        parentRunId: runId,
+        generation: 1,
+        taskIds: [taskId],
+        inlinedResults: [{ taskId, result: "original result" }],
+      };
+      yield* sink.write({
+        events: [
+          {
+            id: EventId.make("retry-inline-ended"),
+            type: "run.updated",
+            threadId,
+            runId,
+            occurredAt: now,
+            payload: { ...parent, status: "interrupted", completedAt: now },
+          },
+          {
+            id: EventId.make("retry-inline-first-changed"),
+            type: "subagent.updated",
+            threadId,
+            runId,
+            occurredAt: now,
+            payload: { ...task, result: "changed current result" },
+          },
+          {
+            id: EventId.make("retry-inline-sibling-finished"),
+            type: "subagent.updated",
+            threadId,
+            runId,
+            occurredAt: now,
+            payload: {
+              ...task,
+              id: siblingId,
+              result: "sibling current result",
+              completionDelivery: { state: "pending", observedByRunId: null },
+            },
+          },
+          {
+            id: EventId.make("retry-inline-steer"),
+            type: "message.updated",
+            threadId,
+            runId,
+            occurredAt: now,
+            payload: {
+              id: messageId,
+              threadId,
+              runId,
+              nodeId: parent.rootNodeId,
+              role: "user",
+              text,
+              attachments: [],
+              streaming: false,
+              createdBy: "agent",
+              creationSource: "server",
+              createdAt: now,
+              updatedAt: now,
+              delivery: "unknown",
+              delegatedCompletion: ownership,
+            },
+          },
+        ],
+      });
+      yield* orchestrator.dispatch({
+        type: "message.dispatch",
+        commandId: CommandId.make("retry-inline-dispatch"),
+        threadId,
+        messageId,
+        text: "Producer must not replace the original result",
+        attachments: [],
+        dispatchMode: { type: "queue_after_active" },
+        createdBy: "agent",
+        creationSource: "server",
+        delegatedCompletion: ownership,
+      });
+      const retriedProjection = yield* orchestrator.getThreadProjection(threadId);
+      const retried = retriedProjection.messages.find((row) => row.id === messageId)!;
+      const wakeRun = retriedProjection.runs.find((row) => row.id === retried.runId)!;
+      const attempt = retriedProjection.attempts.find((row) => row.id === wakeRun.activeAttemptId)!;
+      const nativeId = retriedProjection.providerThreads.find(
+        (row) => row.id === wakeRun.providerThreadId,
+      )!.nativeThreadRef!.nativeId!;
+      assert.equal(retried.text, text);
+      assert.deepEqual(retried.delegatedCompletion, ownership);
+      yield* sink.writeWithEffects({
+        commandId: reconcileCommandId("retry-inline-delivery"),
+        effects: [],
+        events: [
+          {
+            id: EventId.make("retry-inline-completed"),
+            type: "run.updated",
+            threadId,
+            runId: wakeRun.id,
+            occurredAt: now,
+            payload: { ...wakeRun, status: "completed", completedAt: now },
+          },
+          {
+            id: EventId.make("retry-inline-native-accepted"),
+            type: "message.updated",
+            threadId,
+            occurredAt: now,
+            payload: { ...retried, delivery: "accepted" },
+          },
+          {
+            id: EventId.make("retry-inline-native-attempt"),
+            type: "run-attempt.updated",
+            threadId,
+            runId: wakeRun.id,
+            occurredAt: now,
+            payload: { ...attempt, nativeThreadId: nativeId },
+          },
+        ],
+      });
+      // Recovery settles completed delivery Runs after a restart, preserving the original coverage.
+      yield* orchestrator.recoverDelegatedTasks;
+      const accepted = yield* orchestrator.getThreadProjection(threadId);
+      assert.equal(
+        accepted.subagents.find((row) => row.id === taskId)?.completionDelivery?.state,
+        "delivered",
+      );
+      const successor = accepted.runs.find((row) => row.id === runId)!.delegatedCompletion!
+        .delivery!;
+      assert.equal(successor.generation, 2);
+      assert.deepEqual(successor.taskIds, [siblingId]);
+      yield* orchestrator.dispatch({
+        type: "message.dispatch",
+        commandId: CommandId.make("retry-inline-successor"),
+        threadId,
+        messageId: successor.messageId,
+        text: "",
+        attachments: [],
+        dispatchMode: { type: "queue_after_active" },
+        createdBy: "agent",
+        creationSource: "server",
+        delegatedCompletion: {
+          parentRunId: runId,
+          generation: successor.generation,
+          taskIds: successor.taskIds,
+        },
+      });
+      const successorMessage = (yield* orchestrator.getThreadProjection(threadId)).messages.find(
+        (row) => row.id === successor.messageId,
+      )!;
+      assert.deepEqual(successorMessage.delegatedCompletion?.inlinedResults, [
+        { taskId: siblingId, result: "sibling current result" },
+      ]);
+      assert.include(successorMessage.text, "sibling current result");
+    }),
+  );
+
+  it.effect.each(["command", "system"] as const)(
+    "preserves native Run completion while committing %s delivery state",
+    (writer) =>
+      Effect.gen(function* () {
+        const orchestrator = yield* Orchestrator.OrchestratorV2;
+        const sink = yield* EventSink.EventSinkV2;
+        const now = yield* DateTime.now;
+        const threadId = ThreadId.make(`delivery-race:${writer}`);
+        const runId = RunId.make(`delivery-race:${writer}`);
+        yield* seedParentWithTerminalTask({
+          threadId,
+          runId,
+          projectId: ProjectId.make(`delivery-race:${writer}`),
+          rootNodeId: NodeId.make(`delivery-race:${writer}`),
+          taskId: NodeId.make(`delivery-race-task:${writer}`),
+          deliveryState: "claimed",
+          now,
+        });
+        const stale = (yield* orchestrator.getThreadProjection(threadId)).runs[0]!;
+        const completed = {
+          ...stale,
+          status: "completed" as const,
+          completedAt: now,
+          checkpointId: CheckpointId.make(`delivery-race-checkpoint:${writer}`),
+        };
+        yield* sink.write({
+          events: [
+            {
+              id: EventId.make(`delivery-race-completed:${writer}`),
+              type: "run.updated",
+              threadId,
+              runId,
+              occurredAt: now,
+              payload: completed,
+            },
+          ],
+        });
+        const cohort = { disposition: "open" as const, nextGeneration: 3, delivery: null };
+        const events: OrchestrationV2DomainEvent[] = [
+          {
+            id: EventId.make(`delivery-race-stale:${writer}`),
+            type: "run.updated",
+            threadId,
+            runId,
+            occurredAt: now,
+            payload: { ...stale, delegatedCompletion: cohort },
+          },
+        ];
+        const result =
+          writer === "command"
+            ? (yield* sink.commitCommand({
+                commandId: CommandId.make(`delivery-race:${writer}`),
+                threadId,
+                commandType: "notification.delivery.accept",
+                acceptedAt: now,
+                events,
+                effects: [],
+                updateDelegatedCompletionOnlyRunId: runId,
+              })).storedEvents
+            : yield* sink.writeWithEffects({
+                events,
+                effects: [],
+                updateDelegatedCompletionOnlyRunId: runId,
+              });
+        const stored = result[0]!.event;
+        assert.equal(stored.type, "run.updated");
+        if (stored.type !== "run.updated") return;
+        assert.deepEqual(stored.payload, { ...completed, delegatedCompletion: cohort });
+        const current = (yield* orchestrator.getThreadProjection(threadId)).runs.find(
+          (row) => row.id === runId,
+        )!;
+        assert.deepEqual(current, stored.payload);
+      }),
   );
 
   it.effect("does not re-offer when wake-policy upgrades after delivered ownership settled", () =>
@@ -2041,6 +2468,7 @@ it.layer(layerPressure)("delegated completion delivery at history scale", (it) =
               nodeId: null,
               role: "user",
               text: "Background task finished",
+              delivery: "accepted",
               attachments: [],
               streaming: false,
               createdBy: "agent",
@@ -2099,25 +2527,26 @@ const layerReceipts = Layer.mergeAll(
 ).pipe(Layer.provideMerge(SqlitePersistence.layerMemory));
 
 it.layer(layerReceipts)("native delegated result receipts", (it) => {
-  it.effect(
-    "retains five accepted results after parent failure and delivers only the unseen result once",
-    () =>
+  it.effect.each(["steer", "completed", "failed", "interrupted", "cancelled"] as const)(
+    "settles inline receipts after %s and retains every unseen result",
+    (settlement) =>
       Effect.gen(function* () {
         const orchestrator = yield* Orchestrator.OrchestratorV2;
         const store = yield* ProjectionStore.ProjectionStoreV2;
         const ingestor = yield* ProviderEventIngestor.ProviderEventIngestorV2;
         const sink = yield* EventSink.EventSinkV2;
         const now = yield* DateTime.now;
-        const threadId = ThreadId.make("receipt-parent");
-        const runId = RunId.make("receipt-run");
+        const received = settlement === "steer" || settlement === "completed";
+        const threadId = ThreadId.make(`receipt-parent:${settlement}`);
+        const runId = RunId.make(`receipt-run:${settlement}`);
         const taskIds = Array.from({ length: 6 }, (_, index) =>
-          NodeId.make(`receipt-task:${index}`),
+          NodeId.make(`receipt-task:${settlement}:${index}`),
         );
         yield* seedParentWithTerminalTask({
           threadId,
           runId,
-          projectId: ProjectId.make("receipt-project"),
-          rootNodeId: NodeId.make("receipt-root"),
+          projectId: ProjectId.make(`receipt-project:${settlement}`),
+          rootNodeId: NodeId.make(`receipt-root:${settlement}`),
           taskId: taskIds[0]!,
           deliveryState: "acknowledged",
           deliveryTaskIds: taskIds.slice(3, 5),
@@ -2127,14 +2556,32 @@ it.layer(layerReceipts)("native delegated result receipts", (it) => {
         const run = initial.runs[0]!;
         const provider = initial.providerThreads[0]!;
         const task = initial.subagents[0]!;
-        const attemptId = RunAttemptId.make("receipt-attempt");
-        const providerTurnId = ProviderTurnId.make("receipt-turn");
+        const attemptId = RunAttemptId.make(`receipt-attempt:${settlement}`);
+        const providerTurnId = ProviderTurnId.make(`receipt-turn:${settlement}`);
         const messageId = MessageId.make(`message:delegated-delivery:${threadId}`);
+        const wakeRun =
+          settlement === "steer"
+            ? undefined
+            : {
+                ...run,
+                id: RunId.make(`receipt-wake:${settlement}`),
+                ordinal: 2,
+                userMessageId: messageId,
+                activeAttemptId: RunAttemptId.make(`receipt-wake-attempt:${settlement}`),
+                delegatedCompletion: undefined,
+              };
         const event = (
           key: string,
           value: Omit<OrchestrationV2DomainEvent, "id" | "occurredAt">,
         ): OrchestrationV2DomainEvent =>
-          ({ ...value, id: EventId.make(key), occurredAt: now }) as OrchestrationV2DomainEvent;
+          ({
+            ...value,
+            id: EventId.make(`${settlement}:${key}`),
+            occurredAt: now,
+          }) as OrchestrationV2DomainEvent;
+        const resultText = (index: number) => `Result ${index === 5 ? 3 : index}`;
+        const childId = (id: NodeId, index: number) =>
+          ThreadId.make(`child:${index === 5 ? taskIds[3] : id}`);
         const handoffs: OrchestrationV2ContextHandoff[] = taskIds.map((id, index) => ({
           id: ContextHandoffId.make(`result:${id}`),
           transferId: ContextTransferId.make(`transfer:${id}`),
@@ -2146,7 +2593,7 @@ it.layer(layerReceipts)("native delegated result receipts", (it) => {
           strategy: "manual_context",
           status: "ready",
           summaryMessageId: null,
-          summaryText: `Result ${index}`,
+          summaryText: resultText(index),
           createdByProviderInstanceId: null,
           createdAt: now,
           updatedAt: now,
@@ -2159,6 +2606,35 @@ it.layer(layerReceipts)("native delegated result receipts", (it) => {
               runId,
               payload: { ...run, activeAttemptId: attemptId },
             }),
+            ...(wakeRun === undefined
+              ? []
+              : [
+                  event("receipt:wake-run", {
+                    type: "run.updated",
+                    threadId,
+                    runId: wakeRun.id,
+                    payload: wakeRun,
+                  }),
+                  event("receipt:wake-attempt", {
+                    type: "run-attempt.updated",
+                    threadId,
+                    runId: wakeRun.id,
+                    payload: {
+                      id: wakeRun.activeAttemptId!,
+                      runId: wakeRun.id,
+                      rootNodeId: wakeRun.rootNodeId!,
+                      providerInstanceId: run.providerInstanceId,
+                      providerThreadId: provider.id,
+                      providerTurnId: null,
+                      attemptOrdinal: 1,
+                      nativeThreadId: provider.nativeThreadRef!.nativeId!,
+                      reason: "initial",
+                      status: "running",
+                      startedAt: now,
+                      completedAt: null,
+                    },
+                  }),
+                ]),
             event("receipt:attempt", {
               type: "run-attempt.updated",
               threadId,
@@ -2201,10 +2677,11 @@ it.layer(layerReceipts)("native delegated result receipts", (it) => {
               payload: {
                 id: messageId,
                 threadId,
-                runId,
+                runId: wakeRun?.id ?? runId,
                 nodeId: run.rootNodeId,
                 role: "user",
                 text: "Result 3\nResult 4",
+                delivery: "pending",
                 attachments: [],
                 streaming: false,
                 createdBy: "agent",
@@ -2215,12 +2692,49 @@ it.layer(layerReceipts)("native delegated result receipts", (it) => {
                   parentRunId: runId,
                   generation: 1,
                   taskIds: taskIds.slice(3, 5),
+                  inlinedResults: taskIds
+                    .slice(3, 5)
+                    .map((taskId, index) => ({ taskId, result: `Result ${index + 3}` })),
                 },
               },
             }),
             ...taskIds.flatMap((id, index) => {
-              const child = ThreadId.make(`child:${id}`);
+              const child = childId(id, index);
               return [
+                ...(index === 5
+                  ? []
+                  : [
+                      event(`child-thread:${id}`, {
+                        type: "thread.created",
+                        threadId: child,
+                        payload: {
+                          ...initial.thread,
+                          id: child,
+                          lineage: {
+                            rootThreadId: threadId,
+                            parentThreadId: threadId,
+                            relationshipToParent: "subagent",
+                          },
+                          forkedFrom: { type: "node", nodeId: id },
+                        },
+                      }),
+                    ]),
+                event(`child-run:${id}`, {
+                  type: "run.updated",
+                  threadId: child,
+                  runId: RunId.make(`child-run:${id}`),
+                  payload: {
+                    ...run,
+                    id: RunId.make(`child-run:${id}`),
+                    threadId: child,
+                    ...(index === 5 ? { delegatedTaskId: id } : {}),
+                    ordinal: index === 5 ? 2 : 1,
+                    status: "completed",
+                    activeAttemptId: null,
+                    providerThreadId: null,
+                    completedAt: now,
+                  },
+                }),
                 event(`task:${id}`, {
                   type: "subagent.updated",
                   threadId,
@@ -2229,7 +2743,7 @@ it.layer(layerReceipts)("native delegated result receipts", (it) => {
                     ...task,
                     id,
                     childThreadId: child,
-                    result: `Result ${index}`,
+                    result: resultText(index),
                     completionDelivery: {
                       state: index < 3 ? "acknowledged" : "claimed",
                       observedByRunId: index < 3 ? runId : null,
@@ -2278,7 +2792,7 @@ it.layer(layerReceipts)("native delegated result receipts", (it) => {
           ),
           "acknowledgment is not native acceptance",
         );
-        assert.isEmpty(
+        assert.deepEqual(
           yield* delegatedResultReceipts({
             store,
             threadId,
@@ -2287,7 +2801,22 @@ it.layer(layerReceipts)("native delegated result receipts", (it) => {
             messageId,
             messageText: "Tasks finished; read their results.",
           }),
+          { handoffs: [], taskIds: [] },
         );
+        for (const inlinedResults of [undefined, [{ taskId: taskIds[3]!, result: "Result" }]]) {
+          assert.deepEqual(
+            yield* delegatedResultReceipts({
+              store,
+              threadId,
+              observedByRunId: runId,
+              taskIds: taskIds.slice(3, 6),
+              messageId,
+              messageText: "Result 3\nResult 4\nResult 5",
+              inlinedResults,
+            }),
+            { handoffs: [], taskIds: [] },
+          );
+        }
         for (const index of [0, 1, 2]) {
           const taskResult = {
             taskId: taskIds[index]!,
@@ -2324,12 +2853,12 @@ it.layer(layerReceipts)("native delegated result receipts", (it) => {
               actor: {
                 runtimeId: "receipt-runtime",
                 runtimeGeneration: "receipt-generation",
-                projectId: ProjectId.make("receipt-project"),
+                projectId: ProjectId.make(`receipt-project:${settlement}`),
                 threadId,
                 runId,
                 attemptId,
                 providerInstanceId: run.providerInstanceId,
-                providerSessionId: ProviderSessionId.make("receipt-session"),
+                providerSessionId: ProviderSessionId.make(`receipt-session:${settlement}`),
                 providerThreadId: provider.id,
                 nativeGeneration: 1,
                 nativeThreadRef: provider.nativeThreadRef,
@@ -2344,7 +2873,7 @@ it.layer(layerReceipts)("native delegated result receipts", (it) => {
             status: "running" | "completed" = "completed",
           ) =>
             ingestor.ingestNormalized({
-              providerSessionId: ProviderSessionId.make("receipt-session"),
+              providerSessionId: ProviderSessionId.make(`receipt-session:${settlement}`),
               providerInstanceId: run.providerInstanceId,
               threadId,
               runId,
@@ -2404,22 +2933,99 @@ it.layer(layerReceipts)("native delegated result receipts", (it) => {
           type: "notification.delivery.accept",
           threadId,
           messageId,
-          commandId: CommandId.make("receipt:notification"),
+          commandId: CommandId.make(`${settlement}:receipt:premature-notification`),
         });
+        assert.equal(
+          (yield* store.getThreadRecords(threadId, ["subagents"], { subagentIds: [taskIds[3]!] }))
+            .subagents[0]?.completionDelivery?.state,
+          "claimed",
+        );
+        yield* sink.write({
+          events: [
+            event("receipt:native-accepted", {
+              type: "message.delivery.updated",
+              threadId,
+              payload: { messageId, delivery: "accepted" },
+            }),
+          ],
+        });
+        yield* orchestrator.dispatch({
+          type: "notification.delivery.accept",
+          threadId,
+          messageId,
+          commandId: CommandId.make(`${settlement}:receipt:native-hook`),
+        });
+        if (wakeRun !== undefined && settlement !== "steer") {
+          for (const taskId of taskIds.slice(3, 5)) {
+            assert.equal(
+              (yield* store.getThreadRecords(threadId, ["subagents"], { subagentIds: [taskId] }))
+                .subagents[0]?.completionDelivery?.state,
+              "claimed",
+            );
+          }
+          yield* sink.writeWithEffects({
+            commandId: reconcileCommandId(`receipt-wake:${settlement}`),
+            effects: [],
+            events: [
+              event("receipt:wake-terminal", {
+                type: "run.updated",
+                threadId,
+                runId: wakeRun.id,
+                payload: { ...wakeRun, status: settlement, completedAt: now },
+              }),
+            ],
+          });
+          yield* orchestrator.recoverDelegatedTasks;
+        }
+        for (const taskId of taskIds.slice(3, 5)) {
+          const delivery = (yield* store.getThreadRecords(threadId, ["subagents"], {
+            subagentIds: [taskId],
+          })).subagents[0]?.completionDelivery;
+          if (received)
+            assert.deepEqual(delivery, {
+              state: "acknowledged",
+              observedByRunId: wakeRun?.id ?? runId,
+            });
+          else {
+            assert.notEqual(delivery?.state, "acknowledged");
+            assert.equal(delivery?.observedByRunId, null);
+          }
+        }
+        if (received) {
+          yield* orchestrator.dispatch({
+            type: "delegated_task.wake-policy",
+            commandId: CommandId.make(`${settlement}:receipt:no-rewake`),
+            parentThreadId: threadId,
+            taskId: taskIds[3]!,
+            completionWake: "always",
+          });
+          assert.isNull(
+            (yield* store.getThreadRecords(threadId, ["runs"], { runIds: [runId] })).runs[0]
+              ?.delegatedCompletion?.delivery,
+          );
+        }
+        const parentAfterDelivery = (yield* store.getThreadRecords(threadId, ["runs"], {
+          runIds: [runId],
+        })).runs[0]!;
         yield* sink.write({
           events: [
             event("receipt:failed", {
               type: "run.updated",
               threadId,
               runId,
-              payload: { ...run, activeAttemptId: attemptId, status: "failed", completedAt: now },
+              payload: {
+                ...parentAfterDelivery,
+                activeAttemptId: attemptId,
+                status: "failed",
+                completedAt: now,
+              },
             }),
           ],
         });
         const pending = yield* store.getTurnStartContext(threadId, runId);
         assert.deepEqual(
           pending.contextHandoffs.map((row) => row.id),
-          [handoffs[5]!.id],
+          (received ? [5] : [3, 4, 5]).map((index) => handoffs[index]!.id),
         );
         let deliveries = 0;
         const persist = (handoff: OrchestrationV2ContextHandoff) =>
@@ -2442,7 +3048,7 @@ it.layer(layerReceipts)("native delegated result receipts", (it) => {
           alreadyDeliveredItemIds: new Set(),
           persist,
         });
-        assert.include(delivery.context, "Result 5");
+        assert.include(delivery.context, "Result 3");
         yield* delivery.delivered;
         assert.isEmpty((yield* store.getTurnStartContext(threadId, runId)).contextHandoffs);
         const all = (yield* store.getThreadRecords(threadId, ["contextHandoffs"])).contextHandoffs;
@@ -2469,7 +3075,7 @@ it.layer(layerReceipts)("native delegated result receipts", (it) => {
           alreadyDeliveredItemIds: new Set(),
           persist: () => Effect.void,
         });
-        for (const index of [0, 1, 2, 3, 4, 5]) assert.include(replaced.context, `Result ${index}`);
+        for (const index of [0, 1, 2, 3, 4, 5]) assert.include(replaced.context, resultText(index));
       }),
   );
 });

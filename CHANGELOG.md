@@ -55,6 +55,7 @@ All notable changes to this project will be documented in this file.
 - Images in a message you send to the Inbox now come first on its Page, matching how the stream shows them above the text.
 - You choose when Inbox suggestions run: automatically for each message you send, only when you ask, or never, from the Inbox's settings gear or Settings → Inbox. Automatic suggestions pause when the suggestion Agent's usage is about to run out and say so above the composer; Suggest still works on any message.
 - An inline equation in Pages, messages and the Inbox is now written only as `$$…$$`. `\(…\)`, and `\[…\]` within a line, mean the parentheses and brackets themselves, as GitHub reads them. `\[` and `\]` on lines of their own still make an equation Block, and Agent replies in chat still show both spellings as equations.
+- An Agent woken by a finished delegated task now continues from the task's result right away instead of first asking Nodex for it. Results up to 16 KB in total arrive with the wake; a longer one is still read with `task_status`.
 
 ### Removed
 

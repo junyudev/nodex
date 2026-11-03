@@ -257,7 +257,7 @@ const ListAgentModelsTool = Tool.make("list_agent_models", {
 
 const DelegateTaskTool = Tool.make("delegate_task", {
   description:
-    "Start a child task with only the supplied prompt. Use for cross-provider work or models your native subagents cannot run; choose from list_agent_models. Provider, model, options and execution mode inherit unless overridden. Execution cannot exceed yours; a narrower child asks a person for approval. Prefer mode='async' and end your turn: completion or a question wakes you. mode='wait' returns on a result, question, approval or timeoutMs without cancelling.",
+    "Start a child task with only the supplied prompt. Use for cross-provider work or models your native subagents cannot run; choose from list_agent_models. Provider, model, options and execution mode inherit unless overridden. Execution cannot exceed yours; a narrower child asks a person for approval. Prefer mode='async' and end your turn: completion or a question wakes you. The wake includes results when they fit; use task_status only when it says to. mode='wait' returns on a result, question, approval or timeoutMs without cancelling.",
   parameters: OrchestratorMcpDelegateTaskInput,
   success: TaskView,
   failure: OrchestratorMcpFailure,
@@ -271,7 +271,7 @@ const DelegateTaskTool = Tool.make("delegate_task", {
 
 const TaskStatusTool = Tool.make("task_status", {
   description:
-    "Read a delegated task's status and result. Reading a settled result acknowledges it, so it does not wake you again.",
+    "Read a delegated task's status and result. Completion wakes include results when they fit; read here when the wake says to. Reading a settled result acknowledges it.",
   parameters: Schema.Struct({ taskId: TaskIdentity }),
   success: TaskView,
   failure: OrchestratorMcpFailure,

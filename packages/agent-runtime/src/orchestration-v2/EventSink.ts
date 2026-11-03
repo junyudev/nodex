@@ -84,6 +84,7 @@ export interface EventSinkV2Shape {
     readonly events: ReadonlyArray<OrchestrationV2DomainEvent>;
   }) => Effect.Effect<ReadonlyArray<OrchestrationV2StoredEvent>, EventSinkV2Error>;
   readonly writeWithEffects: (input: {
+    readonly updateDelegatedCompletionOnlyRunId?: RunId;
     /** Reject orphan cleanup if a native turn has been adopted by another attempt. */
     readonly expectedProviderTurn?: {
       readonly id: ProviderTurnId;
@@ -132,6 +133,7 @@ export interface EventSinkV2Shape {
     EventSinkV2Error
   >;
   readonly commitCommand: (input: {
+    readonly updateDelegatedCompletionOnlyRunId?: RunId;
     readonly commandId: CommandId;
     readonly threadId: ThreadId;
     readonly commandType: string;
@@ -470,6 +472,29 @@ const layerBase: Layer.Layer<
         }
       });
 
+    // Native completion and checkpoint writes do not share the Thread command lock.
+    const updateDelegatedCompletionOnly = Effect.fnUntraced(function* (
+      events: ReadonlyArray<OrchestrationV2DomainEvent>,
+      runId: RunId | undefined,
+    ) {
+      if (runId === undefined) return events;
+      return yield* Effect.forEach(events, (event) =>
+        Effect.gen(function* () {
+          if (event.type !== "run.updated" || event.payload.id !== runId) return event;
+          const { runs } = yield* projectionStore.getThreadRecords(event.threadId, ["runs"], {
+            runIds: [runId],
+          });
+          const current = runs[0];
+          return current === undefined
+            ? event
+            : {
+                ...event,
+                payload: { ...current, delegatedCompletion: event.payload.delegatedCompletion },
+              };
+        }),
+      );
+    });
+
     const writeEffect = Effect.fn("orchestrationV2.EventSink.write")(function* (
       input: Parameters<EventSinkV2Shape["writeWithEffects"]>[0],
     ) {
@@ -493,10 +518,14 @@ const layerBase: Layer.Layer<
             if (rows[0]?.status !== "running" || rows[0].run_attempt_id !== expected.runAttemptId)
               return [];
           }
+          const events = yield* updateDelegatedCompletionOnly(
+            input.events,
+            input.updateDelegatedCompletionOnlyRunId,
+          );
           const normalized = yield* normalizeEvents(
             input.guardProviderRequestUpdates === true
-              ? yield* guardProviderRequests(input.events)
-              : input.events,
+              ? yield* guardProviderRequests(events)
+              : events,
           );
           const committed = yield* eventStore.append({
             ...(input.commandId === undefined ? {} : { commandId: input.commandId }),
@@ -666,7 +695,12 @@ const layerBase: Layer.Layer<
             return { ...existing, committed: false as const, cancelledEffectIds: [] };
           }
 
-          const normalized = yield* normalizeEvents(input.events);
+          const normalized = yield* normalizeEvents(
+            yield* updateDelegatedCompletionOnly(
+              input.events,
+              input.updateDelegatedCompletionOnlyRunId,
+            ),
+          );
           const storedEvents = yield* eventStore.append({
             commandId: input.commandId,
             events: normalized,

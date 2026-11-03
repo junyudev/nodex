@@ -887,16 +887,31 @@ Reading complete admitted coverage of a terminal child's current result acknowle
 missing fragments and omitted items do not acknowledge unseen results. Task authorization remains
 with the delegation owner, independently of source identities retained in canonical history.
 
+Completion wakes carry each task's title, terminal status and complete current result
+within a shared 16,000-byte UTF-8 inline budget, including the task headers. A result
+that is absent or does not fit is replaced by an instruction to read `task_status`;
+results are never truncated. Queued wakes can batch newly settled siblings before
+starting. Once dispatched, retries preserve the message's text and result coverage;
+later siblings use a successor delivery. Agents can continue from inlined results
+and need `task_status` only when the wake requests it.
+
 A delegated result's handoff has one durable native delivery receipt, scoped to its
-destination provider Thread and native conversation incarnation. A completed native
-task result response, including synchronous delegation, status, wait and complete
-history reads, or a verified completion notification containing that complete result,
-settles the receipt. Tool responses carry verified delivery evidence in MCP metadata,
-separate from the public task view, fenced to the admitting attempt and native conversation. A notice that only announces
-completion does not prove that the result reached native history. Acknowledgment before a tool response returns is not native acceptance.
-Already accepted results do not become pending context when their parent Run later
-fails, unloads or restarts. Unseen results remain eligible until accepted; a receipt
-from an earlier native incarnation cannot suppress delivery to a replacement.
+destination provider Thread and native conversation incarnation. A wake's complete
+inlined results count as received and acknowledge the tasks once the Run it started
+completes successfully, or once its native steer is accepted. A wake whose Run fails,
+is interrupted or is cancelled leaves its results pending for later delivery. Starting
+or accepting a queued wake's message does not settle its result receipts. Results
+omitted from a wake remain pending until read or otherwise delivered in full.
+
+Completed native task result responses, including synchronous delegation, status,
+wait and complete history reads, also settle the receipt. Tool responses carry verified
+delivery evidence in MCP metadata, separate from the public task view, fenced to the
+admitting attempt and native conversation. A notice that only announces completion
+does not prove that the result reached native history. Acknowledgment before a tool
+response returns is not native acceptance. Received results do not become pending
+context when their parent Run later fails, unloads or restarts. Unseen results remain
+eligible until received; a receipt from an earlier native incarnation cannot suppress
+delivery to a replacement.
 
 Delegation attaches to the native call's exact source Run, including a completed
 foreground Run that still has live native background work. A Session-only caller
