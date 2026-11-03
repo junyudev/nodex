@@ -186,6 +186,7 @@ async function main(): Promise<void> {
   const appData = process.env.APPDATA;
   if (!localAppData || !appData) throw new Error("LOCALAPPDATA and APPDATA are required");
   const installRoot = join(localAppData, "Programs", "nodex");
+  const startMenuShortcut = join(appData, "Microsoft/Windows/Start Menu/Programs/Nodex.lnk");
   if (
     existsSync(installRoot) ||
     queryProtocol() ||
@@ -272,7 +273,7 @@ exit $uninstaller.ExitCode
           await delay(50);
         }
         const shortcuts = [
-          join(appData, "Microsoft/Windows/Start Menu/Programs/Nodex.lnk"),
+          startMenuShortcut,
           join(process.env.USERPROFILE!, "Desktop/Nodex.lnk"),
         ].filter(existsSync);
         const remainingProtocol = queryProtocol();
@@ -434,6 +435,12 @@ exit $uninstaller.ExitCode
       child = application.process();
       // Playwright wraps Electron in cmd.exe on Windows; claims identify Main.
       const hostPid = await application.evaluate(() => process.pid);
+      const shortcutAppId = await application.evaluate(
+        ({ shell }, path) => shell.readShortcutLink(path).appUserModelId,
+        startMenuShortcut,
+      );
+      if (shortcutAppId !== "app.jyu.nodex")
+        throw new Error(`Unexpected Start menu shortcut AppUserModelID: ${shortcutAppId}`);
       const loginStatus = await application.evaluate(
         ({ app }, argument) =>
           app.getLoginItemSettings({ path: process.execPath, args: [argument] }),

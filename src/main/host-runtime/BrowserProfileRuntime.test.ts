@@ -117,6 +117,7 @@ it.layer(NodeServices.layer)("BrowserProfileRuntime", (it) => {
                       isInApplicationsFolder: Effect.succeed(true),
                       locale: Effect.succeed("en-US"),
                       userDataPath: Effect.succeed(`${root}/user-data`),
+                      setAppUserModelId: () => Effect.void,
                       whenReady: Effect.void,
                       quit: Effect.void,
                       relaunch: Effect.void,

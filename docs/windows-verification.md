@@ -125,6 +125,11 @@ Run the checklist with both the arm64 and the x64 installer.
    Nodex windows; drag and drop.
 7. **Window chrome**: caption buttons align with the titlebar at 100%, 150%, and
    200% scaling and after changing Nodex zoom; snap layouts; dark and light themes.
+   Restore several Workbench windows and verify one taskbar group with the Nodex
+   icon. On a development VM with an older Electron Start Menu shortcut, check
+   that `Get-StartApps` resolves `app.jyu.nodex` to Nodex. A legacy development
+   shortcut pointing to the Nodex development runtime can claim the installed
+   identity. Move that shortcut out of the Start Menu before verifying.
 8. **Shortcuts and notifications**: Windows keymap labels, global dictation hotkey,
    notifications attributed to Nodex.
 9. **Upgrade and uninstall**: installing over a previous build while Core is running,

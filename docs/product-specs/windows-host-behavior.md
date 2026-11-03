@@ -7,7 +7,10 @@ UNC paths retain Windows path semantics.
 
 Desktop notifications, clipboard, `nodex://` links, single-instance routing,
 menus, dictation, Terminals and local Agents use Windows host integrations.
-Notifications use the application identity `app.jyu.nodex`.
+Packaged notifications, Workbench windows and the Start menu shortcut share the
+application identity `app.jyu.nodex`. Main sets it before creating any windows,
+so restored and newly opened Workbench windows share one Nodex taskbar group.
+Development builds use `app.jyu.nodex.dev` for their windows and notifications.
 
 Existing file-manager commands open directories in Explorer and reveal files in
 their containing directory. They require an existing absolute local path and

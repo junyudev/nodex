@@ -10,7 +10,6 @@ import { getLogger } from "../logging/logger";
 export interface ApplicationHostNativePort {
   readonly askForMicrophoneAccess: () => Promise<boolean>;
   readonly getMicrophoneAccessStatus: () => string;
-  readonly setAppUserModelId: (id: string) => void;
   readonly setDevelopmentDockIcon: (path: string) => void;
   readonly setDefaultProtocolClient: (
     scheme: string,
@@ -34,7 +33,6 @@ export class ApplicationHostRuntime extends Context.Service<
 const electronNative = (): ApplicationHostNativePort => ({
   askForMicrophoneAccess: () => systemPreferences.askForMediaAccess("microphone"),
   getMicrophoneAccessStatus: () => systemPreferences.getMediaAccessStatus("microphone"),
-  setAppUserModelId: (id) => app.setAppUserModelId(id),
   setDevelopmentDockIcon: (path) => {
     const icon = nativeImage.createFromPath(path);
     if (!icon.isEmpty()) app.dock?.setIcon(icon);
@@ -60,8 +58,6 @@ export const live = (
 
       yield* Effect.try({
         try: () => {
-          if (config.platform === "win32") native.setAppUserModelId("app.jyu.nodex");
-
           const entry = config.argv[1];
           if (!config.isPackaged && config.isDefaultApp && entry) {
             native.setDefaultProtocolClient("nodex", config.runtimeBinaryPath, [resolve(entry)]);

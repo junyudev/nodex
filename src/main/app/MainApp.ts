@@ -70,6 +70,14 @@ export const program = <R, E>(options: MainAppOptions<R, E>) =>
     const cleanup = yield* MainCleanup;
     const config = yield* MainConfig;
     const shutdown = yield* MainShutdown;
+    // Windows assigns taskbar groups as windows appear. Set the process identity
+    // before readiness so the pre-Core Workbench restore inherits the installer ID.
+    // Electron can register a Start menu shortcut when displaying a toast.
+    // Keep development's Electron shortcut out of the installed Nodex identity.
+    if (config.platform === "win32") {
+      yield* electron.setAppUserModelId(config.isPackaged ? "app.jyu.nodex" : "app.jyu.nodex.dev");
+    }
+
     const quitPermit = yield* Semaphore.make(1);
     let quitAllowed = false;
     let completeShutdown = Effect.void;

@@ -26,6 +26,7 @@ export class ElectronApp extends Context.Service<
     readonly isInApplicationsFolder: Effect.Effect<boolean>;
     readonly locale: Effect.Effect<string>;
     readonly userDataPath: Effect.Effect<string>;
+    readonly setAppUserModelId: (id: string) => Effect.Effect<void>;
     readonly whenReady: Effect.Effect<void, ElectronAppError>;
     readonly quit: Effect.Effect<void>;
     readonly relaunch: Effect.Effect<void>;
@@ -93,6 +94,7 @@ export const live: Layer.Layer<ElectronApp, never, ScopedCallbackRuntime> = Laye
       ),
       locale: Effect.sync(() => app.getLocale()),
       userDataPath: Effect.sync(() => app.getPath("userData")),
+      setAppUserModelId: (id) => Effect.sync(() => app.setAppUserModelId(id)),
       whenReady: Effect.tryPromise({
         try: () => app.whenReady(),
         catch: (cause) => new ElectronAppError({ operation: "when-ready", cause }),

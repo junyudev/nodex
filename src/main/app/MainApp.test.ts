@@ -31,6 +31,7 @@ const fakeElectronLayer = (events: string[], overrides: Partial<ElectronApp["Ser
       isInApplicationsFolder: Effect.succeed(true),
       locale: Effect.succeed("en-US"),
       userDataPath: Effect.succeed("/tmp/nodex-test-user-data"),
+      setAppUserModelId: () => Effect.void,
       whenReady: Effect.sync(() => events.push("ready")),
       quit: Effect.sync(() => events.push("quit")),
       relaunch: Effect.sync(() => events.push("relaunch")),
@@ -45,15 +46,20 @@ const fakeElectronLayer = (events: string[], overrides: Partial<ElectronApp["Ser
     }),
   );
 
-it.effect("starts, replays bootstrap events, closes runtime, then quits", () =>
+it.effect.each([
+  { isPackaged: true, appId: "app.jyu.nodex" },
+  { isPackaged: false, appId: "app.jyu.nodex.dev" },
+])("sets $appId before readiness, then runs the application lifecycle", ({ isPackaged, appId }) =>
   Effect.gen(function* () {
     const events: string[] = [];
     const started = yield* Deferred.make<void>();
     const foundation = Layer.mergeAll(
       shutdownLayer,
       cleanupLayer,
-      fakeElectronLayer(events),
-      configLayer(),
+      fakeElectronLayer(events, {
+        setAppUserModelId: (id) => Effect.sync(() => events.push(`app-id:${id}`)),
+      }),
+      configLayer({ platform: "win32", isPackaged }),
     );
     const foundationScope = yield* Scope.make();
     const context = yield* Layer.buildWithScope(foundation, foundationScope);
@@ -87,6 +93,7 @@ it.effect("starts, replays bootstrap events, closes runtime, then quits", () =>
     yield* Fiber.join(fiber);
 
     assert.deepEqual(events, [
+      `app-id:${appId}`,
       "ready",
       "gate",
       "start",
@@ -358,6 +365,7 @@ it.effect("routes Electron activation through the scoped Main runtime", () =>
         isInApplicationsFolder: Effect.succeed(true),
         locale: Effect.succeed("en-US"),
         userDataPath: Effect.succeed("/tmp/nodex-test-user-data"),
+        setAppUserModelId: () => Effect.void,
         whenReady: Effect.void,
         quit: Effect.sync(() => events.push("quit")),
         relaunch: Effect.void,
@@ -414,6 +422,7 @@ it.effect("routes process termination signals through Main shutdown before quitt
         isInApplicationsFolder: Effect.succeed(true),
         locale: Effect.succeed("en-US"),
         userDataPath: Effect.succeed("/tmp/nodex-test-user-data"),
+        setAppUserModelId: () => Effect.void,
         whenReady: Effect.void,
         quit: Effect.sync(() => events.push("quit")),
         relaunch: Effect.void,
@@ -468,6 +477,7 @@ it.effect("interrupts an in-flight runtime acquisition when a termination signal
         isInApplicationsFolder: Effect.succeed(true),
         locale: Effect.succeed("en-US"),
         userDataPath: Effect.succeed("/tmp/nodex-test-user-data"),
+        setAppUserModelId: () => Effect.void,
         whenReady: Effect.void,
         quit: Effect.sync(() => events.push("quit")),
         relaunch: Effect.void,
@@ -527,6 +537,7 @@ it.effect(
           isInApplicationsFolder: Effect.succeed(true),
           locale: Effect.succeed("en-US"),
           userDataPath: Effect.succeed("/tmp/nodex-test-user-data"),
+          setAppUserModelId: () => Effect.void,
           whenReady: Effect.void,
           quit: Effect.sync(() => events.push("quit")),
           relaunch: Effect.void,
@@ -586,6 +597,7 @@ it.effect("turns the first ready-state before-quit into the same scoped shutdown
         isInApplicationsFolder: Effect.succeed(true),
         locale: Effect.succeed("en-US"),
         userDataPath: Effect.succeed("/tmp/nodex-test-user-data"),
+        setAppUserModelId: () => Effect.void,
         whenReady: Effect.void,
         quit: Effect.sync(() => events.push("quit")),
         relaunch: Effect.void,

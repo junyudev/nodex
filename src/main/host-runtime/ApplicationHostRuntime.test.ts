@@ -14,7 +14,6 @@ import {
 const makeNative = (): ApplicationHostNativePort => ({
   askForMicrophoneAccess: vi.fn(async () => true),
   getMicrophoneAccessStatus: vi.fn(() => "not-determined"),
-  setAppUserModelId: vi.fn(),
   setDevelopmentDockIcon: vi.fn(),
   setDefaultProtocolClient: vi.fn(),
 });
@@ -25,7 +24,7 @@ const build = (
 ) => Layer.build(live(native).pipe(Layer.provide(mainConfigLayer(overrides))));
 
 describe("ApplicationHostRuntime", () => {
-  it.effect("configures native application identity from immutable Main config", () =>
+  it.effect("registers the development protocol handler from immutable Main config", () =>
     Effect.scoped(
       Effect.gen(function* () {
         const native = makeNative();
@@ -37,7 +36,6 @@ describe("ApplicationHostRuntime", () => {
         });
         Context.get(context, ApplicationHostRuntime);
 
-        expect(native.setAppUserModelId).toHaveBeenCalledWith("app.jyu.nodex");
         expect(native.setDefaultProtocolClient).toHaveBeenCalledWith("nodex", "/runtime/electron", [
           expect.stringMatching(/entry\.js$/),
         ]);
@@ -52,7 +50,6 @@ describe("ApplicationHostRuntime", () => {
         const native = makeNative();
         yield* build(native, { platform: "win32", isPackaged: true });
 
-        expect(native.setAppUserModelId).toHaveBeenCalledWith("app.jyu.nodex");
         expect(native.setDefaultProtocolClient).not.toHaveBeenCalled();
       }),
     ),
