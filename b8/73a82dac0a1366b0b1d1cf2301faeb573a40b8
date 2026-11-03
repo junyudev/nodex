@@ -1,0 +1,48 @@
+scripts/ci/app-test-suite.test.ts
+  s_583cc45f239209::t_0b66743d86cee6 93
+scripts/testing/native-artifacts.ts
+  s_583cc45f239209::t_3ecc2bf92fa33a 4-8,36,42,62,69,108-120,124,148,154,161
+scripts/ci/app-test-suite.ts
+  s_583cc45f239209::t_3ecc2bf92fa33a 6,25
+scripts/testing/run-tests.ts
+  s_583cc45f239209::t_3ecc2bf92fa33a 102
+docs/development.md
+  s_583cc45f239209::t_0b66743d86cee6 847-850,854-857,862-863
+  s_583cc45f239209::t_e8bc3c6cf7d3e1 851-853,858-859,885
+scripts/ci/classify-change.ts
+  s_583cc45f239209::t_0b66743d86cee6 1-6
+  s_583cc45f239209::t_3ecc2bf92fa33a 119-121
+config/test-suites.ts
+  s_5cec66ce245092::t_97029d30ee52b2 20
+  s_583cc45f239209::t_3ecc2bf92fa33a 16-19,96,228,230-234
+config/test-suites.test.ts
+  s_583cc45f239209::t_0b66743d86cee6 6,85-97
+scripts/testing/native-artifacts.test.ts
+  s_583cc45f239209::t_0b66743d86cee6 4,27-77
+scripts/testing/run-tests.test.ts
+  s_583cc45f239209::t_0b66743d86cee6 4-9,66-71,107-150,224,232-233,238-239,244
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b873a82dac0a1366b0b1d1cf2301faeb573a40b8",
+  "prompts": {},
+  "sessions": {
+    "s_583cc45f239209": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a228-8cfd-76e3-9adf-63d4b5eaa9d8",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_5cec66ce245092": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d35af60e-664c-450c-a6fb-09ff7e66af9e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
