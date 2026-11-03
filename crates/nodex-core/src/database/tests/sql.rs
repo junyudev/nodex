@@ -7,38 +7,54 @@ use nodex_core_contracts::library::{
 use nodex_core_contracts::query::{QueryRead, QueryReadValue};
 use nodex_core_contracts::sql::{SqlBinding, SqlQuery, SqlScope};
 
-fn create_rows(library: &LibraryModule, source: &str, count: usize, key: &str) {
+fn create_rows(
+    kernel: &SqliteStoreKernel,
+    library: &LibraryModule,
+    source: &str,
+    count: usize,
+    key: &str,
+) {
     for start in (0..count).step_by(16) {
-        library
-            .apply(
-                &context(),
-                ModuleApplyRequest {
-                    contract_version: LIBRARY_CONTRACT_VERSION,
-                    operation_id: format!("sql:{key}:{start}"),
-                    store_epoch: StoreEpoch("epoch-1".into()),
-                    intent: LibraryIntent::CreatePagesFromText {
-                        request: LibraryAgentCreatePagesRequest {
-                            destination: LibraryAgentPageDestination::DataSource {
-                                data_source_id: source.into(),
-                                values: vec![],
-                                view_id: None,
-                                group_key: None,
-                                at: None,
-                            },
-                            pages: (start..(start + 16).min(count))
-                                .map(|index| LibraryAgentCreatePageDraft {
-                                    title_markdown: format!("Item {index:03}"),
-                                    markdown: String::new(),
-                                    values: vec![],
-                                })
-                                .collect(),
-                            include_block_ids: false,
-                            include_etags: false,
+        let operation_label = format!("sql:{key}:{start}");
+        let writer_before = kernel.metrics();
+        let started = std::time::Instant::now();
+        let result = library.apply(
+            &context(),
+            ModuleApplyRequest {
+                contract_version: LIBRARY_CONTRACT_VERSION,
+                operation_id: operation_label.clone(),
+                store_epoch: StoreEpoch("epoch-1".into()),
+                intent: LibraryIntent::CreatePagesFromText {
+                    request: LibraryAgentCreatePagesRequest {
+                        destination: LibraryAgentPageDestination::DataSource {
+                            data_source_id: source.into(),
+                            values: vec![],
+                            view_id: None,
+                            group_key: None,
+                            at: None,
                         },
+                        pages: (start..(start + 16).min(count))
+                            .map(|index| LibraryAgentCreatePageDraft {
+                                title_markdown: format!("Item {index:03}"),
+                                markdown: String::new(),
+                                values: vec![],
+                            })
+                            .collect(),
+                        include_block_ids: false,
+                        include_etags: false,
                     },
                 },
-            )
-            .unwrap();
+            },
+        );
+        if let Err(error) = &result {
+            eprintln!(
+                "sql_fixture_failure phase=create_pages operation={operation_label} batch_start={start} batch_end={} total_rows={count} elapsed_ms={} writer_before={writer_before:?} writer_at_return={:?} outcome={error:?}",
+                (start + 16).min(count),
+                started.elapsed().as_millis(),
+                kernel.metrics(),
+            );
+        }
+        result.unwrap();
     }
 }
 fn sql(
@@ -71,7 +87,7 @@ fn public_sql_counts_complete_windows_and_enforces_cross_source_authority() {
     let module = seed_grouped_fixture(&kernel, vec![]);
     let query_module = QueryModule::new("profile-1", "library-1", &kernel);
     let library = LibraryModule::new("profile-1", "library-1", &kernel);
-    create_rows(&library, SOURCE_ID, 205, "first");
+    create_rows(&kernel, &library, SOURCE_ID, 205, "first");
     let count = sql(
         &query_module,
         SqlScope::default(),
@@ -278,13 +294,13 @@ fn all_sql_sources_share_the_enclosing_read_snapshot() {
     seed_grouped_fixture(&kernel, vec![]);
     let query_module = QueryModule::new("profile-1", "library-1", &kernel);
     let library = LibraryModule::new("profile-1", "library-1", &kernel);
-    create_rows(&library, SOURCE_ID, 2, "snapshot-before");
+    create_rows(&kernel, &library, SOURCE_ID, 2, "snapshot-before");
     let store = kernel.readers().snapshot().unwrap();
     // Establish a real Store snapshot before a concurrent public mutation.
     store
         .read(|connection| crate::infrastructure::local_commit::head(connection))
         .unwrap();
-    create_rows(&library, SOURCE_ID, 1, "snapshot-after");
+    create_rows(&kernel, &library, SOURCE_ID, 1, "snapshot-after");
     let result = crate::query::execute_test_snapshot(
         store,
         context(),
@@ -477,7 +493,7 @@ fn public_sql_reads_only_selected_documents_and_caches_search_under_repeated_joi
     let kernel = SqliteStoreKernel::open_test(&directory.path().canonicalize().unwrap()).unwrap();
     seed_grouped_fixture(&kernel, vec![]);
     let library = LibraryModule::new("profile-1", "library-1", &kernel);
-    create_rows(&library, SOURCE_ID, 35, "lazy");
+    create_rows(&kernel, &library, SOURCE_ID, 35, "lazy");
     let (identities, stats) = measured_sql(
         &kernel,
         tasks_scope(),
@@ -546,7 +562,7 @@ fn sql_view_occurrences_preserve_multivalue_groups_nested_parents_and_distinct_c
     let database = seed_grouped_fixture(&kernel, vec![]);
     let query = QueryModule::new("profile-1", "library-1", &kernel);
     let library = LibraryModule::new("profile-1", "library-1", &kernel);
-    create_rows(&library, SOURCE_ID, 2, "occurrences");
+    create_rows(&kernel, &library, SOURCE_ID, 2, "occurrences");
     let ids = sql(
         &query,
         tasks_scope(),
@@ -719,7 +735,7 @@ fn source_property_values_do_not_alias_cached_page_metadata_fields() {
     let database = seed_grouped_fixture(&kernel, vec![]);
     let query = QueryModule::new("profile-1", "library-1", &kernel);
     let library = LibraryModule::new("profile-1", "library-1", &kernel);
-    create_rows(&library, SOURCE_ID, 1, "metadata-collision");
+    create_rows(&kernel, &library, SOURCE_ID, 1, "metadata-collision");
     let DatabaseReadValue::DataSource { value } = database
         .read(
             &context(),
@@ -773,7 +789,7 @@ fn query_schema_avoids_management_scans_and_value_revisions_are_read_once_per_pa
     let kernel = SqliteStoreKernel::open_test(&directory.path().canonicalize().unwrap()).unwrap();
     let _module = seed_grouped_fixture(&kernel, vec![]);
     let library = LibraryModule::new("profile-1", "library-1", &kernel);
-    create_rows(&library, SOURCE_ID, 2, "revision-cost");
+    create_rows(&kernel, &library, SOURCE_ID, 2, "revision-cost");
     kernel
         .readers()
         .read_default(move |connection| {
