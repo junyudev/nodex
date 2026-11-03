@@ -1,0 +1,23 @@
+src/main/platform/node/TerminalEnvironment.ts
+  s_4ecb22df858a2c::t_25c0d902ec6153 58
+src/main/platform/node/TerminalEnvironment.test.ts
+  s_4ecb22df858a2c::t_25c0d902ec6153 29,38
+docs/product-specs/windows-host-behavior.md
+  s_4ecb22df858a2c::t_25c0d902ec6153 49-51
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "31e4679be4204179e537a610b483b36d9bcd3455",
+  "prompts": {},
+  "sessions": {
+    "s_4ecb22df858a2c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a055-207c-72a1-b1ad-e6102c15fab4",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
