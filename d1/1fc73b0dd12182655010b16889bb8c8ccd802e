@@ -1,0 +1,133 @@
+CHANGELOG.md
+  s_a33445b5936fa3::t_2c886d92fdc171 10-11
+crates/nodex-core-contracts/src/collection_audit.rs
+  s_a33445b5936fa3::t_274ad0bc3c5c45 36-37,114
+crates/nodex-core-contracts/src/database.rs
+  s_a33445b5936fa3::t_b1b0d37d38687a 12,708-710,792,918-920,1856-1870
+crates/nodex-core-contracts/src/workspace.rs
+  s_a33445b5936fa3::t_bfb4f24fcfa4f0 56-61,296-301,1695-1710,2611-2625
+crates/nodex-core/schema/current.sql
+  s_a33445b5936fa3::t_a7cff76f0c4d6a 5049-5067
+crates/nodex-core/src/database/mod.rs
+  s_a33445b5936fa3::t_5a6da0efdd90ff 1916,8983,9106
+crates/nodex-core/src/database/read.rs
+  s_a33445b5936fa3::t_647b0c9e477a5d 416,893-894
+crates/nodex-core/src/database/tests/sql.rs
+  s_a33445b5936fa3::t_ce414424c01ce6 828-829
+crates/nodex-core/src/infrastructure/migration.rs
+  s_a33445b5936fa3::t_c1915ed11dac2f 2670-2672,3743,8071-8081,8083,8105,8684,8847,9528,9754
+crates/nodex-core/src/infrastructure/migration_serializer_tests.rs
+  s_a33445b5936fa3::t_b19f3b86c8a4bc 241-251,355,371
+crates/nodex-core/src/infrastructure/workflow_status_migration_tests.rs
+  s_a33445b5936fa3::t_eee478af5e90b7 362-366
+crates/nodex-core/src/library/mutation.rs
+  s_a33445b5936fa3::t_64a3e213883e95 4722
+crates/nodex-core/src/workspace/agent_command.rs
+  s_a33445b5936fa3::t_bdd0e01ac1168f 39-40
+crates/nodex-core/src/workspace/coordinator.rs
+  s_a33445b5936fa3::t_a29111a3afbac5 4,269,271-285,360,366-376,388-389
+crates/nodex-core/src/workspace/coordinator_tests.rs
+  s_a33445b5936fa3::t_d88fbce8860e13 500,571-590
+crates/nodex-core/src/workspace/mod.rs
+  s_a33445b5936fa3::t_9ace9b0f84fbea 9,12-13
+crates/nodex-core/src/workspace/mutation.rs
+  s_a33445b5936fa3::t_ef547834cb3113 785,3629
+crates/nodex-core/src/workspace/read.rs
+  s_a33445b5936fa3::t_07276fc9bd9c78 61-62
+docs/ARCHITECTURE.md
+  s_a33445b5936fa3::t_c470e2274db579 202
+docs/product-specs/database-pages-and-views-behavior.md
+  s_a33445b5936fa3::t_0326e837ae1da8 929-932,935-962
+packages/core-protocol/openapi.json
+  s_a33445b5936fa3::t_73b7a94d1bbc8f 29871-29955,34512-34529,34990-34995,36751-36788,39135-39166,39190-39275,42016-42100,51766-51783,53729-53773
+packages/core-protocol/src/compatibility.generated.ts
+  s_a33445b5936fa3::t_7e7ee762e6f40d 16
+packages/core-protocol/src/generated.ts
+  s_a33445b5936fa3::t_e8ca9b95fd6950 7202-7218,8245-8248,8347,8729-8737,9276-9281,9287-9305,10077-10093,12140-12143,12566-12573
+src/main/agent-runtime/AgentRuntimeHostTools.ts
+  s_a33445b5936fa3::t_6dad327b1994b5 119
+src/main/app-tools/AppToolInterpreter.node.test.ts
+  s_a33445b5936fa3::t_9e2d85694ad4aa 5
+src/main/app-tools/AppToolInterpreter.ts
+  s_a33445b5936fa3::t_b78c2ae758af6c 102,135
+src/main/app-tools/HostedAppToolCatalog.ts
+  s_a33445b5936fa3::t_383cfcaa0006d4 20
+src/main/app-tools/WorkAppTools.node.test.ts
+  s_a33445b5936fa3::t_27b5e3b3afd13e 1-2,43,95-135
+src/main/app-tools/WorkAppTools.ts
+  s_a33445b5936fa3::t_821502fd6e08de 1,4,29,31-73,75,78,81-84
+src/main/app/MainApplicationLive.ts
+  s_a33445b5936fa3::t_782db5c48b1b35 1-3,138-139,173-174
+src/main/app/RendererIngressLive.ts
+  s_a33445b5936fa3::t_ddb0122df82b63 1,82
+src/main/core-client/database-module-adapter.node.test.ts
+  s_098df3235fa721::t_574fad2511940b 1336,1379,1411,1439
+src/main/core-client/database-module-adapter.ts
+  s_098df3235fa721::t_c1e17f3d67b19d 126-131
+src/main/core-runtime/CoreApplicationProjectionRuntime.test.ts
+  s_a33445b5936fa3::t_33c419cac91b29 41
+src/main/host-runtime/DatabaseNotifierRuntime.ts
+  s_a33445b5936fa3::t_51893326c00828 54,69,77,92,96,125,137,173
+src/main/inbox-application/InboxDispatchRuntime.ts
+  s_a33445b5936fa3::t_f9394343c5910c 1,178,190
+src/shared/database-module-v2-transport.ts
+  s_098df3235fa721::t_95edb701909da8 1754,1761,1766
+src/shared/database-module-v2.ts
+  s_098df3235fa721::t_f04b44f665fe30 313
+src/shared/ipc-api.ts
+  s_a33445b5936fa3::t_b4d54ff5963d15 1082-1085
+src/shared/ipc-endpoint-policy.ts
+  s_a33445b5936fa3::t_f15ea6a02b3b41 459
+src/shared/nodex-app-tools/catalog.ts
+  s_a33445b5936fa3::t_f4077bf3076610 18,44
+src/shared/nodex-app-tools/work-schema.ts
+  s_a33445b5936fa3::t_f89864ff5cdfd7 18-36
+crates/nodex-core/src/database/work_graph.rs
+  s_a33445b5936fa3::t_1c7aa50594deb6 111-115,128-134,147,236,238-273,288,299-308,458-536
+crates/nodex-core/src/workspace/page_work.rs
+  s_a33445b5936fa3::t_c497273b79d144 1-198,200-230
+crates/nodex-core/src/workspace/page_work_tests.rs
+  s_a33445b5936fa3::t_335326fb4b841f 1-386
+crates/nodex-core/tests/fixtures/rewind-v203-to-v202.sql
+  s_a33445b5936fa3::t_0af2538c530d28 45-46
+src/main/ipc/handlers/WorkIpc.ts
+  s_a33445b5936fa3::t_8abd305b4acae1 1-73
+src/main/work-application/WorkApplication.node.test.ts
+  s_a33445b5936fa3::t_c6e8bae54ca2cd 1-339
+src/main/work-application/WorkApplication.ts
+  s_a33445b5936fa3::t_e401f723f4dae9 1-150
+src/main/work-application/WorkDispatchRuntime.ts
+  s_a33445b5936fa3::t_96909a6de5f142 1-158
+src/main/work-application/WorkScheduler.ts
+  s_a33445b5936fa3::t_c71a58759d2fa4 1-94
+src/main/work-application/chat-launch-delivery.ts
+  s_a33445b5936fa3::t_29122f16288c78 1-26
+src/renderer/lib/work-graph-runtime.ts
+  s_a33445b5936fa3::t_2f435f1d5c0c3e 1-3,52-56,65-77
+src/shared/work-application.ts
+  s_a33445b5936fa3::t_7e02b9dbc90179 1-26
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d11fc73b0dd12182655010b16889bb8c8ccd802e",
+  "prompts": {},
+  "sessions": {
+    "s_098df3235fa721": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19eb9-df69-7222-adba-8eb488f30462",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_a33445b5936fa3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19f00-b917-74d3-9bf7-8a4af98b4a59",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
