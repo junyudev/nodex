@@ -1,0 +1,23 @@
+{
+  "source": "15105c8936be2da8c3f07922715bd487e1008842",
+  "testedMerge": "d701f577cc51fac96943ecc96fb4024cd6b24d5e",
+  "rustJob": 125658780608,
+  "coreJob": 125658780785,
+  "rustSummaryCount": 43,
+  "rustCollectedCases": 1416,
+  "rustIgnoredCases": 9,
+  "rustFailedCase": "database::tests::manual_position_commands_keep_writer_work_bounded_as_source_grows",
+  "coreCollectedFiles": 464,
+  "coreCollectedCases": 3413,
+  "coreSkippedCases": 40,
+  "coreFailedCases": [
+    {
+      "file": "src/main/core-client/editor-history-scenario.node.test.ts",
+      "name": "guarded creation history preserves omitted stored props"
+    },
+    {
+      "file": "src/main/platform/node/NodexCliBootstrap.node.test.ts",
+      "name": "Nodex per-Turn CLI connection > names the chat whose Agent attached a Page File through the CLI"
+    }
+  ]
+}

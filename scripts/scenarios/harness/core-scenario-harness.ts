@@ -112,11 +112,7 @@ export const withCoreScenario = async <Value>(
     });
     completed = true;
   } catch (error) {
-    const diagnostics = await readBoundedCoreDiagnostics(profile.nodexHome);
-    operationError = new Error(
-      `Core scenario ${input.scenarioId}@${recipe.revision} failed in ${profile.runRoot}: ${error instanceof Error ? error.message : String(error)}\n${diagnostics}`,
-      { cause: error },
-    );
+    operationError = error;
   }
   const teardownErrors: unknown[] = [];
   if (runtime) {
@@ -126,6 +122,14 @@ export const withCoreScenario = async <Value>(
     } catch (error) {
       teardownErrors.push(error);
     }
+  }
+  if (!completed) {
+    // Core's shutdown flushes its bounded file sink; read it before disposing the Profile.
+    const diagnostics = await readBoundedCoreDiagnostics(profile.nodexHome);
+    operationError = new Error(
+      `Core scenario ${input.scenarioId}@${recipe.revision} failed in ${profile.runRoot}: ${operationError instanceof Error ? operationError.message : String(operationError)}\n${diagnostics}`,
+      { cause: operationError },
+    );
   }
   try {
     const cleanup = await cleanupIsolatedProfile(profile);
