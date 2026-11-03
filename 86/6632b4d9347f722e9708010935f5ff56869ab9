@@ -1,0 +1,62 @@
+src/renderer/components/board/editor/nfm-formatting-toolbar-controller.tsx
+  s_535d5b23ff299c::t_a74d1293e49463 13,265-268,274,280-288,290-292,294-311,313-315
+src/renderer/components/board/editor/blocknote-view-lifecycle.browser.test.tsx
+  s_5cec66ce245092::t_6760dfa47ae46b 1-3,16,30-33,460-465
+src/renderer/lib/use-store-backup-runtime.ts
+  s_535d5b23ff299c::t_fb337a1928004a 238-241
+src/renderer/lib/use-workbench-window-state.test.tsx
+  s_535d5b23ff299c::t_f847b911151ca9 56-91
+src/renderer/components/workbench/review-diff-panel.tsx
+  s_535d5b23ff299c::t_ffda1e52513ec1 227,260,1702,1705-1706
+src/renderer/components/workbench/backup-settings-control.tsx
+  s_5cec66ce245092::t_6760dfa47ae46b 202-214,216-225,227-239,253
+src/renderer/components/workbench/review-diff-panel.test.tsx
+  s_535d5b23ff299c::t_57ced5053e2ddd 512,928-946
+src/renderer/components/workbench/database-view-filter-editors.tsx
+  s_535d5b23ff299c::t_0112a9a3f0c572 13,84-87
+src/renderer/components/workbench/database-view-rules-bar.tsx
+  s_535d5b23ff299c::t_48bf7f85302f1e 43,401-405,704,761,763,824,861,867,875
+third_party/blocknote/ORIGIN.md
+  s_535d5b23ff299c::t_72b940f246da4a 55
+src/renderer/lib/database-promotion-presentation.ts
+  s_535d5b23ff299c::t_cf779e3a78b2bf 282,287-289,343
+src/renderer/lib/use-workbench-scene-commands.test.tsx
+  s_535d5b23ff299c::t_4e8e744928d34b 1-83,85-90,92-103,105-141,143-158,160-167,169-170
+  s_535d5b23ff299c::t_18575aeff7dec1 84,91,104,142,159,168
+src/renderer/lib/use-store-backup-runtime.test.tsx
+  s_535d5b23ff299c::t_faba21ad337476 1,73-102,114-115,164-170
+src/renderer/lib/workbench-scene-command-runtime.ts
+  s_535d5b23ff299c::t_ea1038ec8633c7 1-132
+scripts/ci/lint-warning-baseline.json
+  s_5cec66ce245092::t_038ef8df860951 1
+third_party/blocknote/packages/react/src/components/Popovers/GenericPopover.tsx
+  s_535d5b23ff299c::t_a80711d56fc194 142,271-292
+src/renderer/lib/use-workbench-scene-commands.ts
+  s_535d5b23ff299c::t_2d4e8780e10c15 1,5,7,16,18-22,24
+src/renderer/lib/database-promotion-presentation.node.test.ts
+  s_535d5b23ff299c::t_22fefe7b88b047 118-124,148,158,169,180-181,183-184,187,190-195,198,202-203,252,261,271,276,287-289,292,302-307,316-320,322-326,329
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "866632b4d9347f722e9708010935f5ff56869ab9",
+  "prompts": {},
+  "sessions": {
+    "s_535d5b23ff299c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a01c-ab7e-76e0-9bef-b28aeff6777b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_5cec66ce245092": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d35af60e-664c-450c-a6fb-09ff7e66af9e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": null
+    }
+  }
+}
