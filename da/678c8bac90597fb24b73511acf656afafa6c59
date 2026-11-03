@@ -1,0 +1,23 @@
+docs/adr/0075-nodex-coordinates-managed-work.md
+  s_39af2826685004::t_93c5bab4407da1 1-76
+CONTEXT.md
+  s_39af2826685004::t_0535cd2067efbb 426-429,435-439,570,602-606,627-629,634-637,639,669-725,894-896,948-960,1135-1138
+  s_39af2826685004::t_11279b028361dc 595
+  s_39af2826685004::t_d28872c3989fa6 571
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "da678c8bac90597fb24b73511acf656afafa6c59",
+  "prompts": {},
+  "sessions": {
+    "s_39af2826685004": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d6e56d2e-aae2-44a9-9afb-e48fc0c1ee5c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
