@@ -1,0 +1,21 @@
+src/renderer/lib/failure-toast.ts
+  s_765ff516a548fb::t_1d8ae1f308e051 1-20
+src/renderer/lib/failure-toast.jsdom.test.ts
+  s_765ff516a548fb::t_962868baf9e99d 1-41
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b1e93d3c5d3adc400f6be92832e73ba2e274b134",
+  "prompts": {},
+  "sessions": {
+    "s_765ff516a548fb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5025670d-3a96-4277-bd70-e2b78a8df05a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
