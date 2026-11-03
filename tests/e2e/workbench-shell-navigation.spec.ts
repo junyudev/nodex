@@ -647,8 +647,9 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
           await expect(page.locator('[data-codex-composer="true"]:visible')).toBeVisible();
           const showEmptyTabs = page.getByRole("button", { name: "New tab", exact: true });
           if (await showEmptyTabs.isVisible()) await showEmptyTabs.click();
-          const emptyActions = page.locator('[data-thread-side-panel-new-tab-action-grid="true"]');
-          await emptyActions.getByRole("button", { name: /^Files/ }).click();
+          const newTab = page.getByRole("tabpanel", { name: "New tab", exact: true });
+          await expect(newTab.getByRole("heading", { name: "Tools", exact: true })).toBeVisible();
+          await newTab.getByRole("button", { name: /^Files/ }).click();
           await expect(page.getByRole("tab", { name: "Files", exact: true })).toBeVisible();
           await page
             .getByRole("button", { name: "New tab", exact: true })

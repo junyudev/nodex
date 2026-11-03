@@ -1,4 +1,5 @@
 import { readFile, writeFile } from "node:fs/promises";
+import { managePageFile, pageFilesTree } from "./support/page-files";
 import path from "node:path";
 
 import { expect, test, type Page } from "@playwright/test";
@@ -73,17 +74,8 @@ const openLibraryFiles = async (page: Page): Promise<void> => {
 
 const openPageFileDialog = async (page: Page, pageId: string, pathLabel: string): Promise<void> => {
   const stage = page.locator(`[data-page-stage-page-id="${pageId}"]:visible`);
-  const moreProperties = stage.getByRole("button", { name: /\d+ more propert(?:y|ies)/u });
-  if (await moreProperties.isVisible().catch(() => false)) {
-    await moreProperties.evaluate((element) => (element as HTMLElement).click());
-  }
-  const pathButton = stage.getByRole("button", { name: new RegExp(pathLabel, "u") }).first();
-  if ((await pathButton.count()) > 0) {
-    await pathButton.click();
-  } else {
-    await stage.getByRole("button", { name: /Open \d+ Files? shown in Page/u }).click();
-  }
-  await expect(page.getByRole("dialog", { name: "Page files" })).toBeVisible();
+  const tree = await pageFilesTree(stage, 1);
+  await managePageFile(page, tree.getByRole("treeitem", { name: pathLabel, exact: true }));
 };
 
 test("manages independent Library Files and replaces only one Page entry", async () => {

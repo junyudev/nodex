@@ -1,3 +1,4 @@
+import { pageFilesTree } from "./support/page-files";
 import { openWorkbenchSettings } from "./support/workbench-settings";
 import type { BlockTransferDataSourcePlacement } from "../../src/shared/block-transfer";
 import { readTestClipboard, writeTestClipboardImage } from "./clipboard";
@@ -3860,10 +3861,7 @@ test.describe("parallel functional Electron smoke", () => {
       );
 
       const placedFileUrl = requireString(sourceFileUrl, "Source image File URL");
-      await sourcePanel.getByRole("button", { name: /\d+ more propert(?:y|ies)/u }).click();
-      await expect(
-        sourcePanel.getByRole("button", { name: "Open 1 File shown in Page" }),
-      ).toBeVisible();
+      await expect((await pageFilesTree(sourcePanel, 1)).getByRole("treeitem")).toHaveCount(1);
 
       const triageHeader = page
         .locator('[data-database-board-column-header="true"]')
@@ -3905,10 +3903,7 @@ test.describe("parallel functional Electron smoke", () => {
         /^(?:blob:|data:image\/png;base64,)/u,
         { timeout: 15_000 },
       );
-      await promotedPanel.getByRole("button", { name: /\d+ more propert(?:y|ies)/u }).click();
-      await expect(
-        promotedPanel.getByRole("button", { name: "Open 1 File shown in Page" }),
-      ).toBeVisible();
+      await expect((await pageFilesTree(promotedPanel, 1)).getByRole("treeitem")).toHaveCount(1);
       await expect(page.getByText("Image unavailable", { exact: true })).toHaveCount(0);
       await expect(page.getByText("Page Document references a File", { exact: false })).toHaveCount(
         0,
@@ -3939,13 +3934,7 @@ test.describe("parallel functional Electron smoke", () => {
         placed_total: 1,
         files: [{ body_count: 1 }],
       });
-      const moreSourceProperties = sourcePanel.getByRole("button", {
-        name: /\d+ more propert(?:y|ies)/u,
-      });
-      if (await moreSourceProperties.isVisible()) await moreSourceProperties.click();
-      await expect(
-        sourcePanel.getByRole("button", { name: "Open 1 File shown in Page" }),
-      ).toBeVisible();
+      await expect((await pageFilesTree(sourcePanel, 1)).getByRole("treeitem")).toHaveCount(1);
       await expect(page.getByText("Image unavailable", { exact: true })).toHaveCount(0);
     } finally {
       await harness.close();
@@ -4166,13 +4155,9 @@ test.describe("parallel functional Electron smoke", () => {
           return movedOuter?.parentElement === anchor?.closest(".bn-block-outer")?.parentElement;
         }, targetParentBlockId),
       ).toBe(true);
-      const moreTargetProperties = targetWindowPanel.getByRole("button", {
-        name: /\d+ more propert(?:y|ies)/u,
-      });
-      if (await moreTargetProperties.isVisible()) await moreTargetProperties.click();
-      await expect(
-        targetWindowPanel.getByRole("button", { name: "Open 2 Files shown in Page" }),
-      ).toBeVisible();
+      await expect((await pageFilesTree(targetWindowPanel, 2)).getByRole("treeitem")).toHaveCount(
+        2,
+      );
       await expect(targetPage.getByText("Image unavailable", { exact: true })).toHaveCount(0);
 
       await targetWindowParent.locator(":scope > .bn-block-content").click();

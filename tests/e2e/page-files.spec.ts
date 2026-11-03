@@ -1,4 +1,5 @@
 import { openWorkbenchSettings } from "./support/workbench-settings";
+import { managePageFile, pageFilesTree } from "./support/page-files";
 import { createHash } from "node:crypto";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -91,7 +92,9 @@ test("previews a pasted image above editor chrome and refreshes Files only for p
       await expect(pastedImage).toBeVisible({ timeout: 15_000 });
       await expect(pastedImage).toHaveAttribute("src", /^blob:/u);
       await expect(stage.getByText("Add image", { exact: true })).toHaveCount(0);
-      await expect(stage.locator('[data-page-file-chip="true"]')).toHaveCount(0);
+      const tree = await pageFilesTree(stage, 1);
+      await expect(tree.getByRole("treeitem")).toHaveCount(1);
+      await expect(tree.getByText(/^In page\s*1$/u)).toBeVisible();
 
       await pastedImageBlock.click();
       const imageToolbar = page.locator('[role="toolbar"]').filter({
@@ -118,14 +121,7 @@ test("previews a pasted image above editor chrome and refreshes Files only for p
       expect(previewOwnsToolbarPoint).toBe(true);
       await imagePreview.getByRole("button", { name: "Close image preview" }).click();
 
-      const inPageSummary = stage.getByRole("button", {
-        name: "Open 1 File shown in Page",
-      });
-      await expect(inPageSummary).toHaveText("1 in page");
-      await inPageSummary.click();
-
-      const dialog = page.getByRole("dialog", { name: "Page files" });
-      await expect(dialog).toBeVisible();
+      const dialog = await managePageFile(page, tree.getByRole("treeitem"));
       await expect(
         dialog.getByRole("button", { name: /^Preview /u }).locator('[data-file-tab-icon="image"]'),
       ).toBeVisible();
@@ -325,19 +321,34 @@ test("imports native files and folders with canonical identities", async () => {
 
       await page.keyboard.press("Escape");
       await expect(dialog).not.toBeVisible();
+      const tree = await pageFilesTree(stage, 6);
       await stage.getByRole("button", { name: /^Hide \d+ propert(?:y|ies)$/u }).click();
-      await expect(stage.locator('[data-page-file-chip="true"]')).toHaveCount(2);
-      await expect(stage.getByRole("button", { name: "Open 4 more Page Files" })).toBeVisible();
-      await expect(stage.locator('[data-page-file-chip="true"] [data-file-tab-icon]')).toHaveCount(
-        2,
-      );
+      await expect(tree).toBeVisible();
+      await expect(tree.getByRole("treeitem")).toHaveCount(8);
+      for (const [filePath, kind] of [
+        ["dropped-notes.txt", "document"],
+        ["dropped-references/api.md", "document"],
+        ["dropped-references/nested/schema.json", "json"],
+        ["picked-data.json", "json"],
+        ["picked-reference.md", "document"],
+        ["picked-report.pdf", "pdf"],
+      ]) {
+        await expect(
+          tree
+            .getByRole("treeitem", { name: filePath, exact: true })
+            .locator(`[data-file-tab-icon="${kind}"]`),
+        ).toBeVisible();
+      }
 
-      const firstFileChip = stage.locator('[data-page-file-chip="true"]').first();
-      const firstFilePath = (await firstFileChip.textContent())?.trim();
-      if (!firstFilePath) throw new Error("Page File chip has no visible path");
-      await firstFileChip.click();
-      const reopened = page.getByRole("dialog", { name: "Page files" });
-      await expect(reopened).toBeVisible();
+      const firstFilePath = "picked-data.json";
+      const file = tree.getByRole("treeitem", { name: firstFilePath, exact: true });
+      await file.click();
+      await expect(page.getByRole("tab", { name: firstFilePath, exact: true })).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
+      await page.getByRole("tab", { name: "Unify Database View rendering", exact: true }).click();
+      const reopened = await managePageFile(page, file);
       await expect(
         reopened.getByRole("button", { name: `Preview ${firstFilePath}` }),
       ).toHaveAttribute("aria-pressed", "true");
