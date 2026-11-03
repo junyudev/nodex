@@ -1,0 +1,99 @@
+packages/agent-runtime/src/orchestration-v2/Adapters/CodexAdapterV2.test.ts
+  s_93b94841a913cf::t_4c89ac8bee586c 1822,1869,1879-1880,1888-1938,2154-2157
+src/shared/agent-runtime-api.ts
+  s_a94b1e66dd2eef::t_97884ab9cb4e5f 505-516
+packages/agent-runtime/src/provider/CodexWindowsSandbox.test.ts
+  s_93b94841a913cf::t_3648f8fe57113c 264-265
+  s_93b94841a913cf::t_72fc5d7243193a 1-2,4-17,19-36,38-86,103-263
+  s_93b94841a913cf::t_ed38aa8cf89267 3,18,37,87-102
+src/renderer/features/local-conversation/agent-readiness-notice.ts
+  s_93b94841a913cf::t_24d3db36509c7d 2-3,119-160,162,179
+  s_3022e59a160914::t_798c140b332d3d 161,163-178
+docs/product-specs/windows-host-behavior.md
+  s_3022e59a160914::t_c876f4ef8e8190 85-89,92
+  s_93b94841a913cf::t_a3bafd39ecc64c 81-84,90-91,93-108
+packages/agent-runtime/src/provider/Drivers/CodexDriver.test.ts
+  s_7b1e939d6b8f42::t_1ab2ae27d1fd5e 51
+packages/agent-runtime/src/nodex/Interface.ts
+  s_93b94841a913cf::t_ccb8ba9edb425c 2,229-230
+src/renderer/features/local-conversation/use-windows-sandbox-setup.test.tsx
+  s_3022e59a160914::t_c876f4ef8e8190 42,54,56,71,73-80,88,90,101-106,108-109
+  s_93b94841a913cf::t_507a183d9d286b 1-41,43-53,55,57-70,72,81-87,89,91-100,107,110-112
+packages/agent-runtime/src/orchestration-v2/Adapters/CodexAdapterV2.ts
+  s_93b94841a913cf::t_e17997bb88654b 22,43-47,844,853,1446,1690,1693,1743,1754-1757,1787-1810,1815,1845-1849,1869-1878,1931,2178-2190,2197,7307-7311
+src/renderer/features/local-conversation/use-windows-sandbox-setup.ts
+  s_93b94841a913cf::t_91d47fda226f08 1-48
+src/renderer/features/local-conversation/agent-runtime-conversation-adapter.ts
+  s_93b94841a913cf::t_a0b734d97e5d00 109-110,1153-1161,1278-1288,1757
+src/shared/ipc-endpoint-policy.ts
+  s_7b1e939d6b8f42::t_e2f75bb813f4c5 123,326-327
+src/shared/schemas/agent-runtime-api.ts
+  s_93b94841a913cf::t_b96b437dd7466c 272-289
+src/main/agent-runtime/AgentRuntimeApplication.ts
+  s_93b94841a913cf::t_6db2cca3da4373 4310-4336
+src/renderer/lib/agent-runtime-runtime.ts
+  s_93b94841a913cf::t_4e9079eee526be 294-302,360-364
+packages/agent-runtime/src/nodex/WindowsSandboxContract.ts
+  s_93b94841a913cf::t_240ef64ee4bd41 1-31
+CHANGELOG.md
+  s_93b94841a913cf::t_66ed9acab68211 12
+  s_3022e59a160914::t_988cf38284de94 11
+.github/workflows/windows.yml
+  s_7b1e939d6b8f42::t_3c78cc87d95b23 132-138
+packages/agent-runtime/src/provider/CodexWindowsSandbox.ts
+  s_93b94841a913cf::t_ed38aa8cf89267 143-146
+  s_93b94841a913cf::t_58820b55b95f24 1-142,147-226
+packages/agent-runtime/src/nodex/Service.ts
+  s_93b94841a913cf::t_a4579d238c6219 2-3,360-380,765,1134-1149
+packages/agent-runtime/src/nodex/contracts.ts
+  s_a94b1e66dd2eef::t_5e49a85fe177e4 42
+packages/agent-runtime/src/provider/Drivers/CodexManagedProvider.ts
+  s_a94b1e66dd2eef::t_5dd9819cea7ae9 234
+src/renderer/features/local-conversation/agent-runtime-conversation-adapter.test.tsx
+  s_93b94841a913cf::t_e1f53ec943df3d 102-108
+src/main/ipc/handlers/AgentRuntimeIpc.ts
+  s_93b94841a913cf::t_a8f665f7f3057b 233-246
+docs/product-specs/agent-permissions-behavior.md
+  s_93b94841a913cf::t_d649c8409bdb2b 46-47,50-53
+  s_3022e59a160914::t_988cf38284de94 48-49
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "427e82f199a42101eac9e11003f34d4c0e4030dd",
+  "prompts": {},
+  "sessions": {
+    "s_3022e59a160914": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1def126e-fd62-476f-9393-67b0835f01b6",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": null
+    },
+    "s_7b1e939d6b8f42": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a12a-b6f3-7242-bad0-977a2195411e",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": null
+    },
+    "s_93b94841a913cf": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a12a-757d-76b3-8e36-e7c026a0b42f",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": null
+    },
+    "s_a94b1e66dd2eef": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a12a-37d8-7f13-abb9-d89e6325f5df",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
