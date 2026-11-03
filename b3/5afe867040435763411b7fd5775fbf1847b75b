@@ -1,0 +1,79 @@
+src/renderer/lib/database-promotion-presentation.ts
+  s_948a11dee36c5f::t_f34ab5f4dc57df 304,327
+src/renderer/lib/database-view-presentation.test.tsx
+  s_7713c656a14496::t_07ceaa4978cd1f 1-47
+src/renderer/lib/database-view-presentation.ts
+  s_948a11dee36c5f::t_2573c8963c1a30 1,261-271,281-289,295-298
+src/renderer/lib/keyboard-layout.tsx
+  s_948a11dee36c5f::t_19f818372f5c3f 1,56-69
+src/renderer/lib/use-board.test.tsx
+  s_7713c656a14496::t_dd7db5c86e3aa8 263-276
+src/renderer/lib/use-board.ts
+  s_948a11dee36c5f::t_c38c0adfe3ed41 148-191,495
+src/renderer/lib/use-copy-feedback.test.tsx
+  s_7713c656a14496::t_d968b03319a523 1-69
+src/renderer/lib/use-copy-feedback.ts
+  s_948a11dee36c5f::t_70d01ee01a56f2 1,29-34
+src/renderer/lib/use-page-create-description-draft.test.tsx
+  s_948a11dee36c5f::t_196228150827af 3,9,61-89
+src/renderer/lib/use-page-create-description-draft.ts
+  s_948a11dee36c5f::t_2554bfc79b2c70 1,24-39
+src/renderer/lib/use-project-appearance-mutation.ts
+  s_948a11dee36c5f::t_4f90e562e7d55e 1,36-37,47-65
+src/renderer/lib/use-schedule-state.test.tsx
+  s_7713c656a14496::t_4ce66e62e6aa58 1-54
+src/renderer/lib/use-schedule-state.ts
+  s_948a11dee36c5f::t_09f873d0868c90 1,590,592-594,599,601-603
+src/renderer/lib/use-store-backup-runtime.test.tsx
+  s_948a11dee36c5f::t_da921ac36f6ea2 103-129
+src/renderer/lib/use-store-backup-runtime.ts
+  s_948a11dee36c5f::t_455201612d0b74 1,186-196,198-221,254-269
+src/renderer/lib/use-terminal.ts
+  s_948a11dee36c5f::t_a34757a98cba31 524-525
+src/renderer/lib/use-thread-execution-location.test.tsx
+  s_7713c656a14496::t_2dadcb7df49dba 1-53
+src/renderer/lib/use-thread-execution-location.ts
+  s_948a11dee36c5f::t_f48a9f8f92f0c1 1,37-47
+src/renderer/lib/use-typography-preferences.tsx
+  s_948a11dee36c5f::t_136b21d03d8fe0 31,35
+src/renderer/lib/use-workbench-chrome-commands.test.tsx
+  s_7713c656a14496::t_dade64b4901cc3 1-61
+src/renderer/lib/use-workbench-chrome-commands.ts
+  s_948a11dee36c5f::t_289c81df414307 1,130-131,139-153,229-245,247-248,331-347,349-350
+src/renderer/lib/use-workbench-panel-openers.ts
+  s_948a11dee36c5f::t_3e7a2c3bb7bf02 1,111-119,353-359,463-473,551-583,585-586,588-595,597-638,640-641,681-684,686-694,696,698-761,786-787,791-796,821-827,886-892,985-986,990-991,993-1068,1299-1303,1312-1313,1407-1415,1420-1421,1533-1534
+src/renderer/lib/use-workbench-session-catalog.ts
+  s_948a11dee36c5f::t_4146f22ee1cf19 1,376-406
+src/renderer/lib/use-workbench-session-commands.ts
+  s_948a11dee36c5f::t_2478a902b194fe 1,115-136,237-352,531,1015-1021,1031-1070,1073-1081,1085-1086,1089-1091,1097-1107,1152-1158,1235-1249,1417-1423
+src/renderer/lib/use-workbench-view-content.test.tsx
+  s_7713c656a14496::t_e19fdbde79a373 1-70
+src/renderer/lib/use-workbench-view-content.ts
+  s_948a11dee36c5f::t_443c67f080402f 1,22-23,25-33
+src/renderer/lib/workbench-new-tab-port.tsx
+  s_948a11dee36c5f::t_fae8907d5a4e79 1,180-184
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b35afe867040435763411b7fd5775fbf1847b75b",
+  "prompts": {},
+  "sessions": {
+    "s_7713c656a14496": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a17c-0752-7352-a377-51b5677197de",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_948a11dee36c5f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a17c-233a-7ac2-9cbf-6bdf66557783",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
