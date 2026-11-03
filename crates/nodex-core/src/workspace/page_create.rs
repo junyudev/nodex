@@ -563,7 +563,9 @@ mod tests {
         let workspace = setup();
         create_session(&workspace, "session:lab", Some("project:lab"));
         for index in 0..145 {
-            create(&workspace, &format!("dense-{index}"), project());
+            crate::infrastructure::request_execution::with_test_request_budget(|| {
+                create(&workspace, &format!("dense-{index}"), project());
+            });
         }
         let (_, _, view_id) = project_page_home_for_test(&workspace);
         let pressure_view = view_id.clone();
