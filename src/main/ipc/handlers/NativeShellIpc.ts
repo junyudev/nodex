@@ -268,7 +268,14 @@ export const live: Layer.Layer<
     );
     yield* handlePlainCommand("shell:open-file-link", (event, target, openerId) =>
       authorize(event).pipe(
-        Effect.andThen(run("open-file-link", () => openFileLinkTarget(target, openerId))),
+        Effect.andThen(
+          run("open-file-link", () =>
+            openFileLinkTarget(target, openerId, {
+              platform: config.platform,
+              shell: desktop.shell,
+            }),
+          ),
+        ),
       ),
     );
     yield* handleQuery("shell:file-link-openers:list-available", (event) =>
@@ -313,7 +320,14 @@ export const live: Layer.Layer<
     );
     yield* handlePlainCommand("open-file", (event, target, openerId) =>
       authorize(event).pipe(
-        Effect.andThen(run("open-file", () => openFileLinkTarget(target, openerId))),
+        Effect.andThen(
+          run("open-file", () =>
+            openFileLinkTarget(target, openerId, {
+              platform: config.platform,
+              shell: desktop.shell,
+            }),
+          ),
+        ),
       ),
     );
     yield* handlePlainCommand("shell:open-external-url", (event, value) =>
