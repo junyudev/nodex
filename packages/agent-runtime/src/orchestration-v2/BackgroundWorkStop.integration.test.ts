@@ -145,13 +145,19 @@ const stopEarlierBackgroundWork = ({
         const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
         const sink = yield* EventSink.EventSinkV2;
         const threadId = ThreadId.make("thread:background-work-stop");
-        const watch = (predicate: (event: OrchestrationV2DomainEvent) => boolean) =>
-          orchestrator.streamDomainEvents.pipe(
+        // Capture before forking: release can commit recovery before a live-tail watcher starts.
+        const watch = Effect.fnUntraced(function* (
+          predicate: (event: OrchestrationV2DomainEvent) => boolean,
+        ) {
+          const afterSequence = yield* sink.latestSequence();
+          return yield* sink.stream({ afterSequence }).pipe(
+            Stream.map(({ event }) => event),
             Stream.filter(predicate),
             Stream.take(1),
             Stream.runDrain,
             Effect.forkScoped,
           );
+        });
         yield* orchestrator.dispatch({
           type: "thread.create",
           commandId: CommandId.make("create"),

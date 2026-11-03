@@ -91,7 +91,12 @@ import {
   liveBackgroundWork,
   pendingBackgroundTurnItems,
 } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
+import { forkParked } from "../serverActivation.ts";
+import { isTransientObservationFailure } from "./ProviderObservation.ts";
 import * as Context from "effect/Context";
+import * as Cause from "effect/Cause";
+import * as Schedule from "effect/Schedule";
+import * as Semaphore from "effect/Semaphore";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -13330,71 +13335,80 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         : threadDispatch.withLock(parentThreadId, dispatch);
     });
 
-  const handleTerminalRun = (stored: OrchestrationV2StoredEvent) =>
-    Effect.gen(function* () {
-      const threadId = stored.event.threadId;
-      if (
-        stored.event.type === "run.updated" &&
-        stored.event.payload.status === "completed" &&
-        stored.event.payload.contextRecovery?.phase === "compact"
-      ) {
-        yield* dispatchWithReceipt({
-          type: "run.context-recover",
-          commandId: CommandId.make(
-            `context-recovery:${stored.event.payload.contextRecovery.failedRunId}:retry`,
+  const terminalReaction = <A, E, R>(
+    reaction: string,
+    stored: OrchestrationV2StoredEvent,
+    effect: Effect.Effect<A, E, R>,
+  ) =>
+    Effect.exit(effect).pipe(
+      Effect.flatMap((exit) =>
+        Exit.isFailure(exit) ? Effect.fail(exit.cause) : Effect.succeed(exit.value),
+      ),
+      Effect.retry(($) =>
+        $(Schedule.exponential("100 millis")).pipe(
+          Schedule.upTo({ times: 3 }),
+          Schedule.while(
+            ({ input }) => !Cause.hasInterruptsOnly(input) && isTransientObservationFailure(input),
           ),
-          threadId,
-          failedRunId: stored.event.payload.contextRecovery.failedRunId,
-          compactRunId: stored.event.payload.id,
-        });
-      }
-      // finalize writes the parent thread and startNextQueuedRun writes this
-      // thread, so each takes its own thread's lock, sequentially and never
-      // nested: dispatchDelegatedTaskRequest already writes child events
-      // while holding the parent lock, so nesting the parent lock inside the
-      // child lock here would invert that order, and the keyed executor's
-      // semaphores are neither reentrant nor deadlock-aware.
-      if (stored.event.type === "run.updated") {
-        yield* threadDispatch.withLock(
-          threadId,
-          finalizeDelegatedCompletionDelivery(threadId, stored.event.payload.id),
-        );
-      }
-      yield* threadDispatch
-        .withLock(
-          threadId,
-          startNextQueuedRun(
-            threadId,
-            stored.event.type === "run.updated"
-              ? {
-                  endedRunId: stored.event.payload.id,
-                  ...(stored.event.payload.status === "failed"
-                    ? { failedRunId: stored.event.payload.id }
-                    : {}),
-                }
-              : undefined,
-          ),
-        )
-        .pipe(
-          Effect.catchCause((cause) =>
-            Effect.logWarning("Failed to start the next queued V2 run", { threadId, cause }),
-          ),
-        );
-      // After the queue decision: a provider failure holds the child's queued
-      // wakes, and only then is the failed run the task's result.
-      const parentThreadId = yield* appOwnedSubagentParentThreadId(threadId);
-      if (parentThreadId !== undefined) {
-        yield* threadDispatch.withLock(parentThreadId, finalizeAppOwnedSubagent(threadId));
-      }
-    }).pipe(
+        ),
+      ),
+      Effect.catch((cause) => Effect.failCause(cause)),
       Effect.catchCause((cause) =>
-        Effect.logWarning("Failed to react to terminal V2 run", {
-          threadId: stored.event.threadId,
-          sequence: stored.sequence,
-          cause,
+        Cause.hasInterruptsOnly(cause)
+          ? Effect.failCause(cause)
+          : Effect.logWarning("Failed to react to terminal V2 run", {
+              reaction,
+              threadId: stored.event.threadId,
+              sequence: stored.sequence,
+              cause,
+            }),
+      ),
+    );
+
+  const handleTerminalRun = Effect.fnUntraced(function* (stored: OrchestrationV2StoredEvent) {
+    if (stored.event.type !== "run.updated") return;
+    const { threadId, payload: run } = stored.event;
+    if (run.status === "completed" && run.contextRecovery?.phase === "compact") {
+      yield* terminalReaction(
+        "context-recovery",
+        stored,
+        dispatchWithReceipt({
+          type: "run.context-recover",
+          commandId: CommandId.make(`context-recovery:${run.contextRecovery.failedRunId}:retry`),
+          threadId,
+          failedRunId: run.contextRecovery.failedRunId,
+          compactRunId: run.id,
+        }),
+      );
+    }
+    // Delegation holds parent before child. These reactions release each lock before
+    // taking the next, and no failed reaction may suppress an independent handoff.
+    yield* terminalReaction(
+      "completion-delivery",
+      stored,
+      threadDispatch.withLock(threadId, finalizeDelegatedCompletionDelivery(threadId, run.id)),
+    );
+    yield* terminalReaction(
+      "queued-run",
+      stored,
+      threadDispatch.withLock(
+        threadId,
+        startNextQueuedRun(threadId, {
+          endedRunId: run.id,
+          ...(run.status === "failed" ? { failedRunId: run.id } : {}),
         }),
       ),
     );
+    yield* terminalReaction(
+      "parent-finalization",
+      stored,
+      Effect.gen(function* () {
+        const parentThreadId = yield* appOwnedSubagentParentThreadId(threadId);
+        if (parentThreadId === undefined) return;
+        yield* threadDispatch.withLock(parentThreadId, finalizeAppOwnedSubagent(threadId));
+      }),
+    );
+  });
 
   const recoveryEventsAfterSequence = yield* eventSink.latestSequence().pipe(Effect.orDie);
   yield* eventSink
@@ -13472,95 +13486,118 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     ),
   );
 
-  // Settles child results and completion deliveries whose runs ended without
-  // the listener above: before this boot, or in runtime reconciliation, which
-  // it skips. Startup runs this after reconciliation and before the effect
-  // worker. Queue recovery instead holds unstarted runs until an explicit
-  // queue.resume command arrives.
-  const recoverDelegatedTasks = Effect.gen(function* () {
-    yield* projectionStore.getRecoveryThreadIds("subagent-results").pipe(
-      Effect.flatMap((threadIds) =>
-        Effect.forEach(
-          threadIds,
-          (threadId) =>
-            Effect.gen(function* () {
-              const thread = yield* projectionStore.getThreadShell(threadId);
-              const parentThreadId = thread?.lineage.parentThreadId;
-              if (parentThreadId === undefined || parentThreadId === null) return;
-              yield* threadDispatch.withLock(parentThreadId, finalizeAppOwnedSubagent(threadId));
-            }).pipe(
-              Effect.catchCause((cause) =>
-                Effect.logWarning("Failed to recover terminal app-owned subagent", {
-                  childThreadId: threadId,
-                  cause,
-                }),
-              ),
-            ),
-          { concurrency: 8, discard: true },
-        ),
-      ),
-      Effect.catchCause((cause) =>
-        Effect.logWarning("Failed to inspect app-owned subagents during recovery", {
-          cause,
-        }),
-      ),
-    );
-    yield* projectionStore.getRecoveryThreadIds("delegated-completions").pipe(
-      Effect.flatMap((threadIds) =>
-        Effect.forEach(
-          threadIds,
-          (threadId) =>
-            threadDispatch
-              .withLock(
-                threadId,
-                Effect.gen(function* () {
-                  // Only open cohorts can own an unsettled delivery; each names its message.
-                  const open = yield* projectionStore.getThreadRecords(threadId, ["runs"], {
-                    runOpenDelivery: true,
-                  });
-                  let finalized = false;
-                  for (const parentRun of open.runs) {
-                    const delivery = parentRun.delegatedCompletion?.delivery;
-                    if (delivery === null || delivery === undefined) continue;
-                    const records = yield* readCompletionDeliveryRecords(threadId, parentRun);
-                    const deliveryRun = completionDeliveryRun(records, delivery);
-                    if (
-                      deliveryRun === undefined ||
-                      deliveryRun.userMessageId !== delivery.messageId ||
-                      delegatedTaskTerminalStatus(deliveryRun.status) === null
-                    )
-                      continue;
-                    yield* finalizeDelegatedCompletionDelivery(threadId, deliveryRun.id);
-                    finalized = true;
-                  }
-                  const refreshed = finalized
-                    ? yield* projectionStore.getThreadRecords(threadId, ["runs"], {
-                        runOpenDelivery: true,
-                      })
-                    : open;
-                  for (const run of refreshed.runs) {
-                    yield* offerDelegatedCompletionDelivery(threadId, run.id);
-                  }
-                }),
-              )
-              .pipe(
+  // Indexed unresolved-task and open-delivery candidates keep each repair pass
+  // proportional to unfinished work. Startup and live signals share one sweep.
+  const delegatedRecoveryPermit = yield* Semaphore.make(1);
+  const recoverDelegatedTasks = delegatedRecoveryPermit.withPermit(
+    Effect.gen(function* () {
+      yield* projectionStore.getRecoveryThreadIds("subagent-results").pipe(
+        Effect.flatMap((threadIds) =>
+          Effect.forEach(
+            threadIds,
+            (threadId) =>
+              Effect.gen(function* () {
+                const thread = yield* projectionStore.getThreadShell(threadId);
+                const parentThreadId = thread?.lineage.parentThreadId;
+                if (parentThreadId === undefined || parentThreadId === null) return;
+                yield* threadDispatch.withLock(parentThreadId, finalizeAppOwnedSubagent(threadId));
+              }).pipe(
                 Effect.catchCause((cause) =>
-                  Effect.logWarning("Failed to recover delegated completion delivery", {
-                    threadId,
+                  Effect.logWarning("Failed to recover terminal app-owned subagent", {
+                    childThreadId: threadId,
                     cause,
                   }),
                 ),
               ),
-          { concurrency: 8, discard: true },
+            { concurrency: 8, discard: true },
+          ),
+        ),
+        Effect.catchCause((cause) =>
+          Effect.logWarning("Failed to inspect app-owned subagents during recovery", {
+            cause,
+          }),
+        ),
+      );
+      yield* projectionStore.getRecoveryThreadIds("delegated-completions").pipe(
+        Effect.flatMap((threadIds) =>
+          Effect.forEach(
+            threadIds,
+            (threadId) =>
+              threadDispatch
+                .withLock(
+                  threadId,
+                  Effect.gen(function* () {
+                    // Only open cohorts can own an unsettled delivery; each names its message.
+                    const open = yield* projectionStore.getThreadRecords(threadId, ["runs"], {
+                      runOpenDelivery: true,
+                    });
+                    let finalized = false;
+                    for (const parentRun of open.runs) {
+                      const delivery = parentRun.delegatedCompletion?.delivery;
+                      if (delivery === null || delivery === undefined) continue;
+                      const records = yield* readCompletionDeliveryRecords(threadId, parentRun);
+                      const deliveryRun = completionDeliveryRun(records, delivery);
+                      if (
+                        deliveryRun === undefined ||
+                        deliveryRun.userMessageId !== delivery.messageId ||
+                        delegatedTaskTerminalStatus(deliveryRun.status) === null
+                      )
+                        continue;
+                      yield* finalizeDelegatedCompletionDelivery(threadId, deliveryRun.id);
+                      finalized = true;
+                    }
+                    const refreshed = finalized
+                      ? yield* projectionStore.getThreadRecords(threadId, ["runs"], {
+                          runOpenDelivery: true,
+                        })
+                      : open;
+                    for (const run of refreshed.runs) {
+                      yield* offerDelegatedCompletionDelivery(threadId, run.id);
+                    }
+                  }),
+                )
+                .pipe(
+                  Effect.catchCause((cause) =>
+                    Effect.logWarning("Failed to recover delegated completion delivery", {
+                      threadId,
+                      cause,
+                    }),
+                  ),
+                ),
+            { concurrency: 8, discard: true },
+          ),
+        ),
+        Effect.catchCause((cause) =>
+          Effect.logWarning("Failed to inspect delegated completion delivery during recovery", {
+            cause,
+          }),
+        ),
+      );
+    }),
+  );
+
+  yield* forkParked(
+    Effect.sleep("1 minute").pipe(Effect.andThen(recoverDelegatedTasks), Effect.forever),
+  );
+  const delegatedSignalsAfterSequence = yield* eventSink.latestSequence().pipe(Effect.orDie);
+  yield* forkParked(
+    eventSink
+      .stream({
+        afterSequence: delegatedSignalsAfterSequence,
+        eventType: "provider-session.updated",
+      })
+      .pipe(
+        Stream.filter(
+          ({ event }) =>
+            event.type === "provider-session.updated" &&
+            (event.payload.status === "error" || event.payload.status === "stopped"),
+        ),
+        Stream.runForEach(() => recoverDelegatedTasks),
+        Effect.catchCause((cause) =>
+          Effect.logWarning("Delegated task recovery signals failed", { cause }),
         ),
       ),
-      Effect.catchCause((cause) =>
-        Effect.logWarning("Failed to inspect delegated completion delivery during recovery", {
-          cause,
-        }),
-      ),
-    );
-  });
+  );
 
   const delegatedTaskResultPending = (childThreadId: ThreadId, taskId?: NodeId) =>
     Effect.gen(function* () {

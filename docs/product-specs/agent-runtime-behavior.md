@@ -135,7 +135,11 @@ Agent while a reply is recovering starts the next attempt at once with that inpu
 replacing the scheduled continuation. Archiving or deleting the chat ends recovery. A
 delegated task that is recovering stays running for its delegating Agent: its card and
 `task_status` say it is retrying, and the delegating Agent is woken only once the task
-finally succeeds or fails.
+finally succeeds or fails. That ending always reaches the delegating Agent: Nodex settles
+the task and offers its wake as soon as the task's reply ends, retries the handoff when a
+local read or write fails, and rechecks unsettled tasks every minute and whenever an Agent
+process stops, so a missed handoff is repaired while Nodex keeps running rather than at
+the next launch.
 
 Continue on the latest failed reply submits a new follow-up asking the Agent to
 continue from where it left off, with the existing conversation context. It does not
