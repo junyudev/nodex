@@ -1,0 +1,90 @@
+scripts/ci/verify-tooling-contracts.ts
+  s_d5aa594c4a1c56::t_e9761692f5628b 221-223
+  s_d5aa594c4a1c56::t_3e9119d1880da6 4,298,302
+  s_d5aa594c4a1c56::t_34ab6a18625711 220
+vite.config.ts
+  s_d5aa594c4a1c56::t_a7e69e26b20d5a 412,439,477,498,519
+  s_d5aa594c4a1c56::t_1fba0aaaad6d34 408-411,413-430
+docs/LINTING.md
+  s_d5aa594c4a1c56::t_5e2b2eab868c6e 19-28,49-57,73,76-84,90-92,105-107
+scripts/ci/react-compiler-ratchet.ts
+  s_d5aa594c4a1c56::t_5615e39aa6f491 5,88
+  s_d5aa594c4a1c56::t_725e18b1985545 1-4,6-27,31-37,44-52,57-64,66-79,85,89-103,107-108,113,119-126,128-140,150-168,171-176,185
+  s_d5aa594c4a1c56::t_db50067e768af2 28-30,38-43,53-56,65,80-84,86-87,104-106,109-112,114-118,127,141,143-149,169-170,177-184
+  s_d5aa594c4a1c56::t_3a4480cffadba2 142
+scripts/ci/classify-change.ts
+  s_d5aa594c4a1c56::t_1fba0aaaad6d34 344,406
+  s_d5aa594c4a1c56::t_358b4ddeaa1f22 407-412
+  s_d5aa594c4a1c56::t_2a7f69faa1ea6f 21-25
+AGENTS.md
+  s_d5aa594c4a1c56::t_5e2b2eab868c6e 213
+scripts/ci/verify-semantic-tooling.ts
+  s_d5aa594c4a1c56::t_8e4b1dee5352d0 328
+  s_d5aa594c4a1c56::t_b4c34acd031b50 297-302,314-316,325-327,329-330,334-339,345-353,365-368,378-386,394-395,400-408,413-416,434,440
+  s_31333ce1edfc28::t_0669884bdf826f 446-448
+  s_d5aa594c4a1c56::t_a7e69e26b20d5a 36,319,340-342
+  s_d5aa594c4a1c56::t_44883d84f9ff14 424,430-431,435-438,441,443-445
+  s_d5aa594c4a1c56::t_d2a0f421dfd193 425-429,432-433,439,442
+  s_d5aa594c4a1c56::t_e0564f03dadee0 320-323,670
+  s_d5aa594c4a1c56::t_3e9119d1880da6 29-35,37,40,48-51,291-296,303-313,317-318,324,331-333,343-344,354-364,369-377,387-393,396-399,409-412,417-423
+config/renderer-react-compiler.ts
+  s_d5aa594c4a1c56::t_9b697a03a9b17b 2,14-15,18,29-48,54-60,143-146,148
+  s_d5aa594c4a1c56::t_8e4b1dee5352d0 24
+  s_d5aa594c4a1c56::t_609b4c5121e068 50-53
+  s_d5aa594c4a1c56::t_304697c1df9706 49
+scripts/ci/count-ratchet.ts
+  s_d5aa594c4a1c56::t_e77d28e6074d27 149-164
+  s_d5aa594c4a1c56::t_2643048bed904b 1-148
+docs/FRONTEND.md
+  s_d5aa594c4a1c56::t_5e2b2eab868c6e 212-220
+config/renderer-react-compiler.test.ts
+  s_d5aa594c4a1c56::t_8e4b1dee5352d0 26-28
+scripts/ci/verify-static.test.ts
+  s_d5aa594c4a1c56::t_2a7f69faa1ea6f 38-53,55,59
+  s_d5aa594c4a1c56::t_ca49e20ce62d76 54,56-58
+package.json
+  s_d5aa594c4a1c56::t_1fba0aaaad6d34 179
+scripts/ci/react-compiler-baseline.json
+  s_5cec66ce245092::t_8ff609364d7f3b 111,122,162,177
+  s_d5aa594c4a1c56::t_1d0a0ad787cb15 1-110,112-121,123-161,163-176,178-332
+config/renderer-vite-shared.ts
+  s_d5aa594c4a1c56::t_9b697a03a9b17b 2,5,11
+  s_d5aa594c4a1c56::t_3ea2d4270ffaac 12
+scripts/ci/verify-static.ts
+  s_d5aa594c4a1c56::t_8e6291f6cf93f2 27
+  s_d5aa594c4a1c56::t_1fba0aaaad6d34 28-32
+scripts/ci/lint-warning-ratchet.ts
+  s_d5aa594c4a1c56::t_9c3cfda5e499e6 2,6-13,44-45,80-81,97,100,102,113-119,121-123
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9b7d95b5d6ab12a50f73e569d6f399251a850c92",
+  "prompts": {},
+  "sessions": {
+    "s_31333ce1edfc28": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a054-7bf2-75b1-8bd9-e26360b6ebcf",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_5cec66ce245092": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d35af60e-664c-450c-a6fb-09ff7e66af9e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": null
+    },
+    "s_d5aa594c4a1c56": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a093-66b0-7f13-a557-a73de5cfc919",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
