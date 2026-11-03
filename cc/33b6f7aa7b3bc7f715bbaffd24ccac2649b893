@@ -1,0 +1,60 @@
+docs/ARCHITECTURE.md
+  s_e7c42becea402b::t_34d9d8f86a70e4 1329
+packages/agent-runtime/src/orchestration-v2/SharedSessionLoss.integration.test.ts
+  s_69a76cc87d96b2::t_d7cd797c754c24 247,423-424,637-655,662-773
+  s_69a76cc87d96b2::t_6c6d11aeb7744a 18,192,198
+  s_69a76cc87d96b2::t_4d7915dddce70b 1,26,34,47-48,67,84,118,322
+  s_69a76cc87d96b2::t_a52dced4c5f2d8 356-358,362,389-395,402
+  s_69a76cc87d96b2::t_8914d46b7ca0c1 426-466
+  s_69a76cc87d96b2::t_08907ebabddc0d 408,656-661
+  s_69a76cc87d96b2::t_73fb0a050159ca 2-17,19-25,27-33,35-46,49-65,68-83,85-101,108,128,136-191,193-197,200-243,245,303-304,308,327,331-344,359-360,364,377,381-388,397-399,403-404,417,421,470-636
+  s_257252f4b46824::t_be67e3edd360a3 66,102-107,109-117,119-127,129-135,199,244,246,248-302,305-307,309-321,323-326,328-330,345-355,361,363,365-376,378-380,396,400-401,405-407,409-416,418-420,422,425,467-469
+CHANGELOG.md
+  s_e7c42becea402b::t_57c40a0405b3ff 67
+docs/product-specs/agent-runtime-behavior.md
+  s_e7c42becea402b::t_4bc7bb1a312166 138-142
+packages/agent-runtime/src/orchestration-v2/BackgroundWorkStop.integration.test.ts
+  s_1f1863fce2a012::t_12ce9be74130c6 148-154,160
+packages/agent-runtime/src/orchestration-v2/Orchestrator.ts
+  s_1f1863fce2a012::t_e9bf0354945647 94-95,97-99,13338-13351,13353-13355,13357-13398,13402-13411,13489-13504,13506-13507,13512-13597,13600
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "cc33b6f7aa7b3bc7f715bbaffd24ccac2649b893",
+  "prompts": {},
+  "sessions": {
+    "s_1f1863fce2a012": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19ffc-bade-7bf2-af9f-87a3600bb5b0",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_257252f4b46824": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19ff8-37a2-7ba1-960e-02cb9c49b080",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_69a76cc87d96b2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19fe8-8946-7ca1-9b44-6a81ea5a4833",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_e7c42becea402b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a1773314-9d15-4e0e-a443-b0b84b8ea9e9",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
