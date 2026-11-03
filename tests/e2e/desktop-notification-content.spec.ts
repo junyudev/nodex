@@ -355,10 +355,13 @@ test("side chat notifications reopen its tab in the source Session and reply to 
     expect(sideId).not.toBe(sourceId);
     const sideTab = page.locator(`[data-panel-tab-id="${tabId}"]`).getByRole("tab");
     const sidePanel = page.locator(`[role="tabpanel"][data-tab-id="${tabId}"]`);
+    const sideComposer = sidePanel.locator('[data-codex-composer="true"]');
     const readSideRuns = async () =>
       (await invokeIpc(page!, "agent-runtime:session:read", { sessionId: sideId })).snapshot
         .projection.runs;
     await expect.poll(async () => (await readSideRuns()).at(-1)?.status).toBe("running");
+    // The opening message is sent, not left behind as a draft to send again.
+    await expect(sideComposer).toHaveText("");
     const sideTitle = (await invokeIpc(page, "project-sessions:get", sideId))?.displayTitle;
     expect(sideTitle).toBe(sidePrompt);
     expect(sideTitle).not.toBe(source.displayTitle);
@@ -415,6 +418,8 @@ test("side chat notifications reopen its tab in the source Session and reply to 
       await expect(sideTab).toBeVisible();
       await expect(sideTab).toHaveAttribute("aria-selected", "true");
       await expect(sidePanel).toBeVisible();
+      // Remounting the side chat does not resurrect or resend its opening message.
+      await expect(sideComposer).toHaveText("");
       if (inlineReply !== null) {
         // The reply is a follow-up in the side chat; its source conversation is untouched.
         await expect(sidePanel.getByText(inlineReply, { exact: true })).toBeVisible();
@@ -436,7 +441,6 @@ test("side chat notifications reopen its tab in the source Session and reply to 
 
     await openCompletion(1, "existing-side-chat-tab.png", null);
     fs.rmSync(releaseFile);
-    const sideComposer = sidePanel.locator('[data-codex-composer="true"]');
     await sideComposer.fill(sidePrompt);
     await sideComposer.press("Enter");
     await expect

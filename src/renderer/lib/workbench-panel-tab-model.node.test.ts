@@ -16,6 +16,7 @@ import {
   makeProcessOutputPanelTabId,
   routeDeletedSelectedSubagentsToOverview,
   settlePendingSubagentsPanelTab,
+  settleSideChatInitialSubmission,
   updateImageEditorPanelTabTitle,
   updateSideChatPanelTabTitle,
   type ImageEditorPanelTab,
@@ -52,6 +53,26 @@ describe("workbench panel tab model", () => {
     expect(updateSideChatPanelTabTitle(updated, second.id, title)).toBe(updated);
     expect(updateSideChatPanelTabTitle(updated, "closed-side", "Late request")).toBe(updated);
     expect(updateSideChatPanelTabTitle(updated, second.id, "  ")).toBe(updated);
+  });
+  test("settles only the addressed side chat's opening message, once", () => {
+    const opening = {
+      launchId: "launch-1",
+      clientUserMessageId: "message-1",
+      acceptedAt: 1,
+    };
+    const first = {
+      ...(transient("sideChat") as SideChatPanelTab),
+      initialSubmission: opening,
+      draftPrompt: "Explain this",
+    };
+    const second = { ...first, id: "other-side" };
+    const tabs = [first, second];
+    const settled = settleSideChatInitialSubmission(tabs, first.id);
+    expect(settled[0]).not.toHaveProperty("initialSubmission");
+    expect(settled[0]).toMatchObject({ id: first.id, draftPrompt: "Explain this" });
+    expect(settled[1]).toBe(second);
+    expect(settleSideChatInitialSubmission(settled, first.id)).toBe(settled);
+    expect(settleSideChatInitialSubmission(settled, "closed-side")).toBe(settled);
   });
   test.each([
     ["sideChat", isSideChatPanelTab],

@@ -88,6 +88,7 @@ All notable changes to this project will be documented in this file.
 - Long chats can recover from context exhaustion with Compact and retry while keeping their history and original request. Delegated results already received by the Agent are no longer sent again after a failed reply.
 - Opening a side chat's notification now returns to the chat you opened it from, with the side chat selected in its panel, instead of showing the side chat alone. Replying from the notification goes to the side chat.
 - Replying to an Agent chat from its notification now sends your reply. Before, it opened the chat and dropped what you wrote.
+- Starting a side chat with `/side` and a message no longer leaves that message in the side chat's message box, where pressing Enter would send it a second time.
 - A chat no longer stays marked as waiting after one of its delegated tasks asked a question and finished. A chat now waits only on what needs you: its own questions once the Agent stops working, approvals, and its side chats' questions. A question left at the end of a turn sends one question notification rather than a completion too, and a finished task's unanswered question no longer keeps Nodex's Agent process running.
 - Collapsed Projects and Sections now show when any of their chats is waiting or working, including Agent chats the sidebar has not loaded, and a chat asking for approval or input shows as waiting instead of working.
 - Sending from a Page to a chat that the sidebar has not loaded yet no longer fails with "This chat is no longer available".

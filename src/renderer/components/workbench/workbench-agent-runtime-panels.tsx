@@ -161,6 +161,8 @@ export function AgentRuntimeSideChatPanel(input: {
   readonly parentThreadId: string;
   readonly title: string;
   readonly onTitleChange?: (title: string) => void;
+  /** The opening message was sent or returned to the composer; it is never handled again. */
+  readonly onInitialSubmissionSettled?: () => void;
   readonly project: Project | null;
   readonly initialPrompt: Pick<CodexComposerIntent, "prompt" | "promptInput"> | null;
   readonly initialSubmission?: FirstSubmissionIdentity & {
@@ -198,17 +200,31 @@ export function AgentRuntimeSideChatPanel(input: {
     });
   const summary = agent.summary;
   const startedInitialSubmission = useRef<string | null>(null);
+  // The opening message is sent, never drafted, and handled once; one that cannot be sent
+  // waits in the composer for a manual send.
+  const settleInitialSubmission = useEffectEvent((sent: boolean) => {
+    if (!sent && input.initialPrompt)
+      composerDraftIntents.set(
+        { kind: "session", sessionId: session.id },
+        {
+          prompt: input.initialPrompt.prompt,
+          promptInput: input.initialPrompt.promptInput,
+          attachmentMode: "replace",
+          focusNonce: Date.now(),
+        },
+      );
+    input.onInitialSubmissionSettled?.();
+  });
   const submitInitialPrompt = useEffectEvent(async () => {
-    const chat = { kind: "session", sessionId: session.id } as const;
-    const pendingIntent = composerDraftIntents.read(chat);
     try {
       await agent.actions.onSendPrompt?.(input.initialPrompt?.prompt ?? "", {
         promptInput: input.initialPrompt?.promptInput,
         submissionIdentity: input.initialSubmission,
         presentationTicket: input.initialSubmission?.presentationTicket,
       });
-      if (pendingIntent) composerDraftIntents.consume(chat, pendingIntent.focusNonce);
+      settleInitialSubmission(true);
     } catch (cause) {
+      settleInitialSubmission(false);
       toast.danger(cause instanceof Error ? cause.message : "The side chat could not start.", {
         id: `side-chat-submit:${session.id}`,
       });
@@ -220,13 +236,14 @@ export function AgentRuntimeSideChatPanel(input: {
     if (!identity || !agent.summary) return;
     if (startedInitialSubmission.current === identity.launchId) return;
     const ready = agent.models.length > 0 && Boolean(agent.selectedModel);
-    // Waiting is only correct while the catalog loads; afterwards the draft stays for a manual send.
+    // Waiting is only correct while the catalog loads; afterwards the message waits for a manual send.
     if (!ready && catalog?.loading !== false) return;
     startedInitialSubmission.current = identity.launchId;
     if (ready) {
       void submitInitialPrompt();
       return;
     }
+    settleInitialSubmission(false);
     toast.danger(
       catalog?.error ??
         "No Agent model is available, so the side chat was not sent. Choose a model to send it.",

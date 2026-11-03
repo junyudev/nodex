@@ -55,6 +55,7 @@ import {
   isSubagentsPanelTab,
   isTransientPanelTab,
   updateImageEditorPanelTabTitle,
+  settleSideChatInitialSubmission,
   updateSideChatPanelTabTitle,
   type ProjectSessionRenderableTab,
 } from "@/lib/workbench-panel-tab-model";
@@ -457,6 +458,13 @@ export function useWorkbenchPanelProjection({
               : undefined,
         renderPanel: (_closeTab, panelContext) => {
           if (isSideChatPanelTab(tab)) {
+            const updateSideChatTabs = (update: (tabs: SideChatPanelTab[]) => SideChatPanelTab[]) =>
+              controller.updateSideChatTabsBySession((current) => {
+                const tabs = current[tab.sessionId];
+                if (!tabs) return current;
+                const updated = update(tabs);
+                return updated === tabs ? current : { ...current, [tab.sessionId]: updated };
+              });
             return (
               <ReviewRouteOpenAdapter activateReviewTab={activateReviewTab}>
                 {({ onOpenTurnDiffReview }) => (
@@ -464,13 +472,10 @@ export function useWorkbenchPanelProjection({
                     key={`${session.id}:${tab.id}`}
                     tab={tab}
                     onTitleChange={(title) =>
-                      controller.updateSideChatTabsBySession((current) => {
-                        const tabs = current[tab.sessionId];
-                        if (!tabs) return current;
-                        const updated = updateSideChatPanelTabTitle(tabs, tab.id, title);
-                        if (updated === tabs) return current;
-                        return { ...current, [tab.sessionId]: updated };
-                      })
+                      updateSideChatTabs((tabs) => updateSideChatPanelTabTitle(tabs, tab.id, title))
+                    }
+                    onInitialSubmissionSettled={() =>
+                      updateSideChatTabs((tabs) => settleSideChatInitialSubmission(tabs, tab.id))
                     }
                     activeSession={session}
                     projects={projects}

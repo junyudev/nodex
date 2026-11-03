@@ -581,12 +581,15 @@ export function useWorkbenchPanelOpeners({
             );
           composerDraftIntents.set(
             { kind: "session", sessionId: session.id },
-            {
-              prompt: pendingTab?.draftPrompt ?? "",
-              promptInput: pendingTab?.draftPromptInput,
-              attachmentMode: pendingTab?.draftAttachmentMode,
-              focusNonce: Date.now(),
-            },
+            initialSubmission
+              ? // The panel sends the opening message; the composer only takes focus.
+                { prompt: "", attachmentMode: "append", focusNonce: Date.now() }
+              : {
+                  prompt: pendingTab?.draftPrompt ?? "",
+                  promptInput: pendingTab?.draftPromptInput,
+                  attachmentMode: pendingTab?.draftAttachmentMode,
+                  focusNonce: Date.now(),
+                },
           );
           panelControllerRef.current.updateSideChatTabsBySession((current) => ({
             ...current,

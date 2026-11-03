@@ -424,6 +424,19 @@ export function updateSideChatPanelTabTitle(
   return tabs.map((tab) => (tab.id === tabId ? { ...tab, title } : tab));
 }
 
+/** The opening message is handled once; a later mount of the tab never sends or drafts it again. */
+export function settleSideChatInitialSubmission(
+  tabs: SideChatPanelTab[],
+  tabId: string,
+): SideChatPanelTab[] {
+  if (!tabs.some((tab) => tab.id === tabId && tab.initialSubmission)) return tabs;
+  return tabs.map((tab) => {
+    if (tab.id !== tabId) return tab;
+    const { initialSubmission: _settled, ...settled } = tab;
+    return settled;
+  });
+}
+
 export function buildSideChatParentNavigationPath(
   session: WorkbenchSessionRenderProjection,
   parentThreadId: string,
