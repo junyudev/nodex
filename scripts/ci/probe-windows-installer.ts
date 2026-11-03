@@ -17,6 +17,7 @@ import { _electron, type ElectronApplication } from "playwright";
 import { desktopBuildTarget } from "../desktop-build-target";
 import { terminateWindowsProcessTree } from "../../src/main/process-tree";
 import { verifyWindowsArchitectureClosure } from "../windows-pe.mjs";
+import { installedPayloadInventory } from "../installed-payload.mjs";
 import {
   acquireIsolatedRunLease,
   ISOLATED_RUN_ID_ENV,
@@ -292,6 +293,12 @@ exit $uninstaller.ExitCode
     const executable = join(installRoot, "Nodex.exe");
     if (!existsSync(executable))
       throw new Error(`NSIS did not install Nodex per-user: ${executable}`);
+    const payload = installedPayloadInventory(installRoot);
+    writeFileSync(
+      join(artifacts, "installed-payload.json"),
+      `${JSON.stringify(payload, null, 2)}\n`,
+    );
+    console.log(`Installed ${target.key}: ${payload.bytes} bytes in ${payload.fileCount} files.`);
     const images = verifyWindowsArchitectureClosure(installRoot, target.arch, {
       installed: true,
       nodeHost: join(installRoot, "Nodex.exe"),
