@@ -1,0 +1,28 @@
+patches/vitest@5.0.5.patch
+  s_6c9891f66c664a::t_49763323087b5f 2,5-13
+scripts/tooling/vitest-cached-reporter.test.ts
+  s_6c9891f66c664a::t_a550e81f92bec7 1-49,57-63
+  s_6c9891f66c664a::t_322d3e23d93999 50-56
+pnpm-lock.yaml
+  s_6c9891f66c664a::t_f38a9ad4e637c2 242
+src/main/core-client/editor-history-lifecycle-scenario.node.test.ts
+  s_6c9891f66c664a::t_7b88499e36b0d4 78,109
+src/renderer/components/conversation-media/conversation-media.browser.test.tsx
+  s_6c9891f66c664a::t_7fcabe7022ebf4 213,216
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "508773d2befeee8ec7a504867f78cc3251e88c24",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

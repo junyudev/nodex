@@ -1,0 +1,67 @@
+scripts/dependency-glob-runtime.test.ts
+  s_6c9891f66c664a::t_7cfeccf9edc850 1-75,77-129,138-166,181-237
+  s_6c9891f66c664a::t_375a0481fb8ed0 1,18,78-109
+  s_6c9891f66c664a::t_0f3ffb54af81cf 11-13
+  s_6c9891f66c664a::t_ffb819151c8d84 2-10,14-17,20-53,57-59,61-64,69-75,77,110-129,138-166,181-237
+  s_6c9891f66c664a::t_973149b352f464 19
+patches/glob@7.2.3.patch
+  s_6c9891f66c664a::t_7cfeccf9edc850 1-50
+  s_6c9891f66c664a::t_dbd675d5f0d63b 1-50
+patches/@electron__asar@3.4.1.patch
+  s_6c9891f66c664a::t_7cfeccf9edc850 1-31
+  s_6c9891f66c664a::t_3774f7137bcd3c 1-31
+patches/@redocly__openapi-core@1.34.17.patch
+  s_6c9891f66c664a::t_7cfeccf9edc850 1-13
+  s_6c9891f66c664a::t_57267d1ca6d505 1-13
+pnpm-workspace.yaml
+  s_6c9891f66c664a::t_7cfeccf9edc850 17-20,48-49,54-55
+  s_6c9891f66c664a::t_de1a09a7c38a08 48-49,54-55
+  s_6c9891f66c664a::t_dbd675d5f0d63b 20
+  s_6c9891f66c664a::t_0f3ffb54af81cf 17,19
+  s_6c9891f66c664a::t_4777a19f88a76b 18
+docs/development.md
+  s_6c9891f66c664a::t_7cfeccf9edc850 51-57
+  s_6c9891f66c664a::t_a24adc35c67fa4 51-57
+  s_6c9891f66c664a::t_e6f162c10a19f2 938-943
+patches/dir-compare@4.2.0.patch
+  s_6c9891f66c664a::t_7cfeccf9edc850 1-22
+  s_6c9891f66c664a::t_3ad9d50e9c5c91 1-22
+pnpm-lock.yaml
+  s_6c9891f66c664a::t_60ca99cce0af9d 181,186,233,235,239-240,2832-2834,6966-6967,7890-7891,8205-8206,10318,10321-10322,10398,10401,10403,10542,10842-10843,11760,11768,11924,12782,13240,13272,13994,13996,14130,14304,14463,14609,14611,14613,14615,14620,15817,15819,16018,16207,16209,16705
+scripts/audit-rust-core-boundaries.ts
+  s_6c9891f66c664a::t_e6f162c10a19f2 166-167,181-182
+src/renderer/components/board/editor/nfm-code-block.browser.test.tsx
+  s_6c9891f66c664a::t_495e9bfeb41fd2 4,33-34,37
+src/renderer/components/board/editor/nfm-formatting-toolbar.browser.test.tsx
+  s_6c9891f66c664a::t_495e9bfeb41fd2 4,8-9,15
+  s_6c9891f66c664a::t_af86a5af6d86dc 16
+src/renderer/components/board/editor/nfm-side-menu.browser.test.tsx
+  s_6c9891f66c664a::t_495e9bfeb41fd2 3,7-8,18
+  s_6c9891f66c664a::t_793d1c00498921 19
+src/renderer/components/board/editor/selected-block-decorations.browser.test.tsx
+  s_6c9891f66c664a::t_495e9bfeb41fd2 13,20-21,53
+src/renderer/test/query.tsx
+  s_6c9891f66c664a::t_495e9bfeb41fd2 2-3,47-59
+  s_6c9891f66c664a::t_7e99162cd484cb 60
+src/renderer/components/board/editor/blocknote-view-lifecycle.browser.test.tsx
+  s_6c9891f66c664a::t_495e9bfeb41fd2 13,16-17,29
+  s_6c9891f66c664a::t_3d615da3939b7d 30
+src/renderer/test/command-keymap.ts
+  s_6c9891f66c664a::t_a8efcb1918e681 1-36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "08d73ec3485f7962fdc611e32ed0471dd9a01026",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

@@ -1,0 +1,89 @@
+src/main/codex/codex-cross-host-thread-handoff-git.ts
+  s_6c9891f66c664a::t_ab3eb8c5166501 1,9-13,117-120,150,227-228,236-239,244,261-262,373,380-384,388-391,447-450,466-469
+src/main/codex/codex-git-command.ts
+  s_6c9891f66c664a::t_7fce45f7c0fa0d 162,185-188,216-227
+  s_6c9891f66c664a::t_ab3eb8c5166501 2-6,31-71,114,141-142,148,152,191-194
+src/main/host-runtime/WorktreeWorkerRuntime.test.ts
+  s_6c9891f66c664a::t_ab3eb8c5166501 4,12-13,21-32,51-55,152,179-183,185-199,201-207,316,335-342,403-420,422-496,500-519,521-557,567-569,571,573-576,579-726,728-738,740-756,758-759,761-980,982-1145
+  s_6c9891f66c664a::t_30e82eb51516fc 319-324,332
+  s_6c9891f66c664a::t_41a83d66004dc0 757
+  s_6c9891f66c664a::t_10d739f366c75d 160,162-173,176,184,200
+  s_6c9891f66c664a::t_701d838650bf04 17-20,139-151,217,421,497-499,520,558-566,570,572,577-578,727,739,760,981
+  s_cb3e022ee09d1e::t_f70cad235f4900 153
+src/main/process-tree.test.ts
+  s_6c9891f66c664a::t_7fce45f7c0fa0d 16,72-85,87-138
+  s_6c9891f66c664a::t_ab3eb8c5166501 2,6,8-12,14-15,17-70,140-147,149-200
+src/main/codex/codex-managed-worktree-effects.ts
+  s_6c9891f66c664a::t_0a49090f8cb0a8 406
+  s_6c9891f66c664a::t_ab3eb8c5166501 19-23,138,292,320,332,394,400-405,407-408,442,448,465,497,532-536,540-543
+  s_54f698eea1a2c7::t_d3470f4ced1649 18
+src/main/codex/codex-worktree-shell-environment.test.ts
+  s_6c9891f66c664a::t_ab3eb8c5166501 1-5,19,22-174
+  s_6c9891f66c664a::t_57588ef9b43e66 175
+src/main/process-tree.ts
+  s_6c9891f66c664a::t_ab3eb8c5166501 1,6-30,85,129,135-138,143
+src/main/codex/codex-worktree-worker-operation.test.ts
+  s_6c9891f66c664a::t_ab3eb8c5166501 1,3,7-135
+src/main/codex/git-worktree-service.test.ts
+  s_6c9891f66c664a::t_ab3eb8c5166501 1-2,21,26-30,132-268
+  s_6c9891f66c664a::t_505f75ea906902 269
+src/main/codex/codex-worktree-worker-operation.ts
+  s_6c9891f66c664a::t_ab3eb8c5166501 10-13,31-37,128-129,199,254,302-306,309
+src/main/host-runtime/WorktreeWorkerRuntime.ts
+  s_6c9891f66c664a::t_58e4be08f0dbb6 359-375
+  s_6c9891f66c664a::t_ab3eb8c5166501 9,45,63-67,112,129,138-139,218-222,227-228,254-274,276-312,320-326,328,330-347,349-351,353,377,379-401,403-406,408-433,435-455,456,459-475,479,542,546,583-584,595-599,605-660,662-677,679-681,683-692,696-697,699-707,709-736,763
+  s_6c9891f66c664a::t_cfb85e690d8175 313-319,356-358,376
+  s_6c9891f66c664a::t_fc9aa94acd8885 327,348
+src/main/codex/codex-worktree-shell-environment.ts
+  s_6c9891f66c664a::t_ab3eb8c5166501 1,13,176-183,356-371,389,407,415,436,438,442-468,472,489-490,495-497,502,504-506,508-512,528-550,553,566,577,595-599,602,614-615,619,639,641,647-673,676,683-684,688-690,694-703,708-729,731,742-746,749
+src/main/worktree-worker/WorktreeWorkerApplication.ts
+  s_6c9891f66c664a::t_541d0521aeb0bc 94-127,129-133,135,138,141-153,159-167,169-174
+  s_6c9891f66c664a::t_ab3eb8c5166501 9,134,136-137,139-140
+  s_6c9891f66c664a::t_dc5d2a69662b56 93
+src/main/worktree-worker/WorktreeWorkerApplication.test.ts
+  s_6c9891f66c664a::t_dc5d2a69662b56 1
+  s_6c9891f66c664a::t_541d0521aeb0bc 15-17,135-159,161-162
+  s_6c9891f66c664a::t_ab3eb8c5166501 2-11,23-38,49-50,52-61,63-68,70-95,110-116,118-134,160,163-164,176-180,192,203-212,218-233
+  s_6c9891f66c664a::t_2cd891a67576d8 14,234
+CHANGELOG.md
+  s_6c9891f66c664a::t_ab3eb8c5166501 66
+src/main/codex/git-worktree-service.ts
+  s_6c9891f66c664a::t_ab3eb8c5166501 1,25-26,103-104,161-162,171-172,191-192,259,298,311-312,334-336,338,383-384,394-395,419-420,446-447,483-484,537,607-610,634-640,687,715,727,907,924-925,1010-1013,1159-1162,1168-1171,1325-1329,1331-1332,1338-1341
+  s_6c9891f66c664a::t_0a49090f8cb0a8 1330
+src/main/codex/codex-local-thread-handoff-git.ts
+  s_6c9891f66c664a::t_ab3eb8c5166501 1,76-82,232,247,267-270,273-276,352-355,359-362,366,370-373,390-393,448-452,459,463-466,609,615-616,623
+docs/product-specs/codex-worktree-creation-behavior.md
+  s_6c9891f66c664a::t_ab3eb8c5166501 214-224,226-232
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3d7dd3c45d1883ca1fe6b50b0e0e5a1ed63fbb07",
+  "prompts": {},
+  "sessions": {
+    "s_54f698eea1a2c7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19f25-25d1-7bc0-a490-1881062fc6bc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_cb3e022ee09d1e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19f10-83da-79e1-8002-21edccb7e7aa",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
