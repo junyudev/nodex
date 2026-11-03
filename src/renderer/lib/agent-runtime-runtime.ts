@@ -291,6 +291,15 @@ export interface AgentRuntimeRendererTransport {
   ) => Promise<AgentRuntimeOperations["providers.read"]["output"]>;
   /** What Nodex already knows about providers; never starts execution. */
   readonly knownCatalog: () => Promise<AgentRuntimeOperations["providers.read"]["output"] | null>;
+  readonly readWindowsSandbox: (
+    input: AgentRuntimeOperations["providers.windows-sandbox.read"]["input"],
+  ) => Promise<AgentRuntimeOperations["providers.windows-sandbox.read"]["output"]>;
+  readonly setupWindowsSandbox: (
+    input: AgentRuntimeOperations["providers.windows-sandbox.setup"]["input"],
+  ) => Promise<AgentRuntimeOperations["providers.windows-sandbox.setup"]["output"]>;
+  readonly cancelWindowsSandbox: (
+    input: AgentRuntimeOperations["providers.windows-sandbox.cancel"]["input"],
+  ) => Promise<AgentRuntimeOperations["providers.windows-sandbox.cancel"]["output"]>;
   /** Main's one Claude usage snapshot, shared by every window. */
   readonly claudeUsage: () => Promise<ClaudeUsageSnapshot>;
   /** Reads Claude usage again now, unless it was read moments ago. */
@@ -348,6 +357,11 @@ export const agentRuntimeRuntime: AgentRuntimeRendererTransport = {
   retryPreparation: (input) => invokePlainCommand(retryPreparation, input),
   moveSession: (input) => invokePlainCommand(moveSession, input),
   catalog: (input) => invokeRendererQuery("agent-runtime:providers:read", input),
+  readWindowsSandbox: (input) => invokeRendererQuery("agent-runtime:windows-sandbox:read", input),
+  setupWindowsSandbox: (input) =>
+    invokeRendererControl("agent-runtime:windows-sandbox:setup", input),
+  cancelWindowsSandbox: (input) =>
+    invokeRendererControl("agent-runtime:windows-sandbox:cancel", input),
   knownCatalog: () => invokeRendererQuery("agent-runtime:providers:known"),
   claudeUsage: () => invokeRendererQuery("agent-runtime:claude-usage:read"),
   refreshClaudeUsage: () => invokeRendererQuery("agent-runtime:claude-usage:refresh"),

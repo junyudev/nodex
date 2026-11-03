@@ -48,7 +48,7 @@ const layerDeps = ServerConfig.layerTest(process.cwd(), {
   Layer.provideMerge(IdAllocator.layer),
   Layer.provideMerge(McpProviderSessions.layer),
   Layer.provideMerge(
-    Layer.mock(CodexAdapterV2.CodexAppServerClientFactory)({
+    Layer.succeed(CodexAdapterV2.CodexAppServerClientFactory, {
       open: () => Effect.die("Maintenance resolution must not open a Codex session"),
     }),
   ),

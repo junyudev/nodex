@@ -129,6 +129,13 @@ jobs:
           vp exec tsx scripts/ci/run-timed.ts
           --name app-core-client-canvas-recovery
           -- vp run test:core-client src/main/core-client/canvas-recovery-bytes.node.test.ts --maxWorkers=1
+      - name: Test Windows Codex sandbox lifecycle
+        if: matrix.suite == 'unit'
+        run: >-
+          vp test run --config packages/agent-runtime/vite.config.ts
+          packages/agent-runtime/src/provider/CodexWindowsSandbox.test.ts
+          packages/agent-runtime/src/orchestration-v2/Adapters/CodexAdapterV2.test.ts
+          -t "Windows|Windows sandbox"
       - name: Upload application diagnostics
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

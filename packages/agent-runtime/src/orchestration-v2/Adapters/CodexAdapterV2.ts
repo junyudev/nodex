@@ -19,6 +19,7 @@ import type { ManagedServerProvider } from "@t3tools/provider-core/server/snapsh
 import type { CodexEffectiveRuntime } from "../../provider/CodexManagedRuntime.ts";
 import * as ExecutionHost from "@t3tools/provider-core/server/ExecutionHost";
 import {
+  withCodexAppServerClient,
   buildCodexInitializeParams,
   codexAppServerEnvironment,
 } from "../../provider/CodexProvider.ts";
@@ -39,6 +40,11 @@ import {
 import { SKILL_MENTION_PATTERN } from "@t3tools/shared/composerInlineTokens";
 import { AgentScope } from "@t3tools/shared/AgentScope";
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import {
+  makeCodexWindowsSandbox,
+  requireCodexWindowsSandbox,
+  type CodexWindowsSandbox,
+} from "../../provider/CodexWindowsSandbox.ts";
 import { dynamicToolTitle } from "@t3tools/shared/toolActivity";
 import { fileChangeDetail, fileChangeItemFields } from "@t3tools/shared/fileChanges";
 import { getModelSelectionStringOptionValue, modelSelectionsEqual } from "@t3tools/shared/model";
@@ -835,6 +841,7 @@ function providerSession(input: {
   readonly cwd: string | null;
   readonly model: string;
   readonly now: DateTime.Utc;
+  readonly capabilities: OrchestrationV2ProviderSession["capabilities"];
 }): OrchestrationV2ProviderSession {
   return {
     id: input.providerSessionId,
@@ -843,7 +850,7 @@ function providerSession(input: {
     status: "ready",
     cwd: input.cwd ?? process.cwd(),
     model: input.model,
-    capabilities: CodexProviderCapabilitiesV2,
+    capabilities: input.capabilities,
     createdAt: input.now,
     updatedAt: input.now,
     lastError: null,
@@ -1436,6 +1443,7 @@ type CodexSubAgentActivityItem = Extract<
 >;
 
 export interface CodexAppServerClientFactoryShape {
+  readonly windowsSandbox?: CodexWindowsSandbox;
   readonly open: (input: {
     readonly instanceId: ProviderInstanceId;
     readonly threadId: ThreadId;
@@ -1679,8 +1687,10 @@ export const layerAppServerClientFactory: Layer.Layer<
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
     const { native: nativeEventLogger } = yield* ProviderEventLoggers.ProviderEventLoggers;
     const agentScope = yield* AgentScope;
+    const windowsSandbox = yield* makeCodexWindowsSandbox(yield* HostProcess.Platform);
 
     return CodexAppServerClientFactory.of({
+      windowsSandbox,
       open: (input) =>
         Effect.gen(function* () {
           const scope = yield* Scope.Scope;
@@ -1730,6 +1740,7 @@ export const layerAppServerClientFactory: Layer.Layer<
 );
 
 export type CodexAdapterV2DriverEnv =
+  | ChildProcessSpawner.ChildProcessSpawner
   | CodexAppServerClientFactory
   | Crypto.Crypto
   | FileSystem.FileSystem
@@ -1740,7 +1751,10 @@ export type CodexAdapterV2DriverEnv =
 
 export const createCodexAdapterV2 = (
   { instanceId, environment, enabled, config }: ProviderAdapterDriverCreateInput<CodexSettings>,
-  hooks: Pick<CodexAdapterV2Options, "onUsageLimits" | "resolveRuntime"> = {},
+  hooks: Pick<
+    CodexAdapterV2Options,
+    "onUsageLimits" | "resolveRuntime" | "resolveSandboxRuntime"
+  > = {},
 ) =>
   Effect.gen(function* () {
     const clientFactory = yield* CodexAppServerClientFactory;
@@ -1770,14 +1784,35 @@ export const createCodexAdapterV2 = (
       binaryPath: expandHomePath(config.binaryPath, yield* HostProcess.HomeDirectory),
       homePath: homeLayout.effectiveHomePath ?? "",
     } satisfies CodexSettings;
+    const processEnvironment = yield* mergeProviderInstanceEnvironment(
+      environment,
+      config.isolated ? {} : hostEnvironment,
+    );
+    if (clientFactory.windowsSandbox) {
+      const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+      yield* clientFactory.windowsSandbox.register(
+        instanceId,
+        Effect.gen(function* () {
+          const runtime =
+            hooks.resolveSandboxRuntime === undefined
+              ? { config: settings, environment: processEnvironment }
+              : yield* hooks.resolveSandboxRuntime;
+          const { client } = yield* withCodexAppServerClient({
+            binaryPath: runtime.config.binaryPath,
+            homePath: runtime.config.homePath,
+            launchArgs: resolveCodexLaunchArgs(runtime.config.launchArgs, runtime.environment),
+            cwd: process.cwd(),
+            environment: runtime.environment,
+          }).pipe(Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner));
+          return client;
+        }),
+      );
+    }
 
     return yield* makeCodexAdapterV2({
       instanceId,
       settings,
-      environment: yield* mergeProviderInstanceEnvironment(
-        environment,
-        config.isolated ? {} : hostEnvironment,
-      ),
+      environment: processEnvironment,
       clientFactory,
       crypto,
       fileSystem,
@@ -1807,6 +1842,11 @@ export interface CodexAdapterV2Options {
    * Codex with a current access token.
    */
   readonly resolveRuntime?: Effect.Effect<CodexEffectiveRuntime, ProviderSetupError, Scope.Scope>;
+  readonly resolveSandboxRuntime?: Effect.Effect<
+    CodexEffectiveRuntime,
+    ProviderSetupError,
+    Scope.Scope
+  >;
   readonly crypto: Crypto.Crypto;
   readonly fileSystem: FileSystem.FileSystem;
   readonly idAllocator: IdAllocator.IdAllocatorV2["Service"];
@@ -1826,6 +1866,16 @@ export interface CodexAdapterV2Options {
 export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
   adapterOptions: CodexAdapterV2Options,
 ) {
+  const windowsSandbox = (yield* HostProcess.Platform) === "win32";
+  const capabilities = windowsSandbox
+    ? {
+        ...CodexProviderCapabilitiesV2,
+        sessions: {
+          ...CodexProviderCapabilitiesV2.sessions,
+          supportsRuntimeModeSwitchInSession: false,
+        },
+      }
+    : CodexProviderCapabilitiesV2;
   const mcpSessions = yield* McpProviderSessions.McpProviderSessions;
   const executionHost = yield* ExecutionHost.ExecutionHost;
   const readMcpSession = (threadId: ThreadId | null) =>
@@ -1878,7 +1928,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
   return ProviderAdapter.ProviderAdapterV2.of({
     instanceId: adapterOptions.instanceId,
     driver: CODEX_PROVIDER,
-    getCapabilities: () => Effect.succeed(CodexProviderCapabilitiesV2),
+    getCapabilities: () => Effect.succeed(capabilities),
     planSelectionTransition: () => Effect.succeed(turnScopedSelectionTransition()),
     openSession: (input) =>
       Effect.gen(function* () {
@@ -2125,12 +2175,26 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
           }),
         );
         const now = yield* DateTime.now;
+        if (windowsSandbox && input.runtimePolicy.runtimeMode !== "full-access") {
+          yield* ensureInitialized;
+          yield* requireCodexWindowsSandbox(client).pipe(
+            Effect.mapError(
+              (cause) =>
+                new ProviderAdapter.ProviderAdapterOpenSessionError({
+                  driver: CODEX_PROVIDER,
+                  providerSessionId: input.providerSessionId,
+                  cause,
+                }),
+            ),
+          );
+        }
         const session = providerSession({
           providerSessionId: input.providerSessionId,
           providerInstanceId: adapterOptions.instanceId,
           cwd: input.runtimePolicy.cwd,
           model: input.modelSelection.model,
           now,
+          capabilities,
         });
         const events = yield* makeProviderEventBuffer({
           mapOverflow: (cause) =>
@@ -7240,6 +7304,11 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
           codexInput: ReadonlyArray<CodexSchema.V2TurnStartParams__UserInput>,
         ) =>
           Effect.gen(function* () {
+            if (windowsSandbox && turnInput.runtimePolicy.runtimeMode !== "full-access") {
+              yield* requireCodexWindowsSandbox(client).pipe(
+                Effect.tapError(() => Ref.set(nativeSessionRetired, true)),
+              );
+            }
             const threadId = yield* getNativeThreadId(turnInput.providerThread);
             const mcpSession = yield* mcpSessions.read(turnInput.threadId);
             const turnStartParams = yield* buildCodexTurnStartParams({

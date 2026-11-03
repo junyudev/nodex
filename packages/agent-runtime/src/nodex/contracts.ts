@@ -39,4 +39,5 @@ export {
 } from "./NativeImportLimits.ts";
 
 export type * from "./AcpManagementContract.ts";
+export type * from "./WindowsSandboxContract.ts";
 export { decodeAgentAcpFailure } from "./AcpFailureContract.ts";

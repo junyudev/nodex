@@ -43,6 +43,14 @@ Native mappings:
 - **ACP and OpenCode**: Ask for approval allows reading and searching and asks before edits,
   commands and other actions. Full access allows them.
 
+On Windows, Codex must report a ready Windows sandbox before a turn in Ask for
+approval or Approve for me can start. The Agent notice beside the composer offers
+one-time setup with an explicit administrator or non-administrator choice, subject
+to organization policy. A setup acknowledgement alone does not make the Agent ready;
+completion is checked through a fresh endpoint. Failed, canceled or timed-out setup
+never widens the chat's permissions. Full access does not require sandbox setup.
+See [Windows host behavior](windows-host-behavior.md#codex-sandbox).
+
 Calls to the chat's own Nodex tools never ask, in any mode. Other tools and connected apps follow
 the mode.
 

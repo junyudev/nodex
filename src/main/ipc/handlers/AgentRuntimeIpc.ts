@@ -230,6 +230,20 @@ export const live = Layer.effectDiscard(
     yield* ipc.handleQuery("agent-runtime:providers:read", (event, value) =>
       handle(event, Inputs.AgentRuntimeCatalogSchema, value ?? {}, application.catalog),
     );
+    yield* ipc.handleQuery("agent-runtime:windows-sandbox:read", (event, value) =>
+      handle(event, Inputs.AgentWindowsSandboxReadSchema, value, application.readWindowsSandbox),
+    );
+    yield* ipc.handleControl("agent-runtime:windows-sandbox:setup", (event, value) =>
+      handle(event, Inputs.AgentWindowsSandboxSetupSchema, value, application.setupWindowsSandbox),
+    );
+    yield* ipc.handleControl("agent-runtime:windows-sandbox:cancel", (event, value) =>
+      handle(
+        event,
+        Inputs.AgentWindowsSandboxCancelSchema,
+        value,
+        application.cancelWindowsSandbox,
+      ),
+    );
     yield* ipc.handleQuery("agent-runtime:providers:known", (event) =>
       authorize(event).pipe(Effect.andThen(application.knownCatalog())),
     );

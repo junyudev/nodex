@@ -120,6 +120,7 @@ type QueryEndpointPolicy =
   | "agent-runtime:session:queued-preview"
   | "agent-runtime:session:item"
   | "agent-runtime:providers:read"
+  | "agent-runtime:windows-sandbox:read"
   | "agent-runtime:providers:known"
   | "agent-runtime:claude-usage:read"
   | "agent-runtime:claude-usage:refresh"
@@ -322,6 +323,8 @@ type QueryEndpointPolicy =
   | "worktrees:thread:availability";
 
 type ControlEndpointPolicy =
+  | "agent-runtime:windows-sandbox:setup"
+  | "agent-runtime:windows-sandbox:cancel"
   | "page-file-html:admit"
   | "page-file-html:release"
   | "agent-runtime:session:observe"

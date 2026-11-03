@@ -4307,6 +4307,33 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           });
         }),
       ),
+    readWindowsSandbox: (
+      input: AgentRuntimeOperations["providers.windows-sandbox.read"]["input"],
+    ) =>
+      owned(
+        "windows-sandbox",
+        Effect.flatMap(options.connect, (connection) =>
+          connection.request("providers.windows-sandbox.read", input),
+        ),
+      ),
+    setupWindowsSandbox: (
+      input: AgentRuntimeOperations["providers.windows-sandbox.setup"]["input"],
+    ) =>
+      owned(
+        "windows-sandbox",
+        Effect.flatMap(options.connect, (connection) =>
+          connection.request("providers.windows-sandbox.setup", input),
+        ),
+      ),
+    cancelWindowsSandbox: (
+      input: AgentRuntimeOperations["providers.windows-sandbox.cancel"]["input"],
+    ) =>
+      owned(
+        "windows-sandbox",
+        Effect.flatMap(options.connect, (connection) =>
+          connection.request("providers.windows-sandbox.cancel", input),
+        ),
+      ),
     catalog: (input: AgentRuntimeOperations["providers.read"]["input"] = {}) =>
       owned(
         "catalog",

@@ -1,4 +1,5 @@
 import type { AgentAcpManagementOperations } from "./AcpManagementContract.ts";
+import type { AgentWindowsSandboxOperations } from "./WindowsSandboxContract.ts";
 import type {
   HostTurnIdentity,
   HostNativeSessionIdentity,
@@ -225,7 +226,8 @@ export interface AgentRootActivity {
   readonly updatedAt: string;
 }
 
-export interface AgentRuntimeOperations extends AgentAcpManagementOperations {
+export interface AgentRuntimeOperations
+  extends AgentAcpManagementOperations, AgentWindowsSandboxOperations {
   readonly "thread.import-native": {
     readonly input: {
       readonly commandId: string;

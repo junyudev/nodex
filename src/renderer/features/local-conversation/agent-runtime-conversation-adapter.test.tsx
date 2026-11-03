@@ -99,6 +99,13 @@ const provider = {
 const snapshot = agentRuntimeSnapshotFixture();
 beforeEach(() => {
   nodexSupply.available = true;
+  vi.spyOn(agentRuntimeRuntime, "readWindowsSandbox").mockResolvedValue({
+    generation: "sandbox:ready",
+    status: "ready",
+    mode: null,
+    failure: null,
+    allowedModes: ["elevated", "unelevated"],
+  });
   // The Profile-wide activity feed is read once per attachment and shared by every adapter.
   vi.spyOn(agentRuntimeRuntime, "connection").mockResolvedValue({
     status: "ready",
