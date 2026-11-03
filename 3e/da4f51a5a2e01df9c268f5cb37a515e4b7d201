@@ -1,0 +1,98 @@
+src/renderer/components/shared/file-metadata.tsx
+  s_7da3da250f2a3e::t_a46663c07174d1 7-9,19-20
+src/renderer/components/board/history-panel.tsx
+  s_7da3da250f2a3e::t_b1b3209e011ea8 1,262-287,299,303-328,331-373
+src/renderer/components/board/page-stage/use-page-stage-properties.test.tsx
+  s_7da3da250f2a3e::t_b1b3209e011ea8 104-113,119-124,128,139
+  s_7da3da250f2a3e::t_fa71507f70dd42 14,117-118,125-127,129-138,140-176
+  s_948a11dee36c5f::t_8e424e2acb6822 177
+src/renderer/components/canvas/canvas-document-surface.tsx
+  s_7da3da250f2a3e::t_a46663c07174d1 445-446,476
+  s_7da3da250f2a3e::t_f52dea91d07f9a 1,391-400,447-453,455-475,477-479,482-489
+src/renderer/features/avatar-overlay/avatar-overlay-page.tsx
+  s_7da3da250f2a3e::t_a46663c07174d1 65-66
+src/renderer/components/board/editor/document-bearing-shell-block.tsx
+  s_7da3da250f2a3e::t_a46663c07174d1 37,46
+src/renderer/components/canvas/canvas-file-preview.tsx
+  s_7da3da250f2a3e::t_a46663c07174d1 21-22,93
+src/renderer/components/board/use-board-page-property-bindings.test.tsx
+  s_7da3da250f2a3e::t_b1b3209e011ea8 60-65,79,85
+  s_7da3da250f2a3e::t_3ea688b2a75129 1-59,66-78,80-84,86-95
+  s_7da3da250f2a3e::t_af236dec3dc849 96-99
+src/renderer/components/ui/hotkey-setting-control.tsx
+  s_7da3da250f2a3e::t_a46663c07174d1 3,234
+  s_7da3da250f2a3e::t_be5aa48f9cc2d9 230-233,250
+src/renderer/components/board/page-stage/use-page-stage-properties.ts
+  s_7da3da250f2a3e::t_a46663c07174d1 1
+  s_7da3da250f2a3e::t_be5aa48f9cc2d9 2,137-139,147,164,167-179,182-187,190-212
+src/renderer/features/user-attachment-image-editor/adapters/use-image-edit-submission.test.tsx
+  s_7da3da250f2a3e::t_fa71507f70dd42 57,63-80,82-92
+  s_7da3da250f2a3e::t_b1b3209e011ea8 58-62,81
+  s_7da3da250f2a3e::t_0334e031ebcf39 93-94
+src/renderer/components/block-documents/block-document-surface.tsx
+  s_7da3da250f2a3e::t_f75c4a1d6ffd07 1,382-395,490-510,540-549,571-582
+src/renderer/components/board/calendar/calendar-grid.tsx
+  s_7da3da250f2a3e::t_bd322593c401c9 1,1233-1256
+src/renderer/components/board/editor/nfm-file-download-button.test.tsx
+  s_7da3da250f2a3e::t_dc9d8d342990e7 1-77
+src/renderer/components/board/editor/nfm-file-download-button.tsx
+  s_7da3da250f2a3e::t_04cad8f7906ea0 1,58-83
+src/renderer/components/board/editor/nfm-slash-menu.tsx
+  s_7da3da250f2a3e::t_b01d958f52a616 1,1019-1031
+src/renderer/components/board/editor/nfm-text-action-menu.tsx
+  s_7da3da250f2a3e::t_c5511c5bb2ee10 1,1064-1076
+src/renderer/components/board/page-create-dialog.test.tsx
+  s_7da3da250f2a3e::t_5f9a850a0f55a3 232
+src/renderer/components/board/page-create-dialog.tsx
+  s_7da3da250f2a3e::t_480d4317a13127 1,253-269,271-280
+src/renderer/components/board/page-stage/page-files-row.tsx
+  s_7da3da250f2a3e::t_6ed6354a78d7c4 1,182-184,186-201,208-222,224-241,250-252,254-269,367-380
+src/renderer/components/board/use-board-page-property-bindings.ts
+  s_7da3da250f2a3e::t_958f6b6a43bfab 1,113-138
+src/renderer/components/database/property-option-picker.tsx
+  s_7da3da250f2a3e::t_e85fe9ce1ba16d 1,401-419
+src/renderer/components/library/library-files-dialog.tsx
+  s_7da3da250f2a3e::t_796d52e24b9d49 1,228-230,232-253,276-295
+src/renderer/components/library/library-new-menu.tsx
+  s_7da3da250f2a3e::t_f0ea29927441d8 1,58-78,82-99
+src/renderer/components/library/library-resource-action-modals.tsx
+  s_7da3da250f2a3e::t_afc9c65dd9eae8 1,45-58
+src/renderer/components/library/library-resource-actions.tsx
+  s_7da3da250f2a3e::t_76cfd9bb494d90 1,99-123
+src/renderer/components/library/page-move-destination-picker.tsx
+  s_7da3da250f2a3e::t_7f95a5d81cc9ee 1,296-319,321-332
+src/renderer/components/shared/agent-runtime/agent-model-picker.tsx
+  s_7da3da250f2a3e::t_4171ae5ec0c548 1,4-11,177-224,264-276,290
+src/renderer/components/shared/content-issues-control.tsx
+  s_7da3da250f2a3e::t_fa79882d79ada8 1,63-78,139-155
+src/renderer/components/ui/file-tree.tsx
+  s_7da3da250f2a3e::t_2bffdfdc88a81a 1,183-191
+src/renderer/features/user-attachment-image-editor/adapters/use-image-edit-submission.ts
+  s_7da3da250f2a3e::t_f97bd9abf44dc3 1,143-173,175,187-227,234,237-258
+src/renderer/features/user-attachment-image-editor/view/single-image-editor.tsx
+  s_7da3da250f2a3e::t_715962039f8426 1,123-136,291-300,307-324
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3eda4f51a5a2e01df9c268f5cb37a515e4b7d201",
+  "prompts": {},
+  "sessions": {
+    "s_7da3da250f2a3e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a17c-16a0-74b3-8f6a-6c6afc49c2f9",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_948a11dee36c5f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a17c-233a-7ac2-9cbf-6bdf66557783",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
