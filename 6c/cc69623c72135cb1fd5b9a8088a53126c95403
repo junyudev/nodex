@@ -1,0 +1,23 @@
+src/main/host-runtime/CodexThreadNotificationRuntime.test.ts
+  s_39af2826685004::t_c7abdd33b5a679 140,142,160-176,182-183
+  s_39af2826685004::t_f035e49ef9854e 25,141,143-159,177-181
+src/main/host-runtime/CodexThreadNotificationRuntime.ts
+  s_39af2826685004::t_dab4dd075b483b 19-38,114
+  s_39af2826685004::t_f035e49ef9854e 4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6ccc69623c72135cb1fd5b9a8088a53126c95403",
+  "prompts": {},
+  "sessions": {
+    "s_39af2826685004": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d6e56d2e-aae2-44a9-9afb-e48fc0c1ee5c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
