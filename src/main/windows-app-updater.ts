@@ -3,7 +3,8 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { app, BrowserWindow, net } from "electron";
+import { app, BrowserWindow } from "electron";
+import { electronUpdateFetch } from "./electron-update-fetch";
 import type { AppUpdateChannel, AppUpdaterPlatform, AppUpdaterEvent } from "./app-updater";
 import {
   parseWindowsAppUpdateConfig,
@@ -189,7 +190,7 @@ export function createPackagedWindowsAppUpdaterPlatform(options: {
     throw new Error("Packaged Windows update architecture does not match Electron.");
   if (config.buildChannel === "disabled") return null;
   return createWindowsAppUpdaterPlatform(config, options.directory, {
-    fetch: (url, init) => net.fetch(url, { ...init, bypassCustomProtocolHandlers: true }),
+    fetch: electronUpdateFetch,
     currentVersion: app.getVersion(),
     quit: () => app.quit(),
     launch: (installer, relaunch) =>
