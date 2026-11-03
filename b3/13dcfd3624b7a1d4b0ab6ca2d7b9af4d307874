@@ -1,0 +1,32 @@
+src/main/app/MainApp.test.ts
+  s_451af6ca019856::t_fac8ad59b91b7a 34,56-58
+  s_451af6ca019856::t_fcb434bd29928d 59,93,365,422,477,537,597
+src/main/platform/electron/ElectronApp.ts
+  s_451af6ca019856::t_fcb434bd29928d 29,97
+scripts/ci/probe-windows-installer.ts
+  s_451af6ca019856::t_945edf3b6699fe 189,276,438-443
+src/main/host-runtime/ApplicationHostRuntime.test.ts
+  s_451af6ca019856::t_3a1755d4eda937 27
+src/main/app/MainApp.ts
+  s_451af6ca019856::t_3a1755d4eda937 73-76
+docs/product-specs/windows-host-behavior.md
+  s_451af6ca019856::t_3a1755d4eda937 10-12
+src/main/host-runtime/BrowserProfileRuntime.test.ts
+  s_451af6ca019856::t_fcb434bd29928d 120
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b313dcfd3624b7a1d4b0ab6ca2d7b9af4d307874",
+  "prompts": {},
+  "sessions": {
+    "s_451af6ca019856": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a309-73d5-7181-8f9e-e89a3a7986c4",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
