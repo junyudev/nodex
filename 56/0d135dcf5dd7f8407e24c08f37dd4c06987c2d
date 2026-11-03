@@ -1,0 +1,20 @@
+src/main/core-client/profile-clone.node.test.ts
+  s_6c9891f66c664a::t_0b86006c6ae0c8 208-254
+  s_6c9891f66c664a::t_f7215a71f6c4b5 53-77,119-165
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "560d135dcf5dd7f8407e24c08f37dd4c06987c2d",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
