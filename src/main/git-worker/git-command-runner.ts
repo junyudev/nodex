@@ -16,6 +16,7 @@ import type {
   GitPerformanceOperationTrigger,
 } from "../../shared/git-worker-protocol";
 import { GitCommandPlatform, type GitCommandStdoutStream } from "./git-command-platform";
+import { mergeProcessEnvironments } from "../platform/node/child-process-environment";
 
 export const GIT_READ_TIMEOUT_MS = 60_000;
 export const GIT_CAT_FILE_TIMEOUT_MS = 30_000;
@@ -216,6 +217,7 @@ function createEmptyFailure(
 
 class GitCommandRunnerState implements GitCommandRunner {
   readonly #environment: NodeJS.ProcessEnv;
+  readonly #hostPlatform: string;
   readonly #lanes: RcMap.RcMap<string, Semaphore.Semaphore>;
   readonly #platform: GitCommandPlatform["Service"];
   readonly #runPromise: (
@@ -227,6 +229,7 @@ class GitCommandRunnerState implements GitCommandRunner {
 
   constructor(options: {
     environment: NodeJS.ProcessEnv;
+    hostPlatform: string;
     lanes: RcMap.RcMap<string, Semaphore.Semaphore>;
     platform: GitCommandPlatform["Service"];
     runPromise: (
@@ -235,6 +238,7 @@ class GitCommandRunnerState implements GitCommandRunner {
     ) => Promise<GitCommandResult>;
   }) {
     this.#environment = options.environment;
+    this.#hostPlatform = options.hostPlatform;
     this.#lanes = options.lanes;
     this.#platform = options.platform;
     this.#runPromise = options.runPromise;
@@ -348,6 +352,7 @@ class GitCommandRunnerState implements GitCommandRunner {
     const callerConfigOverrides = options.configOverrides ?? [];
     const configArgs = callerConfigOverrides.flatMap((entry) => ["-c", entry]);
     const environment = this.#environment;
+    const hostPlatform = this.#hostPlatform;
     const platform = this.#platform;
     const resolveSafeFsmonitorOverride = this.#resolveSafeFsmonitorOverride.bind(this);
     return Effect.gen(function* () {
@@ -363,14 +368,12 @@ class GitCommandRunnerState implements GitCommandRunner {
           ...args,
         ],
         cwd: repository.root,
-        environment: {
-          ...environment,
-          ...options.env,
+        environment: mergeProcessEnvironments(hostPlatform, environment, options.env ?? {}, {
           GIT_OPTIONAL_LOCKS: "0",
           GIT_TERMINAL_PROMPT: "0",
           LANGUAGE: "C",
           LC_MESSAGES: "C",
-        },
+        }),
         outputBytesCap: options.outputBytesCap,
         stdin: options.stdin,
         stdoutStream: options.stdoutStream,
@@ -484,6 +487,7 @@ class GitCommandRunnerState implements GitCommandRunner {
 }
 
 export interface GitCommandRunnerOptions {
+  readonly platform: string;
   readonly environment: NodeJS.ProcessEnv;
 }
 
@@ -500,6 +504,7 @@ export const makeGitCommandRunner = (
     const runPromise = yield* FiberSet.makeRuntimePromise<never, GitCommandResult, never>();
     return new GitCommandRunnerState({
       environment: { ...options.environment },
+      hostPlatform: options.platform,
       lanes,
       platform,
       runPromise,

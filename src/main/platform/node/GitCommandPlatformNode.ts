@@ -6,6 +6,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
+import { resolveGitLaunch } from "./git-launch";
 import {
   GitCommandPlatform,
   type GitCommandProcessFailureReason,
@@ -78,18 +79,6 @@ const runGitProcess = (
               ? new TextEncoder().encode(input.stdin)
               : new Uint8Array(input.stdin),
           );
-    const command = ChildProcess.make("git", [...input.args], {
-      cwd: input.cwd,
-      detached: process.platform !== "win32",
-      env: { ...input.environment },
-      extendEnv: false,
-      forceKillAfter: Duration.millis(GIT_KILL_ESCALATION_MS),
-      killSignal: "SIGTERM",
-      stdin: { stream: stdin, endOnDone: true },
-      stdout: "pipe",
-      stderr: "pipe",
-      windowsHide: true,
-    });
     const append = (
       stream: "stdout" | "stderr",
       decoder: StringDecoder | null,
@@ -130,6 +119,23 @@ const runGitProcess = (
       );
     const attempt = Effect.scoped(
       Effect.gen(function* () {
+        const launch = yield* Effect.try({
+          try: () => resolveGitLaunch(input.args, input.environment),
+          catch: (cause) => processError("spawn_failed", cause),
+        });
+        const command = ChildProcess.make(launch.command, launch.args, {
+          cwd: input.cwd,
+          detached: process.platform !== "win32",
+          env: launch.env,
+          shell: launch.shell,
+          extendEnv: false,
+          forceKillAfter: Duration.millis(GIT_KILL_ESCALATION_MS),
+          killSignal: "SIGTERM",
+          stdin: { stream: stdin, endOnDone: true },
+          stdout: "pipe",
+          stderr: "pipe",
+          windowsHide: true,
+        });
         const handle = yield* spawner
           .spawn(command)
           .pipe(Effect.mapError((cause) => processError("spawn_failed", cause)));

@@ -65,7 +65,7 @@ const registryFor = (runner: GitCommandRunner) =>
 
 describe("UntrackedPathCache", () => {
   it.effect("expands normal-mode directories and excludes ignored files", () => {
-    return makeGitCommandRunner({ environment: process.env }).pipe(
+    return makeGitCommandRunner({ platform: process.platform, environment: process.env }).pipe(
       Effect.flatMap((delegate) => {
         const runner = new RecordingRunner(delegate);
         return registryFor(runner).pipe(
@@ -105,7 +105,7 @@ describe("UntrackedPathCache", () => {
   });
 
   it.effect("uses all mode only for a bounded path-scoped repair", () => {
-    return makeGitCommandRunner({ environment: process.env }).pipe(
+    return makeGitCommandRunner({ platform: process.platform, environment: process.env }).pipe(
       Effect.flatMap((delegate) => {
         const runner = new RecordingRunner(delegate);
         return registryFor(runner).pipe(
@@ -146,7 +146,7 @@ describe("UntrackedPathCache", () => {
   });
 
   it.effect("caps materialized files while preserving the omitted count", () =>
-    makeGitCommandRunner({ environment: process.env }).pipe(
+    makeGitCommandRunner({ platform: process.platform, environment: process.env }).pipe(
       Effect.flatMap((runner) =>
         registryFor(runner).pipe(
           Effect.flatMap((registry) =>

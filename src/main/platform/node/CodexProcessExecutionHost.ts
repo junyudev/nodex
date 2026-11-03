@@ -7,6 +7,7 @@ import type { CodexExecutionHostConfig } from "../../codex-runtime/CodexEndpoint
 import { codexRuntimeError } from "../../codex-runtime/CodexRuntimeError";
 import { codexCliAppServerArgs } from "../../../shared/codex-app-server-launch";
 import { supportsCodexAttestationRequests } from "../../codex-application/CodexAttestation";
+import { childProcessEnvironment } from "./child-process-environment";
 
 export interface CodexAppServerClientOptions {
   readonly binaryPath?: string;
@@ -27,8 +28,9 @@ const withSearchPath = (
   env: Readonly<Record<string, string | undefined>>,
   entries: readonly string[],
 ): Readonly<Record<string, string | undefined>> => {
-  const inherited = env.PATH?.split(pathDelimiter).filter(Boolean) ?? [];
-  return { ...env, PATH: [...new Set([...entries, ...inherited])].join(pathDelimiter) };
+  const environment = childProcessEnvironment(env, process.platform);
+  const inherited = environment.PATH?.split(pathDelimiter).filter(Boolean) ?? [];
+  return { ...environment, PATH: [...new Set([...entries, ...inherited])].join(pathDelimiter) };
 };
 
 const initializeParams = (options: CodexAppServerClientOptions) => ({

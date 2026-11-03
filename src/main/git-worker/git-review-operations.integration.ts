@@ -91,7 +91,7 @@ afterEach(async () => {
 it.layer(GitCommandPlatformNode.nodeLive)("git review service", (it) => {
   const runtimeTest = (name: string, run: () => Promise<void>): void => {
     it.effect(name, () =>
-      makeGitCommandRunner({ environment: process.env }).pipe(
+      makeGitCommandRunner({ platform: process.platform, environment: process.env }).pipe(
         Effect.flatMap((runner) =>
           Effect.promise(() =>
             new GitReviewRuntime({ commandRunner: runner }).run(new AbortController().signal, run),

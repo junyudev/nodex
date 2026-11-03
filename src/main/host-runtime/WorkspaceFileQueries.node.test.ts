@@ -501,9 +501,10 @@ it.effect(
           await exec("git", ["-C", repo, "add", "src/index.html", "notes.local/tracked.pdf"]);
           await writeFile(path.join(repo, ".gitignore"), "notes.local/\n");
         });
-        const worker = yield* makeGitWorkerModule({ environment: process.env }).pipe(
-          Effect.provide(GitCommandPlatformNode.nodeLive),
-        );
+        const worker = yield* makeGitWorkerModule({
+          platform: process.platform,
+          environment: process.env,
+        }).pipe(Effect.provide(GitCommandPlatformNode.nodeLive));
         const f = fixture({
           gitRequest: (input) =>
             Effect.scoped(

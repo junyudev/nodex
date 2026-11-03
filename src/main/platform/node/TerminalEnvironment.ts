@@ -7,6 +7,7 @@ import { claudeExecutableCandidates, claudeHostEnvironmentValue } from "./Claude
 import path from "node:path";
 import type { TerminalSize } from "../../../shared/types";
 import type { TerminalRuntimeConfig } from "../../terminal-runtime/TerminalRuntimeMap";
+import { childProcessEnvironment, mergeProcessEnvironments } from "./child-process-environment";
 
 export interface TerminalEnvironmentInput {
   readonly sessionId: string;
@@ -48,6 +49,17 @@ export const terminalShellCandidates = (
   const root = claudeHostEnvironmentValue(environment, "SystemRoot", platform);
   return [
     "pwsh.exe",
+    ...["ProgramW6432", "ProgramFiles", "LOCALAPPDATA"].flatMap((name) => {
+      const directory = claudeHostEnvironmentValue(environment, name, platform);
+      if (!directory) return [];
+      return [
+        path.win32.join(
+          directory,
+          ...(name === "LOCALAPPDATA" ? ["Microsoft", "PowerShell"] : ["PowerShell", "7"]),
+          "pwsh.exe",
+        ),
+      ];
+    }),
     ...(root
       ? [path.win32.join(root, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")]
       : []),
@@ -89,20 +101,19 @@ export const resolveTerminalCommand = (
   return [shell, "-i"];
 };
 
-const buildEnvironment = (
+export const buildTerminalEnvironment = (
   environment: Readonly<NodeJS.ProcessEnv>,
   platform: string,
 ): Readonly<Record<string, string>> => {
-  const env: Record<string, string> = {};
-  for (const [key, value] of Object.entries(environment)) {
-    if (typeof value === "string") env[key] = value;
-  }
-  env.TERM = "xterm-256color";
-  if (platform !== "win32") {
-    delete env.TERMINFO;
-    delete env.TERMINFO_DIRS;
-  }
-  return env;
+  return mergeProcessEnvironments(
+    platform,
+    Object.fromEntries(
+      Object.entries(childProcessEnvironment(environment, platform)).filter(
+        ([name]) => platform === "win32" || (name !== "TERMINFO" && name !== "TERMINFO_DIRS"),
+      ),
+    ),
+    { TERM: "xterm-256color" },
+  );
 };
 
 export const live = Layer.effect(
@@ -112,7 +123,8 @@ export const live = Layer.effect(
     return TerminalEnvironment.of({
       resolve: (input) =>
         Effect.gen(function* () {
-          const shell = resolveShell(config.platform, config.environment, config.homeDirectory);
+          const environment = buildTerminalEnvironment(config.environment, config.platform);
+          const shell = resolveShell(config.platform, environment, config.homeDirectory);
           const [command, ...args] = resolveTerminalCommand(
             shell,
             config.platform as NodeJS.Platform,
@@ -126,7 +138,7 @@ export const live = Layer.effect(
             command,
             args,
             cwd: resolveCwd(input.cwd, config.homeDirectory),
-            env: buildEnvironment(config.environment, config.platform),
+            env: environment,
             cols: Math.max(2, Math.floor(size.cols)),
             rows: Math.max(1, Math.floor(size.rows)),
           } satisfies TerminalRuntimeConfig;

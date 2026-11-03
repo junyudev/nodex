@@ -1,5 +1,6 @@
 import * as Effect from "effect/Effect";
 import { codexRuntimeError } from "../../codex-runtime/CodexRuntimeError";
+import { childProcessEnvironment, mergeProcessEnvironments } from "./child-process-environment";
 
 export const resolveCodexProcessEnvironment = (input: {
   readonly additionalSearchPaths: readonly string[];
@@ -10,17 +11,12 @@ export const resolveCodexProcessEnvironment = (input: {
   Effect.try({
     try: () => {
       const windows = input.pathDelimiter === ";";
-      const inheritedPath =
-        Object.entries(input.environment).find(([name]) =>
-          windows ? name.toUpperCase() === "PATH" : name === "PATH",
-        )?.[1] ?? "";
+      const environment = childProcessEnvironment(input.environment, windows ? "win32" : "posix");
+      const inheritedPath = environment.PATH ?? "";
       return {
-        ...Object.fromEntries(
-          Object.entries(input.environment).filter(([name]) =>
-            windows ? name.toUpperCase() !== "PATH" : name !== "PATH",
-          ),
-        ),
-        CODEX_HOME: input.codexHome,
+        ...mergeProcessEnvironments(windows ? "win32" : "posix", environment, {
+          CODEX_HOME: input.codexHome,
+        }),
         PATH: [...input.additionalSearchPaths, inheritedPath]
           .filter(Boolean)
           .join(input.pathDelimiter),

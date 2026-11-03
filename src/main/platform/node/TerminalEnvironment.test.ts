@@ -1,5 +1,9 @@
 import { describe, expect, test } from "vite-plus/test";
-import { resolveTerminalCommand, terminalShellCandidates } from "./TerminalEnvironment";
+import {
+  buildTerminalEnvironment,
+  resolveTerminalCommand,
+  terminalShellCandidates,
+} from "./TerminalEnvironment";
 
 describe("resolveTerminalCommand", () => {
   test("starts zsh as an interactive login shell", () => {
@@ -14,9 +18,43 @@ describe("resolveTerminalCommand", () => {
     expect(resolveTerminalCommand("/bin/sh", "linux")).toEqual(["/bin/sh", "-i"]);
   });
 
-  test("does not add POSIX shell flags on Windows", () => {
-    expect(resolveTerminalCommand("powershell.exe", "win32")).toEqual(["powershell.exe"]);
-  });
+  test.each(["powershell.exe", "cmd.exe"])(
+    "preserves %s interactive startup on Windows",
+    (shell) => {
+      expect(resolveTerminalCommand(shell, "win32")).toEqual([shell]);
+    },
+  );
+});
+
+test("finds machine PowerShell 7 and the user ZIP installer's default outside PATH", () => {
+  expect(
+    terminalShellCandidates("win32", {
+      programfiles: "C:\\Program Files",
+      localappdata: "C:\\Users\\测试\\AppData\\Local",
+    }),
+  ).toEqual([
+    "pwsh.exe",
+    "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
+    "C:\\Users\\测试\\AppData\\Local\\Microsoft\\PowerShell\\pwsh.exe",
+    "powershell.exe",
+    "cmd.exe",
+  ]);
+});
+
+test("terminal children have one Windows PATH and no inherited Electron Node mode", () => {
+  expect(
+    buildTerminalEnvironment(
+      {
+        Path: "old",
+        PATH: "new",
+        ELECTRON_RUN_AS_NODE: "1",
+        NODE_OPTIONS: "--inspect",
+        term: "inherited-terminal",
+        TERMINFO: "keep-on-windows",
+      },
+      "win32",
+    ),
+  ).toEqual({ PATH: "new", TERM: "xterm-256color", TERMINFO: "keep-on-windows" });
 });
 
 test("prefers PowerShell 7 and retains Windows PowerShell and cmd fallbacks", () => {

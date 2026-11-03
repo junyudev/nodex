@@ -44,7 +44,7 @@ afterEach(async () => {
 });
 
 const withRunner = <A>(run: (runner: GitCommandRunner) => Promise<A>) =>
-  makeGitCommandRunner({ environment: process.env }).pipe(
+  makeGitCommandRunner({ platform: process.platform, environment: process.env }).pipe(
     Effect.flatMap((runner) => Effect.promise(() => run(runner))),
     // the helper owns a fresh test application Scope.
     Effect.provide(GitCommandPlatformNode.nodeLive),
@@ -61,6 +61,37 @@ const processResult = (code = 0): GitCommandProcessResult => ({
 });
 
 describe("GitCommandRunner", () => {
+  it.effect("Windows command overrides replace inherited variable casing before launch", () =>
+    Effect.gen(function* () {
+      const platform = GitCommandPlatform.of({
+        run: (input) =>
+          Effect.sync(() => {
+            expect(input.environment).toEqual({
+              PATH: "configured",
+              TOKEN: "current",
+              GIT_OPTIONAL_LOCKS: "0",
+              GIT_TERMINAL_PROMPT: "0",
+              LANGUAGE: "C",
+              LC_MESSAGES: "C",
+            });
+            return processResult();
+          }),
+      });
+      const runner = yield* makeGitCommandRunner({
+        platform: "win32",
+        environment: { Path: "inherited", Token: "old" },
+      }).pipe(Effect.provideService(GitCommandPlatform, platform));
+      const result = yield* Effect.promise(() =>
+        runner.run(
+          { hostId: "local", root: "C:\\repo", commonDir: "C:\\repo\\.git" },
+          ["version"],
+          { env: { path: "configured", TOKEN: "current" } },
+        ),
+      );
+      expect(result.success).toBe(true);
+    }),
+  );
+
   it.live("runs with non-interactive, stable, no-optional-locks Git policy", () =>
     withRunner(async (runner) => {
       const repository = await createRepository();
@@ -203,9 +234,10 @@ describe("GitCommandRunner", () => {
           return Effect.succeed(processResult(1));
         },
       });
-      const runner = yield* makeGitCommandRunner({ environment: {} }).pipe(
-        Effect.provideService(GitCommandPlatform, platform),
-      );
+      const runner = yield* makeGitCommandRunner({
+        platform: process.platform,
+        environment: {},
+      }).pipe(Effect.provideService(GitCommandPlatform, platform));
       const repositoryA = { hostId: "local" as const, root: "/a", commonDir: "/a/.git" };
       const repositoryB = { hostId: "local" as const, root: "/b", commonDir: "/b/.git" };
 
@@ -248,10 +280,10 @@ describe("GitCommandRunner", () => {
           return Effect.succeed(processResult(1));
         },
       });
-      const runner = yield* makeGitCommandRunner({ environment: {} }).pipe(
-        Effect.provideService(GitCommandPlatform, platform),
-        Scope.provide(runnerScope),
-      );
+      const runner = yield* makeGitCommandRunner({
+        platform: process.platform,
+        environment: {},
+      }).pipe(Effect.provideService(GitCommandPlatform, platform), Scope.provide(runnerScope));
       const repository = { hostId: "local" as const, root: "/a", commonDir: "/a/.git" };
       const active = runner.run(repository, ["active"]);
       yield* Deferred.await(activeStarted);
