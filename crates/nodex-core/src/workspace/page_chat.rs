@@ -1216,6 +1216,16 @@ mod tests {
             },
         );
 
+        // Timestamp order is the subject: rapid commands may share a Windows clock tick.
+        workspace.kernel.writer().call(|connection| {
+            connection.execute(
+                "UPDATE project_sessions SET activity_at = (SELECT max(activity_at) FROM project_sessions) + CASE id WHEN 'session:runtime' THEN 30 WHEN 'session:native' THEN 20 ELSE 10 END",
+                [],
+            )?;
+            connection.execute("UPDATE project_session_pages SET linked_at = (SELECT max(linked_at) FROM project_session_pages)", [])?;
+            Ok(())
+        }).expect("explicit Session recency fixture");
+
         let window = |after: Option<String>| {
             let ProjectWorkspaceReadValue::PageChatWindow { chats } = read(
                 &workspace.module,
@@ -1257,6 +1267,26 @@ mod tests {
         assert_eq!(third.items[0].session_id, "session:threadless");
         assert!(third.items[0].thread_id.is_none());
         assert!(third.next_cursor.is_none());
+
+        workspace
+            .kernel
+            .writer()
+            .call(|connection| {
+                connection.execute("UPDATE project_sessions SET activity_at = (SELECT max(activity_at) FROM project_sessions)", [])?;
+                Ok(())
+            })
+            .expect("equal recency fixture");
+        let mut cursor = None;
+        for expected in ["session:native", "session:runtime", "session:threadless"] {
+            let page = window(cursor);
+            assert_eq!(page.items.len(), 1);
+            assert_eq!(page.items[0].session_id, expected);
+            cursor = page.next_cursor;
+        }
+        assert!(
+            cursor.is_none(),
+            "tied timestamps paginate without duplicates or omissions"
+        );
 
         let ProjectWorkspaceReadValue::PageChatActivitySummaries { summaries, .. } = read(
             &workspace.module,
