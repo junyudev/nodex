@@ -1,5 +1,9 @@
 import { spawn } from "node:child_process";
-import { killChildProcessTree, terminateWindowsProcessTree } from "../process-tree";
+import {
+  hasWindowsProcessTreeReleaseFailure,
+  signalPosixChildProcessTree,
+  terminateWindowsProcessTree,
+} from "../process-tree";
 
 export interface CodexGitCommandResult {
   readonly stdout: string;
@@ -24,8 +28,47 @@ export function isCodexNonGitRepositoryMessage(message: string): boolean {
 const DEFAULT_MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
 const KILL_ESCALATION_MS = 250;
 
-export function createCodexRequestCanceledError(): Error {
-  return new Error("Request canceled");
+export class CodexRequestCanceledError extends Error {
+  constructor(message = "Request canceled") {
+    super(message);
+    this.name = "CodexRequestCanceledError";
+  }
+}
+
+export function createCodexRequestCanceledError(message?: string): CodexRequestCanceledError {
+  return new CodexRequestCanceledError(message);
+}
+
+export function isCodexRequestCanceledError(error: unknown, signal?: AbortSignal): boolean {
+  return (
+    error instanceof CodexRequestCanceledError ||
+    (signal?.aborted === true && error === signal.reason)
+  );
+}
+
+/** A fallback must not erase a failed release or replace an interrupted operation's outcome. */
+export function throwIfCodexGitRecoveryUnsafe(error: unknown, signal?: AbortSignal): void {
+  if (signal?.aborted || hasWindowsProcessTreeReleaseFailure(error)) throw error;
+}
+
+/** Join concurrent Git owners before publishing cancellation or choosing a recovery path. */
+export async function joinCodexGitOperations<const T extends readonly unknown[]>(operations: {
+  [K in keyof T]: Promise<T[K]>;
+}): Promise<T> {
+  const outcomes = await Promise.allSettled(operations);
+  const failures = outcomes.flatMap((outcome) =>
+    outcome.status === "rejected" ? [outcome.reason as unknown] : [],
+  );
+  if (
+    failures.length === 1 ||
+    (failures.length > 1 && failures.every((error) => isCodexRequestCanceledError(error)))
+  )
+    throw failures[0];
+  if (failures.length > 1) throw new AggregateError(failures, "Concurrent Git operations failed");
+  return outcomes.map((outcome) => {
+    if (outcome.status === "rejected") throw outcome.reason;
+    return outcome.value;
+  }) as unknown as T;
 }
 
 export function throwIfCodexRequestAborted(signal?: AbortSignal): void {
@@ -68,6 +111,7 @@ export function runCodexGitCommand(
     let timedOut = false;
     let exceededOutputBound = false;
     let settled = false;
+    let childError: Error | null = null;
     let killEscalationId: ReturnType<typeof setTimeout> | null = null;
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
     let windowsTermination: Promise<void> | null = null;
@@ -94,17 +138,18 @@ export function runCodexGitCommand(
     };
     const terminate = () => {
       if (windowsTermination || child.exitCode !== null || child.signalCode !== null) return;
-      if (process.platform === "win32" && child.pid !== undefined) {
+      if (process.platform === "win32") {
+        if (child.pid === undefined) return;
         // Keep draining Git's pipes while native handles settle, then publish its outcome.
         windowsTermination = terminateWindowsProcessTree(child.pid);
         void windowsTermination.catch(rejectTermination);
         return;
       }
-      killChildProcessTree(child, "SIGTERM");
+      signalPosixChildProcessTree(child, "SIGTERM");
       if (killEscalationId) return;
       killEscalationId = setTimeout(() => {
         if (child.exitCode === null && child.signalCode === null) {
-          killChildProcessTree(child, "SIGKILL");
+          signalPosixChildProcessTree(child, "SIGKILL");
         }
       }, KILL_ESCALATION_MS);
       killEscalationId.unref();
@@ -114,7 +159,7 @@ export function runCodexGitCommand(
       terminate();
     }
     const appendOutput = (stream: "stdout" | "stderr", chunk: Buffer) => {
-      if (exceededOutputBound) return;
+      if (settled || exceededOutputBound) return;
       outputBytes += chunk.byteLength;
       if (outputBytes > maxOutputBytes) {
         exceededOutputBound = true;
@@ -137,21 +182,16 @@ export function runCodexGitCommand(
       timeoutId.unref();
     }
 
-    child.stdout?.on("data", (chunk: Buffer) => appendOutput("stdout", chunk));
-    child.stderr?.on("data", (chunk: Buffer) => appendOutput("stderr", chunk));
-    const finishError = (error: Error) => {
-      if (aborted || signal?.aborted) {
-        rejectOnce(createCodexRequestCanceledError());
-        return;
-      }
-      if (timedOut) {
-        rejectOnce(new Error(`Git command timed out after ${String(timeoutMs)}ms`));
-        return;
-      }
-      rejectOnce(error);
-    };
+    const handleStdout = (chunk: Buffer): void => appendOutput("stdout", chunk);
+    const handleStderr = (chunk: Buffer): void => appendOutput("stderr", chunk);
+    child.stdout?.on("data", handleStdout);
+    child.stderr?.on("data", handleStderr);
     const finishClose = (code: number | null) => {
       if (settled) return;
+      if (childError) {
+        rejectOnce(childError);
+        return;
+      }
       if (aborted || signal?.aborted) {
         rejectOnce(createCodexRequestCanceledError());
         return;
@@ -173,7 +213,17 @@ export function runCodexGitCommand(
       const message = stderr.trim() || stdout.trim() || `git exited with code ${String(code)}`;
       rejectOnce(new Error(message));
     };
-    child.on("error", (error) => settleAfterTermination(() => finishError(error)));
-    child.on("close", (code) => settleAfterTermination(() => finishClose(code)));
+    const handleError = (error: Error): void => {
+      if (!settled) childError = error;
+    };
+    const handleClose = (code: number | null): void => {
+      child.stdout?.off("data", handleStdout);
+      child.stderr?.off("data", handleStderr);
+      child.off("error", handleError);
+      child.off("close", handleClose);
+      settleAfterTermination(() => finishClose(code));
+    };
+    child.on("error", handleError);
+    child.once("close", handleClose);
   });
 }

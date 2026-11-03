@@ -29,7 +29,6 @@ const shellEnvironment = {
 const transport: WorktreeWorkerTransport = {
   close: () => port.close(),
   post: (message) => port.postMessage(message),
-  reportCancellation: false,
   subscribe: (listener, onClose) => {
     port.on("message", listener);
     port.on("close", onClose);

@@ -15,7 +15,12 @@ import type {
   CodexWorktreeWorkerSnapshotInput,
   CodexWorktreeWorkerSnapshotResult,
 } from "./codex-worktree-worker-protocol";
-import { runCodexGitCommand, throwIfCodexRequestAborted } from "./codex-git-command";
+import {
+  runCodexGitCommand,
+  throwIfCodexRequestAborted,
+  throwIfCodexGitRecoveryUnsafe,
+  joinCodexGitOperations,
+} from "./codex-git-command";
 import {
   readManagedWorktreeOwnerThread,
   removeManagedWorktree,
@@ -130,7 +135,7 @@ async function readRef(
   const result = await runCodexGitCommand(["rev-parse", "--verify", ref], repositoryPath, {
     signal,
   }).catch((error) => {
-    throwIfCodexRequestAborted(signal);
+    throwIfCodexGitRecoveryUnsafe(error, signal);
     if (error instanceof Error) return null;
     throw error;
   });
@@ -284,7 +289,7 @@ export async function inspectManagedWorktree(
         };
       }
     } catch (error) {
-      throwIfCodexRequestAborted(signal);
+      throwIfCodexGitRecoveryUnsafe(error, signal);
       lastError = error instanceof Error ? error : new Error(String(error));
     }
   }
@@ -312,7 +317,7 @@ export async function restoreManagedWorktree(
     const snapshotRef = resolveManagedWorktreeSnapshotRef(worktreeGitRoot);
     for (const candidate of input.candidateRepositoryPaths) {
       const repositoryPath = path.resolve(candidate);
-      const [expectedCommit, currentHead] = await Promise.all([
+      const [expectedCommit, currentHead] = await joinCodexGitOperations([
         readRef(repositoryPath, snapshotRef, options.signal),
         readRef(worktreeGitRoot, "HEAD", options.signal),
       ]);
@@ -324,6 +329,7 @@ export async function restoreManagedWorktree(
           input.ownerThreadId,
           options.signal,
         ).catch((error) => {
+          throwIfCodexGitRecoveryUnsafe(error, options.signal);
           ownerWarning = error instanceof Error ? error.message : String(error);
         });
       }
@@ -385,12 +391,21 @@ export async function restoreManagedWorktree(
         input.ownerThreadId,
         options.signal,
       ).catch((error) => {
+        throwIfCodexGitRecoveryUnsafe(error, options.signal);
         ownerWarning = error instanceof Error ? error.message : String(error);
       });
     }
     return { worktreeGitRoot, cwd: input.cwd, repositoryPath, snapshotRef, ownerWarning };
   } catch (error) {
-    if (created) await removeManagedWorktree(worktreeGitRoot).catch(() => undefined);
+    throwIfCodexGitRecoveryUnsafe(error);
+    if (created)
+      await removeManagedWorktree(worktreeGitRoot).catch((cleanupError) => {
+        throw new AggregateError(
+          [error, cleanupError],
+          "Worktree restore failed and cleanup could not complete",
+          { cause: error },
+        );
+      });
     throw error;
   }
 }
@@ -424,13 +439,13 @@ export async function removeRetainedManagedWorktree(
       },
     );
   } catch (error) {
-    throwIfCodexRequestAborted(options.signal);
+    throwIfCodexGitRecoveryUnsafe(error, options.signal);
     if (input.snapshotPolicy === "required") throw error;
     warnings.push(error instanceof Error ? error.message : String(error));
   }
   const repositoryPath = await resolveRepositoryPath(worktreeGitRoot, options.signal).catch(
     (error) => {
-      throwIfCodexRequestAborted(options.signal);
+      throwIfCodexGitRecoveryUnsafe(error, options.signal);
       if (input.snapshotPolicy === "required") throw error;
       warnings.push(error instanceof Error ? error.message : String(error));
       return null;
@@ -447,7 +462,7 @@ export async function removeRetainedManagedWorktree(
   )
     .then((result) => result.stdout.trim())
     .catch((error) => {
-      throwIfCodexRequestAborted(options.signal);
+      throwIfCodexGitRecoveryUnsafe(error, options.signal);
       warnings.push(error instanceof Error ? error.message : String(error));
       return "";
     });
@@ -479,10 +494,10 @@ export async function removeRetainedManagedWorktree(
         });
       }
     } catch (error) {
+      throwIfCodexGitRecoveryUnsafe(error, options.signal);
       if (error instanceof Error && error.message.startsWith("Worktree environment cleanup")) {
         throw error;
       }
-      throwIfCodexRequestAborted(options.signal);
       warnings.push(error instanceof Error ? error.message : String(error));
     }
   }
@@ -514,12 +529,18 @@ export async function listManagedWorktreesOnHost(
         throw new Error("Managed worktree inventory exceeds its host bound");
       }
       const worktreeGitRoot = path.join(tokenPath, worktreeEntry.name);
-      const [repositoryPath, metadata, owner] = await Promise.all([
-        resolveRepositoryPath(worktreeGitRoot, signal).catch(() => null),
+      const [repositoryPath, metadata, owner] = await joinCodexGitOperations([
+        resolveRepositoryPath(worktreeGitRoot, signal).catch((error) => {
+          throwIfCodexGitRecoveryUnsafe(error, signal);
+          return null;
+        }),
         stat(worktreeGitRoot).catch(() => null),
         readManagedWorktreeOwnerThread(worktreeGitRoot, signal).then(
           (ownerThreadId) => ({ ownerThreadId, ownerReadFailed: false }),
-          () => ({ ownerThreadId: null, ownerReadFailed: true }),
+          (error) => {
+            throwIfCodexGitRecoveryUnsafe(error, signal);
+            return { ownerThreadId: null, ownerReadFailed: true };
+          },
         ),
       ]);
       entries.push({

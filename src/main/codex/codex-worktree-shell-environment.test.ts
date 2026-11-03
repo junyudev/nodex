@@ -1,4 +1,8 @@
-import { describe, expect, test } from "vite-plus/test";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
+import { existsSync } from "node:fs";
+import { terminateWindowsProcessTree } from "../process-tree";
+import { describe, expect, test, vi } from "vite-plus/test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -12,7 +16,162 @@ import {
   parseCodexInteractiveShellEnvironment,
   persistCodexWorktreeShellEnvironment,
   runCodexWorktreeSetupScript,
+  runCodexWorktreeCleanupScript,
 } from "./codex-worktree-shell-environment";
+
+vi.mock("node:child_process", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:child_process")>();
+  return { ...actual, spawn: vi.fn(actual.spawn) };
+});
+vi.mock("../process-tree", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../process-tree")>();
+  return { ...actual, terminateWindowsProcessTree: vi.fn(actual.terminateWindowsProcessTree) };
+});
+
+function deferred<Value>() {
+  let resolve!: (value: Value | PromiseLike<Value>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<Value>((complete, fail) => {
+    resolve = complete;
+    reject = fail;
+  });
+  return { promise, resolve, reject };
+}
+
+for (const mode of ["setup", "cleanup"] as const) {
+  for (const outcome of ["fulfilled", "rejected"] as const) {
+    test.runIf(process.platform === "win32")(
+      `owns Windows ${mode} streams and temporary scripts through ${outcome} native release`,
+      async ({ signal }) => {
+        const actualProcess =
+          await vi.importActual<typeof import("node:child_process")>("node:child_process");
+        const actualTree =
+          await vi.importActual<typeof import("../process-tree")>("../process-tree");
+        const cwd = await mkdtemp(path.join(tmpdir(), "nodex-shell-release-test-"));
+        const fixture = actualProcess.spawn(
+          process.execPath,
+          [
+            "-e",
+            'process.stdin.on("data", () => process.stdout.write("after-cancel\\n")); setInterval(() => {}, 1000)',
+          ],
+          { stdio: "pipe" },
+        );
+        const closed = new Promise<void>((resolve) => {
+          fixture.once("close", () => resolve());
+        });
+        const controller = new AbortController();
+        const nativeStarted = deferred<void>();
+        const nativeRelease = deferred<void>();
+        const spawned = deferred<void>();
+        const deadline = deferred<never>();
+        const onDeadline = () => deadline.reject(signal.reason);
+        signal.addEventListener("abort", onDeadline, { once: true });
+        const withinTest = <Value>(pending: Promise<Value>) =>
+          Promise.race([pending, deadline.promise]);
+        const failure = new Error("Native handles did not become signaled");
+        const output: string[] = [];
+        let temporaryRoot: string | undefined;
+        let completed = false;
+        let operation: Promise<PromiseSettledResult<unknown>> | undefined;
+        try {
+          await once(fixture, "spawn");
+          vi.mocked(spawn).mockImplementationOnce(((...args: unknown[]) => {
+            const arguments_ = args[1];
+            if (!Array.isArray(arguments_) || typeof arguments_[0] !== "string")
+              throw new Error("Expected the owned shell script");
+            temporaryRoot = path.dirname(arguments_[0]);
+            spawned.resolve(undefined);
+            return fixture;
+          }) as typeof spawn);
+          vi.mocked(terminateWindowsProcessTree).mockImplementationOnce((pid) => {
+            expect(pid).toBe(fixture.pid);
+            nativeStarted.resolve(undefined);
+            return nativeRelease.promise;
+          });
+          const run =
+            mode === "setup" ? runCodexWorktreeSetupScript : runCodexWorktreeCleanupScript;
+          operation = run({
+            cwd,
+            script: "echo owned-script",
+            signal: controller.signal,
+            loadBaseEnvironment: async () => process.env,
+            onOutput: ({ data }) => output.push(data),
+          }).then(
+            (value) => {
+              completed = true;
+              return { status: "fulfilled" as const, value };
+            },
+            (reason: unknown) => {
+              completed = true;
+              return { status: "rejected" as const, reason };
+            },
+          );
+          await withinTest(spawned.promise);
+          controller.abort();
+          await withinTest(nativeStarted.promise);
+          expect(temporaryRoot).toBeDefined();
+          expect(existsSync(temporaryRoot!)).toBe(true);
+          if (outcome === "rejected") nativeRelease.reject(failure);
+          else nativeRelease.resolve(undefined);
+          if (outcome === "fulfilled") {
+            await new Promise<void>((resolve) => setImmediate(resolve));
+            expect(completed).toBe(false);
+            expect(existsSync(temporaryRoot!)).toBe(true);
+          } else {
+            const result = await withinTest(operation);
+            expect(result.status).toBe("rejected");
+            if (result.status !== "rejected") throw new Error("Expected failed cancellation");
+            expect(result.reason).toBeInstanceOf(AggregateError);
+            const errors = (result.reason as AggregateError).errors as unknown[];
+            expect(errors).toContain(failure);
+            expect(
+              errors.some(
+                (error) =>
+                  error instanceof Error &&
+                  error.message === `Worktree environment ${mode} canceled.`,
+              ),
+            ).toBe(true);
+            expect(fixture.exitCode).toBeNull();
+            expect(existsSync(temporaryRoot!)).toBe(true);
+            // Failed cancellation still owns native error/close and drains data without forwarding it.
+            expect(fixture.listenerCount("error")).toBeGreaterThan(0);
+            const data = once(fixture.stdout!, "data");
+            fixture.stdin!.write("continue\n");
+            await withinTest(data);
+            expect(output).toEqual([]);
+            fixture.emit("error", new Error("late owned subprocess error"));
+          }
+          fixture.kill("SIGKILL");
+          await withinTest(closed);
+          const result = await withinTest(operation);
+          expect(result.status).toBe("rejected");
+          if (result.status !== "rejected") throw new Error("Expected cancellation");
+          if (outcome === "fulfilled") {
+            expect((result.reason as Error).message).toBe(`Worktree environment ${mode} canceled.`);
+            expect(existsSync(temporaryRoot!)).toBe(false);
+          } else expect(existsSync(temporaryRoot!)).toBe(true);
+          expect(fixture.listenerCount("error")).toBe(0);
+          expect(fixture.listenerCount("close")).toBe(0);
+          expect(fixture.stdout!.listenerCount("data")).toBe(0);
+          expect(fixture.stderr!.listenerCount("data")).toBe(0);
+        } finally {
+          signal.removeEventListener("abort", onDeadline);
+          nativeRelease.resolve(undefined);
+          controller.abort();
+          if (fixture.exitCode === null && fixture.signalCode === null) fixture.kill("SIGKILL");
+          await closed;
+          await operation;
+          vi.mocked(spawn).mockReset().mockImplementation(actualProcess.spawn);
+          vi.mocked(terminateWindowsProcessTree)
+            .mockReset()
+            .mockImplementation(actualTree.terminateWindowsProcessTree);
+          if (temporaryRoot) await rm(temporaryRoot, { recursive: true, force: true });
+          await rm(cwd, { recursive: true, force: true });
+        }
+      },
+    );
+  }
+}
 
 describe("Codex worktree shell environment", () => {
   test("parses captured env output and preserves equals signs in values", () => {

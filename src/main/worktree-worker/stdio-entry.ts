@@ -21,7 +21,6 @@ const transport: WorktreeWorkerTransport = {
     process.stdin.destroy();
   },
   post: (message) => process.stdout.write(`${JSON.stringify(message)}\n`),
-  reportCancellation: true,
   subscribe: (listener, onClose) => {
     const lines = createInterface({ input: process.stdin, crlfDelay: Infinity });
     const onLine = (line: string): void => {

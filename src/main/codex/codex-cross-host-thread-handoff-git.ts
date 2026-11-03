@@ -1,3 +1,4 @@
+import { hasWindowsProcessTreeReleaseFailure } from "../process-tree";
 import { createHash } from "node:crypto";
 import { constants as fsConstants } from "node:fs";
 import { copyFile, lstat, mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
@@ -5,7 +6,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { createManagedWorktree, removeManagedWorktree } from "./git-worktree-service";
 import { describeCodexTransferFile } from "./codex-execution-host-file-transfer";
-import { runCodexGitCommand, throwIfCodexRequestAborted } from "./codex-git-command";
+import {
+  runCodexGitCommand,
+  throwIfCodexRequestAborted,
+  throwIfCodexGitRecoveryUnsafe,
+} from "./codex-git-command";
 import type {
   CodexRepositoryIdentity,
   CodexWorktreeWorkerCleanupTransferHandoffInput,
@@ -109,7 +114,10 @@ async function validateUntrackedFiles(root: string, signal?: AbortSignal): Promi
 async function readCurrentBranch(root: string, signal?: AbortSignal): Promise<string> {
   return await runCodexGitCommand(["symbolic-ref", "--quiet", "--short", "HEAD"], root, { signal })
     .then((result) => result.stdout.trim())
-    .catch(() => "HEAD");
+    .catch((error) => {
+      throwIfCodexGitRecoveryUnsafe(error, signal);
+      return "HEAD";
+    });
 }
 
 /** Captures the complete materialized source tree without touching its real index. */
@@ -139,6 +147,7 @@ export async function exportCrossHostThreadHandoff(
   const temporaryIndex = path.join(temporaryIndexRoot, "index");
   const env = { ...process.env, GIT_INDEX_FILE: temporaryIndex };
   let referenceCreated = false;
+  let retainTemporaryIndex = false;
   options.onEvent({
     operation: "export-handoff",
     type: "handoff-progress",
@@ -215,6 +224,8 @@ export async function exportCrossHostThreadHandoff(
       bundle,
     };
   } catch (error) {
+    retainTemporaryIndex = hasWindowsProcessTreeReleaseFailure(error);
+    throwIfCodexGitRecoveryUnsafe(error);
     options.onEvent({
       operation: "export-handoff",
       type: "handoff-progress",
@@ -222,12 +233,15 @@ export async function exportCrossHostThreadHandoff(
       status: "failed",
     });
     if (referenceCreated) {
-      await runCodexGitCommand(["update-ref", "-d", temporaryRef], root).catch(() => undefined);
+      await runCodexGitCommand(["update-ref", "-d", temporaryRef], root).catch((error) => {
+        throwIfCodexGitRecoveryUnsafe(error);
+        return undefined;
+      });
     }
     await rm(stagingDirectory, { recursive: true, force: true });
     throw error;
   } finally {
-    await rm(temporaryIndexRoot, { recursive: true, force: true });
+    if (!retainTemporaryIndex) await rm(temporaryIndexRoot, { recursive: true, force: true });
   }
 }
 
@@ -244,8 +258,8 @@ async function resolveDestinationRepository(
       const root = await repositoryRoot(candidate, signal);
       const identity = await readRepositoryIdentity(root, signal);
       if (identity.keys.some((key) => sourceKeys.has(key))) matches.push(root);
-    } catch {
-      throwIfCodexRequestAborted(signal);
+    } catch (error) {
+      throwIfCodexGitRecoveryUnsafe(error, signal);
     }
   }
   const unique = [...new Set(matches)];
@@ -356,17 +370,25 @@ export async function importCrossHostThreadHandoff(
       destinationRolloutCreated: rolloutCreated,
     };
   } catch (error) {
+    throwIfCodexGitRecoveryUnsafe(error);
     options.onEvent({
       operation: "import-handoff",
       type: "handoff-progress",
       step: "import-bundle",
       status: "failed",
     });
-    if (worktreePath) await removeManagedWorktree(worktreePath).catch(() => undefined);
+    if (worktreePath)
+      await removeManagedWorktree(worktreePath).catch((error) => {
+        throwIfCodexGitRecoveryUnsafe(error);
+        return undefined;
+      });
     if (rolloutCreated) await rm(rolloutPath, { force: true }).catch(() => undefined);
     if (referenceCreated) {
       await runCodexGitCommand(["update-ref", "-d", destinationRef], repositoryPath).catch(
-        () => undefined,
+        (error) => {
+          throwIfCodexGitRecoveryUnsafe(error);
+          return undefined;
+        },
       );
     }
     throw error;
@@ -422,9 +444,10 @@ export async function cleanupCrossHostThreadHandoff(
       throw new Error("Cross-host rollback worktree is outside its managed root");
     }
     for (const worktreePath of rollbackWorktreePaths) {
-      await removeManagedWorktree(worktreePath).catch(() =>
-        warnings.push("remove-destination-worktree-failed"),
-      );
+      await removeManagedWorktree(worktreePath).catch((error) => {
+        throwIfCodexGitRecoveryUnsafe(error, signal);
+        return warnings.push("remove-destination-worktree-failed");
+      });
     }
   }
   if (input.outcome === "rolled-back" && input.createdRolloutPath) {
@@ -440,7 +463,10 @@ export async function cleanupCrossHostThreadHandoff(
   }
   await runCodexGitCommand(["update-ref", "-d", input.temporaryRef], input.repositoryPath, {
     signal,
-  }).catch(() => warnings.push("delete-temporary-ref-failed"));
+  }).catch((error) => {
+    throwIfCodexGitRecoveryUnsafe(error, signal);
+    return warnings.push("delete-temporary-ref-failed");
+  });
   const stagingDirectory = path.join(path.resolve(input.stagingRoot), transferId);
   if (!isWithin(input.stagingRoot, stagingDirectory)) {
     throw new Error("Cross-host staging path escapes its authorized root");

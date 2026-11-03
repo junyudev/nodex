@@ -1,7 +1,32 @@
-import { execFile, execFileSync, type ChildProcess } from "node:child_process";
+import { execFile, type ChildProcess } from "node:child_process";
 import path from "node:path";
 
 const WINDOWS_FORCE_WAIT_MS = 5_000;
+
+/** Failed release leaves the captured tree's ownership unresolved. */
+export class WindowsProcessTreeReleaseError extends Error {
+  constructor(
+    readonly pid: number,
+    cause: unknown,
+  ) {
+    super(`Could not release Windows process tree ${pid}: ${String(cause)}`, { cause });
+    this.name = "WindowsProcessTreeReleaseError";
+  }
+}
+
+export function hasWindowsProcessTreeReleaseFailure(error: unknown): boolean {
+  const pending = [error];
+  const seen = new Set<unknown>();
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (current instanceof WindowsProcessTreeReleaseError) return true;
+    if (!(current instanceof Error) || seen.has(current)) continue;
+    seen.add(current);
+    pending.push(current.cause);
+    if (current instanceof AggregateError) pending.push(...current.errors);
+  }
+  return false;
+}
 
 /** Capture native handles before signalling: taskkill returning does not prove exit. */
 function windowsTerminationCommand(pid: number, signal: NodeJS.Signals, graceMs: number) {
@@ -57,7 +82,7 @@ try {
   }
   # A leader can exit first; retain and force each captured descendant independently.
   foreach ($member in $owned) {
-    if ($member.HasExited) { continue }
+    if ($member.WaitForExit(0)) { continue }
     try { $member.Kill() } catch {
       # A sibling or taskkill can finish the same process between observation and Kill.
       if (!$member.WaitForExit(${WINDOWS_FORCE_WAIT_MS})) { throw }
@@ -101,39 +126,21 @@ export function terminateWindowsProcessTree(
   const command = windowsTerminationCommand(pid, signal, graceMs);
   return new Promise((resolve, reject) => {
     execFile(command.executable, command.args, command.options, (error) => {
-      if (error) reject(error);
+      if (error) reject(new WindowsProcessTreeReleaseError(pid, error));
       else resolve();
     });
   });
 }
 
-/** Terminate only the tree rooted at a PID captured when the child was spawned. */
-export function killProcessTree(pid: number, signal: NodeJS.Signals, platform: string): void {
-  if (!Number.isSafeInteger(pid) || pid <= 0) return;
-  if (platform === "win32") {
-    const command = windowsTerminationCommand(pid, signal, 250);
-    execFileSync(command.executable, command.args, {
-      ...command.options,
-      stdio: "pipe",
-    });
-    return;
+/** Signal an owned POSIX process group without a blocking Windows release path. */
+export function signalPosixChildProcessTree(child: ChildProcess, signal: NodeJS.Signals): void {
+  if (process.platform === "win32") {
+    throw new Error("Windows process release must be awaited");
   }
-  process.kill(-pid, signal);
-}
-
-export function killChildProcessTree(
-  child: ChildProcess,
-  signal: NodeJS.Signals,
-  platform: string = process.platform,
-): void {
   if (child.exitCode !== null || child.signalCode !== null) return;
-  if (platform === "win32" && child.pid !== undefined) {
-    killProcessTree(child.pid, signal, platform);
-    return;
-  }
   if (child.pid !== undefined) {
     try {
-      killProcessTree(child.pid, signal, platform);
+      process.kill(-child.pid, signal);
       return;
     } catch {
       // A process group may already have exited or may not have been created.
