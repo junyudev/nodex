@@ -5,12 +5,16 @@ Nodex treats lint output as two different products:
 - **Errors are merge gates.** They represent compiler failures, high-confidence
   correctness contracts, or a precise Nodex-owned invariant with a documented
   replacement.
-- **Warnings are advisory.** The `correctness`, `suspicious`, and `perf`
-  categories are enabled as warnings so nearby code can be improved without
-  turning repository-wide heuristic output into unrelated mandatory work.
+- **Warnings are ratcheted.** The `correctness`, `suspicious`, and `perf`
+  categories retain warning severity. Existing per-file/rule counts are allowed;
+  new warnings fail without requiring unrelated cleanup.
 
-Warnings must remain visible, but their count is not an acceptance condition.
-Do not add `--max-warnings 0` or `--deny-warnings` to the canonical commands.
+`scripts/ci/lint-warning-baseline.json` records sorted file/rule counts, including
+unused disable directives under `oxlint/unused-disable-directive`. Lower counts
+also fail until `vp run lint:baseline` locks in the improvement. Fix new warnings
+or use `oxlint-disable-next-line <rule> -- <reason>` for a deliberate exception;
+never raise the baseline to admit new warnings. Do not add `--max-warnings 0` or
+`--deny-warnings` to the canonical commands.
 
 ## Canonical commands
 
@@ -29,6 +33,12 @@ vp run --no-cache check:semantic
 # Verify every owned TypeScript file has an actual compiler project owner
 vp run verify:source-type-ownership
 
+# Lock in fixed warnings; refuses increases and leaves the baseline intact on errors
+vp run lint:baseline
+
+# Show every diagnostic through the ratchet
+vp exec tsx scripts/ci/lint-warning-ratchet.ts --all
+
 # Compact diagnostics for a focused investigation
 vp lint --format agent
 ```
@@ -38,8 +48,19 @@ command/input/environment cache. `check` runs `vp fmt --check` followed by that
 same semantic command, so formatting does not force another semantic analysis.
 Run options such as `--no-cache` precede the task name; arguments after the name
 are forwarded to its command. The canonical command is
-`tsc-rs --build --noEmit && vp lint`; `vp lint` alone is a focused lint investigation.
+`tsc-rs --build --noEmit && tsx scripts/ci/lint-warning-ratchet.ts`;
+`vp lint` alone is a focused lint investigation. The wrapper runs Oxlint once,
+prints errors and warning regressions in full, and otherwise prints one warning
+summary. The wrapper and baseline are explicit semantic-task cache inputs.
 A cached success and compiler incremental analysis are different measurements.
+
+The gate and updater follow Git renames against the merge-base with `main`
+(or `origin/main`) and staged or unstaged moves, including untracked destinations,
+using a temporary index that leaves the contributor's index unchanged. When no
+main reference is available, local moves are still detected against `HEAD`.
+For the exceptional case of enabling a new rule, maintainers can explicitly run
+`vp run lint:baseline --allow-baseline-growth`; it prints a warning and makes
+every added count visible for review.
 
 tsc-rs is the sole TypeScript and Effect diagnostic owner for semantic checks.
 `@effect/tsgo` independently prepares the TypeScript editor runtime through
@@ -49,7 +70,9 @@ plugin is installed into Oxlint.
 `reportUnusedDisableDirectives: "warn"` applies uniformly to all entrypoints.
 `tooling:verify` tests actual task reuse and invalidation as well as a small typed
 Program using the real policy. Its typed fixtures prove compiler errors,
-type-aware rules, Effect scope, suppressions, and advisory exit behavior.
+type-aware rules, Effect scope, and suppressions. Ratchet fixtures prove accepted,
+new, and stale warning counts; lowering and refused growth; explicit new-rule
+baselines; rename carry-over; error output; and baseline/wrapper cache invalidation.
 Separate syntax fixtures outside the project graph still use fixture mode.
 
 Root lint and formatting exclude `.agents/worktrees/**` and `.codex/worktrees/**`.
@@ -98,8 +121,9 @@ async forwarding layer made native type relation checking the dominant cost.
 Preserve the nominal definition and exact input/output checks when evolving
 that boundary.
 
-Unused disable directives are warnings. Remove them when encountered. A real
-exception may use a narrow inline disable with a concrete reason; broad file or
+Unused disable directives are ratcheted warnings. Remove them when encountered
+and run `vp run lint:baseline`. A real exception may use a narrow inline disable
+with a concrete reason; broad file or
 directory suppressions require a scoped config override and an invariant-based
 rationale here.
 
@@ -150,7 +174,7 @@ The underlying risk can still be enforced later by a narrower project rule.
 | `unicorn/prefer-array-find`                                                              | It reports last-segment and last-match pipelines such as `filter(...).at(-1)`, where `find` is not semantically equivalent.                                                                                                              |
 | `unicorn/prefer-set-has`                                                                 | Current membership catalogs are tiny fixed unions, short status-code strings, or one-shot model arrays. Allocating a Set is not a stable performance win; repeated large lookups should build a measured local index.                    |
 
-The following related heuristics remain advisory warnings rather than being
+The following related heuristics retain warning severity rather than being
 disabled: `typescript/no-implied-eval`,
 `typescript/no-unnecessary-type-arguments`, React default-prop rules,
 unmodified-loop conditions, and the remaining performance rules. Their current
@@ -241,7 +265,8 @@ After upgrading Vite+, Oxlint, tsc-rs, TypeScript, or `@effect/tsgo`:
 4. Promote a rule to error only after fixing existing violations and documenting
    its invariant, scope, remediation, and escape boundary.
 5. Add a focused `tooling:verify` fixture for every Nodex-owned rule or gate
-   behavior. Do not create a warning-count baseline.
+   behavior. Lock in warning fixes with `vp run lint:baseline`; baseline growth
+   requires the explicit new-rule review described above.
 6. Review the Effect editor and compiler diagnostic generations separately:
    `@effect/tsgo` upgrades the editor runtime, while tsc-rs embeds its own port.
    Review new upstream rules against `tsconfig.effect.json`; preserve the explicit

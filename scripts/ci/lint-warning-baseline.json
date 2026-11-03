@@ -1,0 +1,1091 @@
+{
+  "packages/agent-runtime/src/config.ts": {
+    "typescript(no-unnecessary-type-arguments)": 1
+  },
+  "packages/agent-runtime/src/git/GitManager.ts": {
+    "typescript(no-unnecessary-type-arguments)": 5
+  },
+  "packages/agent-runtime/src/git/GitWorkflow.ts": {
+    "typescript(no-unnecessary-type-arguments)": 3
+  },
+  "packages/agent-runtime/src/git/GitWorkflowService.ts": {
+    "eslint(no-unused-vars)": 17
+  },
+  "packages/agent-runtime/src/mcp/McpSessionRegistry.ts": {
+    "eslint(no-unused-vars)": 2
+  },
+  "packages/agent-runtime/src/orchestration-v2/RunFinalizationService.ts": {
+    "eslint(no-unused-vars)": 6
+  },
+  "packages/agent-runtime/src/orchestration-v2/WireProjection.ts": {
+    "eslint(no-useless-rename)": 1
+  },
+  "packages/agent-runtime/src/orchestration-v2/legacy/LegacyV1ThreadImporter.ts": {
+    "typescript(no-unnecessary-type-arguments)": 1
+  },
+  "packages/agent-runtime/src/processRunner.ts": {
+    "typescript(no-unnecessary-type-arguments)": 2
+  },
+  "packages/agent-runtime/src/project/ProjectSetupScriptRunner.ts": {
+    "oxlint/unused-disable-directive": 2
+  },
+  "packages/agent-runtime/src/provider/CodexChatGptSessionLock.ts": {
+    "typescript(no-unnecessary-type-arguments)": 1
+  },
+  "packages/agent-runtime/src/pullRequest/PullRequestService.ts": {
+    "typescript(no-unnecessary-type-arguments)": 2
+  },
+  "packages/agent-runtime/src/sourceControl/SourceControlProviderRegistry.ts": {
+    "unicorn(require-module-specifiers)": 1
+  },
+  "packages/agent-runtime/src/terminal/Manager.ts": {
+    "oxlint/unused-disable-directive": 1,
+    "typescript(no-unnecessary-type-arguments)": 7
+  },
+  "packages/agent-runtime/src/vcs/GitVcsDriver.ts": {
+    "typescript(no-unnecessary-type-arguments)": 13
+  },
+  "packages/agent-runtime/src/vcs/GitVcsDriverCore.ts": {
+    "typescript(no-unnecessary-type-arguments)": 2,
+    "unicorn(prefer-string-starts-ends-with)": 1
+  },
+  "packages/agent-runtime/src/vcs/VcsStatusBroadcaster.ts": {
+    "typescript(no-unnecessary-type-arguments)": 5
+  },
+  "src/main/agent-backend/NativeSessionState.node.test.ts": {
+    "typescript(no-non-null-asserted-optional-chain)": 1
+  },
+  "src/main/agent-runtime/AgentRuntimeSessionOrdering.node.test.ts": {
+    "eslint(require-yield)": 1
+  },
+  "src/main/app-tools/AppToolInterpreter.node.test.ts": {
+    "eslint(no-unused-vars)": 2
+  },
+  "src/main/app/MainApplicationLive.ts": {
+    "eslint(no-unused-vars)": 1
+  },
+  "src/main/codex-application/CodexConversationArchive.ts": {
+    "eslint(no-unused-vars)": 1
+  },
+  "src/main/codex-application/CodexHistoryPageAdapter.node.test.ts": {
+    "oxlint/unused-disable-directive": 1
+  },
+  "src/main/codex-application/CodexHistoryTimelineAdapter.node.test.ts": {
+    "oxlint/unused-disable-directive": 1
+  },
+  "src/main/codex-application/CodexVisualizationState.node.test.ts": {
+    "oxlint/unused-disable-directive": 1
+  },
+  "src/main/codex-application/CodexVisualizations.node.test.ts": {
+    "oxlint/unused-disable-directive": 1
+  },
+  "src/main/ipc/handlers/ApplicationBootstrapIpc.ts": {
+    "typescript(no-generated-empty-object-type)": 1
+  },
+  "src/main/ipc/handlers/CodexApplicationIpc.ts": {
+    "eslint(no-unused-vars)": 1
+  },
+  "src/main/ipc/handlers/CodexVisualizationIpc.node.test.ts": {
+    "oxlint/unused-disable-directive": 1
+  },
+  "src/main/ipc/handlers/CodexVisualizationStateIpc.node.test.ts": {
+    "oxlint/unused-disable-directive": 1
+  },
+  "src/main/local-store/ProfilePersistedAtoms.node.test.ts": {
+    "oxlint/unused-disable-directive": 1
+  },
+  "src/main/nodex-agent-application/NodexAgentDynamicExecution.ts": {
+    "eslint(no-unused-vars)": 1
+  },
+  "src/main/nodex-agent-application/NodexAgentDynamicTools.node.test.ts": {
+    "eslint(no-unused-vars)": 1
+  },
+  "src/main/nodex-agent-application/NodexAgentDynamicTools.ts": {
+    "eslint(no-unused-vars)": 1
+  },
+  "src/main/platform/node/NodeVisualizationFiles.node.test.ts": {
+    "oxlint/unused-disable-directive": 1
+  },
+  "src/main/platform/node/NodeVisualizationFiles.ts": {
+    "oxlint/unused-disable-directive": 1
+  },
+  "src/main/platform/node/NodexModelAccessPlatform.node.test.ts": {
+    "eslint(no-unused-vars)": 1
+  },
+  "src/main/platform/node/NodexModelAccessPlatform.ts": {
+    "eslint(no-unmodified-loop-condition)": 1
+  },
+  "src/main/platform/node/TerminalEnvironment.ts": {
+    "eslint(require-yield)": 1
+  },
+  "src/renderer/app-providers.test.tsx": {
+    "react(exhaustive-effect-dependencies)": 1
+  },
+  "src/renderer/app.tsx": {
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/components/block-documents/block-document-surface.tsx": {
+    "react(exhaustive-effect-dependencies)": 1,
+    "react(refs)": 3,
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/components/block-documents/block-document-sync-status.tsx": {
+    "react(exhaustive-effect-dependencies)": 1,
+    "react(refs)": 12
+  },
+  "src/renderer/components/block-documents/collaborative-page-title.tsx": {
+    "react(exhaustive-effect-dependencies)": 3,
+    "react(refs)": 1
+  },
+  "src/renderer/components/block-documents/owned-document-reference-surface.tsx": {
+    "react(refs)": 2
+  },
+  "src/renderer/components/block-documents/page-editor-session-surface.tsx": {
+    "react(exhaustive-effect-dependencies)": 1,
+    "react(refs)": 4,
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/components/block-documents/page-outliner-surface.tsx": {
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/components/block-documents/reference-block-surfaces.tsx": {
+    "react(no-object-type-as-default-prop)": 1,
+    "react(refs)": 1
+  },
+  "src/renderer/components/board/calendar/calendar-grid.tsx": {
+    "react(exhaustive-effect-dependencies)": 1,
+    "react(purity)": 1,
+    "react(set-state-in-effect)": 2
+  },
+  "src/renderer/components/board/editor/agent-config-chip.tsx": {
+    "eslint(no-unused-vars)": 1
+  },
+  "src/renderer/components/board/editor/attachment-preview.ts": {
+    "react(exhaustive-effect-dependencies)": 1
+  },
+  "src/renderer/components/board/editor/canvas-block.tsx": {
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/components/board/editor/date-mention-chip.tsx": {
+    "react(preserve-manual-memoization)": 1,
+    "react(purity)": 1,
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/components/board/editor/image-block.tsx": {
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/components/board/editor/nfm-code-block-controller.tsx": {
+    "react(refs)": 2,
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/components/board/editor/nfm-edit-link-menu-items.tsx": {
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/components/board/editor/nfm-editor-extensions.test.ts": {
+    "eslint(no-unused-vars)": 1
+  },
+  "src/renderer/components/board/editor/nfm-editor-owner.tsx": {
+    "react(exhaustive-effect-dependencies)": 1,
+    "react(refs)": 1
+  },
+  "src/renderer/components/board/editor/nfm-editor.tsx": {
+    "eslint(no-unused-vars)": 1,
+    "react(exhaustive-effect-dependencies)": 3,
+    "react(immutability)": 1,
+    "react(preserve-manual-memoization)": 11,
+    "react(refs)": 5,
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/components/board/editor/nfm-floating-popover.tsx": {
+    "react(exhaustive-effect-dependencies)": 1,
+    "react(refs)": 1
+  },
+  "src/renderer/components/board/editor/nfm-formatting-toolbar-controller.tsx": {
+    "react(hooks)": 1,
+    "react(refs)": 3
+  },
+  "src/renderer/components/board/editor/nfm-heading-navigation-rail.test.tsx": {
+    "react(memo-dependencies)": 1
+  },
+  "src/renderer/components/board/editor/nfm-heading-navigation-rail.tsx": {
+    "react(refs)": 5
+  },
+  "src/renderer/components/board/editor/nfm-link-toolbar-controller.tsx": {
+    "react(exhaustive-effect-dependencies)": 1,
+    "react(preserve-manual-memoization)": 1
+  },
+  "src/renderer/components/board/editor/nfm-link-toolbar.test.tsx": {
+    "react(static-components)": 1
+  },
+  "src/renderer/components/board/editor/nfm-link-toolbar.tsx": {
+    "react(exhaustive-effect-dependencies)": 1,
+    "react(set-state-in-effect)": 2
+  },
+  "src/renderer/components/board/editor/nfm-move-to-menu.tsx": {
+    "react(immutability)": 1,
+    "react(no-deriving-state-in-effects)": 1,
+    "react(set-state-in-effect)": 3
+  },
+  "src/renderer/components/board/editor/nfm-page-mention-create-flow.tsx": {
+    "react(refs)": 1,
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/components/board/editor/nfm-retained-selection-presentation.ts": {
+    "react(exhaustive-effect-dependencies)": 1
+  },
+  "src/renderer/components/board/editor/nfm-send-to-thread-menu.tsx": {
+    "react(set-state-in-effect)": 2
+  },
+  "src/renderer/components/board/editor/nfm-side-menu.tsx": {
+    "react(immutability)": 1,
+    "react(refs)": 1,
+    "react(set-state-in-effect)": 4
+  },
+  "src/renderer/components/board/editor/nfm-text-action-menu.tsx": {
+    "eslint(no-unused-vars)": 1,
+    "react(refs)": 1
+  },
+  "src/renderer/components/board/editor/page-outliner-block.tsx": {
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/components/board/editor/thread-mention-chip.tsx": {
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/components/board/editor/use-editor-drag-behaviors.ts": {
+    "react(exhaustive-effect-dependencies)": 1
+  },
+  "src/renderer/components/board/history-panel.tsx": {
+    "react(set-state-in-effect)": 4
+  },
+  "src/renderer/components/board/page-create-dialog.tsx": {
+    "react(refs)": 4
+  },
+  "src/renderer/components/board/page-stage/page-files-row.tsx": {
+    "react(exhaustive-effect-dependencies)": 1,
+    "react(set-state-in-effect)": 2
+  },
+  "src/renderer/components/board/page-stage/properties-section.tsx": {
+    "react(set-state-in-effect)": 1,
+    "react(static-components)": 1
+  },
+  "src/renderer/components/board/page-stage/use-page-stage-controller.test.tsx": {
+    "react(globals)": 2
+  },
+  "src/renderer/components/board/page-stage/use-page-stage-controller.ts": {
+    "react(memo-dependencies)": 1,
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/components/board/toggle-list-rules-body.tsx": {
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/components/board/use-board-element-drag-monitor.ts": {
+    "react(exhaustive-effect-dependencies)": 1
+  },
+  "src/renderer/components/board/use-board-page-property-bindings.ts": {
+    "react(memo-dependencies)": 1
+  },
+  "src/renderer/components/board/view-scroll-containers.tsx": {
+    "react(refs)": 1
+  },
+  "src/renderer/components/canvas/canvas-document-surface.tsx": {
+    "react(exhaustive-effect-dependencies)": 1,
+    "react(purity)": 2,
+    "react(refs)": 1
+  },
+  "src/renderer/components/canvas/canvas-file-preview.tsx": {
+    "react(refs)": 4
+  },
+  "src/renderer/components/conversation-media/conversation-video-player.tsx": {
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/components/database/data-source-page-property-context-menu.tsx": {
+    "react(exhaustive-effect-dependencies)": 1,
+    "react(set-state-in-effect)": 1,
+    "react(static-components)": 1
+  },
+  "src/renderer/components/database/data-source-property-value-editor.tsx": {
+    "react(exhaustive-effect-dependencies)": 1,
+    "react(refs)": 1,
+    "react(set-state-in-effect)": 1,
+    "react(static-components)": 1
+  },
+  "src/renderer/components/database/date-property-editor.tsx": {
+    "react(exhaustive-effect-dependencies)": 1,
+    "react(purity)": 1,
+    "react(set-state-in-effect)": 2
+  },
+  "src/renderer/components/database/property-option-picker.tsx": {
+    "react(refs)": 1,
+    "react(set-state-in-effect)": 3
+  },
+  "src/renderer/components/database/relation-property-editor.tsx": {
+    "react(exhaustive-effect-dependencies)": 3,
+    "react(refs)": 2,
+    "react(set-state-in-effect)": 3
+  },
+  "src/renderer/components/database/use-property-option-registries.ts": {
+    "react(exhaustive-effect-dependencies)": 3,
+    "react(refs)": 2
+  },
+  "src/renderer/components/library/database-move-destination-picker.tsx": {
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/components/library/library-files-dialog.tsx": {
+    "react(exhaustive-effect-dependencies)": 1,
+    "react(set-state-in-effect)": 2
+  },
+  "src/renderer/components/library/page-move-destination-picker.tsx": {
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/components/shared/agent-runtime/agent-model-picker.tsx": {
+    "react(refs)": 1
+  },
+  "src/renderer/components/shared/agent-runtime/intelligence-selector-trigger.tsx": {
+    "react(exhaustive-effect-dependencies)": 1,
+    "react(immutability)": 2,
+    "react(refs)": 1
+  },
+  "src/renderer/components/shared/agent-runtime/native-runtime-diagnostics.tsx": {
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/components/shared/content-save-status.tsx": {
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/components/shared/file-resource-icon.tsx": {
+    "react(static-components)": 1
+  },
+  "src/renderer/components/shared/marker-navigation-rail.tsx": {
+    "react(exhaustive-effect-dependencies)": 3,
+    "react(set-state-in-effect)": 3
+  },
+  "src/renderer/components/ui/context-menu.tsx": {
+    "react(refs)": 4
+  },
+  "src/renderer/components/ui/file-tree.tsx": {
+    "react(exhaustive-effect-dependencies)": 3,
+    "react(refs)": 1
+  },
+  "src/renderer/components/ui/hover-card.tsx": {
+    "react(refs)": 2,
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/components/ui/nodex-home-mark.tsx": {
+    "react(refs)": 1
+  },
+  "src/renderer/components/ui/viewer-header.tsx": {
+    "react(exhaustive-effect-dependencies)": 1
+  },
+  "src/renderer/components/workbench/app-shell-tabs.tsx": {
+    "react(exhaustive-effect-dependencies)": 2,
+    "react(set-state-in-effect)": 2
+  },
+  "src/renderer/components/workbench/app-update-settings-control.tsx": {
+    "react(set-state-in-effect)": 2
+  },
+  "src/renderer/components/workbench/appearance-settings-page.tsx": {
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/components/workbench/archived-chats-settings-page.tsx": {
+    "react(exhaustive-effect-dependencies)": 1,
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/components/workbench/backup-settings-control.tsx": {
+    "eslint(no-unused-vars)": 1,
+    "react(exhaustive-effect-dependencies)": 1,
+    "react(set-state-in-effect)": 2
+  },
+  "src/renderer/components/workbench/codex-sidebar.tsx": {
+    "react(exhaustive-effect-dependencies)": 1,
+    "react(refs)": 2,
+    "react(set-state-in-effect)": 3
+  },
+  "src/renderer/components/workbench/command-palette-surface.tsx": {
+    "eslint(no-unused-vars)": 1,
+    "react(exhaustive-effect-dependencies)": 2,
+    "react(preserve-manual-memoization)": 2,
+    "react(set-state-in-effect)": 6,
+    "react(static-components)": 1
+  },
+  "src/renderer/components/workbench/command-palette.tsx": {
+    "react(exhaustive-effect-dependencies)": 2,
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/components/workbench/computer-use-settings-page.tsx": {
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/components/workbench/database-board/database-board-group-marker.tsx": {
+    "react(static-components)": 1
+  },
+  "src/renderer/components/workbench/database-list/database-list-dnd.test.tsx": {
+    "react(refs)": 1
+  },
+  "src/renderer/components/workbench/database-list/database-list-dnd.tsx": {
+    "react(exhaustive-effect-dependencies)": 1,
+    "react(refs)": 4
+  },
+  "src/renderer/components/workbench/database-list/database-list-property-cells.tsx": {
+    "react(exhaustive-effect-dependencies)": 1,
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/components/workbench/database-settings/database-settings-rail.tsx": {
+    "react(exhaustive-effect-dependencies)": 3,
+    "react(refs)": 6,
+    "react(set-state-in-effect)": 1,
+    "react(static-components)": 3
+  },
+  "src/renderer/components/workbench/database-settings/use-database-settings-runtime.ts": {
+    "react(exhaustive-effect-dependencies)": 1,
+    "react(refs)": 1,
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/components/workbench/database-view-filter-editors.tsx": {
+    "react(refs)": 2,
+    "react(set-state-in-effect)": 1,
+    "react(static-components)": 1
+  },
+  "src/renderer/components/workbench/database-view-mutation-history.ts": {
+    "react(exhaustive-effect-dependencies)": 1
+  },
+  "src/renderer/components/workbench/database-view-page-drag.ts": {
+    "react(refs)": 2
+  },
+  "src/renderer/components/workbench/database-view-rules-bar.tsx": {
+    "react(refs)": 2,
+    "react(static-components)": 1
+  },
+  "src/renderer/components/workbench/database-view-surface.tsx": {
+    "react(exhaustive-effect-dependencies)": 1,
+    "react(no-deriving-state-in-effects)": 1,
+    "react(set-state-in-effect)": 2
+  },
+  "src/renderer/components/workbench/db-view-toolbar.tsx": {
+    "react(refs)": 2,
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/components/workbench/git-settings-page.tsx": {
+    "react(memo-dependencies)": 1,
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/components/workbench/local-environments-settings-page.tsx": {
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/components/workbench/managed-worktrees-settings-control.tsx": {
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/components/workbench/panel-destination-picker.tsx": {
+    "react(immutability)": 1,
+    "react(set-state-in-effect)": 3
+  },
+  "src/renderer/components/workbench/panel-group-tree.tsx": {
+    "react(exhaustive-effect-dependencies)": 1,
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/components/workbench/pending-worktree-progress.tsx": {
+    "react(exhaustive-effect-dependencies)": 1,
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/components/workbench/pending-worktree-route.tsx": {
+    "react(exhaustive-effect-dependencies)": 1,
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/components/workbench/project-agent-dock-target-selector.tsx": {
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/components/workbench/project-edit-dialog.tsx": {
+    "react(refs)": 1
+  },
+  "src/renderer/components/workbench/project-hover-card.tsx": {
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/components/workbench/review-diff-panel.tsx": {
+    "react(exhaustive-effect-dependencies)": 3,
+    "react(hooks)": 1,
+    "react(refs)": 19,
+    "react(set-state-in-effect)": 3
+  },
+  "src/renderer/components/workbench/sidebar-pages-section.tsx": {
+    "react(refs)": 4
+  },
+  "src/renderer/components/workbench/sidebar-project-group-dnd.browser.test.tsx": {
+    "react(refs)": 3
+  },
+  "src/renderer/components/workbench/sidebar-thread-reorder.test.tsx": {
+    "react(globals)": 3
+  },
+  "src/renderer/components/workbench/stable-worktree-create-dialog.tsx": {
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/components/workbench/stable-worktree-status-dialog.tsx": {
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/components/workbench/use-workbench-chrome-layout.ts": {
+    "react(exhaustive-effect-dependencies)": 2,
+    "react(refs)": 1
+  },
+  "src/renderer/components/workbench/use-workbench-panel-projection.tsx": {
+    "react(memo-dependencies)": 1,
+    "react(refs)": 2
+  },
+  "src/renderer/components/workbench/use-workbench-sidebar-controller.ts": {
+    "eslint(no-unused-vars)": 1,
+    "react(memo-dependencies)": 5
+  },
+  "src/renderer/components/workbench/workbench-agent-runtime-panels.tsx": {
+    "react(exhaustive-effect-dependencies)": 1
+  },
+  "src/renderer/components/workbench/workbench-auxiliary-conversation-panels.tsx": {
+    "react(exhaustive-effect-dependencies)": 1,
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/components/workbench/workbench-command-palette-host.tsx": {
+    "react(purity)": 1
+  },
+  "src/renderer/components/workbench/workbench-database-view-surface.tsx": {
+    "react(exhaustive-effect-dependencies)": 2,
+    "react(set-state-in-effect)": 2
+  },
+  "src/renderer/components/workbench/workbench-db-view-panel.tsx": {
+    "react(memo-dependencies)": 1
+  },
+  "src/renderer/components/workbench/workbench-header-actions.tsx": {
+    "react(exhaustive-effect-dependencies)": 1
+  },
+  "src/renderer/components/workbench/workbench-process-manager-dialog.tsx": {
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/components/workbench/workbench-runtime-panel-surfaces.tsx": {
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/components/workbench/workbench-runtime.tsx": {
+    "eslint(no-unused-vars)": 1,
+    "react(exhaustive-effect-dependencies)": 5,
+    "react(memo-dependencies)": 8,
+    "react(preserve-manual-memoization)": 15,
+    "react(refs)": 9,
+    "react(set-state-in-effect)": 3
+  },
+  "src/renderer/components/workbench/workbench-scene-frame.tsx": {
+    "react(refs)": 1
+  },
+  "src/renderer/components/workbench/workbench-session-sidebar.tsx": {
+    "eslint(no-unused-vars)": 3,
+    "react(refs)": 1
+  },
+  "src/renderer/components/workbench/workbench-session-thread-route.tsx": {
+    "react(exhaustive-effect-dependencies)": 1
+  },
+  "src/renderer/components/workbench/workbench-settings-controls.tsx": {
+    "react(no-deriving-state-in-effects)": 2,
+    "react(set-state-in-effect)": 4
+  },
+  "src/renderer/components/workbench/workbench-settings-route-shell.loading.test.tsx": {
+    "react(no-object-type-as-default-prop)": 1
+  },
+  "src/renderer/components/workbench/workbench-settings-route-shell.tsx": {
+    "react(exhaustive-effect-dependencies)": 1
+  },
+  "src/renderer/components/workbench/workbench-shell.layout-panel-actions.test.tsx": {
+    "eslint(no-unused-vars)": 1
+  },
+  "src/renderer/components/workbench/workbench-shell.panel-commands.test.tsx": {
+    "eslint(no-unused-vars)": 1
+  },
+  "src/renderer/components/workbench/workbench-shell.routes-threads.test.tsx": {
+    "eslint(no-unused-vars)": 3
+  },
+  "src/renderer/components/workbench/workbench-shell.sidebar-core.test.tsx": {
+    "eslint(no-unused-vars)": 3
+  },
+  "src/renderer/components/workbench/workbench-shell.tsx": {
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/components/workbench/workbench-testkit/workbench-shell-harness.tsx": {
+    "eslint(no-unused-vars)": 1,
+    "react(globals)": 8,
+    "react(refs)": 9,
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/features/avatar-overlay/avatar-overlay-page.tsx": {
+    "react(exhaustive-effect-dependencies)": 1
+  },
+  "src/renderer/features/browser-sidebar/browser-profile-import-dialog.tsx": {
+    "react(set-state-in-effect)": 2
+  },
+  "src/renderer/features/browser-sidebar/browser-settings-pages.tsx": {
+    "eslint(no-unused-vars)": 1,
+    "react(set-state-in-effect)": 4
+  },
+  "src/renderer/features/browser-sidebar/browser-sidebar-hidden-webview-hosts.tsx": {
+    "react(exhaustive-effect-dependencies)": 1,
+    "react(refs)": 2,
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/features/browser-sidebar/browser-sidebar-panel.tsx": {
+    "react(exhaustive-effect-dependencies)": 6,
+    "react(refs)": 6,
+    "react(set-state-in-effect)": 6
+  },
+  "src/renderer/features/browser-sidebar/browser-use-cursor-portal.tsx": {
+    "react(refs)": 1,
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/features/content-search/content-search-context.test.tsx": {
+    "react(globals)": 4
+  },
+  "src/renderer/features/content-search/content-search-context.tsx": {
+    "react(exhaustive-effect-dependencies)": 3,
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/features/content-search/content-search-surface.tsx": {
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/features/dictation/dictation-dictionary-dialog.tsx": {
+    "oxlint/unused-disable-directive": 1
+  },
+  "src/renderer/features/dictation/global-dictation-page.tsx": {
+    "react(exhaustive-effect-dependencies)": 2,
+    "react(refs)": 2,
+    "react(set-state-in-effect)": 2
+  },
+  "src/renderer/features/dictation/in-app-dictation-router.tsx": {
+    "react(refs)": 2
+  },
+  "src/renderer/features/dictation/use-floating-window-pointer-interactivity.ts": {
+    "react(exhaustive-effect-dependencies)": 1
+  },
+  "src/renderer/features/dictation/voice-settings-page.tsx": {
+    "react(hooks)": 1
+  },
+  "src/renderer/features/document-recovery/recovery-review.tsx": {
+    "react(exhaustive-effect-dependencies)": 2,
+    "react(set-state-in-effect)": 2
+  },
+  "src/renderer/features/floating-composer/floating-composer.tsx": {
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/features/inbox/inbox-composer.tsx": {
+    "react(exhaustive-effect-dependencies)": 2
+  },
+  "src/renderer/features/inbox/inbox-history.tsx": {
+    "react(purity)": 1
+  },
+  "src/renderer/features/inbox/inbox-message-editor.tsx": {
+    "react(exhaustive-effect-dependencies)": 1
+  },
+  "src/renderer/features/inbox/inbox-route.tsx": {
+    "react(purity)": 1
+  },
+  "src/renderer/features/inbox/inbox-settings-page.tsx": {
+    "react(hooks)": 1
+  },
+  "src/renderer/features/inbox/inbox-triage.tsx": {
+    "react(purity)": 1
+  },
+  "src/renderer/features/inbox/inbox-viewport.browser.test.tsx": {
+    "react(no-object-type-as-default-prop)": 1
+  },
+  "src/renderer/features/inbox/use-inbox.ts": {
+    "react(exhaustive-effect-dependencies)": 1
+  },
+  "src/renderer/features/local-conversation/agent-runtime-conversation-adapter.ts": {
+    "react(exhaustive-effect-dependencies)": 2,
+    "react(set-state-in-effect)": 2
+  },
+  "src/renderer/features/local-conversation/composer-context-operations.ts": {
+    "unicorn(require-module-specifiers)": 1
+  },
+  "src/renderer/features/local-conversation/data/use-summary-git-state.ts": {
+    "react(refs)": 20
+  },
+  "src/renderer/features/local-conversation/local-conversation-store.test.tsx": {
+    "react(globals)": 6,
+    "react(immutability)": 4
+  },
+  "src/renderer/features/local-conversation/use-agent-instances.ts": {
+    "react(exhaustive-effect-dependencies)": 1,
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/features/local-conversation/use-agent-model-catalog.ts": {
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/features/local-conversation/use-claude-model-catalog.ts": {
+    "react(exhaustive-effect-dependencies)": 1
+  },
+  "src/renderer/features/local-conversation/view/blocks/local-conversation-block-leaves.tsx": {
+    "eslint(no-unused-vars)": 1,
+    "react(static-components)": 1
+  },
+  "src/renderer/features/local-conversation/view/composer/async-question-controls.tsx": {
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/features/local-conversation/view/composer/async-question-panel.tsx": {
+    "react(exhaustive-effect-dependencies)": 1,
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/features/local-conversation/view/composer/composer-add-context-menu.tsx": {
+    "react(set-state-in-effect)": 3
+  },
+  "src/renderer/features/local-conversation/view/composer/composer-prompt-editor.tsx": {
+    "react(exhaustive-effect-dependencies)": 2
+  },
+  "src/renderer/features/local-conversation/view/composer/composer-ui-scope.test.tsx": {
+    "react(hooks)": 2,
+    "react(static-components)": 1
+  },
+  "src/renderer/features/local-conversation/view/composer/configure-local-environment-popover.tsx": {
+    "react(refs)": 1
+  },
+  "src/renderer/features/local-conversation/view/composer/image-attachments/use-composer-image-attachments.ts": {
+    "react(exhaustive-effect-dependencies)": 1,
+    "react(refs)": 7
+  },
+  "src/renderer/features/local-conversation/view/composer/local-conversation-thread-composer-status-strip.tsx": {
+    "react(refs)": 1,
+    "react(set-state-in-effect)": 2
+  },
+  "src/renderer/features/local-conversation/view/composer/local-conversation-thread-composer.tsx": {
+    "eslint(no-unused-vars)": 1,
+    "react(memo-dependencies)": 2,
+    "react(preserve-manual-memoization)": 1,
+    "react(refs)": 4,
+    "react(set-state-in-effect)": 3
+  },
+  "src/renderer/features/local-conversation/view/composer/local-conversation-thread-goal-status-row.tsx": {
+    "react(set-state-in-effect)": 4
+  },
+  "src/renderer/features/local-conversation/view/composer/request-cards/codex-mcp-elicitation-request-card.tsx": {
+    "react(exhaustive-effect-dependencies)": 1,
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/features/local-conversation/view/composer/request-cards/codex-user-input-request-card.tsx": {
+    "react(exhaustive-effect-dependencies)": 1
+  },
+  "src/renderer/features/local-conversation/view/composer/slash-command-menu/expanded-slash-command-dialog.tsx": {
+    "react(capitalized-calls)": 1
+  },
+  "src/renderer/features/local-conversation/view/composer/slash-command-menu/inline-slash-command-menu.tsx": {
+    "react(capitalized-calls)": 1
+  },
+  "src/renderer/features/local-conversation/view/composer/thread-composer-prompt-history.test.tsx": {
+    "react(refs)": 1
+  },
+  "src/renderer/features/local-conversation/view/composer/thread-composer-prompt-history.ts": {
+    "react(exhaustive-effect-dependencies)": 1,
+    "react(refs)": 1
+  },
+  "src/renderer/features/local-conversation/view/composer/use-composer-dictation.ts": {
+    "react(refs)": 2
+  },
+  "src/renderer/features/local-conversation/view/composer/use-composer-intelligence-controller.ts": {
+    "react(exhaustive-effect-dependencies)": 1,
+    "react(memo-dependencies)": 2,
+    "react(refs)": 14,
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/features/local-conversation/view/connected-review-diff-panel.tsx": {
+    "react(exhaustive-effect-dependencies)": 1
+  },
+  "src/renderer/features/local-conversation/view/connected-thread-stage.tsx": {
+    "react(exhaustive-effect-dependencies)": 2
+  },
+  "src/renderer/features/local-conversation/view/conversation-task-dialog.test.tsx": {
+    "react(globals)": 1
+  },
+  "src/renderer/features/local-conversation/view/inline-visualization-frame.tsx": {
+    "react(exhaustive-effect-dependencies)": 1
+  },
+  "src/renderer/features/local-conversation/view/local-conversation-above-composer-portal.tsx": {
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/features/local-conversation/view/local-conversation-inline-visualization.tsx": {
+    "react(exhaustive-effect-dependencies)": 1
+  },
+  "src/renderer/features/local-conversation/view/local-conversation-selected-text-actions.tsx": {
+    "react(exhaustive-effect-dependencies)": 1
+  },
+  "src/renderer/features/local-conversation/view/local-conversation-thread-body-owner.tsx": {
+    "react(exhaustive-effect-dependencies)": 3,
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/features/local-conversation/view/response-text-annotation-layer.tsx": {
+    "react(immutability)": 1,
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/features/local-conversation/view/shared/branch-selector-popover.tsx": {
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/features/local-conversation/view/shared/delegated-task-row.tsx": {
+    "react(no-object-type-as-default-prop)": 1
+  },
+  "src/renderer/features/local-conversation/view/shared/environment-selector-popover.tsx": {
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/features/local-conversation/view/shared/multi-agent-action-surface.tsx": {
+    "react(exhaustive-effect-dependencies)": 1
+  },
+  "src/renderer/features/local-conversation/view/shared/request-cards/local-conversation-request-cards.tsx": {
+    "react(exhaustive-effect-dependencies)": 2,
+    "react(refs)": 13
+  },
+  "src/renderer/features/local-conversation/view/shared/thread-footer-metadata.test.tsx": {
+    "react(globals)": 1
+  },
+  "src/renderer/features/local-conversation/view/shared/tools/mcp-capability-view-frame.tsx": {
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/features/local-conversation/view/shared/tools/mcp-tool-call.tsx": {
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/features/local-conversation/view/shared/tools/thread-command-shell-block.tsx": {
+    "react(exhaustive-effect-dependencies)": 2,
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/features/local-conversation/view/shared/tools/tool-call-icons.tsx": {
+    "react(exhaustive-effect-dependencies)": 1,
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/features/local-conversation/view/shared/tools/use-tool-call-output-detail.ts": {
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/features/local-conversation/view/shared/turn-diff-surface.tsx": {
+    "react(exhaustive-effect-dependencies)": 1,
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/features/local-conversation/view/shared/use-measured-element-height.ts": {
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/features/local-conversation/view/shared/use-worked-for-label.ts": {
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/features/local-conversation/view/shared/user-message-collapse.tsx": {
+    "react(exhaustive-effect-dependencies)": 1
+  },
+  "src/renderer/features/local-conversation/view/shared/worktree-starting-state-popover.tsx": {
+    "react(set-state-in-effect)": 2
+  },
+  "src/renderer/features/local-conversation/view/subagents-panel/subagents-panel.tsx": {
+    "eslint(no-unused-vars)": 1,
+    "react(exhaustive-effect-dependencies)": 1,
+    "react(preserve-manual-memoization)": 1,
+    "react(refs)": 3,
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/features/local-conversation/view/summary-panel/thread-execution-location-selector.tsx": {
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/features/local-conversation/view/summary-panel/thread-floating-summary-panel.tsx": {
+    "react(exhaustive-effect-dependencies)": 2,
+    "react(refs)": 4,
+    "react(set-state-in-effect)": 3
+  },
+  "src/renderer/features/local-conversation/view/summary-panel/thread-summary-branch-setup-dialog.tsx": {
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/features/local-conversation/view/summary-panel/thread-summary-create-pull-request-dialog.tsx": {
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/features/local-conversation/view/summary-panel/thread-summary-git-action-dialog.tsx": {
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/features/local-conversation/view/summary-panel/thread-summary-panel-section.tsx": {
+    "react(exhaustive-effect-dependencies)": 1,
+    "react(set-state-in-effect)": 2
+  },
+  "src/renderer/features/local-conversation/view/thread-user-message-navigation-rail.tsx": {
+    "react(static-components)": 1
+  },
+  "src/renderer/features/local-conversation/view/use-chat-message-reveal.ts": {
+    "react(exhaustive-effect-dependencies)": 1
+  },
+  "src/renderer/features/review/data/git-query.ts": {
+    "oxlint/unused-disable-directive": 1
+  },
+  "src/renderer/features/review/data/use-review-path-diffs.ts": {
+    "oxlint/unused-disable-directive": 3,
+    "react(refs)": 6
+  },
+  "src/renderer/features/user-attachment-image-editor/view/generated-image-dot-field.tsx": {
+    "react(refs)": 6,
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/features/user-attachment-image-editor/view/generated-image-playground.tsx": {
+    "react(exhaustive-effect-dependencies)": 1,
+    "react(refs)": 1,
+    "react(set-state-in-effect)": 2
+  },
+  "src/renderer/features/user-attachment-image-editor/view/generated-image-rail.tsx": {
+    "react(refs)": 1
+  },
+  "src/renderer/features/user-attachment-image-editor/view/image-preview-dialog.tsx": {
+    "react(exhaustive-effect-dependencies)": 2,
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/features/user-attachment-image-editor/view/image-zoom-viewer.tsx": {
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/features/user-attachment-image-editor/view/single-image-editor.tsx": {
+    "react(exhaustive-effect-dependencies)": 1,
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/features/user-attachment-image-editor/view/user-attachment-image-editor-surface.tsx": {
+    "react(refs)": 1,
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/features/workspace-files/workspace-files-panel.tsx": {
+    "react(exhaustive-effect-dependencies)": 1,
+    "react(memo-dependencies)": 8,
+    "react(preserve-manual-memoization)": 1,
+    "react(refs)": 24,
+    "react(set-state-in-effect)": 3
+  },
+  "src/renderer/features/workspace-files/workspace-pdf-preview.tsx": {
+    "react(exhaustive-effect-dependencies)": 5,
+    "react(set-state-in-effect)": 5
+  },
+  "src/renderer/features/workspace-files/workspace-pierre-editor.tsx": {
+    "react(refs)": 1
+  },
+  "src/renderer/lib/codex-panel-motion.ts": {
+    "react(exhaustive-effect-dependencies)": 1,
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/lib/codex-scheduled-automation-display.ts": {
+    "eslint(no-unused-vars)": 1
+  },
+  "src/renderer/lib/command-palette-page-results.ts": {
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/lib/database-promotion-presentation.ts": {
+    "react(memo-dependencies)": 1
+  },
+  "src/renderer/lib/database-row-detail-store.test.tsx": {
+    "react(globals)": 4
+  },
+  "src/renderer/lib/db-view-prefs.ts": {
+    "eslint(no-unused-vars)": 1
+  },
+  "src/renderer/lib/editor-model/equation-security.jsdom.test.ts": {
+    "eslint(no-extend-native)": 2
+  },
+  "src/renderer/lib/file-markdown-media/file-markdown-media.tsx": {
+    "react(exhaustive-effect-dependencies)": 1
+  },
+  "src/renderer/lib/maitai/maitai-external-store.test.tsx": {
+    "react(globals)": 1
+  },
+  "src/renderer/lib/maitai/maitai-scope.test.tsx": {
+    "react(exhaustive-effect-dependencies)": 1
+  },
+  "src/renderer/lib/markdown/markdown-public-leaves.tsx": {
+    "react(exhaustive-effect-dependencies)": 1
+  },
+  "src/renderer/lib/projection-invalidation-context.tsx": {
+    "react(exhaustive-effect-dependencies)": 1
+  },
+  "src/renderer/lib/resize-observer-motion-values.browser.test.tsx": {
+    "react(globals)": 1,
+    "react(refs)": 1
+  },
+  "src/renderer/lib/retained-scroll-position.test.tsx": {
+    "react(refs)": 1
+  },
+  "src/renderer/lib/retained-scroll-position.ts": {
+    "react(refs)": 1
+  },
+  "src/renderer/lib/source-highlight-cache.node.test.ts": {
+    "typescript(no-unnecessary-template-expression)": 1
+  },
+  "src/renderer/lib/use-canonical-order-handoff.ts": {
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/lib/use-database-view-rules-controller.ts": {
+    "react(exhaustive-effect-dependencies)": 1,
+    "react(set-state-in-effect)": 2
+  },
+  "src/renderer/lib/use-distinct-state.test.tsx": {
+    "react(globals)": 7
+  },
+  "src/renderer/lib/use-element-visibility.ts": {
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/lib/use-file-search.ts": {
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/lib/use-library-navigation.ts": {
+    "react(refs)": 2,
+    "typescript(no-generated-empty-object-type)": 2
+  },
+  "src/renderer/lib/use-mermaid-preview.ts": {
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/lib/use-page-chat-activity.test.tsx": {
+    "react(globals)": 1
+  },
+  "src/renderer/lib/use-page-key-prefix-preview.ts": {
+    "oxlint/unused-disable-directive": 1,
+    "react(refs)": 1
+  },
+  "src/renderer/lib/use-project-board-windows.ts": {
+    "react(exhaustive-effect-dependencies)": 1
+  },
+  "src/renderer/lib/use-settings-list-navigation.ts": {
+    "react(exhaustive-effect-dependencies)": 1,
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/lib/use-store-backup-runtime.ts": {
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/lib/use-tabs.ts": {
+    "react(refs)": 1,
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/lib/use-terminal.ts": {
+    "react(refs)": 3,
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/lib/use-workbench-agent-bridge.ts": {
+    "react(refs)": 1
+  },
+  "src/renderer/lib/use-workbench-chrome-commands.ts": {
+    "react(refs)": 1
+  },
+  "src/renderer/lib/use-workbench-database-view-presentation.ts": {
+    "react(exhaustive-effect-dependencies)": 1
+  },
+  "src/renderer/lib/use-workbench-panel-command-router.ts": {
+    "react(exhaustive-effect-dependencies)": 1,
+    "react(preserve-manual-memoization)": 1,
+    "react(refs)": 1
+  },
+  "src/renderer/lib/use-workbench-panel-lifecycle.ts": {
+    "react(memo-dependencies)": 1,
+    "react(refs)": 1
+  },
+  "src/renderer/lib/use-workbench-panel-openers.ts": {
+    "react(refs)": 1
+  },
+  "src/renderer/lib/use-workbench-profile-preferences.ts": {
+    "react(refs)": 2
+  },
+  "src/renderer/lib/use-workbench-scene-commands.ts": {
+    "react(exhaustive-effect-dependencies)": 1,
+    "react(memo-dependencies)": 1,
+    "react(refs)": 2
+  },
+  "src/renderer/lib/use-workbench-session-commands.ts": {
+    "eslint(no-unused-vars)": 1,
+    "react(refs)": 1
+  },
+  "src/renderer/lib/use-workbench-thread-summary.ts": {
+    "react(set-state-in-effect)": 1
+  },
+  "src/renderer/lib/workbench-command-shortcuts.jsdom.test.ts": {
+    "eslint(no-unused-vars)": 1
+  },
+  "src/shared/block-documents/page-reference-derived-records.test.ts": {
+    "eslint(no-unused-vars)": 1
+  },
+  "src/shared/nodex-agent-tools/write-runtime.ts": {
+    "eslint(no-unused-vars)": 3
+  }
+}

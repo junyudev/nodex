@@ -2,9 +2,11 @@ import { vitePlusCommand } from "../vite-plus-command";
 import { spawnSync } from "node:child_process";
 import {
   appendFileSync,
+  copyFileSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  renameSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -22,6 +24,11 @@ function fixtureWorkspace(run: (directory: string) => void): void {
   const directory = mkdtempSync(path.join(os.tmpdir(), "nodex-semantic-contract-"));
   try {
     symlinkSync(path.join(root, "node_modules"), path.join(directory, "node_modules"), "junction");
+    copyFileSync(path.join(root, ".node-version"), path.join(directory, ".node-version"));
+    mkdirSync(path.join(directory, "scripts/ci"), { recursive: true });
+    for (const filename of ["scripts/ci/lint-warning-ratchet.ts", "scripts/vite-plus-command.ts"])
+      copyFileSync(path.join(root, filename), path.join(directory, filename));
+    writeFileSync(path.join(directory, "scripts/ci/lint-warning-baseline.json"), "{}\n");
     writeFileSync(
       path.join(directory, "package.json"),
       JSON.stringify({
@@ -29,6 +36,7 @@ function fixtureWorkspace(run: (directory: string) => void): void {
         private: true,
         type: "module",
         packageManager: "pnpm@12.15.0",
+        scripts: { "lint:baseline": "tsx scripts/ci/lint-warning-ratchet.ts --update" },
       }),
     );
     run(directory);
@@ -117,6 +125,155 @@ interface Diagnostic {
   readonly code?: string;
   readonly filename?: string;
   readonly severity: string;
+}
+
+/** Exercise the warning gate and updater through real lint output and Git moves. */
+export function verifyLintWarningRatchet(): void {
+  fixtureWorkspace((directory) => {
+    const baselinePath = path.join(directory, "scripts/ci/lint-warning-baseline.json");
+    const rule = "eslint(no-debugger)";
+    const warning = "export function warning() {\n  debugger;\n}\n";
+    const readBaseline = () =>
+      JSON.parse(readFileSync(baselinePath, "utf8")) as Record<string, Record<string, number>>;
+    const expect = (args: readonly string[], status: number, ...messages: readonly string[]) => {
+      const result = command(directory, args);
+      if (result.status === status && messages.every((message) => result.output.includes(message)))
+        return result;
+      throw new Error(`Warning ratchet contract failed for ${args.join(" ")}.\n${result.output}`);
+    };
+    const lint = ["exec", "tsx", "scripts/ci/lint-warning-ratchet.ts"];
+    mkdirSync(path.join(directory, "src"));
+    writeFileSync(path.join(directory, "src/warning.ts"), warning);
+    writeFileSync(
+      path.join(directory, "src/unused.ts"),
+      "// oxlint-disable-next-line no-debugger\nexport const answer = 42;\n",
+    );
+    writeFileSync(
+      path.join(directory, "tsconfig.json"),
+      JSON.stringify({
+        compilerOptions: { noEmit: true, skipLibCheck: true, types: [], target: "ES2022" },
+        include: ["src/**/*.ts"],
+      }),
+    );
+    writeFileSync(
+      path.join(directory, "vite.config.ts"),
+      `
+      import { defineConfig } from 'vite-plus';
+      export default defineConfig(${JSON.stringify({
+        lint: {
+          ignorePatterns: ["node_modules/**", ".cache/**", ".vite-plus/**"],
+          categories: { correctness: "off" },
+          rules: { "eslint/no-debugger": "warn", "eslint/no-unreachable": "error" },
+          options: { reportUnusedDisableDirectives: "warn" },
+        },
+        run: rootConfiguration.run,
+      })});
+    `,
+    );
+    const initial = {
+      "src/unused.ts": { "oxlint/unused-disable-directive": 1 },
+      "src/warning.ts": { [rule]: 1 },
+    };
+    writeFileSync(baselinePath, JSON.stringify(initial));
+    expect(["fmt", "--write"], 0);
+    for (const task of ["typecheck", "lint", "check:semantic", "check"])
+      expect(["run", task], 0, "2 baseline warnings, 0 new.");
+    expect([...lint, "--all"], 0, "src/warning.ts:2:3 warning", rule, "src/unused.ts:1:1 warning");
+
+    writeFileSync(path.join(directory, "src/new.ts"), warning);
+    const regression = expect(["run", "lint"], 1, "src/new.ts:2:3 warning", rule, "baseline 0, +1");
+    if (regression.output.includes("src/warning.ts:2:3 warning"))
+      throw new Error("Baseline diagnostics obscured the new warning.");
+    const before = readFileSync(baselinePath, "utf8");
+    expect(["run", "lint:baseline"], 1, "New lint warnings are forbidden.");
+    if (readFileSync(baselinePath, "utf8") !== before)
+      throw new Error("A rejected update changed the baseline.");
+    expect(["run", "lint:baseline", "--allow-baseline-growth"], 0, "WARNING:", "3 warnings.");
+    unlinkSync(path.join(directory, "src/new.ts"));
+    expect(["run", "lint:baseline"], 0, "2 warnings.");
+    if (JSON.stringify(readBaseline()) !== JSON.stringify(initial))
+      throw new Error("Lowering the baseline did not drop the fixed file.");
+
+    writeFileSync(baselinePath, JSON.stringify({ ...initial, "src/warning.ts": { [rule]: 2 } }));
+    expect(["run", "typecheck"], 1, "stale baseline 2", "vp run lint:baseline");
+    expect(["run", "lint:baseline"], 0, "2 warnings.");
+    if (readBaseline()["src/warning.ts"][rule] !== 1)
+      throw new Error("The updater did not lower a rule count.");
+    expect(["run", "typecheck"], 0, "2 baseline warnings, 0 new.");
+
+    writeFileSync(
+      path.join(directory, "src/error.ts"),
+      "export function invalid() { return; debugger; }\n",
+    );
+    const beforeError = readFileSync(baselinePath, "utf8");
+    expect(
+      [...lint, "--update", "--allow-baseline-growth"],
+      1,
+      "error eslint(no-unreachable)",
+      "help:",
+      "return; debugger;",
+    );
+    if (readFileSync(baselinePath, "utf8") !== beforeError)
+      throw new Error("Lint errors changed the baseline.");
+    unlinkSync(path.join(directory, "src/error.ts"));
+
+    // Invalidating the wrapper must invalidate a previously successful semantic task.
+    appendFileSync(
+      path.join(directory, "scripts/ci/lint-warning-ratchet.ts"),
+      '\nthrow new Error("wrapper invalidation probe");\n',
+    );
+    expect(["run", "typecheck"], 1, "wrapper invalidation probe");
+    copyFileSync(
+      path.join(root, "scripts/ci/lint-warning-ratchet.ts"),
+      path.join(directory, "scripts/ci/lint-warning-ratchet.ts"),
+    );
+    expect(["run", "typecheck"], 0, "2 baseline warnings, 0 new.");
+
+    const runGit = (args: readonly string[]) => {
+      const result = spawnSync("git", args, { cwd: directory, encoding: "utf8" });
+      if (result.status !== 0) throw new Error(`Rename fixture Git failed: ${result.stderr}`);
+    };
+    writeFileSync(path.join(directory, ".gitignore"), "node_modules/\n.cache/\n.vite-plus/\n");
+    runGit(["init", "--initial-branch=main"]);
+    runGit(["add", "."]);
+    runGit([
+      "-c",
+      "user.name=Fixture",
+      "-c",
+      "user.email=fixture@example.invalid",
+      "commit",
+      "-m",
+      "fixture",
+    ]);
+    runGit(["switch", "-c", "warning-move"]);
+    renameSync(path.join(directory, "src/warning.ts"), path.join(directory, "src/committed.ts"));
+    runGit(["add", "src"]);
+    runGit([
+      "-c",
+      "user.name=Fixture",
+      "-c",
+      "user.email=fixture@example.invalid",
+      "commit",
+      "-m",
+      "move warning",
+    ]);
+    expect(lint, 0, "2 baseline warnings, 0 new.");
+    renameSync(
+      path.join(directory, "src/committed.ts"),
+      path.join(directory, "src/moved warning.ts"),
+    );
+    expect(lint, 0, "2 baseline warnings, 0 new.");
+    runGit(["diff", "--cached", "--exit-code"]);
+    expect(["run", "lint:baseline"], 0, "2 warnings.");
+    const moved = readBaseline();
+    if (
+      moved["src/warning.ts"] ||
+      moved["src/committed.ts"] ||
+      moved["src/moved warning.ts"]?.[rule] !== 1
+    )
+      throw new Error("Git moves did not carry the warning allowance.");
+    runGit(["diff", "--cached", "--exit-code"]);
+  });
 }
 
 /** Root checks own this checkout; nested worktrees keep independent lint and format policies. */
@@ -440,6 +597,9 @@ export function verifyTypedSemanticPolicy(): void {
       path.join(sourceDirectory, "requirements-error.ts"),
       'import * as Effect from "effect/Effect";\nexport const answer = Effect.succeed(1);\n',
     );
+    const baseline = command(directory, ["run", "lint:baseline", "--allow-baseline-growth"]);
+    if (baseline.status !== 0)
+      throw new Error("Could not baseline advisory fixtures.\n" + baseline.output);
     for (const task of ["typecheck", "lint", "check:semantic"]) {
       const valid = command(directory, ["run", task]);
       if (valid.status !== 0)
@@ -487,17 +647,24 @@ export function verifyTypedSemanticPolicy(): void {
       "export interface Contract { value: number }\n",
     );
     const configuration = JSON.parse(readFileSync(path.join(directory, "tsconfig.json"), "utf8"));
-    configuration.compilerOptions.strictNullChecks = false;
+    // Disabling strictNullChecks would also change the typed lint warning inventory.
+    configuration.compilerOptions.noUncheckedIndexedAccess = false;
     writeFileSync(path.join(directory, "tsconfig.json"), JSON.stringify(configuration));
     writeFileSync(
-      path.join(sourceDirectory, "nullable.ts"),
-      "export const value: number = null;\n",
+      path.join(sourceDirectory, "indexed-access.ts"),
+      "export const values: Record<string, number> = {};\nexport const value: number = values.answer;\n",
     );
-    if (command(directory, ["run", "typecheck"]).status !== 0)
-      throw new Error("The permissive config fixture failed.");
-    configuration.compilerOptions.strictNullChecks = true;
+    const permissive = command(directory, ["run", "typecheck"]);
+    if (permissive.status !== 0)
+      throw new Error("The permissive config fixture failed.\n" + permissive.output);
+    configuration.compilerOptions.noUncheckedIndexedAccess = true;
     writeFileSync(path.join(directory, "tsconfig.json"), JSON.stringify(configuration));
-    if (command(directory, ["run", "typecheck"]).status === 0)
-      throw new Error("A tsconfig edit reused stale success.");
+    const strict = command(directory, ["run", "typecheck"]);
+    if (
+      strict.status === 0 ||
+      !strict.output.includes("indexed-access.ts") ||
+      !strict.output.includes("TS2322")
+    )
+      throw new Error("A tsconfig edit lost its indexed-access diagnostic.\n" + strict.output);
   });
 }

@@ -762,7 +762,7 @@ explicit full source gate, including Rust, stress, browser, and static contracts
 It is not required after every local edit.
 
 Vite+ is the repository engineering control plane. `check:semantic`, `typecheck`,
-and `lint` all execute `tsc-rs --build --noEmit && vp lint`. tsc-rs owns TypeScript
+and `lint` all run tsc-rs followed by the lint warning ratchet. tsc-rs owns TypeScript
 and Effect diagnostics; Oxlint owns type-aware lint. They share the same task-result cache. `check` composes
 `vp fmt --check` with that same semantic command. CI uses the same entrypoint and
 policy. To measure actual analysis, use `vp run --no-cache check:semantic`; the
@@ -774,10 +774,12 @@ upgrading either tool.
 second compiler or an Effect pass to Oxlint. `tsconfig.effect.json` owns the
 Effect rule severities, control-plane scope, and platform exceptions for both
 the compiler and the editor.
-`correctness`, `suspicious`, and `perf` diagnostics are advisory warnings: keep
-them visible and improve nearby code when useful, but do not treat the warning
-count as an acceptance condition. Type errors, lint errors, and precise
-project-owned contract errors still block the command. Unused suppression comments are advisory in every semantic entrypoint.
+`correctness`, `suspicious`, and `perf` retain warning severity. The semantic gate
+ratchets per-file/rule counts, including unused suppression comments, against
+`scripts/ci/lint-warning-baseline.json`. New warnings fail; fixed warnings require
+`vp run lint:baseline`. Errors always fail and print in full. See
+[Lint Governance](LINTING.md) for inline exceptions, rename handling, full
+diagnostics, and the explicit new-rule baseline switch.
 `vp run check`, `vp run check:semantic`, `vp run typecheck`, `vp run lint`, and `vp run fmt:check` are
 deterministic root tasks with automatic input tracking and no restorable output.
 They cache successful local validation without enabling cache replay for the

@@ -1,5 +1,6 @@
 import { vitePlusCommand } from "../vite-plus-command";
 import {
+  verifyLintWarningRatchet,
   verifySemanticTaskCache,
   verifyTypedSemanticPolicy,
   verifyWorktreeToolingIsolation,
@@ -288,8 +289,9 @@ verifyValidFixtures(["scripts/fixtures/tooling/tailwind-valid.tsx"], tailwindEnv
 verifyWorkspaceTaskGraph();
 verifyWorktreeToolingIsolation();
 verifySemanticTaskCache();
+verifyLintWarningRatchet();
 verifyTypedSemanticPolicy();
 
 console.log(
-  "Tooling contracts verified: package scripts, worktree isolation, typed diagnostic policy, shared task cache, and the Vite+ workspace task graph.",
+  "Tooling contracts verified: package scripts, worktree isolation, typed diagnostic policy, lint warning ratchet, shared task cache, and the Vite+ workspace task graph.",
 );

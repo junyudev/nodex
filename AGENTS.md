@@ -209,6 +209,7 @@ Treat `CHANGELOG.md` as a required deliverable only for **release-note-worthy** 
   - Run the relevant targeted tests for every behavior change.
   - For TypeScript source or contract changes, normally run `vp run typecheck` once the edit set is stable.
   - `typecheck`, `lint`, and `check:semantic` are the same full semantic gate and share cache results; one successful alias covers types and lint. For a targeted lint investigation, use `vp lint <paths>`. Use `vp run --no-cache check:semantic` to force real analysis, with run options before the task name.
+  - Lint warnings beyond the per-file/rule baseline fail; after fixing warnings, run `vp run lint:baseline`. Use `oxlint-disable-next-line <rule> -- <reason>` for deliberate exceptions; never raise the baseline to admit new warnings.
   - Run `vp run build` when build configuration, application entrypoints, packaging, bundling, or a reported build/startup failure is involved.
   - Before pushing to protected `main` without a pull request, run `vp run verify:static`. Main CI's static repository contracts (version-surface, workflow, ownership and dependency audits) are not covered by `typecheck` or `check`, and a branch pushed without a pull request never runs them.
   - Run `vp run test` for broad cross-cutting refactors, release validation, or changes whose impact cannot be bounded by targeted suites. It is not required for every isolated code change.

@@ -201,9 +201,9 @@ export default defineConfig({
       "unicorn/prefer-array-find": "off",
       "unicorn/prefer-set-has": "off",
 
-      // Only stable correctness contracts and app-owned invariants block the gate.
-      // Broad category diagnostics remain advisory so agents can improve nearby code
-      // without turning historical warning volume into unrelated cleanup work.
+      // Stable correctness contracts and app-owned invariants are errors. Category
+      // warnings retain their severity; the semantic gate ratchets per-file/rule
+      // counts so existing warnings can be fixed without admitting new ones.
       "eslint/no-extra-boolean-cast": "error",
       "eslint/preserve-caught-error": "error",
       "eslint/no-unreachable": "error",
@@ -371,11 +371,14 @@ export default defineConfig({
     },
     tasks: {
       check: {
-        command: "vp fmt --check && tsc-rs --build --noEmit && vp lint",
+        command:
+          "vp fmt --check && tsc-rs --build --noEmit && tsx scripts/ci/lint-warning-ratchet.ts",
         cache: {
           env: ["ESLINT_BETTER_TAILWIND", "NODEX_TOOLING_FIXTURE_MODE"],
           input: [
             { auto: true },
+            "scripts/ci/lint-warning-ratchet.ts",
+            "scripts/ci/lint-warning-baseline.json",
             "package.json",
             "pnpm-lock.yaml",
             "pnpm-workspace.yaml",
@@ -406,11 +409,13 @@ export default defineConfig({
         },
       },
       lint: {
-        command: "tsc-rs --build --noEmit && vp lint",
+        command: "tsc-rs --build --noEmit && tsx scripts/ci/lint-warning-ratchet.ts",
         cache: {
           env: ["ESLINT_BETTER_TAILWIND", "NODEX_TOOLING_FIXTURE_MODE"],
           input: [
             { auto: true },
+            "scripts/ci/lint-warning-ratchet.ts",
+            "scripts/ci/lint-warning-baseline.json",
             "package.json",
             "pnpm-lock.yaml",
             "pnpm-workspace.yaml",
@@ -424,11 +429,13 @@ export default defineConfig({
         },
       },
       "check:semantic": {
-        command: "tsc-rs --build --noEmit && vp lint",
+        command: "tsc-rs --build --noEmit && tsx scripts/ci/lint-warning-ratchet.ts",
         cache: {
           env: ["ESLINT_BETTER_TAILWIND", "NODEX_TOOLING_FIXTURE_MODE"],
           input: [
             { auto: true },
+            "scripts/ci/lint-warning-ratchet.ts",
+            "scripts/ci/lint-warning-baseline.json",
             "package.json",
             "pnpm-lock.yaml",
             "pnpm-workspace.yaml",
@@ -442,11 +449,13 @@ export default defineConfig({
         },
       },
       typecheck: {
-        command: "tsc-rs --build --noEmit && vp lint",
+        command: "tsc-rs --build --noEmit && tsx scripts/ci/lint-warning-ratchet.ts",
         cache: {
           env: ["ESLINT_BETTER_TAILWIND", "NODEX_TOOLING_FIXTURE_MODE"],
           input: [
             { auto: true },
+            "scripts/ci/lint-warning-ratchet.ts",
+            "scripts/ci/lint-warning-baseline.json",
             "package.json",
             "pnpm-lock.yaml",
             "pnpm-workspace.yaml",
