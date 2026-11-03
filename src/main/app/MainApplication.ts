@@ -15,6 +15,8 @@ export class MainApplication extends Context.Service<
     ) => Effect.Effect<void, MainApplicationError>;
     /** Finish renderer persistence while its application services are still admitted. */
     readonly prepareShutdown: Effect.Effect<void>;
+    /** Optional OS handoff, invoked only after the entire application Scope has closed. */
+    readonly completeShutdown?: Effect.Effect<void>;
     readonly readiness: "ready" | "startup-failed";
   }
 >()("nodex/main/app/MainApplication") {}

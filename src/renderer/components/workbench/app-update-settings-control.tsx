@@ -94,7 +94,7 @@ const FALLBACK_STATUS: AppUpdateStatus = {
   transferredBytes: null,
   totalBytes: null,
   checkedAt: null,
-  message: "App updates are only available in packaged macOS builds.",
+  message: "App updates are only available in packaged builds.",
   channel: "stable",
   buildDefaultChannel: "stable",
   channelChangeAllowed: false,

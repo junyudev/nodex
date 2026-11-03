@@ -1,4 +1,4 @@
-import { execFile, execFileSync, type ChildProcess } from "node:child_process";
+import { execFile, execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
 import {
@@ -14,6 +14,7 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { _electron, type ElectronApplication } from "playwright";
+import { windowsUpdateInstallerCommand } from "../../src/main/windows-update-handoff";
 import { desktopBuildTarget } from "../desktop-build-target";
 import { terminateWindowsProcessTree } from "../../src/main/process-tree";
 import { verifyWindowsArchitectureClosure } from "../windows-pe.mjs";
@@ -97,6 +98,32 @@ ConvertTo-Json -InputObject $addresses -Compress
     throw new Error("Installed Nodex listeners must all use loopback");
   return addresses as string[];
 };
+const installationProcesses = (
+  installation: string,
+): { pid: number; commandLine: string; createdAt: string }[] => {
+  const command = `
+$root = $env:NODEX_PROBE_INSTALL_ROOT.TrimEnd('\\') + '\\'
+$images = @(Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($root, [StringComparison]::OrdinalIgnoreCase) } | ForEach-Object { @{ pid = [int]$_.ProcessId; commandLine = [string]$_.CommandLine; createdAt = $_.CreationDate.ToUniversalTime().Ticks.ToString() } })
+ConvertTo-Json -InputObject $images -Compress
+`;
+  return JSON.parse(
+    execFileSync(
+      "powershell.exe",
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-EncodedCommand",
+        Buffer.from(command, "utf16le").toString("base64"),
+      ],
+      {
+        env: { ...process.env, NODEX_PROBE_INSTALL_ROOT: installation },
+        encoding: "utf8",
+        timeout: 30_000,
+      },
+    ),
+  ) as { pid: number; commandLine: string; createdAt: string }[];
+};
+
 const queryProtocol = (): string | null => {
   try {
     return execFileSync("reg.exe", ["query", protocolKey, "/s"], {
@@ -161,6 +188,7 @@ async function main(): Promise<void> {
   const desktopCloses: Promise<void>[] = [];
   let normalQuitEvidence: unknown;
   let upgradeEvidence: unknown;
+  let updateHandoffEvidence: unknown;
   let detachedCoreBeforeUninstall: number | undefined;
   let output = "";
   let evidence: unknown;
@@ -212,6 +240,11 @@ exit $uninstaller.ExitCode
         );
         if (detachedCoreBeforeUninstall !== undefined)
           assertProcessStopped(detachedCoreBeforeUninstall);
+        // Windows can retain an empty delete-pending directory briefly after NSIS
+        // exits. Require filesystem convergence within the original uninstall budget.
+        while (existsSync(installRoot) && Date.now() - uninstallStarted < 30_000) {
+          await delay(50);
+        }
         const shortcuts = [
           join(appData, "Microsoft/Windows/Start Menu/Programs/Nodex.lnk"),
           join(process.env.USERPROFILE!, "Desktop/Nodex.lnk"),
@@ -284,7 +317,7 @@ exit $uninstaller.ExitCode
         writeFileSync(join(artifacts, name), readFileSync(join(logRoot, name)));
     writeFileSync(
       join(artifacts, "result.json"),
-      `${JSON.stringify({ evidence, normalQuit: normalQuitEvidence, upgrade: upgradeEvidence, uninstall: uninstallEvidence, failures: failures.map(failureDetails) }, null, 2)}\n`,
+      `${JSON.stringify({ evidence, normalQuit: normalQuitEvidence, upgrade: upgradeEvidence, updateHandoff: updateHandoffEvidence, uninstall: uninstallEvidence, failures: failures.map(failureDetails) }, null, 2)}\n`,
     );
   };
   try {
@@ -332,26 +365,27 @@ exit $uninstaller.ExitCode
       protocolRegistered: true,
       coreSha256: expectedCoreSha256,
     };
+    const installedEnvironment = () => ({
+      ...launchEnvironment,
+      NODEX_LOG_CONSOLE: "true",
+      NODEX_LOG_FILE: "true",
+      NODEX_LOG_LEVEL: "debug",
+      NODEX_HOME: profile,
+      CODEX_HOME: join(profile, "agent"),
+      NODEX_INITIAL_PROJECTS_DIR: join(root, "workspace"),
+      NODEX_SENTRY_ENABLED: "false",
+      NODEX_TELEMETRY_ENABLED: "false",
+      NODEX_CORE_IDLE_TIMEOUT_MS: "600000",
+      [ISOLATED_RUN_ID_ENV]: runId,
+      [AGENT_RUNTIME_STARTUP_PROBE_ENV]: "1",
+    });
     const launchInstalled = async (): Promise<void> => {
       application = await _electron.launch({
         executablePath: executable,
         args: [`--user-data-dir=${join(root, "electron-user-data")}`],
         timeout: 60_000,
         cwd: root,
-        env: {
-          ...launchEnvironment,
-          NODEX_LOG_CONSOLE: "true",
-          NODEX_LOG_FILE: "true",
-          NODEX_LOG_LEVEL: "debug",
-          NODEX_HOME: profile,
-          CODEX_HOME: join(profile, "agent"),
-          NODEX_INITIAL_PROJECTS_DIR: join(root, "workspace"),
-          NODEX_SENTRY_ENABLED: "false",
-          NODEX_TELEMETRY_ENABLED: "false",
-          NODEX_CORE_IDLE_TIMEOUT_MS: "600000",
-          [ISOLATED_RUN_ID_ENV]: runId,
-          [AGENT_RUNTIME_STARTUP_PROBE_ENV]: "1",
-        },
+        env: installedEnvironment(),
       });
       child = application.process();
       // Playwright wraps Electron in cmd.exe on Windows; claims identify Main.
@@ -512,6 +546,91 @@ exit $uninstaller.ExitCode
     };
     renewHostClaim();
     await launchInstalled();
+    // Exercise the exact updater command over a running per-user installation.
+    // A fresh supervisor claim lets NSIS's relaunch prove a new host generation.
+    const beforeUpdate = readCoreRuntimeConnection(profile).descriptor;
+    const oldProcesses = installationProcesses(installRoot);
+    renewHostClaim();
+    const command = windowsUpdateInstallerCommand(resolve("dist", installers[0]!), true);
+    const updateStarted = Date.now();
+    const updaterInstaller = spawn(command.executable, command.args, {
+      ...command.options,
+      env: installedEnvironment(),
+    });
+    const [installerExitCode] = await once(updaterInstaller, "exit", {
+      signal: AbortSignal.timeout(180_000),
+    });
+    if (installerExitCode !== 0)
+      throw new Error(`Silent update installer failed (${installerExitCode})`);
+    const updateDeadline = Date.now() + 60_000;
+    while (true) {
+      const claim = readIsolatedRunClaim(profile);
+      const agentFile = join(profile, "run", AGENT_RUNTIME_STARTUP_EVIDENCE_FILE);
+      if (claim?.phase === "ready" && claim.runId === runId && existsSync(agentFile)) {
+        const agent = parseAgentRuntimeStartupEvidence(
+          JSON.parse(readFileSync(agentFile, "utf8")),
+          { runId, hostPid: claim.hostPid },
+        );
+        if (agent) {
+          const afterUpdate = readCoreRuntimeConnection(profile).descriptor;
+          const client = await CoreClient.connect({
+            nodexHome: profile,
+            clientKind: "native_cli",
+            buildId: "windows-update-handoff-probe",
+            requestTimeoutMs: 10_000,
+          });
+          await client.health();
+          if (
+            afterUpdate.profile_id !== beforeUpdate.profile_id ||
+            afterUpdate.artifact.sha256 !== expectedCoreSha256 ||
+            client.handshake.generation.profile_id !== beforeUpdate.profile_id
+          )
+            throw new Error("Update changed the Profile or Core artifact identity");
+          if (afterUpdate.start_nonce === beforeUpdate.start_nonce)
+            throw new Error("Update did not restart Core");
+          const processes = installationProcesses(installRoot);
+          if (
+            oldProcesses.some((previous) =>
+              processes.some(
+                (current) =>
+                  current.pid === previous.pid && current.createdAt === previous.createdAt,
+              ),
+            )
+          ) {
+            throw new Error("Silent update left an old installation process running");
+          }
+          const hosts = processes.filter(
+            (process) =>
+              /Nodex\.exe/i.test(process.commandLine) &&
+              !/--type=|--crashpad-handler/i.test(process.commandLine),
+          );
+          if (hosts.length !== 1 || hosts[0]!.pid !== claim.hostPid)
+            throw new Error("Update did not relaunch exactly one installed Desktop");
+          if (!isProfilePreserved() || queryProtocol() !== registration)
+            throw new Error("Update changed Profile content or protocol registration");
+          desktopPid = claim.hostPid;
+          updateHandoffEvidence = {
+            completed: true,
+            args: command.args,
+            elapsedMs: Date.now() - updateStarted,
+            oldProcessPids: oldProcesses.map((process) => process.pid),
+            hostPid: claim.hostPid,
+            corePid: afterUpdate.pid,
+            profileId: afterUpdate.profile_id,
+            coreSha256: afterUpdate.artifact.sha256,
+            profilePreserved: true,
+            installedHostCount: hosts.length,
+            agent,
+          };
+          break;
+        }
+      }
+      if (Date.now() >= updateDeadline)
+        throw new Error(
+          "Silent update did not relaunch the installed app with Core and Agent readiness",
+        );
+      await delay(100);
+    }
     detachedCoreBeforeUninstall = await forceDesktopLeavingCore();
   } catch (error) {
     failures.push(error);

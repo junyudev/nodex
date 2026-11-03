@@ -218,6 +218,7 @@ export const live: Layer.Layer<
         const browser = yield* BrowserApplication;
         const executionHosts = yield* ExecutionHostRuntime;
         const appUpdates = yield* AppUpdateRuntime;
+        const shutdown = yield* MainShutdown;
         const applicationWindows = yield* ApplicationWindowRuntime;
         const deepLinks = yield* DeepLinkRuntime;
         const sidebarSync = yield* CodexSidebarSyncRuntime;
@@ -357,6 +358,7 @@ export const live: Layer.Layer<
         });
         yield* appUpdates.markApplicationReady;
 
+        let finishUpdate: (() => void | Promise<void>) | null = null;
         const application = MainApplication.of({
           activate: Effect.sync(applicationWindows.focusLast),
           handleBootstrapEvent: (event) => {
@@ -382,7 +384,20 @@ export const live: Layer.Layer<
               Effect.asVoid,
             );
           },
-          prepareShutdown: applicationWindows.prepareQuit.pipe(Effect.asVoid),
+          prepareShutdown: Effect.gen(function* () {
+            yield* applicationWindows.prepareQuit;
+            const reason = yield* shutdown.awaitRequest;
+            if (reason._tag === "UserQuit" || reason._tag === "UpdateInstall") {
+              finishUpdate = yield* appUpdates.prepareQuit;
+            }
+          }),
+          completeShutdown: Effect.promise(async () => {
+            try {
+              await finishUpdate?.();
+            } catch (error) {
+              applicationLogger.error("Could not install app update", { error });
+            }
+          }),
           readiness: "ready",
         });
         yield* Scope.addFinalizer(

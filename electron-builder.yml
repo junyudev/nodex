@@ -1,5 +1,6 @@
 appId: app.jyu.nodex
 productName: Nodex
+beforePack: scripts/prepare-packaged-windows-updates.mjs
 afterPack: scripts/restore-packaged-runtime-closure.mjs
 directories:
   buildResources: resources
@@ -169,6 +170,8 @@ win:
       arch: [x64, arm64]
   artifactName: "${productName}-${version}-win-${arch}-setup.${ext}"
   extraResources:
+    - from: .generated/windows-updater/${arch}/app-update.json
+      to: native/app-update.json
     - from: .generated/codex-runtime/bin
       to: bin
       filter:

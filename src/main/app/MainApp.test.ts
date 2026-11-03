@@ -69,6 +69,8 @@ it.effect("starts, replays bootstrap events, closes runtime, then quits", () =>
       handleBootstrapEvent: (event) =>
         Effect.sync(() => events.push(event.type === "open-url" ? `url:${event.url}` : "argv")),
       release: Effect.sync(() => events.push("release")),
+      prepareShutdown: Effect.sync(() => events.push("prepare-update")),
+      completeShutdown: Effect.sync(() => events.push("handoff-update")),
     });
 
     const fiber = yield* program({
@@ -89,7 +91,9 @@ it.effect("starts, replays bootstrap events, closes runtime, then quits", () =>
       "start",
       "url:nodex://pages/one",
       "argv",
+      "prepare-update",
       "release",
+      "handoff-update",
       "quit",
     ]);
     assert.isTrue(Exit.isSuccess(yield* shutdown.awaitRuntimeClosed));

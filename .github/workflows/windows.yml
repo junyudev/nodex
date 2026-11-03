@@ -211,7 +211,7 @@ jobs:
       - name: Verify installer process and listener boundaries
         if: inputs.installer_run_id != ''
         run: vp test run --config vitest.node.config.ts scripts/windows-installation-processes.test.ts
-      - name: Install, probe Core and Agent startup, and uninstall
+      - name: Install, verify startup and silent update relaunch, and uninstall
         run: vp exec tsx scripts/ci/probe-windows-installer.ts --arch ${{ matrix.arch }} --artifacts .generated/windows-probe
       - name: Upload startup diagnostics
         if: always()

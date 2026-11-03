@@ -8,7 +8,7 @@ test.each(["x64", "arm64"])("Windows %s exposes only supported native integratio
   const capabilities = hostCapabilities("win32", arch);
   expect(capabilities).toEqual({
     backgroundService: false,
-    autoUpdate: false,
+    autoUpdate: true,
     browserControl: false,
     browserProfileImport: false,
     computerControl: false,
@@ -29,3 +29,7 @@ it.effect("capabilities follow the supplied bootstrap snapshot", () =>
     expect(hostCapabilities("darwin", "x64").deviceCheck).toBe(false);
   }).pipe(Effect.provide(testLayer({ platform: "win32", arch: "arm64" }))),
 );
+
+test("unsupported Windows architectures cannot acquire app updates", () => {
+  expect(hostCapabilities("win32", "ia32").autoUpdate).toBe(false);
+});

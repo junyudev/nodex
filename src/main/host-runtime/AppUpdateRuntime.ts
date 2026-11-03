@@ -1,5 +1,6 @@
 import { hostCapabilities } from "../../shared/host-capabilities";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
+import { createPackagedWindowsAppUpdaterPlatform } from "../windows-app-updater";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -18,7 +19,7 @@ import { ScopedCallbackRuntime } from "../app/ScopedCallbackRuntime";
 import { safeBroadcastToWindows } from "../ipc-safe-send";
 import { getLogger } from "../logging/logger";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
-import type { MacAppUpdaterEvent, MacAppUpdaterPlatform } from "../mac-app-updater";
+import type { AppUpdaterEvent, AppUpdaterPlatform } from "../app-updater";
 import { ElectronApp } from "../platform/electron/ElectronApp";
 import { ElectronWindowHost } from "../platform/electron/ElectronWindowHost";
 import { createPackagedMacAppUpdaterPlatform } from "../sparkle-mac-app-updater";
@@ -42,6 +43,7 @@ export class AppUpdateRuntime extends Context.Service<
     readonly currentSettings: Effect.Effect<AppUpdateSettings>;
     readonly currentStatus: Effect.Effect<AppUpdateStatus>;
     readonly install: Effect.Effect<boolean, AppUpdateRuntimeError>;
+    readonly prepareQuit: Effect.Effect<(() => void | Promise<void>) | null>;
     readonly markApplicationReady: Effect.Effect<void>;
     readonly startAutomaticChecks: Effect.Effect<void, AppUpdateRuntimeError>;
     readonly updateSettings: (
@@ -51,11 +53,18 @@ export class AppUpdateRuntime extends Context.Service<
 >()("nodex/main/host-runtime/AppUpdateRuntime") {}
 
 export interface AppUpdateRuntimeOptions {
-  readonly createUpdaterPlatform?: (config: MainConfigValue) => MacAppUpdaterPlatform | null;
+  readonly createUpdaterPlatform?: (config: MainConfigValue) => AppUpdaterPlatform | null;
 }
 
-const createUpdaterPlatform = (config: MainConfigValue): MacAppUpdaterPlatform | null => {
+const createUpdaterPlatform = (config: MainConfigValue): AppUpdaterPlatform | null => {
   if (!config.isPackaged || !hostCapabilities(config.platform, config.arch).autoUpdate) return null;
+  if (config.platform === "win32" && (config.arch === "x64" || config.arch === "arm64")) {
+    return createPackagedWindowsAppUpdaterPlatform({
+      resourcesPath: config.resourcesPath,
+      architecture: config.arch,
+      directory: join(config.nodexHome, "updates", `windows-${config.arch}`),
+    });
+  }
   return createPackagedMacAppUpdaterPlatform({
     applicationBundlePath: resolve(config.resourcesPath, "..", ".."),
     architecture: "arm64",
@@ -102,6 +111,7 @@ export const layer = (
       const state = yield* Ref.make<AppUpdateRuntimeState>(
         initialAppUpdateState({
           buildDefaultChannel,
+          architecture: config.arch,
           currentVersion: config.appVersion,
           isInApplicationsFolder,
           isPackaged: config.isPackaged,
@@ -141,7 +151,7 @@ export const layer = (
       });
 
       const handleEvent = Effect.fn("AppUpdateRuntime.handleEvent")(function* (
-        event: MacAppUpdaterEvent,
+        event: AppUpdaterEvent,
       ) {
         yield* Ref.update(state, (current) => ({
           ...current,
@@ -160,7 +170,7 @@ export const layer = (
         const checkedAt = yield* checkedNow;
         yield* publishStatus(reduceAppUpdateStatus(current.status, event, checkedAt));
       });
-      const admitEvent = (event: MacAppUpdaterEvent): void => {
+      const admitEvent = (event: AppUpdaterEvent): void => {
         callbacks.fork(lock.withPermits(1)(handleEvent(event)));
       };
 
@@ -173,7 +183,13 @@ export const layer = (
               updaterPlatform.acquire(current.settings.channel, admitEvent),
             ),
             (lease) =>
-              fromUpdater("dispose-updater", lease.release).pipe(
+              Effect.tryPromise({
+                try: async () => {
+                  await lease.release();
+                },
+                catch: (cause) =>
+                  new AppUpdateRuntimeError({ operation: "dispose-updater", cause }),
+              }).pipe(
                 Effect.catch((error) =>
                   Effect.logWarning("Could not release the app updater").pipe(
                     Effect.annotateLogs({ error: String(error.cause) }),
@@ -338,6 +354,7 @@ export const layer = (
         currentSettings: Ref.get(state).pipe(Effect.map((current) => current.settings)),
         currentStatus: Ref.get(state).pipe(Effect.map((current) => current.status)),
         install,
+        prepareQuit: Effect.sync(() => updater?.prepareQuit?.() ?? null),
         markApplicationReady: Ref.update(state, (current) => ({
           ...current,
           applicationReady: true,

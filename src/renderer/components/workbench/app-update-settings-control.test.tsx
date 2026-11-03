@@ -4,6 +4,8 @@ import { render, settleAsyncRender, textContent } from "../../test/dom";
 
 beforeEach(() => {
   vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+  mockState.invokeCalls.length = 0;
+  mockState.subscribeCallback = null;
 });
 
 const mockState = vi.hoisted(() => ({
@@ -11,7 +13,7 @@ const mockState = vi.hoisted(() => ({
   subscribeCallback: null as ((status: import("../../lib/types").AppUpdateStatus) => void) | null,
 }));
 
-vi.mock("./app-update-settings-control-deps", async (importOriginal) => {
+vi.mock("./app-update-settings-control-deps", () => {
   const invoke = async (...args: unknown[]) => {
     mockState.invokeCalls.push(args);
     const channel = args[0];
@@ -68,7 +70,6 @@ vi.mock("./app-update-settings-control-deps", async (importOriginal) => {
     }
   };
   return {
-    ...(await importOriginal<typeof import("./app-update-settings-control-deps")>()),
     readAppUpdateSettings: () => invoke("settings:app-updates:get"),
     readAppUpdateStatus: () => invoke("app:update:status"),
     updateAppUpdateSettings: (input: unknown) => invoke("settings:app-updates:update", input),
@@ -87,9 +88,6 @@ vi.mock("./app-update-settings-control-deps", async (importOriginal) => {
 
 describe("AppUpdateSettingRows", () => {
   test("loads settings, reacts to update events, and triggers actions", async () => {
-    mockState.invokeCalls.length = 0;
-    mockState.subscribeCallback = null;
-
     const { AppUpdateSettingRows } = await import("./app-update-settings-control");
     const view = render(<AppUpdateSettingRows open={true} />);
 
@@ -159,7 +157,7 @@ describe("AppUpdateSettingRows", () => {
   });
 });
 
-test("Windows keeps the version without exposing unsupported update diagnostics or controls", async () => {
+test("Windows uses the shared update actions and preferences", async () => {
   const root = document.documentElement;
   const previousOs = root.dataset.codexOs;
   root.dataset.codexOs = "win32";
@@ -167,9 +165,15 @@ test("Windows keeps the version without exposing unsupported update diagnostics 
     const { AppUpdateSettingRows } = await import("./app-update-settings-control");
     const view = render(<AppUpdateSettingRows open />);
     await waitFor(() => expect(view.getByText("Nodex 0.1.5")).toBeTruthy());
-    expect(view.queryByRole("button", { name: "Check now" })).toBeNull();
-    expect(view.queryByRole("switch")).toBeNull();
-    expect(view.queryByText("Automatic background checks are ready.")).toBeNull();
+    const check = await view.findByRole("button", { name: "Check now" });
+    expect(view.getByRole("switch", { name: "Check for updates automatically" })).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(check);
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect(mockState.invokeCalls.some((entry) => entry[0] === "app:update:check")).toBe(true),
+    );
     view.unmount();
   } finally {
     if (previousOs === undefined) delete root.dataset.codexOs;

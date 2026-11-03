@@ -529,7 +529,14 @@ export const live = (
           );
           appTemplate.push({
             label: "Help",
-            submenu: [{ role: "about" }],
+            submenu: [
+              {
+                label: "Check for Updates…",
+                click: () => fork("check-for-updates", options.checkForUpdates),
+              },
+              { type: "separator" },
+              { role: "about" },
+            ],
           });
         }
         snapshots.clear();

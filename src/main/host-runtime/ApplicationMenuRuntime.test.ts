@@ -337,6 +337,11 @@ it.effect("routes renderer menu commands to their requesting window and focused 
     );
     const runtime = Context.get(context, ApplicationMenuRuntime);
     const snapshot = yield* runtime.snapshot(1);
+    const help = snapshot.menus.find((menu) => menu.label === "Help")!;
+    const update = help.items.find(
+      (item) => item.type !== "separator" && item.label === "Check for Updates…",
+    )!;
+    assert.isTrue(yield* runtime.invoke(1, update.id));
     assert.deepEqual(
       snapshot.menus.map((menu) => menu.label),
       ["File", "Edit", "View", "Help"],

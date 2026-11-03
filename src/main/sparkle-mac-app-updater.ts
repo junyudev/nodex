@@ -1,13 +1,14 @@
+import { APP_UPDATE_PUBLIC_KEY } from "./app-update-trust";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import type { AppUpdateChannel, MacAppUpdaterPlatform } from "./mac-app-updater";
+import type { AppUpdateChannel, AppUpdaterPlatform } from "./app-updater";
 import { loadSparkleNativeBinding, parseSparkleNativeEvent } from "./sparkle-native-binding";
 
 type RuntimeArchitecture = "arm64";
 
 const SPARKLE_ARCHIVE_SHA256 = "ce89daf967db1e1893ed3ebd67575ed82d3902563e3191ca92aaec9164fbdef9";
-const SPARKLE_PUBLIC_KEY = "YNySLZ74gjVAOpEdMo9OOEPvuTEMZf8fMnI+oQD7Ifs=";
+const SPARKLE_PUBLIC_KEY = APP_UPDATE_PUBLIC_KEY;
 const SPARKLE_VERSION = "2.9.4";
 
 interface SparkleRuntimeConfig {
@@ -96,7 +97,7 @@ export function readSparkleRuntimeConfig(resourcesPath: string): SparkleRuntimeC
 
 export function createPackagedMacAppUpdaterPlatform(
   options: SparkleMacAppUpdaterOptions,
-): MacAppUpdaterPlatform | null {
+): AppUpdaterPlatform | null {
   const config = readSparkleRuntimeConfig(options.resourcesPath);
   if (config.architecture !== options.architecture) {
     throw new Error("Packaged Sparkle architecture does not match Electron.");
