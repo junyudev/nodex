@@ -1,0 +1,24 @@
+docs/ARCHITECTURE.md
+  s_39af2826685004::t_5c085b46bd0aa7 932
+  s_39af2826685004::t_08a7248eb4d1d7 202,916-931
+docs/product-specs/coordinator-behavior.md
+  s_39af2826685004::t_4e1fa2e18421a8 1-164
+docs/product-specs/index.md
+  s_39af2826685004::t_3bec6b5cabc2a3 14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1305c5dc631916360cd1931cf58af727900aa6c2",
+  "prompts": {},
+  "sessions": {
+    "s_39af2826685004": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d6e56d2e-aae2-44a9-9afb-e48fc0c1ee5c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
