@@ -48,17 +48,28 @@ Use Windows 11 Pro or Enterprise for arm64 in a hypervisor with snapshot support
 - Create a **standard (non-administrator)** account whose name contains a space and
   non-ASCII characters, for example `测试 用户`. Keep UAC and Defender real-time
   protection at their defaults.
+  Never add a Defender exclusion: scanning makes installation several times slower,
+  which is what users experience, so the installed file count is a real cost.
 - Install a CJK input method, set display scaling to 150% or 175%, and add a second
   virtual display.
 - Use a PC keyboard layout in the guest; host modifier remapping makes shortcut
   results unreliable.
 - Keep the clean snapshot free of Visual C++ Redistributables and development tools.
+  The build toolchain installs the Visual C++ runtime system-wide, which hides a missing
+  app-local DLL from every account; prove first launch from the clean snapshot.
 - Keep snapshots for a clean system, an installed toolchain, and an installed
   previous Nodex build.
 - Clone the repository onto the guest's NTFS volume. Never build or run from a host
   shared folder: its case sensitivity, locking, links, and change notifications differ
   from NTFS.
-- Enable the OpenSSH server so host tooling can run commands in the guest.
+- Turn off the hypervisor's user-folder sharing. It redirects the guest's Documents,
+  Desktop, and Downloads to the host, so Projects created at their default location
+  silently land on a host share.
+- Enable the OpenSSH server so host tooling can run commands in the guest, and keep the
+  guest network on the Private firewall profile; a feature update can reset it to
+  Public and block SSH. SSH commands run outside the signed-in desktop, so start Nodex
+  through a scheduled task with an interactive logon and reach its renderer over a
+  loopback debugging port forwarded through SSH.
 - Download installers through a browser inside the guest so they carry the
   internet zone mark that SmartScreen evaluates.
 
