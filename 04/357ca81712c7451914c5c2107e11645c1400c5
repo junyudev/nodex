@@ -1,0 +1,116 @@
+src/main/windows-app-updater.test.ts
+  s_fe237c1ed6d99b::t_33faef5ff7db3a 1-376
+src/main/ipc/handlers/AppUpdateIpc.node.test.ts
+  s_fe237c1ed6d99b::t_edcc199b2de9ba 34
+src/main/windows-update-download.ts
+  s_fe237c1ed6d99b::t_401199ef8c9b4e 1-146
+scripts/windows-update-manifest.test.ts
+  s_fe237c1ed6d99b::t_a673cdbc3a5348 1-65
+src/main/windows-app-update-config.ts
+  s_fe237c1ed6d99b::t_81b20c312d5174 1-33
+scripts/prepare-packaged-windows-updates.d.mts
+  s_fe237c1ed6d99b::t_3c1dee81fab018 1-4
+src/main/host-runtime/ApplicationMenuRuntime.test.ts
+  s_fe237c1ed6d99b::t_d32244a5467491 340-344
+src/main/sparkle-native-binding.ts
+  s_fe237c1ed6d99b::t_0ae629f785f71d 4,7,41
+src/main/host-runtime/AppUpdatePolicy.ts
+  s_fe237c1ed6d99b::t_8f4af8b4417d85 3,19,25-27,30-31,35-37,43,52-53,94
+src/renderer/components/workbench/app-update-settings-control.test.tsx
+  s_fe237c1ed6d99b::t_19a5495eb62f9f 14,161,169-177
+docs/product-specs/windows-host-behavior.md
+  s_fe237c1ed6d99b::t_d34bb10218aae9 31,83-84,112-115,117-131
+src/main/sparkle-mac-app-updater.ts
+  s_fe237c1ed6d99b::t_4fb4d08d07c254 1,5,11,100
+src/main/app/MainApplication.ts
+  s_fe237c1ed6d99b::t_63a276ccbcc352 18-19
+src/main/app/MainApplication.test-support.ts
+  s_fe237c1ed6d99b::t_0e75a07fb11c34 14,30
+src/main/app/MainApp.ts
+  s_fe237c1ed6d99b::t_8ee2eca81230da 72,113,129
+src/main/windows-app-updater.ts
+  s_fe237c1ed6d99b::t_fefff20bf4a9d9 1-222
+CHANGELOG.md
+  s_fe237c1ed6d99b::t_58eb4c591f3402 9
+src/renderer/components/workbench/app-update-settings-control.tsx
+  s_fe237c1ed6d99b::t_c7ac9160a3e277 97
+.github/workflows/windows.yml
+  s_fe237c1ed6d99b::t_fc86bd05bbfff7 214
+src/shared/host-capabilities.ts
+  s_fe237c1ed6d99b::t_42a904656da22a 6-9
+scripts/windows-update-manifest.ts
+  s_31333ce1edfc28::t_ac6f8b80b36bfd 1-51
+src/main/host-runtime/AppUpdateRuntime.ts
+  s_fe237c1ed6d99b::t_29d20061e9bb25 2-3,22,46,56,59,61-67,114,154,173,186-192,357
+scripts/ci/probe-windows-installer.ts
+  s_3022e59a160914::t_98c903b3df9562 1,17,101-126,191,243-247,320,368-381,388,549-633
+src/main/windows-update-appcast.ts
+  s_fe237c1ed6d99b::t_1ba0468e202999 1-117
+src/main/app/MainApp.test.ts
+  s_fe237c1ed6d99b::t_786b59fafcff9d 72-73,94,96
+docs/ARCHITECTURE.md
+  s_fe237c1ed6d99b::t_2c808c7e9a02a1 1271-1277,1281
+src/main/windows-update-handoff.ts
+  s_fe237c1ed6d99b::t_f1762539cb2e5c 1-6
+scripts/prepare-packaged-windows-updates.mjs
+  s_31333ce1edfc28::t_2f7356633bb7a7 1-24
+docs/product-specs/settings-route-behavior.md
+  s_fe237c1ed6d99b::t_08cbbd9c960a50 233-234,242-256
+src/main/app-updater.ts
+  s_fe237c1ed6d99b::t_eff536e8690829 1,4-5,37-39,41-42,50,54,56-57
+src/main/app/MainApplicationLive.ts
+  s_fe237c1ed6d99b::t_e8eb43e34dd8e1 221,361,387-400
+src/main/platform/host-capabilities.test.ts
+  s_fe237c1ed6d99b::t_f48a2803e3d315 11,32-35
+src/main/host-runtime/AppUpdateRuntime.test.ts
+  s_fe237c1ed6d99b::t_3d86c153c3773f 11,21,23,28,35,49,60,142-143,344-365
+electron-builder.yml
+  s_31333ce1edfc28::t_bb485620520ff5 3,173-174
+src/main/host-runtime/ApplicationMenuRuntime.ts
+  s_fe237c1ed6d99b::t_b74f6647e2d626 532-539
+docs/release-windows.md
+  s_31333ce1edfc28::t_feb571796c279f 23,253-343
+  s_3022e59a160914::t_61f086ff6ad8ab 45-47
+  s_3022e59a160914::t_358cacc33214a1 212-214
+src/main/sparkle-mac-app-updater.test.ts
+  s_fe237c1ed6d99b::t_73711484ebb226 127,158-159
+src/main/app-update-trust.ts
+  s_fe237c1ed6d99b::t_3abba243f32c3b 1-14
+src/renderer/lib/settings-host-presentation.test.ts
+  s_fe237c1ed6d99b::t_134dc658c52038 4,21-29
+resources/windows/installer.nsh
+  s_fe237c1ed6d99b::t_421f4537c6e144 42-55
+  s_fe237c1ed6d99b::t_ea5733d6660d17 7-8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "04357ca81712c7451914c5c2107e11645c1400c5",
+  "prompts": {},
+  "sessions": {
+    "s_3022e59a160914": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1def126e-fd62-476f-9393-67b0835f01b6",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_31333ce1edfc28": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a054-7bf2-75b1-8bd9-e26360b6ebcf",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_fe237c1ed6d99b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a054-d8eb-7523-aaf2-f1f5e039bccb",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": null
+    }
+  }
+}
