@@ -1,0 +1,19 @@
+src/main/platform/node/TerminalPty.windows.test.ts
+  s_84ee72558030d8::t_a3f0455a7ae484 16-17,28,30-33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f1917d33a70921638dcd9c297d4a2a7d676c762a",
+  "prompts": {},
+  "sessions": {
+    "s_84ee72558030d8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a01f-2c76-7dd0-96f6-7c553a1da79b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
