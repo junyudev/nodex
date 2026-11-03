@@ -3,6 +3,7 @@ import {
   filesForSuite,
   AGENT_EVAL_DESKTOP_ENVIRONMENT_TEST,
   nativeRequirements,
+  NATIVE_PIP_PROBE_TEST,
   NODEX_CLI_BOOTSTRAP_TEST,
   PROFILE_CLONE_TEST,
   ownersOfTest,
@@ -60,7 +61,6 @@ describe("application test ownership", () => {
   });
 
   test("distinguishes full, empty and bridge-only native preparation", () => {
-    expect(nativeRequirements("unit")).toEqual([]);
     expect(nativeRequirements("core-client")).toEqual(["core-server", "yjs-yrs-bridge", "cli"]);
     expect(nativeRequirements("core-client", [])).toEqual([]);
     expect(nativeRequirements("core-client", [NODEX_CLI_BOOTSTRAP_TEST])).toEqual([
@@ -82,4 +82,17 @@ describe("application test ownership", () => {
     expect(filesForSuite("effect-codex", "stress").include).toEqual([]);
     expect(filesForSuite("effect-codex", "live").include).toEqual([]);
   });
+
+  test.each(["darwin", "linux", "win32"] as const)(
+    "prepares the production PiP addon only for its macOS test on %s",
+    (platform) => {
+      const expected = platform === "darwin" ? ["agent-runtime"] : [];
+      expect(nativeRequirements("unit", undefined, platform)).toEqual(expected);
+      expect(nativeRequirements("unit", [NATIVE_PIP_PROBE_TEST], platform)).toEqual(expected);
+      expect(nativeRequirements("unit", [], platform)).toEqual([]);
+      expect(nativeRequirements("unit", ["scripts/testing/run-tests.test.ts"], platform)).toEqual(
+        [],
+      );
+    },
+  );
 });

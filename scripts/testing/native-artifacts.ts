@@ -1,7 +1,11 @@
 import { runTimedCommand } from "../ci/run-timed.ts";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import type { NativeArtifactId } from "../../config/test-suites.ts";
+import {
+  isNativeExecutable,
+  type NativeArtifactId,
+  type NativeExecutableId,
+} from "../../config/test-suites.ts";
 import { runCommand, type Command } from "../tooling/process.ts";
 
 const targets = {
@@ -29,13 +33,13 @@ const targets = {
 } as const;
 
 export interface PreparedNativeArtifacts {
-  readonly executables: Readonly<Partial<Record<NativeArtifactId, string>>>;
+  readonly executables: Readonly<Partial<Record<NativeExecutableId, string>>>;
 }
 
 export type NativeBuildProfile = "dev" | "release";
 
 export function cargoBuildArguments(
-  artifacts: readonly NativeArtifactId[],
+  artifacts: readonly NativeExecutableId[],
   profile: NativeBuildProfile = "dev",
 ): readonly string[] {
   const selected = [...new Set(artifacts)].map((id) => targets[id]);
@@ -55,14 +59,14 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 /** Cargo owns freshness; the selected target's source and kind identify its executable. */
 export function readCargoExecutables(
   output: string,
-  artifacts: readonly NativeArtifactId[],
+  artifacts: readonly NativeExecutableId[],
   repositoryRoot: string,
 ): PreparedNativeArtifacts {
   const messages: unknown[] = output
     .split("\n")
     .filter((line) => line.trim())
     .map((line) => JSON.parse(line));
-  const executables: Partial<Record<NativeArtifactId, string>> = {};
+  const executables: Partial<Record<NativeExecutableId, string>> = {};
   for (const id of new Set(artifacts)) {
     const expected = targets[id];
     const matches = messages.filter((message) => {
@@ -101,11 +105,23 @@ export async function prepareNativeArtifacts(
     readonly execute?: typeof runCommand;
   },
 ): Promise<PreparedNativeArtifacts> {
-  const args = cargoBuildArguments(artifacts, context.profile);
+  if (artifacts.includes("agent-runtime")) {
+    const staged = await (context.execute ?? runCommand)({
+      command: "vp",
+      args: ["run", "stage:codex-runtime:mac:cached"],
+      cwd: context.repositoryRoot,
+      env: context.env,
+      signal: context.signal,
+    });
+    if (staged.exitCode !== 0)
+      throw new Error("Agent runtime test preparation failed (exit " + staged.exitCode + ").");
+  }
+  const executables = artifacts.filter(isNativeExecutable);
+  const args = cargoBuildArguments(executables, context.profile);
   if (args.length === 0) return { executables: {} };
   let output = "";
   process.stdout.write(
-    "Preparing native test artifacts: " + [...new Set(artifacts)].join(", ") + "\n",
+    "Preparing native test artifacts: " + [...new Set(executables)].join(", ") + "\n",
   );
   const command: Command = {
     command: "cargo",
@@ -129,20 +145,20 @@ export async function prepareNativeArtifacts(
   if (result.exitCode !== 0)
     throw new Error("Native test preparation failed (exit " + result.exitCode + ").");
   process.stdout.write("Native preparation: " + (result.durationMs / 1000).toFixed(2) + "s\n");
-  return readCargoExecutables(output, artifacts, context.repositoryRoot);
+  return readCargoExecutables(output, executables, context.repositoryRoot);
 }
 
 export function preparedNativeEnvironment(artifacts: PreparedNativeArtifacts): NodeJS.ProcessEnv {
   return Object.fromEntries(
     Object.entries(artifacts.executables).map(([id, executable]) => [
-      targets[id as NativeArtifactId].environment,
+      targets[id as NativeExecutableId].environment,
       executable,
     ]),
   );
 }
 
 export function requiredNativeExecutable(
-  artifact: NativeArtifactId,
+  artifact: NativeExecutableId,
   environment: NodeJS.ProcessEnv = process.env,
 ): string {
   const value = environment[targets[artifact].environment];

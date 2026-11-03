@@ -3,6 +3,7 @@ import path from "node:path";
 
 import {
   nativeRequirements,
+  isNativeExecutable,
   parseTestSuite,
   runtimeForSuite,
   type SuiteId as AppTestSuite,
@@ -21,7 +22,7 @@ export const planAppTestSuite = (
   platform: NodeJS.Platform = process.platform,
 ): AppTestSuitePlan => ({
   needsPlaywright: runtimeForSuite(suite) === "chromium",
-  needsRust: nativeRequirements(suite).length > 0,
+  needsRust: nativeRequirements(suite, undefined, platform).some(isNativeExecutable),
   needsXvfb: platform === "linux" && runtimeForSuite(suite) === "electron-node",
   packageScript: "test:" + suite,
   relatedPackageScript: "test:" + suite + ":related",

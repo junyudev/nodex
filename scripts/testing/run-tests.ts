@@ -78,7 +78,6 @@ export async function runTests(
     signal: context.signal,
   };
   const requirements: NativeArtifactId[] = [];
-  let stageAgentRuntime = false;
   if (context.signal.aborted) return 130;
   // Discovery also runs under Electron; prepare before either path resolves its lazy executable.
   if (selection.suites.some((suite) => runtimeForSuite(suite) === "electron-node")) {
@@ -100,15 +99,7 @@ export async function runTests(
         )
       : undefined;
     requirements.push(...nativeRequirements(suite, files));
-    stageAgentRuntime ||= requiresAgentRuntime(suite, selection.tier, files);
-  }
-  if (stageAgentRuntime) {
-    const staged = await (context.execute ?? runCommand)({
-      ...commandContext,
-      command: "vp",
-      args: ["run", "stage:codex-runtime:mac:cached"],
-    });
-    if (staged.exitCode !== 0) return staged.exitCode;
+    if (requiresAgentRuntime(suite, selection.tier, files)) requirements.push("agent-runtime");
   }
   const prepared = await (context.prepare ?? prepareNativeArtifacts)([...new Set(requirements)], {
     repositoryRoot: context.repositoryRoot,

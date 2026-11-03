@@ -13,7 +13,11 @@ export const APP_TEST_SUITES = [
 ] as const;
 export type SuiteId = (typeof APP_TEST_SUITES)[number];
 export type TestRuntime = "host-node" | "electron-node" | "jsdom" | "chromium";
-export type NativeArtifactId = "core-server" | "yjs-yrs-bridge" | "cli";
+export type NativeExecutableId = "core-server" | "yjs-yrs-bridge" | "cli";
+export type NativeArtifactId = NativeExecutableId | "agent-runtime";
+export const isNativeExecutable = (artifact: NativeArtifactId): artifact is NativeExecutableId =>
+  artifact !== "agent-runtime";
+export const NATIVE_PIP_PROBE_TEST = "scripts/desktop-tools/probe-remote-hosted-pip-native.test.ts";
 export const NODEX_CLI_BOOTSTRAP_TEST = "src/main/platform/node/NodexCliBootstrap.node.test.ts";
 export const AGENT_EVAL_DESKTOP_ENVIRONMENT_TEST =
   "src/main/core-client/agent-eval-desktop-environment.node.test.ts";
@@ -89,7 +93,7 @@ const suites: Readonly<Record<SuiteId, TestSuite>> = {
       "src/renderer/**/*.stress.node.test.{ts,tsx}",
       "packages/landing/src/**/*.stress.test.ts",
     ],
-    native: [],
+    native: ["agent-runtime"],
   },
   "effect-codex": {
     config: "vitest.effect-codex.config.ts",
@@ -221,7 +225,13 @@ export function ownerOfTest(file: string) {
 export function nativeRequirements(
   suite: SuiteId,
   files?: readonly string[],
+  platform: NodeJS.Platform = process.platform,
 ): readonly NativeArtifactId[] {
+  if (suite === "unit") {
+    return platform === "darwin" && (!files || files.includes(NATIVE_PIP_PROBE_TEST))
+      ? suites[suite].native
+      : [];
+  }
   if (!files) return suites[suite].native;
   if (files.length === 0) return [];
   if (suite !== "core-client") return suites[suite].native;

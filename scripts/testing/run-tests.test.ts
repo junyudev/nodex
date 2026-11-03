@@ -1,7 +1,12 @@
 import path from "node:path";
 import { describe, expect, test } from "vite-plus/test";
 import { parseTestSelection, runTests } from "./run-tests";
-import { CODEX_SCALE_TEST, YJS_YRS_TEST, type SuiteId } from "../../config/test-suites";
+import {
+  CODEX_SCALE_TEST,
+  NATIVE_PIP_PROBE_TEST,
+  YJS_YRS_TEST,
+  type SuiteId,
+} from "../../config/test-suites";
 import type { Command } from "../tooling/process";
 
 const result = (exitCode = 0) => ({ exitCode, signal: null, durationMs: 1 });
@@ -58,7 +63,12 @@ describe("test execution", () => {
       env: {},
       signal: new AbortController().signal,
       prepare: async (artifacts) => {
-        expect(artifacts).toEqual(["core-server", "yjs-yrs-bridge", "cli"]);
+        expect(artifacts).toEqual([
+          ...(process.platform === "darwin" ? ["agent-runtime"] : []),
+          "core-server",
+          "yjs-yrs-bridge",
+          "cli",
+        ]);
         events.push("prepare");
         return { executables: { "core-server": "/tmp/core", "yjs-yrs-bridge": "/tmp/bridge" } };
       },
@@ -94,6 +104,50 @@ describe("test execution", () => {
       execute: async () => result(),
     });
   });
+  test.skipIf(process.platform !== "darwin").each([false, true])(
+    "prepares a focused production addon before execution (related: %s)",
+    async (related) => {
+      const events: string[] = [];
+      await runTests(
+        parseTestSelection(["unit", ...(related ? ["--related"] : []), NATIVE_PIP_PROBE_TEST]),
+        {
+          repositoryRoot: root,
+          env: {},
+          signal: new AbortController().signal,
+          discover: async () => {
+            events.push("discover");
+            return [NATIVE_PIP_PROBE_TEST];
+          },
+          prepare: async (artifacts) => {
+            expect(artifacts).toEqual(["agent-runtime"]);
+            events.push("prepare");
+            return { executables: {} };
+          },
+          execute: async () => {
+            events.push("test");
+            return result();
+          },
+        },
+      );
+      expect(events).toEqual(["discover", "prepare", "test"]);
+    },
+  );
+  test.skipIf(process.platform !== "darwin").each(["default", "stress"] as const)(
+    "does not stage the Agent runtime for unrelated %s unit tests",
+    async (tier) => {
+      await runTests(parseTestSelection(["unit", "scripts/testing/run-tests.test.ts"], tier), {
+        repositoryRoot: root,
+        env: {},
+        signal: new AbortController().signal,
+        discover: async () => ["scripts/testing/run-tests.test.ts"],
+        prepare: async (artifacts) => {
+          expect(artifacts).toEqual([]);
+          return { executables: {} };
+        },
+        execute: async () => result(),
+      });
+    },
+  );
   test("stops after a suite fails and preserves its exit code", async () => {
     let calls = 0;
     expect(
@@ -167,7 +221,7 @@ test("a full Core stress tier does not prepare the default-only bridge", async (
   });
 });
 
-test("stages the locked Agent runtime before a discovered real-history pressure gate", async () => {
+test("declares the locked Agent runtime for a discovered real-history pressure gate", async () => {
   const events: string[] = [];
   const exit = await runTests(parseTestSelection(["main", CODEX_SCALE_TEST], "stress"), {
     repositoryRoot: root,
@@ -175,17 +229,19 @@ test("stages the locked Agent runtime before a discovered real-history pressure 
     env: {},
     signal: new AbortController().signal,
     discover: async () => [CODEX_SCALE_TEST],
-    prepare: async () => {
+    prepare: async (artifacts) => {
+      expect(artifacts).toEqual(["core-server", "agent-runtime"]);
       events.push("native");
       return { executables: {} };
     },
     execute: async (command) => {
-      events.push(command.args.includes("stage:codex-runtime:mac:cached") ? "agent" : "test");
+      expect(command.args.at(-1)).toBe("vitest.main.config.ts");
+      events.push("test");
       return result();
     },
   });
   expect(exit).toBe(0);
-  expect(events).toEqual(["agent", "native", "test"]);
+  expect(events).toEqual(["native", "test"]);
 });
 
 describe("Browser process environment", () => {

@@ -1,6 +1,7 @@
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { describe, expect, test } from "vite-plus/test";
+import type { Command } from "../tooling/process";
 import {
   cargoBuildArguments,
   prepareNativeArtifacts,
@@ -23,6 +24,57 @@ const artifact = {
 };
 
 describe("native test preparation", () => {
+  test("stages the locked production runtime once without invoking Cargo", async () => {
+    const commands: Command[] = [];
+    const env = { NODEX_BUILD_CACHE_DIR: "/tmp/verified cache" };
+    const signal = new AbortController().signal;
+    const prepared = await prepareNativeArtifacts(["agent-runtime", "agent-runtime"], {
+      repositoryRoot: root,
+      env,
+      signal,
+      execute: async (command) => {
+        commands.push(command);
+        return { exitCode: 0, signal: null, durationMs: 1 };
+      },
+    });
+    expect(prepared).toEqual({ executables: {} });
+    expect(commands).toEqual([
+      {
+        command: "vp",
+        args: ["run", "stage:codex-runtime:mac:cached"],
+        cwd: root,
+        env,
+        signal,
+      },
+    ]);
+  });
+  test("prepares runtime and Cargo artifacts together without passing runtime IDs to Cargo", async () => {
+    const commands: Command[] = [];
+    const prepared = await prepareNativeArtifacts(["agent-runtime", "core-server"], {
+      repositoryRoot: root,
+      execute: async (command) => {
+        commands.push(command);
+        if (command.command === "cargo") command.onStdout?.(JSON.stringify(artifact) + "\n");
+        return { exitCode: 0, signal: null, durationMs: 1 };
+      },
+    });
+    expect(commands.map((command) => command.command)).toEqual(["vp", "cargo"]);
+    expect(commands[1]?.args).toEqual(cargoBuildArguments(["core-server"]));
+    expect(prepared.executables).toEqual({ "core-server": executable });
+  });
+  test("fails runtime preparation before building or executing tests", async () => {
+    let calls = 0;
+    await expect(
+      prepareNativeArtifacts(["agent-runtime", "core-server"], {
+        repositoryRoot: root,
+        execute: async () => {
+          calls++;
+          return { exitCode: 7, signal: null, durationMs: 1 };
+        },
+      }),
+    ).rejects.toThrow("Agent runtime test preparation failed (exit 7)");
+    expect(calls).toBe(1);
+  });
   test("requests only required targets with no duplicate package selections", () => {
     expect(cargoBuildArguments([])).toEqual([]);
     expect(cargoBuildArguments(["core-server", "yjs-yrs-bridge", "core-server"])).toEqual([

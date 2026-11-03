@@ -844,13 +844,23 @@ Renderer uses up to four workers in CI, and locally on machines with at least
 The budget never exceeds available CPUs. Stress stays at one worker, file
 isolation stays enabled, and suites do not compete through aggregate parallelism.
 
-Before execution, the aggregate prepares its union of required Cargo targets
-once. Standalone native suites prepare themselves. Cargo checks freshness and
-returns the executable paths, including when `CARGO_TARGET_DIR` is customized.
+Before execution, the aggregate prepares its union of declared native artifacts
+once. Standalone and focused suites prepare their own requirements. Tests that
+inspect production artifacts must declare them in `config/test-suites.ts`;
+fixture-only tests create their own temporary outputs instead of reading a
+pre-existing application build. Run artifact-dependent files through their
+suite command; direct `vp test` invocations bypass preparation.
+On macOS, the unit suite's static PiP addon check
+stages the locked production Agent runtime, including Browser, through the
+verified `cache.local` materializers. It never loads the addon or opens native
+windows, and requires no Electron application build. Unrelated focused unit
+selections and non-macOS unit runs do not stage that runtime.
+Cargo checks freshness and returns the executable paths, including when
+`CARGO_TARGET_DIR` is customized.
 Ordinary suites use development builds; stress suites use optimized release
 builds so performance evidence measures the shipped native execution profile.
-The real-history stress gate also stages the locked Agent runtime before tests
-start. The complete stress tier runs on macOS, matching that runtime package;
+The real-history stress gate declares that same Agent runtime prerequisite.
+The complete stress tier runs on macOS, matching that runtime package;
 Nightly and release certification use the same macOS runner and test launcher.
 Bridge tests run the prepared executable directly; test bodies never invoke
 Cargo. Reuse binaries, but always create fresh writable Profiles and stores.
@@ -872,7 +882,7 @@ The test commands follow production boundaries:
 
 - `vp run test` runs the ordinary deterministic test tier across the Node, main,
   renderer, and integration runtimes.
-- `vp run test:unit` runs pure shared, script, configuration, and renderer helper
+- `vp run test:unit` runs shared, script, configuration, and renderer helper
   logic in Node. Under `src/renderer`, ordinary `.test.ts` files run in Node by
   default; use `.node.test.tsx` when a pure test needs TSX syntax.
 - `vp run test:core-client` builds the development Core binary, then runs the

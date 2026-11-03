@@ -1,4 +1,9 @@
-import { ownerOfTest, nativeRequirements, suiteConfig } from "../../config/test-suites.ts";
+import {
+  ownerOfTest,
+  nativeRequirements,
+  isNativeExecutable,
+  suiteConfig,
+} from "../../config/test-suites.ts";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -111,7 +116,9 @@ const owningTestSuite = (path: string): AppTestSuite | undefined => {
   return owner?.tier === "default" ? owner.suite : undefined;
 };
 
-const nativeTestSuites = APP_TEST_SUITES.filter((suite) => nativeRequirements(suite).length > 0);
+const nativeTestSuites = APP_TEST_SUITES.filter((suite) =>
+  nativeRequirements(suite).some(isNativeExecutable),
+);
 
 // Rust and fixture files are external inputs that Vitest's module graph cannot follow.
 const isNativeTestInput = (path: string): boolean =>
