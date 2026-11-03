@@ -1,0 +1,21 @@
+src/renderer/features/inbox/inbox-composer.tsx
+  s_39af2826685004::t_367585b60c041a 137
+src/renderer/features/inbox/inbox-nodex.tsx
+  s_39af2826685004::t_367585b60c041a 24
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7252f89a1d744098b144cdf1592ca001e436ef2f",
+  "prompts": {},
+  "sessions": {
+    "s_39af2826685004": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d6e56d2e-aae2-44a9-9afb-e48fc0c1ee5c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
