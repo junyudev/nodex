@@ -1,17 +1,14 @@
 import { readClaudeHistoryRecords, readClaudeHistoryRecord } from "./ClaudeHistoryRecords";
 // @effect-diagnostics asyncFunction:off
-import { createRequire } from "node:module";
 import { isAbsolute, join } from "node:path";
-import { pathToFileURL } from "node:url";
 import { Worker } from "node:worker_threads";
-import {
-  query,
-  type Options,
-  type SessionMessage,
-  type SDKSessionInfo,
-  type ModelInfo,
-  type SlashCommand,
-  type Settings,
+import type {
+  Options,
+  SessionMessage,
+  SDKSessionInfo,
+  ModelInfo,
+  SlashCommand,
+  Settings,
 } from "@anthropic-ai/claude-agent-sdk";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -36,6 +33,7 @@ import { claudeNativeHome, resolveClaudeLaunch } from "./ClaudeExecutable";
 import { resolveClaudeIntelligence } from "./ClaudeIntelligence";
 import { WorktreeShellEnvironmentRuntime } from "../../host-runtime/WorktreeShellEnvironmentRuntime";
 import { MainConfig } from "../../app/MainConfig";
+import { claudeSdkModuleUrl } from "./ClaudeSdkModule";
 
 export interface ClaudeNativeHistoryPage {
   readonly messages: readonly SessionMessage[];
@@ -167,11 +165,16 @@ export const claudeDiscoveryOptions = (
 const discover = Effect.fn("ClaudeSdk.discover")(function* (
   input: ClaudeSdkDiscoveryInput,
   executable: string,
+  moduleUrl: string,
 ) {
+  const sdk = yield* Effect.tryPromise({
+    try: () => import(moduleUrl) as Promise<typeof import("@anthropic-ai/claude-agent-sdk")>,
+    catch: (cause) => failure("load SDK", cause),
+  });
   const session = yield* Effect.acquireRelease(
     Effect.try({
       try: () =>
-        query({
+        sdk.query({
           prompt: Stream.toAsyncIterable(Stream.never),
           options: claudeDiscoveryOptions(input, executable),
         }),
@@ -306,31 +309,32 @@ export const claudeHistoryToolOutput = (
   return bound(text(result.content));
 };
 
-// Native history/mutations read process.env; a bounded worker isolates each account without mutating Main.
-const nativeOperation = <A>(
-  input: ClaudeNativeScopeInput & Partial<HistoryInput>,
-  operation:
-    | "home"
-    | "catalog"
-    | "session-info"
-    | "history"
-    | "configuration"
-    | "image"
-    | "tool-output",
-  options: {
-    readonly before?: string | null;
-    readonly limit?: number;
-    readonly nativeMessageId?: string;
-    readonly index?: number;
-    readonly toolUseId?: string;
-    readonly offset?: number;
-    readonly records?: readonly import("@anthropic-ai/claude-agent-sdk").SessionStoreEntry[];
-    readonly hasMore?: boolean;
-  } = {},
-) =>
-  Effect.callback<A, AgentRuntimeError>((resume) => {
-    const worker = new Worker(
-      `
+const nativeOperations = (moduleUrl: string) => {
+  // Native history/mutations read process.env; a bounded worker isolates each account without mutating Main.
+  const nativeOperation = <A>(
+    input: ClaudeNativeScopeInput & Partial<HistoryInput>,
+    operation:
+      | "home"
+      | "catalog"
+      | "session-info"
+      | "history"
+      | "configuration"
+      | "image"
+      | "tool-output",
+    options: {
+      readonly before?: string | null;
+      readonly limit?: number;
+      readonly nativeMessageId?: string;
+      readonly index?: number;
+      readonly toolUseId?: string;
+      readonly offset?: number;
+      readonly records?: readonly import("@anthropic-ai/claude-agent-sdk").SessionStoreEntry[];
+      readonly hasMore?: boolean;
+    } = {},
+  ) =>
+    Effect.callback<A, AgentRuntimeError>((resume) => {
+      const worker = new Worker(
+        `
     const { parentPort, workerData } = require("node:worker_threads");
     const isPrompt = ${isClaudeHistoryPrompt.toString()};
     const readImage = ${claudeHistoryImage.toString()};
@@ -389,106 +393,116 @@ const nativeOperation = <A>(
       post(withoutInlineImages({messages:entries,before:workerData.options.before??null,hasMore:workerData.options.hasMore===true}));
     }).catch(error=>{ parentPort.postMessage({nodexWorkerFailure:{message:String(error?.message??"Native operation failed").slice(0,2048),code:error?.code}}); });
   `,
-      {
-        eval: true,
-        env: claudeEnvironment(input.environment, input.instance),
-        workerData: {
-          moduleUrl: pathToFileURL(
-            createRequire(import.meta.url).resolve("@anthropic-ai/claude-agent-sdk"),
-          ).href,
-          sessionId: input.sessionId,
-          cwd: input.cwd,
-          operation,
-          options,
+        {
+          eval: true,
+          env: claudeEnvironment(input.environment, input.instance),
+          workerData: {
+            moduleUrl,
+            sessionId: input.sessionId,
+            cwd: input.cwd,
+            operation,
+            options,
+          },
+          resourceLimits: { maxOldGenerationSizeMb: 128 },
         },
-        resourceLimits: { maxOldGenerationSizeMb: 128 },
-      },
-    );
-    let delivered = false;
-    worker.once(
-      "message",
-      (value: A | { nodexWorkerFailure: { message: string; code?: string } }) => {
+      );
+      let delivered = false;
+      worker.once(
+        "message",
+        (value: A | { nodexWorkerFailure: { message: string; code?: string } }) => {
+          delivered = true;
+          if (value && typeof value === "object" && "nodexWorkerFailure" in value) {
+            const error = Object.assign(new Error(value.nodexWorkerFailure.message), {
+              code: value.nodexWorkerFailure.code,
+            });
+            resume(Effect.fail(failure(operation, error)));
+            return;
+          }
+          resume(Effect.succeed(value as A));
+        },
+      );
+      worker.once("error", (cause) => {
         delivered = true;
-        if (value && typeof value === "object" && "nodexWorkerFailure" in value) {
-          const error = Object.assign(new Error(value.nodexWorkerFailure.message), {
-            code: value.nodexWorkerFailure.code,
-          });
-          resume(Effect.fail(failure(operation, error)));
-          return;
-        }
-        resume(Effect.succeed(value as A));
-      },
+        resume(Effect.fail(failure(operation, cause)));
+      });
+      worker.once("exit", (code) => {
+        if (!delivered)
+          resume(
+            Effect.fail(failure(operation, new Error(`Native history worker exited (${code})`))),
+          );
+      });
+      return Effect.promise(() => worker.terminate()).pipe(Effect.asVoid);
+    }).pipe(
+      Effect.timeout("30 seconds"),
+      Effect.mapError((cause) => failure(operation, cause)),
     );
-    worker.once("error", (cause) => {
-      delivered = true;
-      resume(Effect.fail(failure(operation, cause)));
+  const historyPage: ClaudeSdk["Service"]["historyPage"] = (input, page) =>
+    Effect.gen(function* () {
+      const home = yield* nativeHome(input);
+      const selected = yield* Effect.tryPromise({
+        try: () => readClaudeHistoryRecords({ home, sessionId: input.sessionId, ...page }),
+        catch: (cause) => failure("history", cause),
+      });
+      return yield* nativeOperation<ClaudeNativeHistoryPage>(input, "history", {
+        records: selected.entries,
+        before: selected.before,
+        hasMore: selected.hasMore,
+      });
     });
-    worker.once("exit", (code) => {
-      if (!delivered)
-        resume(
-          Effect.fail(failure(operation, new Error(`Native history worker exited (${code})`))),
-        );
+  const historyImage: ClaudeSdk["Service"]["historyImage"] = (input, nativeMessageId, index) =>
+    Effect.gen(function* () {
+      const home = yield* nativeHome(input);
+      const records = yield* Effect.tryPromise({
+        try: () => readClaudeHistoryRecord({ home, sessionId: input.sessionId, nativeMessageId }),
+        catch: (cause) => failure("image", cause),
+      });
+      return yield* nativeOperation<AgentPromptImage>(input, "image", {
+        records,
+        nativeMessageId,
+        index,
+      });
     });
-    return Effect.promise(() => worker.terminate()).pipe(Effect.asVoid);
-  }).pipe(
-    Effect.timeout("30 seconds"),
-    Effect.mapError((cause) => failure(operation, cause)),
-  );
-const historyPage: ClaudeSdk["Service"]["historyPage"] = (input, page) =>
-  Effect.gen(function* () {
-    const home = yield* nativeHome(input);
-    const selected = yield* Effect.tryPromise({
-      try: () => readClaudeHistoryRecords({ home, sessionId: input.sessionId, ...page }),
-      catch: (cause) => failure("history", cause),
+  const historyToolOutput: ClaudeSdk["Service"]["historyToolOutput"] = (
+    input,
+    nativeMessageId,
+    toolUseId,
+  ) =>
+    Effect.gen(function* () {
+      const home = yield* nativeHome(input);
+      const records = yield* Effect.tryPromise({
+        try: () => readClaudeHistoryRecord({ home, sessionId: input.sessionId, nativeMessageId }),
+        catch: (cause) => failure("tool-output", cause),
+      });
+      return yield* nativeOperation<AgentToolOutput>(input, "tool-output", {
+        records,
+        nativeMessageId,
+        toolUseId,
+      });
     });
-    return yield* nativeOperation<ClaudeNativeHistoryPage>(input, "history", {
-      records: selected.entries,
-      before: selected.before,
-      hasMore: selected.hasMore,
-    });
-  });
-const historyImage: ClaudeSdk["Service"]["historyImage"] = (input, nativeMessageId, index) =>
-  Effect.gen(function* () {
-    const home = yield* nativeHome(input);
-    const records = yield* Effect.tryPromise({
-      try: () => readClaudeHistoryRecord({ home, sessionId: input.sessionId, nativeMessageId }),
-      catch: (cause) => failure("image", cause),
-    });
-    return yield* nativeOperation<AgentPromptImage>(input, "image", {
-      records,
-      nativeMessageId,
-      index,
-    });
-  });
-const historyToolOutput: ClaudeSdk["Service"]["historyToolOutput"] = (
-  input,
-  nativeMessageId,
-  toolUseId,
-) =>
-  Effect.gen(function* () {
-    const home = yield* nativeHome(input);
-    const records = yield* Effect.tryPromise({
-      try: () => readClaudeHistoryRecord({ home, sessionId: input.sessionId, nativeMessageId }),
-      catch: (cause) => failure("tool-output", cause),
-    });
-    return yield* nativeOperation<AgentToolOutput>(input, "tool-output", {
-      records,
-      nativeMessageId,
-      toolUseId,
-    });
-  });
-const configuration: ClaudeSdk["Service"]["configuration"] = (input) =>
-  nativeOperation({ ...input, sessionId: "" }, "configuration");
-const nativeHome: ClaudeSdk["Service"]["nativeHome"] = (input) => nativeOperation(input, "home");
-const listSessions: ClaudeSdk["Service"]["listSessions"] = (input, offset) =>
-  nativeOperation(input, "catalog", { offset });
-const sessionInfo: ClaudeSdk["Service"]["sessionInfo"] = (input, sessionId) =>
-  nativeOperation({ ...input, sessionId }, "session-info");
+  const configuration: ClaudeSdk["Service"]["configuration"] = (input) =>
+    nativeOperation({ ...input, sessionId: "" }, "configuration");
+  const nativeHome: ClaudeSdk["Service"]["nativeHome"] = (input) => nativeOperation(input, "home");
+  const listSessions: ClaudeSdk["Service"]["listSessions"] = (input, offset) =>
+    nativeOperation(input, "catalog", { offset });
+  const sessionInfo: ClaudeSdk["Service"]["sessionInfo"] = (input, sessionId) =>
+    nativeOperation({ ...input, sessionId }, "session-info");
+
+  return {
+    nativeHome,
+    listSessions,
+    sessionInfo,
+    historyPage,
+    configuration,
+    historyImage,
+    historyToolOutput,
+  };
+};
 export const live = Layer.effect(
   ClaudeSdk,
   Effect.gen(function* () {
     const config = yield* MainConfig;
     const shellEnvironment = yield* WorktreeShellEnvironmentRuntime;
+    const moduleUrl = claudeSdkModuleUrl(config);
     const discoverMetadata = Effect.fn("ClaudeSdk.discoverMetadata")(function* (
       input: ClaudeSdkDiscoveryInput,
     ) {
@@ -505,17 +519,15 @@ export const live = Layer.effect(
         },
         shellEnvironment.load,
       ).pipe(Effect.mapError((cause) => failure("launch", cause)));
-      return yield* discover({ ...input, environment: launch.environment }, launch.executable);
+      return yield* discover(
+        { ...input, environment: launch.environment },
+        launch.executable,
+        moduleUrl,
+      );
     });
     return ClaudeSdk.of({
-      nativeHome,
-      listSessions,
-      sessionInfo,
+      ...nativeOperations(moduleUrl),
       discover: discoverMetadata,
-      historyPage,
-      configuration,
-      historyImage,
-      historyToolOutput,
     });
   }),
 );

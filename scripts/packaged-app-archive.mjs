@@ -7,8 +7,8 @@ export const PACKAGED_APP_ARCHIVE_ENTRIES = Object.freeze(["node_modules", "out"
 const ASAR_PREAMBLE_BYTES = 16;
 const MAX_HEADER_BYTES = 256 * 1024 * 1024;
 
-/** Read the top-level names recorded in an asar archive's header. */
-export function readAppArchiveTopLevelEntries(archivePath) {
+/** Read the file table without loading or extracting application contents. */
+function readAppArchiveFileTable(archivePath) {
   const descriptor = openSync(archivePath, "r");
   try {
     const preamble = Buffer.alloc(ASAR_PREAMBLE_BYTES);
@@ -23,10 +23,28 @@ export function readAppArchiveTopLevelEntries(archivePath) {
     const files = JSON.parse(header.toString("utf8")).files;
     if (!files || typeof files !== "object")
       throw new Error(`Packaged app archive has no file table: ${archivePath}`);
-    return Object.keys(files).sort();
+    return files;
   } finally {
     closeSync(descriptor);
   }
+}
+
+/** Read the top-level names recorded in an asar archive's header. */
+export const readAppArchiveTopLevelEntries = (archivePath) =>
+  Object.keys(readAppArchiveFileTable(archivePath)).sort();
+
+/** Include both packed and unpacked file entries, as well as archive links. */
+export function readAppArchiveFilePaths(archivePath) {
+  const paths = [];
+  const visit = (files, prefix) => {
+    for (const [name, entry] of Object.entries(files)) {
+      const file = prefix ? `${prefix}/${name}` : name;
+      if (entry.files) visit(entry.files, file);
+      else paths.push(file);
+    }
+  };
+  visit(readAppArchiveFileTable(archivePath), "");
+  return paths.sort();
 }
 
 /**

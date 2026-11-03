@@ -26,6 +26,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Desktop packages take less disk space by sharing one Claude Code runtime and omitting redundant terminal binaries and debug files.
 - Show more and Show less in the sidebar now move five rows at a time. Show less hides only the rows the last Show more revealed, so you can step a list back instead of collapsing it to its first page, and a last remaining row appears with the rest instead of waiting behind its own Show more. This applies to Projects, each Project's chats, Chats, custom Sections and Space Content.
 - Links now open where you choose. Web links open in your default browser and local development sites in Nodex's Browser unless you change either in Settings → Browser, and local HTML files always open in the Browser. ⌘-click sends a web link to your default browser (change or unassign it in Settings → Keyboard shortcuts), ⌘⇧-click opens it in a new Browser tab, a middle-click opens it in a background tab, and ⌥-click saves it. The same rules apply to links in chats, Pages, terminals, MCP apps and interactive replies, and to files you click in chats.
 - The built-in Browser opens what a desktop browser opens. Type a file path to view a local file, follow `file:` and `data:` links, and open pages whose links carry a sign-in; a page that opens a new window gets a tab right beside it, and its links offer Open in new tab, Open in new window and Open in external browser.
