@@ -1,0 +1,21 @@
+vite.config.ts
+  s_5cec66ce245092::t_23f2a3ae8f31bc 74-96,322
+docs/LINTING.md
+  s_5cec66ce245092::t_23f2a3ae8f31bc 204-223
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "652dd05c31f4bd186dc3498f3f7dbb78bd59490c",
+  "prompts": {},
+  "sessions": {
+    "s_5cec66ce245092": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d35af60e-664c-450c-a6fb-09ff7e66af9e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
