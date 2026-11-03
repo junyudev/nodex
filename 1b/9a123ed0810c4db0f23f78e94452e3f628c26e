@@ -1,0 +1,20 @@
+tests/e2e/nfm-ime-composition.spec.ts
+  s_72f28a36717ea6::t_4ebe0e21c8efb4 93-98,107-119
+  s_72f28a36717ea6::t_55d903885affc1 91-92,99-106
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1b9a123ed0810c4db0f23f78e94452e3f628c26e",
+  "prompts": {},
+  "sessions": {
+    "s_72f28a36717ea6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a158-4231-7622-9d78-343b1e41ba9f",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
