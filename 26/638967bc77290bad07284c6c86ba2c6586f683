@@ -1,0 +1,173 @@
+electron-builder.yml
+  s_7b1e939d6b8f42::t_129676d8669371 173-176
+src/renderer/lib/settings-host-presentation.test.ts
+  s_7b1e939d6b8f42::t_b52bf111627804 11,22,33
+src/renderer/components/board/editor/nfm-send-to-thread-menu-model.test.ts
+  s_7b1e939d6b8f42::t_0268f7175653ec 30
+src/renderer/components/board/editor/nfm-slash-menu-stability.test.tsx
+  s_7b1e939d6b8f42::t_99f5805d256a7a 40
+src/main/app/ApplicationStateLive.ts
+  s_7b1e939d6b8f42::t_d2fccf96277325 40
+  s_7b1e939d6b8f42::t_01ea1e02078684 74
+  s_7b1e939d6b8f42::t_63e929f117f1b7 26-30,36,38
+  s_7b1e939d6b8f42::t_057c063fd79967 39,41-42,44,69,71-73,82,97
+src/renderer/components/workbench/command-palette.browser.test.tsx
+  s_7b1e939d6b8f42::t_c5224eecf3a608 45
+src/shared/windows-startup.ts
+  s_7b1e939d6b8f42::t_deab3dbd893272 1-4
+src/renderer/components/board/editor/nfm-slash-menu.test.tsx
+  s_7b1e939d6b8f42::t_ca290e026b40ee 319
+src/renderer/components/workbench/general-settings-page.tsx
+  s_7b1e939d6b8f42::t_129676d8669371 7,57
+src/main/host-runtime/DeepLinkRuntime.ts
+  s_7b1e939d6b8f42::t_d84dbe6ae7f9a4 74-75
+src/main/app/MainApplication.test-support.ts
+  s_7b1e939d6b8f42::t_c2e0a0775f927c 9,29
+scripts/sync-app-icons.ts
+  s_7b1e939d6b8f42::t_129676d8669371 7,162
+src/renderer/components/workbench/windows-startup-settings-row.test.tsx
+  s_7b1e939d6b8f42::t_1bdb6f0c839a5e 1,41
+  s_7b1e939d6b8f42::t_3ea4896ce61a52 2-6,12-19,23-26,32-40,42-44,49-56
+  s_7b1e939d6b8f42::t_5031ccceff2c9f 7-11,20-22,27-31,45-48
+docs/product-specs/windows-host-behavior.md
+  s_7b1e939d6b8f42::t_dc57324575bb8c 28-65
+src/main/ipc/handlers/WindowsStartupIpc.ts
+  s_7b1e939d6b8f42::t_92f2eb9b6063bc 20-27
+  s_7b1e939d6b8f42::t_4dca2bb576eb13 1-19
+src/renderer/components/workbench/windows-startup-settings-row.tsx
+  s_7b1e939d6b8f42::t_b52bf111627804 9-13
+  s_7b1e939d6b8f42::t_d6db8389c2ad8d 23-30
+  s_7b1e939d6b8f42::t_129676d8669371 1-8,14-22
+resources/windows/installer.nsh
+  s_7b1e939d6b8f42::t_129676d8669371 2-3,40-44,68-75
+src/main/host-runtime/WindowsTrayRuntime.test.ts
+  s_7b1e939d6b8f42::t_2c6e5d163c3109 9,11-16,18-56,60-70,74-92,94-108,112-121
+  s_7b1e939d6b8f42::t_b4a95e3bdb2e97 1-8,10,17,93
+  s_7b1e939d6b8f42::t_bdf3b9ba874823 57-59,71-73,109-111
+src/renderer/lib/chat-search.node.test.ts
+  s_7b1e939d6b8f42::t_4aebe182609d7a 30
+src/shared/ipc-endpoint-policy.ts
+  s_7b1e939d6b8f42::t_129676d8669371 523
+  s_7b1e939d6b8f42::t_4dca2bb576eb13 76
+src/main/window-runtime/WindowRuntime.ts
+  s_7b1e939d6b8f42::t_63e929f117f1b7 30,238,412,414-417
+  s_7b1e939d6b8f42::t_f2cf8668fa6b85 405-411,413,701-705,708-712
+src/main/app/MainApp.test.ts
+  s_7b1e939d6b8f42::t_56d6aa709cb615 635-694
+  s_7b1e939d6b8f42::t_c2e0a0775f927c 25,44
+src/shared/ipc-api.ts
+  s_7b1e939d6b8f42::t_4dca2bb576eb13 753-754
+docs/product-specs/desktop-startup-behavior.md
+  s_7b1e939d6b8f42::t_43a026b8f24fb0 4-12
+src/renderer/lib/use-refetch-on-focus.ts
+  s_7b1e939d6b8f42::t_ef4338901cb5ec 1-13
+src/renderer/components/board/editor/nfm-text-action-menu.test.tsx
+  s_7b1e939d6b8f42::t_8a0790aac1aea7 53
+docs/release-windows.md
+  s_7b1e939d6b8f42::t_843e443bd91f8d 200,204-209
+src/renderer/lib/windows-startup-runtime.ts
+  s_7b1e939d6b8f42::t_a8e28b445a61b4 25-30
+  s_7b1e939d6b8f42::t_ef4338901cb5ec 3,21
+  s_7b1e939d6b8f42::t_129676d8669371 1-2,4-20,22-24
+src/renderer/components/board/editor/nfm-send-to-thread-menu-model.ts
+  s_7b1e939d6b8f42::t_4badccf9108887 197
+  s_7b1e939d6b8f42::t_bf2d5959b32f2c 168
+src/main/app/MainApp.ts
+  s_7b1e939d6b8f42::t_63e929f117f1b7 14,90-91
+  s_7b1e939d6b8f42::t_7869489e86916a 85
+  s_7b1e939d6b8f42::t_0838ed8e2fecac 88-89,94-98
+  s_7b1e939d6b8f42::t_3ed2304f9246b1 6,73,83-84,86-87
+scripts/ci/probe-windows-installer.ts
+  s_7b1e939d6b8f42::t_70d22c514507e0 18-22,51-52,54-59,189-194,283-285,287-292,305-306,422,426-429,437-441,446-447,584-592,596-600,602-612,614-621,626-632,634,638
+  s_7b1e939d6b8f42::t_ce8258e4fbc1e3 635-637,646-649
+  s_7b1e939d6b8f42::t_7869489e86916a 50,53,60-63,293,390-392,423,593-595,601,613,633,645
+  s_7b1e939d6b8f42::t_1d91bfdfe231a3 442-445
+src/main/chat-search/ChatSearch.node.test.ts
+  s_7b1e939d6b8f42::t_39361ad5484f2f 56,76
+CHANGELOG.md
+  s_7b1e939d6b8f42::t_43a026b8f24fb0 10
+src/main/bootstrap.ts
+  s_7b1e939d6b8f42::t_63c902c1656b4a 10,305
+src/main/host-runtime/DeepLinkRuntime.test.ts
+  s_7b1e939d6b8f42::t_d84dbe6ae7f9a4 16,21,29,69-71
+src/main/host-runtime/WindowsTrayRuntime.ts
+  s_7b1e939d6b8f42::t_2c6e5d163c3109 12,15-21,28-31,35-38,73-75,77-88,109-114,116-120,123-124,130-144,146-201,203-222
+  s_7b1e939d6b8f42::t_bdf3b9ba874823 115,125-129,202
+  s_7b1e939d6b8f42::t_e90a7433fc6c16 223-224
+  s_7b1e939d6b8f42::t_deab3dbd893272 1-11,13-14,22-27,32-34,39-72,76,89-98,100-108,121-122,145
+  s_7b1e939d6b8f42::t_7869489e86916a 99
+src/renderer/components/workbench/command-palette.test.tsx
+  s_7b1e939d6b8f42::t_0d32f9d2f67e90 402
+docs/windows-verification.md
+  s_7b1e939d6b8f42::t_43a026b8f24fb0 107,132-144
+src/renderer/lib/command-palette.node.test.ts
+  s_7b1e939d6b8f42::t_4aebe182609d7a 105
+src/main/app/MainApplicationLive.ts
+  s_7b1e939d6b8f42::t_4dca2bb576eb13 227-228,364,373,381
+  s_7b1e939d6b8f42::t_f8cec29e448612 451,480,484-492,509-513
+  s_7b1e939d6b8f42::t_7bc5450b28bef2 493,514-515,517
+  s_7b1e939d6b8f42::t_63e929f117f1b7 91,96,162,203
+  s_7b1e939d6b8f42::t_bdf3b9ba874823 92-95,450,461-462,474,477-479,481-483,508,516
+src/main/host-runtime/WindowsTrayIntegration.ts
+  s_7b1e939d6b8f42::t_63e929f117f1b7 1-21,28-29,45,83
+  s_7b1e939d6b8f42::t_97247f0eb28ff2 22-27,30-44,46-77,80-82,84-113,115-128
+  s_7b1e939d6b8f42::t_6c35f5c5ccc750 78-79,114
+src/main/chat-search/ChatCatalogProjection.ts
+  s_7b1e939d6b8f42::t_97247f0eb28ff2 64
+scripts/sync-windows-tray-icons.ts
+  s_7b1e939d6b8f42::t_ff5671e8283847 1,42-43
+  s_7b1e939d6b8f42::t_ccab4754fcc09c 35-41,44-55
+  s_7b1e939d6b8f42::t_129676d8669371 2-13,15-21,26-34
+  s_7b1e939d6b8f42::t_b52bf111627804 14,22-25
+src/main/window-runtime/ApplicationWindowShellRuntime.test.ts
+  s_7b1e939d6b8f42::t_55cda3d226ba06 28-29
+  s_7b1e939d6b8f42::t_156e8518cd4877 12,122-165
+  s_7b1e939d6b8f42::t_7ed4674a32c3fe 166
+src/main/windows-desktop-policy.test.ts
+  s_7b1e939d6b8f42::t_97247f0eb28ff2 3-12,17-21,23,27-35,40-45,49-55,60-61,68-70,80-114,121-129
+  s_7b1e939d6b8f42::t_dc57324575bb8c 16,26,37
+  s_7b1e939d6b8f42::t_1d91bfdfe231a3 15,22,24-25,36
+  s_7b1e939d6b8f42::t_cfc804c0117ba3 132
+  s_7b1e939d6b8f42::t_b4a95e3bdb2e97 1-2,13-14,38-39,46-48,56-59,62-67,71-79,115-120,130-131
+docs/ARCHITECTURE.md
+  s_7b1e939d6b8f42::t_43a026b8f24fb0 295-300
+src/main/app/RendererIngressLive.ts
+  s_7b1e939d6b8f42::t_4dca2bb576eb13 17,84
+src/renderer/lib/desktop-notification-authorization.ts
+  s_7b1e939d6b8f42::t_ef4338901cb5ec 7,36
+src/renderer/lib/settings-host-presentation.ts
+  s_7b1e939d6b8f42::t_129676d8669371 13
+src/shared/chat-search.ts
+  s_7b1e939d6b8f42::t_97247f0eb28ff2 45
+src/main/window-runtime/ApplicationWindowShellRuntime.ts
+  s_7b1e939d6b8f42::t_63e929f117f1b7 67,108,556
+  s_7b1e939d6b8f42::t_156e8518cd4877 16,71-74,84,202,224-225,560-563
+src/main/window-runtime/WindowRuntime.test.ts
+  s_7b1e939d6b8f42::t_8d57f82806369b 319
+  s_7b1e939d6b8f42::t_b4a95e3bdb2e97 23,49
+  s_7b1e939d6b8f42::t_47997af084a060 50-51,81,286-318,320-321
+src/main/windows-desktop-policy.ts
+  s_7b1e939d6b8f42::t_97247f0eb28ff2 10-11,13-19,21,30,75,78-83
+  s_7b1e939d6b8f42::t_7869489e86916a 2,6
+  s_7b1e939d6b8f42::t_1d91bfdfe231a3 7-9,12,20
+  s_7b1e939d6b8f42::t_deab3dbd893272 1,3-5,22-29,31-34,46-74,76-77,84-87
+  s_7b1e939d6b8f42::t_63e929f117f1b7 35-45
+src/main/app/MainApplication.ts
+  s_7b1e939d6b8f42::t_63e929f117f1b7 13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "26638967bc77290bad07284c6c86ba2c6586f683",
+  "prompts": {},
+  "sessions": {
+    "s_7b1e939d6b8f42": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a12a-b6f3-7242-bad0-977a2195411e",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": null
+    }
+  }
+}
