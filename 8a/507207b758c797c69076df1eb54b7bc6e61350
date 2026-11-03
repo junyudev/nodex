@@ -1,0 +1,117 @@
+crates/nodex-core/src/workspace/task_window.rs
+  s_2fdb609b8be2fc::t_bd76dbf1b36461 36-37,322
+src/renderer/components/workbench/session-context-menu-model.test.ts
+  s_2fdb609b8be2fc::t_88c782be6937dc 28,91-108,159,191
+  s_2fdb609b8be2fc::t_f64d43f373ec56 198
+crates/nodex-core/src/workspace/coordinator_tests.rs
+  s_2fdb609b8be2fc::t_91a5dfdded495a 71-143,145-147,155
+  s_2fdb609b8be2fc::t_02365d62aba69a 144,148-154,156
+src/main/codex-application/CodexThreadCatalogProjection.ts
+  s_2fdb609b8be2fc::t_254bb96b4d1052 219
+src/renderer/lib/codex-sidebar-thread-sync.node.test.ts
+  s_2fdb609b8be2fc::t_418444460727d6 127
+src/renderer/features/inbox/inbox-presentation.ts
+  s_2fdb609b8be2fc::t_418444460727d6 468
+  s_2fdb609b8be2fc::t_1f4b63bb4db651 469-474
+src/renderer/components/workbench/workbench-testkit/workbench-shell-fixtures.ts
+  s_2fdb609b8be2fc::t_88c782be6937dc 511
+src/renderer/lib/project-session-query-cache.node.test.ts
+  s_2fdb609b8be2fc::t_d9207bb003d4a7 34,115
+  s_2fdb609b8be2fc::t_9a9e543e9a661b 128
+src/main/core-client/project-workspace-adapter.ts
+  s_2fdb609b8be2fc::t_bd76dbf1b36461 798
+docs/product-specs/coordinator-behavior.md
+  s_2fdb609b8be2fc::t_88c782be6937dc 68-69
+src/renderer/components/workbench/session-context-menu-model.ts
+  s_2fdb609b8be2fc::t_bd76dbf1b36461 27,335-345
+crates/nodex-core-contracts/src/workspace.rs
+  s_2fdb609b8be2fc::t_bd76dbf1b36461 1518
+crates/nodex-core/src/workspace/read.rs
+  s_2fdb609b8be2fc::t_bd76dbf1b36461 40,834-835,859,895
+src/renderer/components/workbench/workbench-shell.sidebar-core.test.tsx
+  s_2fdb609b8be2fc::t_88c782be6937dc 11,47-95
+src/renderer/components/workbench/use-workbench-sidebar-controller.ts
+  s_2fdb609b8be2fc::t_bd76dbf1b36461 965-969
+src/renderer/lib/use-workbench-session-catalog.ts
+  s_2fdb609b8be2fc::t_bd76dbf1b36461 158,548-554,808
+src/shared/types.ts
+  s_2fdb609b8be2fc::t_bd76dbf1b36461 1157,1176
+src/renderer/lib/workspace-catalog-commands.ts
+  s_2fdb609b8be2fc::t_bd76dbf1b36461 25,122-128,256,376-379
+  s_39af2826685004::t_9c43a9a32a2787 380-382
+src/renderer/components/workbench/workbench-testkit/workbench-shell-harness.tsx
+  s_2fdb609b8be2fc::t_88c782be6937dc 3924-3937
+  s_2fdb609b8be2fc::t_fcfee953d6e3c8 64,3316
+src/renderer/lib/project-session-query-cache.ts
+  s_2fdb609b8be2fc::t_d9207bb003d4a7 78
+packages/core-protocol/openapi.json
+  s_2fdb609b8be2fc::t_871de0ef48ae2e 45971,46010-46012
+packages/core-protocol/src/generated.ts
+  s_2fdb609b8be2fc::t_1ad6588b747ee8 10967
+src/main/codex-application/ManagedWorktreeCatalog.node.test.ts
+  s_2fdb609b8be2fc::t_6dcace77aaf8d2 199,219
+src/main/codex/codex-browser-transfer-capture.test.ts
+  s_2fdb609b8be2fc::t_679c9aa2fba72b 20
+src/main/host-runtime/SessionReminderRuntime.node.test.ts
+  s_2fdb609b8be2fc::t_5cccbc4fe6da71 20
+src/main/inbox-application/InboxRuntime.node.test.ts
+  s_2fdb609b8be2fc::t_8d245564650536 121
+src/main/project-application/ProjectLifecycleCommands.test.ts
+  s_2fdb609b8be2fc::t_076c73ca97d30d 49
+src/main/project-application/ProjectWorkspace.node.test.ts
+  s_2fdb609b8be2fc::t_d071328d288110 57
+src/renderer/components/workbench/sidebar-section-item-dnd.test.ts
+  s_2fdb609b8be2fc::t_160a456f464215 34
+src/renderer/components/workbench/sidebar-session-drop.node.test.ts
+  s_2fdb609b8be2fc::t_0fbae881024670 47
+src/renderer/components/workbench/workbench-testkit/panel-fixtures.ts
+  s_2fdb609b8be2fc::t_4b46b336d2642e 161
+src/renderer/features/browser-sidebar/browser-sidebar-panel.test.tsx
+  s_2fdb609b8be2fc::t_298c7d46735d99 832
+src/renderer/features/local-conversation/agent-runtime-conversation-adapter.test.tsx
+  s_2fdb609b8be2fc::t_3f8fe24f896615 1322
+src/renderer/features/workspace-files/workspace-files-panel.test.tsx
+  s_2fdb609b8be2fc::t_3e03614efd7faa 1072
+src/renderer/lib/created-thread-navigation.node.test.ts
+  s_2fdb609b8be2fc::t_c84a85cc327934 18
+src/renderer/lib/page-stage-related-chat-candidates.node.test.ts
+  s_2fdb609b8be2fc::t_25e361605e61c6 15
+src/renderer/lib/project-agent-dock-controller.ts
+  s_2fdb609b8be2fc::t_9ccbe78ea12a10 64
+src/renderer/lib/project-agent-dock-model.node.test.ts
+  s_2fdb609b8be2fc::t_f39bf29b6f9e63 22
+src/renderer/lib/project-agent-dock-model.ts
+  s_2fdb609b8be2fc::t_abb49f162cb6b1 216
+src/renderer/lib/use-browser-use-presentation-coordinator.test.tsx
+  s_2fdb609b8be2fc::t_eebefe425c5937 53
+src/renderer/lib/use-workbench-session-catalog.test.tsx
+  s_2fdb609b8be2fc::t_77ba630c80fd30 71
+src/renderer/lib/workbench-ui-scopes.test.tsx
+  s_2fdb609b8be2fc::t_19735ab28d7436 49
+tests/e2e/large-content-fixture/main.tsx
+  s_2fdb609b8be2fc::t_927b08f98ea7d9 55
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8a507207b758c797c69076df1eb54b7bc6e61350",
+  "prompts": {},
+  "sessions": {
+    "s_2fdb609b8be2fc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19fae-e867-7e22-99c6-3c4c58f36a22",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_39af2826685004": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d6e56d2e-aae2-44a9-9afb-e48fc0c1ee5c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
