@@ -1,0 +1,30 @@
+src/main/core-client/document-operation-window.node.test.ts
+  s_098df3235fa721::t_1cec77ed9b5bfe 23-31,33,212
+  s_098df3235fa721::t_0aaf6509e8ff45 3,22,34-64,67-160,163-164,166,168,170,174,176,178-192,194-196,200,202-203,206-208,210-211
+.github/workflows/windows.yml
+  s_098df3235fa721::t_67330a1417bf58 110,112-117
+src/main/core-client/canvas-recovery-bytes.node.test.ts
+  s_098df3235fa721::t_07f79da16ade8f 1-132
+  s_098df3235fa721::t_97bc60bb2f0e9c 133-150
+docs/windows-verification.md
+  s_098df3235fa721::t_1cec77ed9b5bfe 40-44
+  s_098df3235fa721::t_0aaf6509e8ff45 32
+src/main/core-client/document-module-bytes.node.test.ts
+  s_098df3235fa721::t_6f7ebfac08ba9b 5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "991fa2605c4e1bed5ed7ef87d99532f3f25d45c3",
+  "prompts": {},
+  "sessions": {
+    "s_098df3235fa721": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19eb9-df69-7222-adba-8eb488f30462",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
