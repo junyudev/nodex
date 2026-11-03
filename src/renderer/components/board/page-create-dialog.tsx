@@ -1,3 +1,5 @@
+import { resolveCodexRendererCommandPlatform } from "../../lib/codex-window-runtime";
+import { formatAcceleratorLabel } from "../../../shared/command-keybindings";
 import { useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import type { DatabasePropertyOption } from "../../../shared/database-kernel";
 import { createCustomOptionId } from "../../../shared/database-identities";
@@ -541,7 +543,7 @@ function PageCreateDialogContent({
               tone="primary"
               size="compact"
               aria-keyshortcuts="Control+Enter Meta+Enter Control+Shift+Enter Meta+Shift+Enter"
-              title="Create Page (⌘/Ctrl+Enter; add Shift to continue)"
+              title={`Create Page (${formatAcceleratorLabel("CmdOrCtrl+Enter", resolveCodexRendererCommandPlatform())}; add Shift to continue)`}
               disabled={saving || !title.trim()}
             >
               {saving ? "Creating…" : "Create page"}

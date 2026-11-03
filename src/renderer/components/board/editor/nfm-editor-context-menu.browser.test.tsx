@@ -6,6 +6,11 @@ import { EditorView } from "@tiptap/pm/view";
 import { captureNfmPasteTarget, createNfmPasteTargetPlugin } from "./nfm-paste-target";
 import { readNativePastePayload } from "./nfm-paste-event";
 import { NfmEditorContextMenuPreview, runNfmEditorContextCommand } from "./nfm-editor-context-menu";
+import { formatAcceleratorLabel } from "../../../../shared/command-keybindings";
+import { resolveCodexRendererCommandPlatform } from "../../../lib/codex-window-runtime";
+
+const shortcut = (accelerator: string) =>
+  formatAcceleratorLabel(accelerator, resolveCodexRendererCommandPlatform());
 
 afterEach(() => {
   cleanup();
@@ -113,11 +118,11 @@ describe("markdown editor context menu", () => {
     );
 
     expect(Boolean(view.baseElement.textContent?.includes("Cut"))).toBe(true);
-    expect(Boolean(view.baseElement.textContent?.includes("⌘X"))).toBe(true);
+    expect(Boolean(view.baseElement.textContent?.includes(shortcut("CmdOrCtrl+X")))).toBe(true);
     expect(Boolean(view.baseElement.textContent?.includes("Copy"))).toBe(true);
-    expect(Boolean(view.baseElement.textContent?.includes("⌘C"))).toBe(true);
+    expect(Boolean(view.baseElement.textContent?.includes(shortcut("CmdOrCtrl+C")))).toBe(true);
     expect(Boolean(view.baseElement.textContent?.includes("Paste"))).toBe(true);
-    expect(Boolean(view.baseElement.textContent?.includes("⌘V"))).toBe(true);
+    expect(Boolean(view.baseElement.textContent?.includes(shortcut("CmdOrCtrl+V")))).toBe(true);
   });
 
   test("emits the selected editing command", async () => {

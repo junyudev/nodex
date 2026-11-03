@@ -1,3 +1,5 @@
+import { resolveCodexRendererCommandPlatform } from "../../../lib/codex-window-runtime";
+import { formatAcceleratorLabel } from "../../../../shared/command-keybindings";
 import {
   AddButton,
   DeleteButton,
@@ -584,7 +586,7 @@ function NfmTableHandleMenu(props: TableHandleMenuProps) {
         action="duplicate"
         icon={<NfmSideMenuDuplicateIcon />}
         orientation={props.orientation}
-        shortcut="⌘D"
+        shortcut={formatAcceleratorLabel("CmdOrCtrl+D", resolveCodexRendererCommandPlatform())}
       >
         Duplicate
       </NfmTableHandleMutationButton>

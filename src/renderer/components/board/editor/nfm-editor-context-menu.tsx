@@ -1,3 +1,5 @@
+import { resolveCodexRendererCommandPlatform } from "../../../lib/codex-window-runtime";
+import { formatAcceleratorLabel } from "../../../../shared/command-keybindings";
 import {
   type ComponentPropsWithoutRef,
   type ReactNode,
@@ -285,21 +287,21 @@ export function NfmEditorContextMenuContent({
       <NfmEditorContextMenuItem
         disabled={!editable || selectionEmpty}
         onSelect={() => onCommand("cut")}
-        shortcut="⌘X"
+        shortcut={formatAcceleratorLabel("CmdOrCtrl+X", resolveCodexRendererCommandPlatform())}
       >
         Cut
       </NfmEditorContextMenuItem>
       <NfmEditorContextMenuItem
         disabled={selectionEmpty}
         onSelect={() => onCommand("copy")}
-        shortcut="⌘C"
+        shortcut={formatAcceleratorLabel("CmdOrCtrl+C", resolveCodexRendererCommandPlatform())}
       >
         Copy
       </NfmEditorContextMenuItem>
       <NfmEditorContextMenuItem
         disabled={!editable}
         onSelect={() => onCommand("paste")}
-        shortcut="⌘V"
+        shortcut={formatAcceleratorLabel("CmdOrCtrl+V", resolveCodexRendererCommandPlatform())}
       >
         Paste
       </NfmEditorContextMenuItem>
@@ -317,21 +319,21 @@ export function NfmEditorContextMenuPreview({
       <NfmEditorContextMenuPreviewItem
         disabled={!editable || selectionEmpty}
         onClick={() => onCommand("cut")}
-        shortcut="⌘X"
+        shortcut={formatAcceleratorLabel("CmdOrCtrl+X", resolveCodexRendererCommandPlatform())}
       >
         Cut
       </NfmEditorContextMenuPreviewItem>
       <NfmEditorContextMenuPreviewItem
         disabled={selectionEmpty}
         onClick={() => onCommand("copy")}
-        shortcut="⌘C"
+        shortcut={formatAcceleratorLabel("CmdOrCtrl+C", resolveCodexRendererCommandPlatform())}
       >
         Copy
       </NfmEditorContextMenuPreviewItem>
       <NfmEditorContextMenuPreviewItem
         disabled={!editable}
         onClick={() => onCommand("paste")}
-        shortcut="⌘V"
+        shortcut={formatAcceleratorLabel("CmdOrCtrl+V", resolveCodexRendererCommandPlatform())}
       >
         Paste
       </NfmEditorContextMenuPreviewItem>
