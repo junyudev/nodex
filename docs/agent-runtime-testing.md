@@ -22,6 +22,12 @@ subsequent tool result. Shell, Browser, and collaboration actions therefore run
 through their production runtime and are projected through the production
 Thread and UI paths without consuming subscription quota.
 
+Model choices come from the real app-server through the Runtime provider catalog, not
+from the scripted server's replies. Use `setAgentExecutionProfile` to select an advertised
+model through the Composer and compare model requests with its returned `modelId`. The
+helper uses the Composer's display-name formatter; native names and model IDs need not
+match the labels shown in the picker.
+
 Use this layer for Agent request/response sequencing, real tool execution,
 Browser Use, subagent lifecycle, Thread completion, and Electron projection.
 The loopback server disables system-proxy routing and adds explicit localhost

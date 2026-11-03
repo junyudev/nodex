@@ -4,7 +4,10 @@ import type {
   ThreadReadResponse,
   ThreadTurnsListResponse,
 } from "@nodex/codex-app-server-protocol/v2";
-import { formatCodexReasoningEffortLabel } from "../../../src/renderer/lib/codex-thread-settings";
+import {
+  formatAgentModelName,
+  formatCodexReasoningEffortLabel,
+} from "../../../src/renderer/lib/codex-thread-settings";
 import {
   chooseComposerEffort,
   chooseComposerModel,
@@ -227,7 +230,8 @@ const chooseCodexExecutionProfile = async (
   modelName: string,
   profile: CodexExecutionProfile,
 ): Promise<void> => {
-  await chooseComposerModel(page, `${modelName} Codex`, modelName);
+  const displayName = formatAgentModelName(modelName);
+  await chooseComposerModel(page, `${displayName} Codex`, displayName);
   if (profile.reasoningEffort)
     await chooseComposerEffort(page, formatCodexReasoningEffortLabel(profile.reasoningEffort));
   await page.keyboard.press("Escape");

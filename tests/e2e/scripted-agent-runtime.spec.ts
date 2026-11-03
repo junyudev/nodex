@@ -1253,7 +1253,6 @@ test("keeps a real collaboration subagent Active until completion, then converge
             request.isThreadSource(AGENT_RUNTIME_CODEX_THREAD_SOURCE) &&
             request.hasUserInputText(promptMarker),
           respond: (request) => {
-            assertRequestModel(request, "gpt-5.6-sol");
             if (!request.toolInvocation("collaboration", "spawn_agent")) {
               throw new Error(
                 `Real app-server request did not advertise collaboration.spawn_agent:\n${request.diagnosticSummary()}`,
@@ -1371,9 +1370,7 @@ test("keeps a real collaboration subagent Active until completion, then converge
       );
       try {
         const page = await harness.launch();
-        const selectedProfile = await setAgentExecutionProfile(page, {
-          preferredModelId: "gpt-5.6-sol",
-        });
+        const selectedProfile = await setAgentExecutionProfile(page);
         const draft = await createAgentSmokeDraft(
           page,
           harness.profile.initialProjectsDirectory,
@@ -1386,9 +1383,15 @@ test("keeps a real collaboration subagent Active until completion, then converge
         );
         const target = { sessionId: draft.projectSessionId, threadId };
         await waitForAgentThreadExecutionProfile(page, target, selectedProfile);
-        await Promise.all([
+        const [childRequest, rootRequest] = await Promise.all([
           modelServer.waitForRequest(
             (request) => request.isSubagentRequest() && request.hasInputText(childPromptMarker),
+            30_000,
+          ),
+          modelServer.waitForRequest(
+            (request) =>
+              request.isThreadSource(AGENT_RUNTIME_CODEX_THREAD_SOURCE) &&
+              request.hasUserInputText(promptMarker),
             30_000,
           ),
           modelServer.waitForRequest(
@@ -1396,6 +1399,8 @@ test("keeps a real collaboration subagent Active until completion, then converge
             30_000,
           ),
         ]);
+        assertRequestModel(rootRequest, selectedProfile.modelId);
+        assertRequestModel(childRequest, selectedProfile.modelId);
 
         const overview = async () =>
           (await invokeIpc(
