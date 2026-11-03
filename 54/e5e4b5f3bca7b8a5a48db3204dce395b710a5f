@@ -1,0 +1,145 @@
+src/renderer/features/local-conversation/view/subagents-panel/subagents-panel.tsx
+  s_5cec66ce245092::t_2c6ff88d416532 4-11,298-304,326-330,333-337,339-384,386,393-397
+src/renderer/features/local-conversation/view/blocks/local-conversation-block-leaves.tsx
+  s_a952c1916f8b53::t_da67b6b70eb234 1,61-69,565-579,602,606,875-881
+src/renderer/features/local-conversation/view/connected-review-diff-panel.tsx
+  s_3be7810364377d::t_37bb7cec185212 250-252,255-257
+src/renderer/features/local-conversation/view/conversation-task-dialog.test.tsx
+  s_3be7810364377d::t_6d99764366ccc9 315,320
+src/renderer/features/local-conversation/view/inline-visualization-frame.tsx
+  s_4b31a91f87dc51::t_e3ed3774b3d639 138-140
+src/renderer/features/local-conversation/view/local-conversation-above-composer-portal.tsx
+  s_3be7810364377d::t_cc2e1ae0ba2301 61,81
+src/renderer/features/local-conversation/view/local-conversation-inline-visualization.tsx
+  s_4b31a91f87dc51::t_7d12c225901122 136-139
+src/renderer/features/local-conversation/view/local-conversation-selected-text-actions.tsx
+  s_4b31a91f87dc51::t_731a659967b837 2-9,106-112,175
+src/renderer/features/local-conversation/view/local-conversation-thread-body-owner.tsx
+  s_4b31a91f87dc51::t_970e357491ed25 1,380-387,695-699,989-991,993-999,1005-1006,1197,1264
+src/renderer/features/local-conversation/view/response-text-annotation-layer.tsx
+  s_c8d1ac045df117::t_ed467aac311fc7 35-40,62,175-206
+src/renderer/features/local-conversation/view/shared/branch-selector-popover.tsx
+  s_a952c1916f8b53::t_ef1d72e5b28f15 1-2,139-141,143,343-348
+src/renderer/features/local-conversation/view/shared/delegated-task-row.tsx
+  s_3be7810364377d::t_7ec84eb4040777 322-323,327
+src/renderer/features/local-conversation/view/shared/environment-selector-popover.tsx
+  s_c8d1ac045df117::t_022858fad4130f 8,99-101,103
+src/renderer/features/local-conversation/view/shared/multi-agent-action-surface.tsx
+  s_3be7810364377d::t_b23c1fad780dc2 282,294-302,309
+src/renderer/features/local-conversation/view/shared/request-cards/local-conversation-request-cards.test.tsx
+  s_4b31a91f87dc51::t_5ba2286bc6aea9 603-645
+src/renderer/features/local-conversation/view/shared/request-cards/local-conversation-request-cards.tsx
+  s_4b31a91f87dc51::t_7b2ad3a7a09ee7 1,309,677-680,746,798,813-823,825-831,891-907,918-934,939,941
+src/renderer/features/local-conversation/view/shared/thread-footer-metadata.test.tsx
+  s_3be7810364377d::t_66519352da3b1f 2,25-27
+src/renderer/features/local-conversation/view/shared/tools/mcp-capability-view-frame.tsx
+  s_4b31a91f87dc51::t_be6f0d8edba49c 106-119
+src/renderer/features/local-conversation/view/shared/tools/mcp-tool-call.tsx
+  s_c8d1ac045df117::t_b20cff597b3305 2,559-563
+src/renderer/features/local-conversation/view/shared/tools/thread-command-shell-block.test.tsx
+  s_4b31a91f87dc51::t_e37ff93c4a577c 2,4,49-72
+src/renderer/features/local-conversation/view/shared/tools/thread-command-shell-block.tsx
+  s_c8d1ac045df117::t_5fdedcc79bc766 85-98,102-104,107,211,213-215,217
+src/renderer/features/local-conversation/view/shared/tools/tool-call-icons.test.tsx
+  s_4b31a91f87dc51::t_53090f53e7b9ee 2,372-388
+src/renderer/features/local-conversation/view/shared/tools/tool-call-icons.tsx
+  s_3be7810364377d::t_c2d7284f7e6252 3,164-166,168
+src/renderer/features/local-conversation/view/shared/tools/use-tool-call-output-detail.ts
+  s_4b31a91f87dc51::t_df7e6437eabd71 16-25
+src/renderer/features/local-conversation/view/shared/turn-diff-surface.test.tsx
+  s_4b31a91f87dc51::t_e5e6edaeeb0412 2,607-635
+src/renderer/features/local-conversation/view/shared/turn-diff-surface.tsx
+  s_4b31a91f87dc51::t_4dae0a69c8a9b3 1,3,655-669,674,710-722,724-727,730-751
+src/renderer/features/local-conversation/view/shared/use-measured-element-height.test.tsx
+  s_5663ec459e661b::t_08dd0fd6c1fba0 1-67
+src/renderer/features/local-conversation/view/shared/use-measured-element-height.ts
+  s_4b31a91f87dc51::t_89aab99718ea36 1,5-6,10-13,15-17,19-20,22-23
+src/renderer/features/local-conversation/view/shared/use-worked-for-label.test.tsx
+  s_4b31a91f87dc51::t_86ee0037af0a00 1-2,82-109
+src/renderer/features/local-conversation/view/shared/use-worked-for-label.ts
+  s_4b31a91f87dc51::t_fbf9bad8fd603b 1,17-23,25-38
+src/renderer/features/local-conversation/view/shared/user-message-collapse.tsx
+  s_5663ec459e661b::t_c0022130591851 66,71
+src/renderer/features/local-conversation/view/shared/worktree-starting-state-popover.tsx
+  s_4b31a91f87dc51::t_ec91071ad094e6 148-163,165-167,169,199-200
+src/renderer/features/local-conversation/view/subagents-panel/subagents-panel.test.tsx
+  s_4b31a91f87dc51::t_5da72936c9ec08 444-480
+src/renderer/features/local-conversation/view/summary-panel/thread-execution-location-selector.tsx
+  s_4b31a91f87dc51::t_87d8515cb27ca8 49-53
+src/renderer/features/local-conversation/view/summary-panel/thread-floating-summary-panel.tsx
+  s_c8d1ac045df117::t_e779a5a7344a68 1,7,678,681-688,690,692-699,703-710,712-717,725-730,756-758,778-782,789-806,824-841,862-879
+src/renderer/features/local-conversation/view/summary-panel/thread-summary-branch-setup-dialog.tsx
+  s_4b31a91f87dc51::t_1665d6c80ac6f6 1,3,80-87,111-117,119-130
+src/renderer/features/local-conversation/view/summary-panel/thread-summary-create-pull-request-dialog.tsx
+  s_4b31a91f87dc51::t_54589891d48431 1,132-135,141-150,159-161,163,165-167,171-172,265-309,312-328,331-356,361,364,368-370,372-374,378-392
+src/renderer/features/local-conversation/view/summary-panel/thread-summary-git-action-dialog.tsx
+  s_4b31a91f87dc51::t_db27782071d929 1,141,145-166,175,243-272,275-277,280-283,287-299,302-312,339-356
+src/renderer/features/local-conversation/view/summary-panel/thread-summary-panel-section.test.tsx
+  s_4b31a91f87dc51::t_72282b0d3f4c8e 1,245-285
+src/renderer/features/local-conversation/view/summary-panel/thread-summary-panel-section.tsx
+  s_4b31a91f87dc51::t_74e491b8703160 6,186-188,191-194,213-215,218,222
+src/renderer/features/local-conversation/view/thread-user-message-navigation-rail.tsx
+  s_4b31a91f87dc51::t_b506ea5bf27bda 129-141,144
+src/renderer/features/local-conversation/view/use-chat-message-reveal.ts
+  s_4b31a91f87dc51::t_b55bf452896f27 48-53,65-68
+src/renderer/features/local-conversation/view/with-conversation-action-cleanup.test.ts
+  s_4b31a91f87dc51::t_992ee0e85b34a4 1-68
+src/renderer/features/local-conversation/view/with-conversation-action-cleanup.ts
+  s_4b31a91f87dc51::t_8886c6565d321b 1-15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "54e5e4b5f3bca7b8a5a48db3204dce395b710a5f",
+  "prompts": {},
+  "sessions": {
+    "s_3be7810364377d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19f87-a1b4-7fe1-9fa1-806d4f5e39e1",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_4b31a91f87dc51": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19f87-6995-7b12-b477-3b52cc81cd67",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_5663ec459e661b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19f87-8cc7-7bc1-b1c3-9a767bd62295",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_5cec66ce245092": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d35af60e-664c-450c-a6fb-09ff7e66af9e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_a952c1916f8b53": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19fe8-cda6-70b2-8e86-e5e5221a5cc6",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_c8d1ac045df117": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19f87-ceb4-7e71-a9d2-f17ee2415df5",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
