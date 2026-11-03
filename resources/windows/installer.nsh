@@ -4,6 +4,8 @@
   ; Run the incoming helper before an older uninstaller can try to rename busy files.
   ; Both installer and uninstaller extract outside $INSTDIR so they can release it.
   InitPluginsDir
+  ; Maintenance must not inherit an installation-directory handle through its cwd.
+  SetOutPath "$TEMP"
   File /oname=$PLUGINSDIR\nodex-core-maintenance.exe "${PROJECT_DIR}\.generated\codex-runtime\bin\nodex-core.exe"
   File /oname=$PLUGINSDIR\stop-installation.ps1 "${BUILD_RESOURCES_DIR}\windows\stop-installation.ps1"
   StrCpy $R0 "$SYSDIR\WindowsPowerShell\v1.0\powershell.exe"
@@ -37,6 +39,22 @@
   WriteRegStr HKCU "${NODEX_PROTOCOL_KEY}" "URL Protocol" ""
   WriteRegStr HKCU "${NODEX_PROTOCOL_KEY}\DefaultIcon" "" '"$INSTDIR\${APP_EXECUTABLE_FILENAME}",0'
   WriteRegStr HKCU "${NODEX_PROTOCOL_KEY}\shell\open\command" "" '"$INSTDIR\${APP_EXECUTABLE_FILENAME}" "%1"'
+  ${If} ${isUpdated}
+  ${AndIf} ${isForceRun}
+    ; This installer never elevates. Launch directly so NODEX_HOME and the
+    ; selected Profile survive instead of borrowing Explorer's environment.
+    HideWindow
+    ; Detached descendants must not retain $INSTDIR as their working directory.
+    SetOutPath "$PROFILE"
+    ClearErrors
+    Exec '"$INSTDIR\${APP_EXECUTABLE_FILENAME}" --updated'
+    ${If} ${Errors}
+      SetErrorLevel 2
+      Abort "Nodex was updated but could not restart. Open Nodex to continue."
+    ${EndIf}
+    ; Skip electron-builder's ShellExecuteAsUser relaunch: one update, one host.
+    !insertmacro quitSuccess
+  ${EndIf}
 !macroend
 
 !macro customUnInstall

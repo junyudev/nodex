@@ -1,6 +1,6 @@
 import { hostCapabilities } from "../../shared/host-capabilities";
 import type { AppUpdateSettings, AppUpdateStatus } from "../../shared/types";
-import type { MacAppUpdaterEvent } from "../mac-app-updater";
+import type { AppUpdaterEvent } from "../app-updater";
 
 export interface AppUpdateRuntimeState {
   readonly applicationReady: boolean;
@@ -16,27 +16,31 @@ const roundProgressPercent = (received: number, total: number | null): number | 
 };
 
 const unsupportedRuntimeMessage = (input: {
+  readonly architecture?: string;
   readonly isInApplicationsFolder: boolean;
   readonly isPackaged: boolean;
   readonly platform: NodeJS.Platform;
   readonly updaterAvailable: boolean;
 }): string => {
-  if (
-    input.isPackaged &&
-    hostCapabilities(input.platform).autoUpdate &&
-    !input.isInApplicationsFolder
-  ) {
+  if (input.isPackaged && input.platform === "darwin" && !input.isInApplicationsFolder) {
     return "Move Nodex to Applications to enable app updates.";
   }
-  if (input.isPackaged && hostCapabilities(input.platform).autoUpdate && !input.updaterAvailable) {
+  if (
+    input.isPackaged &&
+    hostCapabilities(input.platform, input.architecture).autoUpdate &&
+    !input.updaterAvailable
+  ) {
     return "App updates are disabled in this build.";
   }
-  return "App updates are only available in packaged macOS builds.";
+  return input.isPackaged
+    ? "App updates are unavailable on this platform."
+    : "App updates are only available in packaged builds.";
 };
 
 export const initialAppUpdateState = (input: {
   readonly buildDefaultChannel: AppUpdateSettings["channel"];
   readonly currentVersion: string;
+  readonly architecture?: string;
   readonly isInApplicationsFolder: boolean;
   readonly isPackaged: boolean;
   readonly platform: NodeJS.Platform;
@@ -45,8 +49,8 @@ export const initialAppUpdateState = (input: {
 }): AppUpdateRuntimeState => {
   const supported =
     input.isPackaged &&
-    hostCapabilities(input.platform).autoUpdate &&
-    input.isInApplicationsFolder &&
+    hostCapabilities(input.platform, input.architecture).autoUpdate &&
+    (input.platform !== "darwin" || input.isInApplicationsFolder) &&
     input.updaterAvailable;
   return {
     applicationReady: false,
@@ -87,7 +91,7 @@ export const withChannelChangeAvailability = (
 
 export const reduceAppUpdateStatus = (
   status: AppUpdateStatus,
-  event: MacAppUpdaterEvent,
+  event: AppUpdaterEvent,
   checkedAt: string,
 ): AppUpdateStatus => {
   if (!status.supported) return status;

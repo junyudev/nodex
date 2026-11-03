@@ -1,8 +1,8 @@
-export type MacAppUpdaterCheckKind = "background" | "user";
+export type AppUpdaterCheckKind = "background" | "user";
 export type AppUpdateChannel = "stable" | "nightly";
 
-export type MacAppUpdaterEvent =
-  | { readonly type: "check-started"; readonly kind: MacAppUpdaterCheckKind }
+export type AppUpdaterEvent =
+  | { readonly type: "check-started"; readonly kind: AppUpdaterCheckKind }
   | {
       readonly type: "update-found";
       readonly version: string;
@@ -34,10 +34,12 @@ export type MacAppUpdaterEvent =
       readonly recoverable: boolean;
     };
 
-/** Synchronous capability exposed by one Scope-owned native Sparkle lease. */
-export interface MacAppUpdaterSession {
-  readonly check: (kind: MacAppUpdaterCheckKind) => void;
+/** Synchronous capabilities exposed by one Scope-owned platform lease. */
+export interface AppUpdaterSession {
+  readonly check: (kind: AppUpdaterCheckKind) => void;
   readonly installDownloadedUpdate: () => void;
+  /** Capture a verified handoff before release; invoke only after graceful runtime shutdown. */
+  readonly prepareQuit?: () => (() => void | Promise<void>) | null;
   readonly setChannel: (channel: AppUpdateChannel) => void;
 }
 
@@ -45,13 +47,13 @@ export interface MacAppUpdaterSession {
  * Stateless packaged-runtime descriptor. Acquiring it creates the only native
  * updater lease; the caller must register `release` in its owning Scope.
  */
-export interface MacAppUpdaterPlatform {
+export interface AppUpdaterPlatform {
   readonly buildDefaultChannel: AppUpdateChannel;
   readonly acquire: (
     channel: AppUpdateChannel,
-    onEvent: (event: MacAppUpdaterEvent) => void,
+    onEvent: (event: AppUpdaterEvent) => void,
   ) => {
-    readonly release: () => void;
-    readonly session: MacAppUpdaterSession;
+    readonly release: () => void | Promise<void>;
+    readonly session: AppUpdaterSession;
   };
 }

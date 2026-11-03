@@ -28,7 +28,7 @@ bounded wait after their image path is checked again. Other installations,
 system runtimes and the Profile are left intact. If those files cannot be
 released, maintenance fails before replacing or removing them.
 
-Background service installation, automatic app updates, Browser control,
+Background service installation, Browser control,
 Computer control, Appshot and Apple DeviceCheck are unavailable on Windows.
 Main's host capability policy gates native acquisition. Existing typed feature
 availability observations govern renderer actions; an unavailable integration
@@ -80,7 +80,8 @@ presents a window-scoped snapshot through the renderer menubar and removes the
 per-window native menu surface after that presentation connects. Invocation rechecks
 snapshot membership, enabled and visible ancestry, and the requesting window's focused
 content. A refreshed menu or snapshot revokes old item IDs. Navigate remains under
-View; Settings is under Edit, Quit (`Ctrl+Q`) ends File, and About is under Help.
+View; Settings is under Edit, Quit (`Ctrl+Q`) ends File, and Check for Updates and
+About are under Help.
 
 Alt alone reveals mnemonics and focuses the first menu on release. F10 toggles menu
 focus; Alt plus a menu mnemonic opens it, and a focused bar accepts mnemonics without
@@ -108,6 +109,23 @@ Settings navigation and search omit Computer use on Windows, including direct li
 Browser keeps the built-in Browser's history, downloads, credentials, extensions,
 permissions and link preferences. Profile import and control of external browsers
 are absent because their host integrations are unavailable. General retains the
-running Nodex version without automatic-update controls or an unsupported-runtime
-message. Host capability policy determines this presentation; temporary readiness
+running Nodex version and the shared app-update status, preferences and actions.
+Packaged x64 and arm64 builds support updates when their distribution channel is
+enabled; local and CI packages report that updates are disabled in that build.
+Unpackaged builds report that updates require a packaged build. Host capability policy determines this presentation; temporary readiness
 of a supported feature remains visible within its owning page.
+
+## App updates
+
+Windows uses the same Main-owned update states and renderer controls as macOS.
+Stable and Nightly feeds are specific to x64 or arm64, and only strictly newer
+Release Identity build versions are eligible. Feed and download errors are
+recoverable. A staged installer becomes ready only after its byte length and
+pinned Ed25519 signature are verified.
+
+Restart to update finishes graceful Desktop and Core shutdown before handing
+the verified installer to silent per-user NSIS maintenance and relaunch. A ready
+update at ordinary quit installs without relaunch. OS session end never installs
+an update. The selected Profile and installer-owned protocol registration survive;
+the installer relaunches one installed Desktop. See the
+[Windows packaging runbook](../release-windows.md#packaged-update-configuration).

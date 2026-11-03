@@ -8,11 +8,7 @@ import * as Scope from "effect/Scope";
 import type { AppUpdateSettings, AppUpdateStatus } from "../../shared/types";
 import { testLayer as mainConfigLayer } from "../app/MainConfig";
 import { layer as callbackRuntimeLayer } from "../app/ScopedCallbackRuntime";
-import type {
-  MacAppUpdaterCheckKind,
-  MacAppUpdaterEvent,
-  MacAppUpdaterPlatform,
-} from "../mac-app-updater";
+import type { AppUpdaterCheckKind, AppUpdaterEvent, AppUpdaterPlatform } from "../app-updater";
 import { ElectronApp } from "../platform/electron/ElectronApp";
 import { ElectronWindowHost } from "../platform/electron/ElectronWindowHost";
 import {
@@ -22,21 +18,21 @@ import {
 import { reduceAppUpdateStatus } from "./AppUpdatePolicy";
 import { AppUpdateRuntime, layer } from "./AppUpdateRuntime";
 
-class FakeUpdaterPlatform implements MacAppUpdaterPlatform {
+class FakeUpdaterPlatform implements AppUpdaterPlatform {
   readonly buildDefaultChannel = "stable" as const;
-  readonly checkKinds: MacAppUpdaterCheckKind[] = [];
+  readonly checkKinds: AppUpdaterCheckKind[] = [];
   acquireCount = 0;
   failAcquire = false;
   installCount = 0;
   releaseCount = 0;
-  private listener: ((event: MacAppUpdaterEvent) => void) | null = null;
+  private listener: ((event: AppUpdaterEvent) => void) | null = null;
   private channel: AppUpdateSettings["channel"] = "stable";
 
   getChannel(): AppUpdateSettings["channel"] {
     return this.channel;
   }
 
-  acquire(channel: AppUpdateSettings["channel"], listener: (event: MacAppUpdaterEvent) => void) {
+  acquire(channel: AppUpdateSettings["channel"], listener: (event: AppUpdaterEvent) => void) {
     this.acquireCount += 1;
     if (this.failAcquire) throw new Error("native updater unavailable");
     this.channel = channel;
@@ -50,7 +46,7 @@ class FakeUpdaterPlatform implements MacAppUpdaterPlatform {
         this.listener = null;
       },
       session: {
-        check: (kind: MacAppUpdaterCheckKind) => this.checkKinds.push(kind),
+        check: (kind: AppUpdaterCheckKind) => this.checkKinds.push(kind),
         installDownloadedUpdate: () => {
           this.installCount += 1;
         },
@@ -61,7 +57,7 @@ class FakeUpdaterPlatform implements MacAppUpdaterPlatform {
     };
   }
 
-  emit(event: MacAppUpdaterEvent): void {
+  emit(event: AppUpdaterEvent): void {
     this.listener?.(event);
   }
 }
@@ -143,8 +139,8 @@ const buildHarness = (input: {
     const runtime = Context.get(context, AppUpdateRuntime);
     const supported =
       (input.isPackaged ?? true) &&
-      (input.platform ?? "darwin") === "darwin" &&
-      (input.inApplicationsFolder ?? true) &&
+      ["darwin", "win32"].includes(input.platform ?? "darwin") &&
+      (input.platform === "win32" || (input.inApplicationsFolder ?? true)) &&
       updater !== null;
     yield* waitUntil("app updater initialization", () => !supported || updater?.acquireCount === 1);
     return { broadcasts, runtime, scope, updater };
@@ -343,5 +339,27 @@ it.effect("keeps a failed native acquisition out of the Scope release set", () =
 
     yield* Scope.close(harness.scope, Exit.void);
     assert.strictEqual(updater.releaseCount, 0);
+  }),
+);
+
+it.effect("enables packaged Windows updates without the macOS Applications gate", () =>
+  Effect.gen(function* () {
+    const windows = yield* buildHarness({ platform: "win32", inApplicationsFolder: false });
+    assert.deepInclude(yield* windows.runtime.currentStatus, { status: "idle", supported: true });
+    yield* windows.runtime.check;
+    assert.deepEqual(windows.updater?.checkKinds, ["user"]);
+    yield* Scope.close(windows.scope, Exit.void);
+    const unpackaged = yield* buildHarness({ platform: "win32", isPackaged: false });
+    assert.deepInclude(yield* unpackaged.runtime.currentStatus, {
+      message: "App updates are only available in packaged builds.",
+      supported: false,
+    });
+    yield* Scope.close(unpackaged.scope, Exit.void);
+    const disabled = yield* buildHarness({ platform: "win32", updater: null });
+    assert.deepInclude(yield* disabled.runtime.currentStatus, {
+      message: "App updates are disabled in this build.",
+      supported: false,
+    });
+    yield* Scope.close(disabled.scope, Exit.void);
   }),
 );

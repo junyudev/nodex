@@ -11,6 +11,7 @@ export interface MainApplicationTestHooks {
   ) => Effect.Effect<void, MainApplicationError>;
   readonly readiness?: MainApplication["Service"]["readiness"];
   readonly prepareShutdown?: Effect.Effect<void>;
+  readonly completeShutdown?: Effect.Effect<void>;
   readonly release?: Effect.Effect<void>;
 }
 
@@ -26,6 +27,7 @@ export const mainApplicationTestLayer = (
         activate: hooks.activate ?? Effect.void,
         handleBootstrapEvent: hooks.handleBootstrapEvent,
         prepareShutdown: hooks.prepareShutdown ?? Effect.void,
+        completeShutdown: hooks.completeShutdown,
         readiness: hooks.readiness ?? "ready",
       });
     }),

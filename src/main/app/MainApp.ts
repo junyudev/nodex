@@ -69,6 +69,7 @@ export const program = <R, E>(options: MainAppOptions<R, E>) =>
     const config = yield* MainConfig;
     const shutdown = yield* MainShutdown;
     let quitAllowed = false;
+    let completeShutdown = Effect.void;
     let activeApplication: MainApplication["Service"] | null = null;
     let failurePhase: "startup" | "closing" = "startup";
     yield* electron.onActivate(
@@ -109,6 +110,7 @@ export const program = <R, E>(options: MainAppOptions<R, E>) =>
         options,
         (application) => {
           activeApplication = application;
+          if (application) completeShutdown = application.completeShutdown ?? Effect.void;
         },
         () => {
           failurePhase = "closing";
@@ -124,6 +126,7 @@ export const program = <R, E>(options: MainAppOptions<R, E>) =>
         cause: applicationExit.cause,
       } satisfies MainExit;
     }
+    yield* completeShutdown;
     quitAllowed = true;
     if (applicationExit.value._tag === "RuntimeFatal") {
       return {

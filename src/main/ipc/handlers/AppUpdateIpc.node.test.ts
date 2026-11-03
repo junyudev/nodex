@@ -31,6 +31,7 @@ it.effect("registers and releases app update ingress with the Main Scope", () =>
       check: Effect.die("unused"),
       currentSettings: Effect.succeed({ automaticChecksEnabled: true, channel: "stable" }),
       currentStatus: Effect.succeed({} as never),
+      prepareQuit: Effect.succeed(null),
       install: Effect.die("unused"),
       markApplicationReady: Effect.void,
       startAutomaticChecks: Effect.void,

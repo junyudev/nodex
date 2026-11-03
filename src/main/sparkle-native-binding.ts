@@ -1,10 +1,10 @@
 import { createRequire } from "node:module";
 import path from "node:path";
 
-import type { MacAppUpdaterCheckKind, MacAppUpdaterEvent } from "./mac-app-updater";
+import type { AppUpdaterCheckKind, AppUpdaterEvent } from "./app-updater";
 
 interface SparkleNativeBinding {
-  readonly checkForUpdates: (kind: MacAppUpdaterCheckKind) => void;
+  readonly checkForUpdates: (kind: AppUpdaterCheckKind) => void;
   readonly dispose: () => void;
   readonly initialize: (
     options: {
@@ -38,7 +38,7 @@ const nullableByteCount = (value: unknown, label: string): number | null => {
   throw new Error(`Sparkle native event ${label} must be a non-negative byte count or null.`);
 };
 
-export function parseSparkleNativeEvent(value: unknown): MacAppUpdaterEvent {
+export function parseSparkleNativeEvent(value: unknown): AppUpdaterEvent {
   if (!isRecord(value) || typeof value.type !== "string") {
     throw new Error("Sparkle native event must be an object with a type.");
   }

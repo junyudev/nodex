@@ -230,13 +230,29 @@ recommended default for stable builds, while Nightly builds default to Nightly
 until the user makes an explicit persisted choice. Main-owned updater status is
 the authority for the selected channel and whether it may change. Changes are
 allowed only while idle, up to date, or in a recoverable error state. A
-successful change clears stale update metadata and does not start a check.
+successful change clears stale update metadata and admits a new automatic check
+when the app is ready and automatic checks are enabled.
 Switching from Nightly to Stable never offers an older Stable build.
 
 The selector uses the shared Settings dropdown and is disabled during checks,
 downloads, ready-to-install state, and installation. Main switches the packaged
 updater before persisting the choice, rolls it back if persistence fails, and
 serializes mutations across windows.
+
+Packaged macOS arm64 and Windows x64/arm64 share update states: idle, checking,
+available, downloading, downloaded, installing, up to date, recoverable error,
+and unsupported. Download progress and Restart to update use the same controls.
+Unpackaged builds report that updates require a packaged build; packages with
+disabled channels report that updates are disabled in that build. Moving Nodex
+to Applications is a macOS-only requirement. Windows also offers Check for Updates
+in Main's Help menu, projected through the renderer menubar.
+
+On Windows a downloaded update installs after graceful Desktop/Core shutdown.
+Restart to update relaunches the installed application; ordinary quit installs
+without relaunch. OS session end does not install. A feed cannot downgrade the
+running Release Identity build, including after changing channels. Windows
+installer verification and distribution configuration are specified in the
+[packaging runbook](../release-windows.md#packaged-update-configuration).
 
 ## Deep links and feature-owned state
 

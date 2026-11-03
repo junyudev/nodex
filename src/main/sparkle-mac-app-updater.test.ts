@@ -124,7 +124,7 @@ describe("packaged Sparkle runtime boundary", () => {
     }
   });
 
-  test("fences native events before releasing one exact lease", () => {
+  test("fences native events before releasing one exact lease", async () => {
     const resourcesPath = mkdtempSync(join(tmpdir(), "nodex-scoped-sparkle-"));
     let disposeCount = 0;
     const native: { emit?: (value: unknown) => void } = {};
@@ -155,8 +155,8 @@ describe("packaged Sparkle runtime boundary", () => {
       const events: unknown[] = [];
       const lease = platform?.acquire("stable", (event) => events.push(event));
       native.emit?.({ type: "up-to-date", version: "0.2.1" });
-      lease?.release();
-      lease?.release();
+      await lease?.release();
+      await lease?.release();
       native.emit?.({ type: "up-to-date", version: "0.2.2" });
 
       expect(events).toEqual([{ type: "up-to-date", version: "0.2.1" }]);

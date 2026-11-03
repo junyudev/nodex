@@ -3,7 +3,10 @@ export const hostCapabilities = (platform: string, architecture?: string) => {
   const mac = platform === "darwin";
   return Object.freeze({
     backgroundService: mac,
-    autoUpdate: mac && (architecture === undefined || architecture === "arm64"),
+    autoUpdate:
+      (mac && (architecture === undefined || architecture === "arm64")) ||
+      (platform === "win32" &&
+        (architecture === undefined || architecture === "x64" || architecture === "arm64")),
     browserControl: mac,
     browserProfileImport: mac,
     computerControl: mac,
