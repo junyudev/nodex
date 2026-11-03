@@ -1,0 +1,89 @@
+src/renderer/components/workbench/agent-instance-settings-control.tsx
+  s_b0eb8aff8b9fab::t_18112382cb7482 1,277-291
+src/renderer/components/workbench/app-shell-tabs.tsx
+  s_b0eb8aff8b9fab::t_67a2586d1bbd79 1,1374-1380,1382-1388
+src/renderer/components/workbench/archived-chats-settings-page.tsx
+  s_b0eb8aff8b9fab::t_1f5392bb2d51c3 1,220-233,235-249,261-270,272-292,294-298
+src/renderer/components/workbench/codex-home-settings-control.tsx
+  s_b0eb8aff8b9fab::t_e5808829cc8cfb 1,94-108
+src/renderer/components/workbench/codex-setup-import-control.tsx
+  s_b0eb8aff8b9fab::t_975a0f54a558b8 1,79-100,107-120
+src/renderer/components/workbench/codex-sidebar.tsx
+  s_b0eb8aff8b9fab::t_cda65aaeacc52b 1,515,674-692,926-941,1912-1925
+src/renderer/components/workbench/command-palette-workspace-toolbar.tsx
+  s_b0eb8aff8b9fab::t_16dd91f987dd6c 1,102-117
+src/renderer/components/workbench/command-palette.tsx
+  s_b0eb8aff8b9fab::t_7005df504d3828 2,128-130,150,157-175,177,179
+src/renderer/components/workbench/conversation-import-settings-page.tsx
+  s_7da3da250f2a3e::t_909cf53438ee28 1,409-423,425-447,491-501,503-542,577-595,601-612,631-632
+src/renderer/components/workbench/database-list/database-list.tsx
+  s_b0eb8aff8b9fab::t_71c641ac605a51 1,12,152,398-434,451,459,681-685,715,774-778,1035,1043,1046,1049,1063,1069-1074,1099,1114-1126,1129-1132,1138-1144,1150,1186-1200,1202-1227,1658-1666,1669
+src/renderer/components/workbench/database-list/use-database-list-window.ts
+  s_948a11dee36c5f::t_c0827be2c86f4a 6,753-767,773-774,779
+src/renderer/components/workbench/database-settings/database-settings-rail.tsx
+  s_7b1e939d6b8f42::t_b395ab52752231 1175-1176,1184
+src/renderer/components/workbench/database-settings/use-database-settings-runtime.test.tsx
+  s_7b1e939d6b8f42::t_df89eb36e07492 1-66
+src/renderer/components/workbench/database-settings/use-database-settings-runtime.ts
+  s_b0eb8aff8b9fab::t_1803761a2add43 1,70-71,74-97,112-115,123-135,168-180,183,190-203
+src/renderer/components/workbench/database-view-surface.test.tsx
+  s_948a11dee36c5f::t_4ddd5d0fe6692e 1-2,4,742-768
+src/renderer/components/workbench/database-view-surface.tsx
+  s_948a11dee36c5f::t_dfb59e412eced9 1,799-811,813-843
+src/renderer/components/workbench/git-settings-page.tsx
+  s_b0eb8aff8b9fab::t_25cea6a14ab85e 2,115-119,125-135,137-145,150-157
+src/renderer/components/workbench/keyboard-shortcuts-settings-page.browser.test.tsx
+  s_948a11dee36c5f::t_a7f7c6a8716bad 1-2
+src/renderer/components/workbench/keyboard-shortcuts-settings-page.test.tsx
+  s_948a11dee36c5f::t_2fb1b9cc24e006 1-56
+src/renderer/components/workbench/keyboard-shortcuts-settings-page.tsx
+  s_b0eb8aff8b9fab::t_ed6d7351009cba 1,164-178
+src/renderer/components/workbench/pending-worktree-route.tsx
+  s_b0eb8aff8b9fab::t_a4085e15282a46 1,488-497,524-539
+src/renderer/components/workbench/project-archive-chats-dialog.browser.test.tsx
+  s_948a11dee36c5f::t_42faa61ff48487 1-2
+src/renderer/components/workbench/project-archive-chats-dialog.test.tsx
+  s_b0eb8aff8b9fab::t_59829871b97552 1-94
+src/renderer/components/workbench/project-archive-chats-dialog.tsx
+  s_b0eb8aff8b9fab::t_f10b0c759f75b5 1,61-80,82-89
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "19adb7f744468890e3aa9ca6456fa385a9efe338",
+  "prompts": {},
+  "sessions": {
+    "s_7b1e939d6b8f42": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a12a-b6f3-7242-bad0-977a2195411e",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_7da3da250f2a3e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a17c-16a0-74b3-8f6a-6c6afc49c2f9",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_948a11dee36c5f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a17c-233a-7ac2-9cbf-6bdf66557783",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_b0eb8aff8b9fab": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a17b-ee4d-77e1-a74c-7eed9a2e97f7",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
