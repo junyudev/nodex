@@ -1,0 +1,24 @@
+crates/nodex-core/src/workspace/inbox_nodex.rs
+  s_39af2826685004::t_e15aad1452dbb2 61-62,67,74-78,81-96,132,138,169-171
+crates/nodex-core/src/workspace/inbox_nodex_tests.rs
+  s_39af2826685004::t_e15aad1452dbb2 86,113-114,181-188,190-192
+  s_39af2826685004::t_4425a7ab00d540 189
+  s_39af2826685004::t_8d802de70cee68 259-297
+  s_39af2826685004::t_1801d927a2e5ef 258
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4c12f37c9d9adba4310bf774ccb3c274e07a09ec",
+  "prompts": {},
+  "sessions": {
+    "s_39af2826685004": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d6e56d2e-aae2-44a9-9afb-e48fc0c1ee5c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
