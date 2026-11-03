@@ -1,0 +1,33 @@
+.github/workflows/windows.yml
+  s_098df3235fa721::t_5c17515e6308aa 72-81
+crates/nodex-core/src/database/mod.rs
+  s_3022e59a160914::t_e9e63eca9ade57 2532-2542,2582-2583
+crates/nodex-core/src/database/tests/sql.rs
+  s_098df3235fa721::t_1afc5ed2c0fd4c 12-23,25-38,41-43
+crates/nodex-core/src/infrastructure/request_execution.rs
+  s_098df3235fa721::t_55f7c24e6c9982 211-224
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5dba01b917a8d80524e013b4580cb886e0f49c39",
+  "prompts": {},
+  "sessions": {
+    "s_098df3235fa721": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19eb9-df69-7222-adba-8eb488f30462",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_3022e59a160914": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1def126e-fd62-476f-9393-67b0835f01b6",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
