@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { FileDetailsMetadata, FileListMetadata } from "@/components/shared/file-metadata";
 import { type DragEvent, useId, useRef, useState } from "react";
 
@@ -178,48 +179,66 @@ function PageFilesDialogContent({
   const run = async (action: () => Promise<unknown>, success: string): Promise<void> => {
     if (!authority || !inventoryReady) return;
     setMutating(true);
-    try {
-      await action();
-      await refresh();
-      toast.success(success);
-    } catch (error) {
-      if (error instanceof LibraryFileCommandError && error.code === "revision_conflict") {
-        const fresh = await inventory.refresh();
-        setPathRevision(fresh.revision);
+    return await runWithCleanup(
+      async () => {
+        await action();
         await refresh();
-      }
-      toast.danger(mutationMessage(error));
-    } finally {
-      setMutating(false);
-    }
+        toast.success(success);
+      },
+      {
+        onError: async (error: unknown) => {
+          if (error instanceof LibraryFileCommandError && error.code === "revision_conflict") {
+            const fresh = await inventory.refresh();
+            setPathRevision(fresh.revision);
+            await refresh();
+          }
+          toast.danger(mutationMessage(error));
+        },
+        cleanup: () => {
+          setMutating(false);
+        },
+      },
+    );
   };
 
   const addLocalSelection = async (selection: "files" | "directory"): Promise<void> => {
     if (!authority || !inventoryReady) return;
     const operationId = createUuidV7();
     setMutating(true);
-    try {
-      const picked = await pickAndPrepareFiles(routingContext, {
-        operationId,
-        selection,
-        title: selection === "directory" ? "Add folder to Page" : "Add Files to Page",
-      });
-      if (picked.cancelled) return;
-      await importPreparedPageEntries(authority, pageId, value.revision, operationId, picked.files);
-      await refresh();
-      toast.success(
-        picked.files.length === 1 ? "File added" : `${picked.files.length} Files added`,
-      );
-    } catch (error) {
-      if (error instanceof LibraryFileCommandError && error.code === "revision_conflict") {
-        const fresh = await inventory.refresh();
-        setPathRevision(fresh.revision);
+    return await runWithCleanup(
+      async () => {
+        const picked = await pickAndPrepareFiles(routingContext, {
+          operationId,
+          selection,
+          title: selection === "directory" ? "Add folder to Page" : "Add Files to Page",
+        });
+        if (picked.cancelled) return;
+        await importPreparedPageEntries(
+          authority,
+          pageId,
+          value.revision,
+          operationId,
+          picked.files,
+        );
         await refresh();
-      }
-      toast.danger(mutationMessage(error));
-    } finally {
-      setMutating(false);
-    }
+        toast.success(
+          picked.files.length === 1 ? "File added" : `${picked.files.length} Files added`,
+        );
+      },
+      {
+        onError: async (error: unknown) => {
+          if (error instanceof LibraryFileCommandError && error.code === "revision_conflict") {
+            const fresh = await inventory.refresh();
+            setPathRevision(fresh.revision);
+            await refresh();
+          }
+          toast.danger(mutationMessage(error));
+        },
+        cleanup: () => {
+          setMutating(false);
+        },
+      },
+    );
   };
 
   const addDroppedFiles = async (
@@ -228,20 +247,26 @@ function PageFilesDialogContent({
   ): Promise<void> => {
     if (!authority || !inventoryReady || files.length === 0) return;
     setMutating(true);
-    try {
-      await importPreparedPageEntries(authority, pageId, value.revision, operationId, files);
-      await refresh();
-      toast.success(files.length === 1 ? "File added" : `${files.length} Files added`);
-    } catch (error) {
-      if (error instanceof LibraryFileCommandError && error.code === "revision_conflict") {
-        const fresh = await inventory.refresh();
-        setPathRevision(fresh.revision);
+    return await runWithCleanup(
+      async () => {
+        await importPreparedPageEntries(authority, pageId, value.revision, operationId, files);
         await refresh();
-      }
-      toast.danger(mutationMessage(error));
-    } finally {
-      setMutating(false);
-    }
+        toast.success(files.length === 1 ? "File added" : `${files.length} Files added`);
+      },
+      {
+        onError: async (error: unknown) => {
+          if (error instanceof LibraryFileCommandError && error.code === "revision_conflict") {
+            const fresh = await inventory.refresh();
+            setPathRevision(fresh.revision);
+            await refresh();
+          }
+          toast.danger(mutationMessage(error));
+        },
+        cleanup: () => {
+          setMutating(false);
+        },
+      },
+    );
   };
 
   const resetFileDrag = (): void => {
@@ -339,15 +364,20 @@ function PageFilesDialogContent({
 
   const saveFile = async (): Promise<void> => {
     if (!selected || !authority) return;
-    try {
-      await saveAuthorizedFile(
-        { ...authority, readSource: { kind: "page", page_id: pageId } },
-        fileSource(selected.file.file_id),
-        selected.logical_path ?? selected.file.default_name,
-      );
-    } catch (error) {
-      toast.danger(error instanceof Error ? error.message : "Couldn’t save File");
-    }
+    return await runWithCleanup(
+      async () => {
+        await saveAuthorizedFile(
+          { ...authority, readSource: { kind: "page", page_id: pageId } },
+          fileSource(selected.file.file_id),
+          selected.logical_path ?? selected.file.default_name,
+        );
+      },
+      {
+        onError: async (error: unknown) => {
+          toast.danger(error instanceof Error ? error.message : "Couldn’t save File");
+        },
+      },
+    );
   };
 
   return (

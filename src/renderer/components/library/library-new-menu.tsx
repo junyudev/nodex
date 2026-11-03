@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import type { ReactElement } from "react";
 
 import { BoardIcon, PageIcon } from "@/components/shared/icons";
@@ -54,38 +55,48 @@ export function useLibraryCreateCommands({
   const { mutation } = useApplyLibraryOperation();
 
   const createPage = async (): Promise<LibraryRouteTarget | null> => {
-    try {
-      const receipt = await mutation.mutateAsync({
-        kind: "create_page",
-        pageId: createUuidV7(),
-        documentId: createUuidV7(),
-        title: "Untitled",
-        parent,
-      });
-      if (receipt.createdTarget?.kind !== "page") return null;
-      requestPageTitleFocus(receipt.createdTarget.pageId);
-      onCreated?.(receipt.createdTarget);
-      return receipt.createdTarget;
-    } catch (error) {
-      toast.danger(error instanceof Error ? error.message : "Could not create Page");
-      return null;
-    }
+    return await runWithCleanup(
+      async () => {
+        const receipt = await mutation.mutateAsync({
+          kind: "create_page",
+          pageId: createUuidV7(),
+          documentId: createUuidV7(),
+          title: "Untitled",
+          parent,
+        });
+        if (receipt.createdTarget?.kind !== "page") return null;
+        requestPageTitleFocus(receipt.createdTarget.pageId);
+        onCreated?.(receipt.createdTarget);
+        return receipt.createdTarget;
+      },
+      {
+        onError: async (error: unknown) => {
+          toast.danger(error instanceof Error ? error.message : "Could not create Page");
+          return null;
+        },
+      },
+    );
   };
 
   const createDatabase = async () => {
-    try {
-      const receipt = await mutation.mutateAsync({
-        kind: "create_database",
-        databaseId: parseDatabaseId(createUuidV7()),
-        dataSourceId: parseDataSourceId(createUuidV7()),
-        viewId: parseDatabaseViewId(createUuidV7()),
-        name: "Untitled",
-        parent,
-      });
-      if (receipt.createdTarget?.kind === "database") onCreated?.(receipt.createdTarget);
-    } catch (error) {
-      toast.danger(error instanceof Error ? error.message : "Could not create Database");
-    }
+    return await runWithCleanup(
+      async () => {
+        const receipt = await mutation.mutateAsync({
+          kind: "create_database",
+          databaseId: parseDatabaseId(createUuidV7()),
+          dataSourceId: parseDataSourceId(createUuidV7()),
+          viewId: parseDatabaseViewId(createUuidV7()),
+          name: "Untitled",
+          parent,
+        });
+        if (receipt.createdTarget?.kind === "database") onCreated?.(receipt.createdTarget);
+      },
+      {
+        onError: async (error: unknown) => {
+          toast.danger(error instanceof Error ? error.message : "Could not create Database");
+        },
+      },
+    );
   };
 
   return {

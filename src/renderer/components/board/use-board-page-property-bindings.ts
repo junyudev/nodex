@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useState } from "react";
 
 import type { DataSourcePropertyEditorBinding } from "@/components/database/data-source-property-editor-binding";
@@ -109,26 +110,32 @@ export function useBoardPagePropertyBindings({
       return next;
     });
     let receipt: DatabaseViewMutationReceipt | null = null;
-    try {
-      receipt = await commitDatabaseViewOperations({ model, operations });
-    } catch (cause) {
-      console.error("[board:property-context-menu]", cause);
-      setErrors((current) =>
-        new Map(current).set(key, "Couldn’t save this Property. Refresh and try again."),
-      );
-      if (propagateError) throw cause;
-    } finally {
-      try {
-        await onCommitted(receipt);
-      } catch (cause) {
-        console.error("[board:property-context-menu:refresh]", cause);
-      }
-      setPendingKeys((current) => {
-        const next = new Set(current);
-        next.delete(key);
-        return next;
-      });
-    }
+    return await runWithCleanup(
+      async () => {
+        receipt = await commitDatabaseViewOperations({ model, operations });
+      },
+      {
+        onError: async (cause: unknown) => {
+          console.error("[board:property-context-menu]", cause);
+          setErrors((current) =>
+            new Map(current).set(key, "Couldn’t save this Property. Refresh and try again."),
+          );
+          if (propagateError) throw cause;
+        },
+        cleanup: async () => {
+          try {
+            await onCommitted(receipt);
+          } catch (cause) {
+            console.error("[board:property-context-menu:refresh]", cause);
+          }
+          setPendingKeys((current) => {
+            const next = new Set(current);
+            next.delete(key);
+            return next;
+          });
+        },
+      },
+    );
   };
 
   const bindingsByPageId = (() => {

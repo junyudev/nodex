@@ -1,3 +1,4 @@
+import { runSyncWithCleanup } from "@/lib/run-with-cleanup";
 import { FileTree as PierreFileTree, useFileTree } from "@pierre/trees/react";
 import type { FileTreeOptions, FileTreeSortComparator } from "@pierre/trees";
 import {
@@ -179,12 +180,15 @@ function FileTreeContent({
         : null;
     if (equalPaths(selected, availableSelectedPath ? [availableSelectedPath] : [])) return;
     syncingSelection.current = true;
-    try {
-      for (const path of selected) model.getItem(path)?.deselect();
-      if (availableSelectedPath) model.getItem(availableSelectedPath)?.select();
-    } finally {
-      syncingSelection.current = false;
-    }
+    runSyncWithCleanup(
+      () => {
+        for (const path of selected) model.getItem(path)?.deselect();
+        if (availableSelectedPath) model.getItem(availableSelectedPath)?.select();
+      },
+      () => {
+        syncingSelection.current = false;
+      },
+    );
   }, [directoryPaths, model, paths, selectedPath]);
 
   const lastReveal = useRef<{ selectedPath: string; resetKey?: string } | null>(null);

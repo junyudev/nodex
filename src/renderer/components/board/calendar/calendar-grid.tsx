@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import {
   useCallback,
   useEffect,
@@ -1229,24 +1230,30 @@ export function CalendarGrid({
       if (!pending || scopeDialogBusy) return;
 
       setScopeDialogBusy(true);
-      try {
-        const effectiveScope =
-          pending.thisAndFutureEquivalentToAll && scope === "this-and-future" ? "all" : scope;
-        await onUpdatePageSchedule(
-          pending.columnId,
-          pending.pageId,
-          pending.occurrenceStart,
-          pending.scheduledStart,
-          pending.scheduledEnd,
-          pending.isAllDay,
-          effectiveScope,
-        );
-      } catch (error) {
-        console.error("Failed to update recurring occurrence schedule", error);
-      } finally {
-        setScopeDialogBusy(false);
-        setPendingScopedUpdate(null);
-      }
+      return await runWithCleanup(
+        async () => {
+          const effectiveScope =
+            pending.thisAndFutureEquivalentToAll && scope === "this-and-future" ? "all" : scope;
+          await onUpdatePageSchedule(
+            pending.columnId,
+            pending.pageId,
+            pending.occurrenceStart,
+            pending.scheduledStart,
+            pending.scheduledEnd,
+            pending.isAllDay,
+            effectiveScope,
+          );
+        },
+        {
+          onError: async (error: unknown) => {
+            console.error("Failed to update recurring occurrence schedule", error);
+          },
+          cleanup: () => {
+            setScopeDialogBusy(false);
+            setPendingScopedUpdate(null);
+          },
+        },
+      );
     },
     [onUpdatePageSchedule, pendingScopedUpdate, scopeDialogBusy],
   );

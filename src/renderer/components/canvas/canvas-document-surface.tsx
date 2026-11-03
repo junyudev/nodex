@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { RecoveryEntry } from "@/features/document-recovery/recovery-entry";
 import { exportCanvasRecovery } from "@/lib/canvas-content-issues";
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -387,11 +388,16 @@ function CanvasEditor({
         setResolvedScene(null);
         setFileReadGeneration((value) => value + 1);
         void (async () => {
-          try {
-            await binding?.persistDurable();
-          } catch {
-            await provider.checkpointRecovery();
-          }
+          await runWithCleanup(
+            async () => {
+              await binding?.persistDurable();
+            },
+            {
+              onError: async () => {
+                await provider.checkpointRecovery();
+              },
+            },
+          );
           await onReload();
         })().catch((error: unknown) => {
           if (active) setSceneError(error instanceof Error ? error.message : String(error));
@@ -436,45 +442,51 @@ function CanvasEditor({
     });
 
     async function presentScene(materialization: PortableCanvasScene): Promise<void> {
-      const revision = ++preferencesRevision;
-      try {
-        const [files, collaboration] = await Promise.all([
-          fileResolver.resolve(materialization.files),
-          collaborationPromise,
-        ]);
-        if (!active || revision !== preferencesRevision) return;
+      preferencesRevision += 1;
+      const revision = preferencesRevision;
+      return await runWithCleanup(
+        async () => {
+          const [files, collaboration] = await Promise.all([
+            fileResolver.resolve(materialization.files),
+            collaborationPromise,
+          ]);
+          if (!active || revision !== preferencesRevision) return;
 
-        const api = excalidrawApiRef.current;
-        if (!api) {
+          const api = excalidrawApiRef.current;
+          if (!api) {
+            setResolvedScene({ materialization, files });
+            setSceneError(null);
+            return;
+          }
+
+          const localElements = api.getSceneElementsIncludingDeleted();
+          const remoteElements = materialization.elements as unknown as Parameters<
+            typeof collaboration.reconcileElements
+          >[1];
+          const reconciled = collaboration.reconcileElements(
+            localElements,
+            remoteElements,
+            api.getAppState(),
+          );
+          binding?.acceptRemotePresentation(reconciled);
+          api.addFiles(Object.values(files) as unknown as BinaryFileData[]);
+          api.updateScene({
+            elements: reconciled,
+            appState: materialization.appState as unknown as AppState,
+            captureUpdate: collaboration.CaptureUpdateAction.NEVER,
+          });
+          latestElementsRef.current = reconciled;
+          setPlacedPageIds((previous) => syncPlacedPageIds(previous, reconciled));
           setResolvedScene({ materialization, files });
           setSceneError(null);
-          return;
-        }
-
-        const localElements = api.getSceneElementsIncludingDeleted();
-        const remoteElements = materialization.elements as unknown as Parameters<
-          typeof collaboration.reconcileElements
-        >[1];
-        const reconciled = collaboration.reconcileElements(
-          localElements,
-          remoteElements,
-          api.getAppState(),
-        );
-        binding?.acceptRemotePresentation(reconciled);
-        api.addFiles(Object.values(files) as unknown as BinaryFileData[]);
-        api.updateScene({
-          elements: reconciled,
-          appState: materialization.appState as unknown as AppState,
-          captureUpdate: collaboration.CaptureUpdateAction.NEVER,
-        });
-        latestElementsRef.current = reconciled;
-        setPlacedPageIds((previous) => syncPlacedPageIds(previous, reconciled));
-        setResolvedScene({ materialization, files });
-        setSceneError(null);
-      } catch (error) {
-        if (!active || revision !== preferencesRevision) return;
-        setSceneError(error instanceof Error ? error.message : String(error));
-      }
+        },
+        {
+          onError: async (error: unknown) => {
+            if (!active || revision !== preferencesRevision) return;
+            setSceneError(error instanceof Error ? error.message : String(error));
+          },
+        },
+      );
     }
 
     const retry = (): void => {

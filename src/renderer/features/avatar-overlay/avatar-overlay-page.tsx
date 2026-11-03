@@ -62,7 +62,8 @@ function useAvatarOverlayGeometry(frameRef: React.RefObject<HTMLElement | null>)
       reportEvent({ regions, type: "pointer-regions-changed" });
     };
     const schedule = (): void => {
-      frameRequest ??= window.requestAnimationFrame(publish);
+      if (frameRequest !== null) return;
+      frameRequest = window.requestAnimationFrame(publish);
     };
     const resizeObserver = new ResizeObserver(schedule);
     const observeGeometry = (): void => {

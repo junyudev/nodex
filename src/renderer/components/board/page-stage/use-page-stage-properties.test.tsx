@@ -11,6 +11,7 @@ import { testPropertySemantics } from "../../../../shared/testing/database-prope
 import type { PageStagePageModel } from "@/lib/page-stage-page";
 import { readPageStageSemanticProperties } from "@/lib/page-stage-properties";
 import { usePageStageProperties } from "./use-page-stage-properties";
+import type { PageStageMetadataMutationResult } from "./types";
 
 const optionRuntime = vi.hoisted(() => ({ readWindow: vi.fn() }));
 vi.mock("@/lib/database-property-options-runtime", async (importOriginal) => ({
@@ -100,8 +101,79 @@ const pageModel: PageStagePageModel = {
   },
 };
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((complete, fail) => {
+    resolve = complete;
+    reject = fail;
+  });
+  return { promise, resolve, reject };
+}
+
 describe("usePageStageProperties", () => {
   beforeEach(() => optionRuntime.readWindow.mockReset());
+
+  test("keeps overlapping writes busy until each saving lifetime completes, including rejection", async () => {
+    optionRuntime.readWindow.mockResolvedValue({ options: [], nextCursor: null });
+    const first = deferred<PageStageMetadataMutationResult>();
+    const second = deferred<PageStageMetadataMutationResult>();
+    const onUpdateProperty = vi
+      .fn()
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    const endSaving = vi.fn();
+    const beginSaving = vi.fn(() => endSaving);
+    const report = vi.spyOn(console, "error").mockImplementation(() => {});
+    const initialProps: { model: PageStagePageModel | null } = { model: pageModel };
+    const hook = renderHook(
+      ({ model }: { model: PageStagePageModel | null }) =>
+        usePageStageProperties({
+          pageModel: model,
+          contentRoutingContext: projectContentRoute("project-1"),
+          onUpdateProperty,
+          onOpenPage: () => undefined,
+          onRefreshProperties: async () => undefined,
+          beginSaving,
+        }),
+      { initialProps },
+    );
+    const edit = { kind: "replace", value: [], expectedValueRevision: 1 } as const;
+    let firstResult!: Promise<PageStageMetadataMutationResult>;
+    let secondResult!: Promise<PageStageMetadataMutationResult>;
+    try {
+      await act(async () => {
+        firstResult = hook.result.current.edit(tagsItem, edit);
+        secondResult = hook.result.current.edit(tagsItem, edit);
+        await Promise.resolve();
+      });
+      expect(hook.result.current.busyPropertyIds.has("tags")).toBe(true);
+      expect(beginSaving).toHaveBeenCalledTimes(2);
+
+      await act(async () => {
+        first.reject(new Error("Disconnected"));
+        expect((await firstResult).status).toBe("error");
+      });
+      expect(endSaving).toHaveBeenCalledTimes(1);
+      expect(hook.result.current.busyPropertyIds.has("tags")).toBe(true);
+      expect(hook.result.current.errors.tags).toBe("Couldn’t save this property. Try again.");
+
+      await act(async () => {
+        second.resolve({ status: "updated", didMutate: true });
+        await secondResult;
+      });
+      expect(endSaving).toHaveBeenCalledTimes(2);
+      expect(hook.result.current.busyPropertyIds.size).toBe(0);
+
+      hook.rerender({ model: null });
+      expect(hook.result.current.errors).toEqual({});
+      hook.rerender({ model: pageModel });
+      expect(hook.result.current.errors).toEqual({});
+    } finally {
+      report.mockRestore();
+      hook.unmount();
+    }
+  });
 
   test("resolves visible selected option labels before a picker opens", async () => {
     optionRuntime.readWindow.mockResolvedValue({

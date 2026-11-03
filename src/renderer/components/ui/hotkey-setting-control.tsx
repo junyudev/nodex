@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useEffectEvent,
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -226,6 +227,11 @@ export function HotkeySettingControl({
     }, SEQUENCE_CAPTURE_TIMEOUT_MS);
   };
 
+  const commitNativeCapture = useEffectEvent((hotkey: string, attempt: number) => {
+    if (attempt !== captureAttempt) return;
+    commitCapture(hotkey);
+  });
+
   useEffect(() => {
     nativeCaptureGenerationRef.current += 1;
     const generation = nativeCaptureGenerationRef.current;
@@ -241,7 +247,7 @@ export function HotkeySettingControl({
           nativeBareCaptureActiveRef.current = false;
           const bareModifier = hotkey === null ? null : normalizeMacBareModifier(hotkey);
           if (allowsBareModifiers && platform === "macOS" && bareModifier)
-            commitCapture(bareModifier);
+            commitNativeCapture(bareModifier, captureAttempt);
         })
         .catch(() => {
           if (nativeCaptureGenerationRef.current === generation)
@@ -257,8 +263,6 @@ export function HotkeySettingControl({
       pendingSequenceRef.current = null;
       if (sequenceTimerRef.current !== null) globalThis.clearTimeout(sequenceTimerRef.current);
     };
-    // commitCapture intentionally follows the active capture generation rather than its render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     allowsBareModifiers,
     captureAttempt,

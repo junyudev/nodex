@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import {
   useEffect,
   useLayoutEffect,
@@ -119,15 +120,20 @@ function LocalImageOpenControl({
   onDownload: () => Promise<void>;
 }) {
   const openPath = async (target: "default" | "fileManager") => {
-    try {
-      const opened =
-        target === "default"
-          ? await openPathWithDefaultApplication(path)
-          : await openFileLink({ path }, "fileManager");
-      if (!opened) toast.danger("Could not open image");
-    } catch {
-      toast.danger("Could not open image");
-    }
+    return await runWithCleanup(
+      async () => {
+        const opened =
+          target === "default"
+            ? await openPathWithDefaultApplication(path)
+            : await openFileLink({ path }, "fileManager");
+        if (!opened) toast.danger("Could not open image");
+      },
+      {
+        onError: async () => {
+          toast.danger("Could not open image");
+        },
+      },
+    );
   };
 
   return (
@@ -282,29 +288,40 @@ export function SingleImageEditor({
   ): Promise<boolean> => {
     if (pendingAction !== null) return false;
     setPendingAction(action);
-    try {
-      return await submitAndExit(intent);
-    } finally {
-      setPendingAction(null);
-    }
+    return await runWithCleanup(
+      async () => {
+        return await submitAndExit(intent);
+      },
+      {
+        cleanup: () => {
+          setPendingAction(null);
+        },
+      },
+    );
   };
 
   const handleDownload = async () => {
     const isCurrent = () => downloadLifetime.current === downloadToken;
     if (isDownloading || !isCurrent()) return;
     setPendingDownload(downloadToken);
-    try {
-      const dataUrl = await downloadAsset.materialize();
-      if (!isCurrent()) return;
-      await downloadImageDataUrl(
-        dataUrl,
-        createImageDownloadFilename(image.downloadSrc ?? image.src, image.alt),
-      );
-    } catch {
-      if (isCurrent()) toast.danger("Could not download image");
-    } finally {
-      if (isCurrent()) setPendingDownload(null);
-    }
+    return await runWithCleanup(
+      async () => {
+        const dataUrl = await downloadAsset.materialize();
+        if (!isCurrent()) return;
+        await downloadImageDataUrl(
+          dataUrl,
+          createImageDownloadFilename(image.downloadSrc ?? image.src, image.alt),
+        );
+      },
+      {
+        onError: async () => {
+          if (isCurrent()) toast.danger("Could not download image");
+        },
+        cleanup: () => {
+          if (isCurrent()) setPendingDownload(null);
+        },
+      },
+    );
   };
 
   const downloadControl = (

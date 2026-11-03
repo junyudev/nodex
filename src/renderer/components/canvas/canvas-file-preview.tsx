@@ -18,6 +18,8 @@ export type CanvasPreviewAuthority = LibraryFileAuthority & {
     | { readonly bindings: Readonly<Record<string, LibraryFileReadBinding>> }
   );
 
+const loadCanvasExporter = () => import("@excalidraw/excalidraw");
+
 /** The exported SVG is disposable presentation and is revoked along with its exact File sources. */
 export function CanvasFilePreview({
   scene,
@@ -88,7 +90,7 @@ export function CanvasFilePreview({
       if (!reader && Object.keys(parsed.files).length > 0)
         throw new Error("Canvas File preview authority is unavailable");
       const [{ exportToSvg }, files] = await Promise.all([
-        import("@excalidraw/excalidraw"),
+        loadCanvasExporter(),
         reader?.resolve(parsed.files) ?? Promise.resolve({}),
       ]);
       const svg = await exportToSvg({

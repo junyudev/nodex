@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { FileDetailsMetadata, FileListMetadata } from "@/components/shared/file-metadata";
 import { formatBytes, formatDate } from "@/lib/file-metadata-format";
 import { useRef, useState } from "react";
@@ -224,26 +225,32 @@ function LibraryFilesDialogContent({
   const runMutation = async (action: () => Promise<unknown>, success: string): Promise<void> => {
     if (!authority || mutating) return;
     setMutating(true);
-    try {
-      await action();
-      await refresh();
-      toast.success(success);
-    } catch (error) {
-      if (error instanceof LibraryFileCommandError && error.code === "revision_conflict") {
+    return await runWithCleanup(
+      async () => {
+        await action();
         await refresh();
-        const current = await identity.refresh();
-        if (current) setNameRevision(current.revision);
-        if (pageTarget) {
-          const inventory = await readPageFileInventoryPage(routingContext, pageTarget.pageId, {
-            limit: 1,
-          });
-          setPageManifestRevision(inventory.revision);
-        }
-      }
-      toast.danger(commandMessage(error));
-    } finally {
-      setMutating(false);
-    }
+        toast.success(success);
+      },
+      {
+        onError: async (error: unknown) => {
+          if (error instanceof LibraryFileCommandError && error.code === "revision_conflict") {
+            await refresh();
+            const current = await identity.refresh();
+            if (current) setNameRevision(current.revision);
+            if (pageTarget) {
+              const inventory = await readPageFileInventoryPage(routingContext, pageTarget.pageId, {
+                limit: 1,
+              });
+              setPageManifestRevision(inventory.revision);
+            }
+          }
+          toast.danger(commandMessage(error));
+        },
+        cleanup: () => {
+          setMutating(false);
+        },
+      },
+    );
   };
 
   const renameSelected = async (): Promise<void> => {
@@ -266,20 +273,26 @@ function LibraryFilesDialogContent({
     if (!files?.length) return;
     if (!authority || mutating) return;
     setMutating(true);
-    try {
-      const result = await importFiles(authority, Array.from(files));
-      setImportReport(
-        result.failures.length
-          ? `${result.imported.length} imported; ${result.failures.length} failed. ${result.failures.map((failure) => `${failure.name}: ${failure.message}`).join("; ")} Retry only failed files.`
-          : `${result.imported.length} Files imported`,
-      );
-      await refresh();
-      if (result.imported[0]) setSelectedFileId(result.imported[0].file_id);
-    } catch (error) {
-      setImportReport(commandMessage(error));
-    } finally {
-      setMutating(false);
-    }
+    await runWithCleanup(
+      async () => {
+        const result = await importFiles(authority, Array.from(files));
+        setImportReport(
+          result.failures.length
+            ? `${result.imported.length} imported; ${result.failures.length} failed. ${result.failures.map((failure) => `${failure.name}: ${failure.message}`).join("; ")} Retry only failed files.`
+            : `${result.imported.length} Files imported`,
+        );
+        await refresh();
+        if (result.imported[0]) setSelectedFileId(result.imported[0].file_id);
+      },
+      {
+        onError: async (error: unknown) => {
+          setImportReport(commandMessage(error));
+        },
+        cleanup: () => {
+          setMutating(false);
+        },
+      },
+    );
     if (importInputRef.current) importInputRef.current.value = "";
   };
 

@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { composerDraftIntents, type ComposerChatKey } from "@/lib/composer-draft-intents";
 import { useState } from "react";
 import { toast } from "@/components/ui/toast";
@@ -139,25 +140,39 @@ export function useImageEditSubmission(args: {
     }
     setIsSubmitting(true);
     let optimisticEdit: ReturnType<typeof beginOptimisticGeneratedImageEdit> | null = null;
-    try {
-      const submittedPresentation = control.captureSubmissionPresentation();
-      if (args.composerTarget) {
-        const result = await requestImageEditComposerSubmit(args.composerTarget.channelId, {
-          intent,
-          source: "single",
-        });
-        if (result.status === "failed") return false;
-        if (result.status !== "unavailable") return true;
-        if (result.reason === "image-input-unsupported") {
-          notifyImageInputUnsupported(
-            intent.mode === "comment" ? "comment" : intent.mode === "select" ? "select" : "edit",
-          );
-          return false;
+    return await runWithCleanup(
+      async () => {
+        const submittedPresentation = control.captureSubmissionPresentation();
+        if (args.composerTarget) {
+          const result = await requestImageEditComposerSubmit(args.composerTarget.channelId, {
+            intent,
+            source: "single",
+          });
+          if (result.status === "failed") return false;
+          if (result.status !== "unavailable") return true;
+          if (result.reason === "image-input-unsupported") {
+            notifyImageInputUnsupported(
+              intent.mode === "comment" ? "comment" : intent.mode === "select" ? "select" : "edit",
+            );
+            return false;
+          }
+          if (result.reason === "asset-unresolvable") {
+            toast.danger("Could not read image");
+            return false;
+          }
+          if (!args.threadId) {
+            trackImageEditSubmitOutcome({
+              failureReason: "composer-unmounted",
+              imageSource,
+              mode: intent.mode,
+              outcome: "unavailable",
+              route: "new_thread",
+            });
+            toast.danger("Composer is temporarily unavailable");
+            return false;
+          }
         }
-        if (result.reason === "asset-unresolvable") {
-          toast.danger("Could not read image");
-          return false;
-        }
+
         if (!args.threadId) {
           trackImageEditSubmitOutcome({
             failureReason: "composer-unmounted",
@@ -169,86 +184,78 @@ export function useImageEditSubmission(args: {
           toast.danger("Composer is temporarily unavailable");
           return false;
         }
-      }
-
-      if (!args.threadId) {
-        trackImageEditSubmitOutcome({
-          failureReason: "composer-unmounted",
+        optimisticEdit = intent.attachments.some(
+          (attachment) => attachment.image.source === "generated",
+        )
+          ? beginOptimisticGeneratedImageEdit(args.threadId)
+          : null;
+        const promptInput = compileImageEditPromptInput(intent);
+        if (!promptInput) {
+          optimisticEdit?.rollback();
+          trackImageEditSubmitOutcome({
+            failureReason: "asset-unresolvable",
+            imageSource,
+            mode: intent.mode,
+            outcome: "unavailable",
+            route: directRoute,
+          });
+          toast.danger("Could not read image");
+          return false;
+        }
+        const options = {
+          ...(args.projectId ? { projectId: args.projectId } : {}),
+          promptInput,
+        };
+        if (hasActiveTurn) {
+          await control.enqueueQueuedFollowUp(
+            args.threadId,
+            intent.promptRaw,
+            options,
+            submittedPresentation,
+          );
+        } else {
+          await control.startTurn(args.threadId, intent.promptRaw, options, submittedPresentation);
+        }
+        const chat = args.composerTarget?.chatKey ?? args.composerChatKey;
+        if (intent.focusComposerAfterSubmit && chat) {
+          composerDraftIntents.set(chat, {
+            focusNonce: Date.now(),
+            prompt: "",
+          });
+        }
+        trackImageEditSubmit({
+          ...intent.analytics,
           imageSource,
           mode: intent.mode,
-          outcome: "unavailable",
-          route: "new_thread",
         });
-        toast.danger("Composer is temporarily unavailable");
-        return false;
-      }
-      optimisticEdit = intent.attachments.some(
-        (attachment) => attachment.image.source === "generated",
-      )
-        ? beginOptimisticGeneratedImageEdit(args.threadId)
-        : null;
-      const promptInput = compileImageEditPromptInput(intent);
-      if (!promptInput) {
-        optimisticEdit?.rollback();
         trackImageEditSubmitOutcome({
-          failureReason: "asset-unresolvable",
           imageSource,
           mode: intent.mode,
-          outcome: "unavailable",
+          outcome: hasActiveTurn ? "queued" : "submitted",
           route: directRoute,
         });
-        toast.danger("Could not read image");
-        return false;
-      }
-      const options = {
-        ...(args.projectId ? { projectId: args.projectId } : {}),
-        promptInput,
-      };
-      if (hasActiveTurn) {
-        await control.enqueueQueuedFollowUp(
-          args.threadId,
-          intent.promptRaw,
-          options,
-          submittedPresentation,
-        );
-      } else {
-        await control.startTurn(args.threadId, intent.promptRaw, options, submittedPresentation);
-      }
-      const chat = args.composerTarget?.chatKey ?? args.composerChatKey;
-      if (intent.focusComposerAfterSubmit && chat) {
-        composerDraftIntents.set(chat, {
-          focusNonce: Date.now(),
-          prompt: "",
-        });
-      }
-      trackImageEditSubmit({
-        ...intent.analytics,
-        imageSource,
-        mode: intent.mode,
-      });
-      trackImageEditSubmitOutcome({
-        imageSource,
-        mode: intent.mode,
-        outcome: hasActiveTurn ? "queued" : "submitted",
-        route: directRoute,
-      });
-      return true;
-    } catch {
-      optimisticEdit?.rollback();
-      trackImageEditSubmitOutcome({
-        failureReason: "transport",
-        imageSource,
-        mode: intent.mode,
-        outcome: "failed",
-        route: directRoute,
-      });
-      notifyImageInputUnsupported(
-        intent.mode === "comment" ? "comment" : intent.mode === "select" ? "select" : "edit",
-      );
-      return false;
-    } finally {
-      setIsSubmitting(false);
-    }
+        return true;
+      },
+      {
+        onError: async () => {
+          optimisticEdit?.rollback();
+          trackImageEditSubmitOutcome({
+            failureReason: "transport",
+            imageSource,
+            mode: intent.mode,
+            outcome: "failed",
+            route: directRoute,
+          });
+          notifyImageInputUnsupported(
+            intent.mode === "comment" ? "comment" : intent.mode === "select" ? "select" : "edit",
+          );
+          return false;
+        },
+        cleanup: () => {
+          setIsSubmitting(false);
+        },
+      },
+    );
   };
 
   return {

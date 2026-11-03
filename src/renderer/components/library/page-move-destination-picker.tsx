@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useEffect, useId, useState, type KeyboardEvent } from "react";
 
 import { ActivitySpinnerIcon, BoardIcon, PageIcon } from "@/components/shared/icons";
@@ -292,36 +293,43 @@ export function PageMoveDestinationPicker({
   const accept = async (row: AuthoritativeDestinationRow): Promise<void> => {
     setAcceptError(null);
     setAcceptingRowId(row.id);
-    try {
-      const result = await mutation.mutateAsync({
-        kind: "move_page",
-        pageId,
-        destination: row.entry.destination,
-        expectedEtag: row.entry.expectedMoveEtag,
-      });
-      const undoToken = result.pageRelocation?.undoToken ?? null;
-      onClose();
-      toast.success(`Moved to ${row.entry.title || "destination"}`, {
-        ...(undoToken
-          ? {
-              action: {
-                label: "Undo",
-                onClick: () => {
-                  void undoPageRelocation(undoToken)
-                    .then(() => toast.success("Move undone"))
-                    .catch((error: unknown) =>
-                      toast.danger(error instanceof Error ? error.message : "Could not undo move"),
-                    );
+    return await runWithCleanup(
+      async () => {
+        const result = await mutation.mutateAsync({
+          kind: "move_page",
+          pageId,
+          destination: row.entry.destination,
+          expectedEtag: row.entry.expectedMoveEtag,
+        });
+        const undoToken = result.pageRelocation?.undoToken ?? null;
+        onClose();
+        toast.success(`Moved to ${row.entry.title || "destination"}`, {
+          ...(undoToken
+            ? {
+                action: {
+                  label: "Undo",
+                  onClick: () => {
+                    void undoPageRelocation(undoToken)
+                      .then(() => toast.success("Move undone"))
+                      .catch((error: unknown) =>
+                        toast.danger(
+                          error instanceof Error ? error.message : "Could not undo move",
+                        ),
+                      );
+                  },
                 },
-              },
-            }
-          : {}),
-      });
-    } catch (error) {
-      setAcceptError(error instanceof Error ? error.message : "Could not move Page");
-      setAcceptingRowId(null);
-      refetchDestinations();
-    }
+              }
+            : {}),
+        });
+      },
+      {
+        onError: async (error: unknown) => {
+          setAcceptError(error instanceof Error ? error.message : "Could not move Page");
+          setAcceptingRowId(null);
+          refetchDestinations();
+        },
+      },
+    );
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>): void => {

@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import {
   useRef,
   useState,
@@ -95,26 +96,31 @@ export function LibraryResourceActions({
 
   const applyLifecycle = async () => {
     if (expectedMetadataRevision === undefined) return;
-    try {
-      await mutation.mutateAsync({
-        kind: lifecycle === "active" ? "archive_resource" : "restore_resource",
-        target:
-          target.kind === "page"
-            ? {
-                kind: "page",
-                pageId: target.pageId,
-                expectedMetadataRevision,
-              }
-            : {
-                kind: "database",
-                databaseId: target.databaseId,
-                expectedMetadataRevision,
-              },
-      });
-      setArchiveOpen(false);
-    } catch (error) {
-      toast.danger(error instanceof Error ? error.message : "Could not update Library item");
-    }
+    return await runWithCleanup(
+      async () => {
+        await mutation.mutateAsync({
+          kind: lifecycle === "active" ? "archive_resource" : "restore_resource",
+          target:
+            target.kind === "page"
+              ? {
+                  kind: "page",
+                  pageId: target.pageId,
+                  expectedMetadataRevision,
+                }
+              : {
+                  kind: "database",
+                  databaseId: target.databaseId,
+                  expectedMetadataRevision,
+                },
+        });
+        setArchiveOpen(false);
+      },
+      {
+        onError: async (error: unknown) => {
+          toast.danger(error instanceof Error ? error.message : "Could not update Library item");
+        },
+      },
+    );
   };
 
   const defaultTrigger = (

@@ -34,7 +34,7 @@ export function DocumentBearingShellVisual({
   label,
   detail,
   identity,
-  disclosureKey = `document-bearing:${identity ?? "unscoped"}`,
+  disclosureKey,
   disabledReason,
   renderDocument,
   disclosureStore,
@@ -43,7 +43,7 @@ export function DocumentBearingShellVisual({
 }: DocumentBearingShellVisualProps) {
   return (
     <OwnedDocumentReferenceSurface
-      disclosureKey={disclosureKey}
+      disclosureKey={disclosureKey ?? `document-bearing:${identity ?? "unscoped"}`}
       ownerBlockId={identity ?? ""}
       icon={<Icon className="icon-2xs shrink-0" />}
       label={label}

@@ -1,6 +1,14 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { isNodexProviderId } from "../../../../shared/nodex-models";
 import { NodexLogoMarkIcon } from "@/components/shared/icons";
-import { useLayoutEffect, useRef, useState, type ReactElement } from "react";
+import {
+  useLayoutEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+  type ReactElement,
+} from "react";
 import type { AgentBackendBinding } from "../../../../shared/agent-backend";
 import type { AgentModelSelection } from "../../../../shared/agent-model-catalog";
 import type { ExternalAgentBinding } from "../../../../shared/agent-model-catalog";
@@ -166,6 +174,54 @@ function OptionRow({
 const INHERIT_OPTION_VALUE = "inherit";
 const INHERIT_LABEL = "Use current/default";
 
+/** Keep queue-empty detection and worker release in the same continuation. */
+async function drainNativeIntelligence({
+  nativeRef,
+  queued,
+  draining,
+  setOverlay,
+}: {
+  readonly nativeRef: {
+    readonly current: NonNullable<AgentIntelligenceDropdownProps["provider"]>["nativeIntelligence"];
+  };
+  readonly queued: {
+    current: { patch: AgentNativeIntelligencePatch; shown: IntelligenceIntentOverlay } | null;
+  };
+  readonly draining: { current: boolean };
+  readonly setOverlay: Dispatch<SetStateAction<IntelligenceIntentOverlay>>;
+}) {
+  const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  if (draining.current) return;
+  draining.current = true;
+  try {
+    while (true) {
+      const next = queued.current;
+      if (!next) {
+        await nextFrame();
+        // A choice can arrive during the idle frame. Release the worker only after
+        // checking again, without yielding between that check and the release.
+        if (queued.current) continue;
+        setOverlay({});
+        return;
+      }
+      const { patch, shown } = next;
+      queued.current = null;
+      try {
+        await nativeRef.current?.change(patch);
+      } catch (error) {
+        setOverlay((current) =>
+          Object.fromEntries(Object.entries(current).filter(([key]) => !(key in shown))),
+        );
+        toast.danger(error instanceof Error ? error.message : "Could not update model options");
+      }
+      // The next change builds on this one once it has rendered.
+      await nextFrame();
+    }
+  } finally {
+    draining.current = false;
+  }
+}
+
 export function AgentModelPicker(
   props: AgentIntelligenceDropdownProps & {
     readonly catalog: AgentModelCatalogPresentation;
@@ -205,13 +261,19 @@ export function AgentModelPicker(
   const run = async (operation: () => Promise<void> | void) => {
     if (pending) return;
     setPending(true);
-    try {
-      await operation();
-    } catch (error) {
-      toast.danger(error instanceof Error ? error.message : "Could not update model options");
-    } finally {
-      setPending(false);
-    }
+    return await runWithCleanup(
+      async () => {
+        await operation();
+      },
+      {
+        onError: async (error: unknown) => {
+          toast.danger(error instanceof Error ? error.message : "Could not update model options");
+        },
+        cleanup: () => {
+          setPending(false);
+        },
+      },
+    );
   };
   // Effort and mode changes show at once and are written in order, so a click never waits on
   // the one before it and nothing dims while a write is on its way.
@@ -225,38 +287,7 @@ export function AgentModelPicker(
     shown: IntelligenceIntentOverlay;
   } | null>(null);
   const draining = useRef(false);
-  const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-  const drainNative = async () => {
-    if (draining.current) return;
-    draining.current = true;
-    try {
-      while (true) {
-        const next = queued.current;
-        if (!next) {
-          await nextFrame();
-          // A choice can arrive during the idle frame. Release the worker only after
-          // checking again, without yielding between that check and the release.
-          if (queued.current) continue;
-          setOverlay({});
-          return;
-        }
-        const { patch, shown } = next;
-        queued.current = null;
-        try {
-          await nativeRef.current?.change(patch);
-        } catch (error) {
-          setOverlay((current) =>
-            Object.fromEntries(Object.entries(current).filter(([key]) => !(key in shown))),
-          );
-          toast.danger(error instanceof Error ? error.message : "Could not update model options");
-        }
-        // The next change builds on this one once it has rendered.
-        await nextFrame();
-      }
-    } finally {
-      draining.current = false;
-    }
-  };
+  const drainNative = () => drainNativeIntelligence({ nativeRef, queued, draining, setOverlay });
   const changeNative = (
     patch: AgentNativeIntelligencePatch,
     shown: IntelligenceIntentOverlay = {},

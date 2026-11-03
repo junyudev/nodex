@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import {
   useCallback,
   useEffect,
@@ -258,26 +259,32 @@ function OpenHistoryPanel({
     const requestSerial = requestSerialRef.current;
     setLoadingOlder(true);
     setTimelineError(null);
-    try {
-      const result = await listPageHistory({
-        requestingProjectId: projectId,
-        pageId: pageId,
-        before: cursor,
-        pageSize: DEFAULT_PAGE_HISTORY_PAGE_SIZE,
-      });
-      if (requestSerial !== requestSerialRef.current) return;
-      if (!result.ok) {
-        setTimelineError(result.error.message);
-        return;
-      }
-      setEntries((current) => mergePageHistoryEntries(current, result.value.entries));
-      setNextCursor(result.value.nextCursor);
-    } catch (error) {
-      if (requestSerial !== requestSerialRef.current) return;
-      setTimelineError(toErrorMessage(error, "Couldn’t load earlier history."));
-    } finally {
-      if (requestSerial === requestSerialRef.current) setLoadingOlder(false);
-    }
+    return await runWithCleanup(
+      async () => {
+        const result = await listPageHistory({
+          requestingProjectId: projectId,
+          pageId: pageId,
+          before: cursor,
+          pageSize: DEFAULT_PAGE_HISTORY_PAGE_SIZE,
+        });
+        if (requestSerial !== requestSerialRef.current) return;
+        if (!result.ok) {
+          setTimelineError(result.error.message);
+          return;
+        }
+        setEntries((current) => mergePageHistoryEntries(current, result.value.entries));
+        setNextCursor(result.value.nextCursor);
+      },
+      {
+        onError: async (error: unknown) => {
+          if (requestSerial !== requestSerialRef.current) return;
+          setTimelineError(toErrorMessage(error, "Couldn’t load earlier history."));
+        },
+        cleanup: () => {
+          if (requestSerial === requestSerialRef.current) setLoadingOlder(false);
+        },
+      },
+    );
   }, [pageId, loadingOlder, nextCursor, projectId]);
 
   const handleRestore = useCallback(async () => {
@@ -289,74 +296,81 @@ function OpenHistoryPanel({
     ) {
       return;
     }
+    const recovery = selectedEntry.recovery;
     restoreInFlightRef.current = true;
     setRestoring(true);
     setRestoreError(null);
-    try {
-      let pendingRestore = pendingRestoreRef.current;
-      if (!pendingRestore || pendingRestore.entryId !== selectedEntry.id) {
-        const descriptor = await getOwnedDocumentDescriptor(projectId, pageId);
-        if (descriptor.readiness !== "ready") {
-          throw new Error("This Page must finish syncing before it can be restored.");
+    return await runWithCleanup(
+      async () => {
+        let pendingRestore = pendingRestoreRef.current;
+        if (!pendingRestore || pendingRestore.entryId !== selectedEntry.id) {
+          const descriptor = await getOwnedDocumentDescriptor(projectId, pageId);
+          if (descriptor.readiness !== "ready") {
+            throw new Error("This Page must finish syncing before it can be restored.");
+          }
+          if (descriptor.documentId !== recovery.documentId) {
+            throw new Error("This revision no longer belongs to the Page document.");
+          }
+          pendingRestore = {
+            entryId: selectedEntry.id,
+            request: {
+              mutationId: createUuidV7(),
+              projectId,
+              storeEpoch: descriptor.storeEpoch,
+              documentId: descriptor.documentId,
+              versionId: recovery.versionId,
+              generation: descriptor.generation,
+              expectedHeadSeq: descriptor.headSeq,
+              clientSessionId: auditSessionId,
+              actor: { kind: "renderer_history_restore" },
+            },
+          };
+          pendingRestoreRef.current = pendingRestore;
         }
-        if (descriptor.documentId !== selectedEntry.recovery.documentId) {
-          throw new Error("This revision no longer belongs to the Page document.");
-        }
-        pendingRestore = {
-          entryId: selectedEntry.id,
-          request: {
-            mutationId: createUuidV7(),
-            projectId,
-            storeEpoch: descriptor.storeEpoch,
-            documentId: descriptor.documentId,
-            versionId: selectedEntry.recovery.versionId,
-            generation: descriptor.generation,
-            expectedHeadSeq: descriptor.headSeq,
-            clientSessionId: auditSessionId,
-            actor: { kind: "renderer_history_restore" },
-          },
-        };
-        pendingRestoreRef.current = pendingRestore;
-      }
 
-      const commit = () =>
-        restoreDocumentVersion(
-          projectId,
-          pendingRestore.request.documentId,
-          pendingRestore.request,
-        );
-      let result;
-      let retried = false;
-      try {
-        result = await commit();
-      } catch {
-        retried = true;
-        result = await commit();
-      }
-      if (!result.ok && result.error.retryable && !retried) {
-        result = await commit();
-      }
-      if (!result.ok) {
-        if (!result.error.retryable) pendingRestoreRef.current = null;
-        throw new Error(result.error.message);
-      }
-      pendingRestoreRef.current = null;
-      setConfirmingRestore(false);
-      onPageMutated?.();
-      setLoading(true);
-      setLoadingOlder(false);
-      setTimelineError(null);
-      setEntries([]);
-      setNextCursor(null);
-      setSelectedEntryId(null);
-      setPreviewCache(new Map());
-      await loadFirstPage(pageId);
-    } catch (error) {
-      setRestoreError(toErrorMessage(error, "Couldn’t restore this revision."));
-    } finally {
-      restoreInFlightRef.current = false;
-      setRestoring(false);
-    }
+        const commit = () =>
+          restoreDocumentVersion(
+            projectId,
+            pendingRestore.request.documentId,
+            pendingRestore.request,
+          );
+        let result;
+        let retried = false;
+        try {
+          result = await commit();
+        } catch {
+          retried = true;
+          result = await commit();
+        }
+        if (!result.ok && result.error.retryable && !retried) {
+          result = await commit();
+        }
+        if (!result.ok) {
+          if (!result.error.retryable) pendingRestoreRef.current = null;
+          throw new Error(result.error.message);
+        }
+        pendingRestoreRef.current = null;
+        setConfirmingRestore(false);
+        onPageMutated?.();
+        setLoading(true);
+        setLoadingOlder(false);
+        setTimelineError(null);
+        setEntries([]);
+        setNextCursor(null);
+        setSelectedEntryId(null);
+        setPreviewCache(new Map());
+        await loadFirstPage(pageId);
+      },
+      {
+        onError: async (error: unknown) => {
+          setRestoreError(toErrorMessage(error, "Couldn’t restore this revision."));
+        },
+        cleanup: () => {
+          restoreInFlightRef.current = false;
+          setRestoring(false);
+        },
+      },
+    );
   }, [auditSessionId, pageId, loadFirstPage, onPageMutated, projectId, selectedEntry]);
 
   if (!open) return null;

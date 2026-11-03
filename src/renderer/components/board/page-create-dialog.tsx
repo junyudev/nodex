@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { resolveCodexRendererCommandPlatform } from "../../lib/codex-window-runtime";
 import { formatAcceleratorLabel } from "../../../shared/command-keybindings";
 import { useRef, useState, type FormEvent, type KeyboardEvent } from "react";
@@ -249,29 +250,34 @@ function PageCreateDialogContent({
     pendingRef.current = true;
     setSaving(true);
     setError(null);
-    try {
-      const result = await createBoardPage({
-        projectId: target.project.id,
-        databaseViewId: target.databaseViewId,
-        clientSessionId: target.clientSessionId,
-        status,
-        input,
-        placement: "top",
-      });
-      if (result.status === "error") throw new Error(result.error);
-      if (continueCreating) {
+    return await runWithCleanup(
+      async () => {
+        const result = await createBoardPage({
+          projectId: target.project.id,
+          databaseViewId: target.databaseViewId,
+          clientSessionId: target.clientSessionId,
+          status,
+          input,
+          placement: "top",
+        });
+        if (result.status === "error") throw new Error(result.error);
+        if (continueCreating) {
+          pendingRef.current = false;
+          setSaving(false);
+          resetForNextPage(input.tagOptions?.map((option) => option.optionId) ?? []);
+          return;
+        }
         pendingRef.current = false;
-        setSaving(false);
-        resetForNextPage(input.tagOptions?.map((option) => option.optionId) ?? []);
-        return;
-      }
-      pendingRef.current = false;
-      closeAndRestoreFocus(result.page.id);
-    } catch (cause) {
-      pendingRef.current = false;
-      setSaving(false);
-      setError(formatError(cause));
-    }
+        closeAndRestoreFocus(result.page.id);
+      },
+      {
+        onError: async (cause: unknown) => {
+          pendingRef.current = false;
+          setSaving(false);
+          setError(formatError(cause));
+        },
+      },
+    );
   };
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {

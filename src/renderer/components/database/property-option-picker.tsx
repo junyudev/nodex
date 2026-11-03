@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import {
   useEffect,
   useEffectEvent,
@@ -397,19 +398,25 @@ export function PropertyOptionPicker({
     if (mutationDisabled || !canCreate || !onCreateOption) return;
     setCreating(true);
     setError(null);
-    try {
-      await onCreateOption(query.trim());
-      setQuery("");
-      if (mode === "single") {
-        changeOpen(false);
-        onCommit?.();
-      }
-    } catch (cause) {
-      console.error("[property-option:create]", cause);
-      setError("Couldn’t create option. Try again.");
-    } finally {
-      setCreating(false);
-    }
+    return await runWithCleanup(
+      async () => {
+        await onCreateOption(query.trim());
+        setQuery("");
+        if (mode === "single") {
+          changeOpen(false);
+          onCommit?.();
+        }
+      },
+      {
+        onError: async (cause: unknown) => {
+          console.error("[property-option:create]", cause);
+          setError("Couldn’t create option. Try again.");
+        },
+        cleanup: () => {
+          setCreating(false);
+        },
+      },
+    );
   };
 
   const regularTriggerContent =

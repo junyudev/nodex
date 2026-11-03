@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { runWithCleanup } from "@/lib/run-with-cleanup";
+import { useCallback, useMemo, useState } from "react";
 import type { DataSourcePropertyOptionRegistryState } from "@/components/database/data-source-property-editor-binding";
 import { usePropertyOptionRegistries } from "@/components/database/use-property-option-registries";
 import type { DatabasePropertyOption } from "../../../../shared/database-kernel";
@@ -133,7 +134,9 @@ export function usePageStageProperties(input: {
   );
   const [errors, setErrors] = useState<Readonly<Record<string, string>>>({});
 
-  useEffect(() => {
+  const [previousProperties, setPreviousProperties] = useState(properties);
+  if (previousProperties !== properties) {
+    setPreviousProperties(properties);
     const active = new Set<string>(properties.map((item) => item.property.propertyId));
     setPendingPropertyCounts(
       (current) => new Map([...current].filter(([propertyId]) => active.has(propertyId))),
@@ -141,7 +144,7 @@ export function usePageStageProperties(input: {
     setErrors((current) =>
       Object.fromEntries(Object.entries(current).filter(([propertyId]) => active.has(propertyId))),
     );
-  }, [properties]);
+  }
 
   const edit = useCallback(
     async (
@@ -158,51 +161,55 @@ export function usePageStageProperties(input: {
         return next;
       });
       setErrors((current) => {
-        const { [propertyId]: _removed, ...rest } = current;
-        void _removed;
-        return rest;
+        return Object.fromEntries(Object.entries(current).filter(([id]) => id !== propertyId));
       });
       const endSaving = beginSaving();
-      try {
-        const result = await onUpdateProperty(pageId, propertyId, editIntent);
-        const resolved = result ?? errorResult("Missing Property update result");
-        if (resolved.status === "error") {
-          console.error("[page-property:save]", resolved.error);
-          if (reportFieldError) {
+      return await runWithCleanup(
+        async () => {
+          const result = await onUpdateProperty(pageId, propertyId, editIntent);
+          const resolved = result ?? errorResult("Missing Property update result");
+          if (resolved.status === "error") {
+            console.error("[page-property:save]", resolved.error);
+            if (reportFieldError) {
+              setErrors((current) => ({
+                ...current,
+                [propertyId]: "Couldn’t save this property. Try again.",
+              }));
+            }
+          } else if (resolved.status === "conflict" && reportFieldError) {
             setErrors((current) => ({
               ...current,
-              [propertyId]: "Couldn’t save this property. Try again.",
+              [propertyId]: "Value changed elsewhere. Review and try again.",
+            }));
+          } else if (resolved.status === "not_found" && reportFieldError) {
+            setErrors((current) => ({
+              ...current,
+              [propertyId]: "Property is no longer available.",
             }));
           }
-        } else if (resolved.status === "conflict" && reportFieldError) {
-          setErrors((current) => ({
-            ...current,
-            [propertyId]: "Value changed elsewhere. Review and try again.",
-          }));
-        } else if (resolved.status === "not_found" && reportFieldError) {
-          setErrors((current) => ({
-            ...current,
-            [propertyId]: "Property is no longer available.",
-          }));
-        }
-        return resolved;
-      } catch (error) {
-        console.error("[page-property:save]", error);
-        const message = "Couldn’t save this property. Try again.";
-        if (reportFieldError) {
-          setErrors((current) => ({ ...current, [propertyId]: message }));
-        }
-        return errorResult(message);
-      } finally {
-        endSaving();
-        setPendingPropertyCounts((current) => {
-          const next = new Map(current);
-          const count = next.get(propertyId) ?? 0;
-          if (count <= 1) next.delete(propertyId);
-          else next.set(propertyId, count - 1);
-          return next;
-        });
-      }
+          return resolved;
+        },
+        {
+          onError: async (error: unknown) => {
+            console.error("[page-property:save]", error);
+            const message = "Couldn’t save this property. Try again.";
+            if (reportFieldError) {
+              setErrors((current) => ({ ...current, [propertyId]: message }));
+            }
+            return errorResult(message);
+          },
+          cleanup: () => {
+            endSaving();
+            setPendingPropertyCounts((current) => {
+              const next = new Map(current);
+              const count = next.get(propertyId) ?? 0;
+              if (count <= 1) next.delete(propertyId);
+              else next.set(propertyId, count - 1);
+              return next;
+            });
+          },
+        },
+      );
     },
     [beginSaving, onUpdateProperty, pageModel?.page.id],
   );

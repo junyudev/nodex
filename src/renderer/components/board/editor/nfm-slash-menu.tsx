@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import {
   startTransition,
   useCallback,
@@ -1015,12 +1016,19 @@ function SubpageMenu() {
           icon: <PageIcon className="size-4" aria-hidden="true" />,
           onItemClick: () => {
             void (async () => {
-              try {
-                const blockId = prepareCanvasCreateParagraph(editor);
-                await hostRuntime?.createSubpageAtEmptyParagraph?.({ blockId, title });
-              } catch (error) {
-                toast.danger(error instanceof Error ? error.message : "Could not create Subpage");
-              }
+              return await runWithCleanup(
+                async () => {
+                  const blockId = prepareCanvasCreateParagraph(editor);
+                  await hostRuntime?.createSubpageAtEmptyParagraph?.({ blockId, title });
+                },
+                {
+                  onError: async (error: unknown) => {
+                    toast.danger(
+                      error instanceof Error ? error.message : "Could not create Subpage",
+                    );
+                  },
+                },
+              );
             })();
           },
         } satisfies NfmSuggestionItem,

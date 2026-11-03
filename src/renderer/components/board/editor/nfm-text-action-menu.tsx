@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { editorHasBlockWithType, isTableCellSelection } from "@blocknote/core";
 import { FormattingToolbarExtension } from "@blocknote/core/extensions";
 import { canInsertInlineMath, insertInlineMath } from "@blocknote/math-block";
@@ -1060,13 +1061,19 @@ function TextActionChatSection({
   const run = async (kind: "send" | "add-to-composer", action: () => Promise<void> | void) => {
     if (pending) return;
     setPending(true);
-    try {
-      await action();
-    } catch (error) {
-      reportNfmChatSendFailure(kind, error);
-    } finally {
-      setPending(false);
-    }
+    return await runWithCleanup(
+      async () => {
+        await action();
+      },
+      {
+        onError: async (error: unknown) => {
+          reportNfmChatSendFailure(kind, error);
+        },
+        cleanup: () => {
+          setPending(false);
+        },
+      },
+    );
   };
 
   const sendToContextualChat = () => {

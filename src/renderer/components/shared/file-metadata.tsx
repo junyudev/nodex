@@ -4,9 +4,9 @@ import { formatBytes, formatDate } from "@/lib/file-metadata-format";
 /** Both managers show File metadata; a historical preview overrides version-specific fields. */
 export function FileDetailsMetadata({
   file,
-  version = file.head_version,
-  mimeType = file.mime_type,
-  byteLength = file.byte_length,
+  version,
+  mimeType,
+  byteLength,
 }: {
   file: LibraryFile;
   version?: number;
@@ -16,7 +16,8 @@ export function FileDetailsMetadata({
   return (
     <p className="mt-1 flex flex-wrap gap-x-1 text-xs text-token-description-foreground">
       <span>
-        {mimeType} · {formatBytes(byteLength)} · v{version}
+        {mimeType ?? file.mime_type} · {formatBytes(byteLength ?? file.byte_length)} · v
+        {version ?? file.head_version}
       </span>
       <span>
         · Updated <time dateTime={file.updated_at}>{formatDate(file.updated_at)}</time>

@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useState } from "react";
 import {
   NodexDialog,
@@ -41,14 +42,20 @@ function LibraryOpenInProjectModalContent({
   const openInProject = async () => {
     if (!projectId || isOpening) return;
     setIsOpening(true);
-    try {
-      await onOpenInProject(projectId, target, title);
-      onClose();
-    } catch (error) {
-      toast.danger(error instanceof Error ? error.message : "Could not open in Project");
-    } finally {
-      setIsOpening(false);
-    }
+    return await runWithCleanup(
+      async () => {
+        await onOpenInProject(projectId, target, title);
+        onClose();
+      },
+      {
+        onError: async (error: unknown) => {
+          toast.danger(error instanceof Error ? error.message : "Could not open in Project");
+        },
+        cleanup: () => {
+          setIsOpening(false);
+        },
+      },
+    );
   };
 
   return (

@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useState, useSyncExternalStore } from "react";
 import { appScope, useScopeHandle } from "@/lib/maitai";
 import { openModal, type ModalCloseProps } from "@/lib/modal-registry";
@@ -59,16 +60,22 @@ function ConfirmContentIssueAction({
             event.preventDefault();
             if (busy) return;
             setBusy(true);
-            try {
-              await action.run();
-              onClose();
-            } catch (error) {
-              setError(
-                error instanceof Error ? error.message : "The action could not be completed.",
-              );
-            } finally {
-              setBusy(false);
-            }
+            return await runWithCleanup(
+              async () => {
+                await action.run();
+                onClose();
+              },
+              {
+                onError: async (error: unknown) => {
+                  setError(
+                    error instanceof Error ? error.message : "The action could not be completed.",
+                  );
+                },
+                cleanup: () => {
+                  setBusy(false);
+                },
+              },
+            );
           }}
         >
           <NodexDialogHeader>
@@ -129,17 +136,23 @@ function ContentIssueRow({
       return;
     }
     setRunningAction({ action, actions: issue.actions });
-    try {
-      if (action.kind === "review") {
-        await action.prepare?.();
-        closePopover();
-        review(action);
-      } else await action.run();
-    } catch (error) {
-      setError(error instanceof Error ? error.message : "The action could not be completed.");
-    } finally {
-      setRunningAction(null);
-    }
+    return await runWithCleanup(
+      async () => {
+        if (action.kind === "review") {
+          await action.prepare?.();
+          closePopover();
+          review(action);
+        } else await action.run();
+      },
+      {
+        onError: async (error: unknown) => {
+          setError(error instanceof Error ? error.message : "The action could not be completed.");
+        },
+        cleanup: () => {
+          setRunningAction(null);
+        },
+      },
+    );
   };
   return (
     <li className="flex min-w-0 flex-col gap-2 py-3 first:pt-2 last:pb-0">

@@ -1,77 +1,5 @@
 {
-  "src/renderer/components/block-documents/block-document-surface.tsx": {
-    "uncompiled": 2
-  },
-  "src/renderer/components/board/calendar/calendar-grid.tsx": {
-    "uncompiled": 1
-  },
-  "src/renderer/components/board/editor/document-bearing-shell-block.tsx": {
-    "uncompiled": 1
-  },
-  "src/renderer/components/board/editor/nfm-file-download-button.tsx": {
-    "uncompiled": 1
-  },
-  "src/renderer/components/board/editor/nfm-slash-menu.tsx": {
-    "uncompiled": 1
-  },
-  "src/renderer/components/board/editor/nfm-text-action-menu.tsx": {
-    "uncompiled": 1
-  },
-  "src/renderer/components/board/history-panel.tsx": {
-    "uncompiled": 1
-  },
-  "src/renderer/components/board/page-create-dialog.tsx": {
-    "uncompiled": 1
-  },
-  "src/renderer/components/board/page-stage/page-files-row.tsx": {
-    "uncompiled": 1
-  },
-  "src/renderer/components/board/page-stage/use-page-stage-properties.ts": {
-    "uncompiled": 1
-  },
-  "src/renderer/components/board/use-board-page-property-bindings.ts": {
-    "uncompiled": 1
-  },
-  "src/renderer/components/canvas/canvas-document-surface.tsx": {
-    "uncompiled": 1
-  },
-  "src/renderer/components/canvas/canvas-file-preview.tsx": {
-    "uncompiled": 1
-  },
   "src/renderer/components/conversation-media/conversation-media.tsx": {
-    "uncompiled": 1
-  },
-  "src/renderer/components/database/property-option-picker.tsx": {
-    "uncompiled": 1
-  },
-  "src/renderer/components/library/library-files-dialog.tsx": {
-    "uncompiled": 1
-  },
-  "src/renderer/components/library/library-new-menu.tsx": {
-    "uncompiled": 1
-  },
-  "src/renderer/components/library/library-resource-action-modals.tsx": {
-    "uncompiled": 1
-  },
-  "src/renderer/components/library/library-resource-actions.tsx": {
-    "uncompiled": 1
-  },
-  "src/renderer/components/library/page-move-destination-picker.tsx": {
-    "uncompiled": 1
-  },
-  "src/renderer/components/shared/agent-runtime/agent-model-picker.tsx": {
-    "uncompiled": 1
-  },
-  "src/renderer/components/shared/content-issues-control.tsx": {
-    "uncompiled": 2
-  },
-  "src/renderer/components/shared/file-metadata.tsx": {
-    "uncompiled": 1
-  },
-  "src/renderer/components/ui/file-tree.tsx": {
-    "uncompiled": 1
-  },
-  "src/renderer/components/ui/hotkey-setting-control.tsx": {
     "uncompiled": 1
   },
   "src/renderer/components/workbench/agent-instance-settings-control.tsx": {
@@ -179,9 +107,6 @@
   "src/renderer/components/workbench/workbench-testkit/workbench-shell-harness.tsx": {
     "uncompiled": 1
   },
-  "src/renderer/features/avatar-overlay/avatar-overlay-page.tsx": {
-    "uncompiled": 1
-  },
   "src/renderer/features/inbox/use-inbox-actions.ts": {
     "uncompiled": 1
   },
@@ -268,11 +193,5 @@
   },
   "src/renderer/features/scheduled/use-scheduled-tasks.ts": {
     "uncompiled": 1
-  },
-  "src/renderer/features/user-attachment-image-editor/adapters/use-image-edit-submission.ts": {
-    "uncompiled": 1
-  },
-  "src/renderer/features/user-attachment-image-editor/view/single-image-editor.tsx": {
-    "uncompiled": 2
   }
 }

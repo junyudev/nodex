@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { ChevronRightIcon } from "@/components/shared/icons";
 import {
   useEffect,
@@ -378,15 +379,20 @@ export function OwnedBlockDocumentRuntimeSurface({
     if (reloadInFlightRef.current) return;
     reloadInFlightRef.current = true;
     setReloading(true);
-    try {
-      if (status.reloadRequired) {
-        await runtime.reload();
-      } else {
-        await runtime.close();
-      }
-    } finally {
-      await onReload();
-    }
+    return await runWithCleanup(
+      async () => {
+        if (status.reloadRequired) {
+          await runtime.reload();
+        } else {
+          await runtime.close();
+        }
+      },
+      {
+        cleanup: async () => {
+          await onReload();
+        },
+      },
+    );
   };
 
   useEffect(() => {
@@ -481,22 +487,27 @@ function RuntimeOwner({
       await closeTailRef.current;
       if (!live) return;
 
-      try {
-        const adapter = adapterFactory(descriptor.routingContext);
-        ownedRuntime = runtimeFactory({
-          descriptor,
-          adapter,
-          reload: (context) => requestReload(context),
-        });
-        setOwnerState({ runtime: ownedRuntime, startupError: null });
-        await ownedRuntime.connect();
-      } catch (error) {
-        if (!live) return;
-        setOwnerState((current) => ({
-          runtime: current.runtime,
-          startupError: toError(error),
-        }));
-      }
+      return await runWithCleanup(
+        async () => {
+          const adapter = adapterFactory(descriptor.routingContext);
+          ownedRuntime = runtimeFactory({
+            descriptor,
+            adapter,
+            reload: (context) => requestReload(context),
+          });
+          setOwnerState({ runtime: ownedRuntime, startupError: null });
+          await ownedRuntime.connect();
+        },
+        {
+          onError: async (error: unknown) => {
+            if (!live) return;
+            setOwnerState((current) => ({
+              runtime: current.runtime,
+              startupError: toError(error),
+            }));
+          },
+        },
+      );
     };
 
     void openAfterPreviousClose();
@@ -526,11 +537,16 @@ function RuntimeOwner({
   const { runtime, startupError } = ownerState;
 
   const reloadWithoutRuntime = async (): Promise<void> => {
-    try {
-      await onReload?.();
-    } finally {
-      restart();
-    }
+    return await runWithCleanup(
+      async () => {
+        await onReload?.();
+      },
+      {
+        cleanup: () => {
+          restart();
+        },
+      },
+    );
   };
 
   if (!runtime) {
@@ -552,13 +568,18 @@ function RuntimeOwner({
   }
 
   const handleReload = async (): Promise<void> => {
-    try {
-      if (!runtime.getStatus().reloadRequired) {
-        await onReload?.();
-      }
-    } finally {
-      restart();
-    }
+    return await runWithCleanup(
+      async () => {
+        if (!runtime.getStatus().reloadRequired) {
+          await onReload?.();
+        }
+      },
+      {
+        cleanup: () => {
+          restart();
+        },
+      },
+    );
   };
 
   return (

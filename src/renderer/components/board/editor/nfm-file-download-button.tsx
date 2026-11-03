@@ -1,3 +1,4 @@
+import { runWithCleanup } from "@/lib/run-with-cleanup";
 import {
   blockHasType,
   type BlockSchema,
@@ -54,27 +55,32 @@ export function NfmFileDownloadButton() {
   const onClick = () => {
     editor.focus();
     void (async () => {
-      try {
-        const source = block.props.url;
-        const dataUrl =
-          parseFileSource(source) && fileRuntime
-            ? await fileRuntime.readImageDataUrl(source)
-            : await materializeImageSourceAsDataUrl(source, {
-                readManagedAsset: readManagedImageDataUrl,
-              });
-        const props = block.props as typeof block.props & {
-          caption?: string;
-          name?: string;
-        };
-        await downloadImageDataUrl(
-          dataUrl,
-          createImageDownloadFilename(source, props.name || props.caption),
-        );
-      } catch {
-        toast.danger("Could not download image", {
-          id: "editor-download-image",
-        });
-      }
+      return await runWithCleanup(
+        async () => {
+          const source = block.props.url;
+          const dataUrl =
+            parseFileSource(source) && fileRuntime
+              ? await fileRuntime.readImageDataUrl(source)
+              : await materializeImageSourceAsDataUrl(source, {
+                  readManagedAsset: readManagedImageDataUrl,
+                });
+          const props = block.props as typeof block.props & {
+            caption?: string;
+            name?: string;
+          };
+          await downloadImageDataUrl(
+            dataUrl,
+            createImageDownloadFilename(source, props.name || props.caption),
+          );
+        },
+        {
+          onError: async () => {
+            toast.danger("Could not download image", {
+              id: "editor-download-image",
+            });
+          },
+        },
+      );
     })();
   };
 
