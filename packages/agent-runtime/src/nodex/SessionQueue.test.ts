@@ -4,6 +4,8 @@ import {
   CommandId,
   EventId,
   MessageId,
+  NodeId,
+  OrchestrationV2Command,
   ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
@@ -14,6 +16,7 @@ import * as Deferred from "effect/Deferred";
 import * as Fiber from "effect/Fiber";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Schema from "effect/Schema";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as CommandReceiptStore from "../orchestration-v2/CommandReceiptStore.ts";
@@ -29,6 +32,7 @@ import {
 import type { ProviderAdapterV2 } from "@t3tools/provider-core/server/ProviderAdapter";
 import * as EventSink from "../orchestration-v2/EventSink.ts";
 import * as ThreadCommandExecutor from "../orchestration-v2/ThreadCommandExecutor.ts";
+import { queuedRunsInDeliveryOrder } from "../orchestration-v2/QueuedRunOrder.ts";
 import { make, type SessionQueueInput } from "./SessionQueue.ts";
 
 const database = SqlitePersistence.layerMemory;
@@ -111,6 +115,31 @@ const setup = Effect.gen(function* () {
           }
         : {}),
     });
+  // Projection fixtures model both durable delivery markers without needing native execution.
+  const markCompletion = Effect.fnUntraced(function* (messageId: string) {
+    const projection = yield* orchestrator.getThreadRecords(threadId, ["runs", "messages"]);
+    const message = projection.messages.find((message) => message.id === messageId)!;
+    const { notification: _notice, ...original } = message;
+    const sink = yield* EventSink.EventSinkV2;
+    yield* sink.write({
+      events: [
+        {
+          id: EventId.make(`completion:${messageId}`),
+          threadId,
+          type: "message.updated",
+          occurredAt: message.updatedAt,
+          payload: {
+            ...original,
+            delegatedCompletion: {
+              parentRunId: projection.runs[0]!.id,
+              generation: 1,
+              taskIds: [NodeId.make("task")],
+            },
+          },
+        },
+      ],
+    });
+  });
   const queue = yield* make;
   let counter = 0;
   const call = (input: Omit<SessionQueueInput, "threadId" | "commandId">) =>
@@ -119,7 +148,7 @@ const setup = Effect.gen(function* () {
     const projection = yield* orchestrator.getThreadRecords(threadId, ["runs"]);
     return projection.runs.find((run) => run.userMessageId === messageId)!.id;
   });
-  return { send, call, queued, orchestrator, queue };
+  return { send, call, queued, orchestrator, queue, markCompletion };
 });
 
 it.effect("pages in send order, bounds Unicode text and retains attachments when edited", () =>
@@ -162,7 +191,7 @@ it.effect("reorders pending messages, protects automatic notices and rejects sta
     const one = yield* f.queued("one"),
       two = yield* f.queued("two"),
       notice = yield* f.queued("notice");
-    for (const action of ["edit", "reorder", "steer"] as const) {
+    for (const action of ["edit", "remove", "reorder", "steer"] as const) {
       const result = yield* f
         .call({ action, queuedId: notice, text: "changed", beforeId: null })
         .pipe(Effect.result);
@@ -187,7 +216,13 @@ it.effect("reorders pending messages, protects automatic notices and rejects sta
       if (result._tag === "Failure")
         assert.equal((result.failure as { reason: string }).reason, "not_queued");
     }
-    yield* f.call({ action: "remove", queuedId: notice });
+    // Internal lifecycle cancellation can retire a notice; the user queue cannot.
+    yield* f.orchestrator.dispatch({
+      type: "queued-run.cancel-internal",
+      commandId: CommandId.make("retire-notice"),
+      threadId,
+      runId: notice,
+    });
     const owner = yield* ThreadManagementService;
     const remaining = yield* f.queued("two");
     const parent = yield* f.orchestrator.getThreadRecords(threadId, ["runs"]);
@@ -370,4 +405,130 @@ it.effect.each(["edit", "steer", "stop"] as const)(
       assert.equal(projection.messages.find((message) => message.id === "race")?.text, "original");
       assert.equal(projection.runs.find((run) => run.id === queuedId)?.status, "queued");
     }).pipe(Effect.provide(Layer.merge(layer, ThreadCommandExecutor.layer))),
+);
+
+it.effect("lists delivery kinds, protects both markers and preserves internal cancellation", () =>
+  Effect.gen(function* () {
+    const f = yield* setup;
+    yield* f.send("user", "Delegated task finished");
+    yield* f.send("completion", "arbitrary words", true);
+    yield* f.markCompletion("completion");
+    yield* f.send("notification", "arbitrary words", true);
+    const user = yield* f.queued("user");
+    const completion = yield* f.queued("completion");
+    const notification = yield* f.queued("notification");
+    const listed = yield* f.call({ action: "list" });
+    if (!("items" in listed)) throw new Error("Expected page");
+    assert.deepEqual(
+      listed.items.map(({ queuedId, kind }) => [queuedId, kind]),
+      [
+        [completion, "delegated_completion"],
+        [user, "message"],
+        [notification, "notification"],
+      ],
+    );
+    const store = yield* ProjectionStore.ProjectionStoreV2;
+    assert.equal((yield* store.getQueuedRunHead(threadId))?.runId, completion);
+    const outbox = yield* store.getQueuedRunPage(threadId);
+    assert.deepEqual(
+      outbox.entries.map((entry) => entry.runId),
+      [user],
+    );
+    const before = yield* f.orchestrator.getThreadProjection(threadId);
+    const activeRun = before.runs[0]!;
+    for (const [queuedId, kind] of [
+      [completion, "delegated_completion"],
+      [notification, "notification"],
+    ] as const) {
+      const read = yield* f.call({ action: "read", queuedId });
+      if (!("kind" in read)) throw new Error("Expected entry");
+      assert.equal(read.kind, kind);
+      for (const action of ["edit", "remove", "reorder", "steer"] as const) {
+        const result = yield* f
+          .call({ action, queuedId, text: "changed", beforeId: null })
+          .pipe(Effect.result);
+        assert.equal(result._tag, "Failure");
+        if (result._tag === "Failure")
+          assert.propertyVal(result.failure, "reason", "protected_entry");
+      }
+      const targetResult = yield* f
+        .call({ action: "reorder", queuedId: user, beforeId: queuedId })
+        .pipe(Effect.result);
+      assert.equal(targetResult._tag, "Failure");
+      if (targetResult._tag === "Failure")
+        assert.propertyVal(targetResult.failure, "reason", "protected_entry");
+      const commands = [
+        { type: "queued-run.edit", runId: queuedId, text: "changed" },
+        { type: "queued-run.cancel", runId: queuedId },
+        { type: "queued-run.reorder", runId: queuedId, beforeRunId: null },
+        { type: "queued-run.reorder", runId: user, beforeRunId: queuedId },
+        {
+          type: "queued-message.promote-to-steer",
+          queuedRunId: queuedId,
+          targetRunId: activeRun.id,
+        },
+        { type: "queue.resume", runId: queuedId },
+      ] as const;
+      for (const [index, command] of commands.entries()) {
+        const result = yield* f.orchestrator
+          .dispatch({
+            ...command,
+            threadId,
+            commandId: CommandId.make(`reject:${queuedId}:${index}`),
+          })
+          .pipe(Effect.result);
+        assert.equal(result._tag, "Failure");
+        if (result._tag === "Failure") {
+          assert.include(
+            String((result.failure as { cause: unknown }).cause),
+            "Runtime deliveries",
+          );
+        }
+      }
+    }
+    const unchanged = yield* f.orchestrator.getThreadProjection(threadId);
+    assert.deepEqual(unchanged.runs, before.runs);
+    assert.deepEqual(unchanged.messages, before.messages);
+    yield* f.send("second", "second");
+    const second = yield* f.queued("second");
+    yield* f.call({ action: "reorder", queuedId: second, beforeId: user });
+    const reordered = yield* f.orchestrator.getThreadProjection(threadId);
+    for (const deliveryId of [completion, notification])
+      assert.deepEqual(
+        reordered.runs.find((run) => run.id === deliveryId),
+        before.runs.find((run) => run.id === deliveryId),
+      );
+    assert.deepEqual(
+      queuedRunsInDeliveryOrder(reordered).map((run) => run.id),
+      [completion, second, notification, user],
+    );
+    yield* f.orchestrator.dispatch({
+      type: "queue.resume",
+      threadId,
+      runId: user,
+      commandId: CommandId.make("send-user-now"),
+    });
+    const resumed = yield* f.orchestrator.getThreadProjection(threadId);
+    assert.deepEqual(
+      queuedRunsInDeliveryOrder(resumed).map((run) => run.id),
+      [completion, user, second, notification],
+    );
+    // The transport schema cannot admit the runtime-only cancellation command.
+    assert.throws(() =>
+      Schema.decodeUnknownSync(OrchestrationV2Command)({
+        type: "queued-run.cancel-internal",
+        threadId,
+        runId: notification,
+        commandId: "forged",
+      }),
+    );
+    yield* f.orchestrator.dispatch({
+      type: "queued-run.cancel-internal",
+      threadId,
+      runId: notification,
+      commandId: CommandId.make("internal-cancel"),
+    });
+    const retired = yield* f.orchestrator.getThreadProjection(threadId);
+    assert.equal(retired.runs.find((run) => run.id === notification)?.status, "cancelled");
+  }).pipe(Effect.provide(layer)),
 );

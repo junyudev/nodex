@@ -494,22 +494,22 @@ Delivery and its foreground-presentation exception follow
 [Desktop Notification Behavior](desktop-notification-behavior.md#chat-reminders).
 
 `session_queue` addresses an unarchived `sessionId`, with optional Runtime `execution: {threadId}`.
-Its actions mirror the conversation queue:
+It lists user messages and runtime deliveries; only user messages can be changed:
 
 - `list` accepts an optional opaque `cursor` and `limit` (1–20, default 20). It returns `items`
-  in send order and `nextCursor`. Each item has a stable `queuedId`, `text` (up to 250 Unicode
+  in delivery order and `nextCursor`. Each item has a stable `queuedId`, `text` (up to 250 Unicode
   characters), `truncated`, `kind` (`message`, `delegated_completion`, or `notification`), and `held`.
 - `read` requires `queuedId` and returns the same entry shape with up to 6,000 Unicode characters.
 - `edit` requires `queuedId` and nonblank `text` (up to 100,000 characters). It replaces the text
   while retaining attachments and captured execution settings.
-- `remove` requires `queuedId` and cancels that queued entry.
+- `remove` requires `queuedId` and cancels that queued user message.
 - `reorder` requires `queuedId` and `beforeId`; explicit `null` moves the entry to the end.
 - `steer` requires `queuedId` and delivers that entry into the current active turn.
 
 Mutations accept optional `idempotencyKey`; results include operation and Session identity. Automatic
-completion and notification entries can be read or removed, but cannot be edited, reordered
-or steered. Ordinary messages cannot move ahead of automatic completion delivery. Writes fail
-when the entry is no longer queued. Runtime roots and children support every action. Attached
+completion and notification entries are read-only: edit, remove, reorder and steer return
+`protected_entry`. They cannot be reorder targets. Ordinary messages cannot move ahead of
+automatic completion delivery. Writes fail when the entry is no longer queued. Runtime roots and children support every action. Attached
 remote native Codex Sessions use their current queue owner; native and captured queues retain
 separate delivery order, so a reorder cannot move an entry across that boundary. Local native
 Sessions and drafts return typed `unsupported` queue errors. No queue operation adopts a native

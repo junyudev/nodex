@@ -930,16 +930,19 @@ export class AgentRuntimeConversationOwner {
     this.#queueStatus = "ready";
     this.#queueError = null;
   }
-  #refreshQueue(): Promise<void> {
+  #refreshQueue(background = false): Promise<void> {
     if (!this.#transcriptActive || this.#disposed) return Promise.resolve();
     if (this.#queueRequest) {
       this.#queueDirty = true;
       return this.#queueRequest;
     }
     this.#queueDirty = false;
-    this.#queueStatus = "loading";
-    this.#queueError = null;
-    this.#publishView();
+    const silent = background && this.#queuePage !== null;
+    if (!silent) {
+      this.#queueStatus = "loading";
+      this.#queueError = null;
+      this.#publishView();
+    }
     const generation = this.#queueGeneration;
     const cursor = this.#queueCursor;
     const request = this.#transport
@@ -1019,6 +1022,8 @@ export class AgentRuntimeConversationOwner {
       })
       .catch((error) => {
         if (generation !== this.#queueGeneration || !this.#transcriptActive) return;
+        // An invalidation with no user messages must not open an empty queue tray.
+        if (silent && this.#queueEntries.length === 0) return;
         this.#queueEntries = [];
         this.#queueStatus = "error";
         this.#queueError = messageOf(error);
@@ -1027,7 +1032,7 @@ export class AgentRuntimeConversationOwner {
       .finally(() => {
         if (this.#queueRequest !== request) return;
         this.#queueRequest = null;
-        if (this.#queueDirty) void this.#refreshQueue();
+        if (this.#queueDirty) void this.#refreshQueue(true);
       });
     this.#queueRequest = request;
     return request;
@@ -1629,19 +1634,6 @@ export class AgentRuntimeConversationOwner {
       });
     }
     if (changes.length > 0) this.#applyChanges(changes);
-    if (cancelDelivery) {
-      this.#queueGeneration += 1;
-      this.#queueRequest = null;
-      this.#queueDirty = false;
-      this.#queueStatus = "ready";
-      if (this.#queuePage)
-        this.#queuePage = {
-          ...this.#queuePage,
-          entries: this.#queuePage.entries.filter((entry) => entry.runId !== deliveryRunId),
-          nextRunId: this.#queuePage.nextRunId === deliveryRunId ? null : this.#queuePage.nextRunId,
-        };
-      this.#queueEntries = this.#queueEntries.filter((entry) => entry.followUpId !== deliveryRunId);
-    }
     const changedTasks = new Set(
       subagents
         .filter((task, index) => task !== projection.subagents[index])
@@ -1716,7 +1708,7 @@ export class AgentRuntimeConversationOwner {
         this.#queuePage?.entries.some((row) => row.runId === item.runId)
       ) {
         this.#queueEntries = this.#queueEntries.filter((entry) => entry.followUpId !== item.runId);
-        void this.#refreshQueue();
+        void this.#refreshQueue(true);
       }
       return;
     }
@@ -1754,7 +1746,7 @@ export class AgentRuntimeConversationOwner {
         this.#queueEntries = this.#queueEntries.filter(
           (entry) => entry.clientUserMessageId !== event.payload.id,
         );
-        void this.#refreshQueue();
+        void this.#refreshQueue(true);
       }
       return;
     }
@@ -1796,7 +1788,7 @@ export class AgentRuntimeConversationOwner {
           },
         },
       };
-      if (wasQueued || run.status === "queued") void this.#refreshQueue();
+      if (wasQueued || run.status === "queued") void this.#refreshQueue(true);
       const entityKey = runKey(run.threadId, run.id);
       const turn = this.#turns.get(entityKey);
       if (turn && this.#transcriptActive && run.status === "rolled_back") {

@@ -9,6 +9,12 @@ import {
 } from "../orchestration-v2/DispatchModeLimit.ts";
 import { OrchestratorV2 } from "../orchestration-v2/Orchestrator.ts";
 
+import {
+  queuedMessageKindSql,
+  queuedRunPrioritySql,
+  type QueuedRunKind,
+} from "../orchestration-v2/QueuedRunKind.ts";
+
 export const SessionQueueInput = Schema.Struct({
   threadId: ThreadId,
   action: Schema.Literals(["list", "read", "edit", "remove", "reorder", "steer"]),
@@ -25,7 +31,7 @@ export interface SessionQueueEntry {
   readonly queuedId: string;
   readonly text: string;
   readonly truncated: boolean;
-  readonly kind: "message" | "delegated_completion" | "notification";
+  readonly kind: QueuedRunKind;
   readonly held: boolean;
 }
 export type SessionQueueResult =
@@ -88,11 +94,10 @@ export const make = Effect.gen(function* () {
     SELECT run.run_id, json_extract(run.payload_json,'$.userMessageId') AS message_id,
       substr(json_extract(message.payload_json,'$.text'),1,${chars}) AS text,
       length(json_extract(message.payload_json,'$.text')) AS total_chars,
-      CASE WHEN json_type(message.payload_json,'$.delegatedCompletion') IS NOT NULL THEN 0 ELSE 1 END AS priority,
+      ${queuedRunPrioritySql(sql, sql`message.payload_json`)} AS priority,
       COALESCE(json_extract(run.payload_json,'$.queuePosition'),run.ordinal) AS position, run.ordinal,
       COALESCE(json_extract(run.payload_json,'$.queueHeld'),0) AS held,
-      CASE WHEN json_type(message.payload_json,'$.delegatedCompletion') IS NOT NULL THEN 'delegated_completion'
-        WHEN json_type(message.payload_json,'$.notification') IS NOT NULL THEN 'notification' ELSE 'message' END AS kind
+      ${queuedMessageKindSql(sql, sql`message.payload_json`)} AS kind
     FROM orchestration_v2_projection_runs run JOIN orchestration_v2_projection_messages message
       ON message.thread_id=run.thread_id AND message.message_id=json_extract(run.payload_json,'$.userMessageId')
     WHERE run.thread_id=${threadId} AND run.status='queued' AND (${queuedId ?? null} IS NULL OR run.run_id=${queuedId ?? null})
@@ -148,8 +153,8 @@ export const make = Effect.gen(function* () {
     ))[0];
     if (!queued) return yield* fail("not_queued", "The message is no longer queued");
     if (input.action === "read") return entry(queued);
-    if (input.action !== "remove" && queued.kind !== "message")
-      return yield* fail("protected_entry", "Automatic queue entries cannot be changed or steered");
+    if (queued.kind !== "message")
+      return yield* fail("protected_entry", "Runtime deliveries are read-only");
     const base = { commandId: input.commandId, threadId: input.threadId };
     switch (input.action) {
       case "edit":
@@ -166,6 +171,11 @@ export const make = Effect.gen(function* () {
       case "reorder":
         if (input.beforeId === undefined)
           return yield* fail("invalid_arguments", "beforeId is required");
+        if (input.beforeId !== null) {
+          const target = (yield* rows(input.threadId, input.beforeId, 0, 1))[0];
+          if (target && target.kind !== "message")
+            return yield* fail("protected_entry", "Runtime deliveries cannot be reorder targets");
+        }
         return yield* dispatch({
           ...base,
           type: "queued-run.reorder",

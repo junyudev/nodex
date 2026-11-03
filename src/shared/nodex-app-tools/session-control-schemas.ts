@@ -80,7 +80,7 @@ const descriptions: Record<keyof typeof sessionControlSchemas, string> = {
   set_session_unread:
     "Mark a Nodex Session read or unread, as its sidebar shows. Omit sessionId for your calling Session. Reuse idempotencyKey and identical arguments to retry without repeating the change.",
   session_queue:
-    "Manage messages queued behind a Session's active turn, or a Runtime child's via execution.threadId. list: send order; read: one by queuedId; edit: replace text, keeping attachments; remove: drop it; reorder: before beforeId, or last with null; steer: send it into the active turn. Writes fail once it has started. Reuse idempotencyKey and identical arguments to retry without repeating the change.",
+    "Manage messages queued behind a Session's active turn, or a Runtime child's via execution.threadId. list: delivery order; read: one by queuedId; edit: replace text, keeping attachments; remove: drop a message; reorder: before beforeId, or last with null; steer: send it into the active turn. Runtime deliveries (delegated_completion and notification) are read-only. Writes fail once it has started. Reuse idempotencyKey and identical arguments to retry without repeating the change.",
 };
 export const sessionControlToolCatalog: readonly Tool[] = Object.entries(sessionControlSchemas).map(
   ([name, schema]) => ({

@@ -288,6 +288,7 @@ it.effect(
           getCheckpointContext: () => Effect.die("not used"),
           getCheckpointCaptureContext: () => Effect.die("not used"),
           getRunMessage: () => Effect.die("not used"),
+          getQueuedRunHead: () => Effect.die("unused getQueuedRunHead"),
           canStartQueuedRun: () => Effect.die("not used"),
           getRunLivenessCandidates: () => Effect.die("unused liveness candidates"),
           getRecoveryThreadIds: () => Effect.die("unused getRecoveryThreadIds"),

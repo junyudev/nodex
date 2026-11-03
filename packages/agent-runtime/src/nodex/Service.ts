@@ -976,7 +976,7 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
           `;
           for (const row of active.filter((run) => run.status === "queued"))
             yield* orchestrator.dispatch({
-              type: "queued-run.cancel",
+              type: "queued-run.cancel-internal",
               commandId: CommandId.make(`nodex-retire:queue:${row.run_id}`),
               threadId: ThreadId.make(row.thread_id),
               runId: RunId.make(row.run_id),

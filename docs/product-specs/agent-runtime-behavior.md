@@ -361,12 +361,21 @@ of Core's execution lease coordinates. Session-only calls have no Run anchor.
 
 Effect cleanup releases subscriptions and bodies immediately; a render-held lease can
 be retained again without reviving old callbacks. Concurrent readers of the same
-Session and Thread share one read owner. Queue observation reads at most 25 metadata
-rows per page with canonical Run and message identities. An open queue hydrates bounded
-previews only for its visible page; editing explicitly reads that message. Collapsed
-queues and controls do not load prompts. A held queue remains paused until an explicit queue command resumes it.
-Sending a queued message while the chat is idle resumes the queue from that message; the
-others follow in their order.
+Session and Thread share one read owner.
+
+The Composer queue is the user's outbox: messages a person sent, or another conversation,
+schedule or question answer sent on their behalf. Runtime deliveries addressed to the Agent —
+delegated-task completion wakes, background notifications and automatic continuations — never
+appear in the queue, its previews or counts, and do not make a conversation read as queued.
+They run ahead of or among queued messages in delivery order and appear in the transcript when
+delivered. Nobody can edit, remove, reorder or steer them; Stop keeps pending delegated-task
+completion wakes from continuing the conversation.
+
+Queue observation reads at most 25 user-message metadata rows per page with canonical Run and
+message identities. An open queue hydrates bounded previews only for its visible page; editing
+explicitly reads that message. Collapsed queues and controls do not load prompts. A held queue
+remains paused until an explicit queue command resumes it. Sending a queued message while the
+chat is idle resumes the queue from that message; the others follow in their order.
 
 The initial window admits at most five user Turns and 500 distinct items. Its complete
 public envelope, including metadata, stays within 1 MiB. Root windows retain visible

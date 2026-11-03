@@ -142,7 +142,8 @@ import { makeProviderFailure } from "@t3tools/provider-core/server/failure";
 import * as RunExecutionService from "./RunExecutionService.ts";
 import { ProviderSessionManagerV2 } from "./ProviderSessionManager.ts";
 import { ProviderSwitchServiceV2 } from "./ProviderSwitchService.ts";
-import { isAutomaticCompletionRun, queuedRunsInDeliveryOrder } from "./QueuedRunOrder.ts";
+import { isRuntimeDeliveryRun, queuedRunsInDeliveryOrder } from "./QueuedRunOrder.ts";
+import { isRuntimeDeliveryMessage, queuedMessageKind } from "./QueuedRunKind.ts";
 import { RuntimePolicyV2 } from "./RuntimePolicy.ts";
 import {
   endOrphanedNativeSubagent,
@@ -526,6 +527,7 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
     case "queue.resume":
     case "queued-run.reorder":
     case "queued-run.cancel":
+    case "queued-run.cancel-internal":
     case "queued-run.edit":
     case "runtime-request.respond":
     case "thread.user-input.dismiss":
@@ -1396,8 +1398,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       // needs the transcript for provider handoff and legacy import context.
       if (yield* readExecutionHandoff(projectionStore, threadId)) return;
       if (!(yield* projectionStore.canStartQueuedRun(threadId))) return;
-      const queueHead = (yield* projectionStore.getQueuedRunPage(threadId)).entries[0];
-      if (queueHead === undefined) return;
+      const queueHead = yield* projectionStore.getQueuedRunHead(threadId);
+      if (queueHead === null) return;
       const projection = yield* projectionStore
         .getMessageDispatchProjection({
           threadId,
@@ -2824,16 +2826,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       // Queued notification and delegated-completion runs only wake the agent.
       // They are not user messages and are hidden from the queue UI, so they
       // must not block settling; they are cancelled below instead.
-      const automaticMessageIds = new Set(
-        projection.messages
-          .filter(
-            (message) =>
-              message.notification !== undefined || message.delegatedCompletion !== undefined,
-          )
-          .map((message) => message.id),
-      );
       const automaticQueuedRuns = projection.runs.filter(
-        (run) => run.status === "queued" && automaticMessageIds.has(run.userMessageId),
+        (run) => run.status === "queued" && isRuntimeDeliveryRun(projection, run),
       );
       const runningRunExists = projection.runs.some((run) =>
         ["preparing", "starting", "running", "waiting"].includes(run.status),
@@ -2883,7 +2877,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       for (const run of automaticQueuedRuns) {
         yield* dispatchQueuedRunCancel(
           {
-            type: "queued-run.cancel",
+            type: "queued-run.cancel-internal",
             commandId: command.commandId,
             threadId: command.threadId,
             runId: run.id,
@@ -8779,14 +8773,11 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           cause: `Queued run ${queuedRun.id} is missing message or execution state.`,
         });
       }
-      if (
-        queuedMessage.delegatedCompletion !== undefined ||
-        queuedMessage.notification !== undefined
-      ) {
+      if (isRuntimeDeliveryMessage(queuedMessage)) {
         return yield* new OrchestratorDispatchError({
           commandId: command.commandId,
           commandType: command.type,
-          cause: "Automatic completion deliveries cannot be promoted to Steer.",
+          cause: "Runtime deliveries cannot be promoted to Steer.",
         });
       }
 
@@ -8878,33 +8869,26 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           cause: `Run ${command.runId} is not queued.`,
         });
       }
-      const movingMessage = projection.messages.find(
-        (candidate) => candidate.id === moving.userMessageId,
-      );
-      if (
-        movingMessage?.delegatedCompletion !== undefined ||
-        movingMessage?.notification !== undefined
-      ) {
+      if (isRuntimeDeliveryRun(projection, moving)) {
         return yield* new OrchestratorDispatchError({
           commandId: command.commandId,
           commandType: command.type,
-          cause: "Automatic completion deliveries cannot be reordered.",
+          cause: "Runtime deliveries cannot be reordered.",
         });
       }
-      const automaticRuns = queuedRuns.filter((run) => isAutomaticCompletionRun(projection, run));
       if (
         command.beforeRunId !== null &&
-        automaticRuns.some((run) => run.id === command.beforeRunId)
+        queuedRuns.some(
+          (run) => run.id === command.beforeRunId && isRuntimeDeliveryRun(projection, run),
+        )
       ) {
         return yield* new OrchestratorDispatchError({
           commandId: command.commandId,
           commandType: command.type,
-          cause: "Queued messages cannot be reordered ahead of automatic completion delivery.",
+          cause: "Runtime deliveries cannot be reorder targets.",
         });
       }
-      const reorderableRuns = queuedRuns.filter(
-        (run) => !isAutomaticCompletionRun(projection, run),
-      );
+      const reorderableRuns = queuedRuns.filter((run) => !isRuntimeDeliveryRun(projection, run));
       const withoutMoving = reorderableRuns.filter((run) => run.id !== command.runId);
       const beforeIndex =
         command.beforeRunId === null
@@ -8918,18 +8902,21 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         });
       }
       const reordered = [
-        ...automaticRuns,
         ...withoutMoving.slice(0, beforeIndex),
         moving,
         ...withoutMoving.slice(beforeIndex),
       ];
+      // Reuse the user's existing slots; reordering cannot move or rewrite runtime deliveries.
+      const positions = reorderableRuns
+        .map((run) => run.queuePosition ?? run.ordinal)
+        .toSorted((a, b) => a - b);
       const now = yield* DateTime.now;
       const emitEvent = emit(events, command);
       yield* Effect.forEach(
         reordered,
         (run, index) =>
           Effect.gen(function* () {
-            const queuePosition = index + 1;
+            const queuePosition = positions[index]!;
             if (run.queuePosition === queuePosition) {
               return;
             }
@@ -8951,7 +8938,10 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     });
 
   const dispatchQueuedRunCancel = (
-    command: Extract<OrchestrationV2Command, { readonly type: "queued-run.cancel" }>,
+    command: Extract<
+      OrchestrationV2ServerCommand,
+      { readonly type: "queued-run.cancel" | "queued-run.cancel-internal" }
+    >,
     events: Ref.Ref<Array<OrchestrationV2DomainEvent>>,
   ) =>
     Effect.gen(function* () {
@@ -8975,6 +8965,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       const queuedMessage = projection.messages.find(
         (candidate) => candidate.id === queuedRun.userMessageId,
       );
+      if (command.type === "queued-run.cancel" && isRuntimeDeliveryRun(projection, queuedRun)) {
+        return yield* new OrchestratorDispatchError({
+          commandId: command.commandId,
+          commandType: command.type,
+          cause: "Runtime deliveries cannot be cancelled from the user queue.",
+        });
+      }
       if (queuedMessage?.delegatedCompletion !== undefined) {
         const now = yield* DateTime.now;
         yield* disposeDelegatedCompletionCohort({
@@ -9083,14 +9080,11 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           cause: `Queued run ${queuedRun.id} has no user message.`,
         });
       }
-      if (
-        queuedMessage.delegatedCompletion !== undefined ||
-        queuedMessage.notification !== undefined
-      ) {
+      if (isRuntimeDeliveryMessage(queuedMessage)) {
         return yield* new OrchestratorDispatchError({
           commandId: command.commandId,
           commandType: command.type,
-          cause: "Automatic completion deliveries cannot be edited.",
+          cause: "Runtime deliveries cannot be edited.",
         });
       }
       const queuedTurnItem = projection.turnItems.find(
@@ -12801,12 +12795,24 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
               cause: `Run ${command.runId} is not queued.`,
             });
           }
-          // The chosen message goes next, behind only automatic completion deliveries.
-          const automatic = delivery.filter((run) => isAutomaticCompletionRun(order, run));
+          if (isRuntimeDeliveryRun(order, first))
+            return yield* new OrchestratorDispatchError({
+              commandId: command.commandId,
+              commandType: command.type,
+              cause: "Runtime deliveries cannot be selected from the user queue.",
+            });
+          // Send Now keeps its existing choice: only delegated completions precede it.
+          const completions = delivery.filter((run) =>
+            order.messages.some(
+              (message) =>
+                message.id === run.userMessageId &&
+                queuedMessageKind(message) === "delegated_completion",
+            ),
+          );
           [
-            ...automatic,
-            ...(automatic.includes(first) ? [] : [first]),
-            ...delivery.filter((run) => run !== first && !automatic.includes(run)),
+            ...completions,
+            first,
+            ...delivery.filter((run) => run !== first && !completions.includes(run)),
           ].forEach((run, index) => positions.set(run.id, index + 1));
         }
         for (const run of queued) {
@@ -12843,6 +12849,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         yield* dispatchQueuedRunReorder(command, events);
         break;
       case "queued-run.cancel":
+      case "queued-run.cancel-internal":
         yield* dispatchQueuedRunCancel(command, events);
         break;
       case "queued-run.edit":

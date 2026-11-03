@@ -1,11 +1,13 @@
 import type { OrchestrationV2Run, OrchestrationV2ThreadProjection } from "@t3tools/contracts";
 
-export function isAutomaticCompletionRun(
-  projection: Pick<OrchestrationV2ThreadProjection, "runs" | "messages">,
+import { isRuntimeDeliveryMessage, queuedMessageKind } from "./QueuedRunKind.ts";
+
+export function isRuntimeDeliveryRun(
+  projection: Pick<OrchestrationV2ThreadProjection, "messages">,
   run: OrchestrationV2Run,
 ): boolean {
   return projection.messages.some(
-    (message) => message.id === run.userMessageId && message.delegatedCompletion !== undefined,
+    (message) => message.id === run.userMessageId && isRuntimeDeliveryMessage(message),
   );
 }
 
@@ -14,7 +16,7 @@ export function queuedRunsInDeliveryOrder(
 ): ReadonlyArray<OrchestrationV2Run> {
   const automaticCompletionMessageIds = new Set(
     projection.messages
-      .filter((message) => message.delegatedCompletion !== undefined)
+      .filter((message) => queuedMessageKind(message) === "delegated_completion")
       .map((message) => message.id),
   );
   return projection.runs

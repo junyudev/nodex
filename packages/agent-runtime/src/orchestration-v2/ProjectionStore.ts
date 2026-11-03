@@ -1,3 +1,9 @@
+import { isRuntimeDeliveryRun, queuedRunsInDeliveryOrder } from "./QueuedRunOrder.ts";
+import {
+  isRuntimeDeliveryMessage,
+  queuedMessageKindSql,
+  queuedRunPrioritySql,
+} from "./QueuedRunKind.ts";
 import { ProviderRequestKind } from "@t3tools/contracts";
 import { isClosedNativeDetachment } from "./NativeConversation.ts";
 import {
@@ -1254,6 +1260,14 @@ export interface ProjectionStoreV2Shape {
     projectId: ProjectId,
     cursor?: string,
   ) => Effect.Effect<ProjectionProjectRoots, ProjectionStoreV2Error>;
+  /** Scheduler head in delivery order, including protected runtime deliveries. */
+  readonly getQueuedRunHead: (
+    threadId: ThreadId,
+  ) => Effect.Effect<
+    { readonly runId: string; readonly userMessageId: string } | null,
+    ProjectionStoreV2Error
+  >;
+  /** The user's outbox only; runtime scheduling must use getQueuedRunHead. */
   readonly getQueuedRunPage: (
     threadId: ThreadId,
     cursor?: string,
@@ -2614,12 +2628,15 @@ export function threadShellFromProjection(
         (left, right) =>
           DateTime.toEpochMillis(right.updatedAt) - DateTime.toEpochMillis(left.updatedAt),
       )[0] ?? null;
+  const visibleRuns = projection.runs.filter(
+    (run) => run.status !== "queued" || !isRuntimeDeliveryRun(projection, run),
+  );
   const latestRun =
     usageLimitRunPresentedAsLatest(
-      projection.runs,
+      visibleRuns,
       projection.turnItems,
       providerSession?.lastError ?? null,
-    ) ?? latestUnheldRun(projection.runs);
+    ) ?? latestUnheldRun(visibleRuns);
   const activeRun =
     projection.runs
       .filter(isInterruptibleRunForShell)
@@ -7239,6 +7256,22 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
         Effect.mapError((cause) => new ProjectionStoreProjectReadError({ projectId, cause })),
       );
 
+    const getQueuedRunHead: ProjectionStoreV2Shape["getQueuedRunHead"] = (threadId) =>
+      sql<{ run_id: string; user_message_id: string }>`
+        SELECT run.run_id, json_extract(run.payload_json, '$.userMessageId') AS user_message_id
+        FROM orchestration_v2_projection_runs run
+        LEFT JOIN orchestration_v2_projection_messages message ON message.thread_id = run.thread_id
+          AND message.message_id = json_extract(run.payload_json, '$.userMessageId')
+        WHERE run.thread_id = ${threadId} AND run.status = 'queued'
+        ORDER BY ${queuedRunPrioritySql(sql, sql`message.payload_json`)},
+          COALESCE(json_extract(run.payload_json, '$.queuePosition'), run.ordinal), run.ordinal, run.run_id
+        LIMIT 1`.pipe(
+        Effect.map((rows) =>
+          rows[0] ? { runId: rows[0].run_id, userMessageId: rows[0].user_message_id } : null,
+        ),
+        Effect.mapError((cause) => new ProjectionStoreReadError({ threadId, cause })),
+      );
+
     const getQueuedRunPage: ProjectionStoreV2Shape["getQueuedRunPage"] = (threadId, cursor) =>
       sql
         .withTransaction(
@@ -7281,7 +7314,10 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                 AND json_extract(item.payload_json,'$.messageId') = json_extract(run.payload_json,'$.userMessageId')
               ORDER BY item.turn_item_id LIMIT 1) AS user_item_id
           FROM orchestration_v2_projection_runs run
-          WHERE run.thread_id = ${threadId} AND run.status = 'queued'
+          JOIN orchestration_v2_projection_messages message ON message.thread_id = run.thread_id
+            AND message.message_id = json_extract(run.payload_json,'$.userMessageId')
+          WHERE run.thread_id = ${threadId} AND run.status = 'queued' AND message.role = 'user'
+            AND ${queuedMessageKindSql(sql, sql`message.payload_json`)} = 'message'
             AND (${anchor === null ? 1 : 0} = 1 OR (COALESCE(json_extract(run.payload_json,'$.queuePosition'),run.ordinal),run.ordinal,run.run_id)
               > (${anchor?.[1] ?? 0},${anchor?.[2] ?? 0},${anchor?.[3] ?? ""}))
           ORDER BY COALESCE(json_extract(run.payload_json,'$.queuePosition'),run.ordinal),run.ordinal,run.run_id LIMIT 26`;
@@ -7325,7 +7361,8 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
           WHERE json_extract(value,'$.type') = 'image' LIMIT 32) image) AS images_json
       FROM orchestration_v2_projection_runs run JOIN orchestration_v2_projection_messages message
         ON message.message_id = json_extract(run.payload_json,'$.userMessageId') AND message.thread_id = run.thread_id
-      WHERE run.thread_id = ${threadId} AND run.run_id = ${runId} AND run.status = 'queued' AND message.role = 'user' LIMIT 1`.pipe(
+      WHERE run.thread_id = ${threadId} AND run.run_id = ${runId} AND run.status = 'queued' AND message.role = 'user'
+        AND ${queuedMessageKindSql(sql, sql`message.payload_json`)} = 'message' LIMIT 1`.pipe(
         Effect.flatMap((rows) => {
           const row = rows[0];
           if (!row) return Effect.succeed(null);
@@ -9163,14 +9200,20 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                   AND i.run_id IS NULL
               ) AS runless_item_count
             FROM orchestration_v2_projection_threads t
-            -- The newest run not waiting in a held queue, matching latestUnheldRun.
+            -- Pending runtime deliveries and held messages do not represent the conversation outcome.
             LEFT JOIN orchestration_v2_projection_runs presented ON presented.run_id = (
               SELECT candidate.run_id
               FROM orchestration_v2_projection_runs candidate
               WHERE candidate.thread_id = t.thread_id
                 AND NOT (
                   candidate.status = 'queued'
-                  AND json_extract(candidate.payload_json, '$.queueHeld') IS 1
+                  AND (json_extract(candidate.payload_json, '$.queueHeld') IS 1
+                    OR EXISTS (
+                      SELECT 1 FROM orchestration_v2_projection_messages message
+                      WHERE message.thread_id = candidate.thread_id
+                        AND message.message_id = json_extract(candidate.payload_json, '$.userMessageId')
+                        AND ${queuedMessageKindSql(sql, sql`message.payload_json`)} <> 'message'
+                    ))
                 )
               ORDER BY candidate.ordinal DESC, candidate.run_id DESC
               LIMIT 1
@@ -9931,6 +9974,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       getThreadSubagentOverview,
       getProjectExecutionActivity,
       getProjectRoots,
+      getQueuedRunHead,
       getQueuedRunPage,
       getQueuedRunPreview,
       getRunUserMessage,
@@ -10015,6 +10059,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       getThreadSubagentOverview: readOnReader(service.getThreadSubagentOverview),
       getProjectExecutionActivity: readOnReader(service.getProjectExecutionActivity),
       getProjectRoots: readOnReader(service.getProjectRoots),
+      getQueuedRunHead: readOnReader(service.getQueuedRunHead),
       getQueuedRunPage: readOnReader(service.getQueuedRunPage),
       getQueuedRunPreview: readOnReader(service.getQueuedRunPreview),
       getRunUserMessage: readOnReader(service.getRunUserMessage),
@@ -11401,6 +11446,12 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
         }).pipe(
           Effect.mapError((cause) => new ProjectionStoreProjectReadError({ projectId, cause })),
         ),
+      getQueuedRunHead: (threadId) =>
+        Effect.gen(function* () {
+          const projection = (yield* Ref.get(replayState)).projections.get(threadId);
+          const run = projection ? queuedRunsInDeliveryOrder(projection)[0] : undefined;
+          return run ? { runId: run.id, userMessageId: run.userMessageId } : null;
+        }),
       getQueuedRunPage: (threadId, cursor) =>
         Effect.gen(function* () {
           const anchor =
@@ -11424,7 +11475,12 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
           const state = yield* Ref.get(replayState);
           const projection = state.projections.get(threadId);
           const runs = [...(projection?.runs ?? [])]
-            .filter((run) => run.status === "queued")
+            .filter(
+              (run) =>
+                run.status === "queued" &&
+                projection !== undefined &&
+                !isRuntimeDeliveryRun(projection, run),
+            )
             .sort(
               (a, b) =>
                 (a.queuePosition ?? a.ordinal) - (b.queuePosition ?? b.ordinal) ||
@@ -11480,7 +11536,7 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
                 (message) => message.id === run.userMessageId && message.role === "user",
               )
             : null;
-          return message
+          return message && !isRuntimeDeliveryMessage(message)
             ? {
                 threadId,
                 runId,

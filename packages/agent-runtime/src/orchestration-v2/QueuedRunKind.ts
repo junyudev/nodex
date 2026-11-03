@@ -1,0 +1,31 @@
+import type { OrchestrationV2ConversationMessage } from "@t3tools/contracts";
+import type { SqlClient } from "effect/sql/SqlClient";
+import type { Fragment } from "effect/sql/Statement";
+
+// Presence of these durable markers separates Agent deliveries from the user's outbox.
+// Ordering is separate: only delegated completions receive delivery priority.
+const deliveryMarkers = [
+  ["delegatedCompletion", "delegated_completion"],
+  ["notification", "notification"],
+] as const satisfies ReadonlyArray<readonly [keyof OrchestrationV2ConversationMessage, string]>;
+
+export type QueuedRunKind = "message" | (typeof deliveryMarkers)[number][1];
+type Message = Pick<OrchestrationV2ConversationMessage, (typeof deliveryMarkers)[number][0]>;
+
+export const queuedMessageKind = (message: Message): QueuedRunKind =>
+  deliveryMarkers.find(([marker]) => message[marker] !== undefined)?.[1] ?? "message";
+
+export const isRuntimeDeliveryMessage = (message: Message): boolean =>
+  queuedMessageKind(message) !== "message";
+
+/** SQL uses the same marker list and precedence as in-memory command and replay reads. */
+export const queuedMessageKindSql = (sql: SqlClient, payload: Fragment): Fragment => {
+  const cases = deliveryMarkers.map(
+    ([marker, kind]) => sql`WHEN json_type(${payload}, ${`$.${marker}`}) IS NOT NULL THEN ${kind}`,
+  );
+  return sql`CASE ${sql.join(" ", false)(cases)} ELSE 'message' END`;
+};
+
+/** SQL delivery priority matching queuedRunsInDeliveryOrder: 0 runs before 1. */
+export const queuedRunPrioritySql = (sql: SqlClient, payload: Fragment): Fragment =>
+  sql`CASE WHEN json_type(${payload}, '$.delegatedCompletion') IS NOT NULL THEN 0 ELSE 1 END`;

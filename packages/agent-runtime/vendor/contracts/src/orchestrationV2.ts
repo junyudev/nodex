@@ -3704,6 +3704,13 @@ export type OrchestrationV2Command = typeof OrchestrationV2Command.Type;
  * send them.
  */
 const OrchestrationV2InternalCommand = Schema.Union([
+  /** Runtime lifecycle cancellation, including protected deliveries. Never accepted from clients. */
+  Schema.Struct({
+    type: Schema.Literal("queued-run.cancel-internal"),
+    commandId: CommandId,
+    threadId: ThreadId,
+    runId: RunId,
+  }),
   Schema.Struct({
     type: Schema.Literal("message.delivery.update"),
     commandId: CommandId,

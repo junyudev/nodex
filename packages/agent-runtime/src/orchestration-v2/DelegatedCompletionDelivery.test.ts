@@ -506,6 +506,118 @@ it.layer(layerTest)("delegated completion delivery repairs", (it) => {
     }),
   );
 
+  it.effect.each([
+    "queued-run.cancel-internal",
+    "thread.stop",
+    "thread.settle",
+    "queue.resume",
+  ] as const)("protects completion wakes from user cancellation while preserving %s", (action) =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const sink = yield* EventSink.EventSinkV2;
+      const now = yield* DateTime.now;
+      const threadId = ThreadId.make(`thread:protected-wake:${action}`);
+      const runId = RunId.make(`run:protected-wake:${action}`);
+      const taskId = NodeId.make(`task:protected-wake:${action}`);
+      const messageId = MessageId.make(`message:delegated-delivery:${threadId}`);
+      yield* seedParentWithTerminalTask({
+        threadId,
+        projectId: ProjectId.make(`project:protected-wake:${action}`),
+        runId,
+        rootNodeId: NodeId.make(`root:protected-wake:${action}`),
+        taskId,
+        deliveryState: "claimed",
+        deliveryTaskIds: [taskId],
+        completionWake: "always",
+        now,
+      });
+      yield* orchestrator.dispatch({
+        type: "message.dispatch",
+        commandId: CommandId.make(`wake:${action}`),
+        threadId,
+        messageId,
+        text: "Task finished",
+        attachments: [],
+        dispatchMode: { type: "queue_after_active" },
+        createdBy: "agent",
+        creationSource: "server",
+        delegatedCompletion: { parentRunId: runId, generation: 1, taskIds: [taskId] },
+      });
+      const before = yield* orchestrator.getThreadProjection(threadId);
+      const wake = before.runs.find((run) => run.userMessageId === messageId)!;
+      assert.equal(wake.status, "queued");
+      const rejected = yield* orchestrator
+        .dispatch({
+          type: "queued-run.cancel",
+          commandId: CommandId.make(`reject-cancel:${action}`),
+          threadId,
+          runId: wake.id,
+        })
+        .pipe(Effect.result);
+      assert.equal(rejected._tag, "Failure");
+      const unchanged = yield* orchestrator.getThreadProjection(threadId);
+      assert.deepEqual(unchanged.runs, before.runs);
+      assert.deepEqual(unchanged.subagents, before.subagents);
+      if (action === "thread.settle" || action === "queue.resume") {
+        const parent = before.runs.find((run) => run.id === runId)!;
+        yield* sink.write({
+          events: [
+            ...(action === "thread.settle"
+              ? [
+                  {
+                    id: EventId.make("wake:held"),
+                    type: "run.updated" as const,
+                    threadId,
+                    runId: wake.id,
+                    occurredAt: now,
+                    payload: { ...wake, queueHeld: true },
+                  },
+                ]
+              : []),
+            {
+              id: EventId.make(`parent:finished:${action}`),
+              type: "run.updated",
+              threadId,
+              runId,
+              occurredAt: now,
+              payload: { ...parent, status: "completed", completedAt: now },
+            },
+          ],
+        });
+      }
+      if (action === "queue.resume") {
+        yield* orchestrator.dispatch({
+          type: "queue.resume",
+          threadId,
+          commandId: CommandId.make("resume-hidden-wake"),
+        });
+        const resumed = yield* orchestrator.getThreadProjection(threadId);
+        assert.include(
+          ["starting", "running"],
+          resumed.runs.find((run) => run.id === wake.id)?.status,
+        );
+        return;
+      }
+      yield* orchestrator.dispatch({
+        type: action,
+        commandId: CommandId.make(`dispose:${action}`),
+        threadId,
+        runId: wake.id,
+      });
+      const after = yield* orchestrator.getThreadProjection(threadId);
+      assert.equal(after.runs.find((run) => run.id === wake.id)?.status, "cancelled");
+      assert.deepEqual(after.runs.find((run) => run.id === runId)?.delegatedCompletion, {
+        disposition: action === "thread.stop" ? "stopped" : "disposed",
+        nextGeneration: 2,
+        delivery: null,
+      });
+      assert.equal(
+        after.subagents.find((task) => task.id === taskId)?.completionDelivery?.state,
+        "disposed",
+      );
+    }),
+  );
+
   it.effect("builds completion text and metadata from the same live cohort", () =>
     Effect.gen(function* () {
       const orchestrator = yield* Orchestrator.OrchestratorV2;

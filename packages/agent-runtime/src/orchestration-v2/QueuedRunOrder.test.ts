@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { queuedRunsInDeliveryOrder } from "./QueuedRunOrder.ts";
+import { isRuntimeDeliveryRun, queuedRunsInDeliveryOrder } from "./QueuedRunOrder.ts";
 
 describe("queued run delivery order", () => {
   it("keeps automatic completion delivery ahead of visible queued messages", () => {
@@ -16,8 +16,16 @@ describe("queued run delivery order", () => {
           },
         },
         { id: "message:visible-second" },
+        { id: "message:notice", notification: { summary: "Background work" } },
       ],
       runs: [
+        {
+          id: "run:notice",
+          ordinal: 5,
+          queuePosition: 4,
+          status: "queued",
+          userMessageId: "message:notice",
+        },
         {
           id: "run:visible-first",
           ordinal: 2,
@@ -46,6 +54,14 @@ describe("queued run delivery order", () => {
       "run:automatic",
       "run:visible-first",
       "run:visible-second",
+      "run:notice",
+    ]);
+    const ordered = queuedRunsInDeliveryOrder(projection);
+    expect(ordered.map((run) => isRuntimeDeliveryRun(projection, run))).toEqual([
+      true,
+      false,
+      false,
+      true,
     ]);
   });
 });

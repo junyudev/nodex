@@ -118,7 +118,7 @@ export const make = Effect.gen(function* () {
         );
         if (queued !== undefined) {
           yield* engine.dispatch({
-            type: "queued-run.cancel",
+            type: "queued-run.cancel-internal",
             commandId: CommandId.make(`server:delegated-task-question-cancel:${key}`),
             threadId: parentThreadId,
             runId: queued.id,

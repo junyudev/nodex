@@ -2,6 +2,8 @@ import { assert, it } from "@effect/vitest";
 import { vi } from "vitest";
 import {
   CommandId,
+  EventId,
+  NodeId,
   MessageId,
   ProjectId,
   ProviderDriverKind,
@@ -12,6 +14,7 @@ import {
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as EventSink from "./EventSink.ts";
 import * as SqlClient from "effect/sql/SqlClient";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import { CodexProviderCapabilitiesV2 } from "./Adapters/CodexAdapterV2.ts";
@@ -42,7 +45,7 @@ const layer = Layer.mergeAll(
 );
 
 it.effect(
-  "pages the complete queued roster without parsing bodies and keeps continuation bound to its Thread",
+  "pages only user messages in a mixed queue without parsing bodies and binds continuation to its Thread",
   () =>
     Effect.gen(function* () {
       const orchestrator = yield* Orchestrator.OrchestratorV2;
@@ -63,7 +66,9 @@ it.effect(
         createdBy: "user",
         creationSource: "web",
       });
-      for (let index = 0; index < 31; index += 1)
+      const sink = yield* EventSink.EventSinkV2;
+      const deliveries: RunId[] = [];
+      for (let index = 0; index < 31; index += 1) {
         yield* orchestrator.dispatch({
           type: "message.dispatch",
           commandId: CommandId.make(`queue:${index}`),
@@ -87,6 +92,55 @@ it.effect(
           createdBy: "user",
           creationSource: "web",
         });
+        // Hidden entries before, between, at the page boundary and after user messages.
+        if ([0, 6, 25, 30].includes(index)) {
+          const sent = yield* orchestrator.dispatch({
+            type: "message.dispatch",
+            commandId: CommandId.make(`notice:${index}`),
+            threadId,
+            messageId: MessageId.make(`notice:${index}`),
+            text: "A runtime delivery",
+            attachments: [],
+            createdBy: "agent",
+            creationSource: "server",
+            dispatchMode: { type: "queue_after_active" },
+            notification: {
+              source: { kind: "background_task" },
+              outcome: "updated",
+              summary: "Task update",
+            },
+          });
+          const created = sent.storedEvents.find(
+            ({ event }) => event.type === "run.created",
+          )!.event;
+          if (created.type !== "run.created") throw new Error("Expected queued delivery");
+          deliveries.push(created.payload.id);
+          if (index === 0 || index === 25) {
+            const message = (yield* store.getThreadRecords(threadId, ["messages"], {
+              messageIds: [MessageId.make(`notice:${index}`)],
+            })).messages[0]!;
+            const { notification: _notification, ...original } = message;
+            yield* sink.write({
+              events: [
+                {
+                  id: EventId.make(`completion:${index}`),
+                  threadId,
+                  type: "message.updated",
+                  occurredAt: message.updatedAt,
+                  payload: {
+                    ...original,
+                    delegatedCompletion: {
+                      parentRunId: RunId.make("parent"),
+                      generation: 1,
+                      taskIds: [NodeId.make("task")],
+                    },
+                  },
+                },
+              ],
+            });
+          }
+        }
+      }
       const parse = vi.spyOn(JSON, "parse");
       let first: ProjectionStore.ProjectionQueuedRunPage;
       try {
@@ -98,6 +152,12 @@ it.effect(
       assert.equal(first.entries.length, 25);
       assert.isNotNull(first.nextCursor);
       assert.isNotNull(first.nextRunId);
+      assert.deepEqual(
+        first.entries.map((entry) => entry.userMessageId),
+        Array.from({ length: 25 }, (_, index) => `message:${index + 1}`),
+      );
+      for (const runId of deliveries)
+        assert.isNull(yield* store.getQueuedRunPreview(threadId, runId));
       const firstRun = RunId.make(first.entries[0]!.runId);
       const exactControl = yield* store.getThreadSnapshotWindow(threadId, {
         rowLimit: 0,
@@ -150,6 +210,11 @@ it.effect(
       assert.equal(second.entries.length, 5);
       assert.equal(second.entries[0]?.runId, first.nextRunId);
       assert.isNull(second.nextCursor);
+      assert.isNull(second.nextRunId);
+      assert.deepEqual(
+        second.entries.map((entry) => entry.userMessageId),
+        Array.from({ length: 5 }, (_, index) => `message:${index + 26}`),
+      );
       assert.equal(
         new Set([...first.entries, ...second.entries].map((entry) => entry.runId)).size,
         30,
@@ -185,5 +250,26 @@ it.effect(
       });
       const remaining = yield* store.getQueuedRunPage(threadId);
       assert.isFalse(remaining.entries.some((entry) => entry.runId === firstRun));
+      for (const entry of [...first.entries.slice(1), ...second.entries])
+        yield* orchestrator.dispatch({
+          type: "queued-run.cancel",
+          threadId,
+          commandId: CommandId.make(`clear:${entry.runId}`),
+          runId: RunId.make(entry.runId),
+        });
+      const empty = yield* store.getQueuedRunPage(threadId);
+      assert.deepEqual(empty.entries, []);
+      assert.isNull(empty.nextCursor);
+      assert.isNull(empty.nextRunId);
+      assert.equal((yield* store.getQueuedRunHead(threadId))?.runId, deliveries[0]);
+      const projection = yield* store.getThreadProjection(threadId);
+      assert.equal(projection.runs.filter((run) => run.status === "queued").length, 4);
+      const shell = (yield* orchestrator.getShellSnapshot()).threads.find(
+        (thread) => thread.id === threadId,
+      )!;
+      const replayShell = ProjectionStore.threadShellFromProjection(projection);
+      for (const value of [shell, replayShell]) {
+        assert.notEqual(value.status, "queued");
+      }
     }).pipe(Effect.provide(layer)),
 );

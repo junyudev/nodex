@@ -973,8 +973,26 @@ test("retires only live resident keys and the addressed delivery without rereadi
       },
     },
   };
-  const { owner, wire, release } = await open(initial);
-  await vi.waitFor(() => expect(owner.getSnapshot().view?.queuedFollowUps.entries).toHaveLength(2));
+  const wire = transport(initial);
+  vi.mocked(wire.port.readQueuePage).mockResolvedValue({
+    snapshotSequence: 1,
+    entries: [
+      {
+        runId: "held",
+        userMessageId: "held-message",
+        userItemId: heldItem.id,
+        queuePosition: 2,
+        held: true,
+        requestedAt: at,
+      },
+    ],
+    nextCursor: null,
+    nextRunId: null,
+  });
+  const owner = new AgentRuntimeConversationOwner(target, wire.port);
+  const release = owner.readOwner.subscribeStructure(() => {});
+  await owner.resume();
+  await vi.waitFor(() => expect(owner.getSnapshot().view?.queuedFollowUps.entries).toHaveLength(1));
   const key = JSON.stringify(["agent-run", target.threadId, "run"]);
   const historyKey = JSON.stringify(["agent-run", target.threadId, "history"]);
   const heldKey = JSON.stringify(["agent-run", target.threadId, "held"]);
@@ -1542,6 +1560,65 @@ describe("Agent Runtime keyed transcript reads", () => {
     expect(owner.readOwner.readStructure()).toBeNull();
     releaseControl();
   });
+  test.each(["success", "failure"])(
+    "keeps an empty user outbox quiet during a background refresh (%s)",
+    async (outcome) => {
+      const initial = conversation([]);
+      const wire = transport(initial);
+      const owner = new AgentRuntimeConversationOwner(target, wire.port);
+      const release = owner.readOwner.subscribeStructure(() => {});
+      try {
+        await owner.resume();
+        await vi.waitFor(() =>
+          expect(owner.getSnapshot().view?.queuedFollowUps.status).toBe("ready"),
+        );
+        let resolveQueue!: (page: Awaited<ReturnType<typeof wire.port.readQueuePage>>) => void;
+        let rejectQueue!: (error: Error) => void;
+        const pending = new Promise<Awaited<ReturnType<typeof wire.port.readQueuePage>>>(
+          (resolve, reject) => {
+            resolveQueue = resolve;
+            rejectQueue = reject;
+          },
+        );
+        vi.mocked(wire.port.readQueuePage).mockReturnValueOnce(pending);
+        wire.emit({
+          sequence: 2,
+          commandId: null,
+          event: {
+            id: "runtime-wake",
+            type: "run.created",
+            threadId: target.threadId,
+            occurredAt: at,
+            payload: {
+              ...initial.snapshot.projection.runs[0]!,
+              id: "wake",
+              userMessageId: "wake-message",
+              status: "queued",
+            },
+          },
+        });
+        expect(wire.port.readQueuePage).toHaveBeenCalledTimes(2);
+        expect(owner.getSnapshot().view?.queuedFollowUps).toMatchObject({
+          status: "ready",
+          entries: [],
+        });
+        if (outcome === "failure") rejectQueue(new Error("Background refresh failed"));
+        else resolveQueue({ snapshotSequence: 2, entries: [], nextCursor: null, nextRunId: null });
+        await owner.nextQueuePage();
+        expect(owner.getSnapshot().view?.queuedFollowUps).toMatchObject({
+          status: "ready",
+          entries: [],
+          error: null,
+        });
+        expect(owner.queueBoundary()).toBeNull();
+        expect(wire.port.readQueuedPreview).not.toHaveBeenCalled();
+      } finally {
+        release();
+        owner.dispose();
+      }
+    },
+  );
+
   test("reports a queue query failure without substituting an incomplete resident roster", async () => {
     const wire = transport(conversation([]));
     const owner = new AgentRuntimeConversationOwner(target, {
