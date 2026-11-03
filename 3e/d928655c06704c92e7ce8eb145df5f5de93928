@@ -1,0 +1,208 @@
+.github/workflows/_windows-distribution.yml
+  s_31333ce1edfc28::t_d091e6d6aab79d 1-131
+docs/product-specs/nodex-product-spec.md
+  s_fe237c1ed6d99b::t_5230a90e3ae16d 224
+scripts/desktop-build.ts
+  s_31333ce1edfc28::t_f4d785ae83e818 2,5,120-123,135-140
+scripts/release/pages.ts
+  s_31333ce1edfc28::t_877b94b4e49087 10-12,64,67,71,74-78,97-98,108,126,135,140,146,148,159-161,200,202
+.github/actions/finalize-sparkle/action.yml
+  s_31333ce1edfc28::t_80b49611f1ad44 6,32,36,82-90
+scripts/release/cli.ts
+  s_31333ce1edfc28::t_164b0959ec58be 12-13,228-260,265-268
+.github/workflows/nightly-release.yml
+  s_31333ce1edfc28::t_1a33c7091a714b 138-150,153-157,169,178
+.github/workflows/release-rehearsal.yml
+  s_31333ce1edfc28::t_d7b85679a2b858 94-105,107-112,124,133
+scripts/release/windows-updates.ts
+  s_31333ce1edfc28::t_a0b335e1f78d15 1-278
+scripts/release/signing.ts
+  s_31333ce1edfc28::t_6dfa8d482550e2 1-108
+scripts/release/sparkle-manifest.ts
+  s_31333ce1edfc28::t_789f68bc30b8b8 111-115,145,231
+package.json
+  s_31333ce1edfc28::t_3a61ce711b6c7a 154
+.github/workflows/_promote-nightly.yml
+  s_31333ce1edfc28::t_c700f1a07bac90 73,81-82
+.github/workflows/windows.yml
+  s_31333ce1edfc28::t_fa169999850edb 27,153,155-160
+scripts/ci/verify-release-distribution-contracts.test.ts
+  s_31333ce1edfc28::t_df5a2c8553a703 1-87,90,96-97,101-103,106-107
+  s_4ecb22df858a2c::t_82e5370bfbfa0b 88-89,91-95,98-100,104-105
+docs/release-windows.md
+  s_fe237c1ed6d99b::t_4e596b6b77e96c 4-7,23-24,179-181,242-243,247-302
+  s_3022e59a160914::t_358cacc33214a1 216-218
+  s_3022e59a160914::t_61f086ff6ad8ab 47-49
+  s_31333ce1edfc28::t_feb571796c279f 304-323,325-394
+  s_3022e59a160914::t_574c5ddbe2faa5 25,303,324
+scripts/release/signing.test.ts
+  s_31333ce1edfc28::t_6c9ded7fc0141d 1-46
+scripts/release/windows-updates.test.ts
+  s_4ecb22df858a2c::t_e46834d9f0c587 1-274
+scripts/ci/verify-release-distribution-contracts.ts
+  s_31333ce1edfc28::t_394003cd8e5ab2 1-127
+scripts/release/windows-release.fixture.ts
+  s_31333ce1edfc28::t_b395ee655cbf9b 1-188
+scripts/release/targets.ts
+  s_31333ce1edfc28::t_55a15903a0a892 1-23
+.github/workflows/_assemble-release.yml
+  s_31333ce1edfc28::t_3febf66a8a7d96 54-69,91-94
+CHANGELOG.md
+  s_fe237c1ed6d99b::t_ed973d2287b6bc 10
+scripts/release/bundle.ts
+  s_31333ce1edfc28::t_d61d6e73814277 12,24-34,37,41,57,59,69,86,106,164,182,191-192,210,251-259,272-281,283-286,288-290,292,297-299,331,333,337,341,348-349,361-388,404-414,438,566,569-610,623-627,656-660,700,708,741-807,819-822,830,838
+scripts/ci/probe-windows-installer.ts
+  s_31333ce1edfc28::t_7a63dd79b2852b 159-162
+  s_3022e59a160914::t_98c903b3df9562 1,17,101-126,193,245-249,322,370-383,390,551-635
+.github/workflows/release.yml
+  s_31333ce1edfc28::t_b39790d337e052 144-156,158,160-164,176,186
+docs/reliability/core-lifecycle-and-store.md
+  s_fe237c1ed6d99b::t_176235d7106889 380
+scripts/release/sparkle.ts
+  s_31333ce1edfc28::t_84aea9436fd83e 40,43-49,653-656,660
+scripts/release/bundle.test.ts
+  s_31333ce1edfc28::t_efbe6a9375280f 29-30,32,187,194,198,206,215-220,225-227,236,247,254-256,263,293,310,326,368,411,426,451,488
+scripts/release/distribution.ts
+  s_31333ce1edfc28::t_11287013f03c13 15,83,233
+scripts/release/retention.ts
+  s_31333ce1edfc28::t_c8eacd983cddf7 25-27
+docs/development.md
+  s_fe237c1ed6d99b::t_bc7710a87add98 722,1204,1248
+scripts/release/windows-distribution.ts
+  s_31333ce1edfc28::t_fdc32dd4294527 1-212
+docs/RELIABILITY.md
+  s_fe237c1ed6d99b::t_c8cf866babf355 778,795
+docs/landing-site.md
+  s_fe237c1ed6d99b::t_8f5296b7231049 138-139,158,161-168,170-173
+scripts/release/github-release.ts
+  s_31333ce1edfc28::t_151ab087fd6fef 6,196-199,215
+AGENTS.md
+  s_fe237c1ed6d99b::t_4d5af42e6cbd81 64,131
+scripts/ci/classify-change.test.ts
+  s_fe237c1ed6d99b::t_63f335b1e3a43b 8
+scripts/release/sparkle-appcast-contract.ts
+  s_31333ce1edfc28::t_35f79b0a47583a 4,19-22,44-47,51-59,79-84
+docs/ENGINEERING_LEARNINGS.md
+  s_fe237c1ed6d99b::t_bee6ff6f607d2e 227,402
+docs/CI.md
+  s_fe237c1ed6d99b::t_8c0fffb08679a0 32-35,56-59
+docs/ARCHITECTURE.md
+  s_fe237c1ed6d99b::t_28eadb1404b9c6 1289,1387,1422
+  s_fe237c1ed6d99b::t_2c808c7e9a02a1 1271-1277,1281
+docs/release.md
+  s_fe237c1ed6d99b::t_d8afc266096a9b 1,33,37,43-45,51-66,109,111,164-171,186,285-286,293-294,297,321,366-387,471-472,551-554,558-559,576,601
+.github/workflows/release-recovery.yml
+  s_31333ce1edfc28::t_6e4d5fddc570bf 225-237,239,247-252,264,280,282-290
+src/main/app-update-trust.ts
+  s_fe237c1ed6d99b::t_3abba243f32c3b 1-14
+docs/product-specs/settings-route-behavior.md
+  s_fe237c1ed6d99b::t_08cbbd9c960a50 233-234,242-256
+src/main/app/MainApp.test.ts
+  s_fe237c1ed6d99b::t_786b59fafcff9d 72-73,94,96
+src/main/host-runtime/ApplicationMenuRuntime.ts
+  s_fe237c1ed6d99b::t_b74f6647e2d626 532-539
+scripts/windows-update-manifest.test.ts
+  s_fe237c1ed6d99b::t_a673cdbc3a5348 1-65
+src/main/app/MainApplicationLive.ts
+  s_fe237c1ed6d99b::t_e8eb43e34dd8e1 221,361,387-400
+src/renderer/components/workbench/app-update-settings-control.test.tsx
+  s_fe237c1ed6d99b::t_19a5495eb62f9f 16,160,168-176
+  s_fe237c1ed6d99b::t_514077a81bb4aa 7-8
+src/main/app-updater.ts
+  s_fe237c1ed6d99b::t_eff536e8690829 1,4-5,37-39,41-42,50,54,56-57
+src/main/platform/host-capabilities.test.ts
+  s_fe237c1ed6d99b::t_f48a2803e3d315 11,32-35
+src/main/app/MainApplication.test-support.ts
+  s_fe237c1ed6d99b::t_0e75a07fb11c34 14,30
+src/renderer/components/workbench/app-update-settings-control.tsx
+  s_fe237c1ed6d99b::t_c7ac9160a3e277 97
+src/main/host-runtime/AppUpdatePolicy.ts
+  s_fe237c1ed6d99b::t_8f4af8b4417d85 3,19,25-27,30-31,35-37,43,52-53,94
+src/main/ipc/handlers/AppUpdateIpc.node.test.ts
+  s_fe237c1ed6d99b::t_edcc199b2de9ba 34
+src/main/windows-update-handoff.ts
+  s_fe237c1ed6d99b::t_f1762539cb2e5c 1-6
+src/main/host-runtime/ApplicationMenuRuntime.test.ts
+  s_fe237c1ed6d99b::t_d32244a5467491 340-344
+src/main/host-runtime/AppUpdateRuntime.test.ts
+  s_fe237c1ed6d99b::t_3d86c153c3773f 11,21,23,28,35,49,60,142-143,344-365
+electron-builder.yml
+  s_31333ce1edfc28::t_bb485620520ff5 3,173-174
+resources/windows/installer.nsh
+  s_fe237c1ed6d99b::t_ea5733d6660d17 7-8
+  s_fe237c1ed6d99b::t_421f4537c6e144 42-57
+src/main/windows-update-appcast.ts
+  s_fe237c1ed6d99b::t_1ba0468e202999 1-117
+src/main/sparkle-mac-app-updater.ts
+  s_fe237c1ed6d99b::t_4fb4d08d07c254 1,5,11,100
+src/main/windows-update-download.ts
+  s_fe237c1ed6d99b::t_401199ef8c9b4e 1-146
+docs/product-specs/windows-host-behavior.md
+  s_fe237c1ed6d99b::t_d34bb10218aae9 31,83-84,112-115,117-131
+src/main/host-runtime/AppUpdateRuntime.ts
+  s_fe237c1ed6d99b::t_29d20061e9bb25 2-3,22,46,56,59,61-67,114,154,173,186-192,357
+src/main/windows-app-update-config.ts
+  s_fe237c1ed6d99b::t_81b20c312d5174 1-33
+scripts/prepare-packaged-windows-updates.d.mts
+  s_fe237c1ed6d99b::t_3c1dee81fab018 1-4
+src/renderer/lib/settings-host-presentation.test.ts
+  s_fe237c1ed6d99b::t_134dc658c52038 4,21-29
+src/main/windows-app-updater.test.ts
+  s_fe237c1ed6d99b::t_33faef5ff7db3a 1-376
+src/shared/host-capabilities.ts
+  s_fe237c1ed6d99b::t_42a904656da22a 6-9
+src/main/app/MainApp.ts
+  s_fe237c1ed6d99b::t_8ee2eca81230da 72,113,129
+src/main/sparkle-mac-app-updater.test.ts
+  s_fe237c1ed6d99b::t_73711484ebb226 127,158-159
+scripts/prepare-packaged-windows-updates.mjs
+  s_31333ce1edfc28::t_2f7356633bb7a7 1-24
+scripts/windows-update-manifest.ts
+  s_31333ce1edfc28::t_ac6f8b80b36bfd 1-51
+src/main/sparkle-native-binding.ts
+  s_fe237c1ed6d99b::t_0ae629f785f71d 4,7,41
+src/main/windows-app-updater.ts
+  s_fe237c1ed6d99b::t_fefff20bf4a9d9 1-222
+src/main/app/MainApplication.ts
+  s_fe237c1ed6d99b::t_63a276ccbcc352 18-19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3ed928655c06704c92e7ce8eb145df5f5de93928",
+  "prompts": {},
+  "sessions": {
+    "s_3022e59a160914": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1def126e-fd62-476f-9393-67b0835f01b6",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_31333ce1edfc28": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a054-7bf2-75b1-8bd9-e26360b6ebcf",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_4ecb22df858a2c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a055-207c-72a1-b1ad-e6102c15fab4",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_fe237c1ed6d99b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a054-d8eb-7523-aaf2-f1f5e039bccb",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": null
+    }
+  }
+}
