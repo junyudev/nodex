@@ -1,0 +1,39 @@
+docs/development.md
+  s_58dd902470ebf6::t_c87bf07d7380d9 503-523
+scripts/scenarios/adapters/core-client-seed-adapter.ts
+  s_58dd902470ebf6::t_fd37210e4f6dd1 57,63-65,85,91-310,320-328,618-620,1060,1064,1079
+scripts/scenarios/adapters/core-client-seed-runtime.ts
+  s_58dd902470ebf6::t_e8406e01e43cda 19,120-121,132,135-138,143
+scripts/scenarios/adapters/renderer-ipc-seed-adapter.ts
+  s_58dd902470ebf6::t_a6364f63772025 1,94-99,415-417,457-484
+scripts/scenarios/contracts.ts
+  s_58dd902470ebf6::t_45b7972f17315e 4,40-41,117,128,161-175,177-195
+scripts/scenarios/registry.ts
+  s_58dd902470ebf6::t_f5da93188d56c1 1,30
+scripts/scenarios/scenarios/board-dense.test.ts
+  s_58dd902470ebf6::t_448ab926771772 43-63
+scripts/scenarios/scenarios/database-context-menu-performance.test.ts
+  s_58dd902470ebf6::t_3f907d978169b7 20-40
+scripts/scenarios/scenarios/nodex-coordinator.ts
+  s_58dd902470ebf6::t_6a3f18299f59e5 1-430
+src/main/core-client/nodex-coordinator-scenario.node.test.ts
+  s_58dd902470ebf6::t_d0b17e9c392f20 1-95
+tests/e2e/nodex-coordinator.spec.ts
+  s_58dd902470ebf6::t_80af9528501252 1-153
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "eb046967547e29d70493618c8ba6abe6c799fdf3",
+  "prompts": {},
+  "sessions": {
+    "s_58dd902470ebf6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19ff3-cede-79d2-a6b7-dfee820bdb12",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
